@@ -290,6 +290,13 @@
       document.getElementById('search').focus();
     });
 
+    // Écouter le message IPC pour recharger les projets
+    ipcRenderer.on('reload-projects', () => {
+      document.getElementById('search').value = '';
+      loadProjects();
+      document.getElementById('search').focus();
+    });
+
     loadProjects();
   </script>
 </body>
