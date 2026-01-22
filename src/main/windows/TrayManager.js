@@ -3,37 +3,34 @@
  * Manages the system tray icon and menu
  */
 
-const { Tray, Menu, nativeImage, ipcMain } = require('electron');
+const path = require('path');
+const { Tray, Menu, ipcMain } = require('electron');
 const { showMainWindow, setQuitting } = require('./MainWindow');
 const { createQuickPickerWindow } = require('./QuickPickerWindow');
 
 let tray = null;
-let currentAccentColor = '#d97706';
 
 /**
- * Generate tray icon with specified color
- * @param {string} hexColor - Hex color string
- * @returns {NativeImage}
+ * Get the application icon path for tray
+ * @returns {string}
  */
-function generateTrayIcon(hexColor) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-    <circle cx="8" cy="8" r="7" fill="${hexColor}"/>
-    <circle cx="8" cy="8" r="4" fill="#0d0d0d"/>
-    <circle cx="8" cy="8" r="2" fill="${hexColor}"/>
-  </svg>`;
-
-  const svgDataUrl = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
-  return nativeImage.createFromDataURL(svgDataUrl);
+function getTrayIconPath() {
+  // In development: relative to src/main/windows
+  // In production: resources/assets
+  const devPath = path.join(__dirname, '..', '..', '..', 'assets', 'icon.ico');
+  const fs = require('fs');
+  if (fs.existsSync(devPath)) {
+    return devPath;
+  }
+  return path.join(process.resourcesPath || __dirname, 'assets', 'icon.ico');
 }
 
 /**
  * Create the system tray
- * @param {string} accentColor - Initial accent color
  */
-function createTray(accentColor = '#d97706') {
-  currentAccentColor = accentColor;
-  const icon = generateTrayIcon(currentAccentColor);
-  tray = new Tray(icon);
+function createTray() {
+  const iconPath = getTrayIconPath();
+  tray = new Tray(iconPath);
 
   const contextMenu = Menu.buildFromTemplate([
     {
@@ -75,30 +72,19 @@ function createTray(accentColor = '#d97706') {
   tray.setToolTip('Claude Terminal');
   tray.setContextMenu(contextMenu);
 
-  // Double-click to open
-  tray.on('double-click', () => {
+  // Single click to open
+  tray.on('click', () => {
     showMainWindow();
   });
-}
-
-/**
- * Update tray icon color
- * @param {string} color - New accent color
- */
-function updateTrayColor(color) {
-  currentAccentColor = color;
-  if (tray) {
-    const newIcon = generateTrayIcon(color);
-    tray.setImage(newIcon);
-  }
 }
 
 /**
  * Register tray-related IPC handlers
  */
 function registerTrayHandlers() {
-  ipcMain.on('update-accent-color', (event, color) => {
-    updateTrayColor(color);
+  // Handler kept for compatibility, tray now uses fixed app icon
+  ipcMain.on('update-accent-color', () => {
+    // No-op: tray uses the application icon
   });
 }
 
@@ -122,9 +108,7 @@ function destroyTray() {
 
 module.exports = {
   createTray,
-  updateTrayColor,
   registerTrayHandlers,
   getTray,
-  destroyTray,
-  generateTrayIcon
+  destroyTray
 };
