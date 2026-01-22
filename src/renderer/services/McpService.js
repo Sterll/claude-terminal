@@ -19,28 +19,71 @@ const {
   setSelectedMcp,
   initMcpProcess
 } = require('../state');
-const { claudeSettingsFile, legacyMcpsFile } = require('../utils/paths');
+const { claudeConfigFile, legacyMcpsFile } = require('../utils/paths');
 
 /**
- * Load MCPs from Claude settings file
+ * Load MCPs from Claude Code config file (~/.claude.json)
  */
 function loadMcps() {
   let mcps = [];
 
   try {
-    // Load from Claude settings
-    if (fs.existsSync(claudeSettingsFile)) {
-      const settings = JSON.parse(fs.readFileSync(claudeSettingsFile, 'utf8'));
+    // Load from Claude Code config (~/.claude.json)
+    if (fs.existsSync(claudeConfigFile)) {
+      const config = JSON.parse(fs.readFileSync(claudeConfigFile, 'utf8'));
 
-      if (settings.mcpServers) {
-        mcps = Object.entries(settings.mcpServers).map(([id, config]) => ({
-          id,
-          name: id,
-          command: config.command,
-          args: config.args || [],
-          env: config.env || {},
-          enabled: true
-        }));
+      // Load global MCP servers
+      if (config.mcpServers) {
+        mcps = Object.entries(config.mcpServers).map(([id, serverConfig]) => {
+          const mcp = {
+            id,
+            name: id,
+            type: serverConfig.type || 'stdio',
+            enabled: true,
+            scope: 'global'
+          };
+
+          if (serverConfig.type === 'http') {
+            mcp.url = serverConfig.url;
+          } else {
+            mcp.command = serverConfig.command;
+            mcp.args = serverConfig.args || [];
+            mcp.env = serverConfig.env || {};
+          }
+
+          return mcp;
+        });
+      }
+
+      // Load project-specific MCP servers
+      if (config.projects) {
+        Object.entries(config.projects).forEach(([projectPath, projectConfig]) => {
+          if (projectConfig.mcpServers && Object.keys(projectConfig.mcpServers).length > 0) {
+            Object.entries(projectConfig.mcpServers).forEach(([id, serverConfig]) => {
+              // Check if already exists (global takes precedence)
+              if (!mcps.find(m => m.id === id)) {
+                const mcp = {
+                  id,
+                  name: id,
+                  type: serverConfig.type || 'stdio',
+                  enabled: true,
+                  scope: 'project',
+                  projectPath
+                };
+
+                if (serverConfig.type === 'http') {
+                  mcp.url = serverConfig.url;
+                } else {
+                  mcp.command = serverConfig.command;
+                  mcp.args = serverConfig.args || [];
+                  mcp.env = serverConfig.env || {};
+                }
+
+                mcps.push(mcp);
+              }
+            });
+          }
+        });
       }
     }
 
@@ -67,27 +110,36 @@ function loadMcps() {
 }
 
 /**
- * Save MCPs to Claude settings file
+ * Save MCPs to Claude Code config file (~/.claude.json)
+ * Only saves global scope MCPs
  * @param {Array} mcps
  */
 function saveMcps(mcps) {
   try {
-    let settings = {};
+    let config = {};
 
-    if (fs.existsSync(claudeSettingsFile)) {
-      settings = JSON.parse(fs.readFileSync(claudeSettingsFile, 'utf8'));
+    if (fs.existsSync(claudeConfigFile)) {
+      config = JSON.parse(fs.readFileSync(claudeConfigFile, 'utf8'));
     }
 
-    settings.mcpServers = {};
-    mcps.forEach(mcp => {
-      settings.mcpServers[mcp.id] = {
-        command: mcp.command,
-        args: mcp.args || [],
-        env: mcp.env || {}
-      };
+    config.mcpServers = {};
+    mcps.filter(mcp => mcp.scope !== 'project').forEach(mcp => {
+      if (mcp.type === 'http') {
+        config.mcpServers[mcp.id] = {
+          type: 'http',
+          url: mcp.url
+        };
+      } else {
+        config.mcpServers[mcp.id] = {
+          type: 'stdio',
+          command: mcp.command,
+          args: mcp.args || [],
+          env: mcp.env || {}
+        };
+      }
     });
 
-    fs.writeFileSync(claudeSettingsFile, JSON.stringify(settings, null, 2));
+    fs.writeFileSync(claudeConfigFile, JSON.stringify(config, null, 2));
   } catch (e) {
     console.error('Error saving MCPs:', e);
   }
@@ -106,6 +158,14 @@ async function startMcp(id) {
   addMcpLog(id, 'info', `Starting ${mcp.name}...`);
 
   try {
+    // HTTP servers are external - just mark as running
+    if (mcp.type === 'http') {
+      setMcpProcessStatus(id, 'running');
+      addMcpLog(id, 'info', `HTTP server available at ${mcp.url}`);
+      return { success: true };
+    }
+
+    // stdio servers need to be spawned
     const result = await ipcRenderer.invoke('mcp-start', {
       id,
       command: mcp.command,
@@ -135,9 +195,17 @@ async function startMcp(id) {
  * @returns {Promise<Object>}
  */
 async function stopMcp(id) {
+  const mcp = getMcp(id);
   addMcpLog(id, 'info', 'Stopping...');
 
   try {
+    // HTTP servers are external - just mark as stopped
+    if (mcp && mcp.type === 'http') {
+      setMcpProcessStatus(id, 'stopped');
+      addMcpLog(id, 'info', 'Disconnected');
+      return { success: true };
+    }
+
     const result = await ipcRenderer.invoke('mcp-stop', { id });
     setMcpProcessStatus(id, 'stopped');
     addMcpLog(id, 'info', 'Stopped');
