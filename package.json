@@ -1,12 +1,12 @@
 {
   "name": "claude-terminal",
-  "version": "0.0.8",
+  "version": "0.1.0",
   "description": "Terminal custom pour Claude Code avec gestion des projets, skills et agents",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "dotenv -e .env -- electron-builder --win",
-    "publish": "dotenv -e .env -- electron-builder --win --publish always"
+    "build": "dotenv -e .env -- electron-builder --win --config electron-builder.config.js",
+    "publish": "dotenv -e .env -- electron-builder --win --publish always --config electron-builder.config.js"
   },
   "keywords": [
     "claude",
@@ -29,45 +29,5 @@
     "@xterm/xterm": "^6.0.0",
     "electron-updater": "^6.1.7",
     "node-pty": "^1.1.0"
-  },
-  "build": {
-    "appId": "com.yanis.claude-terminal",
-    "productName": "Claude Terminal",
-    "directories": {
-      "output": "dist"
-    },
-    "files": [
-      "main.js",
-      "renderer.js",
-      "index.html",
-      "quick-picker.html",
-      "styles.css",
-      "src/**/*",
-      "assets/**/*",
-      "node_modules/**/*",
-      "package.json"
-    ],
-    "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "icon": "assets/icon.ico"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
-    },
-    "publish": {
-      "provider": "github",
-      "owner": "Sterll",
-      "repo": "claude-terminal"
-    }
   }
 }
