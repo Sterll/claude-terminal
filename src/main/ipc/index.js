@@ -10,6 +10,7 @@ const { registerFivemHandlers } = require('./fivem.ipc');
 const { registerDialogHandlers, setMainWindow: setDialogMainWindow } = require('./dialog.ipc');
 const { registerProjectHandlers } = require('./project.ipc');
 const { registerClaudeHandlers } = require('./claude.ipc');
+const { registerUsageHandlers } = require('./usage.ipc');
 
 /**
  * Register all IPC handlers
@@ -27,6 +28,7 @@ function registerAllHandlers(mainWindow) {
   registerDialogHandlers();
   registerProjectHandlers();
   registerClaudeHandlers();
+  registerUsageHandlers();
 }
 
 module.exports = {
