@@ -492,6 +492,103 @@ function createBasicTerminalForProject(project) {
   });
 }
 
+// ========== SESSIONS MODAL ==========
+async function showSessionsModal(project) {
+  if (!project) return;
+
+  try {
+    const sessions = await ipcRenderer.invoke('claude-sessions', project.path);
+
+    if (!sessions || sessions.length === 0) {
+      showModal(`Sessions - ${project.name}`, `
+        <div class="sessions-modal-empty">
+          <p>Aucune session sauvegardee pour ce projet</p>
+          <button class="modal-btn primary" onclick="closeModal(); createTerminalForProject(projectsState.get().projects[${getProjectIndex(project.id)}])">
+            Nouvelle conversation
+          </button>
+        </div>
+      `);
+      return;
+    }
+
+    const formatRelativeTime = (dateString) => {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+      if (diffMins < 1) return "a l'instant";
+      if (diffMins < 60) return `il y a ${diffMins}min`;
+      if (diffHours < 24) return `il y a ${diffHours}h`;
+      if (diffDays < 7) return `il y a ${diffDays}j`;
+      return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+    };
+
+    const truncateText = (text, maxLength) => {
+      if (!text) return '';
+      return text.length <= maxLength ? text : text.slice(0, maxLength) + '...';
+    };
+
+    const sessionsHtml = sessions.map(session => `
+      <div class="session-card-modal" data-session-id="${session.sessionId}">
+        <div class="session-header">
+          <span class="session-icon">💬</span>
+          <span class="session-title">${escapeHtml(truncateText(session.summary, 50))}</span>
+        </div>
+        <div class="session-prompt">${escapeHtml(truncateText(session.firstPrompt, 100))}</div>
+        <div class="session-meta">
+          <span class="session-messages">${session.messageCount} msgs</span>
+          <span class="session-time">${formatRelativeTime(session.modified)}</span>
+          ${session.gitBranch ? `<span class="session-branch">${escapeHtml(session.gitBranch)}</span>` : ''}
+        </div>
+      </div>
+    `).join('');
+
+    showModal(`Reprendre - ${project.name}`, `
+      <div class="sessions-modal">
+        <div class="sessions-modal-actions">
+          <button class="modal-btn primary sessions-new-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+            Nouvelle conversation
+          </button>
+        </div>
+        <div class="sessions-modal-list">
+          ${sessionsHtml}
+        </div>
+      </div>
+    `);
+
+    // Add click handlers after rendering
+    document.querySelectorAll('.session-card-modal').forEach(card => {
+      card.onclick = async () => {
+        const sessionId = card.dataset.sessionId;
+        closeModal();
+        // Resume session via TerminalManager with skipPermissions setting
+        TerminalManager.resumeSession(project, sessionId, {
+          skipPermissions: settingsState.get().skipPermissions
+        });
+      };
+    });
+
+    document.querySelector('.sessions-new-btn')?.addEventListener('click', () => {
+      closeModal();
+      createTerminalForProject(project);
+    });
+
+  } catch (error) {
+    console.error('Error showing sessions modal:', error);
+    showModal('Erreur', `<p>Impossible de charger les sessions</p>`);
+  }
+}
+
+// Make functions available globally for inline handlers
+window.closeModal = closeModal;
+window.createTerminalForProject = createTerminalForProject;
+window.projectsState = projectsState;
+
 // ========== SETUP COMPONENTS ==========
 // Setup ProjectList
 ProjectList.setExternalState({
@@ -1046,31 +1143,41 @@ function renderSkills() {
 
   // Local skills section
   if (localSkills.length > 0) {
-    html += `<div class="list-section"><div class="list-section-title">Local</div>`;
+    html += `<div class="list-section">
+      <div class="list-section-title">Local <span class="list-section-count">${localSkills.length}</span></div>
+      <div class="list-section-grid">`;
     html += localSkills.map(s => `
       <div class="list-card" data-path="${s.path.replace(/"/g, '&quot;')}" data-is-plugin="false">
-        <div class="list-card-header"><div class="list-card-title">${escapeHtml(s.name)}</div><div class="list-card-badge">Skill</div></div>
+        <div class="list-card-header">
+          <div class="list-card-title">${escapeHtml(s.name)}</div>
+          <div class="list-card-badge">Skill</div>
+        </div>
         <div class="list-card-desc">${escapeHtml(s.description)}</div>
         <div class="list-card-footer">
           <button class="btn-sm btn-secondary btn-open">Ouvrir</button>
           <button class="btn-sm btn-delete btn-del">Suppr</button>
         </div>
       </div>`).join('');
-    html += `</div>`;
+    html += `</div></div>`;
   }
 
   // Plugin skills sections
   Object.entries(pluginsBySource).forEach(([source, skills]) => {
-    html += `<div class="list-section"><div class="list-section-title"><span class="plugin-badge">Plugin</span> ${escapeHtml(source)}</div>`;
+    html += `<div class="list-section">
+      <div class="list-section-title"><span class="plugin-badge">Plugin</span> ${escapeHtml(source)} <span class="list-section-count">${skills.length}</span></div>
+      <div class="list-section-grid">`;
     html += skills.map(s => `
       <div class="list-card plugin-card" data-path="${s.path.replace(/"/g, '&quot;')}" data-is-plugin="true">
-        <div class="list-card-header"><div class="list-card-title">${escapeHtml(s.name)}</div><div class="list-card-badge plugin">Plugin</div></div>
+        <div class="list-card-header">
+          <div class="list-card-title">${escapeHtml(s.name)}</div>
+          <div class="list-card-badge plugin">Plugin</div>
+        </div>
         <div class="list-card-desc">${escapeHtml(s.description)}</div>
         <div class="list-card-footer">
           <button class="btn-sm btn-secondary btn-open">Ouvrir</button>
         </div>
       </div>`).join('');
-    html += `</div>`;
+    html += `</div></div>`;
   });
 
   list.innerHTML = html;
@@ -1090,15 +1197,26 @@ function renderAgents() {
     list.innerHTML = `<div class="empty-list"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM8 17.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5zM9.5 8c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5S9.5 9.38 9.5 8zm6.5 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg><h3>Aucun agent</h3><p>Creez votre premier agent</p></div>`;
     return;
   }
-  list.innerHTML = localState.agents.map(a => `
-    <div class="list-card" data-path="${a.path.replace(/"/g, '&quot;')}">
-      <div class="list-card-header"><div class="list-card-title">${escapeHtml(a.name)}</div><div class="list-card-badge agent">Agent</div></div>
+
+  let html = `<div class="list-section">
+    <div class="list-section-title">Agents <span class="list-section-count">${localState.agents.length}</span></div>
+    <div class="list-section-grid">`;
+  html += localState.agents.map(a => `
+    <div class="list-card agent-card" data-path="${a.path.replace(/"/g, '&quot;')}">
+      <div class="list-card-header">
+        <div class="list-card-title">${escapeHtml(a.name)}</div>
+        <div class="list-card-badge agent">Agent</div>
+      </div>
       <div class="list-card-desc">${escapeHtml(a.description)}</div>
       <div class="list-card-footer">
         <button class="btn-sm btn-secondary btn-open">Ouvrir</button>
         <button class="btn-sm btn-delete btn-del">Suppr</button>
       </div>
     </div>`).join('');
+  html += `</div></div>`;
+
+  list.innerHTML = html;
+
   list.querySelectorAll('.list-card').forEach(card => {
     card.querySelector('.btn-open').onclick = () => ipcRenderer.send('open-in-explorer', card.dataset.path);
     card.querySelector('.btn-del').onclick = () => { if (confirm('Supprimer cet agent ?')) { fs.rmSync(card.dataset.path, { recursive: true, force: true }); loadAgents(); } };
@@ -1674,6 +1792,21 @@ ipcRenderer.on('open-terminal-current-project', () => {
   }
 });
 
+ipcRenderer.on('show-sessions-panel', () => {
+  const selectedFilter = projectsState.get().selectedProjectFilter;
+  const projects = projectsState.get().projects;
+
+  // If a project is selected, show sessions modal
+  if (selectedFilter !== null && projects[selectedFilter]) {
+    showSessionsModal(projects[selectedFilter]);
+  } else if (projects.length > 0) {
+    // No project selected, select the first one and show its sessions
+    setSelectedProjectFilter(0);
+    ProjectList.render();
+    showSessionsModal(projects[0]);
+  }
+});
+
 // ========== INIT ==========
 setupContextMenuHandlers();
 checkAllProjectsGitStatus();
@@ -1854,5 +1987,124 @@ ipcRenderer.invoke('get-app-version').then(version => {
     versionEl.textContent = `v${version}`;
   }
 }).catch(() => {});
+
+// ========== USAGE MONITOR ==========
+const usageElements = {
+  container: document.getElementById('titlebar-usage'),
+  percent: document.getElementById('usage-percent'),
+  bar: document.getElementById('usage-bar'),
+  status: document.getElementById('usage-status')
+};
+
+/**
+ * Update usage display with new data
+ */
+function updateUsageDisplay(usageData) {
+  if (!usageElements.container) return;
+
+  usageElements.container.classList.remove('loading');
+
+  if (!usageData || !usageData.data) {
+    usageElements.percent.textContent = '--%';
+    usageElements.bar.style.width = '0%';
+    usageElements.status.textContent = 'Erreur de chargement';
+    return;
+  }
+
+  const data = usageData.data;
+
+  // Update percent if available
+  if (data.percent !== undefined) {
+    const percent = Math.round(data.percent);
+    usageElements.percent.textContent = `${percent}%`;
+    usageElements.bar.style.width = `${Math.min(percent, 100)}%`;
+
+    // Set color based on usage level
+    usageElements.bar.classList.remove('warning', 'danger');
+    if (percent >= 90) {
+      usageElements.bar.classList.add('danger');
+    } else if (percent >= 70) {
+      usageElements.bar.classList.add('warning');
+    }
+  } else {
+    usageElements.percent.textContent = '--%';
+    usageElements.bar.style.width = '0%';
+  }
+
+  // Update status text
+  if (data.used !== undefined && data.total !== undefined) {
+    const formatNum = (n) => {
+      if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+      if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+      return n.toString();
+    };
+    usageElements.status.textContent = `${formatNum(data.used)} / ${formatNum(data.total)} tokens`;
+  } else if (data.raw) {
+    // Try to extract a meaningful status from raw output
+    const lines = data.raw.split('\n').filter(l => l.trim());
+    const usageLine = lines.find(l => l.includes('%') || l.includes('token') || l.includes('usage'));
+    if (usageLine) {
+      usageElements.status.textContent = usageLine.trim().substring(0, 50);
+    } else {
+      usageElements.status.textContent = 'Actualis\u00e9';
+    }
+  } else {
+    usageElements.status.textContent = usageData.lastFetch ? 'Actualis\u00e9' : 'En attente...';
+  }
+}
+
+/**
+ * Fetch and update usage
+ */
+async function refreshUsageDisplay() {
+  if (!usageElements.container) return;
+
+  usageElements.container.classList.add('loading');
+  usageElements.status.textContent = 'Actualisation...';
+
+  try {
+    const result = await ipcRenderer.invoke('refresh-usage');
+    if (result.success) {
+      updateUsageDisplay({ data: result.data, lastFetch: new Date().toISOString() });
+    } else {
+      usageElements.container.classList.remove('loading');
+      usageElements.status.textContent = result.error || 'Erreur';
+    }
+  } catch (error) {
+    usageElements.container.classList.remove('loading');
+    usageElements.status.textContent = 'Erreur';
+    console.error('Usage refresh error:', error);
+  }
+}
+
+// Initialize usage monitor
+if (usageElements.container) {
+  // Click to refresh
+  usageElements.container.addEventListener('click', () => {
+    refreshUsageDisplay();
+  });
+
+  // Start periodic monitoring (every 60 seconds)
+  ipcRenderer.invoke('start-usage-monitor', 60000).then(() => {
+    console.log('Usage monitor started');
+  }).catch(console.error);
+
+  // Poll for updates every 5 seconds (check cached data)
+  setInterval(async () => {
+    try {
+      const data = await ipcRenderer.invoke('get-usage-data');
+      if (data && data.data) {
+        updateUsageDisplay(data);
+      }
+    } catch (e) {
+      // Ignore errors during polling
+    }
+  }, 5000);
+
+  // Initial fetch
+  setTimeout(() => {
+    refreshUsageDisplay();
+  }, 2000);
+}
 
 console.log('Claude Terminal initialized');
