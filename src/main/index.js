@@ -31,8 +31,10 @@ if (process.platform === 'win32') {
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
-  // Another instance is already running, quit this one
+  // Another instance is already running, quit this one immediately
   app.quit();
+  // IMPORTANT: Stop all code execution - don't register any handlers or initialize anything
+  return;
 }
 
 // Handle second instance attempt (show existing window)
@@ -84,6 +86,18 @@ function registerGlobalShortcuts() {
     showMainWindow();
     setTimeout(() => {
       mainWindow.webContents.send('open-terminal-current-project');
+    }, 100);
+  });
+
+  // Ctrl+Shift+E: Show sessions panel to resume a conversation
+  globalShortcut.register('Ctrl+Shift+E', () => {
+    let mainWindow = getMainWindow();
+    if (!mainWindow) {
+      mainWindow = createMainWindow({ isDev: process.argv.includes('--dev') });
+    }
+    showMainWindow();
+    setTimeout(() => {
+      mainWindow.webContents.send('show-sessions-panel');
     }, 100);
   });
 }

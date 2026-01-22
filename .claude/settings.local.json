@@ -7,7 +7,15 @@
       "Bash(tree:*)",
       "Bash(node:*)",
       "Bash(where /r \"%APPDATA%\" *claude*)",
-      "Bash(claude mcp:*)"
+      "Bash(claude mcp:*)",
+      "Skill(remotion-best-practices)",
+      "Bash(npm start)",
+      "Bash(where /r \"%APPDATA%\" settings.json)",
+      "Bash(where:*)",
+      "Bash(npm config:*)",
+      "Bash(claude config list:*)",
+      "Bash(claude --version:*)",
+      "Bash(set)"
     ]
   }
 }

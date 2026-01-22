@@ -11,11 +11,12 @@ const path = require('path');
  * Execute a git command in a specific directory
  * @param {string} cwd - Working directory
  * @param {string} args - Git command arguments
+ * @param {number} timeout - Timeout in ms (default: 10000)
  * @returns {Promise<string|null>} - Command output or null on error
  */
-function execGit(cwd, args) {
+function execGit(cwd, args, timeout = 10000) {
   return new Promise((resolve) => {
-    exec(`git ${args}`, { cwd, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout) => {
+    exec(`git ${args}`, { cwd, encoding: 'utf8', maxBuffer: 1024 * 1024, timeout }, (error, stdout) => {
       resolve(error ? null : stdout.trim());
     });
   });
@@ -78,11 +79,14 @@ function parseGitStatus(status) {
  * Get ahead/behind status relative to remote
  * @param {string} projectPath - Path to the project
  * @param {string} branch - Current branch name
+ * @param {boolean} skipFetch - Skip fetching from remote (faster, uses local data)
  * @returns {Promise<Object>} - { ahead, behind, remote }
  */
-async function getAheadBehind(projectPath, branch) {
-  // First, try to fetch to get latest remote state (silent, don't fail if offline)
-  await execGit(projectPath, 'fetch --quiet').catch(() => {});
+async function getAheadBehind(projectPath, branch, skipFetch = false) {
+  // Try to fetch with a short timeout (3s) - don't block if network is slow/offline
+  if (!skipFetch) {
+    await execGit(projectPath, 'fetch --quiet', 3000).catch(() => {});
+  }
 
   // Get the upstream tracking branch
   const upstream = await execGit(projectPath, `rev-parse --abbrev-ref ${branch}@{upstream}`);
@@ -200,7 +204,8 @@ async function getRecentCommits(projectPath, count = 5) {
  * @returns {Promise<Array>} - List of contributors
  */
 async function getContributors(projectPath) {
-  const output = await execGit(projectPath, 'shortlog -sn --all --no-merges');
+  // Use a 5s timeout - shortlog can be slow on large repos
+  const output = await execGit(projectPath, 'shortlog -sn --all --no-merges', 5000);
   if (!output) return [];
   return output.split('\n').filter(l => l.trim()).slice(0, 5).map(line => {
     const match = line.trim().match(/^\s*(\d+)\s+(.+)$/);
@@ -245,9 +250,13 @@ async function getGitInfo(projectPath) {
 /**
  * Get comprehensive git info for dashboard
  * @param {string} projectPath - Path to the project
+ * @param {Object} options - Options
+ * @param {boolean} options.skipFetch - Skip fetching from remote (default: true for speed)
  * @returns {Promise<Object>} - Complete git info
  */
-async function getGitInfoFull(projectPath) {
+async function getGitInfoFull(projectPath, options = {}) {
+  const { skipFetch = true } = options;
+
   const branch = await execGit(projectPath, 'rev-parse --abbrev-ref HEAD');
   if (!branch) return { isGitRepo: false };
 
@@ -266,7 +275,7 @@ async function getGitInfoFull(projectPath) {
   ] = await Promise.all([
     execGit(projectPath, 'log -1 --format="%H|%s|%an|%ar"'),
     execGit(projectPath, 'status --porcelain'),
-    getAheadBehind(projectPath, branch),
+    getAheadBehind(projectPath, branch, skipFetch),
     getBranches(projectPath),
     getStashes(projectPath),
     getLatestTag(projectPath),
@@ -398,7 +407,7 @@ async function countLinesOfCode(projectPath) {
         $result | ConvertTo-Json -Compress
       `.replace(/\n/g, ' ');
 
-      exec(`powershell -NoProfile -Command "${psCommand}"`, { encoding: 'utf8', maxBuffer: 1024 * 1024 * 10, timeout: 30000 }, (error, stdout) => {
+      exec(`powershell -NoProfile -Command "${psCommand}"`, { encoding: 'utf8', maxBuffer: 1024 * 1024 * 10, timeout: 15000 }, (error, stdout) => {
         if (error || !stdout.trim()) {
           resolve({ total: 0, files: 0, byExtension: {} });
           return;
@@ -418,7 +427,7 @@ async function countLinesOfCode(projectPath) {
       // Unix: use find + wc
       const cmd = `find "${projectPath}" -type f \\( -name "*.js" -o -name "*.ts" -o -name "*.jsx" -o -name "*.tsx" -o -name "*.vue" -o -name "*.py" -o -name "*.lua" -o -name "*.css" -o -name "*.scss" -o -name "*.html" -o -name "*.go" -o -name "*.rs" -o -name "*.java" \\) -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/dist/*" -not -path "*/build/*" -not -path "*/vendor/*" | head -1000 | xargs wc -l 2>/dev/null | tail -1`;
 
-      exec(cmd, { encoding: 'utf8', maxBuffer: 1024 * 1024 * 10, timeout: 30000 }, (error, stdout) => {
+      exec(cmd, { encoding: 'utf8', maxBuffer: 1024 * 1024 * 10, timeout: 15000 }, (error, stdout) => {
         if (error || !stdout.trim()) {
           resolve({ total: 0, files: 0, byExtension: {} });
           return;
