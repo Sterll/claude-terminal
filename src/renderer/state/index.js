@@ -43,6 +43,11 @@ const skillsAgentsState = new State({
 function initializeState() {
   settingsState.loadSettings();
   projectsState.loadProjects();
+  // Lazy require to avoid circular dependency
+  const { loadSkills } = require('../services/SkillService');
+  const { loadAgents } = require('../services/AgentService');
+  loadSkills();
+  loadAgents();
 }
 
 /**

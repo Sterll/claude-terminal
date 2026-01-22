@@ -3,9 +3,10 @@
  * Handles dialog and system-related IPC communication
  */
 
-const { ipcMain, dialog, shell, Notification } = require('electron');
+const { ipcMain, dialog, shell, Notification, app } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const updaterService = require('../services/UpdaterService');
 
 let mainWindow = null;
 
@@ -90,6 +91,16 @@ function registerDialogHandlers() {
     });
 
     notification.show();
+  });
+
+  // Get app version
+  ipcMain.handle('get-app-version', () => {
+    return app.getVersion();
+  });
+
+  // Install update and restart
+  ipcMain.on('update-install', () => {
+    updaterService.quitAndInstall();
   });
 }
 

@@ -9,6 +9,39 @@ const { skillsDir } = require('../utils/paths');
 const { skillsAgentsState } = require('../state');
 
 /**
+ * Parse YAML frontmatter from markdown content
+ * @param {string} content - Markdown content
+ * @returns {Object} - { metadata, body }
+ */
+function parseFrontmatter(content) {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  if (!match) {
+    return { metadata: {}, body: content };
+  }
+
+  const yamlStr = match[1];
+  const body = match[2];
+  const metadata = {};
+
+  // Simple YAML parsing for key: value pairs
+  yamlStr.split('\n').forEach(line => {
+    const colonIndex = line.indexOf(':');
+    if (colonIndex > 0) {
+      const key = line.slice(0, colonIndex).trim();
+      let value = line.slice(colonIndex + 1).trim();
+      // Remove quotes if present
+      if ((value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      metadata[key] = value;
+    }
+  });
+
+  return { metadata, body };
+}
+
+/**
  * Load all skills from the skills directory
  * @returns {Array}
  */
@@ -25,13 +58,14 @@ function loadSkills() {
 
           if (fs.existsSync(skillFile)) {
             const content = fs.readFileSync(skillFile, 'utf8');
-            const nameMatch = content.match(/^#\s+(.+)/m);
-            const lines = content.split('\n').filter(l => l.trim() && !l.startsWith('#'));
+            const { metadata, body } = parseFrontmatter(content);
+            const nameMatch = body.match(/^#\s+(.+)/m);
 
             skills.push({
               id: item,
-              name: nameMatch ? nameMatch[1] : item,
-              description: lines[0] || 'Aucune description',
+              name: metadata.name || (nameMatch ? nameMatch[1] : item),
+              description: metadata.description || 'Aucune description',
+              userInvocable: metadata['user-invocable'] === 'true',
               path: itemPath
             });
           }

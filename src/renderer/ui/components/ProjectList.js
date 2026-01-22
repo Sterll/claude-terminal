@@ -24,6 +24,7 @@ const { escapeHtml } = require('../../utils');
 let dragState = { dragging: null, dropTarget: null };
 let callbacks = {
   onCreateTerminal: null,
+  onCreateBasicTerminal: null,
   onStartFivem: null,
   onStopFivem: null,
   onOpenFivemConsole: null,
@@ -155,6 +156,10 @@ function renderProjectHtml(project, depth) {
       <div class="more-actions-divider"></div>`;
   }
   menuItemsHtml += `
+    <button class="more-actions-item btn-basic-terminal" data-project-id="${project.id}">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 19V7H4v12h16m0-16a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16m-7 14v-2h5v2h-5m-3.42-4L5.57 9H8.4l3.3 3.3c.39.39.39 1.03 0 1.42L8.42 17H5.59l4-4z"/></svg>
+      Terminal basique
+    </button>
     <button class="more-actions-item btn-open-folder" data-project-id="${project.id}">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7l2 2h5v12zm0-12h-5l-2-2H5c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2z"/></svg>
       Ouvrir le dossier
@@ -339,6 +344,20 @@ function attachListeners(list) {
   });
   list.querySelectorAll('.btn-git-push').forEach(btn => {
     btn.onclick = (e) => { e.stopPropagation(); if (callbacks.onGitPush) callbacks.onGitPush(btn.dataset.projectId); };
+  });
+
+  // Basic terminal
+  list.querySelectorAll('.btn-basic-terminal').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const projectId = btn.dataset.projectId;
+      const project = getProject(projectId);
+      const projectIndex = getProjectIndex(projectId);
+      setSelectedProjectFilter(projectIndex);
+      closeAllMoreActionsMenus();
+      if (callbacks.onRenderProjects) callbacks.onRenderProjects();
+      if (callbacks.onCreateBasicTerminal) callbacks.onCreateBasicTerminal(project);
+    };
   });
 
   // Open folder

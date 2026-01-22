@@ -192,7 +192,13 @@
     function loadProjects() {
       try {
         if (fs.existsSync(projectsFile)) {
-          projects = JSON.parse(fs.readFileSync(projectsFile, 'utf8'));
+          const data = JSON.parse(fs.readFileSync(projectsFile, 'utf8'));
+          // Gérer l'ancien format (tableau) et le nouveau format (objet)
+          if (Array.isArray(data)) {
+            projects = data;
+          } else {
+            projects = data.projects || [];
+          }
         }
       } catch (e) {
         projects = [];

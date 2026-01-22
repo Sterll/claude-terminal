@@ -82,11 +82,17 @@ function parseGitStatus(status) {
  */
 async function getAheadBehind(projectPath, branch) {
   // First, try to fetch to get latest remote state (silent, don't fail if offline)
-  await execGit(projectPath, 'fetch --quiet 2>/dev/null || true');
+  await execGit(projectPath, 'fetch --quiet').catch(() => {});
 
   // Get the upstream tracking branch
-  const upstream = await execGit(projectPath, `rev-parse --abbrev-ref ${branch}@{upstream} 2>/dev/null`);
+  const upstream = await execGit(projectPath, `rev-parse --abbrev-ref ${branch}@{upstream}`);
   if (!upstream) {
+    // No upstream set, check if remote origin exists
+    const remoteUrl = await execGit(projectPath, 'remote get-url origin');
+    if (remoteUrl) {
+      // Remote exists but branch is not tracking - still has remote
+      return { ahead: 0, behind: 0, remote: null, hasRemote: true, notTracking: true };
+    }
     return { ahead: 0, behind: 0, remote: null, hasRemote: false };
   }
 
@@ -131,7 +137,7 @@ async function getStashes(projectPath) {
  * @returns {Promise<Object|null>} - Tag info or null
  */
 async function getLatestTag(projectPath) {
-  const tag = await execGit(projectPath, 'describe --tags --abbrev=0 2>/dev/null');
+  const tag = await execGit(projectPath, 'describe --tags --abbrev=0');
   if (!tag) return null;
 
   const tagDate = await execGit(projectPath, `log -1 --format="%ar" ${tag}`);
@@ -238,7 +244,7 @@ async function getGitInfoFull(projectPath) {
     getRecentCommits(projectPath, 5),
     getContributors(projectPath),
     getTotalCommits(projectPath),
-    execGit(projectPath, 'remote get-url origin 2>/dev/null')
+    execGit(projectPath, 'remote get-url origin')
   ]);
 
   let commit = null;

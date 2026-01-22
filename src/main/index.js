@@ -4,7 +4,6 @@
  */
 
 const { app, globalShortcut } = require('electron');
-const { loadAccentColor } = require('./utils/paths');
 const { initializeServices, cleanupServices } = require('./services');
 const { registerAllHandlers } = require('./ipc');
 const {
@@ -23,13 +22,28 @@ const {
 } = require('./windows/TrayManager');
 const { updaterService } = require('./services');
 
+// Set App User Model ID for Windows notifications
+if (process.platform === 'win32') {
+  app.setAppUserModelId('Claude Terminal');
+}
+
+// Single instance lock - ensure only one instance runs
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  // Another instance is already running, quit this one
+  app.quit();
+}
+
+// Handle second instance attempt (show existing window)
+app.on('second-instance', () => {
+  showMainWindow();
+});
+
 /**
  * Initialize the application
  */
 function initializeApp() {
-  // Load saved accent color
-  const accentColor = loadAccentColor();
-
   // Create main window
   const isDev = process.argv.includes('--dev');
   const mainWindow = createMainWindow({ isDev });
@@ -43,7 +57,7 @@ function initializeApp() {
   registerTrayHandlers();
 
   // Create tray
-  createTray(accentColor);
+  createTray();
 
   // Register global shortcuts
   registerGlobalShortcuts();
