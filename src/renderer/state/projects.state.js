@@ -289,6 +289,48 @@ function renameFolder(folderId, newName) {
 }
 
 /**
+ * Rename a project
+ * @param {string} projectId
+ * @param {string} newName
+ */
+function renameProject(projectId, newName) {
+  const state = projectsState.get();
+  const projects = state.projects.map(p =>
+    p.id === projectId ? { ...p, name: newName } : p
+  );
+  projectsState.set({ projects });
+  saveProjects();
+}
+
+/**
+ * Set folder color
+ * @param {string} folderId
+ * @param {string|null} color - Hex color or null to reset
+ */
+function setFolderColor(folderId, color) {
+  const state = projectsState.get();
+  const folders = state.folders.map(f =>
+    f.id === folderId ? { ...f, color: color || undefined } : f
+  );
+  projectsState.set({ folders });
+  saveProjects();
+}
+
+/**
+ * Set project color
+ * @param {string} projectId
+ * @param {string|null} color - Hex color or null to reset
+ */
+function setProjectColor(projectId, color) {
+  const state = projectsState.get();
+  const projects = state.projects.map(p =>
+    p.id === projectId ? { ...p, color: color || undefined } : p
+  );
+  projectsState.set({ projects });
+  saveProjects();
+}
+
+/**
  * Toggle folder collapsed state
  * @param {string} folderId
  */
@@ -422,6 +464,75 @@ function moveItemToFolder(itemType, itemId, targetFolderId) {
 }
 
 /**
+ * Reorder item relative to another item
+ * @param {string} itemType - 'folder' or 'project'
+ * @param {string} itemId - Item being moved
+ * @param {string} targetId - Item to position relative to
+ * @param {string} position - 'before' or 'after'
+ */
+function reorderItem(itemType, itemId, targetId, position) {
+  const state = projectsState.get();
+  let folders = [...state.folders];
+  let projects = [...state.projects];
+  let rootOrder = [...state.rootOrder];
+
+  // Get target item info
+  const targetFolder = folders.find(f => f.id === targetId);
+  const targetProject = projects.find(p => p.id === targetId);
+  const targetParentId = targetFolder ? targetFolder.parentId : (targetProject ? targetProject.folderId : null);
+
+  // Get source item
+  const sourceFolder = itemType === 'folder' ? folders.find(f => f.id === itemId) : null;
+  const sourceProject = itemType === 'project' ? projects.find(p => p.id === itemId) : null;
+
+  if (!sourceFolder && !sourceProject) return;
+  if (!targetFolder && !targetProject) return;
+
+  // Prevent folder from being moved into its descendants
+  if (sourceFolder && targetFolder && isDescendantOf(targetId, itemId)) return;
+
+  const sourceParentId = sourceFolder ? sourceFolder.parentId : (sourceProject ? sourceProject.folderId : null);
+
+  // Remove from old location
+  if (sourceParentId === null) {
+    rootOrder = rootOrder.filter(id => id !== itemId);
+  } else {
+    const oldParent = folders.find(f => f.id === sourceParentId);
+    if (oldParent && oldParent.children) {
+      oldParent.children = oldParent.children.filter(id => id !== itemId);
+    }
+  }
+
+  // Update parent reference
+  if (sourceFolder) {
+    sourceFolder.parentId = targetParentId;
+  } else if (sourceProject) {
+    sourceProject.folderId = targetParentId;
+  }
+
+  // Insert at new position
+  if (targetParentId === null) {
+    // Target is at root level
+    const targetIndex = rootOrder.indexOf(targetId);
+    const insertIndex = position === 'before' ? targetIndex : targetIndex + 1;
+    rootOrder.splice(insertIndex, 0, itemId);
+  } else {
+    // Target is inside a folder
+    const parentFolder = folders.find(f => f.id === targetParentId);
+    if (parentFolder) {
+      parentFolder.children = parentFolder.children || [];
+      const targetIndex = parentFolder.children.indexOf(targetId);
+      const insertIndex = position === 'before' ? targetIndex : targetIndex + 1;
+      parentFolder.children.splice(insertIndex, 0, itemId);
+      parentFolder.collapsed = false;
+    }
+  }
+
+  projectsState.set({ folders, projects, rootOrder });
+  saveProjects();
+}
+
+/**
  * Set selected project filter
  * @param {number|null} projectIndex
  */
@@ -453,11 +564,15 @@ module.exports = {
   createFolder,
   deleteFolder,
   renameFolder,
+  renameProject,
+  setFolderColor,
+  setProjectColor,
   toggleFolderCollapse,
   addProject,
   updateProject,
   deleteProject,
   moveItemToFolder,
+  reorderItem,
   setSelectedProjectFilter,
   setOpenedProjectId
 };

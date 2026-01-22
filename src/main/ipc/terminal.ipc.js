@@ -11,8 +11,8 @@ const terminalService = require('../services/TerminalService');
  */
 function registerTerminalHandlers() {
   // Create terminal
-  ipcMain.handle('terminal-create', (event, { cwd, runClaude, skipPermissions }) => {
-    return terminalService.create({ cwd, runClaude, skipPermissions });
+  ipcMain.handle('terminal-create', (event, { cwd, runClaude, skipPermissions, resumeSessionId }) => {
+    return terminalService.create({ cwd, runClaude, skipPermissions, resumeSessionId });
   });
 
   // Terminal input

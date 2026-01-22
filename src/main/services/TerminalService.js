@@ -27,9 +27,10 @@ class TerminalService {
    * @param {string} options.cwd - Working directory
    * @param {boolean} options.runClaude - Whether to run Claude CLI on start
    * @param {boolean} options.skipPermissions - Skip permissions flag for Claude
+   * @param {string} options.resumeSessionId - Session ID to resume
    * @returns {number} - Terminal ID
    */
-  create({ cwd, runClaude, skipPermissions }) {
+  create({ cwd, runClaude, skipPermissions, resumeSessionId }) {
     const id = ++this.terminalId;
     const shellPath = process.platform === 'win32' ? 'powershell.exe' : 'bash';
 
@@ -57,7 +58,13 @@ class TerminalService {
     // Run Claude CLI if requested
     if (runClaude) {
       setTimeout(() => {
-        const claudeCmd = skipPermissions ? 'claude --dangerously-skip-permissions' : 'claude';
+        let claudeCmd = 'claude';
+        if (resumeSessionId) {
+          claudeCmd += ` --resume ${resumeSessionId}`;
+        }
+        if (skipPermissions) {
+          claudeCmd += ' --dangerously-skip-permissions';
+        }
         ptyProcess.write(claudeCmd + '\r');
       }, 500);
     }

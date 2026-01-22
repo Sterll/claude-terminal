@@ -129,9 +129,36 @@
               <div class="terminals-filter" id="terminals-filter" style="display: none;">
                 <span class="filter-label">Terminaux de</span>
                 <span class="filter-project" id="filter-project-name"></span>
+
+                <div class="filter-git-actions" id="filter-git-actions" style="display: none;">
+                  <div class="filter-divider"></div>
+                  <button class="filter-git-btn" id="filter-btn-pull" title="Git Pull">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M17 11l-5 5-5-5"/><path d="M5 21h14"/></svg>
+                    Pull
+                  </button>
+                  <button class="filter-git-btn" id="filter-btn-push" title="Git Push">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9"/><path d="M7 14l5-5 5 5"/><path d="M5 3h14"/></svg>
+                    Push
+                  </button>
+                  <div class="filter-divider"></div>
+                  <button class="filter-branch-btn" id="filter-btn-branch" title="Changer de branche">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+                    <span id="filter-branch-name">main</span>
+                    <svg class="branch-arrow" viewBox="0 0 12 12"><path d="M3 5l3 3 3-3" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+                  </button>
+                </div>
+
                 <button class="filter-clear" id="btn-show-all" title="Afficher tous les terminaux">
                   <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
                 </button>
+              </div>
+
+              <!-- Branch Dropdown -->
+              <div class="branch-dropdown" id="branch-dropdown">
+                <div class="branch-dropdown-header">
+                  <span>Changer de branche</span>
+                </div>
+                <div class="branch-dropdown-list" id="branch-dropdown-list"></div>
               </div>
             </div>
             <div class="terminals-tabs" id="terminals-tabs"></div>
@@ -297,6 +324,41 @@
       <div class="modal-actions">
         <button class="btn-secondary" id="input-modal-cancel">Annuler</button>
         <button class="btn-primary" id="input-modal-confirm">Confirmer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Skill/Agent Modal -->
+  <div class="modal-overlay" id="create-modal">
+    <div class="modal create-modal">
+      <div class="modal-header">
+        <h3 id="create-modal-title">Nouveau Skill</h3>
+        <button class="btn-icon modal-close" id="create-modal-close">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="create-modal-intro">
+          <p>Decrivez ce que vous voulez creer et Claude generera le code pour vous.</p>
+        </div>
+        <div class="create-modal-field">
+          <label for="create-modal-description">Description</label>
+          <textarea id="create-modal-description" placeholder="Ex: Un skill qui genere des tests unitaires pour du code TypeScript en utilisant Vitest..." rows="4"></textarea>
+        </div>
+        <div class="create-modal-field">
+          <label>Projet cible</label>
+          <select id="create-modal-project">
+            <option value="">Selectionnez un projet...</option>
+          </select>
+          <p class="field-hint">Le skill/agent sera cree dans le terminal de ce projet</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="create-modal-cancel">Annuler</button>
+        <button class="btn-primary btn-create-with-claude" id="create-modal-submit">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+          Creer avec Claude
+        </button>
       </div>
     </div>
   </div>

@@ -35,6 +35,7 @@ const {
   createFolder,
   deleteFolder,
   renameFolder,
+  renameProject,
   setSelectedProjectFilter,
   generateProjectId,
   initializeState,
@@ -112,6 +113,26 @@ async function checkAllProjectsGitStatus() {
     }
   }
   ProjectList.render();
+
+  // Update filter git actions if a project is selected
+  const selectedFilter = projectsState.get().selectedProjectFilter;
+  if (selectedFilter !== null && projects[selectedFilter]) {
+    // Will be called by showFilterGitActions
+    const filterGitActions = document.getElementById('filter-git-actions');
+    if (filterGitActions) {
+      const project = projects[selectedFilter];
+      const gitStatus = localState.gitRepoStatus.get(project.id);
+      if (gitStatus && gitStatus.isGitRepo) {
+        filterGitActions.style.display = 'flex';
+        // Update branch name
+        try {
+          const branch = await ipcRenderer.invoke('git-current-branch', { projectPath: project.path });
+          const branchNameEl = document.getElementById('filter-branch-name');
+          if (branchNameEl) branchNameEl.textContent = branch || 'main';
+        } catch (e) { /* ignore */ }
+      }
+    }
+  }
 }
 
 // ========== GIT NOTIFICATIONS ==========
@@ -488,6 +509,7 @@ ProjectList.setCallbacks({
   onGitPull: gitPull,
   onGitPush: gitPush,
   onDeleteProject: deleteProjectUI,
+  onRenameProject: renameProjectUI,
   onRenderProjects: () => ProjectList.render(),
   onFilterTerminals: (idx) => TerminalManager.filterByProject(idx),
   countTerminalsForProject: TerminalManager.countTerminalsForProject
@@ -496,7 +518,8 @@ ProjectList.setCallbacks({
 // Setup TerminalManager
 TerminalManager.setCallbacks({
   onNotification: showNotification,
-  onRenderProjects: () => ProjectList.render()
+  onRenderProjects: () => ProjectList.render(),
+  onCreateTerminal: createTerminalForProject
 });
 
 // ========== WINDOW CONTROLS ==========
@@ -682,9 +705,28 @@ async function promptRenameFolder(folderId) {
   }
 }
 
+async function renameProjectUI(projectId) {
+  const project = getProject(projectId);
+  if (!project) return;
+  const name = await showInputModal('Nouveau nom du projet:', project.name);
+  if (name && name.trim()) {
+    renameProject(projectId, name.trim());
+    ProjectList.render();
+  }
+}
+
 // ========== SETTINGS MODAL ==========
-function showSettingsModal() {
+async function showSettingsModal() {
   const settings = settingsState.get();
+
+  // Get launch at startup setting
+  let launchAtStartup = false;
+  try {
+    launchAtStartup = await ipcRenderer.invoke('get-launch-at-startup');
+  } catch (e) {
+    console.error('Error getting launch at startup:', e);
+  }
+
   showModal('Parametres', `
     <div class="settings-form">
       <div class="settings-section">
@@ -718,6 +760,19 @@ function showSettingsModal() {
         </div>
       </div>
       <div class="settings-section">
+        <div class="settings-title">Systeme</div>
+        <div class="settings-toggle-row">
+          <div class="settings-toggle-label">
+            <div>Lancer au demarrage de Windows</div>
+            <div class="settings-toggle-desc">L'application se lancera automatiquement au demarrage de l'ordinateur</div>
+          </div>
+          <label class="settings-toggle">
+            <input type="checkbox" id="launch-at-startup-toggle" ${launchAtStartup ? 'checked' : ''}>
+            <span class="settings-toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+      <div class="settings-section">
         <div class="settings-title">Couleur d'accent</div>
         <div class="color-picker">
           ${['#d97706', '#dc2626', '#db2777', '#9333ea', '#4f46e5', '#2563eb', '#0891b2', '#0d9488', '#16a34a', '#65a30d'].map(c =>
@@ -747,7 +802,7 @@ function showSettingsModal() {
     };
   });
 
-  document.getElementById('btn-save-settings').onclick = () => {
+  document.getElementById('btn-save-settings').onclick = async () => {
     const selectedMode = document.querySelector('.execution-mode-card.selected');
     const newSettings = {
       editor: settings.editor || 'code',
@@ -757,6 +812,17 @@ function showSettingsModal() {
     settingsState.set(newSettings);
     saveSettings();
     applyAccentColor(newSettings.accentColor);
+
+    // Save launch at startup setting
+    const launchAtStartupToggle = document.getElementById('launch-at-startup-toggle');
+    if (launchAtStartupToggle) {
+      try {
+        await ipcRenderer.invoke('set-launch-at-startup', launchAtStartupToggle.checked);
+      } catch (e) {
+        console.error('Error setting launch at startup:', e);
+      }
+    }
+
     closeModal();
   };
 }
@@ -964,18 +1030,57 @@ function renderSkills() {
     list.innerHTML = `<div class="empty-list"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg><h3>Aucun skill</h3><p>Creez votre premier skill</p></div>`;
     return;
   }
-  list.innerHTML = localState.skills.map(s => `
-    <div class="list-card" data-path="${s.path.replace(/"/g, '&quot;')}">
-      <div class="list-card-header"><div class="list-card-title">${escapeHtml(s.name)}</div><div class="list-card-badge">Skill</div></div>
-      <div class="list-card-desc">${escapeHtml(s.description)}</div>
-      <div class="list-card-footer">
-        <button class="btn-sm btn-secondary btn-open">Ouvrir</button>
-        <button class="btn-sm btn-delete btn-del">Suppr</button>
-      </div>
-    </div>`).join('');
+
+  // Group by source
+  const localSkills = localState.skills.filter(s => !s.isPlugin);
+  const pluginSkills = localState.skills.filter(s => s.isPlugin);
+
+  // Group plugin skills by sourceLabel
+  const pluginsBySource = {};
+  pluginSkills.forEach(s => {
+    if (!pluginsBySource[s.sourceLabel]) pluginsBySource[s.sourceLabel] = [];
+    pluginsBySource[s.sourceLabel].push(s);
+  });
+
+  let html = '';
+
+  // Local skills section
+  if (localSkills.length > 0) {
+    html += `<div class="list-section"><div class="list-section-title">Local</div>`;
+    html += localSkills.map(s => `
+      <div class="list-card" data-path="${s.path.replace(/"/g, '&quot;')}" data-is-plugin="false">
+        <div class="list-card-header"><div class="list-card-title">${escapeHtml(s.name)}</div><div class="list-card-badge">Skill</div></div>
+        <div class="list-card-desc">${escapeHtml(s.description)}</div>
+        <div class="list-card-footer">
+          <button class="btn-sm btn-secondary btn-open">Ouvrir</button>
+          <button class="btn-sm btn-delete btn-del">Suppr</button>
+        </div>
+      </div>`).join('');
+    html += `</div>`;
+  }
+
+  // Plugin skills sections
+  Object.entries(pluginsBySource).forEach(([source, skills]) => {
+    html += `<div class="list-section"><div class="list-section-title"><span class="plugin-badge">Plugin</span> ${escapeHtml(source)}</div>`;
+    html += skills.map(s => `
+      <div class="list-card plugin-card" data-path="${s.path.replace(/"/g, '&quot;')}" data-is-plugin="true">
+        <div class="list-card-header"><div class="list-card-title">${escapeHtml(s.name)}</div><div class="list-card-badge plugin">Plugin</div></div>
+        <div class="list-card-desc">${escapeHtml(s.description)}</div>
+        <div class="list-card-footer">
+          <button class="btn-sm btn-secondary btn-open">Ouvrir</button>
+        </div>
+      </div>`).join('');
+    html += `</div>`;
+  });
+
+  list.innerHTML = html;
+
   list.querySelectorAll('.list-card').forEach(card => {
     card.querySelector('.btn-open').onclick = () => ipcRenderer.send('open-in-explorer', card.dataset.path);
-    card.querySelector('.btn-del').onclick = () => { if (confirm('Supprimer ce skill ?')) { fs.rmSync(card.dataset.path, { recursive: true, force: true }); loadSkills(); } };
+    const delBtn = card.querySelector('.btn-del');
+    if (delBtn) {
+      delBtn.onclick = () => { if (confirm('Supprimer ce skill ?')) { fs.rmSync(card.dataset.path, { recursive: true, force: true }); loadSkills(); } };
+    }
   });
 }
 
@@ -1262,55 +1367,291 @@ document.getElementById('btn-show-all').onclick = () => {
   setSelectedProjectFilter(null);
   ProjectList.render();
   TerminalManager.filterByProject(null);
+  hideFilterGitActions();
 };
 
-// ========== SKILLS/AGENTS CREATION ==========
-document.getElementById('btn-new-skill')?.addEventListener('click', () => {
-  showModal('Nouveau Skill', `
-    <form id="form-skill">
-      <div class="form-group"><label>Nom (sans espaces)</label><input type="text" id="inp-skill-name" pattern="[a-z0-9-]+" required></div>
-      <div class="form-group"><label>Description</label><textarea id="inp-skill-desc" rows="3"></textarea></div>
-      <div class="form-actions"><button type="button" class="btn-cancel" onclick="closeModal()">Annuler</button><button type="submit" class="btn-primary">Creer</button></div>
-    </form>
-  `);
-  document.getElementById('form-skill').onsubmit = (e) => {
-    e.preventDefault();
-    const name = document.getElementById('inp-skill-name').value.trim().toLowerCase();
-    const desc = document.getElementById('inp-skill-desc').value.trim();
-    if (name) {
-      const skillPath = path.join(skillsDir, name);
-      if (!fs.existsSync(skillPath)) {
-        fs.mkdirSync(skillPath, { recursive: true });
-        fs.writeFileSync(path.join(skillPath, 'SKILL.md'), `# ${name}\n\n${desc || 'Description'}\n\n## Instructions\n\nAjoutez vos instructions ici.\n`);
-        loadSkills(); closeModal();
-      } else alert('Ce skill existe deja');
+// ========== FILTER GIT ACTIONS ==========
+const filterGitActions = document.getElementById('filter-git-actions');
+const filterBtnPull = document.getElementById('filter-btn-pull');
+const filterBtnPush = document.getElementById('filter-btn-push');
+const filterBtnBranch = document.getElementById('filter-btn-branch');
+const filterBranchName = document.getElementById('filter-branch-name');
+const branchDropdown = document.getElementById('branch-dropdown');
+const branchDropdownList = document.getElementById('branch-dropdown-list');
+
+let currentFilterProjectId = null;
+
+function hideFilterGitActions() {
+  filterGitActions.style.display = 'none';
+  branchDropdown.classList.remove('active');
+  filterBtnBranch.classList.remove('open');
+  currentFilterProjectId = null;
+}
+
+async function showFilterGitActions(projectId) {
+  const project = getProject(projectId);
+  if (!project) {
+    hideFilterGitActions();
+    return;
+  }
+
+  // Check if it's a git repo
+  const gitStatus = localState.gitRepoStatus.get(projectId);
+  if (!gitStatus || !gitStatus.isGitRepo) {
+    filterGitActions.style.display = 'none';
+    return;
+  }
+
+  currentFilterProjectId = projectId;
+  filterGitActions.style.display = 'flex';
+
+  // Get current branch
+  try {
+    const branch = await ipcRenderer.invoke('git-current-branch', { projectPath: project.path });
+    filterBranchName.textContent = branch || 'main';
+  } catch (e) {
+    filterBranchName.textContent = '...';
+  }
+}
+
+// Pull button
+filterBtnPull.onclick = async () => {
+  if (!currentFilterProjectId) return;
+  filterBtnPull.classList.add('loading');
+  await gitPull(currentFilterProjectId);
+  filterBtnPull.classList.remove('loading');
+};
+
+// Push button
+filterBtnPush.onclick = async () => {
+  if (!currentFilterProjectId) return;
+  filterBtnPush.classList.add('loading');
+  await gitPush(currentFilterProjectId);
+  filterBtnPush.classList.remove('loading');
+};
+
+// Branch button - toggle dropdown
+filterBtnBranch.onclick = async (e) => {
+  e.stopPropagation();
+  const isOpen = branchDropdown.classList.contains('active');
+
+  if (isOpen) {
+    branchDropdown.classList.remove('active');
+    filterBtnBranch.classList.remove('open');
+  } else {
+    // Show dropdown and load branches
+    branchDropdown.classList.add('active');
+    filterBtnBranch.classList.add('open');
+
+    // Show loading state
+    branchDropdownList.innerHTML = '<div class="branch-dropdown-loading">Chargement...</div>';
+
+    if (!currentFilterProjectId) return;
+    const project = getProject(currentFilterProjectId);
+    if (!project) return;
+
+    try {
+      const [branches, currentBranch] = await Promise.all([
+        ipcRenderer.invoke('git-branches', { projectPath: project.path }),
+        ipcRenderer.invoke('git-current-branch', { projectPath: project.path })
+      ]);
+
+      if (branches.length === 0) {
+        branchDropdownList.innerHTML = '<div class="branch-dropdown-loading">Aucune branche trouvée</div>';
+        return;
+      }
+
+      branchDropdownList.innerHTML = branches.map(branch => `
+        <div class="branch-dropdown-item ${branch === currentBranch ? 'current' : ''}" data-branch="${escapeHtml(branch)}">
+          ${branch}
+        </div>
+      `).join('');
+
+      // Add click handlers
+      branchDropdownList.querySelectorAll('.branch-dropdown-item').forEach(item => {
+        item.onclick = async () => {
+          const branch = item.dataset.branch;
+          if (branch === currentBranch) {
+            branchDropdown.classList.remove('active');
+            filterBtnBranch.classList.remove('open');
+            return;
+          }
+
+          // Show loading
+          item.innerHTML = `<span class="loading-spinner"></span> ${branch}`;
+
+          const result = await ipcRenderer.invoke('git-checkout', {
+            projectPath: project.path,
+            branch
+          });
+
+          if (result.success) {
+            filterBranchName.textContent = branch;
+            showGitToast({
+              success: true,
+              title: 'Branche changée',
+              message: `Passé sur ${branch}`,
+              duration: 3000
+            });
+            // Refresh dashboard if open
+            refreshDashboardAsync(currentFilterProjectId);
+          } else {
+            showGitToast({
+              success: false,
+              title: 'Erreur',
+              message: result.error || 'Impossible de changer de branche',
+              duration: 5000
+            });
+          }
+
+          branchDropdown.classList.remove('active');
+          filterBtnBranch.classList.remove('open');
+        };
+      });
+    } catch (e) {
+      branchDropdownList.innerHTML = '<div class="branch-dropdown-loading">Erreur de chargement</div>';
     }
-  };
+  }
+};
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+  if (!branchDropdown.contains(e.target) && !filterBtnBranch.contains(e.target)) {
+    branchDropdown.classList.remove('active');
+    filterBtnBranch.classList.remove('open');
+  }
 });
 
-document.getElementById('btn-new-agent')?.addEventListener('click', () => {
-  showModal('Nouvel Agent', `
-    <form id="form-agent">
-      <div class="form-group"><label>Nom (sans espaces)</label><input type="text" id="inp-agent-name" pattern="[a-z0-9-]+" required></div>
-      <div class="form-group"><label>Description</label><textarea id="inp-agent-desc" rows="3"></textarea></div>
-      <div class="form-group"><label>Outils</label><input type="text" id="inp-agent-tools" placeholder="Read, Grep, Glob"></div>
-      <div class="form-actions"><button type="button" class="btn-cancel" onclick="closeModal()">Annuler</button><button type="submit" class="btn-primary">Creer</button></div>
-    </form>
-  `);
-  document.getElementById('form-agent').onsubmit = (e) => {
-    e.preventDefault();
-    const name = document.getElementById('inp-agent-name').value.trim().toLowerCase();
-    const desc = document.getElementById('inp-agent-desc').value.trim();
-    const tools = document.getElementById('inp-agent-tools').value.trim() || 'Read, Grep, Glob';
-    if (name) {
-      const agentPath = path.join(agentsDir, name);
-      if (!fs.existsSync(agentPath)) {
-        fs.mkdirSync(agentPath, { recursive: true });
-        fs.writeFileSync(path.join(agentPath, 'AGENT.md'), `# ${name}\n\ndescription: "${desc || 'Agent personnalise'}"\ntools: [${tools}]\n\n## Instructions\n\nAjoutez vos instructions ici.\n`);
-        loadAgents(); closeModal();
-      } else alert('Cet agent existe deja');
+// Subscribe to project filter changes to show/hide git actions
+projectsState.subscribe(() => {
+  const selectedFilter = projectsState.get().selectedProjectFilter;
+  const projects = projectsState.get().projects;
+
+  if (selectedFilter !== null && projects[selectedFilter]) {
+    showFilterGitActions(projects[selectedFilter].id);
+  } else {
+    hideFilterGitActions();
+  }
+});
+
+// ========== BUNDLED SKILLS INSTALLATION ==========
+function installBundledSkills() {
+  const bundledSkillsPath = path.join(__dirname, 'resources', 'bundled-skills');
+  const bundledSkills = ['create-skill', 'create-agents'];
+
+  bundledSkills.forEach(skillName => {
+    const targetPath = path.join(skillsDir, skillName);
+    const sourcePath = path.join(bundledSkillsPath, skillName, 'SKILL.md');
+
+    // Only install if not already present
+    if (!fs.existsSync(targetPath) && fs.existsSync(sourcePath)) {
+      try {
+        fs.mkdirSync(targetPath, { recursive: true });
+        fs.copyFileSync(sourcePath, path.join(targetPath, 'SKILL.md'));
+        console.log(`Installed bundled skill: ${skillName}`);
+      } catch (e) {
+        console.error(`Failed to install bundled skill ${skillName}:`, e);
+      }
     }
-  };
+  });
+}
+
+// Install bundled skills on startup
+installBundledSkills();
+
+// ========== SKILLS/AGENTS CREATION MODAL ==========
+let createModalType = 'skill'; // 'skill' or 'agent'
+
+function openCreateModal(type) {
+  createModalType = type;
+  const modal = document.getElementById('create-modal');
+  const title = document.getElementById('create-modal-title');
+  const description = document.getElementById('create-modal-description');
+  const projectSelect = document.getElementById('create-modal-project');
+
+  title.textContent = type === 'skill' ? 'Nouveau Skill' : 'Nouvel Agent';
+  description.value = '';
+  description.placeholder = type === 'skill'
+    ? 'Ex: Un skill qui genere des tests unitaires pour du code TypeScript en utilisant Vitest...'
+    : 'Ex: Un agent qui review le code pour trouver des problemes de securite et de performance...';
+
+  // Populate projects dropdown
+  const projects = projectsState.get().projects;
+  projectSelect.innerHTML = '<option value="">Selectionnez un projet...</option>' +
+    projects.map((p, i) => `<option value="${i}">${escapeHtml(p.name)}</option>`).join('');
+
+  // Pre-select current project if any
+  const selectedFilter = projectsState.get().selectedProjectFilter;
+  if (selectedFilter !== null) {
+    projectSelect.value = selectedFilter;
+  }
+
+  modal.classList.add('active');
+  description.focus();
+}
+
+function closeCreateModal() {
+  document.getElementById('create-modal').classList.remove('active');
+}
+
+async function submitCreateModal() {
+  const description = document.getElementById('create-modal-description').value.trim();
+  const projectIndex = document.getElementById('create-modal-project').value;
+
+  if (!description) {
+    alert('Veuillez entrer une description');
+    return;
+  }
+
+  if (projectIndex === '') {
+    alert('Veuillez selectionnez un projet');
+    return;
+  }
+
+  const projects = projectsState.get().projects;
+  const project = projects[parseInt(projectIndex)];
+
+  if (!project) {
+    alert('Projet invalide');
+    return;
+  }
+
+  closeCreateModal();
+
+  // Switch to Claude tab
+  document.querySelector('[data-tab="claude"]')?.click();
+
+  // Create terminal for the project
+  const terminalId = await TerminalManager.createTerminal(project, {
+    skipPermissions: settingsState.get().skipPermissions
+  });
+
+  // Wait for terminal to be ready, then send the command
+  setTimeout(() => {
+    const command = createModalType === 'skill'
+      ? `/create-skill ${description}`
+      : `/create-agents ${description}`;
+
+    ipcRenderer.send('terminal-input', { id: terminalId, data: command + '\r' });
+  }, 1500);
+}
+
+// Create modal event listeners
+document.getElementById('btn-new-skill')?.addEventListener('click', () => openCreateModal('skill'));
+document.getElementById('btn-new-agent')?.addEventListener('click', () => openCreateModal('agent'));
+document.getElementById('create-modal-close')?.addEventListener('click', closeCreateModal);
+document.getElementById('create-modal-cancel')?.addEventListener('click', closeCreateModal);
+document.getElementById('create-modal-submit')?.addEventListener('click', submitCreateModal);
+document.getElementById('create-modal')?.addEventListener('click', (e) => {
+  if (e.target.id === 'create-modal') closeCreateModal();
+});
+
+// Allow Enter in textarea to not submit, but Ctrl+Enter to submit
+document.getElementById('create-modal-description')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.ctrlKey) {
+    e.preventDefault();
+    submitCreateModal();
+  }
 });
 
 // ========== IPC LISTENERS ==========

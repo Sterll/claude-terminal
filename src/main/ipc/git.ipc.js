@@ -4,7 +4,7 @@
  */
 
 const { ipcMain } = require('electron');
-const { getGitInfo, getGitInfoFull, getGitStatusQuick, gitPull, gitPush, getProjectStats } = require('../utils/git');
+const { getGitInfo, getGitInfoFull, getGitStatusQuick, gitPull, gitPush, getProjectStats, getBranches, getCurrentBranch, checkoutBranch } = require('../utils/git');
 
 /**
  * Register git IPC handlers
@@ -38,6 +38,21 @@ function registerGitHandlers() {
   // Git status (quick check)
   ipcMain.handle('git-status-quick', async (event, { projectPath }) => {
     return getGitStatusQuick(projectPath);
+  });
+
+  // Get list of branches
+  ipcMain.handle('git-branches', async (event, { projectPath }) => {
+    return getBranches(projectPath);
+  });
+
+  // Get current branch
+  ipcMain.handle('git-current-branch', async (event, { projectPath }) => {
+    return getCurrentBranch(projectPath);
+  });
+
+  // Checkout branch
+  ipcMain.handle('git-checkout', async (event, { projectPath, branch }) => {
+    return checkoutBranch(projectPath, branch);
   });
 }
 

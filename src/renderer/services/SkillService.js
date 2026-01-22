@@ -5,8 +5,13 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { skillsDir } = require('../utils/paths');
 const { skillsAgentsState } = require('../state');
+
+// Plugins directory
+const pluginsDir = path.join(os.homedir(), '.claude', 'plugins');
+const installedPluginsFile = path.join(pluginsDir, 'installed_plugins.json');
 
 /**
  * Parse YAML frontmatter from markdown content
@@ -42,39 +47,107 @@ function parseFrontmatter(content) {
 }
 
 /**
- * Load all skills from the skills directory
+ * Load skills from a directory
+ * @param {string} dir - Directory to scan
+ * @param {string} source - Source identifier ('local' or plugin name)
+ * @param {string} sourceLabel - Human readable source label
+ * @returns {Array}
+ */
+function loadSkillsFromDir(dir, source = 'local', sourceLabel = 'Local') {
+  const skills = [];
+
+  if (!fs.existsSync(dir)) return skills;
+
+  try {
+    fs.readdirSync(dir).forEach(item => {
+      const itemPath = path.join(dir, item);
+
+      if (fs.statSync(itemPath).isDirectory()) {
+        const skillFile = path.join(itemPath, 'SKILL.md');
+
+        if (fs.existsSync(skillFile)) {
+          const content = fs.readFileSync(skillFile, 'utf8');
+          const { metadata, body } = parseFrontmatter(content);
+          const nameMatch = body.match(/^#\s+(.+)/m);
+
+          skills.push({
+            id: `${source}:${item}`,
+            name: metadata.name || (nameMatch ? nameMatch[1] : item),
+            description: metadata.description || 'Aucune description',
+            userInvocable: metadata['user-invocable'] === 'true',
+            path: itemPath,
+            source,
+            sourceLabel,
+            isPlugin: source !== 'local'
+          });
+        }
+      }
+    });
+  } catch (e) {
+    console.error(`Error loading skills from ${dir}:`, e);
+  }
+
+  return skills;
+}
+
+/**
+ * Load skills from installed plugins
+ * @returns {Array}
+ */
+function loadPluginSkills() {
+  const skills = [];
+
+  if (!fs.existsSync(installedPluginsFile)) return skills;
+
+  try {
+    const installedData = JSON.parse(fs.readFileSync(installedPluginsFile, 'utf8'));
+    const plugins = installedData.plugins || {};
+
+    for (const [pluginKey, installations] of Object.entries(plugins)) {
+      // pluginKey format: "plugin-name@marketplace"
+      const [pluginName, marketplace] = pluginKey.split('@');
+
+      for (const install of installations) {
+        const installPath = install.installPath;
+        if (!installPath || !fs.existsSync(installPath)) continue;
+
+        // Load plugin metadata
+        let pluginMeta = { name: pluginName };
+        const pluginJsonPath = path.join(installPath, '.claude-plugin', 'plugin.json');
+        if (fs.existsSync(pluginJsonPath)) {
+          try {
+            pluginMeta = JSON.parse(fs.readFileSync(pluginJsonPath, 'utf8'));
+          } catch (e) { /* ignore */ }
+        }
+
+        // Load skills from plugin's skills directory
+        const pluginSkillsDir = path.join(installPath, 'skills');
+        const sourceLabel = pluginMeta.name || pluginName;
+        const pluginSkills = loadSkillsFromDir(pluginSkillsDir, pluginKey, sourceLabel);
+        skills.push(...pluginSkills);
+      }
+    }
+  } catch (e) {
+    console.error('Error loading plugin skills:', e);
+  }
+
+  return skills;
+}
+
+/**
+ * Load all skills from all sources
  * @returns {Array}
  */
 function loadSkills() {
   const skills = [];
 
-  try {
-    if (fs.existsSync(skillsDir)) {
-      fs.readdirSync(skillsDir).forEach(item => {
-        const itemPath = path.join(skillsDir, item);
+  // Load local skills
+  const localSkills = loadSkillsFromDir(skillsDir, 'local', 'Local');
+  skills.push(...localSkills);
 
-        if (fs.statSync(itemPath).isDirectory()) {
-          const skillFile = path.join(itemPath, 'SKILL.md');
-
-          if (fs.existsSync(skillFile)) {
-            const content = fs.readFileSync(skillFile, 'utf8');
-            const { metadata, body } = parseFrontmatter(content);
-            const nameMatch = body.match(/^#\s+(.+)/m);
-
-            skills.push({
-              id: item,
-              name: metadata.name || (nameMatch ? nameMatch[1] : item),
-              description: metadata.description || 'Aucune description',
-              userInvocable: metadata['user-invocable'] === 'true',
-              path: itemPath
-            });
-          }
-        }
-      });
-    }
-  } catch (e) {
-    console.error('Error loading skills:', e);
-  }
+  // Load plugin skills
+  const pluginSkills = loadPluginSkills();
+  skills.push(...pluginSkills);
 
   // Update state
   skillsAgentsState.setProp('skills', skills);

@@ -14,9 +14,12 @@ const {
   countProjectsRecursive,
   toggleFolderCollapse,
   moveItemToFolder,
+  reorderItem,
   isDescendantOf,
   setSelectedProjectFilter,
-  setOpenedProjectId
+  setOpenedProjectId,
+  setFolderColor,
+  setProjectColor
 } = require('../../state');
 const { escapeHtml } = require('../../utils');
 
@@ -31,6 +34,7 @@ let callbacks = {
   onGitPull: null,
   onGitPush: null,
   onDeleteProject: null,
+  onRenameProject: null,
   onRenderProjects: null,
   countTerminalsForProject: () => 0
 };
@@ -63,6 +67,24 @@ function closeAllMoreActionsMenus() {
   document.querySelectorAll('.more-actions-menu.active').forEach(menu => menu.classList.remove('active'));
 }
 
+// Available colors for folder/project customization
+const ITEM_COLORS = [
+  { name: 'Default', value: null },
+  { name: 'Rouge', value: '#ef4444' },
+  { name: 'Orange', value: '#f97316' },
+  { name: 'Ambre', value: '#f59e0b' },
+  { name: 'Jaune', value: '#eab308' },
+  { name: 'Lime', value: '#84cc16' },
+  { name: 'Vert', value: '#22c55e' },
+  { name: 'Emeraude', value: '#10b981' },
+  { name: 'Cyan', value: '#06b6d4' },
+  { name: 'Bleu', value: '#3b82f6' },
+  { name: 'Indigo', value: '#6366f1' },
+  { name: 'Violet', value: '#8b5cf6' },
+  { name: 'Fuchsia', value: '#d946ef' },
+  { name: 'Rose', value: '#ec4899' }
+];
+
 /**
  * Render folder HTML
  */
@@ -71,6 +93,7 @@ function renderFolderHtml(folder, depth) {
   const childFolders = getChildFolders(folder.id);
   const childProjects = getProjectsInFolder(folder.id);
   const hasChildren = childFolders.length > 0 || childProjects.length > 0;
+  const folderColor = folder.color || null;
 
   let childrenHtml = '';
   if (!folder.collapsed) {
@@ -83,15 +106,22 @@ function renderFolderHtml(folder, depth) {
     });
   }
 
+  const colorStyle = folderColor ? `style="color: ${folderColor}"` : '';
+  const colorIndicator = folderColor ? `<span class="color-indicator" style="background: ${folderColor}"></span>` : '';
+
   return `
     <div class="folder-item" data-folder-id="${folder.id}" data-depth="${depth}" draggable="true">
       <div class="folder-header" style="padding-left: ${depth * 16 + 8}px;">
         <span class="folder-chevron ${folder.collapsed ? 'collapsed' : ''} ${!hasChildren ? 'hidden' : ''}">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
         </span>
-        <svg class="folder-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+        ${colorIndicator}
+        <svg class="folder-icon" viewBox="0 0 24 24" fill="currentColor" ${colorStyle}><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
         <span class="folder-name">${escapeHtml(folder.name)}</span>
         <span class="folder-count">${projectCount}</span>
+        <button class="btn-folder-color" data-folder-id="${folder.id}" title="Changer la couleur">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
+        </button>
       </div>
       <div class="folder-children ${folder.collapsed ? 'collapsed' : ''}">${childrenHtml}</div>
     </div>`;
@@ -103,7 +133,6 @@ function renderFolderHtml(folder, depth) {
 function renderProjectHtml(project, depth) {
   const projectIndex = getProjectIndex(project.id);
   const terminalCount = callbacks.countTerminalsForProject(projectIndex);
-  console.log(`[DEBUG] Project: ${project.name}, Index: ${projectIndex}, Terminals: ${terminalCount}, InFolder: ${project.folderId}`);
   const isSelected = projectsState.get().selectedProjectFilter === projectIndex;
   const isFivem = project.type === 'fivem';
   const fivemStatus = fivemServers.get(projectIndex)?.status || 'stopped';
@@ -111,6 +140,7 @@ function renderProjectHtml(project, depth) {
   const isGitRepo = gitRepoStatus.get(project.id)?.isGitRepo || false;
   const isRunning = fivemStatus === 'running';
   const isStarting = fivemStatus === 'starting';
+  const projectColor = project.color || null;
 
   let primaryActionsHtml = '';
   if (isFivem) {
@@ -134,6 +164,16 @@ function renderProjectHtml(project, depth) {
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10z"/></svg>
       </button>`;
   }
+
+  // Color picker for menu
+  const colorPickerHtml = `
+    <div class="more-actions-item color-picker-row" data-project-id="${project.id}">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
+      <span>Couleur</span>
+      <div class="color-picker-swatches">
+        ${ITEM_COLORS.map(c => `<button class="color-swatch-mini ${c.value === projectColor ? 'selected' : ''} ${!c.value ? 'default' : ''}" data-color="${c.value || ''}" title="${c.name}" ${c.value ? `style="background: ${c.value}"` : ''}></button>`).join('')}
+      </div>
+    </div>`;
 
   let menuItemsHtml = '';
   if (isFivem) {
@@ -164,6 +204,12 @@ function renderProjectHtml(project, depth) {
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7l2 2h5v12zm0-12h-5l-2-2H5c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2z"/></svg>
       Ouvrir le dossier
     </button>
+    ${colorPickerHtml}
+    <div class="more-actions-divider"></div>
+    <button class="more-actions-item btn-rename-project" data-project-id="${project.id}">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+      Renommer
+    </button>
     <div class="more-actions-divider"></div>
     <button class="more-actions-item danger btn-delete-project" data-project-id="${project.id}">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
@@ -171,6 +217,8 @@ function renderProjectHtml(project, depth) {
     </button>`;
 
   const statusIndicator = isFivem ? `<span class="fivem-status-dot ${fivemStatus}" title="${fivemStatus === 'stopped' ? 'Arrete' : fivemStatus === 'starting' ? 'Demarrage...' : 'En cours'}"></span>` : '';
+  const colorIndicator = projectColor ? `<span class="color-indicator" style="background: ${projectColor}"></span>` : '';
+  const iconColorStyle = projectColor ? `style="color: ${projectColor}"` : '';
 
   return `
     <div class="project-item ${isSelected ? 'active' : ''} ${isFivem ? 'fivem-project' : ''}"
@@ -178,7 +226,8 @@ function renderProjectHtml(project, depth) {
          style="margin-left: ${depth * 16}px;">
       <div class="project-info">
         <div class="project-name">
-          ${isFivem ? `${statusIndicator}<svg viewBox="0 0 24 24" fill="currentColor" class="fivem-icon"><path d="M21 16V4H3v12h18m0-14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-7v2h2v2H8v-2h2v-2H3a2 2 0 0 1-2-2V4c0-1.11.89-2 2-2h18M5 6h9v5H5V6m10 0h4v2h-4V6m4 3v5h-4V9h4M5 12h4v2H5v-2m5 0h4v2h-4v-2z"/></svg>` : `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>`}
+          ${colorIndicator}
+          ${isFivem ? `${statusIndicator}<svg viewBox="0 0 24 24" fill="currentColor" class="fivem-icon" ${iconColorStyle}><path d="M21 16V4H3v12h18m0-14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-7v2h2v2H8v-2h2v-2H3a2 2 0 0 1-2-2V4c0-1.11.89-2 2-2h18M5 6h9v5H5V6m10 0h4v2h-4V6m4 3v5h-4V9h4M5 12h4v2H5v-2m5 0h4v2h-4v-2z"/></svg>` : `<svg viewBox="0 0 24 24" fill="currentColor" ${iconColorStyle}><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>`}
           <span>${escapeHtml(project.name)}</span>
           ${!isFivem && terminalCount > 0 ? `<span class="terminal-count">${terminalCount}</span>` : ''}
         </div>
@@ -197,9 +246,42 @@ function renderProjectHtml(project, depth) {
 }
 
 /**
+ * Get drop position based on mouse Y relative to element
+ * @param {DragEvent} e
+ * @param {HTMLElement} el
+ * @param {boolean} isFolder - Folders have a "middle" zone for dropping into
+ * @returns {'before'|'after'|'into'}
+ */
+function getDropPosition(e, el, isFolder) {
+  const rect = el.getBoundingClientRect();
+  const y = e.clientY - rect.top;
+  const height = rect.height;
+
+  if (isFolder) {
+    // For folders: top 25% = before, middle 50% = into, bottom 25% = after
+    if (y < height * 0.25) return 'before';
+    if (y > height * 0.75) return 'after';
+    return 'into';
+  } else {
+    // For projects: top 50% = before, bottom 50% = after
+    return y < height * 0.5 ? 'before' : 'after';
+  }
+}
+
+/**
+ * Clear all drop indicators
+ */
+function clearDropIndicators(list) {
+  list.querySelectorAll('.drag-over, .drop-before, .drop-after, .drop-into').forEach(el => {
+    el.classList.remove('drag-over', 'drop-before', 'drop-after', 'drop-into');
+  });
+}
+
+/**
  * Setup drag and drop for project list
  */
 function setupDragAndDrop(list) {
+  // Drag start for all draggable items
   list.querySelectorAll('[draggable="true"]').forEach(el => {
     el.addEventListener('dragstart', (e) => {
       e.stopPropagation();
@@ -216,56 +298,132 @@ function setupDragAndDrop(list) {
       el.classList.remove('dragging');
       dragState.dragging = null;
       dragState.dropTarget = null;
-      list.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+      clearDropIndicators(list);
     });
   });
 
+  // Handle drag over folders
   list.querySelectorAll('.folder-item').forEach(folder => {
-    folder.addEventListener('dragover', (e) => {
+    const folderHeader = folder.querySelector('.folder-header');
+
+    folderHeader.addEventListener('dragover', (e) => {
       e.preventDefault();
       e.stopPropagation();
       if (!dragState.dragging) return;
+
       const folderId = folder.dataset.folderId;
+
+      // Prevent dropping folder into itself or descendants
       if (dragState.dragging.type === 'folder') {
         if (dragState.dragging.id === folderId || isDescendantOf(folderId, dragState.dragging.id)) {
           e.dataTransfer.dropEffect = 'none';
           return;
         }
       }
+
       e.dataTransfer.dropEffect = 'move';
-      folder.classList.add('drag-over');
-      dragState.dropTarget = { type: 'folder', id: folderId };
+      clearDropIndicators(list);
+
+      const position = getDropPosition(e, folderHeader, true);
+      folderHeader.classList.add(`drop-${position}`);
+      dragState.dropTarget = { type: 'folder', id: folderId, position };
     });
 
-    folder.addEventListener('dragleave', (e) => {
-      if (!folder.contains(e.relatedTarget)) folder.classList.remove('drag-over');
+    folderHeader.addEventListener('dragleave', (e) => {
+      if (!folderHeader.contains(e.relatedTarget)) {
+        folderHeader.classList.remove('drop-before', 'drop-after', 'drop-into');
+      }
     });
 
-    folder.addEventListener('drop', (e) => {
+    folderHeader.addEventListener('drop', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      folder.classList.remove('drag-over');
-      if (!dragState.dragging) return;
+      clearDropIndicators(list);
+
+      if (!dragState.dragging || !dragState.dropTarget) return;
+
+      const { position } = dragState.dropTarget;
       const targetFolderId = folder.dataset.folderId;
-      moveItemToFolder(dragState.dragging.type, dragState.dragging.id, targetFolderId);
+
+      if (position === 'into') {
+        // Move into folder
+        moveItemToFolder(dragState.dragging.type, dragState.dragging.id, targetFolderId);
+      } else {
+        // Reorder before/after
+        reorderItem(dragState.dragging.type, dragState.dragging.id, targetFolderId, position);
+      }
+
       dragState.dragging = null;
       dragState.dropTarget = null;
       if (callbacks.onRenderProjects) callbacks.onRenderProjects();
     });
   });
 
+  // Handle drag over projects
+  list.querySelectorAll('.project-item').forEach(project => {
+    project.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!dragState.dragging) return;
+
+      // Prevent dropping on itself
+      const projectId = project.dataset.projectId;
+      if (dragState.dragging.id === projectId) {
+        e.dataTransfer.dropEffect = 'none';
+        return;
+      }
+
+      e.dataTransfer.dropEffect = 'move';
+      clearDropIndicators(list);
+
+      const position = getDropPosition(e, project, false);
+      project.classList.add(`drop-${position}`);
+      dragState.dropTarget = { type: 'project', id: projectId, position };
+    });
+
+    project.addEventListener('dragleave', (e) => {
+      if (!project.contains(e.relatedTarget)) {
+        project.classList.remove('drop-before', 'drop-after');
+      }
+    });
+
+    project.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      clearDropIndicators(list);
+
+      if (!dragState.dragging || !dragState.dropTarget) return;
+
+      const { position } = dragState.dropTarget;
+      const targetProjectId = project.dataset.projectId;
+
+      // Reorder relative to project
+      reorderItem(dragState.dragging.type, dragState.dragging.id, targetProjectId, position);
+
+      dragState.dragging = null;
+      dragState.dropTarget = null;
+      if (callbacks.onRenderProjects) callbacks.onRenderProjects();
+    });
+  });
+
+  // Root drop zone (for moving to root level at the end)
   const rootDropZone = list.querySelector('.drop-zone-root');
   if (rootDropZone) {
     rootDropZone.addEventListener('dragover', (e) => {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
+      clearDropIndicators(list);
       rootDropZone.classList.add('drag-over');
       dragState.dropTarget = { type: 'root', id: null };
     });
-    rootDropZone.addEventListener('dragleave', () => rootDropZone.classList.remove('drag-over'));
+
+    rootDropZone.addEventListener('dragleave', () => {
+      rootDropZone.classList.remove('drag-over');
+    });
+
     rootDropZone.addEventListener('drop', (e) => {
       e.preventDefault();
-      rootDropZone.classList.remove('drag-over');
+      clearDropIndicators(list);
       if (!dragState.dragging) return;
       moveItemToFolder(dragState.dragging.type, dragState.dragging.id, null);
       dragState.dragging = null;
@@ -378,6 +536,15 @@ function attachListeners(list) {
     };
   });
 
+  // Rename project
+  list.querySelectorAll('.btn-rename-project').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      closeAllMoreActionsMenus();
+      if (callbacks.onRenameProject) callbacks.onRenameProject(btn.dataset.projectId);
+    };
+  });
+
   // More actions dropdown
   list.querySelectorAll('.btn-more-actions').forEach(btn => {
     btn.onclick = (e) => {
@@ -405,8 +572,101 @@ function attachListeners(list) {
     item.addEventListener('click', () => closeAllMoreActionsMenus());
   });
 
+  // Folder color button
+  list.querySelectorAll('.btn-folder-color').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const folderId = btn.dataset.folderId;
+      showColorPicker(btn, 'folder', folderId);
+    };
+  });
+
+  // Project color swatches in menu
+  list.querySelectorAll('.color-picker-row .color-swatch-mini').forEach(swatch => {
+    swatch.onclick = (e) => {
+      e.stopPropagation();
+      const projectId = swatch.closest('.color-picker-row').dataset.projectId;
+      const color = swatch.dataset.color || null;
+      setProjectColor(projectId, color);
+      closeAllMoreActionsMenus();
+      if (callbacks.onRenderProjects) callbacks.onRenderProjects();
+    };
+  });
+
   // Drag & Drop
   setupDragAndDrop(list);
+}
+
+// Color picker popup state
+let activeColorPicker = null;
+
+/**
+ * Show color picker popup for folders
+ */
+function showColorPicker(button, itemType, itemId) {
+  // Close existing picker
+  hideColorPicker();
+
+  const rect = button.getBoundingClientRect();
+  const item = itemType === 'folder' ? getFolder(itemId) : getProject(itemId);
+  const currentColor = item?.color || null;
+
+  const picker = document.createElement('div');
+  picker.className = 'color-picker-popup';
+  picker.innerHTML = `
+    <div class="color-picker-popup-title">Couleur</div>
+    <div class="color-picker-popup-grid">
+      ${ITEM_COLORS.map(c => `
+        <button class="color-swatch-popup ${c.value === currentColor ? 'selected' : ''} ${!c.value ? 'default' : ''}"
+                data-color="${c.value || ''}" title="${c.name}"
+                ${c.value ? `style="background: ${c.value}"` : ''}>
+        </button>
+      `).join('')}
+    </div>
+  `;
+
+  // Position popup
+  picker.style.position = 'fixed';
+  picker.style.top = `${rect.bottom + 4}px`;
+  picker.style.left = `${rect.left}px`;
+  picker.style.zIndex = '1002';
+
+  document.body.appendChild(picker);
+  activeColorPicker = picker;
+
+  // Handle clicks on swatches
+  picker.querySelectorAll('.color-swatch-popup').forEach(swatch => {
+    swatch.onclick = (e) => {
+      e.stopPropagation();
+      const color = swatch.dataset.color || null;
+      if (itemType === 'folder') {
+        setFolderColor(itemId, color);
+      } else {
+        setProjectColor(itemId, color);
+      }
+      hideColorPicker();
+      if (callbacks.onRenderProjects) callbacks.onRenderProjects();
+    };
+  });
+
+  // Close on outside click
+  setTimeout(() => {
+    document.addEventListener('click', handleOutsideClick);
+  }, 0);
+}
+
+function handleOutsideClick(e) {
+  if (activeColorPicker && !activeColorPicker.contains(e.target)) {
+    hideColorPicker();
+  }
+}
+
+function hideColorPicker() {
+  if (activeColorPicker) {
+    activeColorPicker.remove();
+    activeColorPicker = null;
+    document.removeEventListener('click', handleOutsideClick);
+  }
 }
 
 /**

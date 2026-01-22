@@ -88,11 +88,11 @@
 
     .item:hover, .item.selected {
       background: #252525;
-      border-left-color: #d97706;
+      border-left-color: var(--accent, #d97706);
     }
 
     .item.selected {
-      background: rgba(217, 119, 6, 0.15);
+      background: var(--accent-dim, rgba(217, 119, 6, 0.15));
     }
 
     .item-icon {
@@ -108,7 +108,7 @@
     .item-icon svg {
       width: 18px;
       height: 18px;
-      color: #d97706;
+      color: var(--accent, #d97706);
     }
 
     .item-info {
@@ -183,10 +183,38 @@
     const os = require('os');
 
     const projectsFile = path.join(os.homedir(), '.claude-terminal', 'projects.json');
+    const settingsFile = path.join(os.homedir(), '.claude-terminal', 'settings.json');
 
     let projects = [];
     let filtered = [];
     let selectedIndex = 0;
+
+    // Charger et appliquer la couleur d'accent
+    function loadAccentColor() {
+      try {
+        if (fs.existsSync(settingsFile)) {
+          const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+          const color = settings.accentColor || '#d97706';
+          applyAccentColor(color);
+        }
+      } catch (e) {
+        // Ignore errors, use default color
+      }
+    }
+
+    function applyAccentColor(color) {
+      const root = document.documentElement;
+      root.style.setProperty('--accent', color);
+
+      // Parse hex to rgb for dim version
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(color);
+      if (result) {
+        const r = parseInt(result[1], 16);
+        const g = parseInt(result[2], 16);
+        const b = parseInt(result[3], 16);
+        root.style.setProperty('--accent-dim', `rgba(${r}, ${g}, ${b}, 0.15)`);
+      }
+    }
 
     // Charger les projets
     function loadProjects() {
@@ -289,9 +317,10 @@
       }
     });
 
-    // Recharger les projets à chaque fois que la fenêtre devient visible
+    // Recharger les projets et la couleur à chaque fois que la fenêtre devient visible
     window.addEventListener('focus', () => {
       document.getElementById('search').value = '';
+      loadAccentColor();
       loadProjects();
       document.getElementById('search').focus();
     });
@@ -299,10 +328,13 @@
     // Écouter le message IPC pour recharger les projets
     ipcRenderer.on('reload-projects', () => {
       document.getElementById('search').value = '';
+      loadAccentColor();
       loadProjects();
       document.getElementById('search').focus();
     });
 
+    // Initialisation
+    loadAccentColor();
     loadProjects();
   </script>
 </body>

@@ -661,6 +661,39 @@ function getDashboardProjects() {
   }));
 }
 
+/**
+ * Preload dashboard data for all projects in background
+ * This should be called at app startup to warm up the cache
+ */
+async function preloadAllProjects() {
+  const projects = projectsState.get().projects;
+  if (!projects || projects.length === 0) return;
+
+  console.log(`[Dashboard] Preloading ${projects.length} projects...`);
+
+  // Load projects in parallel with a small delay between batches to avoid overload
+  const BATCH_SIZE = 3;
+  for (let i = 0; i < projects.length; i += BATCH_SIZE) {
+    const batch = projects.slice(i, i + BATCH_SIZE);
+    await Promise.all(batch.map(async (project) => {
+      // Skip if already cached
+      if (isCacheValid(project.id)) return;
+
+      try {
+        setCacheLoading(project.id, true);
+        const data = await loadDashboardData(project.path);
+        setCacheData(project.id, data);
+        console.log(`[Dashboard] Preloaded: ${project.name}`);
+      } catch (e) {
+        console.error(`[Dashboard] Failed to preload ${project.name}:`, e.message);
+        setCacheLoading(project.id, false);
+      }
+    }));
+  }
+
+  console.log('[Dashboard] Preload complete');
+}
+
 module.exports = {
   getGitInfo,
   getGitInfoFull,
@@ -675,5 +708,6 @@ module.exports = {
   getGitOperation,
   // Cache management
   invalidateCache,
-  clearAllCache
+  clearAllCache,
+  preloadAllProjects
 };

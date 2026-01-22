@@ -9,6 +9,7 @@ const { registerMcpHandlers } = require('./mcp.ipc');
 const { registerFivemHandlers } = require('./fivem.ipc');
 const { registerDialogHandlers, setMainWindow: setDialogMainWindow } = require('./dialog.ipc');
 const { registerProjectHandlers } = require('./project.ipc');
+const { registerClaudeHandlers } = require('./claude.ipc');
 
 /**
  * Register all IPC handlers
@@ -25,6 +26,7 @@ function registerAllHandlers(mainWindow) {
   registerFivemHandlers();
   registerDialogHandlers();
   registerProjectHandlers();
+  registerClaudeHandlers();
 }
 
 module.exports = {
@@ -34,5 +36,6 @@ module.exports = {
   registerMcpHandlers,
   registerFivemHandlers,
   registerDialogHandlers,
-  registerProjectHandlers
+  registerProjectHandlers,
+  registerClaudeHandlers
 };

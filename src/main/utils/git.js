@@ -118,6 +118,35 @@ async function getBranches(projectPath) {
 }
 
 /**
+ * Get current branch name
+ * @param {string} projectPath - Path to the project
+ * @returns {Promise<string|null>} - Current branch name or null
+ */
+async function getCurrentBranch(projectPath) {
+  const branch = await execGit(projectPath, 'rev-parse --abbrev-ref HEAD');
+  return branch || null;
+}
+
+/**
+ * Checkout a branch
+ * @param {string} projectPath - Path to the project
+ * @param {string} branch - Branch name to checkout
+ * @returns {Promise<Object>} - Result object with success/error
+ */
+function checkoutBranch(projectPath, branch) {
+  return new Promise((resolve) => {
+    const { exec } = require('child_process');
+    exec(`git checkout "${branch}"`, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        resolve({ success: false, error: stderr || error.message });
+      } else {
+        resolve({ success: true, output: stderr || stdout || `Switched to branch '${branch}'` });
+      }
+    });
+  });
+}
+
+/**
  * Get list of stashes
  * @param {string} projectPath - Path to the project
  * @returns {Promise<Array>} - List of stash entries
@@ -428,5 +457,8 @@ module.exports = {
   gitPull,
   gitPush,
   countLinesOfCode,
-  getProjectStats
+  getProjectStats,
+  getBranches,
+  getCurrentBranch,
+  checkoutBranch
 };

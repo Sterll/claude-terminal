@@ -102,6 +102,21 @@ function registerDialogHandlers() {
   ipcMain.on('update-install', () => {
     updaterService.quitAndInstall();
   });
+
+  // Launch at startup - get current setting
+  ipcMain.handle('get-launch-at-startup', () => {
+    const settings = app.getLoginItemSettings();
+    return settings.openAtLogin;
+  });
+
+  // Launch at startup - set setting
+  ipcMain.handle('set-launch-at-startup', (event, enabled) => {
+    app.setLoginItemSettings({
+      openAtLogin: enabled,
+      openAsHidden: false
+    });
+    return enabled;
+  });
 }
 
 module.exports = {

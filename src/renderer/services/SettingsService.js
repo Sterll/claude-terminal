@@ -120,6 +120,23 @@ function getEditorOptions() {
 }
 
 /**
+ * Get launch at startup setting
+ * @returns {Promise<boolean>}
+ */
+async function getLaunchAtStartup() {
+  return await ipcRenderer.invoke('get-launch-at-startup');
+}
+
+/**
+ * Set launch at startup
+ * @param {boolean} enabled
+ * @returns {Promise<boolean>}
+ */
+async function setLaunchAtStartup(enabled) {
+  return await ipcRenderer.invoke('set-launch-at-startup', enabled);
+}
+
+/**
  * Get accent color options for settings UI
  * @returns {Array}
  */
@@ -199,6 +216,8 @@ module.exports = {
   showNotification,
   getEditorOptions,
   getAccentColorOptions,
+  getLaunchAtStartup,
+  setLaunchAtStartup,
   updateWindowTitle,
   extractTitleFromInput,
   getSettings,

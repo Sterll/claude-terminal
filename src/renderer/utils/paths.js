@@ -21,6 +21,7 @@ const legacyMcpsFile = path.join(dataDir, 'mcps.json');
 const claudeSettingsFile = path.join(claudeDir, 'settings.json');
 const claudeConfigFile = path.join(homeDir, '.claude.json'); // Main Claude Code config with MCP servers
 const skillsDir = path.join(claudeDir, 'skills');
+const commandsDir = path.join(claudeDir, 'commands'); // User commands (another skills location)
 const agentsDir = path.join(claudeDir, 'agents');
 
 /**
@@ -76,6 +77,7 @@ module.exports = {
   claudeSettingsFile,
   claudeConfigFile,
   skillsDir,
+  commandsDir,
   agentsDir,
   ensureDirectories,
   getProjectClaudeSettings,

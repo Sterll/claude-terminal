@@ -65,6 +65,12 @@ function initialize() {
     }
   );
 
+  // Preload dashboard data for all projects in background
+  // Use setTimeout to not block the UI initialization
+  setTimeout(() => {
+    services.DashboardService.preloadAllProjects();
+  }, 500);
+
   console.log('Renderer modules initialized');
 }
 
