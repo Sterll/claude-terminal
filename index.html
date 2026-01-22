@@ -31,6 +31,24 @@
     </div>
   </div>
 
+  <!-- Update Banner (GitHub Desktop style) -->
+  <div class="update-banner" id="update-banner" style="display: none;">
+    <div class="update-banner-content">
+      <svg class="update-icon" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M21 10.12h-6.78l2.74-2.82c-2.73-2.7-7.15-2.8-9.88-.1-2.73 2.71-2.73 7.08 0 9.79s7.15 2.71 9.88 0C18.32 15.65 19 14.08 19 12.1h2c0 1.98-.88 4.55-2.64 6.29-3.51 3.48-9.21 3.48-12.72 0-3.5-3.47-3.5-9.12 0-12.6 3.51-3.47 9.14-3.47 12.65 0L21 3v7.12z"/>
+      </svg>
+      <span class="update-message" id="update-message">Une nouvelle version est disponible</span>
+      <div class="update-progress-container" id="update-progress-container" style="display: none;">
+        <div class="update-progress-bar" id="update-progress-bar"></div>
+        <span class="update-progress-text" id="update-progress-text">0%</span>
+      </div>
+      <button class="update-btn" id="update-btn" style="display: none;">Redémarrer pour mettre à jour</button>
+      <button class="update-dismiss" id="update-dismiss" title="Fermer">
+        <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+      </button>
+    </div>
+  </div>
+
   <!-- Main Container -->
   <div class="main-container">
     <!-- Sidebar -->

@@ -3,7 +3,6 @@
  * Manages application auto-updates
  */
 
-const { dialog } = require('electron');
 const { autoUpdater } = require('electron-updater');
 
 class UpdaterService {
@@ -43,20 +42,7 @@ class UpdaterService {
         status: 'downloaded',
         version: info.version
       });
-
-      // Show dialog to restart
-      if (this.mainWindow) {
-        dialog.showMessageBox(this.mainWindow, {
-          type: 'info',
-          title: 'Mise à jour disponible',
-          message: `La version ${info.version} a été téléchargée. Redémarrer maintenant ?`,
-          buttons: ['Redémarrer', 'Plus tard']
-        }).then(result => {
-          if (result.response === 0) {
-            autoUpdater.quitAndInstall();
-          }
-        });
-      }
+      // No native dialog - the renderer banner handles the UI
     });
 
     // Handle update not available
