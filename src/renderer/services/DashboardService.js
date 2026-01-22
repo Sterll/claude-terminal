@@ -7,6 +7,85 @@ const { ipcRenderer } = require('electron');
 const { projectsState, setGitPulling, setGitPushing, getGitOperation } = require('../state');
 const { escapeHtml } = require('../utils');
 
+// ========== CACHE SYSTEM ==========
+const dashboardCache = new Map(); // projectId -> { data, timestamp, loading }
+const CACHE_TTL = 30000; // 30 seconds cache validity
+const REFRESH_DEBOUNCE = 2000; // 2 seconds minimum between refreshes
+
+/**
+ * Get cached dashboard data
+ * @param {string} projectId
+ * @returns {Object|null}
+ */
+function getCachedData(projectId) {
+  const cached = dashboardCache.get(projectId);
+  if (!cached) return null;
+  return cached.data;
+}
+
+/**
+ * Check if cache is still valid
+ * @param {string} projectId
+ * @returns {boolean}
+ */
+function isCacheValid(projectId) {
+  const cached = dashboardCache.get(projectId);
+  if (!cached) return false;
+  return Date.now() - cached.timestamp < CACHE_TTL;
+}
+
+/**
+ * Check if a refresh is already in progress
+ * @param {string} projectId
+ * @returns {boolean}
+ */
+function isRefreshing(projectId) {
+  const cached = dashboardCache.get(projectId);
+  return cached?.loading === true;
+}
+
+/**
+ * Set cache data
+ * @param {string} projectId
+ * @param {Object} data
+ */
+function setCacheData(projectId, data) {
+  dashboardCache.set(projectId, {
+    data,
+    timestamp: Date.now(),
+    loading: false
+  });
+}
+
+/**
+ * Set loading state
+ * @param {string} projectId
+ * @param {boolean} loading
+ */
+function setCacheLoading(projectId, loading) {
+  const cached = dashboardCache.get(projectId);
+  if (cached) {
+    cached.loading = loading;
+  } else {
+    dashboardCache.set(projectId, { data: null, timestamp: 0, loading });
+  }
+}
+
+/**
+ * Invalidate cache for a project
+ * @param {string} projectId
+ */
+function invalidateCache(projectId) {
+  dashboardCache.delete(projectId);
+}
+
+/**
+ * Clear all cache
+ */
+function clearAllCache() {
+  dashboardCache.clear();
+}
+
 /**
  * Get full git info for dashboard
  * @param {string} projectPath
@@ -145,17 +224,24 @@ function buildSyncBadges(aheadBehind) {
 
   let badges = '';
 
+  if (!aheadBehind.hasRemote) {
+    badges += `<span class="sync-badge no-remote"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg> Pas de remote</span>`;
+    return badges;
+  }
+
+  if (aheadBehind.notTracking) {
+    badges += `<span class="sync-badge not-tracking"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg> Branche non trackee</span>`;
+    return badges;
+  }
+
   if (aheadBehind.behind > 0) {
     badges += `<span class="sync-badge pull"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8z"/></svg> ${aheadBehind.behind} a pull</span>`;
   }
   if (aheadBehind.ahead > 0) {
     badges += `<span class="sync-badge push"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 4v2h14V4H5zm0 10h4v6h6v-6h4l-7-7-7 7z"/></svg> ${aheadBehind.ahead} a push</span>`;
   }
-  if (aheadBehind.ahead === 0 && aheadBehind.behind === 0 && aheadBehind.hasRemote) {
+  if (aheadBehind.ahead === 0 && aheadBehind.behind === 0) {
     badges += `<span class="sync-badge synced"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> Synchronise</span>`;
-  }
-  if (!aheadBehind.hasRemote) {
-    badges += `<span class="sync-badge no-remote"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg> Pas de remote</span>`;
   }
 
   return badges;
@@ -372,13 +458,14 @@ function buildContributorsHtml(contributors) {
 }
 
 /**
- * Render dashboard content for a project
- * @param {HTMLElement} container - Container element
- * @param {Object} project - Project data
- * @param {Object} options - Render options
- * @returns {Promise<void>}
+ * Render the dashboard HTML with given data
+ * @param {HTMLElement} container
+ * @param {Object} project
+ * @param {Object} data - { gitInfo, stats }
+ * @param {Object} options
+ * @param {boolean} isRefreshing - Show refresh indicator
  */
-async function renderDashboard(container, project, options = {}) {
+function renderDashboardHtml(container, project, data, options, isRefreshing = false) {
   const {
     terminalCount = 0,
     fivemStatus = 'stopped',
@@ -389,21 +476,12 @@ async function renderDashboard(container, project, options = {}) {
     onCopyPath
   } = options;
 
+  const { gitInfo, stats } = data;
   const isFivem = project.type === 'fivem';
-
-  // Show loading state
-  container.innerHTML = `
-    <div class="dashboard-loading">
-      <div class="loading-spinner"></div>
-      <p>Chargement des informations...</p>
-    </div>
-  `;
-
-  // Load data
-  const { gitInfo, stats } = await loadDashboardData(project.path);
 
   // Build HTML
   container.innerHTML = `
+    ${isRefreshing ? '<div class="dashboard-refresh-indicator"><span class="refresh-spinner"></span> Actualisation...</div>' : ''}
     <div class="dashboard-project-header">
       <div class="dashboard-project-title">
         <h2>${escapeHtml(project.name)}</h2>
@@ -414,12 +492,12 @@ async function renderDashboard(container, project, options = {}) {
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7l2 2h5v12zm0-12h-5l-2-2H5c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2z"/></svg>
           Ouvrir dossier
         </button>
-        ${gitInfo.isGitRepo ? `
-        <button class="btn-secondary" id="dash-btn-git-pull" ${gitInfo.aheadBehind?.behind === 0 ? 'disabled' : ''}>
+        ${gitInfo.isGitRepo && gitInfo.aheadBehind?.hasRemote ? `
+        <button class="btn-secondary" id="dash-btn-git-pull" ${!gitInfo.aheadBehind?.notTracking && gitInfo.aheadBehind?.behind === 0 ? 'disabled' : ''}>
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8z"/></svg>
           Pull
         </button>
-        <button class="btn-secondary" id="dash-btn-git-push" ${gitInfo.aheadBehind?.ahead === 0 ? 'disabled' : ''}>
+        <button class="btn-secondary" id="dash-btn-git-push" ${!gitInfo.aheadBehind?.notTracking && gitInfo.aheadBehind?.ahead === 0 ? 'disabled' : ''}>
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 4v2h14V4H5zm0 10h4v6h6v-6h4l-7-7-7 7z"/></svg>
           Push
         </button>
@@ -483,7 +561,8 @@ async function renderDashboard(container, project, options = {}) {
     btn.disabled = true;
     btn.innerHTML = '<span class="btn-spinner"></span> Pull...';
     if (onGitPull) await onGitPull(project.id);
-    // Re-render dashboard after pull
+    // Invalidate cache and re-render
+    invalidateCache(project.id);
     renderDashboard(container, project, options);
   });
 
@@ -493,7 +572,8 @@ async function renderDashboard(container, project, options = {}) {
     btn.disabled = true;
     btn.innerHTML = '<span class="btn-spinner"></span> Push...';
     if (onGitPush) await onGitPush(project.id);
-    // Re-render dashboard after push
+    // Invalidate cache and re-render
+    invalidateCache(project.id);
     renderDashboard(container, project, options);
   });
 
@@ -501,6 +581,73 @@ async function renderDashboard(container, project, options = {}) {
     navigator.clipboard.writeText(project.path);
     if (onCopyPath) onCopyPath(project.path);
   });
+}
+
+/**
+ * Render dashboard content for a project (with caching)
+ * @param {HTMLElement} container - Container element
+ * @param {Object} project - Project data
+ * @param {Object} options - Render options
+ * @returns {Promise<void>}
+ */
+async function renderDashboard(container, project, options = {}) {
+  const projectId = project.id;
+  const cachedData = getCachedData(projectId);
+  const cacheValid = isCacheValid(projectId);
+  const alreadyRefreshing = isRefreshing(projectId);
+
+  // Case 1: We have cached data - show it immediately
+  if (cachedData) {
+    // Render with cached data, show refresh indicator if cache is stale
+    renderDashboardHtml(container, project, cachedData, options, !cacheValid && !alreadyRefreshing);
+
+    // If cache is still valid or already refreshing, we're done
+    if (cacheValid || alreadyRefreshing) {
+      return;
+    }
+
+    // Start background refresh
+    setCacheLoading(projectId, true);
+
+    try {
+      const newData = await loadDashboardData(project.path);
+      setCacheData(projectId, newData);
+
+      // Only update UI if this project is still displayed
+      if (container.querySelector('#dash-btn-open-folder')) {
+        renderDashboardHtml(container, project, newData, options, false);
+      }
+    } catch (e) {
+      console.error('Error refreshing dashboard:', e);
+      setCacheLoading(projectId, false);
+    }
+    return;
+  }
+
+  // Case 2: No cache - show loading and fetch
+  container.innerHTML = `
+    <div class="dashboard-loading">
+      <div class="loading-spinner"></div>
+      <p>Chargement des informations...</p>
+    </div>
+  `;
+
+  setCacheLoading(projectId, true);
+
+  try {
+    const data = await loadDashboardData(project.path);
+    setCacheData(projectId, data);
+    renderDashboardHtml(container, project, data, options, false);
+  } catch (e) {
+    console.error('Error loading dashboard:', e);
+    setCacheLoading(projectId, false);
+    container.innerHTML = `
+      <div class="dashboard-error">
+        <p>Erreur lors du chargement</p>
+        <button class="btn-secondary" onclick="location.reload()">Reessayer</button>
+      </div>
+    `;
+  }
 }
 
 /**
@@ -525,5 +672,8 @@ module.exports = {
   getDashboardProjects,
   renderDashboard,
   formatNumber,
-  getGitOperation
+  getGitOperation,
+  // Cache management
+  invalidateCache,
+  clearAllCache
 };
