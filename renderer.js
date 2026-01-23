@@ -52,7 +52,8 @@ const {
 
   // Features
   initKeyboardShortcuts,
-  registerShortcut
+  registerShortcut,
+  openQuickPicker
 } = require('./src/renderer');
 
 // ========== LOCAL MODAL FUNCTIONS ==========
@@ -453,6 +454,10 @@ FivemService.registerFivemListeners(
   (projectIndex, code) => {
     localState.fivemServers.set(projectIndex, { status: 'stopped', logs: localState.fivemServers.get(projectIndex)?.logs || [] });
     ProjectList.render();
+  },
+  // onError callback - update error UI
+  (projectIndex, error) => {
+    TerminalManager.addFivemErrorToConsole(projectIndex, error);
   }
 );
 
@@ -620,13 +625,158 @@ ProjectList.setCallbacks({
 TerminalManager.setCallbacks({
   onNotification: showNotification,
   onRenderProjects: () => ProjectList.render(),
-  onCreateTerminal: createTerminalForProject
+  onCreateTerminal: createTerminalForProject,
+  onSwitchTerminal: (direction) => {
+    const allTerminals = terminalsState.get().terminals;
+    const currentId = terminalsState.get().activeTerminal;
+    const currentFilter = projectsState.get().selectedProjectFilter;
+    const projects = projectsState.get().projects;
+    const filterProject = projects[currentFilter];
+
+    // Get only visible terminals (respecting project filter)
+    const visibleTerminals = [];
+    allTerminals.forEach((termData, id) => {
+      const isVisible = currentFilter === null ||
+        (filterProject && termData.project && termData.project.path === filterProject.path);
+      if (isVisible) {
+        visibleTerminals.push(id);
+      }
+    });
+
+    if (visibleTerminals.length === 0) return;
+
+    const currentIndex = visibleTerminals.indexOf(currentId);
+    let targetIndex;
+
+    if (currentIndex === -1) {
+      // Current terminal not in visible list, pick first
+      targetIndex = 0;
+    } else if (direction === 'left') {
+      targetIndex = (currentIndex - 1 + visibleTerminals.length) % visibleTerminals.length;
+    } else {
+      targetIndex = (currentIndex + 1) % visibleTerminals.length;
+    }
+
+    TerminalManager.setActiveTerminal(visibleTerminals[targetIndex]);
+  },
+  onSwitchProject: (direction) => {
+    const projects = projectsState.get().projects;
+    const terminals = terminalsState.get().terminals;
+
+    // Get projects that have at least one terminal open (use path for stable comparison)
+    const projectsWithTerminals = projects
+      .map((p, idx) => ({ project: p, index: idx }))
+      .filter(({ project }) => {
+        for (const [, t] of terminals) {
+          if (t.project && t.project.path === project.path) return true;
+        }
+        return false;
+      });
+
+    if (projectsWithTerminals.length <= 1) return;
+
+    // Find current project by path for stable comparison
+    const currentFilter = projectsState.get().selectedProjectFilter;
+    const currentProject = projects[currentFilter];
+    const currentIdx = currentProject
+      ? projectsWithTerminals.findIndex(p => p.project.path === currentProject.path)
+      : -1;
+
+    let targetIdx;
+    if (currentIdx === -1) {
+      // No valid current project, start from first
+      targetIdx = 0;
+    } else if (direction === 'up') {
+      targetIdx = (currentIdx - 1 + projectsWithTerminals.length) % projectsWithTerminals.length;
+    } else {
+      targetIdx = (currentIdx + 1) % projectsWithTerminals.length;
+    }
+
+    const targetProject = projectsWithTerminals[targetIdx];
+    setSelectedProjectFilter(targetProject.index);
+    ProjectList.render();
+    TerminalManager.filterByProject(targetProject.index);
+  }
 });
 
 // ========== WINDOW CONTROLS ==========
 document.getElementById('btn-minimize').onclick = () => ipcRenderer.send('window-minimize');
 document.getElementById('btn-maximize').onclick = () => ipcRenderer.send('window-maximize');
-document.getElementById('btn-close').onclick = () => ipcRenderer.send('window-close');
+document.getElementById('btn-close').onclick = () => handleWindowClose();
+
+/**
+ * Handle window close with user choice
+ */
+function handleWindowClose() {
+  const closeAction = settingsState.get().closeAction || 'ask';
+
+  if (closeAction === 'minimize') {
+    ipcRenderer.send('window-close'); // This will minimize to tray
+    return;
+  }
+
+  if (closeAction === 'quit') {
+    ipcRenderer.send('app-quit'); // Force quit
+    return;
+  }
+
+  // Show choice dialog
+  showCloseDialog();
+}
+
+/**
+ * Show close action dialog
+ */
+function showCloseDialog() {
+  const content = `
+    <div class="close-dialog-content">
+      <p>Que souhaitez-vous faire ?</p>
+      <div class="close-dialog-options">
+        <button class="close-option-btn" id="close-minimize">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
+            <path d="M19 13H5v-2h14v2z"/>
+          </svg>
+          <span>Minimiser dans le tray</span>
+          <small>L'application reste accessible depuis la barre des tâches</small>
+        </button>
+        <button class="close-option-btn close-option-quit" id="close-quit">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
+            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+          </svg>
+          <span>Quitter complètement</span>
+          <small>Ferme l'application et tous les terminaux</small>
+        </button>
+      </div>
+      <label class="close-dialog-remember">
+        <input type="checkbox" id="close-remember">
+        <span>Se souvenir de mon choix</span>
+      </label>
+    </div>
+  `;
+
+  showModal('Fermer l\'application', content);
+
+  // Add event handlers
+  document.getElementById('close-minimize').onclick = () => {
+    const remember = document.getElementById('close-remember').checked;
+    if (remember) {
+      settingsState.setProp('closeAction', 'minimize');
+      saveSettings();
+    }
+    closeModal();
+    ipcRenderer.send('window-close');
+  };
+
+  document.getElementById('close-quit').onclick = () => {
+    const remember = document.getElementById('close-remember').checked;
+    if (remember) {
+      settingsState.setProp('closeAction', 'quit');
+      saveSettings();
+    }
+    closeModal();
+    ipcRenderer.send('app-quit');
+  };
+}
 
 document.getElementById('btn-notifications').onclick = () => {
   localState.notificationsEnabled = !localState.notificationsEnabled;
@@ -872,6 +1022,17 @@ async function showSettingsModal() {
             <span class="settings-toggle-slider"></span>
           </label>
         </div>
+        <div class="settings-row">
+          <div class="settings-label">
+            <div>Comportement a la fermeture</div>
+            <div class="settings-desc">Action a effectuer quand vous cliquez sur fermer</div>
+          </div>
+          <select id="close-action-select" class="settings-select">
+            <option value="ask" ${settings.closeAction === 'ask' || !settings.closeAction ? 'selected' : ''}>Toujours demander</option>
+            <option value="minimize" ${settings.closeAction === 'minimize' ? 'selected' : ''}>Minimiser dans le tray</option>
+            <option value="quit" ${settings.closeAction === 'quit' ? 'selected' : ''}>Quitter completement</option>
+          </select>
+        </div>
       </div>
       <div class="settings-section">
         <div class="settings-title">Couleur d'accent</div>
@@ -904,10 +1065,12 @@ async function showSettingsModal() {
 
   document.getElementById('btn-save-settings').onclick = async () => {
     const selectedMode = document.querySelector('.execution-mode-card.selected');
+    const closeActionSelect = document.getElementById('close-action-select');
     const newSettings = {
       editor: settings.editor || 'code',
       skipPermissions: selectedMode?.dataset.mode === 'dangerous',
-      accentColor: document.querySelector('.color-swatch.selected')?.dataset.color || settings.accentColor
+      accentColor: document.querySelector('.color-swatch.selected')?.dataset.color || settings.accentColor,
+      closeAction: closeActionSelect?.value || 'ask'
     };
     settingsState.set(newSettings);
     saveSettings();
@@ -1815,6 +1978,9 @@ ipcRenderer.on('open-terminal-current-project', () => {
   const projects = projectsState.get().projects;
   if (selectedFilter !== null && projects[selectedFilter]) {
     createTerminalForProject(projects[selectedFilter]);
+  } else if (projects.length > 0) {
+    // No project selected, use the first one
+    createTerminalForProject(projects[0]);
   }
 });
 
@@ -1841,77 +2007,8 @@ ProjectList.render();
 // Initialize keyboard shortcuts
 initKeyboardShortcuts();
 
-// Navigate between terminals with Ctrl+Left/Right (cycle through all terminals)
-registerShortcut('Ctrl+Left', () => {
-  const terminals = Array.from(terminalsState.get().terminals.keys());
-  const currentId = terminalsState.get().activeTerminal;
-  if (terminals.length === 0) return;
-  const currentIndex = terminals.indexOf(currentId);
-  const prevIndex = (currentIndex - 1 + terminals.length) % terminals.length;
-  TerminalManager.setActiveTerminal(terminals[prevIndex]);
-}, { global: true });
-
-registerShortcut('Ctrl+Right', () => {
-  const terminals = Array.from(terminalsState.get().terminals.keys());
-  const currentId = terminalsState.get().activeTerminal;
-  if (terminals.length === 0) return;
-  const currentIndex = terminals.indexOf(currentId);
-  const nextIndex = (currentIndex + 1) % terminals.length;
-  TerminalManager.setActiveTerminal(terminals[nextIndex]);
-}, { global: true });
-
-// Navigate between projects with Ctrl+Up/Down (only projects with open terminals)
-registerShortcut('Ctrl+Up', () => {
-  const projects = projectsState.get().projects;
-  const terminals = terminalsState.get().terminals;
-
-  // Get projects that have at least one terminal open
-  const projectsWithTerminals = projects
-    .map((p, idx) => ({ project: p, index: idx }))
-    .filter(({ index }) => {
-      for (const [, t] of terminals) {
-        if (t.projectIndex === index) return true;
-      }
-      return false;
-    });
-
-  if (projectsWithTerminals.length <= 1) return;
-
-  const currentFilter = projectsState.get().selectedProjectFilter;
-  const currentIdx = projectsWithTerminals.findIndex(p => p.index === currentFilter);
-  const prevIdx = (currentIdx - 1 + projectsWithTerminals.length) % projectsWithTerminals.length;
-
-  const targetProject = projectsWithTerminals[prevIdx];
-  setSelectedProjectFilter(targetProject.index);
-  ProjectList.render();
-  TerminalManager.filterByProject(targetProject.index);
-}, { global: true });
-
-registerShortcut('Ctrl+Down', () => {
-  const projects = projectsState.get().projects;
-  const terminals = terminalsState.get().terminals;
-
-  // Get projects that have at least one terminal open
-  const projectsWithTerminals = projects
-    .map((p, idx) => ({ project: p, index: idx }))
-    .filter(({ index }) => {
-      for (const [, t] of terminals) {
-        if (t.projectIndex === index) return true;
-      }
-      return false;
-    });
-
-  if (projectsWithTerminals.length <= 1) return;
-
-  const currentFilter = projectsState.get().selectedProjectFilter;
-  const currentIdx = projectsWithTerminals.findIndex(p => p.index === currentFilter);
-  const nextIdx = (currentIdx + 1) % projectsWithTerminals.length;
-
-  const targetProject = projectsWithTerminals[nextIdx];
-  setSelectedProjectFilter(targetProject.index);
-  ProjectList.render();
-  TerminalManager.filterByProject(targetProject.index);
-}, { global: true });
+// Ctrl+Arrow shortcuts are handled directly in TerminalManager.js
+// They only work when focused on a terminal (which is the only context where they make sense)
 
 // Settings shortcut
 registerShortcut('Ctrl+,', () => showSettingsModal(), { global: true });
@@ -1922,6 +2019,33 @@ registerShortcut('Ctrl+W', () => {
   if (currentId) {
     TerminalManager.closeTerminal(currentId);
   }
+}, { global: true });
+
+// Ctrl+Shift+T is handled by globalShortcut in main.js which sends 'open-terminal-current-project' IPC event
+// No need to register it here to avoid double terminal creation
+
+// Ctrl+Shift+E: Show sessions panel
+registerShortcut('Ctrl+Shift+E', () => {
+  const selectedFilter = projectsState.get().selectedProjectFilter;
+  const projects = projectsState.get().projects;
+  if (selectedFilter !== null && projects[selectedFilter]) {
+    showSessionsModal(projects[selectedFilter]);
+  } else if (projects.length > 0) {
+    setSelectedProjectFilter(0);
+    ProjectList.render();
+    showSessionsModal(projects[0]);
+  }
+}, { global: true });
+
+// Ctrl+Shift+P: Quick picker (project search)
+registerShortcut('Ctrl+Shift+P', () => {
+  openQuickPicker(document.body, (project) => {
+    const projectIndex = getProjectIndex(project.id);
+    setSelectedProjectFilter(projectIndex);
+    ProjectList.render();
+    TerminalManager.filterByProject(projectIndex);
+    createTerminalForProject(project);
+  });
 }, { global: true });
 
 // ========== UPDATE SYSTEM (GitHub Desktop style) ==========
