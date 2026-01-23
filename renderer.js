@@ -17,6 +17,7 @@ const {
   skillsDir,
   agentsDir,
   claudeSettingsFile,
+  claudeConfigFile,
 
   // State
   projectsState,
@@ -56,9 +57,12 @@ const {
 
 // ========== LOCAL MODAL FUNCTIONS ==========
 // These work with the existing HTML modal elements in index.html
-function showModal(title, content) {
+function showModal(title, content, footer = '') {
   document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-body').innerHTML = content;
+  const footerEl = document.getElementById('modal-footer');
+  footerEl.innerHTML = footer;
+  footerEl.style.display = footer ? 'flex' : 'none';
   document.getElementById('modal-overlay').classList.add('active');
 }
 
@@ -877,11 +881,10 @@ async function showSettingsModal() {
           ).join('')}
         </div>
       </div>
-      <div class="form-actions">
-        <button type="button" class="btn-cancel" onclick="closeModal()">Fermer</button>
-        <button type="button" class="btn-primary" id="btn-save-settings">Sauvegarder</button>
-      </div>
     </div>
+  `, `
+    <button type="button" class="btn-cancel" onclick="closeModal()">Fermer</button>
+    <button type="button" class="btn-primary" id="btn-save-settings">Sauvegarder</button>
   `);
 
   document.querySelectorAll('.execution-mode-card').forEach(card => {
@@ -1227,25 +1230,48 @@ function renderAgents() {
 function loadMcps() {
   localState.mcps = [];
 
-  // Load global MCPs from ~/.claude/settings.json
+  // Load global MCPs from ~/.claude.json (main Claude Code config)
   try {
-    if (fs.existsSync(claudeSettingsFile)) {
-      const settings = JSON.parse(fs.readFileSync(claudeSettingsFile, 'utf8'));
-      if (settings.mcpServers) {
-        Object.entries(settings.mcpServers).forEach(([name, config]) => {
+    if (fs.existsSync(claudeConfigFile)) {
+      const config = JSON.parse(fs.readFileSync(claudeConfigFile, 'utf8'));
+      if (config.mcpServers) {
+        Object.entries(config.mcpServers).forEach(([name, mcpConfig]) => {
           localState.mcps.push({
             id: `global-${name}`,
             name,
-            command: config.command || '',
-            args: config.args || [],
-            env: config.env || {},
+            command: mcpConfig.command || '',
+            args: mcpConfig.args || [],
+            env: mcpConfig.env || {},
             source: 'global',
             sourceLabel: 'Global'
           });
         });
       }
     }
-  } catch (e) { console.error('Error loading global MCPs:', e); }
+  } catch (e) { console.error('Error loading MCPs from ~/.claude.json:', e); }
+
+  // Also check ~/.claude/settings.json for additional MCPs
+  try {
+    if (fs.existsSync(claudeSettingsFile)) {
+      const settings = JSON.parse(fs.readFileSync(claudeSettingsFile, 'utf8'));
+      if (settings.mcpServers) {
+        Object.entries(settings.mcpServers).forEach(([name, config]) => {
+          // Avoid duplicates
+          if (!localState.mcps.find(m => m.name === name)) {
+            localState.mcps.push({
+              id: `global-${name}`,
+              name,
+              command: config.command || '',
+              args: config.args || [],
+              env: config.env || {},
+              source: 'global',
+              sourceLabel: 'Global'
+            });
+          }
+        });
+      }
+    }
+  } catch (e) { console.error('Error loading MCPs from ~/.claude/settings.json:', e); }
 
   // Load project-specific MCPs from each project's .claude/settings.local.json
   const projects = projectsState.get().projects;
@@ -1991,10 +2017,45 @@ ipcRenderer.invoke('get-app-version').then(version => {
 // ========== USAGE MONITOR ==========
 const usageElements = {
   container: document.getElementById('titlebar-usage'),
-  percent: document.getElementById('usage-percent'),
-  bar: document.getElementById('usage-bar'),
-  status: document.getElementById('usage-status')
+  session: {
+    bar: document.getElementById('usage-bar-session'),
+    percent: document.getElementById('usage-percent-session')
+  },
+  weekly: {
+    bar: document.getElementById('usage-bar-weekly'),
+    percent: document.getElementById('usage-percent-weekly')
+  },
+  sonnet: {
+    bar: document.getElementById('usage-bar-sonnet'),
+    percent: document.getElementById('usage-percent-sonnet')
+  }
 };
+
+/**
+ * Update a single usage bar
+ */
+function updateUsageBar(elements, percent) {
+  if (!elements.bar || !elements.percent) return;
+
+  if (percent === null || percent === undefined) {
+    elements.percent.textContent = '--%';
+    elements.bar.style.width = '0%';
+    elements.bar.classList.remove('warning', 'danger');
+    return;
+  }
+
+  const roundedPercent = Math.round(percent);
+  elements.percent.textContent = `${roundedPercent}%`;
+  elements.bar.style.width = `${Math.min(roundedPercent, 100)}%`;
+
+  // Set color based on usage level
+  elements.bar.classList.remove('warning', 'danger');
+  if (roundedPercent >= 90) {
+    elements.bar.classList.add('danger');
+  } else if (roundedPercent >= 70) {
+    elements.bar.classList.add('warning');
+  }
+}
 
 /**
  * Update usage display with new data
@@ -2005,52 +2066,18 @@ function updateUsageDisplay(usageData) {
   usageElements.container.classList.remove('loading');
 
   if (!usageData || !usageData.data) {
-    usageElements.percent.textContent = '--%';
-    usageElements.bar.style.width = '0%';
-    usageElements.status.textContent = 'Erreur de chargement';
+    updateUsageBar(usageElements.session, null);
+    updateUsageBar(usageElements.weekly, null);
+    updateUsageBar(usageElements.sonnet, null);
     return;
   }
 
   const data = usageData.data;
 
-  // Update percent if available
-  if (data.percent !== undefined) {
-    const percent = Math.round(data.percent);
-    usageElements.percent.textContent = `${percent}%`;
-    usageElements.bar.style.width = `${Math.min(percent, 100)}%`;
-
-    // Set color based on usage level
-    usageElements.bar.classList.remove('warning', 'danger');
-    if (percent >= 90) {
-      usageElements.bar.classList.add('danger');
-    } else if (percent >= 70) {
-      usageElements.bar.classList.add('warning');
-    }
-  } else {
-    usageElements.percent.textContent = '--%';
-    usageElements.bar.style.width = '0%';
-  }
-
-  // Update status text
-  if (data.used !== undefined && data.total !== undefined) {
-    const formatNum = (n) => {
-      if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-      if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
-      return n.toString();
-    };
-    usageElements.status.textContent = `${formatNum(data.used)} / ${formatNum(data.total)} tokens`;
-  } else if (data.raw) {
-    // Try to extract a meaningful status from raw output
-    const lines = data.raw.split('\n').filter(l => l.trim());
-    const usageLine = lines.find(l => l.includes('%') || l.includes('token') || l.includes('usage'));
-    if (usageLine) {
-      usageElements.status.textContent = usageLine.trim().substring(0, 50);
-    } else {
-      usageElements.status.textContent = 'Actualis\u00e9';
-    }
-  } else {
-    usageElements.status.textContent = usageData.lastFetch ? 'Actualis\u00e9' : 'En attente...';
-  }
+  // Update all three usage bars
+  updateUsageBar(usageElements.session, data.session);
+  updateUsageBar(usageElements.weekly, data.weekly);
+  updateUsageBar(usageElements.sonnet, data.sonnet);
 }
 
 /**
@@ -2060,7 +2087,6 @@ async function refreshUsageDisplay() {
   if (!usageElements.container) return;
 
   usageElements.container.classList.add('loading');
-  usageElements.status.textContent = 'Actualisation...';
 
   try {
     const result = await ipcRenderer.invoke('refresh-usage');
@@ -2068,11 +2094,15 @@ async function refreshUsageDisplay() {
       updateUsageDisplay({ data: result.data, lastFetch: new Date().toISOString() });
     } else {
       usageElements.container.classList.remove('loading');
-      usageElements.status.textContent = result.error || 'Erreur';
+      updateUsageBar(usageElements.session, null);
+      updateUsageBar(usageElements.weekly, null);
+      updateUsageBar(usageElements.sonnet, null);
     }
   } catch (error) {
     usageElements.container.classList.remove('loading');
-    usageElements.status.textContent = 'Erreur';
+    updateUsageBar(usageElements.session, null);
+    updateUsageBar(usageElements.weekly, null);
+    updateUsageBar(usageElements.sonnet, null);
     console.error('Usage refresh error:', error);
   }
 }
