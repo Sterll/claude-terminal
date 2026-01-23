@@ -20,6 +20,15 @@ class UpdaterService {
   }
 
   /**
+   * Safely send IPC message to main window
+   */
+  safeSend(channel, data) {
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.send(channel, data);
+    }
+  }
+
+  /**
    * Initialize the auto updater
    */
   initialize() {
@@ -30,43 +39,29 @@ class UpdaterService {
 
     // Handle update available
     autoUpdater.on('update-available', (info) => {
-      this.mainWindow?.webContents.send('update-status', {
-        status: 'available',
-        version: info.version
-      });
+      this.safeSend('update-status', { status: 'available', version: info.version });
     });
 
     // Handle update downloaded
     autoUpdater.on('update-downloaded', (info) => {
-      this.mainWindow?.webContents.send('update-status', {
-        status: 'downloaded',
-        version: info.version
-      });
+      this.safeSend('update-status', { status: 'downloaded', version: info.version });
       // No native dialog - the renderer banner handles the UI
     });
 
     // Handle update not available
     autoUpdater.on('update-not-available', () => {
-      this.mainWindow?.webContents.send('update-status', {
-        status: 'not-available'
-      });
+      this.safeSend('update-status', { status: 'not-available' });
     });
 
     // Handle error
     autoUpdater.on('error', (err) => {
       console.error('Auto-updater error:', err);
-      this.mainWindow?.webContents.send('update-status', {
-        status: 'error',
-        error: err.message
-      });
+      this.safeSend('update-status', { status: 'error', error: err.message });
     });
 
     // Handle download progress
     autoUpdater.on('download-progress', (progressObj) => {
-      this.mainWindow?.webContents.send('update-status', {
-        status: 'downloading',
-        progress: progressObj.percent
-      });
+      this.safeSend('update-status', { status: 'downloading', progress: progressObj.percent });
     });
 
     this.isInitialized = true;
@@ -95,6 +90,9 @@ class UpdaterService {
    * Quit and install update
    */
   quitAndInstall() {
+    // Force quit (bypass minimize to tray)
+    const { setQuitting } = require('../windows/MainWindow');
+    setQuitting(true);
     autoUpdater.quitAndInstall();
   }
 }
