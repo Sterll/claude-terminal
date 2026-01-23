@@ -4,8 +4,9 @@
  */
 
 const fs = require('fs');
+const path = require('path');
 const { State } = require('./State');
-const { projectsFile } = require('../utils/paths');
+const { projectsFile, dataDir } = require('../utils/paths');
 
 // Initial state
 const initialState = {
@@ -108,14 +109,76 @@ function isDescendantOf(folderId, ancestorId) {
 }
 
 /**
+ * Ensure data directory exists
+ */
+function ensureDataDir() {
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+}
+
+/**
+ * Create backup of corrupted file
+ * @param {string} filePath - Path to corrupted file
+ * @returns {string|null} - Backup path or null if failed
+ */
+function createCorruptedBackup(filePath) {
+  try {
+    if (fs.existsSync(filePath)) {
+      const backupPath = `${filePath}.corrupted.${Date.now()}`;
+      fs.copyFileSync(filePath, backupPath);
+      return backupPath;
+    }
+  } catch (e) {
+    console.error('Failed to create backup of corrupted file:', e);
+  }
+  return null;
+}
+
+/**
  * Load projects from file
  */
 function loadProjects() {
   try {
-    if (fs.existsSync(projectsFile)) {
-      const data = JSON.parse(fs.readFileSync(projectsFile, 'utf8'));
-      let needsSave = false;
+    ensureDataDir();
 
+    if (fs.existsSync(projectsFile)) {
+      const rawContent = fs.readFileSync(projectsFile, 'utf8');
+
+      // Check for empty or whitespace-only file
+      if (!rawContent || !rawContent.trim()) {
+        console.warn('Projects file is empty, starting fresh');
+        projectsState.set({ projects: [], folders: [], rootOrder: [] });
+        return;
+      }
+
+      let data;
+      try {
+        data = JSON.parse(rawContent);
+      } catch (parseError) {
+        // JSON is corrupted - create backup and notify
+        console.error('Projects file is corrupted:', parseError);
+        const backupPath = createCorruptedBackup(projectsFile);
+
+        // Show notification to user via IPC (if available)
+        try {
+          const { ipcRenderer } = require('electron');
+          ipcRenderer.send('show-notification', {
+            title: 'Fichier projets corrompu',
+            body: backupPath
+              ? `Un backup a été créé: ${path.basename(backupPath)}`
+              : 'Impossible de créer un backup. Vos projets ont été réinitialisés.'
+          });
+        } catch (ipcError) {
+          // IPC not available, just log
+          console.error('Could not notify user of corruption');
+        }
+
+        projectsState.set({ projects: [], folders: [], rootOrder: [] });
+        return;
+      }
+
+      let needsSave = false;
       let projects, folders, rootOrder;
 
       if (Array.isArray(data)) {
@@ -186,17 +249,71 @@ function loadProjects() {
     }
   } catch (e) {
     console.error('Error loading projects:', e);
+
+    // Create backup before resetting
+    createCorruptedBackup(projectsFile);
+
     projectsState.set({ projects: [], folders: [], rootOrder: [] });
   }
 }
 
+// Debounce timer for save operations
+let saveDebounceTimer = null;
+const SAVE_DEBOUNCE_MS = 500;
+
 /**
- * Save projects to file
+ * Save projects to file (debounced, atomic write)
  */
 function saveProjects() {
+  // Clear existing debounce timer
+  if (saveDebounceTimer) {
+    clearTimeout(saveDebounceTimer);
+  }
+
+  saveDebounceTimer = setTimeout(() => {
+    saveProjectsImmediate();
+  }, SAVE_DEBOUNCE_MS);
+}
+
+/**
+ * Save projects immediately (atomic write pattern)
+ */
+function saveProjectsImmediate() {
   const { folders, projects, rootOrder } = projectsState.get();
   const data = { folders, projects, rootOrder };
-  fs.writeFileSync(projectsFile, JSON.stringify(data, null, 2));
+  const tempFile = `${projectsFile}.tmp`;
+
+  try {
+    ensureDataDir();
+
+    // Write to temporary file first
+    fs.writeFileSync(tempFile, JSON.stringify(data, null, 2));
+
+    // Atomic rename (on most filesystems this is atomic)
+    fs.renameSync(tempFile, projectsFile);
+  } catch (error) {
+    console.error('Failed to save projects:', error);
+
+    // Cleanup temp file if it exists
+    try {
+      if (fs.existsSync(tempFile)) {
+        fs.unlinkSync(tempFile);
+      }
+    } catch (cleanupError) {
+      // Ignore cleanup errors
+    }
+
+    // Try to notify user
+    try {
+      const { ipcRenderer } = require('electron');
+      ipcRenderer.send('show-notification', {
+        title: 'Erreur de sauvegarde',
+        body: `Impossible de sauvegarder les projets: ${error.message}`
+      });
+    } catch (ipcError) {
+      // IPC not available
+    }
+  }
 }
 
 /**
