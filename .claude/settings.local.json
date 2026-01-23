@@ -15,7 +15,9 @@
       "Bash(npm config:*)",
       "Bash(claude config list:*)",
       "Bash(claude --version:*)",
-      "Bash(set)"
+      "Bash(set)",
+      "Skill(full-audit)",
+      "Bash(npm run build:*)"
     ]
   }
 }
