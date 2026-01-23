@@ -20,6 +20,11 @@ const {
   addFivemLog
 } = require('../../state');
 const { escapeHtml } = require('../../utils');
+const {
+  CLAUDE_TERMINAL_THEME,
+  FIVEM_TERMINAL_THEME,
+  TERMINAL_FONTS
+} = require('../themes/terminal-themes');
 
 // Store FiveM console IDs by project index
 const fivemConsoleIds = new Map();
@@ -27,6 +32,50 @@ const fivemConsoleIds = new Map();
 // Anti-spam for paste (Ctrl+Shift+V)
 let lastPasteTime = 0;
 const PASTE_DEBOUNCE_MS = 300;
+
+/**
+ * Create a custom key event handler for terminal shortcuts
+ * @param {Terminal} terminal - The xterm.js terminal instance
+ * @param {string|number} terminalId - Terminal ID for IPC
+ * @param {string} inputChannel - IPC channel for input (default: 'terminal-input')
+ * @returns {Function} Key event handler
+ */
+function createTerminalKeyHandler(terminal, terminalId, inputChannel = 'terminal-input') {
+  return (e) => {
+    // Ctrl+Arrow to switch terminals - let event bubble up
+    if (e.ctrlKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+      return false;
+    }
+    // Ctrl+W to close terminal - let event bubble up to global handler
+    if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'w' && e.type === 'keydown') {
+      return false;
+    }
+    // Ctrl+Shift+C to copy selection
+    if (e.ctrlKey && e.shiftKey && e.key === 'C' && e.type === 'keydown') {
+      const selection = terminal.getSelection();
+      if (selection) {
+        navigator.clipboard.writeText(selection);
+      }
+      return false;
+    }
+    // Ctrl+Shift+V to paste (with anti-spam)
+    if (e.ctrlKey && e.shiftKey && e.key === 'V' && e.type === 'keydown') {
+      const now = Date.now();
+      if (now - lastPasteTime < PASTE_DEBOUNCE_MS) {
+        return false;
+      }
+      lastPasteTime = now;
+      navigator.clipboard.readText().then(text => {
+        if (text) {
+          ipcRenderer.send(inputChannel, { id: terminalId, data: text });
+        }
+      });
+      return false;
+    }
+    // Let xterm handle other keys
+    return true;
+  };
+}
 
 // Callbacks
 let callbacks = {
@@ -155,6 +204,34 @@ function setActiveTerminal(id) {
 }
 
 /**
+ * Clean up terminal resources (IPC handlers, observers)
+ * @param {Object} termData - Terminal data object
+ */
+function cleanupTerminalResources(termData) {
+  if (!termData) return;
+
+  // Remove IPC listeners
+  if (termData.handlers) {
+    if (termData.handlers.dataHandler) {
+      ipcRenderer.removeListener('terminal-data', termData.handlers.dataHandler);
+    }
+    if (termData.handlers.exitHandler) {
+      ipcRenderer.removeListener('terminal-exit', termData.handlers.exitHandler);
+    }
+  }
+
+  // Disconnect ResizeObserver
+  if (termData.resizeObserver) {
+    termData.resizeObserver.disconnect();
+  }
+
+  // Dispose terminal
+  if (termData.terminal) {
+    termData.terminal.dispose();
+  }
+}
+
+/**
  * Close terminal
  */
 function closeTerminal(id) {
@@ -165,7 +242,7 @@ function closeTerminal(id) {
 
   // Kill and cleanup
   ipcRenderer.send('terminal-kill', { id });
-  if (termData && termData.terminal) termData.terminal.dispose();
+  cleanupTerminalResources(termData);
   removeTerminal(id);
   document.querySelector(`.terminal-tab[data-id="${id}"]`)?.remove();
   document.querySelector(`.terminal-wrapper[data-id="${id}"]`)?.remove();
@@ -205,21 +282,31 @@ function closeTerminal(id) {
 async function createTerminal(project, options = {}) {
   const { skipPermissions = false, runClaude = true } = options;
 
-  const id = await ipcRenderer.invoke('terminal-create', {
+  const result = await ipcRenderer.invoke('terminal-create', {
     cwd: project.path,
     runClaude,
     skipPermissions
   });
 
+  // Handle new response format { success, id, error }
+  if (result && typeof result === 'object' && 'success' in result) {
+    if (!result.success) {
+      console.error('Failed to create terminal:', result.error);
+      if (callbacks.onNotification) {
+        callbacks.onNotification('❌ Erreur', result.error || 'Impossible de créer le terminal', null);
+      }
+      return null;
+    }
+    var id = result.id;
+  } else {
+    // Backwards compatibility with old format (just id)
+    var id = result;
+  }
+
   const terminal = new Terminal({
-    theme: {
-      background: '#0d0d0d', foreground: '#e0e0e0', cursor: '#d97706',
-      selection: 'rgba(217, 119, 6, 0.3)', black: '#1a1a1a', red: '#ef4444',
-      green: '#22c55e', yellow: '#f59e0b', blue: '#3b82f6',
-      magenta: '#a855f7', cyan: '#06b6d4', white: '#e0e0e0'
-    },
-    fontFamily: 'Cascadia Code, Consolas, monospace',
-    fontSize: 14,
+    theme: CLAUDE_TERMINAL_THEME,
+    fontFamily: TERMINAL_FONTS.claude.fontFamily,
+    fontSize: TERMINAL_FONTS.claude.fontSize,
     cursorBlink: true
   });
 
@@ -266,40 +353,7 @@ async function createTerminal(project, options = {}) {
   setActiveTerminal(id);
 
   // Custom key handler for global shortcuts and copy/paste
-  terminal.attachCustomKeyEventHandler((e) => {
-    // Ctrl+Arrow to switch terminals - let event bubble up
-    if (e.ctrlKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
-      return false;
-    }
-    // Ctrl+W to close terminal - let event bubble up to global handler
-    if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'w' && e.type === 'keydown') {
-      return false;
-    }
-    // Ctrl+Shift+C to copy selection
-    if (e.ctrlKey && e.shiftKey && e.key === 'C' && e.type === 'keydown') {
-      const selection = terminal.getSelection();
-      if (selection) {
-        navigator.clipboard.writeText(selection);
-      }
-      return false;
-    }
-    // Ctrl+Shift+V to paste (with anti-spam)
-    if (e.ctrlKey && e.shiftKey && e.key === 'V' && e.type === 'keydown') {
-      const now = Date.now();
-      if (now - lastPasteTime < PASTE_DEBOUNCE_MS) {
-        return false;
-      }
-      lastPasteTime = now;
-      navigator.clipboard.readText().then(text => {
-        if (text) {
-          ipcRenderer.send('terminal-input', { id, data: text });
-        }
-      });
-      return false;
-    }
-    // Let xterm handle other keys
-    return true;
-  });
+  terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, id, 'terminal-input'));
 
   // Title change handling
   let lastTitle = '';
@@ -320,6 +374,12 @@ async function createTerminal(project, options = {}) {
   };
   ipcRenderer.on('terminal-data', dataHandler);
   ipcRenderer.on('terminal-exit', exitHandler);
+
+  // Store handlers for cleanup
+  const storedTermData = getTerminal(id);
+  if (storedTermData) {
+    storedTermData.handlers = { dataHandler, exitHandler };
+  }
 
   // Input handling
   terminal.onData(data => {
@@ -349,6 +409,11 @@ async function createTerminal(project, options = {}) {
   });
   resizeObserver.observe(wrapper);
 
+  // Store ResizeObserver for cleanup
+  if (storedTermData) {
+    storedTermData.resizeObserver = resizeObserver;
+  }
+
   // Filter and render
   const selectedFilter = projectsState.get().selectedProjectFilter;
   filterByProject(selectedFilter);
@@ -376,23 +441,9 @@ function createFivemConsole(project, projectIndex, options = {}) {
   const id = `fivem-${projectIndex}-${Date.now()}`;
 
   const terminal = new Terminal({
-    theme: {
-      background: '#0d0d0d',
-      foreground: '#d4d4d4',
-      cursor: '#d4d4d4',
-      cursorAccent: '#0d0d0d',
-      selection: 'rgba(255, 255, 255, 0.2)',
-      black: '#1e1e1e',
-      red: '#f44747',
-      green: '#6a9955',
-      yellow: '#d7ba7d',
-      blue: '#569cd6',
-      magenta: '#c586c0',
-      cyan: '#4ec9b0',
-      white: '#d4d4d4'
-    },
-    fontFamily: 'Consolas, "Courier New", monospace',
-    fontSize: 13,
+    theme: FIVEM_TERMINAL_THEME,
+    fontFamily: TERMINAL_FONTS.fivem.fontFamily,
+    fontSize: TERMINAL_FONTS.fivem.fontSize,
     cursorBlink: false,
     disableStdin: false,
     scrollback: 10000
@@ -446,40 +497,8 @@ function createFivemConsole(project, projectIndex, options = {}) {
   }
 
   // Custom key handler for global shortcuts and copy/paste
-  terminal.attachCustomKeyEventHandler((e) => {
-    // Ctrl+Arrow to switch terminals - let event bubble up
-    if (e.ctrlKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
-      return false;
-    }
-    // Ctrl+W to close terminal - let event bubble up to global handler
-    if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'w' && e.type === 'keydown') {
-      return false;
-    }
-    // Ctrl+Shift+C to copy selection
-    if (e.ctrlKey && e.shiftKey && e.key === 'C' && e.type === 'keydown') {
-      const selection = terminal.getSelection();
-      if (selection) {
-        navigator.clipboard.writeText(selection);
-      }
-      return false;
-    }
-    // Ctrl+Shift+V to paste (with anti-spam)
-    if (e.ctrlKey && e.shiftKey && e.key === 'V' && e.type === 'keydown') {
-      const now = Date.now();
-      if (now - lastPasteTime < PASTE_DEBOUNCE_MS) {
-        return false;
-      }
-      lastPasteTime = now;
-      navigator.clipboard.readText().then(text => {
-        if (text) {
-          ipcRenderer.send('fivem-input', { projectIndex, data: text });
-        }
-      });
-      return false;
-    }
-    // Let xterm handle other keys
-    return true;
-  });
+  // Note: FiveM uses projectIndex as id and 'fivem-input' channel
+  terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, projectIndex, 'fivem-input'));
 
   // Handle input to FiveM console
   terminal.onData(data => {
@@ -496,6 +515,12 @@ function createFivemConsole(project, projectIndex, options = {}) {
     });
   });
   resizeObserver.observe(wrapper);
+
+  // Store ResizeObserver for cleanup
+  const storedFivemTermData = getTerminal(id);
+  if (storedFivemTermData) {
+    storedFivemTermData.resizeObserver = resizeObserver;
+  }
 
   // Send initial size
   ipcRenderer.send('fivem-resize', {
@@ -524,7 +549,8 @@ function closeFivemConsole(id, projectIndex) {
   const termData = getTerminal(id);
   const closedProjectPath = termData?.project?.path;
 
-  if (termData && termData.terminal) termData.terminal.dispose();
+  // Cleanup resources (ResizeObserver, terminal)
+  cleanupTerminalResources(termData);
   removeTerminal(id);
   fivemConsoleIds.delete(projectIndex);
   document.querySelector(`.terminal-tab[data-id="${id}"]`)?.remove();
@@ -586,8 +612,6 @@ function writeFivemConsole(projectIndex, data) {
  * Filter terminals by project
  */
 function filterByProject(projectIndex) {
-  const tabs = document.querySelectorAll('.terminal-tab');
-  const wrappers = document.querySelectorAll('.terminal-wrapper');
   const emptyState = document.getElementById('empty-terminals');
   const filterIndicator = document.getElementById('terminals-filter');
   const filterProjectName = document.getElementById('filter-project-name');
@@ -600,14 +624,25 @@ function filterByProject(projectIndex) {
     filterIndicator.style.display = 'none';
   }
 
+  // Pre-index DOM elements once - O(n) instead of O(n²)
+  const tabsById = new Map();
+  const wrappersById = new Map();
+  document.querySelectorAll('.terminal-tab').forEach(tab => {
+    tabsById.set(tab.dataset.id, tab);
+  });
+  document.querySelectorAll('.terminal-wrapper').forEach(wrapper => {
+    wrappersById.set(wrapper.dataset.id, wrapper);
+  });
+
   let visibleCount = 0;
   let firstVisibleId = null;
+  const project = projects[projectIndex];
 
   const terminals = terminalsState.get().terminals;
   terminals.forEach((termData, id) => {
-    const tab = document.querySelector(`.terminal-tab[data-id="${id}"]`);
-    const wrapper = document.querySelector(`.terminal-wrapper[data-id="${id}"]`);
-    const project = projects[projectIndex];
+    // O(1) lookup instead of O(n) querySelector
+    const tab = tabsById.get(String(id));
+    const wrapper = wrappersById.get(String(id));
     const shouldShow = projectIndex === null || (project && termData.project && termData.project.path === project.path);
 
     if (tab) tab.style.display = shouldShow ? '' : 'none';
@@ -780,22 +815,32 @@ async function renderSessionsPanel(project, emptyState) {
  */
 async function resumeSession(project, sessionId, options = {}) {
   const { skipPermissions = false } = options;
-  const id = await ipcRenderer.invoke('terminal-create', {
+  const result = await ipcRenderer.invoke('terminal-create', {
     cwd: project.path,
     runClaude: true,
     resumeSessionId: sessionId,
     skipPermissions
   });
 
+  // Handle new response format { success, id, error }
+  if (result && typeof result === 'object' && 'success' in result) {
+    if (!result.success) {
+      console.error('Failed to resume session:', result.error);
+      if (callbacks.onNotification) {
+        callbacks.onNotification('❌ Erreur', result.error || 'Impossible de reprendre la session', null);
+      }
+      return null;
+    }
+    var id = result.id;
+  } else {
+    // Backwards compatibility with old format (just id)
+    var id = result;
+  }
+
   const terminal = new Terminal({
-    theme: {
-      background: '#0d0d0d', foreground: '#e0e0e0', cursor: '#d97706',
-      selection: 'rgba(217, 119, 6, 0.3)', black: '#1a1a1a', red: '#ef4444',
-      green: '#22c55e', yellow: '#f59e0b', blue: '#3b82f6',
-      magenta: '#a855f7', cyan: '#06b6d4', white: '#e0e0e0'
-    },
-    fontFamily: 'Cascadia Code, Consolas, monospace',
-    fontSize: 14,
+    theme: CLAUDE_TERMINAL_THEME,
+    fontFamily: TERMINAL_FONTS.claude.fontFamily,
+    fontSize: TERMINAL_FONTS.claude.fontSize,
     cursorBlink: true
   });
 
@@ -841,35 +886,7 @@ async function resumeSession(project, sessionId, options = {}) {
   setActiveTerminal(id);
 
   // Custom key handler for global shortcuts and copy/paste
-  terminal.attachCustomKeyEventHandler((e) => {
-    // Ctrl+Arrow to switch terminals - let event bubble up
-    if (e.ctrlKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
-      return false;
-    }
-    // Ctrl+W to close terminal - let event bubble up to global handler
-    if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'w' && e.type === 'keydown') {
-      return false;
-    }
-    // Ctrl+Shift+C to copy selection
-    if (e.ctrlKey && e.shiftKey && e.key === 'C' && e.type === 'keydown') {
-      const selection = terminal.getSelection();
-      if (selection) navigator.clipboard.writeText(selection);
-      return false;
-    }
-    // Ctrl+Shift+V to paste (with anti-spam)
-    if (e.ctrlKey && e.shiftKey && e.key === 'V' && e.type === 'keydown') {
-      const now = Date.now();
-      if (now - lastPasteTime < PASTE_DEBOUNCE_MS) {
-        return false;
-      }
-      lastPasteTime = now;
-      navigator.clipboard.readText().then(text => {
-        if (text) ipcRenderer.send('terminal-input', { id, data: text });
-      });
-      return false;
-    }
-    return true;
-  });
+  terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, id, 'terminal-input'));
 
   // Title change handling
   let lastTitle = '';
@@ -890,6 +907,12 @@ async function resumeSession(project, sessionId, options = {}) {
   };
   ipcRenderer.on('terminal-data', dataHandler);
   ipcRenderer.on('terminal-exit', exitHandler);
+
+  // Store handlers for cleanup
+  const storedResumeTermData = getTerminal(id);
+  if (storedResumeTermData) {
+    storedResumeTermData.handlers = { dataHandler, exitHandler };
+  }
 
   // Input handling
   terminal.onData(data => {
@@ -915,6 +938,11 @@ async function resumeSession(project, sessionId, options = {}) {
     ipcRenderer.send('terminal-resize', { id, cols: terminal.cols, rows: terminal.rows });
   });
   resizeObserver.observe(wrapper);
+
+  // Store ResizeObserver for cleanup
+  if (storedResumeTermData) {
+    storedResumeTermData.resizeObserver = resizeObserver;
+  }
 
   // Filter and render
   const selectedFilter = projectsState.get().selectedProjectFilter;
