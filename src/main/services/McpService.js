@@ -46,39 +46,34 @@ class McpService {
 
     this.processes.set(id, proc);
 
+    // Helper to safely send IPC messages
+    const safeSend = (channel, data) => {
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send(channel, data);
+      }
+    };
+
     // Handle stdout
     proc.stdout.on('data', (data) => {
-      this.mainWindow?.webContents.send('mcp-output', {
-        id,
-        type: 'stdout',
-        data: data.toString()
-      });
+      safeSend('mcp-output', { id, type: 'stdout', data: data.toString() });
     });
 
     // Handle stderr
     proc.stderr.on('data', (data) => {
-      this.mainWindow?.webContents.send('mcp-output', {
-        id,
-        type: 'stderr',
-        data: data.toString()
-      });
+      safeSend('mcp-output', { id, type: 'stderr', data: data.toString() });
     });
 
     // Handle exit
     proc.on('exit', (code) => {
       this.processes.delete(id);
-      this.mainWindow?.webContents.send('mcp-exit', { id, code: code || 0 });
+      safeSend('mcp-exit', { id, code: code || 0 });
     });
 
     // Handle error
     proc.on('error', (err) => {
-      this.mainWindow?.webContents.send('mcp-output', {
-        id,
-        type: 'stderr',
-        data: `Error: ${err.message}`
-      });
+      safeSend('mcp-output', { id, type: 'stderr', data: `Error: ${err.message}` });
       this.processes.delete(id);
-      this.mainWindow?.webContents.send('mcp-exit', { id, code: 1 });
+      safeSend('mcp-exit', { id, code: 1 });
     });
 
     return { success: true };
