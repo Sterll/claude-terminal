@@ -62,6 +62,11 @@ function initialize() {
     // onExit callback
     (projectIndex, code) => {
       // FiveM server stopped
+    },
+    // onError callback
+    (projectIndex, error) => {
+      // FiveM error detected - show debug button
+      ui.TerminalManager.showFivemErrorOverlay(projectIndex, error);
     }
   );
 

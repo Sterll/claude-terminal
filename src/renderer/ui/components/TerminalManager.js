@@ -17,7 +17,11 @@ const {
   projectsState,
   getProjectIndex,
   getFivemServer,
-  addFivemLog
+  addFivemLog,
+  dismissLastError,
+  getFivemErrors,
+  clearFivemErrors,
+  getSetting
 } = require('../../state');
 const { escapeHtml } = require('../../utils');
 const {
@@ -29,9 +33,20 @@ const {
 // Store FiveM console IDs by project index
 const fivemConsoleIds = new Map();
 
+// Track error overlays by projectIndex
+const errorOverlays = new Map();
+
 // Anti-spam for paste (Ctrl+Shift+V)
 let lastPasteTime = 0;
-const PASTE_DEBOUNCE_MS = 300;
+const PASTE_DEBOUNCE_MS = 500;
+
+// Anti-spam for Ctrl+Arrow navigation
+let lastArrowTime = 0;
+const ARROW_DEBOUNCE_MS = 100;
+
+// Drag & drop state for tab reordering
+let draggedTab = null;
+let dragPlaceholder = null;
 
 /**
  * Create a custom key event handler for terminal shortcuts
@@ -42,12 +57,53 @@ const PASTE_DEBOUNCE_MS = 300;
  */
 function createTerminalKeyHandler(terminal, terminalId, inputChannel = 'terminal-input') {
   return (e) => {
-    // Ctrl+Arrow to switch terminals - let event bubble up
-    if (e.ctrlKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+    // Ctrl+Arrow to switch terminals/projects - handle directly with debounce
+    // xterm.js can trigger the handler multiple times, so we debounce
+    if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.repeat && e.type === 'keydown') {
+      const isArrowKey = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key);
+      if (isArrowKey) {
+        const now = Date.now();
+        if (now - lastArrowTime < ARROW_DEBOUNCE_MS) {
+          return false;
+        }
+        lastArrowTime = now;
+
+        if (e.key === 'ArrowLeft' && callbacks.onSwitchTerminal) {
+          callbacks.onSwitchTerminal('left');
+          return false;
+        }
+        if (e.key === 'ArrowRight' && callbacks.onSwitchTerminal) {
+          callbacks.onSwitchTerminal('right');
+          return false;
+        }
+        if (e.key === 'ArrowUp' && callbacks.onSwitchProject) {
+          callbacks.onSwitchProject('up');
+          return false;
+        }
+        if (e.key === 'ArrowDown' && callbacks.onSwitchProject) {
+          callbacks.onSwitchProject('down');
+          return false;
+        }
+      }
+    }
+    // Ctrl+W to close terminal - let it bubble to global handler
+    if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'w' && e.type === 'keydown') {
       return false;
     }
-    // Ctrl+W to close terminal - let event bubble up to global handler
-    if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'w' && e.type === 'keydown') {
+    // Ctrl+, to open settings - let it bubble to global handler
+    if (e.ctrlKey && !e.shiftKey && e.key === ',' && e.type === 'keydown') {
+      return false;
+    }
+    // Ctrl+Shift+T: New terminal - let it bubble to global handler
+    if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 't' && e.type === 'keydown') {
+      return false;
+    }
+    // Ctrl+Shift+E: Sessions panel - let it bubble to global handler
+    if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'e' && e.type === 'keydown') {
+      return false;
+    }
+    // Ctrl+Shift+P: Quick picker - let it bubble to global handler
+    if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'p' && e.type === 'keydown') {
       return false;
     }
     // Ctrl+Shift+C to copy selection
@@ -81,7 +137,9 @@ function createTerminalKeyHandler(terminal, terminalId, inputChannel = 'terminal
 let callbacks = {
   onNotification: null,
   onRenderProjects: null,
-  onCreateTerminal: null
+  onCreateTerminal: null,
+  onSwitchTerminal: null,  // (direction: 'left'|'right') => void
+  onSwitchProject: null    // (direction: 'up'|'down') => void
 };
 
 // Title extraction
@@ -98,6 +156,75 @@ const TITLE_STOP_WORDS = new Set([
  */
 function setCallbacks(cbs) {
   Object.assign(callbacks, cbs);
+}
+
+/**
+ * Setup drag & drop handlers for a terminal tab
+ * @param {HTMLElement} tab - The tab element
+ */
+function setupTabDragDrop(tab) {
+  tab.draggable = true;
+
+  tab.addEventListener('dragstart', (e) => {
+    draggedTab = tab;
+    tab.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', tab.dataset.id);
+
+    // Create placeholder
+    dragPlaceholder = document.createElement('div');
+    dragPlaceholder.className = 'terminal-tab-placeholder';
+  });
+
+  tab.addEventListener('dragend', () => {
+    tab.classList.remove('dragging');
+    draggedTab = null;
+    if (dragPlaceholder && dragPlaceholder.parentNode) {
+      dragPlaceholder.remove();
+    }
+    dragPlaceholder = null;
+    // Remove all drag-over states
+    document.querySelectorAll('.terminal-tab.drag-over-left, .terminal-tab.drag-over-right').forEach(t => {
+      t.classList.remove('drag-over-left', 'drag-over-right');
+    });
+  });
+
+  tab.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+
+    if (!draggedTab || draggedTab === tab) return;
+
+    const rect = tab.getBoundingClientRect();
+    const midX = rect.left + rect.width / 2;
+    const isLeft = e.clientX < midX;
+
+    // Clear previous states
+    tab.classList.remove('drag-over-left', 'drag-over-right');
+    tab.classList.add(isLeft ? 'drag-over-left' : 'drag-over-right');
+  });
+
+  tab.addEventListener('dragleave', () => {
+    tab.classList.remove('drag-over-left', 'drag-over-right');
+  });
+
+  tab.addEventListener('drop', (e) => {
+    e.preventDefault();
+    tab.classList.remove('drag-over-left', 'drag-over-right');
+
+    if (!draggedTab || draggedTab === tab) return;
+
+    const tabsContainer = document.getElementById('terminals-tabs');
+    const rect = tab.getBoundingClientRect();
+    const midX = rect.left + rect.width / 2;
+    const insertBefore = e.clientX < midX;
+
+    if (insertBefore) {
+      tabsContainer.insertBefore(draggedTab, tab);
+    } else {
+      tabsContainer.insertBefore(draggedTab, tab.nextSibling);
+    }
+  });
 }
 
 /**
@@ -424,6 +551,9 @@ async function createTerminal(project, options = {}) {
   tab.querySelector('.tab-name').ondblclick = (e) => { e.stopPropagation(); startRenameTab(id); };
   tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); closeTerminal(id); };
 
+  // Enable drag & drop reordering
+  setupTabDragDrop(tab);
+
   return id;
 }
 
@@ -460,7 +590,8 @@ function createFivemConsole(project, projectIndex, options = {}) {
     name: `🖥️ ${project.name}`,
     status: 'ready',
     type: 'fivem',
-    inputBuffer: ''
+    inputBuffer: '',
+    activeView: 'console' // 'console' or 'errors'
   };
 
   addTerminal(id, termData);
@@ -477,16 +608,50 @@ function createFivemConsole(project, projectIndex, options = {}) {
     <button class="tab-close"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>`;
   tabsContainer.appendChild(tab);
 
-  // Create wrapper
+  // Create wrapper with internal tabs
   const container = document.getElementById('terminals-container');
   const wrapper = document.createElement('div');
   wrapper.className = 'terminal-wrapper fivem-wrapper';
   wrapper.dataset.id = id;
+
+  // Add internal view switcher
+  wrapper.innerHTML = `
+    <div class="fivem-view-switcher">
+      <button class="fivem-view-tab active" data-view="console">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10z"/></svg>
+        Console
+      </button>
+      <button class="fivem-view-tab" data-view="errors">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+        Erreurs
+        <span class="fivem-error-badge" style="display: none;">0</span>
+      </button>
+    </div>
+    <div class="fivem-view-content">
+      <div class="fivem-console-view"></div>
+      <div class="fivem-errors-view" style="display: none;">
+        <div class="fivem-errors-header">
+          <span>Erreurs detectees</span>
+          <button class="fivem-clear-errors" title="Effacer les erreurs">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+          </button>
+        </div>
+        <div class="fivem-errors-list"></div>
+        <div class="fivem-errors-empty">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+          <span>Aucune erreur detectee</span>
+        </div>
+      </div>
+    </div>
+  `;
+
   container.appendChild(wrapper);
 
   document.getElementById('empty-terminals').style.display = 'none';
 
-  terminal.open(wrapper);
+  // Open terminal in console view container
+  const consoleView = wrapper.querySelector('.fivem-console-view');
+  terminal.open(consoleView);
   setTimeout(() => fitAddon.fit(), 100);
   setActiveTerminal(id);
 
@@ -496,8 +661,13 @@ function createFivemConsole(project, projectIndex, options = {}) {
     terminal.write(server.logs.join(''));
   }
 
+  // Setup view switcher
+  setupFivemViewSwitcher(wrapper, id, projectIndex, project);
+
+  // Update error badge with existing errors
+  updateFivemErrorBadge(wrapper, projectIndex);
+
   // Custom key handler for global shortcuts and copy/paste
-  // Note: FiveM uses projectIndex as id and 'fivem-input' channel
   terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, projectIndex, 'fivem-input'));
 
   // Handle input to FiveM console
@@ -514,7 +684,7 @@ function createFivemConsole(project, projectIndex, options = {}) {
       rows: terminal.rows
     });
   });
-  resizeObserver.observe(wrapper);
+  resizeObserver.observe(consoleView);
 
   // Store ResizeObserver for cleanup
   const storedFivemTermData = getTerminal(id);
@@ -539,7 +709,167 @@ function createFivemConsole(project, projectIndex, options = {}) {
   tab.querySelector('.tab-name').ondblclick = (e) => { e.stopPropagation(); startRenameTab(id); };
   tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); closeFivemConsole(id, projectIndex); };
 
+  // Enable drag & drop reordering
+  setupTabDragDrop(tab);
+
   return id;
+}
+
+/**
+ * Setup FiveM view switcher (Console / Errors)
+ */
+function setupFivemViewSwitcher(wrapper, terminalId, projectIndex, project) {
+  const viewTabs = wrapper.querySelectorAll('.fivem-view-tab');
+  const consoleView = wrapper.querySelector('.fivem-console-view');
+  const errorsView = wrapper.querySelector('.fivem-errors-view');
+  const clearBtn = wrapper.querySelector('.fivem-clear-errors');
+
+  viewTabs.forEach(tab => {
+    tab.onclick = () => {
+      const view = tab.dataset.view;
+      viewTabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+
+      if (view === 'console') {
+        consoleView.style.display = '';
+        errorsView.style.display = 'none';
+        // Refit terminal
+        const termData = getTerminal(terminalId);
+        if (termData) {
+          setTimeout(() => termData.fitAddon.fit(), 50);
+        }
+      } else {
+        consoleView.style.display = 'none';
+        errorsView.style.display = '';
+        renderFivemErrorsList(wrapper, projectIndex, project);
+      }
+
+      // Update state
+      const termData = getTerminal(terminalId);
+      if (termData) {
+        termData.activeView = view;
+      }
+    };
+  });
+
+  // Clear errors button
+  clearBtn.onclick = () => {
+    clearFivemErrors(projectIndex);
+    updateFivemErrorBadge(wrapper, projectIndex);
+    renderFivemErrorsList(wrapper, projectIndex, project);
+  };
+}
+
+/**
+ * Update FiveM error badge count
+ */
+function updateFivemErrorBadge(wrapper, projectIndex) {
+  const badge = wrapper.querySelector('.fivem-error-badge');
+  if (!badge) return;
+
+  const { errors } = getFivemErrors(projectIndex);
+  const count = errors.length;
+
+  if (count > 0) {
+    badge.textContent = count > 99 ? '99+' : count;
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+/**
+ * Render FiveM errors list
+ */
+function renderFivemErrorsList(wrapper, projectIndex, project) {
+  const list = wrapper.querySelector('.fivem-errors-list');
+  const empty = wrapper.querySelector('.fivem-errors-empty');
+  const { errors } = getFivemErrors(projectIndex);
+
+  if (errors.length === 0) {
+    list.style.display = 'none';
+    empty.style.display = 'flex';
+    return;
+  }
+
+  list.style.display = '';
+  empty.style.display = 'none';
+
+  list.innerHTML = errors.map((error, index) => {
+    const time = new Date(error.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const preview = escapeHtml(error.message.split('\n')[0].substring(0, 100));
+
+    return `
+      <div class="fivem-error-item" data-index="${index}">
+        <div class="fivem-error-item-header">
+          <span class="fivem-error-time">${time}</span>
+          <button class="fivem-error-debug-btn" data-index="${index}" title="Debugger avec Claude">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            Debug
+          </button>
+        </div>
+        <div class="fivem-error-preview">${preview}</div>
+        <pre class="fivem-error-detail" style="display: none;">${escapeHtml(error.message)}</pre>
+      </div>
+    `;
+  }).reverse().join(''); // Most recent first
+
+  // Add click handlers
+  list.querySelectorAll('.fivem-error-item').forEach(item => {
+    const detail = item.querySelector('.fivem-error-detail');
+    const preview = item.querySelector('.fivem-error-preview');
+
+    // Toggle detail on click
+    item.onclick = (e) => {
+      if (e.target.closest('.fivem-error-debug-btn')) return;
+      const isExpanded = detail.style.display !== 'none';
+      detail.style.display = isExpanded ? 'none' : 'block';
+      preview.style.display = isExpanded ? '' : 'none';
+      item.classList.toggle('expanded', !isExpanded);
+    };
+  });
+
+  // Debug buttons
+  list.querySelectorAll('.fivem-error-debug-btn').forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const index = parseInt(btn.dataset.index);
+      const error = errors[index];
+      if (error && project) {
+        const prompt = buildDebugPrompt(error);
+        await createTerminalWithPrompt(project, prompt);
+      }
+    };
+  });
+}
+
+/**
+ * Add error to FiveM console and update UI
+ */
+function addFivemErrorToConsole(projectIndex, error) {
+  const consoleId = fivemConsoleIds.get(projectIndex);
+  if (!consoleId) return;
+
+  const wrapper = document.querySelector(`.terminal-wrapper[data-id="${consoleId}"]`);
+  if (!wrapper) return;
+
+  // Update badge
+  updateFivemErrorBadge(wrapper, projectIndex);
+
+  // If errors view is active, refresh the list
+  const termData = getTerminal(consoleId);
+  if (termData && termData.activeView === 'errors') {
+    renderFivemErrorsList(wrapper, projectIndex, termData.project);
+  }
+
+  // Flash the errors tab to indicate new error
+  const errorsTab = wrapper.querySelector('.fivem-view-tab[data-view="errors"]');
+  if (errorsTab && termData?.activeView !== 'errors') {
+    errorsTab.classList.add('has-new-error');
+    setTimeout(() => errorsTab.classList.remove('has-new-error'), 2000);
+  }
 }
 
 /**
@@ -788,7 +1118,8 @@ async function renderSessionsPanel(project, emptyState) {
     emptyState.querySelectorAll('.session-card').forEach(card => {
       card.onclick = () => {
         const sessionId = card.dataset.sessionId;
-        resumeSession(project, sessionId);
+        const skipPermissions = getSetting('skipPermissions') || false;
+        resumeSession(project, sessionId, { skipPermissions });
       };
     });
 
@@ -954,6 +1285,273 @@ async function resumeSession(project, sessionId, options = {}) {
   tab.querySelector('.tab-name').ondblclick = (e) => { e.stopPropagation(); startRenameTab(id); };
   tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); closeTerminal(id); };
 
+  // Enable drag & drop reordering
+  setupTabDragDrop(tab);
+
+  return id;
+}
+
+/**
+ * Show FiveM error overlay with debug button
+ * @param {number} projectIndex
+ * @param {Object} error - Error object { timestamp, message, context }
+ */
+function showFivemErrorOverlay(projectIndex, error) {
+  const consoleId = fivemConsoleIds.get(projectIndex);
+  if (!consoleId) return;
+
+  const wrapper = document.querySelector(`.terminal-wrapper[data-id="${consoleId}"]`);
+  if (!wrapper) return;
+
+  // Remove existing overlay if any
+  const existing = wrapper.querySelector('.fivem-error-overlay');
+  if (existing) existing.remove();
+
+  // Create overlay
+  const overlay = document.createElement('div');
+  overlay.className = 'fivem-error-overlay';
+  overlay.innerHTML = `
+    <div class="fivem-error-content">
+      <span class="fivem-error-icon">⚠️</span>
+      <span class="fivem-error-text">Erreur detectee</span>
+      <button class="fivem-debug-btn" title="Debugger avec Claude">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+        Debug avec Claude
+      </button>
+      <button class="fivem-error-dismiss" title="Fermer">
+        <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+      </button>
+    </div>
+  `;
+
+  wrapper.appendChild(overlay);
+  errorOverlays.set(projectIndex, overlay);
+
+  // Get project info
+  const projects = projectsState.get().projects;
+  const project = projects[projectIndex];
+
+  // Debug button click - open Claude terminal with error
+  overlay.querySelector('.fivem-debug-btn').onclick = async () => {
+    if (!project) return;
+
+    // Create the debug prompt
+    const prompt = buildDebugPrompt(error);
+
+    // Create a new Claude terminal
+    const terminalId = await createTerminalWithPrompt(project, prompt);
+
+    // Hide the overlay after opening
+    hideErrorOverlay(projectIndex);
+  };
+
+  // Dismiss button
+  overlay.querySelector('.fivem-error-dismiss').onclick = () => {
+    hideErrorOverlay(projectIndex);
+  };
+
+  // Auto-hide after 30 seconds
+  setTimeout(() => {
+    hideErrorOverlay(projectIndex);
+  }, 30000);
+}
+
+/**
+ * Build debug prompt from error
+ * @param {Object} error
+ * @returns {string}
+ */
+function buildDebugPrompt(error) {
+  let prompt = `J'ai cette erreur FiveM/Lua, aide-moi a la resoudre :\n\n`;
+  prompt += '```\n';
+  prompt += error.message;
+  prompt += '\n```\n';
+
+  if (error.context && error.context !== error.message) {
+    prompt += `\nContexte (logs precedents) :\n`;
+    prompt += '```\n';
+    prompt += error.context;
+    prompt += '\n```';
+  }
+
+  return prompt;
+}
+
+/**
+ * Hide error overlay for a project
+ * @param {number} projectIndex
+ */
+function hideErrorOverlay(projectIndex) {
+  const overlay = errorOverlays.get(projectIndex);
+  if (overlay) {
+    overlay.classList.add('hiding');
+    setTimeout(() => {
+      overlay.remove();
+      errorOverlays.delete(projectIndex);
+    }, 300);
+  }
+  dismissLastError(projectIndex);
+}
+
+/**
+ * Create a terminal with a pre-filled prompt
+ * @param {Object} project
+ * @param {string} prompt - The prompt to send after terminal is ready
+ * @returns {Promise<string>} Terminal ID
+ */
+async function createTerminalWithPrompt(project, prompt) {
+  const result = await ipcRenderer.invoke('terminal-create', {
+    cwd: project.path,
+    runClaude: true,
+    skipPermissions: false
+  });
+
+  if (result && typeof result === 'object' && 'success' in result) {
+    if (!result.success) {
+      console.error('Failed to create terminal:', result.error);
+      return null;
+    }
+    var id = result.id;
+  } else {
+    var id = result;
+  }
+
+  const terminal = new Terminal({
+    theme: CLAUDE_TERMINAL_THEME,
+    fontFamily: TERMINAL_FONTS.claude.fontFamily,
+    fontSize: TERMINAL_FONTS.claude.fontSize,
+    cursorBlink: true
+  });
+
+  const fitAddon = new FitAddon();
+  terminal.loadAddon(fitAddon);
+
+  const projectIndex = getProjectIndex(project.id);
+  const termData = {
+    terminal,
+    fitAddon,
+    project,
+    projectIndex,
+    name: '🐛 Debug',
+    status: 'working',
+    inputBuffer: '',
+    isBasic: false,
+    pendingPrompt: prompt // Store the prompt to send when ready
+  };
+
+  addTerminal(id, termData);
+
+  // Create tab
+  const tabsContainer = document.getElementById('terminals-tabs');
+  const tab = document.createElement('div');
+  tab.className = 'terminal-tab status-working';
+  tab.dataset.id = id;
+  tab.innerHTML = `
+    <span class="status-dot"></span>
+    <span class="tab-name">${escapeHtml('🐛 Debug')}</span>
+    <button class="tab-close"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>`;
+  tabsContainer.appendChild(tab);
+
+  // Create wrapper
+  const container = document.getElementById('terminals-container');
+  const wrapper = document.createElement('div');
+  wrapper.className = 'terminal-wrapper';
+  wrapper.dataset.id = id;
+  container.appendChild(wrapper);
+
+  document.getElementById('empty-terminals').style.display = 'none';
+
+  terminal.open(wrapper);
+  setTimeout(() => fitAddon.fit(), 100);
+  setActiveTerminal(id);
+
+  // Custom key handler
+  terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, id, 'terminal-input'));
+
+  // Title change handling - detect when Claude is ready
+  let lastTitle = '';
+  let promptSent = false;
+  terminal.onTitleChange(title => {
+    if (title === lastTitle) return;
+    lastTitle = title;
+    const spinnerChars = /[⠂⠄⠆⠇⠋⠙⠹⠸⠼⠴⠦⠧⠏]/;
+    if (title.includes('✳')) {
+      updateTerminalStatus(id, 'ready');
+      // Send the pending prompt when Claude is ready
+      const td = getTerminal(id);
+      if (td && td.pendingPrompt && !promptSent) {
+        promptSent = true;
+        setTimeout(() => {
+          ipcRenderer.send('terminal-input', { id, data: td.pendingPrompt + '\r' });
+          updateTerminal(id, { pendingPrompt: null });
+          updateTerminalStatus(id, 'working');
+        }, 500);
+      }
+    } else if (spinnerChars.test(title)) {
+      updateTerminalStatus(id, 'working');
+    }
+  });
+
+  // IPC handlers
+  const dataHandler = (event, data) => {
+    if (data.id === id) terminal.write(data.data);
+  };
+  const exitHandler = (event, data) => {
+    if (data.id === id) closeTerminal(id);
+  };
+  ipcRenderer.on('terminal-data', dataHandler);
+  ipcRenderer.on('terminal-exit', exitHandler);
+
+  // Store handlers for cleanup
+  const storedTermData = getTerminal(id);
+  if (storedTermData) {
+    storedTermData.handlers = { dataHandler, exitHandler };
+  }
+
+  // Input handling
+  terminal.onData(data => {
+    ipcRenderer.send('terminal-input', { id, data });
+    const td = getTerminal(id);
+    if (data === '\r' || data === '\n') {
+      updateTerminalStatus(id, 'working');
+      if (td && td.inputBuffer.trim().length > 0) {
+        const title = extractTitleFromInput(td.inputBuffer);
+        if (title) updateTerminalTabName(id, title);
+        updateTerminal(id, { inputBuffer: '' });
+      }
+    } else if (data === '\x7f' || data === '\b') {
+      if (td) updateTerminal(id, { inputBuffer: td.inputBuffer.slice(0, -1) });
+    } else if (data.length === 1 && data.charCodeAt(0) >= 32) {
+      if (td) updateTerminal(id, { inputBuffer: td.inputBuffer + data });
+    }
+  });
+
+  // Resize handling
+  const resizeObserver = new ResizeObserver(() => {
+    fitAddon.fit();
+    ipcRenderer.send('terminal-resize', { id, cols: terminal.cols, rows: terminal.rows });
+  });
+  resizeObserver.observe(wrapper);
+
+  if (storedTermData) {
+    storedTermData.resizeObserver = resizeObserver;
+  }
+
+  // Filter and render
+  const selectedFilter = projectsState.get().selectedProjectFilter;
+  filterByProject(selectedFilter);
+  if (callbacks.onRenderProjects) callbacks.onRenderProjects();
+
+  // Tab events
+  tab.onclick = (e) => { if (!e.target.closest('.tab-close') && !e.target.closest('.tab-name-input')) setActiveTerminal(id); };
+  tab.querySelector('.tab-name').ondblclick = (e) => { e.stopPropagation(); startRenameTab(id); };
+  tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); closeTerminal(id); };
+
+  // Enable drag & drop reordering
+  setupTabDragDrop(tab);
+
   return id;
 }
 
@@ -971,5 +1569,9 @@ module.exports = {
   createFivemConsole,
   closeFivemConsole,
   getFivemConsoleTerminal,
-  writeFivemConsole
+  writeFivemConsole,
+  // FiveM error handling
+  addFivemErrorToConsole,
+  showFivemErrorOverlay,
+  hideErrorOverlay
 };
