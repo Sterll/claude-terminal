@@ -8,6 +8,7 @@ const { State } = require('./State');
 // Initial state
 const initialState = {
   fivemServers: new Map(), // projectIndex -> { status, logs[] }
+  fivemErrors: new Map(), // projectIndex -> { errors: [{ timestamp, message, context }], lastError: null }
   gitOperations: new Map(), // projectId -> { pulling, pushing, lastResult }
   gitRepoStatus: new Map() // projectId -> { isGitRepo }
 };
@@ -96,6 +97,101 @@ function removeFivemServer(projectIndex) {
   const servers = fivemState.get().fivemServers;
   servers.delete(projectIndex);
   fivemState.setProp('fivemServers', servers);
+}
+
+// ========== FiveM Errors ==========
+
+// Error patterns for FiveM/Lua
+const FIVEM_ERROR_PATTERNS = [
+  /SCRIPT ERROR:/i,
+  /Error loading script/i,
+  /Error running/i,
+  /stack traceback:/i,
+  /attempt to call/i,
+  /attempt to index/i,
+  /attempt to compare/i,
+  /attempt to concatenate/i,
+  /attempt to perform arithmetic/i,
+  /bad argument/i,
+  /module .* not found/i,
+  /syntax error/i,
+  /unexpected symbol/i,
+  /FATAL ERROR/i,
+  /\[ERROR\]/i,
+  /lua_run failed/i
+];
+
+/**
+ * Check if text contains a FiveM error
+ * @param {string} text
+ * @returns {boolean}
+ */
+function containsFivemError(text) {
+  return FIVEM_ERROR_PATTERNS.some(pattern => pattern.test(text));
+}
+
+/**
+ * Get FiveM errors for a project
+ * @param {number} projectIndex
+ * @returns {Object}
+ */
+function getFivemErrors(projectIndex) {
+  return fivemState.get().fivemErrors.get(projectIndex) || {
+    errors: [],
+    lastError: null
+  };
+}
+
+/**
+ * Add a FiveM error
+ * @param {number} projectIndex
+ * @param {string} errorMessage - The error message
+ * @param {string} context - Surrounding context (previous lines)
+ */
+function addFivemError(projectIndex, errorMessage, context) {
+  const errorsMap = fivemState.get().fivemErrors;
+  const current = errorsMap.get(projectIndex) || { errors: [], lastError: null };
+
+  const newError = {
+    timestamp: Date.now(),
+    message: errorMessage,
+    context: context
+  };
+
+  // Keep last 10 errors
+  const errors = [...current.errors, newError].slice(-10);
+
+  errorsMap.set(projectIndex, {
+    errors,
+    lastError: newError
+  });
+
+  fivemState.setProp('fivemErrors', errorsMap);
+
+  return newError;
+}
+
+/**
+ * Clear FiveM errors for a project
+ * @param {number} projectIndex
+ */
+function clearFivemErrors(projectIndex) {
+  const errorsMap = fivemState.get().fivemErrors;
+  errorsMap.set(projectIndex, { errors: [], lastError: null });
+  fivemState.setProp('fivemErrors', errorsMap);
+}
+
+/**
+ * Dismiss the last error (hide the debug button)
+ * @param {number} projectIndex
+ */
+function dismissLastError(projectIndex) {
+  const errorsMap = fivemState.get().fivemErrors;
+  const current = errorsMap.get(projectIndex);
+  if (current) {
+    errorsMap.set(projectIndex, { ...current, lastError: null });
+    fivemState.setProp('fivemErrors', errorsMap);
+  }
 }
 
 // ========== Git Operations ==========
@@ -193,6 +289,13 @@ module.exports = {
   clearFivemLogs,
   initFivemServer,
   removeFivemServer,
+  // FiveM errors
+  containsFivemError,
+  getFivemErrors,
+  addFivemError,
+  clearFivemErrors,
+  dismissLastError,
+  // Git operations
   getGitOperation,
   setGitPulling,
   setGitPushing,

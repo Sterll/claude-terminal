@@ -65,13 +65,17 @@ class FivemService {
 
     // Handle data output
     ptyProcess.onData(data => {
-      this.mainWindow?.webContents.send('fivem-data', { projectIndex, data });
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send('fivem-data', { projectIndex, data });
+      }
     });
 
     // Handle exit
     ptyProcess.onExit(({ exitCode }) => {
       this.processes.delete(projectIndex);
-      this.mainWindow?.webContents.send('fivem-exit', { projectIndex, code: exitCode });
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send('fivem-exit', { projectIndex, code: exitCode });
+      }
     });
 
     return { success: true };
