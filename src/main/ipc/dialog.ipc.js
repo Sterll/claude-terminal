@@ -33,6 +33,13 @@ function registerDialogHandlers() {
   });
   ipcMain.on('window-close', () => mainWindow?.close());
 
+  // Force quit application (bypass minimize to tray)
+  ipcMain.on('app-quit', () => {
+    const { setQuitting } = require('../windows/MainWindow');
+    setQuitting(true);
+    app.quit();
+  });
+
   // Dynamic window title
   ipcMain.on('set-window-title', (event, title) => {
     if (mainWindow) {

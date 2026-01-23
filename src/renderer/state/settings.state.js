@@ -13,7 +13,8 @@ const defaultSettings = {
   shortcut: 'Ctrl+Shift+P',
   skipPermissions: false,
   accentColor: '#d97706',
-  notificationsEnabled: true
+  notificationsEnabled: true,
+  closeAction: 'ask' // 'ask', 'minimize', 'quit'
 };
 
 const settingsState = new State({ ...defaultSettings });
