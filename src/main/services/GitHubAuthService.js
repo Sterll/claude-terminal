@@ -48,6 +48,8 @@ function httpsRequest(options, postData = null) {
 async function startDeviceFlow() {
   const postData = `client_id=${GITHUB_CLIENT_ID}&scope=repo`;
 
+  console.log('[GitHubAuth] Starting device flow with client_id:', GITHUB_CLIENT_ID);
+
   const response = await httpsRequest({
     hostname: 'github.com',
     path: '/login/device/code',
@@ -59,8 +61,10 @@ async function startDeviceFlow() {
     }
   }, postData);
 
+  console.log('[GitHubAuth] Response status:', response.status, 'data:', response.data);
+
   if (response.status !== 200) {
-    throw new Error(response.data.error_description || 'Failed to start device flow');
+    throw new Error(response.data.error_description || response.data.error || `GitHub API error: ${response.status}`);
   }
 
   return response.data;

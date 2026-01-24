@@ -15,10 +15,13 @@ const pollingSessions = new Map();
 function registerGitHubHandlers() {
   // Start device flow
   ipcMain.handle('github-start-auth', async () => {
+    console.log('[GitHub IPC] github-start-auth called');
     try {
       const deviceFlow = await GitHubAuthService.startDeviceFlow();
+      console.log('[GitHub IPC] Device flow started:', deviceFlow);
       return { success: true, ...deviceFlow };
     } catch (e) {
+      console.error('[GitHub IPC] Error starting device flow:', e);
       return { success: false, error: e.message };
     }
   });
