@@ -1156,7 +1156,8 @@ function showCloseDialog() {
       </div>
       <label class="close-dialog-remember">
         <input type="checkbox" id="close-remember">
-        <span>Se souvenir de mon choix</span>
+        <span class="close-dialog-toggle"></span>
+        <span class="close-dialog-remember-text">Se souvenir de mon choix</span>
       </label>
     </div>
   `;
