@@ -55,6 +55,30 @@ let draggedTab = null;
 let dragPlaceholder = null;
 
 /**
+ * Setup paste handler to prevent double-paste issue
+ * xterm.js + Electron can trigger paste twice, so we handle it manually
+ * @param {HTMLElement} wrapper - Terminal wrapper element
+ * @param {string|number} terminalId - Terminal ID for IPC
+ * @param {string} inputChannel - IPC channel for input
+ */
+function setupPasteHandler(wrapper, terminalId, inputChannel = 'terminal-input') {
+  wrapper.addEventListener('paste', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const now = Date.now();
+    if (now - lastPasteTime < PASTE_DEBOUNCE_MS) {
+      return;
+    }
+    lastPasteTime = now;
+    navigator.clipboard.readText().then(text => {
+      if (text) {
+        ipcRenderer.send(inputChannel, { id: terminalId, data: text });
+      }
+    });
+  }, true);
+}
+
+/**
  * Create a custom key event handler for terminal shortcuts
  * @param {Terminal} terminal - The xterm.js terminal instance
  * @param {string|number} terminalId - Terminal ID for IPC
@@ -506,6 +530,9 @@ async function createTerminal(project, options = {}) {
   setTimeout(() => fitAddon.fit(), 100);
   setActiveTerminal(id);
 
+  // Prevent double-paste issue
+  setupPasteHandler(wrapper, id, 'terminal-input');
+
   // Custom key handler for global shortcuts and copy/paste
   terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, id, 'terminal-input'));
 
@@ -692,6 +719,9 @@ function createFivemConsole(project, projectIndex, options = {}) {
   terminal.open(consoleView);
   setTimeout(() => fitAddon.fit(), 100);
   setActiveTerminal(id);
+
+  // Prevent double-paste issue
+  setupPasteHandler(consoleView, projectIndex, 'fivem-input');
 
   // Write existing logs
   const server = getFivemServer(projectIndex);
@@ -1258,6 +1288,9 @@ async function resumeSession(project, sessionId, options = {}) {
   setTimeout(() => fitAddon.fit(), 100);
   setActiveTerminal(id);
 
+  // Prevent double-paste issue
+  setupPasteHandler(wrapper, id, 'terminal-input');
+
   // Custom key handler for global shortcuts and copy/paste
   terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, id, 'terminal-input'));
 
@@ -1516,6 +1549,9 @@ async function createTerminalWithPrompt(project, prompt) {
   terminal.open(wrapper);
   setTimeout(() => fitAddon.fit(), 100);
   setActiveTerminal(id);
+
+  // Prevent double-paste issue
+  setupPasteHandler(wrapper, id, 'terminal-input');
 
   // Custom key handler
   terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, id, 'terminal-input'));
