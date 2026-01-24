@@ -32,7 +32,8 @@ const { escapeHtml } = require('../../utils');
 const {
   CLAUDE_TERMINAL_THEME,
   FIVEM_TERMINAL_THEME,
-  TERMINAL_FONTS
+  TERMINAL_FONTS,
+  getTerminalTheme
 } = require('../themes/terminal-themes');
 
 // Store FiveM console IDs by project index
@@ -452,8 +453,9 @@ async function createTerminal(project, options = {}) {
     var id = result;
   }
 
+  const terminalThemeId = getSetting('terminalTheme') || 'claude';
   const terminal = new Terminal({
-    theme: CLAUDE_TERMINAL_THEME,
+    theme: getTerminalTheme(terminalThemeId),
     fontFamily: TERMINAL_FONTS.claude.fontFamily,
     fontSize: TERMINAL_FONTS.claude.fontSize,
     cursorBlink: true
@@ -601,8 +603,9 @@ function createFivemConsole(project, projectIndex, options = {}) {
 
   const id = `fivem-${projectIndex}-${Date.now()}`;
 
+  const fivemThemeId = getSetting('terminalTheme') || 'claude';
   const terminal = new Terminal({
-    theme: FIVEM_TERMINAL_THEME,
+    theme: getTerminalTheme(fivemThemeId),
     fontFamily: TERMINAL_FONTS.fivem.fontFamily,
     fontSize: TERMINAL_FONTS.fivem.fontSize,
     cursorBlink: false,
@@ -1202,8 +1205,9 @@ async function resumeSession(project, sessionId, options = {}) {
     var id = result;
   }
 
+  const terminalThemeId = getSetting('terminalTheme') || 'claude';
   const terminal = new Terminal({
-    theme: CLAUDE_TERMINAL_THEME,
+    theme: getTerminalTheme(terminalThemeId),
     fontFamily: TERMINAL_FONTS.claude.fontFamily,
     fontSize: TERMINAL_FONTS.claude.fontSize,
     cursorBlink: true
@@ -1461,8 +1465,9 @@ async function createTerminalWithPrompt(project, prompt) {
     var id = result;
   }
 
+  const terminalThemeId = getSetting('terminalTheme') || 'claude';
   const terminal = new Terminal({
-    theme: CLAUDE_TERMINAL_THEME,
+    theme: getTerminalTheme(terminalThemeId),
     fontFamily: TERMINAL_FONTS.claude.fontFamily,
     fontSize: TERMINAL_FONTS.claude.fontSize,
     cursorBlink: true
@@ -1598,6 +1603,83 @@ async function createTerminalWithPrompt(project, prompt) {
   return id;
 }
 
+/**
+ * Update theme for all existing terminals
+ * @param {string} themeId - Theme identifier
+ */
+function updateAllTerminalsTheme(themeId) {
+  const theme = getTerminalTheme(themeId);
+  const terminals = terminalsState.get();
+
+  terminals.forEach(termData => {
+    if (termData.terminal && termData.terminal.options) {
+      termData.terminal.options.theme = theme;
+    }
+  });
+}
+
+/**
+ * Get list of visible terminal IDs based on current project filter
+ * @returns {Array} Array of terminal IDs
+ */
+function getVisibleTerminalIds() {
+  const allTerminals = terminalsState.get().terminals;
+  const currentFilter = projectsState.get().selectedProjectFilter;
+  const projects = projectsState.get().projects;
+  const filterProject = projects[currentFilter];
+
+  const visibleTerminals = [];
+  allTerminals.forEach((termData, id) => {
+    const isVisible = currentFilter === null ||
+      (filterProject && termData.project && termData.project.path === filterProject.path);
+    if (isVisible) {
+      visibleTerminals.push(id);
+    }
+  });
+
+  return visibleTerminals;
+}
+
+/**
+ * Focus the next terminal in the list
+ */
+function focusNextTerminal() {
+  const visibleTerminals = getVisibleTerminalIds();
+  if (visibleTerminals.length === 0) return;
+
+  const currentId = terminalsState.get().activeTerminal;
+  const currentIndex = visibleTerminals.indexOf(currentId);
+
+  let targetIndex;
+  if (currentIndex === -1) {
+    targetIndex = 0;
+  } else {
+    targetIndex = (currentIndex + 1) % visibleTerminals.length;
+  }
+
+  setActiveTerminal(visibleTerminals[targetIndex]);
+}
+
+/**
+ * Focus the previous terminal in the list
+ */
+function focusPrevTerminal() {
+  const visibleTerminals = getVisibleTerminalIds();
+  if (visibleTerminals.length === 0) return;
+
+  const currentId = terminalsState.get().activeTerminal;
+  const currentIndex = visibleTerminals.indexOf(currentId);
+
+  let targetIndex;
+  if (currentIndex === -1) {
+    targetIndex = 0;
+  } else {
+    targetIndex = (currentIndex - 1 + visibleTerminals.length) % visibleTerminals.length;
+  }
+
+  setActiveTerminal(visibleTerminals[targetIndex]);
+}
+
 module.exports = {
   createTerminal,
   closeTerminal,
@@ -1608,6 +1690,10 @@ module.exports = {
   setCallbacks,
   updateTerminalStatus,
   resumeSession,
+  updateAllTerminalsTheme,
+  // Terminal navigation
+  focusNextTerminal,
+  focusPrevTerminal,
   // FiveM console functions
   createFivemConsole,
   closeFivemConsole,
