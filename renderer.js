@@ -61,6 +61,7 @@ const {
 
   // i18n
   t,
+  initI18n,
   setLanguage,
   getCurrentLanguage,
   getAvailableLanguages,
@@ -443,6 +444,7 @@ function registerAllShortcuts() {
 // ========== INITIALIZATION ==========
 ensureDirectories();
 initializeState(); // This loads settings, projects AND initializes time tracking
+initI18n(settingsState.get().language); // Initialize i18n with saved language preference
 applyAccentColor(settingsState.get().accentColor || '#d97706');
 
 // ========== NOTIFICATIONS ==========
