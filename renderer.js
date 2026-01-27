@@ -3150,6 +3150,7 @@ const branchDropdown = document.getElementById('branch-dropdown');
 const branchDropdownList = document.getElementById('branch-dropdown-list');
 
 let currentFilterProjectId = null;
+let branchCache = { projectId: null, data: null };
 
 function hideFilterGitActions() {
   filterGitActions.style.display = 'none';
@@ -3189,6 +3190,7 @@ filterBtnPull.onclick = async () => {
   if (!currentFilterProjectId) return;
   filterBtnPull.classList.add('loading');
   await gitPull(currentFilterProjectId);
+  branchCache = { projectId: null, data: null };
   filterBtnPull.classList.remove('loading');
 };
 
@@ -3197,6 +3199,7 @@ filterBtnPush.onclick = async () => {
   if (!currentFilterProjectId) return;
   filterBtnPush.classList.add('loading');
   await gitPush(currentFilterProjectId);
+  branchCache = { projectId: null, data: null };
   filterBtnPush.classList.remove('loading');
 };
 
@@ -3213,18 +3216,29 @@ filterBtnBranch.onclick = async (e) => {
     branchDropdown.classList.add('active');
     filterBtnBranch.classList.add('open');
 
-    // Show loading state
-    branchDropdownList.innerHTML = '<div class="branch-dropdown-loading">Chargement...</div>';
-
     if (!currentFilterProjectId) return;
     const project = getProject(currentFilterProjectId);
     if (!project) return;
 
+    // Use cache if available for this project
+    const useCache = branchCache.projectId === currentFilterProjectId && branchCache.data;
+
+    if (!useCache) {
+      branchDropdownList.innerHTML = '<div class="branch-dropdown-loading">Chargement...</div>';
+    }
+
     try {
-      const [branchesData, currentBranch] = await Promise.all([
-        api.git.branches({ projectPath: project.path }),
-        api.git.currentBranch({ projectPath: project.path })
-      ]);
+      let branchesData, currentBranch;
+      if (useCache) {
+        branchesData = branchCache.data.branchesData;
+        currentBranch = branchCache.data.currentBranch;
+      } else {
+        [branchesData, currentBranch] = await Promise.all([
+          api.git.branches({ projectPath: project.path }),
+          api.git.currentBranch({ projectPath: project.path })
+        ]);
+        branchCache = { projectId: currentFilterProjectId, data: { branchesData, currentBranch } };
+      }
 
       const { local = [], remote = [] } = branchesData;
 
@@ -3235,14 +3249,40 @@ filterBtnBranch.onclick = async (e) => {
 
       let html = '';
 
+      // Header with create branch button
+      html += `<div class="branch-dropdown-header-row">
+        <span>Branches</span>
+        <button class="branch-create-btn" id="branch-create-toggle" title="Nouvelle branche">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+      </div>`;
+
+      // Create branch input (hidden by default)
+      html += `<div class="branch-create-input-row" id="branch-create-row" style="display:none">
+        <input type="text" class="branch-create-input" id="branch-create-input" placeholder="Nom de la branche..." spellcheck="false" />
+        <button class="branch-create-confirm" id="branch-create-confirm" title="Créer">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </button>
+      </div>`;
+
       // Local branches section
       if (local.length > 0) {
         html += '<div class="branch-dropdown-section-title">Branches locales</div>';
-        html += local.map(branch => `
-          <div class="branch-dropdown-item ${branch === currentBranch ? 'current' : ''}" data-branch="${escapeHtml(branch)}">
-            ${branch}
-          </div>
-        `).join('');
+        html += local.map(branch => {
+          const isCurrent = branch === currentBranch;
+          return `
+          <div class="branch-dropdown-item ${isCurrent ? 'current' : ''}" data-branch="${escapeHtml(branch)}">
+            <span class="branch-dropdown-item-name">${escapeHtml(branch)}</span>
+            ${!isCurrent ? `<div class="branch-dropdown-actions">
+              <button class="branch-action-btn branch-merge-btn" data-action="merge" data-branch="${escapeHtml(branch)}" title="Merge dans ${escapeHtml(currentBranch)}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>
+              </button>
+              <button class="branch-action-btn branch-delete-btn" data-action="delete" data-branch="${escapeHtml(branch)}" title="Supprimer la branche">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
+            </div>` : ''}
+          </div>`;
+        }).join('');
       }
 
       // Remote branches section
@@ -3251,16 +3291,126 @@ filterBtnBranch.onclick = async (e) => {
         html += remote.map(branch => `
           <div class="branch-dropdown-item remote" data-branch="${escapeHtml(branch)}" data-remote="true">
             <svg class="branch-remote-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
-            ${branch}
+            <span class="branch-dropdown-item-name">${escapeHtml(branch)}</span>
           </div>
         `).join('');
       }
 
       branchDropdownList.innerHTML = html;
 
-      // Add click handlers
+      // Create branch toggle
+      const createToggle = branchDropdownList.querySelector('#branch-create-toggle');
+      const createRow = branchDropdownList.querySelector('#branch-create-row');
+      const createInput = branchDropdownList.querySelector('#branch-create-input');
+      const createConfirm = branchDropdownList.querySelector('#branch-create-confirm');
+
+      createToggle.onclick = (ev) => {
+        ev.stopPropagation();
+        const visible = createRow.style.display !== 'none';
+        createRow.style.display = visible ? 'none' : 'flex';
+        if (!visible) createInput.focus();
+      };
+
+      const doCreateBranch = async () => {
+        const name = createInput.value.trim();
+        if (!name) return;
+        createConfirm.disabled = true;
+        createInput.disabled = true;
+        const result = await api.git.createBranch({ projectPath: project.path, branch: name });
+        if (result.success) {
+          filterBranchName.textContent = name;
+          branchCache = { projectId: null, data: null };
+          showGitToast({ success: true, title: 'Branche créée', message: `Passé sur ${name}`, duration: 3000 });
+          branchDropdown.classList.remove('active');
+          filterBtnBranch.classList.remove('open');
+          refreshDashboardAsync(currentFilterProjectId);
+        } else {
+          showGitToast({ success: false, title: 'Erreur', message: result.error || 'Impossible de créer la branche', duration: 5000 });
+          createConfirm.disabled = false;
+          createInput.disabled = false;
+        }
+      };
+
+      createConfirm.onclick = (ev) => { ev.stopPropagation(); doCreateBranch(); };
+      createInput.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.stopPropagation(); doCreateBranch(); } };
+      createInput.onclick = (ev) => ev.stopPropagation();
+
+      // Action buttons (merge / delete)
+      branchDropdownList.querySelectorAll('.branch-action-btn').forEach(btn => {
+        btn.onclick = async (ev) => {
+          ev.stopPropagation();
+          const action = btn.dataset.action;
+          const targetBranch = btn.dataset.branch;
+
+          if (action === 'merge') {
+            btn.disabled = true;
+            const result = await api.git.merge({ projectPath: project.path, branch: targetBranch });
+            if (result.success) {
+              branchCache = { projectId: null, data: null };
+              showGitToast({ success: true, title: 'Merge réussi', message: `${targetBranch} mergé dans ${currentBranch}`, duration: 3000 });
+              branchDropdown.classList.remove('active');
+              filterBtnBranch.classList.remove('open');
+              refreshDashboardAsync(currentFilterProjectId);
+            } else {
+              showGitToast({ success: false, title: 'Erreur de merge', message: result.error || 'Merge échoué', duration: 5000 });
+              btn.disabled = false;
+            }
+          }
+
+          if (action === 'delete') {
+            // Confirmation
+            const item = btn.closest('.branch-dropdown-item');
+            const nameSpan = item.querySelector('.branch-dropdown-item-name');
+            const actionsDiv = item.querySelector('.branch-dropdown-actions');
+            actionsDiv.style.display = 'none';
+            nameSpan.innerHTML = `Supprimer <strong>${escapeHtml(targetBranch)}</strong> ?`;
+            item.classList.add('confirm-delete');
+
+            const confirmRow = document.createElement('div');
+            confirmRow.className = 'branch-delete-confirm-row';
+            confirmRow.innerHTML = `
+              <button class="branch-confirm-yes">Supprimer</button>
+              <button class="branch-confirm-no">Annuler</button>
+            `;
+            item.appendChild(confirmRow);
+
+            confirmRow.querySelector('.branch-confirm-yes').onclick = async (e2) => {
+              e2.stopPropagation();
+              const result = await api.git.deleteBranch({ projectPath: project.path, branch: targetBranch });
+              if (result.success) {
+                branchCache = { projectId: null, data: null };
+                showGitToast({ success: true, title: 'Branche supprimée', message: `${targetBranch} supprimée`, duration: 3000 });
+                // Re-render the dropdown
+                item.remove();
+                refreshDashboardAsync(currentFilterProjectId);
+              } else {
+                showGitToast({ success: false, title: 'Erreur', message: result.error || 'Suppression échouée', duration: 5000 });
+                // Restore UI
+                confirmRow.remove();
+                item.classList.remove('confirm-delete');
+                nameSpan.textContent = targetBranch;
+                actionsDiv.style.display = '';
+              }
+            };
+
+            confirmRow.querySelector('.branch-confirm-no').onclick = (e2) => {
+              e2.stopPropagation();
+              confirmRow.remove();
+              item.classList.remove('confirm-delete');
+              nameSpan.textContent = targetBranch;
+              actionsDiv.style.display = '';
+            };
+          }
+        };
+      });
+
+      // Add click handlers for branch checkout
       branchDropdownList.querySelectorAll('.branch-dropdown-item').forEach(item => {
-        item.onclick = async () => {
+        // Only the item name triggers checkout, not action buttons
+        const nameEl = item.querySelector('.branch-dropdown-item-name');
+        if (!nameEl) return;
+        nameEl.onclick = async (ev) => {
+          ev.stopPropagation();
           const branch = item.dataset.branch;
           if (branch === currentBranch) {
             branchDropdown.classList.remove('active');
@@ -3269,7 +3419,7 @@ filterBtnBranch.onclick = async (e) => {
           }
 
           // Show loading
-          item.innerHTML = `<span class="loading-spinner"></span> ${branch}`;
+          nameEl.innerHTML = `<span class="loading-spinner"></span> ${escapeHtml(branch)}`;
 
           const result = await api.git.checkout({
             projectPath: project.path,
@@ -3278,13 +3428,13 @@ filterBtnBranch.onclick = async (e) => {
 
           if (result.success) {
             filterBranchName.textContent = branch;
+            branchCache = { projectId: null, data: null };
             showGitToast({
               success: true,
               title: 'Branche changée',
               message: `Passé sur ${branch}`,
               duration: 3000
             });
-            // Refresh dashboard if open
             refreshDashboardAsync(currentFilterProjectId);
           } else {
             showGitToast({
