@@ -46,18 +46,22 @@ function parseFrontmatter(content) {
  * Load all agents from the agents directory
  * @returns {Array}
  */
-function loadAgents() {
+async function loadAgents() {
   const agents = [];
 
   try {
-    if (fs.existsSync(agentsDir)) {
-      fs.readdirSync(agentsDir).forEach(item => {
-        const itemPath = path.join(agentsDir, item);
-        const stat = fs.statSync(itemPath);
+    await fs.promises.access(agentsDir);
+    const items = await fs.promises.readdir(agentsDir);
+
+    for (const item of items) {
+      const itemPath = path.join(agentsDir, item);
+
+      try {
+        const stat = await fs.promises.stat(itemPath);
 
         // Handle .md files directly in agents directory
         if (stat.isFile() && item.endsWith('.md')) {
-          const content = fs.readFileSync(itemPath, 'utf8');
+          const content = await fs.promises.readFile(itemPath, 'utf8');
           const { metadata } = parseFrontmatter(content);
 
           const id = item.replace(/\.md$/, '');
@@ -73,8 +77,8 @@ function loadAgents() {
         // Also handle subdirectories with AGENT.md (legacy format)
         else if (stat.isDirectory()) {
           const agentFile = path.join(itemPath, 'AGENT.md');
-          if (fs.existsSync(agentFile)) {
-            const content = fs.readFileSync(agentFile, 'utf8');
+          try {
+            const content = await fs.promises.readFile(agentFile, 'utf8');
             const { metadata } = parseFrontmatter(content);
             const nameMatch = content.match(/^#\s+(.+)/m);
 
@@ -86,12 +90,18 @@ function loadAgents() {
               model: metadata.model || 'sonnet',
               path: itemPath
             });
+          } catch {
+            // No AGENT.md in this directory, skip
           }
         }
-      });
+      } catch {
+        // Can't stat, skip
+      }
     }
   } catch (e) {
-    console.error('Error loading agents:', e);
+    if (e.code !== 'ENOENT') {
+      console.error('Error loading agents:', e);
+    }
   }
 
   // Update state
@@ -195,19 +205,19 @@ function getAgentFiles(id) {
  * @param {string} id - Agent ID
  * @returns {boolean}
  */
-function deleteAgent(id) {
+async function deleteAgent(id) {
   const agent = getAgent(id);
   if (!agent) return false;
 
   try {
     if (isAgentFile(agent)) {
       // New format: delete single file
-      fs.unlinkSync(agent.path);
+      await fs.promises.unlink(agent.path);
     } else {
       // Legacy format: remove directory recursively
-      fs.rmSync(agent.path, { recursive: true, force: true });
+      await fs.promises.rm(agent.path, { recursive: true, force: true });
     }
-    loadAgents(); // Reload
+    await loadAgents(); // Reload
     return true;
   } catch (e) {
     console.error('Error deleting agent:', e);

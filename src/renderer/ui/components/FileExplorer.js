@@ -89,13 +89,12 @@ function toggle() {
 }
 
 // ========== FILE SYSTEM ==========
-function readDirectory(dirPath) {
+async function readDirectoryAsync(dirPath) {
   try {
-    if (!fs.existsSync(dirPath)) return [];
+    const exists = await fs.promises.access(dirPath).then(() => true).catch(() => false);
+    if (!exists) return [];
 
-    // Note: don't use { withFileTypes: true } because contextBridge
-    // strips methods from Dirent objects. Use statSync instead.
-    const names = fs.readdirSync(dirPath);
+    const names = await fs.promises.readdir(dirPath);
     const result = [];
     let skipped = 0;
 
@@ -110,7 +109,7 @@ function readDirectory(dirPath) {
 
       try {
         const fullPath = path.join(dirPath, name);
-        const stat = fs.statSync(fullPath);
+        const stat = await fs.promises.stat(fullPath);
         result.push({
           name,
           path: fullPath,
@@ -145,18 +144,23 @@ function readDirectory(dirPath) {
 
 function getOrLoadFolder(folderPath) {
   let entry = expandedFolders.get(folderPath);
-  if (!entry || !entry.loaded) {
-    const children = readDirectory(folderPath);
-    entry = { children, loaded: true };
-    expandedFolders.set(folderPath, entry);
-  }
+  if (entry && entry.loaded) return entry;
+  // Return placeholder synchronously, load async in background
+  entry = { children: [], loaded: false, loading: true };
+  expandedFolders.set(folderPath, entry);
+  readDirectoryAsync(folderPath).then(children => {
+    entry.children = children;
+    entry.loaded = true;
+    entry.loading = false;
+    render();
+  });
   return entry;
 }
 
-function refreshFolder(folderPath) {
+async function refreshFolder(folderPath) {
   const entry = expandedFolders.get(folderPath);
   if (entry) {
-    entry.children = readDirectory(folderPath);
+    entry.children = await readDirectoryAsync(folderPath);
     entry.loaded = true;
   }
 }
@@ -258,7 +262,7 @@ function showFileContextMenu(e, filePath, isDirectory) {
     items.push({
       label: t('fileExplorer.refreshFolder') || 'Refresh',
       icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>',
-      action: () => { refreshFolder(filePath); render(); }
+      action: async () => { await refreshFolder(filePath); render(); }
     });
   } else {
     items.push({
@@ -308,7 +312,7 @@ function showFileContextMenu(e, filePath, isDirectory) {
 }
 
 // ========== FILE OPERATIONS ==========
-function promptNewFile(dirPath) {
+async function promptNewFile(dirPath) {
   const name = prompt(t('fileExplorer.newFilePrompt') || 'File name:');
   if (!name || !name.trim()) return;
 
@@ -322,16 +326,15 @@ function promptNewFile(dirPath) {
 
   try {
     fs.writeFileSync(fullPath, '', 'utf-8');
-    refreshFolder(dirPath);
+    await refreshFolder(dirPath);
     render();
     selectedFile = fullPath;
-    showPreview(fullPath);
   } catch (e) {
     alert(`Error: ${e.message}`);
   }
 }
 
-function promptNewFolder(dirPath) {
+async function promptNewFolder(dirPath) {
   const name = prompt(t('fileExplorer.newFolderPrompt') || 'Folder name:');
   if (!name || !name.trim()) return;
 
@@ -345,14 +348,14 @@ function promptNewFolder(dirPath) {
 
   try {
     fs.mkdirSync(fullPath, { recursive: true });
-    refreshFolder(dirPath);
+    await refreshFolder(dirPath);
     render();
   } catch (e) {
     alert(`Error: ${e.message}`);
   }
 }
 
-function promptRename(filePath, currentName) {
+async function promptRename(filePath, currentName) {
   const newName = prompt(t('fileExplorer.renamePrompt') || 'New name:', currentName);
   if (!newName || !newName.trim() || newName.trim() === currentName) return;
 
@@ -384,7 +387,7 @@ function promptRename(filePath, currentName) {
       selectedFile = newPath;
     }
 
-    refreshFolder(dirPath);
+    await refreshFolder(dirPath);
     render();
   } catch (e) {
     const userMessage = (e.code === 'EBUSY' || e.code === 'EPERM')
@@ -394,7 +397,7 @@ function promptRename(filePath, currentName) {
   }
 }
 
-function promptDelete(filePath, fileName, isDirectory) {
+async function promptDelete(filePath, fileName, isDirectory) {
   const msg = isDirectory
     ? `${t('fileExplorer.deleteFolderConfirm') || 'Delete folder and all contents?'}\n\n${fileName}`
     : `${t('fileExplorer.deleteFileConfirm') || 'Delete file?'}\n\n${fileName}`;
@@ -411,11 +414,10 @@ function promptDelete(filePath, fileName, isDirectory) {
     expandedFolders.delete(filePath);
     if (selectedFile === filePath) {
       selectedFile = null;
-      hidePreview();
     }
 
     const dirPath = path.dirname(filePath);
-    refreshFolder(dirPath);
+    await refreshFolder(dirPath);
     render();
   } catch (e) {
     alert(`Error: ${e.message}`);
@@ -485,12 +487,15 @@ function attachListeners() {
 }
 
 function toggleFolder(folderPath) {
-  if (expandedFolders.has(folderPath) && expandedFolders.get(folderPath).loaded) {
+  const entry = expandedFolders.get(folderPath);
+  if (entry && entry.loaded) {
     expandedFolders.delete(folderPath);
+    render();
   } else {
+    // getOrLoadFolder will trigger render() when async load completes
     getOrLoadFolder(folderPath);
+    render(); // Show loading state immediately
   }
-  render();
 }
 
 function selectFile(filePath) {

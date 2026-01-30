@@ -53,36 +53,48 @@ function parseFrontmatter(content) {
  * @param {string} sourceLabel - Human readable source label
  * @returns {Array}
  */
-function loadSkillsFromDir(dir, source = 'local', sourceLabel = 'Local') {
+async function loadSkillsFromDir(dir, source = 'local', sourceLabel = 'Local') {
   const skills = [];
 
-  if (!fs.existsSync(dir)) return skills;
+  try {
+    await fs.promises.access(dir);
+  } catch {
+    return skills;
+  }
 
   try {
-    fs.readdirSync(dir).forEach(item => {
+    const items = await fs.promises.readdir(dir);
+    for (const item of items) {
       const itemPath = path.join(dir, item);
 
-      if (fs.statSync(itemPath).isDirectory()) {
-        const skillFile = path.join(itemPath, 'SKILL.md');
+      try {
+        const stat = await fs.promises.stat(itemPath);
+        if (stat.isDirectory()) {
+          const skillFile = path.join(itemPath, 'SKILL.md');
 
-        if (fs.existsSync(skillFile)) {
-          const content = fs.readFileSync(skillFile, 'utf8');
-          const { metadata, body } = parseFrontmatter(content);
-          const nameMatch = body.match(/^#\s+(.+)/m);
+          try {
+            const content = await fs.promises.readFile(skillFile, 'utf8');
+            const { metadata, body } = parseFrontmatter(content);
+            const nameMatch = body.match(/^#\s+(.+)/m);
 
-          skills.push({
-            id: `${source}:${item}`,
-            name: metadata.name || (nameMatch ? nameMatch[1] : item),
-            description: metadata.description || t('common.noDescription'),
-            userInvocable: metadata['user-invocable'] === 'true',
-            path: itemPath,
-            source,
-            sourceLabel,
-            isPlugin: source !== 'local'
-          });
+            skills.push({
+              id: `${source}:${item}`,
+              name: metadata.name || (nameMatch ? nameMatch[1] : item),
+              description: metadata.description || t('common.noDescription'),
+              userInvocable: metadata['user-invocable'] === 'true',
+              path: itemPath,
+              source,
+              sourceLabel,
+              isPlugin: source !== 'local'
+            });
+          } catch {
+            // SKILL.md doesn't exist, skip
+          }
         }
+      } catch {
+        // Can't stat, skip
       }
-    });
+    }
   } catch (e) {
     console.error(`Error loading skills from ${dir}:`, e);
   }
@@ -94,36 +106,45 @@ function loadSkillsFromDir(dir, source = 'local', sourceLabel = 'Local') {
  * Load skills from installed plugins
  * @returns {Array}
  */
-function loadPluginSkills() {
+async function loadPluginSkills() {
   const skills = [];
 
-  if (!fs.existsSync(installedPluginsFile)) return skills;
+  try {
+    await fs.promises.access(installedPluginsFile);
+  } catch {
+    return skills;
+  }
 
   try {
-    const installedData = JSON.parse(fs.readFileSync(installedPluginsFile, 'utf8'));
+    const rawData = await fs.promises.readFile(installedPluginsFile, 'utf8');
+    const installedData = JSON.parse(rawData);
     const plugins = installedData.plugins || {};
 
     for (const [pluginKey, installations] of Object.entries(plugins)) {
-      // pluginKey format: "plugin-name@marketplace"
-      const [pluginName, marketplace] = pluginKey.split('@');
+      const [pluginName] = pluginKey.split('@');
 
       for (const install of installations) {
         const installPath = install.installPath;
-        if (!installPath || !fs.existsSync(installPath)) continue;
+        if (!installPath) continue;
+
+        try {
+          await fs.promises.access(installPath);
+        } catch {
+          continue;
+        }
 
         // Load plugin metadata
         let pluginMeta = { name: pluginName };
         const pluginJsonPath = path.join(installPath, '.claude-plugin', 'plugin.json');
-        if (fs.existsSync(pluginJsonPath)) {
-          try {
-            pluginMeta = JSON.parse(fs.readFileSync(pluginJsonPath, 'utf8'));
-          } catch (e) { /* ignore */ }
-        }
+        try {
+          const metaRaw = await fs.promises.readFile(pluginJsonPath, 'utf8');
+          pluginMeta = JSON.parse(metaRaw);
+        } catch { /* ignore */ }
 
         // Load skills from plugin's skills directory
         const pluginSkillsDir = path.join(installPath, 'skills');
         const sourceLabel = pluginMeta.name || pluginName;
-        const pluginSkills = loadSkillsFromDir(pluginSkillsDir, pluginKey, sourceLabel);
+        const pluginSkills = await loadSkillsFromDir(pluginSkillsDir, pluginKey, sourceLabel);
         skills.push(...pluginSkills);
       }
     }
@@ -138,15 +159,15 @@ function loadPluginSkills() {
  * Load all skills from all sources
  * @returns {Array}
  */
-function loadSkills() {
+async function loadSkills() {
   const skills = [];
 
   // Load local skills
-  const localSkills = loadSkillsFromDir(skillsDir, 'local', 'Local');
+  const localSkills = await loadSkillsFromDir(skillsDir, 'local', 'Local');
   skills.push(...localSkills);
 
   // Load plugin skills
-  const pluginSkills = loadPluginSkills();
+  const pluginSkills = await loadPluginSkills();
   skills.push(...pluginSkills);
 
   // Update state
@@ -223,14 +244,14 @@ function getSkillFiles(id) {
  * @param {string} id - Skill ID
  * @returns {boolean}
  */
-function deleteSkill(id) {
+async function deleteSkill(id) {
   const skill = getSkill(id);
   if (!skill) return false;
 
   try {
     // Remove directory recursively
-    fs.rmSync(skill.path, { recursive: true, force: true });
-    loadSkills(); // Reload
+    await fs.promises.rm(skill.path, { recursive: true, force: true });
+    await loadSkills(); // Reload
     return true;
   } catch (e) {
     console.error('Error deleting skill:', e);

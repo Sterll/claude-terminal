@@ -494,13 +494,18 @@ api.notification.onClicked(({ terminalId }) => {
 // ========== GIT STATUS ==========
 async function checkAllProjectsGitStatus() {
   const projects = projectsState.get().projects;
-  for (const project of projects) {
-    try {
-      const result = await api.git.statusQuick({ projectPath: project.path });
-      localState.gitRepoStatus.set(project.id, { isGitRepo: result.isGitRepo });
-    } catch (e) {
-      localState.gitRepoStatus.set(project.id, { isGitRepo: false });
-    }
+  // Check all projects in parallel (batches of 5 to avoid overwhelming IPC)
+  const BATCH_SIZE = 5;
+  for (let i = 0; i < projects.length; i += BATCH_SIZE) {
+    const batch = projects.slice(i, i + BATCH_SIZE);
+    await Promise.all(batch.map(async (project) => {
+      try {
+        const result = await api.git.statusQuick({ projectPath: project.path });
+        localState.gitRepoStatus.set(project.id, { isGitRepo: result.isGitRepo });
+      } catch (e) {
+        localState.gitRepoStatus.set(project.id, { isGitRepo: false });
+      }
+    }));
   }
   ProjectList.render();
 
@@ -1856,16 +1861,19 @@ document.getElementById('modal-close').onclick = closeModal;
 document.getElementById('modal-overlay').onclick = (e) => { if (e.target.id === 'modal-overlay') closeModal(); };
 
 // ========== SKILLS & AGENTS ==========
-function loadSkills() {
+async function loadSkills() {
   localState.skills = [];
   try {
-    if (fs.existsSync(skillsDir)) {
-      fs.readdirSync(skillsDir).forEach(item => {
-        const itemPath = path.join(skillsDir, item);
-        if (fs.statSync(itemPath).isDirectory()) {
+    await fs.promises.access(skillsDir);
+    const items = await fs.promises.readdir(skillsDir);
+    for (const item of items) {
+      const itemPath = path.join(skillsDir, item);
+      try {
+        const stat = await fs.promises.stat(itemPath);
+        if (stat.isDirectory()) {
           const skillFile = path.join(itemPath, 'SKILL.md');
-          if (fs.existsSync(skillFile)) {
-            const content = fs.readFileSync(skillFile, 'utf8');
+          try {
+            const content = await fs.promises.readFile(skillFile, 'utf8');
             const parsed = parseSkillMd(content);
             localState.skills.push({
               id: item,
@@ -1873,11 +1881,13 @@ function loadSkills() {
               description: parsed.description || 'Aucune description',
               path: itemPath
             });
-          }
+          } catch { /* SKILL.md not found, skip */ }
         }
-      });
+      } catch { /* can't stat, skip */ }
     }
-  } catch (e) { console.error('Error loading skills:', e); }
+  } catch (e) {
+    if (e.code !== 'ENOENT') console.error('Error loading skills:', e);
+  }
   renderSkills();
 }
 
@@ -1935,17 +1945,19 @@ function parseSkillMd(content) {
   return { name, description };
 }
 
-function loadAgents() {
+async function loadAgents() {
   localState.agents = [];
   try {
-    if (fs.existsSync(agentsDir)) {
-      fs.readdirSync(agentsDir).forEach(item => {
-        const itemPath = path.join(agentsDir, item);
-        const stat = fs.statSync(itemPath);
+    await fs.promises.access(agentsDir);
+    const items = await fs.promises.readdir(agentsDir);
+    for (const item of items) {
+      const itemPath = path.join(agentsDir, item);
+      try {
+        const stat = await fs.promises.stat(itemPath);
 
         // Handle .md files directly in agents directory (new format)
         if (stat.isFile() && item.endsWith('.md')) {
-          const content = fs.readFileSync(itemPath, 'utf8');
+          const content = await fs.promises.readFile(itemPath, 'utf8');
           const parsed = parseAgentMd(content);
           const id = item.replace(/\.md$/, '');
           localState.agents.push({
@@ -1959,8 +1971,8 @@ function loadAgents() {
         // Handle subdirectories with AGENT.md (legacy format)
         else if (stat.isDirectory()) {
           const agentFile = path.join(itemPath, 'AGENT.md');
-          if (fs.existsSync(agentFile)) {
-            const content = fs.readFileSync(agentFile, 'utf8');
+          try {
+            const content = await fs.promises.readFile(agentFile, 'utf8');
             const parsed = parseAgentMd(content);
             localState.agents.push({
               id: item,
@@ -1969,11 +1981,13 @@ function loadAgents() {
               tools: parsed.tools || [],
               path: itemPath
             });
-          }
+          } catch { /* AGENT.md not found, skip */ }
         }
-      });
+      } catch { /* can't stat, skip */ }
     }
-  } catch (e) { console.error('Error loading agents:', e); }
+  } catch (e) {
+    if (e.code !== 'ENOENT') console.error('Error loading agents:', e);
+  }
   renderAgents();
 }
 
@@ -2113,7 +2127,7 @@ function renderSkills() {
     card.querySelector('.btn-open').onclick = () => api.dialog.openInExplorer(card.dataset.path);
     const delBtn = card.querySelector('.btn-del');
     if (delBtn) {
-      delBtn.onclick = () => { if (confirm('Supprimer ce skill ?')) { fs.rmSync(card.dataset.path, { recursive: true, force: true }); loadSkills(); } };
+      delBtn.onclick = async () => { if (confirm('Supprimer ce skill ?')) { await fs.promises.rm(card.dataset.path, { recursive: true, force: true }); loadSkills(); } };
     }
   });
 }
@@ -2146,7 +2160,7 @@ function renderAgents() {
 
   list.querySelectorAll('.list-card').forEach(card => {
     card.querySelector('.btn-open').onclick = () => api.dialog.openInExplorer(card.dataset.path);
-    card.querySelector('.btn-del').onclick = () => { if (confirm('Supprimer cet agent ?')) { fs.rmSync(card.dataset.path, { recursive: true, force: true }); loadAgents(); } };
+    card.querySelector('.btn-del').onclick = async () => { if (confirm('Supprimer cet agent ?')) { await fs.promises.rm(card.dataset.path, { recursive: true, force: true }); loadAgents(); } };
   });
 }
 

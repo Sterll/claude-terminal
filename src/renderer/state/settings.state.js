@@ -73,14 +73,18 @@ function loadSettings() {
 }
 
 /**
- * Save settings to file
+ * Save settings to file (debounced)
  */
+let saveSettingsTimer = null;
 function saveSettings() {
-  try {
-    fs.writeFileSync(settingsFile, JSON.stringify(settingsState.get(), null, 2));
-  } catch (e) {
-    console.error('Error saving settings:', e);
-  }
+  clearTimeout(saveSettingsTimer);
+  saveSettingsTimer = setTimeout(() => {
+    try {
+      fs.writeFileSync(settingsFile, JSON.stringify(settingsState.get(), null, 2));
+    } catch (e) {
+      console.error('Error saving settings:', e);
+    }
+  }, 500);
 }
 
 /**
