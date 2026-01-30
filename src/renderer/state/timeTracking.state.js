@@ -885,30 +885,30 @@ function getGlobalTimes() {
   let weekTotal = 0;
   let monthTotal = 0;
 
+  // Calculate date boundaries (always needed for active session clipping)
+  const now = new Date();
+
+  // Today boundaries
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date(todayStart);
+  todayEnd.setDate(todayEnd.getDate() + 1);
+
+  // Week boundaries (Monday to Sunday)
+  const day = now.getDay();
+  const diffToMonday = day === 0 ? 6 : day - 1;
+  const weekStartDate = new Date(now);
+  weekStartDate.setDate(weekStartDate.getDate() - diffToMonday);
+  weekStartDate.setHours(0, 0, 0, 0);
+  const weekEndDate = new Date(weekStartDate);
+  weekEndDate.setDate(weekEndDate.getDate() + 7);
+
+  // Month boundaries
+  const monthStartDate = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEndDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
   if (globalTracking) {
     const sessions = globalTracking.sessions || [];
-
-    // Calculate date boundaries
-    const now = new Date();
-
-    // Today boundaries
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(todayStart);
-    todayEnd.setDate(todayEnd.getDate() + 1);
-
-    // Week boundaries (Monday to Sunday)
-    const day = now.getDay();
-    const diffToMonday = day === 0 ? 6 : day - 1;
-    const weekStartDate = new Date(now);
-    weekStartDate.setDate(weekStartDate.getDate() - diffToMonday);
-    weekStartDate.setHours(0, 0, 0, 0);
-    const weekEndDate = new Date(weekStartDate);
-    weekEndDate.setDate(weekEndDate.getDate() + 7);
-
-    // Month boundaries
-    const monthStartDate = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthEndDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
     // Calculate totals from sessions
     for (const session of sessions) {
@@ -934,25 +934,25 @@ function getGlobalTimes() {
 
   // Add current global session time if active, clipped to period boundaries
   if (state.globalSessionStartTime && !state.globalIsIdle) {
-    const now = Date.now();
+    const nowMs = Date.now();
     const sessionStart = state.globalSessionStartTime;
 
     // Clip to today boundary
     const todayEffectiveStart = Math.max(sessionStart, todayStart.getTime());
-    if (now > todayEffectiveStart) {
-      todayTotal += now - todayEffectiveStart;
+    if (nowMs > todayEffectiveStart) {
+      todayTotal += nowMs - todayEffectiveStart;
     }
 
     // Clip to week boundary
     const weekEffectiveStart = Math.max(sessionStart, weekStartDate.getTime());
-    if (now > weekEffectiveStart) {
-      weekTotal += now - weekEffectiveStart;
+    if (nowMs > weekEffectiveStart) {
+      weekTotal += nowMs - weekEffectiveStart;
     }
 
     // Clip to month boundary
     const monthEffectiveStart = Math.max(sessionStart, monthStartDate.getTime());
-    if (now > monthEffectiveStart) {
-      monthTotal += now - monthEffectiveStart;
+    if (nowMs > monthEffectiveStart) {
+      monthTotal += nowMs - monthEffectiveStart;
     }
   }
 
