@@ -170,7 +170,7 @@ function openConfigModal(project) {
       <div class="quick-actions-presets">
         <span class="quick-actions-presets-label">${t('quickActions.presets')}</span>
         ${QUICK_ACTION_PRESETS.map(preset => `
-          <button class="preset-btn" data-preset="${escapeHtml(JSON.stringify(preset))}">
+          <button class="preset-btn" data-preset="${JSON.stringify(preset).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}">
             ${QUICK_ACTION_ICONS[preset.icon]}
             <span>${t(`quickActions.preset.${preset.name.toLowerCase()}`) || preset.name}</span>
           </button>
