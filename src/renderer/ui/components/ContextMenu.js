@@ -52,10 +52,12 @@ function showContextMenu({ x, y, items, target }) {
   const viewportHeight = window.innerHeight;
 
   if (x + rect.width > viewportWidth) {
-    x = viewportWidth - rect.width - 10;
+    x = x - rect.width;
+    if (x < 4) x = 4;
   }
   if (y + rect.height > viewportHeight) {
-    y = viewportHeight - rect.height - 10;
+    y = y - rect.height;
+    if (y < 4) y = 4;
   }
 
   menu.style.left = `${x}px`;
