@@ -2295,12 +2295,9 @@ function renderMcps() {
 }
 
 function renderMcpCard(mcp) {
-  const process = localState.mcpProcesses[mcp.id] || { status: 'stopped' };
-  const statusLabel = process.status === 'running' ? 'Actif' : process.status === 'starting' ? 'Demarrage...' : 'Inactif';
   return `<div class="mcp-card" data-id="${mcp.id}">
     <div class="mcp-card-header">
       <div class="mcp-card-info">
-        <span class="mcp-status-badge ${process.status}">${statusLabel}</span>
         <div class="mcp-card-title">${escapeHtml(mcp.name)}</div>
       </div>
     </div>
