@@ -486,6 +486,13 @@ function showNotification(title, body, terminalId) {
 
 api.notification.onClicked(({ terminalId }) => {
   if (terminalId) {
+    // Switch to the terminal's project first so it becomes visible
+    const termData = terminalsState.get().terminals.get(terminalId);
+    if (termData && termData.projectIndex != null) {
+      setSelectedProjectFilter(termData.projectIndex);
+      ProjectList.render();
+      TerminalManager.filterByProject(termData.projectIndex);
+    }
     TerminalManager.setActiveTerminal(terminalId);
     document.querySelector('[data-tab="claude"]')?.click();
   }
