@@ -5,6 +5,7 @@
 
 // Use preload API instead of direct ipcRenderer
 const api = window.electron_api;
+const { fs, path } = window.electron_nodeModules;
 const { projectsState, setGitPulling, setGitPushing, setGitMerging, setMergeInProgress, getGitOperation, getProjectTimes } = require('../state');
 const { escapeHtml } = require('../utils');
 const { formatDuration } = require('../utils/format');
@@ -14,6 +15,204 @@ const { t } = require('../i18n');
 const dashboardCache = new Map(); // projectId -> { data, timestamp, loading }
 const CACHE_TTL = 30000; // 30 seconds cache validity
 const REFRESH_DEBOUNCE = 2000; // 2 seconds minimum between refreshes
+const DISK_CACHE_FILE = '.claude-terminal';
+
+// ========== DISK CACHE ==========
+
+/**
+ * Get disk cache file path for a project
+ * @param {string} projectPath
+ * @returns {string}
+ */
+function getDiskCachePath(projectPath) {
+  return path.join(projectPath, DISK_CACHE_FILE);
+}
+
+/**
+ * Read disk cache for a project (sync, fast)
+ * @param {string} projectPath
+ * @returns {Object|null}
+ */
+function readDiskCache(projectPath) {
+  try {
+    const filePath = getDiskCachePath(projectPath);
+    if (!fs.existsSync(filePath)) return null;
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.dashboard) return null;
+    return parsed.dashboard;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Write disk cache for a project (sync, small file = fast)
+ * @param {string} projectPath
+ * @param {Object} data
+ */
+function writeDiskCache(projectPath, data) {
+  try {
+    const filePath = getDiskCachePath(projectPath);
+    const payload = {
+      _version: 1,
+      _updatedAt: new Date().toISOString(),
+      dashboard: data
+    };
+    fs.writeFileSync(filePath, JSON.stringify(payload), 'utf-8');
+  } catch (e) {
+    // Silently ignore write errors (read-only dirs, etc.)
+  }
+}
+
+// ========== PROJECT TYPE DETECTION ==========
+
+const PROJECT_TYPE_MARKERS = [
+  // Order matters: more specific first
+  { type: 'fivem',      label: 'FiveM',      color: '#F97316', files: ['fxmanifest.lua', '__resource.lua'] },
+  { type: 'next',       label: 'Next.js',    color: '#000000', deps: ['next'] },
+  { type: 'nuxt',       label: 'Nuxt',       color: '#00DC82', deps: ['nuxt'] },
+  { type: 'svelte',     label: 'Svelte',     color: '#FF3E00', deps: ['svelte'] },
+  { type: 'angular',    label: 'Angular',    color: '#DD0031', files: ['angular.json'] },
+  { type: 'react',      label: 'React',      color: '#61DAFB', deps: ['react'] },
+  { type: 'vue',        label: 'Vue',        color: '#42B883', deps: ['vue'] },
+  { type: 'electron',   label: 'Electron',   color: '#9FEAF9', deps: ['electron'] },
+  { type: 'express',    label: 'Express',    color: '#68A063', deps: ['express'] },
+  { type: 'nestjs',     label: 'NestJS',     color: '#E0234E', deps: ['@nestjs/core'] },
+  { type: 'typescript', label: 'TypeScript', color: '#3178C6', files: ['tsconfig.json'] },
+  { type: 'node',       label: 'Node.js',    color: '#68A063', files: ['package.json'] },
+  { type: 'rust',       label: 'Rust',       color: '#DEA584', files: ['Cargo.toml'] },
+  { type: 'go',         label: 'Go',         color: '#00ADD8', files: ['go.mod'] },
+  { type: 'python',     label: 'Python',     color: '#3776AB', files: ['requirements.txt', 'pyproject.toml', 'setup.py', 'Pipfile'] },
+  { type: 'ruby',       label: 'Ruby',       color: '#CC342D', files: ['Gemfile'] },
+  { type: 'java',       label: 'Java',       color: '#ED8B00', files: ['pom.xml', 'build.gradle', 'build.gradle.kts'] },
+  { type: 'csharp',     label: 'C#',         color: '#512BD4', files: ['*.sln', '*.csproj'] },
+  { type: 'php',        label: 'PHP',        color: '#777BB4', files: ['composer.json'] },
+  { type: 'dart',       label: 'Flutter',    color: '#02569B', files: ['pubspec.yaml'] },
+  { type: 'cpp',        label: 'C/C++',      color: '#00599C', files: ['CMakeLists.txt', 'Makefile'] },
+  { type: 'lua',        label: 'Lua',        color: '#000080', files: ['*.lua'] },
+];
+
+/**
+ * Parse package.json dependencies (sync)
+ * @param {string} projectPath
+ * @returns {Set<string>}
+ */
+function getPackageDeps(projectPath) {
+  try {
+    const pkgPath = path.join(projectPath, 'package.json');
+    if (!fs.existsSync(pkgPath)) return new Set();
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+    return new Set([
+      ...Object.keys(pkg.dependencies || {}),
+      ...Object.keys(pkg.devDependencies || {})
+    ]);
+  } catch (e) {
+    return new Set();
+  }
+}
+
+/**
+ * Check if a glob-like pattern matches any file in dir (first level only)
+ * @param {string} dir
+ * @param {string} pattern - filename or *.ext
+ * @returns {boolean}
+ */
+function fileMatchExists(dir, pattern) {
+  if (pattern.startsWith('*.')) {
+    // Glob: check extension
+    const ext = pattern.slice(1); // .lua, .sln, etc.
+    try {
+      const entries = fs.readdirSync(dir);
+      return entries.some(e => e.endsWith(ext));
+    } catch (e) {
+      return false;
+    }
+  }
+  return fs.existsSync(path.join(dir, pattern));
+}
+
+/**
+ * Detect project type from marker files (sync, fast)
+ * @param {string} projectPath
+ * @returns {{ type: string, label: string, color: string }|null}
+ */
+function detectProjectType(projectPath) {
+  try {
+    let deps = null; // lazy-loaded
+
+    for (const marker of PROJECT_TYPE_MARKERS) {
+      // Check file markers
+      if (marker.files) {
+        const hasFile = marker.files.some(f => fileMatchExists(projectPath, f));
+        if (hasFile) {
+          // For markers with deps, need to also check deps (e.g. next needs package.json AND next dep)
+          if (!marker.deps) return { type: marker.type, label: marker.label, color: marker.color };
+        } else if (!marker.deps) {
+          continue;
+        }
+      }
+
+      // Check dependency markers
+      if (marker.deps) {
+        if (!deps) deps = getPackageDeps(projectPath);
+        if (deps.size === 0) continue;
+        const hasDep = marker.deps.some(d => deps.has(d));
+        if (hasDep) return { type: marker.type, label: marker.label, color: marker.color };
+      }
+    }
+
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Load all disk caches into memory for instant display
+ * Call this at app startup before API preload
+ */
+function loadAllDiskCaches() {
+  const projects = projectsState.get().projects;
+  if (!projects || projects.length === 0) return;
+
+  let loaded = 0;
+  for (const project of projects) {
+    // Skip if already in memory cache
+    if (getCachedData(project.id)) continue;
+
+    const diskData = readDiskCache(project.path);
+    if (diskData) {
+      // Refresh projectType from disk (fast) in case it changed
+      if (!diskData.projectType) {
+        diskData.projectType = detectProjectType(project.path);
+      }
+      // Load into memory with timestamp=0 so it gets refreshed by preload
+      dashboardCache.set(project.id, {
+        data: diskData,
+        timestamp: 0,
+        loading: false
+      });
+      loaded++;
+    } else {
+      // No disk cache - at least detect project type for minimal display
+      const projectType = detectProjectType(project.path);
+      if (projectType) {
+        dashboardCache.set(project.id, {
+          data: { projectType },
+          timestamp: 0,
+          loading: false
+        });
+        loaded++;
+      }
+    }
+  }
+
+  if (loaded > 0) {
+    console.log(`[Dashboard] Loaded ${loaded} project(s) from disk cache`);
+    window.dispatchEvent(new CustomEvent('dashboard-preload-progress'));
+  }
+}
 
 /**
  * Get cached dashboard data
@@ -48,7 +247,7 @@ function isRefreshing(projectId) {
 }
 
 /**
- * Set cache data
+ * Set cache data (memory + disk)
  * @param {string} projectId
  * @param {Object} data
  */
@@ -58,6 +257,12 @@ function setCacheData(projectId, data) {
     timestamp: Date.now(),
     loading: false
   });
+
+  // Persist to disk asynchronously
+  const project = projectsState.get().projects.find(p => p.id === projectId);
+  if (project) {
+    writeDiskCache(project.path, data);
+  }
 }
 
 /**
@@ -182,6 +387,9 @@ async function loadDashboardData(projectPath) {
     getProjectStats(projectPath)
   ]);
 
+  // Detect project type (sync, fast)
+  const projectType = detectProjectType(projectPath);
+
   // Fetch workflow runs and pull requests if it's a GitHub repo
   let workflowRuns = { runs: [] };
   let pullRequests = { pullRequests: [] };
@@ -196,7 +404,7 @@ async function loadDashboardData(projectPath) {
     console.log('[Dashboard] Skipping GitHub data - not a git repo or no remote');
   }
 
-  return { gitInfo, stats, workflowRuns, pullRequests };
+  return { gitInfo, stats, workflowRuns, pullRequests, projectType };
 }
 
 /**
@@ -1141,9 +1349,200 @@ async function preloadAllProjects() {
         setCacheLoading(project.id, false);
       }
     }));
+
+    // Notify after each batch so overview can refresh progressively
+    window.dispatchEvent(new CustomEvent('dashboard-preload-progress'));
   }
 
   console.log('[Dashboard] Preload complete');
+}
+
+/**
+ * Build overview HTML grid for all projects
+ * @param {Array} projects - All projects
+ * @param {Object} options - { dataMap, timesMap }
+ * @returns {string}
+ */
+function buildOverviewHtml(projects, options = {}) {
+  const { dataMap = {}, timesMap = {} } = options;
+
+  if (projects.length === 0) {
+    return `<div class="dashboard-empty">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+      <p>${t('projects.noProjects')}</p>
+    </div>`;
+  }
+
+  const cardsHtml = projects.map((project, i) => {
+    const data = dataMap[project.id];
+    const times = timesMap[project.id] || { today: 0 };
+    const hasData = !!data;
+
+    // Extract info from cache
+    const gitInfo = data?.gitInfo || {};
+    const branch = gitInfo.branch || '';
+    const aheadBehind = gitInfo.aheadBehind || {};
+    const files = gitInfo.files || {};
+    const workflowRuns = data?.workflowRuns || {};
+    const pullRequests = data?.pullRequests || {};
+
+    // Project type
+    const projectType = data?.projectType || null;
+
+    // Count changed files
+    const stagedCount = files?.staged?.length || 0;
+    const unstagedCount = files?.unstaged?.length || 0;
+    const untrackedCount = files?.untracked?.length || 0;
+    const totalChanges = stagedCount + unstagedCount + untrackedCount;
+
+    // CI status from latest workflow run
+    const latestRun = workflowRuns?.runs?.[0];
+    let ciHtml = '';
+    if (latestRun) {
+      let ciClass = 'skipped';
+      let ciSymbol = '?';
+      if (latestRun.status === 'in_progress' || latestRun.status === 'queued') {
+        ciClass = 'running';
+        ciSymbol = '⟳';
+      } else if (latestRun.conclusion === 'success') {
+        ciClass = 'success';
+        ciSymbol = '✓';
+      } else if (latestRun.conclusion === 'failure') {
+        ciClass = 'failure';
+        ciSymbol = '✗';
+      }
+      ciHtml = `<span class="overview-ci ${ciClass}" title="CI: ${latestRun.conclusion || latestRun.status}">${ciSymbol}</span>`;
+    }
+
+    // Project type badge
+    let typeBadgeHtml = '';
+    if (projectType) {
+      typeBadgeHtml = `<span class="overview-type-badge" style="--type-color: ${projectType.color}">${escapeHtml(projectType.label)}</span>`;
+    }
+
+    // Open PRs count
+    const openPrs = (pullRequests?.pullRequests || []).filter(pr => pr.state === 'open').length;
+
+    // Last commit
+    const lastCommit = gitInfo.recentCommits?.[0] || null;
+
+    // Sync badges
+    let syncHtml = '';
+    if (aheadBehind.hasRemote && !aheadBehind.notTracking) {
+      const parts = [];
+      if (aheadBehind.behind > 0) parts.push(`↓${aheadBehind.behind}`);
+      if (aheadBehind.ahead > 0) parts.push(`↑${aheadBehind.ahead}`);
+      if (parts.length > 0) {
+        syncHtml = `<span class="overview-sync">${parts.join(' ')}</span>`;
+      }
+    }
+
+    // Build stats rows
+    let statsHtml = '';
+    if (!hasData && !projectType) {
+      statsHtml = `<div class="overview-stat overview-no-data"><span>${t('dashboard.noData')}</span></div>`;
+    } else {
+      // Branch
+      if (branch) {
+        statsHtml += `<div class="overview-stat">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 2a3 3 0 0 0-3 3c0 1.28.81 2.38 1.94 2.81A4 4 0 0 0 9 12H6a3 3 0 0 0 0 6 3 3 0 0 0 2.94-2.41A4 4 0 0 0 13 12v-1.17A3 3 0 0 0 15 8a3 3 0 0 0-3-3 3 3 0 0 0-2.24 1.01A4 4 0 0 0 6 2z"/></svg>
+          <span>${escapeHtml(branch)}</span>
+          ${syncHtml}
+        </div>`;
+      }
+
+      // Last commit
+      if (lastCommit) {
+        const commitMsg = (lastCommit.message || '').length > 40
+          ? lastCommit.message.substring(0, 40) + '...'
+          : (lastCommit.message || '');
+        statsHtml += `<div class="overview-stat overview-commit">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>
+          <span class="overview-commit-hash">${lastCommit.hash || ''}</span>
+          <span class="overview-commit-msg">${escapeHtml(commitMsg)}</span>
+          ${lastCommit.date ? `<span class="overview-commit-date">${lastCommit.date}</span>` : ''}
+        </div>`;
+      }
+
+      // Open PRs
+      if (openPrs > 0) {
+        statsHtml += `<div class="overview-stat">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM6 7a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm0 4v6.76a3 3 0 1 0 2 0V11H6zm1 9a1 1 0 1 1 0-2 1 1 0 0 1 0 2zM18 7a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm0 4v6.76a3 3 0 1 0 2 0V11h-2zm1 9a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/></svg>
+          <span>${t('dashboard.openPrs', { count: openPrs })}</span>
+        </div>`;
+      }
+
+      // Changed files
+      if (totalChanges > 0) {
+        statsHtml += `<div class="overview-stat">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z"/></svg>
+          <span>${t('dashboard.filesChanged', { count: totalChanges })}</span>
+        </div>`;
+      }
+
+      // Time today
+      if (times.today > 0) {
+        statsHtml += `<div class="overview-stat">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+          <span>${formatDuration(times.today)} ${t('dashboard.todayTime')}</span>
+        </div>`;
+      }
+
+      // No stats but has type only
+      if (!statsHtml && projectType) {
+        statsHtml = `<div class="overview-stat overview-no-data"><span>${t('dashboard.noData')}</span></div>`;
+      }
+    }
+
+    return `
+      <div class="overview-card ${!hasData && !projectType ? 'loading' : ''}" data-project-index="${i}">
+        <div class="overview-card-header">
+          <span class="overview-project-name">${escapeHtml(project.name)}</span>
+          <div class="overview-header-badges">
+            ${typeBadgeHtml}
+            ${ciHtml}
+          </div>
+        </div>
+        <div class="overview-card-stats">
+          ${statsHtml}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  return `<div class="overview-grid">${cardsHtml}</div>`;
+}
+
+/**
+ * Render overview dashboard for all projects
+ * @param {HTMLElement} container - Container element
+ * @param {Array} projects - All projects
+ * @param {Object} options - { dataMap, timesMap, onCardClick }
+ */
+function renderOverview(container, projects, options = {}) {
+  const { onCardClick } = options;
+
+  container.innerHTML = buildOverviewHtml(projects, options);
+
+  // Attach click handlers
+  container.querySelectorAll('.overview-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const index = parseInt(card.dataset.projectIndex);
+      if (onCardClick) onCardClick(index);
+    });
+  });
+
+  // Animate cards in
+  const cards = container.querySelectorAll('.overview-card');
+  cards.forEach((card, i) => {
+    card.style.opacity = '0';
+    card.style.transform = 'translateY(8px)';
+    card.style.transition = 'opacity 200ms ease, transform 200ms ease';
+    setTimeout(() => {
+      card.style.opacity = '1';
+      card.style.transform = 'translateY(0)';
+    }, 30 + i * 40);
+  });
 }
 
 module.exports = {
@@ -1159,10 +1558,13 @@ module.exports = {
   getGitStatusQuick,
   getDashboardProjects,
   renderDashboard,
+  renderOverview,
   formatNumber,
   getGitOperation,
   // Cache management
+  getCachedData,
   invalidateCache,
   clearAllCache,
+  loadAllDiskCaches,
   preloadAllProjects
 };

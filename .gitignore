@@ -37,6 +37,7 @@ Desktop.ini
 .cache/
 .npm/
 .eslintcache
+.claude-terminal
 
 # Test coverage
 coverage/

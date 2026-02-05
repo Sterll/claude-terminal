@@ -66,7 +66,10 @@ const {
   setLanguage,
   getCurrentLanguage,
   getAvailableLanguages,
-  onLanguageChange
+  onLanguageChange,
+
+  // Time Tracking
+  getProjectTimes
 } = require('./src/renderer');
 
 // ========== LOCAL MODAL FUNCTIONS ==========
@@ -96,7 +99,7 @@ const localState = {
   fivemServers: new Map(),
   gitOperations: new Map(),
   gitRepoStatus: new Map(),
-  selectedDashboardProject: null
+  selectedDashboardProject: -1
 };
 
 // ========== I18N STATIC TEXT UPDATES ==========
@@ -1354,7 +1357,14 @@ document.querySelectorAll('.nav-tab').forEach(tab => {
     if (tabId === 'skills') loadSkills();
     if (tabId === 'agents') loadAgents();
     if (tabId === 'mcp') loadMcps();
-    if (tabId === 'dashboard') populateDashboardProjects();
+    if (tabId === 'dashboard') {
+      populateDashboardProjects();
+      if (localState.selectedDashboardProject === -1) {
+        renderOverviewDashboard();
+      } else if (localState.selectedDashboardProject >= 0) {
+        renderDashboardContent(localState.selectedDashboardProject);
+      }
+    }
     if (tabId === 'memory') loadMemory();
     // Cleanup TimeTrackingDashboard interval when leaving the tab
     if (tabId !== 'timetracking') {
@@ -2367,7 +2377,19 @@ function populateDashboardProjects() {
     return;
   }
 
-  list.innerHTML = projects.map((p, i) => `
+  // Overview item + project items
+  const overviewHtml = `
+    <div class="dashboard-project-item overview-item ${localState.selectedDashboardProject === -1 ? 'active' : ''}" data-index="-1">
+      <div class="dashboard-project-icon">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+      </div>
+      <div class="dashboard-project-info">
+        <div class="dashboard-project-name">${t('dashboard.overview')}</div>
+      </div>
+    </div>
+  `;
+
+  const projectsHtml = projects.map((p, i) => `
     <div class="dashboard-project-item ${localState.selectedDashboardProject === i ? 'active' : ''}" data-index="${i}">
       <div class="dashboard-project-icon">
         ${p.type === 'fivem'
@@ -2381,15 +2403,55 @@ function populateDashboardProjects() {
     </div>
   `).join('');
 
+  list.innerHTML = overviewHtml + projectsHtml;
+
   list.querySelectorAll('.dashboard-project-item').forEach(item => {
     item.onclick = () => {
       const index = parseInt(item.dataset.index);
       localState.selectedDashboardProject = index;
       populateDashboardProjects();
-      renderDashboardContent(index);
+      if (index === -1) {
+        renderOverviewDashboard();
+      } else {
+        renderDashboardContent(index);
+      }
     };
   });
 }
+
+function renderOverviewDashboard() {
+  const content = document.getElementById('dashboard-content');
+  if (!content) return;
+
+  const projects = projectsState.get().projects;
+  const dataMap = {};
+  const timesMap = {};
+
+  for (const project of projects) {
+    const cached = DashboardService.getCachedData(project.id);
+    if (cached) dataMap[project.id] = cached;
+    timesMap[project.id] = getProjectTimes(project.id);
+  }
+
+  DashboardService.renderOverview(content, projects, {
+    dataMap,
+    timesMap,
+    onCardClick: (index) => {
+      localState.selectedDashboardProject = index;
+      populateDashboardProjects();
+      renderDashboardContent(index);
+    }
+  });
+}
+
+// Refresh overview when preload data becomes available
+window.addEventListener('dashboard-preload-progress', () => {
+  const dashboardTab = document.querySelector('[data-tab="dashboard"]');
+  const isDashboardActive = dashboardTab?.classList.contains('active');
+  if (isDashboardActive && localState.selectedDashboardProject === -1) {
+    renderOverviewDashboard();
+  }
+});
 
 async function renderDashboardContent(projectIndex) {
   const content = document.getElementById('dashboard-content');

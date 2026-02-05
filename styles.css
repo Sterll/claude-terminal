@@ -6606,6 +6606,170 @@ body.compact-projects .project-item:not(.active):hover {
   margin-left: auto;
 }
 
+/* ===== Overview Dashboard ===== */
+
+/* Overview item separator in sidebar */
+.dashboard-project-item.overview-item {
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 8px;
+  padding-bottom: 12px;
+}
+
+/* Overview grid */
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  padding: 24px;
+}
+
+/* Overview card */
+.overview-card {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  border-left: 3px solid var(--accent);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+.overview-card:hover {
+  background: var(--bg-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Card header */
+.overview-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.overview-project-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-header-badges {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* CI badge */
+.overview-ci {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+}
+
+.overview-ci.success {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--success);
+}
+
+.overview-ci.failure {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+}
+
+.overview-ci.running {
+  background: rgba(234, 179, 8, 0.15);
+  color: var(--warning);
+}
+
+.overview-ci.skipped {
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--text-muted);
+}
+
+/* Card stats */
+.overview-card-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.overview-stat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.overview-stat svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.overview-sync {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--warning);
+  font-weight: 500;
+}
+
+/* Project type badge */
+.overview-type-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--type-color) 15%, transparent);
+  color: var(--type-color);
+  white-space: nowrap;
+}
+
+/* Last commit row */
+.overview-commit {
+  overflow: hidden;
+}
+
+.overview-commit-hash {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.overview-commit-msg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.overview-commit-date {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.overview-no-data {
+  font-style: italic;
+  opacity: 0.6;
+}
+
+/* Card loading state */
+.overview-card.loading {
+  opacity: 0.6;
+}
+
 /* No git state */
 .dashboard-no-git {
   display: flex;

@@ -135,7 +135,13 @@
     "extFiles": "{count} files - {lines} lines",
     "copyPath": "Copy",
     "tagCommitsBehind": "+{count} commits",
-    "pullRequests": "Pull Requests"
+    "pullRequests": "Pull Requests",
+    "overview": "Overview",
+    "openPrs": "{count} open PR(s)",
+    "filesChanged": "{count} file(s) changed",
+    "noCi": "No CI",
+    "todayTime": "today",
+    "noData": "No data yet"
   },
   "customize": {
     "title": "Customize appearance",

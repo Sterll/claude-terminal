@@ -77,8 +77,10 @@ function initialize() {
     }
   );
 
-  // Preload dashboard data for all projects in background
-  // Use setTimeout to not block the UI initialization
+  // Load disk-cached dashboard data immediately (sync, fast)
+  services.DashboardService.loadAllDiskCaches();
+
+  // Then refresh from APIs in background
   setTimeout(() => {
     services.DashboardService.preloadAllProjects();
   }, 500);
