@@ -35,6 +35,7 @@ const {
   startTracking,
   stopTracking,
   recordActivity,
+  recordOutputActivity,
   switchProject,
   hasTerminalsForProject
 } = require('../../state');
@@ -116,6 +117,28 @@ function loadWebglAddon(terminal) {
   }
 }
 
+// ── Output silence detection: if terminal stops producing output, mark as ready ──
+const OUTPUT_SILENCE_TIMEOUT = 5000; // 5 seconds of silence = Claude finished
+const outputSilenceTimers = new Map(); // terminalId -> timerId
+
+function resetOutputSilenceTimer(id) {
+  clearTimeout(outputSilenceTimers.get(id));
+  const td = getTerminal(id);
+  if (!td || td.isBasic || td.status !== 'working') return;
+  outputSilenceTimers.set(id, setTimeout(() => {
+    const current = getTerminal(id);
+    if (current && current.status === 'working') {
+      updateTerminalStatus(id, 'ready');
+    }
+    outputSilenceTimers.delete(id);
+  }, OUTPUT_SILENCE_TIMEOUT));
+}
+
+function clearOutputSilenceTimer(id) {
+  clearTimeout(outputSilenceTimers.get(id));
+  outputSilenceTimers.delete(id);
+}
+
 // ── Throttled recordActivity (max 1 call/sec per project) ──
 const activityThrottles = new Map();
 function throttledRecordActivity(projectId) {
@@ -123,6 +146,15 @@ function throttledRecordActivity(projectId) {
   recordActivity(projectId);
   activityThrottles.set(projectId, true);
   setTimeout(() => activityThrottles.delete(projectId), 1000);
+}
+
+// ── Throttled recordOutputActivity (max 1 call/5sec per project) ──
+const outputActivityThrottles = new Map();
+function throttledRecordOutputActivity(projectId) {
+  if (!projectId || outputActivityThrottles.has(projectId)) return;
+  recordOutputActivity(projectId);
+  outputActivityThrottles.set(projectId, true);
+  setTimeout(() => outputActivityThrottles.delete(projectId), 5000);
 }
 
 /**
@@ -554,6 +586,8 @@ function closeTerminal(id) {
   const closedProjectPath = termData?.project?.path;
   const closedProjectId = termData?.project?.id;
 
+  clearOutputSilenceTimer(id);
+
   // Kill and cleanup
   if (termData && termData.type === 'file') {
     // File tabs have no terminal process to kill
@@ -703,8 +737,9 @@ async function createTerminal(project, options = {}) {
   registerTerminalHandler(id,
     (data) => {
       terminal.write(data.data);
+      resetOutputSilenceTimer(id);
       const td = getTerminal(id);
-      if (td?.project?.id) throttledRecordActivity(td.project.id);
+      if (td?.project?.id) throttledRecordOutputActivity(td.project.id);
     },
     () => closeTerminal(id)
   );
@@ -1801,8 +1836,9 @@ async function resumeSession(project, sessionId, options = {}) {
   registerTerminalHandler(id,
     (data) => {
       terminal.write(data.data);
+      resetOutputSilenceTimer(id);
       const td = getTerminal(id);
-      if (td?.project?.id) throttledRecordActivity(td.project.id);
+      if (td?.project?.id) throttledRecordOutputActivity(td.project.id);
     },
     () => closeTerminal(id)
   );
@@ -2072,7 +2108,10 @@ async function createTerminalWithPrompt(project, prompt) {
 
   // IPC handlers via centralized dispatcher
   registerTerminalHandler(id,
-    (data) => terminal.write(data.data),
+    (data) => {
+      terminal.write(data.data);
+      resetOutputSilenceTimer(id);
+    },
     () => closeTerminal(id)
   );
 

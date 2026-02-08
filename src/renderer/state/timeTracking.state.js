@@ -8,6 +8,7 @@ const { State } = require('./State');
 
 // Constants
 const IDLE_TIMEOUT = 15 * 60 * 1000; // 15 minutes
+const OUTPUT_IDLE_TIMEOUT = 2 * 60 * 1000; // 2 minutes - idle after last terminal output
 const SLEEP_GAP_THRESHOLD = 2 * 60 * 1000; // 2 minutes - gap indicating system sleep/wake
 let lastHeartbeat = Date.now();
 let heartbeatTimer = null;
@@ -23,7 +24,9 @@ const trackingState = new State({
 });
 
 // Internal state
-const idleTimers = new Map(); // projectId -> timerId
+const idleTimers = new Map(); // projectId -> timerId (input-based, 15 min)
+const lastOutputTimes = new Map(); // projectId -> timestamp of last terminal output
+let globalLastOutputTime = 0; // timestamp of last terminal output (any project)
 let globalIdleTimer = null;
 let midnightCheckTimer = null;
 let lastKnownDate = null;
@@ -502,7 +505,7 @@ function startGlobalTimer() {
 
   // Start global idle timer
   clearTimeout(globalIdleTimer);
-  globalIdleTimer = setTimeout(pauseGlobalTimer, IDLE_TIMEOUT);
+  globalIdleTimer = setTimeout(checkAndPauseGlobalTimer, IDLE_TIMEOUT);
 
   console.log('[TimeTracking] Global timer started');
 }
@@ -555,7 +558,7 @@ function resumeGlobalTimer() {
 
   // Restart global idle timer
   clearTimeout(globalIdleTimer);
-  globalIdleTimer = setTimeout(pauseGlobalTimer, IDLE_TIMEOUT);
+  globalIdleTimer = setTimeout(checkAndPauseGlobalTimer, IDLE_TIMEOUT);
 
   console.log('[TimeTracking] Global timer resumed');
 }
@@ -600,7 +603,7 @@ function resetGlobalIdleTimer() {
 
   if (state.globalSessionStartTime) {
     clearTimeout(globalIdleTimer);
-    globalIdleTimer = setTimeout(pauseGlobalTimer, IDLE_TIMEOUT);
+    globalIdleTimer = setTimeout(checkAndPauseGlobalTimer, IDLE_TIMEOUT);
 
     trackingState.set({
       ...state,
@@ -720,7 +723,7 @@ function startTracking(projectId) {
 
   // Start idle timer for this project
   clearTimeout(idleTimers.get(projectId));
-  idleTimers.set(projectId, setTimeout(() => pauseTracking(projectId), IDLE_TIMEOUT));
+  idleTimers.set(projectId, setTimeout(() => checkAndPauseTracking(projectId), IDLE_TIMEOUT));
 }
 
 /**
@@ -747,9 +750,10 @@ function stopTracking(projectId) {
     saveSession(projectId, session.sessionStartTime, now, duration);
   }
 
-  // Clear timer and remove session
+  // Clear timers and remove session
   clearTimeout(idleTimers.get(projectId));
   idleTimers.delete(projectId);
+  lastOutputTimes.delete(projectId);
   activeSessions.delete(projectId);
 
   trackingState.set({ ...trackingState.get(), activeSessions });
@@ -841,7 +845,7 @@ function recordActivity(projectId) {
 
   // Reset idle timer for project
   clearTimeout(idleTimers.get(projectId));
-  idleTimers.set(projectId, setTimeout(() => pauseTracking(projectId), IDLE_TIMEOUT));
+  idleTimers.set(projectId, setTimeout(() => checkAndPauseTracking(projectId), IDLE_TIMEOUT));
 
   // Reset global idle timer too
   resetGlobalIdleTimer();
@@ -853,6 +857,59 @@ function recordActivity(projectId) {
   });
 
   trackingState.set({ ...trackingState.get(), activeSessions });
+}
+
+/**
+ * Check if project can be paused: if there was recent terminal output, reschedule instead
+ * @param {string} projectId
+ */
+function checkAndPauseTracking(projectId) {
+  const lastOutput = lastOutputTimes.get(projectId) || 0;
+  const timeSinceOutput = Date.now() - lastOutput;
+
+  if (timeSinceOutput < OUTPUT_IDLE_TIMEOUT) {
+    // Terminal still producing output recently, reschedule
+    const delay = OUTPUT_IDLE_TIMEOUT - timeSinceOutput + 100;
+    clearTimeout(idleTimers.get(projectId));
+    idleTimers.set(projectId, setTimeout(() => checkAndPauseTracking(projectId), delay));
+    return;
+  }
+
+  pauseTracking(projectId);
+}
+
+/**
+ * Check if global timer can be paused: if there was recent terminal output, reschedule
+ */
+function checkAndPauseGlobalTimer() {
+  const timeSinceOutput = Date.now() - globalLastOutputTime;
+
+  if (timeSinceOutput < OUTPUT_IDLE_TIMEOUT) {
+    const delay = OUTPUT_IDLE_TIMEOUT - timeSinceOutput + 100;
+    clearTimeout(globalIdleTimer);
+    globalIdleTimer = setTimeout(checkAndPauseGlobalTimer, delay);
+    return;
+  }
+
+  pauseGlobalTimer();
+}
+
+/**
+ * Record terminal output activity for a project (keeps session alive with shorter timeout)
+ * Does NOT resume idle sessions - only user input can do that
+ * @param {string} projectId
+ */
+function recordOutputActivity(projectId) {
+  if (!projectId) return;
+
+  const state = trackingState.get();
+  const session = state.activeSessions.get(projectId);
+
+  // Only track output for active (non-idle) sessions
+  if (!session || session.isIdle) return;
+
+  lastOutputTimes.set(projectId, Date.now());
+  globalLastOutputTime = Date.now();
 }
 
 /**
@@ -926,7 +983,7 @@ function resumeTracking(projectId) {
 
   // Restart idle timer
   clearTimeout(idleTimers.get(projectId));
-  idleTimers.set(projectId, setTimeout(() => pauseTracking(projectId), IDLE_TIMEOUT));
+  idleTimers.set(projectId, setTimeout(() => checkAndPauseTracking(projectId), IDLE_TIMEOUT));
 
   console.log('[TimeTracking] Resumed tracking for project:', projectId);
 }
@@ -1187,6 +1244,7 @@ module.exports = {
   startTracking,
   stopTracking,
   recordActivity,
+  recordOutputActivity,
   pauseTracking,
   resumeTracking,
   switchProject,
