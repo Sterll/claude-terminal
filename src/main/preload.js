@@ -213,6 +213,12 @@ contextBridge.exposeInMainWorld('electron_api', {
     onStatus: createListener('update-status')
   },
 
+  // ==================== SETUP WIZARD ====================
+  setupWizard: {
+    complete: (settings) => ipcRenderer.invoke('setup-wizard-complete', settings),
+    skip: () => ipcRenderer.send('setup-wizard-skip')
+  },
+
   // ==================== APP LIFECYCLE ====================
   lifecycle: {
     onWillQuit: createListener('app-will-quit')

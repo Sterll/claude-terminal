@@ -398,6 +398,53 @@
     "startDate": "Date de début",
     "endDate": "Date de fin"
   },
+  "setup": {
+    "welcome": {
+      "title": "Bienvenue sur Claude Terminal",
+      "subtitle": "Votre environnement terminal premium pour Claude Code",
+      "version": "Version {version}",
+      "start": "Commencer",
+      "skip": "Passer la configuration"
+    },
+    "language": {
+      "title": "Choisissez votre langue",
+      "subtitle": "Vous pourrez la changer plus tard dans les parametres",
+      "english": "English",
+      "french": "Francais"
+    },
+    "appearance": {
+      "title": "Choisissez votre couleur d'accent",
+      "subtitle": "Personnalisez l'apparence de votre terminal",
+      "preview": "Apercu"
+    },
+    "preferences": {
+      "title": "Definissez vos preferences",
+      "subtitle": "Configurez vos outils par defaut",
+      "editor": "Editeur de code par defaut",
+      "launchStartup": "Lancer au demarrage",
+      "launchStartupDesc": "Demarrer Claude Terminal au lancement de Windows",
+      "notifications": "Activer les notifications",
+      "notificationsDesc": "Etre notifie des mises a jour et evenements"
+    },
+    "done": {
+      "title": "C'est pret !",
+      "subtitle": "Claude Terminal est pret a etre utilise",
+      "summary": "Vos parametres",
+      "launch": "Lancer Claude Terminal",
+      "languageLabel": "Langue",
+      "colorLabel": "Couleur d'accent",
+      "editorLabel": "Editeur",
+      "startupLabel": "Lancer au demarrage",
+      "notificationsLabel": "Notifications",
+      "enabled": "Active",
+      "disabled": "Desactive"
+    },
+    "nav": {
+      "next": "Suivant",
+      "previous": "Precedent",
+      "step": "Etape {current} sur {total}"
+    }
+  },
   "errors": {
     "corruptedFile": "Fichier projets corrompu",
     "backupCreated": "Un backup a été créé: {filename}",

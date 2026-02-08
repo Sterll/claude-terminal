@@ -1,0 +1,1153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Claude Terminal - Setup</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --accent: #d97706;
+      --accent-rgb: 217, 119, 6;
+      --bg-base: #0d0d0d;
+      --bg-surface: #151515;
+      --bg-elevated: #1a1a1a;
+      --bg-hover: #222222;
+      --border: #2a2a2a;
+      --text-primary: #e0e0e0;
+      --text-secondary: #888888;
+      --text-muted: #555555;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg-base);
+      color: var(--text-primary);
+      overflow: hidden;
+      height: 100vh;
+      user-select: none;
+    }
+
+    /* ============================================ */
+    /* TITLE BAR                                    */
+    /* ============================================ */
+    .titlebar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 36px;
+      padding: 0 12px;
+      background: var(--bg-base);
+      -webkit-app-region: drag;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .titlebar-title {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+
+    .titlebar-close {
+      -webkit-app-region: no-drag;
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+    }
+
+    .titlebar-close:hover {
+      background: #e81123;
+      color: white;
+    }
+
+    /* ============================================ */
+    /* LAYOUT                                       */
+    /* ============================================ */
+    .wizard-container {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 36px);
+    }
+
+    .wizard-content {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* ============================================ */
+    /* PROGRESS INDICATOR                           */
+    /* ============================================ */
+    .progress-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 24px 0 8px;
+    }
+
+    .progress-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--border);
+      transition: all 0.3s ease;
+      position: relative;
+    }
+
+    .progress-dot.active {
+      background: var(--accent);
+      box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.5);
+    }
+
+    .progress-dot.completed {
+      background: var(--accent);
+      opacity: 0.5;
+    }
+
+    .progress-line {
+      width: 32px;
+      height: 2px;
+      background: var(--border);
+      transition: background 0.3s ease;
+    }
+
+    .progress-line.active {
+      background: var(--accent);
+      opacity: 0.5;
+    }
+
+    /* ============================================ */
+    /* STEPS                                        */
+    /* ============================================ */
+    .step {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 60px;
+      opacity: 0;
+      transform: translateX(60px);
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      pointer-events: none;
+    }
+
+    .step.active {
+      opacity: 1;
+      transform: translateX(0);
+      pointer-events: all;
+    }
+
+    .step.exit-left {
+      opacity: 0;
+      transform: translateX(-60px);
+    }
+
+    .step-icon {
+      width: 72px;
+      height: 72px;
+      border-radius: 20px;
+      background: rgba(var(--accent-rgb), 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 24px;
+    }
+
+    .step-icon svg {
+      width: 36px;
+      height: 36px;
+      color: var(--accent);
+    }
+
+    .step-title {
+      font-size: 28px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      text-align: center;
+      letter-spacing: -0.02em;
+    }
+
+    .step-subtitle {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 36px;
+      text-align: center;
+    }
+
+    /* ============================================ */
+    /* WELCOME STEP                                 */
+    /* ============================================ */
+    .welcome-logo {
+      width: 88px;
+      height: 88px;
+      border-radius: 22px;
+      background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.2), rgba(var(--accent-rgb), 0.05));
+      border: 2px solid rgba(var(--accent-rgb), 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 28px;
+      animation: logoPulse 2s ease-in-out infinite;
+    }
+
+    @keyframes logoPulse {
+      0%, 100% { box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.2); }
+      50% { box-shadow: 0 0 40px rgba(var(--accent-rgb), 0.4); }
+    }
+
+    .welcome-logo svg {
+      width: 44px;
+      height: 44px;
+      color: var(--accent);
+    }
+
+    .welcome-version {
+      font-size: 12px;
+      color: var(--text-muted);
+      background: var(--bg-elevated);
+      padding: 4px 12px;
+      border-radius: 12px;
+      margin-bottom: 40px;
+    }
+
+    /* ============================================ */
+    /* LANGUAGE STEP                                */
+    /* ============================================ */
+    .language-options {
+      display: flex;
+      gap: 16px;
+    }
+
+    .language-card {
+      width: 200px;
+      padding: 24px;
+      background: var(--bg-surface);
+      border: 2px solid var(--border);
+      border-radius: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+
+    .language-card:hover {
+      border-color: var(--text-muted);
+      background: var(--bg-elevated);
+    }
+
+    .language-card.selected {
+      border-color: var(--accent);
+      background: rgba(var(--accent-rgb), 0.08);
+    }
+
+    .language-card-flag {
+      font-size: 36px;
+      margin-bottom: 12px;
+    }
+
+    .language-card-name {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .language-card-native {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    /* ============================================ */
+    /* APPEARANCE STEP                              */
+    /* ============================================ */
+    .color-grid {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 12px;
+      max-width: 480px;
+    }
+
+    .color-swatch {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      cursor: pointer;
+      border: 3px solid transparent;
+      transition: all 0.2s;
+      position: relative;
+    }
+
+    .color-swatch:hover {
+      transform: scale(1.1);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    .color-swatch.selected {
+      border-color: white;
+      transform: scale(1.1);
+    }
+
+    .color-swatch.selected::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: white;
+    }
+
+    .color-preview {
+      margin-top: 28px;
+      padding: 16px 24px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      min-width: 320px;
+    }
+
+    .color-preview-bar {
+      width: 4px;
+      height: 32px;
+      border-radius: 2px;
+      background: var(--accent);
+    }
+
+    .color-preview-text {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .color-preview-accent {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* ============================================ */
+    /* PREFERENCES STEP                             */
+    /* ============================================ */
+    .preferences-list {
+      width: 480px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .preference-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 20px;
+      padding: 16px 20px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+
+    .preference-info {
+      min-width: 0;
+    }
+
+    .preference-label {
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 2px;
+    }
+
+    .preference-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .preference-control {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+    /* Select dropdown */
+    .pref-select {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+      outline: none;
+      width: 140px;
+    }
+
+    .pref-select:focus {
+      border-color: var(--accent);
+    }
+
+    /* Toggle switch */
+    .toggle {
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .toggle input {
+      display: none;
+    }
+
+    .toggle-slider {
+      display: block;
+      width: 44px;
+      height: 24px;
+      background: var(--border);
+      border-radius: 12px;
+      transition: all 0.3s;
+      position: relative;
+    }
+
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--text-secondary);
+      top: 3px;
+      left: 3px;
+      transition: all 0.3s;
+    }
+
+    .toggle input:checked + .toggle-slider {
+      background: var(--accent);
+    }
+
+    .toggle input:checked + .toggle-slider::before {
+      transform: translateX(20px);
+      background: white;
+    }
+
+    /* ============================================ */
+    /* DONE STEP                                    */
+    /* ============================================ */
+    .done-checkmark {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: rgba(var(--accent-rgb), 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 24px;
+      animation: checkPop 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes checkPop {
+      0% { transform: scale(0); opacity: 0; }
+      60% { transform: scale(1.2); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .done-checkmark svg {
+      width: 40px;
+      height: 40px;
+      color: var(--accent);
+    }
+
+    .done-summary {
+      width: 100%;
+      max-width: 400px;
+      margin-top: 8px;
+      margin-bottom: 8px;
+    }
+
+    .done-summary-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+
+    .done-summary-row:last-child {
+      border-bottom: none;
+    }
+
+    .done-summary-label {
+      color: var(--text-secondary);
+    }
+
+    .done-summary-value {
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .done-summary-color {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    /* ============================================ */
+    /* NAVIGATION                                   */
+    /* ============================================ */
+    .wizard-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 40px 24px;
+    }
+
+    .wizard-footer-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .wizard-footer-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn {
+      padding: 10px 24px;
+      border-radius: 10px;
+      border: none;
+      font-size: 14px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      filter: brightness(1.15);
+      box-shadow: 0 4px 16px rgba(var(--accent-rgb), 0.4);
+    }
+
+    .btn-secondary {
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-muted);
+      padding: 10px 16px;
+    }
+
+    .btn-ghost:hover {
+      color: var(--text-secondary);
+    }
+
+    .btn-large {
+      padding: 14px 36px;
+      font-size: 16px;
+      border-radius: 12px;
+    }
+
+    .btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .step-counter {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <!-- Title Bar -->
+  <div class="titlebar">
+    <span class="titlebar-title">Claude Terminal Setup</span>
+    <button class="titlebar-close" id="btn-close" title="Close">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M1 1l12 12M13 1L1 13"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="wizard-container">
+    <!-- Progress -->
+    <div class="progress-bar" id="progress-bar"></div>
+
+    <!-- Steps Container -->
+    <div class="wizard-content" id="wizard-content">
+
+      <!-- Step 1: Welcome -->
+      <div class="step active" data-step="0">
+        <div class="welcome-logo">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8l8 5 8-5v10zm-8-7L4 6h16l-8 5z"/>
+            <path d="M7 15l2-2 2 2 4-4 2 2v4H7z" opacity="0.5"/>
+          </svg>
+        </div>
+        <div class="step-title" data-i18n="setup.welcome.title">Welcome to Claude Terminal</div>
+        <div class="step-subtitle" data-i18n="setup.welcome.subtitle">Your premium terminal environment for Claude Code</div>
+        <div class="welcome-version" id="app-version">Version</div>
+        <button class="btn btn-primary btn-large" id="btn-start">
+          <span data-i18n="setup.welcome.start">Get Started</span>
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+        </button>
+      </div>
+
+      <!-- Step 2: Language -->
+      <div class="step" data-step="1">
+        <div class="step-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12.87 15.07l-2.54-2.51.03-.03A17.52 17.52 0 0014.07 6H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/></svg>
+        </div>
+        <div class="step-title" data-i18n="setup.language.title">Choose your language</div>
+        <div class="step-subtitle" data-i18n="setup.language.subtitle">You can change this later in settings</div>
+        <div class="language-options">
+          <div class="language-card selected" data-lang="en">
+            <div class="language-card-flag">EN</div>
+            <div class="language-card-name" data-i18n="setup.language.english">English</div>
+            <div class="language-card-native">English</div>
+          </div>
+          <div class="language-card" data-lang="fr">
+            <div class="language-card-flag">FR</div>
+            <div class="language-card-name" data-i18n="setup.language.french">French</div>
+            <div class="language-card-native">Francais</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: Appearance -->
+      <div class="step" data-step="2">
+        <div class="step-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-1-.01-.83.67-1.5 1.49-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
+        </div>
+        <div class="step-title" data-i18n="setup.appearance.title">Choose your accent color</div>
+        <div class="step-subtitle" data-i18n="setup.appearance.subtitle">Personalize the look of your terminal</div>
+        <div class="color-grid" id="color-grid"></div>
+        <div class="color-preview">
+          <div class="color-preview-bar"></div>
+          <div class="color-preview-text">
+            <span data-i18n="setup.appearance.preview">Preview</span> — <span class="color-preview-accent" id="color-name">Amber</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 4: Preferences -->
+      <div class="step" data-step="3">
+        <div class="step-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+        </div>
+        <div class="step-title" data-i18n="setup.preferences.title">Set your preferences</div>
+        <div class="step-subtitle" data-i18n="setup.preferences.subtitle">Configure your default tools</div>
+        <div class="preferences-list">
+          <div class="preference-item">
+            <div class="preference-info">
+              <div class="preference-label" data-i18n="setup.preferences.editor">Default code editor</div>
+            </div>
+            <div class="preference-control">
+              <select class="pref-select" id="pref-editor">
+                <option value="code">VS Code</option>
+                <option value="cursor">Cursor</option>
+                <option value="webstorm">WebStorm</option>
+                <option value="idea">IntelliJ IDEA</option>
+              </select>
+            </div>
+          </div>
+          <div class="preference-item">
+            <div class="preference-info">
+              <div class="preference-label" data-i18n="setup.preferences.launchStartup">Launch at startup</div>
+              <div class="preference-desc" data-i18n="setup.preferences.launchStartupDesc">Start Claude Terminal when Windows starts</div>
+            </div>
+            <div class="preference-control">
+              <label class="toggle">
+                <input type="checkbox" id="pref-startup">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+          <div class="preference-item">
+            <div class="preference-info">
+              <div class="preference-label" data-i18n="setup.preferences.notifications">Enable notifications</div>
+              <div class="preference-desc" data-i18n="setup.preferences.notificationsDesc">Get notified about updates and events</div>
+            </div>
+            <div class="preference-control">
+              <label class="toggle">
+                <input type="checkbox" id="pref-notifications" checked>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 5: Done -->
+      <div class="step" data-step="4">
+        <div class="done-checkmark">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+        </div>
+        <div class="step-title" data-i18n="setup.done.title">You're all set!</div>
+        <div class="step-subtitle" data-i18n="setup.done.subtitle">Claude Terminal is ready to use</div>
+        <div class="done-summary" id="done-summary"></div>
+        <button class="btn btn-primary btn-large" id="btn-launch">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.13 22.19l-1.63-3.83c1.57-.58 2.91-1.55 3.89-2.82l-2.05-.81c-.71.88-1.67 1.54-2.78 1.88l-1.38-3.24c2.3-.88 3.82-3.08 3.82-5.62C13 4.61 11.14 2 7.5 2S2 4.61 2 7.75c0 2.54 1.52 4.74 3.82 5.62L2.2 22.19l4.8-1.5 1.5 4.81 4.63-3.31zM7.5 4c2.28 0 3.5 1.69 3.5 3.75S9.78 11.5 7.5 11.5 4 9.81 4 7.75 5.22 4 7.5 4z"/><circle cx="17.5" cy="15.5" r="1"/><path d="M17 11c2.21 0 4 1.79 4 4s-1.79 4-4 4-4-1.79-4-4 1.79-4 4-4m0-2c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6z" opacity="0"/></svg>
+          <span data-i18n="setup.done.launch">Launch Claude Terminal</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Footer Navigation -->
+    <div class="wizard-footer">
+      <div class="wizard-footer-left">
+        <button class="btn btn-ghost" id="btn-skip" data-i18n="setup.welcome.skip">Skip setup</button>
+      </div>
+      <div class="wizard-footer-right">
+        <span class="step-counter" id="step-counter"></span>
+        <button class="btn btn-secondary" id="btn-prev" style="display:none">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+          <span data-i18n="setup.nav.previous">Previous</span>
+        </button>
+        <button class="btn btn-primary" id="btn-next" style="display:none">
+          <span data-i18n="setup.nav.next">Next</span>
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Use preload-exposed APIs (contextBridge) with fallback to require
+    const api = window.electron_api || {};
+    const nodeModules = window.electron_nodeModules || {};
+    const fs = nodeModules.fs || require('fs');
+    const path = nodeModules.path || require('path');
+    const os = nodeModules.os || require('os');
+    // __dirname from preload (points to app root)
+    const appRoot = (nodeModules.__dirname) || __dirname;
+
+    // ============================================
+    // TRANSLATIONS (inline for self-containment)
+    // ============================================
+    const translations = {
+      en: {
+        'setup.welcome.title': 'Welcome to Claude Terminal',
+        'setup.welcome.subtitle': 'Your premium terminal environment for Claude Code',
+        'setup.welcome.start': 'Get Started',
+        'setup.welcome.skip': 'Skip setup',
+        'setup.language.title': 'Choose your language',
+        'setup.language.subtitle': 'You can change this later in settings',
+        'setup.language.english': 'English',
+        'setup.language.french': 'French',
+        'setup.appearance.title': 'Choose your accent color',
+        'setup.appearance.subtitle': 'Personalize the look of your terminal',
+        'setup.appearance.preview': 'Preview',
+        'setup.preferences.title': 'Set your preferences',
+        'setup.preferences.subtitle': 'Configure your default tools',
+        'setup.preferences.editor': 'Default code editor',
+        'setup.preferences.launchStartup': 'Launch at startup',
+        'setup.preferences.launchStartupDesc': 'Start Claude Terminal when Windows starts',
+        'setup.preferences.notifications': 'Enable notifications',
+        'setup.preferences.notificationsDesc': 'Get notified about updates and events',
+        'setup.done.title': "You're all set!",
+        'setup.done.subtitle': 'Claude Terminal is ready to use',
+        'setup.done.summary': 'Your settings',
+        'setup.done.launch': 'Launch Claude Terminal',
+        'setup.done.languageLabel': 'Language',
+        'setup.done.colorLabel': 'Accent color',
+        'setup.done.editorLabel': 'Editor',
+        'setup.done.startupLabel': 'Launch at startup',
+        'setup.done.notificationsLabel': 'Notifications',
+        'setup.done.enabled': 'Enabled',
+        'setup.done.disabled': 'Disabled',
+        'setup.nav.next': 'Next',
+        'setup.nav.previous': 'Previous',
+        'setup.nav.step': 'Step {current} of {total}'
+      },
+      fr: {
+        'setup.welcome.title': 'Bienvenue sur Claude Terminal',
+        'setup.welcome.subtitle': 'Votre environnement terminal premium pour Claude Code',
+        'setup.welcome.start': 'Commencer',
+        'setup.welcome.skip': 'Passer la configuration',
+        'setup.language.title': 'Choisissez votre langue',
+        'setup.language.subtitle': 'Vous pourrez la changer plus tard dans les parametres',
+        'setup.language.english': 'English',
+        'setup.language.french': 'Francais',
+        'setup.appearance.title': "Choisissez votre couleur d'accent",
+        'setup.appearance.subtitle': "Personnalisez l'apparence de votre terminal",
+        'setup.appearance.preview': 'Apercu',
+        'setup.preferences.title': 'Definissez vos preferences',
+        'setup.preferences.subtitle': 'Configurez vos outils par defaut',
+        'setup.preferences.editor': 'Editeur de code par defaut',
+        'setup.preferences.launchStartup': 'Lancer au demarrage',
+        'setup.preferences.launchStartupDesc': 'Demarrer Claude Terminal au lancement de Windows',
+        'setup.preferences.notifications': 'Activer les notifications',
+        'setup.preferences.notificationsDesc': 'Etre notifie des mises a jour et evenements',
+        'setup.done.title': "C'est pret !",
+        'setup.done.subtitle': 'Claude Terminal est pret a etre utilise',
+        'setup.done.summary': 'Vos parametres',
+        'setup.done.launch': 'Lancer Claude Terminal',
+        'setup.done.languageLabel': 'Langue',
+        'setup.done.colorLabel': "Couleur d'accent",
+        'setup.done.editorLabel': 'Editeur',
+        'setup.done.startupLabel': 'Lancer au demarrage',
+        'setup.done.notificationsLabel': 'Notifications',
+        'setup.done.enabled': 'Active',
+        'setup.done.disabled': 'Desactive',
+        'setup.nav.next': 'Suivant',
+        'setup.nav.previous': 'Precedent',
+        'setup.nav.step': 'Etape {current} sur {total}'
+      }
+    };
+
+    // ============================================
+    // ACCENT COLORS
+    // ============================================
+    const ACCENT_COLORS = [
+      { name: 'Gray', hex: '#6b7280' },
+      { name: 'Slate', hex: '#64748b' },
+      { name: 'Red', hex: '#ef4444' },
+      { name: 'Pink', hex: '#ec4899' },
+      { name: 'Orange', hex: '#f97316' },
+      { name: 'Amber', hex: '#d97706' },
+      { name: 'Yellow', hex: '#eab308' },
+      { name: 'Lime', hex: '#84cc16' },
+      { name: 'Green', hex: '#22c55e' },
+      { name: 'Emerald', hex: '#10b981' },
+      { name: 'Cyan', hex: '#06b6d4' },
+      { name: 'Blue', hex: '#3b82f6' },
+      { name: 'Indigo', hex: '#6366f1' },
+      { name: 'Violet', hex: '#8b5cf6' },
+      { name: 'Fuchsia', hex: '#d946ef' },
+      { name: 'Hot Pink', hex: '#f43f5e' }
+    ];
+
+    // ============================================
+    // STATE
+    // ============================================
+    const TOTAL_STEPS = 5;
+    let currentStep = 0;
+    let selectedLang = navigator.language.startsWith('fr') ? 'fr' : 'en';
+    let selectedColor = '#d97706';
+    let selectedColorName = 'Amber';
+
+    // ============================================
+    // DOM REFS
+    // ============================================
+    const steps = document.querySelectorAll('.step');
+    const btnStart = document.getElementById('btn-start');
+    const btnNext = document.getElementById('btn-next');
+    const btnPrev = document.getElementById('btn-prev');
+    const btnSkip = document.getElementById('btn-skip');
+    const btnClose = document.getElementById('btn-close');
+    const btnLaunch = document.getElementById('btn-launch');
+    const stepCounter = document.getElementById('step-counter');
+    const progressBar = document.getElementById('progress-bar');
+    const colorGrid = document.getElementById('color-grid');
+
+    // ============================================
+    // INITIALIZATION
+    // ============================================
+    function init() {
+      loadAppVersion();
+      buildProgressBar();
+      buildColorGrid();
+      detectLanguage();
+      updateUI();
+
+      // Events
+      btnStart.addEventListener('click', () => goToStep(1));
+      btnNext.addEventListener('click', () => goToStep(currentStep + 1));
+      btnPrev.addEventListener('click', () => goToStep(currentStep - 1));
+      btnSkip.addEventListener('click', skipSetup);
+      btnClose.addEventListener('click', skipSetup);
+      btnLaunch.addEventListener('click', completeSetup);
+
+      // Language cards
+      document.querySelectorAll('.language-card').forEach(card => {
+        card.addEventListener('click', () => {
+          document.querySelectorAll('.language-card').forEach(c => c.classList.remove('selected'));
+          card.classList.add('selected');
+          selectedLang = card.dataset.lang;
+          applyTranslations();
+        });
+      });
+    }
+
+    function loadAppVersion() {
+      try {
+        const pkgPath = path.join(appRoot, 'package.json');
+        if (fs.existsSync(pkgPath)) {
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+          document.getElementById('app-version').textContent = `Version ${pkg.version}`;
+        }
+      } catch (e) {
+        document.getElementById('app-version').textContent = '';
+      }
+    }
+
+    function detectLanguage() {
+      const sysLang = navigator.language.substring(0, 2);
+      if (sysLang === 'fr') {
+        selectedLang = 'fr';
+        document.querySelectorAll('.language-card').forEach(c => c.classList.remove('selected'));
+        document.querySelector('[data-lang="fr"]').classList.add('selected');
+      }
+      applyTranslations();
+    }
+
+    // ============================================
+    // PROGRESS BAR
+    // ============================================
+    function buildProgressBar() {
+      let html = '';
+      for (let i = 0; i < TOTAL_STEPS; i++) {
+        if (i > 0) {
+          html += `<div class="progress-line" data-line="${i}"></div>`;
+        }
+        html += `<div class="progress-dot" data-dot="${i}"></div>`;
+      }
+      progressBar.innerHTML = html;
+    }
+
+    function updateProgressBar() {
+      document.querySelectorAll('.progress-dot').forEach((dot, i) => {
+        dot.classList.toggle('active', i === currentStep);
+        dot.classList.toggle('completed', i < currentStep);
+      });
+      document.querySelectorAll('.progress-line').forEach((line, i) => {
+        line.classList.toggle('active', i < currentStep);
+      });
+    }
+
+    // ============================================
+    // COLOR GRID
+    // ============================================
+    function buildColorGrid() {
+      colorGrid.innerHTML = ACCENT_COLORS.map(c => `
+        <div class="color-swatch ${c.hex === selectedColor ? 'selected' : ''}"
+             data-color="${c.hex}" data-name="${c.name}"
+             style="background:${c.hex}"
+             title="${c.name}">
+        </div>
+      `).join('');
+
+      colorGrid.addEventListener('click', (e) => {
+        const swatch = e.target.closest('.color-swatch');
+        if (!swatch) return;
+
+        document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+        swatch.classList.add('selected');
+
+        selectedColor = swatch.dataset.color;
+        selectedColorName = swatch.dataset.name;
+        applyAccentColor(selectedColor);
+        document.getElementById('color-name').textContent = selectedColorName;
+      });
+    }
+
+    // ============================================
+    // ACCENT COLOR LIVE PREVIEW
+    // ============================================
+    function applyAccentColor(hex) {
+      const root = document.documentElement;
+      root.style.setProperty('--accent', hex);
+
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      if (result) {
+        const r = parseInt(result[1], 16);
+        const g = parseInt(result[2], 16);
+        const b = parseInt(result[3], 16);
+        root.style.setProperty('--accent-rgb', `${r}, ${g}, ${b}`);
+      }
+    }
+
+    // ============================================
+    // TRANSLATIONS
+    // ============================================
+    function applyTranslations() {
+      const t = translations[selectedLang] || translations.en;
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.dataset.i18n;
+        if (t[key]) {
+          el.textContent = t[key];
+        }
+      });
+      updateStepCounter();
+    }
+
+    function t(key, params = {}) {
+      const dict = translations[selectedLang] || translations.en;
+      let text = dict[key] || key;
+      Object.entries(params).forEach(([k, v]) => {
+        text = text.replace(`{${k}}`, v);
+      });
+      return text;
+    }
+
+    // ============================================
+    // NAVIGATION
+    // ============================================
+    function goToStep(step) {
+      if (step < 0 || step >= TOTAL_STEPS) return;
+
+      const direction = step > currentStep ? 1 : -1;
+      const prevStepEl = steps[currentStep];
+      const nextStepEl = steps[step];
+
+      // Remove active from previous
+      prevStepEl.classList.remove('active');
+      prevStepEl.classList.add(direction > 0 ? 'exit-left' : '');
+      prevStepEl.style.transform = direction > 0 ? 'translateX(-60px)' : 'translateX(60px)';
+      prevStepEl.style.opacity = '0';
+
+      // Prepare next step entry
+      nextStepEl.style.transform = direction > 0 ? 'translateX(60px)' : 'translateX(-60px)';
+      nextStepEl.style.opacity = '0';
+      nextStepEl.classList.remove('exit-left');
+
+      // Small delay for transition
+      requestAnimationFrame(() => {
+        nextStepEl.classList.add('active');
+        nextStepEl.style.transform = '';
+        nextStepEl.style.opacity = '';
+      });
+
+      currentStep = step;
+
+      // Build summary on last step
+      if (currentStep === TOTAL_STEPS - 1) {
+        buildSummary();
+      }
+
+      updateUI();
+    }
+
+    function updateUI() {
+      updateProgressBar();
+      updateStepCounter();
+
+      // Show/hide navigation buttons
+      const isFirst = currentStep === 0;
+      const isLast = currentStep === TOTAL_STEPS - 1;
+
+      btnStart.style.display = isFirst ? '' : 'none';
+      btnNext.style.display = (!isFirst && !isLast) ? '' : 'none';
+      btnPrev.style.display = (!isFirst && !isLast) ? '' : 'none';
+      btnSkip.style.display = isLast ? 'none' : '';
+      btnLaunch.style.display = isLast ? '' : 'none';
+
+      // Step counter
+      stepCounter.style.display = (!isFirst && !isLast) ? '' : 'none';
+    }
+
+    function updateStepCounter() {
+      stepCounter.textContent = t('setup.nav.step', { current: currentStep + 1, total: TOTAL_STEPS });
+    }
+
+    // ============================================
+    // SUMMARY
+    // ============================================
+    function buildSummary() {
+      const editor = document.getElementById('pref-editor').value;
+      const editorNames = { code: 'VS Code', cursor: 'Cursor', webstorm: 'WebStorm', idea: 'IntelliJ IDEA' };
+      const startup = document.getElementById('pref-startup').checked;
+      const notifications = document.getElementById('pref-notifications').checked;
+
+      const langName = selectedLang === 'fr' ? 'Francais' : 'English';
+
+      document.getElementById('done-summary').innerHTML = `
+        <div class="done-summary-row">
+          <span class="done-summary-label">${t('setup.done.languageLabel')}</span>
+          <span class="done-summary-value">${langName}</span>
+        </div>
+        <div class="done-summary-row">
+          <span class="done-summary-label">${t('setup.done.colorLabel')}</span>
+          <span class="done-summary-value">
+            <span class="done-summary-color" style="background:${selectedColor}"></span>
+            ${selectedColorName}
+          </span>
+        </div>
+        <div class="done-summary-row">
+          <span class="done-summary-label">${t('setup.done.editorLabel')}</span>
+          <span class="done-summary-value">${editorNames[editor] || editor}</span>
+        </div>
+        <div class="done-summary-row">
+          <span class="done-summary-label">${t('setup.done.startupLabel')}</span>
+          <span class="done-summary-value">${startup ? t('setup.done.enabled') : t('setup.done.disabled')}</span>
+        </div>
+        <div class="done-summary-row">
+          <span class="done-summary-label">${t('setup.done.notificationsLabel')}</span>
+          <span class="done-summary-value">${notifications ? t('setup.done.enabled') : t('setup.done.disabled')}</span>
+        </div>
+      `;
+    }
+
+    // ============================================
+    // COMPLETE / SKIP
+    // ============================================
+    function getSettings() {
+      return {
+        language: selectedLang,
+        accentColor: selectedColor,
+        editor: document.getElementById('pref-editor').value,
+        launchAtStartup: document.getElementById('pref-startup').checked,
+        notificationsEnabled: document.getElementById('pref-notifications').checked,
+        setupCompleted: true
+      };
+    }
+
+    async function completeSetup() {
+      const settings = getSettings();
+      try {
+        await api.setupWizard.complete(settings);
+      } catch (e) {
+        console.error('Error completing setup:', e);
+      }
+    }
+
+    function skipSetup() {
+      api.setupWizard.skip();
+    }
+
+    // ============================================
+    // BOOT
+    // ============================================
+    init();
+  </script>
+</body>
+</html>

@@ -398,6 +398,53 @@
     "startDate": "Start date",
     "endDate": "End date"
   },
+  "setup": {
+    "welcome": {
+      "title": "Welcome to Claude Terminal",
+      "subtitle": "Your premium terminal environment for Claude Code",
+      "version": "Version {version}",
+      "start": "Get Started",
+      "skip": "Skip setup"
+    },
+    "language": {
+      "title": "Choose your language",
+      "subtitle": "You can change this later in settings",
+      "english": "English",
+      "french": "French"
+    },
+    "appearance": {
+      "title": "Choose your accent color",
+      "subtitle": "Personalize the look of your terminal",
+      "preview": "Preview"
+    },
+    "preferences": {
+      "title": "Set your preferences",
+      "subtitle": "Configure your default tools",
+      "editor": "Default code editor",
+      "launchStartup": "Launch at startup",
+      "launchStartupDesc": "Start Claude Terminal when Windows starts",
+      "notifications": "Enable notifications",
+      "notificationsDesc": "Get notified about updates and events"
+    },
+    "done": {
+      "title": "You're all set!",
+      "subtitle": "Claude Terminal is ready to use",
+      "summary": "Your settings",
+      "launch": "Launch Claude Terminal",
+      "languageLabel": "Language",
+      "colorLabel": "Accent color",
+      "editorLabel": "Editor",
+      "startupLabel": "Launch at startup",
+      "notificationsLabel": "Notifications",
+      "enabled": "Enabled",
+      "disabled": "Disabled"
+    },
+    "nav": {
+      "next": "Next",
+      "previous": "Previous",
+      "step": "Step {current} of {total}"
+    }
+  },
   "errors": {
     "corruptedFile": "Projects file corrupted",
     "backupCreated": "A backup was created: {filename}",

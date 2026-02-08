@@ -39,6 +39,10 @@ function bootstrapApp() {
     registerQuickPickerHandlers
   } = require('./src/main/windows/QuickPickerWindow');
   const {
+    createSetupWizardWindow,
+    isFirstLaunch
+  } = require('./src/main/windows/SetupWizardWindow');
+  const {
     createTray,
     registerTrayHandlers
   } = require('./src/main/windows/TrayManager');
@@ -57,9 +61,9 @@ function bootstrapApp() {
   });
 
   /**
-   * Initialize the application
+   * Launch the main application (after setup wizard or directly)
    */
-  function initializeApp() {
+  function launchMainApp() {
     const accentColor = loadAccentColor();
     const isDev = process.argv.includes('--dev');
     const mainWindow = createMainWindow({ isDev });
@@ -71,6 +75,29 @@ function bootstrapApp() {
     createTray(accentColor);
     registerGlobalShortcuts();
     updaterService.checkForUpdates(app.isPackaged);
+  }
+
+  /**
+   * Initialize the application
+   * Checks for first launch and shows setup wizard if needed
+   */
+  function initializeApp() {
+    if (isFirstLaunch()) {
+      createSetupWizardWindow({
+        onComplete: (settings) => {
+          // Apply launch-at-startup setting if requested
+          if (settings.launchAtStartup) {
+            app.setLoginItemSettings({ openAtLogin: true });
+          }
+          launchMainApp();
+        },
+        onSkip: () => {
+          launchMainApp();
+        }
+      });
+    } else {
+      launchMainApp();
+    }
   }
 
   /**
