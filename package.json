@@ -1,6 +1,6 @@
 {
   "name": "claude-terminal",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Terminal custom pour Claude Code avec gestion des projets, skills et agents",
   "main": "main.js",
   "scripts": {
