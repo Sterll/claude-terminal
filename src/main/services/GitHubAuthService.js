@@ -17,6 +17,7 @@ const GITHUB_CLIENT_ID = 'Ov23liYfl42qwDVVk99l';
  * Make an HTTPS request (follows redirects)
  */
 function httpsRequest(options, postData = null, maxRedirects = 3) {
+  const timeout = options.timeout || 15000;
   return new Promise((resolve, reject) => {
     const req = https.request(options, (res) => {
       // Handle redirects
@@ -45,6 +46,10 @@ function httpsRequest(options, postData = null, maxRedirects = 3) {
           resolve({ status: res.statusCode, data: parsed });
         }
       });
+    });
+    req.setTimeout(timeout, () => {
+      req.destroy();
+      reject(new Error(`Request timeout after ${timeout}ms`));
     });
     req.on('error', reject);
     if (postData) req.write(postData);
