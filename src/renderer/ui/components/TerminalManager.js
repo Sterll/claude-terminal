@@ -118,10 +118,35 @@ function loadWebglAddon(terminal) {
 }
 
 // ── Output silence detection disabled ──
-// Status detection relies solely on terminal title: ✳ = ready, spinner = working
 // Silence-based detection caused false "ready" during Claude's thinking phases
 function resetOutputSilenceTimer(_id) { /* no-op */ }
 function clearOutputSilenceTimer(_id) { /* no-op */ }
+
+// ── Ready state debounce ──
+// Between tool calls, Claude briefly shows ✳ before starting next action.
+// Debounce prevents false "ready" transitions (and notification spam).
+const READY_DEBOUNCE_MS = 2500;
+const readyDebounceTimers = new Map(); // terminalId -> timerId
+
+function scheduleReady(id) {
+  // Already scheduled
+  if (readyDebounceTimers.has(id)) return;
+  readyDebounceTimers.set(id, setTimeout(() => {
+    readyDebounceTimers.delete(id);
+    updateTerminalStatus(id, 'ready');
+  }, READY_DEBOUNCE_MS));
+}
+
+function cancelScheduledReady(id) {
+  const timer = readyDebounceTimers.get(id);
+  if (timer) {
+    clearTimeout(timer);
+    readyDebounceTimers.delete(id);
+  }
+}
+
+// Broader Braille spinner detection: any non-blank Braille Pattern character (U+2801-U+28FF)
+const BRAILLE_SPINNER_RE = /[\u2801-\u28FF]/;
 
 // ── Throttled recordActivity (max 1 call/sec per project) ──
 const activityThrottles = new Map();
@@ -571,6 +596,7 @@ function closeTerminal(id) {
   const closedProjectId = termData?.project?.id;
 
   clearOutputSilenceTimer(id);
+  cancelScheduledReady(id);
 
   // Kill and cleanup
   if (termData && termData.type === 'file') {
@@ -707,16 +733,16 @@ async function createTerminal(project, options = {}) {
   // Custom key handler for global shortcuts and copy/paste
   terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, id, 'terminal-input'));
 
-  // Title change handling
+  // Title change handling (debounced ready detection)
   let lastTitle = '';
   terminal.onTitleChange(title => {
     if (title === lastTitle) return;
     lastTitle = title;
-    const spinnerChars = /[⠂⠄⠆⠇⠋⠙⠹⠸⠼⠴⠦⠧⠏]/;
-    if (title.includes('✳')) updateTerminalStatus(id, 'ready');
-    else if (spinnerChars.test(title)) {
+    if (BRAILLE_SPINNER_RE.test(title)) {
+      cancelScheduledReady(id);
       updateTerminalStatus(id, 'working');
-      // Title spinner = still working (primary detection mechanism)
+    } else if (title.includes('✳')) {
+      scheduleReady(id);
     }
   });
 
@@ -744,6 +770,7 @@ async function createTerminal(project, options = {}) {
     const td = getTerminal(id);
     if (td?.project?.id) throttledRecordActivity(td.project.id);
     if (data === '\r' || data === '\n') {
+      cancelScheduledReady(id);
       updateTerminalStatus(id, 'working');
       if (td && td.inputBuffer.trim().length > 0) {
         const title = extractTitleFromInput(td.inputBuffer);
@@ -1809,16 +1836,16 @@ async function resumeSession(project, sessionId, options = {}) {
   // Custom key handler for global shortcuts and copy/paste
   terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, id, 'terminal-input'));
 
-  // Title change handling
+  // Title change handling (debounced ready detection)
   let lastTitle = '';
   terminal.onTitleChange(title => {
     if (title === lastTitle) return;
     lastTitle = title;
-    const spinnerChars = /[⠂⠄⠆⠇⠋⠙⠹⠸⠼⠴⠦⠧⠏]/;
-    if (title.includes('✳')) updateTerminalStatus(id, 'ready');
-    else if (spinnerChars.test(title)) {
+    if (BRAILLE_SPINNER_RE.test(title)) {
+      cancelScheduledReady(id);
       updateTerminalStatus(id, 'working');
-      // Title spinner = still working (primary detection mechanism)
+    } else if (title.includes('✳')) {
+      scheduleReady(id);
     }
   });
 
@@ -1846,6 +1873,7 @@ async function resumeSession(project, sessionId, options = {}) {
     const td = getTerminal(id);
     if (td?.project?.id) throttledRecordActivity(td.project.id);
     if (data === '\r' || data === '\n') {
+      cancelScheduledReady(id);
       updateTerminalStatus(id, 'working');
       if (td && td.inputBuffer.trim().length > 0) {
         const title = extractTitleFromInput(td.inputBuffer);
@@ -2072,28 +2100,29 @@ async function createTerminalWithPrompt(project, prompt) {
   // Custom key handler
   terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, id, 'terminal-input'));
 
-  // Title change handling - detect when Claude is ready
+  // Title change handling (debounced ready, immediate prompt send)
   let lastTitle = '';
   let promptSent = false;
   terminal.onTitleChange(title => {
     if (title === lastTitle) return;
     lastTitle = title;
-    const spinnerChars = /[⠂⠄⠆⠇⠋⠙⠹⠸⠼⠴⠦⠧⠏]/;
-    if (title.includes('✳')) {
-      updateTerminalStatus(id, 'ready');
-      // Send the pending prompt when Claude is ready
+    if (BRAILLE_SPINNER_RE.test(title)) {
+      cancelScheduledReady(id);
+      updateTerminalStatus(id, 'working');
+    } else if (title.includes('✳')) {
+      // Send pending prompt immediately (no debounce for auto-prompt)
       const td = getTerminal(id);
       if (td && td.pendingPrompt && !promptSent) {
         promptSent = true;
         setTimeout(() => {
           api.terminal.input({ id, data: td.pendingPrompt + '\r' });
           updateTerminal(id, { pendingPrompt: null });
+          cancelScheduledReady(id);
           updateTerminalStatus(id, 'working');
         }, 500);
+      } else {
+        scheduleReady(id);
       }
-    } else if (spinnerChars.test(title)) {
-      updateTerminalStatus(id, 'working');
-      // Title spinner = still working (primary detection mechanism)
     }
   });
 
@@ -2117,6 +2146,7 @@ async function createTerminalWithPrompt(project, prompt) {
     api.terminal.input({ id, data });
     const td = getTerminal(id);
     if (data === '\r' || data === '\n') {
+      cancelScheduledReady(id);
       updateTerminalStatus(id, 'working');
       if (td && td.inputBuffer.trim().length > 0) {
         const title = extractTitleFromInput(td.inputBuffer);
