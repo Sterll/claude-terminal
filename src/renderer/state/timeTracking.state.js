@@ -10,8 +10,10 @@ const { State } = require('./State');
 const IDLE_TIMEOUT = 15 * 60 * 1000; // 15 minutes
 const OUTPUT_IDLE_TIMEOUT = 2 * 60 * 1000; // 2 minutes - idle after last terminal output
 const SLEEP_GAP_THRESHOLD = 2 * 60 * 1000; // 2 minutes - gap indicating system sleep/wake
+const CHECKPOINT_INTERVAL = 5 * 60 * 1000; // 5 minutes - periodic session save
 let lastHeartbeat = Date.now();
 let heartbeatTimer = null;
+let checkpointTimer = null;
 
 // Runtime state (not persisted)
 // activeSessions: Map<projectId, { sessionStartTime, lastActivityTime, isIdle }>
@@ -181,6 +183,9 @@ function initTimeTracking(projectsState, saveProjects, saveProjectsImmediate) {
 
   // Start sleep/wake detection heartbeat
   startHeartbeat();
+
+  // Start periodic checkpoint saves
+  startCheckpointTimer();
 }
 
 /**
@@ -268,6 +273,62 @@ function startHeartbeat() {
   clearInterval(heartbeatTimer);
   lastHeartbeat = Date.now();
   heartbeatTimer = setInterval(checkSleepWake, 30 * 1000);
+}
+
+/**
+ * Start periodic checkpoint timer
+ * Saves active sessions every CHECKPOINT_INTERVAL to keep session data current
+ * without waiting for idle timeout or terminal close
+ */
+function startCheckpointTimer() {
+  clearInterval(checkpointTimer);
+  checkpointTimer = setInterval(saveCheckpoints, CHECKPOINT_INTERVAL);
+}
+
+/**
+ * Save checkpoints for all active sessions
+ * Splits each active session at current time: saves [start, now] and restarts from now
+ * Does NOT affect idle timers - only saves accumulated time
+ */
+function saveCheckpoints() {
+  const state = trackingState.get();
+  const now = Date.now();
+  const activeSessions = new Map(state.activeSessions);
+  let projectsChanged = false;
+
+  // Checkpoint each active project session
+  for (const [projectId, session] of activeSessions) {
+    if (session.sessionStartTime && !session.isIdle) {
+      const duration = now - session.sessionStartTime;
+      if (duration > 1000) {
+        saveSession(projectId, session.sessionStartTime, now, duration);
+        activeSessions.set(projectId, {
+          ...session,
+          sessionStartTime: now
+          // Keep lastActivityTime and isIdle unchanged
+        });
+        projectsChanged = true;
+      }
+    }
+  }
+
+  // Checkpoint global session
+  let globalChanged = false;
+  if (state.globalSessionStartTime && !state.globalIsIdle) {
+    const duration = now - state.globalSessionStartTime;
+    if (duration > 1000) {
+      saveGlobalSession(state.globalSessionStartTime, now, duration);
+      globalChanged = true;
+    }
+  }
+
+  if (projectsChanged || globalChanged) {
+    const newState = { ...trackingState.get() };
+    if (projectsChanged) newState.activeSessions = activeSessions;
+    if (globalChanged) newState.globalSessionStartTime = now;
+    trackingState.set(newState);
+    console.log('[TimeTracking] Checkpoint saved');
+  }
 }
 
 /**
@@ -808,9 +869,9 @@ function saveSession(projectId, startTime, endTime, duration) {
     tracking.lastActiveDate = today;
     tracking.sessions = [...(tracking.sessions || []), newSession];
 
-    // Limit sessions
-    if (tracking.sessions.length > 100) {
-      tracking.sessions = tracking.sessions.slice(-100);
+    // Limit sessions (300 = ~25h at 5-min checkpoint intervals)
+    if (tracking.sessions.length > 300) {
+      tracking.sessions = tracking.sessions.slice(-300);
     }
 
     return { ...p, timeTracking: tracking };
@@ -1014,12 +1075,22 @@ function getProjectTimes(projectId) {
     return { today: 0, total: 0 };
   }
 
-  // Check if we need to reset today
   const tracking = project.timeTracking;
-  const today = getTodayString();
 
-  if (tracking.lastActiveDate !== today) {
-    return { today: 0, total: tracking.totalTime || 0 };
+  // Calculate today's time from actual sessions (more accurate than todayTime counter)
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date(todayStart);
+  todayEnd.setDate(todayEnd.getDate() + 1);
+
+  let todayFromSessions = 0;
+  if (Array.isArray(tracking.sessions)) {
+    for (const session of tracking.sessions) {
+      const sessionDate = new Date(session.startTime);
+      if (sessionDate >= todayStart && sessionDate < todayEnd) {
+        todayFromSessions += session.duration || 0;
+      }
+    }
   }
 
   // Add current session time if actively tracking this project
@@ -1033,14 +1104,12 @@ function getProjectTimes(projectId) {
     currentSessionTime = now - session.sessionStartTime;
 
     // Clip to today boundary for todayTime
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
     const effectiveStart = Math.max(session.sessionStartTime, todayStart.getTime());
     currentSessionTimeToday = Math.max(0, now - effectiveStart);
   }
 
   return {
-    today: (tracking.todayTime || 0) + currentSessionTimeToday,
+    today: todayFromSessions + currentSessionTimeToday,
     total: (tracking.totalTime || 0) + currentSessionTime
   };
 }
@@ -1079,6 +1148,7 @@ function saveAllActiveSessions() {
   clearTimeout(globalIdleTimer);
   clearInterval(midnightCheckTimer);
   clearInterval(heartbeatTimer);
+  clearInterval(checkpointTimer);
 
   trackingState.set({
     activeSessions: new Map(),
