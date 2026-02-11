@@ -7,6 +7,7 @@ const api = window.electron_api;
 const { projectsState, getProject, getFolder, getProjectIndex } = require('../state');
 const { escapeHtml } = require('../utils');
 const { t } = require('../i18n');
+const Toast = require('../ui/components/Toast');
 
 // ========== STATE ==========
 let selectedProject = null;
@@ -1303,19 +1304,7 @@ async function handleCreatePR() {
 
 // ========== TOAST HELPER ==========
 function showToast(message, type = 'info') {
-  const container = document.getElementById('toast-container');
-  if (!container) return;
-
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.textContent = message;
-  container.appendChild(toast);
-
-  setTimeout(() => toast.classList.add('show'), 10);
-  setTimeout(() => {
-    toast.classList.remove('show');
-    setTimeout(() => toast.remove(), 300);
-  }, 3000);
+  Toast.showToast({ message, type, duration: 4000 });
 }
 
 // ========== INIT & EXPORT ==========
