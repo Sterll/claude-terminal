@@ -36,18 +36,18 @@ function parseUsageOutput(output) {
       data.session = parseFloat(sessionMatch[1]);
     }
 
-    // Pattern: "Current week" followed by percentage (with or without "all models")
-    const weeklyMatch = clean.match(/Current week[\s\S]{0,50}?all models[\s\S]{0,100}?(\d+(?:\.\d+)?)\s*%/i) ||
-                        clean.match(/Current week[\s\S]{0,100}?(\d+(?:\.\d+)?)\s*%/i) ||
-                        clean.match(/week(?:ly)?[\s\S]{0,50}?(\d+(?:\.\d+)?)\s*%/i);
-    if (weeklyMatch) {
-      data.weekly = parseFloat(weeklyMatch[1]);
-    }
-
-    // Pattern: "Sonnet" followed by percentage
-    const sonnetMatch = clean.match(/Sonnet[\s\S]{0,100}?(\d+(?:\.\d+)?)\s*%/i);
+    // Pattern: "Sonnet" followed by percentage (parse BEFORE weekly to avoid overlap)
+    const sonnetMatch = clean.match(/Sonnet[^%\n]{0,60}?(\d+(?:\.\d+)?)\s*%/i);
     if (sonnetMatch) {
       data.sonnet = parseFloat(sonnetMatch[1]);
+    }
+
+    // Pattern: "Current week" or "Weekly" - same line percentage only, or "all models"
+    const weeklyMatch = clean.match(/Current week[^\n]{0,50}?all models[^\n]{0,50}?(\d+(?:\.\d+)?)\s*%/i) ||
+                        clean.match(/Current week[^\n]{0,80}?(\d+(?:\.\d+)?)\s*%/i) ||
+                        clean.match(/Weekly[^\n]{0,80}?(\d+(?:\.\d+)?)\s*%/i);
+    if (weeklyMatch) {
+      data.weekly = parseFloat(weeklyMatch[1]);
     }
 
     // Fallback: find all percentages in order for any missing values
