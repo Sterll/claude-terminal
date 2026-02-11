@@ -48,6 +48,10 @@ tmp/
 temp/
 *.tmp
 
+# Brand & Website (assets managed outside git)
+brand/
+website/
+
 # External projects
 remotion-apple/
 
