@@ -130,15 +130,27 @@ function clearOutputSilenceTimer(_id) { /* no-op */ }
 // Between tool calls, Claude briefly shows ✳ before starting next action.
 // Debounce prevents false "ready" transitions (and notification spam).
 const READY_DEBOUNCE_MS = 2500;
-const readyDebounceTimers = new Map(); // terminalId -> timerId
+const POST_ENTER_DEBOUNCE_MS = 5000;   // Extended debounce for echo ✳ after Enter
+const POST_SPINNER_DEBOUNCE_MS = 8000; // Extended debounce between tool calls
+const readyDebounceTimers = new Map();  // terminalId -> timerId
+const postEnterExtended = new Set();    // ids where Enter was pressed → extend first ✳
+const postSpinnerExtended = new Set();  // ids where spinner was seen → extend all ✳
 
 function scheduleReady(id) {
-  // Already scheduled
   if (readyDebounceTimers.has(id)) return;
+  let delay = READY_DEBOUNCE_MS;
+  if (postSpinnerExtended.has(id)) {
+    delay = POST_SPINNER_DEBOUNCE_MS;
+  } else if (postEnterExtended.has(id)) {
+    delay = POST_ENTER_DEBOUNCE_MS;
+    postEnterExtended.delete(id);
+  }
   readyDebounceTimers.set(id, setTimeout(() => {
     readyDebounceTimers.delete(id);
+    postSpinnerExtended.delete(id);
+    postEnterExtended.delete(id);
     updateTerminalStatus(id, 'ready');
-  }, READY_DEBOUNCE_MS));
+  }, delay));
 }
 
 function cancelScheduledReady(id) {
@@ -815,6 +827,8 @@ async function createTerminal(project, options = {}) {
     if (title === lastTitle) return;
     lastTitle = title;
     if (BRAILLE_SPINNER_RE.test(title)) {
+      postEnterExtended.delete(id);
+      postSpinnerExtended.add(id);
       cancelScheduledReady(id);
       updateTerminalStatus(id, 'working');
     } else if (title.includes('✳')) {
@@ -849,6 +863,7 @@ async function createTerminal(project, options = {}) {
       cancelScheduledReady(id);
       updateTerminalStatus(id, 'working');
       if (td && td.inputBuffer.trim().length > 0) {
+        postEnterExtended.add(id);
         const title = extractTitleFromInput(td.inputBuffer);
         if (title) {
           // Update terminal tab name instead of window title
@@ -2102,6 +2117,8 @@ async function resumeSession(project, sessionId, options = {}) {
     if (title === lastTitle) return;
     lastTitle = title;
     if (BRAILLE_SPINNER_RE.test(title)) {
+      postEnterExtended.delete(id);
+      postSpinnerExtended.add(id);
       cancelScheduledReady(id);
       updateTerminalStatus(id, 'working');
     } else if (title.includes('✳')) {
@@ -2136,6 +2153,7 @@ async function resumeSession(project, sessionId, options = {}) {
       cancelScheduledReady(id);
       updateTerminalStatus(id, 'working');
       if (td && td.inputBuffer.trim().length > 0) {
+        postEnterExtended.add(id);
         const title = extractTitleFromInput(td.inputBuffer);
         if (title) updateTerminalTabName(id, title);
         updateTerminal(id, { inputBuffer: '' });
@@ -2367,6 +2385,8 @@ async function createTerminalWithPrompt(project, prompt) {
     if (title === lastTitle) return;
     lastTitle = title;
     if (BRAILLE_SPINNER_RE.test(title)) {
+      postEnterExtended.delete(id);
+      postSpinnerExtended.add(id);
       cancelScheduledReady(id);
       updateTerminalStatus(id, 'working');
     } else if (title.includes('✳')) {
@@ -2377,6 +2397,7 @@ async function createTerminalWithPrompt(project, prompt) {
         setTimeout(() => {
           api.terminal.input({ id, data: td.pendingPrompt + '\r' });
           updateTerminal(id, { pendingPrompt: null });
+          postEnterExtended.add(id);
           cancelScheduledReady(id);
           updateTerminalStatus(id, 'working');
         }, 500);
@@ -2409,6 +2430,7 @@ async function createTerminalWithPrompt(project, prompt) {
       cancelScheduledReady(id);
       updateTerminalStatus(id, 'working');
       if (td && td.inputBuffer.trim().length > 0) {
+        postEnterExtended.add(id);
         const title = extractTitleFromInput(td.inputBuffer);
         if (title) updateTerminalTabName(id, title);
         updateTerminal(id, { inputBuffer: '' });
