@@ -1,0 +1,107 @@
+# Changelog
+
+All notable changes to Claude Terminal are documented in this file.
+
+## [0.7.1] - 2025-02-11
+
+### Changed
+- Switch license from MIT to GPL-3.0
+- Add brand banner to README
+- Remove local settings from version control
+- Polish global styles and remove dead CSS
+
+### Fixed
+- Unify git tab toasts with global toast component
+
+## [0.7.0] - 2025-01-XX
+
+### Added
+- **MCP Registry**: browse and search MCP servers from the interface
+- **File Explorer**: multi-select, search, git status indicators, inline rename
+- **Skill Marketplace**: search, install and cache skills from the community
+- Custom NSIS installer images
+
+### Fixed
+- Adaptive debounce to prevent false terminal ready status
+- Weekly usage percentage parsing order
+- Context menu positioning and hide/show race condition
+- Updater stale pending cache on version match
+
+## [0.6.0] - 2025-01-XX
+
+### Added
+- **Git Tab**: commit history, stash management and PR management
+- **Setup Wizard**: first-launch configuration experience
+- **Branded Installer**: custom NSIS wizard with branding
+- Modular project type registry with FiveM and WebApp plugins
+- Session scanning from .jsonl files
+- Collapsible projects panel toggle
+- Sidebar reorganization with section labels and compact layout
+
+### Changed
+- Spawn Claude directly via cmd.exe on Windows
+- Improve session titles and memory markdown parser
+
+### Fixed
+- Time tracking: calculate today time from sessions with periodic checkpoints
+- Terminal: debounced ready detection with broader spinner regex
+- Git: use rebase strategy for pull
+- GitHub: add timeout to HTTPS requests to prevent hangs
+- Context menu: open at cursor position
+- Projects: switch in visual sidebar order with Ctrl+arrows
+
+## [0.5.0] - 2024-12-XX
+
+### Added
+- **Multi-project Dashboard**: overview with disk cache and type detection
+- **GitHub Actions**: status display in dashboard with live CI bar
+- **Pull Requests**: section in dashboard
+- Quick actions redesign as dropdown with terminal reuse and custom presets
+- Settings moved from modal to inline tab
+- Unit tests with Jest setup
+
+### Fixed
+- Code stats: use git ls-files for accurate counting
+- Git: per-project pull/push button state
+- Usage: weekly percentage parsing
+
+## [0.4.0] - 2024-12-XX
+
+### Added
+- Resizable projects panel
+- Compact mode with hover tooltip
+- File explorer media preview (images, video, audio)
+- Dev instance alongside production
+
+### Fixed
+- Replace node require calls with preload API
+- Handle non-array details in git toast
+
+## [0.3.0] - 2024-11-XX
+
+### Added
+- Dashboard with per-project statistics
+- MCP server management
+- System tray integration
+- Desktop notifications
+- Global quick project picker (Ctrl+Shift+P)
+- Time tracking with idle detection
+
+## [0.2.0] - 2024-11-XX
+
+### Added
+- Multi-terminal management with tabs
+- Git integration (branches, pull, push, merge)
+- Project folders with drag-and-drop
+- Keyboard shortcuts (customizable)
+- i18n support (English, French)
+- Auto-updates via GitHub releases
+
+## [0.1.0] - 2024-10-XX
+
+### Added
+- Initial release
+- Electron app with integrated terminal
+- Project management
+- xterm.js with WebGL rendering
+- Basic git operations
