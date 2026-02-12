@@ -88,6 +88,7 @@ function initIpcDispatcher() {
   if (ipcDispatcherInitialized) return;
   ipcDispatcherInitialized = true;
   api.terminal.onData((data) => {
+    lastTerminalData.set(data.id, Date.now());
     const handler = terminalDataHandlers.get(data.id);
     if (handler) handler(data);
   });
@@ -126,31 +127,158 @@ function loadWebglAddon(terminal) {
 function resetOutputSilenceTimer(_id) { /* no-op */ }
 function clearOutputSilenceTimer(_id) { /* no-op */ }
 
-// ── Ready state debounce ──
+// ── Ready state debounce (adaptive + content-verified) ──
 // Between tool calls, Claude briefly shows ✳ before starting next action.
 // Debounce prevents false "ready" transitions (and notification spam).
+//
+// There is NO definitive "done" marker in Claude CLI's terminal output.
+// The ✳ title is the only signal, and it looks the same whether transient or final.
+// So we combine multiple heuristics:
+//   1. Adaptive initial delay based on what Claude was doing (thinking vs tool call)
+//   2. At expiry, scan terminal buffer for contextual clues
+//   3. Verify terminal silence (no PTY data flowing)
+//   4. If Braille reappears at ANY point → cancel everything (handled elsewhere)
 const READY_DEBOUNCE_MS = 2500;
-const POST_ENTER_DEBOUNCE_MS = 5000;   // Extended debounce for echo ✳ after Enter
-const POST_SPINNER_DEBOUNCE_MS = 8000; // Extended debounce between tool calls
-const readyDebounceTimers = new Map();  // terminalId -> timerId
-const postEnterExtended = new Set();    // ids where Enter was pressed → extend first ✳
-const postSpinnerExtended = new Set();  // ids where spinner was seen → extend all ✳
+const POST_ENTER_DEBOUNCE_MS = 5000;    // After Enter keypress (echo ✳)
+const POST_TOOL_DEBOUNCE_MS = 4000;     // After tool call (tools often chain)
+const POST_THINKING_DEBOUNCE_MS = 1500; // After pure thinking (response likely done)
+const SILENCE_THRESHOLD_MS = 1000;       // No PTY data for this long = silent
+const RECHECK_DELAY_MS = 1000;           // Re-check interval when not yet sure
+const readyDebounceTimers = new Map();   // terminalId -> timerId
+const postEnterExtended = new Set();     // ids where Enter was pressed
+const postSpinnerExtended = new Set();   // ids where spinner was seen
+const terminalSubstatus = new Map();     // id -> 'thinking' | 'tool_calling'
+const lastTerminalData = new Map();      // id -> timestamp of last PTY data
+
+/**
+ * Scan terminal buffer for definitive completion signals.
+ *
+ * Claude CLI shows two distinct patterns:
+ *   Working: "· Hatching… (1m 46s · ↓ 6.2k tokens)"  →  · + word + … (ellipsis)
+ *   Done:    "✳ Churned for 1m 51s"                   →  ✳ + word + "for" + duration
+ *
+ * The "for" keyword after the random word is the 100% definitive "done" signal.
+ * The "·" prefix with "…" ellipsis is the 100% definitive "still working" signal.
+ *
+ * @returns {'done'|'working'|'permission'|'tool_result'|null}
+ */
+function detectCompletionSignal(terminal) {
+  if (!terminal?.buffer?.active) return null;
+  const buf = terminal.buffer.active;
+  const totalLines = buf.baseY + buf.cursorY;
+  const scanLimit = Math.max(0, totalLines - 10);
+  const lines = [];
+
+  for (let i = totalLines; i >= scanLimit; i--) {
+    const row = buf.getLine(i);
+    if (!row) continue;
+    const text = row.translateToString(true).trim();
+    if (!text || BRAILLE_SPINNER_RE.test(text) || /^[✳❯>$%#\s]*$/.test(text)) continue;
+    lines.push(text);
+    if (lines.length >= 5) break;
+  }
+
+  if (lines.length === 0) return null;
+  const block = lines.join('\n');
+
+  // 100% DONE: "✳ Churned for 1m 51s" — only appears when response is complete
+  if (/✳\s+\S+\s+for\s+(\d+h\s+)?(\d+m\s+)?\d+s/.test(block)) return 'done';
+
+  // 100% WORKING: "· Hatching… (1m 46s · ↓ 6.2k tokens)" — spinner with ellipsis
+  if (/·\s+\S+…/.test(block)) return 'working';
+
+  // Permission prompt = Claude needs user attention now
+  if (/\b(Allow|Approve|yes\/no|y\/n)\b/i.test(block)) return 'permission';
+
+  // Tool result marker (⎿) as most recent content = Claude likely continues
+  if (lines[0].includes('⎿')) return 'tool_result';
+
+  return null;
+}
 
 function scheduleReady(id) {
   if (readyDebounceTimers.has(id)) return;
   let delay = READY_DEBOUNCE_MS;
-  if (postSpinnerExtended.has(id)) {
-    delay = POST_SPINNER_DEBOUNCE_MS;
-  } else if (postEnterExtended.has(id)) {
+  if (postEnterExtended.has(id)) {
     delay = POST_ENTER_DEBOUNCE_MS;
     postEnterExtended.delete(id);
+  } else if (postSpinnerExtended.has(id)) {
+    const sub = terminalSubstatus.get(id);
+    delay = sub === 'tool_calling' ? POST_TOOL_DEBOUNCE_MS : POST_THINKING_DEBOUNCE_MS;
   }
   readyDebounceTimers.set(id, setTimeout(() => {
     readyDebounceTimers.delete(id);
-    postSpinnerExtended.delete(id);
-    postEnterExtended.delete(id);
-    updateTerminalStatus(id, 'ready');
+    finalizeReady(id);
   }, delay));
+}
+
+/**
+ * Verify completion before declaring ready.
+ * Priority order:
+ *   1. "✳ Word for Xm Xs" in content → 100% done (definitive)
+ *   2. "· Word…" in content → 100% still working → recheck
+ *   3. Permission prompt → immediate ready (user must act)
+ *   4. Tool result (⎿) + data flowing → recheck (Claude between tools)
+ *   5. Data still flowing → recheck
+ *   6. Silent terminal → ready (fallback)
+ */
+function finalizeReady(id) {
+  const termData = getTerminal(id);
+  const lastData = lastTerminalData.get(id);
+  const isSilent = !lastData || Date.now() - lastData >= SILENCE_THRESHOLD_MS;
+
+  if (termData?.terminal) {
+    const signal = detectCompletionSignal(termData.terminal);
+
+    // "✳ Churned for 1m 51s" → 100% done, no doubt
+    if (signal === 'done') {
+      declareReady(id);
+      return;
+    }
+
+    // "· Hatching…" → 100% still working, recheck
+    if (signal === 'working') {
+      readyDebounceTimers.set(id, setTimeout(() => {
+        readyDebounceTimers.delete(id);
+        finalizeReady(id);
+      }, RECHECK_DELAY_MS));
+      return;
+    }
+
+    // Permission prompt → needs user attention now
+    if (signal === 'permission') {
+      declareReady(id);
+      return;
+    }
+
+    // Tool result + data still flowing → Claude is between tools
+    if (signal === 'tool_result' && !isSilent) {
+      readyDebounceTimers.set(id, setTimeout(() => {
+        readyDebounceTimers.delete(id);
+        finalizeReady(id);
+      }, RECHECK_DELAY_MS));
+      return;
+    }
+  }
+
+  // Data still flowing (no definitive signal) → recheck
+  if (!isSilent) {
+    readyDebounceTimers.set(id, setTimeout(() => {
+      readyDebounceTimers.delete(id);
+      finalizeReady(id);
+    }, RECHECK_DELAY_MS));
+    return;
+  }
+
+  // Silent + no blocking signals = ready (fallback)
+  declareReady(id);
+}
+
+function declareReady(id) {
+  postSpinnerExtended.delete(id);
+  postEnterExtended.delete(id);
+  terminalSubstatus.delete(id);
+  updateTerminalStatus(id, 'ready');
 }
 
 function cancelScheduledReady(id) {
@@ -163,6 +291,83 @@ function cancelScheduledReady(id) {
 
 // Broader Braille spinner detection: any non-blank Braille Pattern character (U+2801-U+28FF)
 const BRAILLE_SPINNER_RE = /[\u2801-\u28FF]/;
+
+// Known Claude CLI tools (detected in OSC title during tool execution)
+const CLAUDE_TOOLS = new Set([
+  'Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'Task',
+  'WebFetch', 'WebSearch', 'TodoRead', 'TodoWrite', 'Notebook', 'MultiEdit'
+]);
+
+/**
+ * Parse Claude OSC title to extract state, tool name, and task name.
+ * Title format: "[✳|⠐|⠂] [TaskName|ToolName args]"
+ */
+function parseClaudeTitle(title) {
+  const brailleMatch = title.match(/[\u2801-\u28FF]\s+(.*)/);
+  const readyMatch = title.match(/\u2733\s+(.*)/);
+  const content = (brailleMatch || readyMatch)?.[1]?.trim();
+  const state = brailleMatch ? 'working' : readyMatch ? 'ready' : 'unknown';
+  if (!content || content === 'Claude Code') return { state };
+  const firstWord = content.split(/\s/)[0];
+  if (CLAUDE_TOOLS.has(firstWord)) {
+    return { state, tool: firstWord, toolArgs: content.substring(firstWord.length).trim() };
+  }
+  return { state, taskName: content };
+}
+
+/**
+ * Shared title change handler for all Claude terminal types.
+ * Parses OSC title for state, tool calls, and task names.
+ * @param {string|number} id - Terminal ID
+ * @param {string} title - New OSC title
+ * @param {Object} [options]
+ * @param {Function} [options.onPendingPrompt] - Called on first ✳ for quick-action terminals. Return true to suppress ready scheduling.
+ */
+function handleClaudeTitleChange(id, title, options = {}) {
+  const { onPendingPrompt } = options;
+
+  if (BRAILLE_SPINNER_RE.test(title)) {
+    // ── Working: Claude is active ──
+    postEnterExtended.delete(id);
+    postSpinnerExtended.add(id);
+    cancelScheduledReady(id);
+
+    const parsed = parseClaudeTitle(title);
+    terminalSubstatus.set(id, parsed.tool ? 'tool_calling' : 'thinking');
+
+    // Auto-name tab from Claude's task name (not tool names)
+    if (parsed.taskName) {
+      updateTerminalTabName(id, parsed.taskName);
+    }
+
+    updateTerminalStatus(id, 'working');
+
+  } else if (title.includes('\u2733')) {
+    // ── Ready candidate: Claude may be done ──
+    const parsed = parseClaudeTitle(title);
+    if (parsed.taskName) {
+      updateTerminalTabName(id, parsed.taskName);
+    }
+
+    // Handle pending prompt (quick-action terminals)
+    if (onPendingPrompt && onPendingPrompt()) return;
+
+    scheduleReady(id);
+
+    // Fast-track: detect definitive done/permission → skip debounce entirely
+    setTimeout(() => {
+      if (!readyDebounceTimers.has(id)) return;
+      const termData = getTerminal(id);
+      if (termData?.terminal) {
+        const signal = detectCompletionSignal(termData.terminal);
+        if (signal === 'done' || signal === 'permission') {
+          cancelScheduledReady(id);
+          declareReady(id);
+        }
+      }
+    }, 500);
+  }
+}
 
 /**
  * Extract the last meaningful lines from xterm buffer for notification context.
@@ -543,8 +748,12 @@ function updateTerminalStatus(id, status) {
     updateTerminal(id, { status });
     const tab = document.querySelector(`.terminal-tab[data-id="${id}"]`);
     if (tab) {
-      tab.classList.remove('status-working', 'status-ready');
+      tab.classList.remove('status-working', 'status-ready', 'substatus-thinking', 'substatus-tool');
       tab.classList.add(`status-${status}`);
+      if (status === 'working') {
+        const sub = terminalSubstatus.get(id);
+        tab.classList.add(sub === 'tool_calling' ? 'substatus-tool' : 'substatus-thinking');
+      }
     }
     if (status === 'ready' && previousStatus === 'working') {
       if (callbacks.onNotification) {
@@ -685,6 +894,10 @@ function closeTerminal(id) {
 
   clearOutputSilenceTimer(id);
   cancelScheduledReady(id);
+  postEnterExtended.delete(id);
+  postSpinnerExtended.delete(id);
+  terminalSubstatus.delete(id);
+  lastTerminalData.delete(id);
 
   // Kill and cleanup
   if (termData && termData.type === 'file') {
@@ -795,6 +1008,8 @@ async function createTerminal(project, options = {}) {
   const tab = document.createElement('div');
   tab.className = `terminal-tab status-ready${isBasicTerminal ? ' basic-terminal' : ''}`;
   tab.dataset.id = id;
+  tab.tabIndex = 0;
+  tab.setAttribute('role', 'tab');
   tab.innerHTML = `
     <span class="status-dot"></span>
     <span class="tab-name">${escapeHtml(tabName)}</span>
@@ -821,19 +1036,12 @@ async function createTerminal(project, options = {}) {
   // Custom key handler for global shortcuts and copy/paste
   terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, id, 'terminal-input'));
 
-  // Title change handling (debounced ready detection)
+  // Title change handling (adaptive debounce + tool/task detection)
   let lastTitle = '';
   terminal.onTitleChange(title => {
     if (title === lastTitle) return;
     lastTitle = title;
-    if (BRAILLE_SPINNER_RE.test(title)) {
-      postEnterExtended.delete(id);
-      postSpinnerExtended.add(id);
-      cancelScheduledReady(id);
-      updateTerminalStatus(id, 'working');
-    } else if (title.includes('✳')) {
-      scheduleReady(id);
-    }
+    handleClaudeTitleChange(id, title);
   });
 
   // IPC data handling via centralized dispatcher
@@ -979,6 +1187,8 @@ function createFivemConsole(project, projectIndex, options = {}) {
   const tab = document.createElement('div');
   tab.className = 'terminal-tab fivem-tab status-ready';
   tab.dataset.id = id;
+  tab.tabIndex = 0;
+  tab.setAttribute('role', 'tab');
   tab.innerHTML = `
     <span class="status-dot fivem-dot"></span>
     <span class="tab-name">${escapeHtml(`🖥️ ${project.name}`)}</span>
@@ -2111,19 +2321,12 @@ async function resumeSession(project, sessionId, options = {}) {
   // Custom key handler for global shortcuts and copy/paste
   terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, id, 'terminal-input'));
 
-  // Title change handling (debounced ready detection)
+  // Title change handling (adaptive debounce + tool/task detection)
   let lastTitle = '';
   terminal.onTitleChange(title => {
     if (title === lastTitle) return;
     lastTitle = title;
-    if (BRAILLE_SPINNER_RE.test(title)) {
-      postEnterExtended.delete(id);
-      postSpinnerExtended.add(id);
-      cancelScheduledReady(id);
-      updateTerminalStatus(id, 'working');
-    } else if (title.includes('✳')) {
-      scheduleReady(id);
-    }
+    handleClaudeTitleChange(id, title);
   });
 
   // IPC handlers via centralized dispatcher
@@ -2378,33 +2581,29 @@ async function createTerminalWithPrompt(project, prompt) {
   // Custom key handler
   terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, id, 'terminal-input'));
 
-  // Title change handling (debounced ready, immediate prompt send)
+  // Title change handling (adaptive debounce + pending prompt for quick actions)
   let lastTitle = '';
   let promptSent = false;
   terminal.onTitleChange(title => {
     if (title === lastTitle) return;
     lastTitle = title;
-    if (BRAILLE_SPINNER_RE.test(title)) {
-      postEnterExtended.delete(id);
-      postSpinnerExtended.add(id);
-      cancelScheduledReady(id);
-      updateTerminalStatus(id, 'working');
-    } else if (title.includes('✳')) {
-      // Send pending prompt immediately (no debounce for auto-prompt)
-      const td = getTerminal(id);
-      if (td && td.pendingPrompt && !promptSent) {
-        promptSent = true;
-        setTimeout(() => {
-          api.terminal.input({ id, data: td.pendingPrompt + '\r' });
-          updateTerminal(id, { pendingPrompt: null });
-          postEnterExtended.add(id);
-          cancelScheduledReady(id);
-          updateTerminalStatus(id, 'working');
-        }, 500);
-      } else {
-        scheduleReady(id);
+    handleClaudeTitleChange(id, title, {
+      onPendingPrompt: () => {
+        const td = getTerminal(id);
+        if (td && td.pendingPrompt && !promptSent) {
+          promptSent = true;
+          setTimeout(() => {
+            api.terminal.input({ id, data: td.pendingPrompt + '\r' });
+            updateTerminal(id, { pendingPrompt: null });
+            postEnterExtended.add(id);
+            cancelScheduledReady(id);
+            updateTerminalStatus(id, 'working');
+          }, 500);
+          return true;
+        }
+        return false;
       }
-    }
+    });
   });
 
   // IPC handlers via centralized dispatcher

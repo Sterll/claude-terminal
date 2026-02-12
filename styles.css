@@ -2081,6 +2081,11 @@ body.compact-projects .project-item:not(.active):hover {
   animation: pulse 1.5s infinite;
 }
 
+.terminal-tab.status-working.substatus-tool .status-dot {
+  background: #FFC107;
+  animation: pulse-tool 1.2s infinite;
+}
+
 .terminal-tab.status-ready .status-dot {
   background: var(--success);
 }
@@ -2088,6 +2093,11 @@ body.compact-projects .project-item:not(.active):hover {
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
+}
+
+@keyframes pulse-tool {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.15); }
 }
 
 /* Tab name */
@@ -3304,7 +3314,7 @@ body.compact-projects .project-item:not(.active):hover {
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
-/* Focus visible */
+/* Focus visible - global */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -3316,6 +3326,54 @@ select:focus-visible,
 textarea:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+/* Focus visible - navigation tabs */
+.nav-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--radius);
+}
+
+/* Focus visible - terminal tabs */
+.terminal-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Focus visible - project items */
+.project-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Focus visible - action buttons (small icon buttons) */
+.btn-action-icon:focus-visible,
+.btn-more-actions:focus-visible,
+.more-actions-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  border-radius: var(--radius-sm);
+}
+
+/* Focus visible - git sub-tabs */
+.git-sub-tab:focus-visible,
+.settings-tab:focus-visible,
+.skills-sub-tab:focus-visible,
+.plugins-sub-tab:focus-visible,
+.mcp-sub-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Ensure inputs that use outline:none get visible focus via border */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 /* Selection */
@@ -16123,5 +16181,36 @@ textarea:focus-visible {
 .btn-plugin-add-mp:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* ========== REDUCED MOTION ==========
+   Respect user preference (OS or app setting) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* ========== BACKGROUND PAUSE ==========
+   Pause all animations when the app is hidden to save CPU */
+.background-paused *,
+.background-paused *::before,
+.background-paused *::after {
+  animation-play-state: paused !important;
+  transition: none !important;
 }
 
