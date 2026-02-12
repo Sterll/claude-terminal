@@ -159,8 +159,6 @@ The installer will be generated in the `build/` directory.
 | `Ctrl+Shift+E` | Sessions panel |
 | `Ctrl+T` | Create terminal |
 | `Ctrl+W` | Close terminal |
-| `Ctrl+Tab` | Next terminal |
-| `Ctrl+Shift+Tab` | Previous terminal |
 | `Ctrl+P` | Quick picker |
 | `Ctrl+,` | Settings |
 | `Ctrl+←` / `Ctrl+→` | Switch terminal (left/right) |
@@ -175,15 +173,15 @@ Shortcuts are customizable in Settings.
 
 ```
 claude-terminal/
-├── main.js                  # Electron entry point
-├── renderer.js              # Main renderer logic
-├── index.html               # Main window UI
-├── styles.css               # Application styles (~6000 lines)
+├── main.js                    # Electron entry point
+├── renderer.js                # Main renderer logic (bundled to dist/)
+├── index.html                 # Main window UI
+├── styles.css                 # Application styles (~6000 lines)
 ├── src/
-│   ├── main/                # Main process
-│   │   ├── index.js         # Bootstrap & lifecycle
-│   │   ├── preload.js       # Context bridge API
-│   │   ├── ipc/             # IPC handlers
+│   ├── main/                  # Main process
+│   │   ├── index.js           # Bootstrap & lifecycle
+│   │   ├── preload.js         # Context bridge API
+│   │   ├── ipc/               # IPC handlers
 │   │   │   ├── terminal.ipc.js
 │   │   │   ├── git.ipc.js
 │   │   │   ├── github.ipc.js
@@ -212,17 +210,59 @@ claude-terminal/
 │   │   │   ├── SetupWizardWindow.js
 │   │   │   └── TrayManager.js
 │   │   └── utils/
-│   └── renderer/            # Renderer process
-│       ├── services/        # IPC wrappers
-│       ├── state/           # Reactive state (observable pattern)
-│       ├── ui/components/   # ProjectList, TerminalManager, Modal, Toast, FileExplorer...
-│       ├── features/        # QuickPicker, KeyboardShortcuts, DragDrop
-│       ├── i18n/            # Translations (en, fr)
-│       └── utils/           # DOM, color, format, paths, syntax highlighting
+│   │       ├── paths.js
+│   │       ├── git.js
+│   │       └── commitMessageGenerator.js
+│   └── renderer/              # Renderer process
+│       ├── services/
+│       │   ├── ProjectService.js
+│       │   ├── TerminalService.js
+│       │   ├── SettingsService.js
+│       │   ├── DashboardService.js
+│       │   ├── GitTabService.js
+│       │   ├── TimeTrackingDashboard.js
+│       │   ├── SkillService.js
+│       │   ├── AgentService.js
+│       │   ├── McpService.js
+│       │   └── FivemService.js
+│       ├── state/
+│       │   ├── State.js           # Base observable class
+│       │   ├── projects.state.js
+│       │   ├── terminals.state.js
+│       │   ├── settings.state.js
+│       │   ├── git.state.js
+│       │   ├── mcp.state.js
+│       │   ├── fivem.state.js
+│       │   └── timeTracking.state.js
+│       ├── ui/components/
+│       │   ├── ProjectList.js
+│       │   ├── TerminalManager.js
+│       │   ├── FileExplorer.js
+│       │   ├── Modal.js
+│       │   ├── Toast.js
+│       │   ├── ContextMenu.js
+│       │   ├── Tab.js
+│       │   ├── CustomizePicker.js
+│       │   └── QuickActions.js
+│       ├── features/
+│       │   ├── QuickPicker.js
+│       │   ├── KeyboardShortcuts.js
+│       │   └── DragDrop.js
+│       ├── i18n/
+│       │   └── locales/
+│       │       ├── en.json
+│       │       └── fr.json
+│       └── utils/
+│           ├── dom.js
+│           ├── color.js
+│           ├── format.js
+│           ├── paths.js
+│           ├── fileIcons.js
+│           └── syntaxHighlight.js
 ├── scripts/
-│   └── build-renderer.js    # esbuild bundler
+│   └── build-renderer.js     # esbuild bundler
 └── resources/
-    └── bundled-skills/      # Built-in skills
+    └── bundled-skills/        # Built-in skills
 ```
 
 ---
