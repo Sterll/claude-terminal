@@ -2,6 +2,33 @@
 
 All notable changes to Claude Terminal are documented in this file.
 
+## [0.7.3] - 2026-02-12
+
+### Added
+- **Adaptive terminal state detection**: content-verified ready with `detectCompletionSignal()` and `parseClaudeTitle()`
+- **Tool/task detection from OSC title**: auto-names tabs, detects 13 Claude tools
+- **Substatus indicator**: yellow pulse for tool calls vs thinking
+- **ARIA accessibility**: roles, landmarks, focus-visible styles across the app
+- **Reduce motion setting**: disable all animations (OS preference or manual)
+- **Background CPU savings**: pause animations when window is hidden
+- **Crash logging**: global error handlers with auto-restart and `~/.claude-terminal/crash.log`
+
+### Changed
+- Adaptive debounce: 1.5s after thinking, 4s after tool call (was fixed 8s)
+- Event delegation for project lists, git branches, tooltips (fewer DOM listeners)
+- Adaptive PTY data batching: 4ms idle / 16ms flooding (was fixed 16ms)
+- Git queries split into fast-local and heavier batches for faster dashboard
+- `getBranches()` skips network fetch by default (faster load)
+- Keyboard shortcuts: replaced next/prev terminal with new project, new terminal, toggle file explorer
+- Reduced console noise: verbose logs moved to `console.debug`
+
+### Fixed
+- Defensive error handling for all process spawns (PTY, MCP, Claude CLI)
+- Atomic project save with backup/restore on failure
+- GitHub OAuth poll timeout guard (10min max)
+- Git exec timeout with explicit process kill
+- Editor open error handling
+
 ## [0.7.2] - 2026-02-12
 
 ### Added
