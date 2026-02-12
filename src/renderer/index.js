@@ -84,7 +84,6 @@ function initialize() {
     services.DashboardService.preloadAllProjects();
   }, 500);
 
-  console.log('Renderer modules initialized');
 }
 
 // Export everything for use in renderer.js

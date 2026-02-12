@@ -260,8 +260,9 @@
     "closeTerminal": "Close terminal",
     "sessionsPanel": "Sessions panel",
     "quickPicker": "Quick picker",
-    "nextTerminal": "Next terminal",
-    "prevTerminal": "Previous terminal"
+    "newProject": "New project",
+    "newTerminal": "New terminal",
+    "toggleFileExplorer": "Toggle file explorer"
   },
   "quickPicker": {
     "searchProjects": "Search projects...",
@@ -288,7 +289,9 @@
     "quickActionPresets": "Quick Action Presets",
     "quickActionPresetsDesc": "Custom presets shown in the quick actions configuration",
     "addPreset": "Add a preset",
-    "noCustomPresets": "No custom presets"
+    "noCustomPresets": "No custom presets",
+    "reduceMotion": "Disable animations",
+    "reduceMotionDesc": "Remove all transitions and animations from the interface"
   },
   "ui": {
     "notifications": "Notifications",

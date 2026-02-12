@@ -47,7 +47,7 @@ function discoverAll() {
     console.warn('[Registry] Failed to load webapp type:', e.message);
   }
 
-  console.log(`[Registry] Discovered ${types.size} project type(s): ${[...types.keys()].join(', ')}`);
+  console.debug(`[Registry] Discovered ${types.size} project type(s): ${[...types.keys()].join(', ')}`);
 }
 
 /**

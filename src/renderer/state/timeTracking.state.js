@@ -155,7 +155,7 @@ function sanitizeTimeTrackingData() {
     }
     projectsStateRef.set(newState);
     saveProjectsRef();
-    console.log('[TimeTracking] Data sanitized and saved');
+    console.debug('[TimeTracking] Data sanitized and saved');
   }
 }
 
@@ -169,7 +169,7 @@ function initTimeTracking(projectsState, saveProjects, saveProjectsImmediate) {
   projectsStateRef = projectsState;
   saveProjectsRef = saveProjects;
   saveProjectsImmediateRef = saveProjectsImmediate;
-  console.log('[TimeTracking] Initialized with projectsState:', !!projectsState, 'saveProjects:', !!saveProjects, 'saveProjectsImmediate:', !!saveProjectsImmediate);
+  console.debug('[TimeTracking] Initialized with projectsState:', !!projectsState, 'saveProjects:', !!saveProjects, 'saveProjectsImmediate:', !!saveProjectsImmediate);
 
   // Sanitize data on load
   sanitizeTimeTrackingData();
@@ -229,7 +229,7 @@ function migrateGlobalTimeTracking() {
       globalTracking.weekTime = weekTotal;
       globalTracking.weekStart = weekStart;
       needsSave = true;
-      console.log('[TimeTracking] Migrated weekTime:', Math.round(weekTotal / 1000) + 's');
+      console.debug('[TimeTracking] Migrated weekTime:', Math.round(weekTotal / 1000) + 's');
     }
 
     // Month calculation
@@ -247,7 +247,7 @@ function migrateGlobalTimeTracking() {
       globalTracking.monthTime = monthTotal;
       globalTracking.monthStart = monthStart;
       needsSave = true;
-      console.log('[TimeTracking] Migrated monthTime:', Math.round(monthTotal / 1000) + 's');
+      console.debug('[TimeTracking] Migrated monthTime:', Math.round(monthTotal / 1000) + 's');
     }
 
     if (needsSave) {
@@ -327,7 +327,7 @@ function saveCheckpoints() {
     if (projectsChanged) newState.activeSessions = activeSessions;
     if (globalChanged) newState.globalSessionStartTime = now;
     trackingState.set(newState);
-    console.log('[TimeTracking] Checkpoint saved');
+    console.debug('[TimeTracking] Checkpoint saved');
   }
 }
 
@@ -340,7 +340,7 @@ function checkSleepWake() {
   lastHeartbeat = now;
 
   if (elapsed > SLEEP_GAP_THRESHOLD) {
-    console.log(`[TimeTracking] Sleep/wake detected: gap of ${Math.round(elapsed / 1000)}s`);
+    console.debug(`[TimeTracking] Sleep/wake detected: gap of ${Math.round(elapsed / 1000)}s`);
     handleSleepWake(now - elapsed, now);
   }
 }
@@ -364,7 +364,7 @@ function handleSleepWake(sleepStart, wakeTime) {
       globalSessionStartTime: wakeTime,
       globalLastActivityTime: wakeTime
     });
-    console.log('[TimeTracking] Global session cut at sleep boundary');
+    console.debug('[TimeTracking] Global session cut at sleep boundary');
   }
 
   // Cut project sessions
@@ -380,7 +380,7 @@ function handleSleepWake(sleepStart, wakeTime) {
         sessionStartTime: wakeTime,
         lastActivityTime: wakeTime
       });
-      console.log('[TimeTracking] Project session cut at sleep boundary:', projectId);
+      console.debug('[TimeTracking] Project session cut at sleep boundary:', projectId);
     }
   }
 
@@ -394,7 +394,7 @@ function checkMidnightReset() {
   const today = getTodayString();
 
   if (lastKnownDate && lastKnownDate !== today) {
-    console.log('[TimeTracking] Midnight detected! Date changed from', lastKnownDate, 'to', today);
+    console.debug('[TimeTracking] Midnight detected! Date changed from', lastKnownDate, 'to', today);
     lastKnownDate = today;
     globalTimesCache = null; // Invalidate cache on date change
     splitSessionsAtMidnight();
@@ -424,7 +424,7 @@ function splitSessionsAtMidnight() {
       globalSessionStartTime: midnightTs,
       globalLastActivityTime: now
     });
-    console.log('[TimeTracking] Global session split at midnight');
+    console.debug('[TimeTracking] Global session split at midnight');
   }
 
   // Split project sessions
@@ -441,7 +441,7 @@ function splitSessionsAtMidnight() {
         sessionStartTime: midnightTs,
         lastActivityTime: now
       });
-      console.log('[TimeTracking] Project session split at midnight:', projectId);
+      console.debug('[TimeTracking] Project session split at midnight:', projectId);
     }
   }
 
@@ -568,7 +568,7 @@ function startGlobalTimer() {
   clearTimeout(globalIdleTimer);
   globalIdleTimer = setTimeout(checkAndPauseGlobalTimer, IDLE_TIMEOUT);
 
-  console.log('[TimeTracking] Global timer started');
+  console.debug('[TimeTracking] Global timer started');
 }
 
 /**
@@ -595,7 +595,7 @@ function pauseGlobalTimer() {
     globalIsIdle: true
   });
 
-  console.log('[TimeTracking] Global timer paused (idle)');
+  console.debug('[TimeTracking] Global timer paused (idle)');
 }
 
 /**
@@ -621,7 +621,7 @@ function resumeGlobalTimer() {
   clearTimeout(globalIdleTimer);
   globalIdleTimer = setTimeout(checkAndPauseGlobalTimer, IDLE_TIMEOUT);
 
-  console.log('[TimeTracking] Global timer resumed');
+  console.debug('[TimeTracking] Global timer resumed');
 }
 
 /**
@@ -648,7 +648,7 @@ function stopGlobalTimer() {
     globalIsIdle: false
   });
 
-  console.log('[TimeTracking] Global timer stopped');
+  console.debug('[TimeTracking] Global timer stopped');
 }
 
 /**
@@ -680,7 +680,7 @@ function resetGlobalIdleTimer() {
  * @param {number} duration
  */
 function saveGlobalSession(startTime, endTime, duration) {
-  console.log('[TimeTracking] saveGlobalSession:', { duration: Math.round(duration / 1000) + 's' });
+  console.debug('[TimeTracking] saveGlobalSession:', { duration: Math.round(duration / 1000) + 's' });
 
   if (!projectsStateRef || !saveProjectsRef) {
     return;
@@ -738,7 +738,7 @@ function saveGlobalSession(startTime, endTime, duration) {
  * @param {string} projectId
  */
 function startTracking(projectId) {
-  console.log('[TimeTracking] startTracking called with projectId:', projectId);
+  console.debug('[TimeTracking] startTracking called with projectId:', projectId);
 
   if (!projectId) {
     console.warn('[TimeTracking] startTracking called with undefined/null projectId');
@@ -751,7 +751,7 @@ function startTracking(projectId) {
 
   // Already tracking this project and not idle
   if (existingSession && existingSession.sessionStartTime && !existingSession.isIdle) {
-    console.log('[TimeTracking] Already tracking project:', projectId);
+    console.debug('[TimeTracking] Already tracking project:', projectId);
     return;
   }
 
@@ -775,7 +775,7 @@ function startTracking(projectId) {
 
   trackingState.set({ ...trackingState.get(), activeSessions });
 
-  console.log('[TimeTracking] Started tracking project:', projectId, 'Total active:', activeSessions.size);
+  console.debug('[TimeTracking] Started tracking project:', projectId, 'Total active:', activeSessions.size);
 
   // Start global timer if this is the first active project
   if (wasEmpty) {
@@ -819,7 +819,7 @@ function stopTracking(projectId) {
 
   trackingState.set({ ...trackingState.get(), activeSessions });
 
-  console.log('[TimeTracking] Stopped tracking project:', projectId, 'Remaining active:', activeSessions.size);
+  console.debug('[TimeTracking] Stopped tracking project:', projectId, 'Remaining active:', activeSessions.size);
 
   // Stop global timer if no more active projects
   if (getActiveNonIdleCount() === 0) {
@@ -835,7 +835,7 @@ function stopTracking(projectId) {
  * @param {number} duration
  */
 function saveSession(projectId, startTime, endTime, duration) {
-  console.log('[TimeTracking] saveSession called:', { projectId, duration: Math.round(duration / 1000) + 's' });
+  console.debug('[TimeTracking] saveSession called:', { projectId, duration: Math.round(duration / 1000) + 's' });
 
   if (!projectsStateRef || !saveProjectsRef) {
     console.error('[TimeTracking] Cannot save session - refs not initialized');
@@ -1003,7 +1003,7 @@ function pauseTracking(projectId) {
 
   trackingState.set({ ...trackingState.get(), activeSessions });
 
-  console.log('[TimeTracking] Paused tracking (idle) for project:', projectId);
+  console.debug('[TimeTracking] Paused tracking (idle) for project:', projectId);
 
   // Pause global timer if no more active (non-idle) projects
   if (getActiveNonIdleCount() === 0) {
@@ -1046,7 +1046,7 @@ function resumeTracking(projectId) {
   clearTimeout(idleTimers.get(projectId));
   idleTimers.set(projectId, setTimeout(() => checkAndPauseTracking(projectId), IDLE_TIMEOUT));
 
-  console.log('[TimeTracking] Resumed tracking for project:', projectId);
+  console.debug('[TimeTracking] Resumed tracking for project:', projectId);
 }
 
 /**
@@ -1160,7 +1160,7 @@ function saveAllActiveSessions() {
   // Force immediate save (bypass debounce) for app close
   if (saveProjectsImmediateRef) {
     saveProjectsImmediateRef();
-    console.log('[TimeTracking] Forced immediate save on quit');
+    console.debug('[TimeTracking] Forced immediate save on quit');
   }
 }
 

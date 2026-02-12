@@ -272,7 +272,7 @@ function copyDirSync(src, dest) {
  * Install a skill from the marketplace
  */
 async function installSkill({ source, skillId, name, installs }) {
-  console.log(`[Marketplace] Installing skill ${skillId} from ${source}`);
+  console.debug(`[Marketplace] Installing skill ${skillId} from ${source}`);
 
   const repoUrl = `https://github.com/${source}.git`;
   let tmpDir = null;
@@ -350,7 +350,7 @@ async function installSkill({ source, skillId, name, installs }) {
     saveManifest(manifest);
 
     invalidateCache('installed');
-    console.log(`[Marketplace] Skill ${skillId} installed successfully`);
+    console.debug(`[Marketplace] Skill ${skillId} installed successfully`);
     return { success: true, path: destDir };
   } finally {
     // 5. Cleanup temp
@@ -368,7 +368,7 @@ async function installSkill({ source, skillId, name, installs }) {
  * Uninstall a skill
  */
 function uninstallSkill(skillId) {
-  console.log(`[Marketplace] Uninstalling skill ${skillId}`);
+  console.debug(`[Marketplace] Uninstalling skill ${skillId}`);
 
   const skillDir = path.join(skillsDir, skillId);
   if (fs.existsSync(skillDir)) {

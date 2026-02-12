@@ -319,8 +319,9 @@
     "closeTerminal": "Fermer le terminal",
     "sessionsPanel": "Panneau sessions",
     "quickPicker": "Sélecteur rapide",
-    "nextTerminal": "Terminal suivant",
-    "prevTerminal": "Terminal précédent"
+    "newProject": "Nouveau projet",
+    "newTerminal": "Nouveau terminal",
+    "toggleFileExplorer": "Explorateur de fichiers"
   },
   "quickPicker": {
     "searchProjects": "Rechercher un projet...",
@@ -347,7 +348,9 @@
     "quickActionPresets": "Presets Quick Actions",
     "quickActionPresetsDesc": "Presets personnalises affiches dans la configuration des actions rapides",
     "addPreset": "Ajouter un preset",
-    "noCustomPresets": "Aucun preset personnalise"
+    "noCustomPresets": "Aucun preset personnalise",
+    "reduceMotion": "Désactiver les animations",
+    "reduceMotionDesc": "Supprimer toutes les transitions et animations de l'interface"
   },
   "ui": {
     "notifications": "Notifications",

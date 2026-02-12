@@ -62,7 +62,6 @@ function initI18n(savedLanguage = null) {
   }
 
   setLanguage(language);
-  console.log(`[i18n] Initialized with language: ${language}`);
 }
 
 /**
