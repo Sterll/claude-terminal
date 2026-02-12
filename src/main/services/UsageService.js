@@ -83,13 +83,25 @@ function fetchUsage() {
 
     // console.log('[Usage] Starting fetch...');
 
-    const proc = pty.spawn('cmd.exe', [], {
-      name: 'xterm-256color',
-      cols: 120,
-      rows: 40,
-      cwd: os.homedir(),
-      env: { ...process.env, TERM: 'xterm-256color' }
-    });
+    let proc;
+    try {
+      proc = pty.spawn('cmd.exe', [], {
+        name: 'xterm-256color',
+        cols: 120,
+        rows: 40,
+        cwd: os.homedir(),
+        env: { ...process.env, TERM: 'xterm-256color' }
+      });
+    } catch (spawnError) {
+      console.error('[Usage] Failed to spawn cmd.exe:', spawnError.message);
+      isFetching = false;
+      return reject(new Error(`PTY spawn failed: ${spawnError.message}`));
+    }
+
+    if (!proc) {
+      isFetching = false;
+      return reject(new Error('PTY spawn returned null'));
+    }
 
     // Timeout - kill and parse what we have
     const timeout = setTimeout(() => {

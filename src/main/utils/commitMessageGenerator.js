@@ -39,12 +39,18 @@ function generateWithClaude(diffContent, timeoutMs = 30000) {
 
     const fullPrompt = CLAUDE_PROMPT + truncatedDiff;
 
-    const proc = spawn('claude', ['-p', fullPrompt], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      shell: true,
-      timeout: timeoutMs,
-      windowsHide: true,
-    });
+    let proc;
+    try {
+      proc = spawn('claude', ['-p', fullPrompt], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        shell: true,
+        timeout: timeoutMs,
+        windowsHide: true,
+      });
+    } catch (spawnError) {
+      console.error('[CommitGen] Failed to spawn claude:', spawnError.message);
+      return resolve(null);
+    }
 
     let stdout = '';
     let stderr = '';
@@ -53,7 +59,7 @@ function generateWithClaude(diffContent, timeoutMs = 30000) {
     proc.stderr.on('data', (data) => { stderr += data.toString(); });
 
     const timer = setTimeout(() => {
-      proc.kill();
+      try { proc.kill(); } catch (_) {}
       resolve(null);
     }, timeoutMs);
 

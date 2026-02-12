@@ -64,7 +64,7 @@ function httpsRequest(options, postData = null, maxRedirects = 3) {
 async function startDeviceFlow() {
   const postData = `client_id=${GITHUB_CLIENT_ID}&scope=repo`;
 
-  console.log('[GitHubAuth] Starting device flow with client_id:', GITHUB_CLIENT_ID);
+  console.debug('[GitHubAuth] Starting device flow');
 
   const response = await httpsRequest({
     hostname: 'github.com',
@@ -77,7 +77,7 @@ async function startDeviceFlow() {
     }
   }, postData);
 
-  console.log('[GitHubAuth] Response status:', response.status, 'data:', response.data);
+  console.debug('[GitHubAuth] Response status:', response.status);
 
   if (response.status !== 200) {
     throw new Error(response.data.error_description || response.data.error || `GitHub API error: ${response.status}`);
@@ -94,20 +94,35 @@ async function startDeviceFlow() {
  */
 async function pollForToken(deviceCode, interval = 5) {
   const postData = `client_id=${GITHUB_CLIENT_ID}&device_code=${deviceCode}&grant_type=urn:ietf:params:oauth:grant-type:device_code`;
+  const MAX_DURATION_MS = 10 * 60 * 1000; // 10 minutes max
+  const startTime = Date.now();
 
   while (true) {
+    // Timeout guard
+    if (Date.now() - startTime > MAX_DURATION_MS) {
+      throw new Error('Authentification expirée (10 min). Veuillez réessayer.');
+    }
+
     await new Promise(resolve => setTimeout(resolve, interval * 1000));
 
-    const response = await httpsRequest({
-      hostname: 'github.com',
-      path: '/login/oauth/access_token',
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Content-Length': Buffer.byteLength(postData)
-      }
-    }, postData);
+    let response;
+    try {
+      response = await httpsRequest({
+        hostname: 'github.com',
+        path: '/login/oauth/access_token',
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(postData)
+        }
+      }, postData);
+    } catch (networkError) {
+      console.error('[GitHubAuth] Poll network error:', networkError.message);
+      // Retry with backoff instead of crashing
+      interval = Math.min(interval + 5, 30);
+      continue;
+    }
 
     const data = response.data;
 
@@ -116,12 +131,10 @@ async function pollForToken(deviceCode, interval = 5) {
     }
 
     if (data.error === 'authorization_pending') {
-      // User hasn't authorized yet, keep polling
       continue;
     }
 
     if (data.error === 'slow_down') {
-      // Increase interval
       interval += 5;
       continue;
     }
