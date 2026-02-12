@@ -33,12 +33,18 @@ src/main/
 │   ├── claude.ipc.js           # Claude Code sessions management
 │   ├── usage.ipc.js            # Claude usage tracking (start/stop monitor, refresh)
 │   ├── mcp.ipc.js              # MCP server start/stop
+│   ├── mcpRegistry.ipc.js      # MCP registry browsing
+│   ├── plugin.ipc.js           # Plugin install & marketplace management
+│   ├── marketplace.ipc.js      # Skill marketplace install/uninstall
 │   ├── fivem.ipc.js            # FiveM server + resource scanning
-│   ├── project.ipc.js          # Project operations (TODO scanning)
+│   ├── project.ipc.js          # Project operations (TODO scanning, stats)
 │   └── dialog.ipc.js           # File dialogs, window controls, notifications, updates
 ├── services/
 │   ├── TerminalService.js      # node-pty terminal management
+│   ├── PluginService.js        # Plugin install via Claude CLI PTY
+│   ├── MarketplaceService.js   # Skill marketplace management
 │   ├── McpService.js           # MCP server process spawning
+│   ├── McpRegistryService.js   # MCP registry API client
 │   ├── FivemService.js         # FiveM server launcher
 │   ├── UpdaterService.js       # electron-updater auto-updates
 │   ├── GitHubAuthService.js    # OAuth Device Flow + keytar credential storage
@@ -46,6 +52,7 @@ src/main/
 ├── windows/
 │   ├── MainWindow.js
 │   ├── QuickPickerWindow.js
+│   ├── SetupWizardWindow.js
 │   └── TrayManager.js
 └── utils/
     ├── paths.js                # Path definitions & helpers
@@ -113,17 +120,23 @@ src/renderer/
 
 **Git**: `git-info`, `git-info-full`, `git-status-quick`, `git-status-detailed`, `git-branches`, `git-current-branch`, `git-checkout`, `git-create-branch`, `git-delete-branch`, `git-pull`, `git-push`, `git-merge`, `git-merge-abort`, `git-merge-continue`, `git-merge-conflicts`, `git-clone`, `git-stage-files`, `git-commit`, `git-generate-commit-message`, `project-stats`
 
-**GitHub Auth**: `github-start-auth`, `github-poll-token`, `github-auth-status`, `github-logout`, `github-set-token`, `github-get-token`
+**GitHub**: `github-start-auth`, `github-poll-token`, `github-auth-status`, `github-logout`, `github-set-token`, `github-get-token`, `github-workflow-runs`, `github-pull-requests`, `github-create-pr`
 
 **Claude**: `claude-sessions`, `get-usage-data`, `refresh-usage`, `start-usage-monitor`, `stop-usage-monitor`
 
 **MCP**: `mcp-start/stop` (invoke), `mcp-output/exit` (receive)
 
+**MCP Registry**: `mcp-registry-browse`, `mcp-registry-search`, `mcp-registry-detail`
+
+**Plugins**: `plugin-installed`, `plugin-catalog`, `plugin-marketplaces`, `plugin-readme`, `plugin-install`, `plugin-add-marketplace`
+
+**Marketplace**: `marketplace-search`, `marketplace-featured`, `marketplace-readme`, `marketplace-install`, `marketplace-uninstall`, `marketplace-installed`
+
 **FiveM**: `fivem-scan-resources`, `fivem-resource-command`
 
 **Dialogs/Window**: `select-folder/file`, `open-in-explorer`, `open-in-editor`, `show-notification`, `window-minimize/maximize/close`, `app-quit`, `set-window-title`, `get-app-version`, `update-install`, `get-launch-at-startup`, `set-launch-at-startup`
 
-**Project**: `scan-todos`
+**Project**: `scan-todos`, `project-stats`
 
 ### Data Storage
 

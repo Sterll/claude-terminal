@@ -130,13 +130,13 @@ npm install
 ## Usage
 
 ```bash
-# Run the application
-npm start
+# Build renderer then run the application
+npm run build:renderer; npx electron .
 
 # Run with DevTools open
-npm run start:dev
+npm run build:renderer; npx electron . --dev
 
-# Build renderer in watch mode
+# Build renderer in watch mode (for development)
 npm run watch
 ```
 
@@ -191,21 +191,26 @@ claude-terminal/
 │   │   │   ├── claude.ipc.js
 │   │   │   ├── usage.ipc.js
 │   │   │   ├── mcp.ipc.js
+│   │   │   ├── mcpRegistry.ipc.js
 │   │   │   ├── plugin.ipc.js
+│   │   │   ├── marketplace.ipc.js
 │   │   │   ├── fivem.ipc.js
 │   │   │   ├── project.ipc.js
 │   │   │   └── dialog.ipc.js
 │   │   ├── services/
 │   │   │   ├── TerminalService.js
 │   │   │   ├── PluginService.js
+│   │   │   ├── MarketplaceService.js
 │   │   │   ├── GitHubAuthService.js
 │   │   │   ├── UsageService.js
 │   │   │   ├── McpService.js
+│   │   │   ├── McpRegistryService.js
 │   │   │   ├── UpdaterService.js
 │   │   │   └── FivemService.js
 │   │   ├── windows/
 │   │   │   ├── MainWindow.js
 │   │   │   ├── QuickPickerWindow.js
+│   │   │   ├── SetupWizardWindow.js
 │   │   │   └── TrayManager.js
 │   │   └── utils/
 │   └── renderer/            # Renderer process

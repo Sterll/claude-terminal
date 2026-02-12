@@ -19,6 +19,7 @@ if (isDev) {
 const gotTheLock = app.requestSingleInstanceLock(isDev ? { dev: true } : undefined);
 
 if (!gotTheLock) {
+  console.log('Another instance of Claude Terminal is already running. Focusing existing window.');
   app.quit();
 } else {
   bootstrapApp();

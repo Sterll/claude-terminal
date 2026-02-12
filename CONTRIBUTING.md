@@ -25,17 +25,18 @@ Open an [issue](https://github.com/Sterll/claude-terminal/issues/new?template=fe
 git clone https://github.com/Sterll/claude-terminal.git
 cd claude-terminal
 npm install
-npm start
+npm run build:renderer
+npx electron .
 ```
 
-Use `npm run start:dev` to launch with DevTools open.
+Use `npx electron . --dev` to launch with DevTools open.
 
 ## Making Changes
 
 1. Fork the repository
 2. Create a branch from `main` (`git checkout -b feat/my-feature`)
 3. Make your changes
-4. Test the application locally with `npm start`
+4. Test the application locally with `npm run build:renderer && npx electron .`
 5. Commit using [conventional commits](https://www.conventionalcommits.org/):
    - `feat(scope): add new feature`
    - `fix(scope): fix bug description`

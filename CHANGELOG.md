@@ -2,7 +2,23 @@
 
 All notable changes to Claude Terminal are documented in this file.
 
-## [0.7.1] - 2025-02-11
+## [0.7.2] - 2026-02-12
+
+### Added
+- **Plugin Management**: browse, install plugins from configured marketplaces via Claude CLI
+- **Community Marketplaces**: add third-party plugin marketplaces by GitHub URL
+- Plugin category filtering and search
+- Plugin README viewer in detail modal
+
+### Changed
+- Silence verbose debug logs in usage and GitHub services
+- Improved single instance lock messaging
+
+### Fixed
+- Plugin install command syntax and scope auto-confirmation
+- Banner updated with correct app icon
+
+## [0.7.1] - 2026-02-11
 
 ### Changed
 - Switch license from MIT to GPL-3.0
@@ -13,7 +29,7 @@ All notable changes to Claude Terminal are documented in this file.
 ### Fixed
 - Unify git tab toasts with global toast component
 
-## [0.7.0] - 2025-01-XX
+## [0.7.0] - 2026-01-XX
 
 ### Added
 - **MCP Registry**: browse and search MCP servers from the interface
@@ -27,7 +43,7 @@ All notable changes to Claude Terminal are documented in this file.
 - Context menu positioning and hide/show race condition
 - Updater stale pending cache on version match
 
-## [0.6.0] - 2025-01-XX
+## [0.6.0] - 2025-12-XX
 
 ### Added
 - **Git Tab**: commit history, stash management and PR management
@@ -50,7 +66,7 @@ All notable changes to Claude Terminal are documented in this file.
 - Context menu: open at cursor position
 - Projects: switch in visual sidebar order with Ctrl+arrows
 
-## [0.5.0] - 2024-12-XX
+## [0.5.0] - 2025-11-XX
 
 ### Added
 - **Multi-project Dashboard**: overview with disk cache and type detection
@@ -65,7 +81,7 @@ All notable changes to Claude Terminal are documented in this file.
 - Git: per-project pull/push button state
 - Usage: weekly percentage parsing
 
-## [0.4.0] - 2024-12-XX
+## [0.4.0] - 2025-10-XX
 
 ### Added
 - Resizable projects panel
@@ -77,7 +93,7 @@ All notable changes to Claude Terminal are documented in this file.
 - Replace node require calls with preload API
 - Handle non-array details in git toast
 
-## [0.3.0] - 2024-11-XX
+## [0.3.0] - 2025-09-XX
 
 ### Added
 - Dashboard with per-project statistics
@@ -87,7 +103,7 @@ All notable changes to Claude Terminal are documented in this file.
 - Global quick project picker (Ctrl+Shift+P)
 - Time tracking with idle detection
 
-## [0.2.0] - 2024-11-XX
+## [0.2.0] - 2025-08-XX
 
 ### Added
 - Multi-terminal management with tabs
@@ -97,7 +113,7 @@ All notable changes to Claude Terminal are documented in this file.
 - i18n support (English, French)
 - Auto-updates via GitHub releases
 
-## [0.1.0] - 2024-10-XX
+## [0.1.0] - 2025-07-XX
 
 ### Added
 - Initial release
