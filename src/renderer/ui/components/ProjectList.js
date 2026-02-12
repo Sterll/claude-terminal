@@ -259,7 +259,7 @@ function renderProjectHtml(project, depth) {
 
   return `
     <div class="project-item ${isSelected ? 'active' : ''} ${typeHandler.getProjectItemClass(typeCtx)}"
-         data-project-id="${project.id}" data-depth="${depth}" draggable="true"
+         data-project-id="${project.id}" data-depth="${depth}" draggable="true" tabindex="0"
          style="margin-left: ${depth * 16}px;">
       ${tooltipHtml}
       <div class="project-info">
@@ -478,9 +478,11 @@ function setupDragAndDrop(list) {
 
 /**
  * Setup compact mode tooltips (floating, position: fixed)
+ * Uses delegated mouseover/mouseout on the list container (set up once)
  */
 let _activeTooltip = null;
 let _tooltipTimeout = null;
+let _tooltipDelegationSetup = false;
 
 function removeActiveTooltip() {
   if (_activeTooltip) {
@@ -491,175 +493,207 @@ function removeActiveTooltip() {
 }
 
 function setupCompactTooltips(list) {
-  list.querySelectorAll('.project-item:not(.active)').forEach(item => {
+  if (_tooltipDelegationSetup) return;
+  _tooltipDelegationSetup = true;
+
+  list.addEventListener('mouseover', (e) => {
+    const item = e.target.closest('.project-item');
+    if (!item || item.classList.contains('active')) return;
+    if (!document.body.classList.contains('compact-projects')) return;
+    if (_activeTooltip && _activeTooltip._forProjectId === item.dataset.projectId) return;
+
     const tooltipSource = item.querySelector('.project-tooltip');
     if (!tooltipSource || !tooltipSource.innerHTML.trim()) return;
 
-    item.addEventListener('mouseenter', () => {
-      if (!document.body.classList.contains('compact-projects')) return;
-      if (item.classList.contains('active')) return;
-
-      clearTimeout(_tooltipTimeout);
-      _tooltipTimeout = setTimeout(() => {
-        removeActiveTooltip();
-
-        const rect = item.getBoundingClientRect();
-        const tooltip = document.createElement('div');
-        tooltip.className = 'project-tooltip-floating';
-        tooltip.innerHTML = tooltipSource.innerHTML;
-        document.body.appendChild(tooltip);
-
-        // Position: to the right of the item, vertically centered
-        const tooltipRect = tooltip.getBoundingClientRect();
-        let left = rect.right + 8;
-        let top = rect.top + (rect.height / 2) - (tooltipRect.height / 2);
-
-        // If overflows right, show to the left
-        if (left + tooltipRect.width > window.innerWidth) {
-          left = rect.left - tooltipRect.width - 8;
-          tooltip.classList.add('tooltip-left');
-        }
-        // Clamp vertical
-        if (top < 4) top = 4;
-        if (top + tooltipRect.height > window.innerHeight - 4) {
-          top = window.innerHeight - tooltipRect.height - 4;
-        }
-
-        tooltip.style.left = `${left}px`;
-        tooltip.style.top = `${top}px`;
-        _activeTooltip = tooltip;
-      }, 300);
-    });
-
-    item.addEventListener('mouseleave', () => {
+    clearTimeout(_tooltipTimeout);
+    _tooltipTimeout = setTimeout(() => {
       removeActiveTooltip();
-    });
+
+      const rect = item.getBoundingClientRect();
+      const tooltip = document.createElement('div');
+      tooltip.className = 'project-tooltip-floating';
+      tooltip.innerHTML = tooltipSource.innerHTML;
+      tooltip._forProjectId = item.dataset.projectId;
+      document.body.appendChild(tooltip);
+
+      const tooltipRect = tooltip.getBoundingClientRect();
+      let left = rect.right + 8;
+      let top = rect.top + (rect.height / 2) - (tooltipRect.height / 2);
+
+      if (left + tooltipRect.width > window.innerWidth) {
+        left = rect.left - tooltipRect.width - 8;
+        tooltip.classList.add('tooltip-left');
+      }
+      if (top < 4) top = 4;
+      if (top + tooltipRect.height > window.innerHeight - 4) {
+        top = window.innerHeight - tooltipRect.height - 4;
+      }
+
+      tooltip.style.left = `${left}px`;
+      tooltip.style.top = `${top}px`;
+      _activeTooltip = tooltip;
+    }, 300);
+  });
+
+  list.addEventListener('mouseout', (e) => {
+    const item = e.target.closest('.project-item');
+    if (item && !item.contains(e.relatedTarget)) {
+      removeActiveTooltip();
+    }
   });
 }
 
 /**
  * Attach all event listeners to project list
+ * Uses event delegation: 2 handlers on the container instead of N*15 per-element listeners
  */
 function attachListeners(list) {
-  // Folder click - toggle collapse
-  list.querySelectorAll('.folder-header').forEach(header => {
-    header.onclick = (e) => {
-      if (!e.target.closest('.folder-chevron')) {
-        toggleFolderCollapse(header.closest('.folder-item').dataset.folderId);
-        if (callbacks.onRenderProjects) callbacks.onRenderProjects();
-      }
-    };
-  });
+  // === SINGLE DELEGATED CLICK HANDLER ===
+  list.onclick = (e) => {
+    const target = e.target;
 
-  list.querySelectorAll('.folder-chevron').forEach(chevron => {
-    chevron.onclick = (e) => {
+    // Folder chevron
+    const chevron = target.closest('.folder-chevron');
+    if (chevron) {
       e.stopPropagation();
       toggleFolderCollapse(chevron.closest('.folder-item').dataset.folderId);
       if (callbacks.onRenderProjects) callbacks.onRenderProjects();
-    };
-  });
+      return;
+    }
 
-  // Project click - filter terminals
-  list.querySelectorAll('.project-item').forEach(item => {
-    item.onclick = (e) => {
-      if (!e.target.closest('button')) {
-        const projectId = item.dataset.projectId;
+    // Folder header (not chevron, not button)
+    const folderHeader = target.closest('.folder-header');
+    if (folderHeader && !target.closest('button')) {
+      toggleFolderCollapse(folderHeader.closest('.folder-item').dataset.folderId);
+      if (callbacks.onRenderProjects) callbacks.onRenderProjects();
+      return;
+    }
+
+    // Any button click
+    const btn = target.closest('button');
+    if (btn) {
+      e.stopPropagation();
+      const projectId = btn.dataset.projectId;
+
+      // Close more-actions menu for any menu item click
+      if (btn.classList.contains('more-actions-item')) {
+        closeAllMoreActionsMenus();
+      }
+
+      if (btn.classList.contains('btn-claude')) {
+        const project = getProject(projectId);
         const projectIndex = getProjectIndex(projectId);
         setSelectedProjectFilter(projectIndex);
-        setOpenedProjectId(null);
-        document.getElementById('project-detail-view').style.display = 'none';
-        document.getElementById('terminals-container').style.display = '';
-        document.getElementById('terminals-tabs').style.display = '';
-        if (callbacks.onFilterTerminals) callbacks.onFilterTerminals(projectIndex);
         if (callbacks.onRenderProjects) callbacks.onRenderProjects();
+        if (callbacks.onCreateTerminal) callbacks.onCreateTerminal(project);
+      } else if (btn.classList.contains('btn-git-pull')) {
+        if (callbacks.onGitPull) callbacks.onGitPull(projectId);
+      } else if (btn.classList.contains('btn-git-push')) {
+        if (callbacks.onGitPush) callbacks.onGitPush(projectId);
+      } else if (btn.classList.contains('btn-basic-terminal')) {
+        const project = getProject(projectId);
+        const projectIndex = getProjectIndex(projectId);
+        setSelectedProjectFilter(projectIndex);
+        closeAllMoreActionsMenus();
+        if (callbacks.onRenderProjects) callbacks.onRenderProjects();
+        if (callbacks.onCreateBasicTerminal) callbacks.onCreateBasicTerminal(project);
+      } else if (btn.classList.contains('btn-open-folder')) {
+        const project = getProject(projectId);
+        if (project) api.dialog.openInExplorer(project.path);
+      } else if (btn.classList.contains('btn-open-editor')) {
+        const project = getProject(projectId);
+        if (!project) return;
+        const editor = getProjectEditor(projectId) || getSetting('editor') || 'code';
+        closeAllMoreActionsMenus();
+        api.dialog.openInEditor({ editor: getEditorCommand(editor), path: project.path });
+      } else if (btn.classList.contains('btn-delete-project')) {
+        closeAllMoreActionsMenus();
+        if (callbacks.onDeleteProject) callbacks.onDeleteProject(projectId);
+      } else if (btn.classList.contains('btn-rename-project')) {
+        closeAllMoreActionsMenus();
+        if (callbacks.onRenameProject) callbacks.onRenameProject(projectId);
+      } else if (btn.classList.contains('btn-more-actions')) {
+        const menu = btn.nextElementSibling;
+        const isActive = menu.classList.contains('active');
+        closeAllMoreActionsMenus();
+        if (!isActive) {
+          const btnRect = btn.getBoundingClientRect();
+          menu.style.visibility = 'hidden';
+          menu.classList.add('active');
+          const menuWidth = menu.offsetWidth;
+          const menuHeight = menu.offsetHeight;
+          menu.classList.remove('active');
+          menu.style.visibility = '';
+          let left = btnRect.right - menuWidth;
+          if (left < 0) left = btnRect.left;
+          const viewportHeight = window.innerHeight;
+          let top;
+          if (btnRect.bottom + menuHeight + 4 > viewportHeight) {
+            top = btnRect.top - menuHeight - 4;
+            if (top < 0) top = 4;
+          } else {
+            top = btnRect.bottom + 4;
+          }
+          menu.style.top = `${top}px`;
+          menu.style.left = `${left}px`;
+          menu.classList.add('active');
+        }
+      } else if (btn.classList.contains('btn-folder-color')) {
+        const folderId = btn.dataset.folderId;
+        const folder = getFolder(folderId);
+        if (folder) {
+          CustomizePicker.show(btn, 'folder', folderId, folder, {
+            onColorChange: (id, color) => { setFolderColor(id, color); if (callbacks.onRenderProjects) callbacks.onRenderProjects(); },
+            onIconChange: (id, icon) => { setFolderIcon(id, icon); if (callbacks.onRenderProjects) callbacks.onRenderProjects(); },
+            onClose: () => {}
+          });
+        }
+      } else if (btn.classList.contains('btn-customize-project')) {
+        const project = getProject(projectId);
+        closeAllMoreActionsMenus();
+        if (project) {
+          CustomizePicker.show(btn, 'project', projectId, project, {
+            onColorChange: (id, color) => { setProjectColor(id, color); if (callbacks.onRenderProjects) callbacks.onRenderProjects(); },
+            onIconChange: (id, icon) => { setProjectIcon(id, icon); if (callbacks.onRenderProjects) callbacks.onRenderProjects(); },
+            onClose: () => {}
+          });
+        }
       }
-    };
-  });
+      return;
+    }
 
-  // Claude button
-  list.querySelectorAll('.btn-claude').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const projectId = btn.dataset.projectId;
-      const project = getProject(projectId);
+    // Project item click (when no button was clicked)
+    const projectItem = target.closest('.project-item');
+    if (projectItem) {
+      const projectId = projectItem.dataset.projectId;
       const projectIndex = getProjectIndex(projectId);
       setSelectedProjectFilter(projectIndex);
+      setOpenedProjectId(null);
+      document.getElementById('project-detail-view').style.display = 'none';
+      document.getElementById('terminals-container').style.display = '';
+      document.getElementById('terminals-tabs').style.display = '';
+      if (callbacks.onFilterTerminals) callbacks.onFilterTerminals(projectIndex);
       if (callbacks.onRenderProjects) callbacks.onRenderProjects();
-      if (callbacks.onCreateTerminal) callbacks.onCreateTerminal(project);
-    };
-  });
-
-  // Type-specific sidebar events (start/stop/console for each type)
-  // Merge callbacks with projectId->projectIndex wrappers for FiveM compatibility
-  const typeCallbacks = {
-    ...callbacks,
-    // FiveM passes projectId (string), convert to projectIndex
-    onStartFivem: (projectId) => { if (callbacks.onStartFivem) callbacks.onStartFivem(getProjectIndex(projectId)); },
-    onStopFivem: (projectId) => { if (callbacks.onStopFivem) callbacks.onStopFivem(getProjectIndex(projectId)); },
-    onOpenFivemConsole: (projectId) => { if (callbacks.onOpenFivemConsole) callbacks.onOpenFivemConsole(getProjectIndex(projectId)); }
+    }
   };
-  registry.getAll().forEach(typeHandler => {
-    typeHandler.bindSidebarEvents(list, typeCallbacks);
-  });
 
-  // Git buttons
-  list.querySelectorAll('.btn-git-pull').forEach(btn => {
-    btn.onclick = (e) => { e.stopPropagation(); if (callbacks.onGitPull) callbacks.onGitPull(btn.dataset.projectId); };
-  });
-  list.querySelectorAll('.btn-git-push').forEach(btn => {
-    btn.onclick = (e) => { e.stopPropagation(); if (callbacks.onGitPush) callbacks.onGitPush(btn.dataset.projectId); };
-  });
-
-  // Basic terminal
-  list.querySelectorAll('.btn-basic-terminal').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const projectId = btn.dataset.projectId;
-      const project = getProject(projectId);
-      const projectIndex = getProjectIndex(projectId);
-      setSelectedProjectFilter(projectIndex);
-      closeAllMoreActionsMenus();
-      if (callbacks.onRenderProjects) callbacks.onRenderProjects();
-      if (callbacks.onCreateBasicTerminal) callbacks.onCreateBasicTerminal(project);
-    };
-  });
-
-  // Open folder
-  list.querySelectorAll('.btn-open-folder').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const project = getProject(btn.dataset.projectId);
-      if (project) api.dialog.openInExplorer(project.path);
-    };
-  });
-
-  // Open in editor (left click) + change editor (right click)
-  list.querySelectorAll('.btn-open-editor').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const projectId = btn.dataset.projectId;
-      const project = getProject(projectId);
-      if (!project) return;
-      const editor = getProjectEditor(projectId) || getSetting('editor') || 'code';
-      closeAllMoreActionsMenus();
-      api.dialog.openInEditor({ editor: getEditorCommand(editor), path: project.path });
-    };
-
-    btn.oncontextmenu = (e) => {
+  // === SINGLE DELEGATED CONTEXTMENU HANDLER ===
+  list.oncontextmenu = (e) => {
+    // Editor button right-click → editor picker
+    const editorBtn = e.target.closest('.btn-open-editor');
+    if (editorBtn) {
       e.preventDefault();
       e.stopPropagation();
-      const projectId = btn.dataset.projectId;
+      const projectId = editorBtn.dataset.projectId;
       const currentEditor = getProjectEditor(projectId);
       closeAllMoreActionsMenus();
 
-      // Remove any existing editor context menu
       document.querySelectorAll('.editor-context-menu').forEach(m => m.remove());
 
       const menu = document.createElement('div');
       menu.className = 'editor-context-menu';
       menu.style.cssText = `position:fixed;top:${e.clientY}px;left:${e.clientX}px;z-index:10000;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:8px;padding:4px 0;min-width:180px;box-shadow:0 8px 24px rgba(0,0,0,0.4);`;
 
-      // "Default (global)" option
       const globalEditor = getSetting('editor') || 'code';
       const globalLabel = (EDITOR_OPTIONS.find(e => e.value === globalEditor) || EDITOR_OPTIONS[0]).label;
       let itemsHtml = `<button class="editor-ctx-item" data-editor="" style="display:flex;align-items:center;gap:8px;width:100%;padding:6px 12px;background:none;border:none;color:var(--text-primary);cursor:pointer;font-size:13px;text-align:left;">
@@ -679,24 +713,28 @@ function attachListeners(list) {
       menu.innerHTML = itemsHtml;
       document.body.appendChild(menu);
 
-      // Adjust position if overflowing
       const menuRect = menu.getBoundingClientRect();
       if (menuRect.right > window.innerWidth) menu.style.left = `${window.innerWidth - menuRect.width - 8}px`;
       if (menuRect.bottom > window.innerHeight) menu.style.top = `${window.innerHeight - menuRect.height - 8}px`;
 
-      // Hover effect
-      menu.querySelectorAll('.editor-ctx-item').forEach(item => {
-        item.onmouseenter = () => item.style.background = 'var(--bg-hover)';
-        item.onmouseleave = () => item.style.background = 'none';
-        item.onclick = () => {
-          const editorValue = item.dataset.editor || null;
-          setProjectEditor(projectId, editorValue);
+      // Delegated handler for editor context menu items
+      menu.onclick = (ev) => {
+        const item = ev.target.closest('.editor-ctx-item');
+        if (item) {
+          setProjectEditor(projectId, item.dataset.editor || null);
           menu.remove();
           if (callbacks.onRenderProjects) callbacks.onRenderProjects();
-        };
-      });
+        }
+      };
+      menu.onmouseover = (ev) => {
+        const item = ev.target.closest('.editor-ctx-item');
+        if (item) item.style.background = 'var(--bg-hover)';
+      };
+      menu.onmouseout = (ev) => {
+        const item = ev.target.closest('.editor-ctx-item');
+        if (item) item.style.background = 'none';
+      };
 
-      // Close on outside click
       const closeMenu = (ev) => {
         if (!menu.contains(ev.target)) {
           menu.remove();
@@ -704,83 +742,21 @@ function attachListeners(list) {
         }
       };
       setTimeout(() => document.addEventListener('click', closeMenu, true), 0);
-    };
-  });
+      return;
+    }
 
-  // Delete project
-  list.querySelectorAll('.btn-delete-project').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      closeAllMoreActionsMenus();
-      if (callbacks.onDeleteProject) callbacks.onDeleteProject(btn.dataset.projectId);
-    };
-  });
-
-  // Rename project
-  list.querySelectorAll('.btn-rename-project').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      closeAllMoreActionsMenus();
-      if (callbacks.onRenameProject) callbacks.onRenameProject(btn.dataset.projectId);
-    };
-  });
-
-  // More actions dropdown
-  list.querySelectorAll('.btn-more-actions').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const menu = btn.nextElementSibling;
-      const isActive = menu.classList.contains('active');
-      closeAllMoreActionsMenus();
-      if (!isActive) {
-        const btnRect = btn.getBoundingClientRect();
-        menu.style.visibility = 'hidden';
-        menu.classList.add('active');
-        const menuWidth = menu.offsetWidth;
-        const menuHeight = menu.offsetHeight;
-        menu.classList.remove('active');
-        menu.style.visibility = '';
-
-        // Horizontal position
-        let left = btnRect.right - menuWidth;
-        if (left < 0) left = btnRect.left;
-
-        // Vertical position - check if menu would overflow bottom
-        const viewportHeight = window.innerHeight;
-        let top;
-        if (btnRect.bottom + menuHeight + 4 > viewportHeight) {
-          // Show above the button
-          top = btnRect.top - menuHeight - 4;
-          if (top < 0) top = 4; // Fallback if not enough space above
-        } else {
-          // Show below the button
-          top = btnRect.bottom + 4;
-        }
-
-        menu.style.top = `${top}px`;
-        menu.style.left = `${left}px`;
-        menu.classList.add('active');
-      }
-    };
-  });
-
-  list.querySelectorAll('.more-actions-item').forEach(item => {
-    item.addEventListener('click', () => closeAllMoreActionsMenus());
-  });
-
-  // Right-click on project → open more-actions menu at cursor position
-  list.querySelectorAll('.project-item').forEach(item => {
-    item.addEventListener('contextmenu', (e) => {
+    // Project item right-click → more-actions menu at cursor
+    const projectItem = e.target.closest('.project-item');
+    if (projectItem) {
       e.preventDefault();
       e.stopPropagation();
-      const moreBtn = item.querySelector('.btn-more-actions');
+      const moreBtn = projectItem.querySelector('.btn-more-actions');
       if (!moreBtn) return;
       const menu = moreBtn.nextElementSibling;
       if (!menu) return;
 
       closeAllMoreActionsMenus();
 
-      // Measure menu dimensions
       menu.style.visibility = 'hidden';
       menu.classList.add('active');
       const menuWidth = menu.offsetWidth;
@@ -788,11 +764,8 @@ function attachListeners(list) {
       menu.classList.remove('active');
       menu.style.visibility = '';
 
-      // Position at cursor
       let left = e.clientX;
       let top = e.clientY;
-
-      // Keep within viewport
       if (left + menuWidth > window.innerWidth) left = window.innerWidth - menuWidth - 4;
       if (left < 0) left = 4;
       if (top + menuHeight > window.innerHeight) top = window.innerHeight - menuHeight - 4;
@@ -801,54 +774,18 @@ function attachListeners(list) {
       menu.style.top = `${top}px`;
       menu.style.left = `${left}px`;
       menu.classList.add('active');
-    });
-  });
+    }
+  };
 
-  // Folder color button (opens CustomizePicker)
-  list.querySelectorAll('.btn-folder-color').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const folderId = btn.dataset.folderId;
-      const folder = getFolder(folderId);
-
-      if (folder) {
-        CustomizePicker.show(btn, 'folder', folderId, folder, {
-          onColorChange: (id, color) => {
-            setFolderColor(id, color);
-            if (callbacks.onRenderProjects) callbacks.onRenderProjects();
-          },
-          onIconChange: (id, icon) => {
-            setFolderIcon(id, icon);
-            if (callbacks.onRenderProjects) callbacks.onRenderProjects();
-          },
-          onClose: () => {}
-        });
-      }
-    };
-  });
-
-  // Customize project button (opens CustomizePicker)
-  list.querySelectorAll('.btn-customize-project').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const projectId = btn.dataset.projectId;
-      const project = getProject(projectId);
-      closeAllMoreActionsMenus();
-
-      if (project) {
-        CustomizePicker.show(btn, 'project', projectId, project, {
-          onColorChange: (id, color) => {
-            setProjectColor(id, color);
-            if (callbacks.onRenderProjects) callbacks.onRenderProjects();
-          },
-          onIconChange: (id, icon) => {
-            setProjectIcon(id, icon);
-            if (callbacks.onRenderProjects) callbacks.onRenderProjects();
-          },
-          onClose: () => {}
-        });
-      }
-    };
+  // Type-specific sidebar events (plugin system - keep per-render)
+  const typeCallbacks = {
+    ...callbacks,
+    onStartFivem: (projectId) => { if (callbacks.onStartFivem) callbacks.onStartFivem(getProjectIndex(projectId)); },
+    onStopFivem: (projectId) => { if (callbacks.onStopFivem) callbacks.onStopFivem(getProjectIndex(projectId)); },
+    onOpenFivemConsole: (projectId) => { if (callbacks.onOpenFivemConsole) callbacks.onOpenFivemConsole(getProjectIndex(projectId)); }
+  };
+  registry.getAll().forEach(typeHandler => {
+    typeHandler.bindSidebarEvents(list, typeCallbacks);
   });
 
   // Compact tooltip (hover on non-active projects)

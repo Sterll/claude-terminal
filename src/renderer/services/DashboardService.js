@@ -18,6 +18,16 @@ const CACHE_TTL = 30000; // 30 seconds cache validity
 const REFRESH_DEBOUNCE = 2000; // 2 seconds minimum between refreshes
 const DISK_CACHE_FILE = '.claude-terminal';
 
+// Periodic cache cleanup to prevent unbounded growth
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of dashboardCache.entries()) {
+    if (now - entry.timestamp > CACHE_TTL * 4) {
+      dashboardCache.delete(key);
+    }
+  }
+}, 60000);
+
 // ========== DISK CACHE ==========
 
 /**

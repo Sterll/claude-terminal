@@ -6,6 +6,7 @@
 const os = require('os');
 const fs = require('fs');
 const pty = require('node-pty');
+const { execSync } = require('child_process');
 
 class TerminalService {
   constructor() {
@@ -98,18 +99,23 @@ class TerminalService {
 
     this.terminals.set(id, ptyProcess);
 
-    // Handle data output - batch chunks to reduce IPC flooding (~16ms = 1 frame)
+    // Handle data output - adaptive batching to reduce IPC flooding
+    // 4ms flush when idle (responsive typing), 16ms when flooding (bulk output)
     let buffer = '';
     let flushScheduled = false;
+    let lastFlush = Date.now();
     ptyProcess.onData(data => {
       buffer += data;
       if (!flushScheduled) {
         flushScheduled = true;
+        const sinceLastFlush = Date.now() - lastFlush;
+        const delay = sinceLastFlush > 100 ? 4 : 16;
         setTimeout(() => {
           this.sendToRenderer('terminal-data', { id, data: buffer });
           buffer = '';
           flushScheduled = false;
-        }, 16);
+          lastFlush = Date.now();
+        }, delay);
       }
     });
 
@@ -162,14 +168,38 @@ class TerminalService {
   }
 
   /**
+   * Force-kill a process tree on Windows via taskkill
+   * @param {number} pid - Process ID
+   */
+  _forceKillWindows(pid) {
+    if (!pid) return;
+    try {
+      execSync(`taskkill /PID ${pid} /T /F`, { timeout: 5000, windowsHide: true });
+    } catch (_) {
+      // Process may already be dead - that's fine
+    }
+  }
+
+  /**
    * Kill a terminal
    * @param {number} id - Terminal ID
    */
   kill(id) {
     const term = this.terminals.get(id);
-    if (term) {
+    if (!term) return;
+
+    const pid = term.pid;
+    this.terminals.delete(id);
+
+    try {
       term.kill();
-      this.terminals.delete(id);
+    } catch (e) {
+      console.warn(`[Terminal] kill() failed for ${id}:`, e.message);
+    }
+
+    // On Windows, ensure the full process tree is dead
+    if (process.platform === 'win32') {
+      this._forceKillWindows(pid);
     }
   }
 
@@ -177,8 +207,17 @@ class TerminalService {
    * Kill all terminals
    */
   killAll() {
-    this.terminals.forEach(term => term.kill());
+    const pids = [];
+    this.terminals.forEach((term, id) => {
+      pids.push(term.pid);
+      try { term.kill(); } catch (_) {}
+    });
     this.terminals.clear();
+
+    // Ensure all process trees are dead on Windows
+    if (process.platform === 'win32') {
+      pids.forEach(pid => this._forceKillWindows(pid));
+    }
   }
 
   /**

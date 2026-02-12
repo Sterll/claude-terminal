@@ -44,7 +44,7 @@ function registerGitHandlers() {
 
   // Get list of branches
   ipcMain.handle('git-branches', async (event, { projectPath }) => {
-    return getBranches(projectPath);
+    return getBranches(projectPath, { skipFetch: false });
   });
 
   // Get current branch
