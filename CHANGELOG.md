@@ -111,7 +111,6 @@ All notable changes to Claude Terminal are documented in this file.
 - Project folders with drag-and-drop
 - Keyboard shortcuts (customizable)
 - i18n support (English, French)
-- Auto-updates via GitHub releases
 
 ## [0.1.0] - 2025-07-XX
 
