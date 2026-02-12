@@ -35,7 +35,7 @@ function createModal({ id, title, content, buttons = [], size = 'medium', onClos
   `).join('');
 
   modal.innerHTML = `
-    <div class="modal ${sizeClass}">
+    <div class="modal ${sizeClass}" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
       <div class="modal-header">
         <h3>${escapeHtml(title)}</h3>
         <button class="modal-close" aria-label="${t('common.close')}">
