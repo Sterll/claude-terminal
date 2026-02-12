@@ -176,6 +176,8 @@ claude-terminal/
 ├── main.js                    # Electron entry point
 ├── renderer.js                # Main renderer logic (bundled to dist/)
 ├── index.html                 # Main window UI
+├── quick-picker.html          # Quick picker window
+├── setup-wizard.html          # First-launch wizard
 ├── styles.css                 # Application styles (~6000 lines)
 ├── src/
 │   ├── main/                  # Main process
@@ -191,7 +193,6 @@ claude-terminal/
 │   │   │   ├── mcpRegistry.ipc.js
 │   │   │   ├── plugin.ipc.js
 │   │   │   ├── marketplace.ipc.js
-│   │   │   ├── fivem.ipc.js
 │   │   │   ├── project.ipc.js
 │   │   │   └── dialog.ipc.js
 │   │   ├── services/
@@ -202,8 +203,7 @@ claude-terminal/
 │   │   │   ├── UsageService.js
 │   │   │   ├── McpService.js
 │   │   │   ├── McpRegistryService.js
-│   │   │   ├── UpdaterService.js
-│   │   │   └── FivemService.js
+│   │   │   └── UpdaterService.js
 │   │   ├── windows/
 │   │   │   ├── MainWindow.js
 │   │   │   ├── QuickPickerWindow.js
@@ -213,52 +213,65 @@ claude-terminal/
 │   │       ├── paths.js
 │   │       ├── git.js
 │   │       └── commitMessageGenerator.js
-│   └── renderer/              # Renderer process
-│       ├── services/
-│       │   ├── ProjectService.js
-│       │   ├── TerminalService.js
-│       │   ├── SettingsService.js
-│       │   ├── DashboardService.js
-│       │   ├── GitTabService.js
-│       │   ├── TimeTrackingDashboard.js
-│       │   ├── SkillService.js
-│       │   ├── AgentService.js
-│       │   ├── McpService.js
-│       │   └── FivemService.js
-│       ├── state/
-│       │   ├── State.js           # Base observable class
-│       │   ├── projects.state.js
-│       │   ├── terminals.state.js
-│       │   ├── settings.state.js
-│       │   ├── git.state.js
-│       │   ├── mcp.state.js
-│       │   ├── fivem.state.js
-│       │   └── timeTracking.state.js
-│       ├── ui/components/
-│       │   ├── ProjectList.js
-│       │   ├── TerminalManager.js
-│       │   ├── FileExplorer.js
-│       │   ├── Modal.js
-│       │   ├── Toast.js
-│       │   ├── ContextMenu.js
-│       │   ├── Tab.js
-│       │   ├── CustomizePicker.js
-│       │   └── QuickActions.js
-│       ├── features/
-│       │   ├── QuickPicker.js
-│       │   ├── KeyboardShortcuts.js
-│       │   └── DragDrop.js
-│       ├── i18n/
-│       │   └── locales/
-│       │       ├── en.json
-│       │       └── fr.json
-│       └── utils/
-│           ├── dom.js
-│           ├── color.js
-│           ├── format.js
-│           ├── paths.js
-│           ├── fileIcons.js
-│           └── syntaxHighlight.js
+│   ├── renderer/              # Renderer process
+│   │   ├── services/
+│   │   │   ├── ProjectService.js
+│   │   │   ├── TerminalService.js
+│   │   │   ├── SettingsService.js
+│   │   │   ├── DashboardService.js
+│   │   │   ├── GitTabService.js
+│   │   │   ├── TimeTrackingDashboard.js
+│   │   │   ├── SkillService.js
+│   │   │   ├── AgentService.js
+│   │   │   └── McpService.js
+│   │   ├── state/
+│   │   │   ├── State.js           # Base observable class
+│   │   │   ├── projects.state.js
+│   │   │   ├── terminals.state.js
+│   │   │   ├── settings.state.js
+│   │   │   ├── git.state.js
+│   │   │   ├── mcp.state.js
+│   │   │   └── timeTracking.state.js
+│   │   ├── ui/
+│   │   │   ├── components/
+│   │   │   │   ├── ProjectList.js
+│   │   │   │   ├── TerminalManager.js
+│   │   │   │   ├── FileExplorer.js
+│   │   │   │   ├── Modal.js
+│   │   │   │   ├── Toast.js
+│   │   │   │   ├── ContextMenu.js
+│   │   │   │   ├── Tab.js
+│   │   │   │   ├── CustomizePicker.js
+│   │   │   │   └── QuickActions.js
+│   │   │   └── themes/
+│   │   │       └── terminal-themes.js
+│   │   ├── features/
+│   │   │   ├── QuickPicker.js
+│   │   │   ├── KeyboardShortcuts.js
+│   │   │   └── DragDrop.js
+│   │   ├── i18n/
+│   │   │   └── locales/
+│   │   │       ├── en.json
+│   │   │       └── fr.json
+│   │   └── utils/
+│   │       ├── dom.js
+│   │       ├── color.js
+│   │       ├── format.js
+│   │       ├── paths.js
+│   │       ├── fileIcons.js
+│   │       └── syntaxHighlight.js
+│   └── project-types/         # Modular project type system
+│       ├── registry.js        # Type registry & discovery
+│       ├── base-type.js       # Base class for project types
+│       ├── general/           # Standard project type
+│       ├── fivem/             # FiveM server projects
+│       │   ├── main/          # IPC & service
+│       │   ├── renderer/      # Dashboard, state, terminal panel, wizard
+│       │   └── i18n/          # en.json, fr.json
+│       └── webapp/            # Web app projects
+│           ├── main/          # IPC & service
+│           ├── renderer/      # Dashboard, state, terminal panel, wizard
+│           └── i18n/          # en.json, fr.json
 ├── scripts/
 │   └── build-renderer.js     # esbuild bundler
 └── resources/
