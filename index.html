@@ -58,14 +58,14 @@
         <span class="time-value" id="time-month">0h</span>
       </div>
     </div>
-    <div class="titlebar-controls">
-      <button class="titlebar-btn" id="btn-minimize">
+    <div class="titlebar-controls" role="group" aria-label="Window controls">
+      <button class="titlebar-btn" id="btn-minimize" aria-label="Minimize">
         <svg viewBox="0 0 12 12"><rect y="5" width="12" height="2" fill="currentColor"/></svg>
       </button>
-      <button class="titlebar-btn" id="btn-maximize">
+      <button class="titlebar-btn" id="btn-maximize" aria-label="Maximize">
         <svg viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
       </button>
-      <button class="titlebar-btn btn-close" id="btn-close">
+      <button class="titlebar-btn btn-close" id="btn-close" aria-label="Close">
         <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
       </button>
     </div>
@@ -93,15 +93,15 @@
   <div class="main-container">
     <!-- Sidebar -->
     <div class="sidebar">
-      <nav class="nav-tabs">
-        <button class="nav-tab active" data-tab="claude" title="Claude">
+      <nav class="nav-tabs" role="tablist" aria-label="Main navigation">
+        <button class="nav-tab active" data-tab="claude" title="Claude" role="tab" aria-selected="true">
           <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.89 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zM6 10h2v2H6zm0 4h8v2H6zm10 0h2v2h-2zm-6-4h8v2h-8z"/>
           </svg>
           <span>Claude</span>
         </button>
         <div class="nav-separator"><span>Extensions</span></div>
-        <button class="nav-tab" data-tab="plugins" title="Plugins">
+        <button class="nav-tab" data-tab="plugins" title="Plugins" role="tab" aria-selected="false">
           <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/>
           </svg>
@@ -174,31 +174,31 @@
     </div>
 
     <!-- Content Area -->
-    <div class="content">
+    <div class="content" role="main">
       <!-- Claude Tab -->
-      <div class="tab-content active" id="tab-claude">
+      <div class="tab-content active" id="tab-claude" role="tabpanel" aria-label="Claude">
         <div class="claude-layout" id="claude-layout">
           <!-- Show projects button (visible when panel is hidden) -->
-          <button class="btn-show-projects" id="btn-show-projects" title="Show projects">
+          <button class="btn-show-projects" id="btn-show-projects" title="Show projects" aria-label="Show projects">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
           </button>
           <!-- Projects Panel -->
-          <div class="projects-panel">
+          <div class="projects-panel" role="complementary" aria-label="Projects">
             <div class="panel-header">
               <h2 data-i18n="projects.title">Projets</h2>
               <div class="panel-actions">
-                <button class="btn-icon" id="btn-new-folder" data-i18n-title="projects.newFolder">
+                <button class="btn-icon" id="btn-new-folder" data-i18n-title="projects.newFolder" aria-label="New folder">
                   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-1 8h-3v3h-2v-3h-3v-2h3V9h2v3h3v2z"/></svg>
                 </button>
-                <button class="btn-icon" id="btn-new-project" data-i18n-title="common.new">
+                <button class="btn-icon" id="btn-new-project" data-i18n-title="common.new" aria-label="New project">
                   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
                 </button>
-                <button class="btn-icon" id="btn-toggle-projects" title="Hide projects">
+                <button class="btn-icon" id="btn-toggle-projects" title="Hide projects" aria-label="Toggle projects panel">
                   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
                 </button>
               </div>
             </div>
-            <div class="projects-list" id="projects-list"></div>
+            <div class="projects-list" id="projects-list" role="list" aria-label="Projects"></div>
             <div class="panel-resizer" id="projects-panel-resizer"></div>
           </div>
 
@@ -353,8 +353,8 @@
                 <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
               </button>
             </div>
-            <div class="terminals-tabs" id="terminals-tabs"></div>
-            <div class="terminals-container" id="terminals-container">
+            <div class="terminals-tabs" id="terminals-tabs" role="tablist" aria-label="Terminal tabs"></div>
+            <div class="terminals-container" id="terminals-container" role="region" aria-label="Terminals">
               <div class="empty-state" id="empty-terminals">
                 <svg viewBox="0 0 24 24" fill="currentColor">
                   <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.89 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10z"/>
