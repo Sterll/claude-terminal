@@ -205,6 +205,16 @@ contextBridge.exposeInMainWorld('electron_api', {
     detail: (name) => ipcRenderer.invoke('mcp-registry-detail', { name }),
   },
 
+  // ==================== PLUGINS ====================
+  plugins: {
+    installed: () => ipcRenderer.invoke('plugin-installed'),
+    catalog: () => ipcRenderer.invoke('plugin-catalog'),
+    marketplaces: () => ipcRenderer.invoke('plugin-marketplaces'),
+    readme: (marketplace, pluginName) => ipcRenderer.invoke('plugin-readme', { marketplace, pluginName }),
+    install: (marketplace, pluginName) => ipcRenderer.invoke('plugin-install', { marketplace, pluginName }),
+    addMarketplace: (url) => ipcRenderer.invoke('plugin-add-marketplace', { url })
+  },
+
   // ==================== MARKETPLACE ====================
   marketplace: {
     search: (query, limit) => ipcRenderer.invoke('marketplace-search', { query, limit }),
