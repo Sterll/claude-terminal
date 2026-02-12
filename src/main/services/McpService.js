@@ -38,11 +38,22 @@ class McpService {
     const processEnv = { ...process.env, ...env };
 
     // Spawn the process
-    const proc = spawn(command, args, {
-      env: processEnv,
-      shell: true,
-      windowsHide: true
-    });
+    let proc;
+    try {
+      proc = spawn(command, args, {
+        env: processEnv,
+        shell: true,
+        windowsHide: true
+      });
+    } catch (error) {
+      console.error(`[MCP] Failed to spawn ${command}:`, error.message);
+      return { success: false, error: error.message };
+    }
+
+    if (!proc || !proc.pid) {
+      console.error(`[MCP] Spawn returned no process for ${command}`);
+      return { success: false, error: 'Process spawn failed' };
+    }
 
     this.processes.set(id, proc);
 

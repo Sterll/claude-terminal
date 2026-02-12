@@ -275,6 +275,8 @@ function loadProjects() {
 // Debounce timer for save operations
 let saveDebounceTimer = null;
 const SAVE_DEBOUNCE_MS = 500;
+let saveInProgress = false;
+let pendingSave = false;
 
 /**
  * Save projects to file (debounced, atomic write)
@@ -286,14 +288,26 @@ function saveProjects() {
   }
 
   saveDebounceTimer = setTimeout(() => {
+    if (saveInProgress) {
+      // Another save is running, queue for after it finishes
+      pendingSave = true;
+      return;
+    }
     saveProjectsImmediate();
   }, SAVE_DEBOUNCE_MS);
 }
 
 /**
- * Save projects immediately (atomic write pattern)
+ * Save projects immediately (atomic write pattern with lock)
  */
 function saveProjectsImmediate() {
+  if (saveInProgress) {
+    pendingSave = true;
+    return;
+  }
+
+  saveInProgress = true;
+
   const { folders, projects, rootOrder, globalTimeTracking } = projectsState.get();
   const data = { folders, projects, rootOrder };
 
@@ -302,17 +316,31 @@ function saveProjectsImmediate() {
     data.globalTimeTracking = globalTimeTracking;
   }
   const tempFile = `${projectsFile}.tmp`;
+  const backupFile = `${projectsFile}.bak`;
 
   try {
     ensureDataDir();
+
+    // Create backup before writing
+    if (fs.existsSync(projectsFile)) {
+      try { fs.copyFileSync(projectsFile, backupFile); } catch (_) {}
+    }
 
     // Write to temporary file first
     fs.writeFileSync(tempFile, JSON.stringify(data, null, 2));
 
     // Atomic rename (on most filesystems this is atomic)
     fs.renameSync(tempFile, projectsFile);
+
+    // Remove backup on success
+    try { if (fs.existsSync(backupFile)) fs.unlinkSync(backupFile); } catch (_) {}
   } catch (error) {
     console.error('Failed to save projects:', error);
+
+    // Restore from backup if save failed
+    if (fs.existsSync(backupFile)) {
+      try { fs.copyFileSync(backupFile, projectsFile); } catch (_) {}
+    }
 
     // Cleanup temp file if it exists
     try {
@@ -331,6 +359,14 @@ function saveProjectsImmediate() {
       });
     } catch (apiError) {
       // API not available
+    }
+  } finally {
+    saveInProgress = false;
+
+    // Process queued save
+    if (pendingSave) {
+      pendingSave = false;
+      setTimeout(saveProjectsImmediate, 50);
     }
   }
 }

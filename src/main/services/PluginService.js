@@ -293,7 +293,7 @@ function getPluginReadme(marketplaceName, pluginName) {
  * Install a plugin via Claude CLI
  */
 function installPlugin(marketplace, pluginName) {
-  console.log(`[PluginService] installPlugin: ${pluginName}@${marketplace}`);
+  console.debug(`[PluginService] installPlugin: ${pluginName}@${marketplace}`);
   return runPluginCommand(
     `/plugin install ${pluginName}@${marketplace}`,
     ['installed successfully', 'plugin installed', 'successfully installed', 'already installed'],
@@ -321,23 +321,33 @@ function runPluginCommand(command, successPatterns, errorPatterns, timeoutMs = 6
     let resolved = false;
     let promptConfirmed = false; // Track if we already auto-confirmed a prompt
 
-    console.log(`[PluginService] === Starting command: ${command} ===`);
+    console.debug(`[PluginService] === Starting command: ${command} ===`);
 
-    const proc = pty.spawn('cmd.exe', [], {
-      name: 'xterm-256color',
-      cols: 120,
-      rows: 40,
-      cwd: os.homedir(),
-      env: { ...process.env, TERM: 'xterm-256color' }
-    });
+    let proc;
+    try {
+      proc = pty.spawn('cmd.exe', [], {
+        name: 'xterm-256color',
+        cols: 120,
+        rows: 40,
+        cwd: os.homedir(),
+        env: { ...process.env, TERM: 'xterm-256color' }
+      });
+    } catch (spawnError) {
+      console.error('[PluginService] Failed to spawn cmd.exe:', spawnError.message);
+      return resolve({ success: false, error: `PTY spawn failed: ${spawnError.message}` });
+    }
+
+    if (!proc) {
+      return resolve({ success: false, error: 'PTY spawn returned null' });
+    }
 
     let pollInterval = null;
 
     const timeout = setTimeout(() => {
       if (!resolved) {
         const afterCmd = stripAnsi(output.substring(commandSentPos));
-        console.log('[PluginService] TIMEOUT - phase:', phase);
-        console.log('[PluginService] Output after command:', afterCmd.substring(afterCmd.length - 500));
+        console.debug('[PluginService] TIMEOUT - phase:', phase);
+        console.debug('[PluginService] Output after command:', afterCmd.substring(afterCmd.length - 500));
         finish(false, 'Timeout');
       }
     }, timeoutMs);
@@ -347,7 +357,7 @@ function runPluginCommand(command, successPatterns, errorPatterns, timeoutMs = 6
       resolved = true;
       clearTimeout(timeout);
       if (pollInterval) clearInterval(pollInterval);
-      console.log(`[PluginService] === Finished: success=${success}, error=${error || 'none'} ===`);
+      console.debug(`[PluginService] === Finished: success=${success}, error=${error || 'none'} ===`);
       try { proc.kill(); } catch {}
       resolve({ success, error });
     }
@@ -365,13 +375,13 @@ function runPluginCommand(command, successPatterns, errorPatterns, timeoutMs = 6
         if (phase !== 'waiting_result' || resolved) return;
 
         const afterCmd = normalize(output.substring(commandSentPos));
-        console.log(`[PluginService] Poll: ${afterCmd.length} chars, confirmed=${promptConfirmed}`);
+        console.debug(`[PluginService] Poll: ${afterCmd.length} chars, confirmed=${promptConfirmed}`);
 
         // Auto-confirm prompts (scope selection, y/n confirmations)
         if (!promptConfirmed && (afterCmd.includes('entertoselect') || afterCmd.includes('(y/n)'))) {
           promptConfirmed = true;
           outputLenAtConfirm = afterCmd.length;
-          console.log('[PluginService] Auto-confirming prompt (Enter)...');
+          console.debug('[PluginService] Auto-confirming prompt (Enter)...');
           proc.write('\r');
           return;
         }
@@ -380,7 +390,7 @@ function runPluginCommand(command, successPatterns, errorPatterns, timeoutMs = 6
         for (const pattern of errorPatterns) {
           if (afterCmd.includes(pattern.toLowerCase().replace(/\s+/g, ''))) {
             phase = 'done';
-            console.log(`[PluginService] ERROR: "${pattern}"`);
+            console.debug(`[PluginService] ERROR: "${pattern}"`);
             setTimeout(finish, 2000, false, `Command failed: ${pattern}`);
             return;
           }
@@ -390,7 +400,7 @@ function runPluginCommand(command, successPatterns, errorPatterns, timeoutMs = 6
         for (const pattern of successPatterns) {
           if (afterCmd.includes(pattern.toLowerCase().replace(/\s+/g, ''))) {
             phase = 'done';
-            console.log(`[PluginService] SUCCESS: "${pattern}"`);
+            console.debug(`[PluginService] SUCCESS: "${pattern}"`);
             setTimeout(finish, 2000, true);
             return;
           }
@@ -400,7 +410,7 @@ function runPluginCommand(command, successPatterns, errorPatterns, timeoutMs = 6
         // This handles cases where CLI doesn't print an explicit success message
         if (promptConfirmed && afterCmd.length > outputLenAtConfirm + 100) {
           phase = 'done';
-          console.log(`[PluginService] SUCCESS (implicit): output grew ${outputLenAtConfirm} → ${afterCmd.length} after confirm`);
+          console.debug(`[PluginService] SUCCESS (implicit): output grew ${outputLenAtConfirm} → ${afterCmd.length} after confirm`);
           setTimeout(finish, 2000, true);
           return;
         }
@@ -413,22 +423,22 @@ function runPluginCommand(command, successPatterns, errorPatterns, timeoutMs = 6
       // Phase 1: Wait for CMD prompt, then start Claude
       if (phase === 'waiting_cmd' && output.includes('>')) {
         phase = 'waiting_claude';
-        console.log('[PluginService] Phase: CMD ready, starting Claude...');
+        console.debug('[PluginService] Phase: CMD ready, starting Claude...');
         proc.write('claude --dangerously-skip-permissions\r');
       }
 
       // Phase 2: Wait for Claude to be ready, then send command
       if (phase === 'waiting_claude' && output.includes('Claude Code')) {
         phase = 'sending_command';
-        console.log('[PluginService] Phase: Claude ready, sending command in 1.5s...');
+        console.debug('[PluginService] Phase: Claude ready, sending command in 1.5s...');
         setTimeout(() => {
           commandSentPos = output.length;
-          console.log(`[PluginService] Phase: Sending "${command}" (pos=${commandSentPos})`);
+          console.debug(`[PluginService] Phase: Sending "${command}" (pos=${commandSentPos})`);
           proc.write(command);
           setTimeout(() => {
             proc.write('\r');
             phase = 'waiting_result';
-            console.log('[PluginService] Phase: waiting_result — polling started');
+            console.debug('[PluginService] Phase: waiting_result — polling started');
             startPolling();
           }, 500);
         }, 1500);
@@ -437,7 +447,7 @@ function runPluginCommand(command, successPatterns, errorPatterns, timeoutMs = 6
 
     proc.onExit(() => {
       if (!resolved) {
-        console.log('[PluginService] Process exited, phase:', phase);
+        console.debug('[PluginService] Process exited, phase:', phase);
         const afterCmd = normalize(output.substring(commandSentPos));
         const success = successPatterns.some(p => afterCmd.includes(p.toLowerCase().replace(/\s+/g, '')));
         finish(success, success ? undefined : 'Process exited');
@@ -450,7 +460,7 @@ function runPluginCommand(command, successPatterns, errorPatterns, timeoutMs = 6
  * Add a marketplace via Claude CLI
  */
 function addMarketplace(url) {
-  console.log(`[PluginService] addMarketplace: ${url}`);
+  console.debug(`[PluginService] addMarketplace: ${url}`);
   return runPluginCommand(
     `/plugin marketplace add ${url}`,
     ['added', 'synced', 'cloned', 'plugins found', 'already exists', 'successfully', 'marketplace added'],

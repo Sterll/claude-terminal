@@ -3,7 +3,42 @@
  * Entry point for the Electron main process
  */
 
-const { app, globalShortcut } = require('electron');
+const { app, globalShortcut, dialog } = require('electron');
+const fs = require('fs');
+const nodePath = require('path');
+const os = require('os');
+
+// ============================================
+// GLOBAL ERROR HANDLERS - Must be very first!
+// ============================================
+const crashLogPath = nodePath.join(os.homedir(), '.claude-terminal', 'crash.log');
+
+function appendCrashLog(type, error) {
+  try {
+    const dir = nodePath.dirname(crashLogPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const entry = `[${new Date().toISOString()}] ${type}: ${error?.stack || error}\n`;
+    fs.appendFileSync(crashLogPath, entry);
+  } catch (_) { /* last resort - can't even log */ }
+}
+
+process.on('uncaughtException', (error) => {
+  console.error('[FATAL] Uncaught Exception:', error);
+  appendCrashLog('UNCAUGHT_EXCEPTION', error);
+  try {
+    dialog.showErrorBox(
+      'Claude Terminal - Fatal Error',
+      `An unexpected error occurred.\n\n${error.message}\n\nThe app will restart. Check logs at:\n${crashLogPath}`
+    );
+  } catch (_) {}
+  app.relaunch();
+  app.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[ERROR] Unhandled Promise Rejection:', reason);
+  appendCrashLog('UNHANDLED_REJECTION', reason);
+});
 
 // ============================================
 // SINGLE INSTANCE LOCK - Must be first!
@@ -100,7 +135,7 @@ function bootstrapApp() {
   function registerGlobalShortcuts() {
     // No global shortcuts registered by default to avoid conflicts
     // All shortcuts are now handled locally in the renderer when the app is focused
-    console.log('[Shortcut] Global shortcuts disabled - using local shortcuts instead');
+    console.debug('[Shortcut] Global shortcuts disabled - using local shortcuts instead');
   }
 
   /**
@@ -108,6 +143,7 @@ function bootstrapApp() {
    */
   function cleanup() {
     globalShortcut.unregisterAll();
+    updaterService.stopPeriodicCheck();
     cleanupServices();
   }
 

@@ -75,7 +75,11 @@ function registerDialogHandlers() {
   // Open in external editor
   ipcMain.on('open-in-editor', (event, { editor, path: projectPath }) => {
     const { exec } = require('child_process');
-    exec(`${editor} "${projectPath}"`);
+    exec(`${editor} "${projectPath}"`, (error) => {
+      if (error) {
+        console.error(`[Dialog IPC] Failed to open editor "${editor}":`, error.message);
+      }
+    });
   });
 
   // Open external URL in browser
