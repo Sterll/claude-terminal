@@ -19,8 +19,20 @@ function execGit(cwd, args, timeout = 10000) {
     // Add safe.directory config to handle "dubious ownership" errors on Windows
     // This occurs when the repo is owned by a different user
     const safeDirectoryConfig = `-c safe.directory="${cwd.replace(/\\/g, '/')}"`;
-    exec(`git ${safeDirectoryConfig} ${args}`, { cwd, encoding: 'utf8', maxBuffer: 1024 * 1024, timeout }, (error, stdout) => {
+    const child = exec(`git ${safeDirectoryConfig} ${args}`, { cwd, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout) => {
+      if (timer) clearTimeout(timer);
       resolve(error ? null : stdout.trim());
+    });
+
+    // Manual timeout with explicit kill (exec timeout doesn't kill the process)
+    const timer = setTimeout(() => {
+      try { child.kill('SIGKILL'); } catch (_) {}
+      resolve(null);
+    }, timeout);
+
+    child.on('error', () => {
+      if (timer) clearTimeout(timer);
+      resolve(null);
     });
   });
 }
@@ -116,15 +128,21 @@ async function getAheadBehind(projectPath, branch, skipFetch = false) {
 /**
  * Get list of all branches (local and remote)
  * @param {string} projectPath - Path to the project
+ * @param {Object} options
+ * @param {boolean} options.skipFetch - Skip fetching from remote (default: true)
  * @returns {Promise<Object>} - Object with local and remote branch arrays
  */
-async function getBranches(projectPath) {
+async function getBranches(projectPath, options = {}) {
+  const { skipFetch = true } = options;
+
   // Get local branches
   const localOutput = await execGit(projectPath, 'branch --format="%(refname:short)"');
   const local = localOutput ? localOutput.split('\n').filter(b => b.trim()) : [];
 
-  // Get remote branches (fetch first to ensure we have latest refs)
-  await execGit(projectPath, 'fetch --all --prune', 5000).catch(() => {});
+  // Only fetch if explicitly requested (avoids network blocking on dashboard load)
+  if (!skipFetch) {
+    await execGit(projectPath, 'fetch --all --prune', 5000).catch(() => {});
+  }
   const remoteOutput = await execGit(projectPath, 'branch -r --format="%(refname:short)"');
   const remote = remoteOutput
     ? remoteOutput.split('\n')
@@ -276,30 +294,35 @@ async function getGitInfoFull(projectPath, options = {}) {
   const branch = await execGit(projectPath, 'rev-parse --abbrev-ref HEAD');
   if (!branch) return { isGitRepo: false };
 
-  // Run all queries in parallel for speed
+  // Batch 1: Fast local queries (index only, no network)
   const [
     lastCommitRaw,
     statusRaw,
-    aheadBehind,
-    branches,
-    stashes,
-    latestTag,
-    recentCommits,
-    contributors,
-    totalCommits,
-    remoteUrl
-  ] = await Promise.all([
+    remoteUrl,
+    totalCommits
+  ] = (await Promise.allSettled([
     execGit(projectPath, 'log -1 --format="%H|%s|%an|%ar"'),
     execGit(projectPath, 'status --porcelain'),
+    execGit(projectPath, 'remote get-url origin'),
+    getTotalCommits(projectPath)
+  ])).map(r => r.status === 'fulfilled' ? r.value : null);
+
+  // Batch 2: Heavier queries (may involve refs traversal, but still local)
+  const [
+    aheadBehind,
+    branches,
+    recentCommits,
+    stashes,
+    latestTag,
+    contributors
+  ] = (await Promise.allSettled([
     getAheadBehind(projectPath, branch, skipFetch),
     getBranches(projectPath),
+    getRecentCommits(projectPath, 5),
     getStashes(projectPath),
     getLatestTag(projectPath),
-    getRecentCommits(projectPath, 5),
-    getContributors(projectPath),
-    getTotalCommits(projectPath),
-    execGit(projectPath, 'remote get-url origin')
-  ]);
+    getContributors(projectPath)
+  ])).map(r => r.status === 'fulfilled' ? r.value : null);
 
   let commit = null;
   if (lastCommitRaw) {
@@ -692,18 +715,46 @@ async function getProjectStats(projectPath) {
 }
 
 /**
+ * Parse git diff --numstat output into a Map of filePath -> { additions, deletions }
+ * @param {string|null} output - Raw numstat output
+ * @returns {Map<string, {additions: number, deletions: number}>}
+ */
+function parseDiffNumstat(output) {
+  const map = new Map();
+  if (!output) return map;
+  for (const line of output.split('\n')) {
+    if (!line.trim()) continue;
+    const match = line.match(/^(\d+|-)\s+(\d+|-)\s+(.+)$/);
+    if (match) {
+      map.set(match[3], {
+        additions: match[1] === '-' ? 0 : parseInt(match[1], 10) || 0,
+        deletions: match[2] === '-' ? 0 : parseInt(match[2], 10) || 0
+      });
+    }
+  }
+  return map;
+}
+
+/**
  * Get detailed git status with file additions/deletions
  * @param {string} projectPath - Path to the project
  * @returns {Promise<Object>} - Detailed status with files
  */
 async function getGitStatusDetailed(projectPath) {
   try {
-    // Get status with porcelain format
-    const statusOutput = await execGit(projectPath, 'status --porcelain');
+    // Get status + all diff stats in parallel (3 commands instead of N*2)
+    const [statusOutput, allDiffRaw, allStagedRaw] = await Promise.all([
+      execGit(projectPath, 'status --porcelain'),
+      execGit(projectPath, 'diff --numstat'),
+      execGit(projectPath, 'diff --cached --numstat')
+    ]);
+
     if (statusOutput === null) {
       return { success: false, error: 'Not a git repository' };
     }
 
+    const diffMap = parseDiffNumstat(allDiffRaw);
+    const stagedMap = parseDiffNumstat(allStagedRaw);
     const files = [];
 
     if (statusOutput.trim()) {
@@ -722,30 +773,11 @@ async function getGitStatusDetailed(projectPath) {
         else if (indexStatus === 'R' || workTreeStatus === 'R') status = 'R';
         else if (indexStatus === 'M' || workTreeStatus === 'M') status = 'M';
 
-        // Get diff stats for tracked files
-        let additions = 0;
-        let deletions = 0;
-
-        if (status !== '?') {
-          const diffStat = await execGit(projectPath, `diff --numstat -- "${filePath}"`);
-          if (diffStat) {
-            const match = diffStat.match(/^(\d+)\s+(\d+)/);
-            if (match) {
-              additions = parseInt(match[1], 10) || 0;
-              deletions = parseInt(match[2], 10) || 0;
-            }
-          }
-
-          // Also check staged changes
-          const stagedDiff = await execGit(projectPath, `diff --cached --numstat -- "${filePath}"`);
-          if (stagedDiff) {
-            const match = stagedDiff.match(/^(\d+)\s+(\d+)/);
-            if (match) {
-              additions += parseInt(match[1], 10) || 0;
-              deletions += parseInt(match[2], 10) || 0;
-            }
-          }
-        }
+        // Lookup diff stats from pre-fetched maps (O(1) per file)
+        const diff = diffMap.get(filePath) || { additions: 0, deletions: 0 };
+        const staged = stagedMap.get(filePath) || { additions: 0, deletions: 0 };
+        const additions = diff.additions + staged.additions;
+        const deletions = diff.deletions + staged.deletions;
 
         files.push({
           path: filePath,

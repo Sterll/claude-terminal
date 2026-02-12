@@ -248,14 +248,10 @@ function renderProjectsList() {
 
   list.innerHTML = html;
 
-  // Project click handlers
-  list.querySelectorAll('.git-project-item[data-project-id]').forEach(item => {
-    item.onclick = () => selectProjectById(item.dataset.projectId);
-  });
-
-  // Folder toggle handlers
-  list.querySelectorAll('.git-folder-header').forEach(header => {
-    header.onclick = (e) => {
+  // Delegated click handler for project list
+  list.onclick = (e) => {
+    const header = e.target.closest('.git-folder-header');
+    if (header) {
       e.stopPropagation();
       const chevron = header.querySelector('.git-folder-chevron');
       const children = header.nextElementSibling;
@@ -263,8 +259,11 @@ function renderProjectsList() {
         chevron.classList.toggle('collapsed');
         children.classList.toggle('collapsed');
       }
-    };
-  });
+      return;
+    }
+    const item = e.target.closest('.git-project-item[data-project-id]');
+    if (item) selectProjectById(item.dataset.projectId);
+  };
 }
 
 async function selectProjectById(projectId) {
@@ -432,9 +431,10 @@ function renderBranches() {
 
   container.innerHTML = html;
 
-  // Bind branch folder toggle
-  container.querySelectorAll('.git-branch-folder-header').forEach(header => {
-    header.onclick = (e) => {
+  // Delegated click handler for branches
+  container.onclick = (e) => {
+    const header = e.target.closest('.git-branch-folder-header');
+    if (header) {
       e.stopPropagation();
       const chevron = header.querySelector('.git-branch-folder-chevron');
       const children = header.nextElementSibling;
@@ -442,31 +442,17 @@ function renderBranches() {
         chevron.classList.toggle('collapsed');
         children.classList.toggle('collapsed');
       }
-    };
-  });
-
-  // Bind events
-  container.querySelectorAll('.git-branch-action-btn.checkout').forEach(btn => {
-    btn.onclick = (e) => {
+      return;
+    }
+    const btn = e.target.closest('.git-branch-action-btn');
+    if (btn) {
       e.stopPropagation();
-      const item = btn.closest('.git-branch-item');
-      handleCheckout(item.dataset.branch);
-    };
-  });
-  container.querySelectorAll('.git-branch-action-btn.merge').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const item = btn.closest('.git-branch-item');
-      handleMerge(item.dataset.branch);
-    };
-  });
-  container.querySelectorAll('.git-branch-action-btn.delete').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const item = btn.closest('.git-branch-item');
-      handleDeleteBranch(item.dataset.branch);
-    };
-  });
+      const branch = btn.closest('.git-branch-item').dataset.branch;
+      if (btn.classList.contains('checkout')) handleCheckout(branch);
+      else if (btn.classList.contains('merge')) handleMerge(branch);
+      else if (btn.classList.contains('delete')) handleDeleteBranch(branch);
+    }
+  };
 
   // New branch button
   document.getElementById('git-btn-new-branch')?.addEventListener('click', handleCreateBranch);
@@ -513,18 +499,14 @@ function renderStashes() {
 
   container.innerHTML = html;
 
-  container.querySelectorAll('.git-stash-btn.apply').forEach(btn => {
-    btn.onclick = () => {
-      const ref = btn.closest('.git-stash-item').dataset.ref;
-      handleStashApply(ref);
-    };
-  });
-  container.querySelectorAll('.git-stash-btn.drop').forEach(btn => {
-    btn.onclick = () => {
-      const ref = btn.closest('.git-stash-item').dataset.ref;
-      handleStashDrop(ref);
-    };
-  });
+  // Delegated click handler for stashes
+  container.onclick = (e) => {
+    const btn = e.target.closest('.git-stash-btn');
+    if (!btn) return;
+    const ref = btn.closest('.git-stash-item').dataset.ref;
+    if (btn.classList.contains('apply')) handleStashApply(ref);
+    else if (btn.classList.contains('drop')) handleStashDrop(ref);
+  };
 }
 
 function renderSubTabContent() {
@@ -719,72 +701,44 @@ function renderFileItem(file, isStaged) {
 }
 
 function bindChangesEvents(container) {
-  // Stage/Unstage individual files
-  container.querySelectorAll('.git-file-btn.stage-btn').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const filePath = btn.closest('.git-file-item').dataset.path;
-      handleStageFiles([filePath]);
-    };
-  });
-  container.querySelectorAll('.git-file-btn.unstage-btn').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const filePath = btn.closest('.git-file-item').dataset.path;
-      handleUnstageFiles([filePath]);
-    };
-  });
+  // Delegated click handler for all changes actions
+  container.onclick = (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    e.stopPropagation();
 
-  // View diff
-  container.querySelectorAll('.git-file-btn.diff-btn').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const item = btn.closest('.git-file-item');
-      handleViewDiff(item.dataset.path, item.dataset.staged === 'true');
-    };
-  });
+    const fileItem = btn.closest('.git-file-item');
 
-  // Stage all / Unstage all
-  document.getElementById('git-unstage-all')?.addEventListener('click', () => {
-    const staged = (changesData?.files || []).filter(f => f.staged).map(f => f.path);
-    if (staged.length > 0) handleUnstageFiles(staged);
-  });
-  document.getElementById('git-stage-all-unstaged')?.addEventListener('click', () => {
-    const unstaged = (changesData?.files || []).filter(f => !f.staged && f.status !== '?').map(f => f.path);
-    if (unstaged.length > 0) handleStageFiles(unstaged);
-  });
-  document.getElementById('git-stage-all-untracked')?.addEventListener('click', () => {
-    const untracked = (changesData?.files || []).filter(f => f.status === '?').map(f => f.path);
-    if (untracked.length > 0) handleStageFiles(untracked);
-  });
-
-  // Commit
-  document.getElementById('git-tab-commit-btn')?.addEventListener('click', handleCommit);
-  document.getElementById('git-tab-generate-msg')?.addEventListener('click', handleGenerateMessage);
-
-  // Conflict file actions
-  container.querySelectorAll('.git-conflict-file .diff-btn').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const filePath = btn.closest('.git-file-item').dataset.path;
-      handleViewDiff(filePath, false);
-    };
-  });
-  container.querySelectorAll('.git-conflict-file .open-editor-btn').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const filePath = btn.closest('.git-file-item').dataset.path;
-      const fullPath = window.electron_nodeModules.path.join(selectedProject.path, filePath);
+    // File action buttons
+    if (btn.classList.contains('stage-btn') && fileItem) {
+      handleStageFiles([fileItem.dataset.path]);
+    } else if (btn.classList.contains('unstage-btn') && fileItem) {
+      handleUnstageFiles([fileItem.dataset.path]);
+    } else if (btn.classList.contains('diff-btn') && fileItem) {
+      handleViewDiff(fileItem.dataset.path, fileItem.dataset.staged === 'true');
+    } else if (btn.classList.contains('open-editor-btn') && fileItem) {
+      const fullPath = window.electron_nodeModules.path.join(selectedProject.path, fileItem.dataset.path);
       api.dialog.openInEditor({ filePath: fullPath });
-    };
-  });
-  container.querySelectorAll('.git-conflict-file .resolve-btn').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const filePath = btn.closest('.git-file-item').dataset.path;
-      handleMarkResolved(filePath);
-    };
-  });
+    } else if (btn.classList.contains('resolve-btn') && fileItem) {
+      handleMarkResolved(fileItem.dataset.path);
+    }
+
+    // Bulk actions
+    if (btn.id === 'git-unstage-all') {
+      const staged = (changesData?.files || []).filter(f => f.staged).map(f => f.path);
+      if (staged.length > 0) handleUnstageFiles(staged);
+    } else if (btn.id === 'git-stage-all-unstaged') {
+      const unstaged = (changesData?.files || []).filter(f => !f.staged && f.status !== '?').map(f => f.path);
+      if (unstaged.length > 0) handleStageFiles(unstaged);
+    } else if (btn.id === 'git-stage-all-untracked') {
+      const untracked = (changesData?.files || []).filter(f => f.status === '?').map(f => f.path);
+      if (untracked.length > 0) handleStageFiles(untracked);
+    } else if (btn.id === 'git-tab-commit-btn') {
+      handleCommit();
+    } else if (btn.id === 'git-tab-generate-msg') {
+      handleGenerateMessage();
+    }
+  };
 }
 
 // ========== HISTORY SUB-TAB ==========
@@ -834,25 +788,18 @@ function renderHistory(container) {
 }
 
 function bindHistoryEvents(container) {
-  container.querySelectorAll('.git-commit-action-btn.detail').forEach(btn => {
-    btn.onclick = () => {
+  // Delegated click handler for history actions
+  container.onclick = (e) => {
+    const btn = e.target.closest('.git-commit-action-btn');
+    if (btn) {
       const hash = btn.closest('.git-commit-item').dataset.hash;
-      handleCommitDetail(hash);
-    };
-  });
-  container.querySelectorAll('.git-commit-action-btn.cherry-pick').forEach(btn => {
-    btn.onclick = () => {
-      const hash = btn.closest('.git-commit-item').dataset.hash;
-      handleCherryPick(hash);
-    };
-  });
-  container.querySelectorAll('.git-commit-action-btn.revert').forEach(btn => {
-    btn.onclick = () => {
-      const hash = btn.closest('.git-commit-item').dataset.hash;
-      handleRevert(hash);
-    };
-  });
-  document.getElementById('git-load-more')?.addEventListener('click', handleLoadMore);
+      if (btn.classList.contains('detail')) handleCommitDetail(hash);
+      else if (btn.classList.contains('cherry-pick')) handleCherryPick(hash);
+      else if (btn.classList.contains('revert')) handleRevert(hash);
+      return;
+    }
+    if (e.target.closest('#git-load-more')) handleLoadMore();
+  };
 }
 
 // ========== PULL REQUESTS SUB-TAB ==========
@@ -924,13 +871,15 @@ function renderPullRequests(container) {
 }
 
 function bindPullRequestEvents(container) {
-  document.getElementById('git-pr-create-btn')?.addEventListener('click', handleCreatePR);
-  container.querySelectorAll('.git-pr-item').forEach(item => {
-    item.onclick = () => {
-      const url = item.dataset.url;
-      if (url) api.dialog.openExternal(url);
-    };
-  });
+  // Delegated click handler for PR actions
+  container.onclick = (e) => {
+    if (e.target.closest('#git-pr-create-btn')) {
+      handleCreatePR();
+      return;
+    }
+    const item = e.target.closest('.git-pr-item');
+    if (item && item.dataset.url) api.dialog.openExternal(item.dataset.url);
+  };
 }
 
 // ========== OPERATION HANDLERS ==========
@@ -1311,14 +1260,18 @@ function showToast(message, type = 'info') {
 
 function initGitTab() {
   // Sub-tab navigation
-  document.querySelectorAll('.git-sub-tab').forEach(tab => {
-    tab.onclick = () => {
+  // Delegated sub-tab navigation
+  const subTabContainer = document.querySelector('.git-sub-tabs');
+  if (subTabContainer) {
+    subTabContainer.onclick = (e) => {
+      const tab = e.target.closest('.git-sub-tab');
+      if (!tab) return;
       currentSubTab = tab.dataset.subtab;
-      document.querySelectorAll('.git-sub-tab').forEach(t => t.classList.remove('active'));
+      subTabContainer.querySelectorAll('.git-sub-tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       renderSubTabContent();
     };
-  });
+  }
 }
 
 module.exports = {
