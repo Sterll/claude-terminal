@@ -11,7 +11,7 @@ npm start -- --dev       # Run with DevTools enabled
 npm run watch            # Build renderer in watch mode
 npm run build:renderer   # Build renderer only (esbuild)
 npm run build            # Build Windows installer (NSIS)
-npm run publish          # Build and publish to GitHub releases
+npm run publish          # Build and publish installer
 ```
 
 Renderer is bundled with esbuild (`scripts/build-renderer.js`) into `dist/`.

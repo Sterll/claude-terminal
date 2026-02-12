@@ -101,7 +101,6 @@
 ### Other
 - System tray integration with accent-colored icon
 - Global shortcuts (`Ctrl+Shift+P` quick picker, `Ctrl+Shift+T` new terminal)
-- Auto-updates via GitHub releases
 - Single instance lock
 - Custom NSIS installer with branded images
 - FiveM server management (launch, integrated console, resource scanning)
@@ -145,9 +144,6 @@ npm run watch
 ```bash
 # Build Windows installer (NSIS)
 npm run build
-
-# Build and publish to GitHub releases
-npm run publish
 ```
 
 The installer will be generated in the `build/` directory.
@@ -160,12 +156,15 @@ The installer will be generated in the `build/` directory.
 |----------|--------|
 | `Ctrl+Shift+P` | Quick project picker (global) |
 | `Ctrl+Shift+T` | New terminal in current project (global) |
+| `Ctrl+Shift+E` | Sessions panel |
 | `Ctrl+T` | Create terminal |
 | `Ctrl+W` | Close terminal |
 | `Ctrl+Tab` | Next terminal |
 | `Ctrl+Shift+Tab` | Previous terminal |
 | `Ctrl+P` | Quick picker |
 | `Ctrl+,` | Settings |
+| `Ctrl+←` / `Ctrl+→` | Switch terminal (left/right) |
+| `Ctrl+↑` / `Ctrl+↓` | Switch project (up/down) |
 | `Escape` | Close dialogs |
 
 Shortcuts are customizable in Settings.
