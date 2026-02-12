@@ -42,6 +42,7 @@ const {
   saveProjects,
   loadSettings,
   saveSettings,
+  saveSettingsImmediate,
   createFolder,
   deleteFolder,
   renameFolder,
@@ -2286,6 +2287,15 @@ async function renderSettingsTab(initialTab = 'general') {
     });
 
     settingsState.set(newSettings);
+
+    // Update language if changed - must save synchronously before reload
+    if (newLanguage !== getCurrentLanguage()) {
+      saveSettingsImmediate();
+      setLanguage(newLanguage);
+      location.reload();
+      return;
+    }
+
     saveSettings();
 
     // Apply compact mode
@@ -2293,13 +2303,6 @@ async function renderSettingsTab(initialTab = 'general') {
 
     // Apply reduce motion
     document.body.classList.toggle('reduce-motion', newReduceMotion);
-
-    // Update language if changed
-    if (newLanguage !== getCurrentLanguage()) {
-      setLanguage(newLanguage);
-      // Reload to apply translations
-      location.reload();
-    }
     applyAccentColor(newSettings.accentColor);
 
     // Update terminal themes if changed

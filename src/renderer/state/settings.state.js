@@ -81,12 +81,21 @@ let saveSettingsTimer = null;
 function saveSettings() {
   clearTimeout(saveSettingsTimer);
   saveSettingsTimer = setTimeout(() => {
-    try {
-      fs.writeFileSync(settingsFile, JSON.stringify(settingsState.get(), null, 2));
-    } catch (e) {
-      console.error('Error saving settings:', e);
-    }
+    saveSettingsImmediate();
   }, 500);
+}
+
+/**
+ * Save settings to file immediately (no debounce)
+ * Use before operations that destroy the renderer (e.g. location.reload)
+ */
+function saveSettingsImmediate() {
+  clearTimeout(saveSettingsTimer);
+  try {
+    fs.writeFileSync(settingsFile, JSON.stringify(settingsState.get(), null, 2));
+  } catch (e) {
+    console.error('Error saving settings:', e);
+  }
 }
 
 /**
@@ -146,6 +155,7 @@ module.exports = {
   setSetting,
   loadSettings,
   saveSettings,
+  saveSettingsImmediate,
   resetSettings,
   getEditorCommand,
   EDITOR_OPTIONS,
