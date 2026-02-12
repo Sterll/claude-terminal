@@ -58,7 +58,7 @@ class UpdaterService {
       const currentVersion = app.getVersion();
 
       if (currentVersion >= cachedVersion) {
-        console.log(`Clearing stale updater cache (cached: ${cachedVersion}, current: ${currentVersion})`);
+        console.debug(`Clearing stale updater cache (cached: ${cachedVersion}, current: ${currentVersion})`);
         const files = fs.readdirSync(cacheDir);
         for (const file of files) {
           fs.unlinkSync(path.join(cacheDir, file));
@@ -155,7 +155,7 @@ class UpdaterService {
     this.checkInterval = setInterval(() => {
       // Only check if not currently downloading
       if (!this.isDownloading) {
-        console.log('Periodic update check...');
+        console.debug('Periodic update check...');
         autoUpdater.checkForUpdates().catch(err => {
           console.error('Periodic update check failed:', err);
         });
@@ -192,7 +192,7 @@ class UpdaterService {
       if (result && result.updateInfo) {
         const serverVersion = result.updateInfo.version;
         if (serverVersion !== downloadedVersion) {
-          console.log(`Downloaded ${downloadedVersion} but ${serverVersion} is available, re-downloading...`);
+          console.debug(`Downloaded ${downloadedVersion} but ${serverVersion} is available, re-downloading...`);
           // autoDownload will handle downloading the newer version
           // Don't show the banner yet - wait for the new download
           this.safeSend('update-status', { status: 'downloading', progress: 0 });
@@ -218,7 +218,7 @@ class UpdaterService {
         const serverVersion = result.updateInfo.version;
 
         if (this.lastKnownVersion && serverVersion !== this.lastKnownVersion) {
-          console.log(`Newer version available: ${serverVersion} (was: ${this.lastKnownVersion}), re-downloading...`);
+          console.debug(`Newer version available: ${serverVersion} (was: ${this.lastKnownVersion}), re-downloading...`);
           // Flag to auto-install once the new download completes
           this.installAfterDownload = true;
           this.safeSend('update-status', { status: 'downloading', progress: 0 });

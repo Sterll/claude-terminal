@@ -8,6 +8,11 @@
 const api = window.electron_api;
 const { path, fs, process: nodeProcess, __dirname } = window.electron_nodeModules;
 
+// Pause all CSS animations when window is hidden to reduce CPU usage
+document.addEventListener('visibilitychange', () => {
+  document.body.classList.toggle('background-paused', document.hidden);
+});
+
 // Import all modules from src/renderer
 const {
   // Utils
@@ -175,8 +180,9 @@ const DEFAULT_SHORTCUTS = {
   closeTerminal: { key: 'Ctrl+W', labelKey: 'shortcuts.closeTerminal' },
   showSessionsPanel: { key: 'Ctrl+Shift+E', labelKey: 'shortcuts.sessionsPanel' },
   openQuickPicker: { key: 'Ctrl+Shift+P', labelKey: 'shortcuts.quickPicker' },
-  nextTerminal: { key: 'Ctrl+Tab', labelKey: 'shortcuts.nextTerminal' },
-  prevTerminal: { key: 'Ctrl+Shift+Tab', labelKey: 'shortcuts.prevTerminal' }
+  newProject: { key: 'Ctrl+N', labelKey: 'shortcuts.newProject' },
+  newTerminal: { key: 'Ctrl+T', labelKey: 'shortcuts.newTerminal' },
+  toggleFileExplorer: { key: 'Ctrl+E', labelKey: 'shortcuts.toggleFileExplorer' }
 };
 
 /**
@@ -501,13 +507,23 @@ function registerAllShortcuts() {
     });
   }, { global: true });
 
-  // Terminal navigation - Ctrl+Tab and Ctrl+Shift+Tab
-  registerShortcut(getShortcutKey('nextTerminal'), () => {
-    TerminalManager.focusNextTerminal();
+  // New project
+  registerShortcut(getShortcutKey('newProject'), () => {
+    document.getElementById('btn-new-project').click();
   }, { global: true });
 
-  registerShortcut(getShortcutKey('prevTerminal'), () => {
-    TerminalManager.focusPrevTerminal();
+  // New terminal for current project
+  registerShortcut(getShortcutKey('newTerminal'), () => {
+    const selectedFilter = projectsState.get().selectedProjectFilter;
+    const projects = projectsState.get().projects;
+    if (selectedFilter !== null && projects[selectedFilter]) {
+      createTerminalForProject(projects[selectedFilter]);
+    }
+  }, { global: true });
+
+  // Toggle file explorer
+  registerShortcut(getShortcutKey('toggleFileExplorer'), () => {
+    FileExplorer.toggle();
   }, { global: true });
 }
 
@@ -528,6 +544,9 @@ updateStaticTranslations(); // Apply translations to static HTML elements
 applyAccentColor(settingsState.get().accentColor || '#d97706');
 if (settingsState.get().compactProjects !== false) {
   document.body.classList.add('compact-projects');
+}
+if (settingsState.get().reduceMotion) {
+  document.body.classList.add('reduce-motion');
 }
 
 // ========== NOTIFICATIONS ==========
@@ -1483,11 +1502,21 @@ btnCollapseSidebar.onclick = () => {
 };
 
 // ========== TAB NAVIGATION ==========
+// Set ARIA roles on all nav-tabs
+document.querySelectorAll('.nav-tab').forEach(tab => {
+  tab.setAttribute('role', 'tab');
+  tab.setAttribute('aria-selected', tab.classList.contains('active') ? 'true' : 'false');
+});
+
 document.querySelectorAll('.nav-tab').forEach(tab => {
   tab.onclick = () => {
     const tabId = tab.dataset.tab;
-    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(t => {
+      t.classList.remove('active');
+      t.setAttribute('aria-selected', 'false');
+    });
     tab.classList.add('active');
+    tab.setAttribute('aria-selected', 'true');
     document.getElementById('btn-settings').classList.remove('active');
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.getElementById(`tab-${tabId}`).classList.add('active');
@@ -1820,6 +1849,16 @@ async function renderSettingsTab(initialTab = 'general') {
               </div>
               <label class="settings-toggle">
                 <input type="checkbox" id="compact-projects-toggle" ${settings.compactProjects !== false ? 'checked' : ''}>
+                <span class="settings-toggle-slider"></span>
+              </label>
+            </div>
+            <div class="settings-toggle-row">
+              <div class="settings-toggle-label">
+                <div>${t('settings.reduceMotion')}</div>
+                <div class="settings-toggle-desc">${t('settings.reduceMotionDesc')}</div>
+              </div>
+              <label class="settings-toggle">
+                <input type="checkbox" id="reduce-motion-toggle" ${settings.reduceMotion ? 'checked' : ''}>
                 <span class="settings-toggle-slider"></span>
               </label>
             </div>
@@ -2227,6 +2266,8 @@ async function renderSettingsTab(initialTab = 'general') {
 
     const compactProjectsToggle = document.getElementById('compact-projects-toggle');
     const newCompactProjects = compactProjectsToggle ? compactProjectsToggle.checked : true;
+    const reduceMotionToggle = document.getElementById('reduce-motion-toggle');
+    const newReduceMotion = reduceMotionToggle ? reduceMotionToggle.checked : false;
 
     const newSettings = {
       editor: settings.editor || 'code',
@@ -2235,7 +2276,8 @@ async function renderSettingsTab(initialTab = 'general') {
       closeAction: closeActionSelect?.value || 'ask',
       terminalTheme: newTerminalTheme,
       language: newLanguage,
-      compactProjects: newCompactProjects
+      compactProjects: newCompactProjects,
+      reduceMotion: newReduceMotion
     };
 
     // Collect dynamic settings from project types
@@ -2248,6 +2290,9 @@ async function renderSettingsTab(initialTab = 'general') {
 
     // Apply compact mode
     document.body.classList.toggle('compact-projects', newCompactProjects);
+
+    // Apply reduce motion
+    document.body.classList.toggle('reduce-motion', newReduceMotion);
 
     // Update language if changed
     if (newLanguage !== getCurrentLanguage()) {
@@ -6088,7 +6133,7 @@ function installBundledSkills() {
       try {
         fs.mkdirSync(targetPath, { recursive: true });
         fs.copyFileSync(sourcePath, path.join(targetPath, 'SKILL.md'));
-        console.log(`Installed bundled skill: ${skillName}`);
+        console.debug(`Installed bundled skill: ${skillName}`);
       } catch (e) {
         console.error(`Failed to install bundled skill ${skillName}:`, e);
       }
@@ -6550,9 +6595,7 @@ if (usageElements.container) {
   });
 
   // Start periodic monitoring (every 60 seconds)
-  api.usage.startMonitor(60000).then(() => {
-    console.log('Usage monitor started');
-  }).catch(console.error);
+  api.usage.startMonitor(60000).catch(console.error);
 
   // Poll for updates every 5 seconds (check cached data)
   setInterval(async () => {
@@ -6792,4 +6835,3 @@ window.addEventListener('beforeunload', () => {
   saveAllActiveSessions();
 });
 
-console.log('Claude Terminal initialized');
