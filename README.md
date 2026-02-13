@@ -17,7 +17,7 @@
 <p align="center">
   <a href="https://claudeterminal.dev">Website</a> &bull;
   <a href="https://github.com/Sterll/claude-terminal/releases">Download</a> &bull;
-  <a href="https://x.com/ClaudeTerminal">Twitter</a> &bull;
+  <a href="https://x.com/ClaudeTerminal_">Twitter</a> &bull;
   <a href="https://buymeacoffee.com/claudeterminal">Buy Me a Coffee</a>
 </p>
 
