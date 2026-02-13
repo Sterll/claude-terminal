@@ -1099,6 +1099,52 @@ api.webapp.onPortDetected(({ projectIndex, port }) => {
   refreshWebAppInfoPanel(projectIndex);
 });
 
+// ========== API ==========
+async function startApiServer(projectIndex) {
+  const projects = projectsState.get().projects;
+  const project = projects[projectIndex];
+  if (!project) return;
+
+  const { startApiServer: doStart } = require('./src/project-types/api/renderer/ApiRendererService');
+  await doStart(projectIndex);
+  ProjectList.render();
+}
+
+async function stopApiServer(projectIndex) {
+  const { stopApiServer: doStop } = require('./src/project-types/api/renderer/ApiRendererService');
+  await doStop(projectIndex);
+  ProjectList.render();
+}
+
+function openApiConsole(projectIndex) {
+  const projects = projectsState.get().projects;
+  const project = projects[projectIndex];
+  if (!project) return;
+
+  TerminalManager.createApiConsole(project, projectIndex);
+}
+
+// Register API listeners - state + TerminalManager console
+api.api.onData(({ projectIndex, data }) => {
+  const { addApiLog } = require('./src/project-types/api/renderer/ApiState');
+  addApiLog(projectIndex, data);
+  TerminalManager.writeApiConsole(projectIndex, data);
+});
+
+api.api.onExit(({ projectIndex, code }) => {
+  const { setApiServerStatus, setApiPort } = require('./src/project-types/api/renderer/ApiState');
+  setApiServerStatus(projectIndex, 'stopped');
+  setApiPort(projectIndex, null);
+  TerminalManager.writeApiConsole(projectIndex, `\r\n[API server exited with code ${code}]\r\n`);
+  ProjectList.render();
+});
+
+api.api.onPortDetected(({ projectIndex, port }) => {
+  const { setApiPort } = require('./src/project-types/api/renderer/ApiState');
+  setApiPort(projectIndex, port);
+  ProjectList.render();
+});
+
 // ========== DELETE PROJECT ==========
 function deleteProjectUI(projectId) {
   const project = getProject(projectId);
@@ -1280,6 +1326,9 @@ ProjectList.setCallbacks({
   onStartWebApp: startWebAppServer,
   onStopWebApp: stopWebAppServer,
   onOpenWebAppConsole: openWebAppConsole,
+  onStartApi: startApiServer,
+  onStopApi: stopApiServer,
+  onOpenApiConsole: openApiConsole,
   onGitPull: gitPull,
   onGitPush: gitPush,
   onDeleteProject: deleteProjectUI,
@@ -1565,17 +1614,19 @@ function setupContextMenuHandlers() {
   const list = document.getElementById('projects-list');
 
   list.addEventListener('contextmenu', (e) => {
-    const folderItem = e.target.closest('.folder-item');
     const projectItem = e.target.closest('.project-item');
 
-    if (folderItem) {
-      e.preventDefault();
-      e.stopPropagation();
-      showContextMenuForFolder(e.clientX, e.clientY, folderItem.dataset.folderId);
-    } else if (projectItem) {
-      e.preventDefault();
-      e.stopPropagation();
-      showContextMenuForProject(e.clientX, e.clientY, projectItem.dataset.projectId);
+    // Project right-clicks are handled by ProjectList.js oncontextmenu — skip here
+    if (projectItem) return;
+
+    const folderHeader = e.target.closest('.folder-header');
+    if (folderHeader) {
+      const folderItem = folderHeader.closest('.folder-item');
+      if (folderItem) {
+        e.preventDefault();
+        e.stopPropagation();
+        showContextMenuForFolder(e.clientX, e.clientY, folderItem.dataset.folderId);
+      }
     } else if (e.target === list || e.target.classList.contains('drop-zone-root')) {
       e.preventDefault();
       showContextMenuEmpty(e.clientX, e.clientY);
@@ -5474,6 +5525,13 @@ filterBtnBranch.onclick = async (e) => {
   e.stopPropagation();
   const isOpen = branchDropdown.classList.contains('active');
 
+  // Close other dropdowns
+  const actionsDropdown = document.getElementById('actions-dropdown');
+  const actionsBtn = document.getElementById('filter-btn-actions');
+  if (actionsDropdown) actionsDropdown.classList.remove('active');
+  if (actionsBtn) actionsBtn.classList.remove('open');
+  if (gitChangesPanel) gitChangesPanel.classList.remove('active');
+
   if (isOpen) {
     branchDropdown.classList.remove('active');
     filterBtnBranch.classList.remove('open');
@@ -5766,9 +5824,13 @@ filterBtnChanges.onclick = (e) => {
   e.stopPropagation();
   const isOpen = gitChangesPanel.classList.contains('active');
 
-  // Close branch dropdown if open
+  // Close other dropdowns
   branchDropdown.classList.remove('active');
   filterBtnBranch.classList.remove('open');
+  const actionsDropdown = document.getElementById('actions-dropdown');
+  const actionsBtn = document.getElementById('filter-btn-actions');
+  if (actionsDropdown) actionsDropdown.classList.remove('active');
+  if (actionsBtn) actionsBtn.classList.remove('open');
 
   if (isOpen) {
     gitChangesPanel.classList.remove('active');

@@ -64,6 +64,9 @@ const fivemConsoleIds = new Map();
 // Store WebApp console IDs by project index
 const webappConsoleIds = new Map();
 
+// Store API console IDs by project index
+const apiConsoleIds = new Map();
+
 // Track error overlays by projectIndex
 const errorOverlays = new Map();
 
@@ -762,6 +765,21 @@ function updateTerminalTabName(id, name) {
 }
 
 /**
+ * Dismiss loading overlay with fade-out animation
+ */
+function dismissLoadingOverlay(id) {
+  const wrapper = document.querySelector(`.terminal-wrapper[data-id="${id}"]`);
+  const overlay = wrapper?.querySelector('.terminal-loading-overlay');
+  if (overlay) {
+    overlay.classList.add('fade-out');
+    setTimeout(() => overlay.remove(), 300);
+  }
+}
+
+// Safety timeout IDs for loading overlays
+const loadingTimeouts = new Map();
+
+/**
  * Update terminal status
  */
 function updateTerminalStatus(id, status) {
@@ -771,11 +789,20 @@ function updateTerminalStatus(id, status) {
     updateTerminal(id, { status });
     const tab = document.querySelector(`.terminal-tab[data-id="${id}"]`);
     if (tab) {
-      tab.classList.remove('status-working', 'status-ready', 'substatus-thinking', 'substatus-tool');
+      tab.classList.remove('status-working', 'status-ready', 'status-loading', 'substatus-thinking', 'substatus-tool');
       tab.classList.add(`status-${status}`);
       if (status === 'working') {
         const sub = terminalSubstatus.get(id);
         tab.classList.add(sub === 'tool_calling' ? 'substatus-tool' : 'substatus-thinking');
+      }
+    }
+    // Dismiss loading overlay when Claude is ready
+    if (previousStatus === 'loading' && (status === 'ready' || status === 'working')) {
+      dismissLoadingOverlay(id);
+      const safetyTimeout = loadingTimeouts.get(id);
+      if (safetyTimeout) {
+        clearTimeout(safetyTimeout);
+        loadingTimeouts.delete(id);
       }
     }
     if (status === 'ready' && previousStatus === 'working') {
@@ -922,6 +949,12 @@ function closeTerminal(id) {
   cancelScheduledReady(id);
   postEnterExtended.delete(id);
   postSpinnerExtended.delete(id);
+  // Clear loading safety timeout if still pending
+  const safetyTimeout = loadingTimeouts.get(id);
+  if (safetyTimeout) {
+    clearTimeout(safetyTimeout);
+    loadingTimeouts.delete(id);
+  }
   terminalSubstatus.delete(id);
   lastTerminalData.delete(id);
   terminalContext.delete(id);
@@ -1014,13 +1047,14 @@ async function createTerminal(project, options = {}) {
   const projectIndex = getProjectIndex(project.id);
   const isBasicTerminal = !runClaude;
   const tabName = customName || project.name;
+  const initialStatus = isBasicTerminal ? 'ready' : 'loading';
   const termData = {
     terminal,
     fitAddon,
     project,
     projectIndex,
     name: tabName,
-    status: 'ready',
+    status: initialStatus,
     inputBuffer: '',
     isBasic: isBasicTerminal
   };
@@ -1033,7 +1067,7 @@ async function createTerminal(project, options = {}) {
   // Create tab
   const tabsContainer = document.getElementById('terminals-tabs');
   const tab = document.createElement('div');
-  tab.className = `terminal-tab status-ready${isBasicTerminal ? ' basic-terminal' : ''}`;
+  tab.className = `terminal-tab status-${initialStatus}${isBasicTerminal ? ' basic-terminal' : ''}`;
   tab.dataset.id = id;
   tab.tabIndex = 0;
   tab.setAttribute('role', 'tab');
@@ -1049,6 +1083,26 @@ async function createTerminal(project, options = {}) {
   wrapper.className = 'terminal-wrapper';
   wrapper.dataset.id = id;
   container.appendChild(wrapper);
+
+  // Add loading overlay for Claude terminals
+  if (!isBasicTerminal) {
+    const overlay = document.createElement('div');
+    overlay.className = 'terminal-loading-overlay';
+    overlay.innerHTML = `
+      <div class="terminal-loading-spinner"></div>
+      <div class="terminal-loading-text">${escapeHtml(t('terminals.loading'))}</div>
+      <div class="terminal-loading-hint">${escapeHtml(t('terminals.loadingHint'))}</div>`;
+    wrapper.appendChild(overlay);
+    // Safety timeout: dismiss after 30s even if ready detection fails
+    loadingTimeouts.set(id, setTimeout(() => {
+      loadingTimeouts.delete(id);
+      dismissLoadingOverlay(id);
+      const td = getTerminal(id);
+      if (td && td.status === 'loading') {
+        updateTerminalStatus(id, 'ready');
+      }
+    }, 30000));
+  }
 
   document.getElementById('empty-terminals').style.display = 'none';
 
@@ -2022,6 +2076,213 @@ function writeWebAppConsole(projectIndex, data) {
   if (terminal) {
     terminal.write(data);
   }
+}
+
+// ── API Console Functions ──
+
+/**
+ * Create an API console as a terminal tab
+ */
+function createApiConsole(project, projectIndex) {
+  const existingId = apiConsoleIds.get(projectIndex);
+  if (existingId && getTerminal(existingId)) {
+    setActiveTerminal(existingId);
+    return existingId;
+  }
+
+  const id = `api-${projectIndex}-${Date.now()}`;
+
+  const themeId = getSetting('terminalTheme') || 'claude';
+  const terminal = new Terminal({
+    theme: getTerminalTheme(themeId),
+    fontFamily: 'Consolas, "Courier New", monospace',
+    fontSize: 13,
+    cursorBlink: false,
+    disableStdin: false,
+    scrollback: 10000
+  });
+
+  const fitAddon = new FitAddon();
+  terminal.loadAddon(fitAddon);
+
+  const termData = {
+    terminal,
+    fitAddon,
+    project,
+    projectIndex,
+    name: `⚡ ${project.name}`,
+    status: 'ready',
+    type: 'api',
+    inputBuffer: '',
+    activeView: 'console'
+  };
+
+  addTerminal(id, termData);
+  apiConsoleIds.set(projectIndex, id);
+
+  startTracking(project.id);
+
+  // Create tab
+  const tabsContainer = document.getElementById('terminals-tabs');
+  const tab = document.createElement('div');
+  tab.className = 'terminal-tab api-tab status-ready';
+  tab.dataset.id = id;
+  tab.innerHTML = `
+    <span class="status-dot api-dot"></span>
+    <span class="tab-name">${escapeHtml(`⚡ ${project.name}`)}</span>
+    <button class="tab-close"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>`;
+  tabsContainer.appendChild(tab);
+
+  // Create wrapper
+  const container = document.getElementById('terminals-container');
+  const wrapper = document.createElement('div');
+  wrapper.className = 'terminal-wrapper api-wrapper';
+  wrapper.dataset.id = id;
+
+  // Get panel HTML from type handler
+  const typeHandler = registry.get(project.type);
+  const panels = typeHandler.getTerminalPanels({ project, projectIndex });
+  const panel = panels && panels.length > 0 ? panels[0] : null;
+  if (panel) {
+    wrapper.innerHTML = panel.getWrapperHtml();
+  }
+
+  container.appendChild(wrapper);
+
+  document.getElementById('empty-terminals').style.display = 'none';
+
+  // Open terminal in console view container
+  const consoleView = wrapper.querySelector('.api-console-view');
+  terminal.open(consoleView);
+  loadWebglAddon(terminal);
+  setTimeout(() => fitAddon.fit(), 100);
+  setActiveTerminal(id);
+
+  // Prevent double-paste
+  setupPasteHandler(consoleView, projectIndex, 'api-input');
+
+  // Write existing logs from ApiState
+  try {
+    const { getApiServer } = require('../../../project-types/api/renderer/ApiState');
+    const server = getApiServer(projectIndex);
+    if (server && server.logs && server.logs.length > 0) {
+      terminal.write(server.logs.join(''));
+    }
+  } catch (e) { /* API module not available */ }
+
+  // Setup panel via type handler
+  if (panel && panel.setupPanel) {
+    const panelDeps = getTypePanelDeps(id, projectIndex);
+    panel.setupPanel(wrapper, id, projectIndex, project, panelDeps);
+  }
+
+  // Custom key handler
+  terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, projectIndex, 'api-input'));
+
+  // Handle input to API console
+  terminal.onData(data => {
+    api.api.input({ projectIndex, data });
+  });
+
+  // Resize handling
+  const resizeObserver = new ResizeObserver(() => {
+    fitAddon.fit();
+    api.api.resize({
+      projectIndex,
+      cols: terminal.cols,
+      rows: terminal.rows
+    });
+  });
+  resizeObserver.observe(consoleView);
+
+  const storedTermData = getTerminal(id);
+  if (storedTermData) {
+    storedTermData.resizeObserver = resizeObserver;
+  }
+
+  // Send initial size
+  api.api.resize({
+    projectIndex,
+    cols: terminal.cols,
+    rows: terminal.rows
+  });
+
+  // Filter and render
+  const selectedFilter = projectsState.get().selectedProjectFilter;
+  filterByProject(selectedFilter);
+  if (callbacks.onRenderProjects) callbacks.onRenderProjects();
+
+  // Tab events
+  tab.onclick = (e) => { if (!e.target.closest('.tab-close') && !e.target.closest('.tab-name-input')) setActiveTerminal(id); };
+  tab.querySelector('.tab-name').ondblclick = (e) => { e.stopPropagation(); startRenameTab(id); };
+  tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); closeApiConsole(id, projectIndex); };
+
+  setupTabDragDrop(tab);
+
+  return id;
+}
+
+/**
+ * Close API console
+ */
+function closeApiConsole(id, projectIndex) {
+  const termData = getTerminal(id);
+  const closedProjectPath = termData?.project?.path;
+
+  const wrapper = document.querySelector(`.terminal-wrapper[data-id="${id}"]`);
+  if (wrapper) {
+    try { require('../../../project-types/api/renderer/ApiTerminalPanel').cleanup(wrapper); } catch (e) {}
+  }
+
+  cleanupTerminalResources(termData);
+  removeTerminal(id);
+  apiConsoleIds.delete(projectIndex);
+  document.querySelector(`.terminal-tab[data-id="${id}"]`)?.remove();
+  wrapper?.remove();
+
+  let sameProjectTerminalId = null;
+  if (closedProjectPath) {
+    const terminals = terminalsState.get().terminals;
+    terminals.forEach((td, termId) => {
+      if (!sameProjectTerminalId && td.project?.path === closedProjectPath) {
+        sameProjectTerminalId = termId;
+      }
+    });
+  }
+
+  if (sameProjectTerminalId) {
+    setActiveTerminal(sameProjectTerminalId);
+    const selectedFilter = projectsState.get().selectedProjectFilter;
+    filterByProject(selectedFilter);
+  } else if (projectIndex !== null && projectIndex !== undefined) {
+    projectsState.setProp('selectedProjectFilter', projectIndex);
+    filterByProject(projectIndex);
+  } else {
+    const selectedFilter = projectsState.get().selectedProjectFilter;
+    filterByProject(selectedFilter);
+  }
+
+  if (callbacks.onRenderProjects) callbacks.onRenderProjects();
+}
+
+/**
+ * Get API console terminal for a project
+ */
+function getApiConsoleTerminal(projectIndex) {
+  const id = apiConsoleIds.get(projectIndex);
+  if (id) {
+    const termData = getTerminal(id);
+    if (termData) return termData.terminal;
+  }
+  return null;
+}
+
+/**
+ * Write data to API console
+ */
+function writeApiConsole(projectIndex, data) {
+  const terminal = getApiConsoleTerminal(projectIndex);
+  if (terminal) terminal.write(data);
 }
 
 /**
@@ -3226,5 +3487,10 @@ module.exports = {
   createWebAppConsole,
   closeWebAppConsole,
   getWebAppConsoleTerminal,
-  writeWebAppConsole
+  writeWebAppConsole,
+  // API console functions
+  createApiConsole,
+  closeApiConsole,
+  getApiConsoleTerminal,
+  writeApiConsole
 };

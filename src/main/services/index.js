@@ -6,6 +6,7 @@ const terminalService = require('./TerminalService');
 const mcpService = require('./McpService');
 const fivemService = require('./FivemService');
 const webAppService = require('../../project-types/webapp/main/WebAppService');
+const apiService = require('../../project-types/api/main/ApiService');
 const updaterService = require('./UpdaterService');
 
 /**
@@ -17,6 +18,7 @@ function initializeServices(mainWindow) {
   mcpService.setMainWindow(mainWindow);
   fivemService.setMainWindow(mainWindow);
   webAppService.setMainWindow(mainWindow);
+  apiService.setMainWindow(mainWindow);
   updaterService.setMainWindow(mainWindow);
 }
 
@@ -28,6 +30,7 @@ function cleanupServices() {
   mcpService.stopAll();
   fivemService.stopAll();
   webAppService.stopAll();
+  apiService.stopAll();
 }
 
 module.exports = {
@@ -35,6 +38,7 @@ module.exports = {
   mcpService,
   fivemService,
   webAppService,
+  apiService,
   updaterService,
   initializeServices,
   cleanupServices

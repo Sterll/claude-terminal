@@ -60,6 +60,8 @@ function initialize() {
     }
   );
 
+  // API listeners are registered in renderer.js (same pattern as webapp)
+
   services.FivemService.registerFivemListeners(
     // onData callback
     (projectIndex, data) => {

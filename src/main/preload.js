@@ -146,6 +146,26 @@ contextBridge.exposeInMainWorld('electron_api', {
     onExit: createListener('fivem-exit')
   },
 
+  // ==================== PYTHON ====================
+  python: {
+    detectInfo: (params) => ipcRenderer.invoke('python-detect-info', params)
+  },
+
+  // ==================== API ====================
+  api: {
+    start: (params) => ipcRenderer.invoke('api-start', params),
+    stop: (params) => ipcRenderer.invoke('api-stop', params),
+    input: (params) => ipcRenderer.send('api-input', params),
+    resize: (params) => ipcRenderer.send('api-resize', params),
+    detectFramework: (params) => ipcRenderer.invoke('api-detect-framework', params),
+    getPort: (params) => ipcRenderer.invoke('api-get-port', params),
+    detectRoutes: (params) => ipcRenderer.invoke('api-detect-routes', params),
+    testRequest: (params) => ipcRenderer.invoke('api-test-request', params),
+    onData: createListener('api-data'),
+    onExit: createListener('api-exit'),
+    onPortDetected: createListener('api-port-detected')
+  },
+
   // ==================== MCP ====================
   mcp: {
     start: (params) => ipcRenderer.invoke('mcp-start', params),
