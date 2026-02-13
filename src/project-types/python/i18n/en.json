@@ -1,0 +1,21 @@
+{
+  "python": {
+    "version": "Python version",
+    "venv": "Virtual env",
+    "venvActive": "Active",
+    "venvAbsent": "Not found",
+    "dependencies": "dependencies",
+    "entryPoint": "Entry point",
+    "projectType": "Package manager",
+    "venvPathLabel": "Virtual environment path",
+    "venvPathHint": "Leave empty to auto-detect (.venv, venv, env)",
+    "mainScriptLabel": "Main script",
+    "mainScriptHint": "Leave empty to auto-detect"
+  },
+  "newProject": {
+    "types": {
+      "python": "Python",
+      "pythonDesc": "Python project with environment detection"
+    }
+  }
+}
