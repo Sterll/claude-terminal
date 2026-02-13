@@ -787,24 +787,15 @@ function updateTerminalStatus(id, status) {
         let notifTitle = 'Claude Terminal';
         let body;
 
-        let type = 'done';
-        if (bufCtx?.type === 'question' && bufCtx.text) {
-          type = 'question';
-          body = bufCtx.text;
-          notifTitle = label;
-        } else if (bufCtx?.type === 'permission') {
-          type = 'permission';
-          body = bufCtx.text || t('terminals.notifPermission');
-          notifTitle = label;
-        } else if (richCtx?.toolCount > 0) {
+        if (richCtx?.toolCount > 0) {
           body = t('terminals.notifToolsDone', { count: richCtx.toolCount });
         } else {
           body = t('terminals.notifDone');
         }
 
-        if (richCtx?.taskName && type === 'done') notifTitle = projectName;
+        if (richCtx?.taskName) notifTitle = projectName;
 
-        callbacks.onNotification(type, notifTitle, body, id);
+        callbacks.onNotification('done', notifTitle, body, id);
       }
     }
     // Re-render project list to update terminal stats
@@ -2196,6 +2187,160 @@ function truncateText(text, maxLength) {
 }
 
 /**
+ * Clean raw text from session prompts (remove XML tags, command markers, etc.)
+ * Returns { text, skillName } where skillName is extracted if the prompt was a skill invocation
+ */
+function cleanSessionText(text) {
+  if (!text) return { text: '', skillName: '' };
+
+  let skillName = '';
+
+  // Extract skill/command name from <command-name>/skill-name</command-name>
+  const cmdNameMatch = text.match(/<command-name>\/?([^<]+)<\/command-name>/);
+  if (cmdNameMatch) {
+    skillName = cmdNameMatch[1].trim().replace(/^\//, '');
+  }
+
+  // Extract content between tags that might be useful (e.g. <command-args>actual text</command-args>)
+  const argsMatch = text.match(/<command-args>([^<]+)<\/command-args>/);
+  const argsText = argsMatch ? argsMatch[1].trim() : '';
+
+  // Remove all XML-like tags and their content
+  let cleaned = text.replace(/<[^>]+>[^<]*<\/[^>]+>/g, '');
+  // Remove self-closing / orphan tags
+  cleaned = cleaned.replace(/<[^>]+>/g, '');
+  // Remove [Request interrupted...] markers
+  cleaned = cleaned.replace(/\[Request interrupted[^\]]*\]/g, '');
+  // Collapse whitespace
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+
+  // If cleaned text is empty but we extracted args, use those
+  if (!cleaned && argsText) {
+    cleaned = argsText;
+  }
+
+  return { text: cleaned, skillName };
+}
+
+/**
+ * Get temporal group key for a session date
+ */
+function getSessionGroup(dateString) {
+  const date = new Date(dateString);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const weekAgo = new Date(today);
+  weekAgo.setDate(weekAgo.getDate() - 7);
+
+  if (date >= today) return 'today';
+  if (date >= yesterday) return 'yesterday';
+  if (date >= weekAgo) return 'thisWeek';
+  return 'older';
+}
+
+/**
+ * Group sessions by temporal proximity
+ */
+function groupSessionsByTime(sessions) {
+  const groups = {
+    today: { key: 'today', label: t('sessions.today') || t('common.today'), sessions: [] },
+    yesterday: { key: 'yesterday', label: t('sessions.yesterday') || t('time.yesterday') || (getCurrentLanguage() === 'fr' ? 'Hier' : 'Yesterday'), sessions: [] },
+    thisWeek: { key: 'thisWeek', label: t('sessions.thisWeek') || (getCurrentLanguage() === 'fr' ? 'Cette semaine' : 'This week'), sessions: [] },
+    older: { key: 'older', label: t('sessions.older') || (getCurrentLanguage() === 'fr' ? 'Plus ancien' : 'Older'), sessions: [] }
+  };
+
+  sessions.forEach(session => {
+    const group = getSessionGroup(session.modified);
+    groups[group].sessions.push(session);
+  });
+
+  return Object.values(groups).filter(g => g.sessions.length > 0);
+}
+
+/**
+ * SVG sprite definitions (rendered once, referenced via <use>)
+ */
+const SESSION_SVG_DEFS = `<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="s-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></symbol>
+  <symbol id="s-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></symbol>
+  <symbol id="s-msg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="s-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+  <symbol id="s-branch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
+  <symbol id="s-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></symbol>
+  <symbol id="s-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="s-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+</svg>`;
+
+/**
+ * Pre-process sessions: clean text once and cache display data
+ */
+function preprocessSessions(sessions) {
+  const now = Date.now();
+  return sessions.map(session => {
+    const promptResult = cleanSessionText(session.firstPrompt);
+    const summaryResult = cleanSessionText(session.summary);
+    const skillName = promptResult.skillName || summaryResult.skillName;
+
+    let displayTitle = '';
+    let displaySubtitle = '';
+    let isSkill = false;
+
+    if (summaryResult.text) {
+      displayTitle = summaryResult.text;
+      displaySubtitle = promptResult.text;
+    } else if (promptResult.text) {
+      displayTitle = promptResult.text;
+    } else if (skillName) {
+      displayTitle = '/' + skillName;
+      isSkill = true;
+    } else {
+      displayTitle = getCurrentLanguage() === 'fr' ? 'Conversation sans titre' : 'Untitled conversation';
+    }
+
+    const hoursAgo = (now - new Date(session.modified).getTime()) / 3600000;
+    const freshness = hoursAgo < 1 ? 'hot' : hoursAgo < 24 ? 'warm' : '';
+
+    // Pre-build searchable text (lowercase, computed once)
+    const searchText = (displayTitle + ' ' + displaySubtitle + ' ' + (session.gitBranch || '')).toLowerCase();
+
+    return { ...session, displayTitle, displaySubtitle, isSkill, freshness, searchText };
+  });
+}
+
+/**
+ * Build HTML for a single session card (lightweight, uses SVG sprites)
+ */
+function buildSessionCardHtml(s, index) {
+  const MAX_ANIMATED = 10;
+  const animClass = index < MAX_ANIMATED ? ' session-card--anim' : ' session-card--instant';
+  const freshClass = s.freshness ? ` session-card--${s.freshness}` : '';
+  const skillClass = s.isSkill ? ' session-card-icon--skill' : '';
+  const titleSkillClass = s.isSkill ? ' session-card-title--skill' : '';
+  const iconId = s.isSkill ? 's-bolt' : 's-chat';
+
+  return `<div class="session-card${freshClass}${animClass}" data-sid="${s.sessionId}" style="--ci:${index < MAX_ANIMATED ? index : 0}">
+<div class="session-card-accent"></div>
+<div class="session-card-body">
+<div class="session-card-top">
+<div class="session-card-icon${skillClass}"><svg><use href="#${iconId}"/></svg></div>
+<div class="session-card-content">
+<span class="session-card-title${titleSkillClass}">${escapeHtml(truncateText(s.displayTitle, 80))}</span>
+${s.displaySubtitle ? `<span class="session-card-subtitle">${escapeHtml(truncateText(s.displaySubtitle, 120))}</span>` : ''}
+</div>
+<div class="session-card-arrow"><svg><use href="#s-arrow"/></svg></div>
+</div>
+<div class="session-card-meta">
+<span class="session-meta-item"><svg><use href="#s-msg"/></svg>${s.messageCount}</span>
+<span class="session-meta-item"><svg><use href="#s-clock"/></svg>${formatRelativeTime(s.modified)}</span>
+${s.gitBranch ? `<span class="session-meta-branch"><svg><use href="#s-branch"/></svg>${escapeHtml(s.gitBranch)}</span>` : ''}
+</div>
+</div>
+</div>`;
+}
+
+/**
  * Render sessions panel in empty state
  */
 async function renderSessionsPanel(project, emptyState) {
@@ -2205,51 +2350,112 @@ async function renderSessionsPanel(project, emptyState) {
     if (!sessions || sessions.length === 0) {
       emptyState.innerHTML = `
         <div class="sessions-empty-state">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10z"/></svg>
-          <p>${t('terminals.noTerminals')}</p>
-          <p class="hint">${t('terminals.createHint')}</p>
+          <div class="sessions-empty-icon">
+            ${SESSION_SVG_DEFS}
+            <svg><use href="#s-chat"/></svg>
+          </div>
+          <p class="sessions-empty-title">${t('terminals.noTerminals')}</p>
+          <p class="sessions-empty-hint">${t('terminals.createHint')}</p>
+          <button class="sessions-empty-btn" id="sessions-empty-create">
+            <svg><use href="#s-plus"/></svg>
+            ${t('terminals.newConversation') || (getCurrentLanguage() === 'fr' ? 'Nouvelle conversation' : 'New conversation')}
+          </button>
         </div>`;
+      const emptyBtn = emptyState.querySelector('#sessions-empty-create');
+      if (emptyBtn) {
+        emptyBtn.onclick = () => {
+          if (callbacks.onCreateTerminal) callbacks.onCreateTerminal(project);
+        };
+      }
       return;
     }
 
-    const sessionsHtml = sessions.map(session => `
-      <div class="session-card" data-session-id="${session.sessionId}">
-        <div class="session-header">
-          <span class="session-icon">💬</span>
-          <span class="session-title">${escapeHtml(truncateText(session.summary, 50))}</span>
+    // Pre-process all sessions once (clean text, compute display data)
+    const processed = preprocessSessions(sessions);
+
+    // Group by time
+    const groups = groupSessionsByTime(processed);
+
+    // Batch render: first batch inline, rest lazy via IntersectionObserver
+    const INITIAL_BATCH = 12;
+    let cardIndex = 0;
+
+    const groupsHtml = groups.map(group => {
+      const cardsHtml = group.sessions.map(session => {
+        const html = cardIndex < INITIAL_BATCH
+          ? buildSessionCardHtml(session, cardIndex)
+          : `<div class="session-card-placeholder" data-lazy-index="${cardIndex}" data-group-key="${group.key}"></div>`;
+        cardIndex++;
+        return html;
+      }).join('');
+
+      return `<div class="session-group" data-group-key="${group.key}">
+        <div class="session-group-label">
+          <span class="session-group-text">${group.label}</span>
+          <span class="session-group-count">${group.sessions.length}</span>
+          <span class="session-group-line"></span>
         </div>
-        <div class="session-prompt">${escapeHtml(truncateText(session.firstPrompt, 80))}</div>
-        <div class="session-meta">
-          <span class="session-messages">${t('terminals.messages', { count: session.messageCount })}</span>
-          <span class="session-time">${formatRelativeTime(session.modified)}</span>
-          ${session.gitBranch ? `<span class="session-branch">${escapeHtml(session.gitBranch)}</span>` : ''}
-        </div>
-      </div>
-    `).join('');
+        ${cardsHtml}
+      </div>`;
+    }).join('');
 
     emptyState.innerHTML = `
+      ${SESSION_SVG_DEFS}
       <div class="sessions-panel">
         <div class="sessions-header">
-          <span class="sessions-title">${t('terminals.resumeConversation')}</span>
-          <button class="sessions-new-btn" title="${t('common.new')}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 5v14M5 12h14"/>
-            </svg>
-            ${t('common.new')}
-          </button>
+          <div class="sessions-header-left">
+            <span class="sessions-title">${t('terminals.resumeConversation')}</span>
+            <span class="sessions-count">${sessions.length}</span>
+          </div>
+          <div class="sessions-header-right">
+            <div class="sessions-search-wrapper">
+              <svg class="sessions-search-icon"><use href="#s-search"/></svg>
+              <input type="text" class="sessions-search" placeholder="${t('common.search')}..." />
+            </div>
+            <button class="sessions-new-btn" title="${t('terminals.newConversation') || (getCurrentLanguage() === 'fr' ? 'Nouvelle conversation' : 'New conversation')}">
+              <svg><use href="#s-plus"/></svg>
+              ${t('common.new')}
+            </button>
+          </div>
         </div>
         <div class="sessions-list">
-          ${sessionsHtml}
+          ${groupsHtml}
         </div>
       </div>`;
 
-    // Add click handlers
-    emptyState.querySelectorAll('.session-card').forEach(card => {
-      card.onclick = () => {
-        const sessionId = card.dataset.sessionId;
-        const skipPermissions = getSetting('skipPermissions') || false;
-        resumeSession(project, sessionId, { skipPermissions });
-      };
+    // Build flat index of all processed sessions for lazy rendering
+    const flatSessions = [];
+    groups.forEach(g => g.sessions.forEach(s => flatSessions.push(s)));
+
+    // Lazy render remaining cards via IntersectionObserver
+    const listEl = emptyState.querySelector('.sessions-list');
+    const placeholders = emptyState.querySelectorAll('.session-card-placeholder');
+    if (placeholders.length > 0) {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return;
+          const el = entry.target;
+          const idx = parseInt(el.dataset.lazyIndex);
+          const session = flatSessions[idx];
+          if (!session) return;
+          const html = buildSessionCardHtml(session, idx);
+          el.insertAdjacentHTML('afterend', html);
+          el.remove();
+          observer.unobserve(el);
+        });
+      }, { root: listEl, rootMargin: '200px' });
+
+      placeholders.forEach(p => observer.observe(p));
+    }
+
+    // Event delegation for card clicks (single listener on list)
+    listEl.addEventListener('click', (e) => {
+      const card = e.target.closest('.session-card');
+      if (!card) return;
+      const sessionId = card.dataset.sid;
+      if (!sessionId) return;
+      const skipPermissions = getSetting('skipPermissions') || false;
+      resumeSession(project, sessionId, { skipPermissions });
     });
 
     // New conversation button
@@ -2259,13 +2465,50 @@ async function renderSessionsPanel(project, emptyState) {
       }
     };
 
+    // Debounced search using cached searchText
+    const searchInput = emptyState.querySelector('.sessions-search');
+    if (searchInput) {
+      let searchTimer = null;
+      searchInput.addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+          const query = searchInput.value.toLowerCase().trim();
+          const cards = listEl.querySelectorAll('.session-card');
+          const groupEls = listEl.querySelectorAll('.session-group');
+
+          // Batch DOM reads then writes to avoid layout thrashing
+          const visibility = [];
+          cards.forEach(card => {
+            const sid = card.dataset.sid;
+            const session = flatSessions.find(s => s.sessionId === sid);
+            const match = !query || (session ? session.searchText.includes(query) : card.textContent.toLowerCase().includes(query));
+            visibility.push({ card, match });
+          });
+
+          // Single write pass
+          visibility.forEach(({ card, match }) => {
+            card.style.display = match ? '' : 'none';
+          });
+
+          groupEls.forEach(group => {
+            const hasVisible = group.querySelector('.session-card:not([style*="display: none"])');
+            group.style.display = hasVisible ? '' : 'none';
+          });
+        }, 150);
+      });
+    }
+
   } catch (error) {
     console.error('Error rendering sessions:', error);
     emptyState.innerHTML = `
       <div class="sessions-empty-state">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10z"/></svg>
-        <p>${t('terminals.noTerminals')}</p>
-        <p class="hint">${t('terminals.createHint')}</p>
+        <div class="sessions-empty-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+          </svg>
+        </div>
+        <p class="sessions-empty-title">${t('terminals.noTerminals')}</p>
+        <p class="sessions-empty-hint">${t('terminals.createHint')}</p>
       </div>`;
   }
 }
