@@ -13,10 +13,18 @@ function getDashboardBadge(project) {
 }
 
 function getDashboardStats(ctx) {
-  const { projectIndex, t } = ctx;
-  if (projectIndex === undefined || projectIndex === null) return '';
+  const { projectIndex, project, t } = ctx;
+  if (projectIndex === undefined || projectIndex === null || projectIndex < 0) return '';
 
   const info = getPythonInfo(projectIndex);
+
+  // Trigger detection in background if not yet detected
+  if (!info.pythonVersion && project && project.path) {
+    const { detectPythonInfo } = require('./PythonRendererService');
+    detectPythonInfo(projectIndex, project.path);
+    // Will show on next dashboard render
+  }
+
   if (!info.pythonVersion && !info.venvPath) return '';
 
   const parts = [];

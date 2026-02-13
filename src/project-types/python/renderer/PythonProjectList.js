@@ -6,8 +6,22 @@
 const { getPythonInfo } = require('./PythonState');
 
 function getSidebarButtons(ctx) {
-  const { projectIndex } = ctx;
+  const { projectIndex, project } = ctx;
   const info = getPythonInfo(projectIndex);
+
+  // Trigger detection in background if not yet detected
+  if (!info.pythonVersion && project && project.path) {
+    const { detectPythonInfo } = require('./PythonRendererService');
+    detectPythonInfo(projectIndex, project.path).then(newInfo => {
+      if (newInfo && newInfo.pythonVersion) {
+        // Re-render sidebar to show the badge
+        try {
+          const ProjectList = require('../../../renderer/ui/components/ProjectList');
+          if (ProjectList.render) ProjectList.render();
+        } catch (e) {}
+      }
+    });
+  }
 
   if (!info.pythonVersion) return '';
 
