@@ -141,6 +141,15 @@ function renderQuickActionsBar(project) {
   actionsBtn.onclick = (e) => {
     e.stopPropagation();
     const isOpen = dropdown.classList.contains('active');
+
+    // Close other dropdowns
+    const branchDropdown = document.getElementById('branch-dropdown');
+    const filterBtnBranch = document.getElementById('filter-btn-branch');
+    const gitChangesPanel = document.getElementById('git-changes-panel');
+    if (branchDropdown) branchDropdown.classList.remove('active');
+    if (filterBtnBranch) filterBtnBranch.classList.remove('open');
+    if (gitChangesPanel) gitChangesPanel.classList.remove('active');
+
     dropdown.classList.toggle('active', !isOpen);
     actionsBtn.classList.toggle('open', !isOpen);
   };
