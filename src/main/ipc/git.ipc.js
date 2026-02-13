@@ -115,8 +115,8 @@ function registerGitHandlers() {
   });
 
   // Get paginated commit history
-  ipcMain.handle('git-commit-history', async (event, { projectPath, skip, limit, branch }) => {
-    return getCommitHistory(projectPath, { skip, limit, branch });
+  ipcMain.handle('git-commit-history', async (event, { projectPath, skip, limit, branch, allBranches }) => {
+    return getCommitHistory(projectPath, { skip, limit, branch, allBranches });
   });
 
   // Get file diff

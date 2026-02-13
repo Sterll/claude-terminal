@@ -26,6 +26,11 @@ let historyPage = 0;
 let prsData = null;
 let remoteUrl = null;
 
+// History filter state
+let historyBranchFilter = '';
+let historyAuthorFilter = '';
+let historyAllBranches = false;
+
 // Merge conflict state
 let mergeInProgress = false;
 let conflictFiles = [];
@@ -72,9 +77,17 @@ async function loadAllData(project) {
   selectedProject = project;
   const path = project.path;
 
+  // Reset history filters on project switch
+  historyBranchFilter = '';
+  historyAuthorFilter = '';
+  historyAllBranches = false;
+  historyHasMore = true;
+  historyLoadingMore = false;
+  if (historyScrollObserver) { historyScrollObserver.disconnect(); historyScrollObserver = null; }
+
   const [changes, history, gitInfoFull] = await Promise.all([
     api.git.statusDetailed({ projectPath: path }),
-    api.git.commitHistory({ projectPath: path, skip: 0, limit: 30 }),
+    api.git.commitHistory({ projectPath: path, skip: 0, limit: 50 }),
     api.git.infoFull(path)
   ]);
 
@@ -86,6 +99,7 @@ async function loadAllData(project) {
   remoteUrl = gitInfoFull?.remoteUrl || null;
   historyData = history || [];
   historyPage = 0;
+  historyHasMore = historyData.length >= 50;
 
   // Check merge in progress
   mergeInProgress = await api.git.mergeInProgress({ projectPath: path });
@@ -743,19 +757,305 @@ function bindChangesEvents(container) {
 
 // ========== HISTORY SUB-TAB ==========
 
+const GRAPH_COLORS = [
+  '#06b6d4', // cyan
+  '#22c55e', // green
+  '#a855f7', // purple
+  '#ec4899', // pink
+  '#f59e0b', // amber
+  '#3b82f6', // blue
+  '#ef4444', // red
+  '#14b8a6', // teal
+  '#f97316', // orange
+  '#8b5cf6', // violet
+];
+
+const LANE_W = 14;
+const ROW_H = 34;
+const MAX_LANES = 8;
+let historyScrollObserver = null;
+let historyLoadingMore = false;
+let historyHasMore = true;
+
+/**
+ * Graph lane algorithm - tracks which lanes are active across rows.
+ * Each lane holds a commit hash that is "expected" to appear in a future row.
+ * When a commit appears, it occupies its expected lane and sets up its parents.
+ * Capped at MAX_LANES to prevent visual explosion with --all.
+ */
+function computeGraphLanes(commits) {
+  const activeLanes = []; // array of hashes or null
+  const result = [];
+
+  for (let idx = 0; idx < commits.length; idx++) {
+    const commit = commits[idx];
+    const { fullHash, parents } = commit;
+
+    // Find which lane this commit was expected in
+    let lane = activeLanes.indexOf(fullHash);
+    if (lane === -1) {
+      // New branch head - find first empty slot or append (respecting max)
+      lane = activeLanes.indexOf(null);
+      if (lane === -1) {
+        if (activeLanes.length < MAX_LANES) {
+          lane = activeLanes.length;
+          activeLanes.push(null);
+        } else {
+          // Over max lanes - reuse lane 0 as fallback
+          lane = 0;
+        }
+      }
+    }
+
+    // Snapshot lanes before modification to draw correct pass-through lines
+    const lanesBefore = activeLanes.slice();
+
+    // Determine where each parent will go
+    const parentLanes = [];
+    const isMerge = parents.length > 1;
+
+    if (parents.length === 0) {
+      // Root commit - lane dies
+      activeLanes[lane] = null;
+    } else {
+      // First parent inherits current lane
+      activeLanes[lane] = parents[0];
+      parentLanes.push(lane);
+
+      // Additional parents (merge sources)
+      for (let p = 1; p < parents.length; p++) {
+        const ph = parents[p];
+        let pl = activeLanes.indexOf(ph);
+        if (pl === -1) {
+          // Try to find an empty slot or append (respecting max)
+          pl = activeLanes.indexOf(null);
+          if (pl === -1 && activeLanes.length < MAX_LANES) {
+            pl = activeLanes.length;
+            activeLanes.push(null);
+          }
+          if (pl !== -1) {
+            activeLanes[pl] = ph;
+          }
+        }
+        if (pl !== -1) {
+          parentLanes.push(pl);
+        }
+      }
+    }
+
+    // Check for lane convergence: if a hash appears in multiple lanes after
+    // first parent assignment, collapse duplicates
+    for (let i = 0; i < activeLanes.length; i++) {
+      if (activeLanes[i] === null) continue;
+      const first = activeLanes.indexOf(activeLanes[i]);
+      if (first !== i) {
+        activeLanes[i] = null;
+      }
+    }
+
+    // Trim trailing null lanes to keep graph compact
+    while (activeLanes.length > 0 && activeLanes[activeLanes.length - 1] === null) {
+      activeLanes.pop();
+    }
+
+    const totalLanes = Math.max(activeLanes.length, lane + 1);
+
+    result.push({
+      commit,
+      lane,
+      isMerge,
+      parentLanes,
+      lanesBefore,
+      lanesAfter: activeLanes.slice(),
+      totalLanes
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Render one SVG cell for a commit row (IntelliJ-style).
+ * Smooth S-curves for merges/forks. Straight verticals for pass-through.
+ * Uses lanesBefore/lanesAfter to ensure perfect continuity between rows.
+ */
+function renderGraphSvg(row, maxLanes, isFirst, isLast) {
+  const w = Math.max(maxLanes * LANE_W + 6, 24);
+  const cy = ROW_H / 2;
+  const laneX = (i) => i * LANE_W + LANE_W / 2 + 2;
+  const cx = laneX(row.lane);
+  const nodeColor = GRAPH_COLORS[row.lane % GRAPH_COLORS.length];
+
+  let svg = '';
+
+  // Collect all lane indices appearing in before or after
+  const allLaneIndices = new Set();
+  row.lanesBefore.forEach((h, i) => { if (h !== null) allLaneIndices.add(i); });
+  row.lanesAfter.forEach((h, i) => { if (h !== null) allLaneIndices.add(i); });
+  allLaneIndices.add(row.lane);
+
+  for (const i of allLaneIndices) {
+    if (i === row.lane) continue;
+    const color = GRAPH_COLORS[i % GRAPH_COLORS.length];
+    const x = laneX(i);
+    const existsBefore = i < row.lanesBefore.length && row.lanesBefore[i] !== null;
+    const existsAfter = i < row.lanesAfter.length && row.lanesAfter[i] !== null;
+    const isMergeSource = row.parentLanes.includes(i) && i !== row.lane;
+
+    if (isMergeSource) {
+      // This lane is a merge parent of the current commit
+      if (existsBefore && existsAfter) {
+        // Lane passes through AND is a merge source - vertical + branch-off curve
+        svg += `<line x1="${x}" y1="0" x2="${x}" y2="${ROW_H}" stroke="${color}" stroke-width="2"/>`;
+        // Small curve branching from the vertical to the commit node
+        svg += `<path d="M${x},${cy - 6} C${x},${cy} ${cx},${cy - 4} ${cx},${cy}" stroke="${color}" stroke-width="2" fill="none"/>`;
+      } else if (existsBefore) {
+        // Lane ends by merging - smooth S-curve from top to commit node
+        svg += `<path d="M${x},0 C${x},${cy * 0.7} ${cx},${cy * 0.3} ${cx},${cy}" stroke="${color}" stroke-width="2" fill="none"/>`;
+      } else {
+        // Merge source with no top connection - just curve to node
+        svg += `<path d="M${x},${cy} L${cx},${cy}" stroke="${color}" stroke-width="2" fill="none"/>`;
+      }
+    } else if (existsBefore && existsAfter) {
+      // Simple pass-through - straight vertical
+      svg += `<line x1="${x}" y1="0" x2="${x}" y2="${ROW_H}" stroke="${color}" stroke-width="2"/>`;
+    } else if (existsBefore && !existsAfter) {
+      // Lane converges/ends - smooth S-curve from top into commit node
+      svg += `<path d="M${x},0 C${x},${cy * 0.7} ${cx},${cy * 0.3} ${cx},${cy}" stroke="${color}" stroke-width="2" fill="none"/>`;
+    } else if (!existsBefore && existsAfter) {
+      // New lane forks out - smooth S-curve from commit node to bottom
+      const half = ROW_H - cy;
+      svg += `<path d="M${cx},${cy} C${cx},${cy + half * 0.3} ${x},${cy + half * 0.7} ${x},${ROW_H}" stroke="${nodeColor}" stroke-width="2" fill="none"/>`;
+    }
+  }
+
+  // Commit's own lane - vertical lines above/below the node
+  const ownBefore = row.lane < row.lanesBefore.length && row.lanesBefore[row.lane] !== null;
+  const ownAfter = row.lane < row.lanesAfter.length && row.lanesAfter[row.lane] !== null;
+
+  if (!isFirst && ownBefore) {
+    svg += `<line x1="${cx}" y1="0" x2="${cx}" y2="${cy}" stroke="${nodeColor}" stroke-width="2"/>`;
+  }
+  if (!isLast && ownAfter) {
+    svg += `<line x1="${cx}" y1="${cy}" x2="${cx}" y2="${ROW_H}" stroke="${nodeColor}" stroke-width="2"/>`;
+  }
+
+  // Commit node circle - drawn last to be on top
+  const r = row.isMerge ? 5 : 4;
+  svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${nodeColor}" stroke="var(--bg-primary)" stroke-width="2"/>`;
+
+  return `<svg class="git-graph-svg" width="${w}" height="${ROW_H}" viewBox="0 0 ${w} ${ROW_H}" xmlns="http://www.w3.org/2000/svg">${svg}</svg>`;
+}
+
+function renderDecorations(decorationsRaw) {
+  if (!decorationsRaw || !decorationsRaw.trim()) return '';
+  const refs = decorationsRaw.split(',').map(r => r.trim()).filter(Boolean);
+  let html = '<span class="git-decorations">';
+  for (const ref of refs) {
+    if (ref.startsWith('HEAD -> ')) {
+      const branch = ref.replace('HEAD -> ', '');
+      html += `<span class="git-deco git-deco-head">${escapeHtml(branch)}</span>`;
+    } else if (ref.startsWith('tag: ')) {
+      const tag = ref.replace('tag: ', '');
+      html += `<span class="git-deco git-deco-tag">${escapeHtml(tag)}</span>`;
+    } else if (ref.startsWith('origin/') || ref.includes('/')) {
+      html += `<span class="git-deco git-deco-remote">${escapeHtml(ref)}</span>`;
+    } else if (ref === 'HEAD') {
+      continue; // skip bare HEAD
+    } else {
+      html += `<span class="git-deco git-deco-branch">${escapeHtml(ref)}</span>`;
+    }
+  }
+  html += '</span>';
+  return html;
+}
+
+function buildHistoryToolbar(commits) {
+  const authors = [...new Set(commits.map(c => c.author))].filter(Boolean).sort((a, b) => a.localeCompare(b));
+  const localBranches = branchesData?.local || [];
+  const remoteBranches = (branchesData?.remote || []).map(b => 'origin/' + b);
+
+  let html = '<div class="git-history-toolbar">';
+
+  // Branch filter - custom styled
+  html += '<div class="git-filter-group">';
+  html += `<svg class="git-filter-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>`;
+  html += `<select class="git-history-select" id="git-history-branch-filter">`;
+  // Current branch (default) - shown when not filtering by a specific branch or --all
+  const currentSelected = !historyAllBranches && !historyBranchFilter ? 'selected' : '';
+  html += `<option value="" ${currentSelected}>● ${escapeHtml(currentBranch || 'HEAD')}</option>`;
+  html += `<option value="__all__" ${historyAllBranches ? 'selected' : ''}>${t('gitTab.allBranches')}</option>`;
+  if (localBranches.length > 0) {
+    html += `<optgroup label="${t('gitTab.localBranches')}">`;
+    for (const b of localBranches) {
+      if (b === currentBranch) continue; // already shown as default option
+      const selected = !historyAllBranches && historyBranchFilter === b ? 'selected' : '';
+      html += `<option value="${escapeAttr(b)}" ${selected}>${escapeHtml(b)}</option>`;
+    }
+    html += '</optgroup>';
+  }
+  if (remoteBranches.length > 0) {
+    html += `<optgroup label="${t('gitTab.remoteBranches')}">`;
+    for (const b of remoteBranches) {
+      const selected = !historyAllBranches && historyBranchFilter === b ? 'selected' : '';
+      html += `<option value="${escapeAttr(b)}" ${selected}>${escapeHtml(b)}</option>`;
+    }
+    html += '</optgroup>';
+  }
+  html += '</select></div>';
+
+  // Author filter
+  if (authors.length > 1) {
+    html += '<div class="git-filter-group">';
+    html += `<svg class="git-filter-icon" viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>`;
+    html += `<select class="git-history-select" id="git-history-author-filter">`;
+    html += `<option value="">${t('gitTab.allAuthors')} (${authors.length})</option>`;
+    for (const a of authors) {
+      const count = commits.filter(c => c.author === a).length;
+      const selected = historyAuthorFilter === a ? 'selected' : '';
+      html += `<option value="${escapeAttr(a)}" ${selected}>${escapeHtml(a)} (${count})</option>`;
+    }
+    html += '</select></div>';
+  }
+
+  // Commit count indicator
+  html += `<span class="git-history-count">${commits.length} commits</span>`;
+
+  html += '</div>';
+  return html;
+}
+
 function renderHistory(container) {
   if (!historyData || historyData.length === 0) {
     container.innerHTML = `<div class="git-empty-state"><p>${t('gitTab.noCommits')}</p></div>`;
     return;
   }
 
-  let html = '<div class="git-history-container">';
+  // Apply author filter client-side
+  const filtered = historyAuthorFilter
+    ? historyData.filter(c => c.author === historyAuthorFilter)
+    : historyData;
+
+  const graphRows = computeGraphLanes(filtered);
+  const maxLanes = graphRows.reduce((max, r) => Math.max(max, r.totalLanes), 1);
+
+  let html = '<div class="git-history-container" id="git-history-scroll-container">';
+  html += buildHistoryToolbar(historyData);
   html += '<div class="git-history-list">';
 
-  for (const commit of historyData) {
+  for (let i = 0; i < graphRows.length; i++) {
+    const row = graphRows[i];
+    const commit = row.commit;
+    const isFirst = i === 0;
+    const isLast = i === graphRows.length - 1;
+    const svgHtml = renderGraphSvg(row, maxLanes, isFirst, isLast);
+    const decoHtml = renderDecorations(commit.decorations);
+
     html += `<div class="git-commit-item" data-hash="${escapeAttr(commit.fullHash)}">
+      ${svgHtml}
       <div class="git-commit-main">
         <span class="git-commit-hash">${escapeHtml(commit.hash)}</span>
+        ${decoHtml}
         <span class="git-commit-message">${escapeHtml(commit.message)}</span>
       </div>
       <div class="git-commit-meta">
@@ -778,9 +1078,9 @@ function renderHistory(container) {
 
   html += '</div>';
 
-  // Load more button
-  if (historyData.length >= 30 * (historyPage + 1)) {
-    html += `<button class="git-load-more" id="git-load-more">${t('gitTab.loadMore')}</button>`;
+  // Infinite scroll sentinel
+  if (historyHasMore) {
+    html += '<div class="git-history-sentinel" id="git-history-sentinel"><div class="git-history-loading-more"><div class="spinner-small"></div></div></div>';
   }
 
   html += '</div>';
@@ -798,8 +1098,90 @@ function bindHistoryEvents(container) {
       else if (btn.classList.contains('revert')) handleRevert(hash);
       return;
     }
-    if (e.target.closest('#git-load-more')) handleLoadMore();
   };
+
+  // Branch filter
+  const branchSelect = container.querySelector('#git-history-branch-filter');
+  if (branchSelect) {
+    branchSelect.onchange = async () => {
+      const val = branchSelect.value;
+      if (val === '__all__') {
+        historyBranchFilter = '';
+        historyAllBranches = true;
+      } else {
+        historyBranchFilter = val;
+        historyAllBranches = false;
+      }
+      historyPage = 0;
+      historyHasMore = true;
+      historyData = await api.git.commitHistory({
+        projectPath: selectedProject.path,
+        skip: 0,
+        limit: 50,
+        branch: historyBranchFilter,
+        allBranches: historyAllBranches
+      });
+      if (historyData.length < 50) historyHasMore = false;
+      renderSubTabContent();
+    };
+  }
+
+  // Author filter (client-side only)
+  const authorSelect = container.querySelector('#git-history-author-filter');
+  if (authorSelect) {
+    authorSelect.onchange = () => {
+      historyAuthorFilter = authorSelect.value;
+      renderSubTabContent();
+    };
+  }
+
+  // Infinite scroll with IntersectionObserver
+  setupHistoryInfiniteScroll();
+}
+
+function setupHistoryInfiniteScroll() {
+  // Cleanup previous observer
+  if (historyScrollObserver) {
+    historyScrollObserver.disconnect();
+    historyScrollObserver = null;
+  }
+
+  const sentinel = document.getElementById('git-history-sentinel');
+  if (!sentinel || !historyHasMore) return;
+
+  // Find the scrollable parent (git-sub-content or the main content area)
+  const scrollParent = sentinel.closest('.git-sub-content') || sentinel.closest('#git-sub-content') || sentinel.closest('.git-history-container')?.parentElement;
+
+  historyScrollObserver = new IntersectionObserver(async (entries) => {
+    const entry = entries[0];
+    if (!entry.isIntersecting || historyLoadingMore || !historyHasMore) return;
+
+    historyLoadingMore = true;
+    sentinel.style.display = '';
+
+    historyPage++;
+    const more = await api.git.commitHistory({
+      projectPath: selectedProject.path,
+      skip: historyPage * 50,
+      limit: 50,
+      branch: historyBranchFilter,
+      allBranches: historyAllBranches
+    });
+
+    if (more && more.length > 0) {
+      historyData = historyData.concat(more);
+      if (more.length < 50) historyHasMore = false;
+      // Re-render the whole list to recompute graph lanes properly
+      renderSubTabContent();
+    } else {
+      historyHasMore = false;
+      sentinel.style.display = 'none';
+    }
+
+    historyLoadingMore = false;
+  }, { threshold: 0.1 });
+
+  historyScrollObserver.observe(sentinel);
 }
 
 // ========== PULL REQUESTS SUB-TAB ==========
@@ -923,8 +1305,9 @@ async function handleCommit() {
       showToast('Commit created', 'success');
       if (msgEl) msgEl.value = '';
       await refreshChanges();
-      historyData = await api.git.commitHistory({ projectPath: selectedProject.path, skip: 0, limit: 30 });
+      historyData = await api.git.commitHistory({ projectPath: selectedProject.path, skip: 0, limit: 50, branch: historyBranchFilter, allBranches: historyAllBranches });
       historyPage = 0;
+      historyHasMore = historyData.length >= 50;
       renderSubTabContent();
       renderSidebar();
     } else {
@@ -1024,18 +1407,24 @@ async function handleRevert(hash) {
 }
 
 async function handleLoadMore() {
-  if (!selectedProject) return;
+  if (!selectedProject || historyLoadingMore) return;
+  historyLoadingMore = true;
   historyPage++;
   const more = await api.git.commitHistory({
     projectPath: selectedProject.path,
-    skip: historyPage * 30,
-    limit: 30
+    skip: historyPage * 50,
+    limit: 50,
+    branch: historyBranchFilter,
+    allBranches: historyAllBranches
   });
   if (more && more.length > 0) {
     historyData = historyData.concat(more);
-    const content = document.getElementById('git-sub-content');
-    if (content) renderHistory(content);
+    if (more.length < 50) historyHasMore = false;
+    renderSubTabContent();
+  } else {
+    historyHasMore = false;
   }
+  historyLoadingMore = false;
 }
 
 async function handlePull() {

@@ -21,7 +21,7 @@ function execGit(cwd, args, timeout = 10000) {
     const safeDirectoryConfig = `-c safe.directory="${cwd.replace(/\\/g, '/')}"`;
     const child = exec(`git ${safeDirectoryConfig} ${args}`, { cwd, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout) => {
       if (timer) clearTimeout(timer);
-      resolve(error ? null : stdout.trim());
+      resolve(error ? null : stdout.trimEnd());
     });
 
     // Manual timeout with explicit kill (exec timeout doesn't kill the process)
@@ -900,15 +900,21 @@ function deleteBranch(projectPath, branch, force = false) {
  * @param {number} options.skip - Number of commits to skip
  * @param {number} options.limit - Number of commits to return
  * @param {string} options.branch - Branch to get history for (optional)
+ * @param {boolean} options.allBranches - Show commits from all branches
  * @returns {Promise<Array>} - List of commits
  */
-async function getCommitHistory(projectPath, { skip = 0, limit = 30, branch = '' } = {}) {
+async function getCommitHistory(projectPath, { skip = 0, limit = 30, branch = '', allBranches = false } = {}) {
+  const RS = '%x1e'; // Record Separator to avoid conflicts with commit messages
+  const format = `%H${RS}%h${RS}%s${RS}%an${RS}%ae${RS}%ar${RS}%aI${RS}%P${RS}%D`;
+  const allFlag = allBranches ? ' --all' : '';
   const branchArg = branch ? ` ${branch}` : '';
-  const output = await execGit(projectPath, `log --skip=${skip} -${limit} --format="%H|%h|%s|%an|%ae|%ar|%aI"${branchArg}`, 15000);
+  const output = await execGit(projectPath, `log --skip=${skip} -${limit} --format="${format}"${allFlag}${branchArg}`, 15000);
   if (!output) return [];
   return output.split('\n').filter(l => l.trim()).map(line => {
-    const [fullHash, hash, message, author, email, date, isoDate] = line.split('|');
-    return { fullHash, hash, message, author, email, date, isoDate };
+    const parts = line.split('\x1e');
+    const [fullHash, hash, message, author, email, date, isoDate, parentStr, decorations] = parts;
+    const parents = parentStr ? parentStr.trim().split(' ').filter(Boolean) : [];
+    return { fullHash, hash, message, author, email, date, isoDate, parents, decorations: decorations || '' };
   });
 }
 
