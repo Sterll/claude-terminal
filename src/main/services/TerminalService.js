@@ -100,16 +100,17 @@ class TerminalService {
     this.terminals.set(id, ptyProcess);
 
     // Handle data output - adaptive batching to reduce IPC flooding
-    // 4ms flush when idle (responsive typing), 16ms when flooding (bulk output)
+    // 4ms flush when idle (responsive typing), 16ms normal, 32ms when flooding
     let buffer = '';
     let flushScheduled = false;
     let lastFlush = Date.now();
+
     ptyProcess.onData(data => {
       buffer += data;
       if (!flushScheduled) {
         flushScheduled = true;
         const sinceLastFlush = Date.now() - lastFlush;
-        const delay = sinceLastFlush > 100 ? 4 : 16;
+        const delay = buffer.length > 10000 ? 32 : sinceLastFlush > 100 ? 4 : 16;
         setTimeout(() => {
           this.sendToRenderer('terminal-data', { id, data: buffer });
           buffer = '';
