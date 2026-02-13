@@ -1867,6 +1867,16 @@ async function renderSettingsTab(initialTab = 'general') {
                 <span class="settings-toggle-slider"></span>
               </label>
             </div>
+            <div class="settings-toggle-row">
+              <div class="settings-toggle-label">
+                <div>${t('settings.aiCommitMessages')}</div>
+                <div class="settings-toggle-desc">${t('settings.aiCommitMessagesDesc')}</div>
+              </div>
+              <label class="settings-toggle">
+                <input type="checkbox" id="ai-commit-toggle" ${settings.aiCommitMessages !== false ? 'checked' : ''}>
+                <span class="settings-toggle-slider"></span>
+              </label>
+            </div>
             <div class="settings-row">
               <div class="settings-label">
                 <div>Fermeture de la fenetre</div>
@@ -2273,6 +2283,8 @@ async function renderSettingsTab(initialTab = 'general') {
     const newCompactProjects = compactProjectsToggle ? compactProjectsToggle.checked : true;
     const reduceMotionToggle = document.getElementById('reduce-motion-toggle');
     const newReduceMotion = reduceMotionToggle ? reduceMotionToggle.checked : false;
+    const aiCommitToggle = document.getElementById('ai-commit-toggle');
+    const newAiCommitMessages = aiCommitToggle ? aiCommitToggle.checked : true;
 
     const newSettings = {
       editor: settings.editor || 'code',
@@ -2282,7 +2294,8 @@ async function renderSettingsTab(initialTab = 'general') {
       terminalTheme: newTerminalTheme,
       language: newLanguage,
       compactProjects: newCompactProjects,
-      reduceMotion: newReduceMotion
+      reduceMotion: newReduceMotion,
+      aiCommitMessages: newAiCommitMessages
     };
 
     // Collect dynamic settings from project types
@@ -6081,13 +6094,14 @@ btnGenerateCommit.onclick = async () => {
   try {
     const result = await api.git.generateCommitMessage({
       projectPath: gitChangesState.projectPath,
-      files: selectedFiles
+      files: selectedFiles,
+      useAi: getSetting('aiCommitMessages') !== false
     });
 
     if (result.success && result.message) {
       gitCommitMessage.value = result.message;
 
-      const sourceLabel = result.source === 'claude' ? 'Claude' : 'Heuristique';
+      const sourceLabel = result.source === 'ai' ? 'AI' : 'Heuristique';
       showToast({
         type: 'success',
         title: `Message généré (${sourceLabel})`,

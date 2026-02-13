@@ -358,7 +358,9 @@
     "addPreset": "Ajouter un preset",
     "noCustomPresets": "Aucun preset personnalise",
     "reduceMotion": "Désactiver les animations",
-    "reduceMotionDesc": "Supprimer toutes les transitions et animations de l'interface"
+    "reduceMotionDesc": "Supprimer toutes les transitions et animations de l'interface",
+    "aiCommitMessages": "Messages de commit IA",
+    "aiCommitMessagesDesc": "Utiliser GitHub Models (GPT-4o-mini) pour générer les messages de commit. Nécessite une connexion GitHub."
   },
   "ui": {
     "notifications": "Notifications",
