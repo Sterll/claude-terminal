@@ -40,7 +40,6 @@
       to { transform: translateX(110%); opacity: 0; }
     }
 
-    /* Icon — bare, no background pill */
     .notif-icon {
       width: 28px;
       height: 28px;
@@ -49,13 +48,10 @@
       align-items: center;
       justify-content: center;
       margin-top: 1px;
+      color: var(--accent, #d97706);
     }
     .notif-icon svg { width: 17px; height: 17px; }
-    .type-done .notif-icon { color: var(--accent, #d97706); }
-    .type-permission .notif-icon { color: #eab308; }
-    .type-question .notif-icon { color: #3b82f6; }
 
-    /* Content */
     .notif-content {
       flex: 1;
       min-width: 0;
@@ -84,36 +80,6 @@
       overflow: hidden;
     }
 
-    /* Input */
-    .notif-input {
-      margin-top: 8px;
-      display: flex;
-      gap: 6px;
-    }
-
-    .notif-input input {
-      flex: 1;
-      background: #0e0e0e;
-      border: 1px solid #2a2a2a;
-      border-radius: 5px;
-      color: #d4d4d4;
-      font-family: 'Cascadia Code', 'Consolas', monospace;
-      font-size: 11.5px;
-      padding: 6px 10px;
-      outline: none;
-      transition: border-color 0.15s;
-    }
-
-    .notif-input input:focus {
-      border-color: #3b82f6;
-    }
-
-    .notif-input input::placeholder {
-      color: #3a3a3a;
-      font-family: 'Segoe UI', system-ui, sans-serif;
-    }
-
-    /* Actions */
     .notif-actions {
       display: flex;
       gap: 6px;
@@ -140,25 +106,6 @@
       filter: brightness(1.1);
     }
 
-    .btn-danger {
-      background: transparent;
-      color: #777;
-      border: 1px solid #2a2a2a;
-    }
-    .btn-danger:hover {
-      border-color: #ef4444;
-      color: #ef4444;
-    }
-
-    .btn-send {
-      background: #3b82f6;
-      color: #fff;
-    }
-    .btn-send:hover {
-      filter: brightness(1.1);
-    }
-
-    /* Close */
     .notif-close {
       position: absolute;
       top: 8px;
@@ -181,7 +128,6 @@
     .notification:hover .notif-close { opacity: 1; }
     .notif-close:hover { color: #999; }
 
-    /* Progress bar */
     .notif-progress {
       position: absolute;
       bottom: 0;
@@ -208,11 +154,15 @@
 </head>
 <body>
   <div class="notification" id="notification">
-    <div class="notif-icon" id="icon"></div>
+    <div class="notif-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+    </div>
     <div class="notif-content">
       <div class="notif-title" id="title"></div>
       <div class="notif-body" id="body"></div>
-      <div id="extra"></div>
+      <div class="notif-actions">
+        <button class="btn btn-primary" id="btnShow"></button>
+      </div>
     </div>
     <button class="notif-close" id="closeBtn">&times;</button>
   </div>
@@ -223,16 +173,9 @@
     const path = require('path');
     const os = require('os');
 
-    // Parse data from query params
     const params = new URLSearchParams(window.location.search);
     const data = JSON.parse(decodeURIComponent(params.get('data')));
-    const { type, title, body, terminalId, notifId, autoDismiss, labels } = data;
-
-    // Fallback labels if not provided
-    const l = Object.assign({
-      show: 'Show', allow: 'Allow', deny: 'Deny',
-      send: 'Send', placeholder: 'Your answer...'
-    }, labels || {});
+    const { title, body, terminalId, notifId, autoDismiss, labels } = data;
 
     // Load accent color
     try {
@@ -245,85 +188,16 @@
       }
     } catch (_) {}
 
-    // Setup notification
-    const notifEl = document.getElementById('notification');
-    const titleEl = document.getElementById('title');
-    const bodyEl = document.getElementById('body');
-    const iconEl = document.getElementById('icon');
-    const extraEl = document.getElementById('extra');
+    // Fill content
+    document.getElementById('title').textContent = title;
+    document.getElementById('body').textContent = body;
+    document.getElementById('btnShow').textContent = (labels && labels.show) || 'Show';
 
-    notifEl.classList.add('type-' + type);
-    titleEl.textContent = title;
-    bodyEl.textContent = body;
-
-    // Icons per type — clean stroke icons
-    const icons = {
-      done: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
-      permission: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
-      question: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'
-    };
-    iconEl.innerHTML = icons[type] || icons.done;
-
-    // Build actions per type
-    if (type === 'done') {
-      extraEl.innerHTML =
-        '<div class="notif-actions">' +
-          '<button class="btn btn-primary" id="btnShow">' + l.show + '</button>' +
-        '</div>';
-      document.getElementById('btnShow').addEventListener('click', function() {
-        sendAction('show');
-        dismiss();
-      });
-
-      // Progress bar
-      if (autoDismiss > 0) {
-        const progressEl = document.createElement('div');
-        progressEl.className = 'notif-progress';
-        progressEl.innerHTML = '<div class="notif-progress-bar" style="--dismiss-time: ' + autoDismiss + 'ms"></div>';
-        notifEl.appendChild(progressEl);
-        setTimeout(function() { dismiss(); }, autoDismiss);
-      }
-    } else if (type === 'permission') {
-      extraEl.innerHTML =
-        '<div class="notif-actions">' +
-          '<button class="btn btn-danger" id="btnDeny">' + l.deny + '</button>' +
-          '<button class="btn btn-primary" id="btnAllow">' + l.allow + '</button>' +
-        '</div>';
-      document.getElementById('btnDeny').addEventListener('click', function() {
-        sendAction('deny');
-        dismiss();
-      });
-      document.getElementById('btnAllow').addEventListener('click', function() {
-        sendAction('allow');
-        dismiss();
-      });
-    } else if (type === 'question') {
-      extraEl.innerHTML =
-        '<div class="notif-input">' +
-          '<input type="text" id="answerInput" placeholder="' + l.placeholder + '" autofocus>' +
-          '<button class="btn btn-send" id="btnSend">' + l.send + '</button>' +
-        '</div>';
-      var input = document.getElementById('answerInput');
-      var btnSend = document.getElementById('btnSend');
-
-      function submitAnswer() {
-        var value = input.value.trim();
-        if (!value) return;
-        sendAction('answer', value);
-        dismiss();
-      }
-
-      btnSend.addEventListener('click', submitAnswer);
-      input.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          submitAnswer();
-        }
-      });
-
-      // Auto-focus
-      setTimeout(function() { input.focus(); }, 100);
-    }
+    // Show button — fire action IPC, then play exit animation
+    document.getElementById('btnShow').addEventListener('click', function() {
+      ipcRenderer.send('notification-action', { action: 'show', terminalId });
+      dismiss();
+    });
 
     // Close button
     document.getElementById('closeBtn').addEventListener('click', function() { dismiss(); });
@@ -333,17 +207,24 @@
       if (e.key === 'Escape') dismiss();
     });
 
-    // Send action to main process
-    function sendAction(action, value) {
-      ipcRenderer.send('notification-action', { action: action, terminalId: terminalId, notifId: notifId, value: value });
+    // Auto-dismiss with progress bar
+    var autoDismissTimer = null;
+    if (autoDismiss > 0) {
+      var notifEl = document.getElementById('notification');
+      var progressEl = document.createElement('div');
+      progressEl.className = 'notif-progress';
+      progressEl.innerHTML = '<div class="notif-progress-bar" style="--dismiss-time: ' + autoDismiss + 'ms"></div>';
+      notifEl.appendChild(progressEl);
+      autoDismissTimer = setTimeout(function() { dismiss(); }, autoDismiss);
     }
 
-    // Dismiss with exit animation
+    // Single dismiss function — plays exit animation, then tells main to close
     var dismissed = false;
     function dismiss() {
       if (dismissed) return;
       dismissed = true;
-      notifEl.classList.add('exit');
+      if (autoDismissTimer) clearTimeout(autoDismissTimer);
+      document.getElementById('notification').classList.add('exit');
       setTimeout(function() {
         ipcRenderer.send('notification-dismiss', { notifId: notifId });
       }, 300);

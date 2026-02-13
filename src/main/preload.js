@@ -181,8 +181,7 @@ contextBridge.exposeInMainWorld('electron_api', {
   // ==================== NOTIFICATIONS ====================
   notification: {
     show: (params) => ipcRenderer.send('show-notification', params),
-    onClicked: createListener('notification-clicked'),
-    onTerminalInput: createListener('notification-terminal-input')
+    onClicked: createListener('notification-clicked')
   },
 
   // ==================== GITHUB ====================

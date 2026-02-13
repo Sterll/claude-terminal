@@ -554,34 +554,26 @@ if (settingsState.get().reduceMotion) {
 function showNotification(type, title, body, terminalId) {
   if (!localState.notificationsEnabled) return;
   if (document.hasFocus() && terminalsState.get().activeTerminal === terminalId) return;
-  const autoDismiss = type === 'done' ? 8000 : 0;
-  const labels = {
-    show: t('terminals.notifBtnShow'),
-    allow: t('terminals.notifBtnAllow'),
-    deny: t('terminals.notifBtnDeny'),
-    send: t('terminals.notifBtnSend'),
-    placeholder: t('terminals.notifPlaceholder')
-  };
-  api.notification.show({ type, title, body, terminalId, autoDismiss, labels });
+  const labels = { show: t('terminals.notifBtnShow') };
+  api.notification.show({ type: 'done', title, body, terminalId, autoDismiss: 8000, labels });
 }
 
 api.notification.onClicked(({ terminalId }) => {
   if (terminalId) {
-    // Switch to the terminal's project first so it becomes visible
+    // 1. Switch to claude tab first so terminal containers are visible
+    document.querySelector('[data-tab="claude"]')?.click();
+    // 2. Switch to the terminal's project so it becomes visible
     const termData = terminalsState.get().terminals.get(terminalId);
     if (termData && termData.projectIndex != null) {
       setSelectedProjectFilter(termData.projectIndex);
       ProjectList.render();
       TerminalManager.filterByProject(termData.projectIndex);
     }
+    // 3. Activate the specific terminal (needs tab + project to be set first)
     TerminalManager.setActiveTerminal(terminalId);
-    document.querySelector('[data-tab="claude"]')?.click();
   }
 });
 
-api.notification.onTerminalInput(({ terminalId, data }) => {
-  if (terminalId) api.terminal.input({ id: terminalId, data });
-});
 
 // ========== GIT STATUS ==========
 async function checkAllProjectsGitStatus() {
