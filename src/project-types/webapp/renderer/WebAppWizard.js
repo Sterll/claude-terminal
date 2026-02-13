@@ -6,10 +6,10 @@
 function getWizardFields() {
   return `
     <div class="webapp-config" style="display:none;">
-      <div class="form-group">
-        <label data-i18n="newProject.devCommand">Dev command</label>
-        <input type="text" id="webapp-dev-command" placeholder="npm run dev" class="form-input" />
-        <small style="color: var(--text-secondary); margin-top: 4px; display: block;">
+      <div class="wizard-field">
+        <label class="wizard-label" data-i18n="newProject.devCommand">Dev command</label>
+        <input type="text" id="webapp-dev-command" placeholder="npm run dev" class="wizard-input" />
+        <small style="color: var(--text-secondary); margin-top: 4px; display: block; font-size: 11px;">
           Leave empty to auto-detect from package.json
         </small>
       </div>

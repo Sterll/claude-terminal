@@ -5135,86 +5135,103 @@ document.getElementById('btn-new-project').onclick = () => {
   const projectTypes = registry.getAll();
   const categoriesGrouped = registry.getByCategory();
 
+  let typeIndex = 0;
+  const typeColors = { standalone: 'var(--accent)', webapp: '#3b82f6', python: '#3776ab', api: '#a855f7', fivem: 'var(--success)' };
   const buildTypeRows = () => categoriesGrouped.map(({ category: cat, types }) => `
-      <div class="project-type-category">${t(cat.nameKey)}</div>
-      ${types.map(tp => `
-        <div class="project-type-row${tp.id === 'standalone' ? ' selected' : ''}" data-type="${tp.id}">
-          <div class="project-type-icon${tp.id !== 'standalone' ? ' ' + tp.id : ''}">${tp.icon}</div>
-          <div class="project-type-info">
-            <div class="project-type-name">${t(tp.nameKey)}</div>
-            <div class="project-type-desc">${t(tp.descKey)}</div>
-          </div>
-          <div class="project-type-check"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>
-        </div>
-      `).join('')}
+      <div class="wizard-type-category">${t(cat.nameKey)}</div>
+      <div class="wizard-type-grid">
+      ${types.map(tp => {
+        const idx = typeIndex++;
+        const color = typeColors[tp.id] || 'var(--accent)';
+        return `
+        <div class="wizard-type-card${tp.id === 'standalone' ? ' selected' : ''}" data-type="${tp.id}" style="animation-delay:${idx * 60}ms; --type-color: ${color}">
+          <div class="wizard-type-card-icon">${tp.icon}</div>
+          <span class="wizard-type-card-name">${t(tp.nameKey)}</span>
+        </div>`;
+      }).join('')}
+      </div>
     `).join('');
 
   showModal(t('newProject.title'), `
-    <form id="form-project">
+    <form id="form-project" class="wizard-form">
+      <div class="wizard-progress"><div class="wizard-progress-fill" id="wizard-progress-fill"></div></div>
+
       <div class="wizard-step active" data-step="1">
-        <div class="wizard-step-header">${t('newProject.stepType')}</div>
-        <div class="project-type-list">
+        <div class="wizard-type-list">
           ${buildTypeRows()}
         </div>
-        <div class="form-actions">
-          <button type="button" class="btn-cancel" onclick="closeModal()">${t('common.cancel')}</button>
-          <button type="button" class="btn-primary" id="btn-next-step">${t('newProject.next')}</button>
+        <div class="wizard-actions">
+          <button type="button" class="wizard-btn-secondary" onclick="closeModal()">${t('common.cancel')}</button>
+          <button type="button" class="wizard-btn-primary" id="btn-next-step">
+            <span>${t('newProject.next')}</span>
+            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+          </button>
         </div>
       </div>
+
       <div class="wizard-step" data-step="2">
-        <div class="wizard-step-header">${t('newProject.stepConfig')}</div>
-        <div class="wizard-type-badge" id="wizard-type-badge"></div>
-        <div class="form-group">
-          <label>${t('newProject.source')}</label>
-          <div class="source-selector">
-            <div class="source-option selected" data-source="folder">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>
+        <div class="wizard-step2-header">
+          <div class="wizard-type-badge" id="wizard-type-badge"></div>
+          <div class="wizard-source-selector">
+            <button type="button" class="wizard-source-btn selected" data-source="folder">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>
               <span>${t('newProject.sourceFolder')}</span>
-            </div>
-            <div class="source-option" data-source="create">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-1 8h-3v3h-2v-3H9v-2h3V9h2v3h3v2z"/></svg>
+            </button>
+            <button type="button" class="wizard-source-btn" data-source="create">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
               <span>${t('newProject.sourceCreate')}</span>
-            </div>
-            <div class="source-option" data-source="clone">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2v9.67z"/></svg>
+            </button>
+            <button type="button" class="wizard-source-btn" data-source="clone">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2v9.67z"/></svg>
               <span>${t('newProject.sourceClone')}</span>
-            </div>
-          </div>
-        </div>
-        <div class="form-group clone-config" style="display: none;">
-          <label>${t('newProject.repoUrl')}</label>
-          <input type="text" id="inp-repo-url" placeholder="https://github.com/user/repo.git">
-          <div class="github-status-hint" id="github-status-hint"></div>
-        </div>
-        <div class="form-group">
-          <label>${t('newProject.projectName')}</label>
-          <input type="text" id="inp-name" placeholder="${t('newProject.projectNamePlaceholder')}" required>
-        </div>
-        <div class="form-group">
-          <label id="label-path">${t('newProject.projectPath')}</label>
-          <div class="input-with-btn">
-            <input type="text" id="inp-path" placeholder="C:\\chemin\\projet" required>
-            <button type="button" class="btn-browse" id="btn-browse">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>
             </button>
           </div>
         </div>
-        <div class="form-group create-git-config" style="display: none;">
-          <label class="checkbox-label">
-            <input type="checkbox" id="chk-init-git" checked>
-            <span>${t('newProject.initGit')}</span>
-          </label>
+
+        <div class="wizard-fields-group">
+          <div class="wizard-field clone-config" style="display: none;">
+            <label class="wizard-label">${t('newProject.repoUrl')}</label>
+            <input type="text" class="wizard-input" id="inp-repo-url" placeholder="https://github.com/user/repo.git">
+            <div class="github-status-hint" id="github-status-hint"></div>
+          </div>
+          <div class="wizard-field">
+            <label class="wizard-label">${t('newProject.projectName')}</label>
+            <input type="text" class="wizard-input" id="inp-name" placeholder="${t('newProject.projectNamePlaceholder')}" required>
+          </div>
+          <div class="wizard-field">
+            <label class="wizard-label" id="label-path">${t('newProject.projectPath')}</label>
+            <div class="wizard-input-row">
+              <input type="text" class="wizard-input" id="inp-path" placeholder="C:\\chemin\\projet" required>
+              <button type="button" class="wizard-browse-btn" id="btn-browse">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="wizard-field create-git-config" style="display: none;">
+            <label class="wizard-checkbox">
+              <input type="checkbox" id="chk-init-git" checked>
+              <span class="wizard-checkbox-mark"></span>
+              <span>${t('newProject.initGit')}</span>
+            </label>
+          </div>
+          <div class="type-specific-fields">${projectTypes.map(tp => tp.getWizardFields()).filter(Boolean).join('')}</div>
         </div>
-        <div class="type-specific-fields">${projectTypes.map(tp => tp.getWizardFields()).filter(Boolean).join('')}</div>
-        <div class="form-group clone-status" style="display: none;">
+
+        <div class="wizard-field clone-status" style="display: none;">
           <div class="clone-progress">
             <span class="clone-progress-text">${t('newProject.cloning')}</span>
             <div class="clone-progress-bar"><div class="clone-progress-fill"></div></div>
           </div>
         </div>
-        <div class="form-actions">
-          <button type="button" class="btn-cancel" id="btn-prev-step">${t('newProject.back')}</button>
-          <button type="submit" class="btn-primary" id="btn-create-project">${t('newProject.create')}</button>
+        <div class="wizard-actions">
+          <button type="button" class="wizard-btn-secondary" id="btn-prev-step">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+            <span>${t('newProject.back')}</span>
+          </button>
+          <button type="submit" class="wizard-btn-primary" id="btn-create-project">
+            <span>${t('newProject.create')}</span>
+            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+          </button>
         </div>
       </div>
     </form>
@@ -5228,14 +5245,23 @@ document.getElementById('btn-new-project').onclick = () => {
   function goToStep(step) {
     document.querySelectorAll('.wizard-step').forEach(s => s.classList.remove('active'));
     document.querySelector(`.wizard-step[data-step="${step}"]`).classList.add('active');
+    // Update progress bar
+    const fill = document.getElementById('wizard-progress-fill');
+    if (fill) fill.style.width = step === 1 ? '50%' : '100%';
     if (step === 2) {
       const tp = registry.get(selectedType);
+      const color = typeColors[selectedType] || 'var(--accent)';
+      const form = document.getElementById('form-project');
+      // Propagate type color to step 2
+      form.style.setProperty('--type-color', color);
       const badge = document.getElementById('wizard-type-badge');
       if (tp && badge) {
-        badge.innerHTML = `<span class="wizard-type-badge-icon${tp.id !== 'standalone' ? ' ' + tp.id : ''}">${tp.icon}</span><span>${t(tp.nameKey)}</span>`;
+        badge.innerHTML = `<span class="wizard-type-badge-icon">${tp.icon}</span><span class="wizard-type-badge-name">${t(tp.nameKey)}</span>`;
       }
+      // Update progress bar color
+      const fill = document.getElementById('wizard-progress-fill');
+      if (fill) fill.style.background = color;
       // Show/hide type-specific config fields
-      const form = document.getElementById('form-project');
       projectTypes.forEach(handler => {
         if (handler.onWizardTypeSelected) {
           handler.onWizardTypeSelected(form, handler.id === selectedType);
@@ -5253,9 +5279,9 @@ document.getElementById('btn-new-project').onclick = () => {
   document.getElementById('btn-prev-step').onclick = () => goToStep(1);
 
   // Type selection (step 1)
-  document.querySelectorAll('.project-type-row').forEach(row => {
+  document.querySelectorAll('.wizard-type-card').forEach(row => {
     row.onclick = () => {
-      document.querySelectorAll('.project-type-row').forEach(r => r.classList.remove('selected'));
+      document.querySelectorAll('.wizard-type-card').forEach(r => r.classList.remove('selected'));
       row.classList.add('selected');
       selectedType = row.dataset.type;
     };
@@ -5285,9 +5311,9 @@ document.getElementById('btn-new-project').onclick = () => {
   }
 
   // Source selector (folder vs clone)
-  document.querySelectorAll('.source-option').forEach(opt => {
+  document.querySelectorAll('.wizard-source-btn').forEach(opt => {
     opt.onclick = () => {
-      document.querySelectorAll('.source-option').forEach(o => o.classList.remove('selected'));
+      document.querySelectorAll('.wizard-source-btn').forEach(o => o.classList.remove('selected'));
       opt.classList.add('selected');
       selectedSource = opt.dataset.source;
       const isClone = selectedSource === 'clone';

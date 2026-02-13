@@ -6,17 +6,17 @@
 function getWizardFields() {
   return `
     <div class="python-config" style="display:none;">
-      <div class="form-group">
-        <label data-i18n="python.venvPathLabel">Virtual environment path</label>
-        <input type="text" id="python-venv-path" placeholder=".venv" class="form-input" />
-        <small style="color: var(--text-secondary); margin-top: 4px; display: block;" data-i18n="python.venvPathHint">
+      <div class="wizard-field">
+        <label class="wizard-label" data-i18n="python.venvPathLabel">Virtual environment path</label>
+        <input type="text" id="python-venv-path" placeholder=".venv" class="wizard-input" />
+        <small style="color: var(--text-secondary); margin-top: 4px; display: block; font-size: 11px;" data-i18n="python.venvPathHint">
           Leave empty to auto-detect (.venv, venv, env)
         </small>
       </div>
-      <div class="form-group">
-        <label data-i18n="python.mainScriptLabel">Main script</label>
-        <input type="text" id="python-main-script" placeholder="main.py" class="form-input" />
-        <small style="color: var(--text-secondary); margin-top: 4px; display: block;" data-i18n="python.mainScriptHint">
+      <div class="wizard-field">
+        <label class="wizard-label" data-i18n="python.mainScriptLabel">Main script</label>
+        <input type="text" id="python-main-script" placeholder="main.py" class="wizard-input" />
+        <small style="color: var(--text-secondary); margin-top: 4px; display: block; font-size: 11px;" data-i18n="python.mainScriptHint">
           Leave empty to auto-detect
         </small>
       </div>

@@ -11,11 +11,15 @@ const { t } = require('../../../renderer/i18n');
  */
 function getWizardFields() {
   return `
-    <div class="form-group fivem-config" style="display: none;">
-      <label>${t('newProject.launchScript')}</label>
-      <div class="input-with-button">
-        <input type="text" id="inp-fivem-cmd" placeholder="C:\\Serveur\\run.bat">
-        <button type="button" id="btn-browse-fivem" class="btn-browse">${t('newProject.browse')}</button>
+    <div class="fivem-config" style="display: none;">
+      <div class="wizard-field">
+        <label class="wizard-label">${t('newProject.launchScript')}</label>
+        <div class="wizard-input-row">
+          <input type="text" id="inp-fivem-cmd" placeholder="C:\\Serveur\\run.bat" class="wizard-input">
+          <button type="button" id="btn-browse-fivem" class="wizard-browse-btn" title="${t('newProject.browse')}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+          </button>
+        </div>
       </div>
     </div>
   `;

@@ -6,10 +6,10 @@
 function getWizardFields() {
   return `
     <div class="api-config" style="display:none;">
-      <div class="form-group">
-        <label data-i18n="api.devCommandLabel">Dev command</label>
-        <input type="text" id="api-dev-command" placeholder="npm run dev" class="form-input" />
-        <small style="color: var(--text-secondary); margin-top: 4px; display: block;" data-i18n="api.devCommandHint">
+      <div class="wizard-field">
+        <label class="wizard-label" data-i18n="api.devCommandLabel">Dev command</label>
+        <input type="text" id="api-dev-command" placeholder="npm run dev" class="wizard-input" />
+        <small style="color: var(--text-secondary); margin-top: 4px; display: block; font-size: 11px;" data-i18n="api.devCommandHint">
           Leave empty to auto-detect (Express, FastAPI, Django, etc.)
         </small>
       </div>
