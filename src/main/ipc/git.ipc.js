@@ -166,7 +166,7 @@ function registerGitHandlers() {
       const filePaths = files.map(f => `"${f.path}"`).join(' ');
       const diffContent = await execGit(projectPath, `diff HEAD -- ${filePaths}`, 15000) || '';
 
-      const result = generateCommitMessage(files, diffContent);
+      const result = await generateCommitMessage(files, diffContent);
       return { success: true, ...result };
     } catch (e) {
       return { success: false, error: e.message };
