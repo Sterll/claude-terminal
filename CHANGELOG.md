@@ -2,6 +2,30 @@
 
 All notable changes to Claude Terminal are documented in this file.
 
+## [0.7.4] - 2026-02-13
+
+### Added
+- **Python project type**: auto-detect Python version, virtual environment, dependencies, and entry point
+- **API project type**: integrated PTY console, route tester with variables, framework detection (Express, FastAPI, Django, Flask, etc.)
+- **Per-project settings**: dedicated modal for project-specific configuration
+- **Git commit graph**: visual branch/author filters and commit graph in history panel
+- **AI commit messages via GitHub Models API**: replaces Claude CLI approach, with toggle in settings
+- **Custom notifications**: BrowserWindow-based notifications replacing native OS notifications
+- **Session resume redesign**: improved conversation resume panel with optimizations
+
+### Changed
+- Git changes panel redesigned with tracked/untracked collapsible sections
+- New project wizard completely redesigned: card grid, progress bar, dynamic type colors
+- API routes panel redesigned with improved tester UI
+- Terminal PTY output batching improved for large buffers
+- Session search optimized with materialization and O(1) lookup
+
+### Fixed
+- Python detection now triggers on sidebar and dashboard render
+- Quick actions dropdown properly closes other dropdowns before opening
+- Git commit message generation properly awaits async call
+- Settings saved synchronously before language reload
+
 ## [0.7.3] - 2026-02-12
 
 ### Added

@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/downloads/Sterll/claude-terminal/total?color=d97706&label=downloads" alt="Downloads" />
-  <img src="https://img.shields.io/badge/version-0.7.3-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-0.7.4-orange" alt="Version" />
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-blue" alt="Windows" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="License" />
   <img src="https://img.shields.io/badge/electron-28-purple" alt="Electron" />
@@ -37,7 +37,8 @@
 - Customize each project with colors and emoji icons
 - Quick Actions toolbar: configurable one-click commands per project (build, test, deploy, custom scripts...)
 - Built-in file explorer with tree view, multi-select, search, git status indicators, and inline rename
-- Modular project type system (standard, FiveM, webapp)
+- Modular project type system (standard, FiveM, webapp, Python, API)
+- Per-project settings modal
 
 ### Git Integration
 - **Branches**: switch, create, delete from the toolbar
@@ -45,7 +46,8 @@
 - **Changes panel**: view staged/unstaged/untracked files, stage/unstage and commit
 - **Commit history**: browse commits, view diffs, cherry-pick and revert
 - **Stash management**: save, apply, drop stashes
-- **AI commit messages**: auto-generate conventional commit messages using Claude
+- **AI commit messages**: auto-generate conventional commit messages via GitHub Models API
+- **Commit history**: branch/author filters and commit graph visualization
 - **Pull Requests**: create PRs directly from the app
 
 ### GitHub Integration
@@ -113,6 +115,9 @@
 - Custom NSIS installer with branded images
 - FiveM server management (launch, integrated console, resource scanning)
 - Web app management with framework auto-detection
+- Python project detection (version, venv, dependencies, entry point)
+- API project type with integrated route tester, variables, and console
+- Custom BrowserWindow notifications (replaces native OS notifications)
 
 ---
 
@@ -276,9 +281,17 @@ claude-terminal/
 │       │   ├── main/          # IPC & service
 │       │   ├── renderer/      # Dashboard, state, terminal panel, wizard
 │       │   └── i18n/          # en.json, fr.json
-│       └── webapp/            # Web app projects
-│           ├── main/          # IPC & service
-│           ├── renderer/      # Dashboard, state, terminal panel, wizard
+│       ├── webapp/            # Web app projects
+│       │   ├── main/          # IPC & service
+│       │   ├── renderer/      # Dashboard, state, terminal panel, wizard
+│       │   └── i18n/          # en.json, fr.json
+│       ├── python/            # Python projects (detection only)
+│       │   ├── main/          # Detection service
+│       │   ├── renderer/      # Dashboard, state, wizard
+│       │   └── i18n/          # en.json, fr.json
+│       └── api/               # API/backend projects
+│           ├── main/          # PTY service, route detection
+│           ├── renderer/      # Dashboard, state, terminal panel, route tester, wizard
 │           └── i18n/          # en.json, fr.json
 ├── scripts/
 │   └── build-renderer.js     # esbuild bundler

@@ -32,5 +32,5 @@ If applicable, add screenshots.
 
 - Windows version: [e.g. Windows 11 23H2]
 - Node.js version: [e.g. 20.11.0]
-- Claude Terminal version: [e.g. 0.7.3]
+- Claude Terminal version: [e.g. 0.7.4]
 - Claude Code version: [e.g. 1.0.33]
