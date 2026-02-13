@@ -8,6 +8,12 @@ const fs = require('fs');
 const nodePath = require('path');
 const os = require('os');
 
+// Set App User Model ID ASAP — must be before any window/notification
+// Must match electron-builder.config.js appId for installed builds
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.yanis.claude-terminal');
+}
+
 // ============================================
 // GLOBAL ERROR HANDLERS - Must be very first!
 // ============================================
@@ -73,16 +79,16 @@ function bootstrapApp() {
     registerQuickPickerHandlers
   } = require('./windows/QuickPickerWindow');
   const {
+    registerNotificationHandlers
+  } = require('./windows/NotificationWindow');
+  const {
     createTray,
     registerTrayHandlers
   } = require('./windows/TrayManager');
   const { updaterService } = require('./services');
   const { ensureDataDir } = require('./utils/paths');
 
-  // Set App User Model ID for Windows notifications
-  if (process.platform === 'win32') {
-    app.setAppUserModelId('Anthropic.ClaudeTerminal');
-  }
+
 
   // Handle second instance attempt - show existing window
   app.on('second-instance', (event, commandLine, workingDirectory) => {
@@ -113,6 +119,7 @@ function bootstrapApp() {
     // Register IPC handlers
     registerAllHandlers(mainWindow);
     registerQuickPickerHandlers();
+    registerNotificationHandlers();
     registerTrayHandlers();
 
     // Create tray

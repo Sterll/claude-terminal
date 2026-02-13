@@ -3,7 +3,7 @@
  * Handles dialog and system-related IPC communication
  */
 
-const { ipcMain, dialog, shell, Notification, app } = require('electron');
+const { ipcMain, dialog, shell, app } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const updaterService = require('../services/UpdaterService');
@@ -87,32 +87,10 @@ function registerDialogHandlers() {
     shell.openExternal(url);
   });
 
-  // Show notification
-  ipcMain.on('show-notification', (event, { title, body, terminalId }) => {
-    if (!Notification.isSupported()) return;
-
-    // Try to find icon
-    let iconPath = path.join(__dirname, '..', '..', '..', 'assets', 'icon.ico');
-    if (!fs.existsSync(iconPath)) {
-      iconPath = undefined;
-    }
-
-    const notification = new Notification({
-      title,
-      body,
-      icon: iconPath,
-      silent: false
-    });
-
-    notification.on('click', () => {
-      if (mainWindow) {
-        mainWindow.show();
-        mainWindow.focus();
-        mainWindow.webContents.send('notification-clicked', { terminalId });
-      }
-    });
-
-    notification.show();
+  // Show notification (custom BrowserWindow)
+  ipcMain.on('show-notification', (event, params) => {
+    const { showNotification } = require('../windows/NotificationWindow');
+    showNotification(params);
   });
 
   // Get app version

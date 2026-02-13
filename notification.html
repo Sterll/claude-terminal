@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Notification</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: transparent;
+      overflow: hidden;
+      -webkit-app-region: no-drag;
+    }
+
+    .notification {
+      position: relative;
+      background: #161616;
+      border: 1px solid #262626;
+      border-radius: 8px;
+      display: flex;
+      gap: 12px;
+      padding: 14px;
+      overflow: hidden;
+      animation: notif-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    }
+
+    .notification.exit {
+      animation: notif-slide-out 0.3s cubic-bezier(0.7, 0, 0.84, 0) forwards;
+    }
+
+    @keyframes notif-slide-in {
+      from { transform: translateX(110%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    @keyframes notif-slide-out {
+      from { transform: translateX(0); opacity: 1; }
+      to { transform: translateX(110%); opacity: 0; }
+    }
+
+    /* Icon — bare, no background pill */
+    .notif-icon {
+      width: 28px;
+      height: 28px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 1px;
+    }
+    .notif-icon svg { width: 17px; height: 17px; }
+    .type-done .notif-icon { color: var(--accent, #d97706); }
+    .type-permission .notif-icon { color: #eab308; }
+    .type-question .notif-icon { color: #3b82f6; }
+
+    /* Content */
+    .notif-content {
+      flex: 1;
+      min-width: 0;
+      position: relative;
+    }
+
+    .notif-title {
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+      font-size: 12px;
+      font-weight: 600;
+      color: #e8e8e8;
+      margin-bottom: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding-right: 20px;
+    }
+
+    .notif-body {
+      font-size: 11.5px;
+      color: #707070;
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* Input */
+    .notif-input {
+      margin-top: 8px;
+      display: flex;
+      gap: 6px;
+    }
+
+    .notif-input input {
+      flex: 1;
+      background: #0e0e0e;
+      border: 1px solid #2a2a2a;
+      border-radius: 5px;
+      color: #d4d4d4;
+      font-family: 'Cascadia Code', 'Consolas', monospace;
+      font-size: 11.5px;
+      padding: 6px 10px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .notif-input input:focus {
+      border-color: #3b82f6;
+    }
+
+    .notif-input input::placeholder {
+      color: #3a3a3a;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+
+    /* Actions */
+    .notif-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .btn {
+      padding: 5px 14px;
+      border: none;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn:active { opacity: 0.75; }
+
+    .btn-primary {
+      background: var(--accent, #d97706);
+      color: #0a0a0a;
+    }
+    .btn-primary:hover {
+      filter: brightness(1.1);
+    }
+
+    .btn-danger {
+      background: transparent;
+      color: #777;
+      border: 1px solid #2a2a2a;
+    }
+    .btn-danger:hover {
+      border-color: #ef4444;
+      color: #ef4444;
+    }
+
+    .btn-send {
+      background: #3b82f6;
+      color: #fff;
+    }
+    .btn-send:hover {
+      filter: brightness(1.1);
+    }
+
+    /* Close */
+    .notif-close {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 18px;
+      height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      background: transparent;
+      color: #333;
+      cursor: pointer;
+      border-radius: 3px;
+      font-size: 13px;
+      z-index: 2;
+      transition: color 0.15s;
+      opacity: 0;
+    }
+    .notification:hover .notif-close { opacity: 1; }
+    .notif-close:hover { color: #999; }
+
+    /* Progress bar */
+    .notif-progress {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: #1a1a1a;
+      overflow: hidden;
+      border-radius: 0 0 8px 8px;
+    }
+
+    .notif-progress-bar {
+      height: 100%;
+      background: var(--accent, #d97706);
+      opacity: 0.5;
+      animation: progress-shrink var(--dismiss-time, 8000ms) linear forwards;
+    }
+
+    @keyframes progress-shrink {
+      from { width: 100%; }
+      to { width: 0%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="notification" id="notification">
+    <div class="notif-icon" id="icon"></div>
+    <div class="notif-content">
+      <div class="notif-title" id="title"></div>
+      <div class="notif-body" id="body"></div>
+      <div id="extra"></div>
+    </div>
+    <button class="notif-close" id="closeBtn">&times;</button>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+
+    // Parse data from query params
+    const params = new URLSearchParams(window.location.search);
+    const data = JSON.parse(decodeURIComponent(params.get('data')));
+    const { type, title, body, terminalId, notifId, autoDismiss, labels } = data;
+
+    // Fallback labels if not provided
+    const l = Object.assign({
+      show: 'Show', allow: 'Allow', deny: 'Deny',
+      send: 'Send', placeholder: 'Your answer...'
+    }, labels || {});
+
+    // Load accent color
+    try {
+      const settingsFile = path.join(os.homedir(), '.claude-terminal', 'settings.json');
+      if (fs.existsSync(settingsFile)) {
+        const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+        if (settings.accentColor) {
+          document.documentElement.style.setProperty('--accent', settings.accentColor);
+        }
+      }
+    } catch (_) {}
+
+    // Setup notification
+    const notifEl = document.getElementById('notification');
+    const titleEl = document.getElementById('title');
+    const bodyEl = document.getElementById('body');
+    const iconEl = document.getElementById('icon');
+    const extraEl = document.getElementById('extra');
+
+    notifEl.classList.add('type-' + type);
+    titleEl.textContent = title;
+    bodyEl.textContent = body;
+
+    // Icons per type — clean stroke icons
+    const icons = {
+      done: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
+      permission: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+      question: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'
+    };
+    iconEl.innerHTML = icons[type] || icons.done;
+
+    // Build actions per type
+    if (type === 'done') {
+      extraEl.innerHTML =
+        '<div class="notif-actions">' +
+          '<button class="btn btn-primary" id="btnShow">' + l.show + '</button>' +
+        '</div>';
+      document.getElementById('btnShow').addEventListener('click', function() {
+        sendAction('show');
+        dismiss();
+      });
+
+      // Progress bar
+      if (autoDismiss > 0) {
+        const progressEl = document.createElement('div');
+        progressEl.className = 'notif-progress';
+        progressEl.innerHTML = '<div class="notif-progress-bar" style="--dismiss-time: ' + autoDismiss + 'ms"></div>';
+        notifEl.appendChild(progressEl);
+        setTimeout(function() { dismiss(); }, autoDismiss);
+      }
+    } else if (type === 'permission') {
+      extraEl.innerHTML =
+        '<div class="notif-actions">' +
+          '<button class="btn btn-danger" id="btnDeny">' + l.deny + '</button>' +
+          '<button class="btn btn-primary" id="btnAllow">' + l.allow + '</button>' +
+        '</div>';
+      document.getElementById('btnDeny').addEventListener('click', function() {
+        sendAction('deny');
+        dismiss();
+      });
+      document.getElementById('btnAllow').addEventListener('click', function() {
+        sendAction('allow');
+        dismiss();
+      });
+    } else if (type === 'question') {
+      extraEl.innerHTML =
+        '<div class="notif-input">' +
+          '<input type="text" id="answerInput" placeholder="' + l.placeholder + '" autofocus>' +
+          '<button class="btn btn-send" id="btnSend">' + l.send + '</button>' +
+        '</div>';
+      var input = document.getElementById('answerInput');
+      var btnSend = document.getElementById('btnSend');
+
+      function submitAnswer() {
+        var value = input.value.trim();
+        if (!value) return;
+        sendAction('answer', value);
+        dismiss();
+      }
+
+      btnSend.addEventListener('click', submitAnswer);
+      input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          submitAnswer();
+        }
+      });
+
+      // Auto-focus
+      setTimeout(function() { input.focus(); }, 100);
+    }
+
+    // Close button
+    document.getElementById('closeBtn').addEventListener('click', function() { dismiss(); });
+
+    // Escape key
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') dismiss();
+    });
+
+    // Send action to main process
+    function sendAction(action, value) {
+      ipcRenderer.send('notification-action', { action: action, terminalId: terminalId, notifId: notifId, value: value });
+    }
+
+    // Dismiss with exit animation
+    var dismissed = false;
+    function dismiss() {
+      if (dismissed) return;
+      dismissed = true;
+      notifEl.classList.add('exit');
+      setTimeout(function() {
+        ipcRenderer.send('notification-dismiss', { notifId: notifId });
+      }, 300);
+    }
+  </script>
+</body>
+</html>

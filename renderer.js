@@ -551,10 +551,18 @@ if (settingsState.get().reduceMotion) {
 }
 
 // ========== NOTIFICATIONS ==========
-function showNotification(title, body, terminalId) {
+function showNotification(type, title, body, terminalId) {
   if (!localState.notificationsEnabled) return;
   if (document.hasFocus() && terminalsState.get().activeTerminal === terminalId) return;
-  api.notification.show({ title, body, terminalId });
+  const autoDismiss = type === 'done' ? 8000 : 0;
+  const labels = {
+    show: t('terminals.notifBtnShow'),
+    allow: t('terminals.notifBtnAllow'),
+    deny: t('terminals.notifBtnDeny'),
+    send: t('terminals.notifBtnSend'),
+    placeholder: t('terminals.notifPlaceholder')
+  };
+  api.notification.show({ type, title, body, terminalId, autoDismiss, labels });
 }
 
 api.notification.onClicked(({ terminalId }) => {
@@ -569,6 +577,10 @@ api.notification.onClicked(({ terminalId }) => {
     TerminalManager.setActiveTerminal(terminalId);
     document.querySelector('[data-tab="claude"]')?.click();
   }
+});
+
+api.notification.onTerminalInput(({ terminalId, data }) => {
+  if (terminalId) api.terminal.input({ id: terminalId, data });
 });
 
 // ========== GIT STATUS ==========
@@ -5760,11 +5772,12 @@ filterBtnChanges.onclick = (e) => {
     // Position panel aligned to Changes button
     const btnRect = filterBtnChanges.getBoundingClientRect();
     const headerRect = gitChangesPanel.parentElement.getBoundingClientRect();
-    const panelWidth = 450;
+    const panelWidth = 480;
     let left = btnRect.left - headerRect.left;
-    // Ensure panel doesn't overflow right edge
-    if (left + panelWidth > headerRect.width) {
-      left = Math.max(0, headerRect.width - panelWidth);
+    // Ensure panel doesn't overflow right edge of header or viewport
+    const maxRight = Math.min(headerRect.width, window.innerWidth - headerRect.left);
+    if (left + panelWidth > maxRight) {
+      left = Math.max(0, maxRight - panelWidth);
     }
     gitChangesPanel.style.left = left + 'px';
 

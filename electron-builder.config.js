@@ -14,6 +14,7 @@ module.exports = {
     "index.html",
     "quick-picker.html",
     "setup-wizard.html",
+    "notification.html",
     "styles.css",
     "dist/renderer.bundle.js",
     "dist/renderer.bundle.js.map",

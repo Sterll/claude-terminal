@@ -149,6 +149,7 @@ const postEnterExtended = new Set();     // ids where Enter was pressed
 const postSpinnerExtended = new Set();   // ids where spinner was seen
 const terminalSubstatus = new Map();     // id -> 'thinking' | 'tool_calling'
 const lastTerminalData = new Map();      // id -> timestamp of last PTY data
+const terminalContext = new Map();        // id -> { taskName, lastTool, toolCount, duration }
 
 /**
  * Scan terminal buffer for definitive completion signals.
@@ -160,7 +161,7 @@ const lastTerminalData = new Map();      // id -> timestamp of last PTY data
  * The "for" keyword after the random word is the 100% definitive "done" signal.
  * The "·" prefix with "…" ellipsis is the 100% definitive "still working" signal.
  *
- * @returns {'done'|'working'|'permission'|'tool_result'|null}
+ * @returns {{ signal: string, duration?: string } | null}
  */
 function detectCompletionSignal(terminal) {
   if (!terminal?.buffer?.active) return null;
@@ -182,16 +183,17 @@ function detectCompletionSignal(terminal) {
   const block = lines.join('\n');
 
   // 100% DONE: "✳ Churned for 1m 51s" — only appears when response is complete
-  if (/✳\s+\S+\s+for\s+(\d+h\s+)?(\d+m\s+)?\d+s/.test(block)) return 'done';
+  const doneMatch = block.match(/✳\s+\S+\s+for\s+((?:\d+h\s+)?(?:\d+m\s+)?\d+s)/);
+  if (doneMatch) return { signal: 'done', duration: doneMatch[1] };
 
   // 100% WORKING: "· Hatching… (1m 46s · ↓ 6.2k tokens)" — spinner with ellipsis
-  if (/·\s+\S+…/.test(block)) return 'working';
+  if (/·\s+\S+…/.test(block)) return { signal: 'working' };
 
   // Permission prompt = Claude needs user attention now
-  if (/\b(Allow|Approve|yes\/no|y\/n)\b/i.test(block)) return 'permission';
+  if (/\b(Allow|Approve|yes\/no|y\/n)\b/i.test(block)) return { signal: 'permission' };
 
   // Tool result marker (⎿) as most recent content = Claude likely continues
-  if (lines[0].includes('⎿')) return 'tool_result';
+  if (lines[0].includes('⎿')) return { signal: 'tool_result' };
 
   return null;
 }
@@ -228,16 +230,20 @@ function finalizeReady(id) {
   const isSilent = !lastData || Date.now() - lastData >= SILENCE_THRESHOLD_MS;
 
   if (termData?.terminal) {
-    const signal = detectCompletionSignal(termData.terminal);
+    const completion = detectCompletionSignal(termData.terminal);
 
     // "✳ Churned for 1m 51s" → 100% done, no doubt
-    if (signal === 'done') {
+    if (completion?.signal === 'done') {
+      if (completion.duration) {
+        const ctx = terminalContext.get(id);
+        if (ctx) ctx.duration = completion.duration;
+      }
       declareReady(id);
       return;
     }
 
     // "· Hatching…" → 100% still working, recheck
-    if (signal === 'working') {
+    if (completion?.signal === 'working') {
       readyDebounceTimers.set(id, setTimeout(() => {
         readyDebounceTimers.delete(id);
         finalizeReady(id);
@@ -246,13 +252,13 @@ function finalizeReady(id) {
     }
 
     // Permission prompt → needs user attention now
-    if (signal === 'permission') {
+    if (completion?.signal === 'permission') {
       declareReady(id);
       return;
     }
 
     // Tool result + data still flowing → Claude is between tools
-    if (signal === 'tool_result' && !isSilent) {
+    if (completion?.signal === 'tool_result' && !isSilent) {
       readyDebounceTimers.set(id, setTimeout(() => {
         readyDebounceTimers.delete(id);
         finalizeReady(id);
@@ -279,6 +285,12 @@ function declareReady(id) {
   postEnterExtended.delete(id);
   terminalSubstatus.delete(id);
   updateTerminalStatus(id, 'ready');
+  // Reset tool tracking after notification (taskName kept for next cycle)
+  const ctx = terminalContext.get(id);
+  if (ctx) {
+    ctx.toolCount = 0;
+    ctx.lastTool = null;
+  }
 }
 
 function cancelScheduledReady(id) {
@@ -335,6 +347,15 @@ function handleClaudeTitleChange(id, title, options = {}) {
     const parsed = parseClaudeTitle(title);
     terminalSubstatus.set(id, parsed.tool ? 'tool_calling' : 'thinking');
 
+    // Track rich context
+    if (!terminalContext.has(id)) terminalContext.set(id, { taskName: null, lastTool: null, toolCount: 0, duration: null });
+    const ctx = terminalContext.get(id);
+    if (parsed.taskName) ctx.taskName = parsed.taskName;
+    if (parsed.tool) {
+      ctx.lastTool = parsed.tool;
+      ctx.toolCount++;
+    }
+
     // Auto-name tab from Claude's task name (not tool names)
     if (parsed.taskName) {
       updateTerminalTabName(id, parsed.taskName);
@@ -346,6 +367,8 @@ function handleClaudeTitleChange(id, title, options = {}) {
     // ── Ready candidate: Claude may be done ──
     const parsed = parseClaudeTitle(title);
     if (parsed.taskName) {
+      if (!terminalContext.has(id)) terminalContext.set(id, { taskName: null, lastTool: null, toolCount: 0, duration: null });
+      terminalContext.get(id).taskName = parsed.taskName;
       updateTerminalTabName(id, parsed.taskName);
     }
 
@@ -359,8 +382,8 @@ function handleClaudeTitleChange(id, title, options = {}) {
       if (!readyDebounceTimers.has(id)) return;
       const termData = getTerminal(id);
       if (termData?.terminal) {
-        const signal = detectCompletionSignal(termData.terminal);
-        if (signal === 'done' || signal === 'permission') {
+        const completion = detectCompletionSignal(termData.terminal);
+        if (completion?.signal === 'done' || completion?.signal === 'permission') {
           cancelScheduledReady(id);
           declareReady(id);
         }
@@ -758,18 +781,30 @@ function updateTerminalStatus(id, status) {
     if (status === 'ready' && previousStatus === 'working') {
       if (callbacks.onNotification) {
         const projectName = termData.project?.name || termData.name;
-        const ctx = termData.terminal ? extractTerminalContext(termData.terminal) : null;
-
+        const bufCtx = termData.terminal ? extractTerminalContext(termData.terminal) : null;
+        const richCtx = terminalContext.get(id);
+        const label = richCtx?.taskName || projectName;
+        let notifTitle = 'Claude Terminal';
         let body;
-        if (ctx?.type === 'question' && ctx.text) {
-          body = `${projectName} — ${ctx.text}`;
-        } else if (ctx?.type === 'permission') {
-          body = `${projectName} — ${t('terminals.notifPermission')}`;
+
+        let type = 'done';
+        if (bufCtx?.type === 'question' && bufCtx.text) {
+          type = 'question';
+          body = bufCtx.text;
+          notifTitle = label;
+        } else if (bufCtx?.type === 'permission') {
+          type = 'permission';
+          body = bufCtx.text || t('terminals.notifPermission');
+          notifTitle = label;
+        } else if (richCtx?.toolCount > 0) {
+          body = t('terminals.notifToolsDone', { count: richCtx.toolCount });
         } else {
-          body = `${projectName} — ${t('terminals.notifDone')}`;
+          body = t('terminals.notifDone');
         }
 
-        callbacks.onNotification('Claude Terminal', body, id);
+        if (richCtx?.taskName && type === 'done') notifTitle = projectName;
+
+        callbacks.onNotification(type, notifTitle, body, id);
       }
     }
     // Re-render project list to update terminal stats
@@ -898,6 +933,7 @@ function closeTerminal(id) {
   postSpinnerExtended.delete(id);
   terminalSubstatus.delete(id);
   lastTerminalData.delete(id);
+  terminalContext.delete(id);
 
   // Kill and cleanup
   if (termData && termData.type === 'file') {
