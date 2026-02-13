@@ -254,17 +254,18 @@ async function renderRoutesView(wrapper, projectIndex, project, deps) {
       <!-- Left: Route list -->
       <div class="api-routes-sidebar">
         <div class="api-routes-toolbar">
-          <span class="api-routes-count">${countLabel}</span>
+          <div class="api-routes-toolbar-left">
+            <span class="api-routes-count">${routes.length || 0}</span>
+            <span class="api-routes-count-label">${routes.length === 1 ? 'route' : 'routes'}</span>
+          </div>
           <div class="api-routes-toolbar-actions">
             ${autoDetect ? `
               <button class="api-routes-scan-btn" title="${t('api.scanRoutes')}">
-                <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
-                ${t('api.scanRoutes')}
+                <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
               </button>
             ` : `
               <button class="api-routes-add-btn" title="${t('api.addRoute')}">
-                <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-                ${t('api.addRoute')}
+                <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
               </button>
             `}
             <label class="api-routes-toggle" title="${autoDetect ? t('api.autoDetect') : t('api.manualMode')}">
@@ -278,19 +279,23 @@ async function renderRoutesView(wrapper, projectIndex, project, deps) {
         ${hasVars && autoDetect ? buildVariablesPanel(unresolvedVarNames, savedVars, t) : ''}
 
         <div class="api-routes-filter">
-          <input type="text" class="api-routes-search" placeholder="Filter routes..." />
+          <svg class="api-routes-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          <input type="text" class="api-routes-search" placeholder="Filter..." />
         </div>
         <div class="api-routes-list">
           ${routes.length === 0 ? `
             <div class="api-routes-empty">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="36" height="36" style="opacity:0.15"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-              <span>${autoDetect ? t('api.noRoutesHint') : t('api.manualRoutesHint')}</span>
+              <div class="api-routes-empty-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" width="40" height="40"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5" opacity="0.5"/><path d="M2 12l10 5 10-5" opacity="0.3"/></svg>
+              </div>
+              <span class="api-routes-empty-text">${autoDetect ? t('api.noRoutesHint') : t('api.manualRoutesHint')}</span>
             </div>
           ` : routes.map((r, i) => {
             const resolved = !hasUnresolvedVars(r.displayPath);
             const methodColor = METHOD_COLORS[r.method] || '#8b949e';
             return `
-            <div class="api-route-item ${resolved ? '' : 'unresolved'}" data-index="${i}" data-method="${r.method}" data-path="${escapeHtml(r.displayPath)}" data-raw-path="${escapeHtml(r.rawPath)}" ${r.file ? `title="${escapeHtml(r.file)}:${r.line}"` : ''}>
+            <div class="api-route-item ${resolved ? '' : 'unresolved'}" style="--route-color:${methodColor}" data-index="${i}" data-method="${r.method}" data-path="${escapeHtml(r.displayPath)}" data-raw-path="${escapeHtml(r.rawPath)}" ${r.file ? `title="${escapeHtml(r.file)}:${r.line}"` : ''}>
+              <span class="api-route-accent"></span>
               ${methodBadge(r.method)}
               <span class="api-route-path">${formatRoutePath(r.displayPath, r.rawPath, savedVars)}</span>
               ${r.handler ? `<span class="api-route-handler">${escapeHtml(r.handler)}</span>` : ''}
@@ -329,7 +334,9 @@ async function renderRoutesView(wrapper, projectIndex, project, deps) {
               <option value="DELETE">DELETE</option>
             </select>
             <input type="text" class="api-custom-url-input" placeholder="${t('api.urlPlaceholder')}" value="${baseUrl ? baseUrl + '/' : ''}" />
-            <button class="api-custom-send-btn">${t('api.send')}</button>
+            <button class="api-custom-send-btn">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            </button>
           </div>
         </div>
       </div>
@@ -338,7 +345,7 @@ async function renderRoutesView(wrapper, projectIndex, project, deps) {
       <div class="api-tester-panel">
         <div class="api-tester-empty">
           <div class="api-tester-empty-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" width="48" height="48"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.8" width="56" height="56"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
           </div>
           <span class="api-tester-empty-text">${t('api.noResponse')}</span>
           <span class="api-tester-empty-hint">${t('api.ctrlEnterSend')}</span>
@@ -541,57 +548,67 @@ function openTester(routesView, projectIndex, method, url, deps) {
   const panel = routesView.querySelector('.api-tester-panel');
   const needsBody = ['POST', 'PUT', 'PATCH'].includes(method);
 
+  const methodColor = METHOD_COLORS[method] || '#8b949e';
   panel.innerHTML = `
     <div class="api-tester-request">
       <div class="api-tester-url-bar">
-        <select class="api-tester-method">
+        <select class="api-tester-method" style="--method-color:${methodColor}">
           ${['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'].map(m =>
             `<option value="${m}" ${m === method ? 'selected' : ''}>${m}</option>`
           ).join('')}
         </select>
         <input type="text" class="api-tester-url" value="${escapeHtml(url)}" spellcheck="false" />
-        <button class="api-tester-send-btn">${t('api.send')}</button>
+        <button class="api-tester-send-btn">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+          <span>${t('api.send')}</span>
+        </button>
       </div>
 
-      <!-- Headers -->
-      <div class="api-tester-section">
-        <div class="api-tester-section-header" data-toggle="headers">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12" class="api-tester-chevron"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-          ${t('api.headers')}
-          <button class="api-tester-add-header-btn" title="${t('api.addHeader')}">+</button>
-        </div>
-        <div class="api-tester-headers-list">
-          <div class="api-tester-header-row">
-            <input type="text" class="api-tester-header-key" value="Content-Type" spellcheck="false" />
-            <input type="text" class="api-tester-header-val" value="application/json" spellcheck="false" />
-            <button class="api-tester-header-del">&times;</button>
-          </div>
-          <div class="api-tester-header-row">
-            <input type="text" class="api-tester-header-key" placeholder="Authorization" spellcheck="false" />
-            <input type="text" class="api-tester-header-val" placeholder="Bearer token..." spellcheck="false" />
-            <button class="api-tester-header-del">&times;</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Body -->
-      ${needsBody ? `
+      <div class="api-tester-sections">
+        <!-- Headers -->
         <div class="api-tester-section">
-          <div class="api-tester-section-header" data-toggle="body">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12" class="api-tester-chevron open"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-            ${t('api.body')}
+          <div class="api-tester-section-header" data-toggle="headers">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="10" height="10" class="api-tester-chevron"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+            <span class="api-tester-section-title">${t('api.headers')}</span>
+            <span class="api-tester-section-count">2</span>
+            <button class="api-tester-add-header-btn" title="${t('api.addHeader')}">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="10" height="10"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            </button>
           </div>
-          <div class="api-tester-body-section">
-            <textarea class="api-tester-body" placeholder='${t('api.requestBody')}' rows="6" spellcheck="false">{\n  \n}</textarea>
+          <div class="api-tester-headers-list">
+            <div class="api-tester-header-row">
+              <input type="text" class="api-tester-header-key" value="Content-Type" spellcheck="false" />
+              <input type="text" class="api-tester-header-val" value="application/json" spellcheck="false" />
+              <button class="api-tester-header-del">&times;</button>
+            </div>
+            <div class="api-tester-header-row">
+              <input type="text" class="api-tester-header-key" placeholder="Authorization" spellcheck="false" />
+              <input type="text" class="api-tester-header-val" placeholder="Bearer token..." spellcheck="false" />
+              <button class="api-tester-header-del">&times;</button>
+            </div>
           </div>
         </div>
-      ` : ''}
+
+        <!-- Body -->
+        ${needsBody ? `
+          <div class="api-tester-section">
+            <div class="api-tester-section-header" data-toggle="body">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="10" height="10" class="api-tester-chevron open"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+              <span class="api-tester-section-title">${t('api.body')}</span>
+            </div>
+            <div class="api-tester-body-section">
+              <textarea class="api-tester-body" placeholder='${t('api.requestBody')}' rows="6" spellcheck="false">{\n  \n}</textarea>
+            </div>
+          </div>
+        ` : ''}
+      </div>
     </div>
 
     <!-- Response -->
     <div class="api-tester-response">
       <div class="api-tester-response-placeholder">
-        <span style="opacity:0.4">${t('api.noResponse')}</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" width="32" height="32" style="opacity:0.08"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        <span>${t('api.ctrlEnterSend')}</span>
       </div>
     </div>
   `;
@@ -617,6 +634,12 @@ function bindTesterEvents(panel, projectIndex, deps) {
     };
   });
 
+  const updateHeaderCount = () => {
+    const count = panel.querySelectorAll('.api-tester-header-row').length;
+    const countEl = panel.querySelector('.api-tester-section-count');
+    if (countEl) countEl.textContent = count;
+  };
+
   panel.querySelector('.api-tester-add-header-btn').onclick = (e) => {
     e.stopPropagation();
     const list = panel.querySelector('.api-tester-headers-list');
@@ -628,16 +651,20 @@ function bindTesterEvents(panel, projectIndex, deps) {
       <button class="api-tester-header-del">&times;</button>
     `;
     list.appendChild(row);
-    row.querySelector('.api-tester-header-del').onclick = () => row.remove();
+    row.querySelector('.api-tester-header-del').onclick = () => { row.remove(); updateHeaderCount(); };
     row.querySelector('.api-tester-header-key').focus();
+    updateHeaderCount();
   };
 
   panel.querySelectorAll('.api-tester-header-del').forEach(btn => {
-    btn.onclick = () => btn.parentElement.remove();
+    btn.onclick = () => { btn.parentElement.remove(); updateHeaderCount(); };
   });
 
   panel.querySelector('.api-tester-method').onchange = () => {
-    const method = panel.querySelector('.api-tester-method').value;
+    const methodEl = panel.querySelector('.api-tester-method');
+    const method = methodEl.value;
+    const mColor = METHOD_COLORS[method] || '#8b949e';
+    methodEl.style.setProperty('--method-color', mColor);
     const bodySection = panel.querySelector('.api-tester-body-section')?.closest('.api-tester-section');
     if (bodySection) {
       bodySection.style.display = ['POST','PUT','PATCH'].includes(method) ? '' : 'none';
@@ -673,8 +700,9 @@ async function sendRequest(panel, projectIndex, deps) {
   const sendBtn = panel.querySelector('.api-tester-send-btn');
   const responseDiv = panel.querySelector('.api-tester-response');
   sendBtn.disabled = true;
-  sendBtn.textContent = t('api.sending');
-  responseDiv.innerHTML = '<div class="api-tester-response-placeholder"><div class="api-loading-dots"><span></span><span></span><span></span></div></div>';
+  sendBtn.classList.add('sending');
+  sendBtn.innerHTML = `<div class="api-loading-dots"><span></span><span></span><span></span></div><span>${t('api.sending')}</span>`;
+  responseDiv.innerHTML = '<div class="api-tester-response-placeholder"><div class="api-loading-dots" style="opacity:0.6"><span></span><span></span><span></span></div></div>';
 
   try {
     const result = await apiElectron.api.testRequest({ url, method, headers, body });
@@ -692,7 +720,8 @@ async function sendRequest(panel, projectIndex, deps) {
   }
 
   sendBtn.disabled = false;
-  sendBtn.textContent = t('api.send');
+  sendBtn.classList.remove('sending');
+  sendBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg><span>${t('api.send')}</span>`;
 }
 
 function renderResponse(container, result, t) {
@@ -719,26 +748,34 @@ function renderResponse(container, result, t) {
     isJson = true;
   } catch (e) {}
 
+  const headerCount = Object.keys(result.headers || {}).length;
   container.innerHTML = `
     <div class="api-response-status-bar">
-      <span class="api-response-status">
+      <div class="api-response-status">
         <span class="api-response-status-code" style="--status-color:${sColor}">${result.status}</span>
         <span class="api-response-status-text">${escapeHtml(result.statusText || '')}</span>
-      </span>
+      </div>
       <div class="api-response-meta">
         <span class="api-response-meta-item" title="${t('api.time')}">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="11" height="11"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.2 3.2.8-1.3-4.5-2.7V7z"/></svg>
-          ${result.time}ms
+          <svg viewBox="0 0 24 24" fill="currentColor" width="10" height="10"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.2 3.2.8-1.3-4.5-2.7V7z"/></svg>
+          <span>${result.time}ms</span>
         </span>
         <span class="api-response-meta-item" title="${t('api.size')}">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="11" height="11"><path d="M20 6H4l8-4 8 4zm0 2H4v2h16V8zm-4 4H8v8h8v-8z"/></svg>
-          ${formatSize(result.size)}
+          <svg viewBox="0 0 24 24" fill="currentColor" width="10" height="10"><path d="M20 6H4l8-4 8 4zm0 2H4v2h16V8zm-4 4H8v8h8v-8z"/></svg>
+          <span>${formatSize(result.size)}</span>
         </span>
       </div>
     </div>
     <div class="api-response-tabs">
-      <button class="api-response-tab active" data-rtab="body">${t('api.responseBody')}</button>
-      <button class="api-response-tab" data-rtab="headers">${t('api.responseHeaders')} (${Object.keys(result.headers || {}).length})</button>
+      <button class="api-response-tab active" data-rtab="body">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="11" height="11"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 2l5 5h-5V4zM6 20V4h5v7h7v9H6z"/></svg>
+        ${t('api.responseBody')}
+      </button>
+      <button class="api-response-tab" data-rtab="headers">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="11" height="11"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>
+        ${t('api.responseHeaders')}
+        <span class="api-response-tab-count">${headerCount}</span>
+      </button>
     </div>
     <div class="api-response-body-content">
       <pre class="api-response-body ${isJson ? 'json' : ''}">${bodyHtml}</pre>
