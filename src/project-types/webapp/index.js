@@ -99,6 +99,17 @@ module.exports = createType({
     }
   },
 
+  // Project settings (per-project modal)
+  getProjectSettings: (project) => [
+    {
+      key: 'devCommand',
+      labelKey: 'newProject.devCommand',
+      type: 'text',
+      placeholder: 'npm run dev',
+      hintKey: 'webapp.devCommandHint'
+    }
+  ],
+
   // Settings
   getSettingsFields: () => [
     {

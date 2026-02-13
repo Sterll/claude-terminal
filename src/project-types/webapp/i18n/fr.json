@@ -20,6 +20,7 @@
     "serverRunningAt": "Serveur actif sur {url}",
     "reload": "Recharger",
     "preview": "Apercu",
+    "devCommandHint": "Laisser vide pour auto-detection depuis package.json",
     "settings": {
       "previewEnabled": "Preview integre",
       "previewEnabledDesc": "Afficher un apercu live du serveur dev dans l'app (utilise plus de memoire)"

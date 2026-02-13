@@ -46,6 +46,16 @@ function discoverAll() {
   } catch (e) {
     console.warn('[Registry] Failed to load webapp type:', e.message);
   }
+  try {
+    register(require('./python'));
+  } catch (e) {
+    console.warn('[Registry] Failed to load python type:', e.message);
+  }
+  try {
+    register(require('./api'));
+  } catch (e) {
+    console.warn('[Registry] Failed to load api type:', e.message);
+  }
 
   console.debug(`[Registry] Discovered ${types.size} project type(s): ${[...types.keys()].join(', ')}`);
 }

@@ -126,6 +126,17 @@ module.exports = createType({
     }
   },
 
+  // Project settings (per-project modal)
+  getProjectSettings: (project) => [
+    {
+      key: 'runCommand',
+      labelKey: 'fivem.runCommand',
+      type: 'text',
+      placeholder: './FXServer.exe +exec server.cfg',
+      hintKey: 'fivem.runCommandHint'
+    }
+  ],
+
   // Assets
   getStyles: () => null, // CSS stays in styles.css for now (Phase 7)
 
