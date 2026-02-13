@@ -47,8 +47,11 @@ const BASE_TYPE = {
   // Suppression
   onProjectDelete: (project, idx) => {},
 
-  // Settings
+  // Settings (global app settings)
   getSettingsFields: () => [],
+
+  // Project-specific settings (shown in per-project settings modal)
+  getProjectSettings: (project) => [],
 
   // Assets
   getStyles: () => null,

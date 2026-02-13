@@ -31,7 +31,9 @@
     "removeShortcut": "Supprimer raccourci",
     "pressKey": "Appuyez sur une touche...",
     "quickEnsure": "Quick Ensure",
-    "noShortcut": "Aucun raccourci"
+    "noShortcut": "Aucun raccourci",
+    "runCommand": "Commande de lancement",
+    "runCommandHint": "Chemin vers le script de lancement ou commande (ex: FXServer.exe +exec server.cfg)"
   },
   "newProject": {
     "types": {

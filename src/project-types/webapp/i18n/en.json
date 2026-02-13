@@ -20,6 +20,7 @@
     "serverRunningAt": "Server running at {url}",
     "reload": "Reload",
     "preview": "Preview",
+    "devCommandHint": "Leave empty to auto-detect from package.json",
     "settings": {
       "previewEnabled": "In-app Preview",
       "previewEnabledDesc": "Embed a live preview of the dev server directly in the app (uses more memory)"

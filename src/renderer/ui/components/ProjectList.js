@@ -23,6 +23,7 @@ const {
   setProjectColor,
   setProjectIcon,
   setFolderIcon,
+  updateProject,
   getProjectTimes,
   getProjectEditor,
   setProjectEditor,
@@ -34,6 +35,7 @@ const { escapeHtml } = require('../../utils');
 const { formatDuration } = require('../../utils/format');
 const { t } = require('../../i18n');
 const CustomizePicker = require('./CustomizePicker');
+const { createModal, showModal, closeModal } = require('./Modal');
 const registry = require('../../../project-types/registry');
 
 // Local state
@@ -209,6 +211,14 @@ function renderProjectHtml(project, depth) {
       ${t('projects.openInEditor', { editor: (EDITOR_OPTIONS.find(e => e.value === (getProjectEditor(project.id) || getSetting('editor'))) || EDITOR_OPTIONS[0]).label })}
     </button>
     <div class="more-actions-divider"></div>
+    ${(() => {
+      const typeSettings = typeHandler.getProjectSettings(project);
+      return typeSettings && typeSettings.length > 0 ? `
+    <button class="more-actions-item btn-project-settings" data-project-id="${project.id}">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg>
+      ${t('projects.settings')}
+    </button>` : '';
+    })()}
     <button class="more-actions-item btn-customize-project" data-project-id="${project.id}">
       <span class="customize-btn-preview">${customizePreview}${customizeColorDot}</span>
       ${t('projects.customize')}
@@ -544,6 +554,72 @@ function setupCompactTooltips(list) {
 }
 
 /**
+ * Show project settings modal
+ */
+function showProjectSettings(project) {
+  const typeHandler = registry.get(project.type);
+  const fields = typeHandler.getProjectSettings(project);
+  if (!fields || fields.length === 0) return;
+
+  const fieldsHtml = fields.map(field => {
+    const value = project[field.key] || '';
+    return `
+      <div class="project-settings-field">
+        <label class="project-settings-label">${t(field.labelKey) || field.key}</label>
+        <input type="text"
+               data-settings-key="${field.key}"
+               value="${escapeHtml(String(value))}"
+               placeholder="${escapeHtml(field.placeholder || '')}"
+               class="project-settings-input" />
+        ${field.hintKey ? `<small class="project-settings-hint">${t(field.hintKey)}</small>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  const modal = createModal({
+    id: 'project-settings-modal',
+    title: `${t('projects.settings')} — ${escapeHtml(project.name)}`,
+    content: `<div class="project-settings-form">${fieldsHtml}</div>`,
+    buttons: [
+      {
+        label: t('common.cancel'),
+        action: 'cancel',
+        onClick: (m) => closeModal(m)
+      },
+      {
+        label: t('common.save'),
+        action: 'save',
+        primary: true,
+        onClick: (m) => {
+          const updates = {};
+          fields.forEach(field => {
+            const input = m.querySelector(`[data-settings-key="${field.key}"]`);
+            if (input) {
+              const val = input.value.trim();
+              updates[field.key] = val || undefined;
+            }
+          });
+          updateProject(project.id, updates);
+          closeModal(m);
+          if (callbacks.onRenderProjects) callbacks.onRenderProjects();
+        }
+      }
+    ],
+    size: 'small'
+  });
+
+  // Enter key to save
+  modal.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      modal.querySelector('[data-action="save"]').click();
+    }
+  });
+
+  showModal(modal);
+}
+
+/**
  * Attach all event listeners to project list
  * Uses event delegation: 2 handlers on the container instead of N*15 per-element listeners
  */
@@ -648,6 +724,10 @@ function attachListeners(list) {
             onClose: () => {}
           });
         }
+      } else if (btn.classList.contains('btn-project-settings')) {
+        const project = getProject(projectId);
+        closeAllMoreActionsMenus();
+        if (project) showProjectSettings(project);
       } else if (btn.classList.contains('btn-customize-project')) {
         const project = getProject(projectId);
         closeAllMoreActionsMenus();
