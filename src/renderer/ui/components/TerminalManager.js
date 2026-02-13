@@ -2423,29 +2423,49 @@ async function renderSessionsPanel(project, emptyState) {
         </div>
       </div>`;
 
-    // Build flat index of all processed sessions for lazy rendering
+    // Build flat index and O(1) lookup map for all processed sessions
     const flatSessions = [];
     groups.forEach(g => g.sessions.forEach(s => flatSessions.push(s)));
+    const sessionMap = new Map(flatSessions.map(s => [s.sessionId, s]));
+
+    const listEl = emptyState.querySelector('.sessions-list');
+
+    // Materialize a single placeholder into a real card
+    function materializePlaceholder(el) {
+      const idx = parseInt(el.dataset.lazyIndex);
+      const session = flatSessions[idx];
+      if (!session) return;
+      const html = buildSessionCardHtml(session, idx);
+      el.insertAdjacentHTML('afterend', html);
+      el.remove();
+    }
+
+    // Materialize ALL remaining placeholders (used when search is active)
+    let allMaterialized = false;
+    function materializeAll() {
+      if (allMaterialized) return;
+      if (observer) observer.disconnect();
+      const remaining = listEl.querySelectorAll('.session-card-placeholder');
+      remaining.forEach(materializePlaceholder);
+      allMaterialized = true;
+    }
 
     // Lazy render remaining cards via IntersectionObserver
-    const listEl = emptyState.querySelector('.sessions-list');
+    let observer = null;
     const placeholders = emptyState.querySelectorAll('.session-card-placeholder');
     if (placeholders.length > 0) {
-      const observer = new IntersectionObserver((entries) => {
+      observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
           if (!entry.isIntersecting) return;
           const el = entry.target;
-          const idx = parseInt(el.dataset.lazyIndex);
-          const session = flatSessions[idx];
-          if (!session) return;
-          const html = buildSessionCardHtml(session, idx);
-          el.insertAdjacentHTML('afterend', html);
-          el.remove();
           observer.unobserve(el);
+          materializePlaceholder(el);
         });
       }, { root: listEl, rootMargin: '200px' });
 
       placeholders.forEach(p => observer.observe(p));
+    } else {
+      allMaterialized = true;
     }
 
     // Event delegation for card clicks (single listener on list)
@@ -2465,7 +2485,7 @@ async function renderSessionsPanel(project, emptyState) {
       }
     };
 
-    // Debounced search using cached searchText
+    // Debounced search using cached searchText and sessionMap
     const searchInput = emptyState.querySelector('.sessions-search');
     if (searchInput) {
       let searchTimer = null;
@@ -2473,6 +2493,10 @@ async function renderSessionsPanel(project, emptyState) {
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => {
           const query = searchInput.value.toLowerCase().trim();
+
+          // Materialize all lazy cards on first search so they're all searchable
+          if (query) materializeAll();
+
           const cards = listEl.querySelectorAll('.session-card');
           const groupEls = listEl.querySelectorAll('.session-group');
 
@@ -2480,8 +2504,8 @@ async function renderSessionsPanel(project, emptyState) {
           const visibility = [];
           cards.forEach(card => {
             const sid = card.dataset.sid;
-            const session = flatSessions.find(s => s.sessionId === sid);
-            const match = !query || (session ? session.searchText.includes(query) : card.textContent.toLowerCase().includes(query));
+            const session = sessionMap.get(sid);
+            const match = !query || (session && session.searchText.includes(query));
             visibility.push({ card, match });
           });
 
