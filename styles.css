@@ -2090,6 +2090,57 @@ body.compact-projects .project-item:not(.active):hover {
   background: var(--success);
 }
 
+.terminal-tab.status-loading .status-dot {
+  background: var(--text-muted);
+  animation: pulse 1.5s infinite;
+}
+
+/* Terminal Loading Overlay */
+.terminal-loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  gap: 16px;
+  background: var(--bg-primary);
+}
+
+.terminal-loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.terminal-loading-text {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.terminal-loading-hint {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.terminal-loading-overlay.fade-out {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
@@ -3338,6 +3389,54 @@ body.compact-projects .project-item:not(.active):hover {
 .form-group textarea {
   resize: vertical;
   min-height: 80px;
+}
+
+/* Project Settings Modal */
+.project-settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.project-settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.project-settings-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.project-settings-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: 'Consolas', monospace;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.project-settings-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.project-settings-input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.5;
+}
+
+.project-settings-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.7;
 }
 
 .input-with-btn {
@@ -15131,14 +15230,85 @@ select:focus-visible {
 
 /* ---- History sub-tab ---- */
 .git-history-container {
-  padding: 16px;
+  padding: 12px 16px;
   animation: git-fadeIn 0.2s ease;
+}
+
+.git-history-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.git-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  position: relative;
+}
+
+.git-filter-icon {
+  position: absolute;
+  left: 8px;
+  pointer-events: none;
+  color: var(--text-muted);
+  z-index: 1;
+}
+
+.git-history-select {
+  padding: 5px 10px 5px 28px;
+  font-size: var(--font-xs);
+  font-family: inherit;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s;
+  max-width: 220px;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 24px;
+}
+
+.git-history-select:hover {
+  border-color: var(--accent);
+  background-color: var(--bg-hover);
+}
+
+.git-history-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
+
+.git-history-select optgroup {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+}
+
+.git-history-select option {
+  padding: 4px 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.git-history-count {
+  margin-left: auto;
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .git-history-list {
   display: flex;
   flex-direction: column;
-  gap: 1px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
@@ -15148,15 +15318,91 @@ select:focus-visible {
 .git-commit-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  transition: all 0.15s;
+  gap: 6px;
+  padding: 0 12px 0 0;
   background: var(--bg-secondary);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.025);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+  min-height: 34px;
 }
 
 .git-commit-item:last-child {
   border-bottom: none;
+}
+
+.git-graph-svg {
+  flex-shrink: 0;
+  display: block;
+}
+
+/* Decoration badges */
+.git-decorations {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.git-deco {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 0 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  line-height: 18px;
+  letter-spacing: 0.01em;
+}
+
+.git-deco-head {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.git-deco-branch {
+  background: rgba(59, 130, 246, 0.1);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+}
+
+.git-deco-remote {
+  background: rgba(34, 197, 94, 0.1);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.git-deco-tag {
+  background: rgba(168, 85, 247, 0.1);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.25);
+}
+
+/* Infinite scroll sentinel */
+.git-history-sentinel {
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+}
+
+.git-history-loading-more {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+}
+
+.spinner-small {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .git-commit-item:hover {
@@ -15166,7 +15412,7 @@ select:focus-visible {
 .git-commit-main {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   flex: 1;
   min-width: 0;
   overflow: hidden;
