@@ -160,13 +160,45 @@ function registerGitHandlers() {
   });
 
   // Generate commit message from file statuses and diff
-  ipcMain.handle('git-generate-commit-message', async (event, { projectPath, files }) => {
+  ipcMain.handle('git-generate-commit-message', async (event, { projectPath, files, useAi }) => {
     try {
-      // Get diff content for the selected files
-      const filePaths = files.map(f => `"${f.path}"`).join(' ');
-      const diffContent = await execGit(projectPath, `diff HEAD -- ${filePaths}`, 15000) || '';
+      const path = require('path');
+      const fs = require('fs');
 
-      const result = await generateCommitMessage(files, diffContent);
+      // Build diff context for each file based on its status
+      const diffParts = [];
+
+      const trackedFiles = files.filter(f => f.status !== '?');
+      const untrackedFiles = files.filter(f => f.status === '?');
+
+      // Tracked files: git diff HEAD
+      if (trackedFiles.length > 0) {
+        const trackedPaths = trackedFiles.map(f => `"${f.path}"`).join(' ');
+        const diff = await execGit(projectPath, `diff HEAD -- ${trackedPaths}`, 15000);
+        if (diff) diffParts.push(diff);
+      }
+
+      // Untracked files: read first lines of each to give context
+      for (const f of untrackedFiles) {
+        try {
+          const fullPath = path.join(projectPath, f.path);
+          const stat = fs.statSync(fullPath);
+          if (stat.isDirectory()) {
+            diffParts.push(`--- New directory: ${f.path}/`);
+          } else if (stat.size > 500000) {
+            diffParts.push(`--- New file: ${f.path} (${(stat.size / 1024).toFixed(0)}KB, binary or large)`);
+          } else {
+            const content = fs.readFileSync(fullPath, 'utf8').slice(0, 3000);
+            diffParts.push(`--- New file: ${f.path}\n+++ ${f.path}\n${content.split('\n').map(l => '+' + l).join('\n')}`);
+          }
+        } catch (_) {
+          diffParts.push(`--- New file: ${f.path}`);
+        }
+      }
+
+      const diffContent = diffParts.join('\n\n');
+      const githubToken = useAi !== false ? await GitHubAuthService.getToken() : null;
+      const result = await generateCommitMessage(files, diffContent, githubToken);
       return { success: true, ...result };
     } catch (e) {
       return { success: false, error: e.message };

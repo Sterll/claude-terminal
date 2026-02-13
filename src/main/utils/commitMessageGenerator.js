@@ -1,88 +1,109 @@
 /**
  * Commit Message Generator
- * Uses Claude CLI (`claude -p`) for intelligent commit message generation,
- * with a heuristic fallback when Claude is unavailable.
+ * Uses GitHub Models API (free with GitHub account) for AI commit messages,
+ * with a heuristic fallback when unavailable.
  */
 
-const { spawn } = require('child_process');
+const https = require('https');
 
 // ============================================================
-// Claude CLI generation
+// GitHub Models API (GPT-4o-mini - free tier)
 // ============================================================
 
-const CLAUDE_PROMPT = `You are a commit message generator. Analyze the git diff below and generate a single conventional commit message.
+const SYSTEM_PROMPT = `You are a commit message generator. Generate a single conventional commit message.
 
 Rules:
 - Format: type(scope): concise description
 - Types: feat, fix, refactor, style, test, docs, chore, perf, ci, build
-- Scope is optional, inferred from the file paths (e.g. ui, ipc, main, utils, services)
+- Scope is optional, inferred from file paths
 - Description must be lowercase, imperative mood, no period at the end
 - Max 72 characters total
-- Output ONLY the commit message, nothing else — no explanation, no quotes, no markdown
+- Focus on WHAT changed and WHY, not listing files
+- Output ONLY the commit message, nothing else`;
 
-Git diff:
-`;
+function buildPrompt(files, diffContent) {
+  const fileList = files.map(f => {
+    const labels = { 'M': 'modified', 'A': 'added', 'D': 'deleted', 'R': 'renamed', '?': 'new file' };
+    return `  ${labels[f.status] || f.status}: ${f.path}`;
+  }).join('\n');
+
+  const maxDiff = 8000;
+  const diff = diffContent.length > maxDiff
+    ? diffContent.slice(0, maxDiff) + '\n[... truncated ...]'
+    : diffContent;
+
+  return `Files:\n${fileList}\n\nDiff:\n${diff}`;
+}
 
 /**
- * Generate commit message using Claude CLI
- * @param {string} diffContent - The git diff to analyze
- * @param {number} timeoutMs - Timeout in ms (default 30s)
- * @returns {Promise<string|null>} - The commit message or null on failure
+ * Generate commit message via GitHub Models API (GPT-4o-mini)
+ * Free with any GitHub account.
+ * @param {string} githubToken - GitHub OAuth token
+ * @param {Array} files - Changed files
+ * @param {string} diffContent - Diff content
+ * @returns {Promise<string|null>}
  */
-function generateWithClaude(diffContent, timeoutMs = 30000) {
+function generateWithGitHubModels(githubToken, files, diffContent, timeoutMs = 12000) {
   return new Promise((resolve) => {
-    // Truncate very large diffs to avoid overwhelming the model
-    const maxDiffLength = 15000;
-    const truncatedDiff = diffContent.length > maxDiffLength
-      ? diffContent.slice(0, maxDiffLength) + '\n\n[... diff truncated ...]'
-      : diffContent;
+    const userMessage = buildPrompt(files, diffContent);
 
-    const fullPrompt = CLAUDE_PROMPT + truncatedDiff;
+    const body = JSON.stringify({
+      model: 'gpt-4o-mini',
+      max_tokens: 100,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userMessage }
+      ]
+    });
 
-    let proc;
-    try {
-      proc = spawn('claude', ['-p', fullPrompt], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        shell: true,
-        timeout: timeoutMs,
-        windowsHide: true,
+    const options = {
+      hostname: 'models.inference.ai.azure.com',
+      path: '/chat/completions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${githubToken}`,
+        'Content-Length': Buffer.byteLength(body)
+      },
+      timeout: timeoutMs
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (json.choices && json.choices[0]?.message?.content) {
+            let message = json.choices[0].message.content.trim()
+              .replace(/^["'`]+|["'`]+$/g, '')
+              .replace(/^```\w*\n?|\n?```$/g, '')
+              .trim();
+            message = message.split('\n')[0].trim();
+            resolve(message || null);
+          } else {
+            console.error('[CommitGen] GitHub Models response:', data.slice(0, 300));
+            resolve(null);
+          }
+        } catch (e) {
+          console.error('[CommitGen] Parse error:', e.message);
+          resolve(null);
+        }
       });
-    } catch (spawnError) {
-      console.error('[CommitGen] Failed to spawn claude:', spawnError.message);
-      return resolve(null);
-    }
-
-    let stdout = '';
-    let stderr = '';
-
-    proc.stdout.on('data', (data) => { stdout += data.toString(); });
-    proc.stderr.on('data', (data) => { stderr += data.toString(); });
-
-    const timer = setTimeout(() => {
-      try { proc.kill(); } catch (_) {}
-      resolve(null);
-    }, timeoutMs);
-
-    proc.on('close', (code) => {
-      clearTimeout(timer);
-      if (code === 0 && stdout.trim()) {
-        // Clean up: remove quotes, backticks, extra whitespace
-        let message = stdout.trim()
-          .replace(/^["'`]+|["'`]+$/g, '')
-          .replace(/^```\w*\n?|\n?```$/g, '')
-          .trim();
-        // Ensure single line
-        message = message.split('\n')[0].trim();
-        resolve(message || null);
-      } else {
-        resolve(null);
-      }
     });
 
-    proc.on('error', () => {
-      clearTimeout(timer);
+    req.on('timeout', () => {
+      req.destroy();
       resolve(null);
     });
+
+    req.on('error', (err) => {
+      console.error('[CommitGen] Request error:', err.message);
+      resolve(null);
+    });
+
+    req.write(body);
+    req.end();
   });
 }
 
@@ -189,7 +210,7 @@ function generateHeuristicMessage(files, diffContent) {
 }
 
 // ============================================================
-// File grouping (for split suggestions)
+// File grouping
 // ============================================================
 
 function groupFiles(files) {
@@ -210,23 +231,23 @@ function groupFiles(files) {
 
 /**
  * Generate a conventional commit message.
- * Tries Claude CLI first, falls back to heuristic on failure.
- * @param {Array<{path: string, status: string}>} files
- * @param {string} diffContent
- * @returns {Promise<{message: string, source: 'claude'|'heuristic', groups: Array}>}
+ * Tries GitHub Models API first (free), falls back to heuristic.
+ * @param {Array} files - Changed files with path and status
+ * @param {string} diffContent - Combined diff content
+ * @param {string|null} githubToken - GitHub token for AI generation
  */
-async function generateCommitMessage(files, diffContent) {
+async function generateCommitMessage(files, diffContent, githubToken) {
   if (!files || files.length === 0) {
     return { message: '', source: 'heuristic', groups: [] };
   }
 
   const groups = groupFiles(files);
 
-  // Try Claude CLI first
-  if (diffContent) {
-    const claudeMessage = await generateWithClaude(diffContent);
-    if (claudeMessage) {
-      return { message: claudeMessage, source: 'claude', groups };
+  // Try GitHub Models API if token available
+  if (githubToken) {
+    const aiMessage = await generateWithGitHubModels(githubToken, files, diffContent);
+    if (aiMessage) {
+      return { message: aiMessage, source: 'ai', groups };
     }
   }
 
