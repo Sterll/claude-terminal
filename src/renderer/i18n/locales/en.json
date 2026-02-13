@@ -42,7 +42,8 @@
     "confirmDelete": "Delete \"{name}\"?",
     "filterBatch": "Batch files",
     "filterExe": "Executables",
-    "filterAll": "All files"
+    "filterAll": "All files",
+    "settings": "Settings"
   },
   "terminals": {
     "noTerminals": "No terminal for this project",
@@ -59,7 +60,9 @@
     "debug": "Debug",
     "createError": "Unable to create terminal",
     "resumeError": "Unable to resume session",
-    "messages": "{count} msgs"
+    "messages": "{count} msgs",
+    "loading": "Initializing Claude Code...",
+    "loadingHint": "This may take a few seconds"
   },
   "git": {
     "noRemote": "No remote",
@@ -141,7 +144,11 @@
     "markResolved": "Mark as resolved",
     "abortMerge": "Abort Merge",
     "continueMerge": "Continue Merge",
-    "openInEditor": "Open in editor"
+    "openInEditor": "Open in editor",
+    "allBranches": "All branches",
+    "allAuthors": "All authors",
+    "branchFilter": "Branch",
+    "authorFilter": "Author"
   },
   "dashboard": {
     "openFolder": "Open folder",
