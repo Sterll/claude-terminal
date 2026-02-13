@@ -11158,6 +11158,113 @@ select:focus-visible {
   font-size: 13px;
 }
 
+/* Git Changes Sections (tracked / untracked) */
+.git-changes-section + .git-changes-section {
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.git-changes-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  background: rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.git-changes-section-header:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.git-changes-section-header .git-section-chevron {
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+
+.git-changes-section-header.collapsed .git-section-chevron {
+  transform: rotate(-90deg);
+}
+
+.git-changes-section-header .git-section-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.git-changes-section-header .git-section-checkbox:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.git-changes-section-header .git-section-checkbox:checked::after {
+  content: '';
+  position: absolute;
+  left: 3.5px;
+  top: 0.5px;
+  width: 5px;
+  height: 9px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.git-changes-section-header .git-section-checkbox:indeterminate {
+  border-color: var(--accent);
+}
+
+.git-changes-section-header .git-section-checkbox:indeterminate::after {
+  content: '';
+  position: absolute;
+  left: 2.5px;
+  top: 5.5px;
+  width: 8px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+}
+
+.git-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  flex: 1;
+  line-height: 1;
+}
+
+.git-section-count {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 7px;
+  border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
+}
+
+.git-changes-section-files {
+  padding: 2px 0;
+}
+
+.git-changes-section-files.collapsed {
+  display: none;
+}
+
 .git-file-item {
   display: flex;
   align-items: center;
@@ -14799,7 +14906,7 @@ select:focus-visible {
   white-space: nowrap;
 }
 
-.git-commit-actions {
+.git-commit-item .git-commit-actions {
   display: flex;
   gap: 2px;
   opacity: 0;

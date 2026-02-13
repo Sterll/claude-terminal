@@ -5736,7 +5736,6 @@ const gitChangesProject = document.getElementById('git-changes-project');
 const gitSelectAll = document.getElementById('git-select-all');
 const gitCommitMessage = document.getElementById('git-commit-message');
 const btnCommitSelected = document.getElementById('btn-commit-selected');
-const btnStageSelected = document.getElementById('btn-stage-selected');
 const btnGenerateCommit = document.getElementById('btn-generate-commit');
 const commitCountSpan = document.getElementById('commit-count');
 const changesCountBadge = document.getElementById('changes-count');
@@ -5839,29 +5838,40 @@ function renderGitChanges() {
     return;
   }
 
+  // Separate tracked (M, D, R, A) and untracked (?) files
+  const tracked = [];
+  const untracked = [];
+  files.forEach((file, index) => {
+    if (file.status === '?') {
+      untracked.push({ file, index });
+    } else {
+      tracked.push({ file, index });
+    }
+  });
+
   // Calculate stats
-  const stats = { added: 0, modified: 0, deleted: 0, untracked: 0 };
-  files.forEach(f => {
-    if (f.status === 'A' || f.status === '?') stats.untracked++;
-    else if (f.status === 'M') stats.modified++;
-    else if (f.status === 'D') stats.deleted++;
-    else if (f.status === 'A') stats.added++;
+  const stats = { modified: 0, added: 0, deleted: 0, renamed: 0, untracked: untracked.length };
+  tracked.forEach(({ file }) => {
+    if (file.status === 'M') stats.modified++;
+    else if (file.status === 'A') stats.added++;
+    else if (file.status === 'D') stats.deleted++;
+    else if (file.status === 'R') stats.renamed++;
   });
 
   gitChangesStats.innerHTML = `
     ${stats.modified ? `<span class="git-stat modified">M ${stats.modified}</span>` : ''}
     ${stats.added ? `<span class="git-stat added">A ${stats.added}</span>` : ''}
     ${stats.deleted ? `<span class="git-stat deleted">D ${stats.deleted}</span>` : ''}
+    ${stats.renamed ? `<span class="git-stat renamed">R ${stats.renamed}</span>` : ''}
     ${stats.untracked ? `<span class="git-stat untracked">? ${stats.untracked}</span>` : ''}
   `;
 
-  gitChangesList.innerHTML = files.map((file, index) => {
+  function renderFileItem({ file, index }) {
     const fileName = file.path.split('/').pop();
     const filePath = file.path.split('/').slice(0, -1).join('/');
     const isSelected = gitChangesState.selectedFiles.has(index);
 
-    return `
-      <div class="git-file-item ${isSelected ? 'selected' : ''}" data-index="${index}">
+    return `<div class="git-file-item ${isSelected ? 'selected' : ''}" data-index="${index}">
         <input type="checkbox" ${isSelected ? 'checked' : ''}>
         <span class="git-file-status ${file.status}">${file.status}</span>
         <div class="git-file-info">
@@ -5872,11 +5882,56 @@ function renderGitChanges() {
           ${file.additions ? `<span class="additions">+${file.additions}</span>` : ''}
           ${file.deletions ? `<span class="deletions">-${file.deletions}</span>` : ''}
         </div>
-      </div>
-    `;
-  }).join('');
+      </div>`;
+  }
 
-  // Attach click handlers
+  let html = '';
+
+  // Tracked changes section
+  if (tracked.length > 0) {
+    const trackedIndices = tracked.map(t => t.index);
+    const allTrackedSelected = trackedIndices.every(i => gitChangesState.selectedFiles.has(i));
+    const someTrackedSelected = trackedIndices.some(i => gitChangesState.selectedFiles.has(i));
+    html += `<div class="git-changes-section">
+      <div class="git-changes-section-header" data-section="tracked">
+        <svg class="git-section-chevron" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+        <input type="checkbox" class="git-section-checkbox" data-section="tracked" ${allTrackedSelected ? 'checked' : ''} ${!allTrackedSelected && someTrackedSelected ? 'data-indeterminate' : ''}>
+        <span class="git-section-title">${t('ui.trackedChanges')}</span>
+        <span class="git-section-count">${tracked.length}</span>
+      </div>
+      <div class="git-changes-section-files">
+        ${tracked.map(renderFileItem).join('')}
+      </div>
+    </div>`;
+  }
+
+  // Untracked files section
+  if (untracked.length > 0) {
+    const untrackedIndices = untracked.map(u => u.index);
+    const allUntrackedSelected = untrackedIndices.every(i => gitChangesState.selectedFiles.has(i));
+    const someUntrackedSelected = untrackedIndices.some(i => gitChangesState.selectedFiles.has(i));
+    html += `<div class="git-changes-section">
+      <div class="git-changes-section-header" data-section="untracked">
+        <svg class="git-section-chevron" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+        <input type="checkbox" class="git-section-checkbox" data-section="untracked" ${allUntrackedSelected ? 'checked' : ''} ${!allUntrackedSelected && someUntrackedSelected ? 'data-indeterminate' : ''}>
+        <span class="git-section-title">${t('ui.untrackedFiles')}</span>
+        <span class="git-section-count">${untracked.length}</span>
+      </div>
+      <div class="git-changes-section-files">
+        ${untracked.map(renderFileItem).join('')}
+      </div>
+    </div>`;
+  }
+
+  gitChangesList.innerHTML = html;
+
+  // Set indeterminate state (can't be set via HTML attribute)
+  gitChangesList.querySelectorAll('.git-section-checkbox[data-indeterminate]').forEach(cb => {
+    cb.indeterminate = true;
+    cb.removeAttribute('data-indeterminate');
+  });
+
+  // Attach file click handlers
   gitChangesList.querySelectorAll('.git-file-item').forEach(item => {
     const checkbox = item.querySelector('input[type="checkbox"]');
     const index = parseInt(item.dataset.index);
@@ -5889,6 +5944,36 @@ function renderGitChanges() {
 
     checkbox.onchange = () => {
       toggleFileSelection(index, checkbox.checked);
+    };
+  });
+
+  // Attach section checkbox handlers
+  gitChangesList.querySelectorAll('.git-section-checkbox').forEach(cb => {
+    cb.onchange = () => {
+      const section = cb.dataset.section;
+      const items = section === 'tracked' ? tracked : untracked;
+      items.forEach(({ index }) => {
+        if (cb.checked) {
+          gitChangesState.selectedFiles.add(index);
+        } else {
+          gitChangesState.selectedFiles.delete(index);
+        }
+      });
+      renderGitChanges();
+      updateCommitButton();
+      updateSelectAllState();
+    };
+  });
+
+  // Collapsible section headers (click on header but not checkbox)
+  gitChangesList.querySelectorAll('.git-changes-section-header').forEach(header => {
+    header.onclick = (e) => {
+      if (e.target.closest('.git-section-checkbox')) return;
+      const filesDiv = header.nextElementSibling;
+      if (filesDiv) {
+        header.classList.toggle('collapsed');
+        filesDiv.classList.toggle('collapsed');
+      }
     };
   });
 
@@ -5907,8 +5992,26 @@ function toggleFileSelection(index, selected) {
     item.classList.toggle('selected', selected);
   }
 
+  updateSectionCheckboxes();
   updateCommitButton();
   updateSelectAllState();
+}
+
+function updateSectionCheckboxes() {
+  const files = gitChangesState.files;
+  gitChangesList.querySelectorAll('.git-section-checkbox').forEach(cb => {
+    const section = cb.dataset.section;
+    const indices = [];
+    files.forEach((f, i) => {
+      if (section === 'tracked' && f.status !== '?') indices.push(i);
+      else if (section === 'untracked' && f.status === '?') indices.push(i);
+    });
+    if (indices.length === 0) return;
+    const allSelected = indices.every(i => gitChangesState.selectedFiles.has(i));
+    const someSelected = indices.some(i => gitChangesState.selectedFiles.has(i));
+    cb.checked = allSelected;
+    cb.indeterminate = !allSelected && someSelected;
+  });
 }
 
 function updateSelectAllState() {
@@ -5947,12 +6050,8 @@ gitSelectAll.onchange = () => {
     }
   });
 
-  gitChangesList.querySelectorAll('.git-file-item').forEach(item => {
-    const checkbox = item.querySelector('input[type="checkbox"]');
-    checkbox.checked = shouldSelect;
-    item.classList.toggle('selected', shouldSelect);
-  });
-
+  // Re-render to update section checkboxes and file checkboxes
+  renderGitChanges();
   updateCommitButton();
 };
 
@@ -6017,47 +6116,7 @@ btnGenerateCommit.onclick = async () => {
   }
 };
 
-// Stage selected files
-btnStageSelected.onclick = async () => {
-  if (gitChangesState.selectedFiles.size === 0) return;
-
-  const selectedPaths = Array.from(gitChangesState.selectedFiles)
-    .map(i => gitChangesState.files[i]?.path)
-    .filter(Boolean);
-
-  try {
-    const result = await api.git.stageFiles({
-      projectPath: gitChangesState.projectPath,
-      files: selectedPaths
-    });
-
-    if (result.success) {
-      showGitToast({
-        success: true,
-        title: 'Fichiers stages',
-        message: `${selectedPaths.length} fichier(s) ajoute(s)`,
-        duration: 3000
-      });
-      loadGitChanges();
-    } else {
-      showGitToast({
-        success: false,
-        title: 'Erreur',
-        message: result.error,
-        duration: 5000
-      });
-    }
-  } catch (e) {
-    showGitToast({
-      success: false,
-      title: 'Erreur',
-      message: e.message,
-      duration: 5000
-    });
-  }
-};
-
-// Commit selected files
+// Commit selected files (auto-stages then commits)
 btnCommitSelected.onclick = async () => {
   const message = gitCommitMessage.value.trim();
   if (!message) {
@@ -6116,7 +6175,7 @@ btnCommitSelected.onclick = async () => {
     });
   } finally {
     btnCommitSelected.disabled = false;
-    btnCommitSelected.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> Commit (<span id="commit-count">${gitChangesState.selectedFiles.size}</span>)`;
+    btnCommitSelected.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> <span>${t('ui.commitSelected')}</span> (<span id="commit-count">${gitChangesState.selectedFiles.size}</span>)`;
   }
 };
 
