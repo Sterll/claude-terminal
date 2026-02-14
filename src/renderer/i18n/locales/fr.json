@@ -690,8 +690,9 @@
     "mentionErrors": "Joindre les erreurs du terminal",
     "mentionSelection": "Joindre le texte sélectionné",
     "mentionTodos": "Joindre les TODOs du projet",
-    "mentionProject": "Joindre les infos du projet actuel",
+    "mentionProject": "Joindre les infos d'un projet",
     "mentionNoFiles": "Aucun fichier trouvé",
+    "mentionNoProjects": "Aucun projet trouvé",
     "queued": "En file"
   },
   "hooks": {

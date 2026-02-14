@@ -240,7 +240,7 @@ function createChatView(wrapperEl, project, options = {}) {
 
   const pendingMentions = []; // Array of { type, label, icon, data }
   let mentionSelectedIndex = 0;
-  let mentionMode = null; // null | 'types' | 'file'
+  let mentionMode = null; // null | 'types' | 'file' | 'projects'
   let mentionFileCache = null; // { files: [], timestamp, projectPath }
   const MENTION_FILE_CACHE_TTL = 5 * 60 * 1000;
 
@@ -437,6 +437,8 @@ function createChatView(wrapperEl, project, options = {}) {
         const item = items[mentionSelectedIndex];
         if (mentionMode === 'file') {
           selectMentionFile(item.dataset.path, item.dataset.fullpath);
+        } else if (mentionMode === 'projects') {
+          selectMentionProject(item.dataset.projectid, item.dataset.projectname, item.dataset.projectpath);
         } else {
           selectMentionType(item.dataset.type);
         }
@@ -576,7 +578,7 @@ function createChatView(wrapperEl, project, options = {}) {
     { type: 'errors', label: '@errors', desc: t('chat.mentionErrors') || 'Attach error lines from terminal', icon: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>' },
     { type: 'selection', label: '@selection', desc: t('chat.mentionSelection') || 'Attach selected text', icon: '<svg viewBox="0 0 24 24"><path d="M5 3l14 9-14 9V3z"/></svg>' },
     { type: 'todos', label: '@todos', desc: t('chat.mentionTodos') || 'Attach TODO items from project', icon: '<svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22,4 12,14.01 9,11.01"/></svg>' },
-    { type: 'project', label: '@project', desc: t('chat.mentionProject') || 'Attach current project info', icon: '<svg viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg>' },
+    { type: 'project', label: '@project', desc: t('chat.mentionProject') || 'Attach project info', icon: '<svg viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg>' },
   ];
 
   function updateMentionDropdown() {
@@ -590,6 +592,17 @@ function createChatView(wrapperEl, project, options = {}) {
       if (fileMatch) {
         renderFileDropdown(fileMatch[1]);
       } else if (!beforeCursor.match(/@file/i)) {
+        hideMentionDropdown();
+      }
+      return;
+    }
+
+    // Projects picker mode: filter projects by query after @project
+    if (mentionMode === 'projects') {
+      const projMatch = beforeCursor.match(/@project\s+(.*)$/i);
+      if (projMatch) {
+        renderProjectsDropdown(projMatch[1]);
+      } else if (!beforeCursor.match(/@project/i)) {
         hideMentionDropdown();
       }
       return;
@@ -671,6 +684,21 @@ function createChatView(wrapperEl, project, options = {}) {
       inputEl.selectionStart = inputEl.selectionEnd = cleaned.length;
       mentionMode = 'file';
       renderFileDropdown('');
+      inputEl.focus();
+      return;
+    }
+
+    if (type === 'project') {
+      // Switch to projects picker mode — replace @partial with @project and wait for query
+      const text = inputEl.value;
+      const cursorPos = inputEl.selectionStart;
+      const beforeCursor = text.substring(0, cursorPos);
+      const afterCursor = text.substring(cursorPos);
+      const cleaned = beforeCursor.replace(/@\w*$/, '@project ');
+      inputEl.value = cleaned + afterCursor;
+      inputEl.selectionStart = inputEl.selectionEnd = cleaned.length;
+      mentionMode = 'projects';
+      renderProjectsDropdown('');
       inputEl.focus();
       return;
     }
@@ -770,6 +798,57 @@ function createChatView(wrapperEl, project, options = {}) {
     inputEl.focus();
   }
 
+  // ── Projects picker ──
+
+  function renderProjectsDropdown(query) {
+    const { projectsState } = require('../../state/projects.state');
+    const allProjects = projectsState.get().projects || [];
+    const q = query.trim().toLowerCase();
+    const filtered = q
+      ? allProjects.filter(p => (p.name || '').toLowerCase().includes(q) || (p.path || '').toLowerCase().includes(q))
+      : allProjects;
+    const shown = filtered.slice(0, 40);
+
+    if (shown.length === 0) {
+      mentionDropdown.innerHTML = `<div class="chat-mention-item" style="opacity:0.5;cursor:default"><span class="chat-mention-item-desc">${escapeHtml(t('chat.mentionNoProjects') || 'No projects found')}</span></div>`;
+      mentionDropdown.style.display = '';
+      return;
+    }
+
+    mentionMode = 'projects';
+    if (mentionSelectedIndex >= shown.length) mentionSelectedIndex = shown.length - 1;
+
+    mentionDropdown.innerHTML = shown.map((p, i) => `
+      <div class="chat-mention-item${i === mentionSelectedIndex ? ' active' : ''}" data-projectid="${escapeHtml(p.id)}" data-projectname="${escapeHtml(p.name || '')}" data-projectpath="${escapeHtml(p.path || '')}">
+        <span class="chat-mention-item-icon"><svg viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg></span>
+        <div class="chat-mention-item-info">
+          <span class="chat-mention-item-name">${escapeHtml(p.name || p.path || 'Unknown')}</span>
+          <span class="chat-mention-item-desc">${escapeHtml(p.path || '')}</span>
+        </div>
+      </div>
+    `).join('');
+
+    mentionDropdown.style.display = '';
+
+    mentionDropdown.querySelectorAll('.chat-mention-item').forEach((el, idx) => {
+      el.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        if (el.dataset.projectid) selectMentionProject(el.dataset.projectid, el.dataset.projectname, el.dataset.projectpath);
+      });
+      el.addEventListener('mouseenter', () => {
+        mentionSelectedIndex = idx;
+        highlightMentionItem(mentionDropdown.querySelectorAll('.chat-mention-item'));
+      });
+    });
+  }
+
+  function selectMentionProject(projectId, projectName, projectPath) {
+    removeAtTrigger();
+    addMentionChip('project', { id: projectId, name: projectName, path: projectPath });
+    hideMentionDropdown();
+    inputEl.focus();
+  }
+
   // ── Mention chips ──
 
   function getMentionIcon(type) {
@@ -778,7 +857,10 @@ function createChatView(wrapperEl, project, options = {}) {
   }
 
   function addMentionChip(type, data = null) {
-    const label = type === 'file' ? `@${data.path}` : `@${type}`;
+    let label;
+    if (type === 'file') label = `@${data.path}`;
+    else if (type === 'project' && data?.name) label = `@project:${data.name}`;
+    else label = `@${type}`;
     pendingMentions.push({ type, label, icon: getMentionIcon(type), data });
     renderMentionChips();
   }
@@ -896,13 +978,16 @@ function createChatView(wrapperEl, project, options = {}) {
         }
 
         case 'project': {
+          // Use selected project data if available, otherwise fall back to current project
+          const targetName = mention.data?.name || project.name || 'Unknown';
+          const targetPath = mention.data?.path || project.path;
           try {
-            const parts = [`Project: ${project.name || 'Unknown'}`, `Path: ${project.path}`];
+            const parts = [`Project: ${targetName}`, `Path: ${targetPath}`];
             // Git info
             const [branch, status, stats] = await Promise.all([
-              api.git.currentBranch({ projectPath: project.path }).catch(() => null),
-              api.git.statusDetailed({ projectPath: project.path }).catch(() => null),
-              api.project.stats(project.path).catch(() => null),
+              api.git.currentBranch({ projectPath: targetPath }).catch(() => null),
+              api.git.statusDetailed({ projectPath: targetPath }).catch(() => null),
+              api.project.stats(targetPath).catch(() => null),
             ]);
             if (branch) parts.push(`Git Branch: ${branch}`);
             if (status?.success && status.files?.length > 0) {
@@ -922,9 +1007,19 @@ function createChatView(wrapperEl, project, options = {}) {
                 parts.push('Top Languages:\n' + top.join('\n'));
               }
             }
+            // Try to read CLAUDE.md from the target project
+            const { fs, path: pathModule } = window.electron_nodeModules;
+            const claudeMdPath = pathModule.join(targetPath, 'CLAUDE.md');
+            try {
+              const claudeMd = fs.readFileSync(claudeMdPath, 'utf8');
+              if (claudeMd.trim()) {
+                const truncated = claudeMd.length > 3000 ? claudeMd.slice(0, 3000) + '\n\n(Truncated)' : claudeMd;
+                parts.push(`\nCLAUDE.md:\n${truncated}`);
+              }
+            } catch (_) { /* no CLAUDE.md */ }
             content = parts.join('\n');
           } catch (e) {
-            content = `Project: ${project.name || 'Unknown'}\nPath: ${project.path}\n[Error fetching details: ${e.message}]`;
+            content = `Project: ${targetName}\nPath: ${targetPath}\n[Error fetching details: ${e.message}]`;
           }
           break;
         }

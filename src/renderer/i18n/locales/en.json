@@ -690,8 +690,9 @@
     "mentionErrors": "Attach error lines from terminal",
     "mentionSelection": "Attach selected text",
     "mentionTodos": "Attach TODO items from project",
-    "mentionProject": "Attach current project info",
+    "mentionProject": "Attach project info",
     "mentionNoFiles": "No files found",
+    "mentionNoProjects": "No projects found",
     "queued": "Queued"
   },
   "hooks": {
