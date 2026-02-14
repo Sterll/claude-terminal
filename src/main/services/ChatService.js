@@ -290,22 +290,88 @@ class ChatService {
     }
   }
 
-  /**
-   * Generate a short tab name via SDK query — bare minimum, no tools, no Claude Code preset.
-   */
-  async generateTabName(userMessage, currentName) {
-    try {
-      const sdk = await loadSDK();
-      const prompt = `Give a 2-4 word tab title (no quotes, no punctuation) for: "${userMessage.slice(0, 200)}". Same language as the message. Only output the title.`;
+  // ── Persistent haiku naming session ──
 
-      let result = '';
-      for await (const msg of sdk.query({
-        prompt,
-        options: { maxTurns: 1, allowedTools: [], model: 'haiku' }
-      })) {
-        if (msg.type === 'result' && msg.result) { result = msg.result; break; }
-      }
-      return result.trim().replace(/^["'`]+|["'`]+$/g, '').split('\n')[0].slice(0, 40) || null;
+  /**
+   * Ensure the persistent haiku naming session is running.
+   * One session for ALL tab rename requests — stays warm, near-instant after init.
+   */
+  async _ensureNamingSession() {
+    if (this._namingReady) return;
+    if (this._namingStarting) return this._namingStarting;
+
+    this._namingStarting = (async () => {
+      const sdk = await loadSDK();
+      // No onIdle callback — we resolve directly from the stream
+      this._namingQueue = createMessageQueue();
+
+      const stream = sdk.query({
+        prompt: this._namingQueue.iterable,
+        options: {
+          maxTurns: 1,
+          allowedTools: [],
+          model: 'haiku',
+          systemPrompt: 'You generate very short tab titles (2-4 words, no quotes, no punctuation). Reply in the SAME language as the user message. Only output the title, nothing else.'
+        }
+      });
+
+      // Process stream — resolve tab name directly when assistant responds
+      (async () => {
+        try {
+          for await (const msg of stream) {
+            if (msg.type === 'assistant' && msg.message?.content) {
+              let text = '';
+              for (const block of msg.message.content) {
+                if (block.type === 'text') text += block.text;
+              }
+              if (text && this._namingResolve) {
+                const resolve = this._namingResolve;
+                this._namingResolve = null;
+                resolve(text);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('[ChatService] Naming session error:', err.message);
+        } finally {
+          this._namingReady = false;
+          this._namingStarting = null;
+        }
+      })();
+
+      this._namingReady = true;
+      this._namingStarting = null;
+    })();
+
+    return this._namingStarting;
+  }
+
+  /**
+   * Generate a short tab name via the persistent haiku session.
+   */
+  async generateTabName(userMessage) {
+    try {
+      await this._ensureNamingSession();
+      if (!this._namingQueue) return null;
+
+      return new Promise((resolve) => {
+        // Timeout: if haiku doesn't respond in 4s, give up
+        const timeout = setTimeout(() => {
+          this._namingResolve = null;
+          resolve(null);
+        }, 4000);
+
+        this._namingResolve = (rawText) => {
+          clearTimeout(timeout);
+          const name = (rawText || '').trim().replace(/^["'`]+|["'`]+$/g, '').split('\n')[0].slice(0, 40);
+          resolve(name || null);
+        };
+
+        this._namingQueue.push({
+          type: 'user',
+          message: { role: 'user', content: `Title for: "${userMessage.slice(0, 200)}"` }
+        });
+      });
     } catch (err) {
       console.error('[ChatService] generateTabName error:', err.message);
       return null;
@@ -331,6 +397,11 @@ class ChatService {
   closeAll() {
     for (const [id] of this.sessions) {
       this.closeSession(id);
+    }
+    // Close naming session
+    if (this._namingQueue) {
+      this._namingQueue.close();
+      this._namingReady = false;
     }
   }
 }

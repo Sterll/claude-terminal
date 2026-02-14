@@ -403,7 +403,7 @@ function createChatView(wrapperEl, project, options = {}) {
       // Async: haiku generates a proper short title
       if (!tabNamePending) {
         tabNamePending = true;
-        api.chat.generateTabName({ userMessage: text, currentName: project.name }).then(res => {
+        api.chat.generateTabName({ userMessage: text }).then(res => {
           if (res?.success && res.name) onTabRename(res.name);
         }).catch(() => {}).finally(() => { tabNamePending = false; });
       }
