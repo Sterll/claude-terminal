@@ -17452,14 +17452,14 @@ select:focus-visible {
 }
 
 .chat-msg-content p + p {
-  margin-top: 8px;
+  margin-top: 4px;
 }
 
 .chat-msg-content h1,
 .chat-msg-content h2,
 .chat-msg-content h3,
 .chat-msg-content h4 {
-  margin: 14px 0 6px;
+  margin: 10px 0 4px;
   color: var(--text-primary);
 }
 
@@ -17470,12 +17470,17 @@ select:focus-visible {
 
 .chat-msg-content ul,
 .chat-msg-content ol {
-  margin: 6px 0;
+  margin: 4px 0;
   padding-left: 20px;
 }
 
 .chat-msg-content li {
-  margin: 2px 0;
+  margin: 1px 0;
+}
+
+.chat-msg-content ul br,
+.chat-msg-content ol br {
+  display: none;
 }
 
 .chat-msg-content strong {

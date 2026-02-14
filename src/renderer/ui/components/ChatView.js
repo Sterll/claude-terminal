@@ -722,6 +722,15 @@ function createChatView(wrapperEl, project, options = {}) {
       handleSubagentAssistant(info, message);
       return;
     }
+    // Subagent finished — mark card as done individually
+    if (message.type === 'result') {
+      completeSubagentCard(info.card);
+      // Remove from tracking
+      for (const [idx, tracked] of taskToolIndices) {
+        if (tracked === info) { taskToolIndices.delete(idx); break; }
+      }
+      return;
+    }
   }
 
   /**
