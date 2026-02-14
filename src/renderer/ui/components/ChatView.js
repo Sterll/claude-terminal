@@ -90,7 +90,10 @@ function createChatView(wrapperEl, project, options = {}) {
   const taskToolIndices = new Map(); // block index -> { card, toolUseId } for Task (subagent) tools
   let blockIndex = 0;
   let currentMsgHasToolUse = false;
+  let turnHadAssistantContent = false; // tracks if current turn displayed any streamed/assistant content
   let todoWidgetEl = null; // persistent todo list widget
+  let slashCommands = []; // populated from system/init message
+  let slashSelectedIndex = -1; // currently highlighted item in slash dropdown
   const unsubscribers = [];
 
   // ── Build DOM ──
@@ -104,6 +107,7 @@ function createChatView(wrapperEl, project, options = {}) {
         </div>
       </div>
       <div class="chat-input-area">
+        <div class="chat-slash-dropdown" style="display:none"></div>
         <div class="chat-input-wrapper">
           <textarea class="chat-input" placeholder="${escapeHtml(t('chat.placeholder'))}" rows="1"></textarea>
           <div class="chat-input-actions">
@@ -140,19 +144,133 @@ function createChatView(wrapperEl, project, options = {}) {
   const statusModel = chatView.querySelector('.chat-status-model');
   const statusTokens = chatView.querySelector('.chat-status-tokens');
   const statusCost = chatView.querySelector('.chat-status-cost');
+  const slashDropdown = chatView.querySelector('.chat-slash-dropdown');
 
   // ── Input handling ──
 
   inputEl.addEventListener('input', () => {
     inputEl.style.height = 'auto';
     inputEl.style.height = Math.min(inputEl.scrollHeight, 200) + 'px';
+    updateSlashDropdown();
   });
 
   inputEl.addEventListener('keydown', (e) => {
+    // Slash dropdown navigation
+    if (slashDropdown.style.display !== 'none') {
+      const items = slashDropdown.querySelectorAll('.chat-slash-item');
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        slashSelectedIndex = Math.min(slashSelectedIndex + 1, items.length - 1);
+        highlightSlashItem(items);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        slashSelectedIndex = Math.max(slashSelectedIndex - 1, 0);
+        highlightSlashItem(items);
+        return;
+      }
+      if ((e.key === 'Enter' || e.key === 'Tab') && slashSelectedIndex >= 0 && items[slashSelectedIndex]) {
+        e.preventDefault();
+        selectSlashCommand(items[slashSelectedIndex].dataset.command);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        hideSlashDropdown();
+        return;
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
+  });
+
+  // ── Slash command autocomplete ──
+
+  function updateSlashDropdown() {
+    const text = inputEl.value;
+    // Show only when text starts with / and cursor is still in the command part
+    if (!text.startsWith('/') || text.includes(' ') || text.includes('\n')) {
+      hideSlashDropdown();
+      return;
+    }
+    const query = text.slice(1).toLowerCase();
+    // Default commands available even before session init
+    const builtinDefaults = ['/compact', '/clear', '/help'];
+    const available = slashCommands.length > 0 ? slashCommands : builtinDefaults;
+    const filtered = available.filter(cmd => {
+      const name = cmd.replace(/^\//, '').toLowerCase();
+      return name.includes(query);
+    });
+
+    if (filtered.length === 0) {
+      hideSlashDropdown();
+      return;
+    }
+
+    slashDropdown.innerHTML = filtered.map((cmd, i) => {
+      const name = cmd.startsWith('/') ? cmd : '/' + cmd;
+      const desc = getSlashCommandDescription(name);
+      return `<div class="chat-slash-item${i === slashSelectedIndex ? ' active' : ''}" data-command="${escapeHtml(name)}">
+        <span class="chat-slash-name">${escapeHtml(name)}</span>
+        <span class="chat-slash-desc">${escapeHtml(desc)}</span>
+      </div>`;
+    }).join('');
+
+    slashDropdown.style.display = '';
+    // Clamp selected index
+    if (slashSelectedIndex >= filtered.length) slashSelectedIndex = filtered.length - 1;
+
+    // Click handler for items
+    slashDropdown.querySelectorAll('.chat-slash-item').forEach(item => {
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault(); // prevent input blur
+        selectSlashCommand(item.dataset.command);
+      });
+      item.addEventListener('mouseenter', () => {
+        slashSelectedIndex = [...slashDropdown.querySelectorAll('.chat-slash-item')].indexOf(item);
+        highlightSlashItem(slashDropdown.querySelectorAll('.chat-slash-item'));
+      });
+    });
+  }
+
+  function getSlashCommandDescription(cmd) {
+    const descriptions = {
+      '/compact': t('chat.slashCompact') || 'Compact conversation history',
+      '/clear': t('chat.slashClear') || 'Clear conversation',
+      '/help': t('chat.slashHelp') || 'Show help',
+    };
+    return descriptions[cmd] || '';
+  }
+
+  function highlightSlashItem(items) {
+    items.forEach((item, i) => {
+      item.classList.toggle('active', i === slashSelectedIndex);
+    });
+    // Scroll into view
+    if (items[slashSelectedIndex]) {
+      items[slashSelectedIndex].scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function selectSlashCommand(command) {
+    inputEl.value = command;
+    inputEl.focus();
+    hideSlashDropdown();
+  }
+
+  function hideSlashDropdown() {
+    slashDropdown.style.display = 'none';
+    slashDropdown.innerHTML = '';
+    slashSelectedIndex = 0;
+  }
+
+  inputEl.addEventListener('blur', () => {
+    // Small delay to allow click on dropdown items
+    setTimeout(() => hideSlashDropdown(), 150);
   });
 
   sendBtn.addEventListener('click', handleSend);
@@ -237,6 +355,7 @@ function createChatView(wrapperEl, project, options = {}) {
     appendUserMessage(text);
     inputEl.value = '';
     inputEl.style.height = 'auto';
+    turnHadAssistantContent = false;
     setStreaming(true);
     appendThinkingIndicator();
 
@@ -565,6 +684,20 @@ function createChatView(wrapperEl, project, options = {}) {
     const el = document.createElement('div');
     el.className = 'chat-msg chat-msg-error';
     el.innerHTML = `<div class="chat-error-content">${escapeHtml(text)}</div>`;
+    messagesEl.appendChild(el);
+    scrollToBottom();
+  }
+
+  function appendSystemNotice(text, icon = 'info') {
+    const icons = {
+      info: '&#8505;',      // ℹ
+      compact: '&#9879;',   // ⚗
+      clear: '&#10227;',    // ↻
+      command: '&#9889;',   // ⚡
+    };
+    const el = document.createElement('div');
+    el.className = 'chat-system-notice';
+    el.innerHTML = `<span class="chat-system-notice-icon">${icons[icon] || icons.info}</span><span class="chat-system-notice-text">${escapeHtml(text)}</span>`;
     messagesEl.appendChild(el);
     scrollToBottom();
   }
@@ -1163,10 +1296,24 @@ function createChatView(wrapperEl, project, options = {}) {
       return;
     }
 
-    // System init
-    if (message.type === 'system' && message.subtype === 'init') {
-      model = message.model || '';
-      updateStatusInfo();
+    // System messages
+    if (message.type === 'system') {
+      if (message.subtype === 'init') {
+        model = message.model || '';
+        updateStatusInfo();
+        // Capture available slash commands for autocomplete
+        if (message.slash_commands && Array.isArray(message.slash_commands)) {
+          slashCommands = message.slash_commands;
+        }
+      } else if (message.subtype === 'compact_boundary') {
+        removeThinkingIndicator();
+        const preTokens = message.compact_metadata?.pre_tokens;
+        const notice = preTokens
+          ? t('chat.compacted', { tokens: preTokens.toLocaleString() }) || `Conversation compacted (${preTokens.toLocaleString()} tokens before)`
+          : t('chat.compactedSimple') || 'Conversation compacted';
+        appendSystemNotice(notice, 'compact');
+        setStreaming(false);
+      }
       return;
     }
 
@@ -1192,6 +1339,16 @@ function createChatView(wrapperEl, project, options = {}) {
         const errors = message.errors || [];
         appendError(errors.length ? errors.join('\n') : (message.subtype || 'Unknown error'));
         setStreaming(false);
+      } else {
+        // Successful result (e.g. slash commands like /usage, /compact, /clear)
+        // Finalize any pending UI state
+        removeThinkingIndicator();
+        finalizeStreamBlock();
+        // Display result text only for slash commands (no streamed content was shown)
+        if (message.result && typeof message.result === 'string' && !turnHadAssistantContent) {
+          appendSystemNotice(message.result, 'command');
+        }
+        setStreaming(false);
       }
       return;
     }
@@ -1205,6 +1362,7 @@ function createChatView(wrapperEl, project, options = {}) {
         setStatus('thinking', t('chat.thinking'));
         blockIndex = 0;
         currentMsgHasToolUse = false;
+        turnHadAssistantContent = false;
         toolCards.clear();
         break;
 
@@ -1251,6 +1409,7 @@ function createChatView(wrapperEl, project, options = {}) {
           removeThinkingIndicator();
           if (!currentStreamEl) startStreamBlock();
           appendStreamDelta(delta.text);
+          turnHadAssistantContent = true;
         } else if (delta.type === 'thinking_delta') {
           currentThinkingText += delta.thinking;
         } else if (delta.type === 'input_json_delta') {

@@ -662,7 +662,12 @@
     "todoTitle": "Tâches",
     "todoAllDone": "Terminé",
     "subagentLaunching": "Lancement de l'agent...",
-    "subagentRunning": "Agent en cours..."
+    "subagentRunning": "Agent en cours...",
+    "compacted": "Conversation compactée ({tokens} tokens avant)",
+    "compactedSimple": "Conversation compactée",
+    "slashCompact": "Compacter l'historique",
+    "slashClear": "Effacer la conversation",
+    "slashHelp": "Afficher l'aide"
   },
   "errors": {
     "corruptedFile": "Fichier projets corrompu",

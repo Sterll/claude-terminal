@@ -662,7 +662,12 @@
     "todoTitle": "Tasks",
     "todoAllDone": "All done",
     "subagentLaunching": "Launching agent...",
-    "subagentRunning": "Agent running..."
+    "subagentRunning": "Agent running...",
+    "compacted": "Conversation compacted ({tokens} tokens before)",
+    "compactedSimple": "Conversation compacted",
+    "slashCompact": "Compact conversation history",
+    "slashClear": "Clear conversation",
+    "slashHelp": "Show help"
   },
   "errors": {
     "corruptedFile": "Projects file corrupted",

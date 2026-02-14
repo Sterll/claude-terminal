@@ -17528,6 +17528,31 @@ select:focus-visible {
   font-style: italic;
 }
 
+/* ── System notices (slash command results, compact, etc.) ── */
+.chat-system-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(var(--accent-color-rgb), 0.05);
+  border-radius: 8px;
+  border-left: 3px solid rgba(var(--accent-color-rgb), 0.3);
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 4px 0;
+}
+
+.chat-system-notice-icon {
+  font-size: 14px;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.chat-system-notice-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* ── Inline code ── */
 .chat-inline-code {
   background: var(--bg-secondary);
@@ -18882,6 +18907,59 @@ select:focus-visible {
 }
 
 /* ── Input area ── */
+/* ── Slash command autocomplete dropdown ── */
+.chat-slash-dropdown {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  margin: 0 0 6px 0;
+  padding: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.25);
+  animation: chat-slash-appear 0.12s ease-out;
+}
+
+@keyframes chat-slash-appear {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.chat-slash-dropdown::-webkit-scrollbar { width: 4px; }
+.chat-slash-dropdown::-webkit-scrollbar-track { background: transparent; }
+.chat-slash-dropdown::-webkit-scrollbar-thumb { background: var(--border-primary); border-radius: 2px; }
+
+.chat-slash-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.chat-slash-item:hover,
+.chat-slash-item.active {
+  background: rgba(var(--accent-color-rgb, 99, 102, 241), 0.1);
+}
+
+.chat-slash-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-color);
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  white-space: nowrap;
+}
+
+.chat-slash-desc {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .chat-input-area {
   padding: 0 16px 12px;
 }
