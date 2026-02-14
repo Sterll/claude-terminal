@@ -656,7 +656,11 @@
     "planReviewPrompt": "Relisez le plan ci-dessus et approuvez ou demandez des modifications.",
     "approvePlan": "Approuver le plan",
     "rejectPlan": "Rejeter le plan",
-    "enteringPlanMode": "Claude veut planifier avant d'implémenter"
+    "enteringPlanMode": "Claude veut planifier avant d'implémenter",
+    "resuming": "Reprise de la conversation...",
+    "conversationResumed": "Conversation reprise — vous pouvez continuer à discuter.",
+    "todoTitle": "Tâches",
+    "todoAllDone": "Terminé"
   },
   "errors": {
     "corruptedFile": "Fichier projets corrompu",

@@ -2837,6 +2837,14 @@ async function renderSessionsPanel(project, emptyState) {
  */
 async function resumeSession(project, sessionId, options = {}) {
   const { skipPermissions = false } = options;
+
+  // If chat mode is active, resume via SDK
+  const mode = getSetting('defaultTerminalMode') || 'terminal';
+  if (mode === 'chat') {
+    console.log(`[TerminalManager] Resuming in chat mode — sessionId: ${sessionId}`);
+    return createChatTerminal(project, { skipPermissions, resumeSessionId: sessionId });
+  }
+
   const result = await api.terminal.create({
     cwd: project.path,
     runClaude: true,
@@ -3495,7 +3503,7 @@ function focusPrevTerminal() {
  * Create a chat-mode terminal (Claude Agent SDK UI)
  */
 async function createChatTerminal(project, options = {}) {
-  const { skipPermissions = false, name: customName = null } = options;
+  const { skipPermissions = false, name: customName = null, resumeSessionId = null } = options;
 
   const id = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const projectIndex = getProjectIndex(project.id);
@@ -3543,7 +3551,7 @@ async function createChatTerminal(project, options = {}) {
   document.getElementById('empty-terminals').style.display = 'none';
 
   // Create ChatView inside wrapper
-  const chatView = createChatView(wrapper, project, { skipPermissions });
+  const chatView = createChatView(wrapper, project, { skipPermissions, resumeSessionId });
   const storedData = getTerminal(id);
   if (storedData) {
     storedData.chatView = chatView;

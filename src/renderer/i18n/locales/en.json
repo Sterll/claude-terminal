@@ -656,7 +656,11 @@
     "planReviewPrompt": "Review the plan above and approve or request changes.",
     "approvePlan": "Approve plan",
     "rejectPlan": "Reject plan",
-    "enteringPlanMode": "Claude wants to plan before implementing"
+    "enteringPlanMode": "Claude wants to plan before implementing",
+    "resuming": "Resuming conversation...",
+    "conversationResumed": "Conversation resumed — you can continue chatting.",
+    "todoTitle": "Tasks",
+    "todoAllDone": "All done"
   },
   "errors": {
     "corruptedFile": "Projects file corrupted",
