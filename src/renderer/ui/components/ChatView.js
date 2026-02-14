@@ -84,33 +84,41 @@ function createChatView(wrapperEl, project, options = {}) {
   let totalTokens = 0;
   const toolCards = new Map(); // content_block index -> element
   let blockIndex = 0;
+  let currentMsgHasToolUse = false;
   const unsubscribers = [];
 
   // ── Build DOM ──
 
   wrapperEl.innerHTML = `
     <div class="chat-view">
-      <div class="chat-messages"></div>
-      <div class="chat-status-bar">
-        <div class="chat-status-left">
-          <span class="chat-status-dot"></span>
-          <span class="chat-status-text">${escapeHtml(t('chat.ready') || 'Ready')}</span>
-        </div>
-        <div class="chat-status-right">
-          <span class="chat-status-model"></span>
-          <span class="chat-status-tokens"></span>
-          <span class="chat-status-cost"></span>
+      <div class="chat-messages">
+        <div class="chat-welcome">
+          <div class="chat-welcome-sparkle">&#10022;</div>
+          <div class="chat-welcome-text">${escapeHtml(t('chat.welcomeMessage') || 'How can I help?')}</div>
         </div>
       </div>
       <div class="chat-input-area">
-        <textarea class="chat-input" placeholder="${escapeHtml(t('chat.placeholder'))}" rows="1"></textarea>
-        <div class="chat-input-actions">
-          <button class="chat-stop-btn" title="Stop" style="display:none">
-            <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-          </button>
-          <button class="chat-send-btn" title="${escapeHtml(t('chat.sendMessage'))}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-          </button>
+        <div class="chat-input-wrapper">
+          <textarea class="chat-input" placeholder="${escapeHtml(t('chat.placeholder'))}" rows="1"></textarea>
+          <div class="chat-input-actions">
+            <button class="chat-stop-btn" title="Stop" style="display:none">
+              <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+            </button>
+            <button class="chat-send-btn" title="${escapeHtml(t('chat.sendMessage'))}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22,2 15,22 11,13 2,9"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="chat-input-footer">
+          <div class="chat-footer-left">
+            <span class="chat-status-dot"></span>
+            <span class="chat-status-text">${escapeHtml(t('chat.ready') || 'Ready')}</span>
+          </div>
+          <div class="chat-footer-right">
+            <span class="chat-status-model"></span>
+            <span class="chat-status-tokens"></span>
+            <span class="chat-status-cost"></span>
+          </div>
         </div>
       </div>
     </div>
@@ -166,12 +174,7 @@ function createChatView(wrapperEl, project, options = {}) {
       return;
     }
 
-    const permBtn = e.target.closest('.chat-perm-btn');
-    if (permBtn) {
-      handlePermissionClick(permBtn);
-      return;
-    }
-
+    // Question card handlers MUST be checked before .chat-perm-btn
     const optionBtn = e.target.closest('.chat-question-option');
     if (optionBtn) {
       const card = optionBtn.closest('.chat-question-card');
@@ -187,7 +190,18 @@ function createChatView(wrapperEl, project, options = {}) {
 
     const submitBtn = e.target.closest('.chat-question-submit');
     if (submitBtn) {
-      handleQuestionSubmit(submitBtn.closest('.chat-question-card'));
+      const card = submitBtn.closest('.chat-question-card');
+      if (submitBtn.dataset.action === 'next') {
+        handleQuestionNext(card);
+      } else {
+        handleQuestionSubmit(card);
+      }
+      return;
+    }
+
+    const permBtn = e.target.closest('.chat-perm-btn');
+    if (permBtn) {
+      handlePermissionClick(permBtn);
       return;
     }
   });
@@ -202,6 +216,7 @@ function createChatView(wrapperEl, project, options = {}) {
     inputEl.value = '';
     inputEl.style.height = 'auto';
     setStreaming(true);
+    appendThinkingIndicator();
 
     try {
       if (!sessionId) {
@@ -262,30 +277,78 @@ function createChatView(wrapperEl, project, options = {}) {
     }
   }
 
+  /**
+   * Collect the answer from the currently visible question group
+   */
+  function collectCurrentAnswer(card) {
+    const questions = JSON.parse(card.dataset.questions || '[]');
+    const step = parseInt(card.dataset.currentStep, 10);
+    const group = card.querySelector(`.chat-question-group[data-step="${step}"]`);
+    if (!group || !questions[step]) return null;
+
+    const q = questions[step];
+    const selected = group.querySelectorAll('.chat-question-option.selected');
+    const customInput = group.querySelector('.chat-question-custom-input');
+
+    if (customInput && customInput.value.trim()) {
+      return { question: q.question, answer: customInput.value.trim() };
+    } else if (selected.length > 0) {
+      return { question: q.question, answer: Array.from(selected).map(s => s.dataset.label).join(', ') };
+    }
+    return { question: q.question, answer: q.options[0]?.label || '' };
+  }
+
+  /**
+   * Advance to the next question in a multi-step question card
+   */
+  function handleQuestionNext(card) {
+    if (!card) return;
+    const questions = JSON.parse(card.dataset.questions || '[]');
+    const currentStep = parseInt(card.dataset.currentStep, 10);
+    const totalSteps = questions.length;
+    const collected = JSON.parse(card.dataset.collectedAnswers || '{}');
+
+    // Save current answer
+    const result = collectCurrentAnswer(card);
+    if (result) collected[result.question] = result.answer;
+    card.dataset.collectedAnswers = JSON.stringify(collected);
+
+    // Transition: hide current, show next
+    const currentGroup = card.querySelector(`.chat-question-group[data-step="${currentStep}"]`);
+    const nextStep = currentStep + 1;
+    const nextGroup = card.querySelector(`.chat-question-group[data-step="${nextStep}"]`);
+
+    if (currentGroup) currentGroup.classList.remove('active');
+    if (nextGroup) nextGroup.classList.add('active');
+
+    card.dataset.currentStep = String(nextStep);
+
+    // Update step counter
+    const stepEl = card.querySelector('.chat-question-step');
+    if (stepEl) stepEl.textContent = `${nextStep + 1} / ${totalSteps}`;
+
+    // Update button for last step
+    const btn = card.querySelector('.chat-question-submit');
+    if (nextStep >= totalSteps - 1) {
+      btn.dataset.action = 'submit';
+      btn.textContent = t('chat.submit') || 'Submit';
+    }
+
+    scrollToBottom();
+  }
+
   function handleQuestionSubmit(card) {
     if (!card) return;
     const requestId = card.dataset.requestId;
     const questionsData = JSON.parse(card.dataset.questions || '[]');
-    const answers = {};
+    const answers = JSON.parse(card.dataset.collectedAnswers || '{}');
 
-    questionsData.forEach((q, i) => {
-      const qEl = card.querySelectorAll('.chat-question-group')[i];
-      if (!qEl) return;
-
-      const selected = qEl.querySelectorAll('.chat-question-option.selected');
-      const customInput = qEl.querySelector('.chat-question-custom-input');
-
-      if (customInput && customInput.value.trim()) {
-        answers[q.question] = customInput.value.trim();
-      } else if (selected.length > 0) {
-        answers[q.question] = Array.from(selected).map(s => s.dataset.label).join(', ');
-      } else {
-        answers[q.question] = q.options[0]?.label || '';
-      }
-    });
+    // Collect the current (last) question's answer
+    const result = collectCurrentAnswer(card);
+    if (result) answers[result.question] = result.answer;
 
     card.classList.add('resolved');
-    card.querySelectorAll('.chat-perm-btn, .chat-question-option, .chat-question-submit').forEach(b => b.disabled = true);
+    card.querySelectorAll('.chat-question-option, .chat-question-submit').forEach(b => b.disabled = true);
 
     api.chat.respondPermission({
       requestId,
@@ -299,15 +362,11 @@ function createChatView(wrapperEl, project, options = {}) {
   // ── DOM helpers ──
 
   function appendUserMessage(text) {
+    const welcome = messagesEl.querySelector('.chat-welcome');
+    if (welcome) welcome.remove();
     const el = document.createElement('div');
     el.className = 'chat-msg chat-msg-user';
-    el.innerHTML = `
-      <div class="chat-msg-label">
-        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-        <span>You</span>
-      </div>
-      <div class="chat-msg-content">${renderMarkdown(text)}</div>
-    `;
+    el.innerHTML = `<div class="chat-msg-content">${renderMarkdown(text)}</div>`;
     messagesEl.appendChild(el);
     scrollToBottom();
   }
@@ -321,12 +380,11 @@ function createChatView(wrapperEl, project, options = {}) {
   }
 
   function appendThinkingIndicator() {
+    removeThinkingIndicator();
     const el = document.createElement('div');
     el.className = 'chat-thinking-indicator';
     el.innerHTML = `
-      <div class="chat-thinking-dots">
-        <span></span><span></span><span></span>
-      </div>
+      <span class="chat-sparkle">&#10022;</span>
       <span class="chat-thinking-label">${escapeHtml(t('chat.thinking'))}</span>
     `;
     messagesEl.appendChild(el);
@@ -449,12 +507,15 @@ function createChatView(wrapperEl, project, options = {}) {
   function appendQuestionCard(data) {
     const { requestId, input } = data;
     const questions = input?.questions || [];
+    const totalSteps = questions.length;
 
     const el = document.createElement('div');
     el.className = 'chat-question-card';
     el.dataset.requestId = requestId;
     el.dataset.questions = JSON.stringify(questions);
     el.dataset.multiSelect = String(questions.some(q => q.multiSelect));
+    el.dataset.currentStep = '0';
+    el.dataset.collectedAnswers = '{}';
 
     let questionsHtml = '';
     questions.forEach((q, i) => {
@@ -466,7 +527,7 @@ function createChatView(wrapperEl, project, options = {}) {
       ).join('');
 
       questionsHtml += `
-        <div class="chat-question-group">
+        <div class="chat-question-group${i === 0 ? ' active' : ''}" data-step="${i}">
           <p class="chat-question-text">${escapeHtml(q.question)}</p>
           <div class="chat-question-options">${optionsHtml}</div>
           <div class="chat-question-custom">
@@ -476,31 +537,41 @@ function createChatView(wrapperEl, project, options = {}) {
       `;
     });
 
+    const isOnlyOne = totalSteps <= 1;
+    const btnText = isOnlyOne
+      ? escapeHtml(t('chat.submit') || 'Submit')
+      : escapeHtml(t('chat.next') || 'Next');
+
     el.innerHTML = `
       <div class="chat-question-header">
         <div class="chat-perm-icon">${getToolIcon('AskUserQuestion')}</div>
         <span>${escapeHtml(t('chat.questionFromClaude') || 'Claude has a question')}</span>
+        ${totalSteps > 1 ? `<span class="chat-question-step">1 / ${totalSteps}</span>` : ''}
       </div>
       <div class="chat-question-body">
         ${questionsHtml}
       </div>
       <div class="chat-question-actions">
-        <button class="chat-question-submit chat-perm-btn allow">${escapeHtml(t('chat.submit') || 'Submit')}</button>
+        <button class="chat-question-submit" data-action="${isOnlyOne ? 'submit' : 'next'}">${btnText}</button>
       </div>
     `;
     messagesEl.appendChild(el);
     scrollToBottom();
 
-    // Focus first custom input for keyboard accessibility
-    const firstInput = el.querySelector('.chat-question-custom-input');
-    if (firstInput) {
-      firstInput.addEventListener('keydown', (e) => {
+    // Enter key on custom inputs advances or submits
+    el.querySelectorAll('.chat-question-custom-input').forEach(inp => {
+      inp.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
-          handleQuestionSubmit(el);
+          const btn = el.querySelector('.chat-question-submit');
+          if (btn.dataset.action === 'next') {
+            handleQuestionNext(el);
+          } else {
+            handleQuestionSubmit(el);
+          }
         }
       });
-    }
+    });
   }
 
   // ── State management ──
@@ -560,7 +631,7 @@ function createChatView(wrapperEl, project, options = {}) {
       return;
     }
 
-    // Result
+    // Result - marks end of a turn
     if (message.type === 'result') {
       if (message.total_cost_usd != null) totalCost = message.total_cost_usd;
       if (message.usage) {
@@ -568,6 +639,12 @@ function createChatView(wrapperEl, project, options = {}) {
       }
       if (message.model) model = message.model;
       updateStatusInfo();
+      removeThinkingIndicator();
+      finalizeStreamBlock();
+      setStreaming(false);
+      for (const [, card] of toolCards) {
+        completeToolCard(card);
+      }
       return;
     }
   });
@@ -576,9 +653,10 @@ function createChatView(wrapperEl, project, options = {}) {
   function handleStreamEvent(event) {
     switch (event.type) {
       case 'message_start':
-        appendThinkingIndicator();
+        if (!isStreaming) setStreaming(true);
         setStatus('thinking', t('chat.thinking'));
         blockIndex = 0;
+        currentMsgHasToolUse = false;
         toolCards.clear();
         break;
 
@@ -590,8 +668,12 @@ function createChatView(wrapperEl, project, options = {}) {
           setStatus('responding', t('chat.streaming') || 'Writing...');
         } else if (block.type === 'tool_use') {
           finalizeStreamBlock();
-          const card = appendToolCard(block.name, '');
-          toolCards.set(event.index ?? blockIndex, card);
+          currentMsgHasToolUse = true;
+          // Don't show tool card for AskUserQuestion - the question card handles it
+          if (block.name !== 'AskUserQuestion') {
+            const card = appendToolCard(block.name, '');
+            toolCards.set(event.index ?? blockIndex, card);
+          }
           setStatus('working', `${block.name}...`);
         } else if (block.type === 'thinking') {
           currentThinkingText = '';
@@ -645,6 +727,13 @@ function createChatView(wrapperEl, project, options = {}) {
       case 'message_stop':
         removeThinkingIndicator();
         finalizeStreamBlock();
+        // If no tool_use in this message, the turn is done
+        if (!currentMsgHasToolUse) {
+          setStreaming(false);
+          for (const [, card] of toolCards) {
+            completeToolCard(card);
+          }
+        }
         break;
     }
   }

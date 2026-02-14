@@ -648,8 +648,10 @@
     "questionFromClaude": "Claude has a question",
     "otherPlaceholder": "Or type your own answer...",
     "submit": "Submit",
+    "next": "Next",
     "waitingForInput": "Waiting for input...",
-    "toolRunning": "Running tools..."
+    "toolRunning": "Running tools...",
+    "welcomeMessage": "How can I help?"
   },
   "errors": {
     "corruptedFile": "Projects file corrupted",
