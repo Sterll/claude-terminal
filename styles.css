@@ -17504,6 +17504,21 @@ select:focus-visible {
   border-left: 3px solid rgba(239, 68, 68, 0.5);
 }
 
+/* System message (resume notice, etc.) */
+.chat-msg-system {
+  padding: 0;
+}
+
+.chat-msg-system .chat-msg-content {
+  padding: 8px 12px;
+  background: rgba(var(--accent-color-rgb), 0.06);
+  color: var(--text-secondary);
+  border-radius: 8px;
+  font-size: 12px;
+  border-left: 3px solid rgba(var(--accent-color-rgb), 0.4);
+  font-style: italic;
+}
+
 /* ── Inline code ── */
 .chat-inline-code {
   background: var(--bg-secondary);
@@ -18368,6 +18383,271 @@ select:focus-visible {
 .chat-question-submit:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* ── Todo tracker (anchored above input) ── */
+/* ── Todo widget — floating task tracker ── */
+.chat-todo {
+  margin: 0 16px 8px;
+  border-radius: 12px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.035) 0%,
+    rgba(255, 255, 255, 0.018) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  animation: td-slide-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15),
+              0 0 0 0.5px rgba(255, 255, 255, 0.04) inset;
+}
+
+@keyframes td-slide-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Collapsed bar (always visible) ── */
+.td-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  transition: background 0.15s;
+  position: relative;
+}
+
+.td-bar:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+/* Accent line on left edge */
+.td-bar::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 20%;
+  bottom: 20%;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent-color);
+  opacity: 0.5;
+  transition: opacity 0.2s, top 0.3s, bottom 0.3s;
+}
+
+.chat-todo.open .td-bar::before {
+  top: 10%;
+  bottom: 10%;
+  opacity: 0.7;
+}
+
+.td-count {
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  flex-shrink: 0;
+  min-width: 24px;
+}
+
+.td-count-sep {
+  color: var(--text-tertiary);
+  font-weight: 400;
+  margin: 0 0.5px;
+  opacity: 0.5;
+}
+
+.td-track {
+  width: 52px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.td-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent-color);
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 0 6px rgba(var(--accent-color-rgb, 99, 102, 241), 0.3);
+}
+
+.td-fill.td-fill-done {
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.3);
+}
+
+.td-bar-text {
+  flex: 1;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  opacity: 0.7;
+}
+
+.td-chevron {
+  width: 14px;
+  height: 14px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  opacity: 0.5;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.2s;
+}
+
+.td-bar:hover .td-chevron {
+  opacity: 0.8;
+}
+
+.chat-todo.open .td-chevron {
+  transform: rotate(180deg);
+  opacity: 0.7;
+}
+
+/* ── Expanded body ── */
+.td-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              padding 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  padding: 0 6px;
+  position: relative;
+}
+
+.chat-todo.open .td-body {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px 6px 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+/* Soft fade at bottom of scrollable list */
+.chat-todo.open .td-body::after {
+  content: '';
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 16px;
+  display: block;
+  background: linear-gradient(transparent, rgba(var(--bg-primary-rgb, 17, 17, 17), 0.6));
+  pointer-events: none;
+}
+
+/* Custom scrollbar */
+.td-body::-webkit-scrollbar { width: 3px; }
+.td-body::-webkit-scrollbar-track { background: transparent; }
+.td-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+}
+.td-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* ── Todo rows ── */
+.td-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  animation: td-row-in 0.25s ease-out both;
+  animation-delay: calc(var(--d) * 30ms);
+  transition: background 0.15s;
+}
+
+.td-row:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+@keyframes td-row-in {
+  from { opacity: 0; transform: translateX(-6px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ── Status icons ── */
+.td-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.td-done {
+  color: #22c55e;
+  filter: drop-shadow(0 0 4px rgba(34, 197, 94, 0.3));
+}
+
+.td-icon.td-pending {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  transition: border-color 0.2s;
+}
+
+.td-row:hover .td-icon.td-pending {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.td-active {
+  width: 16px;
+  height: 16px;
+}
+
+.td-spin {
+  width: 13px;
+  height: 13px;
+  border: 1.5px solid rgba(var(--accent-color-rgb, 99, 102, 241), 0.15);
+  border-top-color: var(--accent-color);
+  border-radius: 50%;
+  animation: td-spinner 0.7s linear infinite;
+}
+
+@keyframes td-spinner {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Task text ── */
+.td-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.td-completed .td-label {
+  color: var(--text-tertiary);
+  text-decoration: line-through;
+  text-decoration-color: rgba(255, 255, 255, 0.1);
+  opacity: 0.6;
+}
+
+.td-in_progress .td-label {
+  color: var(--text-primary);
+  font-weight: 500;
 }
 
 /* ── Input area ── */
