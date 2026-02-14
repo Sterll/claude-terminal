@@ -367,7 +367,12 @@
     "reduceMotion": "Désactiver les animations",
     "reduceMotionDesc": "Supprimer toutes les transitions et animations de l'interface",
     "aiCommitMessages": "Messages de commit IA",
-    "aiCommitMessagesDesc": "Utiliser GitHub Models (GPT-4o-mini) pour générer les messages de commit. Nécessite une connexion GitHub."
+    "aiCommitMessagesDesc": "Utiliser GitHub Models (GPT-4o-mini) pour générer les messages de commit. Nécessite une connexion GitHub.",
+    "defaultTerminalMode": "Mode terminal par défaut",
+    "modeTerminal": "Terminal",
+    "modeTerminalDesc": "Terminal classique avec xterm.js",
+    "modeChat": "Chat UI",
+    "modeChatDesc": "Interface conversationnelle avec Claude"
   },
   "ui": {
     "notifications": "Notifications",
@@ -620,6 +625,31 @@
     "requiredField": "Requis",
     "optionalField": "Optionnel",
     "serverType": "Type"
+  },
+  "chat": {
+    "title": "Chat",
+    "sendMessage": "Envoyer",
+    "placeholder": "Demandez quelque chose à Claude...",
+    "thinking": "Réflexion",
+    "toolCall": "Appel d'outil",
+    "cost": "Coût",
+    "tokens": "tokens",
+    "model": "Modèle",
+    "switchToChat": "Passer en Chat",
+    "switchToTerminal": "Passer en Terminal",
+    "newSession": "Nouvelle session",
+    "errorOccurred": "Une erreur est survenue",
+    "streaming": "En cours d'écriture...",
+    "stopped": "Arrêté",
+    "ready": "Prêt",
+    "allow": "Autoriser",
+    "deny": "Refuser",
+    "permissionRequired": "Permission requise",
+    "questionFromClaude": "Claude a une question",
+    "otherPlaceholder": "Ou tapez votre propre réponse...",
+    "submit": "Envoyer",
+    "waitingForInput": "En attente de votre réponse...",
+    "toolRunning": "Exécution des outils..."
   },
   "errors": {
     "corruptedFile": "Fichier projets corrompu",

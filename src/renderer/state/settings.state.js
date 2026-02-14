@@ -20,7 +20,8 @@ const defaultSettings = {
   language: null, // null = auto-detect, 'fr' = French, 'en' = English
   compactProjects: true, // Compact project list (only show name when not active)
   customPresets: [], // Custom quick action presets [{name, command, icon}]
-  aiCommitMessages: true // Use GitHub Models API for AI commit messages
+  aiCommitMessages: true, // Use GitHub Models API for AI commit messages
+  defaultTerminalMode: 'terminal' // 'terminal' or 'chat' - default mode for new Claude terminals
 };
 
 const settingsState = new State({ ...defaultSettings });

@@ -308,7 +308,12 @@
     "reduceMotion": "Disable animations",
     "reduceMotionDesc": "Remove all transitions and animations from the interface",
     "aiCommitMessages": "AI commit messages",
-    "aiCommitMessagesDesc": "Use GitHub Models (GPT-4o-mini) to generate commit messages. Requires GitHub connection."
+    "aiCommitMessagesDesc": "Use GitHub Models (GPT-4o-mini) to generate commit messages. Requires GitHub connection.",
+    "defaultTerminalMode": "Default terminal mode",
+    "modeTerminal": "Terminal",
+    "modeTerminalDesc": "Classic terminal with xterm.js",
+    "modeChat": "Chat UI",
+    "modeChatDesc": "Conversational interface with Claude"
   },
   "ui": {
     "notifications": "Notifications",
@@ -620,6 +625,31 @@
     "requiredField": "Required",
     "optionalField": "Optional",
     "serverType": "Type"
+  },
+  "chat": {
+    "title": "Chat",
+    "sendMessage": "Send",
+    "placeholder": "Ask Claude something...",
+    "thinking": "Thinking",
+    "toolCall": "Tool call",
+    "cost": "Cost",
+    "tokens": "tokens",
+    "model": "Model",
+    "switchToChat": "Switch to Chat",
+    "switchToTerminal": "Switch to Terminal",
+    "newSession": "New session",
+    "errorOccurred": "An error occurred",
+    "streaming": "Writing...",
+    "stopped": "Stopped",
+    "ready": "Ready",
+    "allow": "Allow",
+    "deny": "Deny",
+    "permissionRequired": "Permission Required",
+    "questionFromClaude": "Claude has a question",
+    "otherPlaceholder": "Or type your own answer...",
+    "submit": "Submit",
+    "waitingForInput": "Waiting for input...",
+    "toolRunning": "Running tools..."
   },
   "errors": {
     "corruptedFile": "Projects file corrupted",
