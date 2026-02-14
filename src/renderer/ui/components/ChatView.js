@@ -395,12 +395,18 @@ function createChatView(wrapperEl, project, options = {}) {
       sendLock = false;
     }
 
-    // Generate tab name on every prompt (fire-and-forget, haiku = cheap)
-    if (onTabRename && !tabNamePending && !text.startsWith('/')) {
-      tabNamePending = true;
-      api.chat.generateTabName({ userMessage: text, currentName: project.name }).then(res => {
-        if (res?.success && res.name) onTabRename(res.name);
-      }).catch(() => {}).finally(() => { tabNamePending = false; });
+    // Tab rename: instant truncation + async haiku polish
+    if (onTabRename && !text.startsWith('/')) {
+      // Immediate: smart truncation
+      const words = text.split(/\s+/).slice(0, 5).join(' ');
+      onTabRename(words.length > 30 ? words.slice(0, 28) + '...' : words);
+      // Async: haiku generates a proper short title
+      if (!tabNamePending) {
+        tabNamePending = true;
+        api.chat.generateTabName({ userMessage: text, currentName: project.name }).then(res => {
+          if (res?.success && res.name) onTabRename(res.name);
+        }).catch(() => {}).finally(() => { tabNamePending = false; });
+      }
     }
   }
 

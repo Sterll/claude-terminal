@@ -291,25 +291,21 @@ class ChatService {
   }
 
   /**
-   * Generate a short tab name using the SDK with haiku model.
+   * Generate a short tab name via SDK query — bare minimum, no tools, no Claude Code preset.
    */
   async generateTabName(userMessage, currentName) {
     try {
       const sdk = await loadSDK();
-      const truncated = userMessage.slice(0, 300);
-      const prompt = `Generate a very short tab title (2-4 words max, no quotes, no punctuation) that summarizes this message. Reply in the SAME language as the message. Current tab name: "${currentName}". Message: "${truncated}"`;
+      const prompt = `Give a 2-4 word tab title (no quotes, no punctuation) for: "${userMessage.slice(0, 200)}". Same language as the message. Only output the title.`;
 
       let result = '';
-      for await (const msg of sdk.query({ prompt, options: { maxTurns: 1, model: 'haiku' } })) {
-        if (msg.type === 'assistant' && msg.message?.content) {
-          for (const block of msg.message.content) {
-            if (block.type === 'text') result += block.text;
-          }
-        }
-        if (msg.type === 'result' && msg.result) result = msg.result;
+      for await (const msg of sdk.query({
+        prompt,
+        options: { maxTurns: 1, allowedTools: [], model: 'haiku' }
+      })) {
+        if (msg.type === 'result' && msg.result) { result = msg.result; break; }
       }
-      const name = result.trim().replace(/^["'`]+|["'`]+$/g, '').split('\n')[0].slice(0, 40);
-      return name || null;
+      return result.trim().replace(/^["'`]+|["'`]+$/g, '').split('\n')[0].slice(0, 40) || null;
     } catch (err) {
       console.error('[ChatService] generateTabName error:', err.message);
       return null;
