@@ -763,6 +763,66 @@ function buildStatsHtml(stats, gitInfo) {
 }
 
 /**
+ * Build Claude Activity section HTML (hooks-only data)
+ * Shows tool usage stats and session count when hooks are enabled.
+ * @returns {string}
+ */
+function buildClaudeActivityHtml() {
+  let stats;
+  try {
+    const { getActiveProvider, getDashboardStats } = require('../events');
+    if (getActiveProvider() !== 'hooks') return '';
+    stats = getDashboardStats();
+  } catch (e) { return ''; }
+
+  if (!stats || stats.hookSessionCount === 0) return '';
+
+  const entries = Object.entries(stats.toolStats)
+    .sort((a, b) => b[1].count - a[1].count);
+
+  if (entries.length === 0) return '';
+
+  const totalCalls = entries.reduce((sum, [, v]) => sum + v.count, 0);
+  const totalErrors = entries.reduce((sum, [, v]) => sum + v.errors, 0);
+  const maxCount = entries[0]?.[1]?.count || 1;
+
+  const barsHtml = entries.slice(0, 8).map(([name, data]) => `
+    <div class="ext-row">
+      <span class="ext-name">${escapeHtml(name)}</span>
+      <div class="ext-bar-container">
+        <div class="ext-bar" data-bar-width="${(data.count / maxCount * 100).toFixed(1)}%" style="width: 0"></div>
+      </div>
+      <span class="ext-stats">${formatNumber(data.count)}${data.errors > 0 ? ` <span style="color:var(--color-error,#ef4444)">(${data.errors} err)</span>` : ''}</span>
+    </div>
+  `).join('');
+
+  return `
+    <div class="dashboard-section">
+      <h3><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 10.12h-6.78l2.74-2.82c-2.73-2.7-7.15-2.8-9.88-.1a6.887 6.887 0 0 0 0 9.79c2.73 2.7 7.15 2.7 9.88 0 1.36-1.35 2.04-2.96 2.04-4.9h2c0 2.35-.93 4.72-2.79 6.54-3.72 3.64-9.75 3.64-13.47 0-3.72-3.64-3.72-9.53 0-13.17 3.72-3.64 9.74-3.65 13.47-.01L21 2v8.12z"/></svg> ${t('dashboard.claudeActivity') || 'Claude Activity'}</h3>
+      <div class="code-stats-grid">
+        <div class="code-stat">
+          <div class="code-stat-value" data-count-to="${stats.hookSessionCount}">0</div>
+          <div class="code-stat-label">${t('dashboard.sessions') || 'Sessions'}</div>
+        </div>
+        <div class="code-stat">
+          <div class="code-stat-value" data-count-to="${totalCalls}">0</div>
+          <div class="code-stat-label">${t('dashboard.toolCalls') || 'Tool calls'}</div>
+        </div>
+        ${totalErrors > 0 ? `
+        <div class="code-stat">
+          <div class="code-stat-value" data-count-to="${totalErrors}">0</div>
+          <div class="code-stat-label">${t('dashboard.toolErrors') || 'Errors'}</div>
+        </div>
+        ` : ''}
+      </div>
+      <div class="extensions-breakdown">
+        ${barsHtml}
+      </div>
+    </div>
+  `;
+}
+
+/**
  * Build contributors section HTML
  * @param {Array} contributors
  * @returns {string}
@@ -1048,6 +1108,7 @@ function renderDashboardHtml(container, project, data, options, isRefreshing = f
       </div>
       <div class="dashboard-col">
         ${buildStatsHtml(stats, gitInfo)}
+        ${buildClaudeActivityHtml()}
         ${gitInfo.isGitRepo ? buildContributorsHtml(gitInfo.contributors) : ''}
       </div>
     </div>
