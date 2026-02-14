@@ -656,6 +656,7 @@
     "stopped": "Stopped",
     "ready": "Ready",
     "allow": "Allow",
+    "alwaysAllow": "Always Allow",
     "deny": "Deny",
     "permissionRequired": "Permission Required",
     "questionFromClaude": "Claude has a question",

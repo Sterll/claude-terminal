@@ -581,14 +581,22 @@ function createChatView(wrapperEl, project, options = {}) {
       b.classList.add('disabled');
     });
 
-    if (action === 'allow') {
+    if (action === 'allow' || action === 'always-allow') {
       btn.classList.add('chosen');
       card.classList.add('resolved', 'allowed');
       const inputData = JSON.parse(card.dataset.toolInput || '{}');
-      api.chat.respondPermission({
-        requestId,
-        result: { behavior: 'allow', updatedInput: inputData }
-      });
+      const result = { behavior: 'allow', updatedInput: inputData };
+      if (action === 'always-allow') {
+        // Tell SDK to switch session to bypassPermissions mode
+        result.updatedPermissions = [{
+          type: 'setMode',
+          mode: 'bypassPermissions',
+          destination: 'session'
+        }];
+        // Also set alwaysAllow flag on ChatService as fallback
+        api.chat.alwaysAllow({ sessionId });
+      }
+      api.chat.respondPermission({ requestId, result });
     } else {
       btn.classList.add('chosen');
       card.classList.add('resolved', 'denied');
@@ -1282,6 +1290,7 @@ function createChatView(wrapperEl, project, options = {}) {
     el.dataset.toolInput = JSON.stringify(input || {});
 
     const allowText = t('chat.allow') || 'Allow';
+    const alwaysAllowText = t('chat.alwaysAllow') || 'Always Allow';
     const denyText = t('chat.deny') || 'Deny';
     el.innerHTML = `
       <div class="chat-perm-header">
@@ -1297,6 +1306,7 @@ function createChatView(wrapperEl, project, options = {}) {
       </div>
       <div class="chat-perm-actions">
         <button class="chat-perm-btn allow" data-action="allow">${escapeHtml(allowText)}</button>
+        <button class="chat-perm-btn always-allow" data-action="always-allow">${escapeHtml(alwaysAllowText)}</button>
         <button class="chat-perm-btn deny" data-action="deny">${escapeHtml(denyText)}</button>
       </div>
     `;

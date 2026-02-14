@@ -18396,6 +18396,17 @@ select:focus-visible {
   border-color: transparent;
 }
 
+.chat-perm-btn.always-allow {
+  background: transparent;
+  color: var(--accent-color);
+  border-color: var(--accent-color);
+}
+
+.chat-perm-btn.always-allow:hover:not(:disabled) {
+  background: var(--accent-color);
+  color: #fff;
+}
+
 .chat-perm-btn.deny {
   background: transparent;
   color: var(--text-tertiary);
@@ -18414,9 +18425,11 @@ select:focus-visible {
   pointer-events: none;
 }
 
-.chat-perm-btn.chosen.allow {
+.chat-perm-btn.chosen.allow,
+.chat-perm-btn.chosen.always-allow {
   background: #22c55e;
   border-color: transparent;
+  color: #fff;
 }
 
 .chat-perm-btn.chosen.deny {

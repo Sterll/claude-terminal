@@ -44,6 +44,11 @@ function registerChatHandlers() {
     chatService.interrupt(sessionId);
   });
 
+  // Enable always-allow mode for a session
+  ipcMain.on('chat-always-allow', (_event, { sessionId }) => {
+    chatService.setAlwaysAllow(sessionId);
+  });
+
   // Generate a short tab name from user message (persistent haiku session)
   ipcMain.handle('chat-generate-tab-name', async (_event, { userMessage }) => {
     try {

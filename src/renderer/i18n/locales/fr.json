@@ -656,6 +656,7 @@
     "stopped": "Arrêté",
     "ready": "Prêt",
     "allow": "Autoriser",
+    "alwaysAllow": "Toujours autoriser",
     "deny": "Refuser",
     "permissionRequired": "Permission requise",
     "questionFromClaude": "Claude a une question",

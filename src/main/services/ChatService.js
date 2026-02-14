@@ -169,6 +169,7 @@ class ChatService {
         abortController,
         messageQueue,
         queryStream,
+        alwaysAllow: permissionMode === 'bypassPermissions',
       });
 
       this._processStream(sessionId, queryStream);
@@ -230,6 +231,12 @@ class ChatService {
    * Forwards to renderer and waits for user response.
    */
   async _handlePermission(sessionId, toolName, input, options) {
+    // Auto-approve if session has alwaysAllow enabled
+    const session = this.sessions.get(sessionId);
+    if (session?.alwaysAllow) {
+      return { behavior: 'allow', updatedInput: input };
+    }
+
     const requestId = `perm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     return new Promise((resolve, reject) => {
@@ -262,6 +269,16 @@ class ChatService {
     if (pending) {
       this.pendingPermissions.delete(requestId);
       pending.resolve(result);
+    }
+  }
+
+  /**
+   * Enable always-allow mode for a session (auto-approve all permissions)
+   */
+  setAlwaysAllow(sessionId) {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      session.alwaysAllow = true;
     }
   }
 
