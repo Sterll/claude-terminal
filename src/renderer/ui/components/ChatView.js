@@ -73,8 +73,10 @@ function getToolDisplayInfo(toolName, input) {
 // ── Create Chat View ──
 
 function createChatView(wrapperEl, project, options = {}) {
+  const { resumeSessionId = null } = options;
   let sessionId = null;
   let isStreaming = false;
+  let pendingResumeId = resumeSessionId || null;
   let currentStreamEl = null;
   let currentStreamText = '';
   let currentThinkingEl = null;
@@ -84,8 +86,10 @@ function createChatView(wrapperEl, project, options = {}) {
   let totalTokens = 0;
   const toolCards = new Map(); // content_block index -> element
   const toolInputBuffers = new Map(); // content_block index -> accumulated JSON string
+  const todoToolIndices = new Set(); // block indices that are TodoWrite tools
   let blockIndex = 0;
   let currentMsgHasToolUse = false;
+  let todoWidgetEl = null; // persistent todo list widget
   const unsubscribers = [];
 
   // ── Build DOM ──
@@ -237,14 +241,22 @@ function createChatView(wrapperEl, project, options = {}) {
 
     try {
       if (!sessionId) {
-        const result = await api.chat.start({
+        // Assign sessionId BEFORE await to prevent race condition:
+        // _processStream fires events immediately, but await returns later.
+        sessionId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const startOpts = {
           cwd: project.path,
           prompt: text,
-          permissionMode: options.permissionMode || 'default'
-        });
-        if (result.success) {
-          sessionId = result.sessionId;
-        } else {
+          permissionMode: options.permissionMode || 'default',
+          sessionId
+        };
+        if (pendingResumeId) {
+          startOpts.resumeSessionId = pendingResumeId;
+          pendingResumeId = null;
+        }
+        const result = await api.chat.start(startOpts);
+        if (!result.success) {
+          sessionId = null;
           appendError(result.error || t('chat.errorOccurred'));
           setStreaming(false);
         }
@@ -629,6 +641,71 @@ function createChatView(wrapperEl, project, options = {}) {
     }
   }
 
+  // ── Todo list widget (anchored above input bar) ──
+
+  let todoExpanded = false;
+
+  function todoText(todo) {
+    return todo.content || todo.subject || todo.text || todo.title || todo.description || todo.activeForm || '';
+  }
+
+  function updateTodoWidget(todos) {
+    if (!todos || !todos.length) return;
+
+    const completed = todos.filter(td => td.status === 'completed').length;
+    const active = todos.find(td => td.status === 'in_progress');
+    const total = todos.length;
+    const pct = Math.round((completed / total) * 100);
+    const allDone = completed === total;
+
+    // Build items HTML
+    const itemsHtml = todos.map((todo, i) => {
+      const s = todo.status;
+      const checkIcon = s === 'completed'
+        ? `<svg class="td-icon td-done" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+        : s === 'in_progress'
+          ? `<div class="td-icon td-active"><div class="td-spin"></div></div>`
+          : `<div class="td-icon td-pending"></div>`;
+      const text = s === 'in_progress' && todo.activeForm ? todo.activeForm : todoText(todo);
+      return `<div class="td-row td-${s}" style="--d:${i}">${checkIcon}<span class="td-label">${escapeHtml(text)}</span></div>`;
+    }).join('');
+
+    // Active task text for collapsed bar
+    const activeText = active
+      ? (active.activeForm || todoText(active))
+      : allDone ? (t('chat.todoAllDone') || 'All done') : '';
+
+    const html = `
+      <button class="td-bar" aria-expanded="${todoExpanded}">
+        <span class="td-count">${completed}<span class="td-count-sep">/</span>${total}</span>
+        <div class="td-track"><div class="td-fill${allDone ? ' td-fill-done' : ''}" style="width:${pct}%"></div></div>
+        <span class="td-bar-text">${escapeHtml(activeText)}</span>
+        <svg class="td-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="td-body">${itemsHtml}</div>
+    `;
+
+    if (!todoWidgetEl) {
+      todoWidgetEl = document.createElement('div');
+      todoWidgetEl.className = 'chat-todo';
+      if (todoExpanded) todoWidgetEl.classList.add('open');
+      // Insert before the input area (anchored above it)
+      const inputArea = chatView.querySelector('.chat-input-area');
+      chatView.insertBefore(todoWidgetEl, inputArea);
+
+      todoWidgetEl.addEventListener('click', (e) => {
+        if (e.target.closest('.td-bar')) {
+          todoExpanded = !todoExpanded;
+          todoWidgetEl.classList.toggle('open', todoExpanded);
+          todoWidgetEl.querySelector('.td-bar')?.setAttribute('aria-expanded', String(todoExpanded));
+        }
+      });
+    }
+    todoWidgetEl.innerHTML = html;
+    // Preserve expanded state
+    if (todoExpanded) todoWidgetEl.classList.add('open');
+  }
+
   function appendThinkingBlock(text) {
     const el = document.createElement('div');
     el.className = 'chat-thinking';
@@ -866,7 +943,7 @@ function createChatView(wrapperEl, project, options = {}) {
       return;
     }
 
-    // Result - marks end of a turn
+    // Result — update stats. Also detect SDK errors.
     if (message.type === 'result') {
       if (message.total_cost_usd != null) totalCost = message.total_cost_usd;
       if (message.usage) {
@@ -874,11 +951,14 @@ function createChatView(wrapperEl, project, options = {}) {
       }
       if (message.model) model = message.model;
       updateStatusInfo();
-      removeThinkingIndicator();
-      finalizeStreamBlock();
-      setStreaming(false);
-      for (const [, card] of toolCards) {
-        completeToolCard(card);
+
+      // Handle SDK errors (error_during_execution, error_max_turns, etc.)
+      if (message.is_error || (message.subtype && message.subtype !== 'success')) {
+        removeThinkingIndicator();
+        finalizeStreamBlock();
+        const errors = message.errors || [];
+        appendError(errors.length ? errors.join('\n') : (message.subtype || 'Unknown error'));
+        setStreaming(false);
       }
       return;
     }
@@ -905,8 +985,10 @@ function createChatView(wrapperEl, project, options = {}) {
           finalizeStreamBlock();
           currentMsgHasToolUse = true;
           const blockIdx = event.index ?? blockIndex;
-          // Don't show tool card for AskUserQuestion - the question card handles it
-          if (block.name !== 'AskUserQuestion') {
+          // TodoWrite & AskUserQuestion get special UI — no generic tool card
+          if (block.name === 'TodoWrite') {
+            todoToolIndices.add(blockIdx);
+          } else if (block.name !== 'AskUserQuestion') {
             const card = appendToolCard(block.name, '');
             toolCards.set(blockIdx, card);
           }
@@ -956,6 +1038,14 @@ function createChatView(wrapperEl, project, options = {}) {
           toolInputBuffers.delete(stopIdx);
           try {
             const toolInput = JSON.parse(jsonStr);
+
+            // TodoWrite → update the persistent todo widget
+            if (todoToolIndices.has(stopIdx)) {
+              todoToolIndices.delete(stopIdx);
+              if (toolInput.todos) updateTodoWidget(toolInput.todos);
+              break;
+            }
+
             const card = toolCards.get(stopIdx);
             if (card) {
               card.dataset.toolInput = JSON.stringify(toolInput);
@@ -984,8 +1074,8 @@ function createChatView(wrapperEl, project, options = {}) {
       case 'message_stop':
         removeThinkingIndicator();
         finalizeStreamBlock();
-        // If no tool_use in this message, the turn is done
         if (!currentMsgHasToolUse) {
+          // Turn is complete (no tool use) — reset streaming
           setStreaming(false);
           for (const [, card] of toolCards) {
             completeToolCard(card);
@@ -1002,6 +1092,11 @@ function createChatView(wrapperEl, project, options = {}) {
     let hasToolUse = false;
     for (const block of content) {
       if (block.type === 'tool_use') {
+        // TodoWrite — update widget instead of tool card
+        if (block.name === 'TodoWrite' && block.input?.todos) {
+          updateTodoWidget(block.input.todos);
+          continue;
+        }
         hasToolUse = true;
         // Mark tool cards as complete
         for (const [, card] of toolCards) {
@@ -1058,15 +1153,13 @@ function createChatView(wrapperEl, project, options = {}) {
 
   // ── IPC: Idle (SDK ready for next message) ──
 
+  // onIdle fires when SDK reads next message from queue (pullCount > 1).
+  // In practice this fires BEFORE the response is rendered because the SDK's
+  // input reader runs independently from the output stream. So we do NOT
+  // reset streaming here — message_stop handles that.
   const unsubIdle = api.chat.onIdle(({ sessionId: sid }) => {
     if (sid !== sessionId) return;
-    removeThinkingIndicator();
-    finalizeStreamBlock();
-    setStreaming(false);
-    // Complete all tool cards
-    for (const [, card] of toolCards) {
-      completeToolCard(card);
-    }
+    // Intentionally empty — streaming state managed by message_stop/done/error
   });
   unsubscribers.push(unsubIdle);
 
@@ -1079,6 +1172,14 @@ function createChatView(wrapperEl, project, options = {}) {
     setStatus('waiting', t('chat.waitingForInput') || 'Waiting for input...');
   });
   unsubscribers.push(unsubPerm);
+
+  // If resuming, show a notice instead of welcome message
+  if (pendingResumeId) {
+    const welcomeEl = wrapperEl.querySelector('.chat-welcome');
+    if (welcomeEl) {
+      welcomeEl.querySelector('.chat-welcome-text').textContent = t('chat.conversationResumed') || 'Conversation resumed — type a message to continue.';
+    }
+  }
 
   // Focus input
   setTimeout(() => inputEl.focus(), 100);

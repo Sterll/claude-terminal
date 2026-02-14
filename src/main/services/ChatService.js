@@ -97,21 +97,29 @@ class ChatService {
    * @param {string} params.cwd - Working directory
    * @param {string} params.prompt - Initial prompt
    * @param {string} [params.permissionMode] - Permission mode
+   * @param {string} [params.resumeSessionId] - Session ID to resume
    * @returns {Promise<string>} Session ID
    */
-  async startSession({ cwd, prompt, permissionMode = 'default' }) {
+  async startSession({ cwd, prompt, permissionMode = 'default', resumeSessionId = null, sessionId = null }) {
     const sdk = await loadSDK();
-    const sessionId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    if (!sessionId) sessionId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    console.log(`[ChatService] startSession — cwd: ${cwd}, resume: ${resumeSessionId || 'none'}`);
 
     const messageQueue = createMessageQueue(() => {
+      console.log(`[ChatService] onIdle — sessionId: ${sessionId}`);
       this._send('chat-idle', { sessionId });
     });
 
-    // Push first user message
-    messageQueue.push({
-      type: 'user',
-      message: { role: 'user', content: prompt }
-    });
+    // Always push initial prompt (even for resume — SDK needs a message to process)
+    if (prompt) {
+      messageQueue.push({
+        type: 'user',
+        message: { role: 'user', content: prompt },
+        parent_tool_use_id: null,
+        session_id: sessionId
+      });
+    }
 
     const abortController = new AbortController();
 
@@ -126,15 +134,27 @@ class ChatService {
         maxTurns: 100,
         includePartialMessages: true,
         permissionMode,
+        settingSources: ['user', 'project', 'local'],
         canUseTool: async (toolName, input, opts) => {
           return this._handlePermission(sessionId, toolName, input, opts);
+        },
+        stderr: (data) => {
+          console.log(`[ChatService:stderr] ${data.trim()}`);
         }
       };
+
+      // Resume existing session if requested
+      if (resumeSessionId) {
+        options.resume = resumeSessionId;
+        console.log(`[ChatService] Resuming SDK session: ${resumeSessionId}`);
+      }
 
       const queryStream = sdk.query({
         prompt: messageQueue.iterable,
         options,
       });
+
+      console.log(`[ChatService] query() called, stream created — internal sessionId: ${sessionId}`);
 
       this.sessions.set(sessionId, {
         abortController,
@@ -145,6 +165,7 @@ class ChatService {
       this._processStream(sessionId, queryStream);
       return sessionId;
     } catch (err) {
+      console.error(`[ChatService] startSession error:`, err.message);
       this.sessions.delete(sessionId);
       throw err;
     } finally {
@@ -163,7 +184,9 @@ class ChatService {
 
     session.messageQueue.push({
       type: 'user',
-      message: { role: 'user', content: text }
+      message: { role: 'user', content: text },
+      parent_tool_use_id: null,
+      session_id: sessionId
     });
   }
 
@@ -234,16 +257,23 @@ class ChatService {
    * Process the SDK query stream and forward all messages to renderer
    */
   async _processStream(sessionId, queryStream) {
+    let msgCount = 0;
     try {
       for await (const message of queryStream) {
+        msgCount++;
+        const sub = message.subtype || '';
+        const replay = message.isReplay ? ' [REPLAY]' : '';
+        console.log(`[ChatService] msg #${msgCount} type=${message.type}${sub ? '/' + sub : ''}${replay}`);
         this._send('chat-message', { sessionId, message });
       }
+      console.log(`[ChatService] Stream done — ${msgCount} messages total`);
       this._send('chat-done', { sessionId });
     } catch (err) {
       if (err.name === 'AbortError' || err.message === 'Aborted') {
+        console.log(`[ChatService] Stream aborted after ${msgCount} messages`);
         this._send('chat-done', { sessionId, aborted: true });
       } else {
-        console.error(`[ChatService] Stream error for ${sessionId}:`, err.message);
+        console.error(`[ChatService] Stream error after ${msgCount} msgs:`, err.message);
         this._send('chat-error', { sessionId, error: err.message });
       }
     } finally {
