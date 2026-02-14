@@ -7,6 +7,7 @@ const { projectsState, getGlobalTimes, getProjectTimes } = require('../state');
 const { escapeHtml } = require('../utils');
 const { formatDuration, formatDurationLarge } = require('../utils/format');
 const { t } = require('../i18n');
+const ArchiveService = require('./ArchiveService');
 
 // Current state
 let currentPeriod = 'week'; // 'day', 'week', 'month', 'custom'
@@ -110,20 +111,41 @@ function getSessionsForPeriod() {
   const projects = projectsState.get().projects;
   const { periodStart, periodEnd } = getPeriodBoundaries();
   const allSessions = [];
+  const months = ArchiveService.getMonthsInRange(periodStart, periodEnd);
 
-  // Collect sessions from all projects
-  for (const project of projects) {
-    if (!project.timeTracking?.sessions) continue;
-
-    for (const session of project.timeTracking.sessions) {
-      const sessionDate = new Date(session.startTime);
-      if (sessionDate >= periodStart && sessionDate < periodEnd) {
-        allSessions.push({
-          ...session,
-          projectId: project.id,
-          projectName: project.name,
-          projectColor: project.color || '#d97706'
-        });
+  for (const { year, month } of months) {
+    if (ArchiveService.isCurrentMonth(year, month)) {
+      // Current month: read from live state
+      for (const project of projects) {
+        if (!project.timeTracking?.sessions) continue;
+        for (const session of project.timeTracking.sessions) {
+          const sessionDate = new Date(session.startTime);
+          if (sessionDate >= periodStart && sessionDate < periodEnd) {
+            allSessions.push({
+              ...session,
+              projectId: project.id,
+              projectName: project.name,
+              projectColor: project.color || '#d97706'
+            });
+          }
+        }
+      }
+    } else {
+      // Past months: read from archive
+      const archivedProjects = ArchiveService.getArchivedAllProjectSessions(year, month);
+      for (const [projectId, data] of Object.entries(archivedProjects)) {
+        const liveProject = projects.find(p => p.id === projectId);
+        for (const session of data.sessions) {
+          const sessionDate = new Date(session.startTime);
+          if (sessionDate >= periodStart && sessionDate < periodEnd) {
+            allSessions.push({
+              ...session,
+              projectId,
+              projectName: liveProject?.name || data.projectName,
+              projectColor: liveProject?.color || '#d97706'
+            });
+          }
+        }
       }
     }
   }
@@ -161,12 +183,23 @@ function getSessionsForPeriod() {
  * Get global sessions for current period
  */
 function getGlobalSessionsForPeriod() {
-  const globalTracking = projectsState.get().globalTimeTracking;
   const { periodStart, periodEnd } = getPeriodBoundaries();
+  const months = ArchiveService.getMonthsInRange(periodStart, periodEnd);
+  let allSessions = [];
 
-  if (!globalTracking?.sessions) return [];
+  for (const { year, month } of months) {
+    if (ArchiveService.isCurrentMonth(year, month)) {
+      const globalTracking = projectsState.get().globalTimeTracking;
+      if (globalTracking?.sessions) {
+        allSessions = allSessions.concat(globalTracking.sessions);
+      }
+    } else {
+      const archived = ArchiveService.getArchivedGlobalSessions(year, month);
+      allSessions = allSessions.concat(archived);
+    }
+  }
 
-  return globalTracking.sessions.filter(session => {
+  return allSessions.filter(session => {
     const sessionDate = new Date(session.startTime);
     return sessionDate >= periodStart && sessionDate < periodEnd;
   });
@@ -313,11 +346,22 @@ function calculateStreak() {
   const globalTracking = projectsState.get().globalTimeTracking;
   const activeDays = new Set();
 
+  // Current month sessions from live state
   if (globalTracking?.sessions) {
     for (const session of globalTracking.sessions) {
       const date = new Date(session.startTime);
       activeDays.add(date.toDateString());
     }
+  }
+
+  // Load previous month archive for cross-month streaks
+  const now = new Date();
+  const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevSessions = ArchiveService.getArchivedGlobalSessions(
+    prevMonth.getFullYear(), prevMonth.getMonth()
+  );
+  for (const session of prevSessions) {
+    activeDays.add(new Date(session.startTime).toDateString());
   }
 
   let streak = 0;

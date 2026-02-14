@@ -5,6 +5,7 @@
  */
 
 const { State } = require('./State');
+const ArchiveService = require('../services/ArchiveService');
 
 // Constants
 const IDLE_TIMEOUT = 15 * 60 * 1000; // 15 minutes
@@ -160,6 +161,93 @@ function sanitizeTimeTrackingData() {
 }
 
 /**
+ * Archive past-month sessions from projects.json to monthly archive files.
+ * Called at init (migration for existing users) and on month boundary crossings.
+ */
+function archivePastMonthSessions() {
+  if (!projectsStateRef || !saveProjectsRef) return;
+
+  const currentState = projectsStateRef.get();
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+
+  let hasChanges = false;
+
+  // --- Archive global sessions ---
+  let updatedGlobalTracking = currentState.globalTimeTracking;
+  if (updatedGlobalTracking?.sessions?.length > 0) {
+    const currentMonthGlobal = [];
+    const pastByMonth = {}; // "year-month" -> [sessions]
+
+    for (const session of updatedGlobalTracking.sessions) {
+      const d = new Date(session.startTime);
+      if (d.getFullYear() === currentYear && d.getMonth() === currentMonth) {
+        currentMonthGlobal.push(session);
+      } else {
+        const key = `${d.getFullYear()}-${d.getMonth()}`;
+        if (!pastByMonth[key]) pastByMonth[key] = [];
+        pastByMonth[key].push(session);
+      }
+    }
+
+    if (Object.keys(pastByMonth).length > 0) {
+      hasChanges = true;
+      updatedGlobalTracking = { ...updatedGlobalTracking, sessions: currentMonthGlobal };
+    }
+
+    // Write archives for global sessions
+    for (const [key, sessions] of Object.entries(pastByMonth)) {
+      const [year, month] = key.split('-').map(Number);
+      ArchiveService.appendToArchive(year, month, sessions, {});
+    }
+  }
+
+  // --- Archive per-project sessions ---
+  const pastProjectsByMonth = {}; // "year-month" -> { projectId: { projectName, sessions } }
+  const projects = (currentState.projects || []).map(p => {
+    if (!p.timeTracking?.sessions?.length) return p;
+
+    const currentMonthSessions = [];
+    for (const session of p.timeTracking.sessions) {
+      const d = new Date(session.startTime);
+      if (d.getFullYear() === currentYear && d.getMonth() === currentMonth) {
+        currentMonthSessions.push(session);
+      } else {
+        const key = `${d.getFullYear()}-${d.getMonth()}`;
+        if (!pastProjectsByMonth[key]) pastProjectsByMonth[key] = {};
+        if (!pastProjectsByMonth[key][p.id]) {
+          pastProjectsByMonth[key][p.id] = { projectName: p.name, sessions: [] };
+        }
+        pastProjectsByMonth[key][p.id].sessions.push(session);
+      }
+    }
+
+    if (currentMonthSessions.length !== p.timeTracking.sessions.length) {
+      hasChanges = true;
+      return { ...p, timeTracking: { ...p.timeTracking, sessions: currentMonthSessions } };
+    }
+    return p;
+  });
+
+  // Write archives for project sessions
+  for (const [key, projectsMap] of Object.entries(pastProjectsByMonth)) {
+    const [year, month] = key.split('-').map(Number);
+    ArchiveService.appendToArchive(year, month, [], projectsMap);
+  }
+
+  if (hasChanges) {
+    const updatedState = { ...currentState, projects };
+    if (updatedGlobalTracking) {
+      updatedState.globalTimeTracking = updatedGlobalTracking;
+    }
+    projectsStateRef.set(updatedState);
+    saveProjectsRef();
+    console.debug('[TimeTracking] Archived past-month sessions');
+  }
+}
+
+/**
  * Initialize with references to projects state functions
  * @param {Object} projectsState - Reference to projectsState
  * @param {Function} saveProjects - Reference to saveProjects function (debounced)
@@ -176,6 +264,9 @@ function initTimeTracking(projectsState, saveProjects, saveProjectsImmediate) {
 
   // Migrate existing data to new counter format
   migrateGlobalTimeTracking();
+
+  // Archive past-month sessions (also serves as migration for existing users)
+  archivePastMonthSessions();
 
   // Start midnight check interval
   lastKnownDate = getTodayString();
@@ -395,9 +486,21 @@ function checkMidnightReset() {
 
   if (lastKnownDate && lastKnownDate !== today) {
     console.debug('[TimeTracking] Midnight detected! Date changed from', lastKnownDate, 'to', today);
+
+    // Check if month boundary crossed
+    const oldDate = new Date(lastKnownDate + 'T00:00:00');
+    const newDate = new Date(today + 'T00:00:00');
+    const monthChanged = oldDate.getMonth() !== newDate.getMonth()
+      || oldDate.getFullYear() !== newDate.getFullYear();
+
     lastKnownDate = today;
     globalTimesCache = null; // Invalidate cache on date change
     splitSessionsAtMidnight();
+
+    if (monthChanged) {
+      console.debug('[TimeTracking] Month boundary crossed, archiving past sessions');
+      archivePastMonthSessions();
+    }
   }
 }
 
@@ -708,9 +811,24 @@ function saveGlobalSession(startTime, endTime, duration) {
     duration
   };
 
-  let sessions = [...(prev.sessions || []), newSession];
-  if (sessions.length > 500) {
-    sessions = sessions.slice(-500);
+  // Check if session belongs to current month or should be archived
+  const sessionDate = new Date(startTime);
+  const now = new Date();
+  const isCurrentMonthSession = sessionDate.getFullYear() === now.getFullYear()
+    && sessionDate.getMonth() === now.getMonth();
+
+  let sessions;
+  if (isCurrentMonthSession) {
+    sessions = [...(prev.sessions || []), newSession];
+  } else {
+    // Archive past-month session instead of keeping in projects.json
+    ArchiveService.appendToArchive(
+      sessionDate.getFullYear(),
+      sessionDate.getMonth(),
+      [newSession],
+      {}
+    );
+    sessions = prev.sessions || [];
   }
 
   const globalTracking = {
@@ -850,6 +968,12 @@ function saveSession(projectId, startTime, endTime, duration) {
     duration
   };
 
+  // Check if session belongs to current month or should be archived
+  const sessionDate = new Date(startTime);
+  const now = new Date();
+  const isCurrentMonthSession = sessionDate.getFullYear() === now.getFullYear()
+    && sessionDate.getMonth() === now.getMonth();
+
   // Immutable update: read fresh state, produce new state without mutation
   const currentState = projectsStateRef.get();
   const projects = currentState.projects.map(p => {
@@ -867,11 +991,17 @@ function saveSession(projectId, startTime, endTime, duration) {
     tracking.totalTime = (tracking.totalTime || 0) + duration;
     tracking.todayTime = (tracking.todayTime || 0) + duration;
     tracking.lastActiveDate = today;
-    tracking.sessions = [...(tracking.sessions || []), newSession];
 
-    // Limit sessions (300 = ~25h at 5-min checkpoint intervals)
-    if (tracking.sessions.length > 300) {
-      tracking.sessions = tracking.sessions.slice(-300);
+    if (isCurrentMonthSession) {
+      tracking.sessions = [...(tracking.sessions || []), newSession];
+    } else {
+      // Archive past-month session
+      ArchiveService.appendToArchive(
+        sessionDate.getFullYear(),
+        sessionDate.getMonth(),
+        [],
+        { [projectId]: { projectName: p.name, sessions: [newSession] } }
+      );
     }
 
     return { ...p, timeTracking: tracking };

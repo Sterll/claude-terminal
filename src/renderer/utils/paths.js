@@ -15,6 +15,7 @@ const claudeDir = path.join(homeDir, '.claude');
 const projectsFile = path.join(dataDir, 'projects.json');
 const settingsFile = path.join(dataDir, 'settings.json');
 const legacyMcpsFile = path.join(dataDir, 'mcps.json');
+const archivesDir = path.join(dataDir, 'archives');
 
 // Claude configuration files
 const claudeSettingsFile = path.join(claudeDir, 'settings.json');
@@ -26,7 +27,7 @@ const agentsDir = path.join(claudeDir, 'agents');
  * Ensure all required directories exist
  */
 function ensureDirectories() {
-  [dataDir, skillsDir, agentsDir].forEach(dir => {
+  [dataDir, skillsDir, agentsDir, archivesDir].forEach(dir => {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
@@ -54,6 +55,7 @@ module.exports = {
   projectsFile,
   settingsFile,
   legacyMcpsFile,
+  archivesDir,
   claudeSettingsFile,
   claudeConfigFile,
   skillsDir,

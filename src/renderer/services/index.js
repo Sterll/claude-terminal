@@ -12,6 +12,7 @@ const DashboardService = require('./DashboardService');
 const SettingsService = require('./SettingsService');
 const TimeTrackingDashboard = require('./TimeTrackingDashboard');
 const GitTabService = require('./GitTabService');
+const ArchiveService = require('./ArchiveService');
 
 module.exports = {
   ProjectService,
@@ -23,5 +24,6 @@ module.exports = {
   DashboardService,
   SettingsService,
   TimeTrackingDashboard,
-  GitTabService
+  GitTabService,
+  ArchiveService
 };
