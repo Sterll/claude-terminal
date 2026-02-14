@@ -53,6 +53,9 @@
     "claudeAwaits": "Claude awaits your response",
     "notifDone": "Task complete",
     "notifToolsDone": "Task complete — {count} tools used",
+    "notifQuestion": "Claude is asking you a question",
+    "notifPlan": "Claude is proposing a plan",
+    "notifPermission": "Claude needs your permission",
     "notifBtnShow": "Show",
     "resumeConversation": "Resume a conversation",
     "resuming": "Resuming...",
@@ -176,7 +179,11 @@
     "filesChanged": "{count} file(s) changed",
     "noCi": "No CI",
     "todayTime": "today",
-    "noData": "No data yet"
+    "noData": "No data yet",
+    "claudeActivity": "Claude Activity",
+    "sessions": "Sessions",
+    "toolCalls": "Tool calls",
+    "toolErrors": "Errors"
   },
   "customize": {
     "title": "Customize appearance",
@@ -295,6 +302,7 @@
   },
   "settings": {
     "title": "Settings",
+    "saved": "Settings saved",
     "language": "Language",
     "editor": "Default editor",
     "theme": "Terminal theme",
@@ -308,7 +316,12 @@
     "reduceMotion": "Disable animations",
     "reduceMotionDesc": "Remove all transitions and animations from the interface",
     "aiCommitMessages": "AI commit messages",
-    "aiCommitMessagesDesc": "Use GitHub Models (GPT-4o-mini) to generate commit messages. Requires GitHub connection."
+    "aiCommitMessagesDesc": "Use GitHub Models (GPT-4o-mini) to generate commit messages. Requires GitHub connection.",
+    "hooks": {
+      "title": "Smart Hooks",
+      "enable": "Enable Smart Hooks",
+      "description": "Real-time insights from Claude Code (time tracking, notifications, dashboard stats)"
+    }
   },
   "ui": {
     "notifications": "Notifications",
@@ -620,6 +633,22 @@
     "requiredField": "Required",
     "optionalField": "Optional",
     "serverType": "Type"
+  },
+  "hooks": {
+    "consent": {
+      "title": "Enable Smart Hooks",
+      "description": "Claude Terminal can integrate with Claude Code using hooks for real-time insights. Hooks detect when Claude starts, stops, or uses tools. All data stays local on your machine.",
+      "dataTitle": "What is captured",
+      "data1": "Session start and end times",
+      "data2": "Tool names used (e.g. file edit, bash)",
+      "data3": "Project directory path",
+      "noDataTitle": "What is NOT captured",
+      "noData1": "File contents or code",
+      "noData2": "Conversation messages",
+      "noData3": "Personal data or API keys",
+      "accept": "Enable Hooks",
+      "decline": "No thanks"
+    }
   },
   "errors": {
     "corruptedFile": "Projects file corrupted",

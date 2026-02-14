@@ -20,7 +20,9 @@ const defaultSettings = {
   language: null, // null = auto-detect, 'fr' = French, 'en' = English
   compactProjects: true, // Compact project list (only show name when not active)
   customPresets: [], // Custom quick action presets [{name, command, icon}]
-  aiCommitMessages: true // Use GitHub Models API for AI commit messages
+  aiCommitMessages: true, // Use GitHub Models API for AI commit messages
+  hooksEnabled: false, // Hooks installed in ~/.claude/settings.json
+  hooksConsentShown: false // User has seen the hooks consent prompt
 };
 
 const settingsState = new State({ ...defaultSettings });

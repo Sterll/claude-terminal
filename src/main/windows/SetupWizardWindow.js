@@ -65,6 +65,17 @@ function registerSetupHandlers(onComplete, onSkip) {
   // Handle wizard completion with settings
   const completeHandler = async (event, settings) => {
     saveSetupSettings(settings);
+
+    // Install hooks if user opted in
+    if (settings.hooksEnabled) {
+      try {
+        const HooksService = require('../services/HooksService');
+        await HooksService.installHooks();
+      } catch (e) {
+        console.error('Failed to install hooks:', e);
+      }
+    }
+
     closeSetupWizard();
     if (onComplete) onComplete(settings);
     return { success: true };

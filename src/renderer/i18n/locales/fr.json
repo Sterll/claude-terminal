@@ -53,6 +53,9 @@
     "claudeAwaits": "Claude attend votre réponse",
     "notifDone": "Tâche terminée",
     "notifToolsDone": "Tâche terminée — {count} outils utilisés",
+    "notifQuestion": "Claude vous pose une question",
+    "notifPlan": "Claude vous propose un plan",
+    "notifPermission": "Claude demande votre permission",
     "notifBtnShow": "Afficher",
     "resumeConversation": "Reprendre une conversation",
     "resuming": "Reprise...",
@@ -235,7 +238,11 @@
     "filesChanged": "{count} fichier(s) modifié(s)",
     "noCi": "Pas de CI",
     "todayTime": "aujourd'hui",
-    "noData": "Pas encore de données"
+    "noData": "Pas encore de données",
+    "claudeActivity": "Activité Claude",
+    "sessions": "Sessions",
+    "toolCalls": "Appels d'outils",
+    "toolErrors": "Erreurs"
   },
   "customize": {
     "title": "Personnaliser l'apparence",
@@ -354,6 +361,7 @@
   },
   "settings": {
     "title": "Paramètres",
+    "saved": "Paramètres enregistrés",
     "language": "Langue",
     "editor": "Éditeur par défaut",
     "theme": "Thème du terminal",
@@ -367,7 +375,12 @@
     "reduceMotion": "Désactiver les animations",
     "reduceMotionDesc": "Supprimer toutes les transitions et animations de l'interface",
     "aiCommitMessages": "Messages de commit IA",
-    "aiCommitMessagesDesc": "Utiliser GitHub Models (GPT-4o-mini) pour générer les messages de commit. Nécessite une connexion GitHub."
+    "aiCommitMessagesDesc": "Utiliser GitHub Models (GPT-4o-mini) pour générer les messages de commit. Nécessite une connexion GitHub.",
+    "hooks": {
+      "title": "Hooks intelligents",
+      "enable": "Activer les hooks intelligents",
+      "description": "Infos en temps réel de Claude Code (suivi du temps, notifications, stats du dashboard)"
+    }
   },
   "ui": {
     "notifications": "Notifications",
@@ -620,6 +633,22 @@
     "requiredField": "Requis",
     "optionalField": "Optionnel",
     "serverType": "Type"
+  },
+  "hooks": {
+    "consent": {
+      "title": "Activer les hooks intelligents",
+      "description": "Claude Terminal peut s'integrer avec Claude Code via des hooks pour des informations en temps reel. Les hooks detectent quand Claude demarre, s'arrete ou utilise des outils. Toutes les donnees restent en local sur votre machine.",
+      "dataTitle": "Ce qui est capture",
+      "data1": "Heures de debut et fin de session",
+      "data2": "Noms des outils utilises (ex: edition, bash)",
+      "data3": "Chemin du repertoire du projet",
+      "noDataTitle": "Ce qui N'EST PAS capture",
+      "noData1": "Contenu des fichiers ou code",
+      "noData2": "Messages de conversation",
+      "noData3": "Donnees personnelles ou cles API",
+      "accept": "Activer les hooks",
+      "decline": "Non merci"
+    }
   },
   "errors": {
     "corruptedFile": "Fichier projets corrompu",
