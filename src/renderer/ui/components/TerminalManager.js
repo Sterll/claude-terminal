@@ -48,6 +48,7 @@ const {
   getTerminalTheme
 } = require('../themes/terminal-themes');
 const registry = require('../../../project-types/registry');
+const { createChatView } = require('./ChatView');
 
 // Lazy require to avoid circular dependency
 let QuickActions = null;
@@ -888,7 +889,12 @@ function setActiveTerminal(id) {
   document.querySelectorAll('.terminal-wrapper').forEach(w => w.classList.toggle('active', w.dataset.id == id));
   const termData = getTerminal(id);
   if (termData) {
-    if (termData.type !== 'file') {
+    if (termData.mode === 'chat') {
+      // Focus chat input
+      if (termData.chatView) {
+        termData.chatView.focus();
+      }
+    } else if (termData.type !== 'file') {
       termData.fitAddon.fit();
       termData.terminal.focus();
     }
@@ -968,7 +974,13 @@ function closeTerminal(id) {
   terminalContext.delete(id);
 
   // Kill and cleanup
-  if (termData && termData.type === 'file') {
+  if (termData && termData.mode === 'chat') {
+    // Chat mode: destroy chat view and close SDK session
+    if (termData.chatView) {
+      termData.chatView.destroy();
+    }
+    removeTerminal(id);
+  } else if (termData && termData.type === 'file') {
     // File tabs have no terminal process to kill
     removeTerminal(id);
   } else {
@@ -1017,7 +1029,15 @@ function closeTerminal(id) {
  * Create a new terminal for a project
  */
 async function createTerminal(project, options = {}) {
-  const { skipPermissions = false, runClaude = true, name: customName = null } = options;
+  const { skipPermissions = false, runClaude = true, name: customName = null, mode: explicitMode = null } = options;
+
+  // Determine mode: explicit > setting > default
+  const mode = explicitMode || (runClaude ? (getSetting('defaultTerminalMode') || 'terminal') : 'terminal');
+
+  // Chat mode: skip PTY creation entirely
+  if (mode === 'chat' && runClaude) {
+    return createChatTerminal(project, { skipPermissions, name: customName });
+  }
 
   const result = await api.terminal.create({
     cwd: project.path,
@@ -1064,7 +1084,8 @@ async function createTerminal(project, options = {}) {
     name: tabName,
     status: initialStatus,
     inputBuffer: '',
-    isBasic: isBasicTerminal
+    isBasic: isBasicTerminal,
+    mode: 'terminal'
   };
 
   addTerminal(id, termData);
@@ -1079,9 +1100,16 @@ async function createTerminal(project, options = {}) {
   tab.dataset.id = id;
   tab.tabIndex = 0;
   tab.setAttribute('role', 'tab');
+  // Mode toggle button (only for Claude terminals, not basic)
+  const modeToggleHtml = !isBasicTerminal ? `
+    <button class="tab-mode-toggle" title="${escapeHtml(t('chat.switchToChat'))}">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+    </button>` : '';
+
   tab.innerHTML = `
     <span class="status-dot"></span>
     <span class="tab-name">${escapeHtml(tabName)}</span>
+    ${modeToggleHtml}
     <button class="tab-close"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>`;
   tabsContainer.appendChild(tab);
 
@@ -1194,9 +1222,15 @@ async function createTerminal(project, options = {}) {
   if (callbacks.onRenderProjects) callbacks.onRenderProjects();
 
   // Tab events
-  tab.onclick = (e) => { if (!e.target.closest('.tab-close') && !e.target.closest('.tab-name-input')) setActiveTerminal(id); };
+  tab.onclick = (e) => { if (!e.target.closest('.tab-close') && !e.target.closest('.tab-name-input') && !e.target.closest('.tab-mode-toggle')) setActiveTerminal(id); };
   tab.querySelector('.tab-name').ondblclick = (e) => { e.stopPropagation(); startRenameTab(id); };
   tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); closeTerminal(id); };
+
+  // Mode toggle button
+  const modeToggleBtn = tab.querySelector('.tab-mode-toggle');
+  if (modeToggleBtn) {
+    modeToggleBtn.onclick = (e) => { e.stopPropagation(); switchTerminalMode(id); };
+  }
 
   // Enable drag & drop reordering
   setupTabDragDrop(tab);
@@ -2812,6 +2846,14 @@ async function renderSessionsPanel(project, emptyState) {
  */
 async function resumeSession(project, sessionId, options = {}) {
   const { skipPermissions = false } = options;
+
+  // If chat mode is active, resume via SDK
+  const mode = getSetting('defaultTerminalMode') || 'terminal';
+  if (mode === 'chat') {
+    console.log(`[TerminalManager] Resuming in chat mode — sessionId: ${sessionId}`);
+    return createChatTerminal(project, { skipPermissions, resumeSessionId: sessionId });
+  }
+
   const result = await api.terminal.create({
     cwd: project.path,
     runClaude: true,
@@ -3466,6 +3508,261 @@ function focusPrevTerminal() {
   setActiveTerminal(visibleTerminals[targetIndex]);
 }
 
+/**
+ * Create a chat-mode terminal (Claude Agent SDK UI)
+ */
+async function createChatTerminal(project, options = {}) {
+  const { skipPermissions = false, name: customName = null, resumeSessionId = null } = options;
+
+  const id = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const projectIndex = getProjectIndex(project.id);
+  const tabName = customName || project.name;
+
+  const termData = {
+    terminal: null,
+    fitAddon: null,
+    project,
+    projectIndex,
+    name: tabName,
+    status: 'ready',
+    inputBuffer: '',
+    isBasic: false,
+    mode: 'chat',
+    chatView: null
+  };
+
+  addTerminal(id, termData);
+  startTracking(project.id);
+
+  // Create tab
+  const tabsContainer = document.getElementById('terminals-tabs');
+  const tab = document.createElement('div');
+  tab.className = 'terminal-tab status-ready chat-mode';
+  tab.dataset.id = id;
+  tab.tabIndex = 0;
+  tab.setAttribute('role', 'tab');
+  tab.innerHTML = `
+    <span class="status-dot"></span>
+    <span class="tab-name">${escapeHtml(tabName)}</span>
+    <button class="tab-mode-toggle" title="${escapeHtml(t('chat.switchToTerminal'))}">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v12zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"/></svg>
+    </button>
+    <button class="tab-close"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>`;
+  tabsContainer.appendChild(tab);
+
+  // Create wrapper
+  const container = document.getElementById('terminals-container');
+  const wrapper = document.createElement('div');
+  wrapper.className = 'terminal-wrapper chat-wrapper';
+  wrapper.dataset.id = id;
+  container.appendChild(wrapper);
+
+  document.getElementById('empty-terminals').style.display = 'none';
+
+  // Create ChatView inside wrapper
+  const chatView = createChatView(wrapper, project, {
+    skipPermissions,
+    resumeSessionId,
+    onTabRename: (name) => {
+      const nameEl = tab.querySelector('.tab-name');
+      if (nameEl) nameEl.textContent = name;
+      const data = getTerminal(id);
+      if (data) data.name = name;
+    }
+  });
+  const storedData = getTerminal(id);
+  if (storedData) {
+    storedData.chatView = chatView;
+  }
+
+  setActiveTerminal(id);
+
+  // Filter and render
+  const selectedFilter = projectsState.get().selectedProjectFilter;
+  filterByProject(selectedFilter);
+  if (callbacks.onRenderProjects) callbacks.onRenderProjects();
+
+  // Tab events
+  tab.onclick = (e) => { if (!e.target.closest('.tab-close') && !e.target.closest('.tab-name-input') && !e.target.closest('.tab-mode-toggle')) setActiveTerminal(id); };
+  tab.querySelector('.tab-name').ondblclick = (e) => { e.stopPropagation(); startRenameTab(id); };
+  tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); closeTerminal(id); };
+  const modeToggleBtn = tab.querySelector('.tab-mode-toggle');
+  if (modeToggleBtn) {
+    modeToggleBtn.onclick = (e) => { e.stopPropagation(); switchTerminalMode(id); };
+  }
+  setupTabDragDrop(tab);
+
+  return id;
+}
+
+/**
+ * Switch a terminal between terminal and chat mode
+ * Creates a fresh session in the new mode
+ */
+async function switchTerminalMode(id) {
+  const termData = getTerminal(id);
+  if (!termData || termData.isBasic) return;
+
+  const project = termData.project;
+  const currentMode = termData.mode || 'terminal';
+  const newMode = currentMode === 'terminal' ? 'chat' : 'terminal';
+  const wrapper = document.querySelector(`.terminal-wrapper[data-id="${id}"]`);
+  const tab = document.querySelector(`.terminal-tab[data-id="${id}"]`);
+
+  if (!wrapper || !tab) return;
+
+  // Tear down current mode
+  if (currentMode === 'terminal') {
+    // Kill PTY
+    api.terminal.kill({ id });
+    cleanupTerminalResources(termData);
+    clearOutputSilenceTimer(id);
+    cancelScheduledReady(id);
+  } else if (currentMode === 'chat') {
+    // Destroy chat view
+    if (termData.chatView) {
+      termData.chatView.destroy();
+    }
+  }
+
+  // Clear wrapper
+  wrapper.innerHTML = '';
+
+  // Setup new mode
+  if (newMode === 'chat') {
+    wrapper.classList.add('chat-wrapper');
+    tab.classList.add('chat-mode');
+
+    const chatView = createChatView(wrapper, project, {
+      skipPermissions: getSetting('skipPermissions') || false
+    });
+
+    updateTerminal(id, { mode: 'chat', chatView, terminal: null, fitAddon: null, status: 'ready' });
+
+    // Update toggle icon (show terminal icon)
+    const toggleBtn = tab.querySelector('.tab-mode-toggle');
+    if (toggleBtn) {
+      toggleBtn.title = t('chat.switchToTerminal');
+      toggleBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v12zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"/></svg>';
+    }
+
+    chatView.focus();
+  } else {
+    wrapper.classList.remove('chat-wrapper');
+    tab.classList.remove('chat-mode');
+
+    // Create new PTY terminal
+    const terminalThemeId = getSetting('terminalTheme') || 'claude';
+    const terminal = new Terminal({
+      theme: getTerminalTheme(terminalThemeId),
+      fontFamily: TERMINAL_FONTS.claude.fontFamily,
+      fontSize: TERMINAL_FONTS.claude.fontSize,
+      cursorBlink: true,
+      scrollback: 5000
+    });
+
+    const fitAddon = new FitAddon();
+    terminal.loadAddon(fitAddon);
+
+    // Create new PTY process
+    const result = await api.terminal.create({
+      cwd: project.path,
+      runClaude: true,
+      skipPermissions: getSetting('skipPermissions') || false
+    });
+
+    const ptyId = (result && typeof result === 'object') ? result.id : result;
+
+    terminal.open(wrapper);
+    loadWebglAddon(terminal);
+
+    updateTerminal(id, {
+      mode: 'terminal',
+      chatView: null,
+      terminal,
+      fitAddon,
+      status: 'loading'
+    });
+
+    // Loading overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'terminal-loading-overlay';
+    overlay.innerHTML = `
+      <div class="terminal-loading-spinner"></div>
+      <div class="terminal-loading-text">${escapeHtml(t('terminals.loading'))}</div>
+      <div class="terminal-loading-hint">${escapeHtml(t('terminals.loadingHint'))}</div>`;
+    wrapper.appendChild(overlay);
+    loadingTimeouts.set(id, setTimeout(() => {
+      loadingTimeouts.delete(id);
+      dismissLoadingOverlay(id);
+      const td = getTerminal(id);
+      if (td && td.status === 'loading') updateTerminalStatus(id, 'ready');
+    }, 30000));
+
+    setTimeout(() => fitAddon.fit(), 100);
+
+    // Setup paste handler and key handler
+    setupPasteHandler(wrapper, id, 'terminal-input');
+    terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, id, 'terminal-input'));
+
+    // Title change
+    let lastTitle = '';
+    terminal.onTitleChange(title => {
+      if (title === lastTitle) return;
+      lastTitle = title;
+      handleClaudeTitleChange(id, title);
+    });
+
+    // IPC data handling - use the ptyId for IPC but id for state
+    registerTerminalHandler(ptyId,
+      (data) => {
+        terminal.write(data.data);
+        resetOutputSilenceTimer(id);
+        const td = getTerminal(id);
+        if (td?.project?.id) throttledRecordOutputActivity(td.project.id);
+      },
+      () => closeTerminal(id)
+    );
+
+    const storedTermData = getTerminal(id);
+    if (storedTermData) {
+      storedTermData.handlers = { unregister: () => unregisterTerminalHandler(ptyId) };
+    }
+
+    terminal.onData(data => {
+      api.terminal.input({ id: ptyId, data });
+      const td = getTerminal(id);
+      if (td?.project?.id) throttledRecordActivity(td.project.id);
+      if (data === '\r' || data === '\n') {
+        cancelScheduledReady(id);
+        updateTerminalStatus(id, 'working');
+      }
+    });
+
+    const resizeObserver = new ResizeObserver(() => {
+      fitAddon.fit();
+      api.terminal.resize({ id: ptyId, cols: terminal.cols, rows: terminal.rows });
+    });
+    resizeObserver.observe(wrapper);
+
+    if (storedTermData) {
+      storedTermData.resizeObserver = resizeObserver;
+    }
+
+    // Update toggle icon (show chat icon)
+    const toggleBtn = tab.querySelector('.tab-mode-toggle');
+    if (toggleBtn) {
+      toggleBtn.title = t('chat.switchToChat');
+      toggleBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
+    }
+
+    terminal.focus();
+  }
+
+  // Update tab status
+  tab.className = tab.className.replace(/status-\w+/, `status-${getTerminal(id)?.status || 'ready'}`);
+}
+
 module.exports = {
   createTerminal,
   closeTerminal,
@@ -3502,6 +3799,8 @@ module.exports = {
   closeApiConsole,
   getApiConsoleTerminal,
   writeApiConsole,
+  // Chat mode
+  switchTerminalMode,
   // Scraping callback for EventBus
   setScrapingCallback
 };

@@ -2015,6 +2015,31 @@ async function renderSettingsTab(initialTab = 'general') {
             </div>
           </div>
           <div class="settings-section">
+            <div class="settings-title">${t('settings.defaultTerminalMode')}</div>
+            <div class="execution-mode-selector">
+              <div class="execution-mode-card terminal-mode-card ${(settings.defaultTerminalMode || 'terminal') === 'terminal' ? 'selected' : ''}" data-terminal-mode="terminal">
+                <div class="execution-mode-icon safe">
+                  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v12zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"/></svg>
+                </div>
+                <div class="execution-mode-content">
+                  <div class="execution-mode-title">${t('settings.modeTerminal')}</div>
+                  <div class="execution-mode-desc">${t('settings.modeTerminalDesc')}</div>
+                </div>
+                <div class="execution-mode-check"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>
+              </div>
+              <div class="execution-mode-card terminal-mode-card ${settings.defaultTerminalMode === 'chat' ? 'selected' : ''}" data-terminal-mode="chat">
+                <div class="execution-mode-icon safe">
+                  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+                </div>
+                <div class="execution-mode-content">
+                  <div class="execution-mode-title">${t('settings.modeChat')}</div>
+                  <div class="execution-mode-desc">${t('settings.modeChatDesc')}</div>
+                </div>
+                <div class="execution-mode-check"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>
+              </div>
+            </div>
+          </div>
+          <div class="settings-section">
             <div class="settings-title">${t('settings.hooks.title') || 'Smart Hooks'}</div>
             <div class="settings-toggle-row">
               <div class="settings-toggle-label">
@@ -2208,12 +2233,20 @@ async function renderSettingsTab(initialTab = 'general') {
     };
   });
 
-  // Execution mode cards
-  container.querySelectorAll('.execution-mode-card').forEach(card => {
+  // Execution mode cards (permission mode)
+  container.querySelectorAll('.execution-mode-card:not(.terminal-mode-card)').forEach(card => {
     card.onclick = () => {
-      container.querySelectorAll('.execution-mode-card').forEach(c => c.classList.remove('selected'));
+      container.querySelectorAll('.execution-mode-card:not(.terminal-mode-card)').forEach(c => c.classList.remove('selected'));
       card.classList.add('selected');
       document.getElementById('dangerous-warning').style.display = card.dataset.mode === 'dangerous' ? 'flex' : 'none';
+    };
+  });
+
+  // Terminal mode cards (terminal vs chat)
+  container.querySelectorAll('.terminal-mode-card').forEach(card => {
+    card.onclick = () => {
+      container.querySelectorAll('.terminal-mode-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
     };
   });
 
@@ -2335,7 +2368,8 @@ async function renderSettingsTab(initialTab = 'general') {
 
   // Save settings
   document.getElementById('btn-save-settings').onclick = async () => {
-    const selectedMode = container.querySelector('.execution-mode-card.selected');
+    const selectedMode = container.querySelector('.execution-mode-card:not(.terminal-mode-card).selected');
+    const selectedTerminalMode = container.querySelector('.terminal-mode-card.selected');
     const closeActionSelect = document.getElementById('close-action-select');
     const selectedThemeCard = container.querySelector('.theme-card.selected');
     const languageSelect = document.getElementById('language-select');
@@ -2371,6 +2405,7 @@ async function renderSettingsTab(initialTab = 'general') {
       compactProjects: newCompactProjects,
       reduceMotion: newReduceMotion,
       aiCommitMessages: newAiCommitMessages,
+      defaultTerminalMode: selectedTerminalMode?.dataset.terminalMode || 'terminal',
       hooksEnabled: newHooksEnabled
     };
 

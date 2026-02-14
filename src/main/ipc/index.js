@@ -18,6 +18,7 @@ const { registerUsageHandlers } = require('./usage.ipc');
 const { registerMarketplaceHandlers } = require('./marketplace.ipc');
 const { registerMcpRegistryHandlers } = require('./mcpRegistry.ipc');
 const { registerPluginHandlers } = require('./plugin.ipc');
+const { registerChatHandlers } = require('./chat.ipc');
 const { registerHooksHandlers } = require('./hooks.ipc');
 
 /**
@@ -44,6 +45,7 @@ function registerAllHandlers(mainWindow) {
   registerMarketplaceHandlers();
   registerMcpRegistryHandlers();
   registerPluginHandlers();
+  registerChatHandlers();
   registerHooksHandlers();
 }
 

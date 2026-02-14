@@ -21,6 +21,7 @@ const defaultSettings = {
   compactProjects: true, // Compact project list (only show name when not active)
   customPresets: [], // Custom quick action presets [{name, command, icon}]
   aiCommitMessages: true, // Use GitHub Models API for AI commit messages
+  defaultTerminalMode: 'terminal', // 'terminal' or 'chat' - default mode for new Claude terminals
   hooksEnabled: false, // Hooks installed in ~/.claude/settings.json
   hooksConsentShown: false // User has seen the hooks consent prompt
 };
