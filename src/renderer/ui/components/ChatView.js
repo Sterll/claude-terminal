@@ -83,6 +83,7 @@ function createChatView(wrapperEl, project, options = {}) {
   let totalCost = 0;
   let totalTokens = 0;
   const toolCards = new Map(); // content_block index -> element
+  const toolInputBuffers = new Map(); // content_block index -> accumulated JSON string
   let blockIndex = 0;
   let currentMsgHasToolUse = false;
   const unsubscribers = [];
@@ -199,19 +200,35 @@ function createChatView(wrapperEl, project, options = {}) {
       return;
     }
 
+    const planBtn = e.target.closest('.chat-plan-btn');
+    if (planBtn) {
+      handlePlanClick(planBtn);
+      return;
+    }
+
     const permBtn = e.target.closest('.chat-perm-btn');
     if (permBtn) {
       handlePermissionClick(permBtn);
+      return;
+    }
+
+    // Expandable tool cards
+    const toolCard = e.target.closest('.chat-tool-card.expandable');
+    if (toolCard) {
+      toggleToolCard(toolCard);
       return;
     }
   });
 
   // ── Send message ──
 
+  let sendLock = false;
+
   async function handleSend() {
     const text = inputEl.value.trim();
-    if (!text || isStreaming) return;
+    if (!text || isStreaming || sendLock) return;
 
+    sendLock = true;
     appendUserMessage(text);
     inputEl.value = '';
     inputEl.style.height = 'auto';
@@ -241,6 +258,8 @@ function createChatView(wrapperEl, project, options = {}) {
     } catch (err) {
       appendError(err.message);
       setStreaming(false);
+    } finally {
+      sendLock = false;
     }
   }
 
@@ -250,10 +269,8 @@ function createChatView(wrapperEl, project, options = {}) {
     const card = btn.closest('.chat-perm-card');
     if (!card) return;
     const requestId = card.dataset.requestId;
-    const toolName = card.dataset.toolName;
     const action = btn.dataset.action;
 
-    // Disable buttons
     card.querySelectorAll('.chat-perm-btn').forEach(b => {
       b.disabled = true;
       b.classList.add('disabled');
@@ -275,6 +292,163 @@ function createChatView(wrapperEl, project, options = {}) {
         result: { behavior: 'deny', message: 'User denied this action' }
       });
     }
+
+    // Reset status — SDK will continue processing
+    setStatus('thinking', t('chat.thinking'));
+
+    // Collapse card after resolution
+    setTimeout(() => {
+      card.style.maxHeight = card.scrollHeight + 'px';
+      requestAnimationFrame(() => {
+        card.classList.add('collapsing');
+        card.style.maxHeight = '0';
+      });
+    }, 400);
+  }
+
+  // ── Plan handling ──
+
+  function handlePlanClick(btn) {
+    const card = btn.closest('.chat-plan-card');
+    if (!card) return;
+    const requestId = card.dataset.requestId;
+    const action = btn.dataset.action;
+
+    card.querySelectorAll('.chat-plan-btn').forEach(b => {
+      b.disabled = true;
+      b.classList.add('disabled');
+    });
+
+    if (action === 'allow') {
+      btn.classList.add('chosen');
+      card.classList.add('resolved', 'approved');
+      const inputData = JSON.parse(card.dataset.toolInput || '{}');
+      api.chat.respondPermission({
+        requestId,
+        result: { behavior: 'allow', updatedInput: inputData }
+      });
+    } else {
+      btn.classList.add('chosen');
+      card.classList.add('resolved', 'rejected');
+      api.chat.respondPermission({
+        requestId,
+        result: { behavior: 'deny', message: 'User rejected the plan' }
+      });
+    }
+
+    // Reset status — SDK will continue processing
+    setStatus('thinking', t('chat.thinking'));
+
+    // Collapse after resolution
+    setTimeout(() => {
+      card.style.maxHeight = card.scrollHeight + 'px';
+      requestAnimationFrame(() => {
+        card.classList.add('collapsing');
+        card.style.maxHeight = '0';
+      });
+    }, 600);
+  }
+
+  // ── Tool card expansion ──
+
+  function toggleToolCard(card) {
+    const existing = card.querySelector('.chat-tool-content');
+    if (existing) {
+      card.classList.toggle('expanded');
+      return;
+    }
+
+    const inputStr = card.dataset.toolInput;
+    if (!inputStr) return;
+
+    try {
+      const toolInput = JSON.parse(inputStr);
+      const toolName = card.querySelector('.chat-tool-name')?.textContent || '';
+      const contentEl = document.createElement('div');
+      contentEl.className = 'chat-tool-content';
+      contentEl.innerHTML = formatToolContent(toolName, toolInput);
+      card.appendChild(contentEl);
+      card.classList.add('expanded');
+      scrollToBottom();
+    } catch (e) { /* ignore */ }
+  }
+
+  /**
+   * Find the real line number of a string in a file
+   */
+  function getLineOffset(filePath, searchStr) {
+    try {
+      // Use window.require to access Node fs at runtime (Electron nodeIntegration)
+      const fs = window.require('fs');
+      const content = fs.readFileSync(filePath, 'utf8');
+      const idx = content.indexOf(searchStr);
+      if (idx === -1) return 1;
+      return content.substring(0, idx).split('\n').length;
+    } catch {
+      return 1;
+    }
+  }
+
+  function renderDiffLines(oldStr, newStr, startLine) {
+    const oldLines = oldStr.split('\n');
+    const newLines = newStr.split('\n');
+    const start = startLine || 1;
+    let html = '';
+
+    for (let i = 0; i < oldLines.length; i++) {
+      html += `<div class="diff-line diff-del"><span class="diff-ln">${start + i}</span><span class="diff-sign">-</span><span class="diff-text">${escapeHtml(oldLines[i])}</span></div>`;
+    }
+    for (let i = 0; i < newLines.length; i++) {
+      html += `<div class="diff-line diff-add"><span class="diff-ln">${start + i}</span><span class="diff-sign">+</span><span class="diff-text">${escapeHtml(newLines[i])}</span></div>`;
+    }
+    return html;
+  }
+
+  function renderFileLines(content, prefix, startLine) {
+    const lines = content.split('\n');
+    const start = startLine || 1;
+    return lines.map((line, i) =>
+      `<div class="diff-line${prefix === '+' ? ' diff-add' : ''}"><span class="diff-ln">${start + i}</span><span class="diff-sign">${prefix || ' '}</span><span class="diff-text">${escapeHtml(line)}</span></div>`
+    ).join('');
+  }
+
+  function formatToolContent(toolName, input) {
+    const name = (toolName || '').toLowerCase();
+
+    if (name === 'write') {
+      const path = input.file_path || '';
+      const content = input.content || '';
+      return `<div class="chat-tool-content-path">${escapeHtml(path)}</div>
+        <div class="chat-diff-viewer">${renderFileLines(content, '+', 1)}</div>`;
+    }
+
+    if (name === 'edit') {
+      const path = input.file_path || '';
+      const oldStr = input.old_string || '';
+      const newStr = input.new_string || '';
+      const startLine = path ? getLineOffset(path, oldStr) : 1;
+      return `<div class="chat-tool-content-path">${escapeHtml(path)}</div>
+        <div class="chat-diff-viewer">${renderDiffLines(oldStr, newStr, startLine)}</div>`;
+    }
+
+    if (name === 'bash') {
+      return `<div class="chat-diff-viewer">${renderFileLines(input.command || '', '', 1)}</div>`;
+    }
+
+    if (name === 'read') {
+      const path = input.file_path || '';
+      const offset = input.offset || 1;
+      const limit = input.limit || '';
+      const info = limit ? `lines ${offset}–${offset + parseInt(limit, 10) - 1}` : (offset > 1 ? `from line ${offset}` : '');
+      return `<div class="chat-tool-content-path">${escapeHtml(path)}${info ? ` <span class="chat-tool-content-meta">(${info})</span>` : ''}</div>`;
+    }
+
+    if (name === 'glob' || name === 'grep') {
+      return `<div class="chat-tool-content-path">${escapeHtml(input.file_path || input.pattern || input.path || '')}</div>`;
+    }
+
+    // Generic: show JSON
+    return `<div class="chat-diff-viewer">${renderFileLines(JSON.stringify(input, null, 2), '', 1)}</div>`;
   }
 
   /**
@@ -357,6 +531,9 @@ function createChatView(wrapperEl, project, options = {}) {
         updatedInput: { questions: questionsData, answers }
       }
     });
+
+    // Reset status — SDK will continue processing
+    setStatus('thinking', t('chat.thinking'));
   }
 
   // ── DOM helpers ──
@@ -476,6 +653,12 @@ function createChatView(wrapperEl, project, options = {}) {
       return;
     }
 
+    // Plan mode handling
+    if (toolName === 'ExitPlanMode' || toolName === 'EnterPlanMode') {
+      appendPlanCard(data);
+      return;
+    }
+
     const detail = getToolDisplayInfo(toolName, input);
     const el = document.createElement('div');
     el.className = 'chat-perm-card';
@@ -483,6 +666,8 @@ function createChatView(wrapperEl, project, options = {}) {
     el.dataset.toolName = toolName;
     el.dataset.toolInput = JSON.stringify(input || {});
 
+    const allowText = t('chat.allow') || 'Allow';
+    const denyText = t('chat.deny') || 'Deny';
     el.innerHTML = `
       <div class="chat-perm-header">
         <div class="chat-perm-icon">${getToolIcon(toolName)}</div>
@@ -496,12 +681,14 @@ function createChatView(wrapperEl, project, options = {}) {
         ${decisionReason ? `<p class="chat-perm-reason">${escapeHtml(decisionReason)}</p>` : ''}
       </div>
       <div class="chat-perm-actions">
-        <button class="chat-perm-btn allow" data-action="allow">${escapeHtml(t('chat.allow') || 'Allow')}</button>
-        <button class="chat-perm-btn deny" data-action="deny">${escapeHtml(t('chat.deny') || 'Deny')}</button>
+        <button class="chat-perm-btn allow" data-action="allow">${escapeHtml(allowText)}</button>
+        <button class="chat-perm-btn deny" data-action="deny">${escapeHtml(denyText)}</button>
       </div>
     `;
     messagesEl.appendChild(el);
-    scrollToBottom();
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    });
   }
 
   function appendQuestionCard(data) {
@@ -556,7 +743,9 @@ function createChatView(wrapperEl, project, options = {}) {
       </div>
     `;
     messagesEl.appendChild(el);
-    scrollToBottom();
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    });
 
     // Enter key on custom inputs advances or submits
     el.querySelectorAll('.chat-question-custom-input').forEach(inp => {
@@ -571,6 +760,50 @@ function createChatView(wrapperEl, project, options = {}) {
           }
         }
       });
+    });
+  }
+
+  function appendPlanCard(data) {
+    const { requestId, toolName, input } = data;
+    const isExit = toolName === 'ExitPlanMode';
+    const el = document.createElement('div');
+    el.className = 'chat-plan-card';
+    el.dataset.requestId = requestId;
+    el.dataset.toolName = toolName;
+    el.dataset.toolInput = JSON.stringify(input || {});
+
+    const icon = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13zM9 13h6v2H9v-2zm6 4H9v2h6v-2zm-2-8h2v2h-2V9z"/></svg>';
+
+    if (isExit) {
+      el.innerHTML = `
+        <div class="chat-plan-header">
+          <div class="chat-plan-icon">${icon}</div>
+          <span>${escapeHtml(t('chat.planReady') || 'Plan ready for review')}</span>
+        </div>
+        <div class="chat-plan-body">
+          <p>${escapeHtml(t('chat.planReviewPrompt') || 'Review the plan above and approve or request changes.')}</p>
+        </div>
+        <div class="chat-plan-actions">
+          <button class="chat-plan-btn approve" data-action="allow">${escapeHtml(t('chat.approvePlan') || 'Approve plan')}</button>
+          <button class="chat-plan-btn reject" data-action="deny">${escapeHtml(t('chat.rejectPlan') || 'Reject plan')}</button>
+        </div>
+      `;
+    } else {
+      el.innerHTML = `
+        <div class="chat-plan-header">
+          <div class="chat-plan-icon">${icon}</div>
+          <span>${escapeHtml(t('chat.enteringPlanMode') || 'Claude wants to plan before implementing')}</span>
+        </div>
+        <div class="chat-plan-actions">
+          <button class="chat-plan-btn approve" data-action="allow">${escapeHtml(t('chat.allow') || 'Allow')}</button>
+          <button class="chat-plan-btn reject" data-action="deny">${escapeHtml(t('chat.deny') || 'Deny')}</button>
+        </div>
+      `;
+    }
+
+    messagesEl.appendChild(el);
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'end' });
     });
   }
 
@@ -603,7 +836,9 @@ function createChatView(wrapperEl, project, options = {}) {
 
   function scrollToBottom() {
     requestAnimationFrame(() => {
-      messagesEl.scrollTop = messagesEl.scrollHeight;
+      requestAnimationFrame(() => {
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      });
     });
   }
 
@@ -669,11 +904,13 @@ function createChatView(wrapperEl, project, options = {}) {
         } else if (block.type === 'tool_use') {
           finalizeStreamBlock();
           currentMsgHasToolUse = true;
+          const blockIdx = event.index ?? blockIndex;
           // Don't show tool card for AskUserQuestion - the question card handles it
           if (block.name !== 'AskUserQuestion') {
             const card = appendToolCard(block.name, '');
-            toolCards.set(event.index ?? blockIndex, card);
+            toolCards.set(blockIdx, card);
           }
+          toolInputBuffers.set(blockIdx, '');
           setStatus('working', `${block.name}...`);
         } else if (block.type === 'thinking') {
           currentThinkingText = '';
@@ -693,11 +930,10 @@ function createChatView(wrapperEl, project, options = {}) {
         } else if (delta.type === 'thinking_delta') {
           currentThinkingText += delta.thinking;
         } else if (delta.type === 'input_json_delta') {
-          // Accumulate tool input JSON - update tool card detail
           const idx = event.index ?? (blockIndex - 1);
-          const card = toolCards.get(idx);
-          if (card) {
-            // We could parse partial JSON here, but it's complex. Skip.
+          const buf = toolInputBuffers.get(idx);
+          if (buf !== undefined) {
+            toolInputBuffers.set(idx, buf + (delta.partial_json || ''));
           }
         }
         break;
@@ -712,6 +948,27 @@ function createChatView(wrapperEl, project, options = {}) {
         if (currentThinkingText) {
           appendThinkingBlock(currentThinkingText);
           currentThinkingText = '';
+        }
+        // Finalize tool input — parse accumulated JSON and store on card
+        const stopIdx = event.index ?? (blockIndex - 1);
+        const jsonStr = toolInputBuffers.get(stopIdx);
+        if (jsonStr) {
+          toolInputBuffers.delete(stopIdx);
+          try {
+            const toolInput = JSON.parse(jsonStr);
+            const card = toolCards.get(stopIdx);
+            if (card) {
+              card.dataset.toolInput = JSON.stringify(toolInput);
+              card.classList.add('expandable');
+              // Update detail text with parsed info
+              const name = card.querySelector('.chat-tool-name')?.textContent || '';
+              const info = getToolDisplayInfo(name, toolInput);
+              const detailEl = card.querySelector('.chat-tool-detail');
+              if (detailEl && info) {
+                detailEl.textContent = info.length > 80 ? '...' + info.slice(-77) : info;
+              }
+            }
+          } catch (e) { /* partial JSON, ignore */ }
         }
         break;
       }
@@ -763,12 +1020,23 @@ function createChatView(wrapperEl, project, options = {}) {
     }
   }
 
+  /**
+   * Mark all unresolved permission/question cards as failed
+   */
+  function resolveAllPendingCards() {
+    messagesEl.querySelectorAll('.chat-perm-card:not(.resolved), .chat-question-card:not(.resolved), .chat-plan-card:not(.resolved)').forEach(card => {
+      card.classList.add('resolved');
+      card.querySelectorAll('button').forEach(b => b.disabled = true);
+    });
+  }
+
   // ── IPC: Error ──
 
   const unsubError = api.chat.onError(({ sessionId: sid, error }) => {
     if (sid !== sessionId) return;
     removeThinkingIndicator();
     finalizeStreamBlock();
+    resolveAllPendingCards();
     appendError(error);
     setStreaming(false);
   });

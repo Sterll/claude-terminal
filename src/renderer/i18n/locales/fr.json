@@ -651,7 +651,12 @@
     "next": "Suivant",
     "waitingForInput": "En attente de votre réponse...",
     "toolRunning": "Exécution des outils...",
-    "welcomeMessage": "Comment puis-je vous aider ?"
+    "welcomeMessage": "Comment puis-je vous aider ?",
+    "planReady": "Plan prêt pour relecture",
+    "planReviewPrompt": "Relisez le plan ci-dessus et approuvez ou demandez des modifications.",
+    "approvePlan": "Approuver le plan",
+    "rejectPlan": "Rejeter le plan",
+    "enteringPlanMode": "Claude veut planifier avant d'implémenter"
   },
   "errors": {
     "corruptedFile": "Fichier projets corrompu",

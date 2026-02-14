@@ -17350,11 +17350,10 @@ select:focus-visible {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 20px 20px 8px;
+  padding: 20px 20px 60px;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  scroll-behavior: smooth;
 }
 
 .chat-messages::-webkit-scrollbar {
@@ -17584,6 +17583,7 @@ select:focus-visible {
 /* ── Tool call cards ── */
 .chat-tool-card {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 6px 12px;
@@ -17592,6 +17592,14 @@ select:focus-visible {
   border-radius: 8px;
   margin: 2px 0;
   transition: border-color 0.2s;
+}
+
+.chat-tool-card.expandable {
+  cursor: pointer;
+}
+
+.chat-tool-card.expandable:hover {
+  border-color: var(--text-tertiary);
 }
 
 .chat-tool-icon {
@@ -17661,6 +17669,133 @@ select:focus-visible {
 
 @keyframes chat-spin {
   to { transform: rotate(360deg); }
+}
+
+/* ── Expanded tool content ── */
+.chat-tool-content {
+  display: none;
+  width: 100%;
+  border-top: 1px solid var(--border-primary);
+  margin-top: 4px;
+  padding-top: 8px;
+}
+
+.chat-tool-card.expanded .chat-tool-content {
+  display: block;
+  animation: chat-msg-in 0.15s ease-out;
+}
+
+.chat-tool-content-path {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  margin-bottom: 6px;
+  padding: 4px 6px;
+  background: var(--bg-primary);
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.chat-tool-content-meta {
+  color: var(--text-tertiary);
+  opacity: 0.6;
+  font-style: italic;
+}
+
+/* ── Diff viewer ── */
+.chat-diff-viewer {
+  background: var(--bg-primary);
+  border-radius: 6px;
+  max-height: 320px;
+  overflow: auto;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  border: 1px solid var(--border-primary);
+}
+
+.chat-diff-viewer::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.chat-diff-viewer::-webkit-scrollbar-thumb {
+  background: var(--border-primary);
+  border-radius: 4px;
+}
+
+.diff-line {
+  display: flex;
+  padding: 0 10px 0 0;
+  min-height: 20px;
+}
+
+.diff-line:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.diff-ln {
+  display: inline-block;
+  min-width: 36px;
+  padding: 0 8px;
+  text-align: right;
+  color: var(--text-tertiary);
+  opacity: 0.4;
+  user-select: none;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-primary);
+}
+
+.diff-sign {
+  display: inline-block;
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+  font-weight: 600;
+  user-select: none;
+}
+
+.diff-text {
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-all;
+  padding-right: 4px;
+}
+
+/* Added lines */
+.diff-line.diff-add {
+  background: rgba(34, 197, 94, 0.06);
+}
+
+.diff-line.diff-add .diff-sign {
+  color: #4ade80;
+}
+
+.diff-line.diff-add .diff-text {
+  color: #bbf7d0;
+}
+
+.diff-line.diff-add .diff-ln {
+  color: rgba(74, 222, 128, 0.35);
+  border-right-color: rgba(34, 197, 94, 0.15);
+}
+
+/* Removed lines */
+.diff-line.diff-del {
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.diff-line.diff-del .diff-sign {
+  color: #f87171;
+}
+
+.diff-line.diff-del .diff-text {
+  color: #fecaca;
+}
+
+.diff-line.diff-del .diff-ln {
+  color: rgba(248, 113, 113, 0.35);
+  border-right-color: rgba(239, 68, 68, 0.15);
 }
 
 /* ── Thinking indicator (sparkle) ── */
@@ -17766,7 +17901,18 @@ select:focus-visible {
 }
 
 .chat-perm-card.resolved {
-  opacity: 0.5;
+  opacity: 0.45;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+.chat-perm-card.collapsing {
+  overflow: hidden;
+  opacity: 0;
+  margin: 0;
+  padding: 0;
+  border-color: transparent;
+  transition: max-height 0.35s ease, opacity 0.3s, margin 0.35s, border-color 0.3s;
 }
 
 .chat-perm-card.resolved.allowed {
@@ -17893,6 +18039,132 @@ select:focus-visible {
 }
 
 .chat-perm-btn.chosen.deny {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* ── Plan cards (EnterPlanMode / ExitPlanMode) ── */
+.chat-plan-card {
+  margin: 10px 0;
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  overflow: hidden;
+  animation: chat-msg-in 0.2s ease-out;
+}
+
+.chat-plan-card.resolved {
+  opacity: 0.45;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+.chat-plan-card.collapsing {
+  overflow: hidden;
+  opacity: 0;
+  margin: 0;
+  padding: 0;
+  border-color: transparent;
+  transition: max-height 0.35s ease, opacity 0.3s, margin 0.35s, border-color 0.3s;
+}
+
+.chat-plan-card.resolved.approved {
+  border-color: rgba(34, 197, 94, 0.2);
+}
+
+.chat-plan-card.resolved.rejected {
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.chat-plan-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 16px;
+  border-bottom: 1px solid rgba(168, 85, 247, 0.12);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: rgba(168, 85, 247, 0.06);
+}
+
+.chat-plan-icon {
+  width: 16px;
+  height: 16px;
+  color: #a855f7;
+  flex-shrink: 0;
+}
+
+.chat-plan-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.chat-plan-body {
+  padding: 10px 16px;
+}
+
+.chat-plan-body p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.chat-plan-actions {
+  display: flex;
+  gap: 8px;
+  padding: 4px 16px 14px;
+}
+
+.chat-plan-btn {
+  padding: 8px 20px;
+  border-radius: 10px;
+  border: 1px solid var(--border-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.chat-plan-btn.approve {
+  background: #a855f7;
+  color: #fff;
+  border-color: transparent;
+  flex: 1;
+}
+
+.chat-plan-btn.approve:hover:not(:disabled) {
+  background: #9333ea;
+  transform: translateY(-1px);
+}
+
+.chat-plan-btn.reject {
+  background: transparent;
+  color: var(--text-tertiary);
+  border-color: var(--border-primary);
+}
+
+.chat-plan-btn.reject:hover:not(:disabled) {
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.chat-plan-btn.disabled,
+.chat-plan-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.chat-plan-btn.chosen.approve {
+  background: #22c55e;
+}
+
+.chat-plan-btn.chosen.reject {
   background: rgba(239, 68, 68, 0.1);
   color: #ef4444;
   border-color: rgba(239, 68, 68, 0.3);

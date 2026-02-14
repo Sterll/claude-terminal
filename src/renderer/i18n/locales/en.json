@@ -651,7 +651,12 @@
     "next": "Next",
     "waitingForInput": "Waiting for input...",
     "toolRunning": "Running tools...",
-    "welcomeMessage": "How can I help?"
+    "welcomeMessage": "How can I help?",
+    "planReady": "Plan ready for review",
+    "planReviewPrompt": "Review the plan above and approve or request changes.",
+    "approvePlan": "Approve plan",
+    "rejectPlan": "Reject plan",
+    "enteringPlanMode": "Claude wants to plan before implementing"
   },
   "errors": {
     "corruptedFile": "Projects file corrupted",
