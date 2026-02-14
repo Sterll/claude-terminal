@@ -8,6 +8,7 @@ const fivemService = require('./FivemService');
 const webAppService = require('../../project-types/webapp/main/WebAppService');
 const apiService = require('../../project-types/api/main/ApiService');
 const updaterService = require('./UpdaterService');
+const chatService = require('./ChatService');
 
 /**
  * Initialize all services with main window reference
@@ -20,6 +21,7 @@ function initializeServices(mainWindow) {
   webAppService.setMainWindow(mainWindow);
   apiService.setMainWindow(mainWindow);
   updaterService.setMainWindow(mainWindow);
+  chatService.setMainWindow(mainWindow);
 }
 
 /**
@@ -31,6 +33,7 @@ function cleanupServices() {
   fivemService.stopAll();
   webAppService.stopAll();
   apiService.stopAll();
+  chatService.closeAll();
 }
 
 module.exports = {
@@ -40,6 +43,7 @@ module.exports = {
   webAppService,
   apiService,
   updaterService,
+  chatService,
   initializeServices,
   cleanupServices
 };

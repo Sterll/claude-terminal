@@ -256,6 +256,20 @@ contextBridge.exposeInMainWorld('electron_api', {
     sessions: (projectPath) => ipcRenderer.invoke('claude-sessions', projectPath)
   },
 
+  // ==================== CHAT (Agent SDK) ====================
+  chat: {
+    start: (params) => ipcRenderer.invoke('chat-start', params),
+    send: (params) => ipcRenderer.invoke('chat-send', params),
+    close: (params) => ipcRenderer.send('chat-close', params),
+    interrupt: (params) => ipcRenderer.send('chat-interrupt', params),
+    respondPermission: (params) => ipcRenderer.send('chat-permission-response', params),
+    onMessage: createListener('chat-message'),
+    onError: createListener('chat-error'),
+    onDone: createListener('chat-done'),
+    onIdle: createListener('chat-idle'),
+    onPermissionRequest: createListener('chat-permission-request')
+  },
+
   // ==================== USAGE ====================
   usage: {
     getData: () => ipcRenderer.invoke('get-usage-data'),
