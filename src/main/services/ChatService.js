@@ -218,6 +218,19 @@ class ChatService {
   }
 
   /**
+   * Reject all pending permission requests for a session.
+   * Called when the stream ends or errors to unblock the UI.
+   */
+  _rejectPendingPermissions(sessionId, reason) {
+    for (const [id, pending] of this.pendingPermissions) {
+      if (pending.sessionId === sessionId) {
+        this.pendingPermissions.delete(id);
+        pending.reject(new Error(reason));
+      }
+    }
+  }
+
+  /**
    * Process the SDK query stream and forward all messages to renderer
    */
   async _processStream(sessionId, queryStream) {
@@ -233,6 +246,8 @@ class ChatService {
         console.error(`[ChatService] Stream error for ${sessionId}:`, err.message);
         this._send('chat-error', { sessionId, error: err.message });
       }
+    } finally {
+      this._rejectPendingPermissions(sessionId, 'Stream ended');
     }
   }
 
