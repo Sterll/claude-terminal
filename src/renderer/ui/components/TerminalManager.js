@@ -58,6 +58,10 @@ function getQuickActions() {
   return QuickActions;
 }
 
+// ── Scraping event callback (set by ScrapingProvider) ──
+let scrapingEventCallback = null;
+function setScrapingCallback(cb) { scrapingEventCallback = cb; }
+
 // Store FiveM console IDs by project index
 const fivemConsoleIds = new Map();
 
@@ -288,6 +292,7 @@ function declareReady(id) {
   postEnterExtended.delete(id);
   terminalSubstatus.delete(id);
   updateTerminalStatus(id, 'ready');
+  if (scrapingEventCallback) scrapingEventCallback(id, 'done', {});
   // Reset tool tracking after notification (taskName kept for next cycle)
   const ctx = terminalContext.get(id);
   if (ctx) {
@@ -365,6 +370,7 @@ function handleClaudeTitleChange(id, title, options = {}) {
     }
 
     updateTerminalStatus(id, 'working');
+    if (scrapingEventCallback) scrapingEventCallback(id, 'working', { tool: parsed.tool || null });
 
   } else if (title.includes('\u2733')) {
     // ── Ready candidate: Claude may be done ──
@@ -806,7 +812,9 @@ function updateTerminalStatus(id, status) {
       }
     }
     if (status === 'ready' && previousStatus === 'working') {
-      if (callbacks.onNotification) {
+      // Skip scraping notifications when hooks are active (bus consumer handles it with richer data)
+      const hooksActive = (() => { try { return require('../../events').getActiveProvider() === 'hooks'; } catch (e) { return false; } })();
+      if (!hooksActive && callbacks.onNotification) {
         const projectName = termData.project?.name || termData.name;
         const bufCtx = termData.terminal ? extractTerminalContext(termData.terminal) : null;
         const richCtx = terminalContext.get(id);
@@ -1151,6 +1159,7 @@ async function createTerminal(project, options = {}) {
     if (data === '\r' || data === '\n') {
       cancelScheduledReady(id);
       updateTerminalStatus(id, 'working');
+      if (scrapingEventCallback) scrapingEventCallback(id, 'input', {});
       if (td && td.inputBuffer.trim().length > 0) {
         postEnterExtended.add(id);
         const title = extractTitleFromInput(td.inputBuffer);
@@ -3492,5 +3501,7 @@ module.exports = {
   createApiConsole,
   closeApiConsole,
   getApiConsoleTerminal,
-  writeApiConsole
+  writeApiConsole,
+  // Scraping callback for EventBus
+  setScrapingCallback
 };
