@@ -8,6 +8,8 @@ const fivemService = require('./FivemService');
 const webAppService = require('../../project-types/webapp/main/WebAppService');
 const apiService = require('../../project-types/api/main/ApiService');
 const updaterService = require('./UpdaterService');
+const hooksService = require('./HooksService');
+const hookEventServer = require('./HookEventServer');
 
 /**
  * Initialize all services with main window reference
@@ -20,6 +22,7 @@ function initializeServices(mainWindow) {
   webAppService.setMainWindow(mainWindow);
   apiService.setMainWindow(mainWindow);
   updaterService.setMainWindow(mainWindow);
+  hookEventServer.setMainWindow(mainWindow);
 }
 
 /**
@@ -31,6 +34,7 @@ function cleanupServices() {
   fivemService.stopAll();
   webAppService.stopAll();
   apiService.stopAll();
+  hookEventServer.stop();
 }
 
 module.exports = {
@@ -40,6 +44,8 @@ module.exports = {
   webAppService,
   apiService,
   updaterService,
+  hooksService,
+  hookEventServer,
   initializeServices,
   cleanupServices
 };

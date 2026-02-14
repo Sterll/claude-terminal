@@ -256,6 +256,15 @@ contextBridge.exposeInMainWorld('electron_api', {
     sessions: (projectPath) => ipcRenderer.invoke('claude-sessions', projectPath)
   },
 
+  // ==================== HOOKS ====================
+  hooks: {
+    install: () => ipcRenderer.invoke('hooks-install'),
+    remove: () => ipcRenderer.invoke('hooks-remove'),
+    status: () => ipcRenderer.invoke('hooks-status'),
+    verify: () => ipcRenderer.invoke('hooks-verify'),
+    onEvent: createListener('hook-event')
+  },
+
   // ==================== USAGE ====================
   usage: {
     getData: () => ipcRenderer.invoke('get-usage-data'),

@@ -66,7 +66,7 @@ if (!gotTheLock) {
  */
 function bootstrapApp() {
   // Lazy require modules only after we have the lock
-  const { initializeServices, cleanupServices } = require('./services');
+  const { initializeServices, cleanupServices, hookEventServer } = require('./services');
   const { registerAllHandlers } = require('./ipc');
   const {
     createMainWindow,
@@ -127,6 +127,24 @@ function bootstrapApp() {
 
     // Register global shortcuts
     registerGlobalShortcuts();
+
+    // Start hook event server if hooks are enabled
+    try {
+      const { settingsFile } = require('./utils/paths');
+      console.log('[Hooks] Checking settings file:', settingsFile);
+      if (fs.existsSync(settingsFile)) {
+        const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+        console.log('[Hooks] hooksEnabled:', settings.hooksEnabled);
+        if (settings.hooksEnabled) {
+          hookEventServer.start(mainWindow);
+          console.log('[Hooks] HookEventServer started');
+        }
+      } else {
+        console.log('[Hooks] Settings file not found');
+      }
+    } catch (e) {
+      console.error('[Hooks] Failed to start event server:', e);
+    }
 
     // Check for updates (production only)
     updaterService.checkForUpdates(app.isPackaged);
