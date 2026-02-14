@@ -134,6 +134,7 @@ class ChatService {
         maxTurns: 100,
         includePartialMessages: true,
         permissionMode,
+        systemPrompt: { type: 'preset', preset: 'claude_code' },
         settingSources: ['user', 'project', 'local'],
         canUseTool: async (toolName, input, opts) => {
           return this._handlePermission(sessionId, toolName, input, opts);
