@@ -231,9 +231,12 @@ class ChatService {
    * Forwards to renderer and waits for user response.
    */
   async _handlePermission(sessionId, toolName, input, options) {
-    // Auto-approve if session has alwaysAllow enabled
+    // These tools always require user interaction, never auto-approve
+    const INTERACTIVE_TOOLS = ['ExitPlanMode', 'EnterPlanMode', 'AskUserQuestion'];
+
+    // Auto-approve if session has alwaysAllow enabled (except interactive tools)
     const session = this.sessions.get(sessionId);
-    if (session?.alwaysAllow) {
+    if (session?.alwaysAllow && !INTERACTIVE_TOOLS.includes(toolName)) {
       return { behavior: 'allow', updatedInput: input };
     }
 
