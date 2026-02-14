@@ -660,7 +660,9 @@
     "resuming": "Reprise de la conversation...",
     "conversationResumed": "Conversation reprise — vous pouvez continuer à discuter.",
     "todoTitle": "Tâches",
-    "todoAllDone": "Terminé"
+    "todoAllDone": "Terminé",
+    "subagentLaunching": "Lancement de l'agent...",
+    "subagentRunning": "Agent en cours..."
   },
   "errors": {
     "corruptedFile": "Fichier projets corrompu",

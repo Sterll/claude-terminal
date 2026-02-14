@@ -17356,6 +17356,10 @@ select:focus-visible {
   gap: 2px;
 }
 
+.chat-messages > * {
+  flex-shrink: 0;
+}
+
 .chat-messages::-webkit-scrollbar {
   width: 5px;
 }
@@ -17715,6 +17719,228 @@ select:focus-visible {
   color: var(--text-tertiary);
   opacity: 0.6;
   font-style: italic;
+}
+
+/* ── Subagent (Task) card ── */
+
+.chat-subagent-card {
+  margin: 4px 0;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.06));
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-left: 3px solid rgba(99, 102, 241, 0.5);
+  border-radius: 8px;
+  animation: chat-msg-in 0.25s ease-out;
+  transition: border-color 0.3s, background 0.3s;
+}
+
+.chat-subagent-card.done {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.05));
+  border-color: rgba(34, 197, 94, 0.25);
+  border-left-color: rgba(34, 197, 94, 0.5);
+}
+
+.chat-subagent-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  min-height: 38px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.chat-subagent-header:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.chat-subagent-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: rgba(99, 102, 241, 0.7);
+  transition: color 0.3s;
+}
+
+.chat-subagent-card.done .chat-subagent-icon {
+  color: rgba(34, 197, 94, 0.7);
+}
+
+.chat-subagent-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.chat-subagent-info {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.chat-subagent-type {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.01em;
+}
+
+.chat-subagent-desc {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  opacity: 0.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.chat-subagent-activity {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  opacity: 0.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+
+.chat-subagent-status {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-subagent-status.complete {
+  color: #22c55e;
+}
+
+.chat-subagent-status.complete svg {
+  width: 14px;
+  height: 14px;
+}
+
+.chat-subagent-chevron {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--text-tertiary);
+  opacity: 0.4;
+  transition: transform 0.2s ease;
+}
+
+.chat-subagent-card.expanded .chat-subagent-chevron {
+  transform: rotate(180deg);
+}
+
+/* ── Subagent body (activity feed) ── */
+
+.chat-subagent-body {
+  display: none;
+  border-top: 1px solid rgba(99, 102, 241, 0.1);
+}
+
+.chat-subagent-card.expanded .chat-subagent-body {
+  display: block;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.chat-subagent-card.done.expanded .chat-subagent-body {
+  border-top-color: rgba(34, 197, 94, 0.1);
+}
+
+.chat-subagent-body::-webkit-scrollbar {
+  width: 3px;
+}
+
+.chat-subagent-body::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.2);
+  border-radius: 3px;
+}
+
+/* ── Mini tool entries inside subagent ── */
+
+.sa-tool {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 14px 4px 20px;
+  font-size: 11px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  animation: sa-tool-in 0.2s ease-out;
+}
+
+.sa-tool:last-child {
+  border-bottom: none;
+}
+
+@keyframes sa-tool-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.sa-tool-icon {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  color: var(--text-tertiary);
+  opacity: 0.5;
+}
+
+.sa-tool-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.sa-tool-name {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.sa-tool-detail {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-tertiary);
+  opacity: 0.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 10px;
+}
+
+.sa-tool-status {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sa-tool-status .chat-tool-spinner {
+  width: 9px;
+  height: 9px;
+  border-width: 1.5px;
+}
+
+.sa-tool-status.complete {
+  color: #22c55e;
+}
+
+.sa-tool-status.complete svg {
+  width: 11px;
+  height: 11px;
 }
 
 /* ── Diff viewer ── */

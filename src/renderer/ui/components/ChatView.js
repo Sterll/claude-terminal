@@ -87,6 +87,7 @@ function createChatView(wrapperEl, project, options = {}) {
   const toolCards = new Map(); // content_block index -> element
   const toolInputBuffers = new Map(); // content_block index -> accumulated JSON string
   const todoToolIndices = new Set(); // block indices that are TodoWrite tools
+  const taskToolIndices = new Map(); // block index -> { card, toolUseId } for Task (subagent) tools
   let blockIndex = 0;
   let currentMsgHasToolUse = false;
   let todoWidgetEl = null; // persistent todo list widget
@@ -641,6 +642,219 @@ function createChatView(wrapperEl, project, options = {}) {
     }
   }
 
+  // ── Subagent (Task tool) card ──
+
+  function appendSubagentCard() {
+    const el = document.createElement('div');
+    el.className = 'chat-subagent-card';
+    el.innerHTML = `
+      <div class="chat-subagent-header">
+        <div class="chat-subagent-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/>
+            <path d="M6 21V9a9 9 0 0 0 9 9"/>
+          </svg>
+        </div>
+        <div class="chat-subagent-info">
+          <span class="chat-subagent-type">${escapeHtml(t('chat.subagentLaunching') || 'Launching agent...')}</span>
+          <span class="chat-subagent-desc"></span>
+        </div>
+        <span class="chat-subagent-activity"></span>
+        <div class="chat-subagent-status running"><div class="chat-tool-spinner"></div></div>
+        <svg class="chat-subagent-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="chat-subagent-body"></div>
+    `;
+
+    // Click header to expand/collapse body
+    el.querySelector('.chat-subagent-header').addEventListener('click', () => {
+      el.classList.toggle('expanded');
+    });
+
+    messagesEl.appendChild(el);
+    scrollToBottom();
+    return el;
+  }
+
+  function updateSubagentCard(el, input) {
+    if (!el || !input) return;
+    const typeEl = el.querySelector('.chat-subagent-type');
+    const name = input.name || input.subagent_type || 'agent';
+    const desc = input.description || '';
+    if (typeEl) typeEl.textContent = name;
+    const descEl = el.querySelector('.chat-subagent-desc');
+    if (descEl && desc) descEl.textContent = desc;
+  }
+
+  function completeSubagentCard(el) {
+    if (!el) return;
+    const status = el.querySelector('.chat-subagent-status');
+    if (status) {
+      status.classList.remove('running');
+      status.classList.add('complete');
+      status.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
+    }
+    el.classList.add('done');
+    // Clear live activity text
+    const activityEl = el.querySelector('.chat-subagent-activity');
+    if (activityEl) activityEl.textContent = '';
+  }
+
+  /**
+   * Find the subagent info by parent_tool_use_id
+   */
+  function findSubagentByParentId(parentToolUseId) {
+    for (const [, info] of taskToolIndices) {
+      if (info.toolUseId === parentToolUseId) return info;
+    }
+    return null;
+  }
+
+  /**
+   * Route a message from a subagent to the appropriate handler
+   */
+  function handleSubagentMessage(info, message) {
+    if (message.type === 'stream_event' && message.event) {
+      handleSubagentStreamEvent(info, message.event);
+      return;
+    }
+    if (message.type === 'assistant') {
+      handleSubagentAssistant(info, message);
+      return;
+    }
+  }
+
+  /**
+   * Handle stream events from a subagent (tool calls, text deltas)
+   */
+  function handleSubagentStreamEvent(info, event) {
+    switch (event.type) {
+      case 'message_start':
+        info.subBlockIndex = 0;
+        break;
+
+      case 'content_block_start': {
+        const block = event.content_block;
+        if (!block) break;
+        const blockIdx = event.index ?? info.subBlockIndex;
+
+        if (block.type === 'tool_use' && block.name !== 'TodoWrite') {
+          // Add mini tool entry in the subagent body
+          const mini = document.createElement('div');
+          mini.className = 'sa-tool';
+          mini.innerHTML = `
+            <div class="sa-tool-icon">${getToolIcon(block.name)}</div>
+            <span class="sa-tool-name">${escapeHtml(block.name)}</span>
+            <span class="sa-tool-detail"></span>
+            <div class="sa-tool-status"><div class="chat-tool-spinner"></div></div>
+          `;
+          info.bodyEl.appendChild(mini);
+          info.subTools.set(blockIdx, mini);
+          info.subBuffers.set(blockIdx, '');
+
+          // Update live activity in header
+          info.activityEl.textContent = `${block.name}...`;
+
+          // Auto-expand on first tool
+          if (info.subTools.size === 1) {
+            info.card.classList.add('expanded');
+          }
+        }
+        info.subBlockIndex++;
+        break;
+      }
+
+      case 'content_block_delta': {
+        const delta = event.delta;
+        if (!delta) break;
+
+        if (delta.type === 'input_json_delta') {
+          const idx = event.index ?? (info.subBlockIndex - 1);
+          const buf = info.subBuffers.get(idx);
+          if (buf !== undefined) {
+            info.subBuffers.set(idx, buf + (delta.partial_json || ''));
+          }
+        }
+        break;
+      }
+
+      case 'content_block_stop': {
+        const stopIdx = event.index ?? (info.subBlockIndex - 1);
+        const jsonStr = info.subBuffers.get(stopIdx);
+        const mini = info.subTools.get(stopIdx);
+
+        if (jsonStr && mini) {
+          info.subBuffers.delete(stopIdx);
+          try {
+            const toolInput = JSON.parse(jsonStr);
+            const name = mini.querySelector('.sa-tool-name')?.textContent || '';
+            const detail = getToolDisplayInfo(name, toolInput);
+            const detailEl = mini.querySelector('.sa-tool-detail');
+            if (detailEl && detail) {
+              detailEl.textContent = detail.length > 60 ? '...' + detail.slice(-57) : detail;
+            }
+          } catch (e) { /* partial JSON */ }
+
+          // Mark mini tool as complete
+          const statusEl = mini.querySelector('.sa-tool-status');
+          if (statusEl) {
+            statusEl.classList.add('complete');
+            statusEl.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
+          }
+        }
+        break;
+      }
+    }
+    scrollToBottom();
+  }
+
+  /**
+   * Handle full assistant message from a subagent
+   */
+  function handleSubagentAssistant(info, msg) {
+    const content = msg.message?.content;
+    if (!content) return;
+
+    for (const block of content) {
+      if (block.type === 'tool_use' && block.name !== 'TodoWrite') {
+        // Update the mini tool card with complete input info if not already done
+        const detail = getToolDisplayInfo(block.name, block.input);
+        // Update activity
+        info.activityEl.textContent = `${block.name}...`;
+
+        // Check if we already have a mini card for this — if not, add one
+        let found = false;
+        for (const [, mini] of info.subTools) {
+          const nameEl = mini.querySelector('.sa-tool-name');
+          if (nameEl && nameEl.textContent === block.name && !mini.classList.contains('has-detail')) {
+            const detailEl = mini.querySelector('.sa-tool-detail');
+            if (detailEl && detail) {
+              detailEl.textContent = detail.length > 60 ? '...' + detail.slice(-57) : detail;
+            }
+            mini.classList.add('has-detail');
+            found = true;
+            break;
+          }
+        }
+
+        if (!found) {
+          // Subagent tool not yet in body — add it
+          const mini = document.createElement('div');
+          mini.className = 'sa-tool has-detail';
+          const truncated = detail && detail.length > 60 ? '...' + detail.slice(-57) : (detail || '');
+          mini.innerHTML = `
+            <div class="sa-tool-icon">${getToolIcon(block.name)}</div>
+            <span class="sa-tool-name">${escapeHtml(block.name)}</span>
+            <span class="sa-tool-detail">${escapeHtml(truncated)}</span>
+            <div class="sa-tool-status"><div class="chat-tool-spinner"></div></div>
+          `;
+          info.bodyEl.appendChild(mini);
+        }
+      }
+    }
+    scrollToBottom();
+  }
+
   // ── Todo list widget (anchored above input bar) ──
 
   let todoExpanded = false;
@@ -924,6 +1138,16 @@ function createChatView(wrapperEl, project, options = {}) {
   const unsubMessage = api.chat.onMessage(({ sessionId: sid, message }) => {
     if (sid !== sessionId) return;
 
+    // Route subagent messages to their card (messages with parent_tool_use_id)
+    const parentId = message.parent_tool_use_id;
+    if (parentId) {
+      const subInfo = findSubagentByParentId(parentId);
+      if (subInfo) {
+        handleSubagentMessage(subInfo, message);
+        return;
+      }
+    }
+
     // Stream events (partial messages)
     if (message.type === 'stream_event' && message.event) {
       handleStreamEvent(message.event);
@@ -985,15 +1209,24 @@ function createChatView(wrapperEl, project, options = {}) {
           finalizeStreamBlock();
           currentMsgHasToolUse = true;
           const blockIdx = event.index ?? blockIndex;
-          // TodoWrite & AskUserQuestion get special UI — no generic tool card
+          // TodoWrite, Task & AskUserQuestion get special UI — no generic tool card
           if (block.name === 'TodoWrite') {
             todoToolIndices.add(blockIdx);
+          } else if (block.name === 'Task') {
+            const card = appendSubagentCard();
+            const bodyEl = card.querySelector('.chat-subagent-body');
+            const activityEl = card.querySelector('.chat-subagent-activity');
+            taskToolIndices.set(blockIdx, {
+              card, toolUseId: block.id, bodyEl, activityEl,
+              subTools: new Map(), subBuffers: new Map(), subBlockIndex: 0
+            });
+            setStatus('working', t('chat.subagentRunning') || 'Agent running...');
           } else if (block.name !== 'AskUserQuestion') {
             const card = appendToolCard(block.name, '');
             toolCards.set(blockIdx, card);
           }
           toolInputBuffers.set(blockIdx, '');
-          setStatus('working', `${block.name}...`);
+          if (block.name !== 'Task') setStatus('working', `${block.name}...`);
         } else if (block.type === 'thinking') {
           currentThinkingText = '';
           currentThinkingEl = null;
@@ -1046,6 +1279,14 @@ function createChatView(wrapperEl, project, options = {}) {
               break;
             }
 
+            // Task (subagent) → update subagent card with name/description
+            const taskInfo = taskToolIndices.get(stopIdx);
+            if (taskInfo) {
+              updateSubagentCard(taskInfo.card, toolInput);
+              setStatus('working', `${toolInput.name || toolInput.subagent_type || 'Agent'}...`);
+              break;
+            }
+
             const card = toolCards.get(stopIdx);
             if (card) {
               card.dataset.toolInput = JSON.stringify(toolInput);
@@ -1080,6 +1321,11 @@ function createChatView(wrapperEl, project, options = {}) {
           for (const [, card] of toolCards) {
             completeToolCard(card);
           }
+          // Complete any remaining subagent cards
+          for (const [idx, info] of taskToolIndices) {
+            completeSubagentCard(info.card);
+            taskToolIndices.delete(idx);
+          }
         }
         break;
     }
@@ -1097,10 +1343,28 @@ function createChatView(wrapperEl, project, options = {}) {
           updateTodoWidget(block.input.todos);
           continue;
         }
+        // Task (subagent) — update subagent card from assistant message
+        if (block.name === 'Task' && block.input) {
+          for (const [, info] of taskToolIndices) {
+            updateSubagentCard(info.card, block.input);
+          }
+          hasToolUse = true;
+          continue;
+        }
         hasToolUse = true;
         // Mark tool cards as complete
         for (const [, card] of toolCards) {
           completeToolCard(card);
+        }
+      }
+      // tool_result for a subagent → mark it complete
+      if (block.type === 'tool_result') {
+        for (const [idx, info] of taskToolIndices) {
+          if (info.toolUseId === block.tool_use_id) {
+            completeSubagentCard(info.card);
+            taskToolIndices.delete(idx);
+            break;
+          }
         }
       }
     }
@@ -1147,6 +1411,11 @@ function createChatView(wrapperEl, project, options = {}) {
     // Complete all tool cards
     for (const [, card] of toolCards) {
       completeToolCard(card);
+    }
+    // Complete all subagent cards
+    for (const [idx, info] of taskToolIndices) {
+      completeSubagentCard(info.card);
+      taskToolIndices.delete(idx);
     }
   });
   unsubscribers.push(unsubDone);

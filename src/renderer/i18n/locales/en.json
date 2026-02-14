@@ -660,7 +660,9 @@
     "resuming": "Resuming conversation...",
     "conversationResumed": "Conversation resumed — you can continue chatting.",
     "todoTitle": "Tasks",
-    "todoAllDone": "All done"
+    "todoAllDone": "All done",
+    "subagentLaunching": "Launching agent...",
+    "subagentRunning": "Agent running..."
   },
   "errors": {
     "corruptedFile": "Projects file corrupted",
