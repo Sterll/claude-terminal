@@ -175,7 +175,7 @@ function createChatView(wrapperEl, project, options = {}) {
     <div class="chat-view">
       <div class="chat-messages">
         <div class="chat-welcome">
-          <div class="chat-welcome-sparkle">&#10022;</div>
+          <img class="chat-welcome-logo" src="assets/claude-mascot.svg" alt="" draggable="false" />
           <div class="chat-welcome-text">${escapeHtml(t('chat.welcomeMessage') || 'How can I help?')}</div>
         </div>
       </div>
@@ -1144,7 +1144,7 @@ function createChatView(wrapperEl, project, options = {}) {
     const text = inputEl.value.trim();
     const hasImages = pendingImages.length > 0;
     const hasMentions = pendingMentions.length > 0;
-    if ((!text && !hasImages && !hasMentions) || isStreaming || sendLock) return;
+    if ((!text && !hasImages && !hasMentions) || sendLock) return;
 
     sendLock = true;
     if (project?.id) recordActivity(project.id);
@@ -1165,12 +1165,16 @@ function createChatView(wrapperEl, project, options = {}) {
       setTimeout(() => el.remove(), 300);
     }
 
-    appendUserMessage(text, images, mentions);
+    const isQueued = isStreaming && sessionId;
+    appendUserMessage(text, images, mentions, isQueued);
     inputEl.value = '';
     inputEl.style.height = 'auto';
-    turnHadAssistantContent = false;
-    setStreaming(true);
-    appendThinkingIndicator();
+
+    if (!isStreaming) {
+      turnHadAssistantContent = false;
+      setStreaming(true);
+      appendThinkingIndicator();
+    }
 
     // Resolve mentions to text content
     const resolvedMentions = mentions.length > 0 ? await resolveMentions(mentions) : [];
@@ -1207,12 +1211,12 @@ function createChatView(wrapperEl, project, options = {}) {
         const result = await api.chat.send({ sessionId, text, images: imagesPayload, mentions: resolvedMentions });
         if (!result.success) {
           appendError(result.error || t('chat.errorOccurred'));
-          setStreaming(false);
+          if (!isStreaming) setStreaming(false);
         }
       }
     } catch (err) {
       appendError(err.message);
-      setStreaming(false);
+      if (!isStreaming) setStreaming(false);
     } finally {
       sendLock = false;
     }
@@ -1557,12 +1561,16 @@ function createChatView(wrapperEl, project, options = {}) {
 
   // ── DOM helpers ──
 
-  function appendUserMessage(text, images = [], mentions = []) {
+  function appendUserMessage(text, images = [], mentions = [], queued = false) {
     const welcome = messagesEl.querySelector('.chat-welcome');
     if (welcome) welcome.remove();
     const el = document.createElement('div');
     el.className = 'chat-msg chat-msg-user';
+    if (queued) el.classList.add('queued');
     let html = '';
+    if (queued) {
+      html += `<span class="chat-msg-queued-badge">${escapeHtml(t('chat.queued') || 'Queued')}</span>`;
+    }
     if (mentions.length > 0) {
       html += `<div class="chat-msg-mentions">${mentions.map(m =>
         `<span class="chat-msg-mention-tag">${m.icon}<span>${escapeHtml(m.label)}</span></span>`
@@ -1608,7 +1616,7 @@ function createChatView(wrapperEl, project, options = {}) {
     const el = document.createElement('div');
     el.className = 'chat-thinking-indicator';
     el.innerHTML = `
-      <span class="chat-sparkle">&#10022;</span>
+      <img class="chat-thinking-logo" src="assets/claude-mascot.svg" alt="" draggable="false" />
       <span class="chat-thinking-label">${escapeHtml(t('chat.thinking'))}</span>
     `;
     messagesEl.appendChild(el);
@@ -2164,14 +2172,14 @@ function createChatView(wrapperEl, project, options = {}) {
 
   function setStreaming(streaming) {
     isStreaming = streaming;
-    inputEl.readOnly = streaming;
-    sendBtn.style.display = streaming ? 'none' : '';
     stopBtn.style.display = streaming ? '' : 'none';
     chatView.classList.toggle('streaming', streaming);
 
     if (streaming) {
+      inputEl.placeholder = t('chat.queuePlaceholder') || 'Queue a follow-up message...';
       setStatus('thinking', t('chat.thinking'));
     } else {
+      inputEl.placeholder = t('chat.placeholder');
       setStatus('idle', t('chat.ready') || 'Ready');
       inputEl.focus();
     }
@@ -2320,6 +2328,12 @@ function createChatView(wrapperEl, project, options = {}) {
         currentMsgHasToolUse = false;
         turnHadAssistantContent = false;
         toolCards.clear();
+        // Clear queued badges — this message is now being processed
+        for (const qEl of messagesEl.querySelectorAll('.chat-msg-user.queued')) {
+          qEl.classList.remove('queued');
+          const badge = qEl.querySelector('.chat-msg-queued-badge');
+          if (badge) badge.remove();
+        }
         break;
 
       case 'content_block_start': {

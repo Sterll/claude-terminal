@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 14" shape-rendering="crispEdges">
+  <!-- Ears -->
+  <rect x="2" y="1" width="2" height="2" fill="#d97706"/>
+  <rect x="10" y="1" width="2" height="2" fill="#d97706"/>
+  <!-- Head/Body -->
+  <rect x="2" y="3" width="10" height="9" fill="#d97706"/>
+  <rect x="3" y="2" width="8" height="1" fill="#d97706"/>
+  <!-- Eyes -->
+  <rect x="4" y="5" width="2" height="2" fill="#451a03"/>
+  <rect x="8" y="5" width="2" height="2" fill="#451a03"/>
+  <!-- Mouth -->
+  <rect x="5" y="8" width="4" height="1" fill="#451a03"/>
+  <!-- Feet -->
+  <rect x="3" y="12" width="2" height="1" fill="#d97706"/>
+  <rect x="9" y="12" width="2" height="1" fill="#d97706"/>
+</svg>

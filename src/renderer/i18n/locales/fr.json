@@ -643,6 +643,7 @@
     "title": "Chat",
     "sendMessage": "Envoyer",
     "placeholder": "Demandez quelque chose à Claude...",
+    "queuePlaceholder": "Envoyer un message en file d'attente...",
     "thinking": "Réflexion",
     "toolCall": "Appel d'outil",
     "cost": "Coût",
@@ -690,7 +691,8 @@
     "mentionSelection": "Joindre le texte sélectionné",
     "mentionTodos": "Joindre les TODOs du projet",
     "mentionProject": "Joindre les infos du projet actuel",
-    "mentionNoFiles": "Aucun fichier trouvé"
+    "mentionNoFiles": "Aucun fichier trouvé",
+    "queued": "En file"
   },
   "hooks": {
     "consent": {
