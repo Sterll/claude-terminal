@@ -3551,7 +3551,16 @@ async function createChatTerminal(project, options = {}) {
   document.getElementById('empty-terminals').style.display = 'none';
 
   // Create ChatView inside wrapper
-  const chatView = createChatView(wrapper, project, { skipPermissions, resumeSessionId });
+  const chatView = createChatView(wrapper, project, {
+    skipPermissions,
+    resumeSessionId,
+    onTabRename: (name) => {
+      const nameEl = tab.querySelector('.tab-name');
+      if (nameEl) nameEl.textContent = name;
+      const data = getTerminal(id);
+      if (data) data.name = name;
+    }
+  });
   const storedData = getTerminal(id);
   if (storedData) {
     storedData.chatView = chatView;

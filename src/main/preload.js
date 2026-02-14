@@ -267,7 +267,8 @@ contextBridge.exposeInMainWorld('electron_api', {
     onError: createListener('chat-error'),
     onDone: createListener('chat-done'),
     onIdle: createListener('chat-idle'),
-    onPermissionRequest: createListener('chat-permission-request')
+    onPermissionRequest: createListener('chat-permission-request'),
+    generateTabName: (params) => ipcRenderer.invoke('chat-generate-tab-name', params)
   },
 
   // ==================== USAGE ====================

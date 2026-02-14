@@ -43,6 +43,16 @@ function registerChatHandlers() {
   ipcMain.on('chat-interrupt', (_event, { sessionId }) => {
     chatService.interrupt(sessionId);
   });
+
+  // Generate a short tab name from user message (haiku, fast)
+  ipcMain.handle('chat-generate-tab-name', async (_event, { userMessage, currentName }) => {
+    try {
+      const name = await chatService.generateTabName(userMessage, currentName);
+      return { success: true, name };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
 }
 
 module.exports = { registerChatHandlers };

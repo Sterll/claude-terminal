@@ -73,10 +73,11 @@ function getToolDisplayInfo(toolName, input) {
 // ── Create Chat View ──
 
 function createChatView(wrapperEl, project, options = {}) {
-  const { resumeSessionId = null } = options;
+  const { resumeSessionId = null, skipPermissions = false, onTabRename = null } = options;
   let sessionId = null;
   let isStreaming = false;
   let pendingResumeId = resumeSessionId || null;
+  let tabNamePending = false; // avoid concurrent tab name requests
   let currentStreamEl = null;
   let currentStreamText = '';
   let currentThinkingEl = null;
@@ -367,7 +368,7 @@ function createChatView(wrapperEl, project, options = {}) {
         const startOpts = {
           cwd: project.path,
           prompt: text,
-          permissionMode: options.permissionMode || 'default',
+          permissionMode: skipPermissions ? 'bypassPermissions' : 'default',
           sessionId
         };
         if (pendingResumeId) {
@@ -392,6 +393,14 @@ function createChatView(wrapperEl, project, options = {}) {
       setStreaming(false);
     } finally {
       sendLock = false;
+    }
+
+    // Generate tab name on every prompt (fire-and-forget, haiku = cheap)
+    if (onTabRename && !tabNamePending && !text.startsWith('/')) {
+      tabNamePending = true;
+      api.chat.generateTabName({ userMessage: text, currentName: project.name }).then(res => {
+        if (res?.success && res.name) onTabRename(res.name);
+      }).catch(() => {}).finally(() => { tabNamePending = false; });
     }
   }
 
@@ -1244,7 +1253,7 @@ function createChatView(wrapperEl, project, options = {}) {
 
   function setStreaming(streaming) {
     isStreaming = streaming;
-    inputEl.disabled = streaming;
+    inputEl.readOnly = streaming;
     sendBtn.style.display = streaming ? 'none' : '';
     stopBtn.style.display = streaming ? '' : 'none';
     chatView.classList.toggle('streaming', streaming);
@@ -1253,6 +1262,7 @@ function createChatView(wrapperEl, project, options = {}) {
       setStatus('thinking', t('chat.thinking'));
     } else {
       setStatus('idle', t('chat.ready') || 'Ready');
+      inputEl.focus();
     }
   }
 
