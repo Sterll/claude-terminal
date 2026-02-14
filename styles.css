@@ -17635,12 +17635,13 @@ select:focus-visible {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  padding: 6px 12px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  margin: 2px 0;
-  transition: border-color 0.2s;
+  padding: 8px 14px 8px 17px;
+  background: linear-gradient(135deg, rgba(var(--accent-color-rgb, 99, 102, 241), 0.06), rgba(var(--accent-color-rgb, 99, 102, 241), 0.02));
+  border: 1px solid rgba(var(--accent-color-rgb, 99, 102, 241), 0.12);
+  border-left: 3px solid rgba(var(--accent-color-rgb, 99, 102, 241), 0.5);
+  border-radius: 10px;
+  margin: 4px 0;
+  transition: all 0.25s ease;
 }
 
 .chat-tool-card.expandable {
@@ -17648,14 +17649,16 @@ select:focus-visible {
 }
 
 .chat-tool-card.expandable:hover {
-  border-color: var(--text-tertiary);
+  background: linear-gradient(135deg, rgba(var(--accent-color-rgb, 99, 102, 241), 0.1), rgba(var(--accent-color-rgb, 99, 102, 241), 0.04));
+  border-color: rgba(var(--accent-color-rgb, 99, 102, 241), 0.25);
+  border-left-color: var(--accent-color);
 }
 
 .chat-tool-icon {
   flex-shrink: 0;
-  width: 15px;
-  height: 15px;
-  color: var(--text-tertiary);
+  width: 16px;
+  height: 16px;
+  color: var(--accent-color);
   opacity: 0.7;
 }
 
@@ -17674,9 +17677,11 @@ select:focus-visible {
 
 .chat-tool-name {
   font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
+  font-weight: 600;
+  color: var(--text-primary);
   flex-shrink: 0;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  letter-spacing: -0.2px;
 }
 
 .chat-tool-detail {
@@ -17691,27 +17696,38 @@ select:focus-visible {
 
 .chat-tool-status {
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
+.chat-tool-status.running .chat-tool-spinner {
+  border-top-color: var(--accent-color);
+}
+
 .chat-tool-status.complete {
   color: #22c55e;
+  animation: chat-tool-check-in 0.3s ease-out;
+}
+
+@keyframes chat-tool-check-in {
+  from { transform: scale(0); opacity: 0; }
+  50% { transform: scale(1.2); }
+  to { transform: scale(1); opacity: 1; }
 }
 
 .chat-tool-status.complete svg {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
 }
 
 .chat-tool-spinner {
-  width: 12px;
-  height: 12px;
-  border: 1.5px solid var(--border-primary);
-  border-top-color: var(--text-secondary);
+  width: 13px;
+  height: 13px;
+  border: 1.5px solid rgba(var(--accent-color-rgb, 99, 102, 241), 0.2);
+  border-top-color: var(--accent-color);
   border-radius: 50%;
   animation: chat-spin 0.7s linear infinite;
 }
@@ -17724,8 +17740,8 @@ select:focus-visible {
 .chat-tool-content {
   display: none;
   width: 100%;
-  border-top: 1px solid var(--border-primary);
-  margin-top: 4px;
+  border-top: 1px solid rgba(var(--accent-color-rgb, 99, 102, 241), 0.1);
+  margin-top: 6px;
   padding-top: 8px;
 }
 
@@ -17739,9 +17755,9 @@ select:focus-visible {
   color: var(--text-tertiary);
   font-family: 'Cascadia Code', 'Fira Code', monospace;
   margin-bottom: 6px;
-  padding: 4px 6px;
-  background: var(--bg-primary);
-  border-radius: 4px;
+  padding: 4px 8px;
+  background: rgba(var(--accent-color-rgb, 99, 102, 241), 0.06);
+  border-radius: 5px;
   display: inline-block;
 }
 
@@ -18997,7 +19013,8 @@ select:focus-visible {
   color: var(--text-tertiary);
 }
 
-.chat-input:disabled {
+.chat-input:disabled,
+.chat-input[readonly] {
   opacity: 0.5;
 }
 
