@@ -4,13 +4,13 @@
  * Handles permissions via canUseTool callback, forwarding to renderer.
  */
 
-let sdkModule = null;
+let sdkPromise = null;
 
 async function loadSDK() {
-  if (!sdkModule) {
-    sdkModule = await import('@anthropic-ai/claude-agent-sdk');
+  if (!sdkPromise) {
+    sdkPromise = import('@anthropic-ai/claude-agent-sdk');
   }
-  return sdkModule;
+  return sdkPromise;
 }
 
 /**
