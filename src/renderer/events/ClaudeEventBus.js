@@ -54,18 +54,17 @@ class ClaudeEventBus {
       data
     };
 
-    // Type-specific listeners
+    // Copy Sets before iterating — safe if a listener unsubscribes during emit
     const typeListeners = this._listeners.get(type);
     if (typeListeners) {
-      for (const cb of typeListeners) {
+      for (const cb of [...typeListeners]) {
         try { cb(envelope); } catch (e) { console.error(`[EventBus] Error in ${type} listener:`, e); }
       }
     }
 
-    // Wildcard listeners
     const wildcardListeners = this._listeners.get('*');
     if (wildcardListeners) {
-      for (const cb of wildcardListeners) {
+      for (const cb of [...wildcardListeners]) {
         try { cb(envelope); } catch (e) { console.error('[EventBus] Error in wildcard listener:', e); }
       }
     }

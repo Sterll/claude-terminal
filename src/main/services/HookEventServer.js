@@ -24,10 +24,20 @@ function start(win) {
 
   if (server) return;
 
+  const MAX_BODY = 16 * 1024; // 16 KB — hook payloads are typically < 1 KB
+
   server = http.createServer((req, res) => {
     if (req.method === 'POST' && req.url === '/hook') {
       let body = '';
-      req.on('data', chunk => { body += chunk; });
+      req.setTimeout(5000);
+      req.on('data', chunk => {
+        body += chunk;
+        if (body.length > MAX_BODY) {
+          res.writeHead(413);
+          res.end('payload too large');
+          req.destroy();
+        }
+      });
       req.on('end', () => {
         res.writeHead(200);
         res.end('ok');
@@ -35,11 +45,8 @@ function start(win) {
         try {
           const event = JSON.parse(body);
           console.debug(`[HookEventServer] Received: ${event.hook} (cwd: ${event.cwd || '?'})`);
-          // Forward to renderer
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('hook-event', event);
-          } else {
-            console.warn('[HookEventServer] No main window to forward to');
           }
         } catch (e) {
           console.warn('[HookEventServer] Malformed payload:', body.substring(0, 200));

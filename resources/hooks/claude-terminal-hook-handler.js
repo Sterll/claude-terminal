@@ -20,8 +20,8 @@ let stdinData = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => { stdinData += chunk; });
 
-// Timeout if no stdin after 500ms
-const timeout = setTimeout(() => finish(), 500);
+// Timeout if no stdin after 2s (allow slow machines/heavy load)
+const timeout = setTimeout(() => finish(), 2000);
 
 process.stdin.on('end', () => {
   clearTimeout(timeout);

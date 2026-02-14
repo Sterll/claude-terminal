@@ -188,11 +188,9 @@ function wireAttentionConsumer() {
   const lastAttentionNotif = new Map(); // projectId -> timestamp
   const DEDUP_MS = 5000;
 
-  // Tool name → { type, i18nKey }
+  // Tool name (case-insensitive) → { type, i18nKey }
   const attentionTools = {
-    'AskUserQuestion': { type: 'question', key: 'notifQuestion' },
     'askuserquestion': { type: 'question', key: 'notifQuestion' },
-    'ExitPlanMode':    { type: 'plan',     key: 'notifPlan' },
     'exitplanmode':    { type: 'plan',     key: 'notifPlan' },
   };
 
@@ -208,7 +206,7 @@ function wireAttentionConsumer() {
     eventBus.on(EVENT_TYPES.TOOL_START, (e) => {
       if (e.source !== 'hooks' || !e.projectId) return;
       const toolName = e.data?.toolName || '';
-      const match = attentionTools[toolName];
+      const match = attentionTools[toolName.toLowerCase()];
       if (!match) return;
       if (!shouldNotify(e.projectId)) return;
 
