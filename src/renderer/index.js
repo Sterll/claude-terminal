@@ -21,6 +21,9 @@ const features = require('./features');
 // Internationalization
 const i18n = require('./i18n');
 
+// Event system
+const events = require('./events');
+
 /**
  * Initialize all renderer modules
  */
@@ -78,6 +81,9 @@ function initialize() {
     }
   );
 
+  // Initialize Claude event bus and provider
+  events.initClaudeEvents();
+
   // Load disk-cached dashboard data immediately (sync, fast)
   services.DashboardService.loadAllDiskCaches();
 
@@ -113,6 +119,10 @@ module.exports = {
   // i18n
   i18n,
   ...i18n,
+
+  // Events
+  events,
+  ...events,
 
   // Initialize function
   initialize

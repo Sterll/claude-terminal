@@ -9,6 +9,8 @@ const webAppService = require('../../project-types/webapp/main/WebAppService');
 const apiService = require('../../project-types/api/main/ApiService');
 const updaterService = require('./UpdaterService');
 const chatService = require('./ChatService');
+const hooksService = require('./HooksService');
+const hookEventServer = require('./HookEventServer');
 
 /**
  * Initialize all services with main window reference
@@ -22,6 +24,7 @@ function initializeServices(mainWindow) {
   apiService.setMainWindow(mainWindow);
   updaterService.setMainWindow(mainWindow);
   chatService.setMainWindow(mainWindow);
+  hookEventServer.setMainWindow(mainWindow);
 }
 
 /**
@@ -34,6 +37,7 @@ function cleanupServices() {
   webAppService.stopAll();
   apiService.stopAll();
   chatService.closeAll();
+  hookEventServer.stop();
 }
 
 module.exports = {
@@ -44,6 +48,8 @@ module.exports = {
   apiService,
   updaterService,
   chatService,
+  hooksService,
+  hookEventServer,
   initializeServices,
   cleanupServices
 };

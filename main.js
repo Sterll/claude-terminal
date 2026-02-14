@@ -26,8 +26,9 @@ if (!gotTheLock) {
 }
 
 function bootstrapApp() {
-  const { loadAccentColor } = require('./src/main/utils/paths');
-  const { initializeServices, cleanupServices } = require('./src/main/services');
+  const fs = require('fs');
+  const { loadAccentColor, settingsFile } = require('./src/main/utils/paths');
+  const { initializeServices, cleanupServices, hookEventServer } = require('./src/main/services');
   const { registerAllHandlers } = require('./src/main/ipc');
   const {
     createMainWindow,
@@ -75,6 +76,19 @@ function bootstrapApp() {
     registerTrayHandlers();
     createTray(accentColor);
     registerGlobalShortcuts();
+
+    // Start hook event server if hooks are enabled
+    try {
+      if (fs.existsSync(settingsFile)) {
+        const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+        if (settings.hooksEnabled) {
+          hookEventServer.start(mainWindow);
+        }
+      }
+    } catch (e) {
+      console.error('[Hooks] Failed to start event server:', e);
+    }
+
     updaterService.checkForUpdates(app.isPackaged);
   }
 

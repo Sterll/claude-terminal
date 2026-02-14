@@ -21,6 +21,7 @@ module.exports = {
     "src/main/**/*",
     "src/project-types/**/*",
     "assets/**/*",
+    "resources/**/*",
     "package.json"
   ],
   win: {

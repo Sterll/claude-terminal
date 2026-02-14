@@ -43,6 +43,8 @@ const {
   loadSettings,
   saveSettings,
   saveSettingsImmediate,
+  getSetting,
+  setSetting,
   createFolder,
   deleteFolder,
   renameFolder,
@@ -89,6 +91,7 @@ const {
 
 const registry = require('./src/project-types/registry');
 const { mergeTranslations } = require('./src/renderer/i18n');
+const ModalComponent = require('./src/renderer/ui/components/Modal');
 
 // ========== LOCAL MODAL FUNCTIONS ==========
 // These work with the existing HTML modal elements in index.html
@@ -533,6 +536,10 @@ ensureDirectories();
 initializeState(); // This loads settings, projects AND initializes time tracking
 initI18n(settingsState.get().language); // Initialize i18n with saved language preference
 
+// Initialize Claude event bus and provider (hooks or scraping)
+const { initClaudeEvents, switchProvider, getDashboardStats, setNotificationFn } = require('./src/renderer/events');
+initClaudeEvents();
+
 // Initialize project types registry
 registry.discoverAll();
 registry.loadAllTranslations(mergeTranslations);
@@ -555,8 +562,10 @@ function showNotification(type, title, body, terminalId) {
   if (!localState.notificationsEnabled) return;
   if (document.hasFocus() && terminalsState.get().activeTerminal === terminalId) return;
   const labels = { show: t('terminals.notifBtnShow') };
-  api.notification.show({ type: 'done', title, body, terminalId, autoDismiss: 8000, labels });
+  api.notification.show({ type: type || 'done', title, body, terminalId, autoDismiss: 8000, labels });
 }
+// Share with event bus notification consumer so hooks use the same logic
+setNotificationFn(showNotification);
 
 api.notification.onClicked(({ terminalId }) => {
   if (terminalId) {
@@ -2030,6 +2039,19 @@ async function renderSettingsTab(initialTab = 'general') {
               </div>
             </div>
           </div>
+          <div class="settings-section">
+            <div class="settings-title">${t('settings.hooks.title') || 'Smart Hooks'}</div>
+            <div class="settings-toggle-row">
+              <div class="settings-toggle-label">
+                <div>${t('settings.hooks.enable') || 'Enable Smart Hooks'}</div>
+                <div class="settings-toggle-desc">${t('settings.hooks.description') || 'Real-time insights from Claude Code (time tracking, notifications, dashboard stats)'}</div>
+              </div>
+              <label class="settings-toggle">
+                <input type="checkbox" id="hooks-enabled-toggle" ${settings.hooksEnabled ? 'checked' : ''}>
+                <span class="settings-toggle-slider"></span>
+              </label>
+            </div>
+          </div>
         </div>
         <!-- GitHub Tab -->
         <div class="settings-panel ${initialTab === 'github' ? 'active' : ''}" data-panel="github">
@@ -2370,6 +2392,8 @@ async function renderSettingsTab(initialTab = 'general') {
     const newReduceMotion = reduceMotionToggle ? reduceMotionToggle.checked : false;
     const aiCommitToggle = document.getElementById('ai-commit-toggle');
     const newAiCommitMessages = aiCommitToggle ? aiCommitToggle.checked : true;
+    const hooksToggle = document.getElementById('hooks-enabled-toggle');
+    const newHooksEnabled = hooksToggle ? hooksToggle.checked : settings.hooksEnabled;
 
     const newSettings = {
       editor: settings.editor || 'code',
@@ -2381,7 +2405,8 @@ async function renderSettingsTab(initialTab = 'general') {
       compactProjects: newCompactProjects,
       reduceMotion: newReduceMotion,
       aiCommitMessages: newAiCommitMessages,
-      defaultTerminalMode: selectedTerminalMode?.dataset.terminalMode || 'terminal'
+      defaultTerminalMode: selectedTerminalMode?.dataset.terminalMode || 'terminal',
+      hooksEnabled: newHooksEnabled
     };
 
     // Collect dynamic settings from project types
@@ -2421,6 +2446,22 @@ async function renderSettingsTab(initialTab = 'general') {
       } catch (e) {
         console.error('Error setting launch at startup:', e);
       }
+    }
+
+    // Install or remove hooks if setting changed
+    if (newHooksEnabled !== settings.hooksEnabled) {
+      try {
+        if (newHooksEnabled) {
+          await api.hooks.install();
+        } else {
+          await api.hooks.remove();
+        }
+      } catch (e) {
+        console.error('Error toggling hooks:', e);
+      }
+      // Switch event provider to match
+      const { switchProvider } = require('./src/renderer/events');
+      switchProvider(newHooksEnabled ? 'hooks' : 'scraping');
     }
 
     // Show confirmation toast
@@ -6347,6 +6388,87 @@ function installBundledSkills() {
 
 // Install bundled skills on startup
 installBundledSkills();
+
+// Verify hooks integrity on startup (handler exists, paths current, all hooks present)
+if (getSetting('hooksEnabled')) {
+  api.hooks.verify().then(result => {
+    if (result.repaired) {
+      console.log('[Hooks] Auto-repaired:', result.details);
+    }
+  }).catch(e => console.error('[Hooks] Verify failed:', e));
+}
+
+// ========== HOOKS CONSENT MODAL (for existing users) ==========
+function showHooksConsentModal() {
+  if (getSetting('hooksConsentShown')) return;
+  // If hooks already enabled (user opted in before consent feature), just mark as shown
+  if (getSetting('hooksEnabled')) {
+    setSetting('hooksConsentShown', true);
+    return;
+  }
+
+  const content = `
+    <div class="hooks-consent-content">
+      <p>${t('hooks.consent.description')}</p>
+      <div class="hooks-consent-columns">
+        <div class="hooks-consent-col hooks-consent-captured">
+          <h4>${t('hooks.consent.dataTitle')}</h4>
+          <div>&#10003; ${t('hooks.consent.data1')}</div>
+          <div>&#10003; ${t('hooks.consent.data2')}</div>
+          <div>&#10003; ${t('hooks.consent.data3')}</div>
+        </div>
+        <div class="hooks-consent-col hooks-consent-not-captured">
+          <h4>${t('hooks.consent.noDataTitle')}</h4>
+          <div>&#10007; ${t('hooks.consent.noData1')}</div>
+          <div>&#10007; ${t('hooks.consent.noData2')}</div>
+          <div>&#10007; ${t('hooks.consent.noData3')}</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const modal = ModalComponent.createModal({
+    id: 'hooks-consent-modal',
+    title: t('hooks.consent.title'),
+    content,
+    size: 'medium',
+    buttons: [
+      {
+        label: t('hooks.consent.decline'),
+        action: 'decline',
+        onClick: (m) => {
+          setSetting('hooksConsentShown', true);
+          setSetting('hooksEnabled', false);
+          ModalComponent.closeModal(m);
+        }
+      },
+      {
+        label: t('hooks.consent.accept'),
+        action: 'accept',
+        primary: true,
+        onClick: async (m) => {
+          setSetting('hooksConsentShown', true);
+          setSetting('hooksEnabled', true);
+          // Update settings tab toggle if visible
+          const domToggle = document.getElementById('hooks-enabled-toggle');
+          if (domToggle) domToggle.checked = true;
+          try { await api.hooks.install(); } catch (e) { console.error('Failed to install hooks:', e); }
+          const { switchProvider } = require('./src/renderer/events');
+          switchProvider('hooks');
+          ModalComponent.closeModal(m);
+        }
+      }
+    ],
+    onClose: () => {
+      setSetting('hooksConsentShown', true);
+      setSetting('hooksEnabled', false);
+    }
+  });
+  ModalComponent.showModal(modal);
+}
+
+// Show hooks consent after a short delay for existing users
+setTimeout(showHooksConsentModal, 2000);
 
 // ========== SKILLS/AGENTS CREATION MODAL ==========
 let createModalType = 'skill'; // 'skill' or 'agent'

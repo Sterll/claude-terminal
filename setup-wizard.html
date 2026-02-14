@@ -590,6 +590,123 @@
       height: 16px;
     }
 
+    /* ============================================ */
+    /* HOOKS STEP                                   */
+    /* ============================================ */
+    [data-step="4"] {
+      padding: 12px 60px 8px;
+      overflow-y: auto;
+    }
+
+    [data-step="4"] .step-icon {
+      width: 52px;
+      height: 52px;
+      margin-bottom: 12px;
+      border-radius: 14px;
+    }
+
+    [data-step="4"] .step-icon svg {
+      width: 26px;
+      height: 26px;
+    }
+
+    [data-step="4"] .step-title {
+      margin-bottom: 4px;
+      font-size: 24px;
+    }
+
+    [data-step="4"] .step-subtitle {
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
+
+    .hooks-info {
+      width: 520px;
+      max-width: 100%;
+    }
+
+    .hooks-description {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    .hooks-benefits {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 14px;
+    }
+
+    .hooks-benefit {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--text-primary);
+    }
+
+    .hooks-benefit svg {
+      width: 16px;
+      height: 16px;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+
+    .hooks-data-columns {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+
+    .hooks-data-col {
+      flex: 1;
+      padding: 10px 14px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
+    .hooks-data-col h4 {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+      color: var(--text-muted);
+    }
+
+    .hooks-data-col.hooks-data-captured h4 {
+      color: var(--accent);
+    }
+
+    .hooks-data-col.hooks-data-not-captured h4 {
+      color: #22c55e;
+    }
+
+    .hooks-data-item {
+      font-size: 12px;
+      color: var(--text-secondary);
+      padding: 2px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .hooks-icon {
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+
+    .hooks-data-item.captured .hooks-icon {
+      color: var(--accent);
+    }
+
+    .hooks-data-item.not-captured .hooks-icon {
+      color: #22c55e;
+    }
+
     .step-counter {
       font-size: 12px;
       color: var(--text-muted);
@@ -716,8 +833,60 @@
         </div>
       </div>
 
-      <!-- Step 5: Done -->
+      <!-- Step 5: Hooks -->
       <div class="step" data-step="4">
+        <div class="step-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+        </div>
+        <div class="step-title" data-i18n="setup.hooks.title">Smart Hooks</div>
+        <div class="step-subtitle" data-i18n="setup.hooks.subtitle">Enhance Claude Terminal with real-time insights from Claude Code</div>
+        <div class="hooks-info">
+          <p class="hooks-description" data-i18n="setup.hooks.description">Hooks let Claude Terminal detect when Claude starts, stops, or uses tools. All data stays local on your machine. This enables:</p>
+          <div class="hooks-benefits">
+            <div class="hooks-benefit">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+              <span data-i18n="setup.hooks.benefit1">Accurate time tracking per project</span>
+            </div>
+            <div class="hooks-benefit">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+              <span data-i18n="setup.hooks.benefit2">Real-time notifications when tasks complete</span>
+            </div>
+            <div class="hooks-benefit">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+              <span data-i18n="setup.hooks.benefit3">Dashboard statistics and usage insights</span>
+            </div>
+          </div>
+          <div class="hooks-data-columns">
+            <div class="hooks-data-col hooks-data-captured">
+              <h4 data-i18n="setup.hooks.dataTitle">What is captured</h4>
+              <div class="hooks-data-item captured"><span class="hooks-icon">&#10003;</span> <span data-i18n="setup.hooks.data1">Session start and end times</span></div>
+              <div class="hooks-data-item captured"><span class="hooks-icon">&#10003;</span> <span data-i18n="setup.hooks.data2">Tool names used (e.g. file edit, bash)</span></div>
+              <div class="hooks-data-item captured"><span class="hooks-icon">&#10003;</span> <span data-i18n="setup.hooks.data3">Project directory path</span></div>
+            </div>
+            <div class="hooks-data-col hooks-data-not-captured">
+              <h4 data-i18n="setup.hooks.noDataTitle">What is NOT captured</h4>
+              <div class="hooks-data-item not-captured"><span class="hooks-icon">&#10007;</span> <span data-i18n="setup.hooks.noData1">File contents or code</span></div>
+              <div class="hooks-data-item not-captured"><span class="hooks-icon">&#10007;</span> <span data-i18n="setup.hooks.noData2">Conversation messages</span></div>
+              <div class="hooks-data-item not-captured"><span class="hooks-icon">&#10007;</span> <span data-i18n="setup.hooks.noData3">Personal data or API keys</span></div>
+            </div>
+          </div>
+          <div class="preference-item" style="margin-top: 10px;">
+            <div class="preference-info">
+              <div class="preference-label" data-i18n="setup.hooks.enable">Enable Smart Hooks</div>
+              <div class="preference-desc" data-i18n="setup.hooks.enableDesc">Can be changed later in settings</div>
+            </div>
+            <div class="preference-control">
+              <label class="toggle">
+                <input type="checkbox" id="pref-hooks" checked>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 6: Done -->
+      <div class="step" data-step="5">
         <div class="done-checkmark">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
         </div>
@@ -794,6 +963,23 @@
         'setup.done.notificationsLabel': 'Notifications',
         'setup.done.enabled': 'Enabled',
         'setup.done.disabled': 'Disabled',
+        'setup.done.hooksLabel': 'Smart Hooks',
+        'setup.hooks.title': 'Smart Hooks',
+        'setup.hooks.subtitle': 'Enhance Claude Terminal with real-time insights from Claude Code',
+        'setup.hooks.description': 'Hooks let Claude Terminal detect when Claude starts, stops, or uses tools. All data stays local on your machine. This enables:',
+        'setup.hooks.benefit1': 'Accurate time tracking per project',
+        'setup.hooks.benefit2': 'Real-time notifications when tasks complete',
+        'setup.hooks.benefit3': 'Dashboard statistics and usage insights',
+        'setup.hooks.dataTitle': 'What is captured',
+        'setup.hooks.data1': 'Session start and end times',
+        'setup.hooks.data2': 'Tool names used (e.g. file edit, bash)',
+        'setup.hooks.data3': 'Project directory path',
+        'setup.hooks.noDataTitle': 'What is NOT captured',
+        'setup.hooks.noData1': 'File contents or code',
+        'setup.hooks.noData2': 'Conversation messages',
+        'setup.hooks.noData3': 'Personal data or API keys',
+        'setup.hooks.enable': 'Enable Smart Hooks',
+        'setup.hooks.enableDesc': 'Can be changed later in settings',
         'setup.nav.next': 'Next',
         'setup.nav.previous': 'Previous',
         'setup.nav.step': 'Step {current} of {total}'
@@ -828,6 +1014,23 @@
         'setup.done.notificationsLabel': 'Notifications',
         'setup.done.enabled': 'Active',
         'setup.done.disabled': 'Desactive',
+        'setup.done.hooksLabel': 'Hooks intelligents',
+        'setup.hooks.title': 'Hooks intelligents',
+        'setup.hooks.subtitle': 'Enrichissez Claude Terminal avec des infos en temps reel de Claude Code',
+        'setup.hooks.description': 'Les hooks detectent quand Claude demarre, s\'arrete ou utilise des outils. Toutes les donnees restent en local sur votre machine. Cela active :',
+        'setup.hooks.benefit1': 'Suivi precis du temps par projet',
+        'setup.hooks.benefit2': 'Notifications en temps reel a la fin des taches',
+        'setup.hooks.benefit3': 'Statistiques et insights du tableau de bord',
+        'setup.hooks.dataTitle': 'Ce qui est capture',
+        'setup.hooks.data1': 'Heures de debut et fin de session',
+        'setup.hooks.data2': 'Noms des outils utilises (ex: edition, bash)',
+        'setup.hooks.data3': 'Chemin du repertoire du projet',
+        'setup.hooks.noDataTitle': 'Ce qui N\'EST PAS capture',
+        'setup.hooks.noData1': 'Contenu des fichiers ou code',
+        'setup.hooks.noData2': 'Messages de conversation',
+        'setup.hooks.noData3': 'Donnees personnelles ou cles API',
+        'setup.hooks.enable': 'Activer les hooks intelligents',
+        'setup.hooks.enableDesc': 'Modifiable plus tard dans les parametres',
         'setup.nav.next': 'Suivant',
         'setup.nav.previous': 'Precedent',
         'setup.nav.step': 'Etape {current} sur {total}'
@@ -859,7 +1062,7 @@
     // ============================================
     // STATE
     // ============================================
-    const TOTAL_STEPS = 5;
+    const TOTAL_STEPS = 6;
     let currentStep = 0;
     let selectedLang = navigator.language.startsWith('fr') ? 'fr' : 'en';
     let selectedColor = '#d97706';
@@ -1087,6 +1290,7 @@
       const editorNames = { code: 'VS Code', cursor: 'Cursor', webstorm: 'WebStorm', idea: 'IntelliJ IDEA' };
       const startup = document.getElementById('pref-startup').checked;
       const notifications = document.getElementById('pref-notifications').checked;
+      const hooksEnabled = document.getElementById('pref-hooks').checked;
 
       const langName = selectedLang === 'fr' ? 'Francais' : 'English';
 
@@ -1114,6 +1318,10 @@
           <span class="done-summary-label">${t('setup.done.notificationsLabel')}</span>
           <span class="done-summary-value">${notifications ? t('setup.done.enabled') : t('setup.done.disabled')}</span>
         </div>
+        <div class="done-summary-row">
+          <span class="done-summary-label">${t('setup.done.hooksLabel')}</span>
+          <span class="done-summary-value">${hooksEnabled ? t('setup.done.enabled') : t('setup.done.disabled')}</span>
+        </div>
       `;
     }
 
@@ -1127,6 +1335,8 @@
         editor: document.getElementById('pref-editor').value,
         launchAtStartup: document.getElementById('pref-startup').checked,
         notificationsEnabled: document.getElementById('pref-notifications').checked,
+        hooksEnabled: document.getElementById('pref-hooks').checked,
+        hooksConsentShown: true,
         setupCompleted: true
       };
     }

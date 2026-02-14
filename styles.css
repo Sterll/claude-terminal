@@ -17311,6 +17311,49 @@ select:focus-visible {
   cursor: not-allowed;
 }
 
+/* ========== HOOKS CONSENT MODAL ========== */
+.hooks-consent-content p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.hooks-consent-columns {
+  display: flex;
+  gap: 12px;
+}
+
+.hooks-consent-col {
+  flex: 1;
+  padding: 14px 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.hooks-consent-col h4 {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 10px;
+}
+
+.hooks-consent-captured h4 {
+  color: var(--accent);
+}
+
+.hooks-consent-not-captured h4 {
+  color: #22c55e;
+}
+
+.hooks-consent-col div {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 3px 0;
+}
+
 /* ========== REDUCED MOTION ==========
    Respect user preference (OS or app setting) */
 @media (prefers-reduced-motion: reduce) {
