@@ -325,7 +325,9 @@ function runPluginCommand(command, successPatterns, errorPatterns, timeoutMs = 6
 
     let proc;
     try {
-      proc = pty.spawn('cmd.exe', [], {
+      const { getShell } = require('../utils/shell');
+      const shell = getShell();
+      proc = pty.spawn(shell.path, shell.args, {
         name: 'xterm-256color',
         cols: 120,
         rows: 40,
@@ -333,7 +335,7 @@ function runPluginCommand(command, successPatterns, errorPatterns, timeoutMs = 6
         env: { ...process.env, TERM: 'xterm-256color' }
       });
     } catch (spawnError) {
-      console.error('[PluginService] Failed to spawn cmd.exe:', spawnError.message);
+      console.error('[PluginService] Failed to spawn shell:', spawnError.message);
       return resolve({ success: false, error: `PTY spawn failed: ${spawnError.message}` });
     }
 
@@ -420,10 +422,11 @@ function runPluginCommand(command, successPatterns, errorPatterns, timeoutMs = 6
     proc.onData((data) => {
       output += data;
 
-      // Phase 1: Wait for CMD prompt, then start Claude
-      if (phase === 'waiting_cmd' && output.includes('>')) {
+      // Phase 1: Wait for shell prompt, then start Claude
+      const { matchesShellPrompt } = require('../utils/shell');
+      if (phase === 'waiting_cmd' && matchesShellPrompt(output)) {
         phase = 'waiting_claude';
-        console.debug('[PluginService] Phase: CMD ready, starting Claude...');
+        console.debug('[PluginService] Phase: Shell ready, starting Claude...');
         proc.write('claude --dangerously-skip-permissions\r');
       }
 

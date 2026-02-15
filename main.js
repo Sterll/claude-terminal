@@ -123,11 +123,11 @@ function bootstrapApp() {
    * Register global keyboard shortcuts
    */
   function registerGlobalShortcuts() {
-    globalShortcut.register('Ctrl+Shift+P', () => {
+    globalShortcut.register('CommandOrControl+Shift+P', () => {
       createQuickPickerWindow();
     });
 
-    globalShortcut.register('Ctrl+Shift+T', () => {
+    globalShortcut.register('CommandOrControl+Shift+T', () => {
       let mainWindow = getMainWindow();
       if (!mainWindow) {
         mainWindow = createMainWindow({ isDev: process.argv.includes('--dev') });
@@ -159,8 +159,15 @@ function bootstrapApp() {
     cleanupServices();
   });
   app.on('window-all-closed', () => {
-    if (process.platform === 'darwin') {
+    if (process.platform !== 'darwin') {
       app.quit();
+    }
+  });
+  app.on('activate', () => {
+    if (!getMainWindow()) {
+      launchMainApp();
+    } else {
+      showMainWindow();
     }
   });
 }

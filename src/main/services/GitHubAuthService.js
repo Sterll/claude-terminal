@@ -161,6 +161,9 @@ async function getToken() {
   try {
     return await keytar.getPassword(SERVICE_NAME, ACCOUNT_NAME);
   } catch (e) {
+    if (process.platform === 'linux') {
+      console.error('[GitHub] Credential storage failed. Install libsecret: sudo apt install libsecret-1-dev gnome-keyring');
+    }
     console.error('Error getting GitHub token:', e);
     return null;
   }
@@ -175,6 +178,9 @@ async function setToken(token) {
     await keytar.setPassword(SERVICE_NAME, ACCOUNT_NAME, token);
     return true;
   } catch (e) {
+    if (process.platform === 'linux') {
+      console.error('[GitHub] Credential storage failed. Install libsecret: sudo apt install libsecret-1-dev gnome-keyring');
+    }
     console.error('Error storing GitHub token:', e);
     return false;
   }
@@ -188,6 +194,9 @@ async function deleteToken() {
     await keytar.deletePassword(SERVICE_NAME, ACCOUNT_NAME);
     return true;
   } catch (e) {
+    if (process.platform === 'linux') {
+      console.error('[GitHub] Credential storage failed. Install libsecret: sudo apt install libsecret-1-dev gnome-keyring');
+    }
     console.error('Error deleting GitHub token:', e);
     return false;
   }

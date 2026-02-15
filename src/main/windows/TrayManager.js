@@ -17,12 +17,14 @@ let tray = null;
 function getTrayIconPath() {
   // In development: relative to src/main/windows
   // In production: resources/assets
-  const devPath = path.join(__dirname, '..', '..', '..', 'assets', 'icon.ico');
   const fs = require('fs');
+  const ext = process.platform === 'win32' ? 'ico' : 'png';
+  const iconName = `icon.${ext}`;
+  const devPath = path.join(__dirname, '..', '..', '..', 'assets', iconName);
   if (fs.existsSync(devPath)) {
     return devPath;
   }
-  return path.join(process.resourcesPath || __dirname, 'assets', 'icon.ico');
+  return path.join(process.resourcesPath || __dirname, 'assets', iconName);
 }
 
 /**
@@ -40,13 +42,13 @@ function createTray() {
       }
     },
     {
-      label: 'Quick Pick (Ctrl+Shift+P)',
+      label: `Quick Pick (${process.platform === 'darwin' ? 'Cmd' : 'Ctrl'}+Shift+P)`,
       click: () => {
         createQuickPickerWindow();
       }
     },
     {
-      label: 'Nouveau Terminal (Ctrl+Shift+T)',
+      label: `Nouveau Terminal (${process.platform === 'darwin' ? 'Cmd' : 'Ctrl'}+Shift+T)`,
       click: () => {
         showMainWindow();
         setTimeout(() => {

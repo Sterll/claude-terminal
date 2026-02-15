@@ -16,12 +16,15 @@ let isQuitting = false;
  * @returns {BrowserWindow}
  */
 function createMainWindow({ isDev = false } = {}) {
+  const isMac = process.platform === 'darwin';
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1000,
     minHeight: 600,
-    frame: false,
+    frame: isMac ? undefined : false,
+    titleBarStyle: isMac ? 'hiddenInset' : undefined,
+    trafficLightPosition: isMac ? { x: 12, y: 10 } : undefined,
     backgroundColor: '#0d0d0d',
     webPreferences: {
       nodeIntegration: false,
@@ -37,7 +40,8 @@ function createMainWindow({ isDev = false } = {}) {
 
   // Intercept Ctrl+Arrow to prevent Windows Snap and forward to renderer for tab switching
   mainWindow.webContents.on('before-input-event', (event, input) => {
-    if (input.control && !input.shift && !input.alt && !input.meta && input.type === 'keyDown') {
+    const modKey = process.platform === 'darwin' ? input.meta : input.control;
+    if (modKey && !input.shift && !input.alt && input.type === 'keyDown') {
       const dir = { Left: 'left', ArrowLeft: 'left', Right: 'right', ArrowRight: 'right',
                      Up: 'up', ArrowUp: 'up', Down: 'down', ArrowDown: 'down' }[input.key];
       if (dir) {

@@ -199,7 +199,9 @@ function fetchUsageFromPTY() {
 
     let proc;
     try {
-      proc = pty.spawn('cmd.exe', [], {
+      const { getShell } = require('../utils/shell');
+      const shell = getShell();
+      proc = pty.spawn(shell.path, shell.args, {
         name: 'xterm-256color',
         cols: 120,
         rows: 40,
@@ -231,7 +233,8 @@ function fetchUsageFromPTY() {
     proc.onData((data) => {
       output += data;
 
-      if (phase === 'waiting_cmd' && output.includes('>')) {
+      const { matchesShellPrompt } = require('../utils/shell');
+      if (phase === 'waiting_cmd' && matchesShellPrompt(output)) {
         phase = 'waiting_claude';
         proc.write('claude --dangerously-skip-permissions\r');
       }

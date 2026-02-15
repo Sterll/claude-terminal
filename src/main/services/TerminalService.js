@@ -45,7 +45,7 @@ class TerminalService {
    */
   create({ cwd, runClaude, skipPermissions, resumeSessionId }) {
     const id = ++this.terminalId;
-    let shellPath = process.platform === 'win32' ? 'powershell.exe' : 'bash';
+    let shellPath = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash');
     let shellArgs = process.platform === 'win32' ? ['-NoLogo', '-NoProfile'] : [];
 
     // Validate and resolve working directory

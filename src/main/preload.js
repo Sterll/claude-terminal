@@ -58,7 +58,8 @@ contextBridge.exposeInMainWorld('electron_nodeModules', {
       HOME: process.env.HOME,
       APPDATA: process.env.APPDATA
     },
-    resourcesPath: process.resourcesPath || ''
+    resourcesPath: process.resourcesPath || '',
+    platform: process.platform
   },
   child_process: {
     execSync: (cmd, options) => require('child_process').execSync(cmd, options)
