@@ -5011,99 +5011,31 @@ function renderMemoryContent(content, source, fileExists = true) {
 }
 
 function parseMarkdownToHtml(md) {
-  // Extract code blocks before escaping HTML to preserve their content
-  const codeBlocks = [];
-  let processed = md.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
-    const idx = codeBlocks.length;
-    codeBlocks.push({ lang, code });
-    return `\n%%CODEBLOCK_${idx}%%\n`;
-  });
+  const { marked } = require('marked');
 
-  // Extract inline code before escaping
-  const inlineCodes = [];
-  processed = processed.replace(/`([^`]+)`/g, (_, code) => {
-    const idx = inlineCodes.length;
-    inlineCodes.push(code);
-    return `%%INLINE_${idx}%%`;
-  });
+  // Custom renderer to apply our CSS classes
+  const renderer = {
+    code({ text, lang }) {
+      return `<pre class="code-block"><code class="lang-${lang || ''}">${text}</code></pre>`;
+    },
+    codespan({ text }) {
+      return `<code class="inline-code">${text}</code>`;
+    },
+    link({ href, text }) {
+      return `<a href="${href}" class="memory-link">${text}</a>`;
+    },
+    table({ header, rows }) {
+      const headerHtml = header.map(h => `<th>${h.text}</th>`).join('');
+      const rowsHtml = rows.map(row => `<tr>${row.map(cell => `<td>${cell.text}</td>`).join('')}</tr>`).join('');
+      return `<table class="memory-table"><thead><tr>${headerHtml}</tr></thead><tbody>${rowsHtml}</tbody></table>`;
+    },
+    listitem({ text }) {
+      return `<li>${text}</li>\n`;
+    }
+  };
 
-  // Now escape HTML on the remaining text
-  let html = escapeHtml(processed);
-
-  // Restore code blocks with escaped content
-  codeBlocks.forEach((block, idx) => {
-    html = html.replace(
-      `%%CODEBLOCK_${idx}%%`,
-      `</p><pre class="code-block"><code class="lang-${block.lang}">${escapeHtml(block.code)}</code></pre><p>`
-    );
-  });
-
-  // Restore inline code with escaped content
-  inlineCodes.forEach((code, idx) => {
-    html = html.replace(`%%INLINE_${idx}%%`, `<code class="inline-code">${escapeHtml(code)}</code>`);
-  });
-
-  // Headers
-  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-
-  // Bold and italic
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-
-  // Links: [text](url)
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="memory-link">$1</a>');
-
-  // Horizontal rules
-  html = html.replace(/^---+$/gm, '<hr>');
-
-  // Lists - handle nested with indentation
-  html = html.replace(/^(\s*)- (.+)$/gm, (_, indent, text) => {
-    const depth = Math.floor(indent.length / 2);
-    return `<li class="list-depth-${depth}">${text}</li>`;
-  });
-  html = html.replace(/((?:<li[^>]*>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
-
-  // Numbered lists
-  html = html.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>');
-
-  // Tables: basic support
-  html = html.replace(/^\|(.+)\|$/gm, (match, row) => {
-    const cells = row.split('|').map(c => c.trim());
-    if (cells.every(c => /^[-:]+$/.test(c))) return '%%TABLE_SEP%%';
-    const tag = 'td';
-    return `<tr>${cells.map(c => `<${tag}>${c}</${tag}>`).join('')}</tr>`;
-  });
-  html = html.replace(/((?:<tr>.*<\/tr>\n?%%TABLE_SEP%%\n?)?(?:<tr>.*<\/tr>\n?)+)/g, (match) => {
-    let table = match.replace(/%%TABLE_SEP%%\n?/g, '');
-    // First row becomes header
-    table = table.replace(/<tr>(.*?)<\/tr>/, (_, cells) => {
-      return `<thead><tr>${cells.replace(/<td>/g, '<th>').replace(/<\/td>/g, '</th>')}</tr></thead><tbody>`;
-    });
-    return `<table class="memory-table">${table}</tbody></table>`;
-  });
-  html = html.replace(/%%TABLE_SEP%%/g, '');
-
-  // Paragraphs
-  html = html.replace(/\n\n/g, '</p><p>');
-  html = `<p>${html}</p>`;
-
-  // Clean up empty paragraphs and fix nesting
-  html = html.replace(/<p>\s*<\/p>/g, '');
-  html = html.replace(/<p>(<h[1-4]>)/g, '$1');
-  html = html.replace(/(<\/h[1-4]>)<\/p>/g, '$1');
-  html = html.replace(/<p>(<pre)/g, '$1');
-  html = html.replace(/(<\/pre>)<\/p>/g, '$1');
-  html = html.replace(/<p>(<ul>)/g, '$1');
-  html = html.replace(/(<\/ul>)<\/p>/g, '$1');
-  html = html.replace(/<p>(<hr>)/g, '$1');
-  html = html.replace(/(<hr>)<\/p>/g, '$1');
-  html = html.replace(/<p>(<table)/g, '$1');
-  html = html.replace(/(<\/table>)<\/p>/g, '$1');
-
-  return html;
+  marked.use({ renderer, gfm: true, breaks: false });
+  return marked.parse(md);
 }
 
 function createMemoryFromTemplate(templateKey) {
