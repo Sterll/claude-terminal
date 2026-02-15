@@ -191,11 +191,11 @@ function renderProjectHtml(project, depth) {
     menuItemsHtml += `
       <button class="more-actions-item btn-git-pull ${gitOps.pulling ? 'loading' : ''}" data-project-id="${project.id}" ${gitOps.pulling ? 'disabled' : ''}>
         ${menuIcons.gitPull}
-        ${t('common.gitPull') || 'Git Pull'}
+        ${t('projects.gitPull')}
       </button>
       <button class="more-actions-item btn-git-push ${gitOps.pushing ? 'loading' : ''}" data-project-id="${project.id}" ${gitOps.pushing ? 'disabled' : ''}>
         ${menuIcons.gitPush}
-        ${t('common.gitPush') || 'Git Push'}
+        ${t('projects.gitPush')}
       </button>
       <div class="more-actions-divider"></div>`;
   }
