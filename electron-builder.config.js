@@ -59,6 +59,27 @@ module.exports = {
     installerHeader: "build-assets/installer-header.bmp",
     include: "build-assets/installer-custom.nsh"
   },
+  mac: {
+    target: [
+      { target: "dmg", arch: ["x64", "arm64"] }
+    ],
+    icon: "assets/icon.png",
+    category: "public.app-category.developer-tools",
+    darkModeSupport: true
+  },
+  linux: {
+    target: [
+      { target: "AppImage", arch: ["x64"] }
+    ],
+    icon: "assets/icon.png",
+    category: "Development",
+    synopsis: "Terminal for Claude Code projects",
+    desktop: {
+      Name: "Claude Terminal",
+      Comment: "Terminal for Claude Code projects",
+      Terminal: "false"
+    }
+  },
   publish: {
     provider: "generic",
     url: process.env.UPDATE_SERVER_URL,
