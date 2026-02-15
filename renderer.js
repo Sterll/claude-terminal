@@ -2040,7 +2040,7 @@ async function renderSettingsTab(initialTab = 'general') {
             <div class="settings-card">
             <div class="execution-mode-selector">
               <div class="execution-mode-card terminal-mode-card ${(settings.defaultTerminalMode || 'terminal') === 'terminal' ? 'selected' : ''}" data-terminal-mode="terminal">
-                <div class="execution-mode-icon safe">
+                <div class="execution-mode-icon neutral">
                   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v12zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"/></svg>
                 </div>
                 <div class="execution-mode-content">
@@ -2050,7 +2050,7 @@ async function renderSettingsTab(initialTab = 'general') {
                 <div class="execution-mode-check"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>
               </div>
               <div class="execution-mode-card terminal-mode-card ${settings.defaultTerminalMode === 'chat' ? 'selected' : ''}" data-terminal-mode="chat">
-                <div class="execution-mode-icon safe">
+                <div class="execution-mode-icon neutral">
                   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
                 </div>
                 <div class="execution-mode-content">

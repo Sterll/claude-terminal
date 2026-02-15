@@ -5399,23 +5399,22 @@ select:focus-visible {
 
 .settings-warning {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin: 4px 18px 12px;
-  padding: 12px 14px;
-  background: rgba(245, 158, 11, 0.06);
-  border: 1px solid rgba(245, 158, 11, 0.15);
-  border-radius: var(--radius);
-  font-size: 12px;
-  color: #f59e0b;
-  line-height: 1.5;
+  align-items: center;
+  gap: 8px;
+  margin: 0 18px 14px;
+  padding: 10px 12px;
+  background: rgba(245, 158, 11, 0.05);
+  border-left: 3px solid rgba(245, 158, 11, 0.5);
+  border-radius: 0 6px 6px 0;
+  font-size: 11px;
+  color: rgba(245, 158, 11, 0.85);
+  line-height: 1.4;
 }
 
 .settings-warning svg {
-  width: 18px;
-  height: 18px;
+  width: 15px;
+  height: 15px;
   flex-shrink: 0;
-  margin-top: 1px;
 }
 
 /* ========== MCP STYLES ========== */
@@ -7214,22 +7213,22 @@ select:focus-visible {
 /* ========== EXECUTION MODE SELECTOR ========== */
 
 .execution-mode-selector {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 10px;
   padding: 14px 18px;
 }
 
 .execution-mode-card {
   display: flex;
-  align-items: center;
-  gap: 14px;
+  align-items: flex-start;
+  gap: 12px;
   padding: 14px 16px;
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: 10px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   position: relative;
 }
 
@@ -7241,42 +7240,46 @@ select:focus-visible {
 .execution-mode-card.selected {
   border-color: var(--accent);
   background: var(--accent-dim);
-  box-shadow: 0 0 0 1px var(--accent);
 }
 
 .execution-mode-card[data-mode="dangerous"].selected {
   border-color: #f59e0b;
-  background: rgba(245, 158, 11, 0.08);
-  box-shadow: 0 0 0 1px #f59e0b;
+  background: rgba(245, 158, 11, 0.06);
 }
 
 .execution-mode-icon {
-  width: 42px;
-  height: 42px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: 8px;
   flex-shrink: 0;
 }
 
 .execution-mode-icon svg {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
 }
 
 .execution-mode-icon.safe {
-  background: rgba(34, 197, 94, 0.12);
+  background: rgba(34, 197, 94, 0.1);
   color: var(--success);
 }
 
+.execution-mode-icon.neutral {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
 .execution-mode-icon.dangerous {
-  background: rgba(245, 158, 11, 0.12);
+  background: rgba(245, 158, 11, 0.1);
   color: #f59e0b;
 }
 
 .execution-mode-content {
   flex: 1;
+  min-width: 0;
 }
 
 .execution-mode-title {
@@ -7287,45 +7290,60 @@ select:focus-visible {
 }
 
 .execution-mode-desc {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-secondary);
   line-height: 1.4;
 }
 
 .execution-mode-flag {
   display: inline-block;
-  margin-top: 8px;
-  padding: 4px 8px;
-  background: var(--bg-hover);
-  border-radius: var(--radius-sm);
-  font-size: 11px;
+  margin-top: 6px;
+  padding: 2px 6px;
+  background: rgba(245, 158, 11, 0.08);
+  border-radius: 4px;
+  font-size: 10px;
   font-family: 'Cascadia Code', monospace;
   color: var(--text-muted);
+  letter-spacing: -0.02em;
 }
 
 .execution-mode-check {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0;
-  color: var(--accent);
+  border-radius: 50%;
+  border: 2px solid var(--border-color);
   flex-shrink: 0;
-  transition: opacity 0.2s;
+  transition: all 0.15s ease;
+  margin-top: 2px;
 }
 
 .execution-mode-check svg {
-  width: 20px;
-  height: 20px;
+  width: 12px;
+  height: 12px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
 }
 
 .execution-mode-card.selected .execution-mode-check {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.execution-mode-card.selected .execution-mode-check svg {
   opacity: 1;
+  color: #fff;
 }
 
 .execution-mode-card[data-mode="dangerous"].selected .execution-mode-check {
-  color: #f59e0b;
+  border-color: #f59e0b;
+  background: #f59e0b;
+}
+
+.execution-mode-card[data-mode="dangerous"].selected .execution-mode-check svg {
+  color: #000;
 }
 
 /* ========== ENHANCED DASHBOARD STYLES ========== */
