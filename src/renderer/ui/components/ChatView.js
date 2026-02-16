@@ -1011,8 +1011,9 @@ function createChatView(wrapperEl, project, options = {}) {
                 parts.push('Top Languages:\n' + top.join('\n'));
               }
             }
-            // Try to read CLAUDE.md from the target project
             const { fs, path: pathModule } = window.electron_nodeModules;
+
+            // Try to read CLAUDE.md from the target project
             const claudeMdPath = pathModule.join(targetPath, 'CLAUDE.md');
             try {
               const claudeMd = await fs.promises.readFile(claudeMdPath, 'utf8');
@@ -1021,6 +1022,67 @@ function createChatView(wrapperEl, project, options = {}) {
                 parts.push(`\nCLAUDE.md:\n${truncated}`);
               }
             } catch (_) { /* no CLAUDE.md */ }
+
+            // Try to read README.md
+            const readmePath = pathModule.join(targetPath, 'README.md');
+            try {
+              const readme = await fs.promises.readFile(readmePath, 'utf8');
+              if (readme.trim()) {
+                const truncated = readme.length > 3000 ? readme.slice(0, 3000) + '\n\n(Truncated)' : readme;
+                parts.push(`\nREADME.md:\n${truncated}`);
+              }
+            } catch (_) { /* no README.md */ }
+
+            // Build file tree (depth 3, ignoring common non-essential dirs)
+            const IGNORED_DIRS = new Set([
+              'node_modules', '.git', 'dist', 'build', '.next', '__pycache__',
+              'vendor', '.cache', 'coverage', '.nuxt', '.output', '.turbo',
+              'target', '.svelte-kit', '.parcel-cache', 'out', '.vscode',
+            ]);
+            async function buildTree(dir, prefix, depth) {
+              if (depth <= 0) return '';
+              let entries;
+              try {
+                entries = await fs.promises.readdir(dir, { withFileTypes: true });
+              } catch (_) { return ''; }
+              // Sort: directories first, then files, alphabetical
+              const dirs = [];
+              const files = [];
+              for (const e of entries) {
+                if (e.name.startsWith('.') && depth === 3) continue; // skip dotfiles at root level only for cleanliness
+                if (e.isDirectory()) {
+                  if (!IGNORED_DIRS.has(e.name)) dirs.push(e);
+                } else {
+                  files.push(e);
+                }
+              }
+              dirs.sort((a, b) => a.name.localeCompare(b.name));
+              files.sort((a, b) => a.name.localeCompare(b.name));
+              const all = [...dirs, ...files];
+              if (all.length === 0) return '';
+              const lines = [];
+              for (let i = 0; i < all.length; i++) {
+                const entry = all[i];
+                const isLast = i === all.length - 1;
+                const connector = isLast ? '└── ' : '├── ';
+                const childPrefix = isLast ? '    ' : '│   ';
+                if (entry.isDirectory()) {
+                  lines.push(`${prefix}${connector}${entry.name}/`);
+                  const subtree = await buildTree(pathModule.join(dir, entry.name), prefix + childPrefix, depth - 1);
+                  if (subtree) lines.push(subtree);
+                } else {
+                  lines.push(`${prefix}${connector}${entry.name}`);
+                }
+              }
+              return lines.join('\n');
+            }
+            try {
+              const tree = await buildTree(targetPath, '', 3);
+              if (tree) {
+                parts.push(`\nFile Tree:\n${tree}`);
+              }
+            } catch (_) { /* tree build error */ }
+
             content = parts.join('\n');
           } catch (e) {
             content = `Project: ${targetName}\nPath: ${targetPath}\n[Error fetching details: ${e.message}]`;
