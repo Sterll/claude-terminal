@@ -18,6 +18,8 @@ const legacyMcpsFile = path.join(dataDir, 'mcps.json');
 const archivesDir = path.join(dataDir, 'archives'); // Legacy, kept for migration
 const timeTrackingFile = path.join(dataDir, 'timetracking.json');
 const timeTrackingDir = path.join(dataDir, 'timetracking');
+const contextPacksFile = path.join(dataDir, 'context-packs.json');
+const promptTemplatesFile = path.join(dataDir, 'prompt-templates.json');
 
 // Claude configuration files
 const claudeSettingsFile = path.join(claudeDir, 'settings.json');
@@ -60,6 +62,8 @@ module.exports = {
   archivesDir,
   timeTrackingFile,
   timeTrackingDir,
+  contextPacksFile,
+  promptTemplatesFile,
   claudeSettingsFile,
   claudeConfigFile,
   skillsDir,

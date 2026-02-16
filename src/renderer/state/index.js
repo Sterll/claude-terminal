@@ -53,8 +53,9 @@ async function initializeState() {
   // Load skills and agents async in background (not needed for initial render)
   const { loadSkills } = require('../services/SkillService');
   const { loadAgents } = require('../services/AgentService');
-  Promise.all([loadSkills(), loadAgents()]).catch(e => {
-    console.error('Error loading skills/agents:', e);
+  const { loadContextPacks, loadPromptTemplates } = require('../services/ContextPromptService');
+  Promise.all([loadSkills(), loadAgents(), loadContextPacks(), loadPromptTemplates()]).catch(e => {
+    console.error('Error loading skills/agents/library:', e);
   });
 }
 
