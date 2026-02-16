@@ -6,6 +6,7 @@
 
 const { escapeHtml } = require('../../utils');
 const { t } = require('../../i18n');
+const { showConfirm } = require('../components/Modal');
 
 let ctx = null;
 
@@ -211,7 +212,13 @@ function bindMarketplaceCardHandlers() {
     const uninstallBtn = card.querySelector('.btn-uninstall');
     if (uninstallBtn) {
       uninstallBtn.onclick = async () => {
-        if (!confirm(t('marketplace.confirmUninstall', { name: name || skillId }))) return;
+        const ok = await showConfirm({
+          title: t('marketplace.uninstall') || 'Uninstall',
+          message: t('marketplace.confirmUninstall', { name: name || skillId }),
+          confirmLabel: t('marketplace.uninstall') || 'Uninstall',
+          danger: true
+        });
+        if (!ok) return;
 
         try {
           const result = await ctx.api.marketplace.uninstall(skillId);
@@ -299,7 +306,13 @@ async function showMarketplaceDetail(skill) {
   const uninstallDetailBtn = document.querySelector('.btn-uninstall-detail');
   if (uninstallDetailBtn) {
     uninstallDetailBtn.onclick = async () => {
-      if (!confirm(t('marketplace.confirmUninstall', { name: name || skillId }))) return;
+      const ok = await showConfirm({
+          title: t('marketplace.uninstall') || 'Uninstall',
+          message: t('marketplace.confirmUninstall', { name: name || skillId }),
+          confirmLabel: t('marketplace.uninstall') || 'Uninstall',
+          danger: true
+        });
+        if (!ok) return;
       try {
         await ctx.api.marketplace.uninstall(skillId);
         ctx.closeModal();

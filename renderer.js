@@ -829,11 +829,17 @@ api.api.onPortDetected(({ projectIndex, port }) => {
 });
 
 // ========== DELETE PROJECT ==========
-function deleteProjectUI(projectId) {
+async function deleteProjectUI(projectId) {
   const project = getProject(projectId);
   if (!project) return;
   const projectIndex = getProjectIndex(projectId);
-  if (!confirm(`Supprimer "${project.name}" ?`)) return;
+  const confirmed = await ModalComponent.showConfirm({
+    title: t('projects.deleteProject') || 'Delete project',
+    message: t('projects.confirmDelete', { name: project.name }) || `Delete "${project.name}"?`,
+    confirmLabel: t('common.delete'),
+    danger: true
+  });
+  if (!confirmed) return;
 
   // Stop any type-specific running processes (e.g., FiveM server)
   const deleteTypeHandler = registry.get(project.type);
@@ -1381,10 +1387,17 @@ async function handleContextAction(action) {
     case 'rename': if (contextTarget.type === 'folder') await promptRenameFolder(contextTarget.id); break;
     case 'delete':
       if (contextTarget.type === 'folder') {
-        if (confirm('Supprimer ce dossier ? Les elements seront deplaces vers le parent.')) {
-          deleteFolder(contextTarget.id);
-          ProjectList.render();
-        }
+        ModalComponent.showConfirm({
+          title: t('projects.deleteFolder') || 'Delete folder',
+          message: t('projects.confirmDeleteFolder') || 'Delete this folder? Items will be moved to parent.',
+          confirmLabel: t('common.delete'),
+          danger: true
+        }).then(confirmed => {
+          if (confirmed) {
+            deleteFolder(contextTarget.id);
+            ProjectList.render();
+          }
+        });
       } else if (contextTarget.type === 'project') {
         deleteProjectUI(contextTarget.id);
       }

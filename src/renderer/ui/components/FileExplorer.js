@@ -9,6 +9,7 @@ const { path, fs } = window.electron_nodeModules;
 const { escapeHtml, debounce } = require('../../utils/dom');
 const { getFileIcon, CHEVRON_ICON } = require('../../utils/fileIcons');
 const { showContextMenu } = require('./ContextMenu');
+const { showConfirm } = require('./Modal');
 const { t } = require('../../i18n');
 
 // ========== STATE ==========
@@ -779,11 +780,15 @@ async function promptNewFolder(dirPath) {
 }
 
 async function promptDelete(filePath, fileName, isDirectory) {
+  const title = isDirectory
+    ? (t('fileExplorer.deleteFolder') || 'Delete folder')
+    : (t('fileExplorer.deleteFile') || 'Delete file');
   const msg = isDirectory
-    ? `${t('fileExplorer.deleteFolderConfirm') || 'Delete folder and all contents?'}\n\n${fileName}`
-    : `${t('fileExplorer.deleteFileConfirm') || 'Delete file?'}\n\n${fileName}`;
+    ? (t('fileExplorer.deleteFolderConfirm') || 'Delete folder and all contents?') + `\n${fileName}`
+    : (t('fileExplorer.deleteFileConfirm') || 'Delete file?') + `\n${fileName}`;
 
-  if (!confirm(msg)) return;
+  const confirmed = await showConfirm({ title, message: msg, confirmLabel: t('common.delete'), danger: true });
+  if (!confirmed) return;
 
   try {
     if (isDirectory) {
@@ -808,7 +813,8 @@ async function promptDelete(filePath, fileName, isDirectory) {
 async function promptDeleteMultiple() {
   const count = selectedFiles.size;
   const msg = (t('fileExplorer.deleteMultipleConfirm') || 'Delete {count} items?').replace('{count}', count);
-  if (!confirm(msg)) return;
+  const confirmed = await showConfirm({ title: t('common.delete') || 'Delete', message: msg, confirmLabel: t('common.delete'), danger: true });
+  if (!confirmed) return;
 
   const toDelete = [...selectedFiles];
   for (const filePath of toDelete) {

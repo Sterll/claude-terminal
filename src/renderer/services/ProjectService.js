@@ -6,6 +6,7 @@
 // Use preload API instead of direct ipcRenderer
 const api = window.electron_api;
 const { t } = require('../i18n');
+const { showConfirm } = require('../ui/components/Modal');
 const {
   projectsState,
   getProject,
@@ -75,13 +76,17 @@ async function addFivemProject() {
  * @param {Function} onConfirm - Callback before deletion
  * @returns {boolean}
  */
-function deleteProjectWithConfirm(projectId, onConfirm) {
+async function deleteProjectWithConfirm(projectId, onConfirm) {
   const project = getProject(projectId);
   if (!project) return false;
 
-  if (!confirm(t('projects.confirmDelete', { name: project.name }))) {
-    return false;
-  }
+  const confirmed = await showConfirm({
+    title: t('projects.deleteProject') || 'Delete project',
+    message: t('projects.confirmDelete', { name: project.name }),
+    confirmLabel: t('common.delete'),
+    danger: true
+  });
+  if (!confirmed) return false;
 
   if (onConfirm) {
     onConfirm(projectId, project);

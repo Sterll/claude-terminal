@@ -6,6 +6,7 @@
 
 const { escapeHtml } = require('../../utils');
 const { t } = require('../../i18n');
+const { showConfirm } = require('../components/Modal');
 
 let ctx = null;
 
@@ -320,7 +321,10 @@ function renderSkills() {
     card.querySelector('.btn-open').onclick = () => ctx.api.dialog.openInExplorer(card.dataset.path);
     const delBtn = card.querySelector('.btn-del');
     if (delBtn) {
-      delBtn.onclick = async () => { if (confirm(t('skillsAgents.confirmDeleteSkill'))) { await ctx.fs.promises.rm(card.dataset.path, { recursive: true, force: true }); loadSkills(); } };
+      delBtn.onclick = async () => {
+        const ok = await showConfirm({ title: t('skillsAgents.deleteSkill') || 'Delete skill', message: t('skillsAgents.confirmDeleteSkill'), confirmLabel: t('common.delete'), danger: true });
+        if (ok) { await ctx.fs.promises.rm(card.dataset.path, { recursive: true, force: true }); loadSkills(); }
+      };
     }
   });
 }
@@ -363,7 +367,10 @@ function renderAgents() {
 
   list.querySelectorAll('.list-card').forEach(card => {
     card.querySelector('.btn-open').onclick = () => ctx.api.dialog.openInExplorer(card.dataset.path);
-    card.querySelector('.btn-del').onclick = async () => { if (confirm(t('skillsAgents.confirmDeleteAgent'))) { await ctx.fs.promises.rm(card.dataset.path, { recursive: true, force: true }); loadAgents(); } };
+    card.querySelector('.btn-del').onclick = async () => {
+      const ok = await showConfirm({ title: t('skillsAgents.deleteAgent') || 'Delete agent', message: t('skillsAgents.confirmDeleteAgent'), confirmLabel: t('common.delete'), danger: true });
+      if (ok) { await ctx.fs.promises.rm(card.dataset.path, { recursive: true, force: true }); loadAgents(); }
+    };
   });
 }
 

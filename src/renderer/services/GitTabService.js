@@ -8,6 +8,7 @@ const { projectsState, getProject, getFolder, getProjectIndex } = require('../st
 const { escapeHtml } = require('../utils');
 const { t } = require('../i18n');
 const Toast = require('../ui/components/Toast');
+const { showConfirm } = require('../ui/components/Modal');
 
 // ========== STATE ==========
 let selectedProject = null;
@@ -1379,7 +1380,11 @@ async function handleCommitDetail(hash) {
 }
 
 async function handleCherryPick(hash) {
-  if (!confirm(t('gitTab.confirmCherryPick').replace('{hash}', hash.substring(0, 7)))) return;
+  const confirmed = await showConfirm({
+    title: 'Cherry-pick',
+    message: t('gitTab.confirmCherryPick').replace('{hash}', hash.substring(0, 7))
+  });
+  if (!confirmed) return;
   await withLock(async () => {
     const result = await api.git.cherryPick({ projectPath: selectedProject.path, commitHash: hash });
     if (result.success) {
@@ -1393,7 +1398,12 @@ async function handleCherryPick(hash) {
 }
 
 async function handleRevert(hash) {
-  if (!confirm(t('gitTab.confirmRevert').replace('{hash}', hash.substring(0, 7)))) return;
+  const confirmed = await showConfirm({
+    title: 'Revert',
+    message: t('gitTab.confirmRevert').replace('{hash}', hash.substring(0, 7)),
+    danger: true
+  });
+  if (!confirmed) return;
   await withLock(async () => {
     const result = await api.git.revert({ projectPath: selectedProject.path, commitHash: hash });
     if (result.success) {
@@ -1498,7 +1508,13 @@ async function handleCreateBranch() {
 }
 
 async function handleDeleteBranch(branch) {
-  if (!confirm(t('gitTab.deleteBranch').replace('{name}', branch))) return;
+  const confirmed = await showConfirm({
+    title: t('gitTab.deleteBranch').replace('{name}', branch),
+    message: t('gitTab.confirmDeleteBranch') || `This will permanently delete the branch "${branch}".`,
+    confirmLabel: t('common.delete'),
+    danger: true
+  });
+  if (!confirmed) return;
   await withLock(async () => {
     const result = await api.git.deleteBranch({ projectPath: selectedProject.path, branch });
     if (result.success) {
@@ -1512,7 +1528,11 @@ async function handleDeleteBranch(branch) {
 }
 
 async function handleMerge(branch) {
-  if (!confirm(`Merge "${branch}" into "${currentBranch}"?`)) return;
+  const confirmed = await showConfirm({
+    title: 'Merge',
+    message: `Merge "${branch}" into "${currentBranch}"?`
+  });
+  if (!confirmed) return;
   await withLock(async () => {
     const result = await api.git.merge({ projectPath: selectedProject.path, branch });
     if (result.success) {
@@ -1528,7 +1548,13 @@ async function handleMerge(branch) {
 }
 
 async function handleMergeAbort() {
-  if (!confirm(t('gitTab.abortMerge') + '?')) return;
+  const confirmed = await showConfirm({
+    title: t('gitTab.abortMerge'),
+    message: t('gitTab.confirmAbortMerge') || 'Abort the current merge? Uncommitted changes will be lost.',
+    confirmLabel: t('gitTab.abortMerge'),
+    danger: true
+  });
+  if (!confirmed) return;
   await withLock(async () => {
     const result = await api.git.mergeAbort({ projectPath: selectedProject.path });
     if (result.success) {
@@ -1601,7 +1627,13 @@ async function handleStashApply(ref) {
 }
 
 async function handleStashDrop(ref) {
-  if (!confirm(t('gitTab.confirmDropStash').replace('{ref}', ref))) return;
+  const confirmed = await showConfirm({
+    title: t('gitTab.dropStash') || 'Drop stash',
+    message: t('gitTab.confirmDropStash').replace('{ref}', ref),
+    confirmLabel: t('common.delete'),
+    danger: true
+  });
+  if (!confirmed) return;
   await withLock(async () => {
     const result = await api.git.stashDrop({ projectPath: selectedProject.path, stashRef: ref });
     if (result.success) {

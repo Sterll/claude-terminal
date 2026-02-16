@@ -144,39 +144,60 @@ function closeModalById(id) {
 function showConfirm({ title, message, confirmLabel = null, cancelLabel = null, danger = false }) {
   confirmLabel = confirmLabel || t('common.confirm');
   cancelLabel = cancelLabel || t('common.cancel');
+
   return new Promise((resolve) => {
-    const modal = createModal({
-      id: 'confirm-modal',
-      title,
-      content: `<p>${escapeHtml(message)}</p>`,
-      buttons: [
-        {
-          label: cancelLabel,
-          action: 'cancel',
-          onClick: (m) => {
-            closeModal(m);
-            resolve(false);
-          }
-        },
-        {
-          label: confirmLabel,
-          action: 'confirm',
-          primary: true,
-          onClick: (m) => {
-            closeModal(m);
-            resolve(true);
-          }
-        }
-      ],
-      size: 'small',
-      onClose: () => resolve(false)
+    let resolved = false;
+    const finish = (value) => {
+      if (resolved) return;
+      resolved = true;
+      overlay.classList.remove('active');
+      setTimeout(() => overlay.remove(), 200);
+      document.removeEventListener('keydown', keyHandler);
+      resolve(value);
+    };
+
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+
+    const iconSvg = danger
+      ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+           <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+           <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+           <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+         </svg>`
+      : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+           <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+         </svg>`;
+
+    overlay.innerHTML = `
+      <div class="confirm-dialog${danger ? ' confirm-danger' : ''}">
+        <div class="confirm-icon">${iconSvg}</div>
+        <div class="confirm-title">${escapeHtml(title)}</div>
+        <div class="confirm-message">${escapeHtml(message)}</div>
+        <div class="confirm-actions">
+          <button class="confirm-btn-cancel">${escapeHtml(cancelLabel)}</button>
+          <button class="confirm-btn-ok">${escapeHtml(confirmLabel)}</button>
+        </div>
+      </div>
+    `;
+
+    overlay.querySelector('.confirm-btn-cancel').onclick = () => finish(false);
+    overlay.querySelector('.confirm-btn-ok').onclick = () => finish(true);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) finish(false);
     });
 
-    if (danger) {
-      modal.querySelector('[data-action="confirm"]').classList.add('btn-danger');
-    }
+    const keyHandler = (e) => {
+      if (e.key === 'Escape') finish(false);
+      if (e.key === 'Enter') finish(true);
+    };
+    document.addEventListener('keydown', keyHandler);
 
-    showModal(modal);
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => {
+      overlay.classList.add('active');
+      overlay.querySelector('.confirm-btn-cancel').focus();
+    });
   });
 }
 
