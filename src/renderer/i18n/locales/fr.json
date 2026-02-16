@@ -369,7 +369,9 @@
     "older": "Plus ancien",
     "pinned": "Épinglées",
     "pin": "Épingler",
-    "unpin": "Désépingler"
+    "unpin": "Désépingler",
+    "rename": "Renommer",
+    "renamePlaceholder": "Nom de la session..."
   },
   "time": {
     "justNow": "à l'instant",

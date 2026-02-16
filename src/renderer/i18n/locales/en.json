@@ -303,7 +303,9 @@
     "older": "Older",
     "pinned": "Pinned",
     "pin": "Pin",
-    "unpin": "Unpin"
+    "unpin": "Unpin",
+    "rename": "Rename",
+    "renamePlaceholder": "Session name..."
   },
   "time": {
     "justNow": "just now",

@@ -1198,6 +1198,74 @@ body.compact-projects .project-item:not(.active):hover {
   opacity: 1;
 }
 
+/* ── Actions wrapper ── */
+.session-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Rename Button ── */
+.session-card-rename {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+  color: var(--text-muted);
+  padding: 0;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+
+.session-card-rename svg {
+  width: 12px;
+  height: 12px;
+  max-width: 12px;
+  max-height: 12px;
+}
+
+.session-card:hover .session-card-rename {
+  opacity: 0.4;
+}
+
+.session-card-rename:hover {
+  opacity: 1 !important;
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+/* Renamed state — subtle indicator on title */
+.session-card--renamed .session-card-title {
+  color: var(--accent);
+}
+
+/* ── Inline Rename Input ── */
+.session-rename-input {
+  width: 100%;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  padding: 3px 7px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text-primary);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
+
+.session-rename-input::placeholder {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
 /* ── Arrow (hover) ── */
 .session-card-arrow {
   width: 20px;

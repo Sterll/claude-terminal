@@ -2017,6 +2017,7 @@ const SESSION_SVG_DEFS = `<svg style="display:none" xmlns="http://www.w3.org/200
   <symbol id="s-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="s-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
   <symbol id="s-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 11V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v7"/><path d="M5 17h14"/><path d="M7 11l-2 6h14l-2-6"/></symbol>
+  <symbol id="s-rename" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></symbol>
 </svg>`;
 
 /**
@@ -2060,6 +2061,45 @@ function toggleSessionPin(sessionId) {
 }
 
 /**
+ * ── Session Custom Names ──
+ * Persist custom session names in ~/.claude-terminal/session-names.json
+ */
+const _namesFile = path.join(window.electron_nodeModules.os.homedir(), '.claude-terminal', 'session-names.json');
+let _namesCache = null;
+
+function loadSessionNames() {
+  if (_namesCache) return _namesCache;
+  try {
+    const raw = fs.readFileSync(_namesFile, 'utf8');
+    _namesCache = JSON.parse(raw);
+  } catch {
+    _namesCache = {};
+  }
+  return _namesCache;
+}
+
+function saveSessionNames() {
+  try {
+    fs.writeFileSync(_namesFile, JSON.stringify(_namesCache || {}, null, 2), 'utf8');
+  } catch { /* ignore write errors */ }
+}
+
+function getSessionCustomName(sessionId) {
+  return loadSessionNames()[sessionId] || '';
+}
+
+function setSessionCustomName(sessionId, name) {
+  const names = loadSessionNames();
+  if (name) {
+    names[sessionId] = name;
+  } else {
+    delete names[sessionId];
+  }
+  _namesCache = names;
+  saveSessionNames();
+}
+
+/**
  * Pre-process sessions: clean text once and cache display data
  */
 function preprocessSessions(sessions) {
@@ -2068,12 +2108,19 @@ function preprocessSessions(sessions) {
     const promptResult = cleanSessionText(session.firstPrompt);
     const summaryResult = cleanSessionText(session.summary);
     const skillName = promptResult.skillName || summaryResult.skillName;
+    const customName = getSessionCustomName(session.sessionId);
 
     let displayTitle = '';
     let displaySubtitle = '';
     let isSkill = false;
+    let isRenamed = false;
 
-    if (summaryResult.text) {
+    // Custom name takes priority
+    if (customName) {
+      displayTitle = customName;
+      displaySubtitle = summaryResult.text || promptResult.text;
+      isRenamed = true;
+    } else if (summaryResult.text) {
       displayTitle = summaryResult.text;
       displaySubtitle = promptResult.text;
     } else if (promptResult.text) {
@@ -2089,11 +2136,72 @@ function preprocessSessions(sessions) {
     const freshness = hoursAgo < 1 ? 'hot' : hoursAgo < 24 ? 'warm' : '';
 
     // Pre-build searchable text (lowercase, computed once)
-    const searchText = (displayTitle + ' ' + displaySubtitle + ' ' + (session.gitBranch || '')).toLowerCase();
+    const searchText = (displayTitle + ' ' + displaySubtitle + ' ' + (session.gitBranch || '') + ' ' + customName).toLowerCase();
 
     const pinned = isSessionPinned(session.sessionId);
-    return { ...session, displayTitle, displaySubtitle, isSkill, freshness, searchText, pinned };
+    return { ...session, displayTitle, displaySubtitle, isSkill, isRenamed, freshness, searchText, pinned };
   });
+}
+
+/**
+ * Start inline rename on a session card title element
+ */
+function startInlineRename(titleEl, sessionId, sessionData, onDone) {
+  if (titleEl.querySelector('.session-rename-input')) return; // Already editing
+
+  const currentName = sessionData?.displayTitle || '';
+  const originalHtml = titleEl.innerHTML;
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'session-rename-input';
+  input.value = currentName;
+  input.placeholder = t('sessions.renamePlaceholder') || 'Session name...';
+
+  titleEl.textContent = '';
+  titleEl.appendChild(input);
+  input.focus();
+  input.select();
+
+  function commit() {
+    const newName = input.value.trim();
+    cleanup();
+    if (newName && newName !== currentName) {
+      setSessionCustomName(sessionId, newName);
+      if (sessionData) {
+        sessionData.displayTitle = newName;
+        sessionData.isRenamed = true;
+      }
+    } else if (!newName) {
+      // Clearing name removes custom name
+      setSessionCustomName(sessionId, '');
+    }
+    if (onDone) onDone();
+  }
+
+  function cancel() {
+    cleanup();
+    titleEl.innerHTML = originalHtml;
+  }
+
+  function cleanup() {
+    input.removeEventListener('keydown', onKey);
+    input.removeEventListener('blur', onBlur);
+  }
+
+  function onKey(e) {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+  }
+
+  function onBlur() {
+    commit();
+  }
+
+  input.addEventListener('keydown', onKey);
+  input.addEventListener('blur', onBlur);
+  input.addEventListener('click', (e) => e.stopPropagation());
 }
 
 /**
@@ -2104,12 +2212,14 @@ function buildSessionCardHtml(s, index) {
   const animClass = index < MAX_ANIMATED ? ' session-card--anim' : ' session-card--instant';
   const freshClass = s.freshness ? ` session-card--${s.freshness}` : '';
   const pinnedClass = s.pinned ? ' session-card--pinned' : '';
+  const renamedClass = s.isRenamed ? ' session-card--renamed' : '';
   const skillClass = s.isSkill ? ' session-card-icon--skill' : '';
   const titleSkillClass = s.isSkill ? ' session-card-title--skill' : '';
   const iconId = s.isSkill ? 's-bolt' : 's-chat';
   const pinTitle = s.pinned ? (t('sessions.unpin') || 'Unpin') : (t('sessions.pin') || 'Pin');
+  const renameTitle = t('sessions.rename') || 'Rename';
 
-  return `<div class="session-card${freshClass}${pinnedClass}${animClass}" data-sid="${s.sessionId}" style="--ci:${index < MAX_ANIMATED ? index : 0}">
+  return `<div class="session-card${freshClass}${pinnedClass}${renamedClass}${animClass}" data-sid="${s.sessionId}" style="--ci:${index < MAX_ANIMATED ? index : 0}">
 <div class="session-card-icon${skillClass}"><svg width="16" height="16"><use href="#${iconId}"/></svg></div>
 <div class="session-card-body">
 <span class="session-card-title${titleSkillClass}">${escapeHtml(truncateText(s.displayTitle, 80))}</span>
@@ -2120,7 +2230,10 @@ ${s.displaySubtitle ? `<span class="session-card-subtitle">${escapeHtml(truncate
 <span class="session-meta-item"><svg width="11" height="11"><use href="#s-clock"/></svg>${formatRelativeTime(s.modified)}</span>
 ${s.gitBranch ? `<span class="session-meta-branch"><svg width="10" height="10"><use href="#s-branch"/></svg>${escapeHtml(s.gitBranch)}</span>` : ''}
 </div>
+<div class="session-card-actions">
+<button class="session-card-rename" data-rename-sid="${s.sessionId}" title="${renameTitle}"><svg width="12" height="12"><use href="#s-rename"/></svg></button>
 <button class="session-card-pin" data-pin-sid="${s.sessionId}" title="${pinTitle}"><svg width="13" height="13"><use href="#s-pin"/></svg></button>
+</div>
 <div class="session-card-arrow"><svg width="12" height="12"><use href="#s-arrow"/></svg></div>
 </div>`;
 }
@@ -2262,11 +2375,22 @@ async function renderSessionsPanel(project, emptyState) {
         const sid = pinBtn.dataset.pinSid;
         if (!sid) return;
         const nowPinned = toggleSessionPin(sid);
-        // Update session data
         const session = sessionMap.get(sid);
         if (session) session.pinned = nowPinned;
-        // Re-render entire sessions panel
         renderSessionsPanel(project, emptyState);
+        return;
+      }
+
+      // Rename button click
+      const renameBtn = e.target.closest('.session-card-rename');
+      if (renameBtn) {
+        e.stopPropagation();
+        const sid = renameBtn.dataset.renameSid;
+        if (!sid) return;
+        const card = renameBtn.closest('.session-card');
+        const titleEl = card?.querySelector('.session-card-title');
+        if (!titleEl) return;
+        startInlineRename(titleEl, sid, sessionMap.get(sid), () => renderSessionsPanel(project, emptyState));
         return;
       }
 
