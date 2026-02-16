@@ -1,0 +1,1171 @@
+/* ==========================================================
+   Settings Styles
+   - Settings groups, cards, sections, toggles, rows, inputs
+   - Settings tabs, GitHub auth, keyboard shortcuts editor
+   ========================================================== */
+
+/* Settings Groups & Cards */
+.settings-group {
+  margin-bottom: 28px;
+}
+
+.settings-group:last-child {
+  margin-bottom: 0;
+}
+
+.settings-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  padding-left: 4px;
+}
+
+.settings-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* Legacy compat */
+.settings-section {
+  margin-bottom: 28px;
+}
+
+.settings-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  padding-left: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-title-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.settings-title-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Toggle Switch */
+.toggle-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.toggle-option:hover {
+  background: var(--bg-hover);
+}
+
+.toggle-option input[type="checkbox"] {
+  display: none;
+}
+
+.toggle-slider {
+  width: 44px;
+  height: 24px;
+  background: var(--border-color);
+  border-radius: 12px;
+  position: relative;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.toggle-slider::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  background: var(--text-secondary);
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.toggle-option input:checked + .toggle-slider {
+  background: var(--accent);
+}
+
+.toggle-option input:checked + .toggle-slider::after {
+  left: 23px;
+  background: white;
+}
+
+.toggle-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.toggle-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.toggle-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: 'Cascadia Code', monospace;
+}
+
+/* Settings Toggle Row */
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 18px;
+  transition: background 0.15s;
+}
+
+.settings-toggle-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.settings-card > .settings-toggle-row + .settings-toggle-row,
+.settings-card > .settings-row + .settings-row,
+.settings-card > .settings-toggle-row + .settings-row,
+.settings-card > .settings-row + .settings-toggle-row,
+.settings-card > .color-picker + .settings-row {
+  border-top: 1px solid var(--border-color);
+}
+
+.settings-toggle-label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.settings-toggle-label > div:first-child {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-primary);
+}
+
+.settings-toggle-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* Settings Row with Select */
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 18px;
+  border-top: none;
+  margin-top: 0;
+  transition: background 0.15s;
+}
+
+.settings-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.settings-label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.settings-label > div:first-child {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-primary);
+}
+
+.settings-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.settings-select {
+  padding: 7px 14px;
+  padding-right: 32px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='%23888'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  min-width: 160px;
+  transition: all 0.15s ease;
+}
+
+.settings-select:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.settings-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
+
+.settings-select option {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  padding: 8px 12px;
+}
+
+/* Custom Dropdown (replaces native select) */
+.settings-dropdown {
+  position: relative;
+  min-width: 160px;
+}
+
+.settings-dropdown-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.settings-dropdown-trigger:hover {
+  border-color: var(--accent);
+}
+
+.settings-dropdown-trigger svg {
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.settings-dropdown.open .settings-dropdown-trigger {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
+
+.settings-dropdown.open .settings-dropdown-trigger svg {
+  transform: rotate(180deg);
+}
+
+.settings-dropdown-menu {
+  position: fixed;
+  min-width: 160px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2);
+  z-index: 9999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.settings-dropdown.open .settings-dropdown-menu {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.settings-dropdown-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.1s ease;
+  white-space: nowrap;
+}
+
+.settings-dropdown-option:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.settings-dropdown-option.selected {
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.settings-dropdown-option .dropdown-check {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.settings-dropdown-option.selected .dropdown-check {
+  opacity: 1;
+}
+
+.settings-dropdown-option .dropdown-check svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Toggle Switch Component */
+.settings-toggle {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.settings-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.settings-toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  border-radius: 11px;
+  transition: all 0.2s ease;
+}
+
+.settings-toggle-slider::before {
+  position: absolute;
+  content: '';
+  height: 16px;
+  width: 16px;
+  left: 2px;
+  bottom: 2px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.settings-toggle input:checked + .settings-toggle-slider {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.settings-toggle input:checked + .settings-toggle-slider::before {
+  transform: translateX(18px);
+  background: white;
+}
+
+/* Custom Presets in Settings */
+.custom-presets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding: 0 12px;
+}
+
+.custom-preset-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+
+.custom-preset-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.custom-preset-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.custom-preset-name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.custom-preset-cmd {
+  flex: 1;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: 'Cascadia Code', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.custom-preset-delete {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.15s;
+}
+
+.custom-preset-item:hover .custom-preset-delete {
+  opacity: 1;
+}
+
+.custom-preset-delete:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+.custom-preset-delete svg {
+  width: 13px;
+  height: 13px;
+}
+
+.custom-presets-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.custom-preset-add {
+  padding: 0 12px 8px;
+}
+
+.custom-preset-add-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.settings-input-sm {
+  padding: 6px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-input-sm:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.settings-input-sm::placeholder {
+  color: var(--text-muted);
+}
+
+.settings-select-sm {
+  padding: 6px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  width: 80px;
+}
+
+.btn-accent-sm {
+  padding: 6px 12px;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-accent-sm:hover {
+  opacity: 0.9;
+}
+
+.btn-ghost-sm {
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-ghost-sm:hover {
+  background: var(--bg-tertiary);
+}
+
+.settings-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 18px 14px;
+  padding: 10px 12px;
+  background: rgba(245, 158, 11, 0.05);
+  border-left: 3px solid rgba(245, 158, 11, 0.5);
+  border-radius: 0 6px 6px 0;
+  font-size: 11px;
+  color: rgba(245, 158, 11, 0.85);
+  line-height: 1.4;
+}
+
+.settings-warning svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+/* ==========================================
+   Settings Tabs
+   ========================================== */
+
+.settings-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 32px;
+  border-bottom: 1px solid var(--border-color);
+  padding: 0 4px;
+}
+
+.settings-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+  position: relative;
+}
+
+.settings-tab:hover {
+  color: var(--text-primary);
+}
+
+.settings-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.settings-tab svg {
+  width: 15px;
+  height: 15px;
+}
+
+.settings-content {
+  min-height: 280px;
+}
+
+.settings-panel {
+  display: none;
+}
+
+.settings-panel.active {
+  display: block;
+}
+
+/* Settings Inline Tab */
+#tab-settings {
+  overflow-y: auto;
+  padding: 0;
+}
+
+.settings-inline-wrapper {
+  padding: 24px 32px;
+}
+
+/* ==========================================
+   GitHub Authentication
+   ========================================== */
+
+.github-status-hint {
+  margin-top: 6px;
+  font-size: var(--font-xs);
+}
+
+.github-status-hint .hint-success {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--success);
+}
+
+.github-status-hint .hint-success svg {
+  width: 12px;
+  height: 12px;
+}
+
+.github-status-hint .hint-warning {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+}
+
+.github-status-hint .hint-warning svg {
+  width: 12px;
+  height: 12px;
+  color: var(--danger);
+}
+
+.github-status-hint .hint-warning a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.github-status-hint .hint-warning a:hover {
+  text-decoration: underline;
+}
+
+.github-account-card {
+  padding: 16px;
+}
+
+.github-account-connected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.github-account-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.github-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+}
+
+.github-account-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.github-account-name {
+  font-size: var(--font-base);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.github-account-login {
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+}
+
+.github-account-disconnected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.github-account-message {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.github-account-message > svg {
+  width: 32px;
+  height: 32px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.github-account-title {
+  font-size: var(--font-base);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.github-account-desc {
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+}
+
+.btn-github-connect {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: #24292f;
+  border: 1px solid #444c56;
+  border-radius: var(--radius-sm);
+  color: #f0f0f0;
+  font-size: var(--font-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-github-connect:hover {
+  background: #32383f;
+  border-color: #555d66;
+}
+
+.btn-github-connect:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-github-connect svg {
+  width: 16px;
+  height: 16px;
+}
+
+.github-device-flow-container {
+  margin-top: 16px;
+}
+
+.github-device-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius);
+  border: 1px solid var(--border-color);
+}
+
+.device-code-section {
+  text-align: center;
+}
+
+.device-code-label {
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.device-code {
+  display: inline-block;
+  padding: 12px 24px;
+  background: var(--bg-primary);
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 4px;
+  user-select: all;
+}
+
+.device-flow-steps {
+  text-align: center;
+}
+
+.device-flow-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: var(--accent);
+  border-radius: var(--radius-sm);
+  color: white;
+  font-size: var(--font-sm);
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.device-flow-link:hover {
+  background: var(--accent-hover);
+}
+
+.device-flow-link svg {
+  width: 16px;
+  height: 16px;
+}
+
+.github-waiting {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+}
+
+.github-error {
+  padding: 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  font-size: var(--font-sm);
+  text-align: center;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: var(--font-sm);
+  cursor: pointer;
+  text-decoration: underline;
+  transition: color 0.15s ease;
+}
+
+.btn-link:hover {
+  color: var(--accent-hover);
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: var(--font-xs);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-outline-danger {
+  background: transparent;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+}
+
+.btn-outline-danger:hover {
+  background: var(--danger);
+  color: white;
+}
+
+/* GitHub Token Form */
+.github-token-form {
+  margin-top: 16px;
+}
+
+.github-token-input-group {
+  display: flex;
+  gap: 8px;
+}
+
+.github-token-input {
+  flex: 1;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: var(--font-sm);
+  transition: all 0.15s ease;
+}
+
+.github-token-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.github-token-input.error {
+  border-color: var(--danger);
+  animation: shake 0.3s ease;
+}
+
+.github-token-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* @keyframes shake — defined in base.css */
+
+.github-token-help {
+  margin-top: 8px;
+  font-size: var(--font-xs);
+}
+
+.github-token-help a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.github-token-help a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* ==========================================
+   Keyboard Shortcuts Editor
+   ========================================== */
+
+.shortcuts-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  transition: background 0.12s ease;
+}
+
+.shortcut-row + .shortcut-row {
+  border-top: 1px solid var(--border-color);
+}
+
+.shortcut-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.shortcut-label {
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  font-weight: 450;
+}
+
+.shortcut-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shortcut-key-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-width: 100px;
+  justify-content: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  letter-spacing: 0.02em;
+}
+
+.shortcut-key-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 1px var(--accent-dim);
+}
+
+.shortcut-key-btn.custom {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.shortcut-key-btn.capturing {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+  animation: shortcut-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes shortcut-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px var(--accent-dim); }
+  50% { box-shadow: 0 0 0 4px var(--accent-dim); }
+}
+
+.shortcut-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.shortcut-reset-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: var(--danger);
+}
+
+.shortcuts-actions {
+  padding: 12px 18px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn-reset-shortcuts {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-reset-shortcuts:hover {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.btn-reset-shortcuts:active {
+  transform: scale(0.98);
+}
+
+/* Shortcut Capture Overlay */
+.shortcut-capture-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.15s ease;
+}
+
+.shortcut-capture-box {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 32px 48px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  animation: scaleIn 0.15s ease;
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.shortcut-capture-title {
+  font-size: var(--font-lg);
+  color: var(--text-primary);
+  margin-bottom: 20px;
+}
+
+.shortcut-capture-preview {
+  font-family: var(--font-mono);
+  font-size: 24px;
+  color: var(--accent);
+  padding: 16px 32px;
+  background: var(--bg-tertiary);
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  min-width: 200px;
+}
+
+.shortcut-capture-hint {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+}
+
+.shortcut-capture-conflict {
+  margin-top: 12px;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: var(--font-sm);
+}
+
+.shortcut-capture-conflict.error {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.shortcut-capture-conflict.warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}

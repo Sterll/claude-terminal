@@ -1,0 +1,1118 @@
+/* time-tracking.css — Time tracking dashboard */
+
+/* ========================================
+   TIME TRACKING DASHBOARD
+   A sophisticated, modern dashboard design
+   with glassmorphism and neon accents
+   ======================================== */
+
+/* Container */
+.timetracking-container {
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg-primary);
+}
+
+.tt-dashboard {
+  position: relative;
+  min-height: 100%;
+  padding: 24px 32px 48px;
+  overflow: hidden;
+}
+
+/* Ambient Background Effects */
+.tt-ambient {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.tt-ambient-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(120px);
+  opacity: 0.15;
+  animation: tt-float 20s ease-in-out infinite;
+}
+
+.tt-orb-1 {
+  width: 600px;
+  height: 600px;
+  background: var(--accent);
+  top: -200px;
+  right: -100px;
+  animation-delay: 0s;
+}
+
+.tt-orb-2 {
+  width: 400px;
+  height: 400px;
+  background: color-mix(in srgb, var(--accent) 60%, #1a1a2e);
+  bottom: -150px;
+  left: -100px;
+  animation-delay: -7s;
+}
+
+.tt-orb-3 {
+  width: 300px;
+  height: 300px;
+  background: color-mix(in srgb, var(--accent) 40%, #0a0a0f);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  animation-delay: -14s;
+}
+
+@keyframes tt-float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(30px, -30px) scale(1.05); }
+  50% { transform: translate(-20px, 20px) scale(0.95); }
+  75% { transform: translate(20px, 10px) scale(1.02); }
+}
+
+/* Header */
+.tt-header {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 32px;
+  flex-wrap: wrap;
+}
+
+.tt-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.tt-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.tt-title svg {
+  width: 32px;
+  height: 32px;
+  color: var(--accent);
+  filter: drop-shadow(0 0 8px var(--accent));
+}
+
+/* Period Navigation */
+.tt-period-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 6px 12px;
+}
+
+.tt-nav-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.tt-nav-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.tt-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.tt-nav-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.tt-period-label {
+  min-width: 160px;
+  text-align: center;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 4px 8px;
+  transition: all 0.2s ease;
+}
+
+.tt-period-label:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+/* Calendar Popup */
+.tt-calendar-popup {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  display: flex;
+  overflow: hidden;
+  animation: ttCalendarOpen 0.2s ease;
+}
+
+@keyframes ttCalendarOpen {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+.tt-calendar-popup.closing {
+  animation: ttCalendarClose 0.15s ease forwards;
+}
+
+@keyframes ttCalendarClose {
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-8px) scale(0.96);
+  }
+}
+
+/* Shortcuts column */
+.tt-calendar-shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px;
+  border-right: 1px solid var(--border-color);
+  min-width: 170px;
+}
+
+.tt-calendar-shortcut-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.8125rem;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.tt-calendar-shortcut-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.tt-calendar-shortcut-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Calendar grid column */
+.tt-calendar-main {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 280px;
+}
+
+.tt-calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tt-calendar-header-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: capitalize;
+}
+
+.tt-calendar-nav-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.tt-calendar-nav-btn:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.tt-calendar-nav-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.tt-calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0;
+}
+
+.tt-calendar-weekday {
+  text-align: center;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  padding: 4px 0;
+}
+
+.tt-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.tt-calendar-day {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.tt-calendar-day:hover:not(.empty):not(.disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.tt-calendar-day.today {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.tt-calendar-day.selected {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.tt-calendar-day.in-range {
+  background: rgba(var(--accent-rgb, 217, 119, 6), 0.15);
+  color: var(--text-primary);
+  border-radius: 0;
+}
+
+.tt-calendar-day.range-start {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  border-radius: 8px 0 0 8px;
+}
+
+.tt-calendar-day.range-end {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  border-radius: 0 8px 8px 0;
+}
+
+.tt-calendar-day.range-start.range-end {
+  border-radius: 8px;
+}
+
+.tt-calendar-day.empty {
+  cursor: default;
+}
+
+.tt-calendar-day.other-month {
+  color: var(--text-muted);
+  opacity: 0.4;
+}
+
+/* Range info */
+.tt-calendar-range-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  padding: 8px 0 0;
+  border-top: 1px solid var(--border-color);
+}
+
+.tt-calendar-range-info span {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Apply button */
+.tt-calendar-apply-btn {
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+  margin-top: 4px;
+}
+
+.tt-calendar-apply-btn:hover {
+  filter: brightness(1.1);
+}
+
+.tt-calendar-apply-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Period Selector */
+.tt-period-selector {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 4px;
+}
+
+.tt-period-btn {
+  padding: 8px 16px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tt-period-btn:hover:not(.active) {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.tt-period-btn.active {
+  color: var(--bg-primary);
+  background: var(--accent);
+  font-weight: 600;
+}
+
+/* Content Grid */
+.tt-content {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 20px;
+}
+
+/* Card Base */
+.tt-card {
+  background: linear-gradient(145deg, rgba(26, 26, 26, 0.8), rgba(21, 21, 21, 0.9));
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 24px;
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+  animation: tt-card-appear 0.5s ease-out backwards;
+}
+
+.tt-card:hover {
+  border-color: rgba(217, 119, 6, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(217, 119, 6, 0.1);
+}
+
+@keyframes tt-card-appear {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tt-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.tt-card-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tt-card-header h3 svg {
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+}
+
+/* Hero Card - Total Time */
+.tt-card-hero {
+  grid-column: span 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  background: linear-gradient(145deg, rgba(217, 119, 6, 0.1), rgba(21, 21, 21, 0.95));
+  border-color: rgba(217, 119, 6, 0.3);
+  animation-delay: 0.05s;
+}
+
+.tt-hero-content {
+  flex: 1;
+}
+
+.tt-hero-time {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.tt-hero-hours {
+  font-size: 4.5rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  text-shadow: 0 0 40px var(--accent);
+}
+
+.tt-hero-minutes {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.tt-hero-unit {
+  font-size: 1.5rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin: 0 2px;
+}
+
+.tt-hero-label {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.tt-hero-sublabel {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+/* Ring Progress */
+.tt-hero-ring {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  flex-shrink: 0;
+}
+
+.tt-hero-ring svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.tt-ring-bg {
+  fill: none;
+  stroke: var(--bg-tertiary);
+  stroke-width: 8;
+}
+
+.tt-ring-progress {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 8;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 6px var(--accent));
+  transition: stroke-dasharray 0.8s ease;
+}
+
+.tt-ring-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.tt-ring-label span {
+  display: block;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.tt-ring-label small {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* Stats Card */
+.tt-card-stats {
+  grid-column: span 7;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  animation-delay: 0.1s;
+}
+
+.tt-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  border: 1px solid transparent;
+  transition: all 0.3s ease;
+}
+
+.tt-stat-item:hover {
+  border-color: var(--border-color);
+  transform: translateY(-2px);
+}
+
+.tt-stat-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.tt-stat-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.tt-stat-streak .tt-stat-icon,
+.tt-stat-item:nth-child(1) .tt-stat-icon {
+  background: rgba(249, 115, 22, 0.15);
+  color: #f97316;
+}
+
+.tt-stat-avg .tt-stat-icon,
+.tt-stat-item:nth-child(2) .tt-stat-icon {
+  background: rgba(139, 92, 246, 0.15);
+  color: #8b5cf6;
+}
+
+.tt-stat-sessions .tt-stat-icon,
+.tt-stat-item:nth-child(3) .tt-stat-icon {
+  background: rgba(6, 182, 212, 0.15);
+  color: #06b6d4;
+}
+
+/* Day view specific stats */
+.tt-stat-start .tt-stat-icon {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.tt-stat-end .tt-stat-icon {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.tt-stat-projects .tt-stat-icon {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.tt-stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.tt-stat-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Chart Card */
+.tt-card-chart {
+  grid-column: span 8;
+  animation-delay: 0.15s;
+}
+
+.tt-chart {
+  height: 180px;
+  display: flex;
+  align-items: flex-end;
+  padding: 16px 0;
+}
+
+.tt-chart-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+}
+
+.tt-chart-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  max-width: 60px;
+}
+
+.tt-chart-bar-container {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.tt-chart-bar {
+  width: 100%;
+  max-width: 40px;
+  min-height: 0;
+  background: var(--accent);
+  border-radius: 4px 4px 0 0;
+  position: relative;
+  transition: all 0.3s ease;
+  opacity: 0.85;
+}
+
+.tt-chart-bar:hover {
+  opacity: 1;
+  transform: scaleX(1.05);
+}
+
+.tt-chart-bar-empty {
+  width: 4px;
+  height: 4px;
+  min-height: 4px;
+  background: var(--bg-hover);
+  border-radius: 50%;
+  opacity: 0.5;
+}
+
+.tt-chart-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.tt-chart-value {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.6875rem;
+  color: var(--text-primary);
+  font-weight: 600;
+  background: var(--bg-tertiary);
+  padding: 4px 8px;
+  border-radius: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  z-index: 10;
+}
+
+.tt-chart-col:hover .tt-chart-value {
+  opacity: 1;
+}
+
+/* Projects Card */
+.tt-card-projects {
+  grid-column: span 4;
+  animation-delay: 0.2s;
+}
+
+.tt-projects-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.tt-projects-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 20px;
+  color: var(--text-muted);
+}
+
+.tt-projects-empty svg {
+  width: 40px;
+  height: 40px;
+  opacity: 0.4;
+}
+
+.tt-project-item {
+  display: grid;
+  grid-template-columns: 4px 1fr 100px auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  transition: all 0.2s ease;
+  animation: tt-slide-in 0.4s ease-out backwards;
+}
+
+@keyframes tt-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.tt-project-item:hover {
+  background: var(--bg-hover);
+}
+
+.tt-project-color {
+  width: 4px;
+  height: 100%;
+  min-height: 36px;
+  border-radius: 2px;
+}
+
+.tt-project-info {
+  min-width: 0;
+}
+
+.tt-project-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tt-project-meta {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.tt-project-bar-container {
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.tt-project-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+
+.tt-project-time {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: right;
+  min-width: 50px;
+}
+
+.tt-project-percent {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  min-width: 32px;
+  text-align: right;
+}
+
+/* Sessions Card */
+.tt-card-sessions {
+  grid-column: span 6;
+  animation-delay: 0.25s;
+}
+
+.tt-sessions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.tt-sessions-empty {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.tt-session-item {
+  display: grid;
+  grid-template-columns: 4px 1fr auto auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  animation: tt-slide-in 0.3s ease-out backwards;
+}
+
+.tt-session-item:hover {
+  background: var(--bg-hover);
+}
+
+.tt-session-color {
+  width: 4px;
+  height: 28px;
+  border-radius: 2px;
+}
+
+.tt-session-project {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tt-session-date {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.tt-session-hours {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.tt-session-duration {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 60px;
+  text-align: right;
+}
+
+/* Global Card */
+.tt-card-global {
+  grid-column: span 6;
+  animation-delay: 0.3s;
+}
+
+.tt-global-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.tt-global-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.tt-global-item:hover {
+  background: var(--bg-hover);
+}
+
+.tt-global-item.active {
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+}
+
+.tt-global-item.active .tt-global-value {
+  color: var(--accent);
+}
+
+.tt-global-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tt-global-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.tt-global-value.tt-accent {
+  color: var(--accent);
+  text-shadow: 0 0 20px rgba(217, 119, 6, 0.4);
+}
+
+/* Project name in stats */
+.tt-stat-project-name {
+  font-size: 1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100px;
+}
+
+/* Scrollbar Styling */
+.tt-projects-list::-webkit-scrollbar,
+.tt-sessions-list::-webkit-scrollbar,
+.timetracking-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.tt-projects-list::-webkit-scrollbar-track,
+.tt-sessions-list::-webkit-scrollbar-track,
+.timetracking-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tt-projects-list::-webkit-scrollbar-thumb,
+.tt-sessions-list::-webkit-scrollbar-thumb,
+.timetracking-container::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.tt-projects-list::-webkit-scrollbar-thumb:hover,
+.tt-sessions-list::-webkit-scrollbar-thumb:hover,
+.timetracking-container::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Responsive */
+@media (max-width: 1400px) {
+  .tt-card-hero {
+    grid-column: span 6;
+  }
+
+  .tt-card-stats {
+    grid-column: span 6;
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .tt-card-chart {
+    grid-column: span 7;
+  }
+
+  .tt-card-projects {
+    grid-column: span 5;
+  }
+}
+
+@media (max-width: 1100px) {
+  .tt-dashboard {
+    padding: 20px;
+  }
+
+  .tt-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .tt-card-hero,
+  .tt-card-stats,
+  .tt-card-chart,
+  .tt-card-projects,
+  .tt-card-sessions,
+  .tt-card-global {
+    grid-column: span 12;
+  }
+
+  .tt-card-stats {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .tt-hero-hours {
+    font-size: 3.5rem;
+  }
+
+  .tt-hero-minutes {
+    font-size: 2rem;
+  }
+}

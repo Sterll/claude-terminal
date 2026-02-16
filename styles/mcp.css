@@ -1,0 +1,562 @@
+/* ==========================================================
+   MCP Styles
+   - MCP layout, list, cards, status badges, action buttons
+   - MCP sections, header, sub-tabs, registry, detail view
+   ========================================================== */
+
+/* ========== MCP STYLES ========== */
+
+.mcp-layout {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: 24px;
+  gap: 16px;
+  overflow: hidden;
+}
+
+.mcp-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mcp-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* MCP Card */
+.mcp-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 16px;
+  transition: all 0.15s;
+  cursor: pointer;
+}
+
+.mcp-card:hover {
+  border-color: var(--text-muted);
+}
+
+.mcp-card.selected {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.mcp-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.mcp-card-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mcp-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mcp-card-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* MCP Status Badge */
+.mcp-status-badge {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.mcp-status-badge.running {
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--success);
+}
+
+.mcp-status-badge.stopped {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+}
+
+/* MCP Action Buttons */
+.btn-mcp {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.btn-mcp svg {
+  width: 16px;
+  height: 16px;
+}
+
+.btn-mcp:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.btn-mcp.btn-start:hover {
+  background: var(--success);
+  color: white;
+}
+
+.btn-mcp.btn-stop:hover {
+  background: var(--danger);
+  color: white;
+}
+
+.btn-mcp.btn-logs:hover {
+  background: var(--info);
+  color: white;
+}
+
+.btn-mcp.btn-edit:hover {
+  background: var(--accent);
+  color: white;
+}
+
+.btn-mcp.btn-delete:hover {
+  background: var(--danger);
+  color: white;
+}
+
+/* MCP Card Details */
+.mcp-card-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mcp-detail {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.mcp-detail-label {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.mcp-detail code {
+  font-family: 'Cascadia Code', monospace;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 3px;
+  word-break: break-all;
+}
+
+
+/* Empty MCP list */
+.mcp-list .empty-list {
+  padding: 60px 20px;
+}
+
+/* ========== MCP SECTIONS ========== */
+
+.mcp-section {
+  margin-bottom: 20px;
+}
+
+.mcp-section:last-child {
+  margin-bottom: 0;
+}
+
+.mcp-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+  padding-left: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mcp-section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
+
+/* ==================== MCP HEADER & SUB-TABS ==================== */
+
+.mcp-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.mcp-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mcp-sub-tabs {
+  display: flex;
+  gap: 0;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  padding: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.mcp-sub-tab {
+  padding: 6px 18px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  position: relative;
+}
+
+.mcp-sub-tab:hover {
+  color: var(--text-primary);
+}
+
+.mcp-sub-tab.active {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.mcp-search-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  min-width: 250px;
+  transition: border-color 0.2s;
+}
+
+.mcp-search-container:focus-within {
+  border-color: var(--accent);
+}
+
+.mcp-search-container svg {
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.mcp-search-container input {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  flex: 1;
+  outline: none;
+}
+
+.mcp-search-container input::placeholder {
+  color: var(--text-muted);
+}
+
+/* MCP Registry Cards */
+.mcp-registry-card {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mcp-registry-card:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.mcp-registry-card.installed {
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.mcp-registry-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.mcp-registry-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--accent);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.mcp-registry-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mcp-registry-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.mcp-registry-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mcp-registry-card-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.mcp-registry-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.mcp-registry-card-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mcp-registry-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.mcp-registry-badge.npm {
+  background: rgba(203, 56, 55, 0.15);
+  color: #cb3837;
+}
+
+.mcp-registry-badge.pypi {
+  background: rgba(55, 118, 171, 0.15);
+  color: #3776ab;
+}
+
+.mcp-registry-badge.http {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.mcp-registry-badge.installed-badge {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.mcp-registry-card-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* MCP Env Form Modal */
+.mcp-env-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.mcp-env-form-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.mcp-env-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: -8px;
+}
+
+.mcp-env-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mcp-env-field label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mcp-env-field label .mcp-env-required {
+  font-size: 10px;
+  color: var(--danger, #ef4444);
+  font-weight: 600;
+}
+
+.mcp-env-field input {
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: monospace;
+}
+
+.mcp-env-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.mcp-env-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* MCP Registry Detail Modal */
+.mcp-detail-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.mcp-detail-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--accent);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.mcp-detail-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mcp-detail-info {
+  flex: 1;
+}
+
+.mcp-detail-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.mcp-detail-name {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: monospace;
+}
+
+.mcp-detail-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+
+.mcp-detail-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.mcp-detail-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.mcp-detail-meta-label {
+  color: var(--text-muted);
+  font-weight: 600;
+  min-width: 80px;
+}
+
+.mcp-detail-meta-value {
+  color: var(--text-primary);
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.mcp-detail-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
