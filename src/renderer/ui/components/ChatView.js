@@ -591,56 +591,228 @@ function createChatView(wrapperEl, project, options = {}) {
     { type: 'prompt', label: '@prompt', desc: t('chat.mentionPrompt') || 'Insert a prompt template', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>' },
   ];
 
+  // ── Mention picker infrastructure ──
+
+  function scanProjectFiles(projectPath) {
+    const { fs, path } = window.electron_nodeModules;
+    const files = [];
+    const ignoreDirs = new Set(['node_modules', '.git', 'dist', 'build', '.next', '__pycache__', 'vendor', '.cache', 'coverage', '.nuxt']);
+
+    function scan(dir, depth) {
+      if (depth > 6 || files.length >= 500) return;
+      try {
+        const entries = fs.readdirSync(dir);
+        for (const entry of entries) {
+          if (files.length >= 500) break;
+          if (entry.startsWith('.') && entry !== '.env') continue;
+          if (ignoreDirs.has(entry)) continue;
+          const fullPath = path.join(dir, entry);
+          try {
+            const stat = fs.statSync(fullPath);
+            if (stat.isDirectory()) {
+              scan(fullPath, depth + 1);
+            } else if (stat.isFile()) {
+              files.push({ path: path.relative(projectPath, fullPath).replace(/\\/g, '/'), fullPath, mtime: stat.mtimeMs });
+            }
+          } catch (e) { /* skip inaccessible */ }
+        }
+      } catch (e) { /* skip inaccessible */ }
+    }
+
+    scan(projectPath, 0);
+    files.sort((a, b) => b.mtime - a.mtime);
+    return files;
+  }
+
+  function getFileCache() {
+    const projectPath = project?.path;
+    if (!projectPath) return [];
+    if (mentionFileCache && mentionFileCache.projectPath === projectPath && Date.now() - mentionFileCache.timestamp < MENTION_FILE_CACHE_TTL) {
+      return mentionFileCache.files;
+    }
+    const files = scanProjectFiles(projectPath);
+    mentionFileCache = { files, timestamp: Date.now(), projectPath };
+    return files;
+  }
+
+  // Picker configs — each defines how a picker mode loads, filters, renders and selects items
+  const PICKER_CONFIGS = {
+    file: {
+      mode: 'file',
+      keyword: '@file',
+      maxItems: 40,
+      emptyText: () => t('chat.mentionNoFiles') || 'No files found',
+      getData: () => getFileCache(),
+      filter: (items, q) => items.filter(f => f.path.toLowerCase().includes(q)),
+      renderItem: (item) => `
+        <span class="chat-mention-item-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg></span>
+        <span class="chat-mention-item-path">${escapeHtml(item.path)}</span>`,
+      itemAttrs: (item) => `data-path="${escapeHtml(item.path)}" data-fullpath="${escapeHtml(item.fullPath)}"`,
+      onSelect: (el) => {
+        if (el.dataset.path) {
+          removeAtTrigger();
+          addMentionChip('file', { path: el.dataset.path, fullPath: el.dataset.fullpath });
+          hideMentionDropdown();
+          inputEl.focus();
+        }
+      },
+    },
+    projects: {
+      mode: 'projects',
+      keyword: '@project',
+      maxItems: 40,
+      emptyText: () => t('chat.mentionNoProjects') || 'No projects found',
+      getData: () => {
+        const { projectsState } = require('../../state/projects.state');
+        return projectsState.get().projects || [];
+      },
+      filter: (items, q) => items.filter(p => (p.name || '').toLowerCase().includes(q) || (p.path || '').toLowerCase().includes(q)),
+      renderItem: (p) => {
+        const pIcon = p.icon || null;
+        const pColor = p.color || null;
+        const iconHtml = pIcon
+          ? `<span class="chat-mention-item-emoji"${pColor ? ` style="color:${pColor}"` : ''}>${pIcon}</span>`
+          : `<span class="chat-mention-item-icon"${pColor ? ` style="color:${pColor}"` : ''}><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg></span>`;
+        return `${iconHtml}
+        <div class="chat-mention-item-info">
+          <span class="chat-mention-item-name">${escapeHtml(p.name || p.path || 'Unknown')}</span>
+          <span class="chat-mention-item-desc">${escapeHtml(p.path || '')}</span>
+        </div>`;
+      },
+      itemAttrs: (p) => `data-projectid="${escapeHtml(p.id)}" data-projectname="${escapeHtml(p.name || '')}" data-projectpath="${escapeHtml(p.path || '')}" data-projecticon="${escapeHtml(p.icon || '')}" data-projectcolor="${escapeHtml(p.color || '')}"`,
+      onSelect: (el) => {
+        if (el.dataset.projectid) {
+          removeAtTrigger();
+          addMentionChip('project', { id: el.dataset.projectid, name: el.dataset.projectname, path: el.dataset.projectpath, icon: el.dataset.projecticon || '', color: el.dataset.projectcolor || '' });
+          hideMentionDropdown();
+          inputEl.focus();
+        }
+      },
+    },
+    context: {
+      mode: 'context',
+      keyword: '@context',
+      maxItems: 20,
+      emptyText: () => t('chat.mentionNoContextPacks') || 'No context packs found. Create one in Settings > Library.',
+      getData: () => {
+        const ContextPromptService = require('../../services/ContextPromptService');
+        return ContextPromptService.getContextPacks(project?.id);
+      },
+      filter: (items, q) => items.filter(p => (p.name || '').toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q)),
+      renderItem: (pack) => `
+        <span class="chat-mention-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span>
+        <div class="chat-mention-item-info">
+          <span class="chat-mention-item-name">${escapeHtml(pack.name)}</span>
+          <span class="chat-mention-item-desc">${escapeHtml(pack.description || '')}${pack.scope === 'project' ? ' <span class="chat-mention-badge">project</span>' : ''}</span>
+        </div>`,
+      itemAttrs: (pack) => `data-packid="${escapeHtml(pack.id)}" data-packname="${escapeHtml(pack.name)}"`,
+      onSelect: (el) => {
+        if (el.dataset.packid) {
+          removeAtTrigger();
+          addMentionChip('context', { id: el.dataset.packid, name: el.dataset.packname });
+          hideMentionDropdown();
+          inputEl.focus();
+        }
+      },
+    },
+    prompt: {
+      mode: 'prompt',
+      keyword: '@prompt',
+      maxItems: 20,
+      emptyText: () => t('chat.mentionNoPrompts') || 'No prompt templates found. Create one in Settings > Library.',
+      getData: () => {
+        const ContextPromptService = require('../../services/ContextPromptService');
+        return ContextPromptService.getPromptTemplates(project?.id);
+      },
+      filter: (items, q) => items.filter(p => (p.name || '').toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q)),
+      renderItem: (tmpl) => `
+        <span class="chat-mention-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
+        <div class="chat-mention-item-info">
+          <span class="chat-mention-item-name">${escapeHtml(tmpl.name)}</span>
+          <span class="chat-mention-item-desc">${escapeHtml(tmpl.description || '')}${tmpl.scope === 'project' ? ' <span class="chat-mention-badge">project</span>' : ''}</span>
+        </div>`,
+      itemAttrs: (tmpl) => `data-promptid="${escapeHtml(tmpl.id)}" data-promptname="${escapeHtml(tmpl.name)}"`,
+      onSelect: async (el) => {
+        if (el.dataset.promptid) {
+          const ContextPromptService = require('../../services/ContextPromptService');
+          removeAtTrigger();
+          hideMentionDropdown();
+          const resolvedText = await ContextPromptService.resolvePromptTemplate(el.dataset.promptid, project);
+          const text = inputEl.value;
+          const cursorPos = inputEl.selectionStart;
+          const beforeCursor = text.substring(0, cursorPos);
+          const afterCursor = text.substring(cursorPos);
+          inputEl.value = beforeCursor + resolvedText + afterCursor;
+          inputEl.selectionStart = inputEl.selectionEnd = cursorPos + resolvedText.length;
+          inputEl.style.height = 'auto';
+          inputEl.style.height = inputEl.scrollHeight + 'px';
+          inputEl.focus();
+        }
+      },
+    },
+  };
+
+  // Map mention type names to their picker config key
+  const PICKER_TYPE_MAP = { file: 'file', project: 'projects', context: 'context', prompt: 'prompt' };
+
+  /**
+   * Generic picker dropdown renderer — used by all picker modes
+   */
+  function renderPickerDropdown(cfg, query) {
+    const items = cfg.getData();
+    const q = query.trim().toLowerCase();
+    const filtered = q ? cfg.filter(items, q) : items;
+    const shown = filtered.slice(0, cfg.maxItems);
+
+    if (shown.length === 0) {
+      mentionDropdown.innerHTML = `<div class="chat-mention-item chat-mention-empty"><span class="chat-mention-item-desc">${escapeHtml(cfg.emptyText())}</span></div>`;
+      mentionDropdown.style.display = '';
+      return;
+    }
+
+    mentionMode = cfg.mode;
+    if (mentionSelectedIndex >= shown.length) mentionSelectedIndex = shown.length - 1;
+
+    mentionDropdown.innerHTML = shown.map((item, i) =>
+      `<div class="chat-mention-item${i === mentionSelectedIndex ? ' active' : ''}" ${cfg.itemAttrs(item)}>${cfg.renderItem(item)}</div>`
+    ).join('');
+
+    mentionDropdown.style.display = '';
+
+    mentionDropdown.querySelectorAll('.chat-mention-item').forEach((el, idx) => {
+      el.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        cfg.onSelect(el);
+      });
+      el.addEventListener('mouseenter', () => {
+        mentionSelectedIndex = idx;
+        highlightMentionItem(mentionDropdown.querySelectorAll('.chat-mention-item'));
+      });
+    });
+  }
+
+  // ── Mention dropdown logic ──
+
   function updateMentionDropdown() {
     const text = inputEl.value;
     const cursorPos = inputEl.selectionStart;
     const beforeCursor = text.substring(0, cursorPos);
 
-    // File picker mode: filter files by query after @file
-    if (mentionMode === 'file') {
-      const fileMatch = beforeCursor.match(/@file\s+(.*)$/i);
-      if (fileMatch) {
-        renderFileDropdown(fileMatch[1]);
-      } else if (!beforeCursor.match(/@file/i)) {
-        hideMentionDropdown();
+    // Check if we're in a picker mode
+    for (const cfg of Object.values(PICKER_CONFIGS)) {
+      if (mentionMode === cfg.mode) {
+        const re = new RegExp(cfg.keyword.replace('$', '\\$') + '\\s+(.*)$', 'i');
+        const match = beforeCursor.match(re);
+        if (match) {
+          renderPickerDropdown(cfg, match[1]);
+        } else if (!beforeCursor.match(new RegExp(cfg.keyword.replace('$', '\\$'), 'i'))) {
+          hideMentionDropdown();
+        }
+        return;
       }
-      return;
     }
 
-    // Projects picker mode: filter projects by query after @project
-    if (mentionMode === 'projects') {
-      const projMatch = beforeCursor.match(/@project\s+(.*)$/i);
-      if (projMatch) {
-        renderProjectsDropdown(projMatch[1]);
-      } else if (!beforeCursor.match(/@project/i)) {
-        hideMentionDropdown();
-      }
-      return;
-    }
-
-    // Context pack picker mode
-    if (mentionMode === 'context') {
-      const ctxMatch = beforeCursor.match(/@context\s+(.*)$/i);
-      if (ctxMatch) {
-        renderContextDropdown(ctxMatch[1]);
-      } else if (!beforeCursor.match(/@context/i)) {
-        hideMentionDropdown();
-      }
-      return;
-    }
-
-    // Prompt template picker mode
-    if (mentionMode === 'prompt') {
-      const promptMatch = beforeCursor.match(/@prompt\s+(.*)$/i);
-      if (promptMatch) {
-        renderPromptDropdown(promptMatch[1]);
-      } else if (!beforeCursor.match(/@prompt/i)) {
-        hideMentionDropdown();
-      }
-      return;
-    }
-
-    // Detect @ trigger
+    // Detect @ trigger to show type menu
     const atMatch = beforeCursor.match(/@(\w*)$/);
     if (!atMatch) {
       hideMentionDropdown();
@@ -698,67 +870,25 @@ function createChatView(wrapperEl, project, options = {}) {
     const cursorPos = inputEl.selectionStart;
     const beforeCursor = text.substring(0, cursorPos);
     const afterCursor = text.substring(cursorPos);
-    // Remove @word (or @file query) before cursor
     const cleaned = beforeCursor.replace(/@\w*\s*$/, '');
     inputEl.value = cleaned + afterCursor;
     inputEl.selectionStart = inputEl.selectionEnd = cleaned.length;
   }
 
   function selectMentionType(type) {
-    if (type === 'file') {
-      // Switch to file picker mode — replace @partial with @file and wait for query
+    // If this type has a picker, switch to picker mode
+    const pickerKey = PICKER_TYPE_MAP[type];
+    if (pickerKey) {
+      const cfg = PICKER_CONFIGS[pickerKey];
       const text = inputEl.value;
       const cursorPos = inputEl.selectionStart;
       const beforeCursor = text.substring(0, cursorPos);
       const afterCursor = text.substring(cursorPos);
-      const cleaned = beforeCursor.replace(/@\w*$/, '@file ');
+      const cleaned = beforeCursor.replace(/@\w*$/, cfg.keyword + ' ');
       inputEl.value = cleaned + afterCursor;
       inputEl.selectionStart = inputEl.selectionEnd = cleaned.length;
-      mentionMode = 'file';
-      renderFileDropdown('');
-      inputEl.focus();
-      return;
-    }
-
-    if (type === 'project') {
-      // Switch to projects picker mode — replace @partial with @project and wait for query
-      const text = inputEl.value;
-      const cursorPos = inputEl.selectionStart;
-      const beforeCursor = text.substring(0, cursorPos);
-      const afterCursor = text.substring(cursorPos);
-      const cleaned = beforeCursor.replace(/@\w*$/, '@project ');
-      inputEl.value = cleaned + afterCursor;
-      inputEl.selectionStart = inputEl.selectionEnd = cleaned.length;
-      mentionMode = 'projects';
-      renderProjectsDropdown('');
-      inputEl.focus();
-      return;
-    }
-
-    if (type === 'context') {
-      const text = inputEl.value;
-      const cursorPos = inputEl.selectionStart;
-      const beforeCursor = text.substring(0, cursorPos);
-      const afterCursor = text.substring(cursorPos);
-      const cleaned = beforeCursor.replace(/@\w*$/, '@context ');
-      inputEl.value = cleaned + afterCursor;
-      inputEl.selectionStart = inputEl.selectionEnd = cleaned.length;
-      mentionMode = 'context';
-      renderContextDropdown('');
-      inputEl.focus();
-      return;
-    }
-
-    if (type === 'prompt') {
-      const text = inputEl.value;
-      const cursorPos = inputEl.selectionStart;
-      const beforeCursor = text.substring(0, cursorPos);
-      const afterCursor = text.substring(cursorPos);
-      const cleaned = beforeCursor.replace(/@\w*$/, '@prompt ');
-      inputEl.value = cleaned + afterCursor;
-      inputEl.selectionStart = inputEl.selectionEnd = cleaned.length;
-      mentionMode = 'prompt';
-      renderPromptDropdown('');
+      mentionMode = cfg.mode;
+      renderPickerDropdown(cfg, '');
       inputEl.focus();
       return;
     }
@@ -767,267 +897,6 @@ function createChatView(wrapperEl, project, options = {}) {
     removeAtTrigger();
     addMentionChip(type);
     hideMentionDropdown();
-    inputEl.focus();
-  }
-
-  // ── File picker ──
-
-  function scanProjectFiles(projectPath) {
-    const { fs, path } = window.electron_nodeModules;
-    const files = [];
-    const ignoreDirs = new Set(['node_modules', '.git', 'dist', 'build', '.next', '__pycache__', 'vendor', '.cache', 'coverage', '.nuxt']);
-
-    function scan(dir, depth) {
-      if (depth > 6 || files.length >= 500) return;
-      try {
-        const entries = fs.readdirSync(dir);
-        for (const entry of entries) {
-          if (files.length >= 500) break;
-          if (entry.startsWith('.') && entry !== '.env') continue;
-          if (ignoreDirs.has(entry)) continue;
-          const fullPath = path.join(dir, entry);
-          try {
-            const stat = fs.statSync(fullPath);
-            if (stat.isDirectory()) {
-              scan(fullPath, depth + 1);
-            } else if (stat.isFile()) {
-              files.push({ path: path.relative(projectPath, fullPath).replace(/\\/g, '/'), fullPath, mtime: stat.mtimeMs });
-            }
-          } catch (e) { /* skip inaccessible */ }
-        }
-      } catch (e) { /* skip inaccessible */ }
-    }
-
-    scan(projectPath, 0);
-    files.sort((a, b) => b.mtime - a.mtime);
-    return files;
-  }
-
-  function getFileCache() {
-    const projectPath = project?.path;
-    if (!projectPath) return [];
-    if (mentionFileCache && mentionFileCache.projectPath === projectPath && Date.now() - mentionFileCache.timestamp < MENTION_FILE_CACHE_TTL) {
-      return mentionFileCache.files;
-    }
-    const files = scanProjectFiles(projectPath);
-    mentionFileCache = { files, timestamp: Date.now(), projectPath };
-    return files;
-  }
-
-  function renderFileDropdown(query) {
-    const files = getFileCache();
-    const q = query.trim().toLowerCase();
-    const filtered = q ? files.filter(f => f.path.toLowerCase().includes(q)) : files;
-    const shown = filtered.slice(0, 40);
-
-    if (shown.length === 0) {
-      mentionDropdown.innerHTML = `<div class="chat-mention-item" style="opacity:0.5;cursor:default"><span class="chat-mention-item-desc">${escapeHtml(t('chat.mentionNoFiles') || 'No files found')}</span></div>`;
-      mentionDropdown.style.display = '';
-      return;
-    }
-
-    mentionMode = 'file';
-    if (mentionSelectedIndex >= shown.length) mentionSelectedIndex = shown.length - 1;
-
-    const { path: pathModule } = window.electron_nodeModules;
-    mentionDropdown.innerHTML = shown.map((file, i) => `
-      <div class="chat-mention-item${i === mentionSelectedIndex ? ' active' : ''}" data-path="${escapeHtml(file.path)}" data-fullpath="${escapeHtml(file.fullPath)}">
-        <span class="chat-mention-item-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg></span>
-        <span class="chat-mention-item-path">${escapeHtml(file.path)}</span>
-      </div>
-    `).join('');
-
-    mentionDropdown.style.display = '';
-
-    mentionDropdown.querySelectorAll('.chat-mention-item').forEach((el, idx) => {
-      el.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        if (el.dataset.path) selectMentionFile(el.dataset.path, el.dataset.fullpath);
-      });
-      el.addEventListener('mouseenter', () => {
-        mentionSelectedIndex = idx;
-        highlightMentionItem(mentionDropdown.querySelectorAll('.chat-mention-item'));
-      });
-    });
-  }
-
-  function selectMentionFile(relativePath, fullPath) {
-    removeAtTrigger();
-    addMentionChip('file', { path: relativePath, fullPath });
-    hideMentionDropdown();
-    inputEl.focus();
-  }
-
-  // ── Projects picker ──
-
-  function renderProjectsDropdown(query) {
-    const { projectsState } = require('../../state/projects.state');
-    const allProjects = projectsState.get().projects || [];
-    const q = query.trim().toLowerCase();
-    const filtered = q
-      ? allProjects.filter(p => (p.name || '').toLowerCase().includes(q) || (p.path || '').toLowerCase().includes(q))
-      : allProjects;
-    const shown = filtered.slice(0, 40);
-
-    if (shown.length === 0) {
-      mentionDropdown.innerHTML = `<div class="chat-mention-item" style="opacity:0.5;cursor:default"><span class="chat-mention-item-desc">${escapeHtml(t('chat.mentionNoProjects') || 'No projects found')}</span></div>`;
-      mentionDropdown.style.display = '';
-      return;
-    }
-
-    mentionMode = 'projects';
-    if (mentionSelectedIndex >= shown.length) mentionSelectedIndex = shown.length - 1;
-
-    mentionDropdown.innerHTML = shown.map((p, i) => {
-      const pIcon = p.icon || null;
-      const pColor = p.color || null;
-      const iconHtml = pIcon
-        ? `<span class="chat-mention-item-emoji"${pColor ? ` style="color:${pColor}"` : ''}>${pIcon}</span>`
-        : `<span class="chat-mention-item-icon"${pColor ? ` style="color:${pColor}"` : ''}><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg></span>`;
-      return `
-      <div class="chat-mention-item${i === mentionSelectedIndex ? ' active' : ''}" data-projectid="${escapeHtml(p.id)}" data-projectname="${escapeHtml(p.name || '')}" data-projectpath="${escapeHtml(p.path || '')}" data-projecticon="${escapeHtml(p.icon || '')}" data-projectcolor="${escapeHtml(p.color || '')}">
-        ${iconHtml}
-        <div class="chat-mention-item-info">
-          <span class="chat-mention-item-name">${escapeHtml(p.name || p.path || 'Unknown')}</span>
-          <span class="chat-mention-item-desc">${escapeHtml(p.path || '')}</span>
-        </div>
-      </div>`;
-    }).join('');
-
-    mentionDropdown.style.display = '';
-
-    mentionDropdown.querySelectorAll('.chat-mention-item').forEach((el, idx) => {
-      el.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        if (el.dataset.projectid) selectMentionProject(el.dataset.projectid, el.dataset.projectname, el.dataset.projectpath, el.dataset.projecticon, el.dataset.projectcolor);
-      });
-      el.addEventListener('mouseenter', () => {
-        mentionSelectedIndex = idx;
-        highlightMentionItem(mentionDropdown.querySelectorAll('.chat-mention-item'));
-      });
-    });
-  }
-
-  function selectMentionProject(projectId, projectName, projectPath, projectIcon, projectColor) {
-    removeAtTrigger();
-    addMentionChip('project', { id: projectId, name: projectName, path: projectPath, icon: projectIcon || '', color: projectColor || '' });
-    hideMentionDropdown();
-    inputEl.focus();
-  }
-
-  // ── Context pack picker ──
-
-  function renderContextDropdown(query) {
-    const ContextPromptService = require('../../services/ContextPromptService');
-    const packs = ContextPromptService.getContextPacks(project?.id);
-    const q = query.trim().toLowerCase();
-    const filtered = q
-      ? packs.filter(p => (p.name || '').toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q))
-      : packs;
-    const shown = filtered.slice(0, 20);
-
-    if (shown.length === 0) {
-      mentionDropdown.innerHTML = `<div class="chat-mention-item" style="opacity:0.5;cursor:default"><span class="chat-mention-item-desc">${escapeHtml(t('chat.mentionNoContextPacks') || 'No context packs found. Create one in Settings > Library.')}</span></div>`;
-      mentionDropdown.style.display = '';
-      return;
-    }
-
-    mentionMode = 'context';
-    if (mentionSelectedIndex >= shown.length) mentionSelectedIndex = shown.length - 1;
-
-    mentionDropdown.innerHTML = shown.map((pack, i) => `
-      <div class="chat-mention-item${i === mentionSelectedIndex ? ' active' : ''}" data-packid="${escapeHtml(pack.id)}" data-packname="${escapeHtml(pack.name)}">
-        <span class="chat-mention-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span>
-        <div class="chat-mention-item-info">
-          <span class="chat-mention-item-name">${escapeHtml(pack.name)}</span>
-          <span class="chat-mention-item-desc">${escapeHtml(pack.description || '')}${pack.scope === 'project' ? ' <span class="chat-mention-badge">project</span>' : ''}</span>
-        </div>
-      </div>
-    `).join('');
-
-    mentionDropdown.style.display = '';
-
-    mentionDropdown.querySelectorAll('.chat-mention-item').forEach((el, idx) => {
-      el.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        if (el.dataset.packid) selectContextPack(el.dataset.packid, el.dataset.packname);
-      });
-      el.addEventListener('mouseenter', () => {
-        mentionSelectedIndex = idx;
-        highlightMentionItem(mentionDropdown.querySelectorAll('.chat-mention-item'));
-      });
-    });
-  }
-
-  function selectContextPack(packId, packName) {
-    removeAtTrigger();
-    addMentionChip('context', { id: packId, name: packName });
-    hideMentionDropdown();
-    inputEl.focus();
-  }
-
-  // ── Prompt template picker ──
-
-  function renderPromptDropdown(query) {
-    const ContextPromptService = require('../../services/ContextPromptService');
-    const templates = ContextPromptService.getPromptTemplates(project?.id);
-    const q = query.trim().toLowerCase();
-    const filtered = q
-      ? templates.filter(p => (p.name || '').toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q))
-      : templates;
-    const shown = filtered.slice(0, 20);
-
-    if (shown.length === 0) {
-      mentionDropdown.innerHTML = `<div class="chat-mention-item" style="opacity:0.5;cursor:default"><span class="chat-mention-item-desc">${escapeHtml(t('chat.mentionNoPrompts') || 'No prompt templates found. Create one in Settings > Library.')}</span></div>`;
-      mentionDropdown.style.display = '';
-      return;
-    }
-
-    mentionMode = 'prompt';
-    if (mentionSelectedIndex >= shown.length) mentionSelectedIndex = shown.length - 1;
-
-    mentionDropdown.innerHTML = shown.map((tmpl, i) => `
-      <div class="chat-mention-item${i === mentionSelectedIndex ? ' active' : ''}" data-promptid="${escapeHtml(tmpl.id)}" data-promptname="${escapeHtml(tmpl.name)}">
-        <span class="chat-mention-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
-        <div class="chat-mention-item-info">
-          <span class="chat-mention-item-name">${escapeHtml(tmpl.name)}</span>
-          <span class="chat-mention-item-desc">${escapeHtml(tmpl.description || '')}${tmpl.scope === 'project' ? ' <span class="chat-mention-badge">project</span>' : ''}</span>
-        </div>
-      </div>
-    `).join('');
-
-    mentionDropdown.style.display = '';
-
-    mentionDropdown.querySelectorAll('.chat-mention-item').forEach((el, idx) => {
-      el.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        if (el.dataset.promptid) selectPromptTemplate(el.dataset.promptid, el.dataset.promptname);
-      });
-      el.addEventListener('mouseenter', () => {
-        mentionSelectedIndex = idx;
-        highlightMentionItem(mentionDropdown.querySelectorAll('.chat-mention-item'));
-      });
-    });
-  }
-
-  async function selectPromptTemplate(promptId, promptName) {
-    const ContextPromptService = require('../../services/ContextPromptService');
-    removeAtTrigger();
-    hideMentionDropdown();
-
-    // Resolve variables and insert text into textarea
-    const resolvedText = await ContextPromptService.resolvePromptTemplate(promptId, project);
-
-    const text = inputEl.value;
-    const cursorPos = inputEl.selectionStart;
-    const beforeCursor = text.substring(0, cursorPos);
-    const afterCursor = text.substring(cursorPos);
-    inputEl.value = beforeCursor + resolvedText + afterCursor;
-    inputEl.selectionStart = inputEl.selectionEnd = cursorPos + resolvedText.length;
-
-    // Auto-resize textarea
-    inputEl.style.height = 'auto';
-    inputEl.style.height = inputEl.scrollHeight + 'px';
     inputEl.focus();
   }
 
