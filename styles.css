@@ -2827,6 +2827,55 @@ body.compact-projects .project-item:not(.active):hover {
   color: var(--accent);
 }
 
+/* Pin button */
+.session-card-pin {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+  color: var(--text-muted);
+  padding: 0;
+  border-radius: 4px;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+
+.session-card-pin svg {
+  width: 14px;
+  height: 14px;
+}
+
+.session-card:hover .session-card-pin {
+  opacity: 0.5;
+}
+
+.session-card-pin:hover {
+  opacity: 1 !important;
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+/* Pinned state */
+.session-card--pinned .session-card-pin {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.session-card--pinned .session-card-accent {
+  background: var(--accent) !important;
+  opacity: 1 !important;
+}
+
+/* Pinned group label */
+.session-group[data-group-key="pinned"] .session-group-text {
+  color: var(--accent);
+}
+
 /* Card meta */
 .session-card-meta {
   display: flex;

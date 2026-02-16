@@ -295,7 +295,10 @@
     "today": "Today",
     "yesterday": "Yesterday",
     "thisWeek": "This week",
-    "older": "Older"
+    "older": "Older",
+    "pinned": "Pinned",
+    "pin": "Pin",
+    "unpin": "Unpin"
   },
   "time": {
     "justNow": "just now",

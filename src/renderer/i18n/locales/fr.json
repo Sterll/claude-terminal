@@ -354,7 +354,10 @@
     "today": "Aujourd'hui",
     "yesterday": "Hier",
     "thisWeek": "Cette semaine",
-    "older": "Plus ancien"
+    "older": "Plus ancien",
+    "pinned": "Épinglées",
+    "pin": "Épingler",
+    "unpin": "Désépingler"
   },
   "time": {
     "justNow": "à l'instant",

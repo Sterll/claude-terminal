@@ -2581,6 +2581,7 @@ function getSessionGroup(dateString) {
  */
 function groupSessionsByTime(sessions) {
   const groups = {
+    pinned: { key: 'pinned', label: t('sessions.pinned') || (getCurrentLanguage() === 'fr' ? 'Epinglées' : 'Pinned'), sessions: [] },
     today: { key: 'today', label: t('sessions.today') || t('common.today'), sessions: [] },
     yesterday: { key: 'yesterday', label: t('sessions.yesterday') || t('time.yesterday') || (getCurrentLanguage() === 'fr' ? 'Hier' : 'Yesterday'), sessions: [] },
     thisWeek: { key: 'thisWeek', label: t('sessions.thisWeek') || (getCurrentLanguage() === 'fr' ? 'Cette semaine' : 'This week'), sessions: [] },
@@ -2588,8 +2589,12 @@ function groupSessionsByTime(sessions) {
   };
 
   sessions.forEach(session => {
-    const group = getSessionGroup(session.modified);
-    groups[group].sessions.push(session);
+    if (session.pinned) {
+      groups.pinned.sessions.push(session);
+    } else {
+      const group = getSessionGroup(session.modified);
+      groups[group].sessions.push(session);
+    }
   });
 
   return Object.values(groups).filter(g => g.sessions.length > 0);
@@ -2607,7 +2612,48 @@ const SESSION_SVG_DEFS = `<svg style="display:none" xmlns="http://www.w3.org/200
   <symbol id="s-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></symbol>
   <symbol id="s-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="s-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+  <symbol id="s-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 11V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v7"/><path d="M5 17h14"/><path d="M7 11l-2 6h14l-2-6"/></symbol>
 </svg>`;
+
+/**
+ * ── Session Pins ──
+ * Persist pinned session IDs in ~/.claude-terminal/session-pins.json
+ */
+const _pinsFile = path.join(window.electron_nodeModules.os.homedir(), '.claude-terminal', 'session-pins.json');
+let _pinsCache = null;
+
+function loadPins() {
+  if (_pinsCache) return _pinsCache;
+  try {
+    const raw = fs.readFileSync(_pinsFile, 'utf8');
+    _pinsCache = JSON.parse(raw);
+  } catch {
+    _pinsCache = {};
+  }
+  return _pinsCache;
+}
+
+function savePins() {
+  try {
+    fs.writeFileSync(_pinsFile, JSON.stringify(_pinsCache || {}, null, 2), 'utf8');
+  } catch { /* ignore write errors */ }
+}
+
+function isSessionPinned(sessionId) {
+  return !!loadPins()[sessionId];
+}
+
+function toggleSessionPin(sessionId) {
+  const pins = loadPins();
+  if (pins[sessionId]) {
+    delete pins[sessionId];
+  } else {
+    pins[sessionId] = true;
+  }
+  _pinsCache = pins;
+  savePins();
+  return !!pins[sessionId];
+}
 
 /**
  * Pre-process sessions: clean text once and cache display data
@@ -2641,7 +2687,8 @@ function preprocessSessions(sessions) {
     // Pre-build searchable text (lowercase, computed once)
     const searchText = (displayTitle + ' ' + displaySubtitle + ' ' + (session.gitBranch || '')).toLowerCase();
 
-    return { ...session, displayTitle, displaySubtitle, isSkill, freshness, searchText };
+    const pinned = isSessionPinned(session.sessionId);
+    return { ...session, displayTitle, displaySubtitle, isSkill, freshness, searchText, pinned };
   });
 }
 
@@ -2652,11 +2699,13 @@ function buildSessionCardHtml(s, index) {
   const MAX_ANIMATED = 10;
   const animClass = index < MAX_ANIMATED ? ' session-card--anim' : ' session-card--instant';
   const freshClass = s.freshness ? ` session-card--${s.freshness}` : '';
+  const pinnedClass = s.pinned ? ' session-card--pinned' : '';
   const skillClass = s.isSkill ? ' session-card-icon--skill' : '';
   const titleSkillClass = s.isSkill ? ' session-card-title--skill' : '';
   const iconId = s.isSkill ? 's-bolt' : 's-chat';
+  const pinTitle = s.pinned ? (t('sessions.unpin') || 'Unpin') : (t('sessions.pin') || 'Pin');
 
-  return `<div class="session-card${freshClass}${animClass}" data-sid="${s.sessionId}" style="--ci:${index < MAX_ANIMATED ? index : 0}">
+  return `<div class="session-card${freshClass}${pinnedClass}${animClass}" data-sid="${s.sessionId}" style="--ci:${index < MAX_ANIMATED ? index : 0}">
 <div class="session-card-accent"></div>
 <div class="session-card-body">
 <div class="session-card-top">
@@ -2665,6 +2714,7 @@ function buildSessionCardHtml(s, index) {
 <span class="session-card-title${titleSkillClass}">${escapeHtml(truncateText(s.displayTitle, 80))}</span>
 ${s.displaySubtitle ? `<span class="session-card-subtitle">${escapeHtml(truncateText(s.displaySubtitle, 120))}</span>` : ''}
 </div>
+<button class="session-card-pin" data-pin-sid="${s.sessionId}" title="${pinTitle}"><svg><use href="#s-pin"/></svg></button>
 <div class="session-card-arrow"><svg><use href="#s-arrow"/></svg></div>
 </div>
 <div class="session-card-meta">
@@ -2806,6 +2856,21 @@ async function renderSessionsPanel(project, emptyState) {
 
     // Event delegation for card clicks (single listener on list)
     listEl.addEventListener('click', (e) => {
+      // Pin button click
+      const pinBtn = e.target.closest('.session-card-pin');
+      if (pinBtn) {
+        e.stopPropagation();
+        const sid = pinBtn.dataset.pinSid;
+        if (!sid) return;
+        const nowPinned = toggleSessionPin(sid);
+        // Update session data
+        const session = sessionMap.get(sid);
+        if (session) session.pinned = nowPinned;
+        // Re-render entire sessions panel
+        renderSessionsPanel(project, emptyState);
+        return;
+      }
+
       const card = e.target.closest('.session-card');
       if (!card) return;
       const sessionId = card.dataset.sid;
