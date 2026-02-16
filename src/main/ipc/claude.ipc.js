@@ -200,10 +200,13 @@ async function loadSessionHistory(projectPath, sessionId) {
               filePath = candidate;
               break;
             }
-          } catch {}
+          } catch (_) {
+            // Malformed JSON line — skip
+          }
         }
       }
-    } catch {
+    } catch (e) {
+      console.warn('[claude.ipc] Failed to scan sessions directory:', e);
       return [];
     }
   }

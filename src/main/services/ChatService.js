@@ -222,6 +222,16 @@ class ChatService {
     this.pendingPermissions = new Map();
     /** @type {BrowserWindow|null} */
     this.mainWindow = null;
+
+    // Catch SDK internal "ProcessTransport is not ready" errors that bubble as
+    // unhandled rejections when a permission response is resolved after the
+    // underlying CLI process has already exited.
+    process.on('unhandledRejection', (reason) => {
+      if (reason?.message?.includes('ProcessTransport is not ready')) {
+        console.warn('[ChatService] Suppressed SDK ProcessTransport error (CLI process already exited)');
+        return;
+      }
+    });
   }
 
   setMainWindow(window) {
@@ -440,6 +450,13 @@ class ChatService {
     const pending = this.pendingPermissions.get(requestId);
     if (pending) {
       this.pendingPermissions.delete(requestId);
+      // Check that session is still alive before resolving — the SDK will try to
+      // write the response to ProcessTransport which may already be closed.
+      const session = this.sessions.get(pending.sessionId);
+      if (!session) {
+        console.warn(`[ChatService] Permission ${requestId} resolved but session ${pending.sessionId} already closed, ignoring`);
+        return;
+      }
       pending.resolve(result);
     }
   }
