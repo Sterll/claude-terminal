@@ -11,9 +11,9 @@ const { recordActivity, recordOutputActivity } = require('../../state');
 const { getSetting, setSetting } = require('../../state/settings.state');
 
 const MODEL_OPTIONS = [
-  { id: 'claude-opus-4-6', label: 'Opus 4.6', desc: 'Most capable' },
-  { id: 'claude-sonnet-4-5-20250929', label: 'Sonnet 4.5', desc: 'Balanced' },
-  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', desc: 'Fast & cheap' },
+  { id: 'claude-opus-4-6', label: 'Opus 4.6', desc: 'Most capable for complex work' },
+  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6', desc: 'Best for everyday tasks' },
+  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', desc: 'Fastest for quick answers' },
 ];
 
 // ── Markdown Renderer ──
