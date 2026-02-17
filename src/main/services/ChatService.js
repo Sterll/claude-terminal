@@ -57,6 +57,7 @@ function resolveRuntime() {
   const home = process.env.HOME || require('os').homedir();
 
   // Runtime definitions: name (SDK enum), binary name, and search locations
+  // Note: deno is excluded — cli.js requires env access that deno blocks without --allow-env
   const runtimes = [
     {
       name: 'bun',
@@ -65,17 +66,6 @@ function resolveRuntime() {
         ? [path.join(home, '.bun', 'bin')]
         : [
             path.join(home, '.bun', 'bin'),
-            '/usr/local/bin',
-            '/opt/homebrew/bin',
-          ],
-    },
-    {
-      name: 'deno',
-      bin: isWin ? 'deno.exe' : 'deno',
-      locations: isWin
-        ? [path.join(home, '.deno', 'bin')]
-        : [
-            path.join(home, '.deno', 'bin'),
             '/usr/local/bin',
             '/opt/homebrew/bin',
           ],
@@ -337,7 +327,8 @@ class ChatService {
     } catch (err) {
       console.error(`[ChatService] startSession error:`, err.message);
       this.sessions.delete(sessionId);
-      throw err;
+      const humanized = this._humanizeError(err.message);
+      throw humanized === err.message ? err : new Error(humanized);
     } finally {
       if (prevClaudeCode) {
         process.env.CLAUDECODE = prevClaudeCode;
@@ -522,16 +513,63 @@ class ChatService {
         this._send('chat-done', { sessionId, aborted: true });
       } else {
         console.error(`[ChatService] Stream error after ${msgCount} msgs:`, err.message);
-        let errorMsg = err.message;
-        if (errorMsg && errorMsg.includes('ENOENT')) {
-          errorMsg = 'Node.js not found. Please ensure Node.js is installed and available in your PATH, then restart the app.\n\nOn macOS: brew install node\nOn Windows: https://nodejs.org';
-        }
+        const errorMsg = this._humanizeError(err.message);
         this._send('chat-error', { sessionId, error: errorMsg });
       }
     } finally {
       if (session) session.interrupting = false;
       this._rejectPendingPermissions(sessionId, 'Stream ended');
     }
+  }
+
+  /**
+   * Convert raw SDK/process errors into user-friendly messages.
+   */
+  _humanizeError(raw) {
+    if (!raw) return 'An unknown error occurred.';
+
+    // Node.js not found
+    if (raw.includes('ENOENT')) {
+      return 'Node.js not found. Please install Node.js (https://nodejs.org) and restart the app.';
+    }
+
+    // SDK process crashed at startup (exit code 1, 0 messages)
+    if (raw.includes('exited with code')) {
+      const code = raw.match(/exited with code (\d+)/)?.[1] || '?';
+      return `Claude Code process crashed (exit code ${code}). Please ensure Node.js is installed and up to date, then restart the app.\n\nIf the problem persists, try running "claude" in a terminal to check for errors.`;
+    }
+
+    // Process killed by signal
+    if (raw.includes('terminated by signal')) {
+      return 'Claude Code process was terminated unexpectedly. This may be caused by an antivirus or insufficient memory.';
+    }
+
+    // Executable not found
+    if (raw.includes('executable not found') || raw.includes('not found at')) {
+      return 'Claude Code SDK executable not found. Try reinstalling Claude Terminal.';
+    }
+
+    // Non-JSON output (usually startup crash with error printed to stdout)
+    if (raw.includes('not valid JSON')) {
+      return 'Claude Code failed to start properly. Please ensure you are logged in by running "claude" in a terminal.';
+    }
+
+    // Auth / API errors
+    if (raw.includes('401') || raw.includes('Unauthorized') || raw.includes('authentication')) {
+      return 'Authentication error. Please log in again by running "claude" in a terminal.';
+    }
+
+    // Rate limit
+    if (raw.includes('429') || raw.includes('rate limit') || raw.includes('Too Many Requests')) {
+      return 'Rate limit reached. Please wait a moment before trying again.';
+    }
+
+    // Network errors
+    if (raw.includes('ECONNREFUSED') || raw.includes('ENOTFOUND') || raw.includes('ETIMEDOUT') || raw.includes('fetch failed')) {
+      return 'Network error. Please check your internet connection and try again.';
+    }
+
+    return raw;
   }
 
   _safeSerialize(obj) {
