@@ -8,7 +8,7 @@ const { projectsState, getProject, getFolder, getProjectIndex } = require('../st
 const { escapeHtml } = require('../utils');
 const { t } = require('../i18n');
 const Toast = require('../ui/components/Toast');
-const { showConfirm } = require('../ui/components/Modal');
+const { showConfirm, createModal, showModal, closeModal } = require('../ui/components/Modal');
 
 // ========== STATE ==========
 let selectedProject = null;
@@ -31,6 +31,9 @@ let remoteUrl = null;
 let historyBranchFilter = '';
 let historyAuthorFilter = '';
 let historyAllBranches = false;
+
+// Worktree data
+let worktreesData = [];
 
 // Merge conflict state
 let mergeInProgress = false;
@@ -102,6 +105,15 @@ async function loadAllData(project) {
   historyPage = 0;
   historyHasMore = historyData.length >= 50;
 
+  // Load worktrees
+  worktreesData = [];
+  try {
+    const wtResult = await api.git.worktreeList({ projectPath: path });
+    if (wtResult?.success && wtResult.worktrees?.length > 1) {
+      worktreesData = wtResult.worktrees;
+    }
+  } catch (_) {}
+
   // Check merge in progress
   mergeInProgress = await api.git.mergeInProgress({ projectPath: path });
   if (mergeInProgress) {
@@ -161,6 +173,7 @@ function renderSidebar() {
   renderProjectsList();
   renderQuickActions();
   renderBranches();
+  renderWorktrees();
   renderStashes();
 }
 
@@ -472,6 +485,341 @@ function renderBranches() {
   // New branch button
   document.getElementById('git-btn-new-branch')?.addEventListener('click', handleCreateBranch);
 }
+
+// ========== WORKTREES ==========
+
+function renderWorktrees() {
+  const container = document.getElementById('git-worktrees-list');
+  if (!container) return;
+
+  // Wire header buttons
+  document.getElementById('git-btn-new-worktree')?.removeEventListener('click', handleCreateWorktree);
+  document.getElementById('git-btn-new-worktree')?.addEventListener('click', handleCreateWorktree);
+  document.getElementById('git-btn-prune-worktrees')?.removeEventListener('click', handlePruneWorktrees);
+  document.getElementById('git-btn-prune-worktrees')?.addEventListener('click', handlePruneWorktrees);
+
+  if (!worktreesData || worktreesData.length === 0) {
+    container.innerHTML = `<div class="git-sidebar-empty">${t('gitTab.noWorktrees')}</div>`;
+    return;
+  }
+
+  let html = '';
+  for (const wt of worktreesData) {
+    const isMain = wt.isMain;
+    const isCurrent = wt.path.replace(/\\/g, '/') === selectedProject?.path?.replace(/\\/g, '/');
+    const shortPath = wt.path.replace(/\\/g, '/').split('/').slice(-2).join('/');
+    const branchName = wt.detached ? `(${wt.head?.substring(0, 7)})` : (wt.branch || 'unknown');
+    const lockIcon = wt.locked ? '<span class="git-wt-lock" title="Locked">&#128274;</span>' : '';
+
+    html += `<div class="git-worktree-item ${isCurrent ? 'current' : ''} ${isMain ? 'main' : ''}" data-wt-path="${escapeAttr(wt.path)}" data-wt-branch="${escapeAttr(wt.branch || '')}">
+      <div class="git-worktree-info">
+        <span class="git-worktree-branch">${isMain ? '&#9679;' : '&#9675;'} ${escapeHtml(branchName)}${lockIcon}</span>
+        <span class="git-worktree-path">${escapeHtml(shortPath)}</span>
+      </div>
+      <div class="git-worktree-actions">
+        ${!isCurrent ? `<button class="git-wt-btn open" title="${escapeAttr(t('gitTab.openWorktree'))}">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M19 19H5V5h7V3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+        </button>` : ''}
+        ${!isMain && !isCurrent && wt.branch ? `<button class="git-wt-btn merge" title="${escapeAttr(t('gitTab.mergeWorktreeBranch'))}">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M17 20.41L18.41 19 15 15.59 13.59 17 17 20.41zM7.5 8H11v5.59L5.59 19 7 20.41l6-6V8h3.5L12 3.5 7.5 8z"/></svg>
+        </button>` : ''}
+        ${!isMain && !wt.locked ? `<button class="git-wt-btn lock" title="${escapeAttr(t('gitTab.lockWorktree'))}">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+        </button>` : ''}
+        ${!isMain && wt.locked ? `<button class="git-wt-btn unlock" title="${escapeAttr(t('gitTab.unlockWorktree'))}">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z"/></svg>
+        </button>` : ''}
+        ${!isMain ? `<button class="git-wt-btn remove" title="${escapeAttr(t('gitTab.removeWorktree'))}">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        </button>` : ''}
+      </div>
+    </div>`;
+  }
+
+  container.innerHTML = html;
+
+  // Delegated click handler
+  container.onclick = (e) => {
+    const btn = e.target.closest('.git-wt-btn');
+    if (!btn) return;
+    const item = btn.closest('.git-worktree-item');
+    const wtPath = item.dataset.wtPath;
+    const wtBranch = item.dataset.wtBranch;
+    if (btn.classList.contains('open')) handleOpenWorktreeAsProject(wtPath);
+    else if (btn.classList.contains('merge')) handleMerge(wtBranch);
+    else if (btn.classList.contains('lock')) handleLockWorktree(wtPath);
+    else if (btn.classList.contains('unlock')) handleUnlockWorktree(wtPath);
+    else if (btn.classList.contains('remove')) handleRemoveWorktree(wtPath);
+  };
+}
+
+async function refreshWorktrees() {
+  if (!selectedProject) return;
+  try {
+    const wtResult = await api.git.worktreeList({ projectPath: selectedProject.path });
+    worktreesData = (wtResult?.success && wtResult.worktrees?.length > 1) ? wtResult.worktrees : [];
+  } catch (_) {
+    worktreesData = [];
+  }
+  renderWorktrees();
+}
+
+async function handleCreateWorktree() {
+  if (!selectedProject || !branchesData) return;
+
+  // Get currently checked out branches to filter them out
+  const checkedOutBranches = worktreesData
+    .filter(wt => wt.branch)
+    .map(wt => wt.branch);
+
+  const availableBranches = (branchesData.local || [])
+    .filter(b => !checkedOutBranches.includes(b));
+
+  const repoName = selectedProject.path.replace(/\\/g, '/').split('/').pop();
+  const parentDir = window.electron_nodeModules.path.dirname(selectedProject.path);
+  const defaultPath = (parentDir + '/' + repoName + '-').replace(/\\/g, '/');
+
+  const modalBody = `
+    <div class="git-wt-create-form">
+      <div class="git-wt-create-mode">
+        <label class="git-wt-radio">
+          <input type="radio" name="wt-mode" value="existing" checked>
+          ${escapeHtml(t('gitTab.existingBranch'))}
+        </label>
+        <label class="git-wt-radio">
+          <input type="radio" name="wt-mode" value="new">
+          ${escapeHtml(t('gitTab.worktreeNewBranch'))}
+        </label>
+      </div>
+      <div class="git-wt-field" id="wt-existing-field">
+        <label>${escapeHtml(t('git.branches'))}</label>
+        <select id="wt-branch-select" class="input">
+          ${availableBranches.map(b => `<option value="${escapeAttr(b)}">${escapeHtml(b)}</option>`).join('')}
+        </select>
+        ${availableBranches.length === 0 ? `<p class="git-wt-hint">${escapeHtml(t('gitTab.noAvailableBranches'))}</p>` : ''}
+      </div>
+      <div class="git-wt-field" id="wt-new-field" style="display:none">
+        <label>${escapeHtml(t('gitTab.newBranchName'))}</label>
+        <input type="text" id="wt-new-branch-name" class="input" placeholder="feature/my-branch">
+        <label>${escapeHtml(t('gitTab.startPoint'))}</label>
+        <select id="wt-start-point" class="input">
+          <option value="">HEAD</option>
+          ${(branchesData.local || []).map(b => `<option value="${escapeAttr(b)}">${escapeHtml(b)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="git-wt-field">
+        <label>${escapeHtml(t('gitTab.worktreePath'))}</label>
+        <div class="git-wt-path-row">
+          <input type="text" id="wt-path-input" class="input" value="${escapeAttr(defaultPath)}">
+          <button class="git-wt-browse-btn" id="wt-browse-btn">${escapeHtml(t('common.browse'))}</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const modal = createModal({
+    id: 'create-worktree-modal',
+    title: t('gitTab.createWorktree'),
+    content: modalBody,
+    size: 'medium',
+    buttons: [
+      {
+        label: t('common.cancel'),
+        action: 'cancel',
+        onClick: (m) => closeModal(m)
+      },
+      {
+        label: t('gitTab.createWorktree'),
+        action: 'confirm',
+        primary: true,
+        onClick: async (m) => {
+          const mode = m.querySelector('input[name="wt-mode"]:checked')?.value;
+          const wtPath = m.querySelector('#wt-path-input')?.value?.trim();
+
+          if (!wtPath) {
+            showToast('Path is required', 'error');
+            return;
+          }
+
+          let params = { projectPath: selectedProject.path, worktreePath: wtPath };
+
+          if (mode === 'existing') {
+            const branch = m.querySelector('#wt-branch-select')?.value;
+            if (!branch) {
+              showToast(t('gitTab.noAvailableBranches'), 'error');
+              return;
+            }
+            params.branch = branch;
+          } else {
+            const newBranch = m.querySelector('#wt-new-branch-name')?.value?.trim();
+            if (!newBranch) {
+              showToast('Branch name is required', 'error');
+              return;
+            }
+            params.newBranch = newBranch;
+            const startPoint = m.querySelector('#wt-start-point')?.value;
+            if (startPoint) params.startPoint = startPoint;
+          }
+
+          closeModal(m);
+
+          await withLock(async () => {
+            const result = await api.git.worktreeCreate(params);
+            if (result.success) {
+              showToast(t('gitTab.worktreeCreated'), 'success');
+              await refreshWorktrees();
+            } else {
+              showToast(result.error, 'error');
+            }
+          });
+        }
+      }
+    ]
+  });
+
+  showModal(modal);
+
+  // Wire mode toggle
+  modal.querySelectorAll('input[name="wt-mode"]').forEach(radio => {
+    radio.onchange = () => {
+      const isNew = radio.value === 'new' && radio.checked;
+      modal.querySelector('#wt-existing-field').style.display = isNew ? 'none' : '';
+      modal.querySelector('#wt-new-field').style.display = isNew ? '' : 'none';
+
+      // Update suggested path
+      const pathInput = modal.querySelector('#wt-path-input');
+      if (pathInput) {
+        if (isNew) {
+          const branchName = modal.querySelector('#wt-new-branch-name')?.value || '';
+          pathInput.value = defaultPath + branchName.replace(/\//g, '-');
+        } else {
+          const branch = modal.querySelector('#wt-branch-select')?.value || '';
+          pathInput.value = defaultPath + branch.replace(/\//g, '-');
+        }
+      }
+    };
+  });
+
+  // Auto-update path on branch select change
+  const branchSelect = modal.querySelector('#wt-branch-select');
+  if (branchSelect) {
+    branchSelect.onchange = () => {
+      const pathInput = modal.querySelector('#wt-path-input');
+      if (pathInput) pathInput.value = defaultPath + branchSelect.value.replace(/\//g, '-');
+    };
+    // Trigger initial path
+    if (branchSelect.value) {
+      const pathInput = modal.querySelector('#wt-path-input');
+      if (pathInput) pathInput.value = defaultPath + branchSelect.value.replace(/\//g, '-');
+    }
+  }
+
+  // Auto-update path on new branch name input
+  const newBranchInput = modal.querySelector('#wt-new-branch-name');
+  if (newBranchInput) {
+    newBranchInput.oninput = () => {
+      const mode = modal.querySelector('input[name="wt-mode"]:checked')?.value;
+      if (mode === 'new') {
+        const pathInput = modal.querySelector('#wt-path-input');
+        if (pathInput) pathInput.value = defaultPath + newBranchInput.value.replace(/\//g, '-');
+      }
+    };
+  }
+
+  // Browse button
+  modal.querySelector('#wt-browse-btn')?.addEventListener('click', async () => {
+    const result = await api.dialog.selectFolder();
+    if (result) {
+      modal.querySelector('#wt-path-input').value = result;
+    }
+  });
+}
+
+async function handleOpenWorktreeAsProject(wtPath) {
+  const { addProject } = require('../state');
+  const name = wtPath.replace(/\\/g, '/').split('/').pop();
+  const wt = worktreesData.find(w => w.path === wtPath);
+
+  addProject({
+    name: `${name}`,
+    path: wtPath,
+    type: 'standalone',
+    isWorktree: true,
+    parentRepoProjectId: selectedProjectId,
+    worktreeBranch: wt?.branch || null
+  });
+
+  showToast(t('gitTab.worktreeOpened'), 'success');
+}
+
+async function handleLockWorktree(wtPath) {
+  await withLock(async () => {
+    const result = await api.git.worktreeLock({ projectPath: selectedProject.path, worktreePath: wtPath });
+    if (result.success) {
+      showToast(t('gitTab.worktreeLocked'), 'success');
+      await refreshWorktrees();
+    } else {
+      showToast(result.error, 'error');
+    }
+  });
+}
+
+async function handleUnlockWorktree(wtPath) {
+  await withLock(async () => {
+    const result = await api.git.worktreeUnlock({ projectPath: selectedProject.path, worktreePath: wtPath });
+    if (result.success) {
+      showToast(t('gitTab.worktreeUnlocked'), 'success');
+      await refreshWorktrees();
+    } else {
+      showToast(result.error, 'error');
+    }
+  });
+}
+
+async function handleRemoveWorktree(wtPath) {
+  const confirmed = await showConfirm({
+    title: t('gitTab.removeWorktree'),
+    message: t('gitTab.confirmRemoveWorktree'),
+    confirmLabel: t('common.delete'),
+    danger: true
+  });
+  if (!confirmed) return;
+
+  await withLock(async () => {
+    let result = await api.git.worktreeRemove({ projectPath: selectedProject.path, worktreePath: wtPath });
+    if (!result.success && result.error?.includes('dirty')) {
+      const forceConfirmed = await showConfirm({
+        title: t('gitTab.forceRemoveWorktree'),
+        message: t('gitTab.confirmForceRemoveWorktree'),
+        confirmLabel: t('gitTab.forceRemove'),
+        danger: true
+      });
+      if (forceConfirmed) {
+        result = await api.git.worktreeRemove({ projectPath: selectedProject.path, worktreePath: wtPath, force: true });
+      }
+    }
+    if (result.success) {
+      showToast(t('gitTab.worktreeRemoved'), 'success');
+      await refreshWorktrees();
+    } else if (result.error) {
+      showToast(result.error, 'error');
+    }
+  });
+}
+
+async function handlePruneWorktrees() {
+  await withLock(async () => {
+    const result = await api.git.worktreePrune({ projectPath: selectedProject.path });
+    if (result.success) {
+      showToast(t('gitTab.worktreesPruned'), 'success');
+      await refreshWorktrees();
+    } else {
+      showToast(result.error, 'error');
+    }
+  });
+}
+
+// ========== STASHES ==========
 
 function renderStashes() {
   const container = document.getElementById('git-stashes-list');

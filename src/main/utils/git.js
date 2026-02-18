@@ -506,7 +506,11 @@ async function getMergeConflicts(projectPath) {
  * @returns {Promise<boolean>} - True if merge in progress
  */
 async function isMergeInProgress(projectPath) {
-  const mergeHead = path.join(projectPath, '.git', 'MERGE_HEAD');
+  // Use git rev-parse to find the correct git dir (works for both regular repos and worktrees)
+  const gitDir = await execGit(projectPath, 'rev-parse --git-dir');
+  if (!gitDir) return false;
+  const resolvedGitDir = path.resolve(projectPath, gitDir);
+  const mergeHead = path.join(resolvedGitDir, 'MERGE_HEAD');
   return fs.existsSync(mergeHead);
 }
 
@@ -1064,6 +1068,212 @@ function gitStashSave(projectPath, message) {
   });
 }
 
+// ========== WORKTREES ==========
+
+/**
+ * Parse git worktree list --porcelain output
+ * @param {string} output - Porcelain output from git worktree list
+ * @returns {Array} - List of worktree objects
+ */
+function parseWorktreeListOutput(output) {
+  if (!output) return [];
+
+  const worktrees = [];
+  let current = {};
+
+  for (const line of output.split('\n')) {
+    if (line.startsWith('worktree ')) {
+      if (current.path) worktrees.push(current);
+      current = { path: line.slice(9).trim() };
+    } else if (line.startsWith('HEAD ')) {
+      current.head = line.slice(5).trim();
+    } else if (line.startsWith('branch ')) {
+      current.branch = line.slice(7).trim().replace('refs/heads/', '');
+    } else if (line === 'bare') {
+      current.bare = true;
+    } else if (line === 'detached') {
+      current.detached = true;
+    } else if (line.startsWith('locked')) {
+      current.locked = true;
+      const reason = line.slice(7).trim();
+      if (reason) current.lockReason = reason;
+    } else if (line.startsWith('prunable')) {
+      current.prunable = true;
+    } else if (line === '' && current.path) {
+      worktrees.push(current);
+      current = {};
+    }
+  }
+  if (current.path) worktrees.push(current);
+
+  // Mark the first entry as the main worktree
+  if (worktrees.length > 0) worktrees[0].isMain = true;
+
+  return worktrees;
+}
+
+/**
+ * List all worktrees for a repository
+ * @param {string} projectPath - Path to any worktree or the main repo
+ * @returns {Promise<Array>} - List of worktree objects
+ */
+async function getWorktrees(projectPath) {
+  const output = await execGit(projectPath, 'worktree list --porcelain');
+  return parseWorktreeListOutput(output);
+}
+
+/**
+ * Create a new worktree
+ * @param {string} projectPath - Path to the main repo or existing worktree
+ * @param {string} worktreePath - Path for the new worktree
+ * @param {Object} options
+ * @param {string} options.branch - Existing branch to check out
+ * @param {string} options.newBranch - Name for a new branch to create
+ * @param {string} options.startPoint - Start point for new branch (commit/branch)
+ * @returns {Promise<Object>} - { success, error?, output? }
+ */
+function createWorktree(projectPath, worktreePath, options = {}) {
+  return new Promise((resolve) => {
+    const { branch, newBranch, startPoint } = options;
+    let args = 'worktree add';
+
+    if (newBranch) {
+      args += ` -b "${newBranch}" "${worktreePath}"`;
+      if (startPoint) args += ` "${startPoint}"`;
+    } else if (branch) {
+      args += ` "${worktreePath}" "${branch}"`;
+    } else {
+      args += ` "${worktreePath}"`;
+    }
+
+    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
+    exec(`git ${safeDir} ${args}`, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        resolve({ success: false, error: stderr || error.message });
+      } else {
+        resolve({ success: true, output: stderr || stdout || 'Worktree created' });
+      }
+    });
+  });
+}
+
+/**
+ * Remove a worktree
+ * @param {string} projectPath - Path to the main repo
+ * @param {string} worktreePath - Path of the worktree to remove
+ * @param {boolean} force - Force remove even if dirty
+ * @returns {Promise<Object>}
+ */
+function removeWorktree(projectPath, worktreePath, force = false) {
+  return new Promise((resolve) => {
+    const forceFlag = force ? ' --force' : '';
+    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
+    exec(`git ${safeDir} worktree remove${forceFlag} "${worktreePath}"`, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        resolve({ success: false, error: stderr || error.message });
+      } else {
+        resolve({ success: true, output: stdout || 'Worktree removed' });
+      }
+    });
+  });
+}
+
+/**
+ * Lock a worktree
+ * @param {string} projectPath - Path to the main repo
+ * @param {string} worktreePath - Path of the worktree to lock
+ * @param {string} reason - Optional lock reason
+ * @returns {Promise<Object>}
+ */
+function lockWorktree(projectPath, worktreePath, reason = '') {
+  return new Promise((resolve) => {
+    const reasonFlag = reason ? ` --reason "${reason.replace(/"/g, '\\"')}"` : '';
+    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
+    exec(`git ${safeDir} worktree lock${reasonFlag} "${worktreePath}"`, { cwd: projectPath, encoding: 'utf8' }, (error, stdout, stderr) => {
+      if (error) {
+        resolve({ success: false, error: stderr || error.message });
+      } else {
+        resolve({ success: true, output: 'Worktree locked' });
+      }
+    });
+  });
+}
+
+/**
+ * Unlock a worktree
+ * @param {string} projectPath - Path to the main repo
+ * @param {string} worktreePath - Path of the worktree to unlock
+ * @returns {Promise<Object>}
+ */
+function unlockWorktree(projectPath, worktreePath) {
+  return new Promise((resolve) => {
+    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
+    exec(`git ${safeDir} worktree unlock "${worktreePath}"`, { cwd: projectPath, encoding: 'utf8' }, (error, stdout, stderr) => {
+      if (error) {
+        resolve({ success: false, error: stderr || error.message });
+      } else {
+        resolve({ success: true, output: 'Worktree unlocked' });
+      }
+    });
+  });
+}
+
+/**
+ * Prune stale worktree entries
+ * @param {string} projectPath - Path to the main repo
+ * @returns {Promise<Object>}
+ */
+function pruneWorktrees(projectPath) {
+  return new Promise((resolve) => {
+    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
+    exec(`git ${safeDir} worktree prune`, { cwd: projectPath, encoding: 'utf8' }, (error, stdout, stderr) => {
+      if (error) {
+        resolve({ success: false, error: stderr || error.message });
+      } else {
+        resolve({ success: true, output: 'Worktrees pruned' });
+      }
+    });
+  });
+}
+
+/**
+ * Detect if a path is a worktree (not the main repo)
+ * @param {string} projectPath - Path to check
+ * @returns {Promise<Object>} - { isWorktree, mainRepoPath? }
+ */
+async function detectWorktree(projectPath) {
+  const [gitDir, commonDir] = await Promise.all([
+    execGit(projectPath, 'rev-parse --git-dir'),
+    execGit(projectPath, 'rev-parse --git-common-dir')
+  ]);
+
+  if (!gitDir || !commonDir) return { isWorktree: false };
+
+  const normGit = path.resolve(projectPath, gitDir).replace(/\\/g, '/');
+  const normCommon = path.resolve(projectPath, commonDir).replace(/\\/g, '/');
+
+  if (normGit !== normCommon) {
+    const mainRepoPath = path.dirname(normCommon);
+    return { isWorktree: true, mainRepoPath };
+  }
+
+  return { isWorktree: false };
+}
+
+/**
+ * Get diff between two branches (for worktree comparison)
+ * @param {string} projectPath - Path to any worktree of the repo
+ * @param {string} branch1 - First branch name
+ * @param {string} branch2 - Second branch name
+ * @param {string} filePath - Optional specific file to diff
+ * @returns {Promise<string>} - Diff output
+ */
+async function diffWorktreeBranches(projectPath, branch1, branch2, filePath = '') {
+  const fileArg = filePath ? ` -- "${filePath}"` : '';
+  const diff = await execGit(projectPath, `diff ${branch1}...${branch2}${fileArg}`, 15000);
+  return diff || '';
+}
+
 module.exports = {
   parseGitStatus,
   parseDiffNumstat,
@@ -1097,5 +1307,14 @@ module.exports = {
   gitUnstageFiles,
   stashApply,
   stashDrop,
-  gitStashSave
+  gitStashSave,
+  parseWorktreeListOutput,
+  getWorktrees,
+  createWorktree,
+  removeWorktree,
+  lockWorktree,
+  unlockWorktree,
+  pruneWorktrees,
+  detectWorktree,
+  diffWorktreeBranches
 };

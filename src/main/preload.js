@@ -119,7 +119,16 @@ contextBridge.exposeInMainWorld('electron_api', {
     unstageFiles: (params) => ipcRenderer.invoke('git-unstage-files', params),
     stashApply: (params) => ipcRenderer.invoke('git-stash-apply', params),
     stashDrop: (params) => ipcRenderer.invoke('git-stash-drop', params),
-    stashSave: (params) => ipcRenderer.invoke('git-stash-save', params)
+    stashSave: (params) => ipcRenderer.invoke('git-stash-save', params),
+    // Worktrees
+    worktreeList: (params) => ipcRenderer.invoke('git-worktree-list', params),
+    worktreeCreate: (params) => ipcRenderer.invoke('git-worktree-create', params),
+    worktreeRemove: (params) => ipcRenderer.invoke('git-worktree-remove', params),
+    worktreeLock: (params) => ipcRenderer.invoke('git-worktree-lock', params),
+    worktreeUnlock: (params) => ipcRenderer.invoke('git-worktree-unlock', params),
+    worktreePrune: (params) => ipcRenderer.invoke('git-worktree-prune', params),
+    worktreeDetect: (params) => ipcRenderer.invoke('git-worktree-detect', params),
+    worktreeDiff: (params) => ipcRenderer.invoke('git-worktree-diff', params)
   },
 
   // ==================== WEBAPP ====================

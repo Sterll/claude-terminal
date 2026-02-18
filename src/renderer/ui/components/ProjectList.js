@@ -282,6 +282,7 @@ function renderProjectHtml(project, depth) {
           ${projectIconHtml}
           <span>${escapeHtml(project.name)}</span>
           ${terminalStats.total > 0 ? `<span class="terminal-count"><span class="working-count">${terminalStats.working}</span><span class="count-separator">/</span><span class="total-count">${terminalStats.total}</span></span>` : ''}
+          ${project.isWorktree ? '<span class="project-worktree-badge" title="Worktree">WT</span>' : ''}
         </div>
         <div class="project-path">${escapeHtml(project.path)}</div>
         ${hasTime ? `<div class="project-time">

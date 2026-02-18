@@ -4,7 +4,7 @@
  */
 
 const { ipcMain } = require('electron');
-const { execGit, getGitInfo, getGitInfoFull, getGitStatusQuick, getGitStatusDetailed, gitPull, gitPush, gitMerge, gitMergeAbort, gitMergeContinue, getMergeConflicts, isMergeInProgress, gitClone, gitStageFiles, gitCommit, getProjectStats, getBranches, getCurrentBranch, checkoutBranch, createBranch, deleteBranch, getCommitHistory, getFileDiff, getCommitDetail, cherryPick, revertCommit, gitUnstageFiles, stashApply, stashDrop, gitStashSave } = require('../utils/git');
+const { execGit, getGitInfo, getGitInfoFull, getGitStatusQuick, getGitStatusDetailed, gitPull, gitPush, gitMerge, gitMergeAbort, gitMergeContinue, getMergeConflicts, isMergeInProgress, gitClone, gitStageFiles, gitCommit, getProjectStats, getBranches, getCurrentBranch, checkoutBranch, createBranch, deleteBranch, getCommitHistory, getFileDiff, getCommitDetail, cherryPick, revertCommit, gitUnstageFiles, stashApply, stashDrop, gitStashSave, getWorktrees, createWorktree, removeWorktree, lockWorktree, unlockWorktree, pruneWorktrees, detectWorktree, diffWorktreeBranches } = require('../utils/git');
 const { generateCommitMessage } = require('../utils/commitMessageGenerator');
 const GitHubAuthService = require('../services/GitHubAuthService');
 
@@ -203,6 +203,49 @@ function registerGitHandlers() {
     } catch (e) {
       return { success: false, error: e.message };
     }
+  });
+  // ========== WORKTREES ==========
+
+  // List worktrees
+  ipcMain.handle('git-worktree-list', async (event, { projectPath }) => {
+    const worktrees = await getWorktrees(projectPath);
+    return { success: true, worktrees };
+  });
+
+  // Create worktree
+  ipcMain.handle('git-worktree-create', async (event, { projectPath, worktreePath, branch, newBranch, startPoint }) => {
+    return createWorktree(projectPath, worktreePath, { branch, newBranch, startPoint });
+  });
+
+  // Remove worktree
+  ipcMain.handle('git-worktree-remove', async (event, { projectPath, worktreePath, force }) => {
+    return removeWorktree(projectPath, worktreePath, force);
+  });
+
+  // Lock worktree
+  ipcMain.handle('git-worktree-lock', async (event, { projectPath, worktreePath, reason }) => {
+    return lockWorktree(projectPath, worktreePath, reason);
+  });
+
+  // Unlock worktree
+  ipcMain.handle('git-worktree-unlock', async (event, { projectPath, worktreePath }) => {
+    return unlockWorktree(projectPath, worktreePath);
+  });
+
+  // Prune stale worktrees
+  ipcMain.handle('git-worktree-prune', async (event, { projectPath }) => {
+    return pruneWorktrees(projectPath);
+  });
+
+  // Detect if path is a worktree
+  ipcMain.handle('git-worktree-detect', async (event, { projectPath }) => {
+    return detectWorktree(projectPath);
+  });
+
+  // Diff between worktree branches
+  ipcMain.handle('git-worktree-diff', async (event, { projectPath, branch1, branch2, filePath }) => {
+    const diff = await diffWorktreeBranches(projectPath, branch1, branch2, filePath);
+    return { success: true, diff };
   });
 }
 

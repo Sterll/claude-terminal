@@ -8,7 +8,8 @@ const { State } = require('./State');
 // Initial state
 const initialState = {
   gitOperations: new Map(), // projectId -> { pulling, pushing, lastResult }
-  gitRepoStatus: new Map() // projectId -> { isGitRepo }
+  gitRepoStatus: new Map(), // projectId -> { isGitRepo }
+  gitWorktrees: new Map() // projectId -> { worktrees[], isWorktree, mainRepoPath }
 };
 
 const gitState = new State(initialState);
@@ -139,6 +140,32 @@ async function checkAllProjectsGitStatus(projects, checkFn) {
   }
 }
 
+// ========== Worktrees ==========
+
+/**
+ * Get worktree info for a project
+ * @param {string} projectId
+ * @returns {Object}
+ */
+function getWorktreeInfo(projectId) {
+  return gitState.get().gitWorktrees.get(projectId) || {
+    worktrees: [],
+    isWorktree: false,
+    mainRepoPath: null
+  };
+}
+
+/**
+ * Set worktree info for a project
+ * @param {string} projectId
+ * @param {Object} info
+ */
+function setWorktreeInfo(projectId, info) {
+  const worktrees = new Map(gitState.get().gitWorktrees);
+  worktrees.set(projectId, info);
+  gitState.setProp('gitWorktrees', worktrees);
+}
+
 module.exports = {
   gitState,
   getGitOperation,
@@ -148,5 +175,7 @@ module.exports = {
   setMergeInProgress,
   getGitRepoStatus,
   setGitRepoStatus,
-  checkAllProjectsGitStatus
+  checkAllProjectsGitStatus,
+  getWorktreeInfo,
+  setWorktreeInfo
 };

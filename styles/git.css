@@ -1245,6 +1245,194 @@
   background: var(--bg-hover);
 }
 
+/* ========== WORKTREES ========== */
+
+.git-sidebar-worktrees {
+  flex-shrink: 0;
+}
+
+.git-sidebar-header-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.git-worktrees-list {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 4px 8px 8px;
+}
+
+.git-worktree-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px 6px 16px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s;
+  gap: 6px;
+}
+
+.git-worktree-item:hover {
+  background: var(--bg-hover);
+}
+
+.git-worktree-item.current {
+  background: var(--accent-dim);
+  border-left: 2px solid var(--accent);
+  padding-left: 14px;
+}
+
+.git-worktree-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.git-worktree-branch {
+  font-size: var(--font-xs);
+  color: var(--text-primary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-worktree-item.main .git-worktree-branch {
+  color: var(--accent);
+}
+
+.git-worktree-path {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-wt-lock {
+  font-size: 10px;
+  margin-left: 4px;
+}
+
+.git-worktree-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.git-worktree-item:hover .git-worktree-actions {
+  opacity: 1;
+}
+
+.git-wt-btn {
+  padding: 3px 5px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: all 0.15s;
+}
+
+.git-wt-btn:hover {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.git-wt-btn.remove:hover {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* Worktree create modal */
+.git-wt-create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.git-wt-create-mode {
+  display: flex;
+  gap: 16px;
+}
+
+.git-wt-radio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.git-wt-radio input[type="radio"] {
+  accent-color: var(--accent);
+}
+
+.git-wt-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.git-wt-field label {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.git-wt-hint {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0;
+}
+
+.git-wt-path-row {
+  display: flex;
+  gap: 8px;
+}
+
+.git-wt-path-row input {
+  flex: 1;
+}
+
+.git-wt-browse-btn {
+  padding: 6px 12px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: var(--font-xs);
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.git-wt-browse-btn:hover {
+  background: var(--bg-active);
+  border-color: var(--accent);
+}
+
+/* Worktree badge in project list */
+.project-worktree-badge {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 4px;
+  letter-spacing: 0.5px;
+}
+
 /* Merge conflict banner */
 .git-merge-banner {
   display: flex;

@@ -22,7 +22,8 @@
     "new": "Nouveau",
     "today": "Aujourd'hui",
     "total": "Total",
-    "noDescription": "Aucune description"
+    "noDescription": "Aucune description",
+    "browse": "Parcourir"
   },
   "projects": {
     "title": "Projets",
@@ -225,7 +226,32 @@
     "allBranches": "Toutes les branches",
     "allAuthors": "Tous les auteurs",
     "branchFilter": "Branche",
-    "authorFilter": "Auteur"
+    "authorFilter": "Auteur",
+    "worktrees": "Worktrees",
+    "noWorktrees": "Aucun worktree",
+    "createWorktree": "Créer un worktree",
+    "removeWorktree": "Supprimer le worktree",
+    "lockWorktree": "Verrouiller",
+    "unlockWorktree": "Déverrouiller",
+    "openWorktree": "Ouvrir comme projet",
+    "worktreeOpened": "Worktree ouvert comme projet",
+    "worktreeLocked": "Worktree verrouillé",
+    "worktreeUnlocked": "Worktree déverrouillé",
+    "worktreeRemoved": "Worktree supprimé",
+    "worktreesPruned": "Worktrees obsolètes nettoyés",
+    "worktreeCreated": "Worktree créé",
+    "confirmRemoveWorktree": "Supprimer ce worktree ? Le dossier sera supprimé.",
+    "forceRemoveWorktree": "Forcer la suppression",
+    "confirmForceRemoveWorktree": "Ce worktree contient des modifications non committées. Forcer la suppression ?",
+    "forceRemove": "Forcer",
+    "existingBranch": "Branche existante",
+    "worktreeNewBranch": "Nouvelle branche",
+    "newBranchName": "Nom de la nouvelle branche",
+    "startPoint": "Point de départ",
+    "worktreePath": "Chemin du worktree",
+    "noAvailableBranches": "Toutes les branches ont déjà un worktree",
+    "compareWorktrees": "Comparer les branches",
+    "mergeWorktreeBranch": "Fusionner la branche"
   },
   "dashboard": {
     "openFolder": "Ouvrir dossier",

@@ -22,7 +22,8 @@
     "new": "New",
     "today": "Today",
     "total": "Total",
-    "noDescription": "No description"
+    "noDescription": "No description",
+    "browse": "Browse"
   },
   "projects": {
     "title": "Projects",
@@ -159,7 +160,32 @@
     "allBranches": "All branches",
     "allAuthors": "All authors",
     "branchFilter": "Branch",
-    "authorFilter": "Author"
+    "authorFilter": "Author",
+    "worktrees": "Worktrees",
+    "noWorktrees": "No worktrees",
+    "createWorktree": "Create Worktree",
+    "removeWorktree": "Remove Worktree",
+    "lockWorktree": "Lock",
+    "unlockWorktree": "Unlock",
+    "openWorktree": "Open as project",
+    "worktreeOpened": "Worktree opened as project",
+    "worktreeLocked": "Worktree locked",
+    "worktreeUnlocked": "Worktree unlocked",
+    "worktreeRemoved": "Worktree removed",
+    "worktreesPruned": "Stale worktrees pruned",
+    "worktreeCreated": "Worktree created",
+    "confirmRemoveWorktree": "Remove this worktree? The directory will be deleted.",
+    "forceRemoveWorktree": "Force Remove Worktree",
+    "confirmForceRemoveWorktree": "This worktree has uncommitted changes. Force remove?",
+    "forceRemove": "Force Remove",
+    "existingBranch": "Existing branch",
+    "worktreeNewBranch": "New branch",
+    "newBranchName": "New branch name",
+    "startPoint": "Start point",
+    "worktreePath": "Worktree path",
+    "noAvailableBranches": "All branches already have worktrees",
+    "compareWorktrees": "Compare branches",
+    "mergeWorktreeBranch": "Merge branch"
   },
   "dashboard": {
     "openFolder": "Open folder",
