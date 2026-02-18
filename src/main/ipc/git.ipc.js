@@ -159,8 +159,17 @@ function registerGitHandlers() {
     return gitStashSave(projectPath, message);
   });
 
-  // Generate commit message from file statuses and diff
-  ipcMain.handle('git-generate-commit-message', async (event, { projectPath, files, useAi }) => {
+  // Initialize a new git repo in a directory (used by project creation)
+  ipcMain.handle('git-init-project', async (event, { cwd }) => {
+    try {
+      const result = await execGit(cwd, 'init');
+      return { success: result !== null };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  // Generate commit message from file statuses and diff async (event, { projectPath, files, useAi }) => {
     try {
       const path = require('path');
       const fs = require('fs');

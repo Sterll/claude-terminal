@@ -153,7 +153,7 @@ Documentez les fonctions exportees ici.
 };
 
 function getClaudeDir() {
-  return path.join(nodeProcess.env.USERPROFILE || nodeProcess.env.HOME, '.claude');
+  return path.join(window.electron_nodeModules.os.homedir(), '.claude');
 }
 
 function getGlobalClaudeMd() {
@@ -295,7 +295,7 @@ async function loadMemoryContent(source, projectIndex = null) {
   memoryState.fileExists = fileExists;
 
   titleEl.textContent = title;
-  pathEl.textContent = filePath.replace(nodeProcess.env.USERPROFILE || nodeProcess.env.HOME, '~');
+  pathEl.textContent = filePath.replace(window.electron_nodeModules.os.homedir(), '~');
 
   // Show/hide buttons based on context
   const isMarkdownSource = source === 'global' || source === 'project';

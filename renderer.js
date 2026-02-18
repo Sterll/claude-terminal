@@ -2095,20 +2095,23 @@ document.getElementById('btn-new-project').onclick = () => {
 
         // Init git repo if checked
         if (document.getElementById('chk-init-git')?.checked) {
-          const { execSync } = window.electron_nodeModules.child_process;
           try {
-            execSync('git init', { cwd: projPath, stdio: 'ignore' });
-            fs.writeFileSync(path.join(projPath, '.gitignore'), [
-              'node_modules/',
-              'dist/',
-              'build/',
-              '.env',
-              '.env.local',
-              '*.log',
-              '.DS_Store',
-              'Thumbs.db',
-              ''
-            ].join('\n'));
+            const gitResult = await api.git.initProject({ cwd: projPath });
+            if (gitResult.success) {
+              fs.writeFileSync(path.join(projPath, '.gitignore'), [
+                'node_modules/',
+                'dist/',
+                'build/',
+                '.env',
+                '.env.local',
+                '*.log',
+                '.DS_Store',
+                'Thumbs.db',
+                ''
+              ].join('\n'));
+            } else {
+              showToast('Dossier cree mais erreur git init: ' + (gitResult.error || 'unknown'), 'error');
+            }
           } catch (gitErr) {
             showToast('Dossier cree mais erreur git init: ' + gitErr.message, 'error');
           }

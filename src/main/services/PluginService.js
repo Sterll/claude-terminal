@@ -427,7 +427,7 @@ function runPluginCommand(command, successPatterns, errorPatterns, timeoutMs = 6
       if (phase === 'waiting_cmd' && matchesShellPrompt(output)) {
         phase = 'waiting_claude';
         console.debug('[PluginService] Phase: Shell ready, starting Claude...');
-        proc.write('claude --dangerously-skip-permissions\r');
+        proc.write('claude\r');
       }
 
       // Phase 2: Wait for Claude to be ready, then send command

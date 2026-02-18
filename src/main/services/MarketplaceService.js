@@ -7,7 +7,7 @@ const https = require('https');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 
 const homeDir = os.homedir();
 const skillsDir = path.join(homeDir, '.claude', 'skills');
@@ -232,13 +232,20 @@ async function getSkillReadme(source, skillId) {
 
 /**
  * Clone a repo to a temp directory
+ * Uses execFile instead of exec to prevent shell injection via repoUrl
  */
 function gitCloneTemp(repoUrl) {
   return new Promise((resolve, reject) => {
+    // Validate repoUrl format before cloning
+    if (typeof repoUrl !== 'string' || !/^https:\/\/github\.com\/[\w.\-]+\/[\w.\-]+(\.git)?$/.test(repoUrl)) {
+      return reject(new Error(`Invalid repository URL: ${repoUrl}`));
+    }
+
     const tmpDir = path.join(os.tmpdir(), `claude-marketplace-${Date.now()}`);
-    // Use --depth 1 for faster clone
-    exec(
-      `git clone --depth 1 "${repoUrl}" "${tmpDir}"`,
+    // Use execFile (no shell) to prevent injection — arguments passed as array
+    execFile(
+      'git',
+      ['clone', '--depth', '1', repoUrl, tmpDir],
       { timeout: 120000, maxBuffer: 1024 * 1024 * 10 },
       (error) => {
         if (error) {

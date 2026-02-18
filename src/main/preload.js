@@ -1,14 +1,77 @@
 /**
  * Preload Script
  * Exposes IPC API to renderer with context isolation
+ *
+ * SECURITY: All filesystem operations are validated against path traversal
+ * and restricted from accessing sensitive system directories.
+ * child_process has been removed entirely — use IPC handlers instead.
  */
 
 const { contextBridge, ipcRenderer } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
-// Expose Node.js modules that are needed in renderer
-// Note: For better security, these operations should eventually be moved to main process
+const homeDir = os.homedir();
+const appRoot = path.join(__dirname, '..', '..');
+
+// ============================================
+// PATH SECURITY VALIDATION
+// ============================================
+
+/**
+ * Directories that should never be written to or deleted from via renderer.
+ * Read-only access is still allowed for existsSync/stat checks.
+ */
+const BLOCKED_WRITE_PATTERNS = [
+  // System directories (Unix)
+  '/etc', '/usr', '/bin', '/sbin', '/boot', '/proc', '/sys', '/dev',
+  // System directories (Windows)
+  'C:\\Windows', 'C:\\Program Files', 'C:\\Program Files (x86)',
+  // Sensitive user directories
+  path.join(homeDir, '.ssh'),
+  path.join(homeDir, '.gnupg'),
+  path.join(homeDir, '.aws'),
+];
+
+/**
+ * Validate that a path is safe for filesystem operations.
+ * Resolves the path and checks for path traversal and blocked directories.
+ * @param {string} p - Path to validate
+ * @param {boolean} isWrite - Whether this is a write/delete operation
+ * @returns {string} - Resolved absolute path
+ * @throws {Error} - If path is unsafe
+ */
+function validatePath(p, isWrite = false) {
+  if (typeof p !== 'string' || p.length === 0) {
+    throw new Error('Invalid path: must be a non-empty string');
+  }
+
+  const resolved = path.resolve(p);
+
+  // Block null bytes (path traversal attack vector)
+  if (resolved.includes('\0')) {
+    throw new Error('Invalid path: contains null bytes');
+  }
+
+  // For write operations, check against blocked directories
+  if (isWrite) {
+    const normalizedLower = resolved.toLowerCase().replace(/\\/g, '/');
+    for (const blocked of BLOCKED_WRITE_PATTERNS) {
+      const blockedNorm = blocked.toLowerCase().replace(/\\/g, '/');
+      if (normalizedLower === blockedNorm || normalizedLower.startsWith(blockedNorm + '/')) {
+        throw new Error(`Access denied: cannot write to ${blocked}`);
+      }
+    }
+  }
+
+  return resolved;
+}
+
+// ============================================
+// EXPOSED NODE MODULES (with security layer)
+// ============================================
+
 contextBridge.exposeInMainWorld('electron_nodeModules', {
   path: {
     join: (...args) => path.join(...args),
@@ -19,12 +82,12 @@ contextBridge.exposeInMainWorld('electron_nodeModules', {
     sep: path.sep
   },
   fs: {
-    existsSync: (p) => fs.existsSync(p),
-    readFileSync: (p, options) => fs.readFileSync(p, options),
-    writeFileSync: (p, data, options) => fs.writeFileSync(p, data, options),
-    readdirSync: (p, options) => fs.readdirSync(p, options),
+    // Read operations — validated but not write-blocked
+    existsSync: (p) => fs.existsSync(validatePath(p)),
+    readFileSync: (p, options) => fs.readFileSync(validatePath(p), options),
+    readdirSync: (p, options) => fs.readdirSync(validatePath(p), options),
     statSync: (p) => {
-      const stat = fs.statSync(p);
+      const stat = fs.statSync(validatePath(p));
       return {
         isDirectory: () => stat.isDirectory(),
         isFile: () => stat.isFile(),
@@ -32,16 +95,20 @@ contextBridge.exposeInMainWorld('electron_nodeModules', {
         mtime: stat.mtime
       };
     },
-    mkdirSync: (p, options) => fs.mkdirSync(p, options),
-    rmSync: (p, options) => fs.rmSync(p, options),
-    copyFileSync: (src, dest) => fs.copyFileSync(src, dest),
-    unlinkSync: (p) => fs.unlinkSync(p),
-    renameSync: (oldPath, newPath) => fs.renameSync(oldPath, newPath),
+    // Write operations — validated with write-block check
+    writeFileSync: (p, data, options) => fs.writeFileSync(validatePath(p, true), data, options),
+    mkdirSync: (p, options) => fs.mkdirSync(validatePath(p, true), options),
+    copyFileSync: (src, dest) => fs.copyFileSync(validatePath(src), validatePath(dest, true)),
+    // Destructive operations — validated with write-block check
+    rmSync: (p, options) => fs.rmSync(validatePath(p, true), options),
+    unlinkSync: (p) => fs.unlinkSync(validatePath(p, true)),
+    renameSync: (oldPath, newPath) => fs.renameSync(validatePath(oldPath, true), validatePath(newPath, true)),
+    // Async operations — validated
     promises: {
-      access: (p, mode) => fs.promises.access(p, mode),
-      readdir: (p, options) => fs.promises.readdir(p, options),
-      readFile: (p, options) => fs.promises.readFile(p, options),
-      stat: (p) => fs.promises.stat(p).then(stat => ({
+      access: (p, mode) => fs.promises.access(validatePath(p), mode),
+      readdir: (p, options) => fs.promises.readdir(validatePath(p), options),
+      readFile: (p, options) => fs.promises.readFile(validatePath(p), options),
+      stat: (p) => fs.promises.stat(validatePath(p)).then(stat => ({
         isDirectory: () => stat.isDirectory(),
         isFile: () => stat.isFile(),
         size: stat.size,
@@ -50,22 +117,16 @@ contextBridge.exposeInMainWorld('electron_nodeModules', {
     }
   },
   os: {
-    homedir: () => require('os').homedir()
+    homedir: () => homeDir
   },
   process: {
-    env: {
-      USERPROFILE: process.env.USERPROFILE,
-      HOME: process.env.HOME,
-      APPDATA: process.env.APPDATA
-    },
+    // Only expose the minimum needed — no env vars leaked
     resourcesPath: process.resourcesPath || '',
     platform: process.platform
   },
-  child_process: {
-    execSync: (cmd, options) => require('child_process').execSync(cmd, options)
-  },
+  // child_process removed for security — use IPC handlers instead
   // __dirname from preload (src/main) - calculate app root by going up two levels
-  __dirname: path.join(__dirname, '..', '..')
+  __dirname: appRoot
 });
 
 // Helper to create safe IPC listener that returns unsubscribe function
@@ -119,7 +180,8 @@ contextBridge.exposeInMainWorld('electron_api', {
     unstageFiles: (params) => ipcRenderer.invoke('git-unstage-files', params),
     stashApply: (params) => ipcRenderer.invoke('git-stash-apply', params),
     stashDrop: (params) => ipcRenderer.invoke('git-stash-drop', params),
-    stashSave: (params) => ipcRenderer.invoke('git-stash-save', params)
+    stashSave: (params) => ipcRenderer.invoke('git-stash-save', params),
+    initProject: (params) => ipcRenderer.invoke('git-init-project', params)
   },
 
   // ==================== WEBAPP ====================

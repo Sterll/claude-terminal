@@ -236,7 +236,7 @@ function fetchUsageFromPTY() {
       const { matchesShellPrompt } = require('../utils/shell');
       if (phase === 'waiting_cmd' && matchesShellPrompt(output)) {
         phase = 'waiting_claude';
-        proc.write('claude --dangerously-skip-permissions\r');
+        proc.write('claude\r');
       }
 
       if (phase === 'waiting_claude' && output.includes('Claude Code')) {
