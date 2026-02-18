@@ -22,7 +22,7 @@ body.platform-darwin .titlebar-controls {
 }
 
 body.platform-darwin .titlebar-drag {
-  padding-left: 4px;
+  padding-left: 0;
 }
 
 .titlebar-drag {

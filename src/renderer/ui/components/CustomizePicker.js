@@ -134,7 +134,7 @@ function isPresetColor(color) {
 function createPickerHtml(itemType, item) {
   const currentColor = item?.color || null;
   const currentIcon = item?.icon || null;
-  const itemName = item?.name || 'Élément';
+  const itemName = item?.name || 'Item';
 
   // Generate preview
   const previewIcon = currentIcon || (itemType === 'folder' ? '📁' : '📄');

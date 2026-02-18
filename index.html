@@ -101,7 +101,7 @@
         <div class="update-progress-bar" id="update-progress-bar"></div>
         <span class="update-progress-text" id="update-progress-text">0%</span>
       </div>
-      <button class="update-btn" id="update-btn" style="display: none;" data-i18n="ui.restartToUpdate">Redémarrer pour mettre à jour</button>
+      <button class="update-btn" id="update-btn" style="display: none;" data-i18n="ui.restartToUpdate">Restart to update</button>
       <button class="update-dismiss" id="update-dismiss" data-i18n-title="common.close">
         <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
       </button>
@@ -163,11 +163,11 @@
           </svg>
           <span>Time Tracking</span>
         </button>
-        <button class="nav-tab" data-tab="memory" title="Mémoire">
+        <button class="nav-tab" data-tab="memory" title="Memory">
           <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/>
           </svg>
-          <span data-i18n="ui.memory">Mémoire</span>
+          <span data-i18n="ui.memory">Memory</span>
         </button>
       </nav>
       <div class="sidebar-footer">
@@ -186,7 +186,7 @@
           <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
           </svg>
-          <span data-i18n="settings.button">Paramètres</span>
+          <span data-i18n="settings.button">Settings</span>
         </button>
         <span class="version" id="app-version"></span>
       </div>
@@ -330,7 +330,7 @@
                 <div class="git-changes-toolbar">
                   <label class="git-select-all">
                     <input type="checkbox" id="git-select-all">
-                    <span data-i18n="ui.selectAll">Tout sélectionner</span>
+                    <span data-i18n="ui.selectAll">Select all</span>
                   </label>
                   <div class="git-changes-stats" id="git-changes-stats"></div>
                 </div>
@@ -339,10 +339,10 @@
                 </div>
                 <div class="git-commit-section">
                   <div class="git-commit-header">
-                    <span data-i18n="ui.commitMessage">Message de commit</span>
+                    <span data-i18n="ui.commitMessage">Commit message</span>
                     <button class="btn-generate" id="btn-generate-commit" data-i18n-title="ui.generateCommitMessage">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2z"/></svg>
-                      <span data-i18n="ui.generate">Générer</span>
+                      <span data-i18n="ui.generate">Generate</span>
                     </button>
                   </div>
                   <textarea id="git-commit-message" placeholder="feat: description des changements..." rows="3"></textarea>
@@ -383,8 +383,8 @@
                 <svg viewBox="0 0 24 24" fill="currentColor">
                   <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.89 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10z"/>
                 </svg>
-                <p data-i18n="terminals.selectProject">Sélectionnez un projet et cliquez sur "Claude Code"</p>
-                <p class="hint" data-i18n="terminals.terminalOpensHere">Le terminal s'ouvrira ici</p>
+                <p data-i18n="terminals.selectProject">Select a project and click "Claude Code"</p>
+                <p class="hint" data-i18n="terminals.terminalOpensHere">The terminal will open here</p>
               </div>
             </div>
 
@@ -451,7 +451,7 @@
             <div class="skills-header-right">
               <button class="btn-primary" id="btn-new-skill">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-                <span data-i18n="ui.newSkill">Nouveau Skill</span>
+                <span data-i18n="ui.newSkill">New Skill</span>
               </button>
               <div class="skills-search-container" id="skills-marketplace-search" style="display:none">
                 <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
@@ -552,7 +552,7 @@
             <div class="dashboard-content" id="dashboard-content">
               <div class="dashboard-empty">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
-                <p data-i18n="ui.selectProjectForDashboard">Sélectionnez un projet pour voir son dashboard</p>
+                <p data-i18n="ui.selectProjectForDashboard">Select a project to see its dashboard</p>
               </div>
             </div>
           </div>
@@ -607,7 +607,7 @@
             <div class="memory-sources-list" id="memory-sources-list">
               <div class="memory-source-item active" data-source="global">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
-                <span data-i18n="ui.globalMemory">Mémoire Globale</span>
+                <span data-i18n="ui.globalMemory">Global Memory</span>
               </div>
               <div class="memory-source-item" data-source="settings">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
@@ -626,7 +626,7 @@
           <div class="memory-main">
             <div class="memory-header">
               <div class="memory-title">
-                <h2 id="memory-title" data-i18n="ui.globalMemory">Mémoire Globale</h2>
+                <h2 id="memory-title" data-i18n="ui.globalMemory">Global Memory</h2>
                 <span class="memory-path" id="memory-path">~/.claude/CLAUDE.md</span>
               </div>
               <div class="memory-stats" id="memory-stats"></div>
@@ -646,7 +646,7 @@
                 </button>
                 <button class="btn-primary btn-create" id="btn-memory-create" style="display: none;">
                   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-                  <span data-i18n="ui.createClaudeMd">Créer CLAUDE.md</span>
+                  <span data-i18n="ui.createClaudeMd">Create CLAUDE.md</span>
                 </button>
               </div>
             </div>
@@ -687,8 +687,8 @@
       <div class="quick-picker-list" id="quick-picker-list"></div>
       <div class="quick-picker-footer">
         <span><kbd>↑↓</kbd> <span data-i18n="ui.navigate">Naviguer</span></span>
-        <span><kbd>Enter</kbd> <span data-i18n="ui.open">Ouvrir</span></span>
-        <span><kbd>Esc</kbd> <span data-i18n="common.close">Fermer</span></span>
+        <span><kbd>Enter</kbd> <span data-i18n="ui.open">Open</span></span>
+        <span><kbd>Esc</kbd> <span data-i18n="common.close">Close</span></span>
       </div>
     </div>
   </div>
@@ -702,7 +702,7 @@
       <div class="modal-header" id="input-modal-title">Titre</div>
       <input type="text" class="modal-input" id="input-modal-input" placeholder="">
       <div class="modal-actions">
-        <button class="btn-secondary" id="input-modal-cancel" data-i18n="common.cancel">Annuler</button>
+        <button class="btn-secondary" id="input-modal-cancel" data-i18n="common.cancel">Cancel</button>
         <button class="btn-primary" id="input-modal-confirm" data-i18n="common.confirm">Confirmer</button>
       </div>
     </div>
@@ -712,32 +712,32 @@
   <div class="modal-overlay" id="create-modal">
     <div class="modal create-modal">
       <div class="modal-header">
-        <h3 id="create-modal-title" data-i18n="ui.newSkill">Nouveau Skill</h3>
+        <h3 id="create-modal-title" data-i18n="ui.newSkill">New Skill</h3>
         <button class="btn-icon modal-close" id="create-modal-close" data-i18n-title="common.close">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
         </button>
       </div>
       <div class="modal-body">
         <div class="create-modal-intro">
-          <p data-i18n="ui.describeWhatToCreate">Décrivez ce que vous voulez créer et Claude générera le code pour vous.</p>
+          <p data-i18n="ui.describeWhatToCreate">Describe what you want to create and Claude will generate the code for you.</p>
         </div>
         <div class="create-modal-field">
           <label for="create-modal-description" data-i18n="ui.description">Description</label>
           <textarea id="create-modal-description" data-i18n-placeholder="ui.skillPlaceholder" rows="4"></textarea>
         </div>
         <div class="create-modal-field">
-          <label data-i18n="ui.targetProject">Projet cible</label>
+          <label data-i18n="ui.targetProject">Target project</label>
           <select id="create-modal-project">
-            <option value="" data-i18n="ui.selectProject">Sélectionnez un projet...</option>
+            <option value="" data-i18n="ui.selectProject">Select a project...</option>
           </select>
-          <p class="field-hint" data-i18n="ui.skillAgentHint">Le skill/agent sera créé dans le terminal de ce projet</p>
+          <p class="field-hint" data-i18n="ui.skillAgentHint">The skill/agent will be created in this project's terminal</p>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn-secondary" id="create-modal-cancel" data-i18n="common.cancel">Annuler</button>
+        <button class="btn-secondary" id="create-modal-cancel" data-i18n="common.cancel">Cancel</button>
         <button class="btn-primary btn-create-with-claude" id="create-modal-submit">
           <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-          <span data-i18n="ui.createWithClaude">Créer avec Claude</span>
+          <span data-i18n="ui.createWithClaude">Create with Claude</span>
         </button>
       </div>
     </div>

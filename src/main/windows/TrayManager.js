@@ -4,7 +4,7 @@
  */
 
 const path = require('path');
-const { Tray, Menu, ipcMain } = require('electron');
+const { Tray, Menu, ipcMain, nativeImage } = require('electron');
 const { showMainWindow, setQuitting } = require('./MainWindow');
 const { createQuickPickerWindow } = require('./QuickPickerWindow');
 
@@ -15,15 +15,17 @@ let tray = null;
  * @returns {string}
  */
 function getTrayIconPath() {
-  // In development: relative to src/main/windows
-  // In production: resources/assets
   const fs = require('fs');
+  if (process.platform === 'darwin') {
+    const trayName = 'trayIconTemplate.png';
+    const devPath = path.join(__dirname, '..', '..', '..', 'assets', trayName);
+    if (fs.existsSync(devPath)) return devPath;
+    return path.join(process.resourcesPath || __dirname, 'assets', trayName);
+  }
   const ext = process.platform === 'win32' ? 'ico' : 'png';
   const iconName = `icon.${ext}`;
   const devPath = path.join(__dirname, '..', '..', '..', 'assets', iconName);
-  if (fs.existsSync(devPath)) {
-    return devPath;
-  }
+  if (fs.existsSync(devPath)) return devPath;
   return path.join(process.resourcesPath || __dirname, 'assets', iconName);
 }
 
@@ -32,11 +34,17 @@ function getTrayIconPath() {
  */
 function createTray() {
   const iconPath = getTrayIconPath();
-  tray = new Tray(iconPath);
+  const icon = nativeImage.createFromPath(iconPath);
+  if (process.platform === 'darwin') {
+    icon.setTemplateImage(true);
+  } else {
+    icon.resize({ width: 24, height: 24 });
+  }
+  tray = new Tray(icon);
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'Ouvrir Claude Terminal',
+      label: 'Open Claude Terminal',
       click: () => {
         showMainWindow();
       }
@@ -48,7 +56,7 @@ function createTray() {
       }
     },
     {
-      label: `Nouveau Terminal (${process.platform === 'darwin' ? 'Cmd' : 'Ctrl'}+Shift+T)`,
+      label: `New Terminal (${process.platform === 'darwin' ? 'Cmd' : 'Ctrl'}+Shift+T)`,
       click: () => {
         showMainWindow();
         setTimeout(() => {
@@ -62,7 +70,7 @@ function createTray() {
     },
     { type: 'separator' },
     {
-      label: 'Quitter',
+      label: 'Quit',
       click: () => {
         setQuitting(true);
         const { app } = require('electron');
