@@ -85,30 +85,33 @@ function highlightCore(code, lang) {
   if (lang === 'markdown') return highlightMarkdown(code);
 
   let escaped = escapeHtml(code);
+  const tokens = [];
 
-  // Comments (single-line)
-  const commentPattern = COMMENT_PATTERNS[lang] || DEFAULT_COMMENT_PATTERN;
-  escaped = escaped.replace(commentPattern, '<span class="syn-cmt">$1</span>');
-
-  // Strings (double and single quoted)
-  escaped = escaped.replace(/(&quot;(?:[^&]|&(?!quot;))*?&quot;)/g, '<span class="syn-str">$1</span>');
-  escaped = escaped.replace(/(&#x27;(?:[^&]|&(?!#x27;))*?&#x27;)/g, '<span class="syn-str">$1</span>');
-  // Template literals for JS/TS
-  if (lang === 'javascript' || lang === 'typescript') {
-    escaped = escaped.replace(/(&#96;(?:[^&]|&(?!#96;))*?&#96;)/g, '<span class="syn-str">$1</span>');
+  function protect(html) {
+    const id = tokens.length;
+    tokens.push(html);
+    return `\x00T${id}\x00`;
   }
 
-  // Numbers
-  escaped = escaped.replace(/\b(\d+\.?\d*)\b/g, '<span class="syn-num">$1</span>');
+  const commentPattern = COMMENT_PATTERNS[lang] || DEFAULT_COMMENT_PATTERN;
+  escaped = escaped.replace(commentPattern, (_, m) => protect(`<span class="syn-cmt">${m}</span>`));
 
-  // Keywords
+  escaped = escaped.replace(/(&quot;(?:[^&]|&(?!quot;))*?&quot;)/g, (_, m) => protect(`<span class="syn-str">${m}</span>`));
+  escaped = escaped.replace(/(&#x27;(?:[^&]|&(?!#x27;))*?&#x27;)/g, (_, m) => protect(`<span class="syn-str">${m}</span>`));
+  if (lang === 'javascript' || lang === 'typescript') {
+    escaped = escaped.replace(/(&#96;(?:[^&]|&(?!#96;))*?&#96;)/g, (_, m) => protect(`<span class="syn-str">${m}</span>`));
+  }
+
+  escaped = escaped.replace(/\b(\d+\.?\d*)\b/g, (_, m) => protect(`<span class="syn-num">${m}</span>`));
+
   const kwRegex = KEYWORDS[lang];
   if (kwRegex) {
-    escaped = escaped.replace(kwRegex, '<span class="syn-kw">$1</span>');
+    escaped = escaped.replace(kwRegex, (_, m) => protect(`<span class="syn-kw">${m}</span>`));
   }
 
-  // Function calls (word followed by parenthesis)
-  escaped = escaped.replace(/\b([a-zA-Z_]\w*)\s*\(/g, '<span class="syn-fn">$1</span>(');
+  escaped = escaped.replace(/\b([a-zA-Z_]\w*)\s*\(/g, (_, m) => protect(`<span class="syn-fn">${m}</span>`) + '(');
+
+  escaped = escaped.replace(/\x00T(\d+)\x00/g, (_, i) => tokens[i]);
 
   return escaped;
 }
