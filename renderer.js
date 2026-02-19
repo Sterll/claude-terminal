@@ -3049,6 +3049,11 @@ const usageElements = {
     bar: document.getElementById('usage-bar-sonnet'),
     percent: document.getElementById('usage-percent-sonnet'),
     reset: document.getElementById('usage-reset-sonnet')
+  },
+  extra: {
+    item: document.getElementById('usage-item-extra'),
+    bar: document.getElementById('usage-bar-extra'),
+    percent: document.getElementById('usage-percent-extra')
   }
 };
 
@@ -3079,6 +3084,41 @@ function updateUsageBar(elements, percent) {
 }
 
 /**
+ * Update extra usage display (paid tokens beyond plan)
+ * extraUsage from API: { cost_usd: number } or null
+ */
+function updateExtraUsage(extraUsage) {
+  const { item, bar, percent } = usageElements.extra;
+  if (!item || !bar || !percent) return;
+
+  // extraUsage can be an object { cost_usd } or a number or null
+  let costUsd = null;
+  if (extraUsage !== null && extraUsage !== undefined) {
+    if (typeof extraUsage === 'object' && extraUsage.cost_usd != null) {
+      costUsd = extraUsage.cost_usd;
+    } else if (typeof extraUsage === 'number') {
+      costUsd = extraUsage;
+    }
+  }
+
+  if (costUsd === null || costUsd <= 0) {
+    item.style.display = 'none';
+    return;
+  }
+
+  item.style.display = '';
+  percent.textContent = costUsd < 0.01 ? '<$0.01' : `$${costUsd.toFixed(2)}`;
+
+  // Bar shows relative cost: full at $5, as a visual indicator
+  const MAX_COST = 5;
+  const pct = Math.min((costUsd / MAX_COST) * 100, 100);
+  bar.style.width = `${pct}%`;
+  bar.classList.remove('warning', 'danger');
+  if (costUsd >= 2) bar.classList.add('danger');
+  else if (costUsd >= 0.5) bar.classList.add('warning');
+}
+
+/**
  * Update usage display with new data
  */
 function updateUsageDisplay(usageData) {
@@ -3093,6 +3133,7 @@ function updateUsageDisplay(usageData) {
     updateResetEl(usageElements.session.reset, null);
     updateResetEl(usageElements.weekly.reset, null);
     updateResetEl(usageElements.sonnet.reset, null);
+    if (usageElements.extra.item) usageElements.extra.item.style.display = 'none';
     return;
   }
 
@@ -3102,6 +3143,9 @@ function updateUsageDisplay(usageData) {
   updateUsageBar(usageElements.session, data.session);
   updateUsageBar(usageElements.weekly, data.weekly);
   updateUsageBar(usageElements.sonnet, data.sonnet);
+
+  // Extra usage (paid tokens beyond plan) — show only when non-zero
+  updateExtraUsage(data.extraUsage);
 
   // Set reset targets for each category
   usageResetTargets.session = data.sessionReset ? new Date(data.sessionReset) : null;

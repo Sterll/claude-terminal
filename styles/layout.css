@@ -214,6 +214,14 @@ body.platform-darwin .titlebar-drag {
   background: linear-gradient(90deg, #db2777, #f9a8d4);
 }
 
+.usage-item[data-type="extra"] .usage-percent {
+  color: #fb923c;
+}
+
+.usage-item[data-type="extra"] .usage-bar {
+  background: linear-gradient(90deg, #c2410c, #fb923c);
+}
+
 /* Warning / danger override all categories */
 .usage-bar.warning {
   background: linear-gradient(90deg, #d97706, #fbbf24) !important;

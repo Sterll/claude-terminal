@@ -549,6 +549,7 @@
     "notifications": "Notifications",
     "session": "Session",
     "weekly": "Weekly",
+    "extra": "Extra",
     "workTime": "Work time",
     "newVersion": "A new version is available",
     "restartToUpdate": "Restart to update",
