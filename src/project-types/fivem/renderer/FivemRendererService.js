@@ -64,6 +64,9 @@ async function startFivemServer(projectIndex) {
   const project = projectsState.get().projects[projectIndex];
   if (!project) return { success: false, error: 'Project not found' };
 
+  // Dispose any existing terminal so xterm starts fresh on restart
+  disposeFivemTerminal(projectIndex);
+
   initFivemServer(projectIndex);
   clearFivemErrors(projectIndex);
   setFivemServerStatus(projectIndex, 'starting');
@@ -153,12 +156,6 @@ function mountFivemTerminal(projectIndex, container) {
 
   terminal.open(container);
   fitAddon.fit();
-
-  // Write existing logs
-  const server = getFivemServer(projectIndex);
-  if (server.logs.length > 0) {
-    terminal.write(server.logs.join(''));
-  }
 
   // Send size
   api.fivem.resize({
@@ -429,6 +426,9 @@ function registerFivemListeners(onDataCallback, onExitCallback, onErrorCallback)
     if (termData) {
       termData.terminal.write(`\r\n[Server exited with code ${code}]\r\n`);
     }
+
+    // Dispose the terminal so it's recreated fresh on next start
+    disposeFivemTerminal(projectIndex);
 
     if (onExitCallback) {
       onExitCallback(projectIndex, code);

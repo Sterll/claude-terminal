@@ -23,10 +23,7 @@ function getConsoleConfig(project, projectIndex) {
     consoleViewSelector: '.fivem-console-view',
     ipcNamespace: 'fivem',
     scrollback: 10000,
-    getExistingLogs: (pi) => {
-      const server = getFivemServer(pi);
-      return (server && server.logs) ? server.logs : [];
-    },
+    getExistingLogs: () => [],
     onCleanup: () => {}
   };
 }
