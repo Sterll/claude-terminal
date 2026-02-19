@@ -3,23 +3,31 @@
  * Helper functions for git operations in the main process
  */
 
-const { exec } = require('child_process');
+const { execFile, exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
 /**
- * Execute a git command in a specific directory
+ * Build safe.directory args array for git
  * @param {string} cwd - Working directory
- * @param {string} args - Git command arguments
+ * @returns {string[]} - Args array ['-c', 'safe.directory=...']
+ */
+function safeDirArgs(cwd) {
+  return ['-c', `safe.directory=${cwd.replace(/\\/g, '/')}`];
+}
+
+/**
+ * Execute a git command in a specific directory using execFile (no shell injection)
+ * @param {string} cwd - Working directory
+ * @param {string|string[]} args - Git command arguments (string parsed by split, or array)
  * @param {number} timeout - Timeout in ms (default: 10000)
  * @returns {Promise<string|null>} - Command output or null on error
  */
 function execGit(cwd, args, timeout = 10000) {
   return new Promise((resolve) => {
-    // Add safe.directory config to handle "dubious ownership" errors on Windows
-    // This occurs when the repo is owned by a different user
-    const safeDirectoryConfig = `-c safe.directory="${cwd.replace(/\\/g, '/')}"`;
-    const child = exec(`git ${safeDirectoryConfig} ${args}`, { cwd, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout) => {
+    const argsArray = Array.isArray(args) ? args : args.match(/(?:[^\s"]+|"[^"]*")+/g).map(a => a.replace(/^"|"$/g, ''));
+    const fullArgs = [...safeDirArgs(cwd), ...argsArray];
+    const child = execFile('git', fullArgs, { cwd, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout) => {
       if (timer) clearTimeout(timer);
       resolve(error ? null : stdout.trimEnd());
     });
@@ -33,6 +41,38 @@ function execGit(cwd, args, timeout = 10000) {
     child.on('error', () => {
       if (timer) clearTimeout(timer);
       resolve(null);
+    });
+  });
+}
+
+/**
+ * Execute a git command returning { success, output, error } using execFile (no shell injection)
+ * @param {string} cwd - Working directory
+ * @param {string[]} args - Git command arguments as array
+ * @param {Object} opts - Options (maxBuffer, timeout)
+ * @returns {Promise<{success: boolean, output?: string, error?: string}>}
+ */
+function spawnGit(cwd, args, opts = {}) {
+  const { maxBuffer = 1024 * 1024, timeout = 15000 } = opts;
+  return new Promise((resolve) => {
+    const fullArgs = [...safeDirArgs(cwd), ...args];
+    const child = execFile('git', fullArgs, { cwd, encoding: 'utf8', maxBuffer, timeout }, (error, stdout, stderr) => {
+      if (timer) clearTimeout(timer);
+      if (error) {
+        resolve({ success: false, error: stderr || error.message });
+      } else {
+        resolve({ success: true, output: stdout || stderr || '' });
+      }
+    });
+
+    const timer = setTimeout(() => {
+      try { child.kill('SIGKILL'); } catch (_) {}
+      resolve({ success: false, error: 'Git command timed out' });
+    }, timeout);
+
+    child.on('error', (err) => {
+      if (timer) clearTimeout(timer);
+      resolve({ success: false, error: err.message });
     });
   });
 }
@@ -171,17 +211,10 @@ async function getCurrentBranch(projectPath) {
  * @param {string} branch - Branch name to checkout
  * @returns {Promise<Object>} - Result object with success/error
  */
-function checkoutBranch(projectPath, branch) {
-  return new Promise((resolve) => {
-    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
-    exec(`git ${safeDir} checkout "${branch}"`, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) {
-        resolve({ success: false, error: stderr || error.message });
-      } else {
-        resolve({ success: true, output: stderr || stdout || `Switched to branch '${branch}'` });
-      }
-    });
-  });
+async function checkoutBranch(projectPath, branch) {
+  const result = await spawnGit(projectPath, ['checkout', branch]);
+  if (!result.success) return result;
+  return { success: true, output: result.output || `Switched to branch '${branch}'` };
 }
 
 /**
@@ -354,21 +387,14 @@ async function getGitInfoFull(projectPath, options = {}) {
  * @returns {Promise<Object>} - Status object
  */
 async function getGitStatusQuick(projectPath) {
-  return new Promise((resolve) => {
-    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
-    exec(`git ${safeDir} status --porcelain`, { cwd: projectPath, encoding: 'utf8' }, (error, stdout) => {
-      if (error) {
-        resolve({ isGitRepo: false });
-      } else {
-        const hasChanges = stdout.trim().length > 0;
-        resolve({
-          isGitRepo: true,
-          hasChanges,
-          changesCount: stdout.trim().split('\n').filter(l => l).length
-        });
-      }
-    });
-  });
+  const result = await spawnGit(projectPath, ['status', '--porcelain']);
+  if (!result.success) return { isGitRepo: false };
+  const stdout = result.output;
+  return {
+    isGitRepo: true,
+    hasChanges: stdout.trim().length > 0,
+    changesCount: stdout.trim().split('\n').filter(l => l).length
+  };
 }
 
 /**
@@ -376,28 +402,16 @@ async function getGitStatusQuick(projectPath) {
  * @param {string} projectPath - Path to the project
  * @returns {Promise<Object>} - Result object with success/error/conflicts
  */
-function gitPull(projectPath) {
-  return new Promise((resolve) => {
-    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
-    exec(`git ${safeDir} pull --rebase`, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 }, async (error, stdout, stderr) => {
-      if (error) {
-        // Check if there are merge conflicts
-        const conflicts = await getMergeConflicts(projectPath);
-        if (conflicts.length > 0) {
-          resolve({
-            success: false,
-            hasConflicts: true,
-            conflicts,
-            error: 'Merge conflicts detected. Resolve conflicts or abort merge.'
-          });
-        } else {
-          resolve({ success: false, error: stderr || error.message });
-        }
-      } else {
-        resolve({ success: true, output: stdout || 'Already up to date.' });
-      }
-    });
-  });
+async function gitPull(projectPath) {
+  const result = await spawnGit(projectPath, ['pull', '--rebase']);
+  if (!result.success) {
+    const conflicts = await getMergeConflicts(projectPath);
+    if (conflicts.length > 0) {
+      return { success: false, hasConflicts: true, conflicts, error: 'Merge conflicts detected. Resolve conflicts or abort merge.' };
+    }
+    return result;
+  }
+  return { success: true, output: result.output || 'Already up to date.' };
 }
 
 /**
@@ -405,22 +419,15 @@ function gitPull(projectPath) {
  * @param {string} projectPath - Path to the project
  * @returns {Promise<Object>} - Result object with success/error
  */
-function gitPush(projectPath) {
-  return new Promise((resolve) => {
-    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
-    exec(`git ${safeDir} push`, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) {
-        // Check if it's just a "nothing to push" situation
-        if (stderr && stderr.includes('Everything up-to-date')) {
-          resolve({ success: true, output: 'Everything up-to-date.' });
-        } else {
-          resolve({ success: false, error: stderr || error.message });
-        }
-      } else {
-        resolve({ success: true, output: stdout || stderr || 'Push successful.' });
-      }
-    });
-  });
+async function gitPush(projectPath) {
+  const result = await spawnGit(projectPath, ['push']);
+  if (!result.success) {
+    if (result.error && result.error.includes('Everything up-to-date')) {
+      return { success: true, output: 'Everything up-to-date.' };
+    }
+    return result;
+  }
+  return { success: true, output: result.output || 'Push successful.' };
 }
 
 /**
@@ -429,28 +436,16 @@ function gitPush(projectPath) {
  * @param {string} branch - Branch to merge into current branch
  * @returns {Promise<Object>} - Result object with success/error/conflicts
  */
-function gitMerge(projectPath, branch) {
-  return new Promise((resolve) => {
-    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
-    exec(`git ${safeDir} merge "${branch}"`, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 }, async (error, stdout, stderr) => {
-      if (error) {
-        // Check if there are merge conflicts
-        const conflicts = await getMergeConflicts(projectPath);
-        if (conflicts.length > 0) {
-          resolve({
-            success: false,
-            hasConflicts: true,
-            conflicts,
-            error: 'Merge conflicts detected. Resolve conflicts or abort merge.'
-          });
-        } else {
-          resolve({ success: false, error: stderr || error.message });
-        }
-      } else {
-        resolve({ success: true, output: stdout || 'Merge successful.' });
-      }
-    });
-  });
+async function gitMerge(projectPath, branch) {
+  const result = await spawnGit(projectPath, ['merge', branch]);
+  if (!result.success) {
+    const conflicts = await getMergeConflicts(projectPath);
+    if (conflicts.length > 0) {
+      return { success: false, hasConflicts: true, conflicts, error: 'Merge conflicts detected. Resolve conflicts or abort merge.' };
+    }
+    return result;
+  }
+  return { success: true, output: result.output || 'Merge successful.' };
 }
 
 /**
@@ -458,17 +453,10 @@ function gitMerge(projectPath, branch) {
  * @param {string} projectPath - Path to the project
  * @returns {Promise<Object>} - Result object with success/error
  */
-function gitMergeAbort(projectPath) {
-  return new Promise((resolve) => {
-    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
-    exec(`git ${safeDir} merge --abort`, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) {
-        resolve({ success: false, error: stderr || error.message });
-      } else {
-        resolve({ success: true, output: 'Merge aborted.' });
-      }
-    });
-  });
+async function gitMergeAbort(projectPath) {
+  const result = await spawnGit(projectPath, ['merge', '--abort']);
+  if (!result.success) return result;
+  return { success: true, output: 'Merge aborted.' };
 }
 
 /**
@@ -476,17 +464,10 @@ function gitMergeAbort(projectPath) {
  * @param {string} projectPath - Path to the project
  * @returns {Promise<Object>} - Result object with success/error
  */
-function gitMergeContinue(projectPath) {
-  return new Promise((resolve) => {
-    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
-    exec(`git ${safeDir} merge --continue`, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) {
-        resolve({ success: false, error: stderr || error.message });
-      } else {
-        resolve({ success: true, output: stdout || 'Merge completed.' });
-      }
-    });
-  });
+async function gitMergeContinue(projectPath) {
+  const result = await spawnGit(projectPath, ['merge', '--continue']);
+  if (!result.success) return result;
+  return { success: true, output: result.output || 'Merge completed.' };
 }
 
 /**
@@ -542,8 +523,9 @@ function gitClone(repoUrl, targetPath, options = {}) {
       cloneUrl = repoUrl.replace('https://', `https://${token}@`);
     }
 
-    const cloneProcess = exec(
-      `git clone --progress "${cloneUrl}" "${targetPath}"`,
+    const cloneProcess = execFile(
+      'git',
+      ['clone', '--progress', cloneUrl, targetPath],
       { encoding: 'utf8', maxBuffer: 1024 * 1024 * 10, timeout: 300000 }, // 5 min timeout
       (error, stdout, stderr) => {
         if (error) {
@@ -582,8 +564,8 @@ async function countLinesOfCode(projectPath) {
 
   // Try git ls-files first (fast, reads from index)
   const gitResult = await new Promise((resolve) => {
-    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
-    exec(`git ${safeDir} ls-files`, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 * 50, timeout: 10000 }, (error, stdout) => {
+    const fullArgs = [...safeDirArgs(projectPath), 'ls-files'];
+    execFile('git', fullArgs, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 * 50, timeout: 10000 }, (error, stdout) => {
       if (error || !stdout.trim()) {
         resolve(null);
         return;
@@ -805,24 +787,11 @@ async function getGitStatusDetailed(projectPath) {
  * @param {string[]} files - List of file paths to stage
  * @returns {Promise<Object>} - Result object
  */
-function gitStageFiles(projectPath, files) {
-  return new Promise((resolve) => {
-    if (!files || files.length === 0) {
-      resolve({ success: false, error: 'No files specified' });
-      return;
-    }
-
-    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
-    const fileArgs = files.map(f => `"${f}"`).join(' ');
-
-    exec(`git ${safeDir} add ${fileArgs}`, { cwd: projectPath, encoding: 'utf8' }, (error, stdout, stderr) => {
-      if (error) {
-        resolve({ success: false, error: stderr || error.message });
-      } else {
-        resolve({ success: true, output: `Staged ${files.length} file(s)` });
-      }
-    });
-  });
+async function gitStageFiles(projectPath, files) {
+  if (!files || files.length === 0) return { success: false, error: 'No files specified' };
+  const result = await spawnGit(projectPath, ['add', '--', ...files]);
+  if (!result.success) return result;
+  return { success: true, output: `Staged ${files.length} file(s)` };
 }
 
 /**
@@ -831,30 +800,16 @@ function gitStageFiles(projectPath, files) {
  * @param {string} message - Commit message
  * @returns {Promise<Object>} - Result object
  */
-function gitCommit(projectPath, message) {
-  return new Promise((resolve) => {
-    if (!message || !message.trim()) {
-      resolve({ success: false, error: 'Commit message is required' });
-      return;
+async function gitCommit(projectPath, message) {
+  if (!message || !message.trim()) return { success: false, error: 'Commit message is required' };
+  const result = await spawnGit(projectPath, ['commit', '-m', message]);
+  if (!result.success) {
+    if (result.error && result.error.includes('nothing to commit')) {
+      return { success: false, error: 'Nothing to commit (no staged files)' };
     }
-
-    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
-    // Escape the message for shell
-    const escapedMessage = message.replace(/"/g, '\\"');
-
-    exec(`git ${safeDir} commit -m "${escapedMessage}"`, { cwd: projectPath, encoding: 'utf8' }, (error, stdout, stderr) => {
-      if (error) {
-        // Check if it's just "nothing to commit"
-        if (stderr && stderr.includes('nothing to commit')) {
-          resolve({ success: false, error: 'Nothing to commit (no staged files)' });
-        } else {
-          resolve({ success: false, error: stderr || error.message });
-        }
-      } else {
-        resolve({ success: true, output: stdout || 'Commit created' });
-      }
-    });
-  });
+    return result;
+  }
+  return { success: true, output: result.output || 'Commit created' };
 }
 
 /**
@@ -863,17 +818,10 @@ function gitCommit(projectPath, message) {
  * @param {string} branchName - Name of the new branch
  * @returns {Promise<Object>} - Result object with success/error
  */
-function createBranch(projectPath, branchName) {
-  return new Promise((resolve) => {
-    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
-    exec(`git ${safeDir} checkout -b "${branchName}"`, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) {
-        resolve({ success: false, error: stderr || error.message });
-      } else {
-        resolve({ success: true, output: stderr || stdout || `Switched to a new branch '${branchName}'` });
-      }
-    });
-  });
+async function createBranch(projectPath, branchName) {
+  const result = await spawnGit(projectPath, ['checkout', '-b', branchName]);
+  if (!result.success) return result;
+  return { success: true, output: result.output || `Switched to a new branch '${branchName}'` };
 }
 
 /**
@@ -883,18 +831,11 @@ function createBranch(projectPath, branchName) {
  * @param {boolean} force - Use -D instead of -d (force delete unmerged branch)
  * @returns {Promise<Object>} - Result object with success/error
  */
-function deleteBranch(projectPath, branch, force = false) {
-  return new Promise((resolve) => {
-    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
-    const flag = force ? '-D' : '-d';
-    exec(`git ${safeDir} branch ${flag} "${branch}"`, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) {
-        resolve({ success: false, error: stderr || error.message });
-      } else {
-        resolve({ success: true, output: stdout || `Deleted branch ${branch}` });
-      }
-    });
-  });
+async function deleteBranch(projectPath, branch, force = false) {
+  const flag = force ? '-D' : '-d';
+  const result = await spawnGit(projectPath, ['branch', flag, branch]);
+  if (!result.success) return result;
+  return { success: true, output: result.output || `Deleted branch ${branch}` };
 }
 
 /**
@@ -952,17 +893,10 @@ async function getCommitDetail(projectPath, commitHash) {
  * @param {string} commitHash - Commit hash to cherry-pick
  * @returns {Promise<Object>} - Result object
  */
-function cherryPick(projectPath, commitHash) {
-  return new Promise((resolve) => {
-    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
-    exec(`git ${safeDir} cherry-pick ${commitHash}`, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) {
-        resolve({ success: false, error: stderr || error.message });
-      } else {
-        resolve({ success: true, output: stdout || 'Cherry-pick successful.' });
-      }
-    });
-  });
+async function cherryPick(projectPath, commitHash) {
+  const result = await spawnGit(projectPath, ['cherry-pick', commitHash]);
+  if (!result.success) return result;
+  return { success: true, output: result.output || 'Cherry-pick successful.' };
 }
 
 /**
@@ -971,17 +905,10 @@ function cherryPick(projectPath, commitHash) {
  * @param {string} commitHash - Commit hash to revert
  * @returns {Promise<Object>} - Result object
  */
-function revertCommit(projectPath, commitHash) {
-  return new Promise((resolve) => {
-    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
-    exec(`git ${safeDir} revert --no-edit ${commitHash}`, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) {
-        resolve({ success: false, error: stderr || error.message });
-      } else {
-        resolve({ success: true, output: stdout || 'Revert successful.' });
-      }
-    });
-  });
+async function revertCommit(projectPath, commitHash) {
+  const result = await spawnGit(projectPath, ['revert', '--no-edit', commitHash]);
+  if (!result.success) return result;
+  return { success: true, output: result.output || 'Revert successful.' };
 }
 
 /**
@@ -990,22 +917,11 @@ function revertCommit(projectPath, commitHash) {
  * @param {string[]} files - List of file paths to unstage
  * @returns {Promise<Object>} - Result object
  */
-function gitUnstageFiles(projectPath, files) {
-  return new Promise((resolve) => {
-    if (!files || files.length === 0) {
-      resolve({ success: false, error: 'No files specified' });
-      return;
-    }
-    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
-    const fileArgs = files.map(f => `"${f}"`).join(' ');
-    exec(`git ${safeDir} restore --staged ${fileArgs}`, { cwd: projectPath, encoding: 'utf8' }, (error, stdout, stderr) => {
-      if (error) {
-        resolve({ success: false, error: stderr || error.message });
-      } else {
-        resolve({ success: true, output: `Unstaged ${files.length} file(s)` });
-      }
-    });
-  });
+async function gitUnstageFiles(projectPath, files) {
+  if (!files || files.length === 0) return { success: false, error: 'No files specified' };
+  const result = await spawnGit(projectPath, ['restore', '--staged', '--', ...files]);
+  if (!result.success) return result;
+  return { success: true, output: `Unstaged ${files.length} file(s)` };
 }
 
 /**
@@ -1014,17 +930,10 @@ function gitUnstageFiles(projectPath, files) {
  * @param {string} stashRef - Stash reference (e.g., stash@{0})
  * @returns {Promise<Object>} - Result object
  */
-function stashApply(projectPath, stashRef) {
-  return new Promise((resolve) => {
-    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
-    exec(`git ${safeDir} stash apply "${stashRef}"`, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) {
-        resolve({ success: false, error: stderr || error.message });
-      } else {
-        resolve({ success: true, output: stdout || 'Stash applied.' });
-      }
-    });
-  });
+async function stashApply(projectPath, stashRef) {
+  const result = await spawnGit(projectPath, ['stash', 'apply', stashRef]);
+  if (!result.success) return result;
+  return { success: true, output: result.output || 'Stash applied.' };
 }
 
 /**
@@ -1033,17 +942,10 @@ function stashApply(projectPath, stashRef) {
  * @param {string} stashRef - Stash reference (e.g., stash@{0})
  * @returns {Promise<Object>} - Result object
  */
-function stashDrop(projectPath, stashRef) {
-  return new Promise((resolve) => {
-    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
-    exec(`git ${safeDir} stash drop "${stashRef}"`, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) {
-        resolve({ success: false, error: stderr || error.message });
-      } else {
-        resolve({ success: true, output: stdout || 'Stash dropped.' });
-      }
-    });
-  });
+async function stashDrop(projectPath, stashRef) {
+  const result = await spawnGit(projectPath, ['stash', 'drop', stashRef]);
+  if (!result.success) return result;
+  return { success: true, output: result.output || 'Stash dropped.' };
 }
 
 /**
@@ -1052,20 +954,13 @@ function stashDrop(projectPath, stashRef) {
  * @param {string} message - Optional stash message
  * @returns {Promise<Object>} - Result object
  */
-function gitStashSave(projectPath, message) {
-  return new Promise((resolve) => {
-    const safeDir = `-c safe.directory="${projectPath.replace(/\\/g, '/')}"`;
-    const cmd = message && message.trim()
-      ? `git ${safeDir} stash push -m "${message.trim().replace(/"/g, '\\"')}"`
-      : `git ${safeDir} stash`;
-    exec(cmd, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) {
-        resolve({ success: false, error: stderr || error.message });
-      } else {
-        resolve({ success: true, output: stdout || 'Stash saved.' });
-      }
-    });
-  });
+async function gitStashSave(projectPath, message) {
+  const args = (message && message.trim())
+    ? ['stash', 'push', '-m', message.trim()]
+    : ['stash'];
+  const result = await spawnGit(projectPath, args);
+  if (!result.success) return result;
+  return { success: true, output: result.output || 'Stash saved.' };
 }
 
 // ========== WORKTREES ==========
