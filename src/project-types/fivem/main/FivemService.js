@@ -22,6 +22,53 @@ class FivemService {
   }
 
   /**
+   * Parse a run command into { exe, args, workingDir }
+   * Handles: relative paths, absolute paths, quoted paths, paths with spaces
+   */
+  _parseCommand(command, projectPath) {
+    let exe = '';
+    let args = [];
+    let workingDir = projectPath;
+
+    // Trim and normalize
+    const cmd = command.trim();
+
+    // Match quoted exe: "C:\path\to\exe.exe" [args...]
+    const quotedMatch = cmd.match(/^"([^"]+)"(.*)/);
+    if (quotedMatch) {
+      exe = quotedMatch[1];
+      const rest = quotedMatch[2].trim();
+      args = rest ? rest.split(/\s+/) : [];
+      workingDir = path.dirname(exe);
+      return { exe, args, workingDir };
+    }
+
+    // Match absolute path with drive letter: C:\path\to\exe.exe [args...]
+    const absMatch = cmd.match(/^([A-Za-z]:\\[^\s]+)(.*)/);
+    if (absMatch) {
+      exe = absMatch[1];
+      const rest = absMatch[2].trim();
+      args = rest ? rest.split(/\s+/) : [];
+      workingDir = path.dirname(exe);
+      return { exe, args, workingDir };
+    }
+
+    // Relative command: split on whitespace, first token is exe
+    const parts = cmd.split(/\s+/);
+    exe = parts[0];
+    args = parts.slice(1);
+
+    // Resolve relative exe against projectPath
+    if (!path.isAbsolute(exe)) {
+      const resolved = path.resolve(projectPath, exe);
+      exe = resolved;
+      workingDir = path.dirname(resolved);
+    }
+
+    return { exe, args, workingDir };
+  }
+
+  /**
    * Start a FiveM server
    * @param {Object} options
    * @param {number} options.projectIndex - Project index
@@ -35,26 +82,11 @@ class FivemService {
       this.stop({ projectIndex });
     }
 
-    // Use custom command or default
     const command = runCommand || './FXServer.exe +exec server.cfg';
+    const { exe, args, workingDir } = this._parseCommand(command, projectPath);
 
-    // Determine working directory
-    let workingDir = projectPath;
-    if (process.platform === 'win32') {
-      // Check if command starts with a drive letter (e.g., C:\...)
-      const absPathMatch = command.match(/^([A-Za-z]:\\[^"\s]+(?:\\[^"\s]*)*)/);
-      if (absPathMatch) {
-        const exePath = absPathMatch[1];
-        workingDir = path.dirname(exePath);
-      }
-    }
-
-    // On Windows, use cmd.exe for better compatibility
-    const shellPath = process.platform === 'win32' ? 'cmd.exe' : 'bash';
-    const shellArgs = process.platform === 'win32' ? ['/c', command] : ['-c', command];
-
-    // Spawn using node-pty for proper terminal emulation
-    const ptyProcess = pty.spawn(shellPath, shellArgs, {
+    // Spawn FXServer DIRECTLY (no cmd.exe wrapper) → no shell echo at all
+    const ptyProcess = pty.spawn(exe, args, {
       name: 'xterm-256color',
       cols: 120,
       rows: 30,
@@ -64,7 +96,7 @@ class FivemService {
 
     this.processes.set(projectIndex, ptyProcess);
 
-    // Handle data output
+    // Forward all data directly — no echo filtering needed (no shell wrapper)
     ptyProcess.onData(data => {
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
         this.mainWindow.webContents.send('fivem-data', { projectIndex, data });
@@ -105,7 +137,6 @@ class FivemService {
         }, 3000);
       } catch (e) {
         console.error('Error stopping FiveM server:', e);
-        // Try force kill anyway
         this._forceKill(pid);
         this.processes.delete(projectIndex);
       }
@@ -122,7 +153,6 @@ class FivemService {
 
     try {
       if (process.platform === 'win32') {
-        // Use taskkill with /T to kill process tree
         exec(`taskkill /F /T /PID ${pid}`, (err) => {
           if (err && !err.message.includes('not found')) {
             console.error('taskkill error:', err.message);
@@ -165,7 +195,7 @@ class FivemService {
    * Stop all FiveM servers
    */
   stopAll() {
-    this.processes.forEach((proc, index) => {
+    this.processes.forEach((proc) => {
       const pid = proc.pid;
       try {
         proc.write('quit\r');
@@ -229,14 +259,11 @@ class FivemService {
 
         for (const line of lines) {
           const trimmed = line.trim();
-          // Skip comments
           if (trimmed.startsWith('#') || trimmed.startsWith('//')) continue;
 
-          // Match ensure, start, or restart commands
           const match = trimmed.match(/^(ensure|start|restart)\s+(.+)$/i);
           if (match) {
-            const resourceName = match[2].trim();
-            ensuredResources.add(resourceName);
+            ensuredResources.add(match[2].trim());
           }
         }
       } catch (e) {
@@ -248,7 +275,6 @@ class FivemService {
     const resourcesFolders = ['resources', 'resources/[local]', 'resources/[standalone]'];
     const scannedFolders = new Set();
 
-    // Also scan any [category] subfolders
     const mainResourcesPath = path.join(projectPath, 'resources');
     if (fs.existsSync(mainResourcesPath)) {
       try {
@@ -259,7 +285,7 @@ class FivemService {
           }
         }
       } catch (e) {
-        // Ignore errors
+        // Ignore
       }
     }
 
@@ -272,12 +298,11 @@ class FivemService {
 
         for (const entry of entries) {
           if (!entry.isDirectory()) continue;
-          if (entry.name.startsWith('[') && entry.name.endsWith(']')) continue; // Skip category folders
+          if (entry.name.startsWith('[') && entry.name.endsWith(']')) continue;
           if (scannedFolders.has(entry.name)) continue;
 
           scannedFolders.add(entry.name);
 
-          // Check if it's a valid resource (has fxmanifest.lua or __resource.lua)
           const resourcePath = path.join(folderPath, entry.name);
           const hasFxManifest = fs.existsSync(path.join(resourcePath, 'fxmanifest.lua'));
           const hasResourceLua = fs.existsSync(path.join(resourcePath, '__resource.lua'));
@@ -297,7 +322,6 @@ class FivemService {
       }
     }
 
-    // Sort: ensured first, then alphabetically
     resources.sort((a, b) => {
       if (a.ensured !== b.ensured) return b.ensured ? 1 : -1;
       return a.name.localeCompare(b.name);

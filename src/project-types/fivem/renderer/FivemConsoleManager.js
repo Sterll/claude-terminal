@@ -20,9 +20,10 @@ function getConsoleConfig(project, projectIndex) {
     tabClass: 'fivem-tab',
     dotClass: 'fivem-dot',
     wrapperClass: 'fivem-wrapper',
-    consoleViewSelector: '.fivem-console-view',
+    consoleViewSelector: '.fivem-console-output',
     ipcNamespace: 'fivem',
     scrollback: 10000,
+    disableStdin: true,
     getExistingLogs: () => [],
     onCleanup: () => {}
   };

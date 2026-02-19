@@ -15,48 +15,57 @@ function getViewSwitcherHtml() {
   return `
     <div class="fivem-view-switcher">
       <button class="fivem-view-tab active" data-view="console">
-        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10z"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
         ${t('fivem.console')}
       </button>
       <button class="fivem-view-tab" data-view="errors">
-        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         ${t('fivem.errors')}
         <span class="fivem-error-badge" style="display: none;">0</span>
       </button>
       <button class="fivem-view-tab" data-view="resources">
-        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
         ${t('fivem.resources')}
         <span class="fivem-resource-badge" style="display: none;">0</span>
       </button>
     </div>
     <div class="fivem-view-content">
-      <div class="fivem-console-view"></div>
+      <div class="fivem-console-view">
+        <div class="fivem-console-output"></div>
+        <div class="fivem-console-inputbar">
+          <span class="fivem-console-prompt">&gt;</span>
+          <input type="text" class="fivem-console-input" placeholder="${t('fivem.commandPlaceholder')}" autocomplete="off" spellcheck="false">
+          <button class="fivem-console-send" title="${t('fivem.sendCommand')}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
       <div class="fivem-errors-view" style="display: none;">
         <div class="fivem-errors-header">
-          <span>${t('fivem.errorDetected')}</span>
+          <span>${t('fivem.errors')}</span>
           <button class="fivem-clear-errors" title="${t('fivem.clearErrors')}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
           </button>
         </div>
         <div class="fivem-errors-list"></div>
         <div class="fivem-errors-empty">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
           <span>${t('fivem.noErrors')}</span>
         </div>
       </div>
       <div class="fivem-resources-view" style="display: none;">
         <div class="fivem-resources-header">
           <div class="fivem-resources-search">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             <input type="text" class="fivem-resources-search-input" placeholder="${t('fivem.searchResources')}">
           </div>
           <button class="fivem-refresh-resources" title="${t('fivem.refreshResources')}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
           </button>
         </div>
         <div class="fivem-resources-list"></div>
         <div class="fivem-resources-empty">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="48" height="48"><path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
           <span>${t('fivem.noResources')}</span>
         </div>
         <div class="fivem-resources-loading" style="display: none;">
@@ -146,6 +155,51 @@ function setupViewSwitcher(wrapper, terminalId, projectIndex, project, deps) {
   searchInput.oninput = () => {
     renderResourcesList(wrapper, projectIndex, project, searchInput.value, deps);
   };
+
+  // ── Console input bar ──
+  const consoleInput = wrapper.querySelector('.fivem-console-input');
+  const consoleSend = wrapper.querySelector('.fivem-console-send');
+  const cmdHistory = [];
+  let historyIndex = -1;
+
+  function sendCommand() {
+    const cmd = consoleInput.value.trim();
+    if (!cmd) return;
+    api.fivem.input({ projectIndex, data: cmd + '\r' });
+    if (cmdHistory[0] !== cmd) cmdHistory.unshift(cmd);
+    if (cmdHistory.length > 50) cmdHistory.pop();
+    consoleInput.value = '';
+    historyIndex = -1;
+  }
+
+  consoleInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      sendCommand();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (historyIndex < cmdHistory.length - 1) {
+        historyIndex++;
+        consoleInput.value = cmdHistory[historyIndex];
+        // Move cursor to end
+        setTimeout(() => consoleInput.setSelectionRange(consoleInput.value.length, consoleInput.value.length), 0);
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (historyIndex > 0) {
+        historyIndex--;
+        consoleInput.value = cmdHistory[historyIndex];
+      } else {
+        historyIndex = -1;
+        consoleInput.value = '';
+      }
+    } else if (e.key === 'Escape') {
+      consoleInput.value = '';
+      historyIndex = -1;
+    }
+  });
+
+  consoleSend.onclick = sendCommand;
 }
 
 /**

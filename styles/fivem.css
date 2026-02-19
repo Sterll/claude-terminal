@@ -839,9 +839,7 @@
   background: var(--text-muted);
 }
 
-.server-status.stopped .status-indicator {
-  background: var(--text-muted);
-}
+.server-status.stopped .status-indicator { background: var(--text-muted); }
 
 .server-status.starting .status-indicator {
   background: #f59e0b;
@@ -853,78 +851,111 @@
   box-shadow: 0 0 8px var(--success);
 }
 
-.server-status .status-text {
-  color: var(--text-secondary);
-}
+.server-status .status-text { color: var(--text-secondary); }
+.server-status.running .status-text { color: var(--success); }
 
-.server-status.running .status-text {
-  color: var(--success);
-}
+/* ========== FIVEM CONSOLE PANEL — REDESIGN ========== */
 
-/* @keyframes pulse — defined in base.css (opacity-based) */
-
-/* ========== FIVEM CONSOLE VIEW SWITCHER ========== */
 .terminal-wrapper.fivem-wrapper.active {
   display: flex;
   flex-direction: column;
 }
 
+/* ── Navigation tabs ── */
 .fivem-view-switcher {
   display: flex;
-  gap: 2px;
-  padding: 6px 8px;
+  align-items: stretch;
+  gap: 0;
+  padding: 0 8px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
+  height: 36px;
 }
 
 .fivem-view-tab {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 0 14px;
   background: transparent;
   border: none;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: var(--font-sm);
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  font-weight: 500;
+  letter-spacing: 0.3px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: color 0.15s, border-color 0.15s;
+  position: relative;
+  white-space: nowrap;
+  margin-bottom: -1px;
 }
 
 .fivem-view-tab:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  color: var(--text-secondary);
 }
 
 .fivem-view-tab.active {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+  color: var(--success);
+  border-bottom-color: var(--success);
 }
 
 .fivem-view-tab svg {
   flex-shrink: 0;
+  opacity: 0.7;
 }
 
+.fivem-view-tab.active svg {
+  opacity: 1;
+}
+
+/* Error badge */
 .fivem-error-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
   background: var(--danger);
   color: white;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 10px;
-  margin-left: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 8px;
+  margin-left: 2px;
+  line-height: 1;
 }
 
+/* Resource badge */
+.fivem-resource-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--success);
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 8px;
+  margin-left: 2px;
+  line-height: 1;
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+/* Error tab flash */
 .fivem-view-tab.has-new-error {
-  animation: errorPulse 0.5s ease-in-out 2;
+  animation: fivemErrorTabPulse 0.4s ease-in-out 3;
 }
 
-@keyframes errorPulse {
-  0%, 100% { background: transparent; }
-  50% { background: rgba(239, 68, 68, 0.3); }
+@keyframes fivemErrorTabPulse {
+  0%, 100% { color: var(--text-muted); }
+  50% { color: var(--danger); }
 }
 
+/* ── View content ── */
 .fivem-view-content {
   flex: 1;
   display: flex;
@@ -932,11 +963,90 @@
   overflow: hidden;
 }
 
+/* Console view = xterm output + input bar */
 .fivem-console-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fivem-console-output {
   flex: 1;
   overflow: hidden;
 }
 
+/* Input bar */
+.fivem-console-inputbar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 10px 0 12px;
+  height: 38px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.fivem-console-prompt {
+  color: var(--success);
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  font-size: var(--font-sm);
+  font-weight: 700;
+  margin-right: 8px;
+  user-select: none;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.fivem-console-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  font-size: var(--font-sm);
+  padding: 0;
+  height: 100%;
+  caret-color: var(--success);
+}
+
+.fivem-console-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.fivem-console-send {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+.fivem-console-send:hover {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--success);
+}
+
+.fivem-console-inputbar:focus-within .fivem-console-prompt {
+  opacity: 1;
+}
+
+.fivem-console-inputbar:focus-within {
+  border-top-color: rgba(34, 197, 94, 0.3);
+}
+
+/* ── Errors view ── */
 .fivem-errors-view {
   flex: 1;
   display: flex;
@@ -949,48 +1059,52 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 12px;
+  padding: 8px 12px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
 }
 
 .fivem-errors-header span {
-  font-size: var(--font-sm);
-  font-weight: 500;
-  color: var(--text-primary);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
 }
 
 .fivem-clear-errors {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 4px;
+  width: 26px;
+  height: 26px;
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  color: var(--text-secondary);
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .fivem-clear-errors:hover {
-  background: var(--bg-hover);
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
   color: var(--danger);
 }
 
 .fivem-clear-errors svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
 }
 
 .fivem-errors-list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: 6px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 .fivem-errors-empty {
@@ -999,107 +1113,111 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
   color: var(--text-muted);
 }
 
 .fivem-errors-empty svg {
-  width: 48px;
-  height: 48px;
+  width: 36px;
+  height: 36px;
   color: var(--success);
-  opacity: 0.5;
+  opacity: 0.35;
 }
 
 .fivem-errors-empty span {
-  font-size: var(--font-sm);
+  font-size: var(--font-xs);
+  color: var(--text-muted);
 }
 
-/* Error Item */
+/* Error item */
 .fivem-error-item {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  padding: 10px 12px;
+  border-left: 3px solid rgba(239, 68, 68, 0.4);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: border-color 0.15s, background 0.15s;
 }
 
 .fivem-error-item:hover {
-  border-color: var(--danger);
-  background: var(--bg-tertiary);
+  border-left-color: var(--danger);
+  background: rgba(239, 68, 68, 0.04);
 }
 
 .fivem-error-item.expanded {
-  border-color: var(--danger);
+  border-left-color: var(--danger);
+  background: rgba(239, 68, 68, 0.06);
 }
 
 .fivem-error-item-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 6px;
+  gap: 8px;
+  margin-bottom: 5px;
 }
 
 .fivem-error-time {
-  font-size: var(--font-xs);
+  font-size: var(--font-2xs);
   color: var(--text-muted);
-  font-family: monospace;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  flex-shrink: 0;
 }
 
 .fivem-error-debug-btn {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
-  background: var(--accent);
-  border: none;
+  padding: 3px 8px;
+  background: rgba(217, 119, 6, 0.12);
+  border: 1px solid rgba(217, 119, 6, 0.25);
   border-radius: var(--radius-sm);
-  color: white;
-  font-size: var(--font-xs);
-  font-weight: 500;
+  color: var(--accent);
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  letter-spacing: 0.2px;
   cursor: pointer;
   transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
 .fivem-error-debug-btn:hover {
-  background: var(--accent-hover);
+  background: rgba(217, 119, 6, 0.22);
+  border-color: var(--accent);
+}
+
+.fivem-error-debug-btn svg {
+  width: 11px;
+  height: 11px;
 }
 
 .fivem-error-preview {
-  font-size: var(--font-sm);
-  color: var(--danger);
-  font-family: monospace;
+  font-size: var(--font-xs);
+  color: #f87171;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .fivem-error-detail {
-  margin: 8px 0 0 0;
-  padding: 10px;
-  background: var(--bg-primary);
+  margin: 6px 0 0 0;
+  padding: 8px 10px;
+  background: #0a0a0a;
   border-radius: var(--radius-sm);
-  font-size: var(--font-xs);
-  color: var(--text-secondary);
-  font-family: monospace;
+  font-size: var(--font-2xs);
+  color: #aaa;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 300px;
+  max-height: 240px;
   overflow-y: auto;
-  border: 1px solid var(--border-color);
+  border: 1px solid #222;
+  line-height: 1.5;
 }
 
-/* FiveM Resources View */
-.fivem-resource-badge {
-  background: var(--accent);
-  color: white;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 10px;
-  margin-left: 4px;
-}
-
+/* ── Resources view ── */
 .fivem-resources-view {
   flex: 1;
   display: flex;
@@ -1112,7 +1230,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 12px;
+  padding: 7px 10px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
@@ -1123,11 +1241,16 @@
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: 6px;
+  padding: 5px 9px;
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
+  transition: border-color 0.15s;
+}
+
+.fivem-resources-search:focus-within {
+  border-color: rgba(34, 197, 94, 0.4);
 }
 
 .fivem-resources-search svg {
@@ -1140,7 +1263,7 @@
   background: transparent;
   border: none;
   color: var(--text-primary);
-  font-size: var(--font-sm);
+  font-size: var(--font-xs);
   outline: none;
 }
 
@@ -1152,32 +1275,39 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 6px;
+  width: 28px;
+  height: 28px;
   background: transparent;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-  color: var(--text-secondary);
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
 .fivem-refresh-resources:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-  border-color: var(--accent);
+  background: rgba(34, 197, 94, 0.08);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: var(--success);
+}
+
+.fivem-refresh-resources svg {
+  width: 14px;
+  height: 14px;
 }
 
 .fivem-refresh-resources.spinning svg {
-  animation: spin 1s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
 
 .fivem-resources-list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: 6px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 4px;
 }
 
 .fivem-resources-empty {
@@ -1186,18 +1316,18 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
   color: var(--text-muted);
 }
 
 .fivem-resources-empty svg {
-  width: 48px;
-  height: 48px;
-  opacity: 0.5;
+  width: 36px;
+  height: 36px;
+  opacity: 0.25;
 }
 
 .fivem-resources-empty span {
-  font-size: var(--font-sm);
+  font-size: var(--font-xs);
 }
 
 .fivem-resources-loading {
@@ -1206,46 +1336,51 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
   color: var(--text-muted);
 }
 
 .fivem-resources-loading .spinner {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   border: 2px solid var(--border-color);
-  border-top-color: var(--accent);
+  border-top-color: var(--success);
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
 
-/* Resource Category */
+.fivem-resources-loading span {
+  font-size: var(--font-xs);
+}
+
+/* ── Resource category ── */
 .fivem-resource-category {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 
 .fivem-resource-category-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: var(--bg-tertiary);
+  gap: 7px;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.02);
   border-bottom: 1px solid var(--border-color);
   cursor: pointer;
   user-select: none;
+  transition: background 0.12s;
 }
 
 .fivem-resource-category-header:hover {
-  background: var(--bg-hover);
+  background: rgba(255,255,255,0.04);
 }
 
 .fivem-resource-category-header .category-chevron {
   flex-shrink: 0;
   color: var(--text-muted);
-  transition: transform 0.15s;
+  transition: transform 0.18s ease;
   transform: rotate(90deg);
 }
 
@@ -1262,19 +1397,21 @@
 }
 
 .fivem-resource-category-header .category-name {
-  font-size: var(--font-sm);
-  font-weight: 500;
-  color: var(--text-primary);
-  font-family: monospace;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  letter-spacing: 0.2px;
 }
 
 .fivem-resource-category-header .category-count {
   margin-left: auto;
-  font-size: var(--font-xs);
+  font-size: var(--font-2xs);
   color: var(--text-muted);
-  background: var(--bg-primary);
-  padding: 2px 6px;
-  border-radius: 10px;
+  background: rgba(255,255,255,0.05);
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 600;
 }
 
 .fivem-resource-items {
@@ -1282,14 +1419,16 @@
   flex-direction: column;
 }
 
-/* Resource Item */
+/* ── Resource item ── */
 .fivem-resource-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border-color);
-  transition: background 0.15s ease;
+  padding: 6px 10px 6px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  border-left: 2px solid transparent;
+  transition: background 0.12s, border-left-color 0.12s;
+  gap: 8px;
 }
 
 .fivem-resource-item:last-child {
@@ -1297,158 +1436,180 @@
 }
 
 .fivem-resource-item:hover {
-  background: var(--bg-hover);
+  background: rgba(255,255,255,0.025);
+  border-left-color: rgba(255,255,255,0.08);
 }
 
 .fivem-resource-item.ensured {
-  border-left: 3px solid var(--success);
+  border-left-color: rgba(34, 197, 94, 0.5);
+}
+
+.fivem-resource-item.ensured:hover {
+  border-left-color: var(--success);
 }
 
 .fivem-resource-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
+  flex: 1;
 }
 
 .fivem-resource-name {
-  font-size: var(--font-sm);
+  font-size: var(--font-xs);
   font-weight: 500;
   color: var(--text-primary);
-  font-family: monospace;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .fivem-resource-status {
-  font-size: var(--font-xs);
+  font-size: var(--font-2xs);
   color: var(--text-muted);
+  letter-spacing: 0.2px;
 }
 
 .fivem-resource-status.active {
-  color: var(--success);
+  color: rgba(34, 197, 94, 0.7);
 }
 
 .fivem-resource-status.inactive {
   color: var(--text-muted);
 }
 
+/* ── Resource action buttons ── */
 .fivem-resource-actions {
   display: flex;
-  gap: 4px;
+  gap: 3px;
   flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.fivem-resource-item:hover .fivem-resource-actions {
+  opacity: 1;
+}
+
+/* Always show shortcut if it has one */
+.fivem-resource-btn.shortcut.has-shortcut {
+  opacity: 1;
+}
+
+.fivem-resource-item:has(.fivem-resource-btn.shortcut.has-shortcut) .fivem-resource-actions {
+  opacity: 1;
 }
 
 .fivem-resource-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 5px;
+  width: 24px;
+  height: 24px;
   background: transparent;
-  border: 1px solid var(--border-color);
+  border: none;
   border-radius: var(--radius-sm);
-  color: var(--text-secondary);
+  color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background 0.12s, color 0.12s;
 }
 
 .fivem-resource-btn:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
 }
 
 .fivem-resource-btn.ensure:hover {
-  border-color: var(--success);
+  background: rgba(34, 197, 94, 0.12);
   color: var(--success);
 }
 
 .fivem-resource-btn.restart:hover {
-  border-color: var(--warning);
+  background: rgba(245, 158, 11, 0.12);
   color: var(--warning);
 }
 
 .fivem-resource-btn.stop:hover {
-  border-color: var(--danger);
+  background: rgba(239, 68, 68, 0.12);
   color: var(--danger);
 }
 
 .fivem-resource-btn.folder:hover {
-  border-color: var(--accent);
+  background: rgba(217, 119, 6, 0.12);
   color: var(--accent);
 }
 
 .fivem-resource-btn.executing {
   pointer-events: none;
-  opacity: 0.6;
-}
-
-.fivem-resource-btn.executing svg {
-  animation: pulse-scale 0.5s ease-in-out;
+  opacity: 0.5;
 }
 
 .fivem-resource-btn.success {
-  border-color: var(--success);
   color: var(--success);
   background: rgba(34, 197, 94, 0.1);
 }
 
 .fivem-resource-btn.error {
-  border-color: var(--danger);
   color: var(--danger);
   background: rgba(239, 68, 68, 0.1);
   animation: shake 0.3s ease-in-out;
 }
-
-/* @keyframes shake — defined in base.css */
 
 @keyframes pulse-scale {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.2); }
 }
 
-/* Resource Shortcuts */
+/* ── Resource shortcuts ── */
 .fivem-resource-btn.shortcut {
-  min-width: 28px;
+  width: auto;
+  min-width: 24px;
 }
 
 .fivem-resource-btn.shortcut.has-shortcut {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: white;
-  padding: 3px 6px;
+  padding: 0 6px;
+  background: rgba(217, 119, 6, 0.12);
+  border: 1px solid rgba(217, 119, 6, 0.2);
+  color: var(--accent);
+  height: 22px;
 }
 
 .fivem-resource-btn.shortcut.has-shortcut:hover {
-  background: var(--danger);
-  border-color: var(--danger);
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.25);
+  color: var(--danger);
 }
 
 .fivem-resource-btn.shortcut .shortcut-key {
-  font-size: 10px;
-  font-weight: 600;
-  font-family: monospace;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  letter-spacing: 0.3px;
 }
 
 .fivem-resource-btn.shortcut.capturing {
-  background: var(--warning);
-  border-color: var(--warning);
-  color: white;
-  min-width: 100px;
-  animation: pulse-scale 1s infinite;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: var(--warning);
+  width: auto;
+  padding: 0 8px;
+  animation: pulse 1s ease-in-out infinite;
 }
 
 .fivem-resource-btn.shortcut .shortcut-capturing {
   font-size: 9px;
   white-space: nowrap;
+  font-weight: 500;
 }
 
 .fivem-resource-item.shortcut-triggered {
-  background: rgba(var(--accent-rgb), 0.2);
-  animation: shortcut-flash 0.3s ease-out;
+  background: rgba(217, 119, 6, 0.08);
+  animation: shortcut-flash 0.4s ease-out;
 }
 
 @keyframes shortcut-flash {
-  0% { background: rgba(var(--accent-rgb), 0.4); }
+  0% { background: rgba(217, 119, 6, 0.2); }
   100% { background: transparent; }
 }

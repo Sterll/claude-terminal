@@ -1337,7 +1337,7 @@ function createTypeConsole(project, projectIndex) {
   const config = typeHandler.getConsoleConfig(project, projectIndex);
   if (!config) return null;
 
-  const { typeId, tabIcon, tabClass, dotClass, wrapperClass, consoleViewSelector, ipcNamespace, scrollback } = config;
+  const { typeId, tabIcon, tabClass, dotClass, wrapperClass, consoleViewSelector, ipcNamespace, scrollback, disableStdin } = config;
 
   // Check if console already exists
   const mapKey = `${typeId}-${projectIndex}`;
@@ -1355,7 +1355,7 @@ function createTypeConsole(project, projectIndex) {
     fontFamily: TERMINAL_FONTS[typeId]?.fontFamily || TERMINAL_FONTS.fivem.fontFamily,
     fontSize: TERMINAL_FONTS[typeId]?.fontSize || TERMINAL_FONTS.fivem.fontSize,
     cursorBlink: false,
-    disableStdin: false,
+    disableStdin: disableStdin === true,
     scrollback: scrollback || 10000
   });
 
@@ -1436,13 +1436,13 @@ function createTypeConsole(project, projectIndex) {
     panel.setupPanel(wrapper, id, projectIndex, project, panelDeps);
   }
 
-  // Custom key handler
-  terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, projectIndex, `${typeId}-input`));
-
-  // Handle input
-  terminal.onData(data => {
-    api[ipcNamespace].input({ projectIndex, data });
-  });
+  // Custom key handler + input — only when stdin is enabled
+  if (!disableStdin) {
+    terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, projectIndex, `${typeId}-input`));
+    terminal.onData(data => {
+      api[ipcNamespace].input({ projectIndex, data });
+    });
+  }
 
   // Resize handling
   const resizeObserver = new ResizeObserver(() => {

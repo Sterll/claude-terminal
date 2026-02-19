@@ -33,7 +33,9 @@
     "quickEnsure": "Quick Ensure",
     "noShortcut": "No shortcut",
     "runCommand": "Run command",
-    "runCommandHint": "Path to the launch script or command (e.g. FXServer.exe +exec server.cfg)"
+    "runCommandHint": "Path to the launch script or command (e.g. FXServer.exe +exec server.cfg)",
+    "commandPlaceholder": "Type a command...",
+    "sendCommand": "Send"
   },
   "newProject": {
     "types": {
