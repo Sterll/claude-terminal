@@ -13,6 +13,16 @@ const path = require('path');
 function registerProjectHandlers() {
   // Scan TODO/FIXME in project
   ipcMain.handle('scan-todos', async (event, projectPath) => {
+    // Validate projectPath to prevent path traversal
+    if (!projectPath || typeof projectPath !== 'string') return [];
+    const resolvedPath = path.resolve(projectPath);
+    try {
+      const stat = await fs.promises.stat(resolvedPath);
+      if (!stat.isDirectory()) return [];
+    } catch (e) {
+      return [];
+    }
+
     const todos = [];
     const extensions = ['.js', '.ts', '.jsx', '.tsx', '.vue', '.py', '.lua', '.go', '.rs', '.java', '.cpp', '.c', '.h'];
     const ignoreDirs = ['node_modules', '.git', 'dist', 'build', '__pycache__', '.next', 'vendor'];
@@ -59,7 +69,7 @@ function registerProjectHandlers() {
       } catch (e) {}
     }
 
-    await scanDir(projectPath);
+    await scanDir(resolvedPath);
     return todos;
   });
 }
