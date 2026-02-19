@@ -10,7 +10,7 @@ const GitHubAuthService = require('../services/GitHubAuthService');
 
 // Input validators
 const isValidCommitHash = (h) => typeof h === 'string' && /^[a-f0-9]{4,64}$/i.test(h);
-const isValidBranchName = (b) => typeof b === 'string' && b.length > 0 && b.length < 256 && !/[^a-zA-Z0-9._\-\/]/.test(b);
+const isValidBranchName = (b) => typeof b === 'string' && b.length > 0 && b.length < 256 && !/[^a-zA-Z0-9._\-\/]/.test(b) && !b.includes('..');
 const isValidStashRef = (r) => typeof r === 'string' && /^stash@\{\d+\}$/.test(r);
 
 /**
