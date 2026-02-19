@@ -83,7 +83,7 @@ function registerDialogHandlers() {
       console.error(`[Dialog IPC] Editor not in allowlist: "${editorBin}"`);
       return;
     }
-    execFile(editorBin, [projectPath], (error) => {
+    execFile(editorBin, [projectPath], { shell: true }, (error) => {
       if (error) {
         console.error(`[Dialog IPC] Failed to open editor "${editorBin}":`, error.message);
       }
