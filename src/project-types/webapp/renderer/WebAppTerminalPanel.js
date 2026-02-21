@@ -89,9 +89,9 @@ function getViewSwitcherHtml() {
         </div>
       </div>
       <div class="wa-body">
-        <div class="webapp-console-view wa-view active"></div>
-        ${previewEnabled ? `<div class="webapp-preview-view wa-view" style="display:none"></div>` : ''}
-        <div class="webapp-info-view wa-view" style="display:none"></div>
+        <div class="webapp-console-view wa-view"></div>
+        ${previewEnabled ? `<div class="webapp-preview-view wa-view"></div>` : ''}
+        <div class="webapp-info-view wa-view"></div>
       </div>
     </div>
   `;
@@ -117,36 +117,38 @@ function setupViewSwitcher(wrapper, terminalId, projectIndex, project, deps) {
   const pipInterval = setInterval(refreshStatus, 2000);
   wrapper._waPipInterval = pipInterval;
 
-  wrapper.querySelectorAll('.wa-tab').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const view = btn.dataset.view;
+  function switchView(view) {
+    const panes = [consoleView, previewView, infoView].filter(Boolean);
 
-      wrapper.querySelectorAll('.wa-tab').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-
-      const panes = [consoleView, previewView, infoView].filter(Boolean);
-      panes.forEach(p => { p.style.display = 'none'; p.classList.remove('active'); });
-
-      if (view === 'console') {
-        consoleView.style.display = '';
-        consoleView.classList.add('active');
-        const termData = getTerminal(terminalId);
-        if (termData) setTimeout(() => termData.fitAddon.fit(), 50);
-      } else if (view === 'preview' && previewView) {
-        previewView.style.display = '';
-        previewView.classList.add('active');
-        renderPreviewView(wrapper, projectIndex, project, deps);
-      } else if (view === 'info') {
-        infoView.style.display = '';
-        infoView.classList.add('active');
-        renderInfoView(wrapper, projectIndex, project, deps);
-      }
-
-      if (view !== 'preview' && previewView) suspendPreview(previewView);
-
-      const termData = getTerminal(terminalId);
-      if (termData) termData.activeView = view;
+    wrapper.querySelectorAll('.wa-tab').forEach(b => {
+      b.classList.toggle('active', b.dataset.view === view);
     });
+
+    panes.forEach(p => p.classList.remove('wa-view-active'));
+
+    if (view === 'console') {
+      consoleView.classList.add('wa-view-active');
+      const termData = getTerminal(terminalId);
+      if (termData) setTimeout(() => termData.fitAddon.fit(), 50);
+    } else if (view === 'preview' && previewView) {
+      previewView.classList.add('wa-view-active');
+      renderPreviewView(wrapper, projectIndex, project, deps);
+    } else if (view === 'info') {
+      infoView.classList.add('wa-view-active');
+      renderInfoView(wrapper, projectIndex, project, deps);
+    }
+
+    if (view !== 'preview' && previewView) suspendPreview(previewView);
+
+    const termData = getTerminal(terminalId);
+    if (termData) termData.activeView = view;
+  }
+
+  // Initial state: show console
+  switchView('console');
+
+  wrapper.querySelectorAll('.wa-tab').forEach(btn => {
+    btn.addEventListener('click', () => switchView(btn.dataset.view));
   });
 }
 

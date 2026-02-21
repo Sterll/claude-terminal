@@ -317,9 +317,13 @@ module.exports = createType({
 .wa-view {
   flex: 1;
   min-height: 0;
-  display: flex;
+  display: none;
   flex-direction: column;
   overflow: hidden;
+}
+
+.wa-view.wa-view-active {
+  display: flex;
 }
 
 .webapp-console-view { flex: 1; min-height: 0; }
