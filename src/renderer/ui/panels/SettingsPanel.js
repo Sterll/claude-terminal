@@ -578,6 +578,43 @@ async function renderSettingsTab(initialTab = 'general') {
             </div>
           </div>
           <div class="settings-group">
+            <div class="settings-group-title">${t('settings.notificationSound.title')}</div>
+            <div class="settings-card">
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-label">
+                  <div>${t('settings.notificationSound.label')}</div>
+                  <div class="settings-toggle-desc">${t('settings.notificationSound.description')}</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <div class="settings-dropdown" id="notification-sound-dropdown" data-value="${settings.notificationSound || 'subtle'}">
+                    <div class="settings-dropdown-trigger">
+                      <span>${t('settings.notificationSound.' + (settings.notificationSound || 'subtle'))}</span>
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+                    </div>
+                    <div class="settings-dropdown-menu">
+                      ${['none','subtle','bell','pulse'].map(s => `<div class="settings-dropdown-option ${(settings.notificationSound || 'subtle') === s ? 'selected' : ''}" data-value="${s}">
+                        <span class="dropdown-check"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></span>
+                        ${t('settings.notificationSound.' + s)}
+                      </div>`).join('')}
+                    </div>
+                  </div>
+                  <button type="button" class="btn-ghost btn-sm" id="btn-preview-sound" title="${t('settings.notificationSound.preview')}">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="settings-toggle-row" style="padding-top:0;">
+                <div class="settings-toggle-label">
+                  <div>${t('settings.notificationSound.volume')}</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;min-width:140px;">
+                  <input type="range" id="notification-volume-slider" min="0" max="100" value="${Math.round((settings.notificationSoundVolume ?? 0.5) * 100)}" style="flex:1;accent-color:var(--accent);">
+                  <span id="notification-volume-label" style="font-size:var(--font-xs);color:var(--text-secondary);min-width:30px;text-align:right;">${Math.round((settings.notificationSoundVolume ?? 0.5) * 100)}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="settings-group">
             <div class="settings-group-title">${t('settings.hooks.title')}</div>
             <div class="settings-card">
             <div class="settings-toggle-row">
@@ -1011,6 +1048,31 @@ async function renderSettingsTab(initialTab = 'general') {
   document.addEventListener('click', closeDropdowns);
   container.closest('.tab-content, .content-area, #settings-tab')?.addEventListener('scroll', closeDropdowns, { passive: true });
 
+  // Notification sound preview button
+  const btnPreviewSound = document.getElementById('btn-preview-sound');
+  if (btnPreviewSound) {
+    const { playNotificationSound } = require('../../utils/notificationSounds');
+    btnPreviewSound.onclick = () => {
+      const soundDropdown = document.getElementById('notification-sound-dropdown');
+      const volumeSlider = document.getElementById('notification-volume-slider');
+      const sound = soundDropdown?.dataset.value || 'subtle';
+      const volume = (volumeSlider?.value ?? 50) / 100;
+      playNotificationSound(sound, volume);
+    };
+  }
+
+  // Volume slider label update
+  const volumeSlider = document.getElementById('notification-volume-slider');
+  const volumeLabel = document.getElementById('notification-volume-label');
+  if (volumeSlider && volumeLabel) {
+    volumeSlider.oninput = () => {
+      volumeLabel.textContent = volumeSlider.value + '%';
+    };
+    volumeSlider.onchange = () => {
+      setTimeout(() => saveSettingsHandler(), 50);
+    };
+  }
+
   const saveSettingsHandler = async () => {
     const selectedMode = container.querySelector('.execution-mode-card:not(.terminal-mode-card).selected');
     const selectedTerminalMode = container.querySelector('.terminal-mode-card.selected');
@@ -1039,6 +1101,10 @@ async function renderSettingsTab(initialTab = 'general') {
     const newHooksEnabled = hooksToggle ? hooksToggle.checked : settings.hooksEnabled;
     const context1MToggle = document.getElementById('enable-1m-context-toggle');
     const newEnable1MContext = context1MToggle ? context1MToggle.checked : settings.enable1MContext || false;
+    const soundDropdown = document.getElementById('notification-sound-dropdown');
+    const newNotificationSound = soundDropdown?.dataset.value || settings.notificationSound || 'subtle';
+    const notifVolumeSlider = document.getElementById('notification-volume-slider');
+    const newNotificationSoundVolume = notifVolumeSlider ? notifVolumeSlider.value / 100 : settings.notificationSoundVolume ?? 0.5;
 
     const newSettings = {
       editor: settings.editor || 'code',
@@ -1052,7 +1118,9 @@ async function renderSettingsTab(initialTab = 'general') {
       aiCommitMessages: newAiCommitMessages,
       defaultTerminalMode: selectedTerminalMode?.dataset.terminalMode || 'terminal',
       hooksEnabled: newHooksEnabled,
-      enable1MContext: newEnable1MContext
+      enable1MContext: newEnable1MContext,
+      notificationSound: newNotificationSound,
+      notificationSoundVolume: newNotificationSoundVolume
     };
 
     container.querySelectorAll('.dynamic-setting-toggle').forEach(toggle => {

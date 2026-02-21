@@ -13,6 +13,8 @@
     "rename": "Renommer",
     "edit": "Modifier",
     "copy": "Copier",
+    "paste": "Paste",
+    "selectAll": "Select All",
     "loading": "Chargement...",
     "error": "Erreur",
     "success": "Succès",
@@ -522,6 +524,17 @@
     "githubTokenInvalid": "Token invalide",
     "themesTitle": "Thème du terminal",
     "themesDesc": "Choisissez un thème pour personnaliser les couleurs de vos terminaux",
+    "notificationSound": {
+      "title": "Son de notification",
+      "label": "Son",
+      "description": "Jouer un son quand Claude a besoin de votre attention",
+      "none": "Aucun",
+      "subtle": "Subtil",
+      "bell": "Cloche",
+      "pulse": "Pulsation",
+      "volume": "Volume",
+      "preview": "Aperçu"
+    },
     "hooks": {
       "title": "Hooks intelligents",
       "enable": "Activer les hooks intelligents",

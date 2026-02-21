@@ -86,7 +86,10 @@ const {
   TERMINAL_THEMES,
 
   // Quick Actions
-  QuickActions
+  QuickActions,
+
+  // Notification sounds
+  playNotificationSound
 } = require('./src/renderer');
 
 const registry = require('./src/project-types/registry');
@@ -238,6 +241,13 @@ const { initClaudeEvents, switchProvider, getDashboardStats, setNotificationFn }
 function showNotification(type, title, body, terminalId) {
   if (!localState.notificationsEnabled) return;
   if (document.hasFocus() && terminalsState.get().activeTerminal === terminalId) return;
+
+  // Play notification sound
+  const settings = settingsState.get();
+  if (settings.notificationSound && settings.notificationSound !== 'none') {
+    playNotificationSound(settings.notificationSound, settings.notificationSoundVolume ?? 0.5);
+  }
+
   const labels = { show: t('terminals.notifBtnShow') };
   api.notification.show({ type: type || 'done', title, body, terminalId, autoDismiss: 8000, labels });
 }

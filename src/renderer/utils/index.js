@@ -8,6 +8,7 @@ const paths = require('./paths');
 const format = require('./format');
 const fileIcons = require('./fileIcons');
 const syntaxHighlight = require('./syntaxHighlight');
+const notificationSounds = require('./notificationSounds');
 
 module.exports = {
   ...dom,
@@ -15,5 +16,6 @@ module.exports = {
   ...paths,
   ...format,
   ...fileIcons,
-  ...syntaxHighlight
+  ...syntaxHighlight,
+  ...notificationSounds
 };

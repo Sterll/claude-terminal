@@ -25,7 +25,9 @@ const defaultSettings = {
   hooksEnabled: false, // Hooks installed in ~/.claude/settings.json
   hooksConsentShown: false, // User has seen the hooks consent prompt
   chatModel: null, // null = CLI default, or model ID string (e.g. 'claude-sonnet-4-6')
-  enable1MContext: false // Enable 1M token context window via betas flag
+  enable1MContext: false, // Enable 1M token context window via betas flag
+  notificationSound: 'subtle', // 'none', 'subtle', 'bell', 'pulse'
+  notificationSoundVolume: 0.5 // 0.0 to 1.0
 };
 
 const settingsState = new State({ ...defaultSettings });

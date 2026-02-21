@@ -45,6 +45,7 @@ const {
 const registry = require('../../../project-types/registry');
 const { createChatView } = require('./ChatView');
 const ContextPromptService = require('../../services/ContextPromptService');
+const { showContextMenu } = require('./ContextMenu');
 
 // Lazy require to avoid circular dependency
 let QuickActions = null;
@@ -497,6 +498,71 @@ function setupPasteHandler(wrapper, terminalId, inputChannel = 'terminal-input')
 }
 
 /**
+ * Send clipboard text to the terminal PTY
+ * @param {string|number} terminalId - Terminal ID for IPC
+ * @param {string} inputChannel - IPC channel for input
+ */
+function performPaste(terminalId, inputChannel = 'terminal-input') {
+  const now = Date.now();
+  if (now - lastPasteTime < PASTE_DEBOUNCE_MS) return;
+  lastPasteTime = now;
+  navigator.clipboard.readText().then(text => {
+    if (text) {
+      if (inputChannel === 'fivem-input') {
+        api.fivem.input({ projectIndex: terminalId, data: text });
+      } else if (inputChannel === 'webapp-input') {
+        api.webapp.input({ projectIndex: terminalId, data: text });
+      } else {
+        api.terminal.input({ id: terminalId, data: text });
+      }
+    }
+  });
+}
+
+/**
+ * Setup right-click context menu for a terminal
+ * @param {HTMLElement} wrapper - Terminal wrapper element
+ * @param {Terminal} terminal - The xterm.js terminal instance
+ * @param {string|number} terminalId - Terminal ID for IPC
+ * @param {string} inputChannel - IPC channel for input
+ */
+function setupTerminalContextMenu(wrapper, terminal, terminalId, inputChannel = 'terminal-input') {
+  wrapper.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const selection = terminal.getSelection();
+    showContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        {
+          label: t('common.copy'),
+          shortcut: 'Ctrl+C',
+          icon: '📋',
+          disabled: !selection,
+          action: () => {
+            if (selection) navigator.clipboard.writeText(selection);
+          }
+        },
+        {
+          label: t('common.paste'),
+          shortcut: 'Ctrl+V',
+          icon: '📄',
+          action: () => performPaste(terminalId, inputChannel)
+        },
+        { separator: true },
+        {
+          label: t('common.selectAll'),
+          shortcut: 'Ctrl+Shift+A',
+          icon: '🔤',
+          action: () => terminal.selectAll()
+        }
+      ]
+    });
+  });
+}
+
+/**
  * Create a custom key event handler for terminal shortcuts
  * @param {Terminal} terminal - The xterm.js terminal instance
  * @param {string|number} terminalId - Terminal ID for IPC
@@ -554,7 +620,28 @@ function createTerminalKeyHandler(terminal, terminalId, inputChannel = 'terminal
     if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'p' && e.type === 'keydown') {
       return false;
     }
-    // Ctrl+Shift+C to copy selection
+    // Ctrl+C: copy selection if text is selected, otherwise send SIGINT
+    if (e.ctrlKey && !e.shiftKey && e.key === 'c' && e.type === 'keydown') {
+      const selection = terminal.getSelection();
+      if (selection) {
+        navigator.clipboard.writeText(selection);
+        terminal.clearSelection();
+        return false;
+      }
+      // No selection — let xterm send SIGINT (^C) to the PTY
+      return true;
+    }
+    // Ctrl+V: paste from clipboard
+    if (e.ctrlKey && !e.shiftKey && e.key === 'v' && e.type === 'keydown') {
+      performPaste(terminalId, inputChannel);
+      return false;
+    }
+    // Ctrl+Shift+A: select all terminal content
+    if (e.ctrlKey && e.shiftKey && e.key === 'A' && e.type === 'keydown') {
+      terminal.selectAll();
+      return false;
+    }
+    // Ctrl+Shift+C to copy selection (legacy shortcut)
     if (e.ctrlKey && e.shiftKey && e.key === 'C' && e.type === 'keydown') {
       const selection = terminal.getSelection();
       if (selection) {
@@ -562,24 +649,9 @@ function createTerminalKeyHandler(terminal, terminalId, inputChannel = 'terminal
       }
       return false;
     }
-    // Ctrl+Shift+V to paste (with anti-spam)
+    // Ctrl+Shift+V to paste (legacy shortcut)
     if (e.ctrlKey && e.shiftKey && e.key === 'V' && e.type === 'keydown') {
-      const now = Date.now();
-      if (now - lastPasteTime < PASTE_DEBOUNCE_MS) {
-        return false;
-      }
-      lastPasteTime = now;
-      navigator.clipboard.readText().then(text => {
-        if (text) {
-          if (inputChannel === 'fivem-input') {
-            api.fivem.input({ projectIndex: terminalId, data: text });
-          } else if (inputChannel === 'webapp-input') {
-            api.webapp.input({ projectIndex: terminalId, data: text });
-          } else {
-            api.terminal.input({ id: terminalId, data: text });
-          }
-        }
-      });
+      performPaste(terminalId, inputChannel);
       return false;
     }
 
@@ -1177,6 +1249,7 @@ async function createTerminal(project, options = {}) {
 
   // Prevent double-paste issue
   setupPasteHandler(wrapper, id, 'terminal-input');
+  setupTerminalContextMenu(wrapper, terminal, id, 'terminal-input');
 
   // Custom key handler for global shortcuts and copy/paste
   terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, id, 'terminal-input'));
@@ -1423,6 +1496,7 @@ function createTypeConsole(project, projectIndex) {
 
   // Prevent double-paste issue
   setupPasteHandler(consoleView, projectIndex, `${typeId}-input`);
+  setupTerminalContextMenu(consoleView, terminal, projectIndex, `${typeId}-input`);
 
   // Write existing logs
   const existingLogs = config.getExistingLogs(projectIndex);
@@ -2552,6 +2626,7 @@ async function resumeSession(project, sessionId, options = {}) {
 
   // Prevent double-paste issue
   setupPasteHandler(wrapper, id, 'terminal-input');
+  setupTerminalContextMenu(wrapper, terminal, id, 'terminal-input');
 
   // Custom key handler for global shortcuts and copy/paste
   terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, id, 'terminal-input'));
@@ -2708,6 +2783,7 @@ async function createTerminalWithPrompt(project, prompt) {
 
   // Prevent double-paste issue
   setupPasteHandler(wrapper, id, 'terminal-input');
+  setupTerminalContextMenu(wrapper, terminal, id, 'terminal-input');
 
   // Custom key handler
   terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, id, 'terminal-input'));
@@ -3248,8 +3324,9 @@ async function switchTerminalMode(id) {
 
     setTimeout(() => fitAddon.fit(), 100);
 
-    // Setup paste handler and key handler
+    // Setup paste handler, context menu and key handler
     setupPasteHandler(wrapper, id, 'terminal-input');
+    setupTerminalContextMenu(wrapper, terminal, id, 'terminal-input');
     terminal.attachCustomKeyEventHandler(createTerminalKeyHandler(terminal, id, 'terminal-input'));
 
     // Title change
