@@ -49,66 +49,100 @@ async function resolvePort(projectIndex) {
 
 function isPreviewEnabled() {
   const val = getSetting('webappPreviewEnabled');
-  return val !== undefined ? val : true; // default: enabled
+  return val !== undefined ? val : true;
 }
+
+// ── SVG icons ──────────────────────────────────────────────────────────
+const ICON_CONSOLE = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13"><rect x="1" y="2" width="14" height="12" rx="2"/><path d="M4.5 6L7 8.5 4.5 11M8.5 11H12" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const ICON_PREVIEW = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13"><rect x="1" y="3" width="14" height="10" rx="2"/><path d="M1 6h14" stroke-linecap="round"/><circle cx="4" cy="4.5" r=".6" fill="currentColor" stroke="none"/><circle cx="6" cy="4.5" r=".6" fill="currentColor" stroke="none"/><circle cx="8" cy="4.5" r=".6" fill="currentColor" stroke="none"/></svg>`;
+const ICON_INFO    = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.5v4M8 5.5v.5" stroke-linecap="round"/></svg>`;
+const ICON_BACK    = `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" width="11" height="11"><path d="M7.5 2.5L4 6l3.5 3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const ICON_FWD     = `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" width="11" height="11"><path d="M4.5 2.5L8 6 4.5 9.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const ICON_RELOAD  = `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" width="11" height="11"><path d="M10 3.5A5 5 0 103.5 10" stroke-linecap="round"/><path d="M10 1.5v2H8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const ICON_OPEN    = `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" width="11" height="11"><path d="M8 2h2v2M10 2L6 6M5 3H2v7h7V7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 function getViewSwitcherHtml() {
   const previewEnabled = isPreviewEnabled();
   return `
-    <div class="webapp-view-switcher">
-      <button class="webapp-view-tab active" data-view="console">
-        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M20 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V6a2 2 0 00-2-2zm0 14H4V8h16v10z"/><path d="M7 10l4 3-4 3v-6z"/></svg>
-        Console
-      </button>
-      ${previewEnabled ? `
-        <button class="webapp-view-tab" data-view="preview">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
-          Preview
-        </button>
-      ` : ''}
-      <button class="webapp-view-tab" data-view="info">
-        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
-        Info
-      </button>
-    </div>
-    <div class="webapp-view-content">
-      <div class="webapp-console-view"></div>
-      ${previewEnabled ? `<div class="webapp-preview-view" style="display: none;"></div>` : ''}
-      <div class="webapp-info-view" style="display: none;"></div>
+    <div class="wa-shell">
+      <div class="wa-tabbar">
+        <div class="wa-tabs">
+          <button class="wa-tab active" data-view="console">
+            ${ICON_CONSOLE}
+            <span>Console</span>
+          </button>
+          ${previewEnabled ? `
+          <button class="wa-tab" data-view="preview">
+            ${ICON_PREVIEW}
+            <span>Preview</span>
+          </button>` : ''}
+          <button class="wa-tab" data-view="info">
+            ${ICON_INFO}
+            <span>Info</span>
+          </button>
+        </div>
+        <div class="wa-tabbar-right">
+          <div class="wa-server-status" data-status="stopped">
+            <span class="wa-status-pip"></span>
+            <span class="wa-status-label"></span>
+          </div>
+        </div>
+      </div>
+      <div class="wa-body">
+        <div class="webapp-console-view wa-view active"></div>
+        ${previewEnabled ? `<div class="webapp-preview-view wa-view" style="display:none"></div>` : ''}
+        <div class="webapp-info-view wa-view" style="display:none"></div>
+      </div>
     </div>
   `;
 }
 
 function setupViewSwitcher(wrapper, terminalId, projectIndex, project, deps) {
   const { t, getTerminal } = deps;
-  const consoleView = wrapper.querySelector('.webapp-console-view');
-  const previewView = wrapper.querySelector('.webapp-preview-view');
-  const infoView = wrapper.querySelector('.webapp-info-view');
+  const consoleView  = wrapper.querySelector('.webapp-console-view');
+  const previewView  = wrapper.querySelector('.webapp-preview-view');
+  const infoView     = wrapper.querySelector('.webapp-info-view');
+  const statusEl     = wrapper.querySelector('.wa-server-status');
+  const statusLabel  = wrapper.querySelector('.wa-status-label');
 
-  wrapper.querySelectorAll('.webapp-view-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      const view = tab.dataset.view;
+  const STATUS_LABELS = { stopped: '', starting: 'Starting', running: 'Running' };
 
-      wrapper.querySelectorAll('.webapp-view-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
+  function refreshStatus() {
+    const s = getWebAppServer(projectIndex);
+    const st = s.status || 'stopped';
+    if (statusEl) statusEl.dataset.status = st;
+    if (statusLabel) statusLabel.textContent = STATUS_LABELS[st] || '';
+  }
+  refreshStatus();
+  const pipInterval = setInterval(refreshStatus, 2000);
+  wrapper._waPipInterval = pipInterval;
 
-      consoleView.style.display = view === 'console' ? '' : 'none';
-      if (previewView) previewView.style.display = view === 'preview' ? '' : 'none';
-      infoView.style.display = view === 'info' ? '' : 'none';
+  wrapper.querySelectorAll('.wa-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const view = btn.dataset.view;
 
-      // Suspend iframe when leaving preview to save resources
-      if (view !== 'preview' && previewView) {
-        suspendPreview(previewView);
-      }
+      wrapper.querySelectorAll('.wa-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      const panes = [consoleView, previewView, infoView].filter(Boolean);
+      panes.forEach(p => { p.style.display = 'none'; p.classList.remove('active'); });
 
       if (view === 'console') {
+        consoleView.style.display = '';
+        consoleView.classList.add('active');
         const termData = getTerminal(terminalId);
         if (termData) setTimeout(() => termData.fitAddon.fit(), 50);
-      } else if (view === 'preview') {
+      } else if (view === 'preview' && previewView) {
+        previewView.style.display = '';
+        previewView.classList.add('active');
         renderPreviewView(wrapper, projectIndex, project, deps);
       } else if (view === 'info') {
+        infoView.style.display = '';
+        infoView.classList.add('active');
         renderInfoView(wrapper, projectIndex, project, deps);
       }
+
+      if (view !== 'preview' && previewView) suspendPreview(previewView);
 
       const termData = getTerminal(terminalId);
       if (termData) termData.activeView = view;
@@ -116,9 +150,6 @@ function setupViewSwitcher(wrapper, terminalId, projectIndex, project, deps) {
   });
 }
 
-/**
- * Suspend iframe by replacing src with about:blank (preserves DOM, stops JS execution)
- */
 function suspendPreview(previewView) {
   const iframe = previewView.querySelector('.webapp-preview-iframe');
   if (iframe && iframe.src !== 'about:blank') {
@@ -127,9 +158,6 @@ function suspendPreview(previewView) {
   }
 }
 
-/**
- * Resume iframe from suspended state
- */
 function resumePreview(previewView) {
   const iframe = previewView.querySelector('.webapp-preview-iframe');
   if (iframe && iframe.dataset.lastSrc) {
@@ -147,19 +175,25 @@ async function renderPreviewView(wrapper, projectIndex, project, deps) {
   const server = getWebAppServer(projectIndex);
 
   if (!port) {
-    // Check if iframe was previously loaded — clear it
-    if (previewView.dataset.loadedPort) {
-      delete previewView.dataset.loadedPort;
-    }
+    if (previewView.dataset.loadedPort) delete previewView.dataset.loadedPort;
 
+    const isStopped = server.status === 'stopped';
     previewView.innerHTML = `
-      <div class="webapp-preview-empty">
-        <svg viewBox="0 0 24 24" fill="currentColor" width="48" height="48" style="opacity:0.2"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
-        <span>${server.status === 'stopped' ? t('webapp.stopped') : t('webapp.detecting')}</span>
+      <div class="wa-empty ${isStopped ? 'is-stopped' : 'is-loading'}">
+        <div class="wa-empty-visual">
+          ${isStopped
+            ? `<svg viewBox="0 0 48 48" fill="none" width="40" height="40"><rect x="3" y="7" width="42" height="30" rx="4" stroke="currentColor" stroke-width="1" opacity=".15"/><path d="M3 14h42" stroke="currentColor" stroke-width="1" opacity=".15"/><rect x="18" y="37" width="12" height="4" rx="1.5" fill="currentColor" opacity=".07"/><path d="M13 43h22" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".07"/><circle cx="9" cy="10.5" r="1.2" fill="currentColor" opacity=".18"/><circle cx="14" cy="10.5" r="1.2" fill="currentColor" opacity=".12"/><circle cx="19" cy="10.5" r="1.2" fill="currentColor" opacity=".08"/></svg>`
+            : `<svg viewBox="0 0 48 48" fill="none" width="38" height="38" class="wa-spin-slow"><circle cx="24" cy="24" r="19" stroke="currentColor" stroke-width="1" opacity=".07"/><path d="M24 5a19 19 0 0116 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".5"/><path d="M24 11a13 13 0 0110 6" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity=".2"/></svg>`
+          }
+        </div>
+        <div class="wa-empty-body">
+          <p class="wa-empty-title">${isStopped ? 'No server running' : 'Starting up'}</p>
+          <p class="wa-empty-sub">${isStopped ? 'Start the dev server to see a live preview here' : 'Waiting for port detection…'}</p>
+        </div>
       </div>
     `;
 
-    if (server.status !== 'stopped') {
+    if (!isStopped) {
       startPortPoll(wrapper, projectIndex, () => {
         renderPreviewView(wrapper, projectIndex, project, deps);
       });
@@ -170,52 +204,35 @@ async function renderPreviewView(wrapper, projectIndex, project, deps) {
   clearPollTimer(wrapper);
   const url = `http://localhost:${port}`;
 
-  // Resume if same port was already loaded (just suspended)
   const existingIframe = previewView.querySelector('.webapp-preview-iframe');
   if (existingIframe && previewView.dataset.loadedPort === String(port)) {
-    if (existingIframe.dataset.lastSrc) {
-      resumePreview(previewView);
-    }
+    if (existingIframe.dataset.lastSrc) resumePreview(previewView);
     return;
   }
 
   previewView.dataset.loadedPort = String(port);
-
   previewView.innerHTML = `
-    <div class="webapp-preview-toolbar">
-      <button class="webapp-preview-btn webapp-preview-back" title="Back">
-        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
-      </button>
-      <button class="webapp-preview-btn webapp-preview-forward" title="Forward">
-        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg>
-      </button>
-      <button class="webapp-preview-btn webapp-preview-reload" title="${t('webapp.reload') || 'Reload'}">
-        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
-      </button>
-      <div class="webapp-preview-urlbar">
-        <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12" style="opacity:0.4;flex-shrink:0"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
-        <input class="webapp-preview-url-input" value="${url}" readonly />
+    <div class="wa-browser">
+      <div class="wa-browser-bar">
+        <div class="wa-browser-nav">
+          <button class="wa-browser-btn wa-back" title="Back">${ICON_BACK}</button>
+          <button class="wa-browser-btn wa-fwd" title="Forward">${ICON_FWD}</button>
+          <button class="wa-browser-btn wa-reload" title="Reload">${ICON_RELOAD}</button>
+        </div>
+        <div class="wa-address-bar">
+          <span class="wa-addr-scheme">http://</span><span class="wa-addr-host">localhost</span><span class="wa-addr-port">:${port}</span>
+        </div>
+        <button class="wa-browser-btn wa-open-ext" title="${t('webapp.openBrowser')}">${ICON_OPEN}</button>
       </div>
-      <button class="webapp-preview-btn webapp-preview-open" title="${t('webapp.openBrowser')}">
-        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/><path d="M5 5v14h14v-7h-2v5H7V7h5V5H5z"/></svg>
-      </button>
+      <iframe class="webapp-preview-iframe" src="${url}" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"></iframe>
     </div>
-    <iframe class="webapp-preview-iframe" src="${url}" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"></iframe>
   `;
 
   const iframe = previewView.querySelector('.webapp-preview-iframe');
-  previewView.querySelector('.webapp-preview-reload').onclick = () => {
-    iframe.contentWindow.location.reload();
-  };
-  previewView.querySelector('.webapp-preview-back').onclick = () => {
-    try { iframe.contentWindow.history.back(); } catch (e) {}
-  };
-  previewView.querySelector('.webapp-preview-forward').onclick = () => {
-    try { iframe.contentWindow.history.forward(); } catch (e) {}
-  };
-  previewView.querySelector('.webapp-preview-open').onclick = () => {
-    api.dialog.openExternal(url);
-  };
+  previewView.querySelector('.wa-reload').onclick = () => { try { iframe.contentWindow.location.reload(); } catch(e) {} };
+  previewView.querySelector('.wa-back').onclick   = () => { try { iframe.contentWindow.history.back(); } catch(e) {} };
+  previewView.querySelector('.wa-fwd').onclick    = () => { try { iframe.contentWindow.history.forward(); } catch(e) {} };
+  previewView.querySelector('.wa-open-ext').onclick = () => api.dialog.openExternal(url);
 }
 
 async function renderInfoView(wrapper, projectIndex, project, deps) {
@@ -226,49 +243,81 @@ async function renderInfoView(wrapper, projectIndex, project, deps) {
 
   const port = await resolvePort(projectIndex);
   const url = port ? `http://localhost:${port}` : null;
-  const statusKey = server.status === 'stopped' ? 'webapp.stopped'
-    : server.status === 'starting' ? 'webapp.starting'
-    : 'webapp.running';
+
+  const STATUS = {
+    stopped:  { cls: 'stopped',  label: 'Stopped',  desc: 'Dev server is not running' },
+    starting: { cls: 'starting', label: 'Starting', desc: 'Launching dev server…'     },
+    running:  { cls: 'running',  label: 'Running',  desc: url || 'Server active'       },
+  };
+  const st = STATUS[server.status] || STATUS.stopped;
+
+  const framework = project.framework || project.webFramework || null;
+  const devCmd    = project.devCommand || 'auto';
+  const projectName = project.name || 'Web App';
+
+  const ICON_STATUS_RUNNING = `<svg viewBox="0 0 20 20" fill="none" width="18" height="18"><circle cx="10" cy="10" r="9" stroke="currentColor" stroke-width="1.2" opacity=".25"/><circle cx="10" cy="10" r="4" fill="currentColor"/></svg>`;
+  const ICON_STATUS_STOPPED = `<svg viewBox="0 0 20 20" fill="none" width="18" height="18"><circle cx="10" cy="10" r="9" stroke="currentColor" stroke-width="1.2" opacity=".25"/><rect x="7.5" y="7.5" width="5" height="5" rx="1" fill="currentColor" opacity=".5"/></svg>`;
+  const ICON_GLOBE = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" width="13" height="13"><circle cx="8" cy="8" r="6.5"/><path d="M8 1.5C6 4 5 6 5 8s1 4 3 6.5M8 1.5C10 4 11 6 11 8s-1 4-3 6.5M1.5 8h13" stroke-linecap="round"/></svg>`;
+  const ICON_TERMINAL = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" width="13" height="13"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M4.5 6L7 8.5 4.5 11M8.5 11H12" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const ICON_PORT = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" width="13" height="13"><path d="M8 2v12M4 5h8M3 9h10" stroke-linecap="round"/><rect x="5" y="7" width="6" height="4" rx="1"/></svg>`;
 
   infoView.innerHTML = `
-    <div class="webapp-info-panel">
-      <div class="webapp-info-row">
-        <span class="webapp-info-label">${t('webapp.devCommand')}</span>
-        <span class="webapp-info-value"><code>${project.devCommand || 'auto-detect'}</code></span>
+    <div class="wa-info">
+
+      <div class="wa-info-hero ${st.cls}">
+        <div class="wa-info-hero-bg"></div>
+        <div class="wa-info-hero-content">
+          <div class="wa-info-hero-icon">${server.status === 'running' ? ICON_STATUS_RUNNING : ICON_STATUS_STOPPED}</div>
+          <div class="wa-info-hero-text">
+            <div class="wa-info-hero-label">${st.label}</div>
+            <div class="wa-info-hero-sub">${st.desc}</div>
+          </div>
+          ${url ? `<button class="wa-info-cta webapp-open-url" data-url="${url}">${ICON_OPEN}<span>Open</span></button>` : ''}
+        </div>
       </div>
-      <div class="webapp-info-row">
-        <span class="webapp-info-label">Status</span>
-        <span class="webapp-info-value">
-          <span class="webapp-status-dot ${server.status}"></span>
-          ${t(statusKey)}
-        </span>
+
+      <div class="wa-info-grid">
+        <div class="wa-info-tile">
+          <div class="wa-info-tile-icon">${ICON_PORT}</div>
+          <div class="wa-info-tile-body">
+            <div class="wa-info-tile-label">Port</div>
+            <div class="wa-info-tile-val wa-mono">${port ? port : '—'}</div>
+          </div>
+        </div>
+        <div class="wa-info-tile">
+          <div class="wa-info-tile-icon">${ICON_TERMINAL}</div>
+          <div class="wa-info-tile-body">
+            <div class="wa-info-tile-label">Command</div>
+            <div class="wa-info-tile-val wa-mono">${devCmd}</div>
+          </div>
+        </div>
+        ${framework ? `
+        <div class="wa-info-tile">
+          <div class="wa-info-tile-icon">${ICON_GLOBE}</div>
+          <div class="wa-info-tile-body">
+            <div class="wa-info-tile-label">Framework</div>
+            <div class="wa-info-tile-val">${framework}</div>
+          </div>
+        </div>` : ''}
+        ${url ? `
+        <div class="wa-info-tile wa-info-tile-link webapp-open-url" data-url="${url}" role="button" tabindex="0">
+          <div class="wa-info-tile-icon">${ICON_GLOBE}</div>
+          <div class="wa-info-tile-body">
+            <div class="wa-info-tile-label">Local URL</div>
+            <div class="wa-info-tile-val wa-mono">${url}</div>
+          </div>
+          <div class="wa-info-tile-arrow">${ICON_OPEN}</div>
+        </div>` : ''}
       </div>
-      ${port ? `
-        <div class="webapp-info-row">
-          <span class="webapp-info-label">${t('webapp.port')}</span>
-          <span class="webapp-info-value"><code>${port}</code></span>
-        </div>
-        <div class="webapp-info-row clickable webapp-open-url" data-url="${url}">
-          <span class="webapp-info-label">${t('webapp.url')}</span>
-          <span class="webapp-info-value">
-            <span class="webapp-url-link">${url}</span>
-            <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12" style="margin-left:6px;opacity:0.5"><path d="M14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/><path d="M5 5v14h14v-7h-2v5H7V7h5V5H5z"/></svg>
-          </span>
-        </div>
-      ` : server.status === 'running' ? `
-        <div class="webapp-info-row">
-          <span class="webapp-info-label">${t('webapp.port')}</span>
-          <span class="webapp-info-value">${t('webapp.detecting')}</span>
-        </div>
-      ` : ''}
+
     </div>
   `;
 
-  infoView.querySelectorAll('.webapp-open-url').forEach(row => {
-    row.style.cursor = 'pointer';
-    row.onclick = () => {
-      const urlToOpen = row.dataset.url;
-      if (urlToOpen) api.dialog.openExternal(urlToOpen);
+  infoView.querySelectorAll('.webapp-open-url').forEach(el => {
+    el.style.cursor = 'pointer';
+    el.onclick = () => {
+      const u = el.dataset.url;
+      if (u) api.dialog.openExternal(u);
     };
   });
 
@@ -279,11 +328,9 @@ async function renderInfoView(wrapper, projectIndex, project, deps) {
   }
 }
 
-/**
- * Cleanup all timers and iframe for a wrapper (called on close)
- */
 function cleanup(wrapper) {
   clearPollTimer(wrapper);
+  if (wrapper._waPipInterval) clearInterval(wrapper._waPipInterval);
   const previewView = wrapper.querySelector('.webapp-preview-view');
   if (previewView) {
     const iframe = previewView.querySelector('.webapp-preview-iframe');

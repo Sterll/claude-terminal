@@ -40,6 +40,7 @@ async function startDevServer(projectIndex) {
 
   initWebAppServer(projectIndex);
   setWebAppServerStatus(projectIndex, 'starting');
+  setWebAppPort(projectIndex, null); // reset cached port on restart
 
   try {
     const result = await api.webapp.start({
