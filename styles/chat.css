@@ -2880,6 +2880,110 @@
   flex-shrink: 0;
 }
 
+/* ── Effort selector ── */
+.chat-effort-selector {
+  position: relative;
+}
+
+.chat-effort-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 10px;
+  color: var(--text-secondary, #888);
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.chat-effort-btn:hover {
+  opacity: 1;
+}
+
+.chat-effort-btn.locked {
+  cursor: default;
+  opacity: 0.3;
+}
+
+.chat-effort-btn.locked:hover {
+  opacity: 0.3;
+}
+
+.chat-effort-btn.locked .chat-effort-arrow {
+  display: none;
+}
+
+.chat-effort-arrow {
+  font-size: 7px;
+  opacity: 0.5;
+}
+
+.chat-effort-dropdown {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  width: 220px;
+  background: var(--bg-primary, #111);
+  border: 1px solid var(--border-color, #2a2a2a);
+  border-radius: 10px;
+  padding: 4px;
+  z-index: 100;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+.chat-effort-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.chat-effort-option:hover {
+  background: var(--bg-tertiary, #1e1e1e);
+}
+
+.chat-effort-option.active {
+  background: rgba(var(--accent-color-rgb, 217, 119, 6), 0.1);
+}
+
+.chat-effort-option-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.chat-effort-option-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary, #e8e8e8);
+}
+
+.chat-effort-option.active .chat-effort-option-label {
+  color: var(--accent-color, #d97706);
+}
+
+.chat-effort-option-desc {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  opacity: 0.5;
+}
+
+.chat-effort-check {
+  width: 16px;
+  height: 16px;
+  color: var(--accent-color, #d97706);
+  flex-shrink: 0;
+}
+
 /* ── Streaming state ── */
 .chat-view.streaming .chat-input-wrapper {
   border-color: rgba(var(--accent-color-rgb, 99, 102, 241), 0.25);

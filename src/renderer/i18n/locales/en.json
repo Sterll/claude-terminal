@@ -1020,7 +1020,11 @@
     "forkedFrom": "Forked conversation",
     "errorMaxTurns": "Claude reached the {count}-turn limit. Start a new session to continue.",
     "errorMaxBudget": "Budget limit reached (${cost}). Start a new session to continue.",
-    "errorExecution": "An error occurred during execution"
+    "errorExecution": "An error occurred during execution",
+    "effortLow": "Fastest, minimal thinking",
+    "effortMedium": "Balanced speed & quality",
+    "effortHigh": "Deep reasoning (default)",
+    "effortMax": "Maximum effort (Opus only)"
   },
   "hooks": {
     "consent": {

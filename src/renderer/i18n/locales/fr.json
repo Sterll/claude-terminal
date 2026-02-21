@@ -1020,7 +1020,11 @@
     "forkedFrom": "Conversation branchée",
     "errorMaxTurns": "Claude a atteint la limite de {count} tours. Démarrez une nouvelle session.",
     "errorMaxBudget": "Limite de budget atteinte ({cost}$). Démarrez une nouvelle session.",
-    "errorExecution": "Une erreur est survenue pendant l'exécution"
+    "errorExecution": "Une erreur est survenue pendant l'exécution",
+    "effortLow": "Rapide, réflexion minimale",
+    "effortMedium": "Équilibre vitesse & qualité",
+    "effortHigh": "Raisonnement approfondi (défaut)",
+    "effortMax": "Effort maximum (Opus uniquement)"
   },
   "hooks": {
     "consent": {

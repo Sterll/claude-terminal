@@ -16,6 +16,12 @@ const MODEL_OPTIONS = [
   { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', desc: 'Fastest for quick answers' },
 ];
 
+const EFFORT_OPTIONS = [
+  { id: 'low', label: 'Low', desc: t('chat.effortLow') },
+  { id: 'medium', label: 'Medium', desc: t('chat.effortMedium') },
+  { id: 'high', label: 'High', desc: t('chat.effortHigh') },
+];
+
 // ── Markdown Renderer ──
 
 function renderMarkdown(text) {
@@ -158,6 +164,7 @@ function createChatView(wrapperEl, project, options = {}) {
   let sdkSessionId = null; // real SDK session UUID (different from our internal sessionId)
   let model = '';
   let selectedModel = getSetting('chatModel') || MODEL_OPTIONS[0].id;
+  let selectedEffort = getSetting('effortLevel') || 'high';
   let totalCost = 0;
   let totalTokens = 0;
   const toolCards = new Map(); // content_block index -> element
@@ -214,6 +221,10 @@ function createChatView(wrapperEl, project, options = {}) {
             <span class="chat-status-text">${escapeHtml(t('chat.ready'))}</span>
           </div>
           <div class="chat-footer-right">
+            <div class="chat-effort-selector">
+              <button class="chat-effort-btn"><span class="chat-effort-label">High</span> <span class="chat-effort-arrow">&#9662;</span></button>
+              <div class="chat-effort-dropdown" style="display:none"></div>
+            </div>
             <div class="chat-model-selector">
               <button class="chat-model-btn"><span class="chat-model-label">Sonnet</span> <span class="chat-model-arrow">&#9662;</span></button>
               <div class="chat-model-dropdown" style="display:none"></div>
@@ -236,6 +247,9 @@ function createChatView(wrapperEl, project, options = {}) {
   const modelBtn = chatView.querySelector('.chat-model-btn');
   const modelLabel = chatView.querySelector('.chat-model-label');
   const modelDropdown = chatView.querySelector('.chat-model-dropdown');
+  const effortBtn = chatView.querySelector('.chat-effort-btn');
+  const effortLabel = chatView.querySelector('.chat-effort-label');
+  const effortDropdown = chatView.querySelector('.chat-effort-dropdown');
   const statusTokens = chatView.querySelector('.chat-status-tokens');
   const statusCost = chatView.querySelector('.chat-status-cost');
   const slashDropdown = chatView.querySelector('.chat-slash-dropdown');
@@ -317,12 +331,72 @@ function createChatView(wrapperEl, project, options = {}) {
     if (opt) selectModel(opt.dataset.model);
   });
 
-  // Close dropdown on outside click
+  // ── Effort selector ──
+
+  function initEffortSelector() {
+    const saved = getSetting('effortLevel');
+    const current = EFFORT_OPTIONS.find(e => e.id === saved) || EFFORT_OPTIONS.find(e => e.id === 'high');
+    effortLabel.textContent = current.label;
+    selectedEffort = current.id;
+  }
+
+  function buildEffortDropdown() {
+    effortDropdown.innerHTML = EFFORT_OPTIONS.map(e => {
+      const isActive = e.id === selectedEffort;
+      return `
+      <div class="chat-effort-option${isActive ? ' active' : ''}" data-effort="${e.id}">
+        <div class="chat-effort-option-info">
+          <span class="chat-effort-option-label">${e.label}</span>
+          <span class="chat-effort-option-desc">${e.desc}</span>
+        </div>
+        ${isActive ? '<svg class="chat-effort-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+      </div>`;
+    }).join('');
+  }
+
+  function toggleEffortDropdown() {
+    const visible = effortDropdown.style.display !== 'none';
+    if (visible) {
+      effortDropdown.style.display = 'none';
+    } else {
+      buildEffortDropdown();
+      effortDropdown.style.display = '';
+    }
+  }
+
+  function selectEffort(effortId) {
+    const option = EFFORT_OPTIONS.find(e => e.id === effortId);
+    if (!option) return;
+    selectedEffort = effortId;
+    effortLabel.textContent = option.label;
+    effortDropdown.style.display = 'none';
+    setSetting('effortLevel', effortId);
+  }
+
+  function lockEffortSelector() {
+    effortBtn.classList.add('locked');
+    effortBtn.disabled = true;
+  }
+
+  effortBtn.addEventListener('click', (e) => {
+    if (sessionId) return;
+    e.stopPropagation();
+    toggleEffortDropdown();
+  });
+
+  effortDropdown.addEventListener('click', (e) => {
+    const opt = e.target.closest('.chat-effort-option');
+    if (opt) selectEffort(opt.dataset.effort);
+  });
+
+  // Close dropdowns on outside click
   document.addEventListener('click', () => {
     modelDropdown.style.display = 'none';
+    effortDropdown.style.display = 'none';
   });
 
   initModelSelector();
+  initEffortSelector();
 
   attachBtn.addEventListener('click', () => fileInput.click());
 
@@ -1429,6 +1503,7 @@ function createChatView(wrapperEl, project, options = {}) {
         // _processStream fires events immediately, but await returns later.
         sessionId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         lockModelSelector();
+        lockEffortSelector();
         const startOpts = {
           cwd: project.path,
           prompt: text || '',
@@ -1437,6 +1512,7 @@ function createChatView(wrapperEl, project, options = {}) {
           images: imagesPayload,
           mentions: resolvedMentions,
           model: selectedModel,
+          effort: selectedEffort,
           enable1MContext: getSetting('enable1MContext') || false
         };
         if (pendingResumeId) {
