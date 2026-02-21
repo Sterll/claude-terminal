@@ -129,7 +129,7 @@ function getTerminalStatsForProject(projectIndex) {
   let working = 0;
   const terminals = terminalsState.get().terminals;
   terminals.forEach(term => {
-    if (term.projectIndex === projectIndex && term.type !== 'fivem' && !term.isBasic) {
+    if (term.projectIndex === projectIndex && term.type !== 'fivem' && term.type !== 'webapp' && !term.isBasic) {
       total++;
       if (term.status === 'working') working++;
     }

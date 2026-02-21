@@ -931,11 +931,17 @@
 }
 
 .terminal-wrapper.active {
-  display: block;
+  display: flex;
+  flex-direction: column;
+}
+
+.terminal-wrapper.webapp-wrapper {
+  padding: 0;
 }
 
 .terminal-wrapper .xterm {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .terminal-wrapper .xterm-viewport {
