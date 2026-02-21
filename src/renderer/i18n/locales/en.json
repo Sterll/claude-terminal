@@ -44,6 +44,9 @@
     "gitPull": "Git Pull",
     "gitPush": "Git Push",
     "newWorktree": "New worktree",
+    "worktreeExisting": "Existing worktrees",
+    "worktreeOpen": "Open",
+    "worktreeCreateNew": "Create a new worktree",
     "worktreeBranchLabel": "Branch name",
     "worktreeBranchPlaceholder": "feat/my-feature",
     "worktreeCreate": "Create & open",
@@ -1048,5 +1051,28 @@
     "backupFailed": "Could not create backup. Your projects have been reset.",
     "saveError": "Save error",
     "saveErrorDetail": "Could not save projects: {message}"
+  },
+  "remote": {
+    "tabTitle": "Remote",
+    "sectionGeneral": "Remote Control",
+    "sectionStatus": "Server",
+    "enable": "Enable Remote Control",
+    "enableDesc": "Allow mobile devices to control Claude Terminal over your local network",
+    "port": "Port",
+    "portDesc": "HTTP/WebSocket server port (default: 3712)",
+    "serverStatus": "Status",
+    "serverRunning": "Running",
+    "serverStopped": "Stopped",
+    "pairedDevices": "Paired Devices",
+    "pairDevice": "Pair new device",
+    "sectionPin": "Connection PIN",
+    "pinLabel": "Enter this code on your mobile device",
+    "pinHint": "Open the server address on your phone, enter the PIN to connect",
+    "pinExpires": "Expires in {seconds}s",
+    "pinExpired": "Expired — click New PIN",
+    "pinRefresh": "New PIN",
+    "networkInterface": "Network interface",
+    "networkInterfaceDesc": "IP address shown in the server URL",
+    "networkInterfaceAuto": "Auto (first available)"
   }
 }

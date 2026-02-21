@@ -1683,3 +1683,70 @@
   animation: spin 0.7s linear infinite;
   margin-right: 2px;
 }
+
+.worktree-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.worktree-section-label {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.worktree-existing-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.worktree-existing-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.12s;
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  width: 100%;
+}
+
+.worktree-existing-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.worktree-existing-item svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.worktree-existing-branch {
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  font-size: var(--font-xs);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.worktree-existing-path {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.worktree-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 2px 0;
+}

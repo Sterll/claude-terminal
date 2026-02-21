@@ -44,6 +44,9 @@
     "gitPull": "Git Pull",
     "gitPush": "Git Push",
     "newWorktree": "Nouveau worktree",
+    "worktreeExisting": "Worktrees existants",
+    "worktreeOpen": "Ouvrir",
+    "worktreeCreateNew": "Créer un nouveau worktree",
     "worktreeBranchLabel": "Nom de la branche",
     "worktreeBranchPlaceholder": "feat/ma-feature",
     "worktreeCreate": "Créer et ouvrir",
@@ -1048,5 +1051,28 @@
     "backupFailed": "Impossible de créer un backup. Vos projets ont été réinitialisés.",
     "saveError": "Erreur de sauvegarde",
     "saveErrorDetail": "Impossible de sauvegarder les projets : {message}"
+  },
+  "remote": {
+    "tabTitle": "Télécommande",
+    "sectionGeneral": "Contrôle à distance",
+    "sectionStatus": "Serveur",
+    "enable": "Activer le contrôle à distance",
+    "enableDesc": "Permettre aux appareils mobiles de contrôler Claude Terminal sur votre réseau local",
+    "port": "Port",
+    "portDesc": "Port du serveur HTTP/WebSocket (défaut : 3712)",
+    "serverStatus": "Statut",
+    "serverRunning": "En cours d'exécution",
+    "serverStopped": "Arrêté",
+    "pairedDevices": "Appareils associés",
+    "pairDevice": "Associer un appareil",
+    "sectionPin": "Code de connexion",
+    "pinLabel": "Entrez ce code sur votre téléphone",
+    "pinHint": "Ouvrez l'adresse du serveur sur votre téléphone, entrez le code pour vous connecter",
+    "pinExpires": "Expire dans {seconds}s",
+    "pinExpired": "Expiré — cliquez sur Nouveau code",
+    "pinRefresh": "Nouveau code",
+    "networkInterface": "Interface réseau",
+    "networkInterfaceDesc": "Adresse IP affichée dans l'URL du serveur",
+    "networkInterfaceAuto": "Auto (première disponible)"
   }
 }
