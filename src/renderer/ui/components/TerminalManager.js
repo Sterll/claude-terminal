@@ -1082,18 +1082,19 @@ function closeTerminal(id) {
  * Create a new terminal for a project
  */
 async function createTerminal(project, options = {}) {
-  const { skipPermissions = false, runClaude = true, name: customName = null, mode: explicitMode = null } = options;
+  const { skipPermissions = false, runClaude = true, name: customName = null, mode: explicitMode = null, cwd: overrideCwd = null } = options;
 
   // Determine mode: explicit > setting > default
   const mode = explicitMode || (runClaude ? (getSetting('defaultTerminalMode') || 'terminal') : 'terminal');
 
   // Chat mode: skip PTY creation entirely
   if (mode === 'chat' && runClaude) {
-    return createChatTerminal(project, { skipPermissions, name: customName });
+    const chatProject = overrideCwd ? { ...project, path: overrideCwd } : project;
+    return createChatTerminal(chatProject, { skipPermissions, name: customName, parentProjectId: overrideCwd ? project.id : null });
   }
 
   const result = await api.terminal.create({
-    cwd: project.path,
+    cwd: overrideCwd || project.path,
     runClaude,
     skipPermissions
   });
@@ -1138,7 +1139,8 @@ async function createTerminal(project, options = {}) {
     status: initialStatus,
     inputBuffer: '',
     isBasic: isBasicTerminal,
-    mode: 'terminal'
+    mode: 'terminal',
+    ...(overrideCwd ? { parentProjectId: project.id } : {})
   };
 
   addTerminal(id, termData);
@@ -1839,7 +1841,10 @@ function filterByProject(projectIndex) {
     // O(1) lookup instead of O(n) querySelector
     const tab = tabsById.get(String(id));
     const wrapper = wrappersById.get(String(id));
-    const shouldShow = projectIndex === null || (project && termData.project && termData.project.path === project.path);
+    const shouldShow = projectIndex === null || (project && termData.project && (
+      termData.project.path === project.path ||
+      (termData.parentProjectId && termData.parentProjectId === project.id)
+    ));
 
     if (tab) tab.style.display = shouldShow ? '' : 'none';
     if (wrapper) wrapper.style.display = shouldShow ? '' : 'none';
@@ -1893,7 +1898,7 @@ function countTerminalsForProject(projectIndex) {
   let count = 0;
   const terminals = terminalsState.get().terminals;
   terminals.forEach(termData => {
-    if (termData.project && termData.project.path === project.path) count++;
+    if (termData.project && (termData.project.path === project.path || (termData.parentProjectId && termData.parentProjectId === project.id))) count++;
   });
   return count;
 }
@@ -1910,7 +1915,7 @@ function getTerminalStatsForProject(projectIndex) {
   let working = 0;
   const terminals = terminalsState.get().terminals;
   terminals.forEach(termData => {
-    if (termData.project && termData.project.path === project.path && termData.type !== 'fivem' && termData.type !== 'webapp' && termData.type !== 'file' && !termData.isBasic) {
+    if (termData.project && (termData.project.path === project.path || (termData.parentProjectId && termData.parentProjectId === project.id)) && termData.type !== 'fivem' && termData.type !== 'webapp' && termData.type !== 'file' && !termData.isBasic) {
       total++;
       if (termData.status === 'working') working++;
     }
@@ -3057,10 +3062,10 @@ function focusPrevTerminal() {
  * Create a chat-mode terminal (Claude Agent SDK UI)
  */
 async function createChatTerminal(project, options = {}) {
-  const { skipPermissions = false, name: customName = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null } = options;
+  const { skipPermissions = false, name: customName = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null, parentProjectId = null } = options;
 
   const id = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const projectIndex = getProjectIndex(project.id);
+  const projectIndex = getProjectIndex(parentProjectId || project.id);
   const tabName = customName || project.name;
 
   const termData = {
@@ -3073,11 +3078,12 @@ async function createChatTerminal(project, options = {}) {
     inputBuffer: '',
     isBasic: false,
     mode: 'chat',
-    chatView: null
+    chatView: null,
+    ...(parentProjectId ? { parentProjectId } : {})
   };
 
   addTerminal(id, termData);
-  heartbeat(project.id, 'terminal');
+  heartbeat(parentProjectId || project.id, 'terminal');
 
   // Create tab
   const tabsContainer = document.getElementById('terminals-tabs');

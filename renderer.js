@@ -52,8 +52,6 @@ const {
   renameFolder,
   renameProject,
   setSelectedProjectFilter,
-  setOpenedProjectId,
-  addProject,
   generateProjectId,
   initializeState,
 
@@ -947,25 +945,12 @@ function openNewWorktreeModal(project) {
     closeModal();
     showToast({ type: 'success', title: t('projects.worktreeSuccess', { branch: branchName }) });
 
-    // Register the worktree as a real project, then open it
-    const projects = projectsState.get().projects;
-    let worktreeProject = projects.find(p => p.path?.replace(/\\/g, '/') === worktreePath.replace(/\\/g, '/'));
-    if (!worktreeProject) {
-      worktreeProject = addProject({
-        name: `${project.name || projectBase} (${safeBranch})`,
-        path: worktreePath,
-        type: project.type || 'standalone',
-        isWorktree: true,
-        parentRepoProjectId: project.id,
-        worktreeBranch: branchName
-      });
-      saveProjects();
-      ProjectList.render();
-    }
-    const newIdx = getProjectIndex(worktreeProject.id);
-    setSelectedProjectFilter(newIdx);
-    setOpenedProjectId(null);
-    createTerminalForProject(worktreeProject);
+    // Open a tab in the same project, with the worktree path as cwd
+    TerminalManager.createTerminal(project, {
+      skipPermissions: settingsState.get().skipPermissions,
+      cwd: worktreePath,
+      name: safeBranch
+    });
   }
 
   createBtn.addEventListener('click', doCreate);
