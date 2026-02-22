@@ -1025,6 +1025,7 @@ function closeTerminal(id) {
   terminalSubstatus.delete(id);
   lastTerminalData.delete(id);
   terminalContext.delete(id);
+  errorOverlays.delete(closedProjectIndex);
 
   // Kill and cleanup
   if (termData && termData.mode === 'chat') {
@@ -3359,6 +3360,24 @@ async function switchTerminalMode(id) {
   tab.className = tab.className.replace(/status-\w+/, `status-${getTerminal(id)?.status || 'ready'}`);
 }
 
+/**
+ * Clean up all Maps entries for a given project index.
+ * Should be called when a project is deleted to prevent memory leaks.
+ * @param {number} projectIndex
+ */
+function cleanupProjectMaps(projectIndex) {
+  fivemConsoleIds.delete(projectIndex);
+  webappConsoleIds.delete(projectIndex);
+  apiConsoleIds.delete(projectIndex);
+  errorOverlays.delete(projectIndex);
+  // Clean type console ids (keyed by "${typeId}-${projectIndex}")
+  for (const key of typeConsoleIds.keys()) {
+    if (key.endsWith(`-${projectIndex}`)) {
+      typeConsoleIds.delete(key);
+    }
+  }
+}
+
 module.exports = {
   createTerminal,
   closeTerminal,
@@ -3402,5 +3421,7 @@ module.exports = {
   // Chat mode
   switchTerminalMode,
   // Scraping callback for EventBus
-  setScrapingCallback
+  setScrapingCallback,
+  // Cleanup when a project is deleted
+  cleanupProjectMaps
 };
