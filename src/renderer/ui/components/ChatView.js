@@ -230,6 +230,7 @@ function createChatView(wrapperEl, project, options = {}) {
   const pendingImages = []; // Array of { base64, mediaType, name, dataUrl }
   const SUPPORTED_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
   const MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20MB
+  const MAX_PENDING_IMAGES = 5;
 
   // ── Model selector ──
 
@@ -348,10 +349,11 @@ function createChatView(wrapperEl, project, options = {}) {
   });
 
   // Close dropdowns on outside click
-  document.addEventListener('click', () => {
+  function _closeDropdowns() {
     modelDropdown.style.display = 'none';
     effortDropdown.style.display = 'none';
-  });
+  }
+  document.addEventListener('click', _closeDropdowns);
 
   initModelSelector();
   initEffortSelector();
@@ -367,10 +369,12 @@ function createChatView(wrapperEl, project, options = {}) {
 
   function addImageFiles(files) {
     for (const file of files) {
+      if (pendingImages.length >= MAX_PENDING_IMAGES) break;
       if (!SUPPORTED_TYPES.includes(file.type)) continue;
       if (file.size > MAX_IMAGE_SIZE) continue;
       const reader = new FileReader();
       reader.onload = () => {
+        if (pendingImages.length >= MAX_PENDING_IMAGES) return;
         const dataUrl = reader.result;
         const base64 = dataUrl.split(',')[1];
         pendingImages.push({ base64, mediaType: file.type, name: file.name, dataUrl });
@@ -1972,11 +1976,17 @@ function createChatView(wrapperEl, project, options = {}) {
     return el;
   }
 
+  let _streamRafId = null;
   function appendStreamDelta(text) {
     currentStreamText += text;
-    if (currentStreamEl) {
-      currentStreamEl.innerHTML = renderMarkdown(currentStreamText) + '<span class="chat-cursor"></span>';
-      scrollToBottom();
+    if (currentStreamEl && !_streamRafId) {
+      _streamRafId = requestAnimationFrame(() => {
+        _streamRafId = null;
+        if (currentStreamEl) {
+          currentStreamEl.innerHTML = renderMarkdown(currentStreamText) + '<span class="chat-cursor"></span>';
+          scrollToBottom();
+        }
+      });
     }
   }
 
@@ -2692,16 +2702,16 @@ function createChatView(wrapperEl, project, options = {}) {
     }
   });
 
+  let _scrollRafId = null;
   function scrollToBottom() {
-    // Only auto-scroll if user hasn't manually scrolled away
     if (!userHasScrolled) {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
+      if (!_scrollRafId) {
+        _scrollRafId = requestAnimationFrame(() => {
+          _scrollRafId = null;
           messagesEl.scrollTop = messagesEl.scrollHeight;
         });
-      });
+      }
     } else {
-      // Show scroll button with new messages indicator
       hasNewMessages = true;
       scrollButton.classList.add('has-new-messages');
       scrollButton.style.display = '';
@@ -3238,100 +3248,118 @@ function createChatView(wrapperEl, project, options = {}) {
       }
     }
 
-    let currentAssistantEl = null;
+    // Batch rendering: build DOM in a fragment, process in chunks to avoid blocking UI
+    const BATCH_SIZE = 20;
+    let idx = 0;
 
-    for (const msg of messages) {
-      if (msg.role === 'user') {
-        currentAssistantEl = null;
-        const el = document.createElement('div');
-        el.className = 'chat-msg chat-msg-user history';
-        el.innerHTML = `<div class="chat-msg-content">${renderMarkdown(msg.text)}</div>`;
-        messagesEl.appendChild(el);
+    function renderBatch() {
+      const fragment = document.createDocumentFragment();
+      const end = Math.min(idx + BATCH_SIZE, messages.length);
 
-      } else if (msg.role === 'assistant' && msg.type === 'text') {
-        const el = document.createElement('div');
-        el.className = 'chat-msg chat-msg-assistant history';
-        el.innerHTML = `<div class="chat-msg-content">${renderMarkdown(msg.text)}</div>`;
-        messagesEl.appendChild(el);
-        currentAssistantEl = el;
-
-      } else if (msg.role === 'assistant' && msg.type === 'thinking') {
-        const el = document.createElement('div');
-        el.className = 'chat-thinking history';
-        el.innerHTML = `
-          <div class="chat-thinking-header">
-            <svg viewBox="0 0 24 24" fill="currentColor" class="chat-thinking-chevron"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>
-            <span>${escapeHtml(t('chat.thinking'))}</span>
-          </div>
-          <div class="chat-thinking-content">${renderMarkdown(msg.text)}</div>
-        `;
-        messagesEl.appendChild(el);
-
-      } else if (msg.role === 'assistant' && msg.type === 'tool_use') {
-        // Skip TodoWrite from history — it's internal state
-        if (msg.toolName === 'TodoWrite') continue;
-
-        // Task (subagent) — render as subagent card in history
-        if (msg.toolName === 'Task') {
-          const input = msg.toolInput || {};
-          const name = input.name || input.subagent_type || 'agent';
-          const desc = input.description || '';
+      for (; idx < end; idx++) {
+        const msg = messages[idx];
+        if (msg.role === 'user') {
           const el = document.createElement('div');
-          el.className = 'chat-subagent-card completed history';
+          el.className = 'chat-msg chat-msg-user history';
+          el.innerHTML = `<div class="chat-msg-content">${renderMarkdown(msg.text)}</div>`;
+          fragment.appendChild(el);
+
+        } else if (msg.role === 'assistant' && msg.type === 'text') {
+          const el = document.createElement('div');
+          el.className = 'chat-msg chat-msg-assistant history';
+          el.innerHTML = `<div class="chat-msg-content">${renderMarkdown(msg.text)}</div>`;
+          fragment.appendChild(el);
+
+        } else if (msg.role === 'assistant' && msg.type === 'thinking') {
+          const el = document.createElement('div');
+          el.className = 'chat-thinking history';
           el.innerHTML = `
-            <div class="chat-subagent-header">
-              <div class="chat-subagent-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/>
-                  <path d="M6 21V9a9 9 0 0 0 9 9"/>
-                </svg>
-              </div>
-              <div class="chat-subagent-info">
-                <span class="chat-subagent-type">${escapeHtml(name)}</span>
-                <span class="chat-subagent-desc">${escapeHtml(desc)}</span>
-              </div>
-              <div class="chat-subagent-status complete">
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-              </div>
-              <svg class="chat-subagent-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            <div class="chat-thinking-header">
+              <svg viewBox="0 0 24 24" fill="currentColor" class="chat-thinking-chevron"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>
+              <span>${escapeHtml(t('chat.thinking'))}</span>
             </div>
-            <div class="chat-subagent-body"></div>
+            <div class="chat-thinking-content">${renderMarkdown(msg.text)}</div>
           `;
-          el.querySelector('.chat-subagent-header').addEventListener('click', () => {
-            el.classList.toggle('expanded');
-          });
-          messagesEl.appendChild(el);
-          continue;
-        }
+          fragment.appendChild(el);
 
-        const detail = getToolDisplayInfo(msg.toolName, msg.toolInput || {});
-        const el = document.createElement('div');
-        el.className = 'chat-tool-card history';
-        const truncated = detail && detail.length > 80 ? '...' + detail.slice(-77) : (detail || '');
-        el.innerHTML = `
-          <div class="chat-tool-icon">${getToolIcon(msg.toolName)}</div>
-          <div class="chat-tool-info">
-            <span class="chat-tool-name">${escapeHtml(msg.toolName)}</span>
-            <span class="chat-tool-detail">${truncated ? escapeHtml(truncated) : ''}</span>
-          </div>
-          <div class="chat-tool-status complete">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-          </div>
-        `;
+        } else if (msg.role === 'assistant' && msg.type === 'tool_use') {
+          if (msg.toolName === 'TodoWrite') continue;
 
-        // Store tool input/output for expand
-        if (msg.toolUseId) el.dataset.toolUseId = msg.toolUseId;
-        if (msg.toolInput) {
-          el.dataset.toolInput = JSON.stringify(msg.toolInput);
-          el.classList.add('expandable');
-        }
-        if (msg.toolUseId && toolResults.has(msg.toolUseId)) {
-          el.dataset.toolOutput = toolResults.get(msg.toolUseId);
-        }
+          if (msg.toolName === 'Task') {
+            const input = msg.toolInput || {};
+            const name = input.name || input.subagent_type || 'agent';
+            const desc = input.description || '';
+            const el = document.createElement('div');
+            el.className = 'chat-subagent-card completed history';
+            el.innerHTML = `
+              <div class="chat-subagent-header">
+                <div class="chat-subagent-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/>
+                    <path d="M6 21V9a9 9 0 0 0 9 9"/>
+                  </svg>
+                </div>
+                <div class="chat-subagent-info">
+                  <span class="chat-subagent-type">${escapeHtml(name)}</span>
+                  <span class="chat-subagent-desc">${escapeHtml(desc)}</span>
+                </div>
+                <div class="chat-subagent-status complete">
+                  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                </div>
+                <svg class="chat-subagent-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+              </div>
+              <div class="chat-subagent-body"></div>
+            `;
+            el.querySelector('.chat-subagent-header').addEventListener('click', () => {
+              el.classList.toggle('expanded');
+            });
+            fragment.appendChild(el);
+            continue;
+          }
 
-        messagesEl.appendChild(el);
+          const detail = getToolDisplayInfo(msg.toolName, msg.toolInput || {});
+          const el = document.createElement('div');
+          el.className = 'chat-tool-card history';
+          const truncated = detail && detail.length > 80 ? '...' + detail.slice(-77) : (detail || '');
+          el.innerHTML = `
+            <div class="chat-tool-icon">${getToolIcon(msg.toolName)}</div>
+            <div class="chat-tool-info">
+              <span class="chat-tool-name">${escapeHtml(msg.toolName)}</span>
+              <span class="chat-tool-detail">${truncated ? escapeHtml(truncated) : ''}</span>
+            </div>
+            <div class="chat-tool-status complete">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+            </div>
+          `;
+
+          if (msg.toolUseId) el.dataset.toolUseId = msg.toolUseId;
+          if (msg.toolInput) {
+            el.dataset.toolInput = JSON.stringify(msg.toolInput);
+            el.classList.add('expandable');
+          }
+          if (msg.toolUseId && toolResults.has(msg.toolUseId)) {
+            el.dataset.toolOutput = toolResults.get(msg.toolUseId);
+          }
+
+          fragment.appendChild(el);
+        }
+      }
+
+      messagesEl.appendChild(fragment);
+
+      if (idx < messages.length) {
+        // Schedule next batch during idle time
+        if (typeof requestIdleCallback === 'function') {
+          requestIdleCallback(() => renderBatch(), { timeout: 100 });
+        } else {
+          setTimeout(renderBatch, 0);
+        }
+      } else {
+        scrollToBottom();
       }
     }
+
+    renderBatch();
   }
 
   // Focus input
@@ -3358,6 +3386,19 @@ function createChatView(wrapperEl, project, options = {}) {
       for (const unsub of unsubscribers) {
         if (typeof unsub === 'function') unsub();
       }
+      // Cancel pending RAF timers
+      if (_streamRafId) { cancelAnimationFrame(_streamRafId); _streamRafId = null; }
+      if (_scrollRafId) { cancelAnimationFrame(_scrollRafId); _scrollRafId = null; }
+      // Clean up Maps and Sets to free memory
+      toolCards.clear();
+      toolInputBuffers.clear();
+      todoToolIndices.clear();
+      taskToolIndices.clear();
+      // Clean up image data
+      pendingImages.length = 0;
+      lightboxImages.length = 0;
+      // Remove global listeners
+      document.removeEventListener('click', _closeDropdowns);
       document.removeEventListener('keydown', lightboxKeyHandler);
       if (lightboxEl?.parentNode) lightboxEl.parentNode.removeChild(lightboxEl);
       lightboxEl = null;
