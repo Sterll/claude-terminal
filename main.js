@@ -7,19 +7,22 @@ const { app, globalShortcut } = require('electron');
 
 // ============================================
 // FIX PATH on macOS/Linux - Apps launched from Finder/Dock have a minimal PATH
+// Async version: resolves PATH in background without blocking startup
 // ============================================
 if (process.platform !== 'win32') {
-  const { execFileSync } = require('child_process');
-  try {
-    const shell = process.env.SHELL || '/bin/zsh';
-    const shellPath = execFileSync(shell, ['-lc', 'echo $PATH'], {
-      encoding: 'utf8',
-      timeout: 5000,
-    }).trim();
-    if (shellPath) {
-      process.env.PATH = shellPath;
+  const { execFile } = require('child_process');
+  const shell = process.env.SHELL || '/bin/zsh';
+  execFile(shell, ['-lc', 'echo $PATH'], {
+    encoding: 'utf8',
+    timeout: 5000,
+  }, (err, stdout) => {
+    if (!err && stdout) {
+      const shellPath = stdout.trim();
+      if (shellPath) {
+        process.env.PATH = shellPath;
+      }
     }
-  } catch { /* keep existing PATH */ }
+  });
 }
 
 // ============================================

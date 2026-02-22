@@ -19,26 +19,38 @@ const OAUTH_BETA_HEADER = 'oauth-2025-04-20';
 
 // ── OAuth API (primary) ──
 
+// Token cache to avoid repeated sync I/O
+let _tokenCache = null;
+let _tokenCacheTime = 0;
+const TOKEN_CACHE_TTL = 30000; // 30s
+
 /**
  * Read the OAuth access token from ~/.claude/.credentials.json
  * @returns {string|null}
  */
 function readOAuthToken() {
+  const now = Date.now();
+  if (_tokenCache !== null && now - _tokenCacheTime < TOKEN_CACHE_TTL) {
+    return _tokenCache;
+  }
   try {
     const configDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
     const credPath = path.join(configDir, '.credentials.json');
-    if (!fs.existsSync(credPath)) return null;
+    if (!fs.existsSync(credPath)) { _tokenCache = null; _tokenCacheTime = now; return null; }
     const creds = JSON.parse(fs.readFileSync(credPath, 'utf-8'));
     const token = creds?.claudeAiOauth?.accessToken;
-    if (!token) return null;
+    if (!token) { _tokenCache = null; _tokenCacheTime = now; return null; }
     // Check expiry
     const expiresAt = creds.claudeAiOauth.expiresAt;
-    if (expiresAt && Date.now() > expiresAt) {
+    if (expiresAt && now > expiresAt) {
       console.log('[Usage] OAuth token expired');
+      _tokenCache = null; _tokenCacheTime = now;
       return null;
     }
+    _tokenCache = token; _tokenCacheTime = now;
     return token;
   } catch (e) {
+    _tokenCache = null; _tokenCacheTime = now;
     return null;
   }
 }
