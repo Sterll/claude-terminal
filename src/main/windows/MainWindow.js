@@ -30,6 +30,7 @@ function createMainWindow({ isDev = false } = {}) {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false, // Allow preload to use require() for Node.js modules
+      webviewTag: true, // Enable <webview> for live preview
       preload: path.join(__dirname, '..', 'preload.js')
     }
   });

@@ -397,9 +397,12 @@ module.exports = createType({
 .wa-addr-host   { color: rgba(255,255,255,0.55); }
 .wa-addr-port   { color: rgba(255,255,255,0.3); }
 
-/* iframe */
-.webapp-preview-iframe {
+/* webview */
+.webapp-preview-webview {
   flex: 1; width: 100%; border: none; background: #fff; min-height: 0;
+}
+.wa-addr-path {
+  color: rgba(255,255,255,0.35);
 }
 
 /* ════════════════════════════════════════════════════════

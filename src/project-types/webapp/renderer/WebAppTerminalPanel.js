@@ -153,18 +153,18 @@ function setupViewSwitcher(wrapper, terminalId, projectIndex, project, deps) {
 }
 
 function suspendPreview(previewView) {
-  const iframe = previewView.querySelector('.webapp-preview-iframe');
-  if (iframe && iframe.src !== 'about:blank') {
-    iframe.dataset.lastSrc = iframe.src;
-    iframe.src = 'about:blank';
+  const webview = previewView.querySelector('.webapp-preview-webview');
+  if (webview && webview.getURL() !== 'about:blank') {
+    webview.dataset.lastSrc = webview.getURL();
+    webview.loadURL('about:blank');
   }
 }
 
 function resumePreview(previewView) {
-  const iframe = previewView.querySelector('.webapp-preview-iframe');
-  if (iframe && iframe.dataset.lastSrc) {
-    iframe.src = iframe.dataset.lastSrc;
-    delete iframe.dataset.lastSrc;
+  const webview = previewView.querySelector('.webapp-preview-webview');
+  if (webview && webview.dataset.lastSrc) {
+    webview.loadURL(webview.dataset.lastSrc);
+    delete webview.dataset.lastSrc;
   }
 }
 
@@ -206,9 +206,9 @@ async function renderPreviewView(wrapper, projectIndex, project, deps) {
   clearPollTimer(wrapper);
   const url = `http://localhost:${port}`;
 
-  const existingIframe = previewView.querySelector('.webapp-preview-iframe');
-  if (existingIframe && previewView.dataset.loadedPort === String(port)) {
-    if (existingIframe.dataset.lastSrc) resumePreview(previewView);
+  const existingWebview = previewView.querySelector('.webapp-preview-webview');
+  if (existingWebview && previewView.dataset.loadedPort === String(port)) {
+    if (existingWebview.dataset.lastSrc) resumePreview(previewView);
     return;
   }
 
@@ -222,19 +222,48 @@ async function renderPreviewView(wrapper, projectIndex, project, deps) {
           <button class="wa-browser-btn wa-reload" title="Reload">${ICON_RELOAD}</button>
         </div>
         <div class="wa-address-bar">
-          <span class="wa-addr-scheme">http://</span><span class="wa-addr-host">localhost</span><span class="wa-addr-port">:${port}</span>
+          <span class="wa-addr-scheme">http://</span><span class="wa-addr-host">localhost</span><span class="wa-addr-port">:${port}</span><span class="wa-addr-path"></span>
         </div>
         <button class="wa-browser-btn wa-open-ext" title="${t('webapp.openBrowser')}">${ICON_OPEN}</button>
       </div>
-      <iframe class="webapp-preview-iframe" src="${url}" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"></iframe>
+      <webview class="webapp-preview-webview" src="${url}" disableblinkfeatures="Auxclick"></webview>
     </div>
   `;
 
-  const iframe = previewView.querySelector('.webapp-preview-iframe');
-  previewView.querySelector('.wa-reload').onclick = () => { try { iframe.contentWindow.location.reload(); } catch(e) {} };
-  previewView.querySelector('.wa-back').onclick   = () => { try { iframe.contentWindow.history.back(); } catch(e) {} };
-  previewView.querySelector('.wa-fwd').onclick    = () => { try { iframe.contentWindow.history.forward(); } catch(e) {} };
-  previewView.querySelector('.wa-open-ext').onclick = () => api.dialog.openExternal(url);
+  const webview = previewView.querySelector('.webapp-preview-webview');
+  const addrPath = previewView.querySelector('.wa-addr-path');
+  const addrPort = previewView.querySelector('.wa-addr-port');
+
+  // Update address bar on navigation
+  webview.addEventListener('did-navigate', (e) => {
+    try {
+      const u = new URL(e.url);
+      addrPort.textContent = u.port ? `:${u.port}` : '';
+      addrPath.textContent = u.pathname !== '/' ? u.pathname : '';
+    } catch (err) {}
+  });
+  webview.addEventListener('did-navigate-in-page', (e) => {
+    try {
+      const u = new URL(e.url);
+      addrPath.textContent = u.pathname !== '/' ? u.pathname : '';
+    } catch (err) {}
+  });
+
+  // Console message forwarding (for future Claude integration)
+  webview.addEventListener('console-message', (e) => {
+    if (e.level >= 2) { // warnings and errors
+      const logEntry = { level: e.level, message: e.message, source: e.sourceId, line: e.line };
+      if (!previewView._consoleLogs) previewView._consoleLogs = [];
+      previewView._consoleLogs.push(logEntry);
+      // Keep last 100 entries
+      if (previewView._consoleLogs.length > 100) previewView._consoleLogs.shift();
+    }
+  });
+
+  previewView.querySelector('.wa-reload').onclick = () => webview.reload();
+  previewView.querySelector('.wa-back').onclick   = () => { if (webview.canGoBack()) webview.goBack(); };
+  previewView.querySelector('.wa-fwd').onclick    = () => { if (webview.canGoForward()) webview.goForward(); };
+  previewView.querySelector('.wa-open-ext').onclick = () => api.dialog.openExternal(webview.getURL());
 }
 
 async function renderInfoView(wrapper, projectIndex, project, deps) {
@@ -335,8 +364,8 @@ function cleanup(wrapper) {
   if (wrapper._waPipInterval) clearInterval(wrapper._waPipInterval);
   const previewView = wrapper.querySelector('.webapp-preview-view');
   if (previewView) {
-    const iframe = previewView.querySelector('.webapp-preview-iframe');
-    if (iframe) iframe.src = 'about:blank';
+    const webview = previewView.querySelector('.webapp-preview-webview');
+    if (webview) webview.loadURL('about:blank');
     delete previewView.dataset.loadedPort;
   }
 }
