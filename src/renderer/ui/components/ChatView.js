@@ -22,94 +22,52 @@ const EFFORT_OPTIONS = [
   { id: 'high', label: 'High', desc: t('chat.effortHigh') },
 ];
 
-// ── Markdown Renderer ──
+// ── Markdown Renderer (using marked library) ──
+
+const { marked } = require('marked');
+
+// Configure marked with custom renderer for chat styling (single-pass, no manual regex)
+let _markedConfigured = false;
+function ensureMarkedConfig() {
+  if (_markedConfigured) return;
+  _markedConfigured = true;
+  marked.use({
+    renderer: {
+      code({ text, lang }) {
+        const decoded = (text || '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+        const highlighted = lang ? highlight(decoded, lang) : escapeHtml(decoded);
+        return `<div class="chat-code-block"><div class="chat-code-header"><span class="chat-code-lang">${escapeHtml(lang || 'text')}</span><button class="chat-code-copy" title="${t('common.copy')}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div><pre><code>${highlighted}</code></pre></div>`;
+      },
+      codespan({ text }) {
+        return `<code class="chat-inline-code">${text}</code>`;
+      },
+      table({ header, rows }) {
+        const headerHtml = header.map(h => `<th style="text-align:${h.align || 'left'}">${h.text}</th>`).join('');
+        const rowsHtml = rows.map(row =>
+          `<tr>${row.map(cell => `<td style="text-align:${cell.align || 'left'}">${cell.text}</td>`).join('')}</tr>`
+        ).join('');
+        return `<div class="chat-table-wrapper"><table class="chat-table"><thead><tr>${headerHtml}</tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+      },
+      link({ href, text }) {
+        const safePrefixes = ['https://', 'http://', '#', '/'];
+        const isSafe = safePrefixes.some(p => (href || '').startsWith(p));
+        const safeHref = isSafe ? href : '#';
+        return `<a href="${safeHref}" class="chat-link" target="_blank">${text}</a>`;
+      }
+    },
+    breaks: true,
+    gfm: true
+  });
+}
 
 function renderMarkdown(text) {
   if (!text) return '';
-
-  // Extract code blocks first to protect them from other transformations
-  const codeBlocks = [];
-  let processed = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
-    const decoded = code.trim();
-    const highlighted = lang ? highlight(decoded, lang) : escapeHtml(decoded);
-    const placeholder = `%%CODEBLOCK_${codeBlocks.length}%%`;
-    codeBlocks.push(`<div class="chat-code-block"><div class="chat-code-header"><span class="chat-code-lang">${escapeHtml(lang || 'text')}</span><button class="chat-code-copy" title="${t('common.copy')}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div><pre><code>${highlighted}</code></pre></div>`);
-    return placeholder;
-  });
-
-  // Extract tables before escaping
-  const tables = [];
-  processed = processed.replace(/((?:^\|.+\|$\n?)+)/gm, (tableBlock) => {
-    const rows = tableBlock.trim().split('\n').filter(r => r.trim());
-    if (rows.length < 2) return tableBlock;
-
-    // Check if second row is a separator (|---|---|)
-    const sepRow = rows[1].trim();
-    if (!/^\|[\s:]*-{2,}[\s:]*(\|[\s:]*-{2,}[\s:]*)*\|$/.test(sepRow)) return tableBlock;
-
-    const parseRow = (row) => row.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
-    const headers = parseRow(rows[0]);
-    // Parse alignment from separator row
-    const sepCells = parseRow(rows[1]);
-    const aligns = sepCells.map(c => {
-      if (c.startsWith(':') && c.endsWith(':')) return 'center';
-      if (c.endsWith(':')) return 'right';
-      return 'left';
-    });
-    const bodyRows = rows.slice(2).map(parseRow);
-
-    let tableHtml = '<div class="chat-table-wrapper"><table class="chat-table"><thead><tr>';
-    headers.forEach((h, i) => {
-      tableHtml += `<th style="text-align:${aligns[i] || 'left'}">${escapeHtml(h)}</th>`;
-    });
-    tableHtml += '</tr></thead><tbody>';
-    bodyRows.forEach(row => {
-      tableHtml += '<tr>';
-      headers.forEach((_, i) => {
-        const cell = row[i] || '';
-        tableHtml += `<td style="text-align:${aligns[i] || 'left'}">${escapeHtml(cell)}</td>`;
-      });
-      tableHtml += '</tr>';
-    });
-    tableHtml += '</tbody></table></div>';
-
-    const placeholder = `%%TABLE_${tables.length}%%`;
-    tables.push(tableHtml);
-    return placeholder;
-  });
-
-  // Now escape HTML for the rest
-  let html = escapeHtml(processed);
-
-  // Inline formatting
-  html = html.replace(/`([^`]+)`/g, '<code class="chat-inline-code">$1</code>');
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-  html = html.replace(/^[*-] (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
-  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => {
-    const safePrefixes = ['https://', 'http://', '#', '/'];
-    const isSafe = safePrefixes.some(p => url.startsWith(p));
-    const href = isSafe ? url : '#';
-    return `<a href="${href}" class="chat-link" target="_blank">${text}</a>`;
-  });
-  html = html.replace(/\n\n/g, '</p><p>');
-  html = html.replace(/\n/g, '<br>');
-
-  // Restore code blocks and tables
-  codeBlocks.forEach((block, i) => {
-    html = html.replace(`%%CODEBLOCK_${i}%%`, block);
-  });
-  tables.forEach((table, i) => {
-    html = html.replace(`%%TABLE_${i}%%`, table);
-  });
-
-  return `<p>${html}</p>`;
+  ensureMarkedConfig();
+  try {
+    return marked.parse(text);
+  } catch {
+    return `<p>${escapeHtml(text)}</p>`;
+  }
 }
 
 function unescapeHtml(html) {

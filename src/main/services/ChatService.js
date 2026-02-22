@@ -218,12 +218,13 @@ class ChatService {
     // Catch SDK internal "ProcessTransport is not ready" errors that bubble as
     // unhandled rejections when a permission response is resolved after the
     // underlying CLI process has already exited.
-    process.on('unhandledRejection', (reason) => {
+    this._unhandledRejectionHandler = (reason) => {
       if (reason?.message?.includes('ProcessTransport is not ready')) {
         console.warn('[ChatService] Suppressed SDK ProcessTransport error (CLI process already exited)');
         return;
       }
-    });
+    };
+    process.on('unhandledRejection', this._unhandledRejectionHandler);
   }
 
   setMainWindow(window) {
@@ -874,6 +875,10 @@ class ChatService {
       gen.abortController.abort();
     }
     this.backgroundGenerations.clear();
+    // Remove global listener to prevent memory leak
+    if (this._unhandledRejectionHandler) {
+      process.removeListener('unhandledRejection', this._unhandledRejectionHandler);
+    }
   }
 }
 
