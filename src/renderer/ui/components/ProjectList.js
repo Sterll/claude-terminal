@@ -343,159 +343,156 @@ function clearDropIndicators(list) {
 }
 
 /**
- * Setup drag and drop for project list
+ * Setup drag and drop for project list using event delegation.
+ * Attaches a single set of listeners on the list container instead of per-element.
+ * Safe to call on every render — old listeners are removed first.
  */
+let _dndCleanup = null;
+
 function setupDragAndDrop(list) {
-  // Drag start for all draggable items
-  list.querySelectorAll('[draggable="true"]').forEach(el => {
-    el.addEventListener('dragstart', (e) => {
-      e.stopPropagation();
-      const projectId = el.dataset.projectId;
-      const folderId = el.dataset.folderId;
-      if (projectId) dragState.dragging = { type: 'project', id: projectId };
-      else if (folderId) dragState.dragging = { type: 'folder', id: folderId };
-      el.classList.add('dragging');
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', '');
-    });
+  // Remove previous delegated listeners (prevents stacking on re-render)
+  if (_dndCleanup) {
+    _dndCleanup();
+    _dndCleanup = null;
+  }
 
-    el.addEventListener('dragend', () => {
-      el.classList.remove('dragging');
-      dragState.dragging = null;
-      dragState.dropTarget = null;
-      clearDropIndicators(list);
-    });
-  });
+  function onDragStart(e) {
+    const el = e.target.closest('[draggable="true"]');
+    if (!el) return;
+    e.stopPropagation();
+    const projectId = el.dataset.projectId;
+    const folderId = el.dataset.folderId;
+    if (projectId) dragState.dragging = { type: 'project', id: projectId };
+    else if (folderId) dragState.dragging = { type: 'folder', id: folderId };
+    el.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', '');
+  }
 
-  // Handle drag over folders
-  list.querySelectorAll('.folder-item').forEach(folder => {
-    const folderHeader = folder.querySelector('.folder-header');
+  function onDragEnd(e) {
+    const el = e.target.closest('[draggable="true"]');
+    if (el) el.classList.remove('dragging');
+    dragState.dragging = null;
+    dragState.dropTarget = null;
+    clearDropIndicators(list);
+  }
 
-    folderHeader.addEventListener('dragover', (e) => {
+  function onDragOver(e) {
+    if (!dragState.dragging) return;
+
+    // Folder header
+    const folderHeader = e.target.closest('.folder-header');
+    if (folderHeader) {
       e.preventDefault();
       e.stopPropagation();
-      if (!dragState.dragging) return;
-
-      const folderId = folder.dataset.folderId;
-
-      // Prevent dropping folder into itself or descendants
-      if (dragState.dragging.type === 'folder') {
+      const folder = folderHeader.closest('.folder-item');
+      const folderId = folder?.dataset.folderId;
+      if (dragState.dragging.type === 'folder' && folderId) {
         if (dragState.dragging.id === folderId || isDescendantOf(folderId, dragState.dragging.id)) {
           e.dataTransfer.dropEffect = 'none';
           return;
         }
       }
-
       e.dataTransfer.dropEffect = 'move';
       clearDropIndicators(list);
-
       const position = getDropPosition(e, folderHeader, true);
       folderHeader.classList.add(`drop-${position}`);
       dragState.dropTarget = { type: 'folder', id: folderId, position };
-    });
+      return;
+    }
 
-    folderHeader.addEventListener('dragleave', (e) => {
-      if (!folderHeader.contains(e.relatedTarget)) {
-        folderHeader.classList.remove('drop-before', 'drop-after', 'drop-into');
-      }
-    });
-
-    folderHeader.addEventListener('drop', (e) => {
+    // Project item
+    const project = e.target.closest('.project-item');
+    if (project) {
       e.preventDefault();
       e.stopPropagation();
-      clearDropIndicators(list);
-
-      if (!dragState.dragging || !dragState.dropTarget) return;
-
-      const { position } = dragState.dropTarget;
-      const targetFolderId = folder.dataset.folderId;
-
-      if (position === 'into') {
-        // Move into folder
-        moveItemToFolder(dragState.dragging.type, dragState.dragging.id, targetFolderId);
-      } else {
-        // Reorder before/after
-        reorderItem(dragState.dragging.type, dragState.dragging.id, targetFolderId, position);
-      }
-
-      dragState.dragging = null;
-      dragState.dropTarget = null;
-      if (callbacks.onRenderProjects) callbacks.onRenderProjects();
-    });
-  });
-
-  // Handle drag over projects
-  list.querySelectorAll('.project-item').forEach(project => {
-    project.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!dragState.dragging) return;
-
-      // Prevent dropping on itself
       const projectId = project.dataset.projectId;
       if (dragState.dragging.id === projectId) {
         e.dataTransfer.dropEffect = 'none';
         return;
       }
-
       e.dataTransfer.dropEffect = 'move';
       clearDropIndicators(list);
-
       const position = getDropPosition(e, project, false);
       project.classList.add(`drop-${position}`);
       dragState.dropTarget = { type: 'project', id: projectId, position };
-    });
+      return;
+    }
 
-    project.addEventListener('dragleave', (e) => {
-      if (!project.contains(e.relatedTarget)) {
-        project.classList.remove('drop-before', 'drop-after');
-      }
-    });
-
-    project.addEventListener('drop', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      clearDropIndicators(list);
-
-      if (!dragState.dragging || !dragState.dropTarget) return;
-
-      const { position } = dragState.dropTarget;
-      const targetProjectId = project.dataset.projectId;
-
-      // Reorder relative to project
-      reorderItem(dragState.dragging.type, dragState.dragging.id, targetProjectId, position);
-
-      dragState.dragging = null;
-      dragState.dropTarget = null;
-      if (callbacks.onRenderProjects) callbacks.onRenderProjects();
-    });
-  });
-
-  // Root drop zone (for moving to root level at the end)
-  const rootDropZone = list.querySelector('.drop-zone-root');
-  if (rootDropZone) {
-    rootDropZone.addEventListener('dragover', (e) => {
+    // Root drop zone
+    const rootZone = e.target.closest('.drop-zone-root');
+    if (rootZone) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
       clearDropIndicators(list);
-      rootDropZone.classList.add('drag-over');
+      rootZone.classList.add('drag-over');
       dragState.dropTarget = { type: 'root', id: null };
-    });
-
-    rootDropZone.addEventListener('dragleave', () => {
-      rootDropZone.classList.remove('drag-over');
-    });
-
-    rootDropZone.addEventListener('drop', (e) => {
-      e.preventDefault();
-      clearDropIndicators(list);
-      if (!dragState.dragging) return;
-      moveItemToFolder(dragState.dragging.type, dragState.dragging.id, null);
-      dragState.dragging = null;
-      dragState.dropTarget = null;
-      if (callbacks.onRenderProjects) callbacks.onRenderProjects();
-    });
+    }
   }
+
+  function onDragLeave(e) {
+    const folderHeader = e.target.closest('.folder-header');
+    if (folderHeader && !folderHeader.contains(e.relatedTarget)) {
+      folderHeader.classList.remove('drop-before', 'drop-after', 'drop-into');
+      return;
+    }
+    const project = e.target.closest('.project-item');
+    if (project && !project.contains(e.relatedTarget)) {
+      project.classList.remove('drop-before', 'drop-after');
+      return;
+    }
+    const rootZone = e.target.closest('.drop-zone-root');
+    if (rootZone) {
+      rootZone.classList.remove('drag-over');
+    }
+  }
+
+  function onDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    clearDropIndicators(list);
+    if (!dragState.dragging || !dragState.dropTarget) {
+      // Root drop zone (no dropTarget set yet for simple drops)
+      if (e.target.closest('.drop-zone-root') && dragState.dragging) {
+        moveItemToFolder(dragState.dragging.type, dragState.dragging.id, null);
+        dragState.dragging = null;
+        dragState.dropTarget = null;
+        if (callbacks.onRenderProjects) callbacks.onRenderProjects();
+      }
+      return;
+    }
+
+    const { position } = dragState.dropTarget;
+    if (dragState.dropTarget.type === 'folder') {
+      if (position === 'into') {
+        moveItemToFolder(dragState.dragging.type, dragState.dragging.id, dragState.dropTarget.id);
+      } else {
+        reorderItem(dragState.dragging.type, dragState.dragging.id, dragState.dropTarget.id, position);
+      }
+    } else if (dragState.dropTarget.type === 'project') {
+      reorderItem(dragState.dragging.type, dragState.dragging.id, dragState.dropTarget.id, position);
+    } else if (dragState.dropTarget.type === 'root') {
+      moveItemToFolder(dragState.dragging.type, dragState.dragging.id, null);
+    }
+
+    dragState.dragging = null;
+    dragState.dropTarget = null;
+    if (callbacks.onRenderProjects) callbacks.onRenderProjects();
+  }
+
+  list.addEventListener('dragstart', onDragStart);
+  list.addEventListener('dragend', onDragEnd);
+  list.addEventListener('dragover', onDragOver);
+  list.addEventListener('dragleave', onDragLeave);
+  list.addEventListener('drop', onDrop);
+
+  _dndCleanup = () => {
+    list.removeEventListener('dragstart', onDragStart);
+    list.removeEventListener('dragend', onDragEnd);
+    list.removeEventListener('dragover', onDragOver);
+    list.removeEventListener('dragleave', onDragLeave);
+    list.removeEventListener('drop', onDrop);
+  };
 }
 
 /**
