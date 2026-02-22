@@ -1,6 +1,6 @@
 /**
  * Web App Terminal Panel
- * Dev server console view with info panel + live preview
+ * Dev server console view with info panel + live preview (webview)
  */
 
 const { getWebAppServer, setWebAppPort } = require('./WebAppState');
@@ -9,6 +9,9 @@ const api = window.electron_api;
 
 // Track active poll timer per wrapper (shared between views)
 const pollTimers = new WeakMap();
+
+// Store detached webview data per previewView element
+const detachedWebviews = new WeakMap();
 
 function clearPollTimer(wrapper) {
   const timer = pollTimers.get(wrapper);
@@ -97,6 +100,67 @@ function getViewSwitcherHtml() {
   `;
 }
 
+/**
+ * Detach the webview from DOM (removes the native surface entirely).
+ * Stores it so we can re-attach later without losing state.
+ */
+function detachWebview(previewView) {
+  const webview = previewView.querySelector('.webapp-preview-webview');
+  if (!webview) return;
+  const currentUrl = webview.getURL();
+  // Remove from DOM — this destroys the OS-level surface
+  webview.remove();
+  detachedWebviews.set(previewView, currentUrl);
+}
+
+/**
+ * Re-attach the webview to the browser container.
+ */
+function attachWebview(previewView) {
+  const savedUrl = detachedWebviews.get(previewView);
+  if (!savedUrl || savedUrl === 'about:blank') return;
+  const browserEl = previewView.querySelector('.wa-browser');
+  if (!browserEl) return;
+  const webview = document.createElement('webview');
+  webview.className = 'webapp-preview-webview';
+  webview.setAttribute('src', savedUrl);
+  webview.setAttribute('disableblinkfeatures', 'Auxclick');
+  browserEl.appendChild(webview);
+  wireWebviewEvents(previewView, webview);
+  detachedWebviews.delete(previewView);
+}
+
+/**
+ * Wire up webview events (navigation, console, etc.)
+ */
+function wireWebviewEvents(previewView, webview) {
+  const addrPath = previewView.querySelector('.wa-addr-path');
+  const addrPort = previewView.querySelector('.wa-addr-port');
+
+  webview.addEventListener('did-navigate', (e) => {
+    try {
+      const u = new URL(e.url);
+      if (addrPort) addrPort.textContent = u.port ? `:${u.port}` : '';
+      if (addrPath) addrPath.textContent = u.pathname !== '/' ? u.pathname : '';
+    } catch (err) {}
+  });
+  webview.addEventListener('did-navigate-in-page', (e) => {
+    try {
+      const u = new URL(e.url);
+      if (addrPath) addrPath.textContent = u.pathname !== '/' ? u.pathname : '';
+    } catch (err) {}
+  });
+
+  webview.addEventListener('console-message', (e) => {
+    if (e.level >= 2) {
+      const logEntry = { level: e.level, message: e.message, source: e.sourceId, line: e.line };
+      if (!previewView._consoleLogs) previewView._consoleLogs = [];
+      previewView._consoleLogs.push(logEntry);
+      if (previewView._consoleLogs.length > 100) previewView._consoleLogs.shift();
+    }
+  });
+}
+
 function setupViewSwitcher(wrapper, terminalId, projectIndex, project, deps) {
   const { t, getTerminal } = deps;
   const consoleView  = wrapper.querySelector('.webapp-console-view');
@@ -138,11 +202,29 @@ function setupViewSwitcher(wrapper, terminalId, projectIndex, project, deps) {
       renderInfoView(wrapper, projectIndex, project, deps);
     }
 
-    if (view !== 'preview' && previewView) suspendPreview(previewView);
+    // Detach webview when leaving preview tab
+    if (view !== 'preview' && previewView) {
+      detachWebview(previewView);
+    }
 
     const termData = getTerminal(terminalId);
     if (termData) termData.activeView = view;
   }
+
+  // Watch for terminal tab switches (wrapper gains/loses .active class).
+  // When our wrapper becomes inactive, detach the webview.
+  const observer = new MutationObserver(() => {
+    if (!wrapper.classList.contains('active') && previewView) {
+      detachWebview(previewView);
+    } else if (wrapper.classList.contains('active') && previewView && previewView.classList.contains('wa-view-active')) {
+      // Re-attach if we come back to this tab and preview was the active sub-tab
+      if (detachedWebviews.has(previewView)) {
+        attachWebview(previewView);
+      }
+    }
+  });
+  observer.observe(wrapper, { attributes: true, attributeFilter: ['class'] });
+  wrapper._waClassObserver = observer;
 
   // Initial state: show console
   switchView('console');
@@ -150,22 +232,6 @@ function setupViewSwitcher(wrapper, terminalId, projectIndex, project, deps) {
   wrapper.querySelectorAll('.wa-tab').forEach(btn => {
     btn.addEventListener('click', () => switchView(btn.dataset.view));
   });
-}
-
-function suspendPreview(previewView) {
-  const webview = previewView.querySelector('.webapp-preview-webview');
-  if (webview && webview.getURL() !== 'about:blank') {
-    webview.dataset.lastSrc = webview.getURL();
-    webview.loadURL('about:blank');
-  }
-}
-
-function resumePreview(previewView) {
-  const webview = previewView.querySelector('.webapp-preview-webview');
-  if (webview && webview.dataset.lastSrc) {
-    webview.loadURL(webview.dataset.lastSrc);
-    delete webview.dataset.lastSrc;
-  }
 }
 
 async function renderPreviewView(wrapper, projectIndex, project, deps) {
@@ -206,9 +272,13 @@ async function renderPreviewView(wrapper, projectIndex, project, deps) {
   clearPollTimer(wrapper);
   const url = `http://localhost:${port}`;
 
+  // If webview already exists for this port, just re-attach if needed
   const existingWebview = previewView.querySelector('.webapp-preview-webview');
   if (existingWebview && previewView.dataset.loadedPort === String(port)) {
-    if (existingWebview.dataset.lastSrc) resumePreview(previewView);
+    return;
+  }
+  if (!existingWebview && detachedWebviews.has(previewView) && previewView.dataset.loadedPort === String(port)) {
+    attachWebview(previewView);
     return;
   }
 
@@ -231,39 +301,24 @@ async function renderPreviewView(wrapper, projectIndex, project, deps) {
   `;
 
   const webview = previewView.querySelector('.webapp-preview-webview');
-  const addrPath = previewView.querySelector('.wa-addr-path');
-  const addrPort = previewView.querySelector('.wa-addr-port');
+  wireWebviewEvents(previewView, webview);
 
-  // Update address bar on navigation
-  webview.addEventListener('did-navigate', (e) => {
-    try {
-      const u = new URL(e.url);
-      addrPort.textContent = u.port ? `:${u.port}` : '';
-      addrPath.textContent = u.pathname !== '/' ? u.pathname : '';
-    } catch (err) {}
-  });
-  webview.addEventListener('did-navigate-in-page', (e) => {
-    try {
-      const u = new URL(e.url);
-      addrPath.textContent = u.pathname !== '/' ? u.pathname : '';
-    } catch (err) {}
-  });
-
-  // Console message forwarding (for future Claude integration)
-  webview.addEventListener('console-message', (e) => {
-    if (e.level >= 2) { // warnings and errors
-      const logEntry = { level: e.level, message: e.message, source: e.sourceId, line: e.line };
-      if (!previewView._consoleLogs) previewView._consoleLogs = [];
-      previewView._consoleLogs.push(logEntry);
-      // Keep last 100 entries
-      if (previewView._consoleLogs.length > 100) previewView._consoleLogs.shift();
-    }
-  });
-
-  previewView.querySelector('.wa-reload').onclick = () => webview.reload();
-  previewView.querySelector('.wa-back').onclick   = () => { if (webview.canGoBack()) webview.goBack(); };
-  previewView.querySelector('.wa-fwd').onclick    = () => { if (webview.canGoForward()) webview.goForward(); };
-  previewView.querySelector('.wa-open-ext').onclick = () => api.dialog.openExternal(webview.getURL());
+  previewView.querySelector('.wa-reload').onclick = () => {
+    const wv = previewView.querySelector('.webapp-preview-webview');
+    if (wv) wv.reload();
+  };
+  previewView.querySelector('.wa-back').onclick = () => {
+    const wv = previewView.querySelector('.webapp-preview-webview');
+    if (wv && wv.canGoBack()) wv.goBack();
+  };
+  previewView.querySelector('.wa-fwd').onclick = () => {
+    const wv = previewView.querySelector('.webapp-preview-webview');
+    if (wv && wv.canGoForward()) wv.goForward();
+  };
+  previewView.querySelector('.wa-open-ext').onclick = () => {
+    const wv = previewView.querySelector('.webapp-preview-webview');
+    api.dialog.openExternal(wv ? wv.getURL() : url);
+  };
 }
 
 async function renderInfoView(wrapper, projectIndex, project, deps) {
@@ -362,10 +417,15 @@ async function renderInfoView(wrapper, projectIndex, project, deps) {
 function cleanup(wrapper) {
   clearPollTimer(wrapper);
   if (wrapper._waPipInterval) clearInterval(wrapper._waPipInterval);
+  if (wrapper._waClassObserver) {
+    wrapper._waClassObserver.disconnect();
+    delete wrapper._waClassObserver;
+  }
   const previewView = wrapper.querySelector('.webapp-preview-view');
   if (previewView) {
     const webview = previewView.querySelector('.webapp-preview-webview');
-    if (webview) webview.loadURL('about:blank');
+    if (webview) webview.remove();
+    detachedWebviews.delete(previewView);
     delete previewView.dataset.loadedPort;
   }
 }

@@ -397,7 +397,7 @@ module.exports = createType({
 .wa-addr-host   { color: rgba(255,255,255,0.55); }
 .wa-addr-port   { color: rgba(255,255,255,0.3); }
 
-/* webview */
+/* webview — visibility managed via DOM attach/detach in JS */
 .webapp-preview-webview {
   flex: 1; width: 100%; border: none; background: #fff; min-height: 0;
 }

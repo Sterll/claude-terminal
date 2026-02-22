@@ -933,6 +933,7 @@
 .terminal-wrapper.active {
   display: flex;
   flex-direction: column;
+  background: var(--bg-primary);
 }
 
 .terminal-wrapper.webapp-wrapper {
