@@ -3,457 +3,857 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Claude Terminal — Telemetry Dashboard</title>
+  <title>Claude Terminal — Telemetry</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&display=swap" rel="stylesheet">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    /* ── TOKENS ─────────────────────────────────────────────── */
+    :root {
+      --bg:       #0a0a0a;
+      --surface:  #111111;
+      --raised:   #161616;
+      --line:     rgba(255,255,255,0.07);
+      --line-hi:  rgba(255,255,255,0.13);
+      --t0: #f2f2f2;
+      --t1: #999;
+      --t2: #4a4a4a;
+      --amber:     #f59e0b;
+      --amber-dim: rgba(245,158,11,0.10);
+      --amber-hi:  rgba(245,158,11,0.22);
+      --blue:  #3b82f6;
+      --green: #10b981;
+      --rose:  #f43f5e;
+      --violet:#8b5cf6;
+      --sky:   #06b6d4;
+      --r: 6px;
+      --r-sm: 4px;
+      --ease: cubic-bezier(.4,0,.2,1);
+    }
 
+    /* ── RESET ──────────────────────────────────────────────── */
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+    html { font-size:14px; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #0d0d0d;
-      color: #e0e0e0;
-      padding: 40px 20px;
+      font-family: 'Geist', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--t0);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
     }
+    button { cursor: pointer; font-family: inherit; }
+    a { color: inherit; text-decoration: none; }
 
-    .container { max-width: 1200px; margin: 0 auto; }
-
-    h1 { font-size: 28px; color: #d97706; margin-bottom: 4px; }
-    .subtitle { font-size: 13px; color: #888; margin-bottom: 32px; }
-
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 16px;
-      margin-bottom: 32px;
+    /* ── AUTH ───────────────────────────────────────────────── */
+    #auth {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--bg);
+      z-index: 200;
     }
-
-    .stat-card {
-      background: #151515;
-      padding: 20px;
-      border-radius: 8px;
-      border: 1px solid #2d2d2d;
+    .auth-box {
+      width: 360px;
+      background: var(--surface);
+      border: 1px solid var(--line-hi);
+      border-radius: 10px;
+      padding: 32px;
     }
-
-    .stat-label {
-      font-size: 11px;
-      color: #888;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 6px;
+    .auth-eyebrow {
+      font-size: 11px; font-weight: 500;
+      letter-spacing: .08em; text-transform: uppercase;
+      color: var(--amber); margin-bottom: 10px;
+      display: flex; align-items: center; gap: 7px;
     }
-
-    .stat-value { font-size: 32px; font-weight: 600; color: #d97706; }
-    .stat-sub { font-size: 11px; color: #666; margin-top: 4px; }
-
-    .section {
-      background: #151515;
-      padding: 20px;
-      border-radius: 8px;
-      border: 1px solid #2d2d2d;
-      margin-bottom: 16px;
+    .auth-eyebrow::before {
+      content: '';
+      display: block; width: 5px; height: 5px;
+      border-radius: 50%; background: var(--amber);
+      animation: blink 2s ease-in-out infinite;
     }
-
-    .section-title {
-      font-size: 16px;
-      font-weight: 600;
-      margin-bottom: 12px;
-      color: #e0e0e0;
+    @keyframes blink {
+      0%,100% { opacity:1; } 50% { opacity:.3; }
     }
-
-    .grid-2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
+    .auth-title {
+      font-size: 22px; font-weight: 600;
+      letter-spacing: -.02em; color: var(--t0);
+      margin-bottom: 24px;
     }
-
-    .grid-3 {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 16px;
-    }
-
-    table { width: 100%; border-collapse: collapse; }
-
-    th, td {
-      text-align: left;
-      padding: 8px 12px;
-      border-bottom: 1px solid #1e1e1e;
+    .auth-field {
+      width: 100%; padding: 11px 13px;
+      background: var(--raised);
+      border: 1px solid var(--line-hi);
+      border-radius: var(--r-sm);
+      color: var(--t0);
+      font-family: 'Geist Mono', monospace;
       font-size: 13px;
+      outline: none;
+      transition: border-color .15s var(--ease);
+      margin-bottom: 10px;
     }
-
-    th { color: #666; font-weight: 500; font-size: 11px; text-transform: uppercase; }
-    td:last-child, th:last-child { text-align: right; color: #d97706; font-weight: 500; }
-
-    .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-    .bar-label { font-size: 13px; min-width: 80px; color: #aaa; }
-    .bar-track { flex: 1; height: 20px; background: #1a1a1a; border-radius: 4px; overflow: hidden; }
-    .bar-fill { height: 100%; background: #d97706; border-radius: 4px; transition: width 0.3s; }
-    .bar-value { font-size: 13px; min-width: 40px; text-align: right; color: #d97706; font-weight: 500; }
-
-    /* Mini chart (CSS bars) */
-    .chart {
-      display: flex;
-      align-items: flex-end;
-      gap: 2px;
-      height: 100px;
-      padding-top: 8px;
+    .auth-field:focus { border-color: var(--amber); }
+    .auth-submit {
+      width: 100%; padding: 11px;
+      background: var(--amber); color: #000;
+      border: none; border-radius: var(--r-sm);
+      font-size: 13px; font-weight: 600;
+      transition: opacity .15s, transform .15s;
     }
-
-    .chart-bar {
-      flex: 1;
-      background: #d97706;
-      border-radius: 2px 2px 0 0;
-      min-width: 4px;
-      position: relative;
-      transition: height 0.3s;
-    }
-
-    .chart-bar:hover {
-      background: #f59e0b;
-    }
-
-    .chart-bar .tooltip {
+    .auth-submit:hover { opacity: .9; transform: translateY(-1px); }
+    .auth-submit:active { transform: translateY(0); }
+    .auth-err {
+      margin-top: 10px; padding: 9px 12px;
+      background: rgba(244,63,94,.1);
+      border: 1px solid rgba(244,63,94,.25);
+      border-radius: var(--r-sm);
+      font-family: 'Geist Mono', monospace;
+      font-size: 12px; color: var(--rose);
       display: none;
-      position: absolute;
-      bottom: calc(100% + 6px);
-      left: 50%;
-      transform: translateX(-50%);
-      background: #252525;
-      border: 1px solid #3d3d3d;
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-size: 11px;
-      white-space: nowrap;
-      color: #e0e0e0;
-      z-index: 10;
     }
 
-    .chart-bar:hover .tooltip { display: block; }
+    /* ── SHELL ──────────────────────────────────────────────── */
+    #app { display: none; }
 
-    .chart-labels {
-      display: flex;
-      gap: 2px;
-      margin-top: 4px;
+    .topbar {
+      position: sticky; top: 0; z-index: 50;
+      height: 52px;
+      background: rgba(10,10,10,.88);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--line);
+      display: flex; align-items: center;
+      padding: 0 24px;
+      gap: 0;
+    }
+    .topbar-brand {
+      font-size: 13px; font-weight: 600;
+      color: var(--t1);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .topbar-brand span { color: var(--t0); }
+    .topbar-sep { color: var(--t2); margin: 0 6px; font-size: 16px; }
+    .topbar-live {
+      display: flex; align-items: center; gap: 5px;
+      font-family: 'Geist Mono', monospace;
+      font-size: 10px; font-weight: 500;
+      letter-spacing: .06em; text-transform: uppercase;
+      color: var(--green);
+      background: rgba(16,185,129,.1);
+      border: 1px solid rgba(16,185,129,.2);
+      padding: 3px 8px; border-radius: 100px;
+      margin-left: auto;
+    }
+    .topbar-live::before {
+      content: '';
+      width: 5px; height: 5px;
+      border-radius: 50%; background: var(--green);
+      animation: blink 2s ease-in-out infinite;
+    }
+    .topbar-time {
+      font-family: 'Geist Mono', monospace;
+      font-size: 11px; color: var(--t2);
+      margin-left: 16px;
+    }
+    .topbar-refresh {
+      margin-left: 12px;
+      background: transparent;
+      border: 1px solid var(--line-hi);
+      border-radius: var(--r-sm);
+      color: var(--t1); font-size: 12px;
+      padding: 5px 10px;
+      display: flex; align-items: center; gap: 6px;
+      transition: background .15s, color .15s;
+    }
+    .topbar-refresh:hover { background: var(--raised); color: var(--t0); }
+    .topbar-refresh svg { transition: transform .5s var(--ease); }
+    .topbar-refresh:hover svg { transform: rotate(180deg); }
+
+    /* ── PAGE ───────────────────────────────────────────────── */
+    .page { max-width: 1180px; margin: 0 auto; padding: 28px 24px 60px; }
+
+    /* ── SECTION LABEL ──────────────────────────────────────── */
+    .section-label {
+      font-size: 10px; font-weight: 600;
+      letter-spacing: .1em; text-transform: uppercase;
+      color: var(--t2); margin-bottom: 12px;
     }
 
-    .chart-labels span {
-      flex: 1;
-      font-size: 9px;
-      color: #555;
-      text-align: center;
+    /* ── STAT ROW ───────────────────────────────────────────── */
+    .stat-row {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 1px;
+      background: var(--line);
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    .stat-cell {
+      background: var(--surface);
+      padding: 20px 18px 16px;
+      position: relative;
+      transition: background .15s var(--ease);
+    }
+    .stat-cell:hover { background: var(--raised); }
+    .stat-cell-label {
+      font-size: 11px; font-weight: 500;
+      letter-spacing: .04em;
+      color: var(--t2); margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+    .stat-cell-value {
+      font-family: 'Geist Mono', monospace;
+      font-size: 32px; font-weight: 400;
+      letter-spacing: -.03em; line-height: 1;
+      color: var(--t0);
+    }
+    .stat-cell-value.accent { color: var(--amber); }
+    .stat-cell-sub {
+      font-family: 'Geist Mono', monospace;
+      font-size: 10px; color: var(--t2);
+      margin-top: 5px;
+    }
+    .stat-cell-bar {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--line);
+    }
+    .stat-cell-bar::after {
+      content: '';
+      position: absolute; top: 0; left: 0; bottom: 0;
+      width: var(--w, 0%);
+      background: var(--amber);
+      transition: width .8s var(--ease);
+    }
+
+    /* ── CARD ───────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--r);
       overflow: hidden;
     }
+    .card-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+    .card-title {
+      font-size: 13px; font-weight: 500;
+      color: var(--t0);
+    }
+    .card-tag {
+      font-family: 'Geist Mono', monospace;
+      font-size: 10px; font-weight: 400;
+      color: var(--t2);
+      background: var(--raised);
+      border: 1px solid var(--line);
+      padding: 2px 7px; border-radius: 3px;
+    }
+    .card-body { padding: 16px 18px; }
+    .card-body-flush { padding: 0; }
 
-    /* Feature trend colors */
-    .trend-legend {
+    /* ── GRIDS ──────────────────────────────────────────────── */
+    .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .g3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .gap { margin-bottom: 12px; }
+    .gap-lg { margin-bottom: 20px; }
+
+    /* ── HISTOGRAM ──────────────────────────────────────────── */
+    /*
+     * KEY FIX: bars have a fixed pixel width + flex-wrap disabled.
+     * The container scrolls if there are many bars.
+     * With few bars (2-3), they stay narrow + centered.
+     */
+    .histo-wrap {
       display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      margin-bottom: 12px;
+      flex-direction: column;
+      gap: 8px;
     }
-
-    .trend-legend-item {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 11px;
-      color: #aaa;
-    }
-
-    .trend-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-    }
-
-    .stacked-chart {
+    .histo {
+      height: 88px;
       display: flex;
       align-items: flex-end;
       gap: 3px;
-      height: 120px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding-bottom: 0;
+      /* do NOT stretch bars — let them be their natural width */
     }
+    .histo::-webkit-scrollbar { display: none; }
 
-    .stacked-col {
-      flex: 1;
-      display: flex;
-      flex-direction: column-reverse;
-      min-width: 6px;
-    }
-
-    .stacked-seg {
-      border-radius: 1px;
-      transition: height 0.3s;
+    /* grid lines */
+    .histo-grid {
       position: relative;
+      height: 88px;
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      overflow-x: auto;
+      scrollbar-width: none;
     }
+    .histo-grid::before {
+      content: '';
+      position: absolute; inset: 0;
+      background:
+        linear-gradient(to bottom, var(--line) 1px, transparent 1px) 0 0 / 100% 25%,
+        linear-gradient(to bottom, var(--line) 1px, transparent 1px) 0 0 / 100% 50%,
+        linear-gradient(to bottom, var(--line) 1px, transparent 1px) 0 0 / 100% 75%;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .histo-grid::-webkit-scrollbar { display: none; }
 
-    .stacked-seg:hover { opacity: 0.8; }
+    .histo-bar {
+      /* Fixed width regardless of count — prevents fat-bar problem */
+      width: 10px;
+      flex-shrink: 0;
+      border-radius: 2px 2px 0 0;
+      position: relative;
+      z-index: 1;
+      transition: opacity .15s;
+      cursor: default;
+    }
+    .histo-bar:hover { opacity: .75; }
+    .histo-bar:hover .histo-tip { display: block; }
 
-    .error-box {
-      background: rgba(239, 68, 68, 0.1);
-      border: 1px solid rgba(239, 68, 68, 0.3);
-      padding: 16px;
-      border-radius: 8px;
-      color: #ef4444;
+    .histo-bar.clr-amber { background: var(--amber); opacity: .8; }
+    .histo-bar.clr-blue  { background: var(--blue);  opacity: .8; }
+    .histo-bar:hover { opacity: 1 !important; }
+
+    .histo-tip {
       display: none;
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 50%; transform: translateX(-50%);
+      background: var(--raised);
+      border: 1px solid var(--line-hi);
+      padding: 5px 8px;
+      border-radius: var(--r-sm);
+      font-family: 'Geist Mono', monospace;
+      font-size: 11px; white-space: nowrap;
+      color: var(--t0); z-index: 20;
+      pointer-events: none;
+    }
+    .histo-tip strong { color: var(--amber); display: block; }
+
+    .histo-labels {
+      display: flex; gap: 3px;
+    }
+    .histo-labels span {
+      width: 10px; flex-shrink: 0;
+      font-family: 'Geist Mono', monospace;
+      font-size: 8px; color: var(--t2);
+      text-align: center; overflow: hidden;
     }
 
-    .loading { text-align: center; padding: 60px; color: #666; font-size: 14px; }
+    /* ── STACKED HISTOGRAM ──────────────────────────────────── */
+    .stacked-grid {
+      position: relative;
+      height: 110px;
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .stacked-grid::before {
+      content: '';
+      position: absolute; inset: 0;
+      background:
+        linear-gradient(to bottom, var(--line) 1px, transparent 1px) 0 0 / 100% 25%,
+        linear-gradient(to bottom, var(--line) 1px, transparent 1px) 0 0 / 100% 50%,
+        linear-gradient(to bottom, var(--line) 1px, transparent 1px) 0 0 / 100% 75%;
+      pointer-events: none; z-index: 0;
+    }
+    .stacked-grid::-webkit-scrollbar { display: none; }
+    .stacked-col {
+      width: 10px; flex-shrink: 0;
+      display: flex; flex-direction: column-reverse;
+      gap: 1px; position: relative; z-index: 1;
+    }
+    .stacked-seg {
+      width: 10px; border-radius: 1px;
+      opacity: .85; transition: opacity .15s;
+    }
+    .stacked-seg:hover { opacity: 1; }
 
-    #content { display: none; }
+    .legend {
+      display: flex; flex-wrap: wrap;
+      gap: 6px 14px;
+    }
+    .legend-item {
+      display: flex; align-items: center; gap: 5px;
+      font-family: 'Geist Mono', monospace;
+      font-size: 10px; color: var(--t1);
+    }
+    .legend-dot {
+      width: 7px; height: 7px;
+      border-radius: 1px; flex-shrink: 0;
+    }
 
-    @media (max-width: 900px) {
-      .grid-2, .grid-3 { grid-template-columns: 1fr; }
-      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    /* ── HBAR (horizontal bar) ──────────────────────────────── */
+    .hbar-list { display: flex; flex-direction: column; gap: 9px; }
+    .hbar-row { display: flex; align-items: center; gap: 10px; }
+    .hbar-label {
+      font-family: 'Geist Mono', monospace;
+      font-size: 11px; color: var(--t1);
+      width: 72px; flex-shrink: 0; text-align: right;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .hbar-track {
+      flex: 1; height: 6px;
+      background: var(--raised);
+      border-radius: 100px; overflow: hidden;
+    }
+    .hbar-fill {
+      height: 100%; border-radius: 100px;
+      animation: growX .7s var(--ease) both;
+      transform-origin: left;
+    }
+    @keyframes growX { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    .hbar-val {
+      font-family: 'Geist Mono', monospace;
+      font-size: 11px; font-weight: 500;
+      color: var(--t0);
+      width: 28px; text-align: right; flex-shrink: 0;
+    }
+
+    /* ── TABLE ──────────────────────────────────────────────── */
+    .dt { width: 100%; border-collapse: collapse; }
+    .dt th {
+      font-size: 10px; font-weight: 500;
+      letter-spacing: .07em; text-transform: uppercase;
+      color: var(--t2); padding: 9px 16px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+    }
+    .dt td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--line);
+      font-size: 12px; color: var(--t0);
+    }
+    .dt tr:last-child td { border-bottom: none; }
+    .dt tbody tr { transition: background .1s; }
+    .dt tbody tr:hover td { background: var(--raised); }
+    .dt .mono {
+      font-family: 'Geist Mono', monospace;
+      font-size: 11px;
+    }
+    .dt .right { text-align: right; }
+    .dt .muted { color: var(--t1); }
+    .dt .num {
+      font-family: 'Geist Mono', monospace;
+      font-weight: 500; color: var(--amber);
+      text-align: right; font-size: 12px;
+    }
+
+    /* ── EVENT BADGE ────────────────────────────────────────── */
+    .ev-badge {
+      display: inline-flex; align-items: center; gap: 0;
+      font-family: 'Geist Mono', monospace; font-size: 11px;
+    }
+    .ev-ns {
+      padding: 1px 5px;
+      border-radius: 3px 0 0 3px;
+      font-size: 9px; font-weight: 600;
+      letter-spacing: .04em; text-transform: uppercase;
+    }
+    .ev-ns.app     { background: rgba(59,130,246,.15); color: var(--blue); }
+    .ev-ns.features{ background: rgba(245,158,11,.15); color: var(--amber); }
+    .ev-ns.errors  { background: rgba(244,63,94,.15); color: var(--rose); }
+    .ev-name {
+      color: var(--t1);
+      padding: 1px 0 1px 5px;
+    }
+
+    /* ── RANK DOT ───────────────────────────────────────────── */
+    .rank {
+      font-family: 'Geist Mono', monospace;
+      font-size: 10px; color: var(--t2);
+      width: 20px; text-align: center;
+    }
+
+    /* ── EMPTY ──────────────────────────────────────────────── */
+    .empty {
+      padding: 24px 0;
+      font-family: 'Geist Mono', monospace;
+      font-size: 11px; color: var(--t2);
+      text-align: center;
+    }
+
+    /* ── ENTRANCE ───────────────────────────────────────────── */
+    .appear {
+      opacity: 0; transform: translateY(10px);
+      animation: appear .4s var(--ease) forwards;
+    }
+    @keyframes appear { to { opacity:1; transform:none; } }
+    .d1{animation-delay:.04s} .d2{animation-delay:.08s} .d3{animation-delay:.12s}
+    .d4{animation-delay:.16s} .d5{animation-delay:.20s} .d6{animation-delay:.24s}
+    .d7{animation-delay:.28s} .d8{animation-delay:.32s}
+
+    /* ── RESPONSIVE ─────────────────────────────────────────── */
+    @media(max-width:900px){
+      .stat-row { grid-template-columns: repeat(3,1fr); }
+      .g2,.g3 { grid-template-columns:1fr; }
+    }
+    @media(max-width:600px){
+      .stat-row { grid-template-columns: 1fr 1fr; }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Claude Terminal</h1>
-    <div class="subtitle">Telemetry Dashboard</div>
 
-    <div id="error" class="error-box"></div>
-    <div id="loading" class="loading">Loading statistics...</div>
+<!-- ══════════════════════════════════════ AUTH -->
+<div id="auth">
+  <div class="auth-box">
+    <div class="auth-eyebrow">Claude Terminal</div>
+    <div class="auth-title">Telemetry Dashboard</div>
+    <input type="password" id="tok" class="auth-field" placeholder="Admin token" autocomplete="current-password">
+    <button class="auth-submit" onclick="doAuth()">Continue</button>
+    <div id="auth-err" class="auth-err"></div>
+  </div>
+</div>
 
-    <div id="content">
-      <!-- Top stats -->
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-label">Total Users</div>
-          <div class="stat-value" id="s-total">-</div>
+<!-- ══════════════════════════════════════ APP -->
+<div id="app">
+  <header class="topbar">
+    <div class="topbar-brand"><span>Claude Terminal</span></div>
+    <span class="topbar-sep">/</span>
+    <div class="topbar-brand">Telemetry</div>
+    <div class="topbar-live">Live</div>
+    <span class="topbar-time" id="upd-time"></span>
+    <button class="topbar-refresh" onclick="doRefresh()">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <polyline points="23 4 23 10 17 10"/>
+        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+      </svg>
+      Refresh
+    </button>
+  </header>
+
+  <div class="page">
+
+    <!-- STAT ROW -->
+    <div class="stat-row appear d1">
+      <div class="stat-cell">
+        <div class="stat-cell-label">Total Users</div>
+        <div class="stat-cell-value accent" id="s-total">—</div>
+        <div class="stat-cell-bar" style="--w:100%"></div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-cell-label">Active 24h</div>
+        <div class="stat-cell-value" id="s-24h">—</div>
+        <div id="bar-24h" class="stat-cell-bar"></div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-cell-label">Active 7d</div>
+        <div class="stat-cell-value" id="s-7d">—</div>
+        <div id="bar-7d" class="stat-cell-bar"></div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-cell-label">Active 30d</div>
+        <div class="stat-cell-value" id="s-30d">—</div>
+        <div id="bar-30d" class="stat-cell-bar"></div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-cell-label">Avg Session</div>
+        <div class="stat-cell-value" id="s-sess">—</div>
+        <div class="stat-cell-sub" id="s-sess-sub"></div>
+      </div>
+    </div>
+
+    <!-- CHARTS -->
+    <div class="g2 gap-lg appear d2">
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">New Users</span>
+          <span class="card-tag">30 days</span>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Active 24h</div>
-          <div class="stat-value" id="s-24h">-</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Active 7d</div>
-          <div class="stat-value" id="s-7d">-</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Active 30d</div>
-          <div class="stat-value" id="s-30d">-</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Avg Session</div>
-          <div class="stat-value" id="s-avg-session">-</div>
-          <div class="stat-sub" id="s-session-detail"></div>
+        <div class="card-body">
+          <div class="histo-wrap">
+            <div class="histo-grid" id="ch-new"></div>
+            <div class="histo-labels" id="lb-new"></div>
+          </div>
         </div>
       </div>
-
-      <!-- Charts row -->
-      <div class="grid-2">
-        <div class="section">
-          <div class="section-title">New Users (30 days)</div>
-          <div id="chart-new-users" class="chart"></div>
-          <div id="labels-new-users" class="chart-labels"></div>
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">Active Users</span>
+          <span class="card-tag">30 days</span>
         </div>
-        <div class="section">
-          <div class="section-title">Active Users (30 days)</div>
-          <div id="chart-active-users" class="chart"></div>
-          <div id="labels-active-users" class="chart-labels"></div>
+        <div class="card-body">
+          <div class="histo-wrap">
+            <div class="histo-grid" id="ch-act"></div>
+            <div class="histo-labels" id="lb-act"></div>
+          </div>
         </div>
       </div>
+    </div>
 
-      <!-- Feature trends -->
-      <div class="section">
-        <div class="section-title">Feature Trends (14 days)</div>
-        <div id="trend-legend" class="trend-legend"></div>
-        <div id="chart-features" class="stacked-chart"></div>
-        <div id="labels-features" class="chart-labels"></div>
+    <!-- FEATURE TRENDS -->
+    <div class="card gap appear d3">
+      <div class="card-head">
+        <span class="card-title">Feature Trends</span>
+        <span class="card-tag">14 days</span>
       </div>
-
-      <!-- Details -->
-      <div class="grid-3">
-        <div class="section">
-          <div class="section-title">Platforms</div>
-          <div id="platforms"></div>
-        </div>
-        <div class="section">
-          <div class="section-title">Versions</div>
-          <div id="versions"></div>
-        </div>
-        <div class="section">
-          <div class="section-title">Cohorts</div>
-          <div id="cohorts"></div>
-        </div>
+      <div class="card-body">
+        <div class="legend gap" id="feat-legend" style="margin-bottom:14px"></div>
+        <div class="stacked-grid" id="ch-feat"></div>
+        <div class="histo-labels" id="lb-feat" style="margin-top:6px"></div>
       </div>
+    </div>
 
-      <div class="grid-2">
-        <div class="section">
-          <div class="section-title">Countries</div>
-          <div id="countries"></div>
-        </div>
-        <div class="section">
-          <div class="section-title">Top Cities</div>
-          <table>
-            <thead><tr><th>City</th><th>Country</th><th>Users</th></tr></thead>
-            <tbody id="cities"></tbody>
+    <!-- PLATFORMS / VERSIONS / COHORTS -->
+    <div class="g3 gap appear d4">
+      <div class="card">
+        <div class="card-head"><span class="card-title">Platforms</span></div>
+        <div class="card-body"><div id="el-plat"></div></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><span class="card-title">Versions</span></div>
+        <div class="card-body"><div id="el-ver"></div></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><span class="card-title">Cohorts</span></div>
+        <div class="card-body"><div id="el-coh"></div></div>
+      </div>
+    </div>
+
+    <!-- GEOGRAPHY -->
+    <div class="g2 gap appear d5">
+      <div class="card">
+        <div class="card-head"><span class="card-title">Countries</span></div>
+        <div class="card-body"><div id="el-cntry"></div></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><span class="card-title">Top Cities</span></div>
+        <div class="card-body-flush">
+          <table class="dt">
+            <thead><tr>
+              <th>#</th><th>City</th><th>Country</th><th class="right">Users</th>
+            </tr></thead>
+            <tbody id="el-cities"></tbody>
           </table>
         </div>
       </div>
+    </div>
 
-      <div class="section">
-        <div class="section-title">Top Events (Last 7 Days)</div>
-        <table>
-          <thead><tr><th>Event</th><th>Count</th></tr></thead>
-          <tbody id="events"></tbody>
+    <!-- EVENTS -->
+    <div class="card appear d6">
+      <div class="card-head">
+        <span class="card-title">Top Events</span>
+        <span class="card-tag">Last 7 days</span>
+      </div>
+      <div class="card-body-flush">
+        <table class="dt">
+          <thead><tr>
+            <th>#</th><th>Event</th><th class="right">Count</th>
+          </tr></thead>
+          <tbody id="el-events"></tbody>
         </table>
       </div>
     </div>
+
   </div>
+</div>
 
-  <script>
-    function fmt(n) { return n.toLocaleString(); }
+<script>
+// ── UTILS ──────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const fmt = n => Number(n).toLocaleString();
+let TOKEN = '';
 
-    function renderBars(container, items, labelKey, valueKey) {
-      const max = Math.max(...items.map(i => i[valueKey]), 1);
-      container.innerHTML = items.map(i => `
-        <div class="bar-row">
-          <div class="bar-label">${i[labelKey]}</div>
-          <div class="bar-track"><div class="bar-fill" style="width:${(i[valueKey]/max*100).toFixed(1)}%"></div></div>
-          <div class="bar-value">${fmt(i[valueKey])}</div>
-        </div>
-      `).join('');
-    }
+const PLAT_COLORS = {
+  win32:'#3b82f6', win:'#3b82f6',
+  darwin:'#8b5cf6', mac:'#8b5cf6', macos:'#8b5cf6',
+  linux:'#10b981'
+};
 
-    function renderTable(tbody, items, col1, col2) {
-      tbody.innerHTML = items.map(i =>
-        `<tr><td>${i[col1]}</td><td>${fmt(i[col2])}</td></tr>`
-      ).join('');
-    }
+const FEAT_COLORS = [
+  '#f59e0b','#3b82f6','#10b981','#f43f5e','#8b5cf6',
+  '#ec4899','#06b6d4','#f97316','#a3e635','#e879f9',
+  '#fbbf24','#6366f1','#14b8a6','#fb923c','#c084fc'
+];
 
-    function renderChart(chartEl, labelsEl, data, labelKey, valueKey) {
-      const sorted = [...data].sort((a, b) => a[labelKey].localeCompare(b[labelKey]));
-      const max = Math.max(...sorted.map(d => d[valueKey]), 1);
-      chartEl.innerHTML = sorted.map(d => {
-        const pct = (d[valueKey] / max * 100).toFixed(1);
-        const shortDate = d[labelKey].slice(5); // MM-DD
-        return `<div class="chart-bar" style="height:${pct}%"><span class="tooltip">${shortDate}: ${fmt(d[valueKey])}</span></div>`;
-      }).join('');
-      labelsEl.innerHTML = sorted.map((d, i) => {
-        const show = i === 0 || i === sorted.length - 1 || i % 7 === 0;
-        return `<span>${show ? d[labelKey].slice(5) : ''}</span>`;
-      }).join('');
-    }
+// ── AUTH ────────────────────────────────────────────────────
+async function doAuth() {
+  const tok = $('tok').value.trim();
+  if (!tok) return;
+  const btn = document.querySelector('.auth-submit');
+  btn.textContent = 'Checking…'; btn.disabled = true;
+  try {
+    const d = await apiFetch(tok);
+    TOKEN = tok;
+    $('auth').style.display = 'none';
+    $('app').style.display = 'block';
+    render(d); setTime();
+  } catch(e) {
+    const el = $('auth-err');
+    el.style.display = 'block';
+    el.textContent = e.message;
+    btn.textContent = 'Continue'; btn.disabled = false;
+  }
+}
+$('tok').addEventListener('keydown', e => e.key==='Enter' && doAuth());
 
-    const FEATURE_COLORS = [
-      '#d97706', '#3b82f6', '#22c55e', '#ef4444', '#8b5cf6',
-      '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#a3e635',
-      '#e879f9', '#fbbf24', '#6366f1', '#10b981', '#f43f5e'
-    ];
+async function doRefresh() {
+  try { render(await apiFetch(TOKEN)); setTime(); } catch(e) { console.error(e); }
+}
 
-    function renderFeatureTrends(chartEl, labelsEl, legendEl, data) {
-      // Group by day, then by feature
-      const byDay = {};
-      const featureSet = new Set();
-      for (const row of data) {
-        if (!byDay[row.day]) byDay[row.day] = {};
-        const shortName = row.event_type.replace('features:', '');
-        byDay[row.day][shortName] = row.count;
-        featureSet.add(shortName);
-      }
+async function apiFetch(tok) {
+  const r = await fetch('/api/v1/stats', { headers: { Authorization: `Bearer ${tok}` } });
+  if (!r.ok) throw new Error(r.status===401 ? 'Invalid token' : `HTTP ${r.status}`);
+  return r.json();
+}
 
-      const days = Object.keys(byDay).sort();
-      const features = [...featureSet];
+function setTime() {
+  $('upd-time').textContent = new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+}
 
-      // Legend
-      legendEl.innerHTML = features.map((f, i) =>
-        `<div class="trend-legend-item"><div class="trend-dot" style="background:${FEATURE_COLORS[i % FEATURE_COLORS.length]}"></div>${f}</div>`
-      ).join('');
+// ── RENDER ──────────────────────────────────────────────────
+function render(d) {
+  // Stat cells
+  const total = d.users.total || 0;
+  $('s-total').textContent = fmt(total);
+  $('s-24h').textContent   = fmt(d.users.active_24h);
+  $('s-7d').textContent    = fmt(d.users.active_7d);
+  $('s-30d').textContent   = fmt(d.users.active_30d);
 
-      // Find max daily total for scaling
-      const maxTotal = Math.max(...days.map(d => features.reduce((s, f) => s + (byDay[d][f] || 0), 0)), 1);
+  // Progress bars relative to total
+  const pct = v => total ? Math.round(v/total*100) : 0;
+  $('bar-24h').style.setProperty('--w', pct(d.users.active_24h)+'%');
+  $('bar-7d').style.setProperty('--w',  pct(d.users.active_7d)+'%');
+  $('bar-30d').style.setProperty('--w', pct(d.users.active_30d)+'%');
 
-      chartEl.innerHTML = days.map(day => {
-        const segs = features.map((f, i) => {
-          const val = byDay[day][f] || 0;
-          if (val === 0) return '';
-          const pct = (val / maxTotal * 100).toFixed(1);
-          return `<div class="stacked-seg" style="height:${pct}%;background:${FEATURE_COLORS[i % FEATURE_COLORS.length]}" title="${f}: ${val}"></div>`;
-        }).join('');
-        return `<div class="stacked-col">${segs}</div>`;
-      }).join('');
+  if (d.session_duration) {
+    $('s-sess').textContent   = d.session_duration.avg_min + ' min';
+    $('s-sess-sub').textContent = `med. ${d.session_duration.median_min} min · ${d.session_duration.sample_size} sessions`;
+  }
 
-      labelsEl.innerHTML = days.map((d, i) => {
-        const show = i === 0 || i === days.length - 1 || i % 3 === 0;
-        return `<span>${show ? d.slice(5) : ''}</span>`;
-      }).join('');
-    }
+  // Histograms
+  if (d.new_users_per_day?.length)    buildHisto('ch-new','lb-new', d.new_users_per_day, 'day','count','amber');
+  if (d.active_users_per_day?.length) buildHisto('ch-act','lb-act', d.active_users_per_day,'day','count','blue');
 
-    async function load() {
-      const token = prompt('Admin token:');
-      if (!token) { document.getElementById('loading').textContent = 'Cancelled.'; return; }
+  // Feature trends
+  if (d.feature_trends?.length) buildStacked(d.feature_trends);
 
-      try {
-        const res = await fetch('/api/v1/stats', { headers: { 'Authorization': `Bearer ${token}` } });
-        if (!res.ok) throw new Error(res.status === 401 ? 'Invalid token' : `HTTP ${res.status}`);
-        const d = await res.json();
+  // HBars
+  buildHBars('el-plat', d.platforms||[], 'platform','count', true);
+  buildHBars('el-ver',  d.versions||[],  'app_version','count', false);
+  if (d.cohorts?.length) buildHBars('el-coh', d.cohorts,'cohort_version','count',false);
+  else $('el-coh').innerHTML = '<div class="empty">no cohort data</div>';
 
-        // Stats cards
-        document.getElementById('s-total').textContent = fmt(d.users.total);
-        document.getElementById('s-24h').textContent = fmt(d.users.active_24h);
-        document.getElementById('s-7d').textContent = fmt(d.users.active_7d);
-        document.getElementById('s-30d').textContent = fmt(d.users.active_30d);
+  if (d.countries?.length) buildHBars('el-cntry',d.countries,'country','count',false);
+  else $('el-cntry').innerHTML = '<div class="empty">no geo data</div>';
 
-        if (d.session_duration) {
-          document.getElementById('s-avg-session').textContent = d.session_duration.avg_min + 'min';
-          document.getElementById('s-session-detail').textContent =
-            `Median: ${d.session_duration.median_min}min | ${d.session_duration.sample_size} sessions`;
-        }
+  // Cities
+  if (d.cities?.length) {
+    $('el-cities').innerHTML = d.cities.map((c,i) => `
+      <tr>
+        <td class="rank">${i+1}</td>
+        <td>${c.city}</td>
+        <td class="muted mono">${c.country}</td>
+        <td class="num">${fmt(c.count)}</td>
+      </tr>`).join('');
+  } else {
+    $('el-cities').innerHTML = '<tr><td colspan="4"><div class="empty">no data</div></td></tr>';
+  }
 
-        // Charts
-        if (d.new_users_per_day?.length) {
-          renderChart(document.getElementById('chart-new-users'), document.getElementById('labels-new-users'),
-            d.new_users_per_day, 'day', 'count');
-        }
-        if (d.active_users_per_day?.length) {
-          renderChart(document.getElementById('chart-active-users'), document.getElementById('labels-active-users'),
-            d.active_users_per_day, 'day', 'count');
-        }
+  // Events
+  if (d.top_events?.length) {
+    $('el-events').innerHTML = d.top_events.map((e,i) => {
+      const parts = e.event_type.split(':');
+      const ns = parts[0];
+      const name = parts.slice(1).join(':') || e.event_type;
+      return `
+        <tr>
+          <td class="rank">${i+1}</td>
+          <td>
+            <span class="ev-badge">
+              <span class="ev-ns ${ns}">${ns}</span>
+              <span class="ev-name">${name}</span>
+            </span>
+          </td>
+          <td class="num">${fmt(e.count)}</td>
+        </tr>`;
+    }).join('');
+  }
+}
 
-        // Feature trends
-        if (d.feature_trends?.length) {
-          renderFeatureTrends(
-            document.getElementById('chart-features'),
-            document.getElementById('labels-features'),
-            document.getElementById('trend-legend'),
-            d.feature_trends
-          );
-        }
+// ── HISTOGRAM ────────────────────────────────────────────────
+function buildHisto(chartId, labelsId, data, lk, vk, color) {
+  const sorted = [...data].sort((a,b) => a[lk].localeCompare(b[lk]));
+  const max = Math.max(...sorted.map(d => d[vk]), 1);
+  const clr = color==='blue' ? 'clr-blue' : 'clr-amber';
 
-        // Bar charts
-        renderBars(document.getElementById('platforms'), d.platforms, 'platform', 'count');
-        renderBars(document.getElementById('versions'), d.versions, 'app_version', 'count');
+  // Each bar: fixed 10px wide, height = % of 88px container
+  $( chartId).innerHTML = sorted.map(d => {
+    const h = Math.max(Math.round(d[vk]/max * 88), 2);
+    const date = d[lk].slice(5);
+    return `<div class="histo-bar ${clr}" style="height:${h}px">
+      <div class="histo-tip"><strong>${fmt(d[vk])}</strong>${date}</div>
+    </div>`;
+  }).join('');
 
-        if (d.cohorts?.length) {
-          renderBars(document.getElementById('cohorts'), d.cohorts, 'cohort_version', 'count');
-        } else {
-          document.getElementById('cohorts').innerHTML = '<div style="color:#555;font-size:13px">No data yet</div>';
-        }
+  // Labels: only show some
+  $(labelsId).innerHTML = sorted.map((d,i) => {
+    const show = sorted.length <= 7 || i===0 || i===sorted.length-1 || i%7===0;
+    return `<span>${show ? d[lk].slice(5) : ''}</span>`;
+  }).join('');
+}
 
-        if (d.countries?.length) renderBars(document.getElementById('countries'), d.countries, 'country', 'count');
-        else document.getElementById('countries').innerHTML = '<div style="color:#555;font-size:13px">No data yet</div>';
+// ── STACKED CHART ────────────────────────────────────────────
+function buildStacked(data) {
+  const byDay = {}, featSet = new Set();
+  for (const r of data) {
+    if (!byDay[r.day]) byDay[r.day] = {};
+    const s = r.event_type.replace('features:','');
+    byDay[r.day][s] = r.count;
+    featSet.add(s);
+  }
+  const days = Object.keys(byDay).sort();
+  const feats = [...featSet];
 
-        if (d.cities?.length) {
-          document.getElementById('cities').innerHTML = d.cities.map(c =>
-            `<tr><td>${c.city}</td><td>${c.country}</td><td>${fmt(c.count)}</td></tr>`
-          ).join('');
-        }
+  // Legend
+  $('feat-legend').innerHTML = feats.map((f,i) => `
+    <div class="legend-item">
+      <div class="legend-dot" style="background:${FEAT_COLORS[i%FEAT_COLORS.length]}"></div>
+      ${f}
+    </div>`).join('');
 
-        // Tables
-        renderTable(document.getElementById('events'), d.top_events, 'event_type', 'count');
+  const maxTot = Math.max(...days.map(d => feats.reduce((s,f)=>s+(byDay[d][f]||0),0)),1);
 
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('content').style.display = 'block';
-      } catch (err) {
-        document.getElementById('loading').style.display = 'none';
-        const el = document.getElementById('error');
-        el.style.display = 'block';
-        el.textContent = 'Error: ' + err.message;
-      }
-    }
+  // Fixed 10px bars, height in px relative to 110px container
+  $('ch-feat').innerHTML = days.map(day => {
+    const segs = feats.map((f,i) => {
+      const v = byDay[day][f]||0;
+      if (!v) return '';
+      const h = Math.max(Math.round(v/maxTot*110),1);
+      return `<div class="stacked-seg" style="height:${h}px;background:${FEAT_COLORS[i%FEAT_COLORS.length]}" title="${f}: ${v}"></div>`;
+    }).join('');
+    return `<div class="stacked-col">${segs}</div>`;
+  }).join('');
 
-    load();
-  </script>
+  $('lb-feat').innerHTML = days.map((d,i) => {
+    const show = days.length<=7 || i===0 || i===days.length-1 || i%3===0;
+    return `<span>${show ? d.slice(5) : ''}</span>`;
+  }).join('');
+}
+
+// ── HORIZONTAL BARS ──────────────────────────────────────────
+function buildHBars(id, items, lk, vk, usePlatColors) {
+  if (!items.length) { $(id).innerHTML = '<div class="empty">no data</div>'; return; }
+  const max = Math.max(...items.map(i=>i[vk]),1);
+  $(id).innerHTML = '<div class="hbar-list">' + items.map(item => {
+    const pct = (item[vk]/max*100).toFixed(1);
+    const key = item[lk].toLowerCase();
+    const bg = usePlatColors ? (PLAT_COLORS[key]||'var(--amber)') : 'var(--amber)';
+    return `<div class="hbar-row">
+      <div class="hbar-label">${item[lk]}</div>
+      <div class="hbar-track"><div class="hbar-fill" style="width:${pct}%;background:${bg}"></div></div>
+      <div class="hbar-val">${fmt(item[vk])}</div>
+    </div>`;
+  }).join('') + '</div>';
+}
+</script>
 </body>
 </html>
