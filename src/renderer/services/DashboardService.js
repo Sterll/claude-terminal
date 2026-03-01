@@ -84,7 +84,7 @@ function _flushDiskWrites() {
   for (const [projectPath, data] of writes) {
     const filePath = getDiskCachePath(projectPath);
     const payload = { _version: 1, _updatedAt: new Date().toISOString(), dashboard: data };
-    fs.promises.writeFile(filePath, JSON.stringify(payload), 'utf-8').catch(() => {});
+    try { fs.writeFileSync(filePath, JSON.stringify(payload), 'utf-8'); } catch (_) {}
   }
 }
 
