@@ -847,8 +847,7 @@ function attachListeners(list) {
       setSelectedProjectFilter(projectIndex);
       setOpenedProjectId(null);
       document.getElementById('project-detail-view').style.display = 'none';
-      document.getElementById('terminals-container').style.display = '';
-      document.getElementById('terminals-tabs').style.display = '';
+      document.getElementById('split-pane-area').style.display = '';
       if (callbacks.onFilterTerminals) callbacks.onFilterTerminals(projectIndex);
       if (callbacks.onRenderProjects) callbacks.onRenderProjects();
     }

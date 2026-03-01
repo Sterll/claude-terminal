@@ -42,6 +42,8 @@ const {
 } = require('../themes/terminal-themes');
 const registry = require('../../../project-types/registry');
 const { createChatView } = require('./ChatView');
+const { showContextMenu } = require('./ContextMenu');
+const PaneManager = require('./PaneManager');
 const ContextPromptService = require('../../services/ContextPromptService');
 
 // Lazy require to avoid circular dependency
@@ -897,6 +899,7 @@ function setupTabDragDrop(tab) {
     tab.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', tab.dataset.id);
+    PaneManager.setDragTabId(tab.dataset.id);
 
     // Create placeholder
     dragPlaceholder = document.createElement('div');
@@ -906,6 +909,8 @@ function setupTabDragDrop(tab) {
   tab.addEventListener('dragend', () => {
     tab.classList.remove('dragging');
     draggedTab = null;
+    PaneManager.clearDragTabId();
+    PaneManager.hideAllDropOverlays();
     if (dragPlaceholder && dragPlaceholder.parentNode) {
       dragPlaceholder.remove();
     }
@@ -937,20 +942,63 @@ function setupTabDragDrop(tab) {
 
   tab.addEventListener('drop', (e) => {
     e.preventDefault();
+    e.stopPropagation(); // prevent content-area handler
     tab.classList.remove('drag-over-left', 'drag-over-right');
 
     if (!draggedTab || draggedTab === tab) return;
 
-    const tabsContainer = document.getElementById('terminals-tabs');
+    const targetTabsContainer = tab.closest('.pane-tabs');
+    const sourceTabsContainer = draggedTab.closest('.pane-tabs');
+
     const rect = tab.getBoundingClientRect();
     const midX = rect.left + rect.width / 2;
     const insertBefore = e.clientX < midX;
 
-    if (insertBefore) {
-      tabsContainer.insertBefore(draggedTab, tab);
+    // Cross-pane tab-bar drop: move tab to target pane
+    if (sourceTabsContainer !== targetTabsContainer) {
+      const targetPaneEl = tab.closest('.split-pane');
+      const targetPaneId = 'pane-' + targetPaneEl.dataset.paneId;
+      const draggedId = draggedTab.dataset.id;
+
+      // Move wrapper to target pane's content
+      const wrapperEl = document.querySelector(`.terminal-wrapper[data-id="${draggedId}"]`);
+      const targetContentEl = targetPaneEl.querySelector('.pane-content');
+      if (wrapperEl && targetContentEl) targetContentEl.appendChild(wrapperEl);
+
+      // Insert tab at correct position in target tab bar
+      if (insertBefore) {
+        targetTabsContainer.insertBefore(draggedTab, tab);
+      } else {
+        targetTabsContainer.insertBefore(draggedTab, tab.nextSibling);
+      }
+
+      // Update PaneManager state
+      const sourcePaneEl = sourceTabsContainer.closest('.split-pane');
+      const sourcePaneId = 'pane-' + sourcePaneEl.dataset.paneId;
+      const sourcePane = PaneManager.getPanes().get(sourcePaneId);
+      const targetPane = PaneManager.getPanes().get(targetPaneId);
+
+      if (sourcePane) sourcePane.tabs.delete(draggedId);
+      if (targetPane) targetPane.tabs.add(draggedId);
+
+      // Activate the moved tab
+      setActiveTerminal(draggedId);
+
+      // Collapse source pane if empty
+      if (sourcePane && sourcePane.tabs.size === 0 && PaneManager.getPaneCount() > 1) {
+        PaneManager.collapsePane(sourcePaneId);
+      }
     } else {
-      tabsContainer.insertBefore(draggedTab, tab.nextSibling);
+      // Same pane: reorder (existing behavior)
+      if (insertBefore) {
+        targetTabsContainer.insertBefore(draggedTab, tab);
+      } else {
+        targetTabsContainer.insertBefore(draggedTab, tab.nextSibling);
+      }
     }
+
+    PaneManager.clearDragTabId();
+    PaneManager.hideAllDropOverlays();
   });
 }
 
@@ -1125,6 +1173,127 @@ function startRenameTab(id) {
 }
 
 /**
+ * Show right-click context menu on a tab (Rename, Close, Close Others, Close to Right)
+ */
+function showTabContextMenu(e, id) {
+  e.preventDefault();
+  e.stopPropagation();
+
+  const thisTab = document.querySelector(`.terminal-tab[data-id="${id}"]`);
+  const tabsContainer = thisTab?.closest('.pane-tabs');
+  const allTabs = tabsContainer ? Array.from(tabsContainer.querySelectorAll('.terminal-tab')) : [];
+  const thisIndex = allTabs.indexOf(thisTab);
+  const tabsToRight = allTabs.slice(thisIndex + 1);
+
+  showContextMenu({
+    x: e.clientX,
+    y: e.clientY,
+    items: [
+      {
+        label: t('tabs.rename'),
+        shortcut: 'Double-click',
+        icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>',
+        onClick: () => startRenameTab(id)
+      },
+      { separator: true },
+      {
+        label: t('tabs.close'),
+        icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>',
+        onClick: () => closeTerminal(id)
+      },
+      {
+        label: t('tabs.closeOthers'),
+        icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>',
+        disabled: allTabs.length <= 1,
+        onClick: () => {
+          allTabs.forEach(tab => {
+            const tabId = tab.dataset.id;
+            if (tabId != id) closeTerminal(tabId);
+          });
+        }
+      },
+      {
+        label: t('tabs.closeToRight'),
+        icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>',
+        disabled: tabsToRight.length === 0,
+        onClick: () => {
+          tabsToRight.forEach(tab => closeTerminal(tab.dataset.id));
+        }
+      },
+      { separator: true },
+      {
+        label: t('tabs.splitRight'),
+        icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M3 3h8v18H3V3zm10 0h8v18h-8V3z"/></svg>',
+        disabled: PaneManager.getPaneCount() >= 3,
+        onClick: () => {
+          const currentPaneId = PaneManager.getPaneForTab(String(id));
+          const newPaneId = PaneManager.createPane(currentPaneId);
+          if (newPaneId) {
+            const sourceEmpty = PaneManager.moveTabToPane(String(id), newPaneId);
+            setActiveTerminal(id);
+            if (sourceEmpty) PaneManager.collapsePane(currentPaneId);
+          }
+        }
+      },
+      // Move items — only when multiple panes exist
+      ...(PaneManager.getPaneCount() > 1 ? (() => {
+        const order = PaneManager.getPaneOrder();
+        const currentPaneId = PaneManager.getPaneForTab(String(id));
+        const currentIdx = order.indexOf(currentPaneId);
+
+        if (order.length === 2) {
+          // 2 panes: simple Move Right / Move Left
+          return [
+            {
+              label: t('tabs.moveLeft'),
+              icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"/></svg>',
+              disabled: currentIdx === 0,
+              onClick: () => {
+                if (currentIdx > 0) {
+                  const targetPaneId = order[currentIdx - 1];
+                  const sourceEmpty = PaneManager.moveTabToPane(String(id), targetPaneId);
+                  setActiveTerminal(id);
+                  if (sourceEmpty) PaneManager.collapsePane(currentPaneId);
+                }
+              }
+            },
+            {
+              label: t('tabs.moveRight'),
+              icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>',
+              disabled: currentIdx === order.length - 1,
+              onClick: () => {
+                if (currentIdx < order.length - 1) {
+                  const targetPaneId = order[currentIdx + 1];
+                  const sourceEmpty = PaneManager.moveTabToPane(String(id), targetPaneId);
+                  setActiveTerminal(id);
+                  if (sourceEmpty) PaneManager.collapsePane(currentPaneId);
+                }
+              }
+            }
+          ];
+        } else {
+          // 3 panes: specific pane targets
+          return order
+            .filter(pId => pId !== currentPaneId)
+            .map((pId) => {
+              const paneNum = order.indexOf(pId) + 1;
+              return {
+                label: t('tabs.moveToPane').replace('{0}', paneNum),
+                icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M3 3h8v18H3V3zm10 0h8v18h-8V3z"/></svg>',
+                onClick: () => {
+                  const sourceEmpty = PaneManager.moveTabToPane(String(id), pId);
+                  setActiveTerminal(id);
+                  if (sourceEmpty) PaneManager.collapsePane(currentPaneId);
+                }
+              };
+            });
+        }
+      })() : [])
+    ]
+  });
+}
+
+/**
  * Set active terminal
  */
 function setActiveTerminal(id) {
@@ -1139,13 +1308,33 @@ function setActiveTerminal(id) {
   }
 
   setActiveTerminalState(id);
-  document.querySelectorAll('.terminal-tab').forEach(t => t.classList.toggle('active', t.dataset.id == id));
-  document.querySelectorAll('.terminal-wrapper').forEach(w => {
-    const isActive = w.dataset.id == id;
-    w.classList.toggle('active', isActive);
-    // Always clear inline display so CSS rules control visibility via .active class
-    w.style.removeProperty('display');
-  });
+
+  const paneId = PaneManager.getPaneForTab(String(id));
+  if (paneId) {
+    const pane = PaneManager.getPanes().get(paneId);
+    if (pane) {
+      // Toggle active only within THIS pane's tab bar
+      pane.tabsEl.querySelectorAll('.terminal-tab').forEach(t =>
+        t.classList.toggle('active', t.dataset.id == id));
+      // Toggle active only within THIS pane's content
+      pane.contentEl.querySelectorAll('.terminal-wrapper').forEach(w => {
+        w.classList.toggle('active', w.dataset.id == id);
+        w.style.removeProperty('display');
+      });
+      // Update pane's tracked active tab
+      PaneManager.setPaneActiveTab(paneId, String(id));
+    }
+    // Set this pane as the focused pane
+    PaneManager.setActivePaneId(paneId);
+  } else {
+    // Fallback for tabs not yet registered (edge case during init)
+    document.querySelectorAll('.terminal-tab').forEach(t =>
+      t.classList.toggle('active', t.dataset.id == id));
+    document.querySelectorAll('.terminal-wrapper').forEach(w => {
+      w.classList.toggle('active', w.dataset.id == id);
+      w.style.removeProperty('display');
+    });
+  }
   const termData = getTerminal(id);
   if (termData) {
     if (termData.mode === 'chat') {
@@ -1245,8 +1434,14 @@ function closeTerminal(id) {
     cleanupTerminalResources(termData);
     removeTerminal(id);
   }
+  const emptyPaneId = PaneManager.unregisterTab(String(id));
   document.querySelector(`.terminal-tab[data-id="${id}"]`)?.remove();
   document.querySelector(`.terminal-wrapper[data-id="${id}"]`)?.remove();
+
+  // Collapse pane if it's now empty (but not the last pane)
+  if (emptyPaneId && PaneManager.getPaneCount() > 1) {
+    PaneManager.collapsePane(emptyPaneId);
+  }
 
   // Find another terminal from the same project
   let sameProjectTerminalId = null;
@@ -1355,7 +1550,7 @@ async function createTerminal(project, options = {}) {
   heartbeat(project.id, 'terminal');
 
   // Create tab
-  const tabsContainer = document.getElementById('terminals-tabs');
+  const tabsContainer = PaneManager.getTabsContainer();
   const tab = document.createElement('div');
   tab.className = `terminal-tab status-${initialStatus}${isBasicTerminal ? ' basic-terminal' : ''}`;
   tab.dataset.id = id;
@@ -1375,11 +1570,12 @@ async function createTerminal(project, options = {}) {
   tabsContainer.appendChild(tab);
 
   // Create wrapper
-  const container = document.getElementById('terminals-container');
+  const container = PaneManager.getContentContainer();
   const wrapper = document.createElement('div');
   wrapper.className = 'terminal-wrapper';
   wrapper.dataset.id = id;
   container.appendChild(wrapper);
+  PaneManager.registerTab(String(id), PaneManager.getDefaultPaneId());
 
   // Add loading overlay for Claude terminals
   if (!isBasicTerminal) {
@@ -1531,6 +1727,7 @@ async function createTerminal(project, options = {}) {
   tab.onclick = (e) => { if (!e.target.closest('.tab-close') && !e.target.closest('.tab-name-input') && !e.target.closest('.tab-mode-toggle')) setActiveTerminal(id); };
   tab.querySelector('.tab-name').ondblclick = (e) => { e.stopPropagation(); startRenameTab(id); };
   tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); closeTerminal(id); };
+  tab.oncontextmenu = (e) => showTabContextMenu(e, id);
 
   // Mode toggle button
   const modeToggleBtn = tab.querySelector('.tab-mode-toggle');
@@ -1674,7 +1871,7 @@ function createTypeConsole(project, projectIndex) {
   heartbeat(project.id, 'terminal');
 
   // Create tab
-  const tabsContainer = document.getElementById('terminals-tabs');
+  const tabsContainer = PaneManager.getTabsContainer();
   const tab = document.createElement('div');
   tab.className = `terminal-tab ${tabClass} status-ready`;
   tab.dataset.id = id;
@@ -1687,7 +1884,7 @@ function createTypeConsole(project, projectIndex) {
   tabsContainer.appendChild(tab);
 
   // Create wrapper
-  const container = document.getElementById('terminals-container');
+  const container = PaneManager.getContentContainer();
   const wrapper = document.createElement('div');
   wrapper.className = `terminal-wrapper ${wrapperClass}`;
   wrapper.dataset.id = id;
@@ -1700,6 +1897,7 @@ function createTypeConsole(project, projectIndex) {
   }
 
   container.appendChild(wrapper);
+  PaneManager.registerTab(String(id), PaneManager.getDefaultPaneId());
 
   document.getElementById('empty-terminals').style.display = 'none';
 
@@ -1766,6 +1964,7 @@ function createTypeConsole(project, projectIndex) {
   tab.onclick = (e) => { if (!e.target.closest('.tab-close') && !e.target.closest('.tab-name-input')) setActiveTerminal(id); };
   tab.querySelector('.tab-name').ondblclick = (e) => { e.stopPropagation(); startRenameTab(id); };
   tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); closeTypeConsole(id, projectIndex, typeId); };
+  tab.oncontextmenu = (e) => showTabContextMenu(e, id);
 
   setupTabDragDrop(tab);
 
@@ -2121,6 +2320,46 @@ function filterByProject(projectIndex) {
       if (!firstVisibleId) firstVisibleId = id;
     }
   });
+
+  // Check each pane for visible tabs — hide panes with zero visible tabs during filtering
+  const paneOrder = PaneManager.getPaneOrder();
+  for (const pId of paneOrder) {
+    const pane = PaneManager.getPanes().get(pId);
+    if (!pane) continue;
+    const visibleTabsInPane = Array.from(pane.tabsEl.querySelectorAll('.terminal-tab'))
+      .filter(tab => tab.style.display !== 'none');
+
+    if (visibleTabsInPane.length === 0) {
+      // Hide this pane (but don't collapse — filter may change)
+      pane.el.style.display = 'none';
+      const prevSibling = pane.el.previousElementSibling;
+      if (prevSibling && prevSibling.classList.contains('split-divider')) {
+        prevSibling.style.display = 'none';
+      }
+    } else {
+      pane.el.style.display = '';
+      const prevSibling = pane.el.previousElementSibling;
+      if (prevSibling && prevSibling.classList.contains('split-divider')) {
+        prevSibling.style.display = '';
+      }
+
+      // If pane's active tab is hidden, switch to first visible tab in this pane
+      const currentActive = PaneManager.getPaneActiveTab(pId);
+      const activeTabEl = currentActive ? pane.tabsEl.querySelector(`.terminal-tab[data-id="${currentActive}"]`) : null;
+      if (!activeTabEl || activeTabEl.style.display === 'none') {
+        const firstVisible = visibleTabsInPane[0];
+        if (firstVisible) {
+          PaneManager.setPaneActiveTab(pId, firstVisible.dataset.id);
+          pane.tabsEl.querySelectorAll('.terminal-tab').forEach(t =>
+            t.classList.toggle('active', t.dataset.id === firstVisible.dataset.id));
+          pane.contentEl.querySelectorAll('.terminal-wrapper').forEach(w => {
+            w.classList.toggle('active', w.dataset.id === firstVisible.dataset.id);
+            w.style.removeProperty('display');
+          });
+        }
+      }
+    }
+  }
 
   if (visibleCount === 0) {
     emptyState.style.display = 'flex';
@@ -2826,7 +3065,7 @@ async function resumeSession(project, sessionId, options = {}) {
   heartbeat(project.id, 'terminal');
 
   // Create tab
-  const tabsContainer = document.getElementById('terminals-tabs');
+  const tabsContainer = PaneManager.getTabsContainer();
   const tab = document.createElement('div');
   tab.className = 'terminal-tab status-working';
   tab.dataset.id = id;
@@ -2837,11 +3076,12 @@ async function resumeSession(project, sessionId, options = {}) {
   tabsContainer.appendChild(tab);
 
   // Create wrapper
-  const container = document.getElementById('terminals-container');
+  const container = PaneManager.getContentContainer();
   const wrapper = document.createElement('div');
   wrapper.className = 'terminal-wrapper';
   wrapper.dataset.id = id;
   container.appendChild(wrapper);
+  PaneManager.registerTab(String(id), PaneManager.getDefaultPaneId());
 
   document.getElementById('empty-terminals').style.display = 'none';
 
@@ -2925,6 +3165,7 @@ async function resumeSession(project, sessionId, options = {}) {
   tab.onclick = (e) => { if (!e.target.closest('.tab-close') && !e.target.closest('.tab-name-input')) setActiveTerminal(id); };
   tab.querySelector('.tab-name').ondblclick = (e) => { e.stopPropagation(); startRenameTab(id); };
   tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); closeTerminal(id); };
+  tab.oncontextmenu = (e) => showTabContextMenu(e, id);
 
   // Enable drag & drop reordering
   setupTabDragDrop(tab);
@@ -2983,7 +3224,7 @@ async function createTerminalWithPrompt(project, prompt) {
   addTerminal(id, termData);
 
   // Create tab
-  const tabsContainer = document.getElementById('terminals-tabs');
+  const tabsContainer = PaneManager.getTabsContainer();
   const tab = document.createElement('div');
   tab.className = 'terminal-tab status-working';
   tab.dataset.id = id;
@@ -2994,11 +3235,12 @@ async function createTerminalWithPrompt(project, prompt) {
   tabsContainer.appendChild(tab);
 
   // Create wrapper
-  const container = document.getElementById('terminals-container');
+  const container = PaneManager.getContentContainer();
   const wrapper = document.createElement('div');
   wrapper.className = 'terminal-wrapper';
   wrapper.dataset.id = id;
   container.appendChild(wrapper);
+  PaneManager.registerTab(String(id), PaneManager.getDefaultPaneId());
 
   document.getElementById('empty-terminals').style.display = 'none';
 
@@ -3094,6 +3336,7 @@ async function createTerminalWithPrompt(project, prompt) {
   tab.onclick = (e) => { if (!e.target.closest('.tab-close') && !e.target.closest('.tab-name-input')) setActiveTerminal(id); };
   tab.querySelector('.tab-name').ondblclick = (e) => { e.stopPropagation(); startRenameTab(id); };
   tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); closeTerminal(id); };
+  tab.oncontextmenu = (e) => showTabContextMenu(e, id);
 
   // Enable drag & drop reordering
   setupTabDragDrop(tab);
@@ -3241,7 +3484,7 @@ function openFileTab(filePath, project) {
   addTerminal(id, termData);
 
   // Create tab
-  const tabsContainer = document.getElementById('terminals-tabs');
+  const tabsContainer = PaneManager.getTabsContainer();
   const tab = document.createElement('div');
   tab.className = 'terminal-tab file-tab status-ready';
   tab.dataset.id = id;
@@ -3253,7 +3496,7 @@ function openFileTab(filePath, project) {
   tabsContainer.appendChild(tab);
 
   // Create wrapper
-  const container = document.getElementById('terminals-container');
+  const container = PaneManager.getContentContainer();
   const wrapper = document.createElement('div');
   wrapper.className = 'terminal-wrapper file-wrapper';
   wrapper.dataset.id = id;
@@ -3343,6 +3586,7 @@ function openFileTab(filePath, project) {
   `;
 
   container.appendChild(wrapper);
+  PaneManager.registerTab(String(id), PaneManager.getDefaultPaneId());
   document.getElementById('empty-terminals').style.display = 'none';
 
   // Markdown-specific: add toggle button and wire event handlers
@@ -3593,6 +3837,7 @@ function openFileTab(filePath, project) {
   tab.onclick = (e) => { if (!e.target.closest('.tab-close') && !e.target.closest('.tab-name-input')) setActiveTerminal(id); };
   tab.querySelector('.tab-name').ondblclick = (e) => { e.stopPropagation(); startRenameTab(id); };
   tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); closeTerminal(id); };
+  tab.oncontextmenu = (e) => showTabContextMenu(e, id);
 
   // Enable drag & drop reordering
   setupTabDragDrop(tab);
@@ -3711,7 +3956,7 @@ async function createChatTerminal(project, options = {}) {
   heartbeat(parentProjectId || project.id, 'terminal');
 
   // Create tab
-  const tabsContainer = document.getElementById('terminals-tabs');
+  const tabsContainer = PaneManager.getTabsContainer();
   const tab = document.createElement('div');
   tab.className = 'terminal-tab status-ready chat-mode';
   tab.dataset.id = id;
@@ -3727,11 +3972,12 @@ async function createChatTerminal(project, options = {}) {
   tabsContainer.appendChild(tab);
 
   // Create wrapper
-  const container = document.getElementById('terminals-container');
+  const container = PaneManager.getContentContainer();
   const wrapper = document.createElement('div');
   wrapper.className = 'terminal-wrapper chat-wrapper';
   wrapper.dataset.id = id;
   container.appendChild(wrapper);
+  PaneManager.registerTab(String(id), PaneManager.getDefaultPaneId());
 
   document.getElementById('empty-terminals').style.display = 'none';
 
@@ -3791,6 +4037,7 @@ async function createChatTerminal(project, options = {}) {
   tab.onclick = (e) => { if (!e.target.closest('.tab-close') && !e.target.closest('.tab-name-input') && !e.target.closest('.tab-mode-toggle')) setActiveTerminal(id); };
   tab.querySelector('.tab-name').ondblclick = (e) => { e.stopPropagation(); startRenameTab(id); };
   tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); closeTerminal(id); };
+  tab.oncontextmenu = (e) => showTabContextMenu(e, id);
   const modeToggleBtn = tab.querySelector('.tab-mode-toggle');
   if (modeToggleBtn) {
     modeToggleBtn.onclick = (e) => { e.stopPropagation(); switchTerminalMode(id); };

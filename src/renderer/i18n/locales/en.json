@@ -1349,5 +1349,15 @@
     "notCollect1": "IP addresses",
     "notCollect2": "Project names or file paths",
     "notCollect3": "Terminal commands or chat messages"
+  },
+  "tabs": {
+    "rename": "Rename",
+    "close": "Close",
+    "closeOthers": "Close Others",
+    "closeToRight": "Close Tabs to Right",
+    "splitRight": "Split Right",
+    "moveRight": "Move Right",
+    "moveLeft": "Move Left",
+    "moveToPane": "Move to Pane {0}"
   }
 }

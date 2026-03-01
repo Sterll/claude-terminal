@@ -14,6 +14,100 @@
   overflow: hidden;
 }
 
+/* Split Pane Layout */
+.split-pane-area {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+}
+
+.split-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.split-pane.focused {
+  /* Subtle focused pane indicator — border highlight visible only in multi-pane */
+}
+
+.split-divider {
+  width: 1px;
+  background: var(--border-color);
+  flex-shrink: 0;
+}
+
+/* Pane-scoped tab bar — reuses .terminals-tabs styling */
+.pane-tabs {
+  display: flex;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  padding: 0 8px;
+  min-height: 40px;
+  gap: 4px;
+  overflow-x: auto;
+  align-items: center;
+}
+
+/* Pane-scoped content — reuses .terminals-container sizing */
+.pane-content {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+/* Pane-scoped wrapper visibility (mirrors .terminal-wrapper rules for pane context) */
+.pane-content .terminal-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: none;
+  pointer-events: none;
+}
+
+.pane-content .terminal-wrapper.active {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  pointer-events: auto;
+}
+
+/* Drop zone overlay for split-by-drag */
+.split-drop-overlay {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 50%;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius);
+  pointer-events: none;
+  z-index: 100;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.split-drop-overlay.visible {
+  opacity: 1;
+}
+
+/* Empty state sits outside pane area and overlays everything */
+.terminals-panel > .empty-state {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+}
+
 .terminals-header {
   display: flex;
   align-items: center;

@@ -1349,5 +1349,15 @@
     "notCollect1": "Adresses IP",
     "notCollect2": "Noms de projets ou chemins de fichiers",
     "notCollect3": "Commandes terminal ou messages de chat"
+  },
+  "tabs": {
+    "rename": "Renommer",
+    "close": "Fermer",
+    "closeOthers": "Fermer les autres",
+    "closeToRight": "Fermer les onglets à droite",
+    "splitRight": "Diviser à droite",
+    "moveRight": "Déplacer à droite",
+    "moveLeft": "Déplacer à gauche",
+    "moveToPane": "Déplacer vers le panneau {0}"
   }
 }
