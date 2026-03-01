@@ -274,7 +274,7 @@ async function _fetchItems() {
   if (!HUB_URL) return { items: _mockItems(), total: _mockItems().length };
 
   try {
-    const params = new URLSearchParams({ tab: 'browse', page: st.page, sort: st.sort });
+    const params = new URLSearchParams({ tab: 'browse', page: st.page - 1, sort: st.sort });
     if (st.query) params.set('q', st.query);
     const res = await fetch(`${HUB_URL}/workflows?${params}`, { signal: AbortSignal.timeout(6000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -469,9 +469,16 @@ async function _importWorkflow(item, btn) {
   btn.innerHTML = `<span class="hub-spinner"></span> Import…`;
 
   try {
-    const workflow = item.workflowJson
-      ? { ...item.workflowJson, id: `wf_${Date.now()}` }
-      : { id: `wf_${Date.now()}`, name: item.name, enabled: false, trigger: { type: 'manual' }, scope: 'current', concurrency: 'skip', steps: [], _importedFrom: item.id };
+    // Fetch full workflow detail to get workflowJson (not included in listing)
+    let fullItem = item;
+    if (!item.workflowJson && HUB_URL) {
+      const detailRes = await fetch(`${HUB_URL}/workflows/${item.id}`, { signal: AbortSignal.timeout(6000) });
+      if (detailRes.ok) fullItem = await detailRes.json();
+    }
+
+    const workflow = fullItem.workflowJson
+      ? { ...fullItem.workflowJson, id: `wf_${Date.now()}`, name: fullItem.workflowJson.name || item.name, enabled: true, _importedFrom: item.id }
+      : { id: `wf_${Date.now()}`, name: item.name, enabled: true, trigger: { type: 'manual' }, scope: 'current', concurrency: 'skip', steps: [], _importedFrom: item.id };
 
     const result = await _ctx.api.workflow.save({ workflow });
     if (!result?.success) throw new Error(result?.error || 'Échec');
