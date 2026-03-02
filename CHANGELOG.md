@@ -2,6 +2,52 @@
 
 All notable changes to Claude Terminal are documented in this file.
 
+## [1.0.0] - 2026-03-02
+
+### Added
+- **Workflow Engine**: full visual automation system with custom canvas engine, Unreal Blueprint-style typed data pins, 15+ node types (shell, git, HTTP, Claude, condition, loop, transform, switch, subworkflow, database, file, project, time, variable, trigger), AI assistant for real-time graph editing, undo/redo, copy/paste, snap-to-grid, minimap, comments, and run history with live loop progress
+- **Workflow Node Registry**: modular `.node.js` architecture with generic field renderer, custom field renderers, trigger registries, and IPC-exposed node definitions
+- **Workflow Community Hub**: publish and browse community workflows with author identity
+- **Cloud Sync**: self-hosted Docker relay server with project upload, auto-sync via file watcher, incremental sync with conflict resolution, diff modal for local vs cloud comparison, headless Claude sessions, user profiles, and automated install script with reverse proxy and SSL setup
+- **Database Panel**: multi-driver support (SQLite, MySQL, PostgreSQL, MongoDB) with split-pane data browser, inline editing, SQL query editor with syntax highlighting and templates, insert/delete rows, search filter, and connection pooling
+- **MCP Server**: unified `claude-terminal` MCP server exposing workflow tools (create, edit, trigger, diagnose, variables, run logs), database tools (query, export, schema, stats), project and time tracking tools, quick action triggers, and FiveM/WebApp project tools
+- **Telemetry**: anonymous opt-in telemetry with consent UI, geolocation disclosure, feature usage pings, admin dashboard with charts, and privacy-first batching
+- **WebApp Live Preview**: webview replacing iframe, visual feedback with multi-pin annotations, responsive breakpoint checker, auto-detect visual problems scanner, ruler spacing measurement tool, and accessibility audit with axe-core
+- **Remote Control**: redesigned mobile PWA with modern dark theme, cloud relay integration, chat event buffering for late-joining clients, tabbed local/cloud layout, and help guide
+- **Session Restore**: save and restore full workspace sessions across restarts
+- **Terminal Session Persistence**: persist terminal sessions with Claude session resume support
+- **Markdown Viewer**: integrated viewer for `.md` files in the terminal panel
+- **Dashboard Insights**: project insights section with commit heatmap and health badges
+- **File Explorer Watcher**: automatic file tree updates on filesystem changes
+- **Tab Context Menus**: right-click context menu on all tab types (terminal, chat, etc.)
+- **Terminal Shortcuts Settings**: configurable terminal shortcuts with Ctrl+Tab tab switching
+- **Window State Persistence**: remember window position, size, and maximized state across restarts
+- **Dotfile Visibility**: settings toggle to show/hide dotfiles in file explorer
+- **Tab Renaming**: opt-in terminal tab renaming on slash commands
+- **Chat Question Preview**: markdown preview for question options in chat
+- **Snapcraft & Flatpak**: Linux packaging for Snap Store and Flathub
+- **i18n Project Types**: full internationalization support for all project-type panels
+
+### Changed
+- Workflow editor completely rebuilt: replaced LiteGraph with custom canvas engine, Blueprint-style visual redesign, shared schema as single source of truth, BFS execution order
+- Remote panel redesigned with tabbed local/cloud layout and dedicated Cloud sidebar tab
+- Database connection cards redesigned with polished action buttons
+- Workflow step picker redesigned with pipeline layout and card grid
+- Mobile PWA redesigned with modern dark theme and syntax highlighting for tool outputs
+- Git changes panel now includes inline diff viewer and stash management
+- Worktrees open as tabs in the same project instead of creating new projects
+- Pane divider improved with better constraints and bug fixes
+- Cross-platform shell detection improved with graceful SIGTERM before SIGKILL
+- Project save uses exponential backoff retry on failure
+
+### Fixed
+- **Security**: CSP headers on all windows, SQL/NoSQL injection prevention, shell injection protection, XSS sanitization, path traversal validation on Windows, ReDoS protection in workflow regex, git clone URL scheme validation, increased PIN entropy from 4 to 6 digits, atomic writes for config files, WebSocket session token revocation on disconnect
+- **Performance**: event delegation for project list drag-and-drop and workflow cards, LRU cache limits for dashboard, async PATH resolution, throttled workflow render loop (30fps), chat streaming optimization with memory cleanup, connection pool limits with idle eviction
+- **Stability**: MCP auto-restart on unexpected process crash, PTY cleanup on exit, terminal event listener disposal to prevent memory leaks, AbortSignal memory leak fix in parallel workflow loops, chat post-close rejection handling, notification bell state persistence across restarts
+- Shift+Enter race condition in terminal and chat input eliminated
+- Windows taskbar pin preserved across updates
+- Ctrl+Shift+V paste fixed via Electron clipboard IPC fallback
+
 ## [0.7.4] - 2026-02-13
 
 ### Added

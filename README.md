@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/downloads/Sterll/claude-terminal/total?color=d97706&label=downloads" alt="Downloads" />
-  <img src="https://img.shields.io/badge/version-0.9.6-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.0-orange" alt="Version" />
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-blue" alt="Platform" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="License" />
   <img src="https://img.shields.io/badge/electron-28-purple" alt="Electron" />
@@ -191,13 +191,67 @@ npm install
 - Launch at startup toggle
 - Auto-updates with background download and install banner
 
+### Workflow Automation
+- Visual node-based workflow editor with custom canvas engine (Blueprint-style)
+- 15+ node types: shell, git, HTTP, Claude (prompt/agent/skill), condition, loop, transform, switch, subworkflow, database, file, project, time, variable, trigger
+- Typed data pins with visual data flow between nodes
+- AI assistant panel for real-time graph editing and node creation
+- Undo/redo, copy/paste, snap-to-grid, minimap, comments
+- Run history with live loop progress and step output inspection
+- Workflow community hub for sharing and importing workflows
+- Cron, hook, and webhook triggers
+- MCP tools for full workflow control from Claude Code
+
+### Cloud Sync
+- Self-hosted Docker relay server for remote project access
+- Project upload and auto-sync with file watcher and conflict resolution
+- Headless Claude sessions running in the cloud
+- Diff modal for local vs cloud file comparison
+- User profiles and session management
+- Automated install script with Docker, reverse proxy, and SSL setup
+
+### Database Panel
+- Multi-driver support: SQLite, MySQL, PostgreSQL, MongoDB
+- Split-pane data browser with inline editing
+- SQL query editor with syntax highlighting, templates, and multi-statement execution
+- Insert/delete rows, search filter
+- Connection pooling with idle eviction
+
+### MCP Server (claude-terminal)
+- Unified MCP server exposing all Claude Terminal features to Claude Code
+- Workflow tools: create, edit, trigger, diagnose, variables, run logs
+- Database tools: query, export, full schema, stats
+- Project and time tracking tools
+- Quick action triggers with polling
+- FiveM and WebApp project tools
+
+### WebApp Preview
+- Live preview with Chromium webview (replaces iframe)
+- Visual feedback with multi-pin annotations per page
+- Responsive breakpoint checker
+- Auto-detect visual problems scanner
+- Ruler spacing measurement tool
+- Accessibility audit panel with axe-core
+
+### Remote Control
+- Mobile PWA for remote control from phone or browser
+- Cloud relay for access anywhere (via self-hosted server)
+- Real-time session monitoring, chat interaction, and project switching
+- 6-digit PIN authentication with QR code
+
 ### Other
+- **Session restore**: save and restore full workspace sessions across restarts
+- **Terminal markdown viewer**: integrated .md file viewer in the terminal panel
+- **Dashboard insights**: project health badges and commit heatmap
+- **File explorer watcher**: automatic tree updates on filesystem changes
+- **Tab context menus**: right-click on any tab for quick actions
+- **Window state persistence**: remember position, size, and maximized state
 - First-launch setup wizard with optional hooks installation
 - System tray integration with accent-colored icon
 - Custom toast notifications with stacking, click-through transparency, and action buttons
 - Global shortcuts (`Ctrl+Shift+P` / `Cmd+Shift+P` quick picker, `Ctrl+Shift+T` / `Cmd+Shift+T` new terminal)
 - Single instance lock
-- Custom NSIS installer with branded images (Windows), DMG (macOS), AppImage (Linux)
+- Custom NSIS installer with branded images (Windows), DMG (macOS), AppImage (Linux), Snapcraft, Flatpak
 - FiveM server management (launch, integrated console, resource scanning, resource creator wizard)
 - Minecraft project type with Java plugin generator and platform-aware launch scripts
 - Web app management with framework auto-detection
