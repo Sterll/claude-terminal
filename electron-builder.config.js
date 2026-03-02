@@ -51,6 +51,11 @@ module.exports = {
       from: "resources/mcp-servers",
       to: "mcp-servers",
       filter: ["**/*"]
+    },
+    {
+      from: "src/main/workflow-nodes",
+      to: "mcp-servers/workflow-nodes",
+      filter: ["**/*"]
     }
   ],
   win: {

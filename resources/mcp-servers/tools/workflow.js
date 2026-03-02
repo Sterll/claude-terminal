@@ -14,8 +14,20 @@
 const fs = require('fs');
 const path = require('path');
 
-const nodeRegistry = require('../../../src/main/workflow-nodes/_registry');
-nodeRegistry.loadRegistry();
+// Resolve node registry: packaged app (extraResources) → dev fallback → graceful skip
+let nodeRegistry = null;
+try {
+  // Packaged app: workflow-nodes/ is copied alongside mcp-servers/ as extraResources
+  nodeRegistry = require(path.join(__dirname, '..', 'workflow-nodes', '_registry'));
+} catch (_) {
+  try {
+    // Dev environment: src/main/workflow-nodes/ relative to repo root
+    nodeRegistry = require(path.join(__dirname, '..', '..', '..', 'src', 'main', 'workflow-nodes', '_registry'));
+  } catch (e) {
+    process.stderr.write(`[ct-mcp:workflow] Node registry unavailable, slots will use fallback: ${e.message}\n`);
+  }
+}
+if (nodeRegistry) nodeRegistry.loadRegistry();
 
 // -- Logging ------------------------------------------------------------------
 
@@ -352,7 +364,7 @@ function execOut(...names) { return names.map((n, i) => outSlot(n, EXEC, i)); }
 // Returns the default inputs/outputs slot definitions for a node type.
 // Delegates to the node registry; falls back to Done+Error if type is unknown.
 function getNodeSlots(type) {
-  const def = nodeRegistry.get(type);
+  const def = nodeRegistry ? nodeRegistry.get(type) : null;
   if (!def) {
     return { inputs: execIn(), outputs: execOut('Done', 'Error') };
   }
