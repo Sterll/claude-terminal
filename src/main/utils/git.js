@@ -178,14 +178,14 @@ async function getBranches(projectPath, options = {}) {
   const { skipFetch = true } = options;
 
   // Get local branches
-  const localOutput = await execGit(projectPath, 'branch --format="%(refname:short)"');
+  const localOutput = await execGit(projectPath, 'branch --format=%(refname:short)');
   const local = localOutput ? localOutput.split('\n').filter(b => b.trim()) : [];
 
   // Only fetch if explicitly requested (avoids network blocking on dashboard load)
   if (!skipFetch) {
     await execGit(projectPath, 'fetch --all --prune', 5000).catch(() => {});
   }
-  const remoteOutput = await execGit(projectPath, 'branch -r --format="%(refname:short)"');
+  const remoteOutput = await execGit(projectPath, 'branch -r --format=%(refname:short)');
   const remote = remoteOutput
     ? remoteOutput.split('\n')
         .filter(b => b.trim())
