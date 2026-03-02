@@ -32,45 +32,131 @@
 
 /* MCP Card */
 .mcp-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
+  border-left: 3px solid transparent;
   border-radius: var(--radius);
-  padding: 16px;
+  padding: 11px 14px;
   transition: all 0.15s;
-  cursor: pointer;
+  cursor: default;
 }
 
 .mcp-card:hover {
   border-color: var(--text-muted);
+  border-left-color: var(--accent);
+  background: var(--bg-tertiary);
 }
 
 .mcp-card.selected {
   border-color: var(--accent);
+  border-left-color: var(--accent);
   background: var(--accent-dim);
 }
 
-.mcp-card-header {
+.mcp-card-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 15px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
+  justify-content: center;
+  flex-shrink: 0;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  border: 1px solid rgba(217, 119, 6, 0.2);
+  user-select: none;
 }
 
-.mcp-card-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.mcp-card-body {
+  flex: 1;
+  min-width: 0;
 }
 
-.mcp-card-title {
-  font-size: 16px;
+.mcp-card-name {
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 3px;
+}
+
+.mcp-source-badge {
+  font-size: 9.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  flex-shrink: 0;
+}
+
+.mcp-card-cmd {
+  font-size: 11px;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mcp-card-status-area {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.mcp-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mcp-status-dot.running {
+  background: var(--success);
+  box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5);
+  animation: mcp-pulse 2s ease-in-out infinite;
+}
+
+.mcp-status-dot.stopped {
+  background: var(--text-muted);
+  opacity: 0.4;
+}
+
+@keyframes mcp-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5); }
+  60%  { box-shadow: 0 0 0 5px rgba(34, 197, 94, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+.mcp-status-text {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 42px;
 }
 
 .mcp-card-actions {
   display: flex;
-  gap: 6px;
+  gap: 4px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.mcp-card:hover .mcp-card-actions {
+  opacity: 1;
 }
 
 /* MCP Status Badge */
@@ -142,32 +228,111 @@
   color: white;
 }
 
-/* MCP Card Details */
-.mcp-card-details {
+/* MCP Card Wrapper */
+.mcp-card-wrapper {
   display: flex;
   flex-direction: column;
-  gap: 6px;
 }
 
-.mcp-detail {
+.mcp-card {
+  cursor: pointer;
+}
+
+.mcp-card-chevron {
+  color: var(--text-muted);
+  font-size: 11px;
+  flex-shrink: 0;
+  transition: color 0.15s;
+  user-select: none;
+}
+
+.mcp-card:hover .mcp-card-chevron {
+  color: var(--text-secondary);
+}
+
+/* MCP Tools Panel */
+.mcp-tools-panel {
+  display: none;
+  padding: 10px 14px 12px 62px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  margin-top: -4px;
+}
+
+.mcp-tools-panel.open {
+  display: block;
+}
+
+.mcp-tools-loading {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
+  color: var(--text-muted);
   font-size: 12px;
 }
 
-.mcp-detail-label {
-  color: var(--text-muted);
+.spinner-sm {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: mcp-spin 0.7s linear infinite;
   flex-shrink: 0;
 }
 
-.mcp-detail code {
-  font-family: 'Cascadia Code', monospace;
-  color: var(--text-secondary);
-  background: var(--bg-tertiary);
-  padding: 2px 6px;
-  border-radius: 3px;
-  word-break: break-all;
+@keyframes mcp-spin {
+  to { transform: rotate(360deg); }
+}
+
+.mcp-tools-table {
+  display: flex;
+  flex-direction: column;
+}
+
+.mcp-tool-row {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 12px;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.mcp-tool-row:last-child {
+  border-bottom: none;
+  padding-bottom: 2px;
+}
+
+.mcp-tool-row-name {
+  font-size: 11.5px;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mcp-tool-row-desc {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+}
+
+.mcp-tools-unavailable {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* MCP Card Details (legacy compat) */
+.mcp-card-details {
+  display: none;
 }
 
 

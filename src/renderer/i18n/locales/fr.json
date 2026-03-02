@@ -95,7 +95,9 @@
     "stopping": "Arrêt...",
     "disconnected": "Déconnecté",
     "stopped": "Arrêté",
-    "exitedWithCode": "Terminé avec le code {code}"
+    "exitedWithCode": "Terminé avec le code {code}",
+    "toolsUnavailable": "Outils non disponibles (serveur externe)",
+    "noTools": "Aucun outil trouvé"
   },
   "fileExplorer": {
     "title": "Explorer",

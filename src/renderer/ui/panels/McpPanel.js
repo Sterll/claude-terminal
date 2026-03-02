@@ -192,17 +192,122 @@ function renderMcps() {
   }
 
   list.innerHTML = html;
+  bindMcpCardHandlers();
 }
 
 function renderMcpCard(mcp) {
-  return `<div class="mcp-card" data-id="${mcp.id}">
-    <div class="mcp-card-header">
-      <div class="mcp-card-info">
-        <div class="mcp-card-title">${escapeHtml(mcp.name)}</div>
+  const initial = (mcp.name || '?').charAt(0).toUpperCase();
+  const cmdFull = `${mcp.command}${mcp.args?.length ? ' ' + mcp.args.join(' ') : ''}`;
+
+  return `<div class="mcp-card-wrapper">
+    <div class="mcp-card" data-id="${mcp.id}">
+      <div class="mcp-card-avatar">${escapeHtml(initial)}</div>
+      <div class="mcp-card-body">
+        <div class="mcp-card-name">
+          ${escapeHtml(mcp.name)}
+          <span class="mcp-source-badge">${escapeHtml(mcp.sourceLabel || 'Global')}</span>
+        </div>
+        <div class="mcp-card-cmd" title="${escapeHtml(cmdFull)}">${escapeHtml(cmdFull)}</div>
       </div>
+      <div class="mcp-card-chevron">▸</div>
     </div>
-    <div class="mcp-card-details"><code>${escapeHtml(mcp.command)}${mcp.args?.length ? ' ' + mcp.args.join(' ') : ''}</code></div>
+    <div class="mcp-tools-panel" data-id="${mcp.id}"></div>
   </div>`;
+}
+
+function findMcpSourceFile(mcp) {
+  const { command, args } = mcp;
+  if (command && (command.endsWith('.js') || command.endsWith('.mjs'))) return command;
+  if ((command === 'node' || command === 'node.exe') && args && args.length > 0) {
+    return args.find(a => a.endsWith('.js') || a.endsWith('.mjs')) || null;
+  }
+  return null;
+}
+
+function extractTools(source) {
+  const tools = [];
+  const seen = new Set();
+  const regex = /name:\s*['"`]([\w_-]{3,})['"`]/g;
+  let match;
+  while ((match = regex.exec(source)) !== null) {
+    const name = match[1];
+    if (seen.has(name)) continue;
+    const ahead = source.slice(match.index, match.index + 600);
+    if (!ahead.includes('inputSchema:')) continue;
+    seen.add(name);
+    const descMatch = ahead.match(/description:\s*'([^']{1,400})'/) ||
+                      ahead.match(/description:\s*"([^"]{1,400})"/);
+    tools.push({ name, description: descMatch ? descMatch[1] : null });
+  }
+  return tools;
+}
+
+async function loadMcpTools(mcp) {
+  const filePath = findMcpSourceFile(mcp);
+  if (!filePath) return null;
+  try {
+    const tools = [];
+
+    const mainSource = await ctx.fs.promises.readFile(filePath, 'utf8');
+    tools.push(...extractTools(mainSource));
+
+    const toolsDir = ctx.path.join(ctx.path.dirname(filePath), 'tools');
+    if (ctx.fs.existsSync(toolsDir)) {
+      const files = ctx.fs.readdirSync(toolsDir).filter(f => f.endsWith('.js'));
+      for (const file of files) {
+        try {
+          const src = await ctx.fs.promises.readFile(ctx.path.join(toolsDir, file), 'utf8');
+          tools.push(...extractTools(src));
+        } catch { /* ignore */ }
+      }
+    }
+
+    // Deduplicate by name
+    const seen = new Set();
+    return tools.filter(t => seen.has(t.name) ? false : seen.add(t.name));
+  } catch {
+    return null;
+  }
+}
+
+function renderMcpTools(panel, tools) {
+  if (!tools) {
+    panel.innerHTML = `<div class="mcp-tools-unavailable">${t('mcp.toolsUnavailable')}</div>`;
+    return;
+  }
+  if (tools.length === 0) {
+    panel.innerHTML = `<div class="mcp-tools-unavailable">${t('mcp.noTools')}</div>`;
+    return;
+  }
+  const rows = tools.map(tool => `
+    <div class="mcp-tool-row">
+      <span class="mcp-tool-row-name">${escapeHtml(tool.name)}</span>
+      ${tool.description ? `<span class="mcp-tool-row-desc">${escapeHtml(tool.description)}</span>` : ''}
+    </div>`).join('');
+  panel.innerHTML = `<div class="mcp-tools-table">${rows}</div>`;
+}
+
+function bindMcpCardHandlers() {
+  document.querySelectorAll('.mcp-card').forEach(card => {
+    card.addEventListener('click', async () => {
+      const id = card.dataset.id;
+      const panel = document.querySelector(`.mcp-tools-panel[data-id="${id}"]`);
+      const chevron = card.querySelector('.mcp-card-chevron');
+      if (!panel) return;
+
+      const isOpen = panel.classList.contains('open');
+      panel.classList.toggle('open', !isOpen);
+      if (chevron) chevron.textContent = isOpen ? '▸' : '▾';
+
+      if (!isOpen && !panel.dataset.loaded) {
+        panel.dataset.loaded = 'true';
+        panel.innerHTML = `<div class="mcp-tools-loading"><div class="spinner-sm"></div></div>`;
+        const mcp = mcpState.mcps.find(m => m.id === id);
+        const tools = await loadMcpTools(mcp);
+        renderMcpTools(panel, tools);
+      }
+    });
+  });
 }
 
 // ========== MCP REGISTRY ==========

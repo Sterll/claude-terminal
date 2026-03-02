@@ -782,7 +782,9 @@
     "stopping": "Stopping...",
     "disconnected": "Disconnected",
     "stopped": "Stopped",
-    "exitedWithCode": "Exited with code {code}"
+    "exitedWithCode": "Exited with code {code}",
+    "toolsUnavailable": "Tools unavailable (external server)",
+    "noTools": "No tools found"
   },
   "fileExplorer": {
     "title": "Explorer",
