@@ -652,7 +652,6 @@ function createTerminalKeyHandler(terminal, terminalId, inputChannel = 'terminal
   let shiftHeld = false;
   const _onBlur = () => { shiftHeld = false; };
   window.addEventListener('blur', _onBlur);
-  terminal.onDispose(() => window.removeEventListener('blur', _onBlur));
   return (e) => {
     // Check rebound terminal shortcuts (ctrlC / ctrlV) at call-time — read from settings
     if (e.ctrlKey && e.type === 'keydown') {
