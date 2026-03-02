@@ -35,7 +35,9 @@
 .git-changes-panel {
   position: absolute;
   top: calc(100% + 6px);
+  left: 0;
   width: 460px;
+  max-width: calc(100vw - 16px);
   max-height: min(480px, calc(100vh - 100px));
   background: var(--bg-secondary);
   border: 1px solid rgba(255, 255, 255, 0.06);

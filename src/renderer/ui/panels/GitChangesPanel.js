@@ -78,15 +78,6 @@ function setupEventListeners() {
     if (isOpen) {
       gitChangesPanel.classList.remove('active');
     } else {
-      const btnRect = filterBtnChanges.getBoundingClientRect();
-      const headerRect = gitChangesPanel.parentElement.getBoundingClientRect();
-      const panelWidth = 480;
-      let left = btnRect.left - headerRect.left;
-      const maxRight = Math.min(headerRect.width, window.innerWidth - headerRect.left);
-      if (left + panelWidth > maxRight) {
-        left = Math.max(0, maxRight - panelWidth);
-      }
-      gitChangesPanel.style.left = left + 'px';
       gitChangesPanel.classList.add('active');
       loadGitChanges();
     }
