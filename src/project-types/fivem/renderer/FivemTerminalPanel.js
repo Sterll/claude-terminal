@@ -701,14 +701,14 @@ function showCreateResourceModal(wrapper, projectIndex, project, deps) {
               showSuccess(t('fivem.resourceCreated', { name }));
               scanAndRenderResources(wrapper, projectIndex, project, deps);
             } else {
-              nameError.textContent = result.error || 'Error creating resource';
+              nameError.textContent = result.error || t('fivem.errorCreatingResource');
               nameError.style.display = '';
               createBtn.disabled = false;
               createBtn.textContent = origLabel;
             }
           } catch (err) {
             console.error('Create resource error:', err);
-            nameError.textContent = 'Unexpected error';
+            nameError.textContent = t('fivem.unexpectedError');
             nameError.style.display = '';
             createBtn.disabled = false;
             createBtn.textContent = origLabel;
@@ -927,12 +927,12 @@ async function showManifestEditorModal(resourcePath, api) {
               closeModal(m);
               showSuccess(t('fivem.manifestSaved'));
             } else {
-              showError(result.error || 'Error saving manifest');
+              showError(result.error || t('fivem.errorSavingManifest'));
               saveBtn.disabled = false;
             }
           } catch (e) {
             console.error('Manifest write error:', e);
-            showError('Unexpected error');
+            showError(t('fivem.unexpectedError'));
             saveBtn.disabled = false;
           }
         }

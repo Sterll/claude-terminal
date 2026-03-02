@@ -63,7 +63,10 @@
     "manifestRaw": "Lua brut",
     "scriptsHint": "Un pattern par ligne (ex: client/*.lua)",
     "manifestSaved": "Manifeste sauvegarde",
-    "manifestReadError": "Impossible de lire fxmanifest.lua"
+    "manifestReadError": "Impossible de lire fxmanifest.lua",
+    "errorCreatingResource": "Erreur lors de la creation de la resource",
+    "unexpectedError": "Erreur inattendue",
+    "errorSavingManifest": "Erreur lors de la sauvegarde du manifest"
   },
   "newProject": {
     "types": {

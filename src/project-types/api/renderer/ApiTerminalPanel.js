@@ -5,6 +5,7 @@
 
 const { getApiServer, setApiPort, getApiRoutes, setApiRoutes, addApiHistoryEntry, getApiHistory } = require('./ApiState');
 const { updateProject } = require('../../../renderer/state/projects.state');
+const { t } = require('../../../renderer/i18n');
 const apiElectron = window.electron_api;
 
 const pollTimers = new WeakMap();
@@ -108,15 +109,15 @@ function getViewSwitcherHtml() {
     <div class="api-view-switcher">
       <button class="api-view-tab active" data-view="console">
         <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M20 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V6a2 2 0 00-2-2zm0 14H4V8h16v10z"/><path d="M7 10l4 3-4 3v-6z"/></svg>
-        Console
+        ${t('api.console')}
       </button>
       <button class="api-view-tab" data-view="routes">
         <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-        Routes
+        ${t('api.routesTab')}
       </button>
       <button class="api-view-tab" data-view="info">
         <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
-        Info
+        ${t('api.serverInfo')}
       </button>
     </div>
     <div class="api-view-content">
@@ -179,7 +180,7 @@ async function renderInfoView(wrapper, projectIndex, project, deps) {
         <span class="api-info-value"><code>${escapeHtml(project.devCommand || 'auto-detect')}</code></span>
       </div>
       <div class="api-info-row">
-        <span class="api-info-label">Status</span>
+        <span class="api-info-label">${t('api.statusLabel')}</span>
         <span class="api-info-value"><span class="api-status-dot ${server.status}"></span> ${t(statusKey)}</span>
       </div>
       ${port ? `
@@ -257,7 +258,7 @@ async function renderRoutesView(wrapper, projectIndex, project, deps) {
         <div class="api-routes-toolbar">
           <div class="api-routes-toolbar-left">
             <span class="api-routes-count">${routes.length || 0}</span>
-            <span class="api-routes-count-label">${routes.length === 1 ? 'route' : 'routes'}</span>
+            <span class="api-routes-count-label">${routes.length === 1 ? t('api.routeCountSingular').replace('{count}', '').trim() : t('api.routeCountPlural').replace('{count}', '').trim()}</span>
           </div>
           <div class="api-routes-toolbar-actions">
             ${autoDetect ? `
@@ -281,7 +282,7 @@ async function renderRoutesView(wrapper, projectIndex, project, deps) {
 
         <div class="api-routes-filter">
           <svg class="api-routes-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-          <input type="text" class="api-routes-search" placeholder="Filter..." />
+          <input type="text" class="api-routes-search" placeholder="${t('api.filterPlaceholder')}" />
         </div>
         <div class="api-routes-list">
           ${routes.length === 0 ? `
@@ -784,7 +785,7 @@ function renderResponse(container, result, t) {
       <pre class="api-response-body ${isJson ? 'json' : ''}">${bodyHtml}</pre>
     </div>
     <div class="api-response-headers-content" style="display:none">
-      ${headersHtml || '<span style="opacity:0.4">No headers</span>'}
+      ${headersHtml || `<span style="opacity:0.4">${t('api.noHeaders')}</span>`}
     </div>
   `;
 

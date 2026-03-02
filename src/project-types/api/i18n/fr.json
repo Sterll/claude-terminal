@@ -58,7 +58,13 @@
     "variablePlaceholder": "/api/v1",
     "variablesSaved": "Variables sauvegardees",
     "rescan": "Re-scanner",
-    "ctrlEnterSend": "Ctrl+Enter pour envoyer"
+    "ctrlEnterSend": "Ctrl+Enter pour envoyer",
+    "statusLabel": "Statut",
+    "routeCountSingular": "{count} route",
+    "routeCountPlural": "{count} routes",
+    "filterPlaceholder": "Filtrer...",
+    "noHeaders": "Aucun en-tete",
+    "updateBtn": "Mettre a jour"
   },
   "newProject": {
     "types": {

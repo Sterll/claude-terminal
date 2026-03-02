@@ -63,7 +63,10 @@
     "manifestRaw": "Raw Lua",
     "scriptsHint": "One file pattern per line (e.g. client/*.lua)",
     "manifestSaved": "Manifest saved",
-    "manifestReadError": "Failed to read fxmanifest.lua"
+    "manifestReadError": "Failed to read fxmanifest.lua",
+    "errorCreatingResource": "Error creating resource",
+    "unexpectedError": "Unexpected error",
+    "errorSavingManifest": "Error saving manifest"
   },
   "newProject": {
     "types": {

@@ -64,7 +64,20 @@
     "settings": {
       "previewEnabled": "In-app Preview",
       "previewEnabledDesc": "Embed a live preview of the dev server directly in the app (uses more memory)"
-    }
+    },
+    "noServerRunning": "No server running",
+    "startingUp": "Starting up",
+    "waitingPort": "Waiting for port detection…",
+    "startDevServerHint": "Start the dev server to see a live preview here",
+    "devServerNotRunning": "Dev server is not running",
+    "launchingServer": "Launching dev server…",
+    "serverActive": "Server active",
+    "commandLabel": "Command",
+    "localUrlLabel": "Local URL",
+    "openBtn": "Open",
+    "statusStarting": "Starting",
+    "statusRunning": "Running",
+    "statusStopped": "Stopped"
   },
   "newProject": {
     "types": {

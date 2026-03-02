@@ -64,7 +64,20 @@
     "settings": {
       "previewEnabled": "Preview integre",
       "previewEnabledDesc": "Afficher un apercu live du serveur dev dans l'app (utilise plus de memoire)"
-    }
+    },
+    "noServerRunning": "Aucun serveur actif",
+    "startingUp": "Demarrage...",
+    "waitingPort": "Attente de la detection du port…",
+    "startDevServerHint": "Lancez le serveur de dev pour voir un apercu ici",
+    "devServerNotRunning": "Le serveur de dev n'est pas lance",
+    "launchingServer": "Lancement du serveur...",
+    "serverActive": "Serveur actif",
+    "commandLabel": "Commande",
+    "localUrlLabel": "URL locale",
+    "openBtn": "Ouvrir",
+    "statusStarting": "Demarrage",
+    "statusRunning": "En cours",
+    "statusStopped": "Arrete"
   },
   "newProject": {
     "types": {

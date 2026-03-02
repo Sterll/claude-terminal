@@ -5,6 +5,7 @@
 
 const { getWebAppServer, setWebAppPort } = require('./WebAppState');
 const { getSetting } = require('../../../renderer/state/settings.state');
+const { t } = require('../../../renderer/i18n');
 const api = window.electron_api;
 
 // Track active poll timer per wrapper (shared between views)
@@ -696,16 +697,16 @@ function getViewSwitcherHtml() {
         <div class="wa-tabs">
           <button class="wa-tab active" data-view="console">
             ${ICON_CONSOLE}
-            <span>Console</span>
+            <span>${t('webapp.console')}</span>
           </button>
           ${previewEnabled ? `
           <button class="wa-tab" data-view="preview">
             ${ICON_PREVIEW}
-            <span>Preview</span>
+            <span>${t('webapp.preview')}</span>
           </button>` : ''}
           <button class="wa-tab" data-view="info">
             ${ICON_INFO}
-            <span>Info</span>
+            <span>${t('webapp.serverInfo')}</span>
           </button>
         </div>
         <div class="wa-tabbar-right">
@@ -869,7 +870,7 @@ function setupViewSwitcher(wrapper, terminalId, projectIndex, project, deps) {
   const statusEl     = wrapper.querySelector('.wa-server-status');
   const statusLabel  = wrapper.querySelector('.wa-status-label');
 
-  const STATUS_LABELS = { stopped: '', starting: 'Starting', running: 'Running' };
+  const STATUS_LABELS = { stopped: '', starting: t('webapp.statusStarting'), running: t('webapp.statusRunning') };
 
   function refreshStatus() {
     const s = getWebAppServer(projectIndex);
@@ -954,8 +955,8 @@ async function renderPreviewView(wrapper, projectIndex, project, deps) {
           }
         </div>
         <div class="wa-empty-body">
-          <p class="wa-empty-title">${isStopped ? 'No server running' : 'Starting up'}</p>
-          <p class="wa-empty-sub">${isStopped ? 'Start the dev server to see a live preview here' : 'Waiting for port detection…'}</p>
+          <p class="wa-empty-title">${isStopped ? t('webapp.noServerRunning') : t('webapp.startingUp')}</p>
+          <p class="wa-empty-sub">${isStopped ? t('webapp.startDevServerHint') : t('webapp.waitingPort')}</p>
         </div>
       </div>
     `;
@@ -2135,9 +2136,9 @@ async function renderInfoView(wrapper, projectIndex, project, deps) {
   const url = port ? `http://localhost:${port}` : null;
 
   const STATUS = {
-    stopped:  { cls: 'stopped',  label: 'Stopped',  desc: 'Dev server is not running' },
-    starting: { cls: 'starting', label: 'Starting', desc: 'Launching dev server…'     },
-    running:  { cls: 'running',  label: 'Running',  desc: url || 'Server active'       },
+    stopped:  { cls: 'stopped',  label: t('webapp.statusStopped'),  desc: t('webapp.devServerNotRunning') },
+    starting: { cls: 'starting', label: t('webapp.statusStarting'), desc: t('webapp.launchingServer')     },
+    running:  { cls: 'running',  label: t('webapp.statusRunning'),  desc: url || t('webapp.serverActive') },
   };
   const st = STATUS[server.status] || STATUS.stopped;
 
@@ -2162,7 +2163,7 @@ async function renderInfoView(wrapper, projectIndex, project, deps) {
             <div class="wa-info-hero-label">${st.label}</div>
             <div class="wa-info-hero-sub">${st.desc}</div>
           </div>
-          ${url ? `<button class="wa-info-cta webapp-open-url" data-url="${url}">${ICON_OPEN}<span>Open</span></button>` : ''}
+          ${url ? `<button class="wa-info-cta webapp-open-url" data-url="${url}">${ICON_OPEN}<span>${t('webapp.openBtn')}</span></button>` : ''}
         </div>
       </div>
 
@@ -2170,14 +2171,14 @@ async function renderInfoView(wrapper, projectIndex, project, deps) {
         <div class="wa-info-tile">
           <div class="wa-info-tile-icon">${ICON_PORT}</div>
           <div class="wa-info-tile-body">
-            <div class="wa-info-tile-label">Port</div>
+            <div class="wa-info-tile-label">${t('webapp.port')}</div>
             <div class="wa-info-tile-val wa-mono">${port ? port : '—'}</div>
           </div>
         </div>
         <div class="wa-info-tile">
           <div class="wa-info-tile-icon">${ICON_TERMINAL}</div>
           <div class="wa-info-tile-body">
-            <div class="wa-info-tile-label">Command</div>
+            <div class="wa-info-tile-label">${t('webapp.commandLabel')}</div>
             <div class="wa-info-tile-val wa-mono">${devCmd}</div>
           </div>
         </div>
@@ -2185,7 +2186,7 @@ async function renderInfoView(wrapper, projectIndex, project, deps) {
         <div class="wa-info-tile">
           <div class="wa-info-tile-icon">${ICON_GLOBE}</div>
           <div class="wa-info-tile-body">
-            <div class="wa-info-tile-label">Framework</div>
+            <div class="wa-info-tile-label">${t('webapp.framework')}</div>
             <div class="wa-info-tile-val">${framework}</div>
           </div>
         </div>` : ''}
@@ -2193,7 +2194,7 @@ async function renderInfoView(wrapper, projectIndex, project, deps) {
         <div class="wa-info-tile wa-info-tile-link webapp-open-url" data-url="${url}" role="button" tabindex="0">
           <div class="wa-info-tile-icon">${ICON_GLOBE}</div>
           <div class="wa-info-tile-body">
-            <div class="wa-info-tile-label">Local URL</div>
+            <div class="wa-info-tile-label">${t('webapp.localUrlLabel')}</div>
             <div class="wa-info-tile-val wa-mono">${url}</div>
           </div>
           <div class="wa-info-tile-arrow">${ICON_OPEN}</div>
