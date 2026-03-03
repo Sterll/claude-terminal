@@ -84,6 +84,8 @@ function saveTerminalSessionsImmediate() {
 
     for (const [id, td] of terminals) {
       if (!td.project?.id) continue;
+      // Skip project-type consoles (fivem, webapp, api, etc.) — they can't be restored properly
+      if (td.type && td.type !== 'terminal') continue;
 
       const projectId = td.project.id;
       if (!projectSessions[projectId]) {
