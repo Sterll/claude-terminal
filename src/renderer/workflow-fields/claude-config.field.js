@@ -11,6 +11,7 @@
  * - Effort select
  */
 const { escapeHtml, escapeAttr } = require('./_registry');
+const { t } = require('../i18n');
 
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -26,18 +27,18 @@ function renderCwdSection(props) {
     .join('');
   const customInput = selectedId === '__custom__' ? `
 <div class="wf-step-edit-field">
-  <label class="wf-step-edit-label">Chemin de travail</label>
-  <span class="wf-field-hint">Chemin absolu ou variable — ex: $item.path</span>
+  <label class="wf-step-edit-label">${t('workflow.cwd.pathLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.cwd.pathHint')}</span>
   <input class="wf-step-edit-input wf-node-prop wf-field-mono wf-claude-cwd-input" data-key="cwd"
     value="${esc(props.cwd || '')}" placeholder="$item.path ou E:\\MonProjet" />
 </div>` : '';
   return `<div class="wf-step-edit-field">
-  <label class="wf-step-edit-label">Exécuter dans</label>
-  <span class="wf-field-hint">Répertoire de travail de la session Claude</span>
+  <label class="wf-step-edit-label">${t('workflow.claude.cwdLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.claude.cwdHint')}</span>
   <select class="wf-step-edit-input wf-claude-project-select" data-key="projectId">
-    <option value=""${!selectedId ? ' selected' : ''}>Projet courant (contexte workflow)</option>
+    <option value=""${!selectedId ? ' selected' : ''}>${t('workflow.cwd.currentProject')}</option>
     ${optionsList}
-    <option value="__custom__"${selectedId === '__custom__' ? ' selected' : ''}>Chemin personnalisé…</option>
+    <option value="__custom__"${selectedId === '__custom__' ? ' selected' : ''}>${t('workflow.cwd.customPath')}</option>
   </select>
 </div>${customInput}`;
 }
@@ -52,10 +53,10 @@ function renderModeSection(props) {
 
   const promptSection = (mode === 'prompt' || !mode) ? `
 <div class="wf-step-edit-field">
-  <label class="wf-step-edit-label">Prompt</label>
-  <span class="wf-field-hint">Instructions envoyées à Claude</span>
+  <label class="wf-step-edit-label">${t('workflow.claude.promptLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.claude.promptHint')}</span>
   <textarea class="wf-step-edit-input wf-node-prop" data-key="prompt" rows="5"
-    placeholder="Analyse ce fichier et résume les changements...">${esc(props.prompt || '')}</textarea>
+    placeholder="${t('workflow.claude.promptPlaceholder')}">${esc(props.prompt || '')}</textarea>
 </div>` : '';
 
   const agentCards = agents.length
@@ -66,17 +67,17 @@ function renderModeSection(props) {
   </div>
   <svg class="wf-agent-card-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
 </div>`).join('')
-    : '<div class="wf-agent-empty">Aucun agent dans ~/.claude/agents/</div>';
+    : `<div class="wf-agent-empty">${t('workflow.claude.noAgents')}</div>`;
 
   const agentSection = mode === 'agent' ? `
 <div class="wf-step-edit-field">
-  <label class="wf-step-edit-label">Agent</label>
-  <span class="wf-field-hint">Worker autonome avec contexte isolé</span>
+  <label class="wf-step-edit-label">${t('workflow.claude.agentLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.claude.agentHint')}</span>
   <div class="wf-agent-grid wf-claude-agent-grid">${agentCards}</div>
 </div>
 <div class="wf-step-edit-field">
-  <label class="wf-step-edit-label">Instructions additionnelles</label>
-  <span class="wf-field-hint">Contexte additionnel pour l'agent</span>
+  <label class="wf-step-edit-label">${t('workflow.claude.additionalLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.claude.additionalHint')}</span>
   <textarea class="wf-step-edit-input wf-node-prop" data-key="prompt" rows="2"
     placeholder="Focus on performance issues...">${esc(props.prompt || '')}</textarea>
 </div>` : '';
@@ -89,23 +90,23 @@ function renderModeSection(props) {
   </div>
   <svg class="wf-agent-card-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
 </div>`).join('')
-    : '<div class="wf-agent-empty">Aucun skill dans ~/.claude/skills/</div>';
+    : `<div class="wf-agent-empty">${t('workflow.claude.noSkills')}</div>`;
 
   const skillSection = mode === 'skill' ? `
 <div class="wf-step-edit-field">
-  <label class="wf-step-edit-label">Skill</label>
-  <span class="wf-field-hint">Commande spécialisée à invoquer</span>
+  <label class="wf-step-edit-label">${t('workflow.claude.skillLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.claude.skillHint')}</span>
   <div class="wf-agent-grid wf-claude-skill-grid">${skillCards}</div>
 </div>
 <div class="wf-step-edit-field">
-  <label class="wf-step-edit-label">Arguments</label>
-  <span class="wf-field-hint">Texte passé au skill comme argument</span>
+  <label class="wf-step-edit-label">${t('workflow.claude.argsLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.claude.argsHint')}</span>
   <textarea class="wf-step-edit-input wf-node-prop" data-key="prompt" rows="2"
-    placeholder="Arguments optionnels...">${esc(props.prompt || '')}</textarea>
+    placeholder="${t('workflow.claude.argsPlaceholder')}">${esc(props.prompt || '')}</textarea>
 </div>` : '';
 
   return `<div class="wf-step-edit-field">
-  <label class="wf-step-edit-label">Mode d'exécution</label>
+  <label class="wf-step-edit-label">${t('workflow.claude.modeLabel')}</label>
   <div class="wf-claude-mode-tabs">
     <button class="wf-claude-mode-tab${mode === 'prompt' ? ' active' : ''}" data-mode="prompt">Prompt</button>
     <button class="wf-claude-mode-tab${mode === 'agent' ? ' active' : ''}" data-mode="agent">Agent</button>
@@ -120,7 +121,7 @@ ${promptSection}${agentSection}${skillSection}
 function renderModelEffort(props) {
   return `<div class="wf-field-row">
 <div class="wf-step-edit-field wf-field-half">
-  <label class="wf-step-edit-label">Modèle</label>
+  <label class="wf-step-edit-label">${t('workflow.claude.modelLabel')}</label>
   <select class="wf-step-edit-input wf-node-prop" data-key="model">
     <option value=""${!props.model ? ' selected' : ''}>Auto</option>
     <option value="sonnet"${props.model === 'sonnet' ? ' selected' : ''}>Sonnet</option>
@@ -129,7 +130,7 @@ function renderModelEffort(props) {
   </select>
 </div>
 <div class="wf-step-edit-field wf-field-half">
-  <label class="wf-step-edit-label">Effort</label>
+  <label class="wf-step-edit-label">${t('workflow.claude.effortLabel')}</label>
   <select class="wf-step-edit-input wf-node-prop" data-key="effort">
     <option value=""${!props.effort ? ' selected' : ''}>Auto</option>
     <option value="low"${props.effort === 'low' ? ' selected' : ''}>Low</option>
@@ -167,8 +168,8 @@ ${renderModelEffort(props)}
           if (!existing) {
             const div = document.createElement('div');
             div.className = 'wf-step-edit-field';
-            div.innerHTML = `<label class="wf-step-edit-label">Chemin de travail</label>
-<span class="wf-field-hint">Chemin absolu ou variable — ex: $item.path</span>
+            div.innerHTML = `<label class="wf-step-edit-label">${t('workflow.cwd.pathLabel')}</label>
+<span class="wf-field-hint">${t('workflow.cwd.pathHint')}</span>
 <input class="wf-step-edit-input wf-node-prop wf-field-mono wf-claude-cwd-input" data-key="cwd"
   value="" placeholder="$item.path ou E:\\MonProjet" />`;
             projSel.closest('.wf-step-edit-field').after(div);
@@ -197,7 +198,7 @@ ${renderModelEffort(props)}
         node.properties.mode = newMode;
         onChange(newMode);
 
-        modeTabs.forEach(t => t.classList.remove('active'));
+        modeTabs.forEach(tb => tb.classList.remove('active'));
         tab.classList.add('active');
 
         // Re-render mode content
@@ -213,10 +214,10 @@ ${renderModelEffort(props)}
         let html = '';
         if (newMode === 'prompt' || !newMode) {
           html = `<div class="wf-step-edit-field">
-  <label class="wf-step-edit-label">Prompt</label>
-  <span class="wf-field-hint">Instructions envoyées à Claude</span>
+  <label class="wf-step-edit-label">${t('workflow.claude.promptLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.claude.promptHint')}</span>
   <textarea class="wf-step-edit-input wf-node-prop" data-key="prompt" rows="5"
-    placeholder="Analyse ce fichier et résume les changements...">${e(props.prompt || '')}</textarea>
+    placeholder="${t('workflow.claude.promptPlaceholder')}">${e(props.prompt || '')}</textarea>
 </div>`;
         } else if (newMode === 'agent') {
           const cards = agents.length
@@ -227,14 +228,14 @@ ${renderModelEffort(props)}
   </div>
   <svg class="wf-agent-card-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
 </div>`).join('')
-            : '<div class="wf-agent-empty">Aucun agent dans ~/.claude/agents/</div>';
+            : `<div class="wf-agent-empty">${t('workflow.claude.noAgents')}</div>`;
           html = `<div class="wf-step-edit-field">
-  <label class="wf-step-edit-label">Agent</label>
-  <span class="wf-field-hint">Worker autonome avec contexte isolé</span>
+  <label class="wf-step-edit-label">${t('workflow.claude.agentLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.claude.agentHint')}</span>
   <div class="wf-agent-grid wf-claude-agent-grid">${cards}</div>
 </div>
 <div class="wf-step-edit-field">
-  <label class="wf-step-edit-label">Instructions additionnelles</label>
+  <label class="wf-step-edit-label">${t('workflow.claude.additionalLabel')}</label>
   <textarea class="wf-step-edit-input wf-node-prop" data-key="prompt" rows="2"
     placeholder="Focus on performance issues...">${e(props.prompt || '')}</textarea>
 </div>`;
@@ -247,16 +248,16 @@ ${renderModelEffort(props)}
   </div>
   <svg class="wf-agent-card-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
 </div>`).join('')
-            : '<div class="wf-agent-empty">Aucun skill dans ~/.claude/skills/</div>';
+            : `<div class="wf-agent-empty">${t('workflow.claude.noSkills')}</div>`;
           html = `<div class="wf-step-edit-field">
-  <label class="wf-step-edit-label">Skill</label>
-  <span class="wf-field-hint">Commande spécialisée à invoquer</span>
+  <label class="wf-step-edit-label">${t('workflow.claude.skillLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.claude.skillHint')}</span>
   <div class="wf-agent-grid wf-claude-skill-grid">${cards}</div>
 </div>
 <div class="wf-step-edit-field">
-  <label class="wf-step-edit-label">Arguments</label>
+  <label class="wf-step-edit-label">${t('workflow.claude.argsLabel')}</label>
   <textarea class="wf-step-edit-input wf-node-prop" data-key="prompt" rows="2"
-    placeholder="Arguments optionnels...">${e(props.prompt || '')}</textarea>
+    placeholder="${t('workflow.claude.argsPlaceholder')}">${e(props.prompt || '')}</textarea>
 </div>`;
         }
 

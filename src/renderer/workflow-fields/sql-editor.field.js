@@ -1,4 +1,5 @@
 const { escapeHtml, escapeAttr } = require('./_registry');
+const { t } = require('../i18n');
 
 module.exports = {
   type: 'sql-editor',
@@ -9,7 +10,7 @@ module.exports = {
   <textarea class="wf-textarea wf-sql-textarea" rows="5" data-key="${escapeAttr(field.key)}"
             placeholder="SELECT * FROM table WHERE id = {{id}}">${escapeHtml(value || '')}</textarea>
   <div class="wf-sql-hints">
-    <span class="wf-hint">Tip : utilisez {{variable}} pour injecter des valeurs dynamiques</span>
+    <span class="wf-hint">${t('workflow.sql.tip')}</span>
   </div>
 </div>`;
   },

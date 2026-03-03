@@ -1,4 +1,5 @@
 const { escapeHtml, escapeAttr } = require('./_registry');
+const { t } = require('../i18n');
 
 module.exports = {
   type: 'agent-picker',
@@ -11,7 +12,7 @@ module.exports = {
       return `<div class="wf-field-group" data-key="${escapeAttr(field.key)}">
   <label class="wf-field-label">${escapeHtml(field.label || 'Agent')}</label>
   <div class="wf-agent-grid wf-agent-grid--empty">
-    <span class="wf-hint">Aucun agent disponible. Créez des agents dans ~/.claude/agents/</span>
+    <span class="wf-hint">${t('workflow.claude.noAgents')}</span>
   </div>
 </div>`;
     }

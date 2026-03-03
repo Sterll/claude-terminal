@@ -6,6 +6,7 @@
  * - Info hint (when action === 'list')
  */
 const { escapeHtml, escapeAttr } = require('./_registry');
+const { t } = require('../i18n');
 
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -14,7 +15,7 @@ function esc(s) {
 function renderProjectSection(action, props) {
   if (action === 'list') {
     return `<div class="wf-step-edit-field">
-  <span class="wf-field-hint">Retourne un array de tous les projets Claude Terminal. Connectez la sortie au slot Items d'un node Loop pour itérer.</span>
+  <span class="wf-field-hint">${t('workflow.project.listHint')}</span>
 </div>`;
   }
   const projects =
@@ -23,10 +24,10 @@ function renderProjectSection(action, props) {
     .map(p => `<option value="${esc(p.id)}"${props.projectId === p.id ? ' selected' : ''}>${esc(p.name)}</option>`)
     .join('');
   return `<div class="wf-step-edit-field">
-  <label class="wf-step-edit-label">Projet</label>
-  <span class="wf-field-hint">Projet cible de cette opération</span>
+  <label class="wf-step-edit-label">${t('workflow.project.projectLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.project.projectHint')}</span>
   <select class="wf-step-edit-input wf-node-prop wf-project-select" data-key="projectId">
-    <option value="">-- Choisir un projet --</option>
+    <option value="">${t('workflow.project.selectProject')}</option>
     ${optionsList}
   </select>
 </div>`;
@@ -41,15 +42,15 @@ module.exports = {
 
     return `<div class="wf-field-group" data-key="action">
 <div class="wf-step-edit-field">
-  <label class="wf-step-edit-label">Action</label>
-  <span class="wf-field-hint">Opération à effectuer</span>
+  <label class="wf-step-edit-label">${t('workflow.project.actionLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.project.actionHint')}</span>
   <select class="wf-step-edit-input wf-node-prop wf-project-action-select" data-key="action">
-    <option value="list"${action === 'list' ? ' selected' : ''}>Lister tous les projets</option>
-    <option value="set_context"${action === 'set_context' ? ' selected' : ''}>Définir comme contexte actif</option>
-    <option value="open"${action === 'open' ? ' selected' : ''}>Ouvrir dans l'éditeur</option>
-    <option value="build"${action === 'build' ? ' selected' : ''}>Lancer le build</option>
-    <option value="install"${action === 'install' ? ' selected' : ''}>Installer les dépendances</option>
-    <option value="test"${action === 'test' ? ' selected' : ''}>Exécuter les tests</option>
+    <option value="list"${action === 'list' ? ' selected' : ''}>${t('workflow.project.actionList')}</option>
+    <option value="set_context"${action === 'set_context' ? ' selected' : ''}>${t('workflow.project.actionSetContext')}</option>
+    <option value="open"${action === 'open' ? ' selected' : ''}>${t('workflow.project.actionOpen')}</option>
+    <option value="build"${action === 'build' ? ' selected' : ''}>${t('workflow.project.actionBuild')}</option>
+    <option value="install"${action === 'install' ? ' selected' : ''}>${t('workflow.project.actionInstall')}</option>
+    <option value="test"${action === 'test' ? ' selected' : ''}>${t('workflow.project.actionTest')}</option>
   </select>
 </div>
 <div class="wf-project-conditional">

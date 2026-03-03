@@ -1,17 +1,18 @@
 const { escapeHtml, escapeAttr } = require('./_registry');
+const { t } = require('../i18n');
 
-const PRESETS = [
-  { label: 'Chaque minute',       value: '* * * * *' },
-  { label: 'Toutes les heures',   value: '0 * * * *' },
-  { label: 'Chaque jour à minuit', value: '0 0 * * *' },
-  { label: 'Chaque lundi',        value: '0 0 * * 1' },
-];
+const PRESET_VALUES = ['* * * * *', '0 * * * *', '0 0 * * *', '0 0 * * 1'];
+const PRESET_KEYS  = ['everyMinute', 'everyHour', 'everyDayMidnight', 'everyMonday'];
+
+function getPresets() {
+  return PRESET_VALUES.map((value, i) => ({ value, label: t(`workflow.cron.${PRESET_KEYS[i]}`) }));
+}
 
 module.exports = {
   type: 'cron-picker',
 
   render(field, value, node) {
-    const presetHtml = PRESETS.map(p =>
+    const presetHtml = getPresets().map(p =>
       `<button type="button" class="wf-cron-preset" data-value="${escapeAttr(p.value)}">${escapeHtml(p.label)}</button>`
     ).join('');
 
@@ -35,7 +36,7 @@ module.exports = {
         return;
       }
       // Match against known presets for a human-readable label
-      const preset = PRESETS.find(p => p.value === val.trim());
+      const preset = getPresets().find(p => p.value === val.trim());
       desc.textContent = preset ? preset.label : val;
     }
 

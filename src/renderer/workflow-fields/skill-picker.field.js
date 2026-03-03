@@ -1,4 +1,5 @@
 const { escapeHtml, escapeAttr } = require('./_registry');
+const { t } = require('../i18n');
 
 module.exports = {
   type: 'skill-picker',
@@ -11,7 +12,7 @@ module.exports = {
       return `<div class="wf-field-group" data-key="${escapeAttr(field.key)}">
   <label class="wf-field-label">${escapeHtml(field.label || 'Skill')}</label>
   <div class="wf-skill-grid wf-skill-grid--empty">
-    <span class="wf-hint">Aucun skill disponible. Créez des skills dans ~/.claude/skills/</span>
+    <span class="wf-hint">${t('workflow.claude.noSkills')}</span>
   </div>
 </div>`;
     }

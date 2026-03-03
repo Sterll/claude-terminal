@@ -4,6 +4,7 @@
  * key should be 'projectId'; the companion 'cwd' property is handled automatically.
  */
 const { escapeHtml, escapeAttr } = require('./_registry');
+const { t } = require('../i18n');
 
 module.exports = {
   type: 'cwd-picker',
@@ -24,8 +25,8 @@ module.exports = {
 
     const customInput = (selectedId === '__custom__') ? `
 <div class="wf-step-edit-field">
-  <label class="wf-step-edit-label">Chemin de travail</label>
-  <span class="wf-field-hint">Chemin absolu ou variable — ex: $item.path</span>
+  <label class="wf-step-edit-label">${t('workflow.cwd.pathLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.cwd.pathHint')}</span>
   <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="cwd"
     value="${escapeAttr(props.cwd || '')}"
     placeholder="$item.path ou E:\\MonProjet" />
@@ -33,12 +34,12 @@ module.exports = {
 
     return `<div class="wf-field-group" data-key="${escapeAttr(field.key)}">
 <div class="wf-step-edit-field">
-  <label class="wf-step-edit-label">${escapeHtml(field.label || 'Exécuter dans')}</label>
-  <span class="wf-field-hint">${escapeHtml(field.hint || 'Répertoire de travail')}</span>
+  <label class="wf-step-edit-label">${escapeHtml(field.label) || t('workflow.cwd.defaultLabel')}</label>
+  <span class="wf-field-hint">${escapeHtml(field.hint) || t('workflow.cwd.defaultHint')}</span>
   <select class="wf-step-edit-input wf-cwd-select" data-key="projectId">
-    <option value=""${!selectedId ? ' selected' : ''}>Projet courant (contexte workflow)</option>
+    <option value=""${!selectedId ? ' selected' : ''}>${t('workflow.cwd.currentProject')}</option>
     ${optionsList}
-    <option value="__custom__"${selectedId === '__custom__' ? ' selected' : ''}>Chemin personnalisé…</option>
+    <option value="__custom__"${selectedId === '__custom__' ? ' selected' : ''}>${t('workflow.cwd.customPath')}</option>
   </select>
 </div>
 ${customInput}
@@ -60,8 +61,8 @@ ${customInput}
         if (!customDiv) {
           const div = document.createElement('div');
           div.className = 'wf-step-edit-field';
-          div.innerHTML = `<label class="wf-step-edit-label">Chemin de travail</label>
-<span class="wf-field-hint">Chemin absolu ou variable — ex: $item.path</span>
+          div.innerHTML = `<label class="wf-step-edit-label">${t('workflow.cwd.pathLabel')}</label>
+<span class="wf-field-hint">${t('workflow.cwd.pathHint')}</span>
 <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="cwd"
   value=""
   placeholder="$item.path ou E:\\MonProjet" />`;
