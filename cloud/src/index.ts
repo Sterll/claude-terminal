@@ -69,8 +69,13 @@ export async function startServer(): Promise<void> {
     res.json(getLogBuffer());
   });
 
-  // Cloud API routes
-  app.use('/api', createCloudRouter());
+  const server = http.createServer(app);
+
+  // Relay WS server (handles /relay upgrade) — must be created before CloudRouter
+  relayServer = new RelayServer(server);
+
+  // Cloud API routes (relay passed for webhook forwarding)
+  app.use('/api', createCloudRouter(relayServer));
 
   // Remote UI (PWA static files)
   const remoteUiDir = path.join(__dirname, '..', 'remote-ui');
@@ -79,11 +84,6 @@ export async function startServer(): Promise<void> {
   app.use((_req, res) => {
     res.sendFile(path.join(remoteUiDir, 'index.html'));
   });
-
-  const server = http.createServer(app);
-
-  // Relay WS server (handles /relay upgrade)
-  relayServer = new RelayServer(server);
 
   // Wire relay into session manager so stream events go through relay WS
   sessionManager.setRelayServer(relayServer);

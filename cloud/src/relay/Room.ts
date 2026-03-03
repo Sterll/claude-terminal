@@ -81,6 +81,15 @@ export class Room {
     }
   }
 
+  sendToDesktop(data: string | object): boolean {
+    if (this.desktop && this.desktop.ws.readyState === WebSocket.OPEN) {
+      const msg = typeof data === 'string' ? data : JSON.stringify(data);
+      this.desktop.ws.send(msg);
+      return true;
+    }
+    return false;
+  }
+
   broadcastToMobiles(data: string | object): void {
     const msg = typeof data === 'string' ? data : JSON.stringify(data);
     for (const [, client] of this.mobiles) {
