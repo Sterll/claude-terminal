@@ -1007,6 +1007,7 @@ html, body {
   font-size: 14px;
   line-height: 1.55;
   word-break: break-word;
+  flex-shrink: 0;
   animation: msgIn 0.25s var(--ease-out) both;
 }
 
@@ -1070,6 +1071,7 @@ html, body {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   overflow: hidden;
+  flex-shrink: 0;
   animation: msgIn 0.25s var(--ease-out) both;
 }
 
@@ -1140,15 +1142,19 @@ html, body {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Tool expand content */
+/* Tool expand content — hidden when empty, shown when card is expanded */
 .tool-expand-content {
+  display: none;
+}
+
+.tool-card.expanded .tool-expand-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   border-top: 1px solid var(--border);
   padding: 10px 14px;
   background: rgba(0,0,0,0.15);
   font-size: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 
 .label {
