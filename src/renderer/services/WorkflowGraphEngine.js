@@ -2424,6 +2424,8 @@ class WorkflowGraphEngine {
     const active = document.activeElement;
     if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.contentEditable === 'true')) return;
     if (!this.canvasElement) return;
+    // Skip if canvas is not visible (e.g. another tab is active, tab-content is display:none)
+    if (!this.canvasElement.offsetParent) return;
 
     if (e.key === 'Delete' || e.key === 'Backspace') {
       this.deleteSelected();
