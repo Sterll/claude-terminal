@@ -104,24 +104,30 @@ function registerCloudHandlers() {
         }
       }, { includeGit: true });
 
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('cloud:upload-progress', { phase: 'uploading', percent: 90 });
-      }
-
       // Upload via multipart POST
       const FormData = require('form-data');
+      const { PassThrough } = require('stream');
       const formData = new FormData();
       formData.append('name', projectName);
       formData.append('zip', fs.createReadStream(zipPath), { filename: `${projectName}.zip`, contentType: 'application/zip' });
 
+      const zipSize = fs.statSync(zipPath).size;
+      const totalMB = Math.round(zipSize / 1024 / 1024);
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('cloud:upload-progress', { phase: 'uploading', percent: 0, uploadedMB: 0, totalMB });
+      }
+
       const http = url.startsWith('https') ? require('https') : require('http');
       const urlObj = new URL(`${url}/api/projects`);
 
-      const UPLOAD_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes max for upload
+      // Dynamic timeout: 5 min minimum, or based on zip size at 1 MB/s (slow connection baseline)
+      const MIN_TIMEOUT_MS = 5 * 60 * 1000;
+      const UPLOAD_TIMEOUT_MS = Math.max(MIN_TIMEOUT_MS, Math.round(zipSize / (1024 * 1024)) * 1000);
       const result = await new Promise((resolve, reject) => {
         let settled = false;
         const timeout = setTimeout(() => {
-          if (!settled) { settled = true; req.destroy(); reject(new Error(`Upload timed out after ${UPLOAD_TIMEOUT_MS / 1000}s`)); }
+          if (!settled) { settled = true; req.destroy(); reject(new Error(`Upload timed out after ${Math.round(UPLOAD_TIMEOUT_MS / 1000)}s`)); }
         }, UPLOAD_TIMEOUT_MS);
 
         const req = http.request({
@@ -157,7 +163,26 @@ function registerCloudHandlers() {
           });
         });
         req.on('error', (err) => { if (!settled) { settled = true; clearTimeout(timeout); reject(err); } });
-        formData.pipe(req);
+
+        // Track upload bytes for real progress
+        let uploadedBytes = 0;
+        let lastProgressPct = -1;
+        const tracker = new PassThrough();
+        tracker.on('data', (chunk) => {
+          uploadedBytes += chunk.length;
+          const pct = Math.min(Math.round((uploadedBytes / zipSize) * 100), 99);
+          // Throttle: only send when percentage changes
+          if (pct !== lastProgressPct) {
+            lastProgressPct = pct;
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('cloud:upload-progress', {
+                phase: 'uploading', percent: pct,
+                uploadedMB: Math.round(uploadedBytes / 1024 / 1024), totalMB,
+              });
+            }
+          }
+        });
+        formData.pipe(tracker).pipe(req);
       });
 
       if (mainWindow && !mainWindow.isDestroyed()) {

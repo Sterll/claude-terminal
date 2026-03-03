@@ -14,6 +14,20 @@ const EXCLUDE_DIRS = new Set([
   '.turbo', '.parcel-cache', '.svelte-kit', '.nuxt', '.output',
 ]);
 
+// Binary/already-compressed extensions — use STORE (no compression) to save CPU
+const STORE_EXTENSIONS = new Set([
+  // FiveM models/assets
+  '.ytd', '.yft', '.ydr', '.ybn', '.ymap', '.ytyp', '.rpf', '.stream',
+  // Images/textures
+  '.png', '.jpg', '.jpeg', '.tga', '.dds', '.bmp', '.gif', '.webp', '.ico',
+  // Audio/video
+  '.mp3', '.ogg', '.wav', '.flac', '.mp4', '.webm',
+  // Already compressed archives
+  '.zip', '.rar', '.7z', '.gz', '.tar', '.bz2',
+  // Binaries/fonts
+  '.exe', '.dll', '.so', '.dylib', '.woff', '.woff2', '.ttf', '.otf',
+]);
+
 /**
  * Get list of project files to include in zip.
  * Uses git ls-files if available, falls back to recursive walk.
@@ -133,8 +147,12 @@ async function zipProject(projectPath, zipPath, onProgress, options = {}) {
 
     for (const file of files) {
       const absPath = path.join(projectPath, file);
-      // Use forward slashes in zip for cross-platform compat
-      archive.file(absPath, { name: file.replace(/\\/g, '/') });
+      const ext = path.extname(file).toLowerCase();
+      // Use STORE (no compression) for binary/already-compressed files to save CPU
+      archive.file(absPath, {
+        name: file.replace(/\\/g, '/'),
+        store: STORE_EXTENSIONS.has(ext),
+      });
     }
 
     archive.finalize();
