@@ -169,8 +169,8 @@ function initWorkflowListeners() {
 
   api.onNotifyDesktop(({ title, message, type }) => {
     // Delegate to app's notification system if available
-    if (window.electron_api?.dialog?.showNotification) {
-      window.electron_api.dialog.showNotification({ title, body: message });
+    if (window.electron_api?.notification?.show) {
+      window.electron_api.notification.show({ title, body: message });
     }
   });
 }
