@@ -521,7 +521,7 @@ function renderStashSection() {
       html += `<div class="git-changes-stash-item" data-ref="${escapeHtml(stash.ref)}">
         <div class="git-changes-stash-info">
           <span class="git-changes-stash-ref">${escapeHtml(stash.ref)}</span>
-          <span class="git-changes-stash-msg">${escapeHtml(stash.message || '')}</span>
+          <span class="git-changes-stash-msg" title="${escapeHtml(stash.message || '')}">${escapeHtml((stash.message || '').slice(0, 50))}${(stash.message || '').length > 50 ? '…' : ''}</span>
         </div>
         <div class="git-changes-stash-date">${escapeHtml(stash.date || '')}</div>
         <div class="git-changes-stash-actions">
