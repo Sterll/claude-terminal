@@ -262,7 +262,8 @@
 .cp-form-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
   padding-top: 4px;
 }
 
@@ -276,6 +277,37 @@
   font-size: var(--font-xs);
   color: var(--text-secondary);
 }
+
+.cp-sync-skills-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cp-sync-skills-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.cp-sync-skills-btn.syncing {
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.cp-sync-skills-btn.syncing svg {
+  animation: cp-spin 0.7s linear infinite;
+}
+
+@keyframes cp-spin { to { transform: rotate(360deg); } }
 
 /* ── Install Banner (collapsed) ── */
 .cp-install-collapsible {

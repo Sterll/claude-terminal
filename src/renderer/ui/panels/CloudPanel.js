@@ -178,6 +178,19 @@ function buildHtml(settings) {
                         </label>
                         <span class="cp-auto-label">${t('cloud.autoSyncToggle')}</span>
                       </div>
+                      <div class="cp-auto">
+                        <label class="settings-toggle rp-mini-toggle">
+                          <input type="checkbox" id="cp-sync-skills" ${settings.cloudSyncSkills ? 'checked' : ''}>
+                          <span class="settings-toggle-slider"></span>
+                        </label>
+                        <span class="cp-auto-label">${t('cloud.syncSkillsToggle')}</span>
+                        <button class="cp-sync-skills-btn" id="cp-sync-skills-now" title="${t('cloud.syncSkillsNow')}">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </details>
@@ -353,6 +366,34 @@ function setupHandlers(context) {
   if (autoSyncToggle) {
     autoSyncToggle.addEventListener('change', () => {
       _saveField('cloudAutoSync', autoSyncToggle.checked);
+    });
+  }
+
+  // Skills sync toggle + manual sync button
+  const syncSkillsToggle = document.getElementById('cp-sync-skills');
+  if (syncSkillsToggle) {
+    syncSkillsToggle.addEventListener('change', () => {
+      _saveField('cloudSyncSkills', syncSkillsToggle.checked);
+    });
+  }
+  const syncSkillsBtn = document.getElementById('cp-sync-skills-now');
+  if (syncSkillsBtn) {
+    syncSkillsBtn.addEventListener('click', async () => {
+      syncSkillsBtn.disabled = true;
+      syncSkillsBtn.classList.add('syncing');
+      try {
+        const result = await api.cloud.syncSkills();
+        if (result?.ok) {
+          const { showToast } = require('../components/Toast');
+          showToast(t('cloud.syncSkillsSuccess', { count: result.skillCount, agentCount: result.agentCount }), 'success');
+        }
+      } catch (err) {
+        const { showToast } = require('../components/Toast');
+        showToast(err.message, 'error');
+      } finally {
+        syncSkillsBtn.disabled = false;
+        syncSkillsBtn.classList.remove('syncing');
+      }
     });
   }
 

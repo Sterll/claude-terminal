@@ -1489,7 +1489,17 @@ async function cloudUploadProject(projectId) {
   ProjectList.render();
 
   const projectName = project.name || path.basename(project.path);
-  _activeUploadToast = showToast({ type: 'info', title: t('cloud.uploadTitle'), message: t('cloud.uploadPhaseScanning'), duration: 0 });
+
+  // Check if project has a GitHub remote — use git clone if available (faster)
+  let useGitClone = false;
+  if (api.cloud.checkGitRemote) {
+    try {
+      const { hasGitHub } = await api.cloud.checkGitRemote({ projectPath: project.path });
+      useGitClone = hasGitHub;
+    } catch (_) {}
+  }
+
+  _activeUploadToast = showToast({ type: 'info', title: t('cloud.uploadTitle'), message: useGitClone ? t('cloud.uploadPhaseCloning') || 'Cloning from GitHub...' : t('cloud.uploadPhaseScanning'), duration: 0 });
 
   // Safety net: auto-close toast after 5m30s if upload hangs
   const _uploadSafetyTimer = setTimeout(() => {
@@ -1497,7 +1507,11 @@ async function cloudUploadProject(projectId) {
   }, 330_000);
 
   try {
-    await api.cloud.uploadProject({ projectName, projectPath: project.path });
+    if (useGitClone) {
+      await api.cloud.uploadProjectGit({ projectName, projectPath: project.path });
+    } else {
+      await api.cloud.uploadProject({ projectName, projectPath: project.path });
+    }
     cloudUploadStatus.set(projectId, { synced: true, lastSync: Date.now() });
     // Register for auto-sync (file watcher)
     api.cloud.registerAutoSync({ projectId, projectPath: project.path }).catch(() => {});

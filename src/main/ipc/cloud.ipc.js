@@ -15,6 +15,8 @@ const cloudSyncService = require('../services/CloudSyncService');
 const { sendFeaturePing } = require('../services/TelemetryService');
 const { zipProject } = require('../utils/zipProject');
 const { settingsFile } = require('../utils/paths');
+const { execGit } = require('../utils/git');
+const { getTokenForGit } = require('../services/GitHubAuthService');
 
 let mainWindow = null;
 
@@ -50,6 +52,18 @@ function registerCloudHandlers() {
       cloudSyncService.start();
       // Check for pending changes from headless sessions
       setImmediate(() => _checkPendingChangesOnReconnect());
+      // Auto-sync skills if enabled
+      setImmediate(async () => {
+        try {
+          const settings = _loadSettings();
+          if (settings.cloudSyncSkills) {
+            const result = await _syncSkillsToCloud();
+            console.log(`[Cloud] Auto skills sync: ${result.skillCount} skill(s), ${result.agentCount} agent(s)`);
+          }
+        } catch (e) {
+          console.warn('[Cloud] Auto skills sync failed:', e.message);
+        }
+      });
     }
     // Note: we do NOT call setCloudClient(null) here on disconnect because
     // CloudRelayClient auto-reconnects. Only explicit cloud:disconnect clears it.
@@ -197,6 +211,131 @@ function registerCloudHandlers() {
     } finally {
       _uploadLocks.delete(projectName);
       await fs.promises.unlink(zipPath).catch(() => {});
+    }
+  });
+
+  // ── Check if project has a GitHub remote ──
+
+  ipcMain.handle('cloud:check-git-remote', async (_event, { projectPath }) => {
+    const remoteUrl = await execGit(projectPath, 'remote get-url origin');
+    if (!remoteUrl) return { hasGitHub: false };
+    const isGitHub = remoteUrl.includes('github.com');
+    return { hasGitHub: isGitHub, remoteUrl: remoteUrl.trim() };
+  });
+
+  // ── Upload project via git clone (faster than ZIP for GitHub repos) ──
+
+  ipcMain.handle('cloud:upload-project-git', async (_event, { projectName, projectPath }) => {
+    if (_uploadLocks.has(projectName)) {
+      throw new Error(`Upload already in progress for "${projectName}"`);
+    }
+    _uploadLocks.add(projectName);
+
+    try {
+      const { url, key } = _getCloudConfig();
+
+      // Get GitHub token
+      const token = await getTokenForGit();
+      if (!token) throw new Error('No GitHub token found. Please connect your GitHub account first.');
+
+      // Get remote URL
+      const remoteUrl = await execGit(projectPath, 'remote get-url origin');
+      if (!remoteUrl || !remoteUrl.includes('github.com')) {
+        throw new Error('Project does not have a GitHub remote configured.');
+      }
+
+      // Build authenticated HTTPS clone URL (handle both HTTPS and SSH remotes)
+      let cloneUrl = remoteUrl.trim();
+      if (cloneUrl.startsWith('git@github.com:')) {
+        cloneUrl = 'https://github.com/' + cloneUrl.replace('git@github.com:', '');
+        if (!cloneUrl.endsWith('.git')) cloneUrl += '.git';
+      }
+      cloneUrl = cloneUrl.replace('https://github.com/', `https://${token}@github.com/`);
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('cloud:upload-progress', { phase: 'cloning', percent: 10 });
+      }
+
+      // Ask cloud server to git clone
+      const cloneResp = await _fetchCloud(`${url}/api/projects/clone`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+        body: JSON.stringify({ name: projectName, cloneUrl }),
+      }, 5 * 60 * 1000);
+
+      if (!cloneResp.ok) {
+        const body = await cloneResp.text();
+        throw new Error(`Clone failed: HTTP ${cloneResp.status}: ${body.substring(0, 200)}`);
+      }
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('cloud:upload-progress', { phase: 'patching', percent: 70 });
+      }
+
+      // Generate diffs: unpushed commits + working tree changes + untracked files
+      const patchParts = [];
+
+      // Commits not yet pushed to remote
+      const unpushedPatch = await execGit(projectPath, 'format-patch @{u}..HEAD --stdout', 30000);
+      if (unpushedPatch) patchParts.push(unpushedPatch);
+
+      // Working tree diffs (staged + unstaged vs HEAD)
+      const workingDiff = await execGit(projectPath, 'diff HEAD', 15000);
+      if (workingDiff) patchParts.push(workingDiff);
+
+      // Untracked files
+      const untrackedOutput = await execGit(projectPath, 'ls-files --others --exclude-standard', 10000);
+      const untrackedFiles = untrackedOutput ? untrackedOutput.split('\n').filter(Boolean) : [];
+
+      // Send patch if there's anything to apply
+      if (patchParts.length > 0 || untrackedFiles.length > 0) {
+        const FormData = require('form-data');
+        const formData = new FormData();
+
+        if (patchParts.length > 0) {
+          const patchContent = Buffer.from(patchParts.join('\n'), 'utf8');
+          formData.append('patch', patchContent, { filename: 'changes.patch', contentType: 'text/plain' });
+        }
+
+        for (const file of untrackedFiles) {
+          const fullPath = path.join(projectPath, file);
+          try {
+            const content = fs.readFileSync(fullPath);
+            formData.append('untracked', content, { filename: file, contentType: 'application/octet-stream' });
+          } catch (_) {}
+        }
+
+        const http = url.startsWith('https') ? require('https') : require('http');
+        const urlObj = new URL(`${url}/api/projects/${encodeURIComponent(projectName)}/patch`);
+        const formLength = await new Promise((res, rej) => formData.getLength((err, len) => err ? rej(err) : res(len)));
+
+        await new Promise((resolve, reject) => {
+          const req = http.request({
+            hostname: urlObj.hostname,
+            port: urlObj.port,
+            path: urlObj.pathname,
+            method: 'POST',
+            headers: { ...formData.getHeaders(), 'Content-Length': formLength, 'Authorization': `Bearer ${key}` },
+          }, (res) => {
+            let body = '';
+            res.on('data', c => body += c);
+            res.on('end', () => {
+              if (res.statusCode >= 200 && res.statusCode < 300) resolve();
+              else reject(new Error(`Patch failed: HTTP ${res.statusCode}: ${body.substring(0, 200)}`));
+            });
+          });
+          req.on('error', reject);
+          formData.pipe(req);
+        });
+      }
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('cloud:upload-progress', { phase: 'done', percent: 100 });
+      }
+
+      return { success: true, method: 'git-clone' };
+    } finally {
+      _uploadLocks.delete(projectName);
     }
   });
 
@@ -411,6 +550,12 @@ function registerCloudHandlers() {
     return { ok: true };
   });
 
+  // ── Skills & Agents sync ──
+
+  ipcMain.handle('cloud:sync-skills', async () => {
+    return _syncSkillsToCloud();
+  });
+
   // ── File comparison (local vs cloud) ──
 
   ipcMain.handle('cloud:compare-files', async (_event, { projectName, localProjectPath }) => {
@@ -584,6 +729,87 @@ const FETCH_DOWNLOAD_TIMEOUT_MS = 60000;
  * @param {RequestInit} opts
  * @param {number} [timeoutMs]
  */
+async function _syncSkillsToCloud() {
+  const { url, key } = _getCloudConfig();
+  const claudeDir = path.join(os.homedir(), '.claude');
+  const skillsDir = path.join(claudeDir, 'skills');
+  const agentsDir = path.join(claudeDir, 'agents');
+  const zipPath = path.join(os.tmpdir(), `ct-skills-sync-${Date.now()}.zip`);
+
+  try {
+    const archiver = require('archiver');
+    let skillCount = 0;
+    let agentCount = 0;
+
+    await new Promise((resolve, reject) => {
+      const output = fs.createWriteStream(zipPath);
+      const archive = archiver('zip', { zlib: { level: 6 } });
+      output.on('close', resolve);
+      archive.on('error', reject);
+      archive.pipe(output);
+
+      // Add skills/ directory
+      if (fs.existsSync(skillsDir)) {
+        const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          const skillMd = path.join(skillsDir, entry.name, 'SKILL.md');
+          if (!fs.existsSync(skillMd)) continue;
+          archive.directory(path.join(skillsDir, entry.name), `skills/${entry.name}`);
+          skillCount++;
+        }
+      }
+
+      // Add agents/ directory
+      if (fs.existsSync(agentsDir)) {
+        const entries = fs.readdirSync(agentsDir, { withFileTypes: true });
+        for (const entry of entries) {
+          const fullPath = path.join(agentsDir, entry.name);
+          if (entry.isFile() && entry.name.endsWith('.md')) {
+            archive.file(fullPath, { name: `agents/${entry.name}` });
+            agentCount++;
+          } else if (entry.isDirectory()) {
+            const agentMd = path.join(fullPath, 'AGENT.md');
+            if (fs.existsSync(agentMd)) {
+              archive.directory(fullPath, `agents/${entry.name}`);
+              agentCount++;
+            }
+          }
+        }
+      }
+
+      archive.finalize();
+    });
+
+    if (skillCount === 0 && agentCount === 0) {
+      return { ok: true, skillCount: 0, agentCount: 0 };
+    }
+
+    // Upload via PUT /api/skills (multipart)
+    const FormData = require('form-data');
+    const formData = new FormData();
+    formData.append('zip', fs.createReadStream(zipPath), { filename: 'skills.zip', contentType: 'application/zip' });
+
+    const headers = { ...formData.getHeaders(), 'Authorization': `Bearer ${key}` };
+    const resp = await _fetchCloud(`${url}/api/skills`, {
+      method: 'PUT',
+      headers,
+      body: formData,
+      duplex: 'half',
+    }, 30000);
+
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new Error(`Skills sync failed: HTTP ${resp.status} ${text.substring(0, 200)}`);
+    }
+
+    console.log(`[Cloud] Skills synced: ${skillCount} skill(s), ${agentCount} agent(s)`);
+    return { ok: true, skillCount, agentCount };
+  } finally {
+    await fs.promises.unlink(zipPath).catch(() => {});
+  }
+}
+
 async function _fetchCloud(url, opts = {}, timeoutMs = FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

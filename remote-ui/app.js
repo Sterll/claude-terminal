@@ -130,59 +130,22 @@ const state = {
 //   currentBlockIdx: -1, currentBlockType: null,
 // }
 
-// ─── Session Persistence (localStorage) ──────────────────────────────────────
+// ─── Session Persistence ──────────────────────────────────────────────────────
+// Sessions are fully server-authoritative: on (re)connect the server replays
+// all buffered chat events.  No client-side storage needed.
 
-let _saveTimer = null;
 function _saveSessions() {
-  if (_saveTimer) return;
-  _saveTimer = setTimeout(() => {
-    _saveTimer = null;
-    try {
-      const serializable = {};
-      for (const [id, s] of Object.entries(state.sessions)) {
-        // Strip large base64 image data to avoid filling localStorage
-        const msgs = s.messages.map(m => {
-          if (m.imageUrl && m.imageUrl.length > 1000) {
-            return { ...m, imageUrl: null, _hadImage: true };
-          }
-          return m;
-        });
-        serializable[id] = {
-          sessionId: s.sessionId,
-          projectId: s.projectId,
-          tabName: s.tabName,
-          messages: msgs,
-          status: s.status,
-        };
-      }
-      // Use sessionStorage for chat messages — cleared on tab close, not persisted
-      sessionStorage.setItem('remote_sessions', JSON.stringify(serializable));
-      sessionStorage.setItem('remote_selected_session', state.selectedSessionId || '');
-      sessionStorage.setItem('remote_selected_project', state.selectedProjectId || '');
-    } catch (e) {}
-  }, 500);
+  // No-op — server is the source of truth.
+  // Kept as a callable stub so existing call-sites don't need changes.
 }
 
 function _restoreSessions() {
+  // Clean up legacy sessionStorage keys from previous versions
   try {
-    const raw = sessionStorage.getItem('remote_sessions');
-    if (!raw) return;
-    const saved = JSON.parse(raw);
-    for (const [id, s] of Object.entries(saved)) {
-      if (!state.sessions[id]) {
-        state.sessions[id] = _makeSession(id, s.projectId, s.tabName, s.messages || []);
-        state.sessions[id].status = s.status || 'idle';
-      }
-    }
-    const selSession = sessionStorage.getItem('remote_selected_session');
-    const selProject = sessionStorage.getItem('remote_selected_project');
-    if (selSession && state.sessions[selSession]) {
-      state.selectedSessionId = selSession;
-    }
-    if (selProject) {
-      state.selectedProjectId = selProject;
-    }
-  } catch (e) {}
+    sessionStorage.removeItem('remote_sessions');
+    sessionStorage.removeItem('remote_selected_session');
+    sessionStorage.removeItem('remote_selected_project');
+  } catch (_) {}
 }
 
 // ─── Connection State Machine ──────────────────────────────────────────────────
@@ -531,6 +494,10 @@ function _scheduleReconnect() {
 function _onDesktopOffline() {
   _debugLog('[State] Desktop offline, relay mode=' + conn.mode);
   state.desktopOffline = true;
+  // Clear desktop sessions — they're no longer reachable
+  state.sessions = {};
+  state.selectedSessionId = null;
+  renderSessionBar(); renderChatMessages();
   const labelEl = $('status-label');
   if (labelEl) labelEl.textContent = _isFr ? 'PC hors ligne' : 'Desktop offline';
   const dot = $('connection-dot');
@@ -588,29 +555,15 @@ function handleMessage(msg) {
   switch (type) {
     case 'hello':
       connSetState('connected');
-      // Mark existing sessions as stale — server will re-confirm active ones via session:started
-      // We keep them until init is complete to avoid data loss on flaky reconnections
-      for (const s of Object.values(state.sessions)) s._stale = true;
+      // Server is authoritative — clear all local sessions, they'll be
+      // re-created by the session:started + chat-message replay that follows
+      state.sessions = {};
+      state.selectedSessionId = null;
       if (data.chatModel) { state.selectedModel = data.chatModel; }
       if (data.effortLevel) { state.selectedEffort = data.effortLevel; }
       if (data.accentColor) _applyAccentColor(data.accentColor);
       _updatePlusMenuSelection();
-      // After a short delay, purge sessions the server didn't re-confirm
-      clearTimeout(state._staleCleanupTimer);
-      state._staleCleanupTimer = setTimeout(() => {
-        let changed = false;
-        for (const [id, s] of Object.entries(state.sessions)) {
-          if (s._stale) { delete state.sessions[id]; changed = true; }
-        }
-        if (changed) {
-          if (state.selectedSessionId && !state.sessions[state.selectedSessionId]) {
-            const ids = Object.keys(state.sessions);
-            state.selectedSessionId = ids.length ? ids[ids.length - 1] : null;
-          }
-          _saveSessions();
-          renderSessionBar(); renderChatMessages();
-        }
-      }, 3000);
+      renderSessionBar(); renderChatMessages();
       break;
     case 'projects:updated':     onProjectsUpdated(data); break;
     case 'session:started':      onSessionStarted(data); break;
@@ -637,6 +590,10 @@ function handleMessage(msg) {
       _showCloudPopup(false);
       _showHeadlessBanner(false);
       _cleanupHeadlessSession();
+      // Clear cloud/headless sessions — desktop will resend its own via request:init
+      state.sessions = {};
+      state.selectedSessionId = null;
+      renderSessionBar(); renderChatMessages();
       // Ask the desktop to send init data (projects, sessions, time)
       wsSend('request:init', {});
       break;
@@ -689,8 +646,6 @@ function onSessionStarted({ sessionId, projectId, tabName }) {
   if (!state.sessions[sessionId]) {
     state.sessions[sessionId] = _makeSession(sessionId, projectId, tabName, messages);
   }
-  // Server confirmed this session is active — remove stale flag
-  delete state.sessions[sessionId]._stale;
   if (!state.selectedSessionId || projectId === state.selectedProjectId) {
     state.selectedSessionId = sessionId;
     state.selectedProjectId = projectId;
