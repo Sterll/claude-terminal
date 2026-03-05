@@ -152,6 +152,75 @@ function getBuiltinCommands() {
   ];
 }
 
+// ── Fuzzy matching ────────────────────────────────────────────────────────
+
+/**
+ * Fuzzy match query against a string.
+ * Returns { match, score, indices } where indices are matched char positions in str.
+ */
+function fuzzyMatch(query, str) {
+  if (!query) return { match: true, score: 0, indices: [] };
+  const q = query.toLowerCase();
+  const s = str.toLowerCase();
+  const indices = [];
+  let qi = 0, score = 0, consecutive = 0;
+
+  for (let si = 0; si < s.length && qi < q.length; si++) {
+    if (q[qi] === s[si]) {
+      indices.push(si);
+      consecutive++;
+      score += consecutive * 2;
+      // word-boundary bonus (space, dash, slash, dot, underscore)
+      if (si === 0 || /[\s\-_/\\.]/.test(s[si - 1])) score += 8;
+      qi++;
+    } else {
+      consecutive = 0;
+    }
+  }
+
+  if (qi < q.length) return { match: false, score: 0, indices: [] };
+  if (indices[0] === 0) score += 15; // starts-with bonus
+  score -= (indices[indices.length - 1] || 0) * 0.3; // penalty for late matches
+  return { match: true, score, indices };
+}
+
+/**
+ * Wrap matched character positions with <mark class="qp-hl">.
+ * Consecutive matched chars share one <mark> tag.
+ */
+function highlightStr(str, indices) {
+  if (!indices || indices.length === 0) return escapeHtml(str);
+  const set = new Set(indices);
+  let html = '', inMark = false;
+  for (let i = 0; i < str.length; i++) {
+    const ch = escapeHtml(str[i]);
+    if (set.has(i)) {
+      if (!inMark) { html += '<mark class="qp-hl">'; inMark = true; }
+      html += ch;
+    } else {
+      if (inMark) { html += '</mark>'; inMark = false; }
+      html += ch;
+    }
+  }
+  if (inMark) html += '</mark>';
+  return html;
+}
+
+/**
+ * Score an item against the query (tries label first, then sublabel).
+ * Returns { match, score, labelHtml } — labelHtml is null when only sublabel matched.
+ */
+function scoreItem(q, label, sublabel) {
+  if (!q) return { match: true, score: 0, labelHtml: null };
+  const lm = fuzzyMatch(q, label);
+  if (lm.match) return { match: true, score: lm.score, labelHtml: highlightStr(label, lm.indices) };
+  if (sublabel) {
+    const sm = fuzzyMatch(q, sublabel);
+    if (sm.match) return { match: true, score: sm.score * 0.7, labelHtml: null };
+  }
+  return { match: false, score: 0, labelHtml: null };
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────
 function formatRelativeTime(isoDate) {
   if (!isoDate) return '';
@@ -175,67 +244,45 @@ function detectMode(value) {
 // ── Sections builder ──────────────────────────────────────────────────────
 function buildSections(query, mode, currentProject) {
   const q = query.toLowerCase();
-  const match = (str) => !q || (str || '').toLowerCase().includes(q);
   const sections = [];
 
   // — Projects —
   if (mode === 'all' || mode === 'projects') {
-    const projects = projectsState.get().projects.filter(p =>
-      match(p.name) || match(p.path)
-    );
-    if (projects.length > 0) {
-      const defaultIcon = ICON.project;
-      sections.push({
-        key: 'projects',
-        label: t('quickPicker.section.projects'),
-        items: projects.map(p => {
-          const typeHandler = registry.get(p.type);
-          const rawIcon = typeHandler?.icon || defaultIcon;
-          const icon = (typeof rawIcon === 'string' && rawIcon.trim().startsWith('<svg') && !/<script|<foreignObject|on\w+\s*=/i.test(rawIcon))
-            ? rawIcon : defaultIcon;
-          return { type: 'project', id: p.id, label: p.name, sublabel: p.path, icon, data: p };
-        }),
-      });
-    }
+    const defaultIcon = ICON.project;
+    const items = projectsState.get().projects.map(p => {
+      const { match, score, labelHtml } = scoreItem(q, p.name, p.path);
+      if (!match) return null;
+      const typeHandler = registry.get(p.type);
+      const rawIcon = typeHandler?.icon || defaultIcon;
+      const icon = (typeof rawIcon === 'string' && rawIcon.trim().startsWith('<svg') && !/<script|<foreignObject|on\w+\s*=/i.test(rawIcon))
+        ? rawIcon : defaultIcon;
+      return { type: 'project', id: p.id, label: p.name, labelHtml, sublabel: p.path, icon, score, data: p };
+    }).filter(Boolean).sort((a, b) => b.score - a.score);
+    if (items.length > 0) sections.push({ key: 'projects', label: t('quickPicker.section.projects'), items });
   }
 
   // — Quick Actions (current project) —
   if ((mode === 'all' || mode === 'actions') && currentProject) {
-    const actions = (currentProject.quickActions || []).filter(a => match(a.label || a.name));
-    if (actions.length > 0) {
-      sections.push({
-        key: 'actions',
-        label: t('quickPicker.section.quickActions'),
-        items: actions.map(a => ({
-          type: 'action',
-          id: `action-${a.label || a.name}`,
-          label: a.label || a.name || '',
-          sublabel: a.command || '',
-          icon: (typeof a.icon === 'string' && a.icon.trim().startsWith('<svg') && !/<script|<foreignObject|on\w+\s*=/i.test(a.icon))
-            ? a.icon : ICON.action,
-          data: { action: a, projectPath: currentProject.path },
-        })),
-      });
-    }
+    const items = (currentProject.quickActions || []).map(a => {
+      const label = a.label || a.name || '';
+      const { match, score, labelHtml } = scoreItem(q, label, a.command);
+      if (!match) return null;
+      const rawIcon = a.icon;
+      const icon = (typeof rawIcon === 'string' && rawIcon.trim().startsWith('<svg') && !/<script|<foreignObject|on\w+\s*=/i.test(rawIcon))
+        ? rawIcon : ICON.action;
+      return { type: 'action', id: `action-${label}`, label, labelHtml, sublabel: a.command || '', icon, score, data: { action: a, projectPath: currentProject.path } };
+    }).filter(Boolean).sort((a, b) => b.score - a.score);
+    if (items.length > 0) sections.push({ key: 'actions', label: t('quickPicker.section.quickActions'), items });
   }
 
   // — Commands —
   if (mode === 'all' || mode === 'commands') {
-    const commands = getBuiltinCommands().filter(c => match(c.label));
-    if (commands.length > 0) {
-      sections.push({
-        key: 'commands',
-        label: t('quickPicker.section.commands'),
-        items: commands.map(c => ({
-          type: 'command',
-          id: c.id,
-          label: c.label,
-          hint: c.hint || '',
-          icon: c.icon,
-          data: c,
-        })),
-      });
-    }
+    const items = getBuiltinCommands().map(c => {
+      const { match, score, labelHtml } = scoreItem(q, c.label, c.hint);
+      if (!match) return null;
+      return { type: 'command', id: c.id, label: c.label, labelHtml, hint: c.hint || '', icon: c.icon, score, data: c };
+    }).filter(Boolean).sort((a, b) => b.score - a.score);
+    if (items.length > 0) sections.push({ key: 'commands', label: t('quickPicker.section.commands'), items });
   }
 
   // — Git branches (current project, async) —
@@ -244,21 +291,19 @@ function buildSections(query, mode, currentProject) {
     if (branchesLoading) {
       sections.push({ key: 'branches', label: t('quickPicker.section.branches'), loading: true, items: [] });
     } else if (branches !== null) {
-      const filtered = branches.filter(b => match(b));
-      if (filtered.length > 0 || mode === 'branches') {
-        sections.push({
-          key: 'branches',
-          label: t('quickPicker.section.branches'),
-          items: filtered.map(b => ({
-            type: 'branch',
-            id: `branch-${b}`,
-            label: b,
-            sublabel: b === currentBranch ? t('quickPicker.branch.current') : '',
-            badge: b === currentBranch ? 'current' : null,
-            icon: ICON.branch,
-            data: { branch: b, projectPath: currentProject.path },
-          })),
-        });
+      const items = branches.map(b => {
+        const { match, score, labelHtml } = scoreItem(q, b, null);
+        if (!match) return null;
+        return {
+          type: 'branch', id: `branch-${b}`, label: b, labelHtml,
+          sublabel: b === currentBranch ? t('quickPicker.branch.current') : '',
+          badge: b === currentBranch ? 'current' : null,
+          icon: ICON.branch, score,
+          data: { branch: b, projectPath: currentProject.path },
+        };
+      }).filter(Boolean).sort((a, b) => b.score - a.score);
+      if (items.length > 0 || mode === 'branches') {
+        sections.push({ key: 'branches', label: t('quickPicker.section.branches'), items });
       }
     }
   }
@@ -269,23 +314,19 @@ function buildSections(query, mode, currentProject) {
     if (sessionsLoading) {
       sections.push({ key: 'sessions', label: t('quickPicker.section.sessions'), loading: true, items: [] });
     } else if (sessions !== null) {
-      const filtered = sessions.filter(s =>
-        match(s.summary) || match(s.firstPrompt) || match(s.sessionId)
-      );
-      if (filtered.length > 0 || mode === 'sessions') {
-        sections.push({
-          key: 'sessions',
-          label: t('quickPicker.section.sessions'),
-          items: filtered.map(s => ({
-            type: 'session',
-            id: `session-${s.sessionId}`,
-            label: s.summary || s.firstPrompt || s.sessionId,
-            sublabel: formatRelativeTime(s.modified),
-            badge: s.messageCount ? String(s.messageCount) : null,
-            icon: ICON.session,
-            data: s,
-          })),
-        });
+      const items = sessions.map(s => {
+        const label = s.summary || s.firstPrompt || s.sessionId;
+        const { match, score, labelHtml } = scoreItem(q, label, s.sessionId);
+        if (!match) return null;
+        return {
+          type: 'session', id: `session-${s.sessionId}`, label, labelHtml,
+          sublabel: formatRelativeTime(s.modified),
+          badge: s.messageCount ? String(s.messageCount) : null,
+          icon: ICON.session, score, data: s,
+        };
+      }).filter(Boolean).sort((a, b) => b.score - a.score);
+      if (items.length > 0 || mode === 'sessions') {
+        sections.push({ key: 'sessions', label: t('quickPicker.section.sessions'), items });
       }
     }
   }
@@ -293,26 +334,19 @@ function buildSections(query, mode, currentProject) {
   // — MCP Servers —
   if (mode === 'all' || mode === 'mcp') {
     const { mcps, mcpProcesses } = mcpState.get();
-    const filtered = (mcps || []).filter(m => match(m.name || m.id));
-    if (filtered.length > 0) {
-      sections.push({
-        key: 'mcp',
-        label: t('quickPicker.section.mcp'),
-        items: filtered.map(m => {
-          const proc = (mcpProcesses || {})[m.id];
-          const running = proc?.status === 'running';
-          return {
-            type: 'mcp',
-            id: `mcp-${m.id}`,
-            label: m.name || m.id,
-            sublabel: m.command || '',
-            badge: running ? 'running' : null,
-            icon: ICON.mcp,
-            data: m,
-          };
-        }),
-      });
-    }
+    const items = (mcps || []).map(m => {
+      const label = m.name || m.id;
+      const { match, score, labelHtml } = scoreItem(q, label, m.command);
+      if (!match) return null;
+      const proc = (mcpProcesses || {})[m.id];
+      return {
+        type: 'mcp', id: `mcp-${m.id}`, label, labelHtml,
+        sublabel: m.command || '',
+        badge: proc?.status === 'running' ? 'running' : null,
+        icon: ICON.mcp, score, data: m,
+      };
+    }).filter(Boolean).sort((a, b) => b.score - a.score);
+    if (items.length > 0) sections.push({ key: 'mcp', label: t('quickPicker.section.mcp'), items });
   }
 
   return sections;
@@ -365,7 +399,7 @@ function renderList(list, handlers, picker, currentProject) {
           <div class="quick-picker-item ${isSelected ? 'selected' : ''}" data-flat-index="${idx}">
             <div class="quick-picker-item-icon">${item.icon}</div>
             <div class="quick-picker-item-info">
-              <div class="quick-picker-item-name">${escapeHtml(item.label)}</div>
+              <div class="quick-picker-item-name">${item.labelHtml || escapeHtml(item.label)}</div>
               ${item.sublabel ? `<div class="quick-picker-item-path">${escapeHtml(item.sublabel)}</div>` : ''}
             </div>
             ${item.badge ? `<span class="quick-picker-badge quick-picker-badge-${item.type === 'session' ? 'count' : item.badge}">${escapeHtml(item.badge)}</span>` : ''}

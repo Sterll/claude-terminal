@@ -1150,6 +1150,13 @@
   background: var(--info);
 }
 
+/* Fuzzy match highlight */
+mark.qp-hl {
+  background: none;
+  color: var(--accent);
+  font-weight: 700;
+}
+
 .quick-picker-empty {
   padding: 40px 20px;
   text-align: center;
