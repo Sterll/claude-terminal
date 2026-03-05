@@ -414,6 +414,37 @@ npm run test:watch          # Watch mode
 - **`website/`:** Landing page, changelog, privacy policy, legal terms, mascot demo, OG generator
 - **`remote-ui/`:** PWA web interface for remote control (bundled via extraResources)
 
+## MCP Tools (`resources/mcp-servers/`)
+
+Claude Terminal ships its own MCP server (`resources/mcp-servers/claude-terminal-mcp.js`) auto-configured by the app. Tool modules are loaded dynamically from `resources/mcp-servers/tools/` — a new `.js` file there is auto-registered.
+
+**Tool module interface:**
+```javascript
+module.exports = {
+  tools: [{ name, description, inputSchema }],
+  handle: async (toolName, args) => ({ content: [{ type: 'text', text }], isError? }),
+  cleanup: async () => {}
+};
+```
+
+**Env vars available in MCP tools:** `CT_DATA_DIR` (`~/.claude-terminal/`), `CT_PROJECT_PATH` (current project).
+
+**Available tool modules:**
+
+| Module | Tools |
+|--------|-------|
+| `projects.js` | `project_list`, `project_info`, `project_todos`, `quickaction_list`, `quickaction_run` |
+| `timetracking.js` | `time_today`, `time_week`, `time_summary`, `time_project` |
+| `sessions.js` | `session_list`, `session_replay` |
+| `database.js` | `database_query`, `database_list_tables`, `database_schema_full`, `database_stats`, `db_describe_table`, `db_export` |
+| `webapp.js` | `webapp_stack`, `webapp_scripts`, `webapp_start`, `webapp_stop` |
+| `fivem.js` | `fivem_command`, `fivem_list_resources`, `fivem_read_manifest`, `fivem_resource_files`, `fivem_server_cfg` |
+| `workflow.js` | `workflow_*` (create, list, run, status, etc.) |
+
+**Session tools (added with Session Replay feature):**
+- `session_list` — list recent sessions for a project (IDs, dates, first prompt). Params: `project_path`, `limit`
+- `session_replay` — parse a JSONL session into ordered steps (prompts, tool calls with input/output, responses). Params: `session_id`, `project_path`, `include_thinking`, `max_steps`
+
 ## Conventions
 
 - **Commits:** `feat(scope): description` in English, imperative mood
