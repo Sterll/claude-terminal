@@ -2323,7 +2323,6 @@ document.querySelectorAll('.nav-tab').forEach(tab => {
     if (tabId === 'mcp') McpPanel.loadMcps();
     if (tabId === 'workflows') WorkflowPanel.load();
     if (tabId === 'database') DatabasePanel.loadPanel();
-    if (tabId === 'worktrees') WorktreesDashboard.load();
     if (tabId === 'git') {
       GitTabService.initGitTab();
       GitTabService.renderProjectsList();
@@ -2358,6 +2357,7 @@ document.querySelectorAll('.nav-tab').forEach(tab => {
       TimeTrackingDashboard.cleanup();
     }
     if (tabId !== 'worktrees') WorktreesDashboard.cleanup();
+    if (tabId === 'worktrees') WorktreesDashboard.load();
     if (tabId === 'timetracking') {
       const container = document.getElementById('timetracking-container');
       if (container) TimeTrackingDashboard.init(container);
