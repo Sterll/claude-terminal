@@ -177,6 +177,27 @@ export class ProjectManager {
     }
   }
 
+  async renameProject(userName: string, oldName: string, newName: string): Promise<void> {
+    this.validateProjectName(newName);
+    const oldPath = store.getProjectPath(userName, oldName);
+    const newPath = store.getProjectPath(userName, newName);
+
+    const oldExists = await this.projectExists(userName, oldName);
+    if (!oldExists) throw new Error(`Project "${oldName}" does not exist`);
+
+    const newExists = await this.projectExists(userName, newName);
+    if (newExists) throw new Error(`Project "${newName}" already exists`);
+
+    await fs.promises.rename(oldPath, newPath);
+
+    const user = await store.getUser(userName);
+    if (user) {
+      const project = user.projects.find(p => p.name === oldName);
+      if (project) project.name = newName;
+      await store.saveUser(userName, user);
+    }
+  }
+
   async projectExists(userName: string, projectName: string): Promise<boolean> {
     const projectPath = store.getProjectPath(userName, projectName);
     try {
