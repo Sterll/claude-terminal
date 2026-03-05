@@ -41,23 +41,12 @@ function getRecaps(projectId) {
 function saveRecaps(projectId, recaps) {
   try {
     const filePath = getRecapFilePath(projectId);
-    fs.writeFileSync(filePath, JSON.stringify({ _version: 1, recaps }, null, 2), 'utf-8');
+    const tmpPath = filePath + '.tmp';
+    fs.writeFileSync(tmpPath, JSON.stringify({ _version: 1, recaps }, null, 2), 'utf-8');
+    fs.renameSync(tmpPath, filePath);
   } catch (e) {
     console.warn('[SessionRecap] Failed to save recaps:', e.message);
   }
-}
-
-// ============================================================
-// Heuristic fallback (no API)
-// ============================================================
-
-function buildHeuristicSummary(ctx) {
-  const entries = Object.entries(ctx.toolCounts || {})
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 4)
-    .map(([name, count]) => `${name} ×${count}`)
-    .join(', ');
-  return entries || `${ctx.toolCount || 0} tool uses`;
 }
 
 // ============================================================
@@ -94,8 +83,9 @@ async function handleSessionEnd(projectId, ctx) {
     console.warn('[SessionRecap] AI summary failed:', e.message);
   }
 
+  // IPC handler always returns { summary, source } — null only on hard IPC failure
   if (!summary) {
-    summary = buildHeuristicSummary(ctx);
+    summary = `${ctx.toolCount || 0} tool uses`;
     source = 'heuristic';
   }
 

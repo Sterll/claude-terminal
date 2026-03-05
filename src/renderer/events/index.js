@@ -439,14 +439,16 @@ function initClaudeEvents() {
   const hooksEnabled = getSetting('hooksEnabled');
 
   // Wire consumers (they stay active regardless of provider)
+  // NOTE: wireSessionRecapConsumer must be registered BEFORE wireNotificationConsumer
+  // because both listen to SESSION_END and the notification consumer deletes sessionContext.
   wireTimeTrackingConsumer();
+  wireSessionRecapConsumer();
   wireNotificationConsumer();
   wireAttentionConsumer();
   wireDashboardStatsConsumer();
   wireTerminalStatusConsumer();
   wireSessionIdCapture();
   wireTabRenameConsumer();
-  wireSessionRecapConsumer();
   wireDebugListener();
 
   // Activate provider
