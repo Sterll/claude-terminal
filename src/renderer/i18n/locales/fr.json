@@ -1883,6 +1883,11 @@
     "save": "Enregistrer",
     "cancel": "Annuler",
     "delete": "Supprimer",
-    "confirmDeleteCard": "Supprimer la carte \"{title}\" ?"
+    "confirmDeleteCard": "Supprimer la carte \"{title}\" ?",
+    "worktree": "Worktree",
+    "worktreeNone": "Aucun worktree",
+    "sessions": "Sessions",
+    "sessionsLoading": "Chargement...",
+    "sessionsEmpty": "Aucune session trouvée"
   }
 }

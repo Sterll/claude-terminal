@@ -232,11 +232,24 @@
   white-space: nowrap;
 }
 
-.kanban-card-session {
+.kanban-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 14px;
+  flex-wrap: wrap;
+}
+
+.kanban-card-worktree {
+  font-size: var(--font-2xs);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.kanban-card-sessions-count {
   font-size: var(--font-2xs);
   color: var(--text-muted);
-  padding-left: 14px;
-  font-family: monospace;
+  white-space: nowrap;
 }
 
 .kanban-card-delete {
@@ -431,4 +444,57 @@
 .btn-kanban-add-label:hover {
   color: var(--text-primary);
   border-color: var(--accent);
+}
+
+/* ── Session picker (in edit card modal) ── */
+.kanban-session-picker {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+}
+
+.kanban-session-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-color);
+  transition: background 0.1s;
+}
+
+.kanban-session-item:last-child { border-bottom: none; }
+.kanban-session-item:hover { background: var(--bg-hover); }
+.kanban-session-item.selected { background: var(--accent-dim); }
+
+.kanban-session-check {
+  width: 14px;
+  font-size: 11px;
+  color: var(--accent);
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.kanban-session-summary {
+  flex: 1;
+  font-size: var(--font-xs);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kanban-session-date {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.kanban-sessions-empty {
+  padding: 12px;
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  text-align: center;
 }

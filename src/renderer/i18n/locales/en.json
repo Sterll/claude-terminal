@@ -1883,6 +1883,11 @@
     "save": "Save",
     "cancel": "Cancel",
     "delete": "Delete",
-    "confirmDeleteCard": "Delete card \"{title}\"?"
+    "confirmDeleteCard": "Delete card \"{title}\"?",
+    "worktree": "Worktree",
+    "worktreeNone": "No worktree",
+    "sessions": "Sessions",
+    "sessionsLoading": "Loading...",
+    "sessionsEmpty": "No sessions found"
   }
 }
