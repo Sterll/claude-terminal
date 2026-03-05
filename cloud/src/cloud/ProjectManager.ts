@@ -137,6 +137,13 @@ export class ProjectManager {
     '.turbo', '.parcel-cache', '.svelte-kit', '.nuxt', '.output',
   ]);
 
+  // For downloads: same exclusions but keep .git
+  private static EXCLUDE_DIRS_DOWNLOAD = new Set([
+    'node_modules', 'build', 'dist', '.next', '__pycache__',
+    '.venv', 'venv', '.cache', 'coverage', '.tsbuildinfo', '.ct-cloud',
+    '.turbo', '.parcel-cache', '.svelte-kit', '.nuxt', '.output',
+  ]);
+
   /**
    * List all files in a cloud project with their sizes.
    * Used by client to compare local vs cloud.
@@ -285,7 +292,7 @@ export class ProjectManager {
   private async _archiveDir(archive: any, baseDir: string, currentDir: string): Promise<void> {
     const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
     for (const entry of entries) {
-      if (ProjectManager.EXCLUDE_DIRS.has(entry.name)) continue;
+      if (ProjectManager.EXCLUDE_DIRS_DOWNLOAD.has(entry.name)) continue;
       const fullPath = path.join(currentDir, entry.name);
       const relPath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
       if (entry.isDirectory()) {
