@@ -14,7 +14,7 @@ const { showConfirm } = require('../components/Modal');
  * PostgreSQL and SQLite use double quotes; MySQL uses backticks.
  */
 function escapeIdentifier(name, dbType) {
-  if (dbType === 'mysql') {
+  if (dbType === 'mysql' || dbType === 'mariadb') {
     return '`' + String(name).replace(/`/g, '``') + '`';
   }
   return '"' + String(name).replace(/"/g, '""') + '"';
@@ -625,9 +625,10 @@ async function commitCellEdit(input) {
   // Find primary key for WHERE clause
   const pkCol = tableMeta.columns.find(c => c.primaryKey);
   const isMongo = conn && conn.type === 'mongodb';
+  const isRedis = conn && conn.type === 'redis';
   const dbType = conn ? conn.type : 'sqlite';
 
-  if (isMongo) {
+  if (isMongo || isRedis) {
     ctx.showToast({ type: 'warning', title: t('database.browserEditNotSupported') });
     renderContent();
     return;
@@ -644,7 +645,7 @@ async function commitCellEdit(input) {
       if (v === null || v === undefined) return `${escapeIdentifier(c, dbType)} IS NULL`;
       return `${escapeIdentifier(c, dbType)} = ${escapeSqlValue(v)}`;
     });
-    whereClause = dbType === 'mysql'
+    whereClause = (dbType === 'mysql' || dbType === 'mariadb')
       ? `WHERE ${conditions.join(' AND ')} LIMIT 1`
       : `WHERE ${conditions.join(' AND ')}`;
   }
@@ -674,7 +675,7 @@ function insertNewRow() {
   const conn = state.getDatabaseConnection(activeId);
   if (!activeId || !panelState.browserSelectedTable) return;
 
-  if (conn && conn.type === 'mongodb') {
+  if (conn && (conn.type === 'mongodb' || conn.type === 'redis')) {
     ctx.showToast({ type: 'warning', title: t('database.browserEditNotSupported') });
     return;
   }
@@ -750,7 +751,7 @@ async function deleteRow(rowIdx) {
   const data = panelState.browserData;
   if (!activeId || !data || !data.rows[rowIdx]) return;
 
-  if (conn && conn.type === 'mongodb') {
+  if (conn && (conn.type === 'mongodb' || conn.type === 'redis')) {
     ctx.showToast({ type: 'warning', title: t('database.browserEditNotSupported') });
     return;
   }
@@ -786,7 +787,7 @@ async function deleteRow(rowIdx) {
       if (v === null || v === undefined) return `${escapeIdentifier(c, dbType)} IS NULL`;
       return `${escapeIdentifier(c, dbType)} = ${escapeSqlValue(v)}`;
     });
-    whereClause = dbType === 'mysql'
+    whereClause = (dbType === 'mysql' || dbType === 'mariadb')
       ? `WHERE ${conditions.join(' AND ')} LIMIT 1`
       : `WHERE ${conditions.join(' AND ')}`;
   }
@@ -817,6 +818,7 @@ async function loadTableData(tableName) {
   renderContent();
 
   const isMongo = conn && conn.type === 'mongodb';
+  const isRedis = conn && conn.type === 'redis';
   const dbType = conn ? conn.type : 'sqlite';
   const page = panelState.browserPage;
   const pageSize = panelState.browserPageSize;
@@ -827,15 +829,15 @@ async function loadTableData(tableName) {
   // Build search WHERE clause
   const searchTerm = panelState.browserSearchTerm.trim();
   let searchWhere = '';
-  if (searchTerm && !isMongo) {
+  if (searchTerm && !isMongo && !isRedis) {
     const state2 = require('../../state');
     const schema = state2.getDatabaseSchema(activeId);
     const tableMeta = schema?.tables?.find(t => t.name === tableName);
     if (tableMeta && tableMeta.columns.length > 0) {
       // Use '!' as LIKE escape char (works on MySQL, PostgreSQL, SQLite)
       const escaped = searchTerm.replace(/'/g, "''").replace(/%/g, '!%').replace(/_/g, '!_');
-      // MySQL CAST target is CHAR; PostgreSQL and SQLite use TEXT
-      const castType = dbType === 'mysql' ? 'CHAR' : 'TEXT';
+      // MySQL/MariaDB CAST target is CHAR; PostgreSQL and SQLite use TEXT
+      const castType = (dbType === 'mysql' || dbType === 'mariadb') ? 'CHAR' : 'TEXT';
       const conditions = tableMeta.columns.map(col => {
         return `CAST(${escapeIdentifier(col.name, dbType)} AS ${castType}) LIKE '%${escaped}%' ESCAPE '!'`;
       });
@@ -845,7 +847,12 @@ async function loadTableData(tableName) {
 
   const escapedTable = escapeIdentifier(tableName, dbType);
   let sql, countSql;
-  if (isMongo) {
+  if (isRedis) {
+    // tableName is "db:N" — extract DB index
+    const dbIndex = tableName.startsWith('db:') ? parseInt(tableName.slice(3)) : 0;
+    sql = `_REDIS_SCAN ${dbIndex} ${pageSize} ${offset}${searchTerm ? ' ' + searchTerm : ''}`;
+    countSql = null;
+  } else if (isMongo) {
     // Use $regex per-field search — safe against NoSQL injection (no $where/JS eval)
     if (searchTerm) {
       const escapedRegex = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -911,7 +918,23 @@ async function loadSchema(id) {
 
 // ==================== Query Tab ====================
 
-function getQueryTemplates(isMongo, dbType) {
+function getQueryTemplates(isMongo, dbType, isRedis) {
+  if (isRedis) {
+    return [
+      { label: 'KEYS',    icon: '&#x1F511;', sql: 'KEYS *',                                    cat: 'read'  },
+      { label: 'GET',     icon: '&#x25B6;',  sql: 'GET mykey',                                  cat: 'read'  },
+      { label: 'SET',     icon: '&#x270E;',  sql: 'SET mykey myvalue',                           cat: 'write' },
+      { label: 'SETEX',   icon: '&#x23F1;',  sql: 'SETEX mykey 3600 myvalue',                   cat: 'write' },
+      { label: 'DEL',     icon: '&#x2716;',  sql: 'DEL mykey',                                  cat: 'danger'},
+      { label: 'HGETALL', icon: '&#x1F4CB;', sql: 'HGETALL myhash',                             cat: 'read'  },
+      { label: 'HSET',    icon: '&#x270E;',  sql: 'HSET myhash field value',                    cat: 'write' },
+      { label: 'LRANGE',  icon: '&#x1F4CB;', sql: 'LRANGE mylist 0 -1',                         cat: 'read'  },
+      { label: 'SMEMBERS',icon: '&#x2B55;',  sql: 'SMEMBERS myset',                             cat: 'read'  },
+      { label: 'TTL',     icon: '&#x23F3;',  sql: 'TTL mykey',                                  cat: 'read'  },
+      { label: 'EXPIRE',  icon: '&#x23F3;',  sql: 'EXPIRE mykey 3600',                          cat: 'write' },
+      { label: 'INFO',    icon: '&#x2139;',  sql: 'INFO server',                                cat: 'read'  },
+    ];
+  }
   if (isMongo) {
     return [
       { label: 'Find All',     icon: '&#x25B6;', sql: 'db.collection.find({}).limit(50)',        cat: 'read' },
@@ -936,7 +959,7 @@ function getQueryTemplates(isMongo, dbType) {
     indexes     = 'PRAGMA index_list(table_name);';
     describe    = 'PRAGMA table_info(table_name);';
   } else {
-    // mysql (default)
+    // mysql / mariadb (default)
     createTable = 'CREATE TABLE new_table (\n  id INT PRIMARY KEY AUTO_INCREMENT,\n  name VARCHAR(255) NOT NULL,\n  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n);';
     indexes     = 'SHOW INDEX FROM table_name;';
     describe    = 'DESCRIBE table_name;';
@@ -969,10 +992,11 @@ function renderQuery(container) {
 
   const conn = state.getDatabaseConnection(activeId);
   const isMongo = conn && conn.type === 'mongodb';
-  const placeholder = isMongo ? t('database.mongoPlaceholder') : t('database.queryPlaceholder');
+  const isRedis = conn && conn.type === 'redis';
+  const placeholder = isMongo ? t('database.mongoPlaceholder') : isRedis ? 'GET mykey' : t('database.queryPlaceholder');
   const currentQuery = state.getCurrentQuery();
   const queryResult = state.getQueryResult(activeId);
-  const templates = getQueryTemplates(isMongo, conn ? conn.type : 'mysql');
+  const templates = getQueryTemplates(isMongo, conn ? conn.type : 'mysql', isRedis);
 
   // Template chips
   const templatesHtml = templates.map((tpl, i) => {
@@ -1354,10 +1378,12 @@ function showConnectionForm(editId, prefill) {
         <div class="database-form-group">
           <label class="database-form-label">${t('database.type')}</label>
           <select class="database-form-select" id="db-form-type">
-            <option value="sqlite" ${data.type === 'sqlite' ? 'selected' : ''}>SQLite</option>
-            <option value="mysql" ${data.type === 'mysql' ? 'selected' : ''}>MySQL</option>
+            <option value="sqlite"     ${data.type === 'sqlite'     ? 'selected' : ''}>SQLite</option>
+            <option value="mysql"      ${data.type === 'mysql'      ? 'selected' : ''}>MySQL</option>
+            <option value="mariadb"    ${data.type === 'mariadb'    ? 'selected' : ''}>MariaDB</option>
             <option value="postgresql" ${data.type === 'postgresql' ? 'selected' : ''}>PostgreSQL</option>
-            <option value="mongodb" ${data.type === 'mongodb' ? 'selected' : ''}>MongoDB</option>
+            <option value="mongodb"    ${data.type === 'mongodb'    ? 'selected' : ''}>MongoDB</option>
+            <option value="redis"      ${data.type === 'redis'      ? 'selected' : ''}>Redis</option>
           </select>
         </div>
       </div>
@@ -1474,9 +1500,31 @@ function renderFormFields(data, type) {
         <label class="database-form-label">${t('database.databaseName')}</label>
         <input type="text" class="database-form-input" id="db-form-database" value="${escapeHtml(data.database || '')}" placeholder="mydb">
       </div>`;
+  } else if (type === 'redis') {
+    container.innerHTML = `
+      <div class="database-form-row">
+        <div class="database-form-group database-form-grow-2">
+          <label class="database-form-label">${t('database.host')}</label>
+          <input type="text" class="database-form-input" id="db-form-host" value="${escapeHtml(data.host || 'localhost')}" placeholder="localhost">
+        </div>
+        <div class="database-form-group database-form-grow">
+          <label class="database-form-label">${t('database.port')}</label>
+          <input type="number" class="database-form-input" id="db-form-port" value="${escapeHtml(String(data.port || '6379'))}" placeholder="6379">
+        </div>
+      </div>
+      <div class="database-form-row">
+        <div class="database-form-group database-form-grow">
+          <label class="database-form-label">${t('database.password')} <span style="color:var(--text-muted)">(${t('database.optional') || 'optional'})</span></label>
+          <input type="password" class="database-form-input" id="db-form-password" value="" placeholder="********">
+        </div>
+        <div class="database-form-group database-form-grow">
+          <label class="database-form-label">Database index</label>
+          <input type="number" class="database-form-input" id="db-form-database" min="0" max="15" value="${escapeHtml(String(data.database || '0'))}" placeholder="0">
+        </div>
+      </div>`;
   } else {
-    // MySQL / PostgreSQL
-    const defaultPort = type === 'mysql' ? '3306' : '5432';
+    // MySQL / MariaDB / PostgreSQL
+    const defaultPort = (type === 'mysql' || type === 'mariadb') ? '3306' : '5432';
     container.innerHTML = `
       <div class="database-form-row">
         <div class="database-form-group database-form-grow-2">
@@ -1517,9 +1565,14 @@ function collectFormData() {
   } else if (type === 'mongodb') {
     config.connectionString = document.getElementById('db-form-connstring')?.value.trim() || '';
     config.database = document.getElementById('db-form-database')?.value.trim() || '';
+  } else if (type === 'redis') {
+    config.host = document.getElementById('db-form-host')?.value.trim() || 'localhost';
+    config.port = parseInt(document.getElementById('db-form-port')?.value) || 6379;
+    config.password = document.getElementById('db-form-password')?.value || '';
+    config.database = parseInt(document.getElementById('db-form-database')?.value) || 0;
   } else {
     config.host = document.getElementById('db-form-host')?.value.trim() || 'localhost';
-    config.port = parseInt(document.getElementById('db-form-port')?.value) || (type === 'mysql' ? 3306 : 5432);
+    config.port = parseInt(document.getElementById('db-form-port')?.value) || ((type === 'mysql' || type === 'mariadb') ? 3306 : 5432);
     config.database = document.getElementById('db-form-database')?.value.trim() || '';
     config.username = document.getElementById('db-form-username')?.value.trim() || '';
     config.password = document.getElementById('db-form-password')?.value || '';

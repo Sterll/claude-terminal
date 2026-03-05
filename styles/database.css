@@ -291,6 +291,16 @@
   color: var(--success);
   box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.15);
 }
+.database-type-badge.mariadb {
+  background: rgba(3, 155, 229, 0.12);
+  color: #29b6f6;
+  box-shadow: inset 0 0 0 1px rgba(3, 155, 229, 0.15);
+}
+.database-type-badge.redis {
+  background: rgba(220, 56, 45, 0.12);
+  color: #ef5350;
+  box-shadow: inset 0 0 0 1px rgba(220, 56, 45, 0.15);
+}
 
 /* ========== SCHEMA TREE (legacy) ========== */
 .database-schema-tree {
