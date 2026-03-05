@@ -14,6 +14,7 @@ const McpPanel = require('./McpPanel');
 const WorkflowPanel = require('./WorkflowPanel');
 const DatabasePanel = require('./DatabasePanel');
 const CloudPanel = require('./CloudPanel');
+const WorktreesDashboard = require('./WorktreesDashboard');
 
 module.exports = {
   MemoryEditor,
@@ -26,5 +27,6 @@ module.exports = {
   McpPanel,
   WorkflowPanel,
   DatabasePanel,
-  CloudPanel
+  CloudPanel,
+  WorktreesDashboard
 };
