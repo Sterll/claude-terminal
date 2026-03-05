@@ -6,7 +6,7 @@
 // Use preload API instead of direct ipcRenderer
 const api = window.electron_api;
 const { fs, path } = window.electron_nodeModules;
-const { projectsState, setGitPulling, setGitPushing, setGitMerging, setMergeInProgress, getGitOperation, getProjectTimes, getProjectSessions, getFolder, getProject, countProjectsRecursive, getTasks } = require('../state');
+const { projectsState, setGitPulling, setGitPushing, setGitMerging, setMergeInProgress, getGitOperation, getProjectTimes, getProjectSessions, getFolder, getProject, countProjectsRecursive, getTasks, addTask, updateTask, deleteTask } = require('../state');
 const { escapeHtml } = require('../utils');
 const { sanitizeColor } = require('../utils/color');
 const { formatDuration } = require('../utils/format');
@@ -2085,6 +2085,101 @@ function renderOverview(container, projects, options = {}) {
   });
 }
 
+/**
+ * Attach event listeners to the task section in the dashboard container.
+ * @param {HTMLElement} container
+ * @param {Object} project
+ * @param {Function} onOpenClaude
+ * @param {Function} onRender
+ */
+function attachTaskListeners(container, project, onOpenClaude, onRender) {
+  // Show add form
+  container.querySelector('#task-btn-add')?.addEventListener('click', () => {
+    const form = container.querySelector('#task-add-form');
+    const input = container.querySelector('#task-add-input');
+    if (form) { form.style.display = 'flex'; input?.focus(); }
+  });
+
+  // Confirm add
+  const confirmAdd = () => {
+    const input = container.querySelector('#task-add-input');
+    const title = input?.value?.trim();
+    if (!title) return;
+    addTask(project.id, { title });
+    if (onRender) onRender();
+  };
+
+  container.querySelector('#task-add-confirm')?.addEventListener('click', confirmAdd);
+
+  container.querySelector('#task-add-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') confirmAdd();
+    if (e.key === 'Escape') {
+      const form = container.querySelector('#task-add-form');
+      const input = container.querySelector('#task-add-input');
+      if (form) form.style.display = 'none';
+      if (input) input.value = '';
+    }
+  });
+
+  // Cancel add
+  container.querySelector('#task-add-cancel')?.addEventListener('click', () => {
+    const form = container.querySelector('#task-add-form');
+    const input = container.querySelector('#task-add-input');
+    if (form) form.style.display = 'none';
+    if (input) input.value = '';
+  });
+
+  // Task action buttons via event delegation on #task-list
+  container.querySelector('#task-list')?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) {
+      // Click on session badge → copy + toast
+      const badge = e.target.closest('[data-task-session]');
+      if (badge) {
+        const sessionId = badge.dataset.taskSession;
+        navigator.clipboard?.writeText(sessionId).catch(() => {});
+        window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: `${t('tasks.sessionLinked')}: ${sessionId}` } }));
+      }
+      return;
+    }
+
+    const taskId = btn.dataset.taskId;
+    const action = btn.dataset.action;
+
+    if (action === 'start') {
+      updateTask(project.id, taskId, { status: 'in_progress' });
+      if (onOpenClaude) onOpenClaude(project);
+      if (onRender) onRender();
+    }
+
+    if (action === 'complete') {
+      updateTask(project.id, taskId, { status: 'done' });
+      if (onRender) onRender();
+    }
+
+    if (action === 'link') {
+      try {
+        const sessions = await api.claude.sessions(project.path);
+        if (sessions && sessions.length > 0) {
+          const latestSessionId = sessions[0].sessionId;
+          updateTask(project.id, taskId, { sessionId: latestSessionId });
+          window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: `${t('tasks.sessionLinked')}: ${latestSessionId.slice(0, 8)}…` } }));
+          if (onRender) onRender();
+        } else {
+          window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: t('tasks.noActiveSession') } }));
+        }
+      } catch (err) {
+        console.error('[tasks] Failed to link session:', err);
+      }
+    }
+
+    if (action === 'delete') {
+      deleteTask(project.id, taskId);
+      if (onRender) onRender();
+    }
+  });
+}
+
 module.exports = {
   getGitInfo,
   getGitInfoFull,
@@ -2106,5 +2201,6 @@ module.exports = {
   invalidateCache,
   clearAllCache,
   loadAllDiskCaches,
-  preloadAllProjects
+  preloadAllProjects,
+  attachTaskListeners
 };

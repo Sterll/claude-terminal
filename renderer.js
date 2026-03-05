@@ -633,6 +633,13 @@ function refreshDashboardAsync(projectId) {
         onMergeAbort: (pid) => gitMergeAbort(pid),
         onCopyPath: () => {}
       });
+      DashboardService.attachTaskListeners(content, project,
+        (proj) => {
+          createTerminalForProject(proj);
+          document.querySelector('[data-tab="claude"]')?.click();
+        },
+        () => { refreshDashboardAsync(projectId); }
+      );
     }
   }
 }
@@ -2746,6 +2753,13 @@ async function renderDashboardContent(projectIndex) {
     onMergeAbort: (projectId) => gitMergeAbort(projectId),
     onCopyPath: () => {}
   });
+  DashboardService.attachTaskListeners(content, project,
+    (proj) => {
+      createTerminalForProject(proj);
+      document.querySelector('[data-tab="claude"]')?.click();
+    },
+    () => { renderDashboardContent(projectIndex); }
+  );
 }
 
 // ========== NEW PROJECT ==========
