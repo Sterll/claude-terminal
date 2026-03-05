@@ -275,7 +275,9 @@ function buildWorktreeItemHtml(wt) {
 // ══════════════════════════════════════════════
 
 function setupHandlers(root) {
-  root.querySelector('#wt-refresh-btn')?.addEventListener('click', () => {
+  const refreshBtn = root.querySelector('#wt-refresh-btn');
+  refreshBtn?.addEventListener('click', () => {
+    refreshBtn.classList.add('spinning');
     cleanup();
     load();
   });

@@ -1835,7 +1835,6 @@
     "title": "Worktrees",
     "refresh": "Refresh",
     "summary": "{repos} repos · {total} worktrees",
-    "noProjects": "No git projects registered",
     "noWorktrees": "No active worktrees",
     "current": "active",
     "dirtyCount": "{count} modified",
