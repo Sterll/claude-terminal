@@ -296,7 +296,8 @@ contextBridge.exposeInMainWorld('electron_api', {
 
   // ==================== CLAUDE ====================
   claude: {
-    sessions: (projectPath) => ipcRenderer.invoke('claude-sessions', projectPath)
+    sessions: (projectPath) => ipcRenderer.invoke('claude-sessions', projectPath),
+    sessionReplay: (params) => ipcRenderer.invoke('claude-session-replay', params)
   },
 
   // ==================== CHAT (Agent SDK) ====================

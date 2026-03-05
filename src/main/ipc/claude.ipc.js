@@ -311,6 +311,203 @@ async function readFirstLines(filePath, n) {
 }
 
 /**
+ * Extract a human-readable file path from a tool's input object.
+ * @param {string} toolName
+ * @param {object} input
+ * @returns {string|null}
+ */
+function extractFilePath(toolName, input) {
+  if (!input) return null;
+  // Direct file path keys
+  if (input.file_path) return input.file_path;
+  if (input.notebook_path) return input.notebook_path;
+  if (input.path) return input.path;
+  // Bash: try to find first path-like token in command
+  if (toolName === 'Bash' && typeof input.command === 'string') {
+    const match = input.command.match(/(?:^|\s)((?:\/|\.\.?\/|~\/|[A-Za-z]:\\)[^\s"']+)/);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+/**
+ * Truncate tool input for safe IPC transfer (prevents oversized payloads).
+ * @param {object} input
+ * @returns {object}
+ */
+function sanitizeToolInput(input) {
+  if (!input) return {};
+  const str = JSON.stringify(input);
+  if (str.length > 2000) {
+    return { _truncated: true, _preview: str.slice(0, 300) + '...' };
+  }
+  return input;
+}
+
+/**
+ * Parse a session JSONL file into a flat, ordered list of replay steps.
+ * Each step is one of: prompt | tool | response | thinking
+ * @param {string} projectPath
+ * @param {string} sessionId
+ * @returns {Promise<{steps: Array, summary: object}>}
+ */
+async function parseSessionReplay(projectPath, sessionId) {
+  const sessionsDir = getProjectSessionsDir(projectPath);
+  let filePath = path.join(sessionsDir, `${sessionId}.jsonl`);
+
+  // Try to find the JSONL file (filename may differ from sessionId)
+  try {
+    await fs.promises.access(filePath);
+  } catch {
+    try {
+      const files = await fs.promises.readdir(sessionsDir);
+      for (const f of files.filter(f => f.endsWith('.jsonl'))) {
+        const candidate = path.join(sessionsDir, f);
+        const head = await readFirstLines(candidate, 5);
+        let found = false;
+        for (const line of head) {
+          try {
+            const obj = JSON.parse(line);
+            if (obj.sessionId === sessionId) { filePath = candidate; found = true; break; }
+          } catch (_) { /* skip */ }
+        }
+        if (found) break;
+      }
+    } catch (e) {
+      console.warn('[claude-session-replay] Failed to scan sessions dir:', e);
+    }
+  }
+
+  // Read all lines from the JSONL file
+  const rawLines = await new Promise((resolve) => {
+    const lines = [];
+    const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    rl.on('line', line => { if (line.trim()) lines.push(line); });
+    rl.on('close', () => resolve(lines));
+    rl.on('error', () => resolve([]));
+  });
+
+  const steps = [];
+  // Map toolUseId -> step object (already in steps array) for result attachment
+  const pendingTools = new Map();
+
+  for (const line of rawLines) {
+    try {
+      const obj = JSON.parse(line);
+
+      // ── User message ──────────────────────────────────────────────────────
+      if (obj.type === 'user' && obj.message) {
+        const content = obj.message.content;
+        if (typeof content === 'string') {
+          if (content.trim()) {
+            steps.push({
+              index: steps.length, type: 'prompt',
+              text: content.slice(0, 5000),
+              estimatedTokens: Math.ceil(content.length / 4)
+            });
+          }
+        } else if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block.type === 'tool_result') {
+              // Attach output to the matching pending tool step
+              const pending = pendingTools.get(block.tool_use_id);
+              if (pending) {
+                const out = typeof block.content === 'string' ? block.content
+                  : Array.isArray(block.content) ? block.content.map(b => b.text || '').join('\n') : '';
+                pending.toolOutput = out.slice(0, 3000);
+                pending.estimatedOutputTokens = Math.ceil(out.length / 4);
+                pendingTools.delete(block.tool_use_id);
+              }
+            }
+          }
+          // Any plain text blocks are user prompts (rare but possible)
+          const textBlocks = content.filter(b => b.type === 'text');
+          if (textBlocks.length > 0) {
+            const text = textBlocks.map(b => b.text).join('\n');
+            if (text.trim()) {
+              steps.push({
+                index: steps.length, type: 'prompt',
+                text: text.slice(0, 5000),
+                estimatedTokens: Math.ceil(text.length / 4)
+              });
+            }
+          }
+        }
+      }
+
+      // ── Assistant message ─────────────────────────────────────────────────
+      if ((obj.type === 'assistant' || (!obj.type && obj.message?.role === 'assistant')) && obj.message?.content) {
+        for (const block of obj.message.content) {
+          if (block.type === 'text' && block.text && block.text.trim()) {
+            steps.push({
+              index: steps.length, type: 'response',
+              text: block.text.slice(0, 5000),
+              estimatedTokens: Math.ceil(block.text.length / 4)
+            });
+          } else if (block.type === 'tool_use') {
+            const fp = extractFilePath(block.name, block.input);
+            const inputStr = JSON.stringify(block.input || {});
+            const step = {
+              index: steps.length, type: 'tool',
+              toolName: block.name,
+              toolInput: sanitizeToolInput(block.input),
+              toolOutput: null,
+              filePath: fp,
+              estimatedInputTokens: Math.ceil(inputStr.length / 4),
+              estimatedOutputTokens: 0
+            };
+            steps.push(step);
+            pendingTools.set(block.id, step);
+          } else if (block.type === 'thinking' && block.thinking) {
+            steps.push({
+              index: steps.length, type: 'thinking',
+              text: block.thinking.slice(0, 3000),
+              estimatedTokens: Math.ceil(block.thinking.length / 4)
+            });
+          }
+        }
+      }
+
+      // ── Standalone tool_result (alternate JSONL format) ───────────────────
+      if (obj.type === 'tool_result' && obj.message?.content) {
+        for (const block of obj.message.content) {
+          if (block.type === 'tool_result') {
+            const pending = pendingTools.get(block.tool_use_id);
+            if (pending) {
+              const out = typeof block.content === 'string' ? block.content
+                : Array.isArray(block.content) ? block.content.map(b => b.text || '').join('\n') : '';
+              pending.toolOutput = out.slice(0, 3000);
+              pending.estimatedOutputTokens = Math.ceil(out.length / 4);
+              pendingTools.delete(block.tool_use_id);
+            }
+          }
+        }
+      }
+    } catch { /* skip malformed lines */ }
+  }
+
+  // Compute summary statistics
+  const totalEstimatedTokens = steps.reduce((acc, s) =>
+    acc + (s.estimatedInputTokens || 0) + (s.estimatedOutputTokens || s.estimatedTokens || 0), 0);
+  const uniqueFiles = new Set(steps.filter(s => s.filePath).map(s => s.filePath));
+  const toolBreakdown = {};
+  for (const s of steps.filter(s => s.type === 'tool')) {
+    toolBreakdown[s.toolName] = (toolBreakdown[s.toolName] || 0) + 1;
+  }
+
+  return {
+    steps,
+    summary: {
+      totalSteps: steps.length,
+      totalEstimatedTokens,
+      uniqueFileCount: uniqueFiles.size,
+      toolBreakdown
+    }
+  };
+}
+
+/**
  * Register Claude IPC handlers
  */
 function registerClaudeHandlers() {
@@ -326,6 +523,16 @@ function registerClaudeHandlers() {
     } catch (err) {
       console.error('[chat-load-history] Error:', err.message);
       return { success: false, error: err.message, messages: [] };
+    }
+  });
+
+  // Parse a session JSONL into ordered replay steps for the Session Replay panel
+  ipcMain.handle('claude-session-replay', async (event, { projectPath, sessionId }) => {
+    try {
+      return { success: true, ...(await parseSessionReplay(projectPath, sessionId)) };
+    } catch (err) {
+      console.error('[claude-session-replay] Error:', err.message);
+      return { success: false, error: err.message, steps: [], summary: {} };
     }
   });
 }
