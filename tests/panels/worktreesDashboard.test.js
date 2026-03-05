@@ -4,7 +4,7 @@
 const { groupWorktreesByRepo, matchProjectToWorktree } = require('../../src/renderer/ui/panels/WorktreesDashboard');
 
 describe('groupWorktreesByRepo', () => {
-  it('groups worktrees that share the same main repo path', () => {
+  test('groups worktrees that share the same main repo path', () => {
     const results = [
       {
         project: { id: 'p1', path: '/repos/app', name: 'app' },
@@ -25,9 +25,13 @@ describe('groupWorktreesByRepo', () => {
     expect(groups).toHaveLength(1);
     expect(groups[0].repoPath).toBe('/repos/app');
     expect(groups[0].worktrees).toHaveLength(2);
+    expect(groups[0].worktrees.map(w => w.path)).toEqual(
+      expect.arrayContaining(['/repos/app', '/repos/app-feat'])
+    );
+    expect(groups[0].repoName).toBe('app');
   });
 
-  it('returns separate groups for different repos', () => {
+  test('returns separate groups for different repos', () => {
     const results = [
       { project: { id: 'p1', path: '/repos/a', name: 'a' }, worktrees: [{ path: '/repos/a', branch: 'main', isMain: true }] },
       { project: { id: 'p2', path: '/repos/b', name: 'b' }, worktrees: [{ path: '/repos/b', branch: 'main', isMain: true }] }
@@ -35,14 +39,19 @@ describe('groupWorktreesByRepo', () => {
     expect(groupWorktreesByRepo(results)).toHaveLength(2);
   });
 
-  it('returns empty array for empty input', () => {
+  test('returns empty array for empty input', () => {
     expect(groupWorktreesByRepo([])).toEqual([]);
   });
 
-  it('skips entries with no worktrees', () => {
+  test('skips entries with no worktrees', () => {
     const results = [
       { project: { id: 'p1', path: '/repos/a', name: 'a' }, worktrees: [] }
     ];
+    expect(groupWorktreesByRepo(results)).toHaveLength(0);
+  });
+
+  test('skips entries with null worktrees', () => {
+    const results = [{ project: { id: 'p1', path: '/repos/a', name: 'a' }, worktrees: null }];
     expect(groupWorktreesByRepo(results)).toHaveLength(0);
   });
 });
@@ -53,15 +62,20 @@ describe('matchProjectToWorktree', () => {
     { id: 'p2', path: '/repos/app-feat', isWorktree: true }
   ];
 
-  it('finds a project by exact path', () => {
+  test('finds a project by exact path', () => {
     expect(matchProjectToWorktree('/repos/app-feat', projects)?.id).toBe('p2');
   });
 
-  it('normalises backslashes for Windows paths', () => {
+  test('normalises backslashes for Windows paths', () => {
     expect(matchProjectToWorktree('\\repos\\app', projects)?.id).toBe('p1');
   });
 
-  it('returns null when no project matches', () => {
+  test('returns null when no project matches', () => {
     expect(matchProjectToWorktree('/repos/unknown', projects)).toBeNull();
+  });
+
+  test('handles Windows drive-letter paths', () => {
+    const winProjects = [{ id: 'p1', path: 'C:\\repos\\app' }];
+    expect(matchProjectToWorktree('C:\\repos\\app', winProjects)?.id).toBe('p1');
   });
 });
