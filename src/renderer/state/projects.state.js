@@ -986,13 +986,41 @@ function moveTask(projectId, taskId, targetColumnId, targetOrder) {
   const tasks = getTasks(projectId);
   const task = tasks.find(t => t.id === taskId);
   if (!task) return;
+
+  // Validate target column exists
+  const columns = getKanbanColumns(projectId);
+  if (!columns.find(c => c.id === targetColumnId)) return;
+
   const sourceCol = task.columnId;
-  const updated = tasks.map(t => {
-    if (t.id === taskId) return { ...t, columnId: targetColumnId, order: targetOrder, updatedAt: Date.now() };
-    if (t.columnId === sourceCol && t.order > task.order) return { ...t, order: t.order - 1 };
-    if (t.columnId === targetColumnId && t.id !== taskId && t.order >= targetOrder) return { ...t, order: t.order + 1 };
-    return t;
-  });
+  const now = Date.now();
+
+  let updated;
+  if (sourceCol === targetColumnId) {
+    // Same-column reorder
+    const from = task.order;
+    const to = targetOrder;
+    updated = tasks.map(t => {
+      if (t.columnId !== sourceCol) return t;
+      if (t.id === taskId) return { ...t, order: to, updatedAt: now };
+      if (from < to) {
+        // Moving down: shift items in (from, to] up by -1
+        if (t.order > from && t.order <= to) return { ...t, order: t.order - 1 };
+      } else {
+        // Moving up: shift items in [to, from) down by +1
+        if (t.order >= to && t.order < from) return { ...t, order: t.order + 1 };
+      }
+      return t;
+    });
+  } else {
+    // Cross-column move
+    updated = tasks.map(t => {
+      if (t.id === taskId) return { ...t, columnId: targetColumnId, order: targetOrder, updatedAt: now };
+      if (t.columnId === sourceCol && t.order > task.order) return { ...t, order: t.order - 1 };
+      if (t.columnId === targetColumnId && t.order >= targetOrder) return { ...t, order: t.order + 1 };
+      return t;
+    });
+  }
+
   updateProject(projectId, { tasks: updated });
 }
 
@@ -1004,7 +1032,7 @@ function moveTask(projectId, taskId, targetColumnId, targetOrder) {
  */
 function addKanbanColumn(projectId, { title, color = '#888' }) {
   const columns = getKanbanColumns(projectId);
-  const col = { id: generateColumnId(), title, color, order: columns.length };
+  const col = { id: generateColumnId(), title, color, order: columns.length > 0 ? Math.max(...columns.map(c => c.order)) + 1 : 0 };
   updateProject(projectId, { kanbanColumns: [...columns, col] });
   return col;
 }
@@ -1098,13 +1126,13 @@ function migrateTasksToKanban(projectId) {
     'in_progress': 'col-inprogress',
     'done': 'col-done',
   };
-  const tasks = (project.tasks || []).map((t, i) => ({
-    ...t,
-    columnId: statusToColumnId[t.status] || 'col-todo',
-    description: t.description || '',
-    labels: t.labels || [],
-    order: i,
-  }));
+  const colCounters = {};
+  const tasks = (project.tasks || []).map(t => {
+    const colId = statusToColumnId[t.status] || 'col-todo';
+    if (colCounters[colId] === undefined) colCounters[colId] = 0;
+    const order = colCounters[colId]++;
+    return { ...t, columnId: colId, description: t.description || '', labels: t.labels || [], order };
+  });
   updateProject(projectId, { kanbanColumns: [...DEFAULT_COLUMNS], kanbanLabels: [], tasks });
 }
 
