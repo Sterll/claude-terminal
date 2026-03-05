@@ -37,6 +37,14 @@ function generateProjectId() {
 }
 
 /**
+ * Generate unique task ID
+ * @returns {string}
+ */
+function generateTaskId() {
+  return `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+/**
  * Get folder by ID
  * @param {string} folderId
  * @returns {Object|undefined}
@@ -864,6 +872,66 @@ function reorderQuickActions(projectId, fromIndex, toIndex) {
   setQuickActions(projectId, actions);
 }
 
+// ── Tasks ──
+
+/**
+ * Get tasks for a project
+ * @param {string} projectId
+ * @returns {Array}
+ */
+function getTasks(projectId) {
+  const project = getProject(projectId);
+  return project?.tasks || [];
+}
+
+/**
+ * Add a task to a project
+ * @param {string} projectId
+ * @param {{ title: string }} taskData
+ * @returns {Object|null}
+ */
+function addTask(projectId, taskData) {
+  if (!getProject(projectId)) return null;
+  const now = Date.now();
+  const task = {
+    id: generateTaskId(),
+    title: taskData.title,
+    status: 'todo',
+    sessionId: null,
+    createdAt: now,
+    updatedAt: now
+  };
+  const tasks = [...getTasks(projectId), task];
+  updateProject(projectId, { tasks });
+  return task;
+}
+
+/**
+ * Update a task
+ * @param {string} projectId
+ * @param {string} taskId
+ * @param {Object} updates
+ */
+function updateTask(projectId, taskId, updates) {
+  const tasks = getTasks(projectId);
+  const idx = tasks.findIndex(t => t.id === taskId);
+  if (idx === -1) return;
+  const updatedTasks = tasks.map(t =>
+    t.id === taskId ? { ...t, ...updates, updatedAt: Date.now() } : t
+  );
+  updateProject(projectId, { tasks: updatedTasks });
+}
+
+/**
+ * Delete a task
+ * @param {string} projectId
+ * @param {string} taskId
+ */
+function deleteTask(projectId, taskId) {
+  const tasks = getTasks(projectId).filter(t => t.id !== taskId);
+  updateProject(projectId, { tasks });
+}
+
 /**
  * Set preferred editor for a project
  * @param {string} projectId
@@ -958,6 +1026,12 @@ module.exports = {
   // Editor per project
   setProjectEditor,
   getProjectEditor,
+  // Tasks
+  generateTaskId,
+  getTasks,
+  addTask,
+  updateTask,
+  deleteTask,
   // Visual order
   getVisualProjectOrder
 };
