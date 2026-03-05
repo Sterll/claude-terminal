@@ -1,7 +1,7 @@
 /**
  * Database Service
  * Manages database connections, queries, schema, detection and MCP provisioning
- * Supports: SQLite, MySQL, PostgreSQL, MongoDB
+ * Supports: SQLite, MySQL, MariaDB, PostgreSQL, MongoDB, Redis
  */
 
 const path = require('path');
@@ -197,15 +197,16 @@ class DatabaseService {
   async detectDatabases(projectPath) {
     const detected = [];
 
-    // 1. Check .env file
-    try {
-      const envPath = path.join(projectPath, '.env');
-      if (fs.existsSync(envPath)) {
-        const envContent = fs.readFileSync(envPath, 'utf8');
-        const envDetected = this._parseEnvForDatabases(envContent);
-        detected.push(...envDetected);
-      }
-    } catch (e) { /* ignore */ }
+    // 1. Check multiple .env files
+    for (const envName of ['.env', '.env.local', '.env.development', '.env.production', '.env.test']) {
+      try {
+        const envPath = path.join(projectPath, envName);
+        if (fs.existsSync(envPath)) {
+          const envContent = fs.readFileSync(envPath, 'utf8');
+          detected.push(...this._parseEnvForDatabases(envContent, envName));
+        }
+      } catch (e) { /* ignore */ }
+    }
 
     // 2. Check docker-compose.yml
     try {
@@ -213,8 +214,7 @@ class DatabaseService {
         const composePath = path.join(projectPath, name);
         if (fs.existsSync(composePath)) {
           const content = fs.readFileSync(composePath, 'utf8');
-          const composeDetected = this._parseDockerCompose(content);
-          detected.push(...composeDetected);
+          detected.push(...this._parseDockerCompose(content));
           break;
         }
       }
@@ -224,12 +224,7 @@ class DatabaseService {
     try {
       const sqliteFiles = this._findSqliteFiles(projectPath, 2);
       for (const filePath of sqliteFiles) {
-        detected.push({
-          type: 'sqlite',
-          name: `SQLite - ${path.basename(filePath)}`,
-          filePath,
-          detectedFrom: 'file'
-        });
+        detected.push({ type: 'sqlite', name: `SQLite - ${path.basename(filePath)}`, filePath, detectedFrom: 'file' });
       }
     } catch (e) { /* ignore */ }
 
@@ -243,7 +238,22 @@ class DatabaseService {
       }
     } catch (e) { /* ignore */ }
 
-    return detected;
+    // 5. Scan package.json dependencies
+    try {
+      detected.push(...await this._scanPackageJsonDeps(projectPath));
+    } catch (e) { /* ignore */ }
+
+    // 6. Scan ORM config files
+    try {
+      detected.push(...await this._scanOrmConfigs(projectPath));
+    } catch (e) { /* ignore */ }
+
+    // 7. Port scan for running local services
+    try {
+      detected.push(...await this._scanLocalPorts());
+    } catch (e) { /* ignore */ }
+
+    return this._deduplicateDetected(detected);
   }
 
   // ==================== Persistence ====================
@@ -399,9 +409,11 @@ class DatabaseService {
   async _createClient(config) {
     switch (config.type) {
       case 'sqlite': return this._createSqliteClient(config);
-      case 'mysql': return this._createMysqlClient(config);
+      case 'mysql':
+      case 'mariadb': return this._createMysqlClient(config);
       case 'postgresql': return this._createPgClient(config);
       case 'mongodb': return this._createMongoClient(config);
+      case 'redis': return this._createRedisClient(config);
       default: throw new Error(`Unsupported database type: ${config.type}`);
     }
   }
@@ -456,6 +468,20 @@ class DatabaseService {
     return client;
   }
 
+  async _createRedisClient(config) {
+    const Redis = require('ioredis');
+    const client = new Redis({
+      host: config.host || 'localhost',
+      port: config.port || 6379,
+      password: config.password || undefined,
+      db: config.database || 0,
+      connectTimeout: 10000,
+      lazyConnect: true
+    });
+    await client.connect();
+    return client;
+  }
+
   // ==================== Private: Ping ====================
 
   async _ping(type, client) {
@@ -464,6 +490,7 @@ class DatabaseService {
         client.prepare('SELECT 1').get();
         break;
       case 'mysql':
+      case 'mariadb':
         await client.execute('SELECT 1');
         break;
       case 'postgresql':
@@ -471,6 +498,9 @@ class DatabaseService {
         break;
       case 'mongodb':
         await client.db('admin').command({ ping: 1 });
+        break;
+      case 'redis':
+        await client.ping();
         break;
     }
   }
@@ -484,6 +514,7 @@ class DatabaseService {
         client.close();
         break;
       case 'mysql':
+      case 'mariadb':
         await client.end();
         break;
       case 'postgresql':
@@ -491,6 +522,9 @@ class DatabaseService {
         break;
       case 'mongodb':
         await client.close();
+        break;
+      case 'redis':
+        client.disconnect();
         break;
     }
   }
@@ -500,9 +534,11 @@ class DatabaseService {
   async _getSchemaForType(type, client, config) {
     switch (type) {
       case 'sqlite': return this._getSqliteSchema(client);
-      case 'mysql': return this._getMysqlSchema(client);
+      case 'mysql':
+      case 'mariadb': return this._getMysqlSchema(client);
       case 'postgresql': return this._getPgSchema(client);
       case 'mongodb': return this._getMongoSchema(client, config);
+      case 'redis': return this._getRedisSchema(client);
       default: return [];
     }
   }
@@ -625,14 +661,37 @@ class DatabaseService {
     return result;
   }
 
+  async _getRedisSchema(client) {
+    const info = await client.info('keyspace');
+    const dbInfos = [];
+    for (const line of info.split('\r\n')) {
+      const m = line.match(/^db(\d+):keys=(\d+)/);
+      if (m) dbInfos.push({ dbIndex: parseInt(m[1]), keyCount: parseInt(m[2]) });
+    }
+    if (dbInfos.length === 0) dbInfos.push({ dbIndex: 0, keyCount: 0 });
+
+    // Each Redis database appears as a "table" with a fixed schema
+    return dbInfos.map(({ dbIndex, keyCount }) => ({
+      name: `db:${dbIndex}`,
+      columns: [
+        { name: 'key',   type: 'string', primaryKey: true,  nullable: false },
+        { name: 'type',  type: 'string', primaryKey: false, nullable: false },
+        { name: 'ttl',   type: 'number', primaryKey: false, nullable: true  },
+        { name: 'value', type: 'string', primaryKey: false, nullable: true  }
+      ]
+    }));
+  }
+
   // ==================== Private: Execute Query ====================
 
   async _executeForType(type, client, sql, limit, config) {
     switch (type) {
       case 'sqlite': return this._executeSqlite(client, sql, limit);
-      case 'mysql': return this._executeMysql(client, sql, limit);
+      case 'mysql':
+      case 'mariadb': return this._executeMysql(client, sql, limit);
       case 'postgresql': return this._executePg(client, sql, limit);
       case 'mongodb': return this._executeMongo(client, sql, limit, config);
+      case 'redis': return this._executeRedis(client, sql, limit);
       default: throw new Error(`Unsupported type: ${type}`);
     }
   }
@@ -718,9 +777,67 @@ class DatabaseService {
     return result;
   }
 
+  async _executeRedis(client, command, limit) {
+    const trimmed = command.trim();
+
+    // Special internal command: _REDIS_SCAN {dbIndex} {limit} {offset} {pattern?}
+    const scanMatch = trimmed.match(/^_REDIS_SCAN\s+(\d+)\s+(\d+)\s+(\d+)(?:\s+(.+))?$/);
+    if (scanMatch) {
+      const dbIndex = parseInt(scanMatch[1]);
+      const pageSize = parseInt(scanMatch[2]);
+      const offset = parseInt(scanMatch[3]);
+      const pattern = scanMatch[4] ? `*${scanMatch[4]}*` : '*';
+
+      await client.select(dbIndex);
+      const allKeys = await this._redisGetAllKeys(client, pattern);
+      const total = allKeys.length;
+      const pageKeys = allKeys.slice(offset, offset + pageSize);
+
+      const rows = await Promise.all(pageKeys.map(async key => {
+        const type = await client.type(key);
+        const ttl = await client.ttl(key);
+        let value = null;
+        try {
+          if (type === 'string') value = await client.get(key);
+          else if (type === 'hash') value = JSON.stringify(await client.hgetall(key));
+          else if (type === 'list') value = JSON.stringify(await client.lrange(key, 0, 9));
+          else if (type === 'set') value = JSON.stringify(await client.smembers(key));
+          else if (type === 'zset') value = JSON.stringify(await client.zrange(key, 0, 9, 'WITHSCORES'));
+          else value = `(${type})`;
+        } catch { /* ignore */ }
+        return { key, type, ttl: ttl < 0 ? null : ttl, value };
+      }));
+
+      return { columns: ['key', 'type', 'ttl', 'value'], rows, rowCount: total };
+    }
+
+    // Native Redis command (e.g. "GET mykey", "SET foo bar", "KEYS *")
+    const parts = trimmed.split(/\s+/);
+    const cmd = parts[0].toUpperCase();
+    const args = parts.slice(1);
+
+    const result = await client[cmd.toLowerCase()](...args);
+    if (Array.isArray(result)) {
+      const limited = result.slice(0, limit);
+      return { columns: ['value'], rows: limited.map(v => ({ value: v === null ? null : String(v) })), rowCount: result.length };
+    }
+    return { columns: ['result'], rows: [{ result: result === null ? null : String(result) }], rowCount: 1 };
+  }
+
+  async _redisGetAllKeys(client, pattern = '*') {
+    const keys = [];
+    let cursor = '0';
+    do {
+      const [nextCursor, batch] = await client.scan(cursor, 'MATCH', pattern, 'COUNT', 500);
+      cursor = nextCursor;
+      keys.push(...batch);
+    } while (cursor !== '0');
+    return keys.sort();
+  }
+
   // ==================== Private: Detection Parsers ====================
 
-  _parseEnvForDatabases(content) {
+  _parseEnvForDatabases(content, fileName = '.env') {
     const detected = [];
     const lines = content.split('\n');
 
@@ -731,21 +848,21 @@ class DatabaseService {
       const eqIndex = trimmed.indexOf('=');
       const key = trimmed.substring(0, eqIndex).trim();
       let value = trimmed.substring(eqIndex + 1).trim();
-      // Remove quotes
       if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
         value = value.slice(1, -1);
       }
+      if (!value) continue;
 
-      if (key === 'DATABASE_URL' && value) {
+      if (key === 'DATABASE_URL') {
         const parsed = this._parseDatabaseUrl(value);
-        if (parsed) detected.push({ ...parsed, detectedFrom: '.env (DATABASE_URL)' });
-      } else if ((key === 'MONGO_URI' || key === 'MONGODB_URI' || key === 'MONGO_URL') && value) {
-        detected.push({
-          type: 'mongodb',
-          name: `MongoDB - ${key}`,
-          connectionString: value,
-          detectedFrom: `.env (${key})`
-        });
+        if (parsed) detected.push({ ...parsed, detectedFrom: `${fileName} (${key})` });
+      } else if (key === 'MONGO_URI' || key === 'MONGODB_URI' || key === 'MONGO_URL') {
+        detected.push({ type: 'mongodb', name: `MongoDB - ${key}`, connectionString: value, detectedFrom: `${fileName} (${key})` });
+      } else if (key === 'REDIS_URL' || key === 'REDIS_URI') {
+        const parsed = this._parseDatabaseUrl(value);
+        if (parsed) detected.push({ ...parsed, detectedFrom: `${fileName} (${key})` });
+      } else if (key === 'REDIS_HOST') {
+        detected.push({ type: 'redis', name: 'Redis', host: value, port: 6379, detectedFrom: `${fileName}` });
       }
     }
 
@@ -754,30 +871,38 @@ class DatabaseService {
 
   _parseDatabaseUrl(url) {
     try {
-      // postgresql://user:pass@host:port/db
-      // mysql://user:pass@host:port/db
-      // mongodb://user:pass@host:port/db
-      const match = url.match(/^(postgres(?:ql)?|mysql|mongodb(?:\+srv)?):\/\/(?:([^:]+):([^@]+)@)?([^:/]+)(?::(\d+))?\/(.+?)(?:\?.*)?$/);
+      const match = url.match(/^(postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis(?:s)?):\/\/(?:([^:@]*):?([^@]*)@)?([^:/]+)(?::(\d+))?(?:\/(.+?))?(?:\?.*)?$/);
       if (!match) return null;
 
       let type = match[1];
       if (type.startsWith('postgres')) type = 'postgresql';
       if (type.startsWith('mongodb')) type = 'mongodb';
+      if (type === 'rediss') type = 'redis';
+
+      const defaultPorts = { mysql: 3306, mariadb: 3306, postgresql: 5432, redis: 6379 };
 
       if (type === 'mongodb') {
+        return { type: 'mongodb', name: `MongoDB - ${match[6] || 'default'}`, connectionString: url };
+      }
+
+      if (type === 'redis') {
         return {
-          type: 'mongodb',
-          name: `MongoDB - ${match[6] || 'default'}`,
-          connectionString: url
+          type: 'redis',
+          name: `Redis - ${match[4]}`,
+          host: match[4],
+          port: match[5] ? parseInt(match[5]) : 6379,
+          password: match[3] || '',
+          database: match[6] ? parseInt(match[6]) : 0
         };
       }
 
+      const dbName = match[6] || '';
       return {
         type,
-        name: `${type.charAt(0).toUpperCase() + type.slice(1)} - ${match[6]}`,
+        name: `${type.charAt(0).toUpperCase() + type.slice(1)} - ${dbName}`,
         host: match[4],
-        port: match[5] ? parseInt(match[5]) : (type === 'mysql' ? 3306 : 5432),
-        database: match[6],
+        port: match[5] ? parseInt(match[5]) : (defaultPorts[type] || 5432),
+        database: dbName,
         username: match[2] || '',
         password: match[3] || ''
       };
@@ -803,27 +928,148 @@ class DatabaseService {
           username: 'postgres',
           detectedFrom: 'docker-compose'
         });
-      } else if (image.includes('mysql') || image.includes('mariadb')) {
-        detected.push({
-          type: 'mysql',
-          name: 'MySQL (Docker)',
-          host: 'localhost',
-          port: 3306,
-          database: 'mysql',
-          username: 'root',
-          detectedFrom: 'docker-compose'
-        });
+      } else if (image.includes('mariadb')) {
+        detected.push({ type: 'mariadb', name: 'MariaDB (Docker)', host: 'localhost', port: 3306, database: 'mariadb', username: 'root', detectedFrom: 'docker-compose' });
+      } else if (image.includes('mysql')) {
+        detected.push({ type: 'mysql', name: 'MySQL (Docker)', host: 'localhost', port: 3306, database: 'mysql', username: 'root', detectedFrom: 'docker-compose' });
       } else if (image.includes('mongo')) {
-        detected.push({
-          type: 'mongodb',
-          name: 'MongoDB (Docker)',
-          connectionString: 'mongodb://localhost:27017',
-          detectedFrom: 'docker-compose'
-        });
+        detected.push({ type: 'mongodb', name: 'MongoDB (Docker)', connectionString: 'mongodb://localhost:27017', detectedFrom: 'docker-compose' });
+      } else if (image.includes('redis')) {
+        detected.push({ type: 'redis', name: 'Redis (Docker)', host: 'localhost', port: 6379, detectedFrom: 'docker-compose' });
       }
     }
 
     return detected;
+  }
+
+  async _scanPackageJsonDeps(projectPath) {
+    const detected = [];
+    const pkgPath = path.join(projectPath, 'package.json');
+    if (!fs.existsSync(pkgPath)) return detected;
+
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+    const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
+
+    // Map of npm package → db type (first match wins per type)
+    const pkgToType = {
+      'pg': 'postgresql', '@types/pg': 'postgresql', 'postgres': 'postgresql', 'pg-native': 'postgresql',
+      'mysql2': 'mysql', 'mysql': 'mysql',
+      'mariadb': 'mariadb',
+      'mongodb': 'mongodb', 'mongoose': 'mongodb',
+      'redis': 'redis', 'ioredis': 'redis', '@redis/client': 'redis',
+      'better-sqlite3': 'sqlite', 'sqlite3': 'sqlite', 'sqlite': 'sqlite'
+    };
+    const defaults = {
+      postgresql: { host: 'localhost', port: 5432, database: 'postgres', username: 'postgres' },
+      mysql:      { host: 'localhost', port: 3306, database: 'mysql', username: 'root' },
+      mariadb:    { host: 'localhost', port: 3306, database: 'mariadb', username: 'root' },
+      mongodb:    { connectionString: 'mongodb://localhost:27017' },
+      redis:      { host: 'localhost', port: 6379 }
+    };
+
+    const found = new Set();
+    for (const [pkg, type] of Object.entries(pkgToType)) {
+      if (allDeps[pkg] && !found.has(type) && defaults[type]) {
+        found.add(type);
+        detected.push({
+          type,
+          name: `${type.charAt(0).toUpperCase() + type.slice(1)} (package.json: ${pkg})`,
+          ...defaults[type],
+          detectedFrom: `package.json (${pkg})`
+        });
+      }
+    }
+    return detected;
+  }
+
+  async _scanOrmConfigs(projectPath) {
+    const detected = [];
+    const typeMap = { postgres: 'postgresql', postgresql: 'postgresql', mysql: 'mysql', mariadb: 'mariadb', sqlite: 'sqlite', mongodb: 'mongodb', 'better-sqlite3': 'sqlite' };
+
+    // ormconfig.json
+    try {
+      const ormPath = path.join(projectPath, 'ormconfig.json');
+      if (fs.existsSync(ormPath)) {
+        const config = JSON.parse(fs.readFileSync(ormPath, 'utf8'));
+        const type = typeMap[config.type];
+        if (type) {
+          detected.push({
+            type,
+            name: `${type} (ormconfig.json)`,
+            host: config.host || 'localhost',
+            port: config.port,
+            database: config.database,
+            username: config.username,
+            detectedFrom: 'ormconfig.json'
+          });
+        }
+      }
+    } catch (e) { /* ignore */ }
+
+    // knexfile.js — regex scan only (no eval)
+    try {
+      const knexPath = path.join(projectPath, 'knexfile.js');
+      if (fs.existsSync(knexPath)) {
+        const content = fs.readFileSync(knexPath, 'utf8');
+        const clientMatch = content.match(/client\s*:\s*['"]([^'"]+)['"]/);
+        if (clientMatch) {
+          const type = typeMap[clientMatch[1]];
+          if (type) {
+            const hostMatch = content.match(/host\s*:\s*['"]([^'"]+)['"]/);
+            const portMatch = content.match(/port\s*:\s*(\d+)/);
+            const dbMatch   = content.match(/database\s*:\s*['"]([^'"]+)['"]/);
+            detected.push({
+              type,
+              name: `${type} (knexfile.js)`,
+              host: hostMatch ? hostMatch[1] : 'localhost',
+              port: portMatch ? parseInt(portMatch[1]) : undefined,
+              database: dbMatch ? dbMatch[1] : '',
+              detectedFrom: 'knexfile.js'
+            });
+          }
+        }
+      }
+    } catch (e) { /* ignore */ }
+
+    return detected;
+  }
+
+  async _scanLocalPorts() {
+    const net = require('net');
+    const detected = [];
+    const portsToCheck = [
+      { port: 5432, type: 'postgresql', name: 'PostgreSQL', config: { host: 'localhost', port: 5432, database: 'postgres', username: 'postgres' } },
+      { port: 3306, type: 'mysql',      name: 'MySQL',      config: { host: 'localhost', port: 3306, database: 'mysql', username: 'root' } },
+      { port: 27017,type: 'mongodb',   name: 'MongoDB',    config: { connectionString: 'mongodb://localhost:27017' } },
+      { port: 6379,  type: 'redis',     name: 'Redis',      config: { host: 'localhost', port: 6379 } }
+    ];
+
+    const checkPort = (port) => new Promise(resolve => {
+      const socket = new net.Socket();
+      socket.setTimeout(800);
+      socket.on('connect', () => { socket.destroy(); resolve(true); });
+      socket.on('timeout', () => { socket.destroy(); resolve(false); });
+      socket.on('error', () => { socket.destroy(); resolve(false); });
+      socket.connect(port, '127.0.0.1');
+    });
+
+    await Promise.all(portsToCheck.map(async ({ port, type, name, config }) => {
+      if (await checkPort(port)) {
+        detected.push({ type, name: `${name} (localhost)`, ...config, detectedFrom: `port:${port}` });
+      }
+    }));
+    return detected;
+  }
+
+  _deduplicateDetected(detected) {
+    const seen = new Set();
+    return detected.filter(d => {
+      // Key: type + host+port or connectionString
+      const key = d.type + ':' + (d.connectionString || `${d.host || ''}:${d.port || ''}:${d.database || ''}`);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
 
   _findSqliteFiles(dir, maxDepth, currentDepth = 0) {
