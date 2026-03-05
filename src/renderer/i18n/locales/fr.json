@@ -1836,7 +1836,7 @@
     "refresh": "Rafraîchir",
     "summary": "{repos} repos · {total} worktrees",
     "noProjects": "Aucun projet git enregistré",
-    "noWorktrees": "Aucune worktree active",
+    "noWorktrees": "Aucun worktree actif",
     "current": "actif",
     "dirtyCount": "{count} modifié(s)",
     "clean": "Propre",
@@ -1845,7 +1845,7 @@
     "lock": "Verrouiller",
     "unlock": "Déverrouiller",
     "remove": "Supprimer",
-    "openFolder": "Ouvrir dossier",
+    "openFolder": "Ouvrir le dossier",
     "locked": "Verrouillé"
   }
 }
