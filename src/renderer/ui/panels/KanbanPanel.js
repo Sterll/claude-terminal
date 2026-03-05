@@ -115,12 +115,17 @@ function attachEvents(container, project, options) {
       if (!col) return;
       const tasks = getTasks(project.id).filter(task => task.columnId === colId);
       if (tasks.length > 0) {
-        alert(t('kanban.deleteColumnDisabled'));
+        await showConfirm({
+          title: t('kanban.deleteColumn'),
+          message: t('kanban.deleteColumnDisabled'),
+          confirmLabel: 'OK',
+          cancelLabel: '',
+        });
         return;
       }
       const ok = await showConfirm({
         title: t('kanban.deleteColumn'),
-        message: t('kanban.deleteColumnConfirm').replace('{title}', col.title),
+        message: t('kanban.deleteColumnConfirm').replace('{title}', escapeHtml(col.title)),
         confirmLabel: t('kanban.delete'),
         cancelLabel: t('kanban.cancel'),
         danger: true,
@@ -148,7 +153,7 @@ function attachEvents(container, project, options) {
       if (!task) return;
       const ok = await showConfirm({
         title: t('kanban.delete'),
-        message: t('kanban.confirmDeleteCard').replace('{title}', task.title),
+        message: t('kanban.confirmDeleteCard').replace('{title}', escapeHtml(task.title)),
         confirmLabel: t('kanban.delete'),
         cancelLabel: t('kanban.cancel'),
         danger: true,
