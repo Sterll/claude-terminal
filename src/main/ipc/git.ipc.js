@@ -230,10 +230,8 @@ function registerGitHandlers() {
   ipcMain.handle('git-generate-session-recap', async (_event, context) => {
     try {
       const githubToken = await GitHubAuthService.getToken();
-      const result = await generateSessionRecap(context, githubToken);
-      return result || { summary: null, source: 'heuristic' };
+      return await generateSessionRecap(context, githubToken);
     } catch (e) {
-      console.error('[GitIPC] Session recap generation failed:', e.message);
       return { summary: null, source: 'error' };
     }
   });
