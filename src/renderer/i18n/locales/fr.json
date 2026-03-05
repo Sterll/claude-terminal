@@ -770,6 +770,7 @@
     "separatorAnalytics": "Analytique",
     "tabDashboard": "Dashboard",
     "tabTimeTracking": "Suivi du temps",
+    "tabWorktrees": "Worktrees",
     "collapseSidebar": "Réduire la barre",
     "showProjects": "Afficher les projets",
     "hideProjects": "Masquer les projets",
@@ -1829,5 +1830,22 @@
     "trigger": {
       "label": "Déclencheur"
     }
+  },
+  "worktreesDashboard": {
+    "title": "Worktrees",
+    "refresh": "Rafraîchir",
+    "summary": "{repos} repos · {total} worktrees",
+    "noProjects": "Aucun projet git enregistré",
+    "noWorktrees": "Aucune worktree active",
+    "current": "actif",
+    "dirtyCount": "{count} modifié(s)",
+    "clean": "Propre",
+    "timeToday": "{time} auj.",
+    "open": "Ouvrir",
+    "lock": "Verrouiller",
+    "unlock": "Déverrouiller",
+    "remove": "Supprimer",
+    "openFolder": "Ouvrir dossier",
+    "locked": "Verrouillé"
   }
 }
