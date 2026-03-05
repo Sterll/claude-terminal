@@ -2319,3 +2319,70 @@
   background: var(--bg-tertiary);
   color: var(--text-muted);
 }
+
+/* ── Session Recaps ─────────────────────────────────── */
+
+.session-recaps-section .session-recaps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.session-recap-item {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.session-recap-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.session-recap-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+}
+
+.session-recap-sep {
+  opacity: 0.5;
+}
+
+.session-recap-duration {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.session-recap-text {
+  margin: 0;
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.session-recap-bullets {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.session-recap-bullets li {
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  line-height: 1.4;
+  padding-left: 12px;
+  position: relative;
+}
+
+.session-recap-bullets li::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+}

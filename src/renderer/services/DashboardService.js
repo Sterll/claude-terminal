@@ -738,6 +738,70 @@ function buildGitStatusHtml(gitInfo) {
 }
 
 /**
+ * Build session recaps section HTML (last 5 sessions for a project).
+ * @param {string} projectId
+ * @returns {string}
+ */
+function buildSessionRecapsHtml(projectId) {
+  try {
+    const { getRecaps } = require('./SessionRecapService');
+    const recaps = getRecaps(projectId);
+    if (!recaps || recaps.length === 0) return '';
+
+    const itemsHtml = recaps.map(recap => {
+      const ageMs = Date.now() - (recap.timestamp || 0);
+      const ageMins = Math.floor(ageMs / 60000);
+      const ageHours = Math.floor(ageMins / 60);
+      const ageDays = Math.floor(ageHours / 24);
+
+      let timeLabel;
+      if (ageMins < 1) timeLabel = t('dashboard.sessionRecaps.ago.justNow');
+      else if (ageMins < 60) timeLabel = t('dashboard.sessionRecaps.ago.minutes', { n: ageMins });
+      else if (ageDays === 1) timeLabel = t('dashboard.sessionRecaps.ago.yesterday');
+      else if (ageDays > 1) timeLabel = t('dashboard.sessionRecaps.ago.days', { n: ageDays });
+      else timeLabel = t('dashboard.sessionRecaps.ago.hours', { n: ageHours });
+
+      const duration = formatDuration(recap.durationMs || 0);
+
+      let summaryHtml;
+      if (recap.isRich && recap.summary && recap.summary.includes('•')) {
+        const bullets = recap.summary.split('\n')
+          .filter(line => line.trim())
+          .map(line => `<li>${escapeHtml(line.replace(/^•\s*/, ''))}</li>`)
+          .join('');
+        summaryHtml = `<ul class="session-recap-bullets">${bullets}</ul>`;
+      } else {
+        summaryHtml = `<p class="session-recap-text">${escapeHtml(recap.summary || '')}</p>`;
+      }
+
+      return `
+        <div class="session-recap-item">
+          <div class="session-recap-meta">
+            <span class="session-recap-time">${escapeHtml(timeLabel)}</span>
+            <span class="session-recap-sep">·</span>
+            <span class="session-recap-duration">${escapeHtml(duration)}</span>
+          </div>
+          ${summaryHtml}
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="dashboard-section session-recaps-section">
+        <h3>
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+          ${t('dashboard.sessionRecaps.title')}
+        </h3>
+        <div class="session-recaps-list">
+          ${itemsHtml}
+        </div>
+      </div>`;
+  } catch (e) {
+    console.warn('[Dashboard] buildSessionRecapsHtml error:', e.message);
+    return '';
+  }
+}
+
+/**
  * Build code stats section HTML
  * @param {Object} stats
  * @param {Object} gitInfo
@@ -1420,6 +1484,7 @@ function renderDashboardHtml(container, project, data, options, isRefreshing = f
         ${buildPullRequestsHtml(pullRequests)}
       </div>
       <div class="dashboard-col">
+        ${buildSessionRecapsHtml(project.id)}
         ${buildStatsHtml(stats, gitInfo)}
         ${buildClaudeActivityHtml()}
         ${gitInfo.isGitRepo ? buildContributorsHtml(gitInfo.contributors) : ''}
@@ -1428,6 +1493,24 @@ function renderDashboardHtml(container, project, data, options, isRefreshing = f
 
     ${buildProjectInsightsHtml(data, project.id)}
   `;
+
+  // Live-update session recaps section when a new recap arrives
+  const onRecapUpdated = (e) => {
+    if (e.detail?.projectId !== project.id) return;
+    const existing = container.querySelector('.session-recaps-section');
+    const newHtml = buildSessionRecapsHtml(project.id);
+    if (!newHtml) return;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = newHtml;
+    const newSection = tmp.firstElementChild;
+    if (existing) {
+      existing.replaceWith(newSection);
+    } else {
+      const statsSection = container.querySelector('.dashboard-col:last-child');
+      if (statsSection) statsSection.prepend(newSection);
+    }
+  };
+  window.addEventListener('session-recap-updated', onRecapUpdated);
 
   // Attach click handlers for workflow runs
   container.querySelectorAll('.workflow-run-item').forEach(item => {

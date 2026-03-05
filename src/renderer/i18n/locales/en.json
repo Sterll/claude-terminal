@@ -290,6 +290,16 @@
     "sessions": "Sessions",
     "toolCalls": "Tool calls",
     "toolErrors": "Errors",
+    "sessionRecaps": {
+      "title": "Recent sessions",
+      "ago": {
+        "justNow": "Just now",
+        "minutes": "{n} min ago",
+        "hours": "{n}h ago",
+        "yesterday": "Yesterday",
+        "days": "{n} days ago"
+      }
+    },
     "insights": {
       "title": "Project Insights",
       "commitActivity": "Commit activity (30 days)",

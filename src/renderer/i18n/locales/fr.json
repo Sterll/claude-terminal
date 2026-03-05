@@ -360,6 +360,16 @@
     "sessions": "Sessions",
     "toolCalls": "Appels d'outils",
     "toolErrors": "Erreurs",
+    "sessionRecaps": {
+      "title": "Sessions récentes",
+      "ago": {
+        "justNow": "À l'instant",
+        "minutes": "Il y a {n} min",
+        "hours": "Il y a {n}h",
+        "yesterday": "Hier",
+        "days": "Il y a {n} jours"
+      }
+    },
     "insights": {
       "title": "Aperçu du projet",
       "commitActivity": "Activité des commits (30 jours)",
