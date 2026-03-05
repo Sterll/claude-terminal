@@ -632,19 +632,25 @@ function refreshDashboardAsync(projectId) {
         onGitPush: (pid) => gitPush(pid),
         onMergeAbort: (pid) => gitMergeAbort(pid),
         onCopyPath: () => {},
-        onTaskSessionOpen: (proj, sessionId) => {
+        onTaskSessionOpen: async (proj, sessionId) => {
+          const switchToClaude = () => {
+            document.querySelector('[data-tab="claude"]')?.click();
+            setSelectedProjectFilter(projectIndex);
+            ProjectList.render();
+            TerminalManager.filterByProject(projectIndex);
+          };
           // Find existing terminal with this session
-          const terminals = terminalsState.get().terminals;
-          for (const [id, td] of terminals) {
+          const terms = terminalsState.get().terminals;
+          for (const [id, td] of terms) {
             if (td.claudeSessionId === sessionId) {
+              switchToClaude();
               TerminalManager.setActiveTerminal(id);
-              document.querySelector('[data-tab="claude"]')?.click();
               return;
             }
           }
           // No terminal found → resume session
-          TerminalManager.resumeSession(proj, sessionId, { skipPermissions: settingsState.get().skipPermissions });
-          document.querySelector('[data-tab="claude"]')?.click();
+          await TerminalManager.resumeSession(proj, sessionId, { skipPermissions: settingsState.get().skipPermissions });
+          switchToClaude();
         },
         onTaskRender: () => { refreshDashboardAsync(projectId); }
       });
@@ -2760,17 +2766,23 @@ async function renderDashboardContent(projectIndex) {
     onGitPush: (projectId) => gitPush(projectId),
     onMergeAbort: (projectId) => gitMergeAbort(projectId),
     onCopyPath: () => {},
-    onTaskSessionOpen: (proj, sessionId) => {
-      const terminals = terminalsState.get().terminals;
-      for (const [id, td] of terminals) {
+    onTaskSessionOpen: async (proj, sessionId) => {
+      const switchToClaude = () => {
+        document.querySelector('[data-tab="claude"]')?.click();
+        setSelectedProjectFilter(projectIndex);
+        ProjectList.render();
+        TerminalManager.filterByProject(projectIndex);
+      };
+      const terms = terminalsState.get().terminals;
+      for (const [id, td] of terms) {
         if (td.claudeSessionId === sessionId) {
+          switchToClaude();
           TerminalManager.setActiveTerminal(id);
-          document.querySelector('[data-tab="claude"]')?.click();
           return;
         }
       }
-      TerminalManager.resumeSession(proj, sessionId, { skipPermissions: settingsState.get().skipPermissions });
-      document.querySelector('[data-tab="claude"]')?.click();
+      await TerminalManager.resumeSession(proj, sessionId, { skipPermissions: settingsState.get().skipPermissions });
+      switchToClaude();
     },
     onTaskRender: () => { renderDashboardContent(projectIndex); }
   });
