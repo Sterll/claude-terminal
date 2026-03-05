@@ -493,6 +493,7 @@ function registerCloudHandlers() {
     try {
       const { url, key } = _getCloudConfig();
       const headers = { 'Authorization': `Bearer ${key}` };
+      const machineId = getMachineId();
 
       const projectsResp = await _fetchCloud(`${url}/api/projects`, { headers });
       if (!projectsResp.ok) return { changes: [] };
@@ -500,6 +501,7 @@ function registerCloudHandlers() {
 
       const allChanges = [];
       for (const project of projects) {
+        if (!project.name.startsWith(`${machineId}-`)) continue; // filtre machine
         const changesResp = await _fetchCloud(`${url}/api/projects/${encodeURIComponent(project.name)}/changes`, { headers });
         if (!changesResp.ok) continue;
         const { changes } = await changesResp.json();
@@ -975,13 +977,18 @@ async function _checkPendingChangesOnReconnect() {
     const projectsResp = await _fetchCloud(`${url}/api/projects`, { headers });
     if (projectsResp.ok) {
       const { projects } = await projectsResp.json();
+      const machineId = getMachineId();
       const allChanges = [];
       for (const project of projects) {
+        // Only process projects that belong to this machine
+        if (!project.name.startsWith(`${machineId}-`)) continue;
         const changesResp = await _fetchCloud(`${url}/api/projects/${encodeURIComponent(project.name)}/changes`, { headers });
         if (!changesResp.ok) continue;
         const { changes } = await changesResp.json();
         if (changes.length > 0) {
-          allChanges.push({ projectName: project.name, changes });
+          // Strip machineId prefix for display to match local project name
+          const localName = project.name.slice(`${machineId}-`.length);
+          allChanges.push({ projectName: project.name, localName, changes });
         }
       }
       if (allChanges.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
