@@ -1067,6 +1067,8 @@
     "title": "Chat",
     "sendMessage": "Send",
     "placeholder": "Ask Claude something...",
+    "suggestTodos": "You have {count} TODO(s), handle them? [Tab]",
+    "suggestGit": "You have {count} uncommitted file(s), review them? [Tab]",
     "queuePlaceholder": "Queue a follow-up message...",
     "thinking": "Thinking",
     "toolCall": "Tool call",
