@@ -17,6 +17,7 @@ const { zipProject } = require('../utils/zipProject');
 const { settingsFile } = require('../utils/paths');
 const { execGit } = require('../utils/git');
 const { getTokenForGit } = require('../services/GitHubAuthService');
+const { getMachineId } = require('../utils/machineId');
 
 let mainWindow = null;
 
@@ -38,6 +39,77 @@ function _getCloudConfig() {
   const key = settings.cloudApiKey;
   if (!url || !key) throw new Error('Cloud not configured');
   return { url: url.replace(/\/$/, ''), key };
+}
+
+// ── Machine-scoped project key helpers ──────────────────────────────────────
+
+/**
+ * Get the effective cloud project key for a given local project.
+ * If the project has an explicit cloudProjectKey override, use it.
+ * Otherwise, use {machineId}-{projectName}.
+ * @param {string} projectName - local project name
+ * @param {string|null} [cloudProjectKeyOverride] - from project.cloudProjectKey
+ * @returns {string}
+ */
+function _getCloudProjectKey(projectName, cloudProjectKeyOverride) {
+  if (cloudProjectKeyOverride && typeof cloudProjectKeyOverride === 'string') {
+    return cloudProjectKeyOverride;
+  }
+  const machineId = getMachineId();
+  return `${machineId}-${projectName}`;
+}
+
+/** Cache to avoid re-running migration per project per session */
+const _migratedProjects = new Set();
+
+/**
+ * Transparent migration: if {machineId}-{name} doesn't exist but bare {name} does,
+ * rename the old project to the new scoped name (first PC wins).
+ * No-op if already migrated this session or if new name already exists.
+ * @param {string} url - cloud server URL
+ * @param {string} key - API key
+ * @param {string} cloudKey - the new scoped key (e.g. "pc-yanis-a1b2c3d4-my-app")
+ * @param {string} projectName - bare project name (e.g. "my-app")
+ */
+async function _migrateProjectIfNeeded(url, key, cloudKey, projectName) {
+  // Skip if cloudKey === projectName (override mode, not machine-scoped)
+  if (cloudKey === projectName) return;
+  // Skip if already checked this session
+  if (_migratedProjects.has(cloudKey)) return;
+  _migratedProjects.add(cloudKey);
+
+  try {
+    // 1. Check if new scoped name already exists
+    const checkNew = await _fetchCloud(`${url}/api/projects`, {
+      headers: { 'Authorization': `Bearer ${key}` },
+    });
+    if (!checkNew.ok) return;
+    const { projects } = await checkNew.json();
+    const names = (projects || []).map(p => p.name);
+
+    if (names.includes(cloudKey)) return; // Already migrated or fresh install
+
+    // 2. Check if old bare name exists
+    if (!names.includes(projectName)) return; // Nothing to migrate
+
+    // 3. Rename old → new (first PC wins)
+    console.log(`[Cloud] Migrating project "${projectName}" → "${cloudKey}"`);
+    const renameResp = await _fetchCloud(`${url}/api/projects/${encodeURIComponent(projectName)}`, {
+      method: 'PATCH',
+      headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ newName: cloudKey }),
+    });
+    if (renameResp.ok) {
+      console.log(`[Cloud] Migration OK: "${projectName}" → "${cloudKey}"`);
+    } else {
+      // Another PC may have claimed it between our check and rename — that's fine
+      console.warn(`[Cloud] Migration skipped (race or error): ${renameResp.status}`);
+      _migratedProjects.delete(cloudKey); // Allow retry next time
+    }
+  } catch (e) {
+    console.warn('[Cloud] Migration check failed:', e.message);
+    _migratedProjects.delete(cloudKey);
+  }
 }
 
 function registerCloudHandlers() {
