@@ -11,6 +11,9 @@ const { escapeHtml } = require('../../utils/dom');
 const { getProjectTimes } = require('../../state/timeTracking.state');
 const { projectsState } = require('../../state/projects.state');
 const Toast = require('../components/Toast');
+const { addProject, setOpenedProjectId } = require('../../state');
+const { showContextMenu } = require('../components/ContextMenu');
+const { showConfirm } = require('../components/Modal');
 
 const api = window.electron_api;
 
@@ -95,11 +98,10 @@ async function enrichWithStatus(group) {
     .map(r => r.value);
 }
 
-function enrichWithTime(group, projects) {
+function enrichWithTime(group, projects, openedProjectId) {
   // Derive isCurrent by comparing to the opened project path
-  const state = projectsState.get();
-  const openedProject = state.openedProjectId
-    ? projects.find(p => p.id === state.openedProjectId)
+  const openedProject = openedProjectId
+    ? projects.find(p => p.id === openedProjectId)
     : null;
   const openedPath = openedProject ? normPath(openedProject.path) : null;
 
@@ -131,20 +133,22 @@ async function load() {
   renderLoading(root);
 
   try {
-    const projects = projectsState.get().projects || [];
+    const state = projectsState.get();
+    const projects = state.projects || [];
+    const openedProjectId = state.openedProjectId;
     const groups = await scanAllWorktrees();
     for (const group of groups) {
       await enrichWithStatus(group);
-      enrichWithTime(group, projects);
+      enrichWithTime(group, projects, openedProjectId);
     }
     _scanData = groups;
     renderDashboard(root, groups);
+    clearTimeout(_autoRefreshTimer);
+    _autoRefreshTimer = setTimeout(() => load(), AUTO_REFRESH_MS);
   } catch (err) {
+    console.error('[WorktreesDashboard] load error:', err);
     root.innerHTML = `<div class="wt-empty">${escapeHtml(err.message)}</div>`;
   }
-
-  clearTimeout(_autoRefreshTimer);
-  _autoRefreshTimer = setTimeout(() => load(), AUTO_REFRESH_MS);
 }
 
 function cleanup() {
@@ -229,7 +233,7 @@ function buildWorktreeItemHtml(wt) {
     : (wt.branch || 'unknown');
 
   const lockHtml = wt.locked
-    ? `<span class="wt-lock-icon" title="${escapeHtml(t('worktreesDashboard.locked') + (wt.lockReason ? ': ' + wt.lockReason : ''))}">🔒</span>`
+    ? `<span class="wt-lock-icon" title="${escapeHtml(t('worktreesDashboard.locked'))}${wt.lockReason ? ': ' + escapeHtml(wt.lockReason) : ''}">🔒</span>`
     : '';
 
   const dirtyHtml = wt.dirtyCount > 0
@@ -285,7 +289,6 @@ function setupHandlers(root) {
 }
 
 function handleOpen(wtPath) {
-  const { addProject, setOpenedProjectId } = require('../../state');
   const projects = projectsState.get().projects;
   const norm = normPath(wtPath);
   let proj = projects.find(p => normPath(p.path) === norm);
@@ -298,7 +301,6 @@ function handleOpen(wtPath) {
 }
 
 function handleMenu(btnEl) {
-  const { showContextMenu } = require('../components/ContextMenu');
   const wtPath = btnEl.dataset.wtPath;
   const isLocked = btnEl.dataset.wtLocked === '1';
   const isMain = btnEl.dataset.wtMain === '1';
@@ -336,7 +338,6 @@ async function doUnlock(mainRepoPath, wtPath) {
 }
 
 async function doRemove(mainRepoPath, wtPath) {
-  const { showConfirm } = require('../components/Modal');
   const confirmed = await showConfirm({ title: t('gitTab.removeWorktree'), message: wtPath, danger: true });
   if (!confirmed) return;
   const res = await api.git.worktreeRemove({ projectPath: mainRepoPath, worktreePath: wtPath });
