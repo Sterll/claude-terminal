@@ -1043,6 +1043,148 @@ class ChatService {
       process.removeListener('uncaughtException', this._uncaughtExceptionHandler);
     }
   }
+
+  /**
+   * Analyze a chat session conversation and suggest CLAUDE.md updates.
+   * @param {Array<{role: string, content: string}>} messages - Conversation messages
+   * @param {string} projectPath - Absolute path to the project
+   * @returns {Promise<{suggestions: Array, claudeMdExists: boolean}>}
+   */
+  async analyzeSessionForClaudeMd(messages, projectPath) {
+    // Read existing CLAUDE.md (or empty string if not found)
+    const claudeMdPath = require('path').join(projectPath, 'CLAUDE.md');
+    let existingContent = '';
+    try {
+      existingContent = require('fs').readFileSync(claudeMdPath, 'utf8');
+    } catch { /* file doesn't exist */ }
+
+    const claudeMdExists = existingContent.length > 0;
+
+    // Truncate to last 50 messages to stay within token limits
+    const truncated = messages.slice(-50);
+
+    // Build conversation text (skip very long tool outputs)
+    const conversationText = truncated.map(m => {
+      const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+      const truncContent = content.length > 2000 ? content.slice(0, 2000) + '...' : content;
+      return `${m.role.toUpperCase()}: ${truncContent}`;
+    }).join('\n\n');
+
+    if (!conversationText.trim()) return { suggestions: [], claudeMdExists };
+
+    const prompt = `You are analyzing a conversation between a user and Claude Code (an AI coding assistant).
+Your goal: identify useful discoveries about the PROJECT that would help future Claude sessions.
+
+Existing CLAUDE.md content (may be empty):
+<existing_claude_md>
+${existingContent || '(empty — file does not exist yet)'}
+</existing_claude_md>
+
+Conversation:
+<conversation>
+${conversationText}
+</conversation>
+
+Instructions:
+- Identify 0-5 useful discoveries about the project (architecture, conventions, commands, dependencies, patterns, important files, gotchas).
+- ONLY include information NOT already covered in the existing CLAUDE.md.
+- Focus on facts that would help Claude work faster in future sessions on this project.
+- Be concise. Each content block should be 1-5 lines of markdown.
+- Return ONLY a valid JSON array, no other text:
+
+[
+  {
+    "title": "Short title (5-8 words)",
+    "section": "## Section Heading",
+    "content": "Markdown content to add"
+  }
+]
+
+If there are no new useful discoveries, return exactly: []`;
+
+    try {
+      // Use the Anthropic API key from Claude CLI credentials
+      const credPath = require('path').join(require('os').homedir(), '.claude', '.credentials.json');
+      let apiKey = null;
+      try {
+        const creds = JSON.parse(require('fs').readFileSync(credPath, 'utf8'));
+        apiKey = creds.claudeAiOauth?.accessToken || creds.accessToken || null;
+      } catch { /* no credentials */ }
+
+      if (!apiKey) {
+        console.warn('[ChatService] No Anthropic credentials found for CLAUDE.md analysis');
+        return { suggestions: [], claudeMdExists };
+      }
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 1024,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      });
+
+      if (!response.ok) {
+        console.warn(`[ChatService] CLAUDE.md analysis API error: ${response.status}`);
+        return { suggestions: [], claudeMdExists };
+      }
+
+      const data = await response.json();
+      const text = data.content?.[0]?.text || '[]';
+
+      // Parse JSON safely
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) return { suggestions: [], claudeMdExists };
+
+      const suggestions = JSON.parse(jsonMatch[0]);
+      if (!Array.isArray(suggestions)) return { suggestions: [], claudeMdExists };
+
+      // Validate structure
+      const valid = suggestions.filter(s =>
+        s && typeof s.title === 'string' && typeof s.section === 'string' && typeof s.content === 'string'
+      );
+
+      return { suggestions: valid, claudeMdExists };
+    } catch (err) {
+      console.warn('[ChatService] CLAUDE.md analysis failed:', err.message);
+      return { suggestions: [], claudeMdExists };
+    }
+  }
+
+  /**
+   * Apply selected CLAUDE.md sections to the project.
+   * Creates CLAUDE.md if it doesn't exist, appends sections otherwise.
+   * @param {string} projectPath
+   * @param {Array<{section: string, content: string}>} sections
+   */
+  applyClaudeMdSections(projectPath, sections) {
+    if (!sections || sections.length === 0) return { success: true };
+
+    const fs = require('fs');
+    const path = require('path');
+    const claudeMdPath = path.join(projectPath, 'CLAUDE.md');
+
+    try {
+      let existing = '';
+      try { existing = fs.readFileSync(claudeMdPath, 'utf8'); } catch { /* new file */ }
+
+      const toAppend = sections.map(s => `\n${s.section}\n\n${s.content}`).join('\n');
+      const newContent = existing
+        ? existing.trimEnd() + '\n' + toAppend + '\n'
+        : toAppend.trimStart() + '\n';
+
+      fs.writeFileSync(claudeMdPath, newContent, 'utf8');
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
 }
 
 /**
