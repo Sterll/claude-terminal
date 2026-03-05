@@ -187,6 +187,7 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
   }
 
   initI18n(settingsState.get().language); // Initialize i18n with saved language preference
+  applyPinnedTabs(); // Apply sidebar tab visibility from settings
 
   // Initialize Claude event bus and provider (hooks or scraping)
   initClaudeEvents();
@@ -2299,22 +2300,29 @@ btnCollapseSidebar.onclick = () => {
 };
 
 // ========== TAB NAVIGATION ==========
-// Set ARIA roles on all nav-tabs
-document.querySelectorAll('.nav-tab').forEach(tab => {
+// Set ARIA roles on all nav-tabs (exclude More button which has its own role)
+document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
   tab.setAttribute('role', 'tab');
   tab.setAttribute('aria-selected', tab.classList.contains('active') ? 'true' : 'false');
 });
 
-document.querySelectorAll('.nav-tab').forEach(tab => {
+document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
+  tab.oncontextmenu = (e) => {
+    const tabId = tab.dataset.tab;
+    if (tabId === 'claude') return; // Claude is always pinned
+    e.preventDefault();
+    _showTabCtxMenu(e.clientX, e.clientY, tabId);
+  };
   tab.onclick = () => {
     const tabId = tab.dataset.tab;
-    document.querySelectorAll('.nav-tab').forEach(t => {
+    document.querySelectorAll('.nav-tab[data-tab]').forEach(t => {
       t.classList.remove('active');
       t.setAttribute('aria-selected', 'false');
     });
     tab.classList.add('active');
     tab.setAttribute('aria-selected', 'true');
     document.getElementById('btn-settings').classList.remove('active');
+    document.getElementById('btn-more-tabs')?.classList.remove('active');
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.getElementById(`tab-${tabId}`).classList.add('active');
     if (tabId === 'plugins') PluginsPanel.loadPlugins();
@@ -2369,6 +2377,187 @@ document.querySelectorAll('.nav-tab').forEach(tab => {
     }
   };
 });
+
+// ========== PINNED TABS SYSTEM ==========
+const _ALL_TABS_ORDER = ['claude', 'git', 'database', 'mcp', 'plugins', 'skills', 'agents', 'workflows', 'dashboard', 'timetracking', 'memory', 'cloud-panel'];
+
+function applyPinnedTabs() {
+  const pinned = settingsState.get().pinnedTabs || _ALL_TABS_ORDER;
+  let hiddenCount = 0;
+
+  document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
+    const tabId = tab.dataset.tab;
+    if (pinned.includes(tabId)) {
+      tab.classList.remove('nav-tab--hidden');
+    } else {
+      tab.classList.add('nav-tab--hidden');
+      hiddenCount++;
+    }
+  });
+
+  _updateSeparatorVisibility();
+
+  const moreBtn = document.getElementById('btn-more-tabs');
+  const moreSep = document.getElementById('nav-separator-more');
+  if (moreBtn) moreBtn.style.display = hiddenCount > 0 ? '' : 'none';
+  if (moreSep) moreSep.style.display = hiddenCount > 0 ? '' : 'none';
+  const badge = document.getElementById('more-tabs-badge');
+  if (badge) badge.textContent = hiddenCount > 0 ? hiddenCount : '';
+}
+
+function _updateSeparatorVisibility() {
+  const nav = document.querySelector('.nav-tabs');
+  if (!nav) return;
+  const children = [...nav.children];
+  children.forEach((el, i) => {
+    if (!el.classList.contains('nav-separator') || el.id === 'nav-separator-more') return;
+    let hasVisible = false;
+    for (let j = i + 1; j < children.length; j++) {
+      const child = children[j];
+      if (child.classList.contains('nav-separator')) break;
+      if (child.classList.contains('nav-tab') && child.id !== 'btn-more-tabs' && !child.classList.contains('nav-tab--hidden')) {
+        hasVisible = true;
+        break;
+      }
+    }
+    el.style.display = hasVisible ? '' : 'none';
+  });
+}
+
+function _pinTab(tabId) {
+  const current = settingsState.get().pinnedTabs || [..._ALL_TABS_ORDER];
+  if (current.includes(tabId)) return;
+  const newPinned = [...current];
+  const insertIdx = _ALL_TABS_ORDER.indexOf(tabId);
+  let insertAt = newPinned.length;
+  for (let i = 0; i < newPinned.length; i++) {
+    if (_ALL_TABS_ORDER.indexOf(newPinned[i]) > insertIdx) { insertAt = i; break; }
+  }
+  newPinned.splice(insertAt, 0, tabId);
+  setSetting('pinnedTabs', newPinned);
+  applyPinnedTabs();
+  _closeMoreDropdown();
+}
+
+function _unpinTab(tabId) {
+  if (tabId === 'claude') return;
+  const newPinned = (settingsState.get().pinnedTabs || [..._ALL_TABS_ORDER]).filter(t => t !== tabId);
+  // If unpinned tab is currently active, switch to claude
+  const activeTab = document.querySelector('.nav-tab.active');
+  if (activeTab?.dataset.tab === tabId) {
+    document.querySelector('[data-tab="claude"]')?.click();
+  }
+  setSetting('pinnedTabs', newPinned);
+  applyPinnedTabs();
+}
+
+function _buildMoreDropdown() {
+  const pinned = settingsState.get().pinnedTabs || _ALL_TABS_ORDER;
+  const unpinned = _ALL_TABS_ORDER.filter(id => !pinned.includes(id));
+  const dropdown = document.getElementById('more-tabs-dropdown');
+  if (!dropdown) return;
+
+  dropdown.innerHTML = unpinned.map(tabId => {
+    const tab = document.querySelector(`.nav-tab[data-tab="${tabId}"]`);
+    if (!tab) return '';
+    const svg = tab.querySelector('svg')?.outerHTML || '';
+    const label = tab.querySelector('span')?.textContent?.trim() || tabId;
+    return `
+      <button class="nav-tab" data-more-tab="${tabId}" role="menuitem">
+        ${svg}
+        <span>${label}</span>
+        <span class="more-pin-btn" title="Épingler dans la barre">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
+        </span>
+      </button>`;
+  }).join('');
+
+  dropdown.querySelectorAll('[data-more-tab]').forEach(item => {
+    item.onclick = (e) => {
+      const tabId = item.dataset.moreTab;
+      if (e.target.closest('.more-pin-btn')) {
+        _pinTab(tabId);
+        return;
+      }
+      // Navigate to the hidden tab (click works even on hidden elements)
+      const hiddenTab = document.querySelector(`.nav-tab[data-tab="${tabId}"]`);
+      if (hiddenTab) hiddenTab.click();
+      // Mark More button as active (visual feedback that active tab is in overflow)
+      document.getElementById('btn-more-tabs')?.classList.add('active');
+      _closeMoreDropdown();
+    };
+  });
+}
+
+function _openMoreDropdown() {
+  const btn = document.getElementById('btn-more-tabs');
+  const dropdown = document.getElementById('more-tabs-dropdown');
+  if (!btn || !dropdown) return;
+  _buildMoreDropdown();
+  const rect = btn.getBoundingClientRect();
+  dropdown.style.display = 'flex';
+  // Position to the right of the sidebar
+  dropdown.style.left = (rect.right + 8) + 'px';
+  dropdown.style.top = rect.top + 'px';
+  // Clamp vertically if overflow
+  requestAnimationFrame(() => {
+    const dropH = dropdown.offsetHeight;
+    const viewH = window.innerHeight;
+    if (rect.top + dropH > viewH - 8) {
+      dropdown.style.top = Math.max(8, viewH - dropH - 8) + 'px';
+    }
+  });
+}
+
+function _closeMoreDropdown() {
+  const dropdown = document.getElementById('more-tabs-dropdown');
+  if (dropdown) dropdown.style.display = 'none';
+}
+
+function _showTabCtxMenu(x, y, tabId) {
+  _closeMoreDropdown();
+  const existing = document.getElementById('_tab-ctx-menu');
+  if (existing) existing.remove();
+  const menu = document.createElement('div');
+  menu.id = '_tab-ctx-menu';
+  menu.className = 'tab-ctx-menu';
+  menu.style.top = y + 'px';
+  menu.style.left = x + 'px';
+  menu.innerHTML = `
+    <button class="tab-ctx-menu-item" id="_tab-ctx-unpin">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
+      Masquer de la barre
+    </button>`;
+  document.body.appendChild(menu);
+  document.getElementById('_tab-ctx-unpin').onclick = () => { _unpinTab(tabId); menu.remove(); };
+  // Clamp to viewport
+  requestAnimationFrame(() => {
+    const mRect = menu.getBoundingClientRect();
+    if (mRect.right > window.innerWidth) menu.style.left = (window.innerWidth - mRect.width - 8) + 'px';
+    if (mRect.bottom > window.innerHeight) menu.style.top = (window.innerHeight - mRect.height - 8) + 'px';
+  });
+  const closeOutside = (e) => { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', closeOutside, true); } };
+  setTimeout(() => document.addEventListener('click', closeOutside, true), 0);
+}
+
+// More button click handler
+document.getElementById('btn-more-tabs')?.addEventListener('click', () => {
+  const dropdown = document.getElementById('more-tabs-dropdown');
+  if (dropdown?.style.display === 'none' || !dropdown?.style.display) {
+    _openMoreDropdown();
+  } else {
+    _closeMoreDropdown();
+  }
+});
+
+// Close More dropdown on outside click
+document.addEventListener('click', (e) => {
+  const dropdown = document.getElementById('more-tabs-dropdown');
+  const moreBtn = document.getElementById('btn-more-tabs');
+  if (dropdown?.style.display !== 'none' && !dropdown?.contains(e.target) && !moreBtn?.contains(e.target)) {
+    _closeMoreDropdown();
+  }
+}, true);
 
 // ========== CONTEXT MENU ==========
 function setupContextMenuHandlers() {

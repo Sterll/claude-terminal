@@ -44,6 +44,7 @@ const defaultSettings = {
   telemetryCategories: { app: true, features: true, errors: true }, // Granular event categories
   telemetryConsentShown: false, // Whether consent prompt was shown
   agentColors: {}, // Custom colors per tool/agent name: { 'Grep': '#ff0000', 'my-agent': '#00ff00' }
+  pinnedTabs: ['claude', 'git', 'database', 'mcp', 'plugins', 'skills', 'agents', 'workflows', 'dashboard', 'timetracking', 'memory', 'cloud-panel'], // Pinned sidebar tabs (rest go to More menu)
 };
 
 const settingsState = new State({ ...defaultSettings });

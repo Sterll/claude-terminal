@@ -205,7 +205,18 @@
           </svg>
           <span data-i18n="cloud.tabTitle">Cloud</span>
         </button>
+        <!-- More tabs button (shown only when there are hidden tabs) -->
+        <div class="nav-separator nav-separator--bare" id="nav-separator-more" style="display:none"></div>
+        <button class="nav-tab more-tabs-btn" id="btn-more-tabs" title="Plus" style="display:none" role="tab" aria-haspopup="true">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+            <path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+          </svg>
+          <span data-i18n="ui.moreTabs">Plus</span>
+          <span class="more-tabs-badge" id="more-tabs-badge"></span>
+        </button>
       </nav>
+      <!-- More tabs dropdown (portal) -->
+      <div class="more-tabs-dropdown" id="more-tabs-dropdown" style="display:none" role="menu"></div>
       <div class="sidebar-footer">
         <button class="sidebar-collapse-btn" id="btn-collapse-sidebar" data-i18n-title="ui.collapseSidebar" title="Collapse sidebar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="collapse-icon">
