@@ -1,0 +1,260 @@
+/* =====================================================================
+   Worktrees Dashboard
+   ===================================================================== */
+
+.worktrees-dashboard {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+/* ── Header ── */
+.wt-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.wt-header-left h2 {
+  font-size: var(--font-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 2px;
+}
+
+.wt-summary {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+}
+
+.wt-refresh-btn {
+  background: none;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: var(--font-xs);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: color .15s, border-color .15s;
+}
+.wt-refresh-btn:hover { color: var(--text-primary); border-color: var(--accent); }
+.wt-refresh-btn.spinning svg { animation: wt-spin 0.8s linear infinite; }
+@keyframes wt-spin { to { transform: rotate(360deg); } }
+
+/* ── Content area ── */
+.wt-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── Empty state ── */
+.wt-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  padding: 60px 0;
+}
+
+/* ── Repo group card ── */
+.wt-repo-group {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.wt-repo-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.wt-repo-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+.wt-repo-name {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wt-repo-path {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+/* ── Worktree item ── */
+.wt-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border-color);
+  transition: background .1s;
+}
+.wt-item:last-child { border-bottom: none; }
+.wt-item:hover { background: var(--bg-hover); }
+.wt-item.is-current { background: var(--accent-dim); }
+
+.wt-item-icon {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+}
+.wt-item.is-main .wt-item-icon { color: var(--accent); }
+
+.wt-item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wt-item-branch {
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.wt-branch-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wt-badge-current {
+  font-size: var(--font-2xs);
+  background: var(--accent);
+  color: #000;
+  border-radius: 3px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.wt-lock-icon {
+  font-size: 0.7rem;
+  color: var(--warning);
+  flex-shrink: 0;
+  cursor: default;
+}
+
+.wt-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+}
+
+.wt-dirty-badge {
+  color: var(--warning);
+}
+.wt-dirty-badge.clean { color: var(--text-muted); }
+
+.wt-time { color: var(--text-muted); white-space: nowrap; }
+
+/* ── Actions ── */
+.wt-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity .15s;
+}
+.wt-item:hover .wt-item-actions { opacity: 1; }
+
+.wt-action-btn {
+  background: none;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-size: var(--font-xs);
+  cursor: pointer;
+  transition: color .1s, border-color .1s;
+  white-space: nowrap;
+}
+.wt-action-btn:hover { color: var(--text-primary); border-color: var(--accent); }
+
+.wt-action-menu-btn {
+  background: none;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  cursor: pointer;
+  font-size: var(--font-sm);
+  line-height: 1;
+  transition: color .1s, border-color .1s;
+}
+.wt-action-menu-btn:hover { color: var(--text-primary); border-color: var(--accent); }
+
+/* ── Skeleton loader ── */
+.wt-skeleton {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.wt-skeleton-header {
+  height: 38px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+}
+.wt-skeleton-row {
+  height: 40px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 10px;
+}
+.wt-skeleton-row:last-child { border-bottom: none; }
+.wt-skeleton-line {
+  height: 10px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--bg-tertiary) 25%, var(--bg-hover) 50%, var(--bg-tertiary) 75%);
+  background-size: 200% 100%;
+  animation: wt-shimmer 1.4s infinite;
+}
+@keyframes wt-shimmer { to { background-position: -200% 0; } }
