@@ -480,5 +480,11 @@ contextBridge.exposeInMainWorld('electron_api', {
     onLoopProgress:   createListener('workflow-loop-progress'),
     onNotifyDesktop:  createListener('workflow-notify-desktop'),
     onListUpdated:    createListener('workflow-list-updated'),
+  },
+
+  // ==================== CONTROL TOWER ====================
+  controlTower: {
+    // Fired by main process when an MCP interrupt trigger is received
+    onInterrupt: createListener('control-tower:interrupt'),
   }
 });

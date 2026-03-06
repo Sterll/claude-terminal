@@ -766,6 +766,21 @@ function loadPanel(container) {
   if (!_isLoaded) {
     _wireEventBus();
     _wireChatEvents();
+
+    // MCP-triggered interrupt (from control_tower_interrupt MCP tool)
+    const api = window.electron_api;
+    if (api?.controlTower?.onInterrupt) {
+      api.controlTower.onInterrupt(({ projectId }) => {
+        for (const [key, agent] of _agents) {
+          const agentProjectId = key.startsWith('hooks:') ? key.slice(6) : null;
+          const matchesProject = agentProjectId === projectId || agent.projectPath === projectId;
+          if (matchesProject && agent.status !== 'DONE' && agent.status !== 'ERROR') {
+            _interruptAgent(key);
+          }
+        }
+      });
+    }
+
     _isLoaded = true;
   }
 

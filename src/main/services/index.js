@@ -125,6 +125,16 @@ function _startMcpTriggerPolling(mainWindow) {
         webAppService.stop({ projectIndex });
       }
     });
+
+    // Control Tower — terminal interrupt
+    // The renderer holds the project→terminal mapping, so we forward there.
+    _pollTriggerDir(path.join(dataDir, 'terminal', 'triggers'), (data) => {
+      if (data.type !== 'interrupt' || !data.projectId) return;
+      console.log(`[Services] MCP interrupt: ${data.projectId}`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('control-tower:interrupt', { projectId: data.projectId });
+      }
+    });
   }, 2000);
 }
 
