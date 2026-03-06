@@ -1,13 +1,15 @@
 'use strict';
 
+const { t } = require('../i18n');
+
 module.exports = {
   type: 'webhook',
-  label: 'Webhook (HTTP POST)',
+  label: t('workflow.webhook.label'),
   fields: [
     {
       type: 'hint',
       key: '_wh_hint',
-      text: 'Ce workflow se déclenche via un POST HTTP depuis un service externe (GitHub, Stripe, etc.).',
+      text: t('workflow.trigger.webhookHint'),
     },
   ],
 };

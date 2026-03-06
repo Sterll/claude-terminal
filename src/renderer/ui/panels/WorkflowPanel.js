@@ -18,7 +18,7 @@ const {
   GIT_ACTIONS, WAIT_UNITS, CONDITION_VARS, CONDITION_OPS,
   TRIGGER_CONFIG, CRON_MODES,
   // Functions
-  findStepType, buildConditionPreview,
+  findStepType, buildConditionPreview, getTriggerConfig,
   drawCronPicker, bindWfDropdown, wfDropdown,
   // Formatting
   fmtTime, fmtDuration, statusDot, statusLabel,
@@ -449,19 +449,19 @@ function renderPanel() {
       <div class="wf-topbar">
         <div class="wf-topbar-tabs">
           <button class="wf-tab active" data-wftab="workflows">
-            Workflows <span class="wf-badge">3</span>
+            ${t('workflow.workflowsTab')} <span class="wf-badge">3</span>
           </button>
           <button class="wf-tab" data-wftab="runs">
-            Historique <span class="wf-badge">4</span>
+            ${t('workflow.runsTab')} <span class="wf-badge">4</span>
           </button>
           <button class="wf-tab wf-tab--hub" id="wf-tab-hub">
             <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-            Hub
+            ${t('workflow.hubTab')}
           </button>
         </div>
         <button class="wf-create-btn" id="wf-btn-new">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
-          Nouveau
+          ${t('common.new')}
         </button>
       </div>
       <div class="wf-content" id="wf-content"></div>
@@ -508,11 +508,11 @@ function renderWorkflowList(el) {
     el.innerHTML = `
       <div class="wf-empty">
         <div class="wf-empty-glyph">${svgWorkflow(36)}</div>
-        <p class="wf-empty-title">Aucun workflow</p>
-        <p class="wf-empty-sub">Automatisez vos tâches répétitives avec Claude</p>
+        <p class="wf-empty-title">${t('workflow.list.emptyTitle')}</p>
+        <p class="wf-empty-sub">${t('workflow.list.emptySub')}</p>
         <button class="wf-create-btn" id="wf-empty-new">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
-          Créer un workflow
+          ${t('workflow.list.createBtn')}
         </button>
       </div>
     `;
@@ -579,11 +579,11 @@ function renderWorkflowList(el) {
     showContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
-        { label: 'Modifier', icon: svgEdit(), onClick: () => openEditor(id) },
-        { label: 'Lancer maintenant', icon: svgPlay(12), onClick: () => triggerWorkflow(id) },
-        { label: 'Dupliquer', icon: svgCopy(), onClick: () => duplicateWorkflow(id) },
+        { label: t('workflow.contextMenu.edit'), icon: svgEdit(), onClick: () => openEditor(id) },
+        { label: t('workflow.contextMenu.runNow'), icon: svgPlay(12), onClick: () => triggerWorkflow(id) },
+        { label: t('workflow.contextMenu.duplicate'), icon: svgCopy(), onClick: () => duplicateWorkflow(id) },
         { separator: true },
-        { label: 'Supprimer', icon: svgTrash(), danger: true, onClick: () => confirmDeleteWorkflow(id, wf.name) },
+        { label: t('workflow.contextMenu.delete'), icon: svgTrash(), danger: true, onClick: () => confirmDeleteWorkflow(id, wf.name) },
       ],
     });
   });
@@ -591,7 +591,7 @@ function renderWorkflowList(el) {
 
 function cardHtml(wf) {
   const lastRun = state.runs.find(r => r.workflowId === wf.id);
-  const cfg = TRIGGER_CONFIG[wf.trigger?.type] || TRIGGER_CONFIG.manual;
+  const cfg = getTriggerConfig(wf.trigger?.type);
   const runCount = state.runs.filter(r => r.workflowId === wf.id).length;
   const successCount = state.runs.filter(r => r.workflowId === wf.id && r.status === 'success').length;
 
@@ -601,7 +601,7 @@ function cardHtml(wf) {
       <div class="wf-card-body">
         <div class="wf-card-top">
           <div class="wf-card-title-row">
-            <button class="wf-card-fav ${wf.favorite ? 'wf-card-fav--active' : ''}" title="${wf.favorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}">
+            <button class="wf-card-fav ${wf.favorite ? 'wf-card-fav--active' : ''}" title="${wf.favorite ? t('workflow.favorites.remove') : t('workflow.favorites.add')}">
               <svg width="12" height="12" viewBox="0 0 24 24" ${wf.favorite ? 'fill="currentColor"' : 'fill="none"'} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
             </button>
             <span class="wf-card-name">${escapeHtml(wf.name)}</span>
@@ -667,7 +667,7 @@ function buildLoopIterationsHtml(step, totalRunDuration) {
 
   const itersHtml = loopOutput.items.map((iterOutputs, idx) => {
     const item = iterOutputs?._item;
-    let itemLabel = `Itération ${idx + 1}`;
+    let itemLabel = t('workflow.runMeta.iterationLabel', { n: idx + 1 });
     if (item && typeof item === 'object') {
       if (item.name && item.path) itemLabel = `\uD83D\uDCC1 ${escapeHtml(item.name)} \xB7 ${escapeHtml(item.path)}`;
       else if (item.name) itemLabel = `\uD83D\uDCC1 ${escapeHtml(item.name)}`;
@@ -721,7 +721,13 @@ function buildLoopIterationsHtml(step, totalRunDuration) {
 
 function buildRunCardHtml(run) {
   const wf = state.workflows.find(w => w.id === run.workflowId);
-  const statusLabels = { success: '\u25CF Succ\xE8s', failed: '\u2717 \xC9chec', running: '\u27F3 En cours', cancelled: '\u2013 Annul\xE9', pending: '\u2026 En attente' };
+  const statusLabels = {
+    success: `\u25CF ${t('workflow.helpers.status.success')}`,
+    failed: `\u2717 ${t('workflow.helpers.status.failed')}`,
+    running: `\u27F3 ${t('workflow.helpers.status.running')}`,
+    cancelled: `\u2013 ${t('workflow.helpers.status.cancelled')}`,
+    pending: `\u2026 ${t('workflow.helpers.status.pending')}`,
+  };
   const statusLabel_ = statusLabels[run.status] || run.status;
 
   const pipelineHtml = (run.steps || []).map((s, i) => {
@@ -745,10 +751,10 @@ function buildRunCardHtml(run) {
       <div class="wf-run-card-accent"></div>
       <div class="wf-run-card-body">
         <div class="wf-run-card-top">
-          <span class="wf-run-card-name">${escapeHtml(wf?.name || 'Supprim\xE9')}</span>
+          <span class="wf-run-card-name">${escapeHtml(wf?.name || t('workflow.runMeta.deletedLabel'))}</span>
           <div class="wf-run-card-top-right">
             <span class="wf-run-card-status">${statusLabel_}</span>
-            ${isRunning ? `<button class="wf-run-stop-btn" data-run-id="${run.id}" title="Arr\xEAter le run">
+            ${isRunning ? `<button class="wf-run-stop-btn" data-run-id="${run.id}" title="${t('workflow.runMeta.stopTitle')}">
               <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
             </button>` : ''}
           </div>
@@ -773,21 +779,21 @@ function renderRunHistory(el) {
       <div class="wf-runs-list">
         <div class="wf-runs-list-header">
           <span class="wf-runs-list-count">${state.runs.length} run${state.runs.length !== 1 ? 's' : ''}</span>
-          <button class="wf-runs-clear" id="wf-clear-runs" title="Effacer l'historique">
+          <button class="wf-runs-clear" id="wf-clear-runs" title="${t('workflow.history.clearTitle')}">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-            Effacer
+            ${t('workflow.history.clearBtn')}
           </button>
         </div>
         <div class="wf-runs-list-scroll">
-          ${!state.runs.length ? `<div class="wf-empty"><p class="wf-empty-title">Aucun run</p><p class="wf-empty-sub">Les ex\xE9cutions s'afficheront ici</p></div>` : ''}
+          ${!state.runs.length ? `<div class="wf-empty"><p class="wf-empty-title">${t('workflow.history.emptyTitle')}</p><p class="wf-empty-sub">${t('workflow.history.emptySub')}</p></div>` : ''}
           ${runs.map(buildRunCardHtml).join('')}
-          ${hasMore ? `<div class="wf-runs-show-more" id="wf-show-more-runs">Afficher ${state.runs.length - INITIAL_LIMIT} runs de plus</div>` : ''}
+          ${hasMore ? `<div class="wf-runs-show-more" id="wf-show-more-runs">${t('workflow.history.showMore', { n: state.runs.length - INITIAL_LIMIT })}</div>` : ''}
         </div>
       </div>
       <div class="wf-run-detail-col" id="wf-detail-col">
         <div class="wf-run-detail-empty">
           <span class="wf-run-detail-empty-icon">\u27F3</span>
-          <span class="wf-run-detail-empty-text">S\xE9lectionne un run pour voir le d\xE9tail</span>
+          <span class="wf-run-detail-empty-text">${t('workflow.history.selectRun')}</span>
         </div>
       </div>
     </div>
@@ -825,9 +831,9 @@ function renderRunHistory(el) {
   el.querySelector('#wf-clear-runs')?.addEventListener('click', async (e) => {
     e.stopPropagation();
     const confirmed = await showConfirm({
-      title: 'Effacer l\'historique',
-      message: `Supprimer les ${state.runs.length} runs de l'historique ? Cette action est irr\xE9versible.`,
-      confirmLabel: 'Effacer',
+      title: t('workflow.history.clearTitle'),
+      message: t('workflow.history.clearMessage', { n: state.runs.length }),
+      confirmLabel: t('workflow.history.clearBtn'),
       danger: true,
     });
     if (!confirmed) return;
@@ -894,14 +900,14 @@ function renderRunDetailInCol(col, run) {
     <div class="wf-run-detail">
       <div class="wf-run-detail-header-new">
         <div class="wf-run-detail-title-row">
-          <span class="wf-run-detail-name">${escapeHtml(wf?.name || 'Workflow supprim\xE9')}</span>
+          <span class="wf-run-detail-name">${escapeHtml(wf?.name || t('workflow.runMeta.workflowDeleted'))}</span>
           <div class="wf-run-detail-actions">
             ${run.status === 'running'
               ? `<button class="wf-run-stop-btn wf-run-stop-btn--detail" id="wf-run-stop">
                    <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
-                   Stop
+                   ${t('workflow.stop')}
                  </button>`
-              : (wf ? `<button class="wf-run-detail-rerun" id="wf-run-rerun">${svgPlay(10)} Re-run</button>` : '')
+              : (wf ? `<button class="wf-run-detail-rerun" id="wf-run-rerun">${svgPlay(10)} ${t('workflow.runMeta.rerun')}</button>` : '')
             }
             <span class="wf-status-pill wf-status-pill--${run.status}">${statusDot(run.status)}${statusLabel(run.status)}</span>
           </div>
@@ -1071,11 +1077,11 @@ function openEditor(workflowId = null) {
         <div class="wf-editor-toolbar-left">
           <button class="wf-editor-back" id="wf-ed-back">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
-            Retour
+            ${t('workflow.back')}
           </button>
           <div class="wf-editor-toolbar-sep"></div>
           <input class="wf-editor-name wf-input" id="wf-ed-name" value="${escapeHtml(editorDraft.name)}" placeholder="${t('workflow.untitled')}…" />
-          <span class="wf-editor-dirty" id="wf-ed-dirty" style="display:none" title="Modifications non sauvegardées"></span>
+          <span class="wf-editor-dirty" id="wf-ed-dirty" style="display:none" title="${t('workflow.editor.unsavedChanges')}"></span>
         </div>
 
         <!-- Center: history + zoom -->
@@ -1125,14 +1131,14 @@ function openEditor(workflowId = null) {
         <div class="wf-editor-left-panel">
           <div class="wf-lp-tabs">
             <button class="wf-lp-tab active" data-lp-tab="nodes">${t('workflow.nodesTab')}</button>
-            <button class="wf-lp-tab" data-lp-tab="vars">Variables</button>
+            <button class="wf-lp-tab" data-lp-tab="vars">${t('workflow.editor.variablesTab')}</button>
           </div>
           <div class="wf-lp-content" data-lp-content="nodes">
             <div class="wf-editor-palette" id="wf-ed-palette">
               ${[
-                { key: 'action', title: 'Actions' },
-                { key: 'data',   title: 'Données' },
-                { key: 'flow',   title: 'Contrôle' },
+                { key: 'action', title: t('workflow.editor.palette.actions') },
+                { key: 'data',   title: t('workflow.editor.palette.data') },
+                { key: 'flow',   title: t('workflow.editor.palette.flow') },
               ].map(cat => {
                 const items = nodeTypes.filter(st => st.category === cat.key);
                 if (!items.length) return '';
@@ -1149,14 +1155,14 @@ function openEditor(workflowId = null) {
           <div class="wf-lp-content" data-lp-content="vars" style="display:none">
             <div class="wf-vars-panel" id="wf-vars-panel">
               <div class="wf-vars-panel-header">
-                <button class="wf-vars-add-btn" id="wf-vars-add" title="Ajouter une variable">
+                <button class="wf-vars-add-btn" id="wf-vars-add" title="${t('workflow.editor.addVariable')}">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 </button>
               </div>
               <div class="wf-vars-list" id="wf-vars-list">
                 <div class="wf-vars-empty">
                   <svg class="wf-vars-empty-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-                  <span class="wf-vars-empty-text">Cliquer + pour créer<br>une variable</span>
+                  <span class="wf-vars-empty-text">${t('workflow.editor.varsEmpty')}</span>
                 </div>
               </div>
             </div>
@@ -1170,8 +1176,8 @@ function openEditor(workflowId = null) {
             <div class="wf-props-empty-icon-wrap">
               <svg class="wf-props-empty-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></svg>
             </div>
-            <div class="wf-props-empty-title">Propriétés</div>
-            <p class="wf-props-empty-text">Sélectionnez un node pour<br>configurer ses paramètres</p>
+            <div class="wf-props-empty-title">${t('workflow.properties')}</div>
+            <p class="wf-props-empty-text">${t('workflow.editor.selectNode')}</p>
           </div>
         </div>
       </div>
@@ -1187,7 +1193,7 @@ function openEditor(workflowId = null) {
       <div class="wf-ai-panel" id="wf-ai-panel" style="display:none">
         <div class="wf-ai-panel-header">
           <span class="wf-ai-panel-title">${t('workflow.aiBuilderTitle')}</span>
-          <button class="wf-ai-panel-close" id="wf-ai-panel-close" title="Fermer">
+          <button class="wf-ai-panel-close" id="wf-ai-panel-close" title="${t('common.close')}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -1472,7 +1478,7 @@ function openEditor(workflowId = null) {
             <span class="wf-lastrun-status-label" style="color:${statusCol}">${status}</span>
             <span class="wf-lastrun-duration">${duration}</span>
           </div>
-          ${error ? `<div class="wf-lastrun-error"><span class="wf-lastrun-error-label">Erreur</span><pre class="wf-lastrun-error-msg">${escapeHtml(error)}</pre></div>` : ''}
+          ${error ? `<div class="wf-lastrun-error"><span class="wf-lastrun-error-label">${t('workflow.errorLabel')}</span><pre class="wf-lastrun-error-msg">${escapeHtml(error)}</pre></div>` : ''}
           ${outputsHtml ? `<div class="wf-lastrun-section"><div class="wf-lastrun-section-title">${t('workflow.outputs')}</div>${outputsHtml}</div>` : `<div class="wf-lastrun-empty">${t('workflow.noOutputData')}</div>`}
         </div>`;
     }
@@ -1493,7 +1499,7 @@ function openEditor(workflowId = null) {
           <button class="wf-props-tab ${activeTab === 'lastrun' ? 'active' : ''}" data-tab="lastrun">${t('workflow.lastRun')}</button>
         </div>` : ''}
         ${activeTab === 'lastrun' ? lastRunHtml : `
-        ${nodeType !== 'trigger' ? `<div class="wf-node-id-badge"><code>$${nodeStepId}</code> <span>ID de ce node pour les variables</span></div>` : ''}
+        ${nodeType !== 'trigger' ? `<div class="wf-node-id-badge"><code>$${nodeStepId}</code> <span>${t('workflow.editor.nodeIdHint')}</span></div>` : ''}
         ${nodeType !== 'trigger' ? `
         <div class="wf-step-edit-field">
           <label class="wf-step-edit-label">${svgEdit()} ${t('workflow.customName')}</label>
@@ -1750,14 +1756,14 @@ function openEditor(workflowId = null) {
       varsList.innerHTML = `
         <div class="wf-vars-empty">
           <svg class="wf-vars-empty-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-          <span class="wf-vars-empty-text">Cliquer + pour créer<br>une variable</span>
+          <span class="wf-vars-empty-text">${t('workflow.editor.varsEmpty')}</span>
         </div>`;
       return;
     }
     varsList.innerHTML = vars.map((v, idx) => {
       const color = VAR_TYPE_COLORS[v.varType] || VAR_TYPE_COLORS.any;
       return `
-        <div class="wf-var-item" data-var-idx="${idx}" style="--var-color:${color}" title="Cliquer pour insérer un node Variable">
+        <div class="wf-var-item" data-var-idx="${idx}" style="--var-color:${color}" title="${t('workflow.editor.insertVariableNode')}">
           <span class="wf-var-dot" style="background:${color}"></span>
           <span class="wf-var-name">${escapeHtml(v.name)}</span>
           <span class="wf-var-type-badge" style="--var-color:${color}">${v.varType || 'any'}</span>
@@ -1817,18 +1823,18 @@ function openEditor(workflowId = null) {
     backdrop.innerHTML = `
       <div class="wf-var-popover">
         <div class="wf-var-popover-header">
-          <span class="wf-var-popover-title">${isNew ? 'Nouvelle variable' : 'Modifier la variable'}</span>
-          <button class="wf-var-popover-close" title="Fermer">
+          <span class="wf-var-popover-title">${isNew ? t('workflow.varEditor.newTitle') : t('workflow.varEditor.editTitle')}</span>
+          <button class="wf-var-popover-close" title="${t('common.close')}">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
         <div class="wf-var-popover-body">
           <div class="wf-var-popover-field">
-            <label class="wf-var-popover-label">Nom</label>
+            <label class="wf-var-popover-label">${t('workflow.varEditor.name')}</label>
             <input class="wf-var-popover-input" id="wf-vp-name" value="${escapeHtml(v.name)}" placeholder="myVariable" spellcheck="false" autocomplete="off" />
           </div>
           <div class="wf-var-popover-field">
-            <label class="wf-var-popover-label">Type</label>
+            <label class="wf-var-popover-label">${t('workflow.varEditor.type')}</label>
             <div class="wf-var-popover-types">
               ${VAR_TYPE_LIST.map(t => {
                 const c = VAR_TYPE_COLORS[t];
@@ -1843,9 +1849,9 @@ function openEditor(workflowId = null) {
         <div class="wf-var-popover-footer">
           <button class="wf-var-popover-delete" id="wf-vp-delete">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            Supprimer
+            ${t('workflow.contextMenu.delete')}
           </button>
-          <button class="wf-var-popover-save" id="wf-vp-save">Enregistrer</button>
+          <button class="wf-var-popover-save" id="wf-vp-save">${t('workflow.save')}</button>
         </div>
       </div>
     `;
@@ -1949,10 +1955,10 @@ function openEditor(workflowId = null) {
     popup.style.left = (canvasRect.left - panelRect.left + screenPos[0]) + 'px';
     popup.style.top = (canvasRect.top - panelRect.top + screenPos[1] + 10) + 'px';
     popup.innerHTML = `
-      <div class="wf-loop-suggest-text">Ce lien transporte un tableau. Insérer un Loop ?</div>
+      <div class="wf-loop-suggest-text">${t('workflow.loopSuggest.text')}</div>
       <div class="wf-loop-suggest-actions">
-        <button class="wf-loop-suggest-btn wf-loop-suggest-btn--yes">Insérer Loop</button>
-        <button class="wf-loop-suggest-btn wf-loop-suggest-btn--no">Ignorer</button>
+        <button class="wf-loop-suggest-btn wf-loop-suggest-btn--yes">${t('workflow.loopSuggest.insert')}</button>
+        <button class="wf-loop-suggest-btn wf-loop-suggest-btn--no">${t('common.ignore')}</button>
       </div>
     `;
     panel.appendChild(popup);
@@ -2550,7 +2556,7 @@ function openDetail(id) {
   const wf = state.workflows.find(w => w.id === id);
   if (!wf) return;
   const runs = state.runs.filter(r => r.workflowId === id);
-  const cfg = TRIGGER_CONFIG[wf.trigger?.type] || TRIGGER_CONFIG.manual;
+  const cfg = getTriggerConfig(wf.trigger?.type);
   const runningRun = runs.find(r => r.status === 'running');
 
   const overlay = document.createElement('div');
@@ -2693,11 +2699,11 @@ async function confirmDeleteWorkflow(id, name) {
   overlay.className = 'wf-confirm-overlay';
   overlay.innerHTML = `
     <div class="wf-confirm-box">
-      <div class="wf-confirm-title">${svgTrash(16)} Supprimer le workflow</div>
-      <div class="wf-confirm-text">Supprimer <strong>${escapeHtml(name || 'ce workflow')}</strong> ? Cette action est irréversible.</div>
+      <div class="wf-confirm-title">${svgTrash(16)} ${t('workflow.deleteConfirm.title')}</div>
+      <div class="wf-confirm-text">${t('workflow.deleteConfirm.message', { name: `<strong>${escapeHtml(name || t('workflow.deleteConfirm.thisWorkflow'))}</strong>` })}</div>
       <div class="wf-confirm-actions">
-        <button class="wf-confirm-btn wf-confirm-btn--cancel">Annuler</button>
-        <button class="wf-confirm-btn wf-confirm-btn--delete">Supprimer</button>
+        <button class="wf-confirm-btn wf-confirm-btn--cancel">${t('common.cancel')}</button>
+        <button class="wf-confirm-btn wf-confirm-btn--delete">${t('workflow.contextMenu.delete')}</button>
       </div>
     </div>
   `;
@@ -2721,7 +2727,7 @@ async function duplicateWorkflow(id) {
   const wf = state.workflows.find(w => w.id === id);
   if (!wf) return;
   const copy = {
-    name: wf.name + ' (copie)',
+    name: wf.name + t('workflow.duplicateSuffix'),
     enabled: false,
     trigger: { ...wf.trigger },
     scope: wf.scope,

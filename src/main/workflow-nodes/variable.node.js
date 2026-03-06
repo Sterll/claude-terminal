@@ -14,7 +14,7 @@ const VAR_COLORS = {
 module.exports = {
   type:     'workflow/variable',
   title:    'Set Variable',
-  desc:     'Lire/écrire une variable',
+  desc:     'Read/write a variable',
   color:    'purple',
   width:    200,
   category: 'data',
@@ -49,37 +49,37 @@ module.exports = {
         const action = p.action || 'set';
         const showValue = action !== 'get';
 
-        const incrementHint = action === 'increment' ? 'Incrément (nombre)' : 'Valeur à assigner';
+        const incrementHint = action === 'increment' ? 'Increment (number)' : 'Value to assign';
         const valuePlaceholder = action === 'increment' ? '1' : 'production';
 
         return `
           <div class="wf-var-browser" id="wf-var-browser" style="display:none">
-            <div class="wf-var-browser-title">Variables du workflow</div>
+            <div class="wf-var-browser-title">Workflow variables</div>
             <div class="wf-var-browser-list" id="wf-var-browser-list"></div>
           </div>
           <div class="wf-step-edit-field">
             <label class="wf-step-edit-label">Action</label>
             <select class="wf-step-edit-input wf-node-prop" data-key="action">
-              <option value="set"       ${action === 'set'       ? 'selected' : ''}>Définir une valeur</option>
-              <option value="get"       ${action === 'get'       ? 'selected' : ''}>Lire la valeur</option>
-              <option value="increment" ${action === 'increment' ? 'selected' : ''}>Incrémenter (+n)</option>
-              <option value="append"    ${action === 'append'    ? 'selected' : ''}>Ajouter à la liste</option>
+              <option value="set"       ${action === 'set'       ? 'selected' : ''}>Set value</option>
+              <option value="get"       ${action === 'get'       ? 'selected' : ''}>Read value</option>
+              <option value="increment" ${action === 'increment' ? 'selected' : ''}>Increment (+n)</option>
+              <option value="append"    ${action === 'append'    ? 'selected' : ''}>Append to list</option>
             </select>
           </div>
           <div class="wf-step-edit-field">
-            <label class="wf-step-edit-label">Nom</label>
-            <span class="wf-field-hint">Identifiant unique de la variable</span>
+            <label class="wf-step-edit-label">Name</label>
+            <span class="wf-field-hint">Unique variable identifier</span>
             <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="name" value="${esc(p.name || '')}" placeholder="buildCount" />
           </div>
           <div class="wf-step-edit-field">
             <label class="wf-step-edit-label">Type</label>
-            <span class="wf-field-hint">Type de la variable (pour les connexions data pins)</span>
+            <span class="wf-field-hint">Variable type (for data-pin compatibility)</span>
             <select class="wf-step-edit-input wf-node-prop" data-key="varType">
               ${VAR_TYPE_OPTIONS.map(t => `<option value="${t}" ${varType === t ? 'selected' : ''}>${t}</option>`).join('')}
             </select>
           </div>
           <div class="wf-step-edit-field wf-var-value-field" ${showValue ? '' : 'style="display:none"'}>
-            <label class="wf-step-edit-label">Valeur</label>
+            <label class="wf-step-edit-label">Value</label>
             <span class="wf-field-hint wf-var-value-hint">${esc(incrementHint)}</span>
             <input class="wf-step-edit-input wf-node-prop ${action === 'increment' ? 'wf-field-mono' : ''}" data-key="value" value="${esc(p.value || '')}" placeholder="${esc(valuePlaceholder)}" ${action === 'increment' ? 'type="number"' : ''} />
           </div>
@@ -125,7 +125,7 @@ module.exports = {
             const vNode  = allVarNodes.find(n => n.properties.name === v);
             const vType  = vNode?.properties.varType || 'any';
             const color  = VAR_COLORS[vType] || '#6b7280';
-            return `<button class="wf-var-browser-item" data-varname="${esc(v)}" title="Cliquer pour utiliser"><code style="color:${color}">$${esc(v)}</code><span class="wf-var-browser-type" style="color:${color}">${esc(vType)}</span></button>`;
+            return `<button class="wf-var-browser-item" data-varname="${esc(v)}" title="Click to use"><code style="color:${color}">$${esc(v)}</code><span class="wf-var-browser-type" style="color:${color}">${esc(vType)}</span></button>`;
           }).join('');
 
           // Click on variable in browser → fill name input
@@ -153,7 +153,7 @@ module.exports = {
             const valueInput = container.querySelector('[data-key="value"]');
 
             if (valueField) valueField.style.display = action !== 'get' ? '' : 'none';
-            if (hintEl) hintEl.textContent = action === 'increment' ? 'Incrément (nombre)' : 'Valeur à assigner';
+            if (hintEl) hintEl.textContent = action === 'increment' ? 'Increment (number)' : 'Value to assign';
             if (valueInput) {
               valueInput.type        = action === 'increment' ? 'number' : 'text';
               valueInput.placeholder = action === 'increment' ? '1' : 'production';

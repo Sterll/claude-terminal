@@ -449,6 +449,7 @@ claude-terminal/
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+For translation contributions, see the [Translations (i18n) section](CONTRIBUTING.md#translations-i18n).
 
 ## Security
 

@@ -1,28 +1,29 @@
 'use strict';
 
 const { escapeHtml } = require('../../utils');
+const { t, getCurrentLanguage } = require('../../i18n');
 
 // ── Hook types ──────────────────────────────────────────────────────────────
 
 const HOOK_TYPES = [
-  { value: 'PreToolUse',        label: 'PreToolUse',        desc: 'Avant chaque outil' },
-  { value: 'PostToolUse',       label: 'PostToolUse',       desc: 'Après chaque outil' },
-  { value: 'PostToolUseFailure',label: 'PostToolUseFailure',desc: 'Après échec d\'un outil' },
-  { value: 'Notification',      label: 'Notification',      desc: 'À chaque notification' },
-  { value: 'UserPromptSubmit',  label: 'UserPromptSubmit',  desc: 'Soumission d\'un prompt' },
-  { value: 'SessionStart',      label: 'SessionStart',      desc: 'Début de session' },
-  { value: 'SessionEnd',        label: 'SessionEnd',        desc: 'Fin de session' },
-  { value: 'Stop',              label: 'Stop',              desc: 'À l\'arrêt de Claude' },
-  { value: 'SubagentStart',     label: 'SubagentStart',     desc: 'Lancement d\'un sous-agent' },
-  { value: 'SubagentStop',      label: 'SubagentStop',      desc: 'Arrêt d\'un sous-agent' },
-  { value: 'PreCompact',        label: 'PreCompact',        desc: 'Avant compaction mémoire' },
-  { value: 'PermissionRequest', label: 'PermissionRequest', desc: 'Demande de permission' },
-  { value: 'Setup',             label: 'Setup',             desc: 'Phase de setup' },
-  { value: 'TeammateIdle',      label: 'TeammateIdle',      desc: 'Teammate inactif' },
-  { value: 'TaskCompleted',     label: 'TaskCompleted',     desc: 'Tâche terminée' },
-  { value: 'ConfigChange',     label: 'ConfigChange',     desc: 'Changement de config' },
-  { value: 'WorktreeCreate',   label: 'WorktreeCreate',   desc: 'Création de worktree' },
-  { value: 'WorktreeRemove',   label: 'WorktreeRemove',   desc: 'Suppression de worktree' },
+  { value: 'PreToolUse',        label: 'PreToolUse',        desc: 'Before each tool call' },
+  { value: 'PostToolUse',       label: 'PostToolUse',       desc: 'After each tool call' },
+  { value: 'PostToolUseFailure',label: 'PostToolUseFailure',desc: 'After a tool call fails' },
+  { value: 'Notification',      label: 'Notification',      desc: 'On each notification' },
+  { value: 'UserPromptSubmit',  label: 'UserPromptSubmit',  desc: 'On user message submit' },
+  { value: 'SessionStart',      label: 'SessionStart',      desc: 'Session start' },
+  { value: 'SessionEnd',        label: 'SessionEnd',        desc: 'Session end' },
+  { value: 'Stop',              label: 'Stop',              desc: 'When Claude stops' },
+  { value: 'SubagentStart',     label: 'SubagentStart',     desc: 'Subagent starts' },
+  { value: 'SubagentStop',      label: 'SubagentStop',      desc: 'Subagent stops' },
+  { value: 'PreCompact',        label: 'PreCompact',        desc: 'Before context compact' },
+  { value: 'PermissionRequest', label: 'PermissionRequest', desc: 'Permission request' },
+  { value: 'Setup',             label: 'Setup',             desc: 'Setup phase' },
+  { value: 'TeammateIdle',      label: 'TeammateIdle',      desc: 'Teammate idle' },
+  { value: 'TaskCompleted',     label: 'TaskCompleted',     desc: 'Task completed' },
+  { value: 'ConfigChange',      label: 'ConfigChange',      desc: 'Config changed' },
+  { value: 'WorktreeCreate',    label: 'WorktreeCreate',    desc: 'Worktree created' },
+  { value: 'WorktreeRemove',    label: 'WorktreeRemove',    desc: 'Worktree removed' },
 ];
 
 // ── Node output properties (for autocomplete) ──────────────────────────────
@@ -111,28 +112,28 @@ function svgTeal(s = 11) { return `<svg width="${s}" height="${s}" viewBox="0 0 
 // ── Step types & field definitions ──────────────────────────────────────────
 
 const GIT_ACTIONS = [
-  { value: 'pull',     label: 'Pull',     desc: 'Récupérer les changements distants' },
-  { value: 'push',     label: 'Push',     desc: 'Pousser les commits locaux' },
-  { value: 'commit',   label: 'Commit',   desc: 'Créer un commit', extra: [{ key: 'message', label: 'Message de commit', placeholder: 'feat: add new feature', mono: true }] },
-  { value: 'checkout', label: 'Checkout', desc: 'Changer de branche', extra: [{ key: 'branch', label: 'Branche', placeholder: 'main / develop / feature/...', mono: true }] },
-  { value: 'merge',    label: 'Merge',    desc: 'Fusionner une branche', extra: [{ key: 'branch', label: 'Branche source', placeholder: 'feature/my-branch', mono: true }] },
-  { value: 'stash',    label: 'Stash',    desc: 'Mettre de côté les changements' },
-  { value: 'stash-pop',label: 'Stash Pop',desc: 'Restaurer les changements mis de côté' },
-  { value: 'reset',    label: 'Reset',    desc: 'Annuler les changements non commités' },
+  { value: 'pull',     label: 'Pull',     desc: 'Fetch remote changes' },
+  { value: 'push',     label: 'Push',     desc: 'Push local commits' },
+  { value: 'commit',   label: 'Commit',   desc: 'Create a commit', extra: [{ key: 'message', label: 'Commit message', placeholder: 'feat: add new feature', mono: true }] },
+  { value: 'checkout', label: 'Checkout', desc: 'Switch branch', extra: [{ key: 'branch', label: 'Branch', placeholder: 'main / develop / feature/...', mono: true }] },
+  { value: 'merge',    label: 'Merge',    desc: 'Merge branch', extra: [{ key: 'branch', label: 'Source branch', placeholder: 'feature/my-branch', mono: true }] },
+  { value: 'stash',    label: 'Stash',    desc: 'Stash changes' },
+  { value: 'stash-pop',label: 'Stash Pop',desc: 'Restore stashed changes' },
+  { value: 'reset',    label: 'Reset',    desc: 'Discard uncommitted changes' },
 ];
 
 const WAIT_UNITS = [
-  { value: 's', label: 'Secondes' },
+  { value: 's', label: 'Seconds' },
   { value: 'm', label: 'Minutes' },
-  { value: 'h', label: 'Heures' },
+  { value: 'h', label: 'Hours' },
 ];
 
 const CONDITION_VARS = [
-  { value: '$ctx.branch',      label: 'Branche actuelle' },
-  { value: '$ctx.exitCode',    label: 'Code de sortie' },
-  { value: '$ctx.project',     label: 'Nom du projet' },
-  { value: '$ctx.prevStatus',  label: 'Statut step précédent' },
-  { value: '$env.',            label: 'Variable d\'env', extra: [{ key: 'envVar', label: 'Nom', placeholder: 'NODE_ENV', mono: true }] },
+  { value: '$ctx.branch',      label: 'Current branch' },
+  { value: '$ctx.exitCode',    label: 'Exit code' },
+  { value: '$ctx.project',     label: 'Project name' },
+  { value: '$ctx.prevStatus',  label: 'Previous step status' },
+  { value: '$env.',            label: 'Environment variable', extra: [{ key: 'envVar', label: 'Name', placeholder: 'NODE_ENV', mono: true }] },
 ];
 
 const CONDITION_OPS = [
@@ -142,15 +143,15 @@ const CONDITION_OPS = [
   { value: '<',  label: '<',  group: 'compare' },
   { value: '>=', label: '>=', group: 'compare' },
   { value: '<=', label: '<=', group: 'compare' },
-  { value: 'contains',    label: 'contient',     group: 'text' },
-  { value: 'starts_with', label: 'commence par', group: 'text' },
+  { value: 'contains',    label: 'contains',     group: 'text' },
+  { value: 'starts_with', label: 'starts with',  group: 'text' },
   { value: 'matches',     label: 'regex',        group: 'text' },
-  { value: 'is_empty',     label: 'est vide',      group: 'unary' },
-  { value: 'is_not_empty', label: 'n\'est pas vide', group: 'unary' },
+  { value: 'is_empty',     label: 'is empty',      group: 'unary' },
+  { value: 'is_not_empty', label: 'is not empty',  group: 'unary' },
 ];
 
 function buildConditionPreview(variable, op, value, isUnary) {
-  if (!variable) return '(aucune condition)';
+  if (!variable) return t('workflow.helpers.condition.none');
   if (isUnary) return `${variable} ${op}`;
   return `${variable} ${op} ${value || '?'}`;
 }
@@ -178,34 +179,34 @@ const STEP_TYPES = [
 
 const STEP_FIELDS = {
   shell: [
-    { key: 'command', label: 'Commande', placeholder: 'npm run build', mono: true },
+    { key: 'command', label: 'Command', placeholder: 'npm run build', mono: true },
   ],
   claude: [
     { key: 'mode', label: 'Mode', type: 'claude-mode-tabs' },
     { key: 'prompt', label: 'Prompt', type: 'variable-textarea', showIf: (s) => !s.mode || s.mode === 'prompt' },
     { key: 'agentId', label: 'Agent', type: 'agent-picker', showIf: (s) => s.mode === 'agent' },
     { key: 'skillId', label: 'Skill', type: 'skill-picker', showIf: (s) => s.mode === 'skill' },
-    { key: 'prompt', label: 'Instructions additionnelles', placeholder: 'Contexte supplémentaire (optionnel)', textarea: true, showIf: (s) => s.mode === 'agent' || s.mode === 'skill' },
-    { key: 'model', label: 'Modèle', type: 'model-select' },
+    { key: 'prompt', label: 'Additional instructions', placeholder: 'Additional context (optional)', textarea: true, showIf: (s) => s.mode === 'agent' || s.mode === 'skill' },
+    { key: 'model', label: 'Model', type: 'model-select' },
     { key: 'effort', label: 'Effort', type: 'effort-select' },
-    { key: 'outputSchema', label: 'Sortie structurée', type: 'structured-output' },
+    { key: 'outputSchema', label: 'Structured output', type: 'structured-output' },
   ],
   agent: 'claude',
   git: [
     { key: 'action', label: 'Action', type: 'action-select', actions: GIT_ACTIONS },
   ],
   http: [
-    { key: 'method', label: 'Méthode', type: 'select', options: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], default: 'GET' },
+    { key: 'method', label: 'Method', type: 'select', options: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], default: 'GET' },
     { key: 'url', label: 'URL', placeholder: 'https://api.example.com/endpoint', mono: true },
     { key: 'headers', label: 'Headers', placeholder: 'Content-Type: application/json', textarea: true, mono: true, showIf: (s) => ['POST', 'PUT', 'PATCH'].includes(s.method) },
     { key: 'body', label: 'Body', placeholder: '{ "key": "value" }', textarea: true, mono: true, showIf: (s) => ['POST', 'PUT', 'PATCH'].includes(s.method) },
   ],
   notify: [
-    { key: 'title', label: 'Titre', placeholder: 'Build terminé' },
+    { key: 'title', label: 'Title', placeholder: 'Build finished' },
     { key: 'message', label: 'Message', placeholder: 'Le build $project est OK', textarea: true },
   ],
   wait: [
-    { key: 'duration', label: 'Durée', type: 'duration-picker' },
+    { key: 'duration', label: 'Duration', type: 'duration-picker' },
   ],
   condition: [
     { key: 'condition', label: 'Condition', type: 'condition-builder' },
@@ -219,37 +220,53 @@ const findStepType = (type) => {
 };
 
 const TRIGGER_CONFIG = {
-  cron:        { label: 'Cron',       desc: 'Planifié à heures fixes',  icon: svgClock(),  color: 'info',    extra: 'cronPicker' },
-  hook:        { label: 'Hook',       desc: 'Réagit aux événements',    icon: svgHook(),   color: 'accent',  extra: 'hookType' },
-  on_workflow: { label: 'Workflow',   desc: 'Enchaîné à un autre',      icon: svgChain(),  color: 'purple',  fields: [{ id: 'triggerValue', label: 'Nom du workflow source', placeholder: 'Daily Code Review', mono: false }] },
-  manual:      { label: 'Manuel',     desc: 'Déclenché à la demande',   icon: svgPlay(),   color: 'success', fields: [] },
-  webhook:     { label: 'Webhook',    desc: 'HTTP POST externe',         icon: svgHttp(),   color: 'info',    fields: [] },
+  cron:        { labelKey: 'workflow.trigger.typeCron',       descKey: 'workflow.helpers.triggerDesc.cron',       icon: svgClock(),  color: 'info',    extra: 'cronPicker' },
+  hook:        { labelKey: 'workflow.trigger.typeHook',       descKey: 'workflow.helpers.triggerDesc.hook',       icon: svgHook(),   color: 'accent',  extra: 'hookType' },
+  on_workflow: { labelKey: 'workflow.trigger.typeOnWorkflow', descKey: 'workflow.helpers.triggerDesc.onWorkflow', icon: svgChain(),  color: 'purple',  fields: [{ id: 'triggerValue', labelKey: 'workflow.trigger.workflowSourceLabel', placeholder: 'Daily Code Review', mono: false }] },
+  manual:      { labelKey: 'workflow.trigger.typeManual',     descKey: 'workflow.helpers.triggerDesc.manual',     icon: svgPlay(),   color: 'success', fields: [] },
+  webhook:     { labelKey: 'workflow.trigger.typeWebhook',    descKey: 'workflow.helpers.triggerDesc.webhook',    icon: svgHttp(),   color: 'info',    fields: [] },
 };
+
+function getTriggerConfig(type) {
+  const cfg = TRIGGER_CONFIG[type] || TRIGGER_CONFIG.manual;
+  return {
+    ...cfg,
+    label: t(cfg.labelKey),
+    desc: cfg.descKey ? t(cfg.descKey) : '',
+    fields: (cfg.fields || []).map((f) => ({
+      ...f,
+      label: f.labelKey ? t(f.labelKey) : f.label,
+    })),
+  };
+}
 
 // ── Cron picker ─────────────────────────────────────────────────────────────
 
 const CRON_MODES = [
-  { id: 'interval', label: 'Intervalle' },
-  { id: 'daily',    label: 'Quotidien' },
-  { id: 'weekly',   label: 'Hebdo' },
-  { id: 'monthly',  label: 'Mensuel' },
-  { id: 'custom',   label: 'Custom' },
+  { id: 'interval', labelKey: 'workflow.helpers.cron.modeInterval' },
+  { id: 'daily',    labelKey: 'workflow.helpers.cron.modeDaily' },
+  { id: 'weekly',   labelKey: 'workflow.helpers.cron.modeWeekly' },
+  { id: 'monthly',  labelKey: 'workflow.helpers.cron.modeMonthly' },
+  { id: 'custom',   labelKey: 'workflow.helpers.cron.modeCustom' },
 ];
 
 const DAYS_OF_WEEK = [
-  { value: 1, label: 'Lundi' },    { value: 2, label: 'Mardi' },
-  { value: 3, label: 'Mercredi' }, { value: 4, label: 'Jeudi' },
-  { value: 5, label: 'Vendredi' }, { value: 6, label: 'Samedi' },
-  { value: 0, label: 'Dimanche' },
+  { value: 1, labelKey: 'workflow.helpers.cron.dayMonday' },
+  { value: 2, labelKey: 'workflow.helpers.cron.dayTuesday' },
+  { value: 3, labelKey: 'workflow.helpers.cron.dayWednesday' },
+  { value: 4, labelKey: 'workflow.helpers.cron.dayThursday' },
+  { value: 5, labelKey: 'workflow.helpers.cron.dayFriday' },
+  { value: 6, labelKey: 'workflow.helpers.cron.daySaturday' },
+  { value: 0, labelKey: 'workflow.helpers.cron.daySunday' },
 ];
 
 const INTERVAL_OPTIONS = [
   { value: 5,  label: '5 min' },   { value: 10, label: '10 min' },
   { value: 15, label: '15 min' },  { value: 20, label: '20 min' },
-  { value: 30, label: '30 min' },  { value: 60, label: '1 heure' },
-  { value: 120, label: '2 heures' }, { value: 180, label: '3 heures' },
-  { value: 240, label: '4 heures' }, { value: 360, label: '6 heures' },
-  { value: 480, label: '8 heures' }, { value: 720, label: '12 heures' },
+  { value: 30, label: '30 min' },  { value: 60, label: '1 h' },
+  { value: 120, label: '2 h' },    { value: 180, label: '3 h' },
+  { value: 240, label: '4 h' },    { value: 360, label: '6 h' },
+  { value: 480, label: '8 h' },    { value: 720, label: '12 h' },
 ];
 
 function buildCronFromMode(mode, v) {
@@ -324,7 +341,7 @@ function cronOpts() {
   return {
     hour: Array.from({ length: 24 }, (_, i) => ({ value: i, label: String(i).padStart(2, '0') })),
     minute: [0, 15, 30, 45].map(m => ({ value: m, label: String(m).padStart(2, '0') })),
-    dow: DAYS_OF_WEEK,
+    dow: DAYS_OF_WEEK.map((d) => ({ ...d, label: t(d.labelKey) })),
     dom: Array.from({ length: 28 }, (_, i) => ({ value: i + 1, label: `${i + 1}` })),
     interval: INTERVAL_OPTIONS,
   };
@@ -342,16 +359,16 @@ function drawCronPicker(container, draft) {
     let phrase = '';
     switch (cronMode) {
       case 'interval':
-        phrase = `<span class="wf-cron-label">Toutes les</span>${wfDropdown('interval', opts.interval, cronValues.interval || 15)}`;
+        phrase = `<span class="wf-cron-label">${t('workflow.helpers.cron.every')}</span>${wfDropdown('interval', opts.interval, cronValues.interval || 15)}`;
         break;
       case 'daily':
-        phrase = `<span class="wf-cron-label">Chaque jour à</span>${wfDropdown('hour', opts.hour, cronValues.hour ?? 8)}<span class="wf-cron-label">h</span>${wfDropdown('minute', opts.minute, cronValues.minute || 0)}`;
+        phrase = `<span class="wf-cron-label">${t('workflow.helpers.cron.everyDayAt')}</span>${wfDropdown('hour', opts.hour, cronValues.hour ?? 8)}<span class="wf-cron-label">h</span>${wfDropdown('minute', opts.minute, cronValues.minute || 0)}`;
         break;
       case 'weekly':
-        phrase = `<span class="wf-cron-label">Chaque</span>${wfDropdown('dow', opts.dow, cronValues.dow ?? 1)}<span class="wf-cron-label">à</span>${wfDropdown('hour', opts.hour, cronValues.hour ?? 8)}<span class="wf-cron-label">h</span>${wfDropdown('minute', opts.minute, cronValues.minute || 0)}`;
+        phrase = `<span class="wf-cron-label">${t('workflow.helpers.cron.every')}</span>${wfDropdown('dow', opts.dow, cronValues.dow ?? 1)}<span class="wf-cron-label">${t('workflow.helpers.cron.at')}</span>${wfDropdown('hour', opts.hour, cronValues.hour ?? 8)}<span class="wf-cron-label">h</span>${wfDropdown('minute', opts.minute, cronValues.minute || 0)}`;
         break;
       case 'monthly':
-        phrase = `<span class="wf-cron-label">Le</span>${wfDropdown('dom', opts.dom, cronValues.dom || 1)}<span class="wf-cron-label">de chaque mois à</span>${wfDropdown('hour', opts.hour, cronValues.hour ?? 8)}<span class="wf-cron-label">h</span>${wfDropdown('minute', opts.minute, cronValues.minute || 0)}`;
+        phrase = `<span class="wf-cron-label">${t('workflow.helpers.cron.onDay')}</span>${wfDropdown('dom', opts.dom, cronValues.dom || 1)}<span class="wf-cron-label">${t('workflow.helpers.cron.ofMonthAt')}</span>${wfDropdown('hour', opts.hour, cronValues.hour ?? 8)}<span class="wf-cron-label">h</span>${wfDropdown('minute', opts.minute, cronValues.minute || 0)}`;
         break;
       case 'custom':
         phrase = `<input class="wf-input wf-input--mono" id="wf-cron-raw" placeholder="0 8 * * *" value="${escapeHtml(cronValues.raw || draft.triggerValue || '')}">`;
@@ -360,7 +377,7 @@ function drawCronPicker(container, draft) {
     const cron = cronMode === 'custom' ? (cronValues.raw || draft.triggerValue || '') : buildCronFromMode(cronMode, cronValues);
     draft.triggerValue = cron;
     container.innerHTML = `
-      <div class="wf-cron-modes">${CRON_MODES.map(m => `<button class="wf-cron-mode ${cronMode === m.id ? 'active' : ''}" data-cm="${m.id}">${m.label}</button>`).join('')}</div>
+      <div class="wf-cron-modes">${CRON_MODES.map(m => `<button class="wf-cron-mode ${cronMode === m.id ? 'active' : ''}" data-cm="${m.id}">${t(m.labelKey)}</button>`).join('')}</div>
       <div class="wf-cron-phrase">${phrase}</div>
       ${cron ? `<div class="wf-cron-preview"><code>${escapeHtml(cron)}</code></div>` : ''}
     `;
@@ -421,14 +438,18 @@ function fmtTime(iso) {
     const now = new Date();
     const diffMs = now - d;
     const diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 1) return "À l'instant";
-    if (diffMin < 60) return `Il y a ${diffMin} min`;
+    if (diffMin < 1) return t('workflow.helpers.time.justNow');
+    if (diffMin < 60) return t('workflow.helpers.time.minutesAgo', { n: diffMin });
     const diffH = Math.floor(diffMin / 60);
-    if (diffH < 24) return `Il y a ${diffH}h`;
+    if (diffH < 24) return t('workflow.helpers.time.hoursAgo', { n: diffH });
     const diffD = Math.floor(diffH / 24);
-    if (diffD === 1) return `Hier ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-    if (diffD < 7) return `Il y a ${diffD}j`;
-    return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+    if (diffD === 1) {
+      const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      return t('workflow.helpers.time.yesterdayAt', { time });
+    }
+    if (diffD < 7) return t('workflow.helpers.time.daysAgo', { n: diffD });
+    const locale = getCurrentLanguage() === 'fr' ? 'fr-FR' : 'en-US';
+    return d.toLocaleDateString(locale, { day: 'numeric', month: 'short' });
   } catch { return String(iso); }
 }
 
@@ -442,7 +463,16 @@ function fmtDuration(val) {
 }
 
 function statusDot(s) { return `<span class="wf-dot wf-dot--${s}"></span>`; }
-function statusLabel(s) { return { success: 'Succès', failed: 'Échec', running: 'En cours', pending: 'En attente' }[s] || s; }
+function statusLabel(s) {
+  const map = {
+    success: 'workflow.helpers.status.success',
+    failed: 'workflow.helpers.status.failed',
+    running: 'workflow.helpers.status.running',
+    pending: 'workflow.helpers.status.pending',
+    cancelled: 'workflow.helpers.status.cancelled',
+  };
+  return map[s] ? t(map[s]) : s;
+}
 
 // ── Autocomplete ────────────────────────────────────────────────────────────
 
@@ -450,22 +480,22 @@ function getAutocompleteSuggestions(graph, currentNodeId, filterText) {
   const suggestions = [];
   const filter = (filterText || '').toLowerCase();
   const ctxVars = [
-    { value: '$ctx.project', detail: 'Chemin du projet', type: 'string' },
-    { value: '$ctx.branch', detail: 'Branche Git active', type: 'string' },
-    { value: '$ctx.date', detail: 'Date du jour', type: 'string' },
-    { value: '$ctx.trigger', detail: 'Type de déclencheur', type: 'string' },
+    { value: '$ctx.project', detail: t('workflow.helpers.autocomplete.ctxProject'), type: 'string' },
+    { value: '$ctx.branch', detail: t('workflow.helpers.autocomplete.ctxBranch'), type: 'string' },
+    { value: '$ctx.date', detail: t('workflow.helpers.autocomplete.ctxDate'), type: 'string' },
+    { value: '$ctx.trigger', detail: t('workflow.helpers.autocomplete.ctxTrigger'), type: 'string' },
   ];
   for (const v of ctxVars) {
-    if (v.value.toLowerCase().includes(filter)) suggestions.push({ category: 'Contexte', label: v.value, value: v.value, detail: v.detail, type: v.type });
+    if (v.value.toLowerCase().includes(filter)) suggestions.push({ category: t('workflow.helpers.autocomplete.categoryContext'), label: v.value, value: v.value, detail: v.detail, type: v.type });
   }
   const loopVars = [
-    { value: '$item', detail: 'Élément courant (alias)', type: 'any' },
-    { value: '$loop.item', detail: 'Élément courant', type: 'any' },
-    { value: '$loop.index', detail: 'Index (0-based)', type: 'number' },
-    { value: '$loop.total', detail: 'Nombre total d\'items', type: 'number' },
+    { value: '$item', detail: t('workflow.helpers.autocomplete.loopItemAlias'), type: 'any' },
+    { value: '$loop.item', detail: t('workflow.helpers.autocomplete.loopItem'), type: 'any' },
+    { value: '$loop.index', detail: t('workflow.helpers.autocomplete.loopIndex'), type: 'number' },
+    { value: '$loop.total', detail: t('workflow.helpers.autocomplete.loopTotal'), type: 'number' },
   ];
   for (const v of loopVars) {
-    if (v.value.toLowerCase().includes(filter)) suggestions.push({ category: 'Loop', label: v.value, value: v.value, detail: v.detail, type: v.type });
+    if (v.value.toLowerCase().includes(filter)) suggestions.push({ category: t('workflow.helpers.autocomplete.categoryLoop'), label: v.value, value: v.value, detail: v.detail, type: v.type });
   }
   if (graph && graph._nodes) {
     for (const node of graph._nodes) {
@@ -481,7 +511,7 @@ function getAutocompleteSuggestions(graph, currentNodeId, filterText) {
         const full = `${prefix}.${prop}`;
         const propType = typeMap[prop] || 'any';
         if (full.toLowerCase().includes(filter) || nodeLabel.toLowerCase().includes(filter)) {
-          suggestions.push({ category: 'Nodes', label: full, value: full, detail: `${nodeLabel} → ${prop}`, type: propType });
+          suggestions.push({ category: t('workflow.helpers.autocomplete.categoryNodes'), label: full, value: full, detail: `${nodeLabel} → ${prop}`, type: propType });
         }
       }
     }
@@ -495,7 +525,7 @@ function getAutocompleteSuggestions(graph, currentNodeId, filterText) {
       if (!varName) continue;
       const full = `$${varName}`;
       const varType = node.properties?.varType || 'any';
-      if (full.toLowerCase().includes(filter)) suggestions.push({ category: 'Variables', label: full, value: full, detail: `Variable (${varType})`, type: varType });
+      if (full.toLowerCase().includes(filter)) suggestions.push({ category: t('workflow.helpers.autocomplete.categoryVariables'), label: full, value: full, detail: t('workflow.helpers.autocomplete.variableDetail', { type: varType }), type: varType });
     }
   }
   return suggestions;
@@ -565,7 +595,7 @@ async function getDeepAutocompleteSuggestions(graph, currentNodeId, filterText, 
     const colType = col.type || '';
     if (columnFilter && !colName.toLowerCase().includes(columnFilter)) continue;
     const pkBadge = col.primaryKey ? ' 🔑' : '';
-    suggestions.push({ category: 'Colonnes DB', label: colName, value: filterText.substring(0, filterText.lastIndexOf('.') + 1) + colName, detail: `${colType}${pkBadge}` });
+    suggestions.push({ category: t('workflow.helpers.autocomplete.categoryDbColumns'), label: colName, value: filterText.substring(0, filterText.lastIndexOf('.') + 1) + colName, detail: `${colType}${pkBadge}` });
   }
   return suggestions;
 }
@@ -687,7 +717,7 @@ function setupAutocomplete(container, node, graphService, schemaCache) {
     btn.className = 'wf-var-picker-btn';
     btn.type = 'button';
     btn.textContent = '{x}';
-    btn.title = 'Insérer une variable';
+    btn.title = t('workflow.helpers.autocomplete.insertVariable');
     btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); showVariablePicker(field, node, graphService, container); });
     wrapper.appendChild(btn);
   });
@@ -740,7 +770,7 @@ function showVariablePicker(anchorField, node, graphService, panelContainer) {
   searchWrap.className = 'wf-var-picker-search';
   const searchInput = document.createElement('input');
   searchInput.type = 'text';
-  searchInput.placeholder = 'Rechercher une variable...';
+  searchInput.placeholder = t('workflow.helpers.autocomplete.searchVariable');
   searchWrap.appendChild(searchInput);
   picker.appendChild(searchWrap);
   const catsEl = document.createElement('div');
@@ -765,7 +795,7 @@ function showVariablePicker(anchorField, node, graphService, panelContainer) {
         catsEl.appendChild(row);
       }
     }
-    if (!anyVisible) catsEl.innerHTML = '<div class="wf-var-picker-empty">Aucune variable trouvée</div>';
+    if (!anyVisible) catsEl.innerHTML = `<div class="wf-var-picker-empty">${escapeHtml(t('workflow.helpers.autocomplete.noVariableFound'))}</div>`;
   }
   renderItems('');
   picker.appendChild(catsEl);
@@ -807,7 +837,7 @@ module.exports = {
   // Constants
   HOOK_TYPES, NODE_OUTPUTS, STEP_TYPES, STEP_FIELDS, STEP_TYPE_ALIASES,
   GIT_ACTIONS, WAIT_UNITS, CONDITION_VARS, CONDITION_OPS,
-  TRIGGER_CONFIG, CRON_MODES,
+  TRIGGER_CONFIG, CRON_MODES, getTriggerConfig,
   // Functions
   findStepType, buildConditionPreview,
   drawCronPicker, bindWfDropdown, wfDropdown,
@@ -833,7 +863,7 @@ module.exports = {
 // These need the schemaCache injected, so we export factory-style
 module.exports.getLoopPreview = function getLoopPreview(loopNode, graphService) {
   const { escapeHtml: esc } = require('../../utils');
-  const noPreview = { html: '', itemDesc: 'Valeur de l\'itération courante', schema: null };
+  const noPreview = { html: '', itemDesc: t('workflow.helpers.loopPreview.currentIterationValue'), schema: null };
   if (!graphService?.graph || !loopNode) return noPreview;
   const graph = graphService.graph;
 
@@ -841,7 +871,7 @@ module.exports.getLoopPreview = function getLoopPreview(loopNode, graphService) 
   const itemsSlot = loopNode.inputs?.[1];
   const inSlot = loopNode.inputs?.[0];
   const activeLink = itemsSlot?.link ?? inSlot?.link;
-  if (!activeLink && !inSlot?.link) return { html: '<div class="wf-loop-preview wf-loop-preview--empty"><span class="wf-loop-preview-icon">⚠</span> Aucun node connecté au port <strong>In</strong></div>', itemDesc: 'Valeur de l\'itération courante' };
+  if (!activeLink && !inSlot?.link) return { html: `<div class="wf-loop-preview wf-loop-preview--empty"><span class="wf-loop-preview-icon">⚠</span> ${t('workflow.helpers.loopPreview.noNodeConnected')}</div>`, itemDesc: t('workflow.helpers.loopPreview.currentIterationValue') };
   const linkInfo = graph.links?.[activeLink] || graph._links?.get?.(activeLink);
   if (!linkInfo) return noPreview;
   const sourceNode = graph.getNodeById(linkInfo.origin_id);
@@ -849,18 +879,18 @@ module.exports.getLoopPreview = function getLoopPreview(loopNode, graphService) 
   const sourceType = (sourceNode.type || '').replace('workflow/', '');
   const sourceName = sourceNode.title || sourceType;
   const sourceProps = sourceNode.properties || {};
-  let dataType = '', dataDesc = '', itemDesc = 'Valeur de l\'itération courante', previewItems = [];
+  let dataType = '', dataDesc = '', itemDesc = t('workflow.helpers.loopPreview.currentIterationValue'), previewItems = [];
   if (sourceType === 'db') {
     const action = sourceProps.action || 'query';
-    if (action === 'query') { const table = extractTableFromSQL(sourceProps.query); dataType = 'rows[]'; dataDesc = table ? `Lignes de <code>${esc(table)}</code>` : 'Résultats de la requête SQL'; itemDesc = table ? `Ligne de ${table} (objet avec colonnes)` : 'Ligne de résultat (objet)'; }
-    else if (action === 'tables') { dataType = 'string[]'; dataDesc = 'Noms des tables de la base'; itemDesc = 'Nom de table (string)'; }
-    else if (action === 'schema') { dataType = 'object[]'; dataDesc = 'Tables avec leurs colonnes'; itemDesc = 'Table (objet avec name, columns)'; }
+    if (action === 'query') { const table = extractTableFromSQL(sourceProps.query); dataType = 'rows[]'; dataDesc = table ? t('workflow.helpers.loopPreview.dbRowsFrom', { table: `<code>${esc(table)}</code>` }) : t('workflow.helpers.loopPreview.dbQueryResults'); itemDesc = table ? t('workflow.helpers.loopPreview.dbRowWithColumns', { table }) : t('workflow.helpers.loopPreview.dbResultRow'); }
+    else if (action === 'tables') { dataType = 'string[]'; dataDesc = t('workflow.helpers.loopPreview.dbTableNames'); itemDesc = t('workflow.helpers.loopPreview.dbTableName'); }
+    else if (action === 'schema') { dataType = 'object[]'; dataDesc = t('workflow.helpers.loopPreview.dbTablesWithColumns'); itemDesc = t('workflow.helpers.loopPreview.dbTableObject'); }
   } else if (sourceType === 'project') {
-    dataType = 'project[]'; dataDesc = 'Projets Claude Terminal'; itemDesc = 'Projet (id, name, path, type)';
-  } else if (sourceType === 'shell') { dataType = 'lines'; dataDesc = 'Sortie du shell (stdout)'; itemDesc = 'Ligne de sortie'; }
-  else if (sourceType === 'http') { dataType = 'array'; dataDesc = 'Réponse HTTP (body)'; itemDesc = 'Élément du tableau de réponse'; }
-  else if (sourceType === 'file') { dataType = 'lines'; dataDesc = 'Contenu du fichier'; itemDesc = 'Ligne du fichier'; }
-  else { dataType = 'auto'; dataDesc = `Sortie de ${esc(sourceName)}`; itemDesc = 'Élément de la sortie'; }
+    dataType = 'project[]'; dataDesc = t('workflow.helpers.loopPreview.projects'); itemDesc = t('workflow.helpers.loopPreview.projectObject');
+  } else if (sourceType === 'shell') { dataType = 'lines'; dataDesc = t('workflow.helpers.loopPreview.shellStdout'); itemDesc = t('workflow.helpers.loopPreview.shellLine'); }
+  else if (sourceType === 'http') { dataType = 'array'; dataDesc = t('workflow.helpers.loopPreview.httpBody'); itemDesc = t('workflow.helpers.loopPreview.httpArrayItem'); }
+  else if (sourceType === 'file') { dataType = 'lines'; dataDesc = t('workflow.helpers.loopPreview.fileContent'); itemDesc = t('workflow.helpers.loopPreview.fileLine'); }
+  else { dataType = 'auto'; dataDesc = t('workflow.helpers.loopPreview.outputOf', { sourceName: esc(sourceName) }); itemDesc = t('workflow.helpers.loopPreview.outputItem'); }
   const lastOutput = graphService.getNodeOutput(sourceNode.id);
   if (lastOutput) {
     if (Array.isArray(lastOutput)) {
@@ -872,14 +902,14 @@ module.exports.getLoopPreview = function getLoopPreview(loopNode, graphService) 
       }
     }
   }
-  const countText = previewItems.length > 0 ? `<span class="wf-loop-preview-count">${previewItems.length} items</span>` : '';
+  const countText = previewItems.length > 0 ? `<span class="wf-loop-preview-count">${t('workflow.helpers.loopPreview.itemsCount', { n: previewItems.length })}</span>` : '';
   let previewHtml = '';
   if (previewItems.length > 0) {
     const shown = previewItems.slice(0, 5);
     previewHtml = `<div class="wf-loop-preview-list">${shown.map((item, i) => {
       const text = typeof item === 'string' ? item : (item?.name || JSON.stringify(item));
       return `<div class="wf-loop-preview-item"><span class="wf-loop-preview-idx">${i}</span><code>${esc(String(text).substring(0, 60))}</code></div>`;
-    }).join('')}${previewItems.length > 5 ? `<div class="wf-loop-preview-more">… +${previewItems.length - 5} autres</div>` : ''}</div>`;
+    }).join('')}${previewItems.length > 5 ? `<div class="wf-loop-preview-more">${t('workflow.helpers.loopPreview.moreItems', { n: previewItems.length - 5 })}</div>` : ''}</div>`;
   }
   // Extract schema from preview items (first object's keys)
   let schema = null;

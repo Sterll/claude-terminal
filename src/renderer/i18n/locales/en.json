@@ -26,7 +26,8 @@
     "browse": "Browse",
     "errorOccurred": "An error occurred",
     "stop": "Stop",
-    "remove": "Remove"
+    "remove": "Remove",
+    "ignore": "Ignore"
   },
   "projects": {
     "title": "Projects",
@@ -1492,6 +1493,10 @@
     "launchBtn": "Launch",
     "editBtn": "Edit",
     "selectedCount": "{n} selected",
+    "workflowsTab": "Workflows",
+    "runsTab": "History",
+    "hubTab": "Hub",
+    "back": "Back",
     "nodeDesc": {
       "trigger": "Workflow trigger",
       "claude": "Prompt, Agent or Skill",
@@ -1613,7 +1618,9 @@
       "hookStop": "Stop — When Claude finishes",
       "workflowSourceLabel": "Source workflow",
       "workflowSourceHint": "Triggers after this workflow ends",
-      "selectWorkflow": "Select a workflow…"
+      "selectWorkflow": "Select a workflow…",
+      "manualHint": "This workflow starts manually via the ▶ button or via the API.",
+      "webhookHint": "This workflow is triggered via an HTTP POST from an external service (GitHub, Stripe, etc.)."
     },
     "loop": {
       "sourceLabel": "Iteration source",
@@ -1688,6 +1695,215 @@
       "waitHint": "Block execution until the subworkflow ends",
       "waitYes": "Yes — wait for completion",
       "waitNo": "No — run in background"
+    },
+    "list": {
+      "emptyTitle": "No workflows",
+      "emptySub": "Automate your repetitive tasks with Claude",
+      "createBtn": "Create workflow"
+    },
+    "contextMenu": {
+      "edit": "Edit",
+      "runNow": "Run now",
+      "duplicate": "Duplicate",
+      "delete": "Delete"
+    },
+    "favorites": {
+      "add": "Add to favorites",
+      "remove": "Remove from favorites"
+    },
+    "history": {
+      "clearTitle": "Clear history",
+      "clearBtn": "Clear",
+      "emptyTitle": "No runs",
+      "emptySub": "Executions will appear here",
+      "showMore": "Show {n} more runs",
+      "selectRun": "Select a run to see details",
+      "clearMessage": "Delete {n} runs from history? This action is irreversible."
+    },
+    "runMeta": {
+      "iterationLabel": "Iteration {n}",
+      "deletedLabel": "Deleted",
+      "stopTitle": "Stop run",
+      "workflowDeleted": "Deleted workflow",
+      "rerun": "Re-run"
+    },
+    "editor": {
+      "unsavedChanges": "Unsaved changes",
+      "variablesTab": "Variables",
+      "addVariable": "Add variable",
+      "varsEmpty": "Click + to create a variable",
+      "selectNode": "Select a node to configure its settings",
+      "insertVariableNode": "Click to insert a Variable node",
+      "nodeIdHint": "Node ID for variables",
+      "palette": {
+        "actions": "Actions",
+        "data": "Data",
+        "flow": "Flow"
+      }
+    },
+    "varEditor": {
+      "newTitle": "New variable",
+      "editTitle": "Edit variable",
+      "name": "Name",
+      "type": "Type"
+    },
+    "loopSuggest": {
+      "text": "This link carries an array. Insert a Loop?",
+      "insert": "Insert Loop"
+    },
+    "deleteConfirm": {
+      "title": "Delete workflow",
+      "message": "Delete {name}? This action is irreversible.",
+      "thisWorkflow": "this workflow"
+    },
+    "duplicateSuffix": " (copy)",
+    "marketplace": {
+      "community": "Community",
+      "explore": "Explore",
+      "myPublications": "My publications",
+      "publishWorkflow": "Publish workflow",
+      "searchPlaceholder": "Search workflows…",
+      "sort": "Sort",
+      "sortPopular": "Popular",
+      "sortRecent": "Recent",
+      "sortAlpha": "A-Z",
+      "noResults": "No results for \"{query}\"",
+      "noWorkflow": "No workflows available",
+      "beFirst": "Be the first to publish!",
+      "by": "by",
+      "anonymous": "anonymous",
+      "import": "Import",
+      "imports": "{n} imports",
+      "workflowPreview": "Workflow preview",
+      "importThisWorkflow": "Import this workflow",
+      "apiUnavailable": "Workflow API unavailable",
+      "failedDefault": "Failed",
+      "importedBtn": "Imported!",
+      "importedToast": "\"{name}\" imported!",
+      "errorMessage": "Error: {message}",
+      "mineEmptyTitle": "You haven't published anything yet",
+      "mineEmptySub": "Share your workflows with the community!",
+      "chooseWorkflow": "-- Choose a workflow --",
+      "workflowToPublish": "Workflow to publish",
+      "stepSingular": "step",
+      "stepPlural": "steps",
+      "noWorkflowFound": "No workflow found",
+      "descriptionLabel": "Description",
+      "publicHint": "(publicly visible)",
+      "descriptionPlaceholder": "This workflow does X, Y, Z…",
+      "tagsLabel": "Tags",
+      "tagsHint": "(comma-separated)",
+      "authorLabel": "Username",
+      "authorPlaceholder": "your-username",
+      "publishInfo": "Your workflow will be immediately visible in the Explore tab.",
+      "publish": "Publish",
+      "chooseWorkflowError": "Choose a workflow",
+      "addDescriptionError": "Add a description",
+      "descriptionTooLong": "Description too long (max 500)",
+      "publishing": "Publishing…",
+      "publishedToast": "\"{name}\" published! Visible in Explore.",
+      "publishError": "Error while publishing",
+      "offlineQueued": "Offline — will be sent later.",
+      "hubUnavailable": "Hub unavailable.",
+      "today": "today",
+      "daysAgoShort": "{n}d ago",
+      "weeksAgoShort": "{n}w ago",
+      "mock": {
+        "dailyCodeReview": "Daily code review by Claude. Runs a full analysis at 8am, fixes issues, and pushes if tests pass.",
+        "autoTestOnCommit": "Triggered after each Git tool call. Runs tests automatically and notifies on failure.",
+        "prSummaryAgent": "Generates a PR summary via Claude and posts it as a GitHub comment through the API.",
+        "deployNotifyDiscord": "Complete deployment pipeline with Discord notification.",
+        "changelogAutoWriter": "Generates CHANGELOG.md from Git commits via Claude.",
+        "securityAuditWeekly": "Weekly audit: vulnerable dependencies, exposed secrets, permissions."
+      }
+    },
+    "helpers": {
+      "condition": {
+        "none": "(no condition)"
+      },
+      "status": {
+        "success": "Success",
+        "failed": "Failed",
+        "running": "Running",
+        "pending": "Pending",
+        "cancelled": "Cancelled"
+      },
+      "triggerDesc": {
+        "cron": "Scheduled at fixed times",
+        "hook": "Reacts to Claude events",
+        "onWorkflow": "Chained to another workflow",
+        "manual": "Triggered on demand",
+        "webhook": "External HTTP POST trigger"
+      },
+      "cron": {
+        "modeInterval": "Interval",
+        "modeDaily": "Daily",
+        "modeWeekly": "Weekly",
+        "modeMonthly": "Monthly",
+        "modeCustom": "Custom",
+        "dayMonday": "Monday",
+        "dayTuesday": "Tuesday",
+        "dayWednesday": "Wednesday",
+        "dayThursday": "Thursday",
+        "dayFriday": "Friday",
+        "daySaturday": "Saturday",
+        "daySunday": "Sunday",
+        "every": "Every",
+        "everyDayAt": "Every day at",
+        "at": "at",
+        "onDay": "On day",
+        "ofMonthAt": "of each month at"
+      },
+      "time": {
+        "justNow": "Just now",
+        "minutesAgo": "{n} min ago",
+        "hoursAgo": "{n}h ago",
+        "yesterdayAt": "Yesterday {time}",
+        "daysAgo": "{n}d ago"
+      },
+      "autocomplete": {
+        "ctxProject": "Project path",
+        "ctxBranch": "Active Git branch",
+        "ctxDate": "Current date",
+        "ctxTrigger": "Trigger type",
+        "categoryContext": "Context",
+        "loopItemAlias": "Current item (alias)",
+        "loopItem": "Current item",
+        "loopIndex": "Current index (0-based)",
+        "loopTotal": "Total number of items",
+        "categoryLoop": "Loop",
+        "categoryNodes": "Nodes",
+        "categoryVariables": "Variables",
+        "variableDetail": "Variable ({type})",
+        "categoryDbColumns": "DB Columns",
+        "insertVariable": "Insert variable",
+        "searchVariable": "Search variable...",
+        "noVariableFound": "No variable found"
+      },
+      "loopPreview": {
+        "currentIterationValue": "Current iteration value",
+        "noNodeConnected": "No node connected to the <strong>In</strong> port",
+        "dbRowsFrom": "Rows from {table}",
+        "dbQueryResults": "SQL query results",
+        "dbRowWithColumns": "Row from {table} (object with columns)",
+        "dbResultRow": "Result row (object)",
+        "dbTableNames": "Database table names",
+        "dbTableName": "Table name (string)",
+        "dbTablesWithColumns": "Tables with their columns",
+        "dbTableObject": "Table (object with name, columns)",
+        "projects": "Claude Terminal projects",
+        "projectObject": "Project (id, name, path, type)",
+        "shellStdout": "Shell output (stdout)",
+        "shellLine": "Output line",
+        "httpBody": "HTTP response (body)",
+        "httpArrayItem": "Response array item",
+        "fileContent": "File content",
+        "fileLine": "File line",
+        "outputOf": "Output of {sourceName}",
+        "outputItem": "Output item",
+        "itemsCount": "{n} items",
+        "moreItems": "… +{n} more"
+      }
     }
   },
   "wfn": {

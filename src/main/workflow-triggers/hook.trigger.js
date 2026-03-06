@@ -1,13 +1,13 @@
 'use strict';
 
 /**
- * Trigger déclenché par les hooks Claude (PreToolUse, PostToolUse, etc.)
- * L'app reçoit des events HTTP depuis le hook handler et les transmet.
+ * Trigger fired by Claude hooks (PreToolUse, PostToolUse, etc.)
+ * The app receives HTTP events from the hook handler and forwards them.
  */
 module.exports = {
   type:  'hook',
   label: 'Hook Claude',
-  desc:  'Déclenché par un événement hook Claude',
+  desc:  'Triggered by a Claude hook event',
 
   shouldFire(config, context) {
     if (!config.hookType || !context.hookEvent) return false;
@@ -15,9 +15,9 @@ module.exports = {
   },
 
   setup(config, onFire) {
-    // Le hook event est géré par HookEventServer dans l'app principale.
+    // Hook events are managed by HookEventServer in the main app.
     // WorkflowRunner s'abonne aux events via l'IPC.
-    // Ce setup est un no-op — WorkflowRunner gère le binding.
+    // This setup is a no-op — WorkflowRunner handles binding.
     return () => {};
   },
 };

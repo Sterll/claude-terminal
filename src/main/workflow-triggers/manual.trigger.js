@@ -2,20 +2,20 @@
 
 module.exports = {
   type:  'manual',
-  label: 'Manuel',
-  desc:  'Déclenché manuellement via le bouton play',
+  label: 'Manual',
+  desc:  'Triggered manually via the play button',
 
   /**
-   * Vérifie si le trigger doit se déclencher.
-   * Pour manual, jamais via polling — déclenché directement.
+   * Checks whether the trigger should fire.
+   * For manual, never via polling — fired directly.
    */
   shouldFire(_config, _context) {
     return false;
   },
 
   /**
-   * Setup au démarrage (retourne une fonction teardown).
-   * Pour manual, rien à faire.
+   * Startup setup (returns a teardown function).
+   * For manual, nothing to do.
    */
   setup(_config, _onFire) {
     return () => {}; // teardown no-op

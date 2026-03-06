@@ -26,7 +26,8 @@
     "browse": "Parcourir",
     "errorOccurred": "Une erreur est survenue",
     "stop": "Arrêter",
-    "remove": "Retirer"
+    "remove": "Retirer",
+    "ignore": "Ignorer"
   },
   "projects": {
     "title": "Projets",
@@ -1492,6 +1493,10 @@
     "launchBtn": "Lancer",
     "editBtn": "Modifier",
     "selectedCount": "{n} sélectionné(s)",
+    "workflowsTab": "Workflows",
+    "runsTab": "Historique",
+    "hubTab": "Hub",
+    "back": "Retour",
     "nodeDesc": {
       "trigger": "Déclencheur du workflow",
       "claude": "Prompt, Agent ou Skill",
@@ -1613,7 +1618,9 @@
       "hookStop": "Stop — Quand Claude termine",
       "workflowSourceLabel": "Workflow source",
       "workflowSourceHint": "Se déclenche après la fin de ce workflow",
-      "selectWorkflow": "Sélectionner un workflow…"
+      "selectWorkflow": "Sélectionner un workflow…",
+      "manualHint": "Ce workflow se lance manuellement via le bouton ▶ ou via l'API.",
+      "webhookHint": "Ce workflow se déclenche via un POST HTTP depuis un service externe (GitHub, Stripe, etc.)."
     },
     "loop": {
       "sourceLabel": "Source d'itération",
@@ -1688,6 +1695,215 @@
       "waitHint": "Bloquer l'exécution jusqu'à la fin du sous-workflow",
       "waitYes": "Oui — attendre la fin",
       "waitNo": "Non — lancer en arrière-plan"
+    },
+    "list": {
+      "emptyTitle": "Aucun workflow",
+      "emptySub": "Automatisez vos tâches répétitives avec Claude",
+      "createBtn": "Créer un workflow"
+    },
+    "contextMenu": {
+      "edit": "Modifier",
+      "runNow": "Lancer maintenant",
+      "duplicate": "Dupliquer",
+      "delete": "Supprimer"
+    },
+    "favorites": {
+      "add": "Ajouter aux favoris",
+      "remove": "Retirer des favoris"
+    },
+    "history": {
+      "clearTitle": "Effacer l'historique",
+      "clearBtn": "Effacer",
+      "emptyTitle": "Aucun run",
+      "emptySub": "Les exécutions s'afficheront ici",
+      "showMore": "Afficher {n} runs de plus",
+      "selectRun": "Sélectionne un run pour voir le détail",
+      "clearMessage": "Supprimer les {n} runs de l'historique ? Cette action est irréversible."
+    },
+    "runMeta": {
+      "iterationLabel": "Itération {n}",
+      "deletedLabel": "Supprimé",
+      "stopTitle": "Arrêter le run",
+      "workflowDeleted": "Workflow supprimé",
+      "rerun": "Relancer"
+    },
+    "editor": {
+      "unsavedChanges": "Modifications non sauvegardées",
+      "variablesTab": "Variables",
+      "addVariable": "Ajouter une variable",
+      "varsEmpty": "Cliquer + pour créer une variable",
+      "selectNode": "Sélectionnez un node pour configurer ses paramètres",
+      "insertVariableNode": "Cliquer pour insérer un node Variable",
+      "nodeIdHint": "ID de ce node pour les variables",
+      "palette": {
+        "actions": "Actions",
+        "data": "Données",
+        "flow": "Contrôle"
+      }
+    },
+    "varEditor": {
+      "newTitle": "Nouvelle variable",
+      "editTitle": "Modifier la variable",
+      "name": "Nom",
+      "type": "Type"
+    },
+    "loopSuggest": {
+      "text": "Ce lien transporte un tableau. Insérer un Loop ?",
+      "insert": "Insérer Loop"
+    },
+    "deleteConfirm": {
+      "title": "Supprimer le workflow",
+      "message": "Supprimer {name} ? Cette action est irréversible.",
+      "thisWorkflow": "ce workflow"
+    },
+    "duplicateSuffix": " (copie)",
+    "marketplace": {
+      "community": "Communauté",
+      "explore": "Explorer",
+      "myPublications": "Mes publications",
+      "publishWorkflow": "Publier un workflow",
+      "searchPlaceholder": "Rechercher des workflows…",
+      "sort": "Trier",
+      "sortPopular": "Populaires",
+      "sortRecent": "Récents",
+      "sortAlpha": "A-Z",
+      "noResults": "Aucun résultat pour \"{query}\"",
+      "noWorkflow": "Aucun workflow disponible",
+      "beFirst": "Soyez le premier à publier !",
+      "by": "par",
+      "anonymous": "anonyme",
+      "import": "Importer",
+      "imports": "{n} imports",
+      "workflowPreview": "Aperçu du workflow",
+      "importThisWorkflow": "Importer ce workflow",
+      "apiUnavailable": "API workflow non disponible",
+      "failedDefault": "Échec",
+      "importedBtn": "Importé !",
+      "importedToast": "« {name} » importé !",
+      "errorMessage": "Erreur : {message}",
+      "mineEmptyTitle": "Vous n'avez encore rien publié",
+      "mineEmptySub": "Partagez vos workflows avec la communauté !",
+      "chooseWorkflow": "-- Choisir un workflow --",
+      "workflowToPublish": "Workflow à publier",
+      "stepSingular": "étape",
+      "stepPlural": "étapes",
+      "noWorkflowFound": "Aucun workflow trouvé",
+      "descriptionLabel": "Description",
+      "publicHint": "(affiché publiquement)",
+      "descriptionPlaceholder": "Ce workflow fait X, Y, Z…",
+      "tagsLabel": "Tags",
+      "tagsHint": "(séparés par virgule)",
+      "authorLabel": "Pseudo",
+      "authorPlaceholder": "votre-pseudo",
+      "publishInfo": "Votre workflow sera immédiatement visible dans l'onglet Explorer.",
+      "publish": "Publier",
+      "chooseWorkflowError": "Choisissez un workflow",
+      "addDescriptionError": "Ajoutez une description",
+      "descriptionTooLong": "Description trop longue (max 500)",
+      "publishing": "Publication…",
+      "publishedToast": "« {name} » publié ! Visible dans Explorer.",
+      "publishError": "Erreur lors de la publication",
+      "offlineQueued": "Hors ligne — sera envoyé plus tard.",
+      "hubUnavailable": "Hub non disponible.",
+      "today": "aujourd'hui",
+      "daysAgoShort": "il y a {n}j",
+      "weeksAgoShort": "il y a {n}sem",
+      "mock": {
+        "dailyCodeReview": "Revue de code quotidienne par Claude. Lance une analyse complète à 8h, corrige les issues et pousse si les tests passent.",
+        "autoTestOnCommit": "Déclenché après chaque outil Git. Lance les tests automatiquement et notifie en cas d'échec.",
+        "prSummaryAgent": "Génère un résumé de PR via Claude et le poste comme commentaire GitHub via l'API.",
+        "deployNotifyDiscord": "Pipeline de déploiement complet avec notification Discord.",
+        "changelogAutoWriter": "Génère le CHANGELOG.md depuis les commits Git via Claude.",
+        "securityAuditWeekly": "Audit hebdomadaire : dépendances vulnérables, secrets exposés, permissions."
+      }
+    },
+    "helpers": {
+      "condition": {
+        "none": "(aucune condition)"
+      },
+      "status": {
+        "success": "Succès",
+        "failed": "Échec",
+        "running": "En cours",
+        "pending": "En attente",
+        "cancelled": "Annulé"
+      },
+      "triggerDesc": {
+        "cron": "Planifié à heures fixes",
+        "hook": "Réagit aux événements Claude",
+        "onWorkflow": "Enchaîné à un autre workflow",
+        "manual": "Déclenché à la demande",
+        "webhook": "Déclenchement HTTP POST externe"
+      },
+      "cron": {
+        "modeInterval": "Intervalle",
+        "modeDaily": "Quotidien",
+        "modeWeekly": "Hebdo",
+        "modeMonthly": "Mensuel",
+        "modeCustom": "Custom",
+        "dayMonday": "Lundi",
+        "dayTuesday": "Mardi",
+        "dayWednesday": "Mercredi",
+        "dayThursday": "Jeudi",
+        "dayFriday": "Vendredi",
+        "daySaturday": "Samedi",
+        "daySunday": "Dimanche",
+        "every": "Toutes les",
+        "everyDayAt": "Chaque jour à",
+        "at": "à",
+        "onDay": "Le",
+        "ofMonthAt": "de chaque mois à"
+      },
+      "time": {
+        "justNow": "À l'instant",
+        "minutesAgo": "Il y a {n} min",
+        "hoursAgo": "Il y a {n}h",
+        "yesterdayAt": "Hier {time}",
+        "daysAgo": "Il y a {n}j"
+      },
+      "autocomplete": {
+        "ctxProject": "Chemin du projet",
+        "ctxBranch": "Branche Git active",
+        "ctxDate": "Date du jour",
+        "ctxTrigger": "Type de déclencheur",
+        "categoryContext": "Contexte",
+        "loopItemAlias": "Élément courant (alias)",
+        "loopItem": "Élément courant",
+        "loopIndex": "Index courant (0-based)",
+        "loopTotal": "Nombre total d'items",
+        "categoryLoop": "Loop",
+        "categoryNodes": "Nodes",
+        "categoryVariables": "Variables",
+        "variableDetail": "Variable ({type})",
+        "categoryDbColumns": "Colonnes DB",
+        "insertVariable": "Insérer une variable",
+        "searchVariable": "Rechercher une variable...",
+        "noVariableFound": "Aucune variable trouvée"
+      },
+      "loopPreview": {
+        "currentIterationValue": "Valeur de l'itération courante",
+        "noNodeConnected": "Aucun node connecté au port <strong>In</strong>",
+        "dbRowsFrom": "Lignes de {table}",
+        "dbQueryResults": "Résultats de la requête SQL",
+        "dbRowWithColumns": "Ligne de {table} (objet avec colonnes)",
+        "dbResultRow": "Ligne de résultat (objet)",
+        "dbTableNames": "Noms des tables de la base",
+        "dbTableName": "Nom de table (string)",
+        "dbTablesWithColumns": "Tables avec leurs colonnes",
+        "dbTableObject": "Table (objet avec name, columns)",
+        "projects": "Projets Claude Terminal",
+        "projectObject": "Projet (id, name, path, type)",
+        "shellStdout": "Sortie du shell (stdout)",
+        "shellLine": "Ligne de sortie",
+        "httpBody": "Réponse HTTP (body)",
+        "httpArrayItem": "Élément du tableau de réponse",
+        "fileContent": "Contenu du fichier",
+        "fileLine": "Ligne du fichier",
+        "outputOf": "Sortie de {sourceName}",
+        "outputItem": "Élément de la sortie",
+        "itemsCount": "{n} items",
+        "moreItems": "… +{n} autres"
+      }
     }
   },
   "wfn": {

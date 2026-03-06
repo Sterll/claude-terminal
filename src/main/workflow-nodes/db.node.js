@@ -3,7 +3,7 @@
 module.exports = {
   type:     'workflow/db',
   title:    'Database',
-  desc:     'Requête base de données',
+  desc:     'Database query',
   color:    'orange',
   width:    220,
   category: 'data',

@@ -5,7 +5,7 @@ const { esc } = require('./_registry');
 module.exports = {
   type:     'workflow/switch',
   title:    'Switch',
-  desc:     'Brancher sur plusieurs valeurs',
+  desc:     'Branch by multiple values',
   color:    'pink',
   width:    220,
   category: 'flow',
@@ -28,29 +28,29 @@ module.exports = {
 
         return `
           <div class="wf-step-edit-field">
-            <label class="wf-step-edit-label">Variable à tester</label>
-            <span class="wf-field-hint">Variable dont la valeur détermine la branche</span>
+            <label class="wf-step-edit-label">Variable to test</label>
+            <span class="wf-field-hint">Variable whose value determines the branch</span>
             <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="variable" value="${esc(p.variable || '')}" placeholder="$ctx.branch" />
           </div>
           <div class="wf-step-edit-field">
             <label class="wf-step-edit-label">Cases</label>
-            <span class="wf-field-hint">Chaque case crée un port de sortie. Le port "default" est automatique.</span>
+            <span class="wf-field-hint">Each case creates an output port. The "default" port is automatic.</span>
             <div class="wf-switch-cases" id="wf-switch-case-list">
               ${cases.map((c, i) => `
                 <div class="wf-switch-case-row" data-idx="${i}">
                   <span class="wf-switch-case-idx">${i + 1}</span>
-                  <input class="wf-switch-case-input wf-field-mono" value="${esc(c)}" placeholder="valeur" />
-                  <button class="wf-switch-case-del" title="Supprimer ce case"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+                  <input class="wf-switch-case-input wf-field-mono" value="${esc(c)}" placeholder="value" />
+                  <button class="wf-switch-case-del" title="Delete this case"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
                 </div>
               `).join('')}
             </div>
             <button class="wf-switch-case-add" id="wf-switch-add-case">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
-              Ajouter un case
+              Add case
             </button>
           </div>
           <div class="wf-switch-preview">
-            <div class="wf-switch-preview-title">Ports de sortie</div>
+            <div class="wf-switch-preview-title">Output ports</div>
             <div class="wf-switch-preview-ports" id="wf-switch-preview-ports">
               ${cases.map(c => `<span class="wf-switch-preview-port">${esc(c)}</span>`).join('')}
               <span class="wf-switch-preview-port wf-switch-preview-port--default">default</span>
@@ -89,8 +89,8 @@ module.exports = {
           listEl.innerHTML = cases.map((c, i) => `
             <div class="wf-switch-case-row" data-idx="${i}">
               <span class="wf-switch-case-idx">${i + 1}</span>
-              <input class="wf-switch-case-input wf-field-mono" value="${esc(c)}" placeholder="valeur" />
-              <button class="wf-switch-case-del" title="Supprimer ce case"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              <input class="wf-switch-case-input wf-field-mono" value="${esc(c)}" placeholder="value" />
+              <button class="wf-switch-case-del" title="Delete this case"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
             </div>
           `).join('');
           bindRows();
@@ -132,8 +132,8 @@ module.exports = {
             row.dataset.idx = count;
             row.innerHTML = `
               <span class="wf-switch-case-idx">${count + 1}</span>
-              <input class="wf-switch-case-input wf-field-mono" value="" placeholder="valeur" />
-              <button class="wf-switch-case-del" title="Supprimer ce case"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              <input class="wf-switch-case-input wf-field-mono" value="" placeholder="value" />
+              <button class="wf-switch-case-del" title="Delete this case"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
             `;
             listEl.appendChild(row);
             bindRows();
