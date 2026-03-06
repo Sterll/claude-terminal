@@ -2021,7 +2021,10 @@ function switchTerminal(direction) {
   const visibleTerminals = [];
   allTerminals.forEach((termData, id) => {
     const isVisible = currentFilter === null ||
-      (filterProject && termData.project && termData.project.path === filterProject.path);
+      (filterProject && termData.project && (
+        termData.project.path === filterProject.path ||
+        termData.project.parentRepoProjectId === filterProject.id
+      ));
     if (isVisible) {
       visibleTerminals.push(id);
     }
