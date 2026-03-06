@@ -44,9 +44,10 @@
 
 ### Activity
 
-<!-- After registering the repo at https://repobeats.axiom.co, replace      -->
-<!-- REPOBEATS_HASH below with the unique hash provided by Repobeats.         -->
-![Alt](https://repobeats.axiom.co/api/embed/REPOBEATS_HASH.svg "Repobeats analytics image")
+[![Commit activity](https://img.shields.io/github/commit-activity/m/Sterll/claude-terminal?label=commits%2Fmonth)](https://github.com/Sterll/claude-terminal/graphs/commit-activity)
+[![Last commit](https://img.shields.io/github/last-commit/Sterll/claude-terminal)](https://github.com/Sterll/claude-terminal/commits/main)
+[![Issues](https://img.shields.io/github/issues/Sterll/claude-terminal)](https://github.com/Sterll/claude-terminal/issues)
+[![Pull Requests](https://img.shields.io/github/issues-pr/Sterll/claude-terminal)](https://github.com/Sterll/claude-terminal/pulls)
 
 ### Internationalization (i18n)
 
