@@ -5,7 +5,7 @@ const { esc } = require('./_registry');
 module.exports = {
   type:     'workflow/log',
   title:    'Log',
-  desc:     'Write to log',
+  desc:     'Écrire dans le log',
   color:    'slate',
   width:    200,
   category: 'flow',
@@ -39,7 +39,7 @@ module.exports = {
 
         return `
           <div class="wf-step-edit-field">
-            <label class="wf-step-edit-label">Level</label>
+            <label class="wf-step-edit-label">Niveau</label>
             <div class="wf-log-level-tabs">
               ${LOG_LEVELS.map(l => `
                 <button class="wf-log-level-tab ${logLevel === l.value ? 'active' : ''}" data-level="${l.value}" style="${logLevel === l.value ? `--tab-color:${l.color}` : ''}">
@@ -57,7 +57,7 @@ module.exports = {
             <textarea class="wf-step-edit-input wf-node-prop wf-log-textarea" data-key="message" rows="3" placeholder="Build finished for $ctx.project">${esc(p.message || '')}</textarea>
             <div class="wf-log-preview" data-level="${logLevel}">
               <span class="wf-log-preview-badge">${currentLevel.icon}</span>
-              <span class="wf-log-preview-text">${esc(p.message || 'Message preview...')}</span>
+              <span class="wf-log-preview-text">${esc(p.message || 'Aperçu du message...')}</span>
             </div>
           </div>
         `;
@@ -106,7 +106,7 @@ module.exports = {
               textarea.value = btn.dataset.tpl;
               node.properties.message = textarea.value;
               const preview = container.querySelector('.wf-log-preview-text');
-              if (preview) preview.textContent = textarea.value || 'Message preview...';
+              if (preview) preview.textContent = textarea.value || 'Aperçu du message...';
               onChange(textarea.value);
             }
           });
@@ -116,7 +116,7 @@ module.exports = {
         const textarea = container.querySelector('.wf-log-textarea');
         textarea?.addEventListener('input', () => {
           const preview = container.querySelector('.wf-log-preview-text');
-          if (preview) preview.textContent = textarea.value || 'Message preview...';
+          if (preview) preview.textContent = textarea.value || 'Aperçu du message...';
         });
       },
     },

@@ -5,7 +5,7 @@ const { esc } = require('./_registry');
 module.exports = {
   type:     'workflow/get_variable',
   title:    'Get Variable',
-  desc:     'Read variable (pure)',
+  desc:     'Lire une variable (pure)',
   color:    'purple',
   width:    150,
   category: 'data',
@@ -37,12 +37,12 @@ module.exports = {
         return `
           <div class="wf-step-edit-field">
             <label class="wf-step-edit-label">Variable</label>
-            <span class="wf-field-hint">Variable name to read</span>
+            <span class="wf-field-hint">Nom de la variable à lire</span>
             <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="name" value="${esc(p.name || '')}" placeholder="buildCount" />
           </div>
           <div class="wf-step-edit-field">
-            <label class="wf-step-edit-label">Pin type</label>
-            <span class="wf-field-hint">Determines output pin color and compatibility</span>
+            <label class="wf-step-edit-label">Type du pin</label>
+            <span class="wf-field-hint">Détermine la couleur et la compatibilité du pin de sortie</span>
             <div class="wf-var-type-picker" id="wf-getvar-type-picker">
               ${VAR_TYPE_OPTIONS.map(t => {
                 const color = VAR_COLORS[t] || '#6b7280';
