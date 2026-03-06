@@ -570,7 +570,7 @@ function createChatView(wrapperEl, project, options = {}) {
     }
     const query = text.slice(1).toLowerCase();
     // Default commands available even before session init
-    const builtinDefaults = ['/compact', '/clear', '/help'];
+    const builtinDefaults = ['/compact', '/clear', '/help', '/reload-plugins', '/simplify', '/batch'];
     const available = slashCommands.length > 0 ? slashCommands : builtinDefaults;
     const filtered = available.filter(cmd => {
       const name = cmd.replace(/^\//, '').toLowerCase();
@@ -613,6 +613,9 @@ function createChatView(wrapperEl, project, options = {}) {
       '/compact': t('chat.slashCompact'),
       '/clear': t('chat.slashClear'),
       '/help': t('chat.slashHelp'),
+      '/reload-plugins': t('chat.slashReloadPlugins'),
+      '/simplify': t('chat.slashSimplify'),
+      '/batch': t('chat.slashBatch'),
     };
     return descriptions[cmd] || '';
   }
