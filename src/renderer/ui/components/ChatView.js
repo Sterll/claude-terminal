@@ -3378,14 +3378,10 @@ function createChatView(wrapperEl, project, options = {}) {
    * received the answer and continued, so we just need to update the UI.
    */
   function collapseExternallyAnsweredQuestionCards() {
+    // Fallback: if a question card was answered from CT (ct-question-answered event already
+    // collapsed it with the real answer), this handles any remaining unresolved cards
+    // e.g. from a race condition or non-CT source.
     messagesEl.querySelectorAll('.chat-question-card:not(.resolved)').forEach(card => {
-      const questionsData = JSON.parse(card.dataset.questions || '[]');
-      const pairsHtml = questionsData.map(q =>
-        `<div class="chat-qa-pair">
-          <span class="chat-qa-question">${escapeHtml(q.question || '')}</span>
-          <span class="chat-qa-answer">${escapeHtml(t('chat.answeredExternally') || '↩')}</span>
-        </div>`
-      ).join('');
       card.classList.add('resolved');
       card.innerHTML = `
         <div class="chat-question-header resolved">
@@ -3394,7 +3390,6 @@ function createChatView(wrapperEl, project, options = {}) {
           </div>
           <span>${escapeHtml(t('chat.questionAnswered') || 'Answered')}</span>
         </div>
-        <div class="chat-qa-summary">${pairsHtml}</div>
       `;
     });
   }
@@ -3492,6 +3487,47 @@ function createChatView(wrapperEl, project, options = {}) {
     setStatus('waiting', t('chat.waitingForInput') || 'Waiting for input...');
   });
   unsubscribers.push(unsubPerm);
+
+  // ── Control Tower: question answered externally ──
+  // When CT answers an AskUserQuestion, it dispatches this event so we can
+  // collapse the card immediately with the real answer instead of a generic fallback.
+
+  function _onCtQuestionAnswered({ detail }) {
+    const { requestId, questions, answers } = detail || {};
+    if (!requestId) return;
+    let card;
+    try {
+      card = messagesEl.querySelector(`.chat-question-card[data-request-id="${CSS.escape(requestId)}"]`);
+    } catch (e) {
+      card = Array.from(messagesEl.querySelectorAll('.chat-question-card'))
+        .find(c => c.dataset.requestId === requestId);
+    }
+    if (!card || card.classList.contains('resolved')) return;
+
+    const pairsHtml = Object.entries(answers || {}).map(([q, a]) =>
+      `<div class="chat-qa-pair">
+        <span class="chat-qa-question">${escapeHtml(q)}</span>
+        <span class="chat-qa-answer">${escapeHtml(a)}</span>
+      </div>`
+    ).join('') || (Array.isArray(questions) ? questions.map(q =>
+      `<div class="chat-qa-pair">
+        <span class="chat-qa-question">${escapeHtml(q.question || '')}</span>
+      </div>`
+    ).join('') : '');
+
+    card.classList.add('resolved');
+    card.innerHTML = `
+      <div class="chat-question-header resolved">
+        <div class="chat-perm-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+        </div>
+        <span>${escapeHtml(t('chat.questionAnswered') || 'Answered')}</span>
+      </div>
+      <div class="chat-qa-summary">${pairsHtml}</div>
+    `;
+  }
+  document.addEventListener('ct-question-answered', _onCtQuestionAnswered);
+  unsubscribers.push(() => document.removeEventListener('ct-question-answered', _onCtQuestionAnswered));
 
   // If resuming, load and display conversation history
   if (pendingResumeId) {

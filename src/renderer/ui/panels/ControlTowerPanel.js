@@ -1049,6 +1049,10 @@ function _sendReply(agentId, text) {
         updatedInput: { questions: questionsData, answers }
       }
     });
+    // Notify ChatView so it can collapse the question card with the real answer
+    document.dispatchEvent(new CustomEvent('ct-question-answered', {
+      detail: { requestId: perm.requestId, questions: questionsData, answers }
+    }));
   } catch (e) {
     console.error('[ControlTower] Failed to send reply:', e);
   }
