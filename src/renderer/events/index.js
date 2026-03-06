@@ -275,17 +275,18 @@ function wireAttentionConsumer() {
       const terminalId = resolveTerminalId(e.projectId);
 
       // AskUserQuestion: build interactive answer buttons from Claude's options
+      // SDK structure: toolInput.questions[0].question + toolInput.questions[0].options[].label
       if (toolName.toLowerCase() === 'askuserquestion' && e.data?.toolInput) {
-        const { question, options } = e.data.toolInput;
-        const body = question || t(`terminals.${match.key}`);
-        const opts = Array.isArray(options) ? options.slice(0, 4) : [];
-        const buttons = opts.length > 0
-          ? opts.map((opt, i) => ({
-              label: String(opt).slice(0, 32),
-              action: 'answer',
-              value: String(opt),
-              style: i === 0 ? 'primary' : 'secondary'
-            }))
+        const { questions } = e.data.toolInput;
+        const firstQ = Array.isArray(questions) ? questions[0] : null;
+        const body = firstQ?.question || t(`terminals.${match.key}`);
+        const rawOpts = Array.isArray(firstQ?.options) ? firstQ.options.slice(0, 4) : [];
+        const buttons = rawOpts.length > 0
+          ? rawOpts.map((opt, i) => {
+              const label = (typeof opt === 'object' ? (opt.label || '') : String(opt)).slice(0, 32);
+              const value = typeof opt === 'object' ? (opt.label || String(opt)) : String(opt);
+              return { label, action: 'answer', value, style: i === 0 ? 'primary' : 'secondary' };
+            })
           : [{ label: t('terminals.notifBtnShow'), action: 'show', style: 'primary' }];
 
         if (notificationFn) {
