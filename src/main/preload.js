@@ -445,6 +445,17 @@ contextBridge.exposeInMainWorld('electron_api', {
     getStats: (config) => ipcRenderer.invoke('time:get-stats', config),
   },
 
+  // ==================== PARALLEL TASKS ====================
+  parallel: {
+    startRun:    (p) => ipcRenderer.invoke('parallel-run-start', p),
+    cancelRun:   (p) => ipcRenderer.invoke('parallel-run-cancel', p),
+    cleanupRun:  (p) => ipcRenderer.invoke('parallel-run-cleanup', p),
+    getHistory:  (p) => ipcRenderer.invoke('parallel-history', p),
+    onRunStatus:  createListener('parallel-run-status'),
+    onTaskUpdate: createListener('parallel-task-update'),
+    onTaskOutput: createListener('parallel-task-output'),
+  },
+
   // ==================== WORKFLOW AUTOMATION ====================
   workflow: {
     // CRUD
