@@ -651,21 +651,7 @@ function _buildLastResponseSection(agent) {
   if (agent.type !== 'chat' || !agent.chatSessionId) return '';
   const lastResponse = _lastResponses.get(agent.chatSessionId);
   if (!lastResponse) return '';
-
-  const isExpanded = _expandedResponses.has(agent.id);
-  return `
-    <div class="ct-last-response">
-      <button class="ct-btn-toggle-response" data-agent-id="${escapeHtml(agent.id)}">
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transition:transform 0.2s;transform:rotate(${isExpanded ? '90' : '0'}deg)">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
-        ${escapeHtml(t('controlTower.showLastResponse'))}
-      </button>
-      ${isExpanded
-        ? `<div class="ct-response-text">${escapeHtml(lastResponse)}${lastResponse.length >= 800 ? '…' : ''}</div>`
-        : ''}
-    </div>
-  `;
+  return `<div class="ct-response-preview">${escapeHtml(lastResponse)}${lastResponse.length >= 800 ? '…' : ''}</div>`;
 }
 
 function _buildAgentCard(agent) {
@@ -694,7 +680,7 @@ function _buildAgentCard(agent) {
   const waitingClass = agent.status === 'WAITING' ? ' ct-status-waiting' : '';
 
   return `
-    <div class="ct-agent-card${agent.status === 'DONE' ? ' ct-agent-done' : ''}${agent.status === 'ERROR' ? ' ct-agent-error' : ''}${agent.status === 'WAITING' ? ' ct-agent-waiting' : ''}" data-agent-id="${escapeHtml(agent.id)}">
+    <div class="ct-agent-card${agent.status === 'DONE' ? ' ct-agent-done' : ''}${agent.status === 'ERROR' ? ' ct-agent-error' : ''}${agent.status === 'WAITING' ? ' ct-agent-waiting' : ''}" data-agent-id="${escapeHtml(agent.id)}" style="--ct-status-color:${statusColor}">
       <div class="ct-agent-header">
         <div class="ct-agent-project">
           <span class="ct-project-name">${escapeHtml(agent.projectName)}</span>
@@ -707,42 +693,43 @@ function _buildAgentCard(agent) {
 
       <div class="ct-agent-activity">${activityLine}</div>
 
-      <div class="ct-agent-meta">
-        <span class="ct-meta-item ct-meta-timer" data-agent-start="${agent.startTime}">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;opacity:0.6">
-            <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/>
-          </svg>
-          ${escapeHtml(duration)}
-        </span>
-        <span class="ct-meta-item ct-meta-cost" data-agent-id="${escapeHtml(agent.id)}">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;opacity:0.6">
-            <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-          </svg>
-          ${escapeHtml(cost)}
-        </span>
-        ${agent.totalTokens > 0
-          ? `<span class="ct-meta-item ct-meta-tokens">${(agent.totalTokens / 1000).toFixed(1)}k ${t('controlTower.tokens')}</span>`
-          : ''}
-      </div>
-
-      ${_buildInlineActions(agent)}
       ${_buildLastResponseSection(agent)}
+      ${_buildInlineActions(agent)}
 
-      <div class="ct-agent-actions">
-        <button class="ct-btn ct-btn-focus" data-agent-id="${escapeHtml(agent.id)}" title="${escapeHtml(t('controlTower.focus'))}">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1"/>
-          </svg>
-          ${escapeHtml(t('controlTower.focus'))}
-        </button>
-        ${isActive
-          ? `<button class="ct-btn ct-btn-interrupt" data-agent-id="${escapeHtml(agent.id)}" title="${escapeHtml(t('controlTower.interrupt'))}">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-              </svg>
-              ${escapeHtml(t('controlTower.interrupt'))}
-            </button>`
-          : ''}
+      <div class="ct-agent-footer">
+        <div class="ct-agent-meta">
+          <span class="ct-meta-item ct-meta-timer" data-agent-start="${agent.startTime}">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;opacity:0.5">
+              <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/>
+            </svg>
+            ${escapeHtml(duration)}
+          </span>
+          <span class="ct-meta-item ct-meta-cost" data-agent-id="${escapeHtml(agent.id)}">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;opacity:0.5">
+              <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+            ${escapeHtml(cost)}
+          </span>
+          ${agent.totalTokens > 0
+            ? `<span class="ct-meta-item ct-meta-tokens">${(agent.totalTokens / 1000).toFixed(1)}k ${t('controlTower.tokens')}</span>`
+            : ''}
+        </div>
+        <div class="ct-agent-actions">
+          <button class="ct-btn ct-btn-focus" data-agent-id="${escapeHtml(agent.id)}" title="${escapeHtml(t('controlTower.focus'))}">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1"/>
+            </svg>
+            ${escapeHtml(t('controlTower.focus'))}
+          </button>
+          ${isActive
+            ? `<button class="ct-btn ct-btn-interrupt" data-agent-id="${escapeHtml(agent.id)}" title="${escapeHtml(t('controlTower.interrupt'))}">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                </svg>
+                ${escapeHtml(t('controlTower.interrupt'))}
+              </button>`
+            : ''}
+        </div>
       </div>
     </div>
   `;
@@ -837,18 +824,6 @@ function _render() {
     btn.onclick = () => _respondPermission(btn.dataset.agentId, false);
   });
 
-  // Toggle last response visibility
-  container.querySelectorAll('.ct-btn-toggle-response').forEach(btn => {
-    btn.onclick = () => {
-      const agentId = btn.dataset.agentId;
-      if (_expandedResponses.has(agentId)) {
-        _expandedResponses.delete(agentId);
-      } else {
-        _expandedResponses.add(agentId);
-      }
-      _render();
-    };
-  });
 }
 
 function _updateTimers() {
