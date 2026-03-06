@@ -280,13 +280,16 @@ function wireAttentionConsumer() {
         const { questions } = e.data.toolInput;
         const firstQ = Array.isArray(questions) ? questions[0] : null;
         const body = firstQ?.question || t(`terminals.${match.key}`);
-        const rawOpts = Array.isArray(firstQ?.options) ? firstQ.options.slice(0, 4) : [];
+        const rawOpts = Array.isArray(firstQ?.options) ? firstQ.options.slice(0, 3) : [];
         const buttons = rawOpts.length > 0
-          ? rawOpts.map((opt, i) => {
-              const label = (typeof opt === 'object' ? (opt.label || '') : String(opt)).slice(0, 32);
-              const value = typeof opt === 'object' ? (opt.label || String(opt)) : String(opt);
-              return { label, action: 'answer', value, style: i === 0 ? 'primary' : 'secondary' };
-            })
+          ? [
+              ...rawOpts.map((opt, i) => {
+                const label = (typeof opt === 'object' ? (opt.label || '') : String(opt)).slice(0, 32);
+                const value = typeof opt === 'object' ? (opt.label || String(opt)) : String(opt);
+                return { label, action: 'answer', value, style: i === 0 ? 'primary' : 'secondary' };
+              }),
+              { label: t('terminals.notifBtnOther'), action: 'show', style: 'ghost' }
+            ]
           : [{ label: t('terminals.notifBtnShow'), action: 'show', style: 'primary' }];
 
         if (notificationFn) {
