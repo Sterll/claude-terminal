@@ -29,7 +29,17 @@ module.exports = {
     "node_modules/@anthropic-ai/claude-agent-sdk/**/*",
     "node_modules/node-pty/**/*",
     "node_modules/keytar/**/*",
-    "node_modules/better-sqlite3/**/*"
+    "node_modules/better-sqlite3/**/*",
+    "node_modules/mysql2/**/*",
+    "node_modules/pg/**/*",
+    "node_modules/pg-cloudflare/**/*",
+    "node_modules/pg-connection-string/**/*",
+    "node_modules/pg-int8/**/*",
+    "node_modules/pg-pool/**/*",
+    "node_modules/pg-protocol/**/*",
+    "node_modules/pg-types/**/*",
+    "node_modules/pgpass/**/*",
+    "node_modules/mongodb/**/*"
   ],
   extraResources: [
     {
