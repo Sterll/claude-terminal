@@ -25,6 +25,10 @@
   <a href="https://www.producthunt.com/products/claude-terminal?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-claude-terminal" target="_blank" rel="noopener noreferrer"><img alt="Claude Terminal - The missing desktop app for Claude Code developers | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1089096&amp;theme=light&amp;t=1772614696412"></a>
 </p>
 
+<p align="center">
+  <img src="https://github-readme-stats.vercel.app/api/top-langs/?username=Sterll&amp;layout=compact&amp;hide_border=true&amp;theme=transparent&amp;langs_count=8" alt="Most used languages on GitHub" />
+</p>
+
 ---
 
 ## Table of Contents

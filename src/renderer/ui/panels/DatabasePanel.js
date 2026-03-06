@@ -163,6 +163,13 @@ function buildConnectionCard(conn, status) {
   const state = require('../../state');
   const active = state.getActiveConnection() === conn.id;
   const projectName = conn.projectId ? getProjectName(conn.projectId) : '';
+  const statusKey = ({
+    connected: 'database.connected',
+    disconnected: 'database.disconnected',
+    connecting: 'database.connecting',
+    error: 'database.error',
+  })[status];
+  const statusLabel = statusKey ? t(statusKey) : String(status || '');
 
   return `
     <div class="database-card ${active ? 'selected' : ''}" data-id="${escapeHtml(conn.id)}">
@@ -171,7 +178,7 @@ function buildConnectionCard(conn, status) {
           <span class="database-type-badge ${conn.type}">${escapeHtml(conn.type.toUpperCase())}</span>
           <span class="database-card-title">${escapeHtml(conn.name || conn.id)}</span>
         </div>
-        <span class="database-status-badge ${status}">${t('database.' + status)}</span>
+        <span class="database-status-badge ${status}">${escapeHtml(statusLabel)}</span>
       </div>
       <div class="database-card-bottom">
         <div class="database-card-info">

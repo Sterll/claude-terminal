@@ -13,6 +13,8 @@
     "rename": "Rename",
     "edit": "Edit",
     "copy": "Copy",
+    "paste": "Paste",
+    "selectAll": "Select all",
     "loading": "Loading...",
     "error": "Error",
     "success": "Success",
@@ -523,6 +525,7 @@
     "justNow": "just now",
     "minutesAgo": "{count}min ago",
     "hoursAgo": "{count}h ago",
+    "yesterday": "Yesterday",
     "daysAgo": "{count}d ago"
   },
   "settings": {
@@ -1405,6 +1408,7 @@
     "databaseName": "Database",
     "username": "Username",
     "password": "Password",
+    "optional": "optional",
     "filePath": "File Path",
     "connectionString": "Connection String",
     "name": "Name",
