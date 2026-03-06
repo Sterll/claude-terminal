@@ -1067,6 +1067,23 @@ function deleteKanbanColumn(projectId, columnId) {
 }
 
 /**
+ * Reorder kanban columns by moving a column from one position to another
+ * @param {string} projectId
+ * @param {string} columnId - ID of column being moved
+ * @param {number} newOrder - target order index (0-based)
+ */
+function reorderKanbanColumns(projectId, columnId, newOrder) {
+  const columns = getKanbanColumns(projectId); // already sorted by order
+  const fromIndex = columns.findIndex(c => c.id === columnId);
+  if (fromIndex === -1) return;
+  const reordered = [...columns];
+  const [moved] = reordered.splice(fromIndex, 1);
+  reordered.splice(newOrder, 0, moved);
+  const withOrder = reordered.map((c, i) => ({ ...c, order: i }));
+  updateProject(projectId, { kanbanColumns: withOrder });
+}
+
+/**
  * Get kanban labels for a project
  * @param {string} projectId
  * @returns {Array}
@@ -1266,6 +1283,7 @@ module.exports = {
   addKanbanColumn,
   updateKanbanColumn,
   deleteKanbanColumn,
+  reorderKanbanColumns,
   getKanbanLabels,
   addKanbanLabel,
   updateKanbanLabel,

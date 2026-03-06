@@ -1886,6 +1886,11 @@
     "confirmDeleteCard": "Supprimer la carte \"{title}\" ?",
     "worktree": "Worktree",
     "worktreeNone": "Aucun worktree",
+    "createWorktree": "Nouveau worktree",
+    "createWorktreeBranchPrompt": "Nom de la branche pour le nouveau worktree :",
+    "dragColumn": "Glisser pour réordonner",
+    "addCardTitle": "Nouvelle carte",
+    "noLabels": "Aucun label défini — créez-en dans le gestionnaire de labels.",
     "sessions": "Sessions",
     "sessionsLoading": "Chargement...",
     "sessionsEmpty": "Aucune session trouvée"

@@ -6,7 +6,7 @@ const { formatRelativeTime } = require('../../utils/format');
 const { createModal, showModal, closeModal, showConfirm } = require('../components/Modal');
 const {
   getTasks, addTask, updateTask, deleteTask, moveTask,
-  getKanbanColumns, addKanbanColumn, updateKanbanColumn, deleteKanbanColumn,
+  getKanbanColumns, addKanbanColumn, updateKanbanColumn, deleteKanbanColumn, reorderKanbanColumns,
   getKanbanLabels, addKanbanLabel, updateKanbanLabel, deleteKanbanLabel,
   migrateTasksToKanban, normalizeKanbanTaskFields,
 } = require('../../state');
@@ -56,8 +56,9 @@ function buildColumnHtml(project, col) {
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
   return `
-    <div class="kanban-column" data-col-id="${escapeHtml(col.id)}">
-      <div class="kanban-column-header">
+    <div class="kanban-column" data-col-id="${escapeHtml(col.id)}" draggable="false">
+      <div class="kanban-column-header" data-col-id="${escapeHtml(col.id)}">
+        <span class="kanban-col-drag-handle" title="${t('kanban.dragColumn')}">⠿</span>
         <span class="kanban-column-color" style="background:${escapeHtml(col.color)}"></span>
         <span class="kanban-column-title">${escapeHtml(col.title)}</span>
         <span class="kanban-column-count">${tasks.length}</span>
@@ -86,21 +87,70 @@ function buildCardHtml(project, task) {
 
   const sessionIds = task.sessionIds || [];
   const worktreeHtml = task.worktreePath
-    ? `<span class="kanban-card-worktree" title="${escapeHtml(task.worktreePath)}">⎇ ${escapeHtml(getWorktreeBranchName(task.worktreePath))}</span>`
+    ? buildWorktreeBadgeHtml(task.worktreePath)
     : '';
   const sessionsHtml = sessionIds.length > 0
-    ? `<span class="kanban-card-sessions-count">💬 ${sessionIds.length}</span>`
+    ? `<span class="kanban-card-sessions-count" title="${sessionIds.length} session(s)"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 2H2C1.45 2 1 2.45 1 3v8c0 .55.45 1 1 1h3l2 3 2-3h3c.55 0 1-.45 1-1V3c0-.55-.45-1-1-1z" fill="currentColor" fill-opacity="0.7"/></svg> ${sessionIds.length}</span>`
+    : '';
+
+  const descHtml = task.description
+    ? `<span class="kanban-card-desc">${escapeHtml(task.description.slice(0, 80))}${task.description.length > 80 ? '…' : ''}</span>`
     : '';
 
   return `
     <div class="kanban-card" data-task-id="${escapeHtml(task.id)}" data-col-id="${escapeHtml(task.columnId)}">
-      <span class="kanban-card-drag-handle">⠿</span>
+      <span class="kanban-card-drag-handle" title="Drag">⠿</span>
       <span class="kanban-card-title">${escapeHtml(task.title)}</span>
+      ${descHtml}
       ${labelsHtml ? `<div class="kanban-card-labels">${labelsHtml}</div>` : ''}
       ${worktreeHtml || sessionsHtml ? `<div class="kanban-card-meta">${worktreeHtml}${sessionsHtml}</div>` : ''}
       <button class="kanban-card-delete" data-task-id="${escapeHtml(task.id)}" title="${t('kanban.delete')}">✕</button>
     </div>
   `;
+}
+
+/**
+ * Build the worktree badge HTML. The badge is green when the worktree path
+ * contains a known worktree directory pattern, red otherwise.
+ * Because we cannot do async file-system checks here we use a data attribute
+ * and resolve the colour at render-time via a small async helper.
+ */
+function buildWorktreeBadgeHtml(worktreePath) {
+  const name = escapeHtml(getWorktreeBranchName(worktreePath));
+  const fullPath = escapeHtml(worktreePath);
+  // Use data-worktree-path so we can async-verify existence after render
+  return `<span class="kanban-card-worktree" data-worktree-path="${fullPath}" title="${fullPath}">
+    <svg class="kanban-worktree-icon" width="11" height="11" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="4" cy="4" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+      <circle cx="12" cy="4" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+      <circle cx="4" cy="12" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M4 6.5v3M6.5 4h3M4 6.5C4 9 6 10 8 10s4-1 4-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    <span class="kanban-worktree-name">${name}</span>
+  </span>`;
+}
+
+/**
+ * Async-resolve worktree badge colours after the board renders.
+ * For each badge, try to list worktrees and mark them green/red.
+ */
+async function resolveWorktreeBadgeColors(container, project) {
+  const badges = container.querySelectorAll('.kanban-card-worktree[data-worktree-path]');
+  if (!badges.length) return;
+  let knownPaths = new Set();
+  try {
+    const result = await window.electron_api.git.worktreeList({ projectPath: project.path });
+    (result?.worktrees || []).forEach(wt => {
+      if (wt.path) knownPaths.add(wt.path.replace(/\\/g, '/'));
+    });
+  } catch (_) { /* ignore */ }
+
+  badges.forEach(badge => {
+    const rawPath = (badge.dataset.worktreePath || '').replace(/\\/g, '/');
+    const exists = knownPaths.has(rawPath);
+    badge.classList.toggle('worktree-exists', exists);
+    badge.classList.toggle('worktree-missing', !exists);
+  });
 }
 
 // ── Events ───────────────────────────────────────────────────
@@ -148,10 +198,10 @@ function attachEvents(container, project, options) {
       return;
     }
 
-    // Add card button
+    // Add card button → open rich modal
     const addCardBtn = e.target.closest('.btn-kanban-add-card');
     if (addCardBtn) {
-      showInlineAddCard(container, project, addCardBtn.dataset.colId, options);
+      showCreateCardModal(container, project, addCardBtn.dataset.colId, options);
       return;
     }
 
@@ -192,8 +242,11 @@ function attachEvents(container, project, options) {
     startRenameColumn(title, project, colEl.dataset.colId, container, options);
   });
 
-  // Drag & drop
+  // Drag & drop (cards + columns)
   initDragDrop(board, container, project, options);
+
+  // Async: resolve worktree badge colours
+  resolveWorktreeBadgeColors(container, project);
 }
 
 // ── Column rename (inline) ────────────────────────────────────
@@ -224,42 +277,190 @@ function startRenameColumn(titleEl, project, colId, container, options) {
   }, { once: true });
 }
 
-// ── Inline add card form ──────────────────────────────────────
+// ── Create card modal (rich) ──────────────────────────────────
 
-function showInlineAddCard(container, project, colId, options) {
-  const colEl = container.querySelector(`.kanban-column[data-col-id="${colId}"]`);
-  if (!colEl) return;
-  const addBtn = colEl.querySelector('.btn-kanban-add-card');
-  if (addBtn) addBtn.style.display = 'none';
+async function showCreateCardModal(container, project, colId, options) {
+  let selectedLabels = [];
+  let selectedWorktreePath = '';
+  let selectedSessionIds = [];
+  const labels = getKanbanLabels(project.id);
 
-  const form = document.createElement('div');
-  form.className = 'kanban-add-card-form';
-  form.innerHTML = `
-    <input class="kanban-add-card-input" placeholder="${t('kanban.cardTitlePlaceholder')}" maxlength="120">
-    <div class="kanban-add-card-actions">
-      <button class="kanban-add-card-cancel">${t('kanban.cancel')}</button>
-      <button class="kanban-add-card-confirm">${t('kanban.save')}</button>
-    </div>
-  `;
+  const labelsHtml = labels.length > 0
+    ? labels.map(lbl => `
+        <span class="kanban-modal-label-chip"
+              data-label-id="${escapeHtml(lbl.id)}"
+              style="background:${escapeHtml(lbl.color)}">
+          ${escapeHtml(lbl.name)}
+        </span>`).join('')
+    : `<span style="font-size:var(--font-xs);color:var(--text-muted)">${t('kanban.noLabels')}</span>`;
 
-  colEl.insertBefore(form, addBtn);
-  const input = form.querySelector('input');
-  input.focus();
+  const modal = createModal({
+    id: 'kanban-create-card-modal',
+    title: t('kanban.addCardTitle'),
+    size: 'medium',
+    content: `
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div>
+          <label class="kanban-modal-label">${t('kanban.cardTitle')} <span class="kanban-required">*</span></label>
+          <input id="kanban-create-title" class="kanban-add-card-input" style="margin-top:4px"
+            placeholder="${t('kanban.cardTitlePlaceholder')}" maxlength="120" autofocus>
+        </div>
+        <div>
+          <label class="kanban-modal-label">${t('kanban.cardDescription')}</label>
+          <textarea id="kanban-create-desc" class="kanban-add-card-input" style="margin-top:4px;resize:vertical;min-height:70px"
+            placeholder="${t('kanban.cardDescriptionPlaceholder')}"></textarea>
+        </div>
+        ${labels.length > 0 ? `
+        <div>
+          <label class="kanban-modal-label">${t('kanban.cardLabels')}</label>
+          <div class="kanban-modal-label-picker" id="kanban-create-label-picker" style="margin-top:6px">${labelsHtml}</div>
+        </div>` : ''}
+        <div>
+          <label class="kanban-modal-label">${t('kanban.worktree')}</label>
+          <div class="kanban-worktree-row" style="margin-top:4px">
+            <select id="kanban-create-worktree-select" class="kanban-add-card-input" style="flex:1">
+              <option value="">${t('kanban.worktreeNone')}</option>
+              <option value="__loading__" disabled>${t('kanban.sessionsLoading')}</option>
+            </select>
+            <button class="kanban-btn-create-worktree" id="kanban-create-new-worktree" title="${t('kanban.createWorktree')}">
+              + ${t('kanban.createWorktree')}
+            </button>
+          </div>
+        </div>
+        <div>
+          <label class="kanban-modal-label">${t('kanban.sessions')}</label>
+          <div id="kanban-create-session-picker" class="kanban-session-picker" style="margin-top:6px">
+            <div class="kanban-sessions-empty">${t('kanban.sessionsLoading')}</div>
+          </div>
+        </div>
+      </div>
+    `,
+    buttons: [
+      { label: t('kanban.cancel'), action: 'cancel', onClick: (m) => closeModal(m) },
+      { label: t('kanban.save'), action: 'confirm', primary: true, onClick: (m) => {
+        const title = m.querySelector('#kanban-create-title')?.value.trim();
+        if (!title) {
+          m.querySelector('#kanban-create-title')?.focus();
+          return;
+        }
+        const description = m.querySelector('#kanban-create-desc')?.value || '';
+        addTask(project.id, {
+          title, description, labels: selectedLabels,
+          columnId: colId,
+          worktreePath: selectedWorktreePath || null,
+          sessionIds: selectedSessionIds,
+        });
+        closeModal(m);
+        render(container, project, options);
+      }},
+    ],
+  });
 
-  const cancel = () => { form.remove(); if (addBtn) addBtn.style.display = ''; };
-  const confirm = () => {
-    const title = input.value.trim();
-    if (!title) { cancel(); return; }
-    addTask(project.id, { title, columnId: colId });
-    render(container, project, options);
+  // Label toggle
+  modal.querySelector('#kanban-create-label-picker')?.addEventListener('click', (e) => {
+    const chip = e.target.closest('.kanban-modal-label-chip');
+    if (!chip) return;
+    const lid = chip.dataset.labelId;
+    if (selectedLabels.includes(lid)) {
+      selectedLabels = selectedLabels.filter(id => id !== lid);
+      chip.classList.remove('selected');
+    } else {
+      selectedLabels.push(lid);
+      chip.classList.add('selected');
+    }
+  });
+
+  showModal(modal);
+
+  const worktreeSelect = modal.querySelector('#kanban-create-worktree-select');
+  const sessionPicker = modal.querySelector('#kanban-create-session-picker');
+
+  // Load worktrees
+  try {
+    const result = await window.electron_api.git.worktreeList({ projectPath: project.path });
+    const worktrees = result?.success ? (result.worktrees || []) : [];
+    worktreeSelect.innerHTML = `<option value="">${t('kanban.worktreeNone')}</option>` +
+      worktrees.map(wt => {
+        const raw = (wt.branch || '').replace('refs/heads/', '') || getWorktreeBranchName(wt.path || '');
+        const label = wt.isMain ? `${raw} (main)` : raw;
+        return `<option value="${escapeHtml(wt.path)}">${escapeHtml(label)}</option>`;
+      }).join('');
+  } catch (_) {
+    worktreeSelect.innerHTML = `<option value="">${t('kanban.worktreeNone')}</option>`;
+  }
+
+  // Create new worktree button
+  modal.querySelector('#kanban-create-new-worktree')?.addEventListener('click', async () => {
+    const branchInput = prompt(t('kanban.createWorktreeBranchPrompt'));
+    if (!branchInput?.trim()) return;
+    const branchName = branchInput.trim().replace(/\s+/g, '-');
+    try {
+      const result = await window.electron_api.git.createWorktree({
+        projectPath: project.path,
+        branchName,
+        worktreePath: null, // auto
+      });
+      if (result?.success && result.worktreePath) {
+        const opt = document.createElement('option');
+        opt.value = result.worktreePath;
+        opt.textContent = branchName;
+        opt.selected = true;
+        worktreeSelect.appendChild(opt);
+        selectedWorktreePath = result.worktreePath;
+        loadSessions(selectedWorktreePath);
+      }
+    } catch (_) { /* ignore */ }
+  });
+
+  // Session picker helpers
+  const loadSessions = async (worktreePath) => {
+    sessionPicker.innerHTML = `<div class="kanban-sessions-empty">${t('kanban.sessionsLoading')}</div>`;
+    try {
+      const searchPath = worktreePath || project.path;
+      const sessions = await window.electron_api.claude.sessions(searchPath) || [];
+      if (sessions.length === 0) {
+        sessionPicker.innerHTML = `<div class="kanban-sessions-empty">${t('kanban.sessionsEmpty')}</div>`;
+        return;
+      }
+      sessionPicker.innerHTML = sessions.map(s => {
+        const isSelected = selectedSessionIds.includes(s.sessionId);
+        const summary = escapeHtml(s.summary || s.firstPrompt || s.sessionId);
+        const date = s.modified ? escapeHtml(formatRelativeTime(new Date(s.modified))) : '';
+        return `
+          <div class="kanban-session-item${isSelected ? ' selected' : ''}" data-session-id="${escapeHtml(s.sessionId)}">
+            <span class="kanban-session-check">${isSelected ? '✓' : ''}</span>
+            <span class="kanban-session-summary" title="${summary}">${summary}</span>
+            <span class="kanban-session-date">${date}</span>
+          </div>
+        `;
+      }).join('');
+    } catch (_) {
+      sessionPicker.innerHTML = `<div class="kanban-sessions-empty">${t('kanban.sessionsEmpty')}</div>`;
+    }
   };
 
-  form.querySelector('.kanban-add-card-cancel').addEventListener('click', cancel);
-  form.querySelector('.kanban-add-card-confirm').addEventListener('click', confirm);
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') confirm();
-    if (e.key === 'Escape') cancel();
+  sessionPicker.addEventListener('click', (e) => {
+    const item = e.target.closest('.kanban-session-item');
+    if (!item) return;
+    const sid = item.dataset.sessionId;
+    if (selectedSessionIds.includes(sid)) {
+      selectedSessionIds = selectedSessionIds.filter(id => id !== sid);
+      item.classList.remove('selected');
+      item.querySelector('.kanban-session-check').textContent = '';
+    } else {
+      selectedSessionIds.push(sid);
+      item.classList.add('selected');
+      item.querySelector('.kanban-session-check').textContent = '✓';
+    }
   });
+
+  worktreeSelect.addEventListener('change', () => {
+    selectedWorktreePath = worktreeSelect.value;
+    selectedSessionIds = [];
+    loadSessions(selectedWorktreePath);
+  });
+
+  loadSessions('');
 }
 
 // ── Add column modal ──────────────────────────────────────────
@@ -339,29 +540,34 @@ async function showEditCardModal(container, project, taskId, options) {
     content: `
       <div style="display:flex;flex-direction:column;gap:14px">
         <div>
-          <label style="font-size:var(--font-xs);color:var(--text-secondary)">${t('kanban.cardTitle')}</label>
+          <label class="kanban-modal-label">${t('kanban.cardTitle')} <span class="kanban-required">*</span></label>
           <input id="kanban-edit-title" class="kanban-add-card-input" style="margin-top:4px"
             value="${escapeHtml(task.title)}" maxlength="120">
         </div>
         <div>
-          <label style="font-size:var(--font-xs);color:var(--text-secondary)">${t('kanban.cardDescription')}</label>
+          <label class="kanban-modal-label">${t('kanban.cardDescription')}</label>
           <textarea id="kanban-edit-desc" class="kanban-add-card-input" style="margin-top:4px;resize:vertical;min-height:70px"
             placeholder="${t('kanban.cardDescriptionPlaceholder')}">${escapeHtml(task.description || '')}</textarea>
         </div>
         ${labels.length > 0 ? `
         <div>
-          <label style="font-size:var(--font-xs);color:var(--text-secondary)">${t('kanban.cardLabels')}</label>
+          <label class="kanban-modal-label">${t('kanban.cardLabels')}</label>
           <div class="kanban-modal-label-picker" id="kanban-label-picker" style="margin-top:6px">${labelsHtml}</div>
         </div>` : ''}
         <div>
-          <label style="font-size:var(--font-xs);color:var(--text-secondary)">${t('kanban.worktree')}</label>
-          <select id="kanban-worktree-select" class="kanban-add-card-input" style="margin-top:4px">
-            <option value="">${t('kanban.worktreeNone')}</option>
-            <option value="__loading__" disabled>${t('kanban.sessionsLoading')}</option>
-          </select>
+          <label class="kanban-modal-label">${t('kanban.worktree')}</label>
+          <div class="kanban-worktree-row" style="margin-top:4px">
+            <select id="kanban-worktree-select" class="kanban-add-card-input" style="flex:1">
+              <option value="">${t('kanban.worktreeNone')}</option>
+              <option value="__loading__" disabled>${t('kanban.sessionsLoading')}</option>
+            </select>
+            <button class="kanban-btn-create-worktree" id="kanban-edit-new-worktree" title="${t('kanban.createWorktree')}">
+              + ${t('kanban.createWorktree')}
+            </button>
+          </div>
         </div>
         <div>
-          <label style="font-size:var(--font-xs);color:var(--text-secondary)">${t('kanban.sessions')}</label>
+          <label class="kanban-modal-label">${t('kanban.sessions')}</label>
           <div id="kanban-session-picker" class="kanban-session-picker" style="margin-top:6px">
             <div class="kanban-sessions-empty">${t('kanban.sessionsLoading')}</div>
           </div>
@@ -417,6 +623,29 @@ async function showEditCardModal(container, project, taskId, options) {
   } catch (_) {
     worktreeSelect.innerHTML = `<option value="">${t('kanban.worktreeNone')}</option>`;
   }
+
+  // Create new worktree button in edit modal
+  modal.querySelector('#kanban-edit-new-worktree')?.addEventListener('click', async () => {
+    const branchInput = prompt(t('kanban.createWorktreeBranchPrompt'));
+    if (!branchInput?.trim()) return;
+    const branchName = branchInput.trim().replace(/\s+/g, '-');
+    try {
+      const result = await window.electron_api.git.createWorktree({
+        projectPath: project.path,
+        branchName,
+        worktreePath: null,
+      });
+      if (result?.success && result.worktreePath) {
+        const opt = document.createElement('option');
+        opt.value = result.worktreePath;
+        opt.textContent = branchName;
+        opt.selected = true;
+        worktreeSelect.appendChild(opt);
+        selectedWorktreePath = result.worktreePath;
+        loadSessions(selectedWorktreePath);
+      }
+    } catch (_) { /* ignore */ }
+  });
 
   // ── Session picker ─────────────────────────────────────────
   const loadSessions = async (worktreePath) => {
@@ -536,9 +765,56 @@ function showLabelsModal(container, project, options) {
 // ── Drag & Drop ───────────────────────────────────────────────
 
 function initDragDrop(board, container, project, options) {
-  let dragging = null;
+  // ── Card drag state ────────────────────────────────────────
+  let draggingCard = null;
+  // ── Column drag state ──────────────────────────────────────
+  let draggingCol = null;
+
+  // ─────────────────────── CARD DRAG ────────────────────────
 
   const onMouseDown = (e) => {
+    // Column drag takes priority
+    const colHandle = e.target.closest('.kanban-col-drag-handle');
+    if (colHandle) {
+      e.preventDefault();
+      const colEl = colHandle.closest('.kanban-column');
+      if (!colEl) return;
+      const colId = colEl.dataset.colId;
+      const rect = colEl.getBoundingClientRect();
+
+      const clone = document.createElement('div');
+      clone.className = 'kanban-col-drag-clone';
+      clone.style.left = rect.left + 'px';
+      clone.style.top = rect.top + 'px';
+      clone.style.width = rect.width + 'px';
+      clone.style.height = Math.min(rect.height, 120) + 'px';
+      // Copy the header text for visual feedback
+      const headerText = colEl.querySelector('.kanban-column-title')?.textContent || '';
+      const headerColor = colEl.querySelector('.kanban-column-color')?.style.background || 'transparent';
+      clone.innerHTML = `
+        <span class="kanban-column-color" style="background:${escapeHtml(headerColor)};width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px"></span>
+        <span style="font-size:var(--font-sm);font-weight:600;color:var(--text-primary)">${escapeHtml(headerText)}</span>
+      `;
+      document.body.appendChild(clone);
+
+      const placeholder = document.createElement('div');
+      placeholder.className = 'kanban-col-drag-placeholder';
+      placeholder.style.width = rect.width + 'px';
+      colEl.after(placeholder);
+      colEl.classList.add('kanban-col-dragging');
+
+      draggingCol = {
+        colId,
+        colEl,
+        clone,
+        placeholder,
+        offsetX: e.clientX - rect.left,
+        offsetY: e.clientY - rect.top,
+      };
+      return;
+    }
+
+    // Card drag handle
     const handle = e.target.closest('.kanban-card-drag-handle');
     if (!handle) return;
     e.preventDefault();
@@ -560,7 +836,7 @@ function initDragDrop(board, container, project, options) {
     card.after(placeholder);
     card.classList.add('dragging');
 
-    dragging = {
+    draggingCard = {
       taskId,
       cardEl: card,
       clone,
@@ -571,8 +847,31 @@ function initDragDrop(board, container, project, options) {
   };
 
   const onMouseMove = (e) => {
-    if (!dragging) return;
-    const { clone, placeholder, offsetX, offsetY } = dragging;
+    // ── Column drag move ───────────────────────────────────────
+    if (draggingCol) {
+      const { clone, placeholder, offsetX, offsetY } = draggingCol;
+      clone.style.left = (e.clientX - offsetX) + 'px';
+      clone.style.top = (e.clientY - offsetY) + 'px';
+
+      const columnsEl = board.querySelector('#kanban-columns');
+      if (!columnsEl) return;
+
+      // Find the column under cursor (excluding our placeholder and dragged column)
+      const cols = [...columnsEl.querySelectorAll('.kanban-column:not(.kanban-col-dragging)')];
+      let insertBefore = null;
+      for (const c of cols) {
+        const { left, width } = c.getBoundingClientRect();
+        if (e.clientX < left + width / 2) { insertBefore = c; break; }
+      }
+
+      if (placeholder.parentNode) placeholder.parentNode.removeChild(placeholder);
+      insertBefore ? columnsEl.insertBefore(placeholder, insertBefore) : columnsEl.appendChild(placeholder);
+      return;
+    }
+
+    // ── Card drag move ─────────────────────────────────────────
+    if (!draggingCard) return;
+    const { clone, placeholder, offsetX, offsetY } = draggingCard;
     clone.style.left = (e.clientX - offsetX) + 'px';
     clone.style.top = (e.clientY - offsetY) + 'px';
 
@@ -591,9 +890,35 @@ function initDragDrop(board, container, project, options) {
   };
 
   const onMouseUp = () => {
-    if (!dragging) return;
-    const { taskId, cardEl, clone, placeholder } = dragging;
-    dragging = null;
+    // ── Column drop ────────────────────────────────────────────
+    if (draggingCol) {
+      const { colId, colEl, clone, placeholder } = draggingCol;
+      draggingCol = null;
+      clone.remove();
+      colEl.classList.remove('kanban-col-dragging');
+
+      const columnsEl = board.querySelector('#kanban-columns');
+      if (columnsEl && placeholder.parentNode === columnsEl) {
+        const children = [...columnsEl.children].filter(c =>
+          c !== placeholder && c !== colEl && c.classList.contains('kanban-column')
+        );
+        let newOrder = 0;
+        for (const child of columnsEl.children) {
+          if (child === placeholder) break;
+          if (child.classList.contains('kanban-column') && child !== colEl) newOrder++;
+        }
+        reorderKanbanColumns(project.id, colId, newOrder);
+      }
+
+      placeholder.remove();
+      render(container, project, options);
+      return;
+    }
+
+    // ── Card drop ──────────────────────────────────────────────
+    if (!draggingCard) return;
+    const { taskId, cardEl, clone, placeholder } = draggingCard;
+    draggingCard = null;
     clone.remove();
     cardEl.classList.remove('dragging');
 
@@ -614,12 +939,21 @@ function initDragDrop(board, container, project, options) {
   };
 
   const onKeyDown = (e) => {
-    if (e.key === 'Escape' && dragging) {
-      const { cardEl, clone, placeholder } = dragging;
-      dragging = null;
-      clone.remove();
-      placeholder.remove();
-      cardEl.classList.remove('dragging');
+    if (e.key === 'Escape') {
+      if (draggingCol) {
+        const { colEl, clone, placeholder } = draggingCol;
+        draggingCol = null;
+        clone.remove();
+        placeholder.remove();
+        colEl.classList.remove('kanban-col-dragging');
+      }
+      if (draggingCard) {
+        const { cardEl, clone, placeholder } = draggingCard;
+        draggingCard = null;
+        clone.remove();
+        placeholder.remove();
+        cardEl.classList.remove('dragging');
+      }
     }
   };
 

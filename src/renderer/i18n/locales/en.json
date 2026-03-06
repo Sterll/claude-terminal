@@ -1886,6 +1886,11 @@
     "confirmDeleteCard": "Delete card \"{title}\"?",
     "worktree": "Worktree",
     "worktreeNone": "No worktree",
+    "createWorktree": "New worktree",
+    "createWorktreeBranchPrompt": "Branch name for the new worktree:",
+    "dragColumn": "Drag to reorder",
+    "addCardTitle": "New card",
+    "noLabels": "No labels defined yet — create some in Labels manager.",
     "sessions": "Sessions",
     "sessionsLoading": "Loading...",
     "sessionsEmpty": "No sessions found"
