@@ -8,6 +8,9 @@
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-blue" alt="Platform" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="License" />
   <img src="https://img.shields.io/badge/electron-28-purple" alt="Electron" />
+  <img src="https://img.shields.io/github/actions/workflow/status/Sterll/claude-terminal/ci.yml?branch=main&label=CI" alt="CI Status" />
+  <img src="https://img.shields.io/github/contributors/Sterll/claude-terminal" alt="Contributors" />
+  <img src="https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/bernardopg/8aa5c09aca432a7a39aefe32e8ed393a/raw/i18n_fr.json" alt="i18n French" />
 </p>
 
 <p align="center">
@@ -28,6 +31,37 @@
 <p align="center">
   <img src="https://github-readme-stats.vercel.app/api/top-langs/?username=Sterll&amp;layout=compact&amp;hide_border=true&amp;theme=transparent&amp;langs_count=8" alt="Most used languages on GitHub" />
 </p>
+
+---
+
+## 📊 Project Health
+
+### Contributors
+
+<a href="https://github.com/Sterll/claude-terminal/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Sterll/claude-terminal" alt="Contributors" />
+</a>
+
+### Activity
+
+<!-- After registering the repo at https://repobeats.axiom.co, replace      -->
+<!-- REPOBEATS_HASH below with the unique hash provided by Repobeats.         -->
+![Alt](https://repobeats.axiom.co/api/embed/REPOBEATS_HASH.svg "Repobeats analytics image")
+
+### Internationalization (i18n)
+
+| Language | Coverage | Keys |
+|----------|----------|------|
+| 🇺🇸 English (base) | ![100%](https://img.shields.io/badge/i18n-100%25-brightgreen) | ~800 / ~800 |
+| 🇫🇷 French | ![i18n fr](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/bernardopg/8aa5c09aca432a7a39aefe32e8ed393a/raw/i18n_fr.json) | ~800 / ~800 |
+
+> Coverage badges are updated automatically on every push to locale files.  
+> See [`.github/i18n-coverage.md`](.github/i18n-coverage.md) for details and
+> instructions on how to add a new language.
+
+### Language breakdown
+
+![Top Langs](https://github-readme-stats.vercel.app/api/top-langs/?username=Sterll&layout=compact&hide_border=true&theme=transparent&langs_count=8)
 
 ---
 
@@ -454,6 +488,8 @@ claude-terminal/
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 For translation contributions, see the [Translations (i18n) section](CONTRIBUTING.md#translations-i18n).
+
+To contribute translations, see our [i18n guide](.github/i18n-coverage.md).
 
 ## Security
 
