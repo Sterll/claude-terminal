@@ -1148,6 +1148,7 @@
     "permissionRequired": "Permission Required",
     "questionFromClaude": "Claude has a question",
     "questionAnswered": "Answered",
+    "answeredExternally": "answered from Control Tower",
     "otherPlaceholder": "Or type your own answer...",
     "submit": "Submit",
     "next": "Next",

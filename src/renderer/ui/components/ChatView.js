@@ -3300,6 +3300,11 @@ function createChatView(wrapperEl, project, options = {}) {
       }
     }
 
+    // If assistant sends text, collapse any question cards answered externally (e.g. from CT)
+    if (content.some(b => b.type === 'text')) {
+      collapseExternallyAnsweredQuestionCards();
+    }
+
     let hasToolUse = false;
     for (const block of content) {
       if (block.type === 'tool_use') {
@@ -3365,6 +3370,33 @@ function createChatView(wrapperEl, project, options = {}) {
       model = msg.message.model;
       updateStatusInfo();
     }
+  }
+
+  /**
+   * Collapse question cards that were answered externally (e.g. from Control Tower).
+   * Called when a new assistant text message arrives — meaning the SDK already
+   * received the answer and continued, so we just need to update the UI.
+   */
+  function collapseExternallyAnsweredQuestionCards() {
+    messagesEl.querySelectorAll('.chat-question-card:not(.resolved)').forEach(card => {
+      const questionsData = JSON.parse(card.dataset.questions || '[]');
+      const pairsHtml = questionsData.map(q =>
+        `<div class="chat-qa-pair">
+          <span class="chat-qa-question">${escapeHtml(q.question || '')}</span>
+          <span class="chat-qa-answer">${escapeHtml(t('chat.answeredExternally') || '↩')}</span>
+        </div>`
+      ).join('');
+      card.classList.add('resolved');
+      card.innerHTML = `
+        <div class="chat-question-header resolved">
+          <div class="chat-perm-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+          </div>
+          <span>${escapeHtml(t('chat.questionAnswered') || 'Answered')}</span>
+        </div>
+        <div class="chat-qa-summary">${pairsHtml}</div>
+      `;
+    });
   }
 
   /**

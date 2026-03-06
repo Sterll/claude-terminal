@@ -1148,6 +1148,7 @@
     "permissionRequired": "Permission requise",
     "questionFromClaude": "Claude a une question",
     "questionAnswered": "Répondu",
+    "answeredExternally": "répondu depuis le Control Tower",
     "otherPlaceholder": "Ou tapez votre propre réponse...",
     "submit": "Envoyer",
     "next": "Suivant",
