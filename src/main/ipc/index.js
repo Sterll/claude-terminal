@@ -28,6 +28,7 @@ const { registerDatabaseHandlers } = require('./database.ipc');
 const { registerTelemetryHandlers } = require('./telemetry.ipc');
 const { registerExplorerHandlers } = require('./explorer.ipc');
 const { registerTimeHandlers } = require('./time.ipc');
+const { registerParallelHandlers } = require('./parallel.ipc');
 
 /**
  * Register all IPC handlers
@@ -64,6 +65,7 @@ function registerAllHandlers(mainWindow) {
   registerTelemetryHandlers();
   registerExplorerHandlers(mainWindow);
   registerTimeHandlers();
+  registerParallelHandlers(mainWindow);
 }
 
 module.exports = {

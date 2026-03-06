@@ -900,7 +900,7 @@ class ChatService {
    * @param {Object} opts - { cwd, prompt, model, effort, maxTurns, permissionMode, outputFormat, skills, onMessage, signal }
    * @returns {Promise<{ output: string, success: boolean, ... }>}
    */
-  async runSinglePrompt({ cwd, prompt, model, effort, maxTurns, permissionMode, outputFormat, skills, onMessage, signal }) {
+  async runSinglePrompt({ cwd, prompt, model, effort, maxTurns, permissionMode, outputFormat, skills, onMessage, onOutput, signal }) {
     const sdk = await loadSDK();
     const runtime = resolveRuntime();
 
@@ -949,7 +949,10 @@ class ChatService {
           const content = message.message?.content;
           if (Array.isArray(content)) {
             for (const block of content) {
-              if (block.type === 'text') stdout += block.text;
+              if (block.type === 'text') {
+                stdout += block.text;
+                if (onOutput) onOutput(block.text);
+              }
             }
           }
         }
