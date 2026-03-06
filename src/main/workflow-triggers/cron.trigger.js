@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * Vérifie si une expression cron matche la date donnée.
- * Implémentation simple sans dépendances externes.
+ * Checks whether a cron expression matches the provided date.
+ * Lightweight implementation without external dependencies.
  */
 function cronMatches(expr, date) {
   if (!expr || expr === '* * * * *') return true;
@@ -49,8 +49,8 @@ function cronMatches(expr, date) {
 
 module.exports = {
   type:  'cron',
-  label: 'Planifié',
-  desc:  'Se déclenche selon une expression cron',
+  label: 'Scheduled',
+  desc:  'Triggers according to a cron expression',
 
   shouldFire(config, _context) {
     return cronMatches(config.triggerValue, new Date());
@@ -60,12 +60,12 @@ module.exports = {
     const expr = config.triggerValue;
     if (!expr) return () => {};
 
-    // Polling chaque minute (aligné sur l'horloge)
+    // Poll every minute (clock-aligned)
     let _timer = null;
 
     function scheduleNext() {
       const now = Date.now();
-      const next = 60000 - (now % 60000) + 500; // prochaine minute + 500ms de marge
+      const next = 60000 - (now % 60000) + 500; // next minute + 500ms buffer
       _timer = setTimeout(() => {
         if (cronMatches(expr, new Date())) onFire();
         scheduleNext();

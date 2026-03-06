@@ -741,7 +741,7 @@ function TriggerNode() {
   this.removable = false;
 }
 TriggerNode.title = 'Trigger';
-TriggerNode.desc = 'Point de départ du workflow';
+TriggerNode.desc = 'Workflow entry point';
 TriggerNode.prototype = Object.create(LGraphNode.prototype);
 TriggerNode.prototype.constructor = TriggerNode;
 TriggerNode.prototype.onDrawForeground = function(ctx) {
@@ -822,7 +822,7 @@ function GitNode() {
   this.size = [200, this.computeSize()[1]];
 }
 GitNode.title = 'Git';
-GitNode.desc = 'Opération git';
+GitNode.desc = 'Git operation';
 GitNode.prototype = Object.create(LGraphNode.prototype);
 GitNode.prototype.constructor = GitNode;
 GitNode.prototype.onDrawForeground = function(ctx) {
@@ -846,7 +846,7 @@ function HttpNode() {
   this.size = [220, this.computeSize()[1]];
 }
 HttpNode.title = 'HTTP';
-HttpNode.desc = 'Requête API';
+HttpNode.desc = 'API request';
 HttpNode.prototype = Object.create(LGraphNode.prototype);
 HttpNode.prototype.constructor = HttpNode;
 HttpNode.prototype.onDrawForeground = function(ctx) {
@@ -1006,7 +1006,7 @@ function FileNode() {
   this.size = [220, this.computeSize()[1]];
 }
 FileNode.title = 'File';
-FileNode.desc = 'Opération fichier';
+FileNode.desc = 'File operation';
 FileNode.prototype = Object.create(LGraphNode.prototype);
 FileNode.prototype.constructor = FileNode;
 FileNode.prototype.onDrawForeground = function(ctx) {
@@ -1028,7 +1028,7 @@ function DbNode() {
   this.size = [220, this.computeSize()[1]];
 }
 DbNode.title = 'Database';
-DbNode.desc = 'Requête base de données';
+DbNode.desc = 'Database query';
 DbNode.prototype = Object.create(LGraphNode.prototype);
 DbNode.prototype.constructor = DbNode;
 DbNode.prototype.onDrawForeground = function(ctx) {
@@ -1077,7 +1077,7 @@ function LoopNode() {
   this.size = [210, this.computeSize()[1]];
 }
 LoopNode.title = 'Loop';
-LoopNode.desc = 'Itérer sur une liste';
+LoopNode.desc = 'Iterate over a list';
 LoopNode.prototype = Object.create(LGraphNode.prototype);
 LoopNode.prototype.constructor = LoopNode;
 // Restore dynamic schema outputs after graph load (deserialization)
@@ -1190,7 +1190,7 @@ function VariableNode() {
   this.size = [200, this.computeSize()[1]];
 }
 VariableNode.title = 'Variable';
-VariableNode.desc = 'Lire/écrire une variable';
+VariableNode.desc = 'Read/write a variable';
 VariableNode.prototype = Object.create(LGraphNode.prototype);
 VariableNode.prototype.constructor = VariableNode;
 VariableNode.prototype.onDrawForeground = function(ctx) {
@@ -1217,7 +1217,7 @@ function LogNode() {
   this.size = [200, this.computeSize()[1]];
 }
 LogNode.title = 'Log';
-LogNode.desc = 'Écrire dans le log';
+LogNode.desc = 'Write to log';
 LogNode.prototype = Object.create(LGraphNode.prototype);
 LogNode.prototype.constructor = LogNode;
 LogNode.prototype.onDrawForeground = function(ctx) {
@@ -1248,7 +1248,7 @@ function TransformNode() {
   this.size = [230, this.computeSize()[1]];
 }
 TransformNode.title = 'Transform';
-TransformNode.desc = 'Transformer des données (map, filter, reduce…)';
+TransformNode.desc = 'Transform data (map, filter, reduce...)';
 TransformNode.prototype = Object.create(LGraphNode.prototype);
 TransformNode.prototype.constructor = TransformNode;
 TransformNode.prototype.onDrawForeground = function(ctx) {
@@ -1275,7 +1275,7 @@ function SubworkflowNode() {
   this.size = [220, this.computeSize()[1]];
 }
 SubworkflowNode.title = 'Sub-workflow';
-SubworkflowNode.desc = 'Appeler un autre workflow';
+SubworkflowNode.desc = 'Call another workflow';
 SubworkflowNode.prototype = Object.create(LGraphNode.prototype);
 SubworkflowNode.prototype.constructor = SubworkflowNode;
 SubworkflowNode.prototype.onDrawForeground = function(ctx) {

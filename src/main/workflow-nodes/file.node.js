@@ -6,7 +6,7 @@ const path = require('path');
 module.exports = {
   type:     'workflow/file',
   title:    'File',
-  desc:     'Opération fichier',
+  desc:     'File operation',
   color:    'lime',
   width:    220,
   category: 'data',

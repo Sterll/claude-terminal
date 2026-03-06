@@ -2,8 +2,8 @@
 
 module.exports = {
   type:  'on_workflow',
-  label: 'Après un workflow',
-  desc:  'Se déclenche à la fin d\'un autre workflow',
+  label: 'After workflow',
+  desc:  'Triggers when another workflow finishes',
 
   shouldFire(config, context) {
     if (!config.triggerValue || !context.completedWorkflowId) return false;
@@ -11,7 +11,7 @@ module.exports = {
   },
 
   setup(_config, _onFire) {
-    // Géré par WorkflowRunner qui écoute les events de fin de workflow.
+    // Managed by WorkflowRunner, which listens to workflow completion events.
     return () => {};
   },
 };

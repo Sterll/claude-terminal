@@ -51,6 +51,27 @@ Use `npx electron . --dev` to launch with DevTools open.
 - Keep functions focused and concise
 - Follow existing patterns in the codebase
 
+## Translations (i18n)
+
+Want to help improve translations? Great.
+
+1. Add or update keys in both locale files:
+   - `src/renderer/i18n/locales/en.json`
+   - `src/renderer/i18n/locales/fr.json`
+2. Keep key parity between languages (same key structure in both files).
+3. For project-type specific UI, update matching files under:
+   - `src/project-types/*/i18n/en.json`
+   - `src/project-types/*/i18n/fr.json`
+4. Avoid hardcoded UI strings in renderer code. Use `t('your.key.path')`.
+5. Build and test before opening the PR:
+   - `npm run build:renderer`
+   - `npx electron . --dev`
+
+Recommended scope for translation PRs:
+- One feature area per PR (example: Workflow panel only)
+- Include both `en` and `fr` updates in the same PR
+- Add screenshots when changing visible labels/messages
+
 ## Architecture Notes
 
 - **Main process** (`src/main/`): Node.js + Electron APIs, IPC handlers, services

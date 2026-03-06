@@ -3,7 +3,7 @@
 module.exports = {
   type:     'workflow/http',
   title:    'HTTP',
-  desc:     'Requête API',
+  desc:     'API request',
   color:    'cyan',
   width:    220,
   category: 'actions',

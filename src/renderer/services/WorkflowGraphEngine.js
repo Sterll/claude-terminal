@@ -112,7 +112,7 @@ function addDataOutputDefs(defs, nodeType) {
 
 const NODE_TYPES = {
   'workflow/trigger': {
-    title: 'Trigger', desc: 'Point de départ',
+    title: 'Trigger', desc: 'Entry point',
     inputs: [],
     outputs: addDataOutputDefs([{ name: 'Start', type: 'exec' }], 'trigger'),
     props: { triggerType: 'manual', triggerValue: '', hookType: 'PostToolUse' },
@@ -121,7 +121,7 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.triggerType || 'manual').toUpperCase(),
   },
   'workflow/claude': {
-    title: 'Claude', desc: 'Prompt, Agent ou Skill',
+    title: 'Claude', desc: 'Prompt, Agent or Skill',
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'claude'),
     props: { mode: 'prompt', prompt: '', agentId: '', skillId: '', model: 'sonnet', effort: 'medium', outputSchema: null },
@@ -135,7 +135,7 @@ const NODE_TYPES = {
     badge: (n) => ({ prompt: 'PROMPT', agent: 'AGENT', skill: 'SKILL' }[n.properties.mode] || 'PROMPT'),
   },
   'workflow/shell': {
-    title: 'Shell', desc: 'Commande bash',
+    title: 'Shell', desc: 'Bash command',
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'shell'),
     props: { command: '' },
@@ -152,7 +152,7 @@ const NODE_TYPES = {
     },
   },
   'workflow/git': {
-    title: 'Git', desc: 'Opération git',
+    title: 'Git', desc: 'Git operation',
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'git'),
     props: { action: 'pull', branch: '', message: '' },
@@ -161,7 +161,7 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.action || 'pull').toUpperCase(),
   },
   'workflow/http': {
-    title: 'HTTP', desc: 'Requête API',
+    title: 'HTTP', desc: 'API request',
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'http'),
     props: { method: 'GET', url: '', headers: '', body: '' },
@@ -184,7 +184,7 @@ const NODE_TYPES = {
     width: 200,
   },
   'workflow/wait': {
-    title: 'Wait', desc: 'Temporisation',
+    title: 'Wait', desc: 'Delay',
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: [{ name: 'Done', type: 'exec' }],
     props: { mode: 'duration', duration: '5s', timeout: '' },
@@ -197,7 +197,7 @@ const NODE_TYPES = {
     badge: (n) => n.properties.mode === 'approval' ? 'APPROVAL' : (n.properties.duration || '5s').toUpperCase(),
   },
   'workflow/condition': {
-    title: 'Condition', desc: 'Branchement conditionnel',
+    title: 'Condition', desc: 'Conditional branch',
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: [{ name: 'TRUE', type: 'exec' }, { name: 'FALSE', type: 'exec' }],
     props: { conditionMode: 'builder', variable: '', operator: '==', value: '', expression: '' },
@@ -237,7 +237,7 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.action || 'set_context').toUpperCase().replace('_', ' '),
   },
   'workflow/file': {
-    title: 'File', desc: 'Opération fichier',
+    title: 'File', desc: 'File operation',
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'file'),
     props: { action: 'read', path: '', destination: '', content: '', pattern: '*', recursive: false },
@@ -249,7 +249,7 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.action || 'read').toUpperCase(),
   },
   'workflow/db': {
-    title: 'Database', desc: 'Requête base de données',
+    title: 'Database', desc: 'Database query',
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'db'),
     props: { connection: '', query: '', action: 'query' },
@@ -261,7 +261,7 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.action || 'query').toUpperCase(),
   },
   'workflow/loop': {
-    title: 'Loop', desc: 'Itérer sur une liste',
+    title: 'Loop', desc: 'Iterate over a list',
     inputs: [{ name: 'In', type: 'exec' }, { name: 'items', type: 'array' }],
     outputs: addDataOutputDefs([{ name: 'Each', type: 'exec' }, { name: 'Done', type: 'exec' }], 'loop'),
     props: { source: 'auto', items: '', mode: 'sequential', maxIterations: '', _itemSchema: [] },
@@ -276,7 +276,7 @@ const NODE_TYPES = {
     badgeColor: (n) => n.properties.mode === 'parallel' ? '#f59e0b' : null,
   },
   'workflow/variable': {
-    title: 'Set Variable', desc: 'Lire/écrire une variable',
+    title: 'Set Variable', desc: 'Read/write a variable',
     inputs: [{ name: 'In', type: 'exec' }, { name: 'value', type: 'any' }],
     outputs: [{ name: 'Done', type: 'exec' }, { name: 'value', type: 'any' }],
     props: { action: 'set', name: '', value: '' },
@@ -306,7 +306,7 @@ const NODE_TYPES = {
     },
   },
   'workflow/log': {
-    title: 'Log', desc: 'Écrire dans le log',
+    title: 'Log', desc: 'Write to log',
     inputs: [{ name: 'In', type: 'exec' }, { name: 'message', type: 'string' }],
     outputs: [{ name: 'Done', type: 'exec' }],
     props: { level: 'info', message: '' },
@@ -319,7 +319,7 @@ const NODE_TYPES = {
     badgeColor: (n) => ({ debug: '#94a3b8', info: '#60a5fa', warn: '#fbbf24', error: '#ef4444' }[n.properties.level]),
   },
   'workflow/transform': {
-    title: 'Transform', desc: 'Transformer des données',
+    title: 'Transform', desc: 'Transform data',
     inputs: [{ name: 'In', type: 'exec' }, { name: 'input', type: 'any' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'transform'),
     props: { operation: 'map', input: '', expression: '', outputVar: '' },
@@ -333,7 +333,7 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.operation || 'map').toUpperCase(),
   },
   'workflow/subworkflow': {
-    title: 'Sub-workflow', desc: 'Appeler un autre workflow',
+    title: 'Sub-workflow', desc: 'Call another workflow',
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'subworkflow'),
     props: { workflow: '', inputVars: '', waitForCompletion: true },
