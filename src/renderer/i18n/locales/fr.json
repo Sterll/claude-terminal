@@ -13,6 +13,8 @@
     "rename": "Renommer",
     "edit": "Modifier",
     "copy": "Copier",
+    "paste": "Coller",
+    "selectAll": "Tout sélectionner",
     "loading": "Chargement...",
     "error": "Erreur",
     "success": "Succès",
@@ -558,6 +560,7 @@
     "justNow": "à l'instant",
     "minutesAgo": "il y a {count}min",
     "hoursAgo": "il y a {count}h",
+    "yesterday": "Hier",
     "daysAgo": "il y a {count}j"
   },
   "settings": {
@@ -1370,6 +1373,7 @@
     "databaseName": "Base de données",
     "username": "Utilisateur",
     "password": "Mot de passe",
+    "optional": "optionnel",
     "filePath": "Chemin du fichier",
     "connectionString": "Chaîne de connexion",
     "name": "Nom",
