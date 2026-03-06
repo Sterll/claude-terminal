@@ -1,25 +1,23 @@
 'use strict';
 
-const { t } = require('../i18n');
-
 const HOOK_TYPES = [
-  { value: 'PreToolUse',       label: t('workflow.trigger.hookPreToolUse') },
-  { value: 'PostToolUse',      label: t('workflow.trigger.hookPostToolUse') },
-  { value: 'UserPromptSubmit', label: t('workflow.trigger.hookUserPrompt') },
-  { value: 'Notification',     label: t('workflow.trigger.hookNotification') },
-  { value: 'Stop',             label: t('workflow.trigger.hookStop') },
+  { value: 'PreToolUse',       label: 'Pre Tool Use',       desc: 'Avant chaque appel d\'outil' },
+  { value: 'PostToolUse',      label: 'Post Tool Use',      desc: 'Après chaque appel d\'outil' },
+  { value: 'UserPromptSubmit', label: 'User Prompt Submit', desc: 'À chaque message utilisateur' },
+  { value: 'Notification',     label: 'Notification',       desc: 'Sur notification Claude' },
+  { value: 'Stop',             label: 'Stop',               desc: 'Quand Claude termine' },
 ];
 
 module.exports = {
   type: 'hook',
-  label: t('workflow.trigger.typeHook'),
+  label: 'Hook Claude',
   fields: [
     {
       type: 'select',
       key: 'hookType',
-      label: t('workflow.trigger.hookTypeLabel'),
-      hint: t('workflow.trigger.hookTypeHint'),
-      options: HOOK_TYPES.map(h => ({ value: h.value, label: h.label })),
+      label: 'Type de hook',
+      hint: 'Événement Claude qui déclenche ce workflow',
+      options: HOOK_TYPES.map(h => ({ value: h.value, label: `${h.label} — ${h.desc}` })),
     },
   ],
 };

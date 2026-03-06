@@ -1,15 +1,13 @@
 'use strict';
 
-const { t } = require('../i18n');
-
 module.exports = {
   type: 'manual',
-  label: t('workflow.trigger.typeManual'),
+  label: 'Manuel',
   fields: [
     {
       type: 'hint',
       key: '_manual_hint',
-      text: t('workflow.trigger.manualHint'),
+      text: 'Ce workflow se lance manuellement via le bouton ▶ ou via l\'API.',
     },
   ],
 };

@@ -6,7 +6,7 @@ const path = require('path');
 module.exports = {
   type:     'workflow/file',
   title:    'File',
-  desc:     'File operation',
+  desc:     'Opération fichier',
   color:    'lime',
   width:    220,
   category: 'data',
@@ -36,12 +36,10 @@ module.exports = {
         { value: 'exists', label: 'wfn.file.action.exists' },
         { value: 'list',   label: 'wfn.file.action.list' },
       ] },
-    // For non-list actions: path input
     { type: 'text', key: 'path', label: 'wfn.file.path.label', mono: true,
       hint: 'wfn.file.path.hint',
       placeholder: './src/index.js',
       showIf: (p) => p.action !== 'list' },
-    // For list action: folder path
     { type: 'text', key: 'path', label: 'wfn.file.folder.label', mono: true,
       hint: 'wfn.file.folder.hint',
       placeholder: './src',

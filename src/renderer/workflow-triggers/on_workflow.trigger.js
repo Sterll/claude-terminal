@@ -1,18 +1,16 @@
 'use strict';
 
-const { t } = require('../i18n');
-
 module.exports = {
   type: 'on_workflow',
-  label: t('workflow.trigger.typeOnWorkflow'),
+  label: 'Après un workflow',
   fields: [
     {
       type: 'select',
       key: 'triggerValue',
-      label: t('workflow.trigger.workflowSourceLabel'),
-      hint: t('workflow.trigger.workflowSourceHint'),
+      label: 'Workflow source',
+      hint: 'Se déclenche à la fin de ce workflow',
       options: [], // Rempli dynamiquement par le panel
-      placeholder: t('workflow.trigger.selectWorkflow'),
+      placeholder: 'Sélectionner un workflow…',
     },
   ],
 };

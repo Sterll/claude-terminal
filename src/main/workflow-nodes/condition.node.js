@@ -18,7 +18,7 @@ const CONDITION_OPS = [
 ];
 
 function buildConditionPreview(variable, op, value, isUnary) {
-  if (!variable) return 'variable operator value';
+  if (!variable) return 'variable operator valeur';
   if (isUnary) return `${variable} ${op}`;
   return `${variable} ${op} "${value || '...'}"`;
 }
@@ -26,7 +26,7 @@ function buildConditionPreview(variable, op, value, isUnary) {
 module.exports = {
   type:     'workflow/condition',
   title:    'Condition',
-  desc:     'Conditional branch',
+  desc:     'Branchement conditionnel',
   color:    'success',
   width:    220,
   category: 'flow',
@@ -69,7 +69,7 @@ module.exports = {
         const unaryOps   = CONDITION_OPS.filter(o => o.group === 'unary');
 
         function buildPreview(variable, op, value, isUnary) {
-          if (!variable) return 'variable operator value';
+          if (!variable) return 'variable operator valeur';
           if (isUnary) return `${variable} ${op}`;
           return `${variable} ${op} "${value || '...'}"`;
         }
@@ -82,11 +82,11 @@ module.exports = {
           <div class="wf-cond-builder" ${condMode === 'expression' ? 'style="display:none"' : ''}>
             <div class="wf-step-edit-field">
               <label class="wf-step-edit-label">Variable</label>
-              <span class="wf-field-hint">$variable or raw value — autocomplete with $</span>
+              <span class="wf-field-hint">$variable ou valeur libre — Autocomplete avec $</span>
               <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="variable" value="${esc(p.variable || '')}" placeholder="$ctx.branch" />
             </div>
             <div class="wf-step-edit-field">
-              <label class="wf-step-edit-label">Operator</label>
+              <label class="wf-step-edit-label">Opérateur</label>
               <div class="wf-cond-ops">
                 <div class="wf-cond-ops-group">
                   ${compareOps.map(o => `<button class="wf-cond-op-btn ${currentOp === o.value ? 'active' : ''}" data-op="${esc(o.value)}" title="${esc(o.label)}">${esc(o.value)}</button>`).join('')}
@@ -100,7 +100,7 @@ module.exports = {
               </div>
             </div>
             <div class="wf-step-edit-field wf-cond-value-field" ${isUnary ? 'style="display:none"' : ''}>
-              <label class="wf-step-edit-label">Value</label>
+              <label class="wf-step-edit-label">Valeur</label>
               <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="value" value="${esc(p.value || '')}" placeholder="main" />
             </div>
             <div class="wf-cond-preview">
@@ -110,7 +110,7 @@ module.exports = {
           <div class="wf-cond-expression" ${condMode === 'builder' ? 'style="display:none"' : ''}>
             <div class="wf-step-edit-field">
               <label class="wf-step-edit-label">Expression</label>
-              <span class="wf-field-hint">Free expression — e.g. $node_1.rows.length > 0</span>
+              <span class="wf-field-hint">Expression libre — ex: $node_1.rows.length > 0</span>
               <textarea class="wf-step-edit-input wf-node-prop wf-field-mono wf-cond-expr-input" data-key="expression" rows="2" placeholder="$node_1.exitCode == 0">${esc(p.expression || '')}</textarea>
             </div>
           </div>
@@ -164,7 +164,7 @@ module.exports = {
           const isUnary  = op === 'is_empty' || op === 'is_not_empty';
           const v        = varInput?.value || '';
           const val      = valInput?.value || '';
-          preview.textContent = !v ? 'variable operator value' : isUnary ? `${v} ${op}` : `${v} ${op} "${val || '...'}"`;
+          preview.textContent = !v ? 'variable operator valeur' : isUnary ? `${v} ${op}` : `${v} ${op} "${val || '...'}"`;
         };
         container.querySelector('[data-key="variable"]')?.addEventListener('input', updatePreview);
         container.querySelector('[data-key="value"]')?.addEventListener('input', updatePreview);

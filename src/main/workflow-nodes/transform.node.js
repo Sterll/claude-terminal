@@ -3,23 +3,23 @@
 const { esc } = require('./_registry');
 
 const TRANSFORM_OPS = [
-  { value: 'map',           label: 'Map',           desc: 'Transform each item',            tpl: 'item.fieldName' },
-  { value: 'filter',        label: 'Filter',        desc: 'Keep matching items',            tpl: 'item.status === "active"' },
-  { value: 'reduce',        label: 'Reduce',        desc: 'Aggregate into one value',       tpl: 'acc + item.value' },
-  { value: 'find',          label: 'Find',          desc: 'Find the first matching item',   tpl: 'item.id === $targetId' },
-  { value: 'pluck',         label: 'Pluck',         desc: 'Extract one field',              tpl: 'name' },
-  { value: 'count',         label: 'Count',         desc: 'Count items',                    tpl: '' },
-  { value: 'sort',          label: 'Sort',          desc: 'Sort items',                     tpl: 'name' },
-  { value: 'unique',        label: 'Unique',        desc: 'Remove duplicates',              tpl: '' },
-  { value: 'flatten',       label: 'Flatten',       desc: 'Flatten nested arrays',          tpl: '' },
-  { value: 'json_parse',    label: 'JSON Parse',    desc: 'Convert string → object',        tpl: '' },
-  { value: 'json_stringify', label: 'JSON Stringify', desc: 'Convert object → string',      tpl: '' },
+  { value: 'map',           label: 'Map',           desc: 'Transformer chaque élément',       tpl: 'item.fieldName' },
+  { value: 'filter',        label: 'Filter',         desc: 'Garder les éléments qui matchent', tpl: 'item.status === "active"' },
+  { value: 'reduce',        label: 'Reduce',         desc: 'Agréger en une seule valeur',      tpl: 'acc + item.value' },
+  { value: 'find',          label: 'Find',           desc: 'Trouver le premier élément',       tpl: 'item.id === $targetId' },
+  { value: 'pluck',         label: 'Pluck',          desc: 'Extraire un seul champ',           tpl: 'name' },
+  { value: 'count',         label: 'Count',          desc: 'Compter les éléments',             tpl: '' },
+  { value: 'sort',          label: 'Sort',           desc: 'Trier les éléments',               tpl: 'name' },
+  { value: 'unique',        label: 'Unique',         desc: 'Supprimer les doublons',           tpl: '' },
+  { value: 'flatten',       label: 'Flatten',        desc: 'Aplatir les tableaux imbriqués',   tpl: '' },
+  { value: 'json_parse',    label: 'JSON Parse',     desc: 'Convertir string → objet',         tpl: '' },
+  { value: 'json_stringify', label: 'JSON Stringify', desc: 'Convertir objet → string',        tpl: '' },
 ];
 
 module.exports = {
   type:     'workflow/transform',
   title:    'Transform',
-  desc:     'Transform data',
+  desc:     'Transformer des données',
   color:    'teal',
   width:    230,
   category: 'data',
@@ -42,17 +42,17 @@ module.exports = {
       render(field, props, node) {
         const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         const TRANSFORM_OPS = [
-          { value: 'map',           label: 'Map',           desc: 'Transform each item',            tpl: 'item.fieldName' },
-          { value: 'filter',        label: 'Filter',        desc: 'Keep matching items',            tpl: 'item.status === "active"' },
-          { value: 'reduce',        label: 'Reduce',        desc: 'Aggregate into one value',       tpl: 'acc + item.value' },
-          { value: 'find',          label: 'Find',          desc: 'Find the first matching item',   tpl: 'item.id === $targetId' },
-          { value: 'pluck',         label: 'Pluck',         desc: 'Extract one field',              tpl: 'name' },
-          { value: 'count',         label: 'Count',         desc: 'Count items',                    tpl: '' },
-          { value: 'sort',          label: 'Sort',          desc: 'Sort items',                     tpl: 'name' },
-          { value: 'unique',        label: 'Unique',        desc: 'Remove duplicates',              tpl: '' },
-          { value: 'flatten',       label: 'Flatten',       desc: 'Flatten nested arrays',          tpl: '' },
-          { value: 'json_parse',    label: 'JSON Parse',    desc: 'Convert string → object',        tpl: '' },
-          { value: 'json_stringify', label: 'JSON Stringify', desc: 'Convert object → string',      tpl: '' },
+          { value: 'map',           label: 'Map',           desc: 'Transformer chaque élément',       tpl: 'item.fieldName' },
+          { value: 'filter',        label: 'Filter',         desc: 'Garder les éléments qui matchent', tpl: 'item.status === "active"' },
+          { value: 'reduce',        label: 'Reduce',         desc: 'Agréger en une seule valeur',      tpl: 'acc + item.value' },
+          { value: 'find',          label: 'Find',           desc: 'Trouver le premier élément',       tpl: 'item.id === $targetId' },
+          { value: 'pluck',         label: 'Pluck',          desc: 'Extraire un seul champ',           tpl: 'name' },
+          { value: 'count',         label: 'Count',          desc: 'Compter les éléments',             tpl: '' },
+          { value: 'sort',          label: 'Sort',           desc: 'Trier les éléments',               tpl: 'name' },
+          { value: 'unique',        label: 'Unique',         desc: 'Supprimer les doublons',           tpl: '' },
+          { value: 'flatten',       label: 'Flatten',        desc: 'Aplatir les tableaux imbriqués',   tpl: '' },
+          { value: 'json_parse',    label: 'JSON Parse',     desc: 'Convertir string → objet',         tpl: '' },
+          { value: 'json_stringify', label: 'JSON Stringify', desc: 'Convertir objet → string',        tpl: '' },
         ];
         const p          = props || {};
         const currentOp  = p.operation || 'map';
@@ -60,14 +60,14 @@ module.exports = {
         const needsExpr  = !['count', 'unique', 'flatten', 'json_parse', 'json_stringify'].includes(currentOp);
 
         const exprHint = currentOp === 'pluck' || currentOp === 'sort'
-          ? 'Field name'
+          ? 'Nom du champ'
           : currentOp === 'reduce'
-            ? 'acc = accumulator, item = current item'
-            : 'item = current item';
+            ? 'acc = accumulateur, item = élément'
+            : 'item = élément courant';
 
         return `
           <div class="wf-step-edit-field">
-            <label class="wf-step-edit-label">Operation</label>
+            <label class="wf-step-edit-label">Opération</label>
             <div class="wf-transform-ops">
               ${TRANSFORM_OPS.map(o => `
                 <button class="wf-transform-op-btn ${currentOp === o.value ? 'active' : ''}" data-op="${esc(o.value)}" title="${esc(o.desc)}">
@@ -79,7 +79,7 @@ module.exports = {
           </div>
           <div class="wf-step-edit-field">
             <label class="wf-step-edit-label">Input</label>
-            <span class="wf-field-hint">Data source — variable or node output</span>
+            <span class="wf-field-hint">Source des données — variable ou node output</span>
             <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="input" value="${esc(p.input || '')}" placeholder="$node_1.rows" />
           </div>
           <div class="wf-step-edit-field wf-transform-expr-field" ${needsExpr ? '' : 'style="display:none"'}>
@@ -88,8 +88,8 @@ module.exports = {
             <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="expression" value="${esc(p.expression || '')}" placeholder="${esc(opInfo.tpl)}" />
           </div>
           <div class="wf-step-edit-field">
-            <label class="wf-step-edit-label">Output variable</label>
-            <span class="wf-field-hint">Store result in a variable (optional)</span>
+            <label class="wf-step-edit-label">Variable de sortie</label>
+            <span class="wf-field-hint">Stocker le résultat dans une variable (optionnel)</span>
             <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="outputVar" value="${esc(p.outputVar || '')}" placeholder="transformedData" />
           </div>
           <div class="wf-transform-preview">
@@ -100,9 +100,9 @@ module.exports = {
       bind(container, field, node, onChange) {
         const NO_EXPR_OPS = new Set(['count', 'unique', 'flatten', 'json_parse', 'json_stringify']);
         const EXPR_HINTS = {
-          pluck: 'Field name',
-          sort:  'Field name',
-          reduce: 'acc = accumulator, item = current item',
+          pluck: 'Nom du champ',
+          sort:  'Nom du champ',
+          reduce: 'acc = accumulateur, item = élément',
         };
         const OP_TPLS = {
           map:    'item.fieldName',
@@ -124,7 +124,6 @@ module.exports = {
           preview.textContent = `${op}(${input}${needsExpr && expr ? ', ' + expr : ''})${outputVar ? ' → $' + outputVar : ''}`;
         }
 
-        // Operation buttons
         container.querySelectorAll('.wf-transform-op-btn').forEach(btn => {
           btn.addEventListener('click', () => {
             const op = btn.dataset.op;
@@ -137,7 +136,7 @@ module.exports = {
             const exprInput   = container.querySelector('[data-key="expression"]');
 
             if (exprField)  exprField.style.display  = needsExpr ? '' : 'none';
-            if (exprHintEl) exprHintEl.textContent    = EXPR_HINTS[op] || 'item = current item';
+            if (exprHintEl) exprHintEl.textContent    = EXPR_HINTS[op] || 'item = élément courant';
             if (exprInput)  exprInput.placeholder     = OP_TPLS[op]   || '';
 
             updatePreview();
@@ -145,7 +144,6 @@ module.exports = {
           });
         });
 
-        // Live preview on expression/input/outputVar changes
         ['expression', 'input', 'outputVar'].forEach(key => {
           container.querySelector(`[data-key="${key}"]`)?.addEventListener('input', updatePreview);
         });
@@ -158,7 +156,6 @@ module.exports = {
   run(config, vars) {
     const resolveVars = (value, vars) => {
       if (typeof value !== 'string') return value;
-      // Fast path: single variable reference — return raw value
       const singleMatch = value.match(/^\$([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)$/);
       if (singleMatch) {
         const parts = singleMatch[1].split('.');
@@ -195,7 +192,6 @@ module.exports = {
 
     const makeFn = (body) => {
       try {
-        // eslint-disable-next-line no-new-func
         return new Function('item', 'index', `"use strict"; return (${body});`);
       } catch {
         throw new Error(`Invalid expression: ${body}`);
@@ -214,7 +210,6 @@ module.exports = {
         result = expr ? input.find((item, index) => makeFn(expr)(item, index)) : input[0];
         break;
       case 'reduce': {
-        // eslint-disable-next-line no-new-func
         const reduceFn = expr ? new Function('acc', 'item', 'index', `"use strict"; return (${expr});`) : (acc, item) => acc + item;
         result = input.reduce(reduceFn, 0);
         break;
