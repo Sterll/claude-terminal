@@ -3,7 +3,7 @@
 module.exports = {
   type:     'workflow/git',
   title:    'Git',
-  desc:     'Git operation',
+  desc:     'Opération git',
   color:    'purple',
   width:    200,
   category: 'actions',

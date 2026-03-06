@@ -3,7 +3,7 @@
 module.exports = {
   type:     'workflow/webhook',
   title:    'Webhook',
-  desc:     'Send a message to a Slack / Discord / Teams webhook',
+  desc:     'Envoie un message à un webhook Slack / Discord / Teams',
   color:    'purple',
   width:    220,
   category: 'actions',
@@ -62,9 +62,9 @@ module.exports = {
     const https = require('https');
     const http  = require('http');
     const url   = config.url;
-    if (!url) throw new Error('Missing webhook URL');
+    if (!url) throw new Error('URL du webhook manquante');
 
-    // Resolve $xxx variables — supports Maps and plain objects
+    // Résolution des variables $xxx — supporte Map et objets
     function resolve(str) {
       if (!str || typeof str !== 'string') return str;
       return str.replace(/\$(\w+(?:\.\w+)*)/g, (match, keyPath) => {
@@ -76,7 +76,7 @@ module.exports = {
     }
 
     const payload = {
-      text: resolve(config.text) || 'Claude Terminal notification',
+      text: resolve(config.text) || 'Notification de Claude Terminal',
     };
     if (config.username) payload.username = config.username;
     if (config.icon)     payload.icon_emoji = config.icon;

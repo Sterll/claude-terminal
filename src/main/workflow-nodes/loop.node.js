@@ -7,7 +7,7 @@ const os   = require('os');
 module.exports = {
   type:     'workflow/loop',
   title:    'Loop',
-  desc:     'Iterate over a list',
+  desc:     'Itérer sur une liste',
   color:    'sky',
   width:    210,
   category: 'flow',

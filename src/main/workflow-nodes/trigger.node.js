@@ -3,7 +3,7 @@
 module.exports = {
   type:      'workflow/trigger',
   title:     'Trigger',
-  desc:      'Entry point',
+  desc:      'Point de départ',
   color:     'success',
   width:     200,
   category:  'actions',
