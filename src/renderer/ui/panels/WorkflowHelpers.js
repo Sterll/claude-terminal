@@ -6,24 +6,24 @@ const { t, getCurrentLanguage } = require('../../i18n');
 // ── Hook types ──────────────────────────────────────────────────────────────
 
 const HOOK_TYPES = [
-  { value: 'PreToolUse',        label: 'PreToolUse',        desc: 'Before each tool call' },
-  { value: 'PostToolUse',       label: 'PostToolUse',       desc: 'After each tool call' },
-  { value: 'PostToolUseFailure',label: 'PostToolUseFailure',desc: 'After a tool call fails' },
-  { value: 'Notification',      label: 'Notification',      desc: 'On each notification' },
-  { value: 'UserPromptSubmit',  label: 'UserPromptSubmit',  desc: 'On user message submit' },
-  { value: 'SessionStart',      label: 'SessionStart',      desc: 'Session start' },
-  { value: 'SessionEnd',        label: 'SessionEnd',        desc: 'Session end' },
-  { value: 'Stop',              label: 'Stop',              desc: 'When Claude stops' },
-  { value: 'SubagentStart',     label: 'SubagentStart',     desc: 'Subagent starts' },
-  { value: 'SubagentStop',      label: 'SubagentStop',      desc: 'Subagent stops' },
-  { value: 'PreCompact',        label: 'PreCompact',        desc: 'Before context compact' },
-  { value: 'PermissionRequest', label: 'PermissionRequest', desc: 'Permission request' },
-  { value: 'Setup',             label: 'Setup',             desc: 'Setup phase' },
-  { value: 'TeammateIdle',      label: 'TeammateIdle',      desc: 'Teammate idle' },
-  { value: 'TaskCompleted',     label: 'TaskCompleted',     desc: 'Task completed' },
-  { value: 'ConfigChange',      label: 'ConfigChange',      desc: 'Config changed' },
-  { value: 'WorktreeCreate',    label: 'WorktreeCreate',    desc: 'Worktree created' },
-  { value: 'WorktreeRemove',    label: 'WorktreeRemove',    desc: 'Worktree removed' },
+  { value: 'PreToolUse',        label: 'PreToolUse',        desc: t('workflow.helpers.hookType.preToolUse') },
+  { value: 'PostToolUse',       label: 'PostToolUse',       desc: t('workflow.helpers.hookType.postToolUse') },
+  { value: 'PostToolUseFailure',label: 'PostToolUseFailure',desc: t('workflow.helpers.hookType.postToolUseFailure') },
+  { value: 'Notification',      label: 'Notification',      desc: t('workflow.helpers.hookType.notification') },
+  { value: 'UserPromptSubmit',  label: 'UserPromptSubmit',  desc: t('workflow.helpers.hookType.userPromptSubmit') },
+  { value: 'SessionStart',      label: 'SessionStart',      desc: t('workflow.helpers.hookType.sessionStart') },
+  { value: 'SessionEnd',        label: 'SessionEnd',        desc: t('workflow.helpers.hookType.sessionEnd') },
+  { value: 'Stop',              label: 'Stop',              desc: t('workflow.helpers.hookType.stop') },
+  { value: 'SubagentStart',     label: 'SubagentStart',     desc: t('workflow.helpers.hookType.subagentStart') },
+  { value: 'SubagentStop',      label: 'SubagentStop',      desc: t('workflow.helpers.hookType.subagentStop') },
+  { value: 'PreCompact',        label: 'PreCompact',        desc: t('workflow.helpers.hookType.preCompact') },
+  { value: 'PermissionRequest', label: 'PermissionRequest', desc: t('workflow.helpers.hookType.permissionRequest') },
+  { value: 'Setup',             label: 'Setup',             desc: t('workflow.helpers.hookType.setup') },
+  { value: 'TeammateIdle',      label: 'TeammateIdle',      desc: t('workflow.helpers.hookType.teammateIdle') },
+  { value: 'TaskCompleted',     label: 'TaskCompleted',     desc: t('workflow.helpers.hookType.taskCompleted') },
+  { value: 'ConfigChange',      label: 'ConfigChange',      desc: t('workflow.helpers.hookType.configChange') },
+  { value: 'WorktreeCreate',    label: 'WorktreeCreate',    desc: t('workflow.helpers.hookType.worktreeCreate') },
+  { value: 'WorktreeRemove',    label: 'WorktreeRemove',    desc: t('workflow.helpers.hookType.worktreeRemove') },
 ];
 
 // ── Node output properties (for autocomplete) ──────────────────────────────
@@ -112,28 +112,28 @@ function svgTeal(s = 11) { return `<svg width="${s}" height="${s}" viewBox="0 0 
 // ── Step types & field definitions ──────────────────────────────────────────
 
 const GIT_ACTIONS = [
-  { value: 'pull',     label: 'Pull',     desc: 'Fetch remote changes' },
-  { value: 'push',     label: 'Push',     desc: 'Push local commits' },
-  { value: 'commit',   label: 'Commit',   desc: 'Create a commit', extra: [{ key: 'message', label: 'Commit message', placeholder: 'feat: add new feature', mono: true }] },
-  { value: 'checkout', label: 'Checkout', desc: 'Switch branch', extra: [{ key: 'branch', label: 'Branch', placeholder: 'main / develop / feature/...', mono: true }] },
-  { value: 'merge',    label: 'Merge',    desc: 'Merge branch', extra: [{ key: 'branch', label: 'Source branch', placeholder: 'feature/my-branch', mono: true }] },
-  { value: 'stash',    label: 'Stash',    desc: 'Stash changes' },
-  { value: 'stash-pop',label: 'Stash Pop',desc: 'Restore stashed changes' },
-  { value: 'reset',    label: 'Reset',    desc: 'Discard uncommitted changes' },
+  { value: 'pull',     label: t('workflow.helpers.gitAction.pull'),     desc: t('workflow.helpers.gitAction.pullDesc') },
+  { value: 'push',     label: t('workflow.helpers.gitAction.push'),     desc: t('workflow.helpers.gitAction.pushDesc') },
+  { value: 'commit',   label: t('workflow.helpers.gitAction.commit'),   desc: t('workflow.helpers.gitAction.commitDesc'), extra: [{ key: 'message', label: t('workflow.helpers.gitAction.commitMessage'), placeholder: 'feat: add new feature', mono: true }] },
+  { value: 'checkout', label: t('workflow.helpers.gitAction.checkout'), desc: t('workflow.helpers.gitAction.checkoutDesc'), extra: [{ key: 'branch', label: t('workflow.helpers.gitAction.branch'), placeholder: 'main / develop / feature/...', mono: true }] },
+  { value: 'merge',    label: t('workflow.helpers.gitAction.merge'),    desc: t('workflow.helpers.gitAction.mergeDesc'), extra: [{ key: 'branch', label: t('workflow.helpers.gitAction.sourceBranch'), placeholder: 'feature/my-branch', mono: true }] },
+  { value: 'stash',    label: t('workflow.helpers.gitAction.stash'),    desc: t('workflow.helpers.gitAction.stashDesc') },
+  { value: 'stash-pop',label: t('workflow.helpers.gitAction.stashPop'), desc: t('workflow.helpers.gitAction.stashPopDesc') },
+  { value: 'reset',    label: t('workflow.helpers.gitAction.reset'),    desc: t('workflow.helpers.gitAction.resetDesc') },
 ];
 
 const WAIT_UNITS = [
-  { value: 's', label: 'Seconds' },
-  { value: 'm', label: 'Minutes' },
-  { value: 'h', label: 'Hours' },
+  { value: 's', label: t('workflow.helpers.waitUnit.seconds') },
+  { value: 'm', label: t('workflow.helpers.waitUnit.minutes') },
+  { value: 'h', label: t('workflow.helpers.waitUnit.hours') },
 ];
 
 const CONDITION_VARS = [
-  { value: '$ctx.branch',      label: 'Current branch' },
-  { value: '$ctx.exitCode',    label: 'Exit code' },
-  { value: '$ctx.project',     label: 'Project name' },
-  { value: '$ctx.prevStatus',  label: 'Previous step status' },
-  { value: '$env.',            label: 'Environment variable', extra: [{ key: 'envVar', label: 'Name', placeholder: 'NODE_ENV', mono: true }] },
+  { value: '$ctx.branch',      label: t('workflow.helpers.condVar.branch') },
+  { value: '$ctx.exitCode',    label: t('workflow.helpers.condVar.exitCode') },
+  { value: '$ctx.project',     label: t('workflow.helpers.condVar.project') },
+  { value: '$ctx.prevStatus',  label: t('workflow.helpers.condVar.prevStatus') },
+  { value: '$env.',            label: t('workflow.helpers.condVar.envVar'), extra: [{ key: 'envVar', label: t('workflow.helpers.condVar.envVarName'), placeholder: 'NODE_ENV', mono: true }] },
 ];
 
 const CONDITION_OPS = [
@@ -143,11 +143,11 @@ const CONDITION_OPS = [
   { value: '<',  label: '<',  group: 'compare' },
   { value: '>=', label: '>=', group: 'compare' },
   { value: '<=', label: '<=', group: 'compare' },
-  { value: 'contains',    label: 'contains',     group: 'text' },
-  { value: 'starts_with', label: 'starts with',  group: 'text' },
-  { value: 'matches',     label: 'regex',        group: 'text' },
-  { value: 'is_empty',     label: 'is empty',      group: 'unary' },
-  { value: 'is_not_empty', label: 'is not empty',  group: 'unary' },
+  { value: 'contains',    label: t('workflow.helpers.condOp.contains'),    group: 'text' },
+  { value: 'starts_with', label: t('workflow.helpers.condOp.startsWith'),  group: 'text' },
+  { value: 'matches',     label: t('workflow.helpers.condOp.regex'),       group: 'text' },
+  { value: 'is_empty',     label: t('workflow.helpers.condOp.isEmpty'),     group: 'unary' },
+  { value: 'is_not_empty', label: t('workflow.helpers.condOp.isNotEmpty'),  group: 'unary' },
 ];
 
 function buildConditionPreview(variable, op, value, isUnary) {

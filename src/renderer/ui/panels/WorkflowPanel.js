@@ -1144,7 +1144,7 @@ function openEditor(workflowId = null) {
                 if (!items.length) return '';
                 return `<div class="wf-palette-title"><span>${cat.title}</span></div>` +
                   items.map(st => `
-                    <div class="wf-palette-item" data-node-type="workflow/${st.type}" data-color="${st.color}" title="${st.desc}" draggable="true">
+                    <div class="wf-palette-item" data-node-type="workflow/${st.type}" data-color="${st.color}" title="${t(st.desc)}" draggable="true">
                       <span class="wf-palette-icon wf-chip wf-chip--${st.color}">${st.icon}</span>
                       <span class="wf-palette-label">${st.label}</span>
                     </div>

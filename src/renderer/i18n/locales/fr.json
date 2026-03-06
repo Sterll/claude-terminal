@@ -1554,7 +1554,8 @@
       "switch": "Aiguillage multi-sorties",
       "subworkflow": "Appeler un autre workflow",
       "wait": "Temporisation",
-      "log": "Écrire dans le log"
+      "log": "Écrire dans le log",
+      "getVariable": "Lire une variable (pure)"
     },
     "webhook": {
       "label": "Webhook (HTTP POST)",
@@ -1942,6 +1943,67 @@
         "outputItem": "Élément de la sortie",
         "itemsCount": "{n} items",
         "moreItems": "… +{n} autres"
+      },
+      "hookType": {
+        "preToolUse": "Avant chaque appel d'outil",
+        "postToolUse": "Après chaque appel d'outil",
+        "postToolUseFailure": "Après un échec d'appel d'outil",
+        "notification": "À chaque notification",
+        "userPromptSubmit": "À l'envoi d'un message",
+        "sessionStart": "Démarrage de session",
+        "sessionEnd": "Fin de session",
+        "stop": "Quand Claude s'arrête",
+        "subagentStart": "Démarrage de sous-agent",
+        "subagentStop": "Arrêt de sous-agent",
+        "preCompact": "Avant compactage du contexte",
+        "permissionRequest": "Demande de permission",
+        "setup": "Phase de configuration",
+        "teammateIdle": "Coéquipier inactif",
+        "taskCompleted": "Tâche terminée",
+        "configChange": "Configuration modifiée",
+        "worktreeCreate": "Worktree créé",
+        "worktreeRemove": "Worktree supprimé"
+      },
+      "gitAction": {
+        "pull": "Pull",
+        "pullDesc": "Récupérer les changements distants",
+        "push": "Push",
+        "pushDesc": "Pousser les commits locaux",
+        "commit": "Commit",
+        "commitDesc": "Créer un commit",
+        "commitMessage": "Message de commit",
+        "checkout": "Checkout",
+        "checkoutDesc": "Changer de branche",
+        "branch": "Branche",
+        "merge": "Merge",
+        "mergeDesc": "Fusionner une branche",
+        "sourceBranch": "Branche source",
+        "stash": "Stash",
+        "stashDesc": "Mettre de côté les modifications",
+        "stashPop": "Stash Pop",
+        "stashPopDesc": "Restaurer les modifications",
+        "reset": "Reset",
+        "resetDesc": "Annuler les modifications non commitées"
+      },
+      "waitUnit": {
+        "seconds": "Secondes",
+        "minutes": "Minutes",
+        "hours": "Heures"
+      },
+      "condVar": {
+        "branch": "Branche courante",
+        "exitCode": "Code de sortie",
+        "project": "Nom du projet",
+        "prevStatus": "Statut de l'étape précédente",
+        "envVar": "Variable d'environnement",
+        "envVarName": "Nom"
+      },
+      "condOp": {
+        "contains": "contient",
+        "startsWith": "commence par",
+        "regex": "regex",
+        "isEmpty": "est vide",
+        "isNotEmpty": "n'est pas vide"
       }
     }
   },

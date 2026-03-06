@@ -91,8 +91,8 @@ Interpolation variables are wrapped in curly braces: `{variable}`.
 
    ```yaml
    - name: Update badge — German (de)
-     if: ${{ steps.parse.outputs.message_de != '' }}
-     uses: schneegans/dynamic-badges-action@v1.7.0
+     if: ${{ steps.parse.outputs.message_de != '' && secrets.GIST_SECRET != '' && secrets.GIST_ID != '' }}
+     uses: schneegans/dynamic-badges-action@e9a478b16159b4d31420099ba146cdc50f134483  # v1.7.0
      with:
        auth: ${{ secrets.GIST_SECRET }}
        gistID: ${{ secrets.GIST_ID }}

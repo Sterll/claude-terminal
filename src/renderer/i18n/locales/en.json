@@ -1554,7 +1554,8 @@
       "switch": "Multi-output switch",
       "subworkflow": "Call another workflow",
       "wait": "Delay",
-      "log": "Write to log"
+      "log": "Write to log",
+      "getVariable": "Read a variable (pure)"
     },
     "webhook": {
       "label": "Webhook (HTTP POST)",
@@ -1942,6 +1943,67 @@
         "outputItem": "Output item",
         "itemsCount": "{n} items",
         "moreItems": "… +{n} more"
+      },
+      "hookType": {
+        "preToolUse": "Before each tool call",
+        "postToolUse": "After each tool call",
+        "postToolUseFailure": "After a tool call fails",
+        "notification": "On each notification",
+        "userPromptSubmit": "On user message submit",
+        "sessionStart": "Session start",
+        "sessionEnd": "Session end",
+        "stop": "When Claude stops",
+        "subagentStart": "Subagent starts",
+        "subagentStop": "Subagent stops",
+        "preCompact": "Before context compact",
+        "permissionRequest": "Permission request",
+        "setup": "Setup phase",
+        "teammateIdle": "Teammate idle",
+        "taskCompleted": "Task completed",
+        "configChange": "Config changed",
+        "worktreeCreate": "Worktree created",
+        "worktreeRemove": "Worktree removed"
+      },
+      "gitAction": {
+        "pull": "Pull",
+        "pullDesc": "Fetch remote changes",
+        "push": "Push",
+        "pushDesc": "Push local commits",
+        "commit": "Commit",
+        "commitDesc": "Create a commit",
+        "commitMessage": "Commit message",
+        "checkout": "Checkout",
+        "checkoutDesc": "Switch branch",
+        "branch": "Branch",
+        "merge": "Merge",
+        "mergeDesc": "Merge branch",
+        "sourceBranch": "Source branch",
+        "stash": "Stash",
+        "stashDesc": "Stash changes",
+        "stashPop": "Stash Pop",
+        "stashPopDesc": "Restore stashed changes",
+        "reset": "Reset",
+        "resetDesc": "Discard uncommitted changes"
+      },
+      "waitUnit": {
+        "seconds": "Seconds",
+        "minutes": "Minutes",
+        "hours": "Hours"
+      },
+      "condVar": {
+        "branch": "Current branch",
+        "exitCode": "Exit code",
+        "project": "Project name",
+        "prevStatus": "Previous step status",
+        "envVar": "Environment variable",
+        "envVarName": "Name"
+      },
+      "condOp": {
+        "contains": "contains",
+        "startsWith": "starts with",
+        "regex": "regex",
+        "isEmpty": "is empty",
+        "isNotEmpty": "is not empty"
       }
     }
   },

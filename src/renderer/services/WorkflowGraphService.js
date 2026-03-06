@@ -741,7 +741,7 @@ function TriggerNode() {
   this.removable = false;
 }
 TriggerNode.title = 'Trigger';
-TriggerNode.desc = 'Workflow entry point';
+TriggerNode.desc = t('workflow.nodeDesc.trigger');
 TriggerNode.prototype = Object.create(LGraphNode.prototype);
 TriggerNode.prototype.constructor = TriggerNode;
 TriggerNode.prototype.onDrawForeground = function(ctx) {
@@ -774,7 +774,7 @@ function ClaudeNode() {
   this.size = [220, this.computeSize()[1]];
 }
 ClaudeNode.title = 'Claude';
-ClaudeNode.desc = 'Prompt, Agent ou Skill';
+ClaudeNode.desc = t('workflow.nodeDesc.claude');
 ClaudeNode.prototype = Object.create(LGraphNode.prototype);
 ClaudeNode.prototype.constructor = ClaudeNode;
 ClaudeNode.prototype.onDrawForeground = function(ctx) {
@@ -795,7 +795,7 @@ function ShellNode() {
   this.size = [220, this.computeSize()[1]];
 }
 ShellNode.title = 'Shell';
-ShellNode.desc = 'Commande bash';
+ShellNode.desc = t('workflow.nodeDesc.shell');
 ShellNode.prototype = Object.create(LGraphNode.prototype);
 ShellNode.prototype.constructor = ShellNode;
 ShellNode.prototype.onDrawForeground = function(ctx) {
@@ -822,7 +822,7 @@ function GitNode() {
   this.size = [200, this.computeSize()[1]];
 }
 GitNode.title = 'Git';
-GitNode.desc = 'Git operation';
+GitNode.desc = t('workflow.nodeDesc.git');
 GitNode.prototype = Object.create(LGraphNode.prototype);
 GitNode.prototype.constructor = GitNode;
 GitNode.prototype.onDrawForeground = function(ctx) {
@@ -846,7 +846,7 @@ function HttpNode() {
   this.size = [220, this.computeSize()[1]];
 }
 HttpNode.title = 'HTTP';
-HttpNode.desc = 'API request';
+HttpNode.desc = t('workflow.nodeDesc.http');
 HttpNode.prototype = Object.create(LGraphNode.prototype);
 HttpNode.prototype.constructor = HttpNode;
 HttpNode.prototype.onDrawForeground = function(ctx) {
@@ -865,7 +865,7 @@ function NotifyNode() {
   this.size = [200, this.computeSize()[1]];
 }
 NotifyNode.title = 'Notify';
-NotifyNode.desc = 'Notification';
+NotifyNode.desc = t('workflow.nodeDesc.notify');
 NotifyNode.prototype = Object.create(LGraphNode.prototype);
 NotifyNode.prototype.constructor = NotifyNode;
 
@@ -887,7 +887,7 @@ function WaitNode() {
   this.size = [200, this.computeSize()[1]];
 }
 WaitNode.title = 'Wait';
-WaitNode.desc = 'Temporisation ou approbation humaine';
+WaitNode.desc = t('workflow.nodeDesc.wait');
 WaitNode.prototype = Object.create(LGraphNode.prototype);
 WaitNode.prototype.constructor = WaitNode;
 WaitNode.prototype.onDrawForeground = function(ctx) {
@@ -927,7 +927,7 @@ function ConditionNode() {
   this.size = [220, this.computeSize()[1]];
 }
 ConditionNode.title = 'Condition';
-ConditionNode.desc = 'Branchement conditionnel';
+ConditionNode.desc = t('workflow.nodeDesc.condition');
 ConditionNode.prototype = Object.create(LGraphNode.prototype);
 ConditionNode.prototype.constructor = ConditionNode;
 ConditionNode.prototype._syncConditionWidgets = function() {
@@ -976,7 +976,7 @@ function ProjectNode() {
   this.size = [220, this.computeSize()[1]];
 }
 ProjectNode.title = 'Project';
-ProjectNode.desc = 'Cibler un projet';
+ProjectNode.desc = t('workflow.nodeDesc.project');
 ProjectNode.prototype = Object.create(LGraphNode.prototype);
 ProjectNode.prototype.constructor = ProjectNode;
 ProjectNode.prototype.onDrawForeground = function(ctx) {
@@ -1006,7 +1006,7 @@ function FileNode() {
   this.size = [220, this.computeSize()[1]];
 }
 FileNode.title = 'File';
-FileNode.desc = 'File operation';
+FileNode.desc = t('workflow.nodeDesc.file');
 FileNode.prototype = Object.create(LGraphNode.prototype);
 FileNode.prototype.constructor = FileNode;
 FileNode.prototype.onDrawForeground = function(ctx) {
@@ -1028,7 +1028,7 @@ function DbNode() {
   this.size = [220, this.computeSize()[1]];
 }
 DbNode.title = 'Database';
-DbNode.desc = 'Database query';
+DbNode.desc = t('workflow.nodeDesc.db');
 DbNode.prototype = Object.create(LGraphNode.prototype);
 DbNode.prototype.constructor = DbNode;
 DbNode.prototype.onDrawForeground = function(ctx) {
@@ -1077,7 +1077,7 @@ function LoopNode() {
   this.size = [210, this.computeSize()[1]];
 }
 LoopNode.title = 'Loop';
-LoopNode.desc = 'Iterate over a list';
+LoopNode.desc = t('workflow.nodeDesc.loop');
 LoopNode.prototype = Object.create(LGraphNode.prototype);
 LoopNode.prototype.constructor = LoopNode;
 // Restore dynamic schema outputs after graph load (deserialization)
@@ -1190,7 +1190,7 @@ function VariableNode() {
   this.size = [200, this.computeSize()[1]];
 }
 VariableNode.title = 'Variable';
-VariableNode.desc = 'Read/write a variable';
+VariableNode.desc = t('workflow.nodeDesc.variable');
 VariableNode.prototype = Object.create(LGraphNode.prototype);
 VariableNode.prototype.constructor = VariableNode;
 VariableNode.prototype.onDrawForeground = function(ctx) {
@@ -1217,7 +1217,7 @@ function LogNode() {
   this.size = [200, this.computeSize()[1]];
 }
 LogNode.title = 'Log';
-LogNode.desc = 'Write to log';
+LogNode.desc = t('workflow.nodeDesc.log');
 LogNode.prototype = Object.create(LGraphNode.prototype);
 LogNode.prototype.constructor = LogNode;
 LogNode.prototype.onDrawForeground = function(ctx) {
@@ -1248,7 +1248,7 @@ function TransformNode() {
   this.size = [230, this.computeSize()[1]];
 }
 TransformNode.title = 'Transform';
-TransformNode.desc = 'Transform data (map, filter, reduce...)';
+TransformNode.desc = t('workflow.nodeDesc.transform');
 TransformNode.prototype = Object.create(LGraphNode.prototype);
 TransformNode.prototype.constructor = TransformNode;
 TransformNode.prototype.onDrawForeground = function(ctx) {
@@ -1275,7 +1275,7 @@ function SubworkflowNode() {
   this.size = [220, this.computeSize()[1]];
 }
 SubworkflowNode.title = 'Sub-workflow';
-SubworkflowNode.desc = 'Call another workflow';
+SubworkflowNode.desc = t('workflow.nodeDesc.subworkflow');
 SubworkflowNode.prototype = Object.create(LGraphNode.prototype);
 SubworkflowNode.prototype.constructor = SubworkflowNode;
 SubworkflowNode.prototype.onDrawForeground = function(ctx) {
@@ -1303,7 +1303,7 @@ function SwitchNode() {
   this.size = [220, this.computeSize()[1]];
 }
 SwitchNode.title = 'Switch';
-SwitchNode.desc = 'Brancher sur plusieurs valeurs';
+SwitchNode.desc = t('workflow.nodeDesc.switch');
 SwitchNode.prototype = Object.create(LGraphNode.prototype);
 SwitchNode.prototype.constructor = SwitchNode;
 SwitchNode.prototype._rebuildOutputs = function() {
@@ -1335,7 +1335,7 @@ function GetVariableNode() {
   this.resizable = false;
 }
 GetVariableNode.title = 'Get Variable';
-GetVariableNode.desc = 'Lire une variable sans flux exec';
+GetVariableNode.desc = t('workflow.nodeDesc.getVariable');
 GetVariableNode.prototype = Object.create(LGraphNode.prototype);
 GetVariableNode.prototype.constructor = GetVariableNode;
 

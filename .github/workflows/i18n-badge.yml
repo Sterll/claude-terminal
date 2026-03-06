@@ -90,8 +90,8 @@ jobs:
       # Add one block per locale. Copy-paste and adjust the `lang` variable.
 
       - name: Update badge — French (fr)
-        if: ${{ steps.parse.outputs.message_fr != '' }}
-        uses: schneegans/dynamic-badges-action@v1.7.0
+        if: ${{ steps.parse.outputs.message_fr != '' && secrets.GIST_SECRET != '' && secrets.GIST_ID != '' }}
+        uses: schneegans/dynamic-badges-action@e9a478b16159b4d31420099ba146cdc50f134483
         with:
           auth: ${{ secrets.GIST_SECRET }}
           gistID: ${{ secrets.GIST_ID }}
@@ -107,8 +107,7 @@ jobs:
       #   message:   ${{ steps.parse.outputs.message_de }}
       #   color:     ${{ steps.parse.outputs.color_de }}
 
-      # Fail the workflow if any locale is below the threshold
-      - name: Enforce coverage threshold
+      - name: Warn on low coverage threshold
         if: ${{ steps.coverage.outputs.exit_code == '1' }}
         run: |
           echo "::warning::One or more locales are below the 80% coverage threshold."
