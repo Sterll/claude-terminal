@@ -86,9 +86,14 @@ async function browseServers(limit = 50, cursor = null) {
     throw new Error(`API returned status ${result.status}`);
   }
 
-  const rawServers = result.data.servers || result.data || [];
-  const servers = filterInstallable(rawServers);
-  const nextCursor = result.data.cursor || result.data.nextCursor || null;
+  // The API wraps each entry as { server: {...}, _meta: {...} } — unwrap to get the server object
+  const rawEntries = result.data.servers || result.data || [];
+  const unwrapped = rawEntries.map(entry => (entry && entry.server ? entry.server : entry));
+  const servers = filterInstallable(unwrapped);
+
+  // Pagination cursor is nested under metadata.nextCursor
+  const nextCursor = (result.data.metadata && result.data.metadata.nextCursor) ||
+    result.data.cursor || result.data.nextCursor || null;
 
   const data = { servers, nextCursor };
   setCache(cacheKey, data, CACHE_TTL.browse);
@@ -111,8 +116,10 @@ async function searchServers(query, limit = 30) {
     throw new Error(`API returned status ${result.status}`);
   }
 
-  const rawServers = result.data.servers || result.data || [];
-  const servers = filterInstallable(rawServers);
+  // The API wraps each entry as { server: {...}, _meta: {...} } — unwrap to get the server object
+  const rawEntries = result.data.servers || result.data || [];
+  const unwrapped = rawEntries.map(entry => (entry && entry.server ? entry.server : entry));
+  const servers = filterInstallable(unwrapped);
 
   const data = { servers };
   setCache(cacheKey, data, CACHE_TTL.search);
@@ -135,8 +142,10 @@ async function getServerDetail(name) {
     throw new Error(`API returned status ${result.status}`);
   }
 
-  setCache(cacheKey, result.data, CACHE_TTL.detail);
-  return result.data;
+  // The API returns { server: {...}, _meta: {...} } — unwrap to get the server object
+  const server = (result.data && result.data.server) ? result.data.server : result.data;
+  setCache(cacheKey, server, CACHE_TTL.detail);
+  return server;
 }
 
 module.exports = {

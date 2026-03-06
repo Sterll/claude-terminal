@@ -1096,7 +1096,20 @@
     "viewOnGithub": "View on GitHub",
     "requiredField": "Required",
     "optionalField": "Optional",
-    "serverType": "Type"
+    "serverType": "Type",
+    "connectionSuccess": "Connected successfully",
+    "connectionFailed": "Check configuration — could not connect",
+    "loadMore": "Load more servers",
+    "category": {
+      "all": "All",
+      "database": "Database",
+      "files": "Files",
+      "web": "Web",
+      "integration": "Integrations",
+      "devtools": "Dev Tools",
+      "ai": "AI",
+      "other": "Other"
+    }
   },
   "chat": {
     "title": "Chat",
