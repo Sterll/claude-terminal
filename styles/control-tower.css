@@ -321,6 +321,42 @@
   letter-spacing: 0.05em;
 }
 
+.ct-question-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.ct-btn-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 5px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-xs);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.ct-btn-option:hover {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.ct-option-label {
+  font-weight: 500;
+}
+
+.ct-option-desc {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+}
+
 .ct-inline-reply-row {
   display: flex;
   gap: 6px;

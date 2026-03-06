@@ -572,12 +572,26 @@ function _buildInlineActions(agent) {
 
   const { toolName, input } = perm;
 
-  // AskUserQuestion: show text input + send button
+  // AskUserQuestion: show question + option buttons + free text input
   if (toolName === 'AskUserQuestion') {
-    const question = input?.question ? escapeHtml(input.question) : '';
+    // SDK structure: input.questions[0].question + input.questions[0].options[].label
+    const firstQ = Array.isArray(input?.questions) ? input.questions[0] : null;
+    const question = firstQ?.question ? escapeHtml(firstQ.question) : '';
+    const options = Array.isArray(firstQ?.options) ? firstQ.options : [];
+    const optionsHtml = options.length > 0
+      ? `<div class="ct-question-options">${options.map(opt => {
+          const label = typeof opt === 'object' ? (opt.label || '') : String(opt);
+          const desc  = typeof opt === 'object' ? (opt.description || '') : '';
+          return `<button class="ct-btn ct-btn-option" data-agent-id="${escapeHtml(agent.id)}" data-value="${escapeHtml(label)}">
+            <span class="ct-option-label">${escapeHtml(label)}</span>
+            ${desc ? `<span class="ct-option-desc">${escapeHtml(desc)}</span>` : ''}
+          </button>`;
+        }).join('')}</div>`
+      : '';
     return `
       <div class="ct-inline-action" data-agent-id="${escapeHtml(agent.id)}">
         ${question ? `<div class="ct-inline-question">${question}</div>` : ''}
+        ${optionsHtml}
         <div class="ct-inline-reply-row">
           <input type="text" class="ct-reply-input" placeholder="${escapeHtml(t('controlTower.replyPlaceholder'))}" data-agent-id="${escapeHtml(agent.id)}" />
           <button class="ct-btn ct-btn-approve ct-btn-reply" data-agent-id="${escapeHtml(agent.id)}">
@@ -783,6 +797,11 @@ function _render() {
   });
   container.querySelectorAll('.ct-btn-interrupt').forEach(btn => {
     btn.onclick = () => _interruptAgent(btn.dataset.agentId);
+  });
+
+  // Inline action: click an option button (fills the reply and sends it)
+  container.querySelectorAll('.ct-btn-option').forEach(btn => {
+    btn.onclick = () => _sendReply(btn.dataset.agentId, btn.dataset.value);
   });
 
   // Inline action: reply to AskUserQuestion
