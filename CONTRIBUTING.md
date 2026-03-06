@@ -25,18 +25,17 @@ Open an [issue](https://github.com/Sterll/claude-terminal/issues/new?template=fe
 git clone https://github.com/Sterll/claude-terminal.git
 cd claude-terminal
 npm install
-npm run build:renderer
-npx electron .
+npm start
 ```
 
-Use `npx electron . --dev` to launch with DevTools open.
+Use `npm run start:dev` to launch with DevTools open.
 
 ## Making Changes
 
 1. Fork the repository
 2. Create a branch from `main` (`git checkout -b feat/my-feature`)
 3. Make your changes
-4. Test the application locally with `npm run build:renderer && npx electron .`
+4. Test the application locally with `npm run build:renderer && npm test && npm start`
 5. Commit using [conventional commits](https://www.conventionalcommits.org/):
    - `feat(scope): add new feature`
    - `fix(scope): fix bug description`
@@ -46,7 +45,8 @@ Use `npx electron . --dev` to launch with DevTools open.
 
 ## Code Style
 
-- JavaScript (no TypeScript yet) with ES modules in renderer, CommonJS in main process
+- Core desktop app code uses JavaScript: ES modules in the renderer and CommonJS in the main process
+- Auxiliary services under `cloud/` use TypeScript
 - Use descriptive variable and function names
 - Keep functions focused and concise
 - Follow existing patterns in the codebase
@@ -65,7 +65,8 @@ Want to help improve translations? Great.
 4. Avoid hardcoded UI strings in renderer code. Use `t('your.key.path')`.
 5. Build and test before opening the PR:
    - `npm run build:renderer`
-   - `npx electron . --dev`
+   - `npm test`
+   - `npm run start:dev`
 
 Recommended scope for translation PRs:
 - One feature area per PR (example: Workflow panel only)
@@ -82,6 +83,7 @@ Recommended scope for translation PRs:
 ## Pull Request Guidelines
 
 - Keep PRs focused on a single change
+- Avoid unrelated formatting-only changes in the same PR
 - Update the README if you change user-facing behavior
 - Test on Windows 10 and 11 if possible
 - Fill in the PR template
