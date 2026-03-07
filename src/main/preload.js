@@ -413,7 +413,9 @@ contextBridge.exposeInMainWorld('electron_api', {
     loadHistory: (params) => ipcRenderer.invoke('chat-load-history', params),
     generateSkillAgent: (params) => ipcRenderer.invoke('chat-generate-skill-agent', params),
     cancelGeneration: (params) => ipcRenderer.send('chat-cancel-generation', params),
-    generateSuggestions: (params) => ipcRenderer.invoke('chat-generate-suggestions', params)
+    generateSuggestions: (params) => ipcRenderer.invoke('chat-generate-suggestions', params),
+    analyzeSession: (params) => ipcRenderer.invoke('chat-analyze-session', params),
+    applyClaudeMd: (params) => ipcRenderer.invoke('claude-md-apply', params),
   },
 
   // ==================== HOOKS ====================

@@ -354,6 +354,8 @@ function createChatView(wrapperEl, project, options = {}) {
   let slashSelectedIndex = -1; // currently highlighted item in slash dropdown
   let lastUserText = ''; // last user message text, used for follow-up suggestions
   let lastAssistantText = ''; // last finalized assistant response text, used for follow-up suggestions
+  // Accumulates messages for CLAUDE.md analysis (role: 'user'|'assistant', content: string)
+  const conversationHistory = [];
   const unsubscribers = [];
 
   // ── Session recap tracking (for chat-mode sessions) ──
@@ -1742,6 +1744,7 @@ function createChatView(wrapperEl, project, options = {}) {
 
     const isQueued = isStreaming && sessionId;
     appendUserMessage(text, images, mentions, isQueued);
+    if (text) conversationHistory.push({ role: 'user', content: text });
     inputEl.value = '';
     inputEl.style.height = 'auto';
 
@@ -2382,6 +2385,7 @@ function createChatView(wrapperEl, project, options = {}) {
       // Capture for follow-up suggestions (plain text, truncated to avoid large memory)
       lastAssistantText = currentStreamText.slice(0, 1200);
     }
+    if (currentStreamText) conversationHistory.push({ role: 'assistant', content: currentStreamText });
     currentStreamEl = null;
     currentStreamText = '';
   }
@@ -3992,6 +3996,17 @@ function createChatView(wrapperEl, project, options = {}) {
       if (sessionId) api.chat.close({ sessionId });
       contextSuggestions.reset();
       followupChips.clear();
+      // Trigger CLAUDE.md analysis if enabled and session had exchanges
+      if (getSetting('autoClaudeMdUpdate') !== false && conversationHistory.length >= 2 && project?.path) {
+        const { showClaudeMdSuggestionModal } = require('./ClaudeMdSuggestionModal');
+        api.chat.analyzeSession({ messages: conversationHistory, projectPath: project.path })
+          .then(({ suggestions, claudeMdExists }) => {
+            if (suggestions && suggestions.length > 0) {
+              showClaudeMdSuggestionModal(suggestions, claudeMdExists, project.path);
+            }
+          })
+          .catch(err => console.warn('[ChatView] CLAUDE.md analysis error:', err.message));
+      }
       for (const unsub of unsubscribers) {
         if (typeof unsub === 'function') unsub();
       }

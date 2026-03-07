@@ -680,7 +680,9 @@
     "contextPackNamePlaceholder": "e.g. Backend API",
     "removeItem": "Remove",
     "templateNamePlaceholder": "e.g. Code Review",
-    "templateContentPlaceholder": "Review the changes on branch $branch..."
+    "templateContentPlaceholder": "Review the changes on branch $branch...",
+    "autoClaudeMdUpdate": "Auto-update CLAUDE.md",
+    "autoClaudeMdUpdateDesc": "Suggest CLAUDE.md updates at the end of chat sessions."
   },
   "ui": {
     "notifications": "Notifications",
@@ -2391,5 +2393,16 @@
       "success": "Worktrees removed successfully.",
       "error": "Failed to remove worktrees."
     }
+  },
+  "claudeMdUpdate": {
+    "modalTitle": "CLAUDE.md update suggested",
+    "modalSubtitle": "Claude discovered useful information about this project. Select sections to add.",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "dismiss": "Dismiss",
+    "apply": "Add to CLAUDE.md",
+    "create": "Create CLAUDE.md",
+    "willCreate": "The CLAUDE.md file will be created in this project.",
+    "noSuggestions": "No new discoveries detected."
   }
 }
