@@ -209,7 +209,7 @@ class ParallelTaskService {
       prompt,
       model: model || 'claude-sonnet-4-6',
       effort: effort || 'high',
-      maxTurns: 3,
+      maxTurns: 10,
       permissionMode: 'bypassPermissions',
     });
 
@@ -339,6 +339,8 @@ Rules:
 - branchSuffix must be lowercase-kebab-case, max 30 chars (e.g. "add-jwt-middleware")
 - title must be concise (max 50 chars)
 - description is one sentence describing the outcome
+
+IMPORTANT: Do not use any tools or read any files. Based solely on the feature description above, respond immediately with a JSON array.
 
 Return ONLY a JSON array of task objects, no other text. Each object must have these fields:
 - title: string (max 50 chars)

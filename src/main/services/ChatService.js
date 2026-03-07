@@ -1081,8 +1081,12 @@ class ChatService {
             }
           }
         }
-        if (message.type === 'result' && message.structured_output) {
-          structuredOutput = message.structured_output;
+        if (message.type === 'result') {
+          if (message.structured_output) structuredOutput = message.structured_output;
+          // Fallback: if no text blocks were captured, use the result's text field
+          if (!stdout && message.result && typeof message.result === 'string') {
+            stdout = message.result;
+          }
         }
       }
 
