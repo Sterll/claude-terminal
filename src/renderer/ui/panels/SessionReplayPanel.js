@@ -124,6 +124,11 @@ function truncate(str, max = 120) {
  */
 function detectSkillInPrompt(text) {
   if (!text) return { hasSkill: false };
+  // Detect <command-name>/skill-name</command-name> XML format (Skill tool invocation)
+  const cmdNameMatch = text.match(/<command-name>(\/[\w-]+)<\/command-name>/);
+  if (cmdNameMatch) {
+    return { hasSkill: true, skillName: cmdNameMatch[1], rest: '' };
+  }
   // Match /skill-name at start or after whitespace, capturing word chars and dashes
   const match = text.match(/(?:^|\n)\s*(\/[\w-]+)/);
   if (!match) return { hasSkill: false };
@@ -970,7 +975,15 @@ function playerSeekTo(idx) {
 }
 
 function initPlayer(rawSteps) {
-  playerSteps = groupConsecutiveAgents(rawSteps);
+  // Filter system-injected noise: skill base-directory reminders
+  const filtered = rawSteps.filter(step => {
+    if (step.type !== 'prompt') return true;
+    const txt = step.text || '';
+    if (txt.startsWith('Base directory for this skill:')) return false;
+    if (txt.includes('"Base directory for this skill:')) return false;
+    return true;
+  });
+  playerSteps = groupConsecutiveAgents(filtered);
   playerCurrentStep = -1;
   playerIsPlaying = false;
   playerSpeed = 1;
