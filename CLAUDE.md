@@ -144,7 +144,7 @@ Base class `State.js`: Observable with `subscribe()`, batched notifications via 
 |--------|-------------|--------------|
 | `projects.state.js` | `{ projects[], folders[], rootOrder[], selectedProjectFilter, openedProjectId }` | CRUD, folder nesting, quick actions, color/icon, debounced save (500ms), atomic writes |
 | `terminals.state.js` | `{ terminals: Map, activeTerminal, detailTerminal }` | Per-project terminal tracking, stats |
-| `settings.state.js` | `{ editor, accentColor, language, defaultTerminalMode, chatModel, ... }` | 15 settings, debounced persistence |
+| `settings.state.js` | `{ editor, accentColor, language, defaultTerminalMode, chatModel, pinnedTabs, ... }` | 15+ settings, debounced persistence. `pinnedTabs` controls which sidebar tabs are visible (rest go to More overflow menu). |
 | `timeTracking.state.js` | `{ version, month, global, projects }` per session | 15min idle timeout, midnight rollover, 30min session merge, monthly archival |
 | `mcp.state.js` | `{ mcps[], mcpProcesses{}, selectedMcp }` | Status tracking, 1000-entry log limit |
 | `git.state.js` | `{ gitOperations: Map, gitRepoStatus: Map }` | Pull/push/merge state per project |

@@ -603,6 +603,12 @@ body.platform-darwin .titlebar-drag {
   margin: 0 8px;
 }
 
+.sidebar.collapsed .nav-separator--bare {
+  border-top: none;
+  margin-top: 0;
+  padding: 0;
+}
+
 .sidebar.collapsed .nav-tab {
   justify-content: center;
   padding: 10px;
@@ -625,6 +631,125 @@ body.platform-darwin .titlebar-drag {
 
 .sidebar.collapsed .version {
   font-size: var(--font-2xs);
+}
+
+/* ── Sidebar drag & drop ────────────────────────────────────────── */
+.nav-tabs {
+  position: relative;
+}
+
+.nav-tab-drag-handle {
+  opacity: 0;
+  cursor: grab;
+  color: var(--text-muted);
+  transition: opacity 0.1s;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.nav-tab:hover .nav-tab-drag-handle {
+  opacity: 0.5;
+}
+
+.nav-tab-drag-handle:hover {
+  opacity: 1 !important;
+  color: var(--accent);
+}
+
+.sidebar.collapsed .nav-tab-drag-handle {
+  display: none;
+}
+
+.nav-tab--dragging {
+  opacity: 0.4;
+}
+
+.nav-tab-drop-indicator {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* ── Customize sidebar modal ────────────────────────────────────── */
+.sc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sc-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  cursor: default;
+  user-select: none;
+}
+
+.sc-item:hover {
+  background: var(--bg-hover);
+}
+
+.sc-item--dragging {
+  opacity: 0.4;
+}
+
+.sc-item--drag-over-before {
+  border-top: 2px solid var(--accent);
+}
+
+.sc-item--drag-over-after {
+  border-bottom: 2px solid var(--accent);
+}
+
+.sc-drag-handle {
+  cursor: grab;
+  color: var(--text-muted);
+  opacity: 0.4;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.sc-drag-handle:hover {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.sc-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.sc-icon svg {
+  width: 16px;
+  height: 16px;
+  opacity: 0.7;
+}
+
+.sc-label {
+  flex: 1;
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+}
+
+.sc-locked .settings-toggle-slider {
+  opacity: 0.4;
+}
+
+.sc-hint {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  margin-top: 12px;
+  margin-bottom: 0;
+  line-height: 1.5;
 }
 
 .sidebar-footer {
@@ -888,4 +1013,142 @@ body.platform-darwin .titlebar-drag {
   .nav-tab {
     padding: 6px 10px;
   }
+}
+
+/* ===== PINNED TABS SYSTEM ===== */
+
+.nav-tab.nav-tab--hidden {
+  display: none;
+}
+
+.more-tabs-badge {
+  margin-left: auto;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border-radius: 10px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 600;
+  min-width: 16px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.sidebar.collapsed .more-tabs-badge {
+  display: none;
+}
+
+/* More button active state (an overflow tab is currently active) */
+.more-tabs-btn.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  position: relative;
+}
+
+.more-tabs-btn.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 25%;
+  bottom: 25%;
+  width: 3px;
+  background: var(--accent);
+  border-radius: 0 3px 3px 0;
+}
+
+/* More tabs dropdown */
+.more-tabs-dropdown {
+  position: fixed;
+  z-index: 500;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 6px;
+  min-width: 200px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  flex-direction: column;
+  gap: 1px;
+}
+
+.more-tabs-dropdown .nav-tab {
+  width: 100%;
+  position: relative;
+}
+
+.more-tabs-dropdown .nav-tab .more-pin-btn {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  transition: opacity 0.15s;
+  color: var(--text-muted);
+}
+
+.more-tabs-dropdown .nav-tab:hover .more-pin-btn {
+  opacity: 1;
+}
+
+.more-tabs-dropdown .nav-tab .more-pin-btn:hover {
+  color: var(--accent);
+  background: var(--bg-active);
+}
+
+.more-tabs-dropdown .nav-tab .more-pin-btn svg {
+  width: 13px;
+  height: 13px;
+  opacity: 1;
+}
+
+.more-customize-btn {
+  margin-top: 4px;
+  border-top: 1px solid var(--border-color) !important;
+  padding-top: 8px !important;
+  color: var(--text-muted) !important;
+  font-size: var(--font-xs) !important;
+}
+
+.more-customize-btn:hover {
+  color: var(--text-primary) !important;
+}
+
+/* Tab right-click context menu */
+.tab-ctx-menu {
+  position: fixed;
+  z-index: 600;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  min-width: 180px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.tab-ctx-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  width: 100%;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.tab-ctx-menu-item:hover {
+  background: var(--bg-hover);
+}
+
+.tab-ctx-menu-item svg {
+  width: 14px;
+  height: 14px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  opacity: 0.8;
 }

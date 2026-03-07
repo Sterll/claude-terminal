@@ -187,6 +187,9 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
   }
 
   initI18n(settingsState.get().language); // Initialize i18n with saved language preference
+  _applyTabsOrder(); // Restore custom tab order before applying visibility
+  applyPinnedTabs(); // Apply sidebar tab visibility from settings
+  _initSidebarDragDrop(); // Enable drag & drop reordering in sidebar
 
   // Initialize Claude event bus and provider (hooks or scraping)
   initClaudeEvents();
@@ -2350,22 +2353,29 @@ btnCollapseSidebar.onclick = () => {
 };
 
 // ========== TAB NAVIGATION ==========
-// Set ARIA roles on all nav-tabs
-document.querySelectorAll('.nav-tab').forEach(tab => {
+// Set ARIA roles on all nav-tabs (exclude More button which has its own role)
+document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
   tab.setAttribute('role', 'tab');
   tab.setAttribute('aria-selected', tab.classList.contains('active') ? 'true' : 'false');
 });
 
-document.querySelectorAll('.nav-tab').forEach(tab => {
+document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
+  tab.oncontextmenu = (e) => {
+    const tabId = tab.dataset.tab;
+    if (tabId === 'claude') return; // Claude is always pinned
+    e.preventDefault();
+    _showTabCtxMenu(e.clientX, e.clientY, tabId);
+  };
   tab.onclick = () => {
     const tabId = tab.dataset.tab;
-    document.querySelectorAll('.nav-tab').forEach(t => {
+    document.querySelectorAll('.nav-tab[data-tab]').forEach(t => {
       t.classList.remove('active');
       t.setAttribute('aria-selected', 'false');
     });
     tab.classList.add('active');
     tab.setAttribute('aria-selected', 'true');
     document.getElementById('btn-settings').classList.remove('active');
+    document.getElementById('btn-more-tabs')?.classList.remove('active');
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.getElementById(`tab-${tabId}`).classList.add('active');
     if (tabId === 'plugins') PluginsPanel.loadPlugins();
@@ -2434,6 +2444,426 @@ document.querySelectorAll('.nav-tab').forEach(tab => {
     }
   };
 });
+
+// ========== PINNED TABS SYSTEM ==========
+const _ALL_TABS_ORDER = ['claude', 'git', 'database', 'mcp', 'plugins', 'skills', 'agents', 'workflows', 'dashboard', 'timetracking', 'memory', 'cloud-panel'];
+
+function applyPinnedTabs() {
+  const pinned = settingsState.get().pinnedTabs || _ALL_TABS_ORDER;
+  let hiddenCount = 0;
+
+  document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
+    const tabId = tab.dataset.tab;
+    if (pinned.includes(tabId)) {
+      tab.classList.remove('nav-tab--hidden');
+    } else {
+      tab.classList.add('nav-tab--hidden');
+      hiddenCount++;
+    }
+  });
+
+  _updateSeparatorVisibility();
+
+  const moreBtn = document.getElementById('btn-more-tabs');
+  const moreSep = document.getElementById('nav-separator-more');
+  if (moreBtn) moreBtn.style.display = hiddenCount > 0 ? '' : 'none';
+  if (moreSep) moreSep.style.display = hiddenCount > 0 ? '' : 'none';
+  const badge = document.getElementById('more-tabs-badge');
+  if (badge) badge.textContent = hiddenCount > 0 ? hiddenCount : '';
+}
+
+function _updateSeparatorVisibility() {
+  const nav = document.querySelector('.nav-tabs');
+  if (!nav) return;
+  const children = [...nav.children];
+  children.forEach((el, i) => {
+    if (!el.classList.contains('nav-separator') || el.id === 'nav-separator-more') return;
+    let hasVisible = false;
+    for (let j = i + 1; j < children.length; j++) {
+      const child = children[j];
+      if (child.classList.contains('nav-separator')) break;
+      if (child.classList.contains('nav-tab') && child.id !== 'btn-more-tabs' && !child.classList.contains('nav-tab--hidden')) {
+        hasVisible = true;
+        break;
+      }
+    }
+    el.style.display = hasVisible ? '' : 'none';
+  });
+}
+
+function _pinTab(tabId) {
+  const current = settingsState.get().pinnedTabs || [..._ALL_TABS_ORDER];
+  if (current.includes(tabId)) return;
+  const newPinned = [...current];
+  const insertIdx = _ALL_TABS_ORDER.indexOf(tabId);
+  let insertAt = newPinned.length;
+  for (let i = 0; i < newPinned.length; i++) {
+    if (_ALL_TABS_ORDER.indexOf(newPinned[i]) > insertIdx) { insertAt = i; break; }
+  }
+  newPinned.splice(insertAt, 0, tabId);
+  setSetting('pinnedTabs', newPinned);
+  applyPinnedTabs();
+  _closeMoreDropdown();
+}
+
+function _unpinTab(tabId) {
+  if (tabId === 'claude') return;
+  const newPinned = (settingsState.get().pinnedTabs || [..._ALL_TABS_ORDER]).filter(t => t !== tabId);
+  // If unpinned tab is currently active, switch to claude
+  const activeTab = document.querySelector('.nav-tab.active');
+  if (activeTab?.dataset.tab === tabId) {
+    document.querySelector('[data-tab="claude"]')?.click();
+  }
+  setSetting('pinnedTabs', newPinned);
+  applyPinnedTabs();
+}
+
+// ── Sidebar drag & drop ──────────────────────────────────────────────
+function _applyTabsOrder() {
+  const order = settingsState.get().tabsOrder;
+  if (!order || !order.length) return;
+  const nav = document.querySelector('.nav-tabs');
+  const moreSep = document.getElementById('nav-separator-more');
+  if (!nav || !moreSep) return;
+  // Re-insert tabs in saved order, before the "more" separator
+  order.slice().reverse().forEach(tabId => {
+    const tab = nav.querySelector(`.nav-tab[data-tab="${tabId}"]`);
+    if (tab) nav.insertBefore(tab, moreSep);
+  });
+}
+
+function _saveTabsOrder() {
+  const nav = document.querySelector('.nav-tabs');
+  if (!nav) return;
+  const order = [...nav.querySelectorAll('.nav-tab[data-tab]:not(#btn-more-tabs)')]
+    .map(t => t.dataset.tab);
+  setSetting('tabsOrder', order);
+}
+
+function _reorderTab(draggedId, targetId, position) {
+  const nav = document.querySelector('.nav-tabs');
+  const dragged = nav.querySelector(`.nav-tab[data-tab="${draggedId}"]`);
+  const target = nav.querySelector(`.nav-tab[data-tab="${targetId}"]`);
+  if (!dragged || !target) return;
+  if (position === 'after') {
+    target.after(dragged);
+  } else {
+    target.before(dragged);
+  }
+  _updateSeparatorVisibility();
+  _saveTabsOrder();
+}
+
+function _initSidebarDragDrop() {
+  const nav = document.querySelector('.nav-tabs');
+  if (!nav) return;
+  let draggedId = null;
+  let indicator = null;
+
+  // Add drag handle on each tab
+  nav.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
+    if (tab.id === 'btn-more-tabs') return;
+    if (tab.querySelector('.nav-tab-drag-handle')) return; // already added
+    const handle = document.createElement('span');
+    handle.className = 'nav-tab-drag-handle';
+    handle.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12">
+      <path d="M9 3h2v2H9zm4 0h2v2h-2zm-4 4h2v2H9zm4 0h2v2h-2zm-4 4h2v2H9zm4 0h2v2h-2zm-4 4h2v2H9zm4 0h2v2h-2z"/>
+    </svg>`;
+    handle.addEventListener('mousedown', () => { tab.draggable = true; });
+    document.addEventListener('mouseup', () => { tab.draggable = false; }, { once: true });
+    tab.prepend(handle);
+  });
+
+  nav.addEventListener('dragstart', e => {
+    const tab = e.target.closest('.nav-tab[data-tab]');
+    if (!tab || tab.id === 'btn-more-tabs') { e.preventDefault(); return; }
+    draggedId = tab.dataset.tab;
+    tab.classList.add('nav-tab--dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+
+  nav.addEventListener('dragend', () => {
+    nav.querySelectorAll('.nav-tab[data-tab]').forEach(t => {
+      t.classList.remove('nav-tab--dragging');
+      t.draggable = false;
+    });
+    indicator?.remove(); indicator = null; draggedId = null;
+  });
+
+  nav.addEventListener('dragover', e => {
+    if (!draggedId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const target = e.target.closest('.nav-tab[data-tab]');
+    if (!target || target.id === 'btn-more-tabs' || target.dataset.tab === draggedId) {
+      indicator?.remove(); indicator = null; return;
+    }
+    const rect = target.getBoundingClientRect();
+    const after = e.clientY > rect.top + rect.height / 2;
+    if (!indicator) {
+      indicator = document.createElement('div');
+      indicator.className = 'nav-tab-drop-indicator';
+      nav.appendChild(indicator);
+    }
+    const navRect = nav.getBoundingClientRect();
+    indicator.style.top = (after ? rect.bottom : rect.top) - navRect.top - nav.scrollTop + 'px';
+  });
+
+  nav.addEventListener('drop', e => {
+    if (!draggedId) return;
+    e.preventDefault();
+    indicator?.remove(); indicator = null;
+    const target = e.target.closest('.nav-tab[data-tab]');
+    if (!target || target.id === 'btn-more-tabs') return;
+    const rect = target.getBoundingClientRect();
+    const after = e.clientY > rect.top + rect.height / 2;
+    _reorderTab(draggedId, target.dataset.tab, after ? 'after' : 'before');
+  });
+}
+
+function _openCustomizeModal() {
+  _closeMoreDropdown();
+
+  const allTabs = _ALL_TABS_ORDER.map(id => {
+    const el = document.querySelector(`.nav-tab[data-tab="${id}"]`);
+    return {
+      id,
+      label: el?.querySelector('span')?.textContent?.trim() || id,
+      svg: el?.querySelector('svg')?.outerHTML || '',
+      locked: id === 'claude',
+    };
+  });
+
+  const pinned = new Set(settingsState.get().pinnedTabs || _ALL_TABS_ORDER);
+  const order = settingsState.get().tabsOrder || _ALL_TABS_ORDER;
+  // Build ordered list: first tabs in saved order, then any missing ones
+  const ordered = [
+    ...order.map(id => allTabs.find(t => t.id === id)).filter(Boolean),
+    ...allTabs.filter(t => !order.includes(t.id)),
+  ];
+
+  const content = `
+    <div class="sc-list" id="sc-tab-list">
+      ${ordered.map(tab => `
+        <div class="sc-item" data-sc-id="${tab.id}" draggable="true">
+          <span class="sc-drag-handle" title="Glisser pour réordonner">⠿</span>
+          <span class="sc-icon">${tab.svg}</span>
+          <span class="sc-label">${tab.label}</span>
+          <label class="settings-toggle${tab.locked ? ' sc-locked' : ''}">
+            <input type="checkbox" data-sc-toggle="${tab.id}" ${pinned.has(tab.id) ? 'checked' : ''} ${tab.locked ? 'disabled' : ''}>
+            <span class="settings-toggle-slider"></span>
+          </label>
+        </div>
+      `).join('')}
+    </div>
+    <p class="sc-hint">Glisse pour réordonner · Clic droit sur un onglet pour le masquer rapidement</p>
+  `;
+
+  const footer = `
+    <button class="btn btn-ghost" id="sc-reset-btn">Réinitialiser</button>
+    <button class="btn btn-primary" id="sc-close-btn">Fermer</button>
+  `;
+
+  document.getElementById('modal-title').textContent = 'Personnaliser la barre latérale';
+  showModal('Personnaliser la barre latérale', content, footer);
+
+  document.getElementById('sc-close-btn').onclick = () => closeModal();
+  document.getElementById('sc-reset-btn').onclick = () => {
+    setSetting('pinnedTabs', [..._ALL_TABS_ORDER]);
+    setSetting('tabsOrder', null);
+    applyPinnedTabs();
+    closeModal();
+  };
+
+  // Live toggle handlers
+  document.querySelectorAll('[data-sc-toggle]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const id = cb.dataset.scToggle;
+      if (cb.checked) _pinTab(id); else _unpinTab(id);
+    });
+  });
+
+  _initCustomizeModalDragDrop();
+}
+
+function _initCustomizeModalDragDrop() {
+  const list = document.getElementById('sc-tab-list');
+  if (!list) return;
+  let draggedId = null;
+
+  list.addEventListener('dragstart', e => {
+    const item = e.target.closest('.sc-item');
+    if (!item) return;
+    draggedId = item.dataset.scId;
+    item.classList.add('sc-item--dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+
+  list.addEventListener('dragend', () => {
+    list.querySelectorAll('.sc-item').forEach(el => {
+      el.classList.remove('sc-item--dragging', 'sc-item--drag-over-before', 'sc-item--drag-over-after');
+    });
+    draggedId = null;
+  });
+
+  list.addEventListener('dragover', e => {
+    if (!draggedId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const target = e.target.closest('.sc-item');
+    list.querySelectorAll('.sc-item').forEach(el => {
+      el.classList.remove('sc-item--drag-over-before', 'sc-item--drag-over-after');
+    });
+    if (!target || target.dataset.scId === draggedId) return;
+    const rect = target.getBoundingClientRect();
+    const after = e.clientY > rect.top + rect.height / 2;
+    target.classList.add(after ? 'sc-item--drag-over-after' : 'sc-item--drag-over-before');
+  });
+
+  list.addEventListener('drop', e => {
+    if (!draggedId) return;
+    e.preventDefault();
+    list.querySelectorAll('.sc-item').forEach(el => {
+      el.classList.remove('sc-item--drag-over-before', 'sc-item--drag-over-after');
+    });
+    const target = e.target.closest('.sc-item');
+    if (!target || target.dataset.scId === draggedId) return;
+    const dragged = list.querySelector(`.sc-item[data-sc-id="${draggedId}"]`);
+    if (!dragged) return;
+    const rect = target.getBoundingClientRect();
+    const after = e.clientY > rect.top + rect.height / 2;
+    if (after) target.after(dragged); else target.before(dragged);
+    // Save new order from modal to tabsOrder + apply to sidebar
+    const newOrder = [...list.querySelectorAll('.sc-item')].map(el => el.dataset.scId);
+    setSetting('tabsOrder', newOrder);
+    _applyTabsOrder();
+    _updateSeparatorVisibility();
+  });
+}
+
+function _buildMoreDropdown() {
+  const pinned = settingsState.get().pinnedTabs || _ALL_TABS_ORDER;
+  const unpinned = _ALL_TABS_ORDER.filter(id => !pinned.includes(id));
+  const dropdown = document.getElementById('more-tabs-dropdown');
+  if (!dropdown) return;
+
+  dropdown.innerHTML = unpinned.map(tabId => {
+    const tab = document.querySelector(`.nav-tab[data-tab="${tabId}"]`);
+    if (!tab) return '';
+    const svg = tab.querySelector('svg')?.outerHTML || '';
+    const label = tab.querySelector('span')?.textContent?.trim() || tabId;
+    return `
+      <button class="nav-tab" data-more-tab="${tabId}" role="menuitem">
+        ${svg}
+        <span>${label}</span>
+        <span class="more-pin-btn" title="Épingler dans la barre">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
+        </span>
+      </button>`;
+  }).join('');
+
+  dropdown.querySelectorAll('[data-more-tab]').forEach(item => {
+    item.onclick = (e) => {
+      const tabId = item.dataset.moreTab;
+      if (e.target.closest('.more-pin-btn')) {
+        _pinTab(tabId);
+        return;
+      }
+      // Navigate to the hidden tab (click works even on hidden elements)
+      const hiddenTab = document.querySelector(`.nav-tab[data-tab="${tabId}"]`);
+      if (hiddenTab) hiddenTab.click();
+      // Mark More button as active (visual feedback that active tab is in overflow)
+      document.getElementById('btn-more-tabs')?.classList.add('active');
+      _closeMoreDropdown();
+    };
+  });
+
+  // Customize option at the bottom
+  const customizeBtn = document.createElement('button');
+  customizeBtn.className = 'nav-tab more-customize-btn';
+  customizeBtn.role = 'menuitem';
+  customizeBtn.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+    <span>Personnaliser...</span>
+  `;
+  customizeBtn.onclick = () => _openCustomizeModal();
+  dropdown.appendChild(customizeBtn);
+}
+
+function _openMoreDropdown() {
+  const btn = document.getElementById('btn-more-tabs');
+  const dropdown = document.getElementById('more-tabs-dropdown');
+  if (!btn || !dropdown) return;
+  _buildMoreDropdown();
+  const rect = btn.getBoundingClientRect();
+  dropdown.style.display = 'flex';
+  // Position to the right of the sidebar
+  dropdown.style.left = (rect.right + 8) + 'px';
+  dropdown.style.top = rect.top + 'px';
+  // Clamp vertically if overflow
+  requestAnimationFrame(() => {
+    const dropH = dropdown.offsetHeight;
+    const viewH = window.innerHeight;
+    if (rect.top + dropH > viewH - 8) {
+      dropdown.style.top = Math.max(8, viewH - dropH - 8) + 'px';
+    }
+  });
+}
+
+function _closeMoreDropdown() {
+  const dropdown = document.getElementById('more-tabs-dropdown');
+  if (dropdown) dropdown.style.display = 'none';
+}
+
+function _showTabCtxMenu(x, y, tabId) {
+  _closeMoreDropdown();
+  const existing = document.getElementById('_tab-ctx-menu');
+  if (existing) existing.remove();
+  const menu = document.createElement('div');
+  menu.id = '_tab-ctx-menu';
+  menu.className = 'tab-ctx-menu';
+  menu.style.top = y + 'px';
+  menu.style.left = x + 'px';
+  menu.innerHTML = `
+    <button class="tab-ctx-menu-item" id="_tab-ctx-unpin">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
+      Masquer de la barre
+    </button>
+    <button class="tab-ctx-menu-item" id="_tab-ctx-customize">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+      Personnaliser la barre
+    </button>`;
+  document.body.appendChild(menu);
+  document.getElementById('_tab-ctx-unpin').onclick = () => { _unpinTab(tabId); menu.remove(); };
+  document.getElementById('_tab-ctx-customize').onclick = () => { menu.remove(); _openCustomizeModal(); };
+  // Clamp to viewport
+  requestAnimationFrame(() => {
+    const mRect = menu.getBoundingClientRect();
+    if (mRect.right > window.innerWidth) menu.style.left = (window.innerWidth - mRect.width - 8) + 'px';
+    if (mRect.bottom > window.innerHeight) menu.style.top = (window.innerHeight - mRect.height - 8) + 'px';
+  });
+  const closeOutside = (e) => { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', closeOutside, true); } };
+  setTimeout(() => document.addEventListener('click', closeOutside, true), 0);
+}
+
+// More button click handler
+document.getElementById('btn-more-tabs')?.addEventListener('click', () => {
+  const dropdown = document.getElementById('more-tabs-dropdown');
+  if (dropdown?.style.display === 'none' || !dropdown?.style.display) {
+    _openMoreDropdown();
+  } else {
+    _closeMoreDropdown();
+  }
+});
+
+// Close More dropdown on outside click
+document.addEventListener('click', (e) => {
+  const dropdown = document.getElementById('more-tabs-dropdown');
+  const moreBtn = document.getElementById('btn-more-tabs');
+  if (dropdown?.style.display !== 'none' && !dropdown?.contains(e.target) && !moreBtn?.contains(e.target)) {
+    _closeMoreDropdown();
+  }
+}, true);
 
 // ========== CONTEXT MENU ==========
 function setupContextMenuHandlers() {
