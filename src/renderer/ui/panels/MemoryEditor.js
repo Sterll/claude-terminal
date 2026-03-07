@@ -445,6 +445,7 @@ function renderMemoryContent(content, source, fileExists = true) {
 
 function parseMarkdownToHtml(md) {
   const { marked } = require('marked');
+  const DOMPurify = require('dompurify');
 
   const renderer = {
     code({ text, lang }) {
@@ -467,7 +468,14 @@ function parseMarkdownToHtml(md) {
   };
 
   marked.use({ renderer, gfm: true, breaks: false });
-  return marked.parse(md);
+  const rawHtml = marked.parse(md);
+  return DOMPurify.sanitize(rawHtml, {
+    ALLOWED_TAGS: ['h1','h2','h3','h4','h5','h6','p','br','strong','em','code','pre',
+                   'ul','ol','li','a','table','thead','tbody','tr','th','td','mark',
+                   'blockquote','hr','span','div'],
+    ALLOWED_ATTR: ['href', 'class'],
+    ALLOW_DATA_ATTR: false
+  });
 }
 
 async function createMemoryFromTemplate(templateKey) {

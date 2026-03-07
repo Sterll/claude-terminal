@@ -76,7 +76,7 @@ class UpdaterService {
     if (this.isInitialized) return;
 
     autoUpdater.autoDownload = true;
-    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.autoInstallOnAppQuit = false;
 
     // Force fresh update checks (don't use cached update info)
     autoUpdater.forceDevUpdateConfig = false;

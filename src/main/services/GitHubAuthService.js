@@ -67,7 +67,7 @@ function httpsRequest(options, postData = null, maxRedirects = 3) {
  * @returns {Promise<Object>} - { device_code, user_code, verification_uri, expires_in, interval }
  */
 async function startDeviceFlow() {
-  const postData = `client_id=${GITHUB_CLIENT_ID}&scope=repo`;
+  const postData = `client_id=${GITHUB_CLIENT_ID}&scope=repo:status,public_repo,workflow`;
 
   console.debug('[GitHubAuth] Starting device flow');
 

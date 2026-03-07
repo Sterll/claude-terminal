@@ -7,6 +7,57 @@ const { contextBridge, ipcRenderer } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
+// Répertoires système bloqués en lecture et écriture (par plateforme)
+// Sur Windows, on utilise process.env.SystemRoot pour éviter de hardcoder le drive (C:, D:, etc.)
+function buildBlockedPrefixes() {
+  if (process.platform === 'win32') {
+    const systemRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
+    const programFiles = process.env['ProgramFiles'] || 'C:\\Program Files';
+    const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+    const programData = process.env.ProgramData || 'C:\\ProgramData';
+    return [systemRoot, programFiles, programFilesX86, programData];
+  }
+  if (process.platform === 'darwin') {
+    return ['/etc', '/bin', '/sbin', '/usr', '/sys', '/proc', '/dev', '/Library/System', '/System'];
+  }
+  return ['/etc', '/bin', '/sbin', '/usr', '/sys', '/proc', '/boot', '/dev', '/lib', '/lib64'];
+}
+
+const SYSTEM_BLOCKED_PREFIXES = buildBlockedPrefixes();
+
+/**
+ * Résout un chemin en suivant les symlinks si le chemin existe,
+ * sinon retombe sur path.resolve() (pour les opérations d'écriture sur chemins non existants).
+ */
+function safeResolve(p) {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
+/**
+ * Vérifie si un chemin cible un répertoire système critique.
+ * Bloque : null bytes, chemins UNC/Device Windows (\\), chemins système.
+ */
+function isSystemPath(p) {
+  if (!p || typeof p !== 'string') return true;
+  if (p.includes('\0')) return true;
+  // Bloquer les chemins UNC (\\server\share) et Device Paths (\\.\PhysicalDrive0) sur Windows
+  if (process.platform === 'win32' && p.startsWith('\\\\')) return true;
+  const resolved = safeResolve(p);
+  return SYSTEM_BLOCKED_PREFIXES.some(prefix =>
+    resolved.toLowerCase().startsWith(prefix.toLowerCase())
+  );
+}
+
+function throwIfBlocked(p) {
+  if (isSystemPath(p)) {
+    throw new Error(`Access denied: system path is protected: ${p}`);
+  }
+}
+
 // Expose Node.js modules that are needed in renderer
 // Note: For better security, these operations should eventually be moved to main process
 contextBridge.exposeInMainWorld('electron_nodeModules', {
@@ -19,11 +70,24 @@ contextBridge.exposeInMainWorld('electron_nodeModules', {
     sep: path.sep
   },
   fs: {
-    existsSync: (p) => fs.existsSync(p),
-    readFileSync: (p, options) => fs.readFileSync(p, options),
-    writeFileSync: (p, data, options) => fs.writeFileSync(p, data, options),
-    readdirSync: (p, options) => fs.readdirSync(p, options),
+    existsSync: (p) => {
+      throwIfBlocked(p);
+      return fs.existsSync(p);
+    },
+    readFileSync: (p, options) => {
+      throwIfBlocked(p);
+      return fs.readFileSync(p, options);
+    },
+    writeFileSync: (p, data, options) => {
+      throwIfBlocked(p);
+      fs.writeFileSync(p, data, options);
+    },
+    readdirSync: (p, options) => {
+      throwIfBlocked(p);
+      return fs.readdirSync(p, options);
+    },
     statSync: (p) => {
+      throwIfBlocked(p);
       const stat = fs.statSync(p);
       return {
         isDirectory: () => stat.isDirectory(),
@@ -32,21 +96,50 @@ contextBridge.exposeInMainWorld('electron_nodeModules', {
         mtime: stat.mtime
       };
     },
-    mkdirSync: (p, options) => fs.mkdirSync(p, options),
-    rmSync: (p, options) => fs.rmSync(p, options),
-    copyFileSync: (src, dest) => fs.copyFileSync(src, dest),
-    unlinkSync: (p) => fs.unlinkSync(p),
-    renameSync: (oldPath, newPath) => fs.renameSync(oldPath, newPath),
+    mkdirSync: (p, options) => {
+      throwIfBlocked(p);
+      fs.mkdirSync(p, options);
+    },
+    rmSync: (p, options) => {
+      throwIfBlocked(p);
+      fs.rmSync(p, options);
+    },
+    copyFileSync: (src, dest) => {
+      throwIfBlocked(src);
+      throwIfBlocked(dest);
+      fs.copyFileSync(src, dest);
+    },
+    unlinkSync: (p) => {
+      throwIfBlocked(p);
+      fs.unlinkSync(p);
+    },
+    renameSync: (oldPath, newPath) => {
+      throwIfBlocked(oldPath);
+      throwIfBlocked(newPath);
+      fs.renameSync(oldPath, newPath);
+    },
     promises: {
-      access: (p, mode) => fs.promises.access(p, mode),
-      readdir: (p, options) => fs.promises.readdir(p, options),
-      readFile: (p, options) => fs.promises.readFile(p, options),
-      stat: (p) => fs.promises.stat(p).then(stat => ({
-        isDirectory: () => stat.isDirectory(),
-        isFile: () => stat.isFile(),
-        size: stat.size,
-        mtime: stat.mtime
-      }))
+      access: (p, mode) => {
+        throwIfBlocked(p);
+        return fs.promises.access(p, mode);
+      },
+      readdir: (p, options) => {
+        throwIfBlocked(p);
+        return fs.promises.readdir(p, options);
+      },
+      readFile: (p, options) => {
+        throwIfBlocked(p);
+        return fs.promises.readFile(p, options);
+      },
+      stat: (p) => {
+        throwIfBlocked(p);
+        return fs.promises.stat(p).then(stat => ({
+          isDirectory: () => stat.isDirectory(),
+          isFile: () => stat.isFile(),
+          size: stat.size,
+          mtime: stat.mtime
+        }));
+      }
     }
   },
   os: {
