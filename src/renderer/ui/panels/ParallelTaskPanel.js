@@ -113,7 +113,10 @@ function _wireEvents() {
         const { action, runId } = actionBtn.dataset;
 
         if (action === 'cancel') {
-          await ctx.api.parallel.cancelRun({ runId });
+          const cancelRes = await ctx.api.parallel.cancelRun({ runId }).catch(err => ({ success: false, error: err.message }));
+          if (cancelRes && !cancelRes.success) {
+            _showToast(cancelRes.error || 'Cancel failed', 'error');
+          }
           return;
         }
         if (action === 'cleanup') {
@@ -122,6 +125,7 @@ function _wireEvents() {
           const result = await ctx.api.parallel.cleanupRun({ runId, projectPath: run.projectPath });
           if (result.success) {
             _showToast(t('parallel.cleanup.success'), 'success');
+            removeRun(runId);
           } else {
             _showToast(result.error || t('parallel.cleanup.error'), 'error');
           }
@@ -873,6 +877,12 @@ function _updateRunMerge(run) {
       </div>
     </div>
   `;
+
+  // Wire diff buttons directly (innerHTML buttons have no listeners)
+  mergeSection.querySelectorAll('.parallel-btn-diff').forEach(btn => {
+    const taskId = btn.dataset.taskId;
+    btn.addEventListener('click', () => _handleViewDiff(run.id, taskId));
+  });
 }
 
 // ─── View diff ────────────────────────────────────────────────────────────────

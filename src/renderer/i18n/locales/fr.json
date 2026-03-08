@@ -2357,6 +2357,7 @@
     },
     "phase": {
       "decomposing": "Décomposition en cours avec Claude...",
+      "reviewing": "Révision des tâches proposées...",
       "creating-worktrees": "Création des worktrees isolés...",
       "running": "En cours ({done}/{total} tâches terminées)",
       "done": "Toutes les tâches sont terminées",

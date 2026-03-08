@@ -2357,6 +2357,7 @@
     },
     "phase": {
       "decomposing": "Decomposing goal with Claude...",
+      "reviewing": "Reviewing proposed tasks...",
       "creating-worktrees": "Creating isolated worktrees...",
       "running": "Running ({done}/{total} tasks done)",
       "done": "All tasks complete",
