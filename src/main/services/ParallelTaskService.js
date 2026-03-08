@@ -476,7 +476,7 @@ class ParallelTaskService {
             '- Implement the task completely and autonomously. Do NOT ask questions or request clarification.',
             '- Do NOT use AskUserQuestion, EnterPlanMode, or ExitPlanMode — they are disabled.',
             '- Make all necessary decisions yourself using best judgment.',
-            '- Write clean, working code. Commit your changes when done with a descriptive message.',
+            '- Write clean, working code. Commit your changes when done with a descriptive message. Never mention AI, Claude, or any assistant in commit messages or code comments.',
             '- If something is ambiguous, pick the most reasonable approach and proceed.',
             '- Be concise in your output — focus on implementation, not explanation.',
             '- You have full permissions (bypassPermissions) — use tools freely without hesitation.',
