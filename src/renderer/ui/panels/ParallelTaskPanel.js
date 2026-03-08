@@ -1,7 +1,7 @@
 /**
  * ParallelTaskPanel
  * Orchestrates multiple concurrent parallel Claude coding runs.
- * Form is always accessible; each run appears as a collapsible card below.
+ * Runs appear as a list of cards. New runs are created via modal.
  */
 
 'use strict';
@@ -24,7 +24,6 @@ const {
 let ctx = null;
 let _initialized = false;
 let _unsubscribe = null;
-let _formCollapsed = false;
 let _runCounter = 0;
 let _runNumbers = new Map();
 
@@ -42,7 +41,6 @@ async function load() {
     _initialized = true;
   }
 
-  _populateProjectSelector();
   _loadHistory();
 }
 
@@ -52,16 +50,14 @@ function _render() {
   const container = document.getElementById('tab-tasks');
   if (!container) return;
 
-  const savedMaxTasks = getSetting('parallelMaxAgents') || 3;
-
   container.innerHTML = `
     <div class="parallel-panel">
 
-      <!-- Static header -->
+      <!-- Header -->
       <div class="parallel-header">
         <div class="parallel-header-left">
           <div class="parallel-header-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="22" height="22">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">
               <path d="M12 2L2 7l10 5 10-5-10-5z"/>
               <path d="M2 17l10 5 10-5"/>
               <path d="M2 12l10 5 10-5"/>
@@ -72,109 +68,12 @@ function _render() {
             <p class="parallel-header-subtitle">${t('parallel.subtitle')}</p>
           </div>
         </div>
-      </div>
-
-      <!-- New Run form (collapsible) -->
-      <div class="pt-form-section" id="pt-form-section">
-        <button class="pt-form-toggle" id="pt-form-toggle">
-          <div class="pt-form-toggle-left">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="11" height="11">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            <span>New Run</span>
-          </div>
-          <svg class="pt-form-chevron" id="pt-form-chevron" viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
-            <path d="M7 10l5 5 5-5z"/>
+        <button class="pt-new-run-btn" id="pt-new-run-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="11" height="11">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
+          New Run
         </button>
-
-        <div class="pt-form-body" id="pt-form-body">
-          <div class="parallel-form-content">
-
-            <!-- Left: Goal input -->
-            <div class="parallel-form-main">
-              <div class="parallel-field">
-                <label class="parallel-label">${t('parallel.form.projectLabel')}</label>
-                <div class="pt-select pt-select--full" id="parallel-project-select" data-value="">
-                  <div class="pt-select-trigger">
-                    <span class="pt-select-value">— select project —</span>
-                    <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M7 10l5 5 5-5z"/></svg>
-                  </div>
-                  <div class="pt-select-dropdown"></div>
-                </div>
-              </div>
-
-              <div class="parallel-field parallel-field--grow">
-                <label class="parallel-label" for="parallel-goal-input">${t('parallel.form.goalLabel')}</label>
-                <textarea
-                  id="parallel-goal-input"
-                  class="parallel-goal-input"
-                  placeholder="${t('parallel.form.goalPlaceholder')}"
-                ></textarea>
-              </div>
-            </div>
-
-            <!-- Right: Config sidebar -->
-            <div class="parallel-form-sidebar">
-              <div class="parallel-config-card">
-                <div class="parallel-config-section">
-                  <label class="parallel-label">${t('parallel.form.maxTasksLabel')}</label>
-                  <div class="parallel-agents-control">
-                    <input
-                      type="range"
-                      id="parallel-agents-slider"
-                      class="parallel-agents-slider"
-                      min="1" max="10" value="${escapeHtml(String(savedMaxTasks))}" step="1"
-                    />
-                    <div class="parallel-agents-display">
-                      <span id="parallel-agents-value" class="parallel-agents-value">${savedMaxTasks}</span>
-                      <span class="parallel-agents-unit">agents</span>
-                    </div>
-                  </div>
-                  <div class="parallel-agents-ticks">
-                    <span>1</span><span>3</span><span>5</span><span>7</span><span>10</span>
-                  </div>
-                </div>
-
-                <div class="parallel-config-section">
-                  <label class="parallel-label">${t('parallel.form.modelLabel')}</label>
-                  <div class="pt-select pt-select--full" id="parallel-model-select" data-value="claude-sonnet-4-6">
-                    <div class="pt-select-trigger">
-                      <span class="pt-select-value">Sonnet 4.6 — Balanced</span>
-                      <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M7 10l5 5 5-5z"/></svg>
-                    </div>
-                    <div class="pt-select-dropdown">
-                      <div class="pt-select-option" data-value="claude-haiku-4-5-20251001">Haiku 4.5 — Fastest</div>
-                      <div class="pt-select-option is-selected" data-value="claude-sonnet-4-6">Sonnet 4.6 — Balanced</div>
-                      <div class="pt-select-option" data-value="claude-opus-4-6">Opus 4.6 — Most capable</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="parallel-config-section">
-                  <label class="parallel-label">${t('parallel.form.effortLabel')}</label>
-                  <div class="pt-select pt-select--full" id="parallel-effort-select" data-value="high">
-                    <div class="pt-select-trigger">
-                      <span class="pt-select-value">${t('parallel.effort.high')}</span>
-                      <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M7 10l5 5 5-5z"/></svg>
-                    </div>
-                    <div class="pt-select-dropdown">
-                      <div class="pt-select-option" data-value="low">${t('parallel.effort.low')}</div>
-                      <div class="pt-select-option" data-value="medium">${t('parallel.effort.medium')}</div>
-                      <div class="pt-select-option is-selected" data-value="high">${t('parallel.effort.high')}</div>
-                    </div>
-                  </div>
-                </div>
-
-                <button id="parallel-start-btn" class="parallel-start-btn">
-                  <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M8 5v14l11-7z"/></svg>
-                  ${t('parallel.form.startBtn')}
-                </button>
-              </div>
-            </div>
-
-          </div>
-        </div>
       </div>
 
       <!-- Runs list -->
@@ -187,32 +86,19 @@ function _render() {
 }
 
 function _wireEvents() {
-  // Form collapse toggle
-  document.getElementById('pt-form-toggle')?.addEventListener('click', () => {
-    _setFormCollapsed(!_formCollapsed);
-  });
-
-  // Agents slider
-  const slider = document.getElementById('parallel-agents-slider');
-  const valueDisplay = document.getElementById('parallel-agents-value');
-  if (slider && valueDisplay) {
-    slider.addEventListener('input', () => {
-      const val = parseInt(slider.value, 10);
-      valueDisplay.textContent = val;
-      setSetting('parallelMaxAgents', val);
-    });
-  }
-
-  // Custom selects
-  _initCustomSelects();
-
-  // Start run
-  document.getElementById('parallel-start-btn')?.addEventListener('click', _handleStart);
+  // New run button → modal
+  document.getElementById('pt-new-run-btn')?.addEventListener('click', _openNewRunModal);
 
   // Event delegation on runs list
   const runsList = document.getElementById('pt-runs-list');
   if (runsList) {
     runsList.addEventListener('click', async (e) => {
+      // Empty state CTA
+      if (e.target.closest('#pt-empty-new-run')) {
+        _openNewRunModal();
+        return;
+      }
+
       // Run toggle button (collapse/expand)
       const toggleBtn = e.target.closest('.pt-run-toggle-btn');
       if (toggleBtn) {
@@ -265,27 +151,180 @@ function _wireEvents() {
   }
 }
 
-// ─── Form collapse ────────────────────────────────────────────────────────────
+// ─── New Run Modal ─────────────────────────────────────────────────────────────
 
-function _setFormCollapsed(collapsed) {
-  _formCollapsed = collapsed;
-  const body = document.getElementById('pt-form-body');
-  const chevron = document.getElementById('pt-form-chevron');
-  if (body) body.style.display = collapsed ? 'none' : '';
-  if (chevron) chevron.style.transform = collapsed ? 'rotate(-90deg)' : '';
+function _buildNewRunModal() {
+  const savedMaxTasks = getSetting('parallelMaxAgents') || 3;
+  return `
+    <div class="pt-modal-overlay" id="pt-modal-overlay">
+      <div class="pt-modal" role="dialog" aria-modal="true">
+
+        <div class="pt-modal-header">
+          <div class="pt-modal-header-left">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+              <path d="M2 17l10 5 10-5"/>
+              <path d="M2 12l10 5 10-5"/>
+            </svg>
+            <span class="pt-modal-title">New Parallel Run</span>
+          </div>
+          <button class="pt-modal-close" id="pt-modal-close" aria-label="Close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="pt-modal-body">
+
+          <!-- Project -->
+          <div class="pm-field">
+            <label class="pm-label">${t('parallel.form.projectLabel')}</label>
+            <div class="pt-select pt-select--full" id="pm-project-select" data-value="">
+              <div class="pt-select-trigger">
+                <span class="pt-select-value">— select project —</span>
+                <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M7 10l5 5 5-5z"/></svg>
+              </div>
+              <div class="pt-select-dropdown"></div>
+            </div>
+          </div>
+
+          <!-- Goal -->
+          <div class="pm-field pm-field--grow">
+            <label class="pm-label" for="pm-goal-input">${t('parallel.form.goalLabel')}</label>
+            <textarea
+              id="pm-goal-input"
+              class="pm-textarea"
+              placeholder="${t('parallel.form.goalPlaceholder')}"
+              rows="5"
+            ></textarea>
+          </div>
+
+          <!-- Config row: agents + model + effort -->
+          <div class="pm-config-row">
+            <div class="pm-field">
+              <label class="pm-label">${t('parallel.form.maxTasksLabel')}</label>
+              <div class="parallel-agents-control">
+                <input
+                  type="range"
+                  id="pm-agents-slider"
+                  class="parallel-agents-slider"
+                  min="1" max="10" value="${escapeHtml(String(savedMaxTasks))}" step="1"
+                />
+                <div class="parallel-agents-display">
+                  <span id="pm-agents-value" class="parallel-agents-value">${savedMaxTasks}</span>
+                  <span class="parallel-agents-unit">agents</span>
+                </div>
+              </div>
+              <div class="parallel-agents-ticks">
+                <span>1</span><span>3</span><span>5</span><span>7</span><span>10</span>
+              </div>
+            </div>
+
+            <div class="pm-field">
+              <label class="pm-label">${t('parallel.form.modelLabel')}</label>
+              <div class="pt-select pt-select--full" id="pm-model-select" data-value="claude-sonnet-4-6">
+                <div class="pt-select-trigger">
+                  <span class="pt-select-value">Sonnet 4.6 — Balanced</span>
+                  <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M7 10l5 5 5-5z"/></svg>
+                </div>
+                <div class="pt-select-dropdown">
+                  <div class="pt-select-option" data-value="claude-haiku-4-5-20251001">Haiku 4.5 — Fastest</div>
+                  <div class="pt-select-option is-selected" data-value="claude-sonnet-4-6">Sonnet 4.6 — Balanced</div>
+                  <div class="pt-select-option" data-value="claude-opus-4-6">Opus 4.6 — Most capable</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="pm-field">
+              <label class="pm-label">${t('parallel.form.effortLabel')}</label>
+              <div class="pt-select pt-select--full" id="pm-effort-select" data-value="high">
+                <div class="pt-select-trigger">
+                  <span class="pt-select-value">${t('parallel.effort.high')}</span>
+                  <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M7 10l5 5 5-5z"/></svg>
+                </div>
+                <div class="pt-select-dropdown">
+                  <div class="pt-select-option" data-value="low">${t('parallel.effort.low')}</div>
+                  <div class="pt-select-option" data-value="medium">${t('parallel.effort.medium')}</div>
+                  <div class="pt-select-option is-selected" data-value="high">${t('parallel.effort.high')}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /.pt-modal-body -->
+
+        <div class="pt-modal-footer">
+          <button class="pt-modal-cancel-btn" id="pt-modal-cancel">Cancel</button>
+          <button class="pt-modal-submit-btn" id="pm-start-btn">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M8 5v14l11-7z"/></svg>
+            ${t('parallel.form.startBtn')}
+          </button>
+        </div>
+
+      </div>
+    </div>
+  `;
+}
+
+function _openNewRunModal() {
+  document.getElementById('pt-modal-overlay')?.remove();
+
+  const panel = document.getElementById('tab-tasks');
+  if (!panel) return;
+
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = _buildNewRunModal();
+  const modalOverlay = wrapper.firstElementChild;
+  panel.appendChild(modalOverlay);
+
+  // Populate project selector
+  _populateProjectSelector(modalOverlay);
+
+  // Init custom selects inside modal
+  _initCustomSelects(modalOverlay);
+
+  // Agents slider
+  const slider = modalOverlay.querySelector('#pm-agents-slider');
+  const valueDisplay = modalOverlay.querySelector('#pm-agents-value');
+  if (slider && valueDisplay) {
+    slider.addEventListener('input', () => {
+      valueDisplay.textContent = slider.value;
+      setSetting('parallelMaxAgents', parseInt(slider.value, 10));
+    });
+  }
+
+  // Close handlers
+  modalOverlay.querySelector('#pt-modal-close')?.addEventListener('click', _closeNewRunModal);
+  modalOverlay.querySelector('#pt-modal-cancel')?.addEventListener('click', _closeNewRunModal);
+  modalOverlay.addEventListener('click', (e) => {
+    if (e.target === modalOverlay) _closeNewRunModal();
+  });
+
+  // Start
+  modalOverlay.querySelector('#pm-start-btn')?.addEventListener('click', () => _handleStart(modalOverlay));
+
+  // ESC
+  const onKeyDown = (e) => {
+    if (e.key === 'Escape') { _closeNewRunModal(); document.removeEventListener('keydown', onKeyDown); }
+  };
+  document.addEventListener('keydown', onKeyDown);
+
+  // Focus textarea
+  setTimeout(() => modalOverlay.querySelector('#pm-goal-input')?.focus(), 50);
+}
+
+function _closeNewRunModal() {
+  document.getElementById('pt-modal-overlay')?.remove();
 }
 
 // ─── Custom select helpers ────────────────────────────────────────────────────
 
-function _getSelectValue(id) {
-  return document.getElementById(id)?.dataset?.value || '';
-}
+function _initCustomSelects(container) {
+  const root = container || document.getElementById('tab-tasks');
+  if (!root) return;
 
-function _initCustomSelects() {
-  const panel = document.getElementById('tab-tasks');
-  if (!panel) return;
-
-  panel.querySelectorAll('.pt-select').forEach(sel => {
+  root.querySelectorAll('.pt-select').forEach(sel => {
     const trigger = sel.querySelector('.pt-select-trigger');
     const dropdown = sel.querySelector('.pt-select-dropdown');
     if (!trigger || !dropdown) return;
@@ -293,7 +332,7 @@ function _initCustomSelects() {
     trigger.addEventListener('click', (e) => {
       e.stopPropagation();
       const isOpen = sel.classList.contains('is-open');
-      panel.querySelectorAll('.pt-select.is-open').forEach(s => s.classList.remove('is-open'));
+      root.querySelectorAll('.pt-select.is-open').forEach(s => s.classList.remove('is-open'));
       if (!isOpen) sel.classList.add('is-open');
     });
 
@@ -309,42 +348,42 @@ function _initCustomSelects() {
   });
 
   document.addEventListener('click', () => {
-    panel.querySelectorAll('.pt-select.is-open').forEach(s => s.classList.remove('is-open'));
+    root.querySelectorAll('.pt-select.is-open').forEach(s => s.classList.remove('is-open'));
   });
 }
 
 // ─── Start handler ────────────────────────────────────────────────────────────
 
-async function _handleStart() {
-  const goal = document.getElementById('parallel-goal-input')?.value?.trim();
+async function _handleStart(modalEl) {
+  const goal = modalEl?.querySelector('#pm-goal-input')?.value?.trim();
   if (!goal) {
     _showToast(t('parallel.errors.noGoal'), 'error');
     return;
   }
 
-  const projectPath = _getSelectValue('parallel-project-select');
+  const projectPath = modalEl?.querySelector('#pm-project-select')?.dataset?.value;
   if (!projectPath) {
     _showToast(t('parallel.errors.noProject'), 'error');
     return;
   }
 
-  const maxTasks = parseInt(document.getElementById('parallel-agents-slider')?.value || '3', 10);
-  const model = _getSelectValue('parallel-model-select') || 'claude-sonnet-4-6';
-  const effort = _getSelectValue('parallel-effort-select') || 'high';
+  const maxTasks = parseInt(modalEl?.querySelector('#pm-agents-slider')?.value || '3', 10);
+  const model = modalEl?.querySelector('#pm-model-select')?.dataset?.value || 'claude-sonnet-4-6';
+  const effort = modalEl?.querySelector('#pm-effort-select')?.dataset?.value || 'high';
 
   setSetting('parallelMaxAgents', maxTasks);
 
   const branchResult = await ctx.api.git.currentBranch({ projectPath }).catch(() => null);
   const mainBranch = (branchResult?.branch || branchResult) || 'main';
 
-  const btn = document.getElementById('parallel-start-btn');
+  const btn = modalEl?.querySelector('#pm-start-btn');
   if (btn) { btn.disabled = true; btn.textContent = t('parallel.form.startingBtn'); }
 
   const result = await ctx.api.parallel.startRun({ projectPath, mainBranch, goal, maxTasks, model, effort });
 
   if (btn) {
     btn.disabled = false;
-    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M8 5v14l11-7z"/></svg> ${t('parallel.form.startBtn')}`;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M8 5v14l11-7z"/></svg> ${t('parallel.form.startBtn')}`;
   }
 
   if (!result.success) {
@@ -352,7 +391,6 @@ async function _handleStart() {
     return;
   }
 
-  // Add to state
   addRun({
     id: result.runId,
     projectPath,
@@ -367,10 +405,7 @@ async function _handleStart() {
     error: null,
   });
 
-  // Collapse form and clear goal input
-  _setFormCollapsed(true);
-  const goalInput = document.getElementById('parallel-goal-input');
-  if (goalInput) goalInput.value = '';
+  _closeNewRunModal();
 }
 
 // ─── Board update ──────────────────────────────────────────────────────────────
@@ -379,6 +414,34 @@ function _updateBoard() {
   const runs = getRuns();
   const listEl = document.getElementById('pt-runs-list');
   if (!listEl) return;
+
+  // Empty state
+  if (runs.length === 0) {
+    if (!listEl.querySelector('.pt-empty-runs')) {
+      listEl.innerHTML = `
+        <div class="pt-empty-runs">
+          <div class="pt-empty-runs-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" width="36" height="36">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+              <path d="M2 17l10 5 10-5"/>
+              <path d="M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+          <p class="pt-empty-runs-title">No parallel runs yet</p>
+          <p class="pt-empty-runs-hint">Decompose a feature into independent sub-tasks, each running in its own git worktree</p>
+          <button class="pt-empty-runs-cta" id="pt-empty-new-run">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="11" height="11">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            New Run
+          </button>
+        </div>
+      `;
+    }
+    return;
+  }
+
+  listEl.querySelector('.pt-empty-runs')?.remove();
 
   // Create cards for new runs (newest at top)
   runs.forEach(run => {
@@ -530,7 +593,6 @@ function _updateRunKanban(run) {
   if (!kanban) return;
 
   if (run.phase === 'reviewing') {
-    // Only re-render if not already showing review panel for this run
     if (!kanban.querySelector('.pt-review-panel')) {
       kanban.innerHTML = _buildReviewPanel(run);
       _wireReviewEvents(run);
@@ -538,7 +600,6 @@ function _updateRunKanban(run) {
     return;
   }
 
-  // If we were showing the review panel, clear it
   if (kanban.querySelector('.pt-review-panel')) {
     kanban.innerHTML = '';
   }
@@ -867,8 +928,8 @@ function _renderDiff(diff) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function _populateProjectSelector() {
-  const sel = document.getElementById('parallel-project-select');
+function _populateProjectSelector(container) {
+  const sel = container?.querySelector('#pm-project-select');
   if (!sel || !ctx) return;
 
   const projects = ctx.projectsState?.get()?.projects || [];
