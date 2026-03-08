@@ -144,6 +144,7 @@ class ParallelTaskService {
 
   async _executeRun({ runId, projectPath, mainBranch, goal, maxTasks, model, effort }) {
     let tasks;
+    let featureName = null;
     let feedback = null;
 
     // ── Phase 1 (+1b loop): Decompose → Review → Refine ─────────────────────
@@ -151,7 +152,9 @@ class ParallelTaskService {
       this._send('parallel-run-status', { runId, phase: 'decomposing' });
 
       try {
-        tasks = await this._decomposeTasks({ projectPath, goal, maxTasks, model, effort, feedback });
+        const decomposed = await this._decomposeTasks({ projectPath, goal, maxTasks, model, effort, feedback });
+        tasks = decomposed.tasks;
+        featureName = decomposed.featureName;
       } catch (err) {
         this._send('parallel-run-status', { runId, phase: 'failed', error: `Decomposition failed: ${err.message}` });
         this._active.delete(runId);
@@ -198,7 +201,7 @@ class ParallelTaskService {
     }
 
     const enrichedTasks = [];
-    const featureSlug = this._sanitizeBranchSuffix(goal).slice(0, 25);
+    const featureSlug = featureName || this._sanitizeBranchSuffix(goal).slice(0, 20);
 
     for (let i = 0; i < tasks.length; i++) {
       const task = tasks[i];
@@ -277,6 +280,7 @@ class ParallelTaskService {
       schema: {
         type: 'object',
         properties: {
+          featureName: { type: 'string' },
           tasks: {
             type: 'array',
             items: {
@@ -292,7 +296,7 @@ class ParallelTaskService {
             },
           },
         },
-        required: ['tasks'],
+        required: ['featureName', 'tasks'],
         additionalProperties: false,
       },
     };
@@ -324,6 +328,7 @@ class ParallelTaskService {
     }
 
     // Validate and cap at maxTasks
+    const featureName = this._sanitizeBranchSuffix(String(result.featureName || '').slice(0, 20)) || null;
     const validated = taskList.slice(0, maxTasks).map(t => ({
       title: String(t.title || 'Task').slice(0, 50),
       description: String(t.description || ''),
@@ -335,7 +340,7 @@ class ParallelTaskService {
       throw new Error('No valid tasks found in decomposition output');
     }
 
-    return validated;
+    return { tasks: validated, featureName };
   }
 
   /**
@@ -437,12 +442,14 @@ Rules:
 - Each sub-task's "prompt" must be fully self-contained with all necessary context for Claude Code
 - The prompt should instruct Claude to make ONLY the changes relevant to that sub-task, then stop
 - branchSuffix must be lowercase-kebab-case, max 30 chars (e.g. "add-jwt-middleware")
+- featureName must be lowercase-kebab-case, max 20 chars, very concise (e.g. "add-2fa", "refactor-auth", "fix-perf")
 - title must be concise (max 50 chars)
 - description is one sentence describing the outcome
 
 IMPORTANT: Do not use any tools or read any files. Based solely on the feature description above, respond immediately.
 
 Field guide:
+- featureName: lowercase-kebab-case, max 20 chars — short name for the whole feature (used as git branch prefix)
 - title: task name, max 50 chars
 - description: one sentence describing the outcome
 - branchSuffix: lowercase-kebab-case, max 30 chars
