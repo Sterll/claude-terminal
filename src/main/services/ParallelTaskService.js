@@ -458,7 +458,7 @@ class ParallelTaskService {
     return new Promise((resolve) => {
       // git add -A && git diff --cached --quiet || git commit -m "..."
       // If diff --cached --quiet exits 0 = nothing staged, skip commit
-      const msg = `parallel: ${(taskTitle || 'task').slice(0, 60)}`;
+      const msg = `feat: ${(taskTitle || 'task').slice(0, 60)}`;
       const cmd = `git add -A && (git diff --cached --quiet || git commit -m "${msg.replace(/"/g, '\\"')}")`;
       require('child_process').exec(cmd, { cwd: worktreePath, timeout: 15000 }, (err) => {
         if (err) console.log(`[ParallelTaskService] Auto-commit skipped: ${err.message}`);
