@@ -26,6 +26,7 @@ let _initialized = false;
 let _unsubscribe = null;
 let _runCounter = 0;
 let _runNumbers = new Map();
+let _runNames = new Map(); // runId → generated short name
 
 // ─── Init & Load ──────────────────────────────────────────────────────────────
 
@@ -406,6 +407,18 @@ async function _handleStart(modalEl) {
   });
 
   _closeNewRunModal();
+
+  // Generate short display name async via haiku
+  if (ctx.api?.chat?.generateTabName) {
+    const runId = result.runId;
+    ctx.api.chat.generateTabName({ userMessage: goal }).then(res => {
+      if (res?.success && res.name) {
+        _runNames.set(runId, res.name);
+        const nameEl = document.querySelector(`#pt-run-card-${runId} .pt-run-goal-text`);
+        if (nameEl) nameEl.textContent = res.name;
+      }
+    }).catch(() => {});
+  }
 }
 
 // ─── Board update ──────────────────────────────────────────────────────────────
@@ -469,16 +482,14 @@ function _createRunCard(run) {
   card.dataset.runId = run.id;
 
   const num = String(_runNumbers.get(run.id) || 1).padStart(2, '0');
-  const goalShort = run.goal
-    ? run.goal.slice(0, 72) + (run.goal.length > 72 ? '...' : '')
-    : '';
+  const displayName = _runNames.get(run.id) || _deriveNameFromGoal(run.goal || '');
 
   card.innerHTML = `
     <div class="pt-run-header">
       <div class="pt-run-header-left">
         <span class="pt-run-num">#${num}</span>
         <div class="pt-run-phase-dot" id="pt-phasedot-${run.id}"></div>
-        <span class="pt-run-goal-text">${escapeHtml(goalShort)}</span>
+        <span class="pt-run-goal-text">${escapeHtml(displayName)}</span>
       </div>
       <div class="pt-run-header-right">
         <span class="pt-run-phase-label" id="pt-phase-label-${run.id}"></span>
@@ -942,7 +953,27 @@ async function _loadHistory() {
     ? ctx.projectsState?.get()?.projects?.find(p => p.id === ctx.projectsState?.get()?.openedProjectId)?.path
     : null;
   const result = await ctx.api.parallel.getHistory({ projectPath });
-  if (result.success) setHistory(result.runs || []);
+  if (result.success) {
+    setHistory(result.runs || []);
+    // Generate short names for history runs that don't have one yet
+    if (ctx.api?.chat?.generateTabName) {
+      (result.runs || []).forEach(run => {
+        if (!_runNames.has(run.id) && run.goal) {
+          ctx.api.chat.generateTabName({ userMessage: run.goal }).then(res => {
+            if (res?.success && res.name) {
+              _runNames.set(run.id, res.name);
+              const nameEl = document.querySelector(`#pt-run-card-${run.id} .pt-run-goal-text`);
+              if (nameEl) nameEl.textContent = res.name;
+            }
+          }).catch(() => {});
+        }
+      });
+    }
+  }
+}
+
+function _deriveNameFromGoal(goal) {
+  return goal.trim().split(/\s+/).slice(0, 5).join(' ').slice(0, 40);
 }
 
 function _formatOutput(output) {
