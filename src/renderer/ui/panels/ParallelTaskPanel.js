@@ -133,21 +133,7 @@ function _wireEvents() {
         }
       }
 
-      // Task diff button
-      const diffBtn = e.target.closest('.parallel-btn-diff');
-      if (diffBtn) {
-        const runCard = diffBtn.closest('[data-run-id]');
-        await _handleViewDiff(runCard?.dataset.runId, diffBtn.dataset.taskId);
-        return;
-      }
-
-      // Task terminal button
-      const termBtn = e.target.closest('.parallel-btn-terminal');
-      if (termBtn) {
-        const worktreePath = termBtn.dataset.worktreePath;
-        if (worktreePath && ctx.openTerminalAtPath) ctx.openTerminalAtPath(worktreePath);
-        return;
-      }
+      // Task diff / terminal buttons are wired directly on the card elements
     });
   }
 }
@@ -650,6 +636,13 @@ function _updateRunKanban(run) {
       card.dataset.taskId = task.id;
       kanban.appendChild(card);
       card.innerHTML = _buildTaskCard(task);
+      // Wire task buttons directly (more reliable than delegation through kanban)
+      card.querySelector('.parallel-btn-diff')?.addEventListener('click', () => {
+        _handleViewDiff(run.id, task.id);
+      });
+      card.querySelector('.parallel-btn-terminal')?.addEventListener('click', () => {
+        if (task.worktreePath && ctx.openTerminalAtPath) ctx.openTerminalAtPath(task.worktreePath);
+      });
     } else {
       _patchTaskCard(card, task);
     }
