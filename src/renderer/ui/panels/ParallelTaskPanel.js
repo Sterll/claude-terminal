@@ -71,7 +71,7 @@ function _render() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="11" height="11">
             <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
-          New Run
+          ${t('parallel.newRunBtn')}
         </button>
       </div>
 
@@ -113,7 +113,7 @@ function _wireEvents() {
         if (action === 'cancel') {
           const cancelRes = await ctx.api.parallel.cancelRun({ runId }).catch(err => ({ success: false, error: err.message }));
           if (cancelRes && !cancelRes.success) {
-            _showToast(cancelRes.error || 'Cancel failed', 'error');
+            _showToast(cancelRes.error || t('parallel.errors.cancelFailed'), 'error');
           }
           return;
         }
@@ -157,7 +157,7 @@ function _buildNewRunModal() {
               <path d="M2 17l10 5 10-5"/>
               <path d="M2 12l10 5 10-5"/>
             </svg>
-            <span class="pt-modal-title">New Parallel Run</span>
+            <span class="pt-modal-title">${t('parallel.modal.title')}</span>
           </div>
           <button class="pt-modal-close" id="pt-modal-close" aria-label="Close">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
@@ -173,7 +173,7 @@ function _buildNewRunModal() {
             <label class="pm-label">${t('parallel.form.projectLabel')}</label>
             <div class="pt-select pt-select--full" id="pm-project-select" data-value="">
               <div class="pt-select-trigger">
-                <span class="pt-select-value">— select project —</span>
+                <span class="pt-select-value">${t('parallel.modal.selectProject')}</span>
                 <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M7 10l5 5 5-5z"/></svg>
               </div>
               <div class="pt-select-dropdown"></div>
@@ -196,7 +196,7 @@ function _buildNewRunModal() {
             <div class="pm-field">
               <label class="pm-label">
                 ${t('parallel.form.maxTasksLabel')}
-                <button class="pm-auto-chip${savedAutoTasks ? ' is-active' : ''}" id="pm-auto-chip" type="button">Auto</button>
+                <button class="pm-auto-chip${savedAutoTasks ? ' is-active' : ''}" id="pm-auto-chip" type="button">${t('parallel.auto')}</button>
               </label>
               <div class="parallel-agents-control${savedAutoTasks ? ' is-auto' : ''}" id="pm-agents-control">
                 <input
@@ -207,8 +207,8 @@ function _buildNewRunModal() {
                   ${savedAutoTasks ? 'disabled' : ''}
                 />
                 <div class="parallel-agents-display">
-                  <span id="pm-agents-value" class="parallel-agents-value">${savedAutoTasks ? 'Auto' : savedMaxTasks}</span>
-                  <span class="parallel-agents-unit" id="pm-agents-unit" ${savedAutoTasks ? 'style="display:none"' : ''}>agents</span>
+                  <span id="pm-agents-value" class="parallel-agents-value">${savedAutoTasks ? t('parallel.auto') : savedMaxTasks}</span>
+                  <span class="parallel-agents-unit" id="pm-agents-unit" ${savedAutoTasks ? 'style="display:none"' : ''}>${t('parallel.agents')}</span>
                 </div>
               </div>
               <div class="parallel-agents-ticks" id="pm-agents-ticks" ${savedAutoTasks ? 'style="opacity:0.3"' : ''}>
@@ -220,13 +220,13 @@ function _buildNewRunModal() {
               <label class="pm-label">${t('parallel.form.modelLabel')}</label>
               <div class="pt-select pt-select--full" id="pm-model-select" data-value="claude-sonnet-4-6">
                 <div class="pt-select-trigger">
-                  <span class="pt-select-value">Sonnet 4.6 — Balanced</span>
+                  <span class="pt-select-value">${t('parallel.model.sonnet')}</span>
                   <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M7 10l5 5 5-5z"/></svg>
                 </div>
                 <div class="pt-select-dropdown">
-                  <div class="pt-select-option" data-value="claude-haiku-4-5-20251001">Haiku 4.5 — Fastest</div>
-                  <div class="pt-select-option is-selected" data-value="claude-sonnet-4-6">Sonnet 4.6 — Balanced</div>
-                  <div class="pt-select-option" data-value="claude-opus-4-6">Opus 4.6 — Most capable</div>
+                  <div class="pt-select-option" data-value="claude-haiku-4-5-20251001">${t('parallel.model.haiku')}</div>
+                  <div class="pt-select-option is-selected" data-value="claude-sonnet-4-6">${t('parallel.model.sonnet')}</div>
+                  <div class="pt-select-option" data-value="claude-opus-4-6">${t('parallel.model.opus')}</div>
                 </div>
               </div>
             </div>
@@ -250,7 +250,7 @@ function _buildNewRunModal() {
         </div><!-- /.pt-modal-body -->
 
         <div class="pt-modal-footer">
-          <button class="pt-modal-cancel-btn" id="pt-modal-cancel">Cancel</button>
+          <button class="pt-modal-cancel-btn" id="pt-modal-cancel">${t('common.cancel')}</button>
           <button class="pt-modal-submit-btn" id="pm-start-btn">
             <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M8 5v14l11-7z"/></svg>
             ${t('parallel.form.startBtn')}
@@ -291,7 +291,7 @@ function _openNewRunModal() {
     autoChip?.classList.toggle('is-active', isAuto);
     if (slider) slider.disabled = isAuto;
     if (controlEl) controlEl.classList.toggle('is-auto', isAuto);
-    if (valueDisplay) valueDisplay.textContent = isAuto ? 'Auto' : (slider?.value || '3');
+    if (valueDisplay) valueDisplay.textContent = isAuto ? t('parallel.auto') : (slider?.value || '3');
     if (unitEl) unitEl.style.display = isAuto ? 'none' : '';
     if (ticksEl) ticksEl.style.opacity = isAuto ? '0.3' : '';
     setSetting('parallelAutoTasks', isAuto);
@@ -442,13 +442,13 @@ function _updateBoard() {
               <path d="M2 12l10 5 10-5"/>
             </svg>
           </div>
-          <p class="pt-empty-runs-title">No parallel runs yet</p>
-          <p class="pt-empty-runs-hint">Decompose a feature into independent sub-tasks, each running in its own git worktree</p>
+          <p class="pt-empty-runs-title">${t('parallel.empty.title')}</p>
+          <p class="pt-empty-runs-hint">${t('parallel.empty.hint')}</p>
           <button class="pt-empty-runs-cta" id="pt-empty-new-run">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="11" height="11">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
-            New Run
+            ${t('parallel.newRunBtn')}
           </button>
         </div>
       `;
@@ -501,15 +501,15 @@ function _createRunCard(run) {
         <span class="pt-run-phase-label" id="pt-phase-label-${run.id}"></span>
         <button class="pt-run-action-btn pt-run-action-btn--cancel" data-action="cancel" data-run-id="${run.id}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="9" height="9"><path d="M18 6L6 18M6 6l12 12"/></svg>
-          Cancel
+          ${t('parallel.cancelBtn')}
         </button>
         <button class="pt-run-action-btn pt-run-action-btn--cleanup" data-action="cleanup" data-run-id="${run.id}" style="display:none">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="9" height="9"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
-          Cleanup
+          ${t('parallel.cleanupBtn')}
         </button>
         <button class="pt-run-action-btn pt-run-action-btn--remove" data-action="remove" data-run-id="${run.id}" style="display:none">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="9" height="9"><path d="M18 6L6 18M6 6l12 12"/></svg>
-          Remove
+          ${t('common.remove')}
         </button>
         <button class="pt-run-toggle-btn" data-run-id="${run.id}" title="Toggle">
           <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M7 10l5 5 5-5z"/></svg>
@@ -639,7 +639,7 @@ function _updateRunKanban(run) {
           <div class="parallel-spinner"></div>
           <div class="parallel-empty-state-text">
             <p class="parallel-empty-state-title">${t('parallel.phase.decomposing')}</p>
-            <p class="parallel-empty-state-hint">Claude is analyzing your goal and creating independent sub-tasks...</p>
+            <p class="parallel-empty-state-hint">${t('parallel.decomposing.hint')}</p>
           </div>
         </div>
       `;
@@ -648,7 +648,7 @@ function _updateRunKanban(run) {
         <div class="parallel-empty-state parallel-empty-state--error">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="32" height="32"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           <div class="parallel-empty-state-text">
-            <p class="parallel-empty-state-title">Run failed</p>
+            <p class="parallel-empty-state-title">${t('parallel.runFailed')}</p>
             <p class="parallel-empty-state-error">${escapeHtml(run.error)}</p>
           </div>
         </div>
@@ -791,8 +791,8 @@ function _buildReviewPanel(run) {
           </svg>
         </div>
         <div>
-          <p class="pt-review-title">Review proposed tasks</p>
-          <p class="pt-review-subtitle">${proposed.length} sub-task${proposed.length !== 1 ? 's' : ''} — confirm to launch or request changes</p>
+          <p class="pt-review-title">${t('parallel.review.title')}</p>
+          <p class="pt-review-subtitle">${t('parallel.review.subtitle', { count: proposed.length })}</p>
         </div>
       </div>
 
@@ -815,11 +815,11 @@ function _buildReviewPanel(run) {
       </div>
 
       <div class="pt-review-feedback">
-        <div class="pt-review-feedback-label">Modification request <span class="pt-review-optional">(optional)</span></div>
+        <div class="pt-review-feedback-label">${t('parallel.review.feedbackLabel')} <span class="pt-review-optional">${t('parallel.review.optional')}</span></div>
         <textarea
           id="pt-review-feedback-${rid}"
           class="pt-review-feedback-input"
-          placeholder="e.g. « split task 0 into two — one for the model, one for the controller »"
+          placeholder="${t('parallel.review.feedbackPlaceholder')}"
           rows="2"
         ></textarea>
       </div>
@@ -827,15 +827,15 @@ function _buildReviewPanel(run) {
       <div class="pt-review-actions">
         <button class="pt-review-btn pt-review-btn--cancel" id="pt-review-cancel-${rid}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="11" height="11"><path d="M18 6L6 18M6 6l12 12"/></svg>
-          Cancel
+          ${t('common.cancel')}
         </button>
         <button class="pt-review-btn pt-review-btn--refine" id="pt-review-refine-${rid}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="11" height="11"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-          Re-generate
+          ${t('parallel.review.regenerate')}
         </button>
         <button class="pt-review-btn pt-review-btn--confirm" id="pt-review-confirm-${rid}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
-          Launch ${proposed.length} task${proposed.length !== 1 ? 's' : ''}
+          ${t('parallel.review.launch', { count: proposed.length })}
         </button>
       </div>
     </div>
@@ -848,7 +848,7 @@ function _wireReviewEvents(run) {
 
   document.getElementById(`pt-review-confirm-${rid}`)?.addEventListener('click', async () => {
     const result = await ctx.api.parallel.confirmRun({ runId: rid, tasks: proposed });
-    if (!result.success) _showToast(result.error || 'Confirm failed', 'error');
+    if (!result.success) _showToast(result.error || t('parallel.errors.confirmFailed'), 'error');
   });
 
   document.getElementById(`pt-review-cancel-${rid}`)?.addEventListener('click', async () => {
@@ -858,15 +858,15 @@ function _wireReviewEvents(run) {
   document.getElementById(`pt-review-refine-${rid}`)?.addEventListener('click', async () => {
     const feedback = document.getElementById(`pt-review-feedback-${rid}`)?.value?.trim();
     if (!feedback) {
-      _showToast('Enter a modification request first', 'warning');
+      _showToast(t('parallel.review.feedbackRequired'), 'warning');
       return;
     }
     const btn = document.getElementById(`pt-review-refine-${rid}`);
-    if (btn) { btn.disabled = true; btn.textContent = 'Regenerating...'; }
+    if (btn) { btn.disabled = true; btn.textContent = t('parallel.review.regenerating'); }
     const result = await ctx.api.parallel.refineRun({ runId: rid, feedback });
     if (!result.success) {
-      _showToast(result.error || 'Refine failed', 'error');
-      if (btn) { btn.disabled = false; btn.textContent = 'Re-generate'; }
+      _showToast(result.error || t('parallel.errors.refineFailed'), 'error');
+      if (btn) { btn.disabled = false; btn.textContent = t('parallel.review.regenerate'); }
     }
   });
 }
@@ -898,10 +898,10 @@ function _updateRunMerge(run) {
       <div class="parallel-merge-inner parallel-merge-merging">
         <div class="parallel-merge-header">
           <div class="parallel-merge-spinner"></div>
-          <h3 class="parallel-merge-title">Merging branches...</h3>
+          <h3 class="parallel-merge-title">${t('parallel.phase.merging')}</h3>
         </div>
         <p class="parallel-merge-hint">
-          ${p.current && p.total ? `Branch ${p.current}/${p.total}` : 'Preparing...'}
+          ${p.current && p.total ? t('parallel.merge.progress', { current: p.current, total: p.total }) : t('parallel.merge.preparing')}
           ${p.branch ? ` — <code>${escapeHtml(p.branch.split('/').pop())}</code>` : ''}
         </p>
       </div>`;
@@ -917,9 +917,9 @@ function _updateRunMerge(run) {
       <div class="parallel-merge-inner parallel-merge-done">
         <div class="parallel-merge-header">
           <svg viewBox="0 0 24 24" fill="none" stroke="var(--pt-green)" stroke-width="2" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>
-          <h3 class="parallel-merge-title">${mr.merged || 0} branch${(mr.merged || 0) !== 1 ? 'es' : ''} merged into <code>${escapeHtml(mb.split('/').pop() || mb)}</code></h3>
+          <h3 class="parallel-merge-title">${t('parallel.merge.mergedResult', { count: mr.merged || 0 })} <code>${escapeHtml(mb.split('/').pop() || mb)}</code></h3>
         </div>
-        ${hasSkipped ? `<p class="parallel-merge-skipped">${mr.skipped.length} branch${mr.skipped.length !== 1 ? 'es' : ''} skipped (conflicts)</p>` : ''}
+        ${hasSkipped ? `<p class="parallel-merge-skipped">${t('parallel.merge.skippedResult', { count: mr.skipped.length })}</p>` : ''}
         <div class="parallel-merge-actions">
           <button class="parallel-merge-btn parallel-merge-btn-diff" id="pt-merge-diff-${run.id}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -931,7 +931,7 @@ function _updateRunMerge(run) {
           </button>
         </div>
         <p class="parallel-merge-final-hint">
-          To merge into <code>${escapeHtml(run.mainBranch)}</code>: <code>git checkout ${escapeHtml(run.mainBranch)} && git merge ${escapeHtml(mb)}</code>
+          ${t('parallel.merge.finalHint', { mainBranch: escapeHtml(run.mainBranch), mergeBranch: escapeHtml(mb) })}
         </p>
       </div>`;
 
@@ -948,9 +948,9 @@ function _updateRunMerge(run) {
         cancelBtn.textContent = t('parallel.merge.cancelling');
         try {
           const result = await ctx.api.parallel.cancelMerge({ runId: run.id });
-          if (!result.success) _showToast(result.error || 'Cancel failed', 'error');
+          if (!result.success) _showToast(result.error || t('parallel.merge.cancelFailed'), 'error');
         } catch (err) {
-          _showToast(err.message || 'Cancel failed', 'error');
+          _showToast(err.message || t('parallel.merge.cancelFailed'), 'error');
         }
       });
     }
@@ -972,13 +972,13 @@ function _updateRunMerge(run) {
           <circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
           <path d="M6 9v6"/><path d="M18 9V6a2 2 0 00-2-2H8"/><path d="M18 15v3"/>
         </svg>
-        Auto-merge ${doneTasks.length} branch${doneTasks.length !== 1 ? 'es' : ''}
+        ${t('parallel.merge.autoMerge', { count: doneTasks.length })}
       </button>
       <div class="parallel-merge-list">
         ${doneTasks.map(task => `
           <div class="parallel-merge-item">
             <code class="parallel-merge-branch">${escapeHtml(task.branch)}</code>
-            <button class="parallel-btn-icon parallel-btn-diff" data-task-id="${task.id}" title="View diff">
+            <button class="parallel-btn-icon parallel-btn-diff" data-task-id="${task.id}" title="${t('parallel.card.viewDiff')}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
             </button>
           </div>
@@ -992,12 +992,12 @@ function _updateRunMerge(run) {
   if (autoBtn) {
     autoBtn.addEventListener('click', async () => {
       autoBtn.disabled = true;
-      autoBtn.textContent = 'Starting merge...';
+      autoBtn.textContent = t('parallel.merge.starting');
       try {
         const result = await ctx.api.parallel.mergeRun({ runId: run.id });
-        if (!result.success) _showToast(result.error || 'Merge failed', 'error');
+        if (!result.success) _showToast(result.error || t('parallel.merge.mergeFailed'), 'error');
       } catch (err) {
-        _showToast(err.message || 'Merge failed', 'error');
+        _showToast(err.message || t('parallel.merge.mergeFailed'), 'error');
       }
     });
   }
@@ -1017,14 +1017,14 @@ async function _handleBranchDiff(projectPath, branch1, branch2) {
   try {
     statsResult = await ctx.api.git.worktreeDiffStats(diffParams);
   } catch (err) {
-    _showToast(err.message || 'Diff failed', 'error');
+    _showToast(err.message || t('parallel.diff.failed'), 'error');
     return;
   }
   if (!statsResult.success || !statsResult.files?.length) {
-    _showToast('No changes found between branches', 'warning');
+    _showToast(t('parallel.diff.noChanges'), 'warning');
     return;
   }
-  _showDiffModal(`Combined diff — ${branch2}`, statsResult.files, diffParams);
+  _showDiffModal(t('parallel.diff.combinedTitle', { branch: branch2 }), statsResult.files, diffParams);
 }
 
 function _showDiffModal(title, files, diffParams) {
@@ -1056,7 +1056,7 @@ function _showDiffModal(title, files, diffParams) {
     <div class="pd-split">
       <div class="pd-files">
         <div class="pd-files-header">
-          <span class="pd-files-count">${files.length} file${files.length > 1 ? 's' : ''}</span>
+          <span class="pd-files-count">${t('parallel.diff.filesCount', { count: files.length })}</span>
           <span class="pd-files-total">
             <span class="pd-stat-add">+${totalAdd}</span>
             <span class="pd-stat-del">-${totalDel}</span>
@@ -1069,7 +1069,7 @@ function _showDiffModal(title, files, diffParams) {
           <span class="pd-content-path">${escapeHtml(files[0].path)}</span>
           <span class="pd-content-badge" id="pd-content-badge"></span>
         </div>
-        <div class="pd-diff-view" id="pd-diff-view"><span class="pd-loading">Loading...</span></div>
+        <div class="pd-diff-view" id="pd-diff-view"><span class="pd-loading">${t('common.loading')}</span></div>
       </div>
     </div>`;
 
@@ -1098,11 +1098,11 @@ function _showDiffModal(title, files, diffParams) {
 
 async function _handleViewDiff(runId, taskId) {
   const run = getRunById(runId);
-  if (!run) { _showToast('Run not found', 'error'); return; }
+  if (!run) { _showToast(t('parallel.errors.runNotFound'), 'error'); return; }
 
   const task = (run.tasks || []).find(t => t.id === taskId);
-  if (!task) { _showToast('Task not found', 'error'); return; }
-  if (!task.branch) { _showToast('No branch associated with this task', 'error'); return; }
+  if (!task) { _showToast(t('parallel.errors.taskNotFound'), 'error'); return; }
+  if (!task.branch) { _showToast(t('parallel.errors.noBranch'), 'error'); return; }
 
   const diffParams = { projectPath: run.projectPath, branch1: run.mainBranch, branch2: task.branch };
 
@@ -1110,12 +1110,12 @@ async function _handleViewDiff(runId, taskId) {
   try {
     statsResult = await ctx.api.git.worktreeDiffStats(diffParams);
   } catch (err) {
-    _showToast(err.message || 'Diff failed', 'error');
+    _showToast(err.message || t('parallel.diff.failed'), 'error');
     return;
   }
 
   if (!statsResult.success || !statsResult.files?.length) {
-    _showToast('No changes found between branches', 'warning');
+    _showToast(t('parallel.diff.noChanges'), 'warning');
     return;
   }
 
@@ -1134,17 +1134,17 @@ async function _loadFileDiff(diffParams, file) {
     const dels = file.deletions || 0;
     badgeEl.innerHTML = `${adds ? `<span class="pd-stat-add">+${adds}</span>` : ''}${dels ? `<span class="pd-stat-del">-${dels}</span>` : ''}`;
   }
-  viewer.innerHTML = '<span class="pd-loading">Loading...</span>';
+  viewer.innerHTML = `<span class="pd-loading">${t('common.loading')}</span>`;
 
   try {
     const result = await ctx.api.git.worktreeDiff({ ...diffParams, filePath: file.path });
     if (!result.success || !result.diff) {
-      viewer.innerHTML = '<span class="pd-empty">No changes</span>';
+      viewer.innerHTML = `<span class="pd-empty">${t('parallel.diff.noFileChanges')}</span>`;
       return;
     }
     viewer.innerHTML = _renderDiff(result.diff);
   } catch {
-    viewer.innerHTML = '<span class="pd-empty">Failed to load diff</span>';
+    viewer.innerHTML = `<span class="pd-empty">${t('parallel.diff.loadFailed')}</span>`;
   }
 }
 

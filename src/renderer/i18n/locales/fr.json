@@ -2379,8 +2379,38 @@
       "openTerminal": "Ouvrir le terminal"
     },
     "cancelBtn": "Annuler",
-    "cleanupBtn": "Supprimer les worktrees",
-    "newRunBtn": "Nouvelle exécution",
+    "cleanupBtn": "Nettoyer",
+    "newRunBtn": "Nouveau run",
+    "modal": {
+      "title": "Nouvelle exécution parallèle",
+      "selectProject": "— sélectionner un projet —"
+    },
+    "auto": "Auto",
+    "agents": "agents",
+    "model": {
+      "haiku": "Haiku 4.5 — Le plus rapide",
+      "sonnet": "Sonnet 4.6 — Équilibré",
+      "opus": "Opus 4.6 — Le plus performant"
+    },
+    "empty": {
+      "title": "Aucune exécution parallèle",
+      "hint": "Décomposez une fonctionnalité en sous-tâches indépendantes, chacune dans son propre worktree git"
+    },
+    "decomposing": {
+      "hint": "Claude analyse votre objectif et crée des sous-tâches indépendantes..."
+    },
+    "runFailed": "Échec de l'exécution",
+    "review": {
+      "title": "Réviser les tâches proposées",
+      "subtitle": "{count} sous-tâches — confirmez pour lancer ou demandez des modifications",
+      "feedbackLabel": "Demande de modification",
+      "optional": "(optionnel)",
+      "feedbackPlaceholder": "ex. : « diviser la tâche 0 en deux — une pour le modèle, une pour le contrôleur »",
+      "regenerate": "Régénérer",
+      "launch": "Lancer {count} tâches",
+      "feedbackRequired": "Entrez d'abord une demande de modification",
+      "regenerating": "Régénération..."
+    },
     "merge": {
       "title": "Aide à la fusion",
       "hint": "Vérifiez chaque branche, puis fusionnez-les une par une dans {mainBranch}.",
@@ -2388,17 +2418,37 @@
       "viewCombinedDiff": "Voir le diff combiné",
       "cancel": "Annuler & nettoyer",
       "cancelling": "Annulation...",
-      "finalHint": "Pour fusionner dans {mainBranch} : git checkout {mainBranch} && git merge {mergeBranch}"
+      "finalHint": "Pour fusionner dans {mainBranch} : git checkout {mainBranch} && git merge {mergeBranch}",
+      "autoMerge": "Fusionner {count} branches",
+      "starting": "Démarrage de la fusion...",
+      "progress": "Branche {current}/{total}",
+      "preparing": "Préparation...",
+      "mergedResult": "{count} branches fusionnées dans",
+      "skippedResult": "{count} branches ignorées (conflits)",
+      "mergeFailed": "Échec de la fusion",
+      "cancelFailed": "Échec de l'annulation"
     },
     "diff": {
       "title": "Diff",
-      "close": "Fermer"
+      "close": "Fermer",
+      "combinedTitle": "Diff combiné — {branch}",
+      "noChanges": "Aucun changement trouvé entre les branches",
+      "failed": "Échec du diff",
+      "filesCount": "{count} fichiers",
+      "noFileChanges": "Aucun changement",
+      "loadFailed": "Échec du chargement du diff"
     },
     "errors": {
       "noGoal": "Veuillez saisir un objectif.",
       "noProject": "Veuillez sélectionner un projet.",
       "startFailed": "Échec du démarrage.",
-      "noDiff": "Aucun diff disponible."
+      "noDiff": "Aucun diff disponible.",
+      "runNotFound": "Exécution introuvable",
+      "taskNotFound": "Tâche introuvable",
+      "noBranch": "Aucune branche associée à cette tâche",
+      "confirmFailed": "Échec de la confirmation",
+      "cancelFailed": "Échec de l'annulation",
+      "refineFailed": "Échec de la régénération"
     },
     "cleanup": {
       "success": "Worktrees supprimés avec succès.",

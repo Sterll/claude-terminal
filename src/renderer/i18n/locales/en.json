@@ -2379,8 +2379,38 @@
       "openTerminal": "Open terminal"
     },
     "cancelBtn": "Cancel",
-    "cleanupBtn": "Cleanup worktrees",
-    "newRunBtn": "New run",
+    "cleanupBtn": "Cleanup",
+    "newRunBtn": "New Run",
+    "modal": {
+      "title": "New Parallel Run",
+      "selectProject": "— select project —"
+    },
+    "auto": "Auto",
+    "agents": "agents",
+    "model": {
+      "haiku": "Haiku 4.5 — Fastest",
+      "sonnet": "Sonnet 4.6 — Balanced",
+      "opus": "Opus 4.6 — Most capable"
+    },
+    "empty": {
+      "title": "No parallel runs yet",
+      "hint": "Decompose a feature into independent sub-tasks, each running in its own git worktree"
+    },
+    "decomposing": {
+      "hint": "Claude is analyzing your goal and creating independent sub-tasks..."
+    },
+    "runFailed": "Run failed",
+    "review": {
+      "title": "Review proposed tasks",
+      "subtitle": "{count} sub-tasks — confirm to launch or request changes",
+      "feedbackLabel": "Modification request",
+      "optional": "(optional)",
+      "feedbackPlaceholder": "e.g. « split task 0 into two — one for the model, one for the controller »",
+      "regenerate": "Re-generate",
+      "launch": "Launch {count} tasks",
+      "feedbackRequired": "Enter a modification request first",
+      "regenerating": "Regenerating..."
+    },
     "merge": {
       "title": "Merge Assistance",
       "hint": "Review each branch, then merge them one by one into {mainBranch}.",
@@ -2388,17 +2418,37 @@
       "viewCombinedDiff": "View combined diff",
       "cancel": "Cancel & cleanup",
       "cancelling": "Cancelling...",
-      "finalHint": "To merge into {mainBranch}: git checkout {mainBranch} && git merge {mergeBranch}"
+      "finalHint": "To merge into {mainBranch}: git checkout {mainBranch} && git merge {mergeBranch}",
+      "autoMerge": "Auto-merge {count} branches",
+      "starting": "Starting merge...",
+      "progress": "Branch {current}/{total}",
+      "preparing": "Preparing...",
+      "mergedResult": "{count} branches merged into",
+      "skippedResult": "{count} branches skipped (conflicts)",
+      "mergeFailed": "Merge failed",
+      "cancelFailed": "Cancel failed"
     },
     "diff": {
       "title": "Diff",
-      "close": "Close"
+      "close": "Close",
+      "combinedTitle": "Combined diff — {branch}",
+      "noChanges": "No changes found between branches",
+      "failed": "Diff failed",
+      "filesCount": "{count} files",
+      "noFileChanges": "No changes",
+      "loadFailed": "Failed to load diff"
     },
     "errors": {
       "noGoal": "Please enter a feature goal.",
       "noProject": "Please select a project.",
       "startFailed": "Failed to start run.",
-      "noDiff": "No diff available."
+      "noDiff": "No diff available.",
+      "runNotFound": "Run not found",
+      "taskNotFound": "Task not found",
+      "noBranch": "No branch associated with this task",
+      "confirmFailed": "Confirm failed",
+      "cancelFailed": "Cancel failed",
+      "refineFailed": "Refine failed"
     },
     "cleanup": {
       "success": "Worktrees removed successfully.",
