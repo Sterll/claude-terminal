@@ -611,12 +611,25 @@ class ParallelTaskService {
     const { projectPath, mainBranch, mergeBranch } = run;
 
     try {
-      // Checkout main so we can delete branches
-      await checkoutBranch(projectPath, mainBranch);
+      // Checkout main so we can delete the merge branch (can't delete current branch)
+      const coResult = await checkoutBranch(projectPath, mainBranch);
+      if (!coResult.success) {
+        console.error('[cancelMerge] checkout failed:', coResult.error);
+      }
 
-      // Delete merge branch if it exists
+      // Delete merge branch — use array args to avoid parsing issues
       if (mergeBranch) {
-        await execGit(projectPath, `branch -D ${mergeBranch}`, 10000).catch(() => {});
+        const delResult = await execGit(projectPath, ['branch', '-D', mergeBranch], 10000);
+        if (delResult === null) {
+          // Force delete via raw command if normal delete fails
+          console.warn('[cancelMerge] branch -D failed, retrying with execFile');
+          await new Promise(resolve => {
+            require('child_process').execFile('git', ['branch', '-D', mergeBranch], { cwd: projectPath, timeout: 10000 }, (err) => {
+              if (err) console.error('[cancelMerge] force delete failed:', err.message);
+              resolve();
+            });
+          });
+        }
       }
 
       // Full cleanup: worktrees + task branches + history removal
