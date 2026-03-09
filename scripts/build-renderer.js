@@ -18,7 +18,7 @@ const buildOptions = {
   sourcemap: true,
   minify: process.env.NODE_ENV === 'production',
   // Don't bundle electron - it's provided by the runtime
-  external: ['electron'],
+  external: ['electron', 'dompurify'],
   // Define to replace process.env references
   define: {
     'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development')
