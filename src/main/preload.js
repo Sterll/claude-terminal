@@ -191,6 +191,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     mergeConflicts: (params) => ipcRenderer.invoke('git-merge-conflicts', params),
     pull: (params) => ipcRenderer.invoke('git-pull', params),
     push: (params) => ipcRenderer.invoke('git-push', params),
+    pushBranch: (params) => ipcRenderer.invoke('git-push-branch', params),
     checkout: (params) => ipcRenderer.invoke('git-checkout', params),
     merge: (params) => ipcRenderer.invoke('git-merge', params),
     mergeAbort: (params) => ipcRenderer.invoke('git-merge-abort', params),

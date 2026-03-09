@@ -446,6 +446,23 @@ async function gitPush(projectPath) {
 }
 
 /**
+ * Push a specific branch to origin
+ * @param {string} projectPath - Path to the project
+ * @param {string} branch - Branch name to push
+ * @returns {Promise<Object>} - Result object with success/error
+ */
+async function gitPushBranch(projectPath, branch) {
+  const result = await spawnGit(projectPath, ['push', '-u', 'origin', branch]);
+  if (!result.success) {
+    if (result.error && result.error.includes('Everything up-to-date')) {
+      return { success: true, output: 'Everything up-to-date.' };
+    }
+    return result;
+  }
+  return { success: true, output: result.output || 'Push successful.' };
+}
+
+/**
  * Execute git merge
  * @param {string} projectPath - Path to the project
  * @param {string} branch - Branch to merge into current branch
@@ -1275,6 +1292,7 @@ module.exports = {
   getGitStatusDetailed,
   gitPull,
   gitPush,
+  gitPushBranch,
   gitMerge,
   gitMergeAbort,
   gitMergeContinue,

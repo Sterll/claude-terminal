@@ -4,7 +4,7 @@
  */
 
 const { ipcMain } = require('electron');
-const { execGit, getGitInfo, getGitInfoFull, getGitStatusQuick, getGitStatusDetailed, gitPull, gitPush, gitMerge, gitMergeAbort, gitMergeContinue, getMergeConflicts, isMergeInProgress, gitClone, gitStageFiles, gitCommit, getProjectStats, getBranches, getCurrentBranch, checkoutBranch, createBranch, deleteBranch, getCommitHistory, getFileDiff, getCommitDetail, cherryPick, revertCommit, gitUnstageFiles, stashApply, stashDrop, gitStashSave, getWorktrees, createWorktree, removeWorktree, lockWorktree, unlockWorktree, pruneWorktrees, detectWorktree, diffWorktreeBranches, diffWorktreeBranchesWithStats } = require('../utils/git');
+const { execGit, getGitInfo, getGitInfoFull, getGitStatusQuick, getGitStatusDetailed, gitPull, gitPush, gitPushBranch, gitMerge, gitMergeAbort, gitMergeContinue, getMergeConflicts, isMergeInProgress, gitClone, gitStageFiles, gitCommit, getProjectStats, getBranches, getCurrentBranch, checkoutBranch, createBranch, deleteBranch, getCommitHistory, getFileDiff, getCommitDetail, cherryPick, revertCommit, gitUnstageFiles, stashApply, stashDrop, gitStashSave, getWorktrees, createWorktree, removeWorktree, lockWorktree, unlockWorktree, pruneWorktrees, detectWorktree, diffWorktreeBranches, diffWorktreeBranchesWithStats } = require('../utils/git');
 const { generateCommitMessage, generateSessionRecap } = require('../utils/commitMessageGenerator');
 const GitHubAuthService = require('../services/GitHubAuthService');
 const { sendFeaturePing } = require('../services/TelemetryService');
@@ -43,6 +43,12 @@ function registerGitHandlers() {
   ipcMain.handle('git-push', async (event, { projectPath }) => {
     sendFeaturePing('git:push');
     return gitPush(projectPath);
+  });
+
+  // Git push a specific branch to origin
+  ipcMain.handle('git-push-branch', async (event, { projectPath, branch }) => {
+    sendFeaturePing('git:push');
+    return gitPushBranch(projectPath, branch);
   });
 
   // Git status (quick check)

@@ -1302,6 +1302,25 @@
 .parallel-merge-btn-diff {
   gap: 5px;
 }
+.parallel-merge-btn-pr {
+  gap: 5px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.parallel-merge-btn-pr:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--bg-primary);
+}
+.parallel-merge-btn-pr-done {
+  background: rgba(34,197,94,0.08);
+  color: var(--success);
+  border-color: var(--success);
+  cursor: pointer;
+}
+.parallel-merge-btn-pr-done:hover {
+  background: rgba(34,197,94,0.15);
+}
 .parallel-merge-btn-cancel {
   gap: 5px;
   color: var(--text-muted);

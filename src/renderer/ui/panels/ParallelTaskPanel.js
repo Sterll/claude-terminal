@@ -925,6 +925,10 @@ function _updateRunMerge(run) {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
             ${t('parallel.merge.viewCombinedDiff')}
           </button>
+          <button class="parallel-merge-btn parallel-merge-btn-pr" id="pt-merge-pr-${run.id}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 012 2v7"/><path d="M6 9v12"/></svg>
+            ${t('parallel.merge.createPR')}
+          </button>
           <button class="parallel-merge-btn parallel-merge-btn-cancel" id="pt-merge-cancel-${run.id}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
             ${t('parallel.merge.cancel')}
@@ -939,6 +943,58 @@ function _updateRunMerge(run) {
     const diffBtn = document.getElementById(`pt-merge-diff-${run.id}`);
     if (diffBtn) {
       diffBtn.addEventListener('click', () => _handleBranchDiff(run.projectPath, run.mainBranch, mb));
+    }
+    // Wire Create PR button
+    const prBtn = document.getElementById(`pt-merge-pr-${run.id}`);
+    if (prBtn) {
+      const prBtnOriginalHTML = prBtn.innerHTML;
+      prBtn.addEventListener('click', async () => {
+        prBtn.disabled = true;
+        prBtn.textContent = t('parallel.merge.creatingPR');
+        try {
+          const auth = await ctx.api.github.authStatus();
+          if (!auth.authenticated) {
+            _showToast(t('parallel.merge.prNoAuth'), 'error');
+            prBtn.disabled = false;
+            prBtn.innerHTML = prBtnOriginalHTML;
+            return;
+          }
+          const pushResult = await ctx.api.git.pushBranch({ projectPath: run.projectPath, branch: mb });
+          if (!pushResult.success) {
+            _showToast(pushResult.error || t('parallel.merge.prPushFailed'), 'error');
+            prBtn.disabled = false;
+            prBtn.innerHTML = prBtnOriginalHTML;
+            return;
+          }
+          const gitInfo = await ctx.api.git.infoFull(run.projectPath);
+          const remoteUrl = gitInfo?.remoteUrl;
+          if (!remoteUrl) {
+            _showToast(t('parallel.merge.prNoRemote'), 'error');
+            prBtn.disabled = false;
+            prBtn.innerHTML = prBtnOriginalHTML;
+            return;
+          }
+          const prTitle = run.featureName || mb;
+          const taskList = (run.tasks || []).map(tk => `- ${tk.title}`).join('\n');
+          const prBody = `## Parallel Tasks\n\n${taskList}\n\nMerged from \`${mb}\` into \`${run.mainBranch}\``;
+          const prResult = await ctx.api.github.createPR({ remoteUrl, title: prTitle, body: prBody, head: mb, base: run.mainBranch });
+          if (!prResult.success) {
+            _showToast(prResult.error || t('parallel.merge.prFailed'), 'error');
+            prBtn.disabled = false;
+            prBtn.innerHTML = prBtnOriginalHTML;
+            return;
+          }
+          _showToast(t('parallel.merge.prCreated', { number: prResult.pr.number }), 'success');
+          prBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 012 2v7"/><path d="M6 9v12"/></svg> PR #${prResult.pr.number}`;
+          prBtn.classList.add('parallel-merge-btn-pr-done');
+          prBtn.disabled = false;
+          prBtn.onclick = () => ctx.api.dialog.openExternal(prResult.pr.url);
+        } catch (err) {
+          _showToast(err.message || t('parallel.merge.prFailed'), 'error');
+          prBtn.disabled = false;
+          prBtn.innerHTML = prBtnOriginalHTML;
+        }
+      });
     }
     // Wire cancel button
     const cancelBtn = document.getElementById(`pt-merge-cancel-${run.id}`);

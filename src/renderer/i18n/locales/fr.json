@@ -2426,7 +2426,14 @@
       "mergedResult": "{count} branches fusionnées dans",
       "skippedResult": "{count} branches ignorées (conflits)",
       "mergeFailed": "Échec de la fusion",
-      "cancelFailed": "Échec de l'annulation"
+      "cancelFailed": "Échec de l'annulation",
+      "createPR": "Créer une Pull Request",
+      "creatingPR": "Création de la PR...",
+      "prCreated": "PR #{number} créée !",
+      "prNoAuth": "Authentification GitHub requise. Allez dans les paramètres pour vous connecter.",
+      "prPushFailed": "Échec du push de la branche vers le remote",
+      "prNoRemote": "Aucune URL remote trouvée pour ce dépôt",
+      "prFailed": "Échec de la création de la pull request"
     },
     "diff": {
       "title": "Diff",

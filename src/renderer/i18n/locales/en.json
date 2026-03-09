@@ -2426,7 +2426,14 @@
       "mergedResult": "{count} branches merged into",
       "skippedResult": "{count} branches skipped (conflicts)",
       "mergeFailed": "Merge failed",
-      "cancelFailed": "Cancel failed"
+      "cancelFailed": "Cancel failed",
+      "createPR": "Create Pull Request",
+      "creatingPR": "Creating PR...",
+      "prCreated": "PR #{number} created!",
+      "prNoAuth": "GitHub authentication required. Go to Settings to connect.",
+      "prPushFailed": "Failed to push branch to remote",
+      "prNoRemote": "No remote URL found for this repository",
+      "prFailed": "Failed to create pull request"
     },
     "diff": {
       "title": "Diff",
