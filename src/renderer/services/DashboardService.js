@@ -83,14 +83,14 @@ async function readDiskCache(projectPath) {
 const _pendingDiskWrites = new Map(); // projectPath → data
 let _diskWriteTimer = null;
 
-function _flushDiskWrites() {
+async function _flushDiskWrites() {
   const writes = [..._pendingDiskWrites.entries()];
   _pendingDiskWrites.clear();
-  for (const [projectPath, data] of writes) {
+  await Promise.all(writes.map(async ([projectPath, data]) => {
     const filePath = getDiskCachePath(projectPath);
     const payload = { _version: 1, _updatedAt: new Date().toISOString(), dashboard: data };
-    try { fs.writeFileSync(filePath, JSON.stringify(payload), 'utf-8'); } catch (_) {}
-  }
+    try { await fs.promises.writeFile(filePath, JSON.stringify(payload), 'utf-8'); } catch (_) {}
+  }));
 }
 
 /**

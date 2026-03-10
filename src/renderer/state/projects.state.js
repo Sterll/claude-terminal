@@ -20,6 +20,43 @@ const initialState = {
 
 const projectsState = new State(initialState);
 
+// Index Maps for O(1) lookups (invalidated on state changes)
+let _projectIndex = null; // Map<id, project>
+let _folderIndex = null;  // Map<id, folder>
+let _countCache = null;   // Map<folderId, count>
+
+function _invalidateIndexes() {
+  _projectIndex = null;
+  _folderIndex = null;
+  _countCache = null;
+}
+
+function _getProjectIndex() {
+  if (!_projectIndex) {
+    _projectIndex = new Map();
+    for (const p of projectsState.get().projects) {
+      _projectIndex.set(p.id, p);
+    }
+  }
+  return _projectIndex;
+}
+
+function _getFolderIndex() {
+  if (!_folderIndex) {
+    _folderIndex = new Map();
+    for (const f of projectsState.get().folders) {
+      _folderIndex.set(f.id, f);
+    }
+  }
+  return _folderIndex;
+}
+
+// Intercept set/setProp to invalidate indexes synchronously
+const _origSet = projectsState.set.bind(projectsState);
+const _origSetProp = projectsState.setProp.bind(projectsState);
+projectsState.set = function(updates) { _invalidateIndexes(); _origSet(updates); };
+projectsState.setProp = function(key, value) { _invalidateIndexes(); _origSetProp(key, value); };
+
 /**
  * Generate unique folder ID
  * @returns {string}
@@ -72,7 +109,7 @@ const DEFAULT_COLUMNS = [
  * @returns {Object|undefined}
  */
 function getFolder(folderId) {
-  return projectsState.get().folders.find(f => f.id === folderId);
+  return _getFolderIndex().get(folderId);
 }
 
 /**
@@ -81,7 +118,7 @@ function getFolder(folderId) {
  * @returns {Object|undefined}
  */
 function getProject(projectId) {
-  return projectsState.get().projects.find(p => p.id === projectId);
+  return _getProjectIndex().get(projectId);
 }
 
 /**
@@ -90,7 +127,10 @@ function getProject(projectId) {
  * @returns {number}
  */
 function getProjectIndex(projectId) {
-  return projectsState.get().projects.findIndex(p => p.id === projectId);
+  const projects = projectsState.get().projects;
+  // Use index map for quick existence check, then find position
+  if (!_getProjectIndex().has(projectId)) return -1;
+  return projects.findIndex(p => p.id === projectId);
 }
 
 /**
@@ -117,10 +157,13 @@ function getProjectsInFolder(folderId) {
  * @returns {number}
  */
 function countProjectsRecursive(folderId) {
+  if (!_countCache) _countCache = new Map();
+  if (_countCache.has(folderId)) return _countCache.get(folderId);
   let count = getProjectsInFolder(folderId).length;
   getChildFolders(folderId).forEach(child => {
     count += countProjectsRecursive(child.id);
   });
+  _countCache.set(folderId, count);
   return count;
 }
 

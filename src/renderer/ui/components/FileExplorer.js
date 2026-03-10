@@ -227,30 +227,24 @@ async function readDirectoryAsync(dirPath) {
     const { getSetting } = require('../../state/settings.state');
     const showDotfiles = getSetting('showDotfiles');
 
-    const names = await fs.promises.readdir(dirPath);
+    const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
     const result = [];
     let skipped = 0;
 
-    for (const name of names) {
-      if (IGNORE_PATTERNS.has(name)) continue;
-      if (showDotfiles === false && name.startsWith('.')) continue;
+    for (const entry of entries) {
+      if (IGNORE_PATTERNS.has(entry.name)) continue;
+      if (showDotfiles === false && entry.name.startsWith('.')) continue;
 
       if (result.length >= MAX_DISPLAY_ENTRIES) {
         skipped++;
         continue;
       }
 
-      try {
-        const fullPath = path.join(dirPath, name);
-        const stat = await fs.promises.stat(fullPath);
-        result.push({
-          name,
-          path: fullPath,
-          isDirectory: stat.isDirectory()
-        });
-      } catch (e) {
-        // Skip entries we can't stat
-      }
+      result.push({
+        name: entry.name,
+        path: path.join(dirPath, entry.name),
+        isDirectory: entry.isDirectory()
+      });
     }
 
     // Sort: directories first, then alphabetical
