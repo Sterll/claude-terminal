@@ -1152,8 +1152,12 @@ class DatabaseService {
 
   _getNodeModulesPath() {
     if (app.isPackaged) {
-      // In production, native modules are in asar.unpacked
-      return path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules');
+      // Native modules live in asar.unpacked, pure JS deps stay in the asar.
+      // NODE_PATH must include both so require() resolves either location.
+      const sep = process.platform === 'win32' ? ';' : ':';
+      const unpacked = path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules');
+      const asar = path.join(process.resourcesPath, 'app.asar', 'node_modules');
+      return unpacked + sep + asar;
     }
     return path.join(__dirname, '..', '..', '..', 'node_modules');
   }
