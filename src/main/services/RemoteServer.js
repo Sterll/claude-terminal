@@ -96,6 +96,8 @@ const _sessionTabNames = new Map();
 // Each entry is an array of { channel, data } objects
 const _sessionMessageBuffer = new Map();
 const MAX_BUFFER_PER_SESSION = 500; // cap to prevent memory issues
+const BUFFER_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+let _cleanupTimer = null;
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
@@ -926,6 +928,52 @@ function _teardownChatBridge() {
   } catch (e) {}
 }
 
+// ─── Stale Buffer Cleanup ─────────────────────────────────────────────────────
+
+function _cleanupStaleBuffers() {
+  try {
+    const chatService = require('./ChatService');
+    const activeSessions = chatService.getActiveSessions();
+    const activeIds = new Set(activeSessions.map(s => s.sessionId));
+    let cleaned = 0;
+
+    for (const sid of _sessionMessageBuffer.keys()) {
+      if (!activeIds.has(sid)) {
+        _sessionMessageBuffer.delete(sid);
+        _sessionProjectMap.delete(sid);
+        _sessionTabNames.delete(sid);
+        cleaned++;
+      }
+    }
+    // Also clean orphan entries in project/tab maps not in buffer or active
+    for (const sid of _sessionProjectMap.keys()) {
+      if (!activeIds.has(sid) && !_sessionMessageBuffer.has(sid)) {
+        _sessionProjectMap.delete(sid);
+        _sessionTabNames.delete(sid);
+        cleaned++;
+      }
+    }
+    if (cleaned > 0) {
+      console.debug(`[Remote] Cleaned ${cleaned} stale session buffer(s)`);
+    }
+  } catch (e) {
+    // ChatService not available yet, skip
+  }
+}
+
+function _startCleanupTimer() {
+  if (_cleanupTimer) return;
+  _cleanupTimer = setInterval(_cleanupStaleBuffers, BUFFER_CLEANUP_INTERVAL_MS);
+  _cleanupTimer.unref?.(); // Don't prevent process exit
+}
+
+function _stopCleanupTimer() {
+  if (_cleanupTimer) {
+    clearInterval(_cleanupTimer);
+    _cleanupTimer = null;
+  }
+}
+
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
 
 function start(win, port = 3712) {
@@ -956,6 +1004,7 @@ function start(win, port = 3712) {
 
   // Bridge ChatService events → connected WS clients + cloud
   _ensureChatBridge();
+  _startCleanupTimer();
 }
 
 function stop() {
@@ -981,6 +1030,11 @@ function stop() {
   // Only remove chat bridge if cloud is also disconnected
   _teardownChatBridge();
 
+  // Stop cleanup timer only if cloud is also disconnected
+  if (!_cloudClient) {
+    _stopCleanupTimer();
+  }
+
   console.debug('[Remote] Server stopped');
 }
 
@@ -1001,9 +1055,11 @@ function setCloudClient(client) {
     // Ensure chat bridge is active so events flow to cloud
     // even if the local WS remote server isn't started
     _ensureChatBridge();
+    _startCleanupTimer();
   } else {
-    // Cloud released — teardown bridge if local server also inactive
+    // Cloud released — teardown bridge and cleanup timer if local server also inactive
     _teardownChatBridge();
+    if (!httpServer) _stopCleanupTimer();
   }
 }
 

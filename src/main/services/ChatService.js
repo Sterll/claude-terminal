@@ -500,9 +500,18 @@ class ChatService {
     }
 
     const requestId = `perm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const PERMISSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
     return new Promise((resolve, reject) => {
-      this.pendingPermissions.set(requestId, { resolve, reject, sessionId });
+      const timeoutId = setTimeout(() => {
+        if (this.pendingPermissions.has(requestId)) {
+          this.pendingPermissions.delete(requestId);
+          console.warn(`[ChatService] Permission ${requestId} timed out after 5 minutes, denying`);
+          resolve({ behavior: 'deny' });
+        }
+      }, PERMISSION_TIMEOUT_MS);
+
+      this.pendingPermissions.set(requestId, { resolve, reject, sessionId, timeoutId });
 
       this._send('chat-permission-request', {
         sessionId,
@@ -516,6 +525,7 @@ class ChatService {
 
       if (options.signal) {
         options.signal.addEventListener('abort', () => {
+          clearTimeout(timeoutId);
           this.pendingPermissions.delete(requestId);
           reject(new Error('Aborted'));
         }, { once: true });
@@ -530,6 +540,7 @@ class ChatService {
     const pending = this.pendingPermissions.get(requestId);
     if (pending) {
       this.pendingPermissions.delete(requestId);
+      clearTimeout(pending.timeoutId);
       // Check that session is still alive before resolving — the SDK will try to
       // write the response to ProcessTransport which may already be closed.
       const session = this.sessions.get(pending.sessionId);

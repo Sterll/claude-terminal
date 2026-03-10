@@ -90,16 +90,35 @@ function setSetting(key, value) {
 }
 
 /**
- * Load settings from file
+ * Load settings from file, with backup restore on corruption
  */
 async function loadSettings() {
+  const backupFile = `${settingsFile}.bak`;
   try {
     if (fs.existsSync(settingsFile)) {
-      const saved = JSON.parse(await fs.promises.readFile(settingsFile, 'utf8'));
-      settingsState.set({ ...defaultSettings, ...saved });
+      const raw = await fs.promises.readFile(settingsFile, 'utf8');
+      if (raw && raw.trim()) {
+        const saved = JSON.parse(raw);
+        settingsState.set({ ...defaultSettings, ...saved });
+        return;
+      }
     }
   } catch (e) {
-    console.error('Error loading settings:', e);
+    console.error('Error loading settings, attempting backup restore:', e);
+    // Try to restore from backup
+    try {
+      if (fs.existsSync(backupFile)) {
+        const backupRaw = await fs.promises.readFile(backupFile, 'utf8');
+        if (backupRaw && backupRaw.trim()) {
+          const saved = JSON.parse(backupRaw);
+          settingsState.set({ ...defaultSettings, ...saved });
+          console.warn('Settings restored from backup file');
+          return;
+        }
+      }
+    } catch (backupErr) {
+      console.error('Backup restore also failed:', backupErr);
+    }
   }
 }
 
@@ -116,14 +135,31 @@ function saveSettings() {
 
 /**
  * Save settings to file immediately (no debounce)
- * Use before operations that destroy the renderer (e.g. location.reload)
+ * Uses atomic write: tmp file → backup old → rename
  */
 function saveSettingsImmediate() {
   clearTimeout(saveSettingsTimer);
+  const tempFile = `${settingsFile}.tmp`;
+  const backupFile = `${settingsFile}.bak`;
   try {
-    fs.writeFileSync(settingsFile, JSON.stringify(settingsState.get(), null, 2));
+    // Backup existing file before writing
+    if (fs.existsSync(settingsFile)) {
+      try { fs.copyFileSync(settingsFile, backupFile); } catch (_) {}
+    }
+    // Write to temp file first
+    fs.writeFileSync(tempFile, JSON.stringify(settingsState.get(), null, 2));
+    // Atomic rename
+    fs.renameSync(tempFile, settingsFile);
+    // Remove backup on success
+    try { if (fs.existsSync(backupFile)) fs.unlinkSync(backupFile); } catch (_) {}
   } catch (e) {
     console.error('Error saving settings:', e);
+    // Restore from backup if save failed
+    if (fs.existsSync(backupFile)) {
+      try { fs.copyFileSync(backupFile, settingsFile); } catch (_) {}
+    }
+    // Cleanup temp file
+    try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (_) {}
   }
 }
 
