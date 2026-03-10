@@ -7,7 +7,7 @@
 'use strict';
 
 const { escapeHtml } = require('../../utils');
-const { t } = require('../../i18n');
+const { t, onLanguageChange } = require('../../i18n');
 const { getSetting, setSetting } = require('../../state/settings.state');
 const {
   parallelTaskState,
@@ -30,6 +30,14 @@ let _runNumbers = new Map();
 
 function init(context) {
   ctx = context;
+
+  // Re-render panel when language changes so translated labels update
+  onLanguageChange(() => {
+    if (_initialized) {
+      _render();
+      _updateBoard();
+    }
+  });
 }
 
 async function load() {

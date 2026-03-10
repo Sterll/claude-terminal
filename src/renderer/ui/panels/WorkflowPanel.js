@@ -1,5 +1,5 @@
 const { escapeHtml } = require('../../utils');
-const { t } = require('../../i18n');
+const { t, onLanguageChange } = require('../../i18n');
 const WorkflowMarketplace = require('./WorkflowMarketplacePanel');
 const { getAgents } = require('../../services/AgentService');
 const { getSkills } = require('../../services/SkillService');
@@ -55,6 +55,17 @@ let _panelInitialized = false;
 function init(context) {
   ctx = context;
   WorkflowMarketplace.init(context);
+
+  // Re-render panel shell when language changes so translated labels update
+  onLanguageChange(() => {
+    if (_panelInitialized) {
+      const inEditor = !!document.querySelector('#workflow-panel .wf-editor');
+      if (!inEditor) {
+        renderPanel();
+        renderContent();
+      }
+    }
+  });
 }
 
 async function load() {
