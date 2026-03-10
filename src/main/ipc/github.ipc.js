@@ -116,6 +116,32 @@ function registerGitHubHandlers() {
     }
   });
 
+  // Get jobs and steps for a specific workflow run
+  ipcMain.handle('github-workflow-jobs', async (event, { remoteUrl, runId }) => {
+    try {
+      const parsed = GitHubAuthService.parseGitHubRemote(remoteUrl);
+      if (!parsed) return { success: false, error: 'Not a GitHub repository' };
+      const result = await GitHubAuthService.getWorkflowJobs(parsed.owner, parsed.repo, runId);
+      return { success: true, ...result };
+    } catch (e) {
+      console.error('[GitHub IPC] Error fetching workflow jobs:', e);
+      return { success: false, error: e.message };
+    }
+  });
+
+  // Get logs for a specific job
+  ipcMain.handle('github-job-logs', async (event, { remoteUrl, jobId }) => {
+    try {
+      const parsed = GitHubAuthService.parseGitHubRemote(remoteUrl);
+      if (!parsed) return { success: false, error: 'Not a GitHub repository' };
+      const result = await GitHubAuthService.getJobLogs(parsed.owner, parsed.repo, jobId);
+      return { success: true, ...result };
+    } catch (e) {
+      console.error('[GitHub IPC] Error fetching job logs:', e);
+      return { success: false, error: e.message };
+    }
+  });
+
   // Get pull requests for a repository
   ipcMain.handle('github-pull-requests', async (event, { remoteUrl }) => {
     // console.log('[GitHub IPC] Fetching pull requests for:', remoteUrl);

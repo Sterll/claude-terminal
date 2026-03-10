@@ -346,6 +346,23 @@
                   </svg>
                 </button>
 
+                <!-- CI/CD Status Pill -->
+                <div class="filter-ci-pill" id="filter-ci-pill" style="display: none;">
+                  <div class="filter-ci-icon">
+                    <svg class="ci-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2a10 10 0 0 1 0 20"/></svg>
+                    <svg class="ci-check" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                    <svg class="ci-fail" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                  </div>
+                  <span class="filter-ci-text" id="filter-ci-text"></span>
+                  <span class="filter-ci-step" id="filter-ci-step" style="display: none;"></span>
+                  <button class="filter-ci-fix" id="filter-ci-fix" style="display: none;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                    </svg>
+                    <span data-i18n="ci.fixIt">Fix it</span>
+                  </button>
+                </div>
+
                 <div class="filter-git-actions" id="filter-git-actions" style="display: none;">
                   <div class="filter-git-group">
                     <button class="filter-git-btn" id="filter-btn-pull" data-i18n-title="projects.gitPull" title="Pull">
@@ -444,28 +461,6 @@
                   </div>
                 </div>
               </div>
-            </div>
-            <!-- CI Status Bar -->
-            <div class="ci-status-bar" id="ci-status-bar" style="display: none;">
-              <div class="ci-status-icon">
-                <svg class="ci-spinner" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
-                <svg class="ci-success" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-                <svg class="ci-failure" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
-              </div>
-              <div class="ci-status-info">
-                <span class="ci-workflow-name" id="ci-workflow-name">Workflow</span>
-                <span class="ci-status-text" id="ci-status-text">Running...</span>
-              </div>
-              <div class="ci-status-meta">
-                <span class="ci-branch" id="ci-branch">main</span>
-                <span class="ci-duration" id="ci-duration">0:00</span>
-              </div>
-              <button class="ci-status-link" id="ci-status-link" data-i18n-title="ci.openInGithub" title="Open in GitHub">
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
-              </button>
-              <button class="ci-status-close" id="ci-status-close" data-i18n-title="ci.dismiss" title="Dismiss">
-                <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
-              </button>
             </div>
             <div class="terminals-tabs" id="terminals-tabs" role="tablist" aria-label="Terminal tabs"></div>
             <div class="terminals-container" id="terminals-container" role="region" aria-label="Terminals">

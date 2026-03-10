@@ -352,6 +352,8 @@ contextBridge.exposeInMainWorld('electron_api', {
     logout: () => ipcRenderer.invoke('github-logout'),
     setToken: (token) => ipcRenderer.invoke('github-set-token', token),
     workflowRuns: (remoteUrl) => ipcRenderer.invoke('github-workflow-runs', { remoteUrl }),
+    workflowJobs: (remoteUrl, runId) => ipcRenderer.invoke('github-workflow-jobs', { remoteUrl, runId }),
+    jobLogs: (remoteUrl, jobId) => ipcRenderer.invoke('github-job-logs', { remoteUrl, jobId }),
     pullRequests: (remoteUrl) => ipcRenderer.invoke('github-pull-requests', { remoteUrl }),
     createPR: (params) => ipcRenderer.invoke('github-create-pr', params)
   },

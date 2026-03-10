@@ -478,7 +478,8 @@
     "queued": "Queued",
     "running": "Running",
     "openInGithub": "Open in GitHub",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "fixIt": "Fix it"
   },
   "quickPicker": {
     "searchProjects": "Search projects...",

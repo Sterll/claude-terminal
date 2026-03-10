@@ -548,7 +548,8 @@
     "queued": "En attente",
     "running": "En cours",
     "openInGithub": "Ouvrir sur GitHub",
-    "dismiss": "Ignorer"
+    "dismiss": "Ignorer",
+    "fixIt": "Corriger"
   },
   "quickPicker": {
     "searchProjects": "Rechercher un projet...",

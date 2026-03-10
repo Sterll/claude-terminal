@@ -16,10 +16,27 @@ const GITHUB_CLIENT_ID = 'Ov23liYfl42qwDVVk99l';
 /**
  * Make an HTTPS request (follows redirects)
  */
+// ETag cache for conditional requests (304 Not Modified = free, no API quota)
+const etagCache = new Map();
+
 function httpsRequest(options, postData = null, maxRedirects = 3) {
   const timeout = options.timeout || 15000;
+
+  // Inject ETag for conditional requests if available
+  const cacheKey = options.etagKey;
+  if (cacheKey && etagCache.has(cacheKey)) {
+    const cached = etagCache.get(cacheKey);
+    options.headers = { ...options.headers, 'If-None-Match': cached.etag };
+  }
+
   return new Promise((resolve, reject) => {
     const req = https.request(options, (res) => {
+      // 304 Not Modified: return cached data (no API quota consumed)
+      if (res.statusCode === 304 && cacheKey && etagCache.has(cacheKey)) {
+        res.resume(); // drain the response
+        return resolve({ status: 200, data: etagCache.get(cacheKey).data, cached: true });
+      }
+
       // Handle redirects
       if ((res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307) && res.headers.location && maxRedirects > 0) {
         const redirectUrl = new URL(res.headers.location);
@@ -39,8 +56,17 @@ function httpsRequest(options, postData = null, maxRedirects = 3) {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
+        // Raw text mode: skip JSON parsing (used for log downloads)
+        if (options.rawText) {
+          return resolve({ status: res.statusCode, data });
+        }
         try {
-          resolve({ status: res.statusCode, data: JSON.parse(data) });
+          const parsed = JSON.parse(data);
+          // Store ETag for future conditional requests
+          if (cacheKey && res.headers.etag) {
+            etagCache.set(cacheKey, { etag: res.headers.etag, data: parsed });
+          }
+          resolve({ status: res.statusCode, data: parsed });
         } catch (e) {
           // Parse as form-urlencoded if JSON fails
           const parsed = {};
@@ -275,7 +301,8 @@ async function getWorkflowRuns(owner, repo, perPage = 5) {
         'Accept': 'application/vnd.github.v3+json',
         'Authorization': `Bearer ${token}`,
         'User-Agent': 'Claude-Terminal'
-      }
+      },
+      etagKey: `workflow-runs:${owner}/${repo}`
     });
 
     if (response.status === 200) {
@@ -436,6 +463,86 @@ async function createPullRequest(owner, repo, title, body, head, base) {
   }
 }
 
+/**
+ * Get jobs and steps for a specific workflow run
+ */
+async function getWorkflowJobs(owner, repo, runId) {
+  const token = await getToken();
+  if (!token) return { authenticated: false, jobs: [] };
+
+  try {
+    const response = await httpsRequest({
+      hostname: 'api.github.com',
+      path: `/repos/${owner}/${repo}/actions/runs/${runId}/jobs`,
+      method: 'GET',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'Claude-Terminal'
+      },
+      etagKey: `workflow-jobs:${owner}/${repo}/${runId}`
+    });
+
+    if (response.status === 200) {
+      const jobs = (response.data.jobs || []).map(job => ({
+        id: job.id,
+        name: job.name,
+        status: job.status,
+        conclusion: job.conclusion,
+        startedAt: job.started_at,
+        completedAt: job.completed_at,
+        steps: (job.steps || []).map(step => ({
+          number: step.number,
+          name: step.name,
+          status: step.status,
+          conclusion: step.conclusion
+        }))
+      }));
+      return { authenticated: true, jobs };
+    }
+
+    return { authenticated: true, jobs: [], error: `API error: ${response.status}` };
+  } catch (e) {
+    console.error('Error fetching workflow jobs:', e);
+    return { authenticated: true, jobs: [], error: e.message };
+  }
+}
+
+/**
+ * Get logs for a specific job (follows 302 redirect to S3)
+ */
+async function getJobLogs(owner, repo, jobId) {
+  const token = await getToken();
+  if (!token) return { authenticated: false, logs: null };
+
+  try {
+    const response = await httpsRequest({
+      hostname: 'api.github.com',
+      path: `/repos/${owner}/${repo}/actions/jobs/${jobId}/logs`,
+      method: 'GET',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'Claude-Terminal'
+      },
+      rawText: true,
+      timeout: 30000
+    });
+
+    if (response.status === 200 && typeof response.data === 'string') {
+      // Strip ANSI escape codes and timestamp prefixes
+      const clean = response.data.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z /gm, '');
+      const trimmed = clean.length > 4096 ? '...\n' + clean.slice(-4096) : clean;
+      return { authenticated: true, logs: trimmed };
+    }
+
+    return { authenticated: true, logs: null, error: `API error: ${response.status}` };
+  } catch (e) {
+    console.error('Error fetching job logs:', e);
+    return { authenticated: true, logs: null, error: e.message };
+  }
+}
+
 module.exports = {
   startDeviceFlow,
   pollForToken,
@@ -445,6 +552,8 @@ module.exports = {
   getAuthStatus,
   getTokenForGit,
   getWorkflowRuns,
+  getWorkflowJobs,
+  getJobLogs,
   getPullRequests,
   createPullRequest,
   parseGitHubRemote
