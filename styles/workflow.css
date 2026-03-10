@@ -920,7 +920,7 @@
 
 .wf-hook-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 5px;
   max-height: 280px;
   overflow-y: auto;
@@ -1621,7 +1621,7 @@ select.wf-step-edit-input {
 .wf-picker-close:hover { background: rgba(255,255,255,.06); color: var(--text-primary); }
 
 .wf-picker-grid {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 5px;
 }
 
 .wf-pick-card {
@@ -1685,7 +1685,7 @@ select.wf-step-edit-input {
 
 /* ─── Concurrence row ────────────────────────────────────────────────────── */
 
-.wf-conc-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.wf-conc-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px; }
 
 .wf-conc-btn {
   display: flex; flex-direction: column; align-items: center; gap: 3px;

@@ -218,29 +218,30 @@ async function loadAllDiskCaches() {
   if (!projects || projects.length === 0) return;
 
   let loaded = 0;
-  for (const project of projects) {
-    // Skip if already in memory cache
-    if (getCachedData(project.id)) continue;
+  const BATCH_SIZE = 5;
+  const uncached = projects.filter(p => !getCachedData(p.id));
 
-    const diskData = await readDiskCache(project.path);
-    if (diskData) {
-      // Refresh projectType from disk in case it changed
-      if (!diskData.projectType) {
-        diskData.projectType = await detectProjectType(project.path);
+  for (let i = 0; i < uncached.length; i += BATCH_SIZE) {
+    const batch = uncached.slice(i, i + BATCH_SIZE);
+    const results = await Promise.all(batch.map(async (project) => {
+      const diskData = await readDiskCache(project.path);
+      if (diskData) {
+        if (!diskData.projectType) {
+          diskData.projectType = await detectProjectType(project.path);
+        }
+        return { id: project.id, data: diskData };
       }
-      // Load into memory with timestamp=0 so it gets refreshed by preload
-      dashboardCache.set(project.id, {
-        data: diskData,
-        timestamp: 0,
-        loading: false
-      });
-      loaded++;
-    } else {
-      // No disk cache - at least detect project type for minimal display
       const projectType = await detectProjectType(project.path);
       if (projectType) {
-        dashboardCache.set(project.id, {
-          data: { projectType },
+        return { id: project.id, data: { projectType } };
+      }
+      return null;
+    }));
+
+    for (const result of results) {
+      if (result) {
+        dashboardCache.set(result.id, {
+          data: result.data,
           timestamp: 0,
           loading: false
         });

@@ -17,6 +17,7 @@
 /* Override modal sizing when wizard is inside */
 .modal:has(.wizard-form) {
   width: 580px;
+  max-width: calc(100vw - 48px);
   max-height: 90vh;
 }
 

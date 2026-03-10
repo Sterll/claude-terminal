@@ -1855,6 +1855,7 @@
 
 .rp-help-panel {
   width: 460px;
+  max-width: calc(100vw - 48px);
   max-height: calc(100vh - 140px);
   overflow-y: auto;
   background: var(--bg-secondary);

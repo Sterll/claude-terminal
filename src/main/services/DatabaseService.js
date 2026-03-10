@@ -14,6 +14,20 @@ const KEYTAR_SERVICE = 'claude-terminal-db';
 
 const MAX_CONNECTIONS = 10;
 const CONNECTION_IDLE_TIMEOUT = 10 * 60 * 1000; // 10 minutes
+const QUERY_TIMEOUT = 30 * 1000; // 30 seconds
+
+const DESTRUCTIVE_SQL_RE = /^\s*(DROP|DELETE\s+FROM|TRUNCATE|ALTER)\b/i;
+
+const REDIS_ALLOWED_COMMANDS = new Set([
+  'get', 'set', 'del', 'keys', 'type', 'info', 'scan', 'select', 'ping',
+  'hget', 'hgetall', 'hset', 'hdel', 'hkeys', 'hvals', 'hlen', 'hexists',
+  'lrange', 'llen', 'lindex', 'lpush', 'rpush', 'lpop', 'rpop',
+  'smembers', 'scard', 'sismember', 'sadd', 'srem',
+  'zrange', 'zcard', 'zscore', 'zadd', 'zrem', 'zrangebyscore',
+  'exists', 'expire', 'ttl', 'pttl', 'persist', 'rename',
+  'dbsize', 'randomkey', 'mget', 'strlen', 'append', 'incr', 'decr',
+  'getrange', 'setex', 'setnx', 'mset'
+]);
 
 class DatabaseService {
   constructor() {
@@ -173,14 +187,25 @@ class DatabaseService {
    * @param {number} limit - Max rows (default 100)
    * @returns {Object} { success, columns?, rows?, rowCount?, duration?, error? }
    */
-  async executeQuery(id, sql, limit = 100) {
+  async executeQuery(id, sql, limit = 100, { allowDestructive = false } = {}) {
     const conn = this.connections.get(id);
     if (!conn) return { success: false, error: 'Not connected' };
     this._touch(id);
 
+    // Block destructive SQL unless explicitly allowed
+    if (!allowDestructive && conn.config.type !== 'mongodb' && conn.config.type !== 'redis') {
+      if (DESTRUCTIVE_SQL_RE.test(sql)) {
+        return { success: false, error: 'Destructive query blocked (DROP, DELETE FROM, TRUNCATE, ALTER). Pass allowDestructive flag to override.' };
+      }
+    }
+
     const start = Date.now();
     try {
-      const result = await this._executeForType(conn.config.type, conn.client, sql, limit, conn.config);
+      const queryPromise = this._executeForType(conn.config.type, conn.client, sql, limit, conn.config);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Query timeout (30s)')), QUERY_TIMEOUT)
+      );
+      const result = await Promise.race([queryPromise, timeoutPromise]);
       result.duration = Date.now() - start;
       result.success = true;
       return result;
@@ -424,7 +449,7 @@ class DatabaseService {
     if (!dbPath || !fs.existsSync(dbPath)) {
       throw new Error(`SQLite file not found: ${dbPath}`);
     }
-    return new Database(dbPath, { readonly: false });
+    return new Database(dbPath, { readonly: true });
   }
 
   _createMysqlClient(config) {
@@ -813,10 +838,14 @@ class DatabaseService {
 
     // Native Redis command (e.g. "GET mykey", "SET foo bar", "KEYS *")
     const parts = trimmed.split(/\s+/);
-    const cmd = parts[0].toUpperCase();
+    const cmd = parts[0].toLowerCase();
     const args = parts.slice(1);
 
-    const result = await client[cmd.toLowerCase()](...args);
+    if (!REDIS_ALLOWED_COMMANDS.has(cmd)) {
+      throw new Error(`Redis command "${cmd.toUpperCase()}" is not allowed. Only read/write data commands are permitted.`);
+    }
+
+    const result = await client[cmd](...args);
     if (Array.isArray(result)) {
       const limited = result.slice(0, limit);
       return { columns: ['value'], rows: limited.map(v => ({ value: v === null ? null : String(v) })), rowCount: result.length };

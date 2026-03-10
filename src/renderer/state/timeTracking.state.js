@@ -327,8 +327,7 @@ function heartbeat(projectId, source = 'terminal') {
 
   const now = Date.now();
   const runtime = trackingState.get();
-  const activeProjects = new Map(runtime.activeProjects);
-  const existing = activeProjects.get(projectId);
+  const existing = runtime.activeProjects.get(projectId);
 
   if (existing) {
     // Throttle: ignore if less than 1s since last heartbeat for this project
@@ -336,20 +335,16 @@ function heartbeat(projectId, source = 'terminal') {
     existing.lastHeartbeat = now;
   } else {
     // Auto-start tracking for this project
-    activeProjects.set(projectId, { startedAt: now, lastHeartbeat: now, source });
+    runtime.activeProjects.set(projectId, { startedAt: now, lastHeartbeat: now, source });
   }
 
   // Global timer: start if this is the first active project
-  let globalStartedAt = runtime.globalStartedAt;
-  if (!globalStartedAt && activeProjects.size > 0) {
-    globalStartedAt = now;
+  if (!runtime.globalStartedAt && runtime.activeProjects.size > 0) {
+    runtime.globalStartedAt = now;
   }
 
-  trackingState.set({
-    activeProjects,
-    globalStartedAt,
-    globalLastHeartbeat: now
-  });
+  runtime.globalLastHeartbeat = now;
+  trackingState._notify();
 }
 
 /**

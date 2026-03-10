@@ -156,7 +156,7 @@
 
 .chat-msg-queued-badge {
   display: inline-block;
-  font-size: 9px;
+  font-size: 0.5625rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -3080,7 +3080,7 @@
 }
 
 .chat-model-arrow {
-  font-size: 7px;
+  font-size: 0.5625rem;
   opacity: 0.5;
 }
 
@@ -3184,7 +3184,7 @@
 }
 
 .chat-effort-arrow {
-  font-size: 7px;
+  font-size: 0.5625rem;
   opacity: 0.5;
 }
 

@@ -3341,7 +3341,8 @@ body.compact-projects .project-item:not(.active):hover {
   transition: opacity 0.15s;
 }
 
-.quick-action-item:hover .quick-action-item-actions {
+.quick-action-item:hover .quick-action-item-actions,
+.quick-action-item:focus-within .quick-action-item-actions {
   opacity: 1;
 }
 
