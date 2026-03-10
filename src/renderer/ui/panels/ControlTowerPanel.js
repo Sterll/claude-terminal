@@ -33,6 +33,9 @@ const _lastResponses = new Map();
 // Expanded "last response" state per agent card
 const _expandedResponses = new Set();
 
+// Collapsed agent cards (show only header)
+const _collapsedAgents = new Set();
+
 /**
  * @typedef {Object} AgentInfo
  * @property {string} id
@@ -730,6 +733,7 @@ function _buildAgentCard(agent) {
   const statusLabel = (STATUS_LABELS[agent.status] || (() => agent.status))();
   const cost = _formatCost(agent.cost);
   const isActive = agent.status !== 'DONE' && agent.status !== 'ERROR';
+  const isCollapsed = _collapsedAgents.has(agent.id);
 
   const activityLine = agent.currentTool
     ? `${escapeHtml(agent.currentTool)}${agent.currentFile ? ` → ${escapeHtml(agent.currentFile)}` : ''}`
@@ -751,18 +755,28 @@ function _buildAgentCard(agent) {
   const pulseClass = (agent.status === 'THINKING' || agent.status === 'RUNNING_TOOL') ? ' ct-status-pulse' : '';
   const waitingClass = agent.status === 'WAITING' ? ' ct-status-waiting' : '';
 
+  // Collapsed compact meta shown inline in header
+  const compactMeta = isCollapsed ? `<span class="ct-compact-meta">${escapeHtml(duration)} · ${escapeHtml(cost)}</span>` : '';
+
   return `
-    <div class="ct-agent-card${agent.status === 'DONE' ? ' ct-agent-done' : ''}${agent.status === 'ERROR' ? ' ct-agent-error' : ''}${agent.status === 'WAITING' ? ' ct-agent-waiting' : ''}" data-agent-id="${escapeHtml(agent.id)}" style="--ct-status-color:${statusColor}">
+    <div class="ct-agent-card${agent.status === 'DONE' ? ' ct-agent-done' : ''}${agent.status === 'ERROR' ? ' ct-agent-error' : ''}${agent.status === 'WAITING' ? ' ct-agent-waiting' : ''}${isCollapsed ? ' ct-agent-collapsed' : ''}" data-agent-id="${escapeHtml(agent.id)}" style="--ct-status-color:${statusColor}">
       <div class="ct-agent-header">
+        <button class="ct-collapse-toggle" data-agent-id="${escapeHtml(agent.id)}" title="${isCollapsed ? 'Expand' : 'Collapse'}">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            ${isCollapsed ? '<polyline points="9 18 15 12 9 6"/>' : '<polyline points="6 9 12 15 18 9"/>'}
+          </svg>
+        </button>
         <div class="ct-agent-project">
           <span class="ct-project-name">${escapeHtml(agent.projectName)}${agent.sessionName ? `<span class="ct-session-sep"> – </span><span class="ct-session-name">${escapeHtml(agent.sessionName)}</span>` : ''}</span>
           ${branchBadge}
         </div>
+        ${compactMeta}
         <span class="ct-status-badge${pulseClass}${waitingClass}" style="--status-color:${statusColor}">
           ${escapeHtml(statusLabel)}
         </span>
       </div>
 
+      ${isCollapsed ? '' : `
       <div class="ct-agent-activity">${activityLine}</div>
 
       ${_buildLastResponseSection(agent)}
@@ -804,6 +818,7 @@ function _buildAgentCard(agent) {
             : ''}
         </div>
       </div>
+      `}
     </div>
   `;
 }
@@ -852,6 +867,15 @@ function _render() {
   container.innerHTML = allOrdered.map(_buildAgentCard).join('');
 
   // Attach event handlers
+  container.querySelectorAll('.ct-collapse-toggle').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.agentId;
+      if (_collapsedAgents.has(id)) _collapsedAgents.delete(id);
+      else _collapsedAgents.add(id);
+      _render();
+    };
+  });
   container.querySelectorAll('.ct-btn-focus').forEach(btn => {
     btn.onclick = () => _focusAgent(btn.dataset.agentId);
   });

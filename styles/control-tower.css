@@ -454,6 +454,43 @@
   box-shadow: 0 0 8px color-mix(in srgb, var(--danger) 20%, transparent);
 }
 
+/* ── Collapse toggle ──────────────────────────────────────── */
+.ct-collapse-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+  flex-shrink: 0;
+  transition: color 0.12s, background 0.12s;
+}
+
+.ct-collapse-toggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+/* Collapsed card: minimal height, no details */
+.ct-agent-card.ct-agent-collapsed {
+  padding: 7px 12px;
+  gap: 0;
+}
+
+/* Compact meta shown in header when collapsed */
+.ct-compact-meta {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 /* ── Empty state ───────────────────────────────────────────── */
 .ct-empty-state {
   flex: 1;
