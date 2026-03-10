@@ -1533,6 +1533,8 @@
     "queryPlaceholder": "SELECT * FROM tabla LIMIT 100;",
     "mongoPlaceholder": "db.coleccion.find({})",
     "queryClear": "Limpiar consulta",
+    "allowDestructive": "Permitir destructivo",
+    "allowDestructiveTooltip": "Permitir consultas DROP, DELETE FROM, TRUNCATE, ALTER",
     "queryAffected": "{count} fila(s) afectada(s)",
     "querySuccess": "{count} fila(s) en {duration}ms",
     "queryError": "Error de consulta: {error}",

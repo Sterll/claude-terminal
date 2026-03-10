@@ -37,6 +37,7 @@ let panelState = {
   activeSubTab: 'connections', // 'connections' | 'schema' | 'query'
   expandedTables: new Set(),
   queryRunning: false,
+  allowDestructive: false,
   // Data browser state
   browserSelectedTable: null,
   browserTableFilter: '',
@@ -1061,6 +1062,10 @@ function renderQuery(container) {
             <button class="db-query-clear" id="database-clear-btn" title="${t('database.queryClear')}">
               <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
             </button>
+            <label class="db-allow-destructive" title="${escapeHtml(t('database.allowDestructiveTooltip'))}">
+              <input type="checkbox" id="database-allow-destructive" ${panelState.allowDestructive ? 'checked' : ''} />
+              <span>${escapeHtml(t('database.allowDestructive'))}</span>
+            </label>
             <span class="db-query-shortcut">${t('database.runQueryShortcut')}</span>
           </div>
         </div>
@@ -1073,6 +1078,9 @@ function renderQuery(container) {
   // Bind events
   const runBtn = document.getElementById('database-run-btn');
   if (runBtn) runBtn.onclick = () => runQuery();
+
+  const destructiveCheckbox = document.getElementById('database-allow-destructive');
+  if (destructiveCheckbox) destructiveCheckbox.onchange = () => { panelState.allowDestructive = destructiveCheckbox.checked; };
 
   const clearBtn = document.getElementById('database-clear-btn');
   if (clearBtn) clearBtn.onclick = () => {
@@ -1215,7 +1223,7 @@ async function runQuery() {
   try {
     // MongoDB: send as-is (not SQL, no semicolon splitting)
     if (isMongo) {
-      const result = await ctx.api.database.executeQuery({ id: activeId, sql, limit: 100 });
+      const result = await ctx.api.database.executeQuery({ id: activeId, sql, limit: 100, allowDestructive: panelState.allowDestructive });
       state.setQueryResult(activeId, result);
     } else {
       const statements = splitSqlStatements(sql);
@@ -1231,7 +1239,7 @@ async function runQuery() {
       let statementsRun = 0;
 
       for (const stmt of statements) {
-        const result = await ctx.api.database.executeQuery({ id: activeId, sql: stmt, limit: 100 });
+        const result = await ctx.api.database.executeQuery({ id: activeId, sql: stmt, limit: 100, allowDestructive: panelState.allowDestructive });
         statementsRun++;
         totalDuration += result.duration || 0;
 

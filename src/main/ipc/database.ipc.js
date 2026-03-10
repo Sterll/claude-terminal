@@ -26,8 +26,8 @@ function registerDatabaseHandlers() {
     return databaseService.getSchema(id);
   });
 
-  ipcMain.handle('database-execute-query', async (event, { id, sql, limit }) => {
-    return databaseService.executeQuery(id, sql, limit);
+  ipcMain.handle('database-execute-query', async (event, { id, sql, limit, allowDestructive }) => {
+    return databaseService.executeQuery(id, sql, limit, { allowDestructive: !!allowDestructive });
   });
 
   ipcMain.handle('database-detect', async (event, { projectPath }) => {

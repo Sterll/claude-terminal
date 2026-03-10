@@ -1533,6 +1533,8 @@
     "queryPlaceholder": "SELECT * FROM table_name LIMIT 100;",
     "mongoPlaceholder": "db.collection.find({})",
     "queryClear": "Clear query",
+    "allowDestructive": "Allow destructive",
+    "allowDestructiveTooltip": "Allow DROP, DELETE FROM, TRUNCATE, ALTER queries",
     "queryAffected": "{count} row(s) affected",
     "querySuccess": "{count} row(s) in {duration}ms",
     "queryError": "Query error: {error}",
