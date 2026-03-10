@@ -189,7 +189,6 @@ function getActiveTab(container) {
 }
 
 module.exports = {
-  createTabs,
   activateTab,
   addTab,
   removeTab,

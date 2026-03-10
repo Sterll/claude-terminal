@@ -60,31 +60,10 @@ async function initializeState() {
   });
 }
 
-/**
- * Get combined application state (for debugging)
- * @returns {Object}
- */
-function getAppState() {
-  return {
-    projects: projectsState.projectsState.get(),
-    terminals: terminalsState.terminalsState.get(),
-    mcp: mcpState.mcpState.get(),
-    fivem: fivemState.fivemState.get(),
-    git: gitState.gitState.get(),
-    settings: settingsState.settingsState.get(),
-    quickPicker: quickPickerState.get(),
-    drag: dragState.get(),
-    contextMenu: contextMenuState.get(),
-    skillsAgents: skillsAgentsState.get(),
-    database: databaseState.databaseState.get()
-  };
-}
-
 module.exports = {
   // Core
   State,
   initializeState,
-  getAppState,
 
   // Projects
   ...projectsState,
