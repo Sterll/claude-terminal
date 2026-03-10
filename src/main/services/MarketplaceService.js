@@ -8,71 +8,20 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 const { exec, execFile } = require('child_process');
+const { createCache, httpsGet } = require('../utils/httpCache');
 
 const homeDir = os.homedir();
 const skillsDir = path.join(homeDir, '.claude', 'skills');
 const dataDir = path.join(homeDir, '.claude-terminal');
 const manifestFile = path.join(dataDir, 'marketplace.json');
 
-// In-memory cache with TTL
-const cache = new Map();
+const { getCached, setCache, invalidateCache } = createCache();
 const CACHE_TTL = {
   featured: 10 * 60 * 1000,  // 10 min
   search: 5 * 60 * 1000,     // 5 min
   readme: 30 * 60 * 1000,    // 30 min
   installed: 2 * 60 * 1000   // 2 min
 };
-
-function getCached(key) {
-  const entry = cache.get(key);
-  if (entry && Date.now() < entry.expiresAt) return entry.data;
-  cache.delete(key);
-  return null;
-}
-
-function setCache(key, data, ttl) {
-  cache.set(key, { data, expiresAt: Date.now() + ttl });
-}
-
-function invalidateCache(prefix) {
-  for (const key of cache.keys()) {
-    if (key.startsWith(prefix)) cache.delete(key);
-  }
-}
-
-/**
- * Make an HTTPS GET request and return parsed JSON
- */
-function httpsGet(urlString) {
-  return new Promise((resolve, reject) => {
-    const url = new URL(urlString);
-    const options = {
-      hostname: url.hostname,
-      path: url.pathname + url.search,
-      method: 'GET',
-      headers: { 'User-Agent': 'ClaudeTerminal' },
-      timeout: 15000
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          resolve({ status: res.statusCode, data: JSON.parse(data) });
-        } catch (e) {
-          resolve({ status: res.statusCode, data: data });
-        }
-      });
-    });
-    req.setTimeout(15000, () => {
-      req.destroy();
-      reject(new Error('Request timeout'));
-    });
-    req.on('error', reject);
-    req.end();
-  });
-}
 
 /**
  * Fetch raw text content from a URL (for README/SKILL.md files)

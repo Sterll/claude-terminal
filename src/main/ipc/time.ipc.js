@@ -13,6 +13,7 @@
 const { ipcMain } = require('electron');
 const fs   = require('fs');
 const path = require('path');
+const { formatDuration } = require('../utils/formatDuration');
 const os   = require('os');
 
 const TIME_FILE = path.join(os.homedir(), '.claude-terminal', 'timetracking.json');
@@ -93,20 +94,6 @@ function computePeriodTotals(sessions, now) {
   }
 
   return { today, week, month, total };
-}
-
-/**
- * Format milliseconds to human-readable string.
- * @param {number} ms
- * @returns {string}  e.g. "2h 34m"
- */
-function formatDuration(ms) {
-  if (!ms || ms < 0) return '0m';
-  const h = Math.floor(ms / 3_600_000);
-  const m = Math.floor((ms % 3_600_000) / 60_000);
-  if (h === 0) return `${m}m`;
-  if (m === 0) return `${h}h`;
-  return `${h}h ${m}m`;
 }
 
 // ─── Action handlers ──────────────────────────────────────────────────────────

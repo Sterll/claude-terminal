@@ -5,6 +5,7 @@
 
 const { getApiServer, setApiPort, getApiRoutes, setApiRoutes, addApiHistoryEntry, getApiHistory } = require('./ApiState');
 const { updateProject } = require('../../../renderer/state/projects.state');
+const { escapeHtml } = require('../../../renderer/utils/dom');
 const { t } = require('../../../renderer/i18n');
 const apiElectron = window.electron_api;
 
@@ -63,10 +64,6 @@ function formatSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function escapeHtml(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // ===== Variable resolution system =====

@@ -6,41 +6,9 @@
 // Use preload API for Node.js modules
 const { fs, path } = window.electron_nodeModules;
 const { agentsDir } = require('../utils/paths');
+const { parseFrontmatter } = require('../utils/frontmatter');
 const { skillsAgentsState } = require('../state');
 const { t } = require('../i18n');
-
-/**
- * Parse YAML frontmatter from markdown content
- * @param {string} content - Markdown content
- * @returns {Object} - { metadata, body }
- */
-function parseFrontmatter(content) {
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
-  if (!match) {
-    return { metadata: {}, body: content };
-  }
-
-  const yamlStr = match[1];
-  const body = match[2];
-  const metadata = {};
-
-  // Simple YAML parsing for key: value pairs
-  yamlStr.split('\n').forEach(line => {
-    const colonIndex = line.indexOf(':');
-    if (colonIndex > 0) {
-      const key = line.slice(0, colonIndex).trim();
-      let value = line.slice(colonIndex + 1).trim();
-      // Remove quotes if present
-      if ((value.startsWith('"') && value.endsWith('"')) ||
-          (value.startsWith("'") && value.endsWith("'"))) {
-        value = value.slice(1, -1);
-      }
-      metadata[key] = value;
-    }
-  });
-
-  return { metadata, body };
-}
 
 /**
  * Load all agents from the agents directory

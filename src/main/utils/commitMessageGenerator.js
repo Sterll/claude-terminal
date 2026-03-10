@@ -5,18 +5,59 @@
  */
 
 const https = require('https');
-
-function formatDurationMs(ms) {
-  if (!ms || ms < 0) ms = 0;
-  const hours = Math.floor(ms / 3600000);
-  const minutes = Math.floor((ms % 3600000) / 60000);
-  if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-  return `${minutes}m`;
-}
+const { formatDuration } = require('./formatDuration');
 
 // ============================================================
 // GitHub Models API (GPT-4o-mini - free tier)
 // ============================================================
+
+/**
+ * Call GitHub Models API (GPT-4o-mini) with given messages.
+ * @param {string} token - GitHub OAuth token
+ * @param {Array} messages - Chat messages [{role, content}]
+ * @param {number} maxTokens - Max output tokens
+ * @param {number} timeoutMs - Request timeout
+ * @returns {Promise<string|null>} - Response content or null on failure
+ */
+function callGitHubModels(token, messages, maxTokens, timeoutMs) {
+  return new Promise((resolve) => {
+    const body = JSON.stringify({
+      model: 'gpt-4o-mini',
+      max_tokens: maxTokens,
+      messages
+    });
+
+    const options = {
+      hostname: 'models.inference.ai.azure.com',
+      path: '/chat/completions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'Content-Length': Buffer.byteLength(body)
+      },
+      timeout: timeoutMs
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          const content = json.choices?.[0]?.message?.content?.trim();
+          resolve(content || null);
+        } catch (e) {
+          resolve(null);
+        }
+      });
+    });
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+    req.on('error', () => resolve(null));
+    req.write(body);
+    req.end();
+  });
+}
 
 const SYSTEM_PROMPT = `You are a commit message generator. Generate a single conventional commit message.
 
@@ -51,68 +92,22 @@ function buildPrompt(files, diffContent) {
  * @param {string} diffContent - Diff content
  * @returns {Promise<string|null>}
  */
-function generateWithGitHubModels(githubToken, files, diffContent, timeoutMs = 12000) {
-  return new Promise((resolve) => {
-    const userMessage = buildPrompt(files, diffContent);
+async function generateWithGitHubModels(githubToken, files, diffContent, timeoutMs = 12000) {
+  const userMessage = buildPrompt(files, diffContent);
+  const messages = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'user', content: userMessage }
+  ];
 
-    const body = JSON.stringify({
-      model: 'gpt-4o-mini',
-      max_tokens: 100,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userMessage }
-      ]
-    });
+  const content = await callGitHubModels(githubToken, messages, 100, timeoutMs);
+  if (!content) return null;
 
-    const options = {
-      hostname: 'models.inference.ai.azure.com',
-      path: '/chat/completions',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${githubToken}`,
-        'Content-Length': Buffer.byteLength(body)
-      },
-      timeout: timeoutMs
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          if (json.choices && json.choices[0]?.message?.content) {
-            let message = json.choices[0].message.content.trim()
-              .replace(/^["'`]+|["'`]+$/g, '')
-              .replace(/^```\w*\n?|\n?```$/g, '')
-              .trim();
-            message = message.split('\n')[0].trim();
-            resolve(message || null);
-          } else {
-            console.error('[CommitGen] GitHub Models response:', data.slice(0, 300));
-            resolve(null);
-          }
-        } catch (e) {
-          console.error('[CommitGen] Parse error:', e.message);
-          resolve(null);
-        }
-      });
-    });
-
-    req.on('timeout', () => {
-      req.destroy();
-      resolve(null);
-    });
-
-    req.on('error', (err) => {
-      console.error('[CommitGen] Request error:', err.message);
-      resolve(null);
-    });
-
-    req.write(body);
-    req.end();
-  });
+  let message = content
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .replace(/^```\w*\n?|\n?```$/g, '')
+    .trim();
+  message = message.split('\n')[0].trim();
+  return message || null;
 }
 
 // ============================================================
@@ -260,52 +255,17 @@ async function generateSessionRecap(ctx, githubToken, timeoutMs = 5000) {
     .join(', ') || 'none';
 
   const promptList = (ctx.prompts || []).join(' | ') || 'unknown';
-  const durationStr = formatDurationMs(ctx.durationMs || 0);
+  const durationStr = formatDuration(ctx.durationMs || 0);
 
   const userMessage = `User requests: ${promptList}\nTools used: ${toolList}\nDuration: ${durationStr}`;
 
   if (githubToken) {
-    const body = JSON.stringify({
-      model: 'gpt-4o-mini',
-      max_tokens: 150,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage }
-      ]
-    });
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage }
+    ];
 
-    const result = await new Promise((resolve) => {
-      const options = {
-        hostname: 'models.inference.ai.azure.com',
-        path: '/chat/completions',
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${githubToken}`,
-          'Content-Length': Buffer.byteLength(body)
-        },
-        timeout: timeoutMs
-      };
-
-      const req = https.request(options, (res) => {
-        let data = '';
-        res.on('data', chunk => { data += chunk; });
-        res.on('end', () => {
-          try {
-            const json = JSON.parse(data);
-            const content = json.choices?.[0]?.message?.content?.trim();
-            resolve(content || null);
-          } catch (e) {
-            resolve(null);
-          }
-        });
-      });
-      req.on('timeout', () => { req.destroy(); resolve(null); });
-      req.on('error', () => resolve(null));
-      req.write(body);
-      req.end();
-    });
-
+    const result = await callGitHubModels(githubToken, messages, 150, timeoutMs);
     if (result) return { summary: result, source: 'ai' };
   }
 

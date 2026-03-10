@@ -3,62 +3,16 @@
  * Handles MCP server discovery via the official MCP Registry API
  */
 
-const https = require('https');
+const { createCache, httpsGet } = require('../utils/httpCache');
 
 const BASE_URL = 'https://registry.modelcontextprotocol.io/v0.1';
 
-// In-memory cache with TTL
-const cache = new Map();
+const { getCached, setCache } = createCache();
 const CACHE_TTL = {
   browse: 10 * 60 * 1000,   // 10 min
   search: 5 * 60 * 1000,    // 5 min
   detail: 30 * 60 * 1000    // 30 min
 };
-
-function getCached(key) {
-  const entry = cache.get(key);
-  if (entry && Date.now() < entry.expiresAt) return entry.data;
-  cache.delete(key);
-  return null;
-}
-
-function setCache(key, data, ttl) {
-  cache.set(key, { data, expiresAt: Date.now() + ttl });
-}
-
-/**
- * Make an HTTPS GET request and return parsed JSON
- */
-function httpsGet(urlString) {
-  return new Promise((resolve, reject) => {
-    const url = new URL(urlString);
-    const options = {
-      hostname: url.hostname,
-      path: url.pathname + url.search,
-      method: 'GET',
-      headers: { 'User-Agent': 'ClaudeTerminal' },
-      timeout: 15000
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          resolve({ status: res.statusCode, data: JSON.parse(data) });
-        } catch (e) {
-          resolve({ status: res.statusCode, data: data });
-        }
-      });
-    });
-    req.setTimeout(15000, () => {
-      req.destroy();
-      reject(new Error('Request timeout'));
-    });
-    req.on('error', reject);
-    req.end();
-  });
-}
 
 /**
  * Filter servers that have at least one package or remote

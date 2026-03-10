@@ -4,6 +4,7 @@
  */
 
 const { t } = require('../../i18n');
+const { escapeHtml } = require('../../utils/dom');
 
 // Extended color palette with semantic groupings - keys for translation
 const COLOR_PALETTE = {
@@ -244,15 +245,6 @@ function createPickerHtml(itemType, item) {
       </div>
     </div>
   `;
-}
-
-/**
- * Escape HTML special characters
- */
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
 }
 
 /**

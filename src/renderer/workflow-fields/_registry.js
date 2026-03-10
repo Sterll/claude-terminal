@@ -4,6 +4,8 @@
  * (agent-picker, skill-picker, cron-picker, variable-autocomplete, sql-editor, etc.)
  */
 
+const { escapeHtml } = require('../utils/dom');
+
 const _fieldRenderers = new Map();
 
 function loadField(type, def) {
@@ -48,14 +50,6 @@ function loadAll() {
 }
 
 // ─── Shared HTML helpers ────────────────────────────────────────────────────
-
-function escapeHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
 
 function escapeAttr(s) {
   return String(s)
