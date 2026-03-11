@@ -859,6 +859,7 @@ class ChatService {
             'Each suggestion should be a concrete, actionable developer question or instruction (max 8 words).',
             'Output ONLY a JSON array of strings, nothing else. Example: ["Explain this in detail","Give me an example","How do I test this?"]',
             'Vary the suggestions: one can go deeper, one can ask for an example, one can ask for a different approach.',
+            'When project context is provided (name, type), tailor suggestions to that specific project domain.',
             'Reply in the SAME language as the conversation.',
           ].join(' ')
         }
@@ -900,7 +901,7 @@ class ChatService {
    * @param {string} lastUserText - The last user message for context
    * @returns {Promise<string[]>} Array of suggestion strings, or []
    */
-  async generateSuggestions(lastAssistantText, lastUserText) {
+  async generateSuggestions(lastAssistantText, lastUserText, projectContext) {
     try {
       await this._ensureSuggestionSession();
       if (!this._suggestionQueue) return [];
@@ -930,10 +931,15 @@ class ChatService {
         };
 
         try {
-          const context = [
-            lastUserText ? `User asked: "${lastUserText.slice(0, 150)}"` : '',
-            `Claude replied: "${lastAssistantText.slice(0, 300)}"`,
-          ].filter(Boolean).join('\n');
+          const contextParts = [];
+          if (projectContext) {
+            const pCtx = [`Project: "${projectContext.name}"`];
+            if (projectContext.type && projectContext.type !== 'general') pCtx.push(`type: ${projectContext.type}`);
+            contextParts.push(pCtx.join(', '));
+          }
+          if (lastUserText) contextParts.push(`User asked: "${lastUserText.slice(0, 150)}"`);
+          contextParts.push(`Claude replied: "${lastAssistantText.slice(0, 300)}"`);
+          const context = contextParts.filter(Boolean).join('\n');
           this._suggestionQueue.push({
             type: 'user',
             message: { role: 'user', content: `Generate follow-up suggestions for this exchange:\n${context}` }

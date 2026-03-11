@@ -265,6 +265,7 @@ function createFollowupChips(suggestionsContainerEl, inputEl, project) {
         api.chat.generateSuggestions({
           lastAssistantText: _lastAssistantText.slice(0, 800),
           lastUserText: _lastUserText.slice(0, 300),
+          projectContext: project ? { name: project.name, type: project.type, path: project.path } : null,
         }).catch(() => null),
         _fetchContextChips(),
       ]);
