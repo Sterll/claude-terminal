@@ -109,11 +109,9 @@ function createContextSuggestions(project, inputEl, getDefaultPlaceholder) {
 
   function buildSuggestions(todos, gitStatus) {
     const result = [];
-    const todoCount = Array.isArray(todos) ? todos.length : 0;
     const gitCount = gitStatus
       ? (gitStatus.modified?.length || 0) + (gitStatus.staged?.length || 0) + (gitStatus.untracked?.length || 0)
       : 0;
-    if (todoCount > 0) result.push(t('chat.suggestTodos', { count: todoCount }));
     if (gitCount > 0) result.push(t('chat.suggestGit', { count: gitCount }));
     return result;
   }
@@ -195,7 +193,7 @@ function createContextSuggestions(project, inputEl, getDefaultPlaceholder) {
 
 const SPARKLE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/><path d="M19 15l.75 2.25L22 18l-2.25.75L19 21l-.75-2.25L16 18l2.25-.75z"/></svg>`;
 
-function createFollowupChips(suggestionsContainerEl, inputEl) {
+function createFollowupChips(suggestionsContainerEl, inputEl, project) {
   let _generationTimer = null;
   let _pendingGeneration = false;
   let _lastAssistantText = '';
@@ -238,6 +236,19 @@ function createFollowupChips(suggestionsContainerEl, inputEl) {
     suggestionsContainerEl.style.display = 'flex';
   }
 
+  async function _fetchContextChips() {
+    if (!project?.path) return [];
+    const extra = [];
+    try {
+      const todos = await api.project.scanTodos(project.path).catch(() => []);
+      const todoCount = Array.isArray(todos) ? todos.length : 0;
+      if (todoCount > 0) {
+        extra.push(t('chat.suggestTodos', { count: todoCount }).replace(/\s*\[Tab\]\s*$/, ''));
+      }
+    } catch { /* ignore */ }
+    return extra;
+  }
+
   async function generate(assistantText, userText) {
     _lastAssistantText = assistantText || '';
     _lastUserText = userText || '';
@@ -250,12 +261,17 @@ function createFollowupChips(suggestionsContainerEl, inputEl) {
     _pendingGeneration = true;
 
     try {
-      const result = await api.chat.generateSuggestions({
-        lastAssistantText: _lastAssistantText.slice(0, 800),
-        lastUserText: _lastUserText.slice(0, 300),
-      });
-      if (result && result.success && Array.isArray(result.suggestions) && result.suggestions.length > 0) {
-        _render(result.suggestions);
+      const [result, contextChips] = await Promise.all([
+        api.chat.generateSuggestions({
+          lastAssistantText: _lastAssistantText.slice(0, 800),
+          lastUserText: _lastUserText.slice(0, 300),
+        }).catch(() => null),
+        _fetchContextChips(),
+      ]);
+      const aiChips = (result && result.success && Array.isArray(result.suggestions)) ? result.suggestions : [];
+      const allChips = [...aiChips, ...contextChips];
+      if (allChips.length > 0) {
+        _render(allChips);
       }
     } catch (err) {
       // Silently ignore errors — suggestions are non-critical
@@ -592,7 +608,7 @@ function createChatView(wrapperEl, project, options = {}) {
   contextSuggestions.setInitTimer(setTimeout(() => { if (project?.path) contextSuggestions.refresh(); }, 500));
 
   // ── Follow-up suggestion chips (shown after Claude responds) ──
-  const followupChips = createFollowupChips(followupSuggestionsEl, inputEl);
+  const followupChips = createFollowupChips(followupSuggestionsEl, inputEl, project);
 
   attachBtn.addEventListener('click', () => fileInput.click());
 
