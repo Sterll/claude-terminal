@@ -149,6 +149,7 @@ function cleanupServices() {
   apiService.stopAll();
   minecraftService.stopAll();
   chatService.closeAll();
+  chatService.destroy();
   hookEventServer.stop();
   remoteServer.stop();
   workflowService.destroy();

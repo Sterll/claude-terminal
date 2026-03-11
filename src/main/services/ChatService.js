@@ -1353,6 +1353,17 @@ If there are no new useful discoveries, return exactly: []`;
       return { success: false, error: err.message };
     }
   }
+
+  destroy() {
+    if (this._unhandledRejectionHandler) {
+      process.removeListener('unhandledRejection', this._unhandledRejectionHandler);
+      this._unhandledRejectionHandler = null;
+    }
+    if (this._uncaughtExceptionHandler) {
+      process.removeListener('uncaughtException', this._uncaughtExceptionHandler);
+      this._uncaughtExceptionHandler = null;
+    }
+  }
 }
 
 /**

@@ -190,19 +190,24 @@ function handleTerminalExit(id) {
  * @param {Function} onExitCallback - Callback for terminal exit
  */
 function registerTerminalListeners(onDataCallback, onExitCallback) {
-  api.terminal.onData(({ id, data }) => {
+  const unsubData = api.terminal.onData(({ id, data }) => {
     writeToTerminal(id, data);
     if (onDataCallback) {
       onDataCallback(id, data);
     }
   });
 
-  api.terminal.onExit(({ id }) => {
+  const unsubExit = api.terminal.onExit(({ id }) => {
     handleTerminalExit(id);
     if (onExitCallback) {
       onExitCallback(id);
     }
   });
+
+  return () => {
+    if (typeof unsubData === 'function') unsubData();
+    if (typeof unsubExit === 'function') unsubExit();
+  };
 }
 
 /**

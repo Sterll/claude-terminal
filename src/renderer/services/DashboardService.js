@@ -2173,4 +2173,10 @@ module.exports = {
   clearAllCache,
   loadAllDiskCaches,
   preloadAllProjects,
+  cleanup() {
+    if (_cacheCleanupInterval) {
+      clearInterval(_cacheCleanupInterval);
+      _cacheCleanupInterval = null;
+    }
+  },
 };

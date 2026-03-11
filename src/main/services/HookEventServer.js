@@ -18,9 +18,11 @@ let server = null;
 let mainWindow = null;
 let authToken = null;
 
-// Pending PermissionRequest responses: requestId -> { res: ServerResponse, timer: NodeJS.Timeout }
+// Pending PermissionRequest responses: requestId -> { res: ServerResponse, timer: NodeJS.Timeout, createdAt: number }
 const pendingPermissions = new Map();
 const PERMISSION_TIMEOUT_MS = 30000; // 30s — hook handler also uses 31s timeout
+const MAX_PENDING_PERMISSIONS = 100;
+let _gcTimer = null;
 
 /**
  * Start the hook event server
@@ -106,7 +108,15 @@ function start(win) {
         }
       }, PERMISSION_TIMEOUT_MS);
 
-      pendingPermissions.set(id, { res, timer });
+      // Cap pending permissions to prevent unbounded growth
+      if (pendingPermissions.size >= MAX_PENDING_PERMISSIONS) {
+        const oldest = pendingPermissions.keys().next().value;
+        const entry = pendingPermissions.get(oldest);
+        clearTimeout(entry.timer);
+        pendingPermissions.delete(oldest);
+        try { entry.res.writeHead(503); entry.res.end('too many pending'); } catch (_) {}
+      }
+      pendingPermissions.set(id, { res, timer, createdAt: Date.now() });
       req.on('close', () => {
         // Client disconnected — clean up silently
         if (pendingPermissions.has(id)) {
@@ -138,6 +148,21 @@ function start(win) {
   server.on('error', (e) => {
     console.error('[HookEventServer] Server error:', e);
   });
+
+  // Periodic GC for stale pending permissions (2x timeout interval)
+  if (!_gcTimer) {
+    _gcTimer = setInterval(() => {
+      const now = Date.now();
+      for (const [id, entry] of pendingPermissions.entries()) {
+        if (now - entry.createdAt > PERMISSION_TIMEOUT_MS * 2) {
+          clearTimeout(entry.timer);
+          pendingPermissions.delete(id);
+          try { entry.res.writeHead(408); entry.res.end('expired'); } catch (_) {}
+        }
+      }
+    }, PERMISSION_TIMEOUT_MS);
+    _gcTimer.unref?.();
+  }
 }
 
 /**
@@ -161,6 +186,18 @@ function resolvePendingPermission(id, decision) {
  * Stop the hook event server and clean up port file
  */
 function stop() {
+  if (_gcTimer) {
+    clearInterval(_gcTimer);
+    _gcTimer = null;
+  }
+
+  // Clear all pending permissions
+  for (const [id, entry] of pendingPermissions.entries()) {
+    clearTimeout(entry.timer);
+    try { entry.res.writeHead(503); entry.res.end('shutdown'); } catch (_) {}
+  }
+  pendingPermissions.clear();
+
   if (server) {
     server.close();
     server = null;

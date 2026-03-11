@@ -90,11 +90,15 @@ async function loadAllData(project) {
   historyLoadingMore = false;
   if (historyScrollObserver) { historyScrollObserver.disconnect(); historyScrollObserver = null; }
 
-  const [changes, history, gitInfoFull] = await Promise.all([
+  const [changesResult, historyResult, gitInfoFullResult] = await Promise.allSettled([
     api.git.statusDetailed({ projectPath: path }),
     api.git.commitHistory({ projectPath: path, skip: 0, limit: 50 }),
     api.git.infoFull(path)
   ]);
+
+  const changes = changesResult.status === 'fulfilled' ? changesResult.value : null;
+  const history = historyResult.status === 'fulfilled' ? historyResult.value : [];
+  const gitInfoFull = gitInfoFullResult.status === 'fulfilled' ? gitInfoFullResult.value : null;
 
   changesData = changes;
   branchesData = gitInfoFull?.branches || { local: [], remote: [] };

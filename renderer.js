@@ -5133,16 +5133,18 @@ if (timeElements.container) {
   setTimeout(updateTimeDisplay, 1000);
 }
 
-// ========== TIME TRACKING SAVE ON QUIT ==========
-// Listen for app quit to save active time tracking sessions
+// ========== CLEANUP ON QUIT ==========
+// Listen for app quit to save active time tracking sessions and cleanup services
 api.lifecycle.onWillQuit(() => {
   const { saveAndShutdown } = require('./src/renderer');
   saveAndShutdown();
+  DashboardService.cleanup();
 });
 
 // Backup cleanup on window unload (in case onWillQuit doesn't fire)
 window.addEventListener('beforeunload', () => {
   const { saveAndShutdown } = require('./src/renderer');
   saveAndShutdown();
+  DashboardService.cleanup();
 });
 
