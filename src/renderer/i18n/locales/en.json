@@ -64,7 +64,10 @@
     "filterExe": "Executables",
     "filterAll": "All files",
     "settings": "Settings",
-    "cloudUpload": "Cloud upload..."
+    "cloudUpload": "Cloud upload...",
+    "dragToReorder": "Drag to reorder",
+    "dropInvalidNesting": "Cannot move a folder into its own content",
+    "terminalsClosedWithProject": "{count} terminal(s) closed with the project"
   },
   "terminals": {
     "noTerminals": "No terminal for this project",
@@ -693,7 +696,15 @@
     "templateNamePlaceholder": "e.g. Code Review",
     "templateContentPlaceholder": "Review the changes on branch $branch...",
     "autoClaudeMdUpdate": "Auto-update CLAUDE.md",
-    "autoClaudeMdUpdateDesc": "Suggest CLAUDE.md updates at the end of chat sessions."
+    "autoClaudeMdUpdateDesc": "Suggest CLAUDE.md updates at the end of chat sessions.",
+    "saveError": "Failed to save settings",
+    "nameRequired": "Name is required",
+    "itemDeleted": "Item removed",
+    "confirmTypeChange": "The current content will be cleared. Continue?",
+    "aboutGroup": "About",
+    "rerunSetup": "Setup wizard",
+    "rerunSetupDesc": "Change language, accent color, editor, and hooks settings",
+    "rerunSetupBtn": "Re-run"
   },
   "ui": {
     "notifications": "Notifications",
@@ -1240,6 +1251,11 @@
     "approvePlan": "Approve plan",
     "rejectPlan": "Reject plan",
     "enteringPlanMode": "Claude wants to plan before implementing",
+    "initializing": "Initializing Claude...",
+    "initializingRuntime": "Searching for runtime...",
+    "interrupted": "Interrupted",
+    "permissionWaitingSince": "Waiting for {seconds}s",
+    "permissionNotification": "A permission request for {tool} is waiting for your response",
     "resuming": "Resuming conversation...",
     "conversationResumed": "Conversation resumed",
     "loadingHistory": "Loading conversation...",

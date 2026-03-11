@@ -64,7 +64,10 @@
     "filterExe": "Exécutables",
     "filterAll": "Tous les fichiers",
     "settings": "Paramètres",
-    "cloudUpload": "Upload cloud..."
+    "cloudUpload": "Upload cloud...",
+    "dragToReorder": "Glisser pour réordonner",
+    "dropInvalidNesting": "Impossible de déplacer un dossier dans son propre contenu",
+    "terminalsClosedWithProject": "{count} terminal(aux) fermé(s) avec le projet"
   },
   "terminals": {
     "noTerminals": "Aucun terminal pour ce projet",
@@ -768,7 +771,15 @@
     "templateNamePlaceholder": "Ex. : Revue de code",
     "templateContentPlaceholder": "Revoir les changements sur la branche $branch...",
     "autoClaudeMdUpdate": "Auto-update CLAUDE.md",
-    "autoClaudeMdUpdateDesc": "Propose des mises à jour du CLAUDE.md à la fin des sessions chat."
+    "autoClaudeMdUpdateDesc": "Propose des mises à jour du CLAUDE.md à la fin des sessions chat.",
+    "saveError": "Erreur lors de la sauvegarde des paramètres",
+    "nameRequired": "Le nom est requis",
+    "itemDeleted": "Élément supprimé",
+    "confirmTypeChange": "Le contenu actuel sera effacé. Continuer ?",
+    "aboutGroup": "À propos",
+    "rerunSetup": "Assistant de configuration",
+    "rerunSetupDesc": "Modifier la langue, couleur, éditeur et configuration des hooks",
+    "rerunSetupBtn": "Relancer"
   },
   "ui": {
     "notifications": "Notifications",
@@ -1240,6 +1251,11 @@
     "approvePlan": "Approuver le plan",
     "rejectPlan": "Rejeter le plan",
     "enteringPlanMode": "Claude veut planifier avant d'implémenter",
+    "initializing": "Initialisation de Claude...",
+    "initializingRuntime": "Recherche du runtime...",
+    "interrupted": "Interrompu",
+    "permissionWaitingSince": "En attente depuis {seconds}s",
+    "permissionNotification": "Une permission pour {tool} attend votre réponse",
     "resuming": "Reprise de la conversation...",
     "conversationResumed": "Conversation reprise",
     "loadingHistory": "Chargement de la conversation...",
