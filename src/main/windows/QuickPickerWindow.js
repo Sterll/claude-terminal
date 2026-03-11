@@ -51,6 +51,11 @@ function createQuickPickerWindow() {
   quickPickerWindow.on('blur', () => {
     if (quickPickerWindow && !quickPickerWindow.isDestroyed()) {
       quickPickerWindow.hide();
+      // Return focus to the main window
+      const mainWindow = getMainWindow();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.focus();
+      }
     }
   });
 
@@ -75,6 +80,11 @@ function getQuickPickerWindow() {
 function hideQuickPicker() {
   if (quickPickerWindow) {
     quickPickerWindow.hide();
+  }
+  // Always return focus to the main window
+  const mainWindow = getMainWindow();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.focus();
   }
 }
 

@@ -130,6 +130,11 @@
     "noResults": "Aucun résultat",
     "deleteMultipleConfirm": "Supprimer {count} éléments ?",
     "selectedItems": "éléments sélectionnés",
+    "truncatedItems": "{count} éléments supplémentaires masqués",
+    "renameOverwriteConfirm": "Un fichier nommé \"{name}\" existe déjà. Écraser ?",
+    "overwrite": "Écraser",
+    "cut": "Couper",
+    "pasteHere": "Coller ici",
     "watchLimitWarning": "Projet volumineux : {count} chemins surveillés. L'actualisation automatique de l'explorateur peut être plus lente."
   },
   "quickActions": {
@@ -556,7 +561,14 @@
     "noProjectFound": "Aucun projet trouvé",
     "placeholder": "Rechercher partout...",
     "noResult": "Aucun résultat",
+    "noResultFor": "Aucun résultat pour \"{query}\"",
+    "searchHint": "Essayez un autre terme ou utilisez un préfixe (>, @, #, ~)",
+    "loadError": "Échec du chargement",
     "loading": "Chargement...",
+    "badge": {
+      "current": "actuelle",
+      "running": "actif"
+    },
     "branch": {
       "current": "actuelle"
     },
@@ -593,6 +605,9 @@
   "modal": {
     "confirm": "Confirmer",
     "cancel": "Annuler"
+  },
+  "toast": {
+    "undo": "Annuler"
   },
   "sessions": {
     "today": "Aujourd'hui",

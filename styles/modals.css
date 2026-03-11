@@ -1174,6 +1174,28 @@ mark.qp-hl {
   font-size: 14px;
 }
 
+.quick-picker-empty-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  opacity: 0.7;
+}
+
+/* Error state for async sections */
+.quick-picker-error {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.quick-picker-error .quick-picker-item-icon svg {
+  color: var(--danger);
+}
+
+.quick-picker-error .quick-picker-item-name {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
 /* Section headers */
 .quick-picker-section-header {
   padding: 8px 20px 4px;

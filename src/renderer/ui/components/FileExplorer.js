@@ -1,7 +1,7 @@
 /**
  * FileExplorer Component
  * Displays a file tree for the selected project with preview and context menu
- * Features: multi-selection, inline rename, git status, search, drag & drop
+ * Features: multi-selection, inline rename, git status, search, drag & drop, keyboard cut/paste
  */
 
 const api = window.electron_api;
@@ -37,6 +37,9 @@ let renameActivePath = null;
 
 // Drag & drop state
 let draggedPaths = [];
+
+// Keyboard cut/paste state
+let cutPaths = [];
 
 // Patterns to ignore
 const IGNORE_PATTERNS = new Set([
@@ -75,6 +78,7 @@ function setRootPath(projectPath) {
   gitStatusMap.clear();
   searchQuery = '';
   searchResults = [];
+  cutPaths = [];
   if (rootPath && !manuallyHidden) {
     show();
     render();
@@ -255,8 +259,9 @@ async function readDirectoryAsync(dirPath) {
     });
 
     if (skipped > 0) {
+      const truncLabel = (t('fileExplorer.truncatedItems') || '{count} more items hidden').replace('{count}', skipped);
       result.push({
-        name: `... +${skipped} more items`,
+        name: truncLabel,
         path: null,
         isDirectory: false,
         isTruncated: true
@@ -401,7 +406,9 @@ function updateSelectionVisuals() {
   if (!treeEl) return;
   const nodes = treeEl.querySelectorAll('.fe-node[data-path]');
   for (const node of nodes) {
+    const isCut = cutPaths.includes(node.dataset.path);
     node.classList.toggle('selected', selectedFiles.has(node.dataset.path));
+    node.classList.toggle('fe-cut', isCut);
   }
 }
 
@@ -561,10 +568,31 @@ async function executeRename(filePath, newName) {
     return;
   }
 
+  // Check if target already exists — ask for confirmation
   if (fs.existsSync(newPath)) {
-    alert('A file or folder with this name already exists.');
-    render();
-    return;
+    const overwrite = await showConfirm({
+      title: t('fileExplorer.rename') || 'Rename',
+      message: (t('fileExplorer.renameOverwriteConfirm') || 'A file named "{name}" already exists. Overwrite?').replace('{name}', sanitized),
+      confirmLabel: t('fileExplorer.overwrite') || 'Overwrite',
+      danger: true,
+    });
+    if (!overwrite) {
+      render();
+      return;
+    }
+    // Remove existing target before rename
+    try {
+      const stat = fs.statSync(newPath);
+      if (stat.isDirectory()) {
+        fs.rmSync(newPath, { recursive: true, force: true });
+      } else {
+        fs.unlinkSync(newPath);
+      }
+    } catch (e) {
+      alert(`Error removing existing file: ${e.message}`);
+      render();
+      return;
+    }
   }
 
   try {
@@ -594,6 +622,22 @@ async function executeRename(filePath, newName) {
     alert(userMessage);
     render();
   }
+}
+
+// ========== KEYBOARD CUT/PASTE ==========
+function cutSelectedFiles() {
+  if (selectedFiles.size === 0) return;
+  cutPaths = [...selectedFiles];
+  updateSelectionVisuals();
+}
+
+async function pasteFiles(targetDir) {
+  if (cutPaths.length === 0 || !targetDir) return;
+
+  const sourcePaths = [...cutPaths];
+  cutPaths = [];
+
+  await moveItems(sourcePaths, targetDir);
 }
 
 // ========== RENDER ==========
@@ -635,6 +679,7 @@ function renderTreeNodes(dirPath, depth) {
 
     const isExpanded = expandedFolders.has(item.path) && expandedFolders.get(item.path).loaded;
     const isSelected = selectedFiles.has(item.path);
+    const isCut = cutPaths.includes(item.path);
 
     const indent = depth * 16;
     const icon = getFileIcon(item.name, item.isDirectory, isExpanded);
@@ -644,7 +689,7 @@ function renderTreeNodes(dirPath, depth) {
 
     const gitBadge = getGitBadgeHtml(item.path, item.isDirectory);
 
-    parts.push(`<div class="fe-node ${isSelected ? 'selected' : ''} ${item.isDirectory ? 'fe-dir' : 'fe-file'}"
+    parts.push(`<div class="fe-node ${isSelected ? 'selected' : ''} ${isCut ? 'fe-cut' : ''} ${item.isDirectory ? 'fe-dir' : 'fe-file'}"
       data-path="${escapeHtml(item.path)}"
       data-name="${escapeHtml(item.name)}"
       data-is-dir="${item.isDirectory}"
@@ -701,6 +746,12 @@ function showFileContextMenu(e, filePath, isDirectory) {
     });
     items.push({ separator: true });
     items.push({
+      label: t('fileExplorer.cut') || 'Cut',
+      icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M9.64 7.64c.23-.5.36-1.05.36-1.64 0-2.21-1.79-4-4-4S2 3.79 2 6s1.79 4 4 4c.59 0 1.14-.13 1.64-.36L10 12l-2.36 2.36C7.14 14.13 6.59 14 6 14c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4c0-.59-.13-1.14-.36-1.64L12 14l7 7h3v-1L9.64 7.64zM6 8c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm0 12c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm6-7.5c-.28 0-.5-.22-.5-.5s.22-.5.5-.5.5.22.5.5-.22.5-.5.5zM19 3l-6 6 2 2 7-7V3z"/></svg>',
+      shortcut: 'Ctrl+X',
+      onClick: () => cutSelectedFiles()
+    });
+    items.push({
       label: t('common.delete') || 'Delete',
       icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>',
       danger: true,
@@ -722,6 +773,15 @@ function showFileContextMenu(e, filePath, isDirectory) {
       onClick: () => promptNewFolder(filePath)
     });
     items.push({ separator: true });
+    if (cutPaths.length > 0) {
+      items.push({
+        label: (t('fileExplorer.pasteHere') || 'Paste here') + ` (${cutPaths.length})`,
+        icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 2h-4.18C14.4.84 13.3 0 12 0c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm7 18H5V4h2v3h10V4h2v16z"/></svg>',
+        shortcut: 'Ctrl+V',
+        onClick: () => pasteFiles(filePath)
+      });
+      items.push({ separator: true });
+    }
     if (callbacks.onOpenInTerminal) {
       items.push({
         label: t('fileExplorer.openInTerminal') || 'Open in terminal',
@@ -756,6 +816,13 @@ function showFileContextMenu(e, filePath, isDirectory) {
   });
 
   items.push({ separator: true });
+
+  items.push({
+    label: t('fileExplorer.cut') || 'Cut',
+    icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M9.64 7.64c.23-.5.36-1.05.36-1.64 0-2.21-1.79-4-4-4S2 3.79 2 6s1.79 4 4 4c.59 0 1.14-.13 1.64-.36L10 12l-2.36 2.36C7.14 14.13 6.59 14 6 14c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4c0-.59-.13-1.14-.36-1.64L12 14l7 7h3v-1L9.64 7.64zM6 8c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm0 12c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm6-7.5c-.28 0-.5-.22-.5-.5s.22-.5.5-.5.5.22.5.5-.22.5-.5.5zM19 3l-6 6 2 2 7-7V3z"/></svg>',
+    shortcut: 'Ctrl+X',
+    onClick: () => cutSelectedFiles()
+  });
 
   items.push({
     label: t('ui.openInExplorer') || 'Reveal in Explorer',
@@ -943,6 +1010,28 @@ async function moveItems(sourcePaths, targetDir) {
   refreshGitStatus();
 }
 
+// ========== DOTFILES TOGGLE ==========
+function toggleDotfiles() {
+  const { getSetting, settingsState, saveSettings } = require('../../state/settings.state');
+  const current = getSetting('showDotfiles');
+  settingsState.setProp('showDotfiles', !current);
+  saveSettings();
+  // Reload all expanded folders
+  for (const [folderPath, entry] of expandedFolders) {
+    if (entry.loaded) {
+      entry.loaded = false;
+      entry.loading = true;
+      readDirectoryAsync(folderPath).then(children => {
+        entry.children = children;
+        entry.loaded = true;
+        entry.loading = false;
+        render();
+      });
+    }
+  }
+  render();
+}
+
 // ========== EVENT HANDLING ==========
 function attachListeners() {
   const treeEl = document.getElementById('file-explorer-tree');
@@ -1008,7 +1097,7 @@ function attachListeners() {
     }
   };
 
-  // Keyboard: F2 for rename, Delete key
+  // Keyboard: F2 for rename, Delete key, Ctrl+X/Ctrl+V for cut/paste
   treeEl.onkeydown = (e) => {
     if (e.key === 'F2' && lastSelectedFile) {
       e.preventDefault();
@@ -1025,6 +1114,24 @@ function attachListeners() {
       } else {
         promptDeleteMultiple();
       }
+    }
+    // Ctrl+X: cut selected files
+    if (e.key === 'x' && (e.ctrlKey || e.metaKey) && selectedFiles.size > 0) {
+      e.preventDefault();
+      cutSelectedFiles();
+    }
+    // Ctrl+V: paste cut files into selected folder or parent of selected file
+    if (e.key === 'v' && (e.ctrlKey || e.metaKey) && cutPaths.length > 0) {
+      e.preventDefault();
+      let targetDir = rootPath;
+      if (lastSelectedFile) {
+        if (fs.existsSync(lastSelectedFile) && fs.statSync(lastSelectedFile).isDirectory()) {
+          targetDir = lastSelectedFile;
+        } else {
+          targetDir = path.dirname(lastSelectedFile);
+        }
+      }
+      pasteFiles(targetDir);
     }
   };
 
@@ -1261,6 +1368,7 @@ module.exports = {
   show,
   hide,
   toggle,
+  toggleDotfiles,
   init,
   applyWatcherChanges
 };

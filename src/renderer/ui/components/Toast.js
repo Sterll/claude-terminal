@@ -9,6 +9,9 @@ const { t } = require('../../i18n');
 // Toast container element
 let toastContainer = null;
 
+// Max visible toasts — oldest are evicted when exceeded
+const MAX_VISIBLE_TOASTS = 5;
+
 /**
  * Initialize toast container
  */
@@ -16,7 +19,35 @@ function initToastContainer() {
   if (!toastContainer) {
     toastContainer = document.createElement('div');
     toastContainer.className = 'toast-container';
+    toastContainer.setAttribute('role', 'status');
+    toastContainer.setAttribute('aria-live', 'polite');
+    toastContainer.setAttribute('aria-relevant', 'additions');
     document.body.appendChild(toastContainer);
+  }
+}
+
+/**
+ * Calculate auto-hide duration based on message length.
+ * Min 3s, +1s per 50 characters, max 10s.
+ */
+function calculateDuration(message, type) {
+  const baseDuration = 3000;
+  const perCharChunk = Math.floor(message.length / 50);
+  const computed = baseDuration + perCharChunk * 1000;
+  return Math.min(computed, 10000);
+}
+
+/**
+ * Evict oldest toasts when stack exceeds MAX_VISIBLE_TOASTS.
+ */
+function enforceStackLimit() {
+  if (!toastContainer) return;
+  const toasts = toastContainer.querySelectorAll('.toast');
+  const overflow = toasts.length - MAX_VISIBLE_TOASTS;
+  if (overflow > 0) {
+    for (let i = 0; i < overflow; i++) {
+      hideToast(toasts[i]);
+    }
   }
 }
 
@@ -25,16 +56,22 @@ function initToastContainer() {
  * @param {Object} options
  * @param {string} options.message - Toast message
  * @param {string} options.type - Toast type ('success', 'error', 'warning', 'info')
- * @param {number} options.duration - Duration in ms (0 for persistent)
+ * @param {number} options.duration - Duration in ms (0 for persistent, undefined for auto-calculated)
  * @param {string} options.action - Action button label
  * @param {Function} options.onAction - Action button callback
  * @returns {HTMLElement}
  */
-function showToast({ message, type = 'info', duration = 4000, action, onAction }) {
+function showToast({ message, type = 'info', duration, action, onAction }) {
   initToastContainer();
+
+  // Auto-calculate duration if not explicitly provided
+  if (duration === undefined) {
+    duration = calculateDuration(message, type);
+  }
 
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
+  toast.setAttribute('role', 'alert');
 
   const icons = {
     success: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>',
@@ -67,16 +104,51 @@ function showToast({ message, type = 'info', duration = 4000, action, onAction }
 
   toastContainer.appendChild(toast);
 
+  // Enforce stack limit — evict oldest if over max
+  enforceStackLimit();
+
   // Animate in
   requestAnimationFrame(() => {
     toast.classList.add('show');
   });
 
-  // Auto hide
+  // Auto hide with hover-to-pause
   if (duration > 0) {
-    setTimeout(() => {
-      hideToast(toast);
-    }, duration);
+    let timerId = null;
+    let remaining = duration;
+    let startTime = Date.now();
+
+    const startTimer = () => {
+      startTime = Date.now();
+      timerId = setTimeout(() => {
+        hideToast(toast);
+      }, remaining);
+    };
+
+    toast.addEventListener('mouseenter', () => {
+      if (timerId) {
+        clearTimeout(timerId);
+        timerId = null;
+        remaining -= (Date.now() - startTime);
+        if (remaining < 500) remaining = 500;
+      }
+    });
+
+    toast.addEventListener('mouseleave', () => {
+      if (!timerId && toast.parentNode) {
+        startTimer();
+      }
+    });
+
+    startTimer();
+
+    // Store cleanup ref so hideToast can clear
+    toast._autoHideTimer = () => {
+      if (timerId) {
+        clearTimeout(timerId);
+        timerId = null;
+      }
+    };
   }
 
   return toast;
@@ -87,6 +159,15 @@ function showToast({ message, type = 'info', duration = 4000, action, onAction }
  * @param {HTMLElement} toast
  */
 function hideToast(toast) {
+  if (toast._hiding) return;
+  toast._hiding = true;
+
+  // Clear auto-hide timer if any
+  if (toast._autoHideTimer) {
+    toast._autoHideTimer();
+    delete toast._autoHideTimer;
+  }
+
   toast.classList.remove('show');
   toast.classList.add('hide');
 
@@ -102,7 +183,7 @@ function hideToast(toast) {
  * @param {string} message
  * @param {number} duration
  */
-function showSuccess(message, duration = 4000) {
+function showSuccess(message, duration) {
   return showToast({ message, type: 'success', duration });
 }
 
@@ -111,7 +192,7 @@ function showSuccess(message, duration = 4000) {
  * @param {string} message
  * @param {number} duration
  */
-function showError(message, duration = 6000) {
+function showError(message, duration) {
   return showToast({ message, type: 'error', duration });
 }
 
@@ -120,7 +201,7 @@ function showError(message, duration = 6000) {
  * @param {string} message
  * @param {number} duration
  */
-function showWarning(message, duration = 5000) {
+function showWarning(message, duration) {
   return showToast({ message, type: 'warning', duration });
 }
 
@@ -129,8 +210,25 @@ function showWarning(message, duration = 5000) {
  * @param {string} message
  * @param {number} duration
  */
-function showInfo(message, duration = 4000) {
+function showInfo(message, duration) {
   return showToast({ message, type: 'info', duration });
+}
+
+/**
+ * Show a toast with an "Undo" action button.
+ * @param {string} message
+ * @param {Function} undoCallback - Called when user clicks Undo
+ * @param {Object} options - Additional toast options (type, duration)
+ * @returns {HTMLElement}
+ */
+function withUndo(message, undoCallback, { type = 'info', duration } = {}) {
+  return showToast({
+    message,
+    type,
+    duration: duration !== undefined ? duration : 8000,
+    action: t('toast.undo') || 'Undo',
+    onAction: undoCallback,
+  });
 }
 
 /**
@@ -149,5 +247,6 @@ module.exports = {
   showError,
   showWarning,
   showInfo,
+  withUndo,
   clearAllToasts
 };

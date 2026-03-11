@@ -3,7 +3,7 @@
  * Unified search across projects, commands, sessions, git branches, MCP servers
  */
 
-const { escapeHtml } = require('../utils/dom');
+const { escapeHtml, debounce } = require('../utils/dom');
 const { projectsState, mcpState } = require('../state');
 const { t } = require('../i18n');
 const registry = require('../../project-types/registry');
@@ -24,6 +24,7 @@ const ICON = {
   dashboard: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>',
   memory: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 9H9v6h6V9zm-2 4h-2v-2h2v2zm8-2V9h-2V7c0-1.1-.9-2-2-2h-2V3h-2v2h-2V3H9v2H7c-1.1 0-2 .9-2 2v2H3v2h2v2H3v2h2v2c0 1.1.9 2 2 2h2v2h2v-2h2v2h2v-2h2c1.1 0 2-.9 2-2v-2h2v-2h-2v-2h2zm-4 6H7V7h10v10z"/></svg>',
   empty: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>',
+  error: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>',
 };
 
 // ── Prefix → mode map ─────────────────────────────────────────────────────
@@ -48,6 +49,8 @@ const quickPickerState = {
     sessions: null,
     branchesLoading: false,
     sessionsLoading: false,
+    branchesError: false,
+    sessionsError: false,
   },
 };
 
@@ -55,6 +58,7 @@ const quickPickerState = {
 async function loadBranches(projectPath, onDone) {
   if (!projectPath || quickPickerState.asyncData.branchesLoading) return;
   quickPickerState.asyncData.branchesLoading = true;
+  quickPickerState.asyncData.branchesError = false;
   try {
     const [result, current] = await Promise.all([
       window.electron_api.git.branches({ projectPath }),
@@ -67,6 +71,7 @@ async function loadBranches(projectPath, onDone) {
   } catch {
     quickPickerState.asyncData.branches = [];
     quickPickerState.asyncData.currentBranch = null;
+    quickPickerState.asyncData.branchesError = true;
   }
   quickPickerState.asyncData.branchesLoading = false;
   onDone();
@@ -75,6 +80,7 @@ async function loadBranches(projectPath, onDone) {
 async function loadSessions(projectPath, onDone) {
   if (!projectPath || quickPickerState.asyncData.sessionsLoading) return;
   quickPickerState.asyncData.sessionsLoading = true;
+  quickPickerState.asyncData.sessionsError = false;
   try {
     const sessions = await window.electron_api.claude.sessions(projectPath);
     // Sort by date desc, keep top 8
@@ -84,6 +90,7 @@ async function loadSessions(projectPath, onDone) {
     quickPickerState.asyncData.sessions = sorted;
   } catch {
     quickPickerState.asyncData.sessions = [];
+    quickPickerState.asyncData.sessionsError = true;
   }
   quickPickerState.asyncData.sessionsLoading = false;
   onDone();
@@ -241,6 +248,15 @@ function detectMode(value) {
   return { mode: 'all', query: value || '' };
 }
 
+// ── Badge label helper (i18n) ──────────────────────────────────────────────
+function getBadgeLabel(badgeKey) {
+  const labels = {
+    current: t('quickPicker.badge.current') || 'current',
+    running: t('quickPicker.badge.running') || 'running',
+  };
+  return labels[badgeKey] || badgeKey;
+}
+
 // ── Sections builder ──────────────────────────────────────────────────────
 function buildSections(query, mode, currentProject) {
   const q = query.toLowerCase();
@@ -287,9 +303,11 @@ function buildSections(query, mode, currentProject) {
 
   // — Git branches (current project, async) —
   if ((mode === 'all' || mode === 'branches') && currentProject) {
-    const { branches, currentBranch, branchesLoading } = quickPickerState.asyncData;
+    const { branches, currentBranch, branchesLoading, branchesError } = quickPickerState.asyncData;
     if (branchesLoading) {
       sections.push({ key: 'branches', label: t('quickPicker.section.branches'), loading: true, items: [] });
+    } else if (branchesError) {
+      sections.push({ key: 'branches', label: t('quickPicker.section.branches'), error: true, items: [] });
     } else if (branches !== null) {
       const items = branches.map(b => {
         const { match, score, labelHtml } = scoreItem(q, b, null);
@@ -310,9 +328,11 @@ function buildSections(query, mode, currentProject) {
 
   // — Recent sessions (current project, async) —
   if ((mode === 'all' || mode === 'sessions') && currentProject) {
-    const { sessions, sessionsLoading } = quickPickerState.asyncData;
+    const { sessions, sessionsLoading, sessionsError } = quickPickerState.asyncData;
     if (sessionsLoading) {
       sections.push({ key: 'sessions', label: t('quickPicker.section.sessions'), loading: true, items: [] });
+    } else if (sessionsError) {
+      sections.push({ key: 'sessions', label: t('quickPicker.section.sessions'), error: true, items: [] });
     } else if (sessions !== null) {
       const items = sessions.map(s => {
         const label = s.summary || s.firstPrompt || s.sessionId;
@@ -365,12 +385,20 @@ function renderList(list, handlers, picker, currentProject) {
   quickPickerState.flatItems = flatItems;
 
   const hasContent = flatItems.length > 0 || sections.some(s => s.loading);
+  const hasError = sections.some(s => s.error);
 
-  if (!hasContent) {
+  if (!hasContent && !hasError) {
+    // Show "no results" with query context
+    const escapedQuery = escapeHtml(query);
+    const noResultMsg = query
+      ? (t('quickPicker.noResultFor') || 'No results for "{query}"').replace('{query}', escapedQuery)
+      : t('quickPicker.noResult');
+    const hintMsg = query ? `<p class="quick-picker-empty-hint">${t('quickPicker.searchHint') || ''}</p>` : '';
     list.innerHTML = `
       <div class="quick-picker-empty">
         ${ICON.empty}
-        <p>${t('quickPicker.noResult')}</p>
+        <p>${noResultMsg}</p>
+        ${hintMsg}
       </div>`;
     return;
   }
@@ -388,6 +416,16 @@ function renderList(list, handlers, picker, currentProject) {
             </div>
           </div>`).join('')}`;
     }
+    if (section.error) {
+      return `
+        <div class="quick-picker-section-header">${escapeHtml(section.label)}</div>
+        <div class="quick-picker-item quick-picker-error">
+          <div class="quick-picker-item-icon">${ICON.error}</div>
+          <div class="quick-picker-item-info">
+            <div class="quick-picker-item-name">${t('quickPicker.loadError') || 'Failed to load'}</div>
+          </div>
+        </div>`;
+    }
     if (section.items.length === 0) return '';
 
     return `
@@ -395,6 +433,7 @@ function renderList(list, handlers, picker, currentProject) {
       ${section.items.map(item => {
         const idx = flatItems.indexOf(item);
         const isSelected = idx === quickPickerState.selectedIndex;
+        const badgeLabel = item.badge ? getBadgeLabel(item.badge) : '';
         return `
           <div class="quick-picker-item ${isSelected ? 'selected' : ''}" data-flat-index="${idx}">
             <div class="quick-picker-item-icon">${item.icon}</div>
@@ -402,15 +441,16 @@ function renderList(list, handlers, picker, currentProject) {
               <div class="quick-picker-item-name">${item.labelHtml || escapeHtml(item.label)}</div>
               ${item.sublabel ? `<div class="quick-picker-item-path">${escapeHtml(item.sublabel)}</div>` : ''}
             </div>
-            ${item.badge ? `<span class="quick-picker-badge quick-picker-badge-${item.type === 'session' ? 'count' : item.badge}">${escapeHtml(item.badge)}</span>` : ''}
+            ${item.badge ? `<span class="quick-picker-badge quick-picker-badge-${item.type === 'session' ? 'count' : item.badge}">${escapeHtml(badgeLabel)}</span>` : ''}
             ${item.hint ? `<kbd class="quick-picker-hint">${escapeHtml(item.hint)}</kbd>` : ''}
           </div>`;
       }).join('')}`;
   }).join('');
 
   // Event handlers
-  list.querySelectorAll('.quick-picker-item').forEach(el => {
+  list.querySelectorAll('.quick-picker-item:not(.quick-picker-skeleton):not(.quick-picker-error)').forEach(el => {
     const idx = parseInt(el.dataset.flatIndex, 10);
+    if (isNaN(idx)) return;
     el.onmouseenter = () => {
       quickPickerState.selectedIndex = idx;
       list.querySelectorAll('.quick-picker-item').forEach(i =>
@@ -475,6 +515,13 @@ function openQuickPicker(container, optionsOrOnSelect) {
     currentProject = handlers.currentProject || null;
   }
 
+  // Guard: if already open, just focus the existing picker
+  if (quickPickerState.isOpen) {
+    const existingInput = container.querySelector('.quick-picker-input');
+    if (existingInput) existingInput.focus();
+    return null;
+  }
+
   quickPickerState.isOpen = true;
   quickPickerState.selectedIndex = 0;
   quickPickerState.query = '';
@@ -486,6 +533,8 @@ function openQuickPicker(container, optionsOrOnSelect) {
     sessions: null,
     branchesLoading: false,
     sessionsLoading: false,
+    branchesError: false,
+    sessionsError: false,
   };
 
   const picker = document.createElement('div');
@@ -524,10 +573,15 @@ function openQuickPicker(container, optionsOrOnSelect) {
 
   rerender();
 
-  input.oninput = () => {
-    quickPickerState.query = input.value;
+  // Debounced search to avoid flicker with many items
+  const debouncedRerender = debounce(() => {
     quickPickerState.selectedIndex = 0;
     rerender();
+  }, 150);
+
+  input.oninput = () => {
+    quickPickerState.query = input.value;
+    debouncedRerender();
   };
 
   input.onkeydown = (e) => {

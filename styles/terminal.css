@@ -1486,6 +1486,11 @@
   opacity: 0.4;
 }
 
+.fe-node.fe-cut {
+  opacity: 0.5;
+  font-style: italic;
+}
+
 .fe-node.fe-drop-target {
   background: color-mix(in srgb, var(--accent-color) 20%, transparent);
   outline: 1px dashed var(--accent-color);

@@ -486,7 +486,14 @@
     "noProjectFound": "No project found",
     "placeholder": "Search everywhere...",
     "noResult": "No results",
+    "noResultFor": "No results for \"{query}\"",
+    "searchHint": "Try a different search term or use a prefix (>, @, #, ~)",
+    "loadError": "Failed to load",
     "loading": "Loading...",
+    "badge": {
+      "current": "current",
+      "running": "running"
+    },
     "branch": {
       "current": "current"
     },
@@ -523,6 +530,9 @@
   "modal": {
     "confirm": "Confirm",
     "cancel": "Cancel"
+  },
+  "toast": {
+    "undo": "Undo"
   },
   "sessions": {
     "today": "Today",
@@ -878,6 +888,11 @@
     "noResults": "No results",
     "deleteMultipleConfirm": "Delete {count} items?",
     "selectedItems": "items selected",
+    "truncatedItems": "{count} more items hidden",
+    "renameOverwriteConfirm": "A file named \"{name}\" already exists. Overwrite?",
+    "overwrite": "Overwrite",
+    "cut": "Cut",
+    "pasteHere": "Paste here",
     "watchLimitWarning": "Large project: watching {count} paths. Explorer auto-refresh may be slower."
   },
   "quickActions": {

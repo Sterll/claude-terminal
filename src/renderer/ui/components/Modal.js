@@ -6,6 +6,9 @@
 const { escapeHtml } = require('../../utils/dom');
 const { t } = require('../../i18n');
 
+// Detect platform for button order convention
+const isWindows = typeof process !== 'undefined' ? process.platform === 'win32' : navigator.userAgent.includes('Windows');
+
 /**
  * Create a modal element
  * @param {Object} options
@@ -59,9 +62,9 @@ function createModal({ id, title, content, buttons = [], size = 'medium', onClos
     if (onClose) onClose();
   };
 
-  // Overlay click handler
+  // Backdrop click — use closest to properly detect clicks outside modal-content
   modal.onclick = (e) => {
-    if (e.target === modal) {
+    if (!e.target.closest('.modal')) {
       closeModal(modal);
       if (onClose) onClose();
     }
@@ -82,10 +85,25 @@ function createModal({ id, title, content, buttons = [], size = 'medium', onClos
 }
 
 /**
+ * Get all focusable elements within a container
+ */
+function getFocusableElements(container) {
+  return container.querySelectorAll(
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  );
+}
+
+/**
  * Show a modal
  * @param {HTMLElement} modal
  */
 function showModal(modal) {
+  // Lock body scroll
+  const scrollY = window.scrollY;
+  modal._prevOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
+  modal._scrollY = scrollY;
+
   document.body.appendChild(modal);
   requestAnimationFrame(() => {
     modal.classList.add('active');
@@ -97,7 +115,29 @@ function showModal(modal) {
     firstInput.focus();
   }
 
-  // Escape key handler — stored on modal for cleanup in closeModal()
+  // Focus trap — cycle Tab within the modal
+  const trapHandler = (e) => {
+    if (e.key !== 'Tab') return;
+    const focusable = getFocusableElements(modal);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else {
+      if (document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  };
+  modal._trapHandler = trapHandler;
+  document.addEventListener('keydown', trapHandler);
+
+  // Escape key handler
   const escHandler = (e) => {
     if (e.key === 'Escape') {
       closeModal(modal);
@@ -105,6 +145,44 @@ function showModal(modal) {
   };
   modal._escHandler = escHandler;
   document.addEventListener('keydown', escHandler);
+
+  // MutationObserver — resolve promise if modal is removed externally
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const removed of mutation.removedNodes) {
+        if (removed === modal || removed.contains?.(modal)) {
+          cleanupModal(modal);
+          observer.disconnect();
+          return;
+        }
+      }
+    }
+  });
+  if (modal.parentNode) {
+    observer.observe(modal.parentNode, { childList: true });
+  }
+  modal._observer = observer;
+}
+
+/**
+ * Internal cleanup — removes listeners without DOM removal
+ */
+function cleanupModal(modal) {
+  if (modal._escHandler) {
+    document.removeEventListener('keydown', modal._escHandler);
+    delete modal._escHandler;
+  }
+  if (modal._trapHandler) {
+    document.removeEventListener('keydown', modal._trapHandler);
+    delete modal._trapHandler;
+  }
+  if (modal._observer) {
+    modal._observer.disconnect();
+    delete modal._observer;
+  }
+  // Restore body scroll
+  document.body.style.overflow = modal._prevOverflow || '';
+  delete modal._prevOverflow;
 }
 
 /**
@@ -112,10 +190,7 @@ function showModal(modal) {
  * @param {HTMLElement} modal
  */
 function closeModal(modal) {
-  if (modal._escHandler) {
-    document.removeEventListener('keydown', modal._escHandler);
-    delete modal._escHandler;
-  }
+  cleanupModal(modal);
   modal.classList.remove('active');
   setTimeout(() => {
     if (modal.parentNode) {
@@ -154,6 +229,7 @@ function showConfirm({ title, message, confirmLabel = null, cancelLabel = null, 
     const finish = (value) => {
       if (resolved) return;
       resolved = true;
+      cleanupModal(overlay);
       overlay.classList.remove('active');
       setTimeout(() => overlay.remove(), 200);
       document.removeEventListener('keydown', keyHandler);
@@ -173,14 +249,18 @@ function showConfirm({ title, message, confirmLabel = null, cancelLabel = null, 
            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
          </svg>`;
 
+    // Platform button order: Windows = OK left, macOS = OK right
+    const cancelBtn = `<button class="confirm-btn-cancel">${escapeHtml(cancelLabel)}</button>`;
+    const okBtn = `<button class="confirm-btn-ok">${escapeHtml(confirmLabel)}</button>`;
+    const buttonsHtml = isWindows ? `${okBtn}${cancelBtn}` : `${cancelBtn}${okBtn}`;
+
     overlay.innerHTML = `
-      <div class="confirm-dialog${danger ? ' confirm-danger' : ''}">
+      <div class="confirm-dialog${danger ? ' confirm-danger' : ''}" role="alertdialog" aria-modal="true" aria-label="${escapeHtml(title)}">
         <div class="confirm-icon">${iconSvg}</div>
         <div class="confirm-title">${escapeHtml(title)}</div>
         <div class="confirm-message">${escapeHtml(message)}</div>
         <div class="confirm-actions">
-          <button class="confirm-btn-cancel">${escapeHtml(cancelLabel)}</button>
-          <button class="confirm-btn-ok">${escapeHtml(confirmLabel)}</button>
+          ${buttonsHtml}
         </div>
       </div>
     `;
@@ -188,8 +268,34 @@ function showConfirm({ title, message, confirmLabel = null, cancelLabel = null, 
     overlay.querySelector('.confirm-btn-cancel').onclick = () => finish(false);
     overlay.querySelector('.confirm-btn-ok').onclick = () => finish(true);
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) finish(false);
+      if (!e.target.closest('.confirm-dialog')) finish(false);
     });
+
+    // Lock body scroll
+    overlay._prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    // Focus trap for confirm dialog
+    const trapHandler = (e) => {
+      if (e.key !== 'Tab') return;
+      const focusable = getFocusableElements(overlay);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    overlay._trapHandler = trapHandler;
+    document.addEventListener('keydown', trapHandler);
 
     const keyHandler = (e) => {
       if (e.key === 'Escape') finish(false);
@@ -197,10 +303,31 @@ function showConfirm({ title, message, confirmLabel = null, cancelLabel = null, 
     };
     document.addEventListener('keydown', keyHandler);
 
+    // MutationObserver — resolve false if overlay removed externally
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const removed of mutation.removedNodes) {
+          if (removed === overlay || removed.contains?.(overlay)) {
+            observer.disconnect();
+            finish(false);
+            return;
+          }
+        }
+      }
+    });
+    overlay._observer = observer;
+
     document.body.appendChild(overlay);
+
+    observer.observe(document.body, { childList: true });
+
     requestAnimationFrame(() => {
       overlay.classList.add('active');
-      overlay.querySelector('.confirm-btn-cancel').focus();
+      // Focus the appropriate button (cancel on danger for safety, ok otherwise)
+      const focusBtn = danger
+        ? overlay.querySelector('.confirm-btn-cancel')
+        : overlay.querySelector('.confirm-btn-ok');
+      if (focusBtn) focusBtn.focus();
     });
   });
 }
