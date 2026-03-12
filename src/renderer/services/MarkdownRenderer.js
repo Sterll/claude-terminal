@@ -1320,6 +1320,20 @@ function findStableBlockBoundary(text) {
  */
 function attachInteractivity(container) {
   container.addEventListener('click', (e) => {
+    // ── External links → open in browser ──
+    const anchor = e.target.closest('a[href]');
+    if (anchor) {
+      const href = anchor.getAttribute('href');
+      if (href && /^https?:\/\//.test(href)) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (window.electron_api?.dialog?.openExternal) {
+          window.electron_api.dialog.openExternal(href);
+        }
+        return;
+      }
+    }
+
     const target = e.target.closest('[class]');
     if (!target) return;
 
