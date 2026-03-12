@@ -532,8 +532,8 @@
   padding: 12px 14px;
   overflow-x: auto;
   font-family: 'Cascadia Code', 'Fira Code', monospace;
-  font-size: 12px;
-  line-height: 1.6;
+  font-size: 12.5px;
+  line-height: 1.45;
 }
 
 .chat-code-block code {

@@ -73,7 +73,7 @@ code.line-numbers-off .code-line::before {
 
 /* ── Collapsible code blocks ── */
 .chat-code-block.collapsible.collapsed pre {
-  max-height: calc(1.6em * 30 + 24px); /* 30 lines * line-height + padding */
+  max-height: calc(1.45em * 30 + 24px); /* 30 lines * line-height + padding */
   overflow: hidden;
   position: relative;
 }
@@ -753,6 +753,17 @@ code.line-numbers-off .code-line::before {
   border: 1px solid rgba(255,255,255,0.1);
   flex-shrink: 0;
 }
+
+
+/* ══════════════════════════════════════════════
+   SYNTAX HIGHLIGHTING
+   ══════════════════════════════════════════════ */
+
+.syn-kw  { color: #c586c0; }              /* keywords — purple/pink */
+.syn-str { color: #ce9178; }              /* strings — warm orange */
+.syn-num { color: #b5cea8; }              /* numbers — soft green */
+.syn-fn  { color: #dcdcaa; }             /* functions — yellow */
+.syn-cmt { color: #6a9955; font-style: italic; }  /* comments — muted green */
 
 
 /* ══════════════════════════════════════════════
