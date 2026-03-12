@@ -28,6 +28,7 @@ const LANG_MAP = {
   go: 'go',
   java: 'java', cs: 'java', cpp: 'java', c: 'java', php: 'java',
   rb: 'ruby',
+  diff: 'diff',
 };
 
 // Comment patterns by language
@@ -135,5 +136,6 @@ function highlightMarkdown(code) {
 }
 
 module.exports = {
-  highlight
+  highlight,
+  LANG_MAP
 };

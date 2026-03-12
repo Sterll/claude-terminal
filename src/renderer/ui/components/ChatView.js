@@ -25,69 +25,12 @@ const EFFORT_OPTIONS = [
   { id: 'high', label: 'High', desc: t('chat.effortHigh') },
 ];
 
-// ── Markdown Renderer (using marked library) ──
+// ── Markdown Renderer (delegated to MarkdownRenderer service) ──
 
-const { marked } = require('marked');
-
-// Configure marked with custom renderer for chat styling (single-pass, no manual regex)
-let _markedConfigured = false;
-function ensureMarkedConfig() {
-  if (_markedConfigured) return;
-  _markedConfigured = true;
-  marked.use({
-    renderer: {
-      code({ text, lang }) {
-        const decoded = (text || '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
-        const highlighted = lang ? highlight(decoded, lang) : escapeHtml(decoded);
-        return `<div class="chat-code-block"><div class="chat-code-header"><span class="chat-code-lang">${escapeHtml(lang || 'text')}</span><button class="chat-code-copy" title="${t('common.copy')}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div><pre><code>${highlighted}</code></pre></div>`;
-      },
-      codespan({ text }) {
-        return `<code class="chat-inline-code">${escapeHtml(text)}</code>`;
-      },
-      table({ header, rows }) {
-        const safeAlign = (a) => ['left', 'center', 'right'].includes(a) ? a : 'left';
-        const parseCell = (text) => marked.parseInline(typeof text === 'string' ? text : String(text || ''));
-        const headerHtml = header.map(h => `<th style="text-align:${safeAlign(h.align)}">${parseCell(h.text)}</th>`).join('');
-        const rowsHtml = rows.map(row =>
-          `<tr>${row.map(cell => `<td style="text-align:${safeAlign(cell.align)}">${parseCell(cell.text)}</td>`).join('')}</tr>`
-        ).join('');
-        return `<div class="chat-table-wrapper"><table class="chat-table"><thead><tr>${headerHtml}</tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
-      },
-      link({ href, text }) {
-        const raw = (href || '').trim();
-        const safePrefixes = ['https://', 'http://', '#'];
-        const isSafe = safePrefixes.some(p => raw.startsWith(p));
-        const safeHref = isSafe ? escapeHtml(raw) : '#';
-        return `<a href="${safeHref}" class="chat-link" target="_blank" rel="noopener noreferrer">${escapeHtml(typeof text === 'string' ? text : String(text || ''))}</a>`;
-      },
-      paragraph({ text }) {
-        // Strip trailing <br> added by breaks:true before block elements (lists, headings...)
-        return `<p>${text.replace(/(<br\s*\/?>)+\s*$/, '')}</p>\n`;
-      }
-    },
-    breaks: true,
-    gfm: true
-  });
-  // Disable raw HTML passthrough (prevents <script>, <img onerror=...>, etc.)
-  marked.use({
-    renderer: {
-      html() { return ''; }
-    },
-    tokenizer: {
-      html() { return undefined; }
-    }
-  });
-}
+const MarkdownRenderer = require('../../services/MarkdownRenderer');
 
 function renderMarkdown(text) {
-  if (!text) return '';
-  ensureMarkedConfig();
-  try {
-    return marked.parse(text);
-  } catch (err) {
-    console.error('[ChatView] Markdown render failed:', err.message, '\nContent:', text.slice(0, 200));
-    return `<pre class="chat-markdown-fallback">${escapeHtml(text)}</pre>`;
-  }
+  return MarkdownRenderer.render(text);
 }
 
 function unescapeHtml(html) {
@@ -495,6 +438,9 @@ function createChatView(wrapperEl, project, options = {}) {
   const mentionDropdown = chatView.querySelector('.chat-mention-dropdown');
   const mentionChipsEl = chatView.querySelector('.chat-mention-chips');
   const followupSuggestionsEl = chatView.querySelector('.chat-followup-suggestions');
+
+  // ── Attach interactive markdown block handlers (sort, collapse, preview, etc.) ──
+  MarkdownRenderer.attachInteractivity(messagesEl);
 
   // ── Mention state ──
 
@@ -1660,16 +1606,7 @@ function createChatView(wrapperEl, project, options = {}) {
   // ── Delegated click handlers ──
 
   messagesEl.addEventListener('click', (e) => {
-    const copyBtn = e.target.closest('.chat-code-copy');
-    if (copyBtn) {
-      const code = copyBtn.closest('.chat-code-block')?.querySelector('code')?.textContent;
-      if (code) {
-        navigator.clipboard.writeText(code);
-        copyBtn.classList.add('copied');
-        setTimeout(() => copyBtn.classList.remove('copied'), 1500);
-      }
-      return;
-    }
+    // Note: copy, collapse, line-toggle, sort, preview buttons are handled by MarkdownRenderer.attachInteractivity()
 
     const thinkingHeader = e.target.closest('.chat-thinking-header');
     if (thinkingHeader) {
@@ -2386,6 +2323,8 @@ function createChatView(wrapperEl, project, options = {}) {
     if (indicator) indicator.remove();
   }
 
+  let _streamCache = null;
+
   function startStreamBlock() {
     removeThinkingIndicator();
     const el = document.createElement('div');
@@ -2395,6 +2334,7 @@ function createChatView(wrapperEl, project, options = {}) {
     scrollToBottom();
     currentStreamEl = el.querySelector('.chat-msg-content');
     currentStreamText = '';
+    _streamCache = MarkdownRenderer.createStreamCache();
     currentAssistantMsgEl = el;
     return el;
   }
@@ -2406,7 +2346,8 @@ function createChatView(wrapperEl, project, options = {}) {
       _streamRafId = requestAnimationFrame(() => {
         _streamRafId = null;
         if (currentStreamEl) {
-          currentStreamEl.innerHTML = renderMarkdown(currentStreamText) + '<span class="chat-cursor"></span>';
+          // Use incremental rendering: only re-render the last block
+          MarkdownRenderer.renderIncremental(currentStreamText, currentStreamEl, _streamCache);
           scrollToBottom();
         }
       });
@@ -2445,14 +2386,17 @@ function createChatView(wrapperEl, project, options = {}) {
 
   function finalizeStreamBlock() {
     if (currentStreamEl && currentStreamText) {
+      // Full re-render on finalization for consistency (no stable/active split)
       currentStreamEl.innerHTML = renderMarkdown(currentStreamText);
       injectInlineImages(currentStreamEl);
+      MarkdownRenderer.postProcess(currentStreamEl);
       // Capture for follow-up suggestions (plain text, truncated to avoid large memory)
       lastAssistantText = currentStreamText.slice(0, 1200);
     }
     if (currentStreamText) conversationHistory.push({ role: 'assistant', content: currentStreamText });
     currentStreamEl = null;
     currentStreamText = '';
+    _streamCache = null;
   }
 
   function applyToolColor(el, toolName) {
@@ -4113,6 +4057,7 @@ function createChatView(wrapperEl, project, options = {}) {
       }
 
       messagesEl.appendChild(fragment);
+      MarkdownRenderer.postProcess(messagesEl);
 
       if (idx < messages.length) {
         // Schedule next batch during idle time
