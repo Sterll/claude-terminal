@@ -18,7 +18,7 @@ const buildOptions = {
   sourcemap: true,
   minify: process.env.NODE_ENV === 'production',
   // Don't bundle electron - it's provided by the runtime
-  external: ['electron', 'dompurify'],
+  external: ['electron'],
   // Define to replace process.env references
   define: {
     'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development')
@@ -28,6 +28,17 @@ const buildOptions = {
   }
 };
 
+// Separate mermaid bundle (ESM, lazy-loaded at runtime)
+const mermaidBuildOptions = {
+  entryPoints: [path.join(__dirname, '..', 'node_modules', 'mermaid', 'dist', 'mermaid.core.mjs')],
+  bundle: true,
+  outfile: path.join(__dirname, '..', 'dist', 'mermaid.bundle.js'),
+  format: 'esm',
+  platform: 'browser',
+  target: 'chrome120',
+  minify: true,
+};
+
 async function build() {
   try {
     if (isWatch) {
@@ -35,8 +46,11 @@ async function build() {
       await ctx.watch();
       console.log('Watching for changes...');
     } else {
-      await esbuild.build(buildOptions);
-      console.log('Build complete: dist/renderer.bundle.js');
+      await Promise.all([
+        esbuild.build(buildOptions),
+        esbuild.build(mermaidBuildOptions),
+      ]);
+      console.log('Build complete: dist/renderer.bundle.js + dist/mermaid.bundle.js');
     }
   } catch (error) {
     console.error('Build failed:', error);
