@@ -1296,7 +1296,40 @@
     "effortLow": "Rapide, réflexion minimale",
     "effortMedium": "Équilibre vitesse & qualité",
     "effortHigh": "Raisonnement approfondi (défaut)",
-    "effortMax": "Effort maximum (Opus uniquement)"
+    "effortMax": "Effort maximum (Opus uniquement)",
+    "code": {
+      "showMore": "Afficher {count} lignes de plus",
+      "showLess": "Réduire",
+      "lineNumbers": "Numéros de ligne",
+      "extractFile": "Enregistrer dans un fichier"
+    },
+    "callout": {
+      "note": "Note",
+      "tip": "Astuce",
+      "important": "Important",
+      "warning": "Avertissement",
+      "caution": "Attention"
+    },
+    "table": {
+      "search": "Rechercher dans le tableau..."
+    },
+    "preview": {
+      "title": "Aperçu",
+      "code": "Code",
+      "open": "Ouvrir dans le navigateur",
+      "extract": "Enregistrer dans un fichier",
+      "desktop": "Bureau",
+      "tablet": "Tablette",
+      "mobile": "Mobile"
+    },
+    "mermaid": {
+      "loading": "Rendu du diagramme...",
+      "error": "Échec du rendu du diagramme"
+    },
+    "math": {
+      "loading": "Rendu de la formule...",
+      "error": "Échec du rendu de la formule"
+    }
   },
   "hooks": {
     "consent": {

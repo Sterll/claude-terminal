@@ -1296,7 +1296,40 @@
     "effortLow": "Fastest, minimal thinking",
     "effortMedium": "Balanced speed & quality",
     "effortHigh": "Deep reasoning (default)",
-    "effortMax": "Maximum effort (Opus only)"
+    "effortMax": "Maximum effort (Opus only)",
+    "code": {
+      "showMore": "Show {count} more lines",
+      "showLess": "Show less",
+      "lineNumbers": "Toggle line numbers",
+      "extractFile": "Save to file"
+    },
+    "callout": {
+      "note": "Note",
+      "tip": "Tip",
+      "important": "Important",
+      "warning": "Warning",
+      "caution": "Caution"
+    },
+    "table": {
+      "search": "Search table..."
+    },
+    "preview": {
+      "title": "Preview",
+      "code": "Code",
+      "open": "Open in browser",
+      "extract": "Save to file",
+      "desktop": "Desktop",
+      "tablet": "Tablet",
+      "mobile": "Mobile"
+    },
+    "mermaid": {
+      "loading": "Rendering diagram...",
+      "error": "Diagram render failed"
+    },
+    "math": {
+      "loading": "Rendering math...",
+      "error": "Math render failed"
+    }
   },
   "hooks": {
     "consent": {
