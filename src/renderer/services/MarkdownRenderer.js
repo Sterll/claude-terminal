@@ -223,6 +223,28 @@ function configure() {
       }
     }
   });
+
+  // Inline math: $...$ (single dollar, not escaped, not inside code)
+  marked.use({
+    extensions: [{
+      name: 'inlineMath',
+      level: 'inline',
+      start(src) {
+        const match = src.match(/\$/);
+        return match ? match.index : -1;
+      },
+      tokenizer(src) {
+        const match = src.match(/^\$([^\$\n]+?)\$/);
+        if (match) {
+          return { type: 'inlineMath', raw: match[0], text: match[1].trim() };
+        }
+        return undefined;
+      },
+      renderer(token) {
+        return `<span class="chat-math-inline" data-math-source="${escapeHtml(token.text)}">${escapeHtml(token.text)}</span>`;
+      }
+    }]
+  });
 }
 
 
@@ -873,6 +895,12 @@ function postProcess(container) {
   const previews = container.querySelectorAll('.chat-preview-container');
   const mermaidBlocks = container.querySelectorAll('.chat-mermaid-block');
   const mathBlocks = container.querySelectorAll('.chat-math-block');
+  const inlineMathEls = container.querySelectorAll('.chat-math-inline[data-math-source]');
+
+  // Render inline math with KaTeX
+  if (inlineMathEls.length > 0) {
+    initInlineMath(inlineMathEls);
+  }
 
   // If few blocks, initialize immediately
   const totalSpecial = previews.length + mermaidBlocks.length + mathBlocks.length;
@@ -940,7 +968,9 @@ function initMermaidBlocks(blocks) {
 
 async function loadMermaid() {
   try {
-    const mermaid = require('mermaid');
+    // Mermaid is ESM-only, must use dynamic import
+    const mod = await import('mermaid');
+    const mermaid = mod.default;
     mermaid.initialize({
       startOnLoad: false,
       theme: 'dark',
@@ -956,8 +986,8 @@ async function loadMermaid() {
       securityLevel: 'strict',
     });
     return mermaid;
-  } catch {
-    console.warn('[MarkdownRenderer] Mermaid not available');
+  } catch (err) {
+    console.warn('[MarkdownRenderer] Mermaid not available:', err.message);
     return null;
   }
 }
@@ -997,6 +1027,29 @@ async function loadKatex() {
     console.warn('[MarkdownRenderer] KaTeX not available');
     return null;
   }
+}
+
+function initInlineMath(elements) {
+  if (!_katexPromise) {
+    _katexPromise = loadKatex();
+  }
+  _katexPromise.then(katex => {
+    if (!katex) return;
+    elements.forEach(el => {
+      if (el.dataset.rendered) return;
+      el.dataset.rendered = 'true';
+      const source = el.dataset.mathSource;
+      if (!source) return;
+      try {
+        el.innerHTML = katex.renderToString(source, {
+          displayMode: false,
+          throwOnError: false,
+        });
+      } catch {
+        // Keep plain text fallback
+      }
+    });
+  });
 }
 
 
