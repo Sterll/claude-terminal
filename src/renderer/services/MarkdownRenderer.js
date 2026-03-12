@@ -13,6 +13,9 @@ const { t } = require('../i18n');
 const SPECIAL_LANGS = new Set([
   'mermaid', 'svg', 'math', 'latex', 'katex',
   'tree', 'filetree', 'terminal', 'console', 'output',
+  'timeline', 'steps', 'compare', 'links', 'tabs',
+  'metrics', 'api', 'endpoint', 'resource', 'eventflow',
+  'config', 'convars', 'command', 'cmd',
 ]);
 
 // Callout types: > [!TYPE]
@@ -88,6 +91,56 @@ function configure() {
         // Terminal output
         if (langLower === 'terminal' || langLower === 'console' || langLower === 'output') {
           return renderTerminalBlock(raw);
+        }
+
+        // Timeline / Steps
+        if (langLower === 'timeline' || langLower === 'steps') {
+          return renderTimelineBlock(raw);
+        }
+
+        // Comparison (Before/After)
+        if (langLower === 'compare') {
+          return renderCompareBlock(raw);
+        }
+
+        // Link Cards
+        if (langLower === 'links') {
+          return renderLinksBlock(raw);
+        }
+
+        // Tabs
+        if (langLower === 'tabs') {
+          return renderTabsBlock(raw);
+        }
+
+        // Metric Cards
+        if (langLower === 'metrics') {
+          return renderMetricsBlock(raw);
+        }
+
+        // API Endpoint Cards
+        if (langLower === 'api' || langLower === 'endpoint') {
+          return renderApiBlock(raw);
+        }
+
+        // FiveM Resource Card
+        if (langLower === 'resource') {
+          return renderResourceBlock(raw);
+        }
+
+        // Event Flow Diagram
+        if (langLower === 'eventflow') {
+          return renderEventFlowBlock(raw);
+        }
+
+        // Config / Convars Block
+        if (langLower === 'config' || langLower === 'convars') {
+          return renderConfigBlock(raw);
+        }
+
+        // Game Command Reference
+        if (langLower === 'command' || langLower === 'cmd') {
+          return renderCommandBlock(raw);
         }
 
         // ── Standard code block ──
@@ -497,6 +550,572 @@ function renderTerminalBlock(code) {
 
 
 // ══════════════════════════════════════════════
+// Timeline / Steps Renderer
+// ══════════════════════════════════════════════
+
+/**
+ * ```timeline or ```steps
+ * Format:
+ *   title: My Title
+ *   [x] Step done | Description
+ *   [>] Step active | Description
+ *   [ ] Step pending | Description
+ */
+function renderTimelineBlock(code) {
+  const lines = code.split('\n');
+  let title = '';
+  const steps = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const titleMatch = trimmed.match(/^title:\s*(.+)/i);
+    if (titleMatch) { title = titleMatch[1]; continue; }
+    const stepMatch = trimmed.match(/^\[([x>\ ])\]\s*(.+)/i);
+    if (stepMatch) {
+      const status = stepMatch[1] === 'x' ? 'done' : stepMatch[1] === '>' ? 'active' : 'pending';
+      const parts = stepMatch[2].split('|').map(s => s.trim());
+      steps.push({ title: parts[0], desc: parts[1] || '', status });
+    }
+  }
+
+  if (steps.length === 0) return `<pre><code>${escapeHtml(code)}</code></pre>`;
+
+  const titleHtml = title
+    ? `<div class="chat-timeline-header"><span class="chat-timeline-label">${escapeHtml(title)}</span></div>`
+    : '';
+
+  const badgeLabels = { done: 'Done', active: 'In Progress', pending: 'Pending' };
+  const stepsHtml = steps.map((step, i) => {
+    const lineEl = i < steps.length - 1 ? '<div class="tl-line"></div>' : '';
+    const descHtml = step.desc ? `<div class="tl-desc">${escapeHtml(step.desc)}</div>` : '';
+    return `<div class="tl-step ${step.status}">`
+      + `<div class="tl-rail"><div class="tl-dot ${step.status}"></div>${lineEl}</div>`
+      + `<div class="tl-content"><div class="tl-title">${escapeHtml(step.title)} <span class="tl-badge ${step.status}">${badgeLabels[step.status]}</span></div>${descHtml}</div>`
+      + `</div>`;
+  }).join('');
+
+  return `<div class="chat-timeline">${titleHtml}<div class="chat-timeline-body">${stepsHtml}</div></div>`;
+}
+
+
+// ══════════════════════════════════════════════
+// Comparison (Before/After) Renderer
+// ══════════════════════════════════════════════
+
+/**
+ * ```compare
+ * Format:
+ *   title: Refactoring title
+ *   --- before
+ *   old code
+ *   --- after
+ *   new code
+ */
+function renderCompareBlock(code) {
+  const lines = code.split('\n');
+  let title = '';
+  let beforeCode = '';
+  let afterCode = '';
+  let section = 'none';
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const titleMatch = trimmed.match(/^title:\s*(.+)/i);
+    if (titleMatch && section === 'none') { title = titleMatch[1]; continue; }
+    if (/^---\s*before\s*$/i.test(trimmed)) { section = 'before'; continue; }
+    if (/^---\s*after\s*$/i.test(trimmed)) { section = 'after'; continue; }
+    if (section === 'before') beforeCode += line + '\n';
+    if (section === 'after') afterCode += line + '\n';
+  }
+
+  beforeCode = beforeCode.trimEnd();
+  afterCode = afterCode.trimEnd();
+
+  const titleHtml = title
+    ? `<div class="chat-compare-header"><span class="chat-compare-label">${escapeHtml(title)}</span></div>`
+    : '';
+
+  const beforeIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
+  const afterIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+
+  return `<div class="chat-compare">`
+    + titleHtml
+    + `<div class="chat-compare-body">`
+    + `<div class="chat-compare-side before"><div class="chat-compare-side-header">${beforeIcon} Before</div><div class="chat-compare-code"><pre><code>${escapeHtml(beforeCode)}</code></pre></div></div>`
+    + `<div class="chat-compare-side after"><div class="chat-compare-side-header">${afterIcon} After</div><div class="chat-compare-code"><pre><code>${escapeHtml(afterCode)}</code></pre></div></div>`
+    + `</div></div>`;
+}
+
+
+// ══════════════════════════════════════════════
+// Link Cards Renderer
+// ══════════════════════════════════════════════
+
+/**
+ * ```links
+ * Format: title | description | url (one per line)
+ */
+function renderLinksBlock(code) {
+  const lines = code.split('\n').filter(l => l.trim());
+  const cards = lines.map(line => {
+    const parts = line.split('|').map(s => s.trim());
+    if (!parts[0]) return null;
+    return { title: parts[0], desc: parts[1] || '', url: parts[2] || parts[0] };
+  }).filter(Boolean);
+
+  if (cards.length === 0) return `<pre><code>${escapeHtml(code)}</code></pre>`;
+
+  const linkIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>';
+  const extIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+
+  return cards.map(card => {
+    const href = card.url.startsWith('http') ? card.url : `https://${card.url}`;
+    const displayUrl = card.url.replace(/^https?:\/\//, '');
+    return `<a class="chat-link-card" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">`
+      + `<div class="chat-link-card-icon">${linkIcon}</div>`
+      + `<div class="chat-link-card-body">`
+      + `<div class="chat-link-card-title">${escapeHtml(card.title)} ${extIcon}</div>`
+      + (card.desc ? `<div class="chat-link-card-desc">${escapeHtml(card.desc)}</div>` : '')
+      + `<div class="chat-link-card-url">${escapeHtml(displayUrl)}</div>`
+      + `</div></a>`;
+  }).join('');
+}
+
+
+// ══════════════════════════════════════════════
+// Tabs Block Renderer
+// ══════════════════════════════════════════════
+
+/**
+ * ```tabs
+ * Format:
+ *   --- Tab Name 1
+ *   content
+ *   --- Tab Name 2
+ *   content
+ */
+function renderTabsBlock(code) {
+  const lines = code.split('\n');
+  const tabs = [];
+  let currentTab = null;
+
+  for (const line of lines) {
+    const tabMatch = line.match(/^---\s*(.+?)\s*$/);
+    if (tabMatch) {
+      if (currentTab) tabs.push(currentTab);
+      currentTab = { title: tabMatch[1], content: '' };
+      continue;
+    }
+    if (currentTab) currentTab.content += line + '\n';
+  }
+  if (currentTab) tabs.push(currentTab);
+
+  if (tabs.length === 0) return `<pre><code>${escapeHtml(code)}</code></pre>`;
+
+  const id = 'tabs-' + Math.random().toString(36).slice(2, 8);
+
+  const buttonsHtml = tabs.map((tab, i) =>
+    `<button class="chat-tab-btn${i === 0 ? ' active' : ''}" data-tab-idx="${i}" data-tabs-id="${id}">${escapeHtml(tab.title)}</button>`
+  ).join('');
+
+  const panelsHtml = tabs.map((tab, i) => {
+    const content = tab.content.trimEnd();
+    const lang = tab.title.toLowerCase().replace(/[^a-z]/g, '');
+    const highlighted = lang ? highlight(content, lang) : escapeHtml(content);
+    return `<div class="chat-tab-panel${i === 0 ? ' active' : ''}" data-tab-idx="${i}" data-tabs-id="${id}"><pre><code>${highlighted}</code></pre></div>`;
+  }).join('');
+
+  return `<div class="chat-tabs-block" data-tabs-id="${id}">`
+    + `<div class="chat-tabs-nav">${buttonsHtml}</div>`
+    + panelsHtml
+    + `</div>`;
+}
+
+
+// ══════════════════════════════════════════════
+// Metric Cards Renderer
+// ══════════════════════════════════════════════
+
+/**
+ * ```metrics
+ * Format: label | value | trend | bar% | color (one per line)
+ * Colors: success, danger, info, warning, accent
+ */
+function renderMetricsBlock(code) {
+  const lines = code.split('\n').filter(l => l.trim());
+  const metrics = lines.map(line => {
+    const parts = line.split('|').map(s => s.trim());
+    if (parts.length < 2) return null;
+    return { label: parts[0], value: parts[1], trend: parts[2] || '', bar: parts[3] || '', color: parts[4] || 'accent' };
+  }).filter(Boolean);
+
+  if (metrics.length === 0) return `<pre><code>${escapeHtml(code)}</code></pre>`;
+
+  const cardsHtml = metrics.map(m => {
+    const trendClass = /^[+↑]/.test(m.trend) ? 'up' : /^[-↓]/.test(m.trend) ? 'down' : 'neutral';
+    const trendHtml = m.trend ? `<div class="chat-metric-trend ${trendClass}">${escapeHtml(m.trend)}</div>` : '';
+    const colorVar = m.color === 'accent' ? 'accent' : m.color;
+    const barHtml = m.bar ? `<div class="chat-metric-bar"><div class="chat-metric-bar-fill" style="width:${escapeHtml(m.bar)};background:var(--${escapeHtml(colorVar)})"></div></div>` : '';
+    return `<div class="chat-metric-card accent-${escapeHtml(m.color)}">`
+      + `<div class="chat-metric-label">${escapeHtml(m.label)}</div>`
+      + `<div class="chat-metric-value">${escapeHtml(m.value)}</div>`
+      + trendHtml + barHtml
+      + `</div>`;
+  }).join('');
+
+  return `<div class="chat-metrics-grid">${cardsHtml}</div>`;
+}
+
+
+// ══════════════════════════════════════════════
+// API Endpoint Card Renderer
+// ══════════════════════════════════════════════
+
+/**
+ * ```api or ```endpoint
+ * Format:
+ *   METHOD /path/{param}
+ *   Description text
+ *   ---params
+ *   name | type | required | description
+ *   ---responses
+ *   200 | Description
+ */
+function renderApiBlock(code) {
+  const lines = code.split('\n');
+  let method = '', url = '', description = '';
+  const params = [], responses = [];
+  let section = 'desc';
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (!method && /^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s+/i.test(trimmed)) {
+      const m = trimmed.match(/^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s+(.+)/i);
+      if (m) { method = m[1].toUpperCase(); url = m[2]; continue; }
+    }
+    if (/^---\s*params?/i.test(trimmed)) { section = 'params'; continue; }
+    if (/^---\s*resp/i.test(trimmed)) { section = 'responses'; continue; }
+
+    if (section === 'desc' && trimmed && method) {
+      description += (description ? ' ' : '') + trimmed;
+    } else if (section === 'params' && trimmed) {
+      const parts = trimmed.split('|').map(s => s.trim());
+      if (parts.length >= 2) params.push({ name: parts[0], type: parts[1], required: (parts[2] || '').toLowerCase() === 'required', desc: parts[3] || '' });
+    } else if (section === 'responses' && trimmed) {
+      const parts = trimmed.split('|').map(s => s.trim());
+      if (parts.length >= 2) responses.push({ status: parts[0], desc: parts[1] });
+    }
+  }
+
+  if (!method) return `<pre><code>${escapeHtml(code)}</code></pre>`;
+
+  const urlHtml = escapeHtml(url).replace(/\{(\w+)\}/g, '<span class="url-param">{$1}</span>');
+  const descHtml = description ? `<div class="chat-api-desc">${escapeHtml(description)}</div>` : '';
+
+  const paramsHtml = params.length > 0 ? `<div class="chat-api-params"><div class="chat-api-params-title">Parameters</div>`
+    + params.map(p => `<div class="chat-api-param">`
+      + `<span class="chat-api-param-name">${escapeHtml(p.name)}</span>`
+      + `<span class="chat-api-param-type">${escapeHtml(p.type)}</span>`
+      + (p.required ? '<span class="chat-api-param-required">required</span>' : '')
+      + (p.desc ? `<span class="chat-api-param-desc">\u2014 ${escapeHtml(p.desc)}</span>` : '')
+      + `</div>`).join('') + `</div>` : '';
+
+  const sClass = (s) => { const n = parseInt(s); return n >= 500 ? 's5xx' : n >= 400 ? 's4xx' : n >= 200 ? 's2xx' : ''; };
+  const responsesHtml = responses.length > 0 ? `<div class="chat-api-responses"><div class="chat-api-params-title">Responses</div>`
+    + responses.map(r => `<div class="chat-api-response-item"><span class="chat-api-status ${sClass(r.status)}">${escapeHtml(r.status)}</span>${escapeHtml(r.desc)}</div>`).join('') + `</div>` : '';
+
+  return `<div class="chat-api-card"><div class="chat-api-header"><span class="chat-api-method ${method.toLowerCase()}">${escapeHtml(method)}</span><span class="chat-api-url">${urlHtml}</span></div>${descHtml}${paramsHtml}${responsesHtml}</div>`;
+}
+
+
+// ══════════════════════════════════════════════
+// FiveM Resource Card Renderer
+// ══════════════════════════════════════════════
+
+/**
+ * ```resource
+ * Format: key: value (one per line)
+ * Keys: name, version, description, status, type, author, scripts, deps, error
+ */
+function renderResourceBlock(code) {
+  const props = {};
+  for (const line of code.split('\n')) {
+    const m = line.match(/^(\w+):\s*(.+)/);
+    if (m) props[m[1].toLowerCase()] = m[2].trim();
+  }
+
+  const name = props.name || 'unknown';
+  const version = props.version || '';
+  const desc = props.description || props.desc || '';
+  const status = (props.status || 'stopped').toLowerCase();
+  const type = props.type || '';
+  const author = props.author || '';
+  const scripts = props.scripts || '';
+  const deps = props.deps || props.dependencies || '';
+  const error = props.error || '';
+
+  const iconClass = type.includes('client') ? 'client' : type.includes('server') ? 'server' : 'shared';
+  const icon = iconClass === 'client' ? '\uD83D\uDCE6' : iconClass === 'server' ? '\uD83D\uDD0C' : '\u2699\uFE0F';
+
+  const statusMap = {
+    started: '<div class="chat-resource-status started"><span class="status-dot"></span>Started</div>',
+    error: '<div class="chat-resource-status error"><span class="status-dot"></span>Error</div>',
+  };
+  const statusHtml = statusMap[status] || '<div class="chat-resource-status stopped"><span class="status-dot"></span>Stopped</div>';
+
+  const versionHtml = version ? ` <span class="chat-resource-version">${escapeHtml(version)}</span>` : '';
+  const descHtml = desc ? `<div class="chat-resource-desc">${escapeHtml(desc)}</div>` : '';
+
+  const metaItems = [];
+  if (type) {
+    const tags = type.split(',').map(t => t.trim()).map(t =>
+      `<span class="chat-resource-tag ${t}">${escapeHtml(t)}</span>`
+    ).join(' ');
+    metaItems.push(['Type', tags]);
+  }
+  if (author) metaItems.push(['Author', escapeHtml(author)]);
+  if (scripts) metaItems.push(['Scripts', escapeHtml(scripts)]);
+  if (error) metaItems.push(['Error', `<span style="color:var(--danger);font-size:11px">${escapeHtml(error)}</span>`]);
+
+  const metaHtml = metaItems.length > 0
+    ? `<div class="chat-resource-body">${metaItems.map(([label, val]) =>
+      `<div class="chat-resource-meta"><span class="chat-resource-meta-label">${label}</span><span class="chat-resource-meta-value">${val}</span></div>`
+    ).join('')}</div>` : '';
+
+  const depsHtml = deps
+    ? `<div class="chat-resource-deps"><span class="chat-resource-deps-label">Deps</span>`
+      + deps.split(',').map(d => `<span class="chat-resource-dep">${escapeHtml(d.trim())}</span>`).join('') + `</div>`
+    : '';
+
+  return `<div class="chat-resource-card">`
+    + `<div class="chat-resource-header">`
+    + `<div class="chat-resource-icon ${iconClass}">${icon}</div>`
+    + `<div class="chat-resource-info"><div class="chat-resource-name">${escapeHtml(name)}${versionHtml}</div>${descHtml}</div>`
+    + statusHtml + `</div>`
+    + metaHtml + depsHtml + `</div>`;
+}
+
+
+// ══════════════════════════════════════════════
+// Event Flow Diagram Renderer
+// ══════════════════════════════════════════════
+
+/**
+ * ```eventflow
+ * Format:
+ *   title: Event Flow — Action Name
+ *   client | OpenInventory()
+ *   client -> server | TriggerServerEvent("event")
+ *   server | handler
+ *   nui --> client | NUI Callback (dashed)
+ */
+function renderEventFlowBlock(code) {
+  const lines = code.split('\n');
+  let title = '';
+  const steps = [];
+  const participants = {
+    client: { color: '#3b82f6', label: 'Client', cls: 'c' },
+    server: { color: '#a855f7', label: 'Server', cls: 's' },
+    nui: { color: '#22c55e', label: 'NUI', cls: 'n' },
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const titleMatch = trimmed.match(/^title:\s*(.+)/i);
+    if (titleMatch) { title = titleMatch[1]; continue; }
+    // Arrow: from -> to | label  or  from --> to | label (dashed)
+    const arrowMatch = trimmed.match(/^(\w+)\s*(-->|->)\s*(\w+)\s*\|\s*(.+)/i);
+    if (arrowMatch) {
+      steps.push({ type: 'arrow', from: arrowMatch[1].toLowerCase(), dashed: arrowMatch[2] === '-->', to: arrowMatch[3].toLowerCase(), label: arrowMatch[4] });
+      continue;
+    }
+    // Handler: participant | action
+    const handlerMatch = trimmed.match(/^(\w+)\s*\|\s*(.+)/i);
+    if (handlerMatch) {
+      steps.push({ type: 'handler', participant: handlerMatch[1].toLowerCase(), label: handlerMatch[2] });
+    }
+  }
+
+  if (steps.length === 0) return `<pre><code>${escapeHtml(code)}</code></pre>`;
+
+  const titleHtml = title ? `<div class="chat-ef-title">${escapeHtml(title)}</div>` : '';
+
+  const usedP = new Set();
+  steps.forEach(s => {
+    if (s.type === 'arrow') { usedP.add(s.from); usedP.add(s.to); }
+    if (s.type === 'handler') usedP.add(s.participant);
+  });
+  const pList = ['client', 'server', 'nui'].filter(p => usedP.has(p));
+
+  const headsHtml = pList.map(p => {
+    const info = participants[p] || { cls: 'c', label: p };
+    return `<span class="chat-ef-head ${info.cls}">${escapeHtml(info.label)}</span>`;
+  }).join('');
+
+  let stepNum = 0;
+  const stepsHtml = steps.map(step => {
+    if (step.type === 'handler') {
+      const info = participants[step.participant] || { cls: 'c' };
+      return `<div class="chat-ef-step handler"><span class="chat-ef-badge ${info.cls}">${escapeHtml(step.label)}</span></div>`;
+    }
+    stepNum++;
+    const fromCls = (participants[step.from] || { cls: 'c' }).cls;
+    const toCls = (participants[step.to] || { cls: 'c' }).cls;
+    const fromLabel = (participants[step.from] || { label: step.from }).label;
+    const toLabel = (participants[step.to] || { label: step.to }).label;
+    const dashClass = step.dashed ? ' dashed' : '';
+    return `<div class="chat-ef-step arrow${dashClass}">`
+      + `<span class="chat-ef-num">${stepNum}</span>`
+      + `<span class="chat-ef-from ${fromCls}">${escapeHtml(fromLabel)}</span>`
+      + `<span class="chat-ef-arrow${dashClass}">\u2192</span>`
+      + `<span class="chat-ef-to ${toCls}">${escapeHtml(toLabel)}</span>`
+      + `<span class="chat-ef-label">${escapeHtml(step.label)}</span>`
+      + `</div>`;
+  }).join('');
+
+  return `<div class="chat-event-flow">${titleHtml}<div class="chat-ef-heads">${headsHtml}</div><div class="chat-ef-body">${stepsHtml}</div></div>`;
+}
+
+
+// ══════════════════════════════════════════════
+// Config / Convars Block Renderer
+// ══════════════════════════════════════════════
+
+/**
+ * ```config or ```convars
+ * Format:
+ *   title: server.cfg — Convars
+ *   icon: ⚙️
+ *   key | value | type | description | badge
+ */
+function renderConfigBlock(code) {
+  const lines = code.split('\n');
+  let title = '', icon = '\u2699\uFE0F';
+  const rows = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const titleMatch = trimmed.match(/^title:\s*(.+)/i);
+    if (titleMatch) { title = titleMatch[1]; continue; }
+    const iconMatch = trimmed.match(/^icon:\s*(.+)/i);
+    if (iconMatch) { icon = iconMatch[1]; continue; }
+    const parts = trimmed.split('|').map(s => s.trim());
+    if (parts.length >= 2) {
+      rows.push({ key: parts[0], value: parts[1], type: parts[2] || '', desc: parts[3] || '', badge: parts[4] || '' });
+    }
+  }
+
+  if (rows.length === 0) return `<pre><code>${escapeHtml(code)}</code></pre>`;
+
+  const headerHtml = title
+    ? `<div class="chat-config-header"><span class="chat-config-header-icon">${escapeHtml(icon)}</span>${escapeHtml(title)}</div>`
+    : '';
+
+  const rowsHtml = rows.map(r => {
+    const typeHtml = r.type ? `<span class="chat-config-type">${escapeHtml(r.type)}</span>` : '';
+    const descHtml = r.desc ? `<span class="chat-config-desc">${escapeHtml(r.desc)}</span>` : '';
+    const badgeHtml = r.badge ? `<span class="chat-config-badge ${escapeHtml(r.badge)}">${escapeHtml(r.badge)}</span>` : '';
+    return `<div class="chat-config-row">`
+      + `<span class="chat-config-key">${escapeHtml(r.key)}</span>`
+      + `<span class="chat-config-value">${escapeHtml(r.value)}</span>`
+      + typeHtml + descHtml + badgeHtml + `</div>`;
+  }).join('');
+
+  return `<div class="chat-config-block">${headerHtml}${rowsHtml}</div>`;
+}
+
+
+// ══════════════════════════════════════════════
+// Game Command Reference Renderer
+// ══════════════════════════════════════════════
+
+/**
+ * ```command or ```cmd
+ * Format:
+ *   /commandname
+ *   permission: ace.permission
+ *   description: What it does
+ *   syntax: /cmd <required> [optional]
+ *   ---params
+ *   name | type | description
+ *   ---examples
+ *   /cmd arg | Description
+ */
+function renderCommandBlock(code) {
+  const lines = code.split('\n');
+  let cmdName = '', permission = '', description = '', syntax = '';
+  const params = [], examples = [];
+  let section = 'meta';
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (/^---\s*params?/i.test(trimmed)) { section = 'params'; continue; }
+    if (/^---\s*examples?/i.test(trimmed)) { section = 'examples'; continue; }
+
+    if (section === 'meta') {
+      if (trimmed.startsWith('/') && !cmdName) { cmdName = trimmed; continue; }
+      const permMatch = trimmed.match(/^perm(?:ission)?:\s*(.+)/i);
+      if (permMatch) { permission = permMatch[1]; continue; }
+      const descMatch = trimmed.match(/^desc(?:ription)?:\s*(.+)/i);
+      if (descMatch) { description = descMatch[1]; continue; }
+      const synMatch = trimmed.match(/^syntax:\s*(.+)/i);
+      if (synMatch) { syntax = synMatch[1]; continue; }
+    } else if (section === 'params') {
+      const parts = trimmed.split('|').map(s => s.trim());
+      if (parts.length >= 2) params.push({ name: parts[0], type: parts[1], desc: parts[2] || '' });
+    } else if (section === 'examples') {
+      const parts = trimmed.split('|').map(s => s.trim());
+      examples.push({ code: parts[0], desc: parts[1] || '' });
+    }
+  }
+
+  if (!cmdName) return `<pre><code>${escapeHtml(code)}</code></pre>`;
+
+  const cmdParts = cmdName.match(/^(\/?)(.+)/);
+  const prefix = cmdParts ? cmdParts[1] : '/';
+  const name = cmdParts ? cmdParts[2] : cmdName;
+
+  const permHtml = permission
+    ? `<span class="chat-gcmd-perm"><span class="chat-gcmd-perm-icon">\uD83D\uDD12</span>${escapeHtml(permission)}</span>`
+    : '';
+  const descHtml = description ? `<div class="chat-gcmd-desc">${escapeHtml(description)}</div>` : '';
+
+  let syntaxHtml = '';
+  if (syntax) {
+    const colored = escapeHtml(syntax)
+      .replace(/&lt;(\w[\w\s|]*)&gt;/g, '<span class="syn-required">&lt;$1&gt;</span>')
+      .replace(/\[([^\]]+)\]/g, '<span class="syn-optional">[$1]</span>')
+      .replace(/^(\/?\w+)/, '<span class="syn-cmd">$1</span>');
+    syntaxHtml = `<div class="chat-gcmd-syntax">${colored}</div>`;
+  }
+
+  const paramsHtml = params.length > 0
+    ? `<div class="chat-gcmd-params-title">Parameters</div>`
+    + params.map(p => `<div class="chat-gcmd-param">`
+      + `<span class="chat-gcmd-param-name">${escapeHtml(p.name)}</span>`
+      + `<span class="chat-gcmd-param-type">${escapeHtml(p.type)}</span>`
+      + (p.desc ? `<span class="chat-gcmd-param-desc">\u2014 ${escapeHtml(p.desc)}</span>` : '')
+      + `</div>`).join('') : '';
+
+  const examplesHtml = examples.length > 0
+    ? `<div class="chat-gcmd-example"><div class="chat-gcmd-example-title">Examples</div>`
+    + examples.map(ex =>
+      `<div class="chat-gcmd-example-code">${escapeHtml(ex.code)}</div>`
+      + (ex.desc ? `<div class="chat-gcmd-example-desc">${escapeHtml(ex.desc)}</div>` : '')
+    ).join('') + `</div>` : '';
+
+  return `<div class="chat-gcmd-card">`
+    + `<div class="chat-gcmd-header"><span class="chat-gcmd-name"><span class="cmd-prefix">${escapeHtml(prefix)}</span>${escapeHtml(name)}</span>${permHtml}</div>`
+    + `<div class="chat-gcmd-body">${descHtml}${syntaxHtml}${paramsHtml}${examplesHtml}</div>`
+    + `</div>`;
+}
+
+
+// ══════════════════════════════════════════════
 // Details / Spoiler HTML handler
 // ══════════════════════════════════════════════
 
@@ -737,6 +1356,20 @@ function attachInteractivity(container) {
     if (target.closest('.chat-details-summary')) {
       const details = target.closest('.chat-details');
       if (details) details.classList.toggle('open');
+      return;
+    }
+
+    // ── Tab switching ──
+    if (target.classList.contains('chat-tab-btn')) {
+      const idx = target.dataset.tabIdx;
+      const block = target.closest('.chat-tabs-block');
+      if (block) {
+        block.querySelectorAll('.chat-tab-btn').forEach(b => b.classList.remove('active'));
+        block.querySelectorAll('.chat-tab-panel').forEach(p => p.classList.remove('active'));
+        target.classList.add('active');
+        const panel = block.querySelector(`.chat-tab-panel[data-tab-idx="${idx}"]`);
+        if (panel) panel.classList.add('active');
+      }
       return;
     }
 

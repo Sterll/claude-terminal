@@ -57,6 +57,16 @@ The chat UI supports enhanced markdown blocks. Use them when relevant to make re
 - \`\`\`svg\`\`\` — Inline rendered SVG with code toggle
 - \`\`\`tree\`\`\` or \`\`\`filetree\`\`\` — Collapsible file tree visualization
 - \`\`\`terminal\`\`\` or \`\`\`console\`\`\` or \`\`\`output\`\`\` — Terminal-styled output block
+- \`\`\`timeline\`\`\` or \`\`\`steps\`\`\` — Progress/timeline visualization with steps ([x] done, [>] active, [ ] pending)
+- \`\`\`compare\`\`\` — Side-by-side before/after comparison blocks
+- \`\`\`links\`\`\` — Styled link cards grid (title | description | url)
+- \`\`\`tabs\`\`\` — Tabbed content panels (--- Tab Name to separate tabs)
+- \`\`\`metrics\`\`\` — Metric/stat cards grid (label | value | trend | bar% | color)
+- \`\`\`api\`\`\` or \`\`\`endpoint\`\`\` — API endpoint documentation card (METHOD /path, params, responses)
+- \`\`\`resource\`\`\` — FiveM resource info card (name, version, status, scripts, deps)
+- \`\`\`eventflow\`\`\` — Event flow diagram (participant -> participant | event description)
+- \`\`\`config\`\`\` or \`\`\`convars\`\`\` — Configuration/convars table (key | value | type | description)
+- \`\`\`command\`\`\` or \`\`\`cmd\`\`\` — Game command reference card (syntax, params, examples)
 
 ### GitHub-Style Callouts
 > [!NOTE] for informational notes (blue)
