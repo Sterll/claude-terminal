@@ -230,14 +230,21 @@ class UpdaterService {
       // Proceed with install anyway
     }
 
-    // Force quit (bypass minimize to tray)
-    const { setQuitting } = require('../windows/MainWindow');
-    setQuitting(true);
-
     // Stop periodic checks before quitting
     this.stopPeriodicCheck();
 
-    autoUpdater.quitAndInstall();
+    // Set quitting flag only right before install — if quitAndInstall throws,
+    // the app remains functional (tray icon, reopen from tray, etc.)
+    try {
+      const { setQuitting } = require('../windows/MainWindow');
+      setQuitting(true);
+      autoUpdater.quitAndInstall();
+    } catch (err) {
+      console.error('quitAndInstall failed:', err);
+      const { setQuitting } = require('../windows/MainWindow');
+      setQuitting(false);
+      this.safeSend('update-status', { status: 'error', error: err.message });
+    }
   }
 }
 
