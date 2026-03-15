@@ -64,7 +64,15 @@
     "filterExe": "Ejecutables",
     "filterAll": "Todos los archivos",
     "settings": "Ajustes",
-    "cloudUpload": "Subir a la nube..."
+    "cloudUpload": "Subir a la nube...",
+    "searchPlaceholder": "Buscar proyectos...",
+    "emptyGuide": "Añade un proyecto para empezar con Claude Code",
+    "addFirstProject": "Añadir un proyecto",
+    "orCreateFolder": "o crear una carpeta",
+    "sectionGit": "Git",
+    "sectionOpen": "Abrir",
+    "sectionCloud": "Nube",
+    "sectionProject": "Proyecto"
   },
   "terminals": {
     "noTerminals": "Sin terminal para este proyecto",
@@ -263,7 +271,32 @@
     "prTitleRequired": "El título del PR es obligatorio",
     "prCreated": "PR #{number} creado",
     "noProjects": "Sin proyectos",
-    "pruneWorktrees": "Limpiar worktrees obsoletos"
+    "pruneWorktrees": "Limpiar worktrees obsoletos",
+    "searchBranches": "Buscar ramas...",
+    "ours": "Nuestra",
+    "theirs": "La suya",
+    "resolveOurs": "Mantener nuestra versión",
+    "resolveTheirs": "Mantener su versión",
+    "resolvedWith": "Resuelto con {strategy}",
+    "orphanCommitWarning": "{count} commit(s) quedarán inalcanzables."
+  },
+  "gitErrors": {
+    "notARepo": "Esta carpeta no es un repositorio Git. Inicializa uno con 'git init'.",
+    "notSymbolicRef": "La referencia no es válida. La rama puede haber sido eliminada.",
+    "pathNotFound": "El archivo o ruta especificado no se encontró en el repositorio.",
+    "invalidBranchName": "Nombre de rama inválido. Evita espacios y caracteres especiales.",
+    "localChangesOverwrite": "Tienes cambios sin commitear que se sobrescribirían. Haz commit o stash primero.",
+    "branchNotMerged": "Esta rama tiene cambios sin fusionar. Usa la eliminación forzada si estás seguro.",
+    "remoteRefNotFound": "La rama remota no fue encontrada. Puede haber sido eliminada.",
+    "remoteNotFound": "No se puede conectar al repositorio remoto. Verifica la URL.",
+    "authFailed": "Autenticación fallida. Verifica tus credenciales o token.",
+    "networkError": "Error de red. Verifica tu conexión a internet.",
+    "pushRejected": "Push rechazado. Haz pull de los últimos cambios primero.",
+    "mergeConflict": "Conflictos de fusión detectados. Resuélvelos antes de continuar.",
+    "unrelatedHistories": "No se pueden fusionar historiales sin ancestro común.",
+    "lockFailed": "No se puede bloquear la referencia. Otra operación git puede estar en curso.",
+    "alreadyExists": "Este elemento ya existe. Elige otro nombre.",
+    "nothingToCommit": "Nada que commitear. El árbol de trabajo está limpio."
   },
   "dashboard": {
     "openFolder": "Abrir carpeta",
@@ -744,6 +777,7 @@
     "newMcp": "Nuevo MCP",
     "tabClaude": "Claude",
     "moreTabs": "Más",
+    "hiddenTabsCount": "{count} ocultas",
     "separatorTools": "Herramientas",
     "separatorAI": "IA",
     "separatorExtensions": "Extensiones",
