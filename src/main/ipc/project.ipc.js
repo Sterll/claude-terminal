@@ -91,8 +91,13 @@ function registerProjectHandlers() {
     }
 
     const tmp = projectsFile + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
-    fs.renameSync(tmp, projectsFile);
+    try {
+      fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+      fs.renameSync(tmp, projectsFile);
+    } catch (writeErr) {
+      try { fs.unlinkSync(tmp); } catch (_) {}
+      throw writeErr;
+    }
     return { ok: true };
   });
 }

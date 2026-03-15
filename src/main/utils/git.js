@@ -12,23 +12,46 @@ const _activeProcesses = new Set();
 
 /**
  * Build safe.directory args array for git
+ * Includes worktree parent repo when a .git file (not dir) points to a parent.
  * @param {string} cwd - Working directory
- * @returns {string[]} - Args array ['-c', 'safe.directory=...']
+ * @returns {string[]} - Args array ['-c', 'safe.directory=...', ...]
  */
 function safeDirArgs(cwd) {
-  return ['-c', `safe.directory=${cwd.replace(/\\/g, '/')}`];
+  const cwdNorm = cwd.replace(/\\/g, '/');
+  const args = ['-c', `safe.directory=${cwdNorm}`];
+  try {
+    const gitPath = path.join(cwd, '.git');
+    const stat = fs.statSync(gitPath);
+    if (stat.isFile()) {
+      // Worktree: .git is a file containing "gitdir: <path>"
+      const content = fs.readFileSync(gitPath, 'utf8').trim();
+      const match = content.match(/^gitdir:\s*(.+)$/);
+      if (match) {
+        const gitDir = path.resolve(cwd, match[1]);
+        // Parent repo is typically two levels up from the worktree gitdir
+        // e.g. gitdir points to /repo/.git/worktrees/<name>
+        const parentRepo = path.resolve(gitDir, '..', '..', '..').replace(/\\/g, '/');
+        if (parentRepo !== cwdNorm) {
+          args.push('-c', `safe.directory=${parentRepo}`);
+        }
+      }
+    }
+  } catch (_) {
+    // Not a worktree or .git doesn't exist — ignore
+  }
+  return args;
 }
 
 /**
  * Execute a git command in a specific directory using execFile (no shell injection)
  * @param {string} cwd - Working directory
- * @param {string|string[]} args - Git command arguments (string parsed by split, or array)
+ * @param {string|string[]} args - Git command arguments as array (preferred) or space-separated string (simple commands only)
  * @param {number} timeout - Timeout in ms (default: 10000)
  * @returns {Promise<string|null>} - Command output or null on error
  */
 function execGit(cwd, args, timeout = 10000) {
   return new Promise((resolve) => {
-    const argsArray = Array.isArray(args) ? args : args.match(/(?:[^\s"]+|"[^"]*")+/g).map(a => a.replace(/^"|"$/g, ''));
+    const argsArray = Array.isArray(args) ? args : args.split(' ');
     const fullArgs = [...safeDirArgs(cwd), ...argsArray];
     const child = execFile('git', fullArgs, { cwd, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout) => {
       if (timer) clearTimeout(timer);
@@ -918,8 +941,10 @@ async function getCommitHistory(projectPath, { skip = 0, limit = 30, branch = ''
  * @returns {Promise<string>} - Raw diff output
  */
 async function getFileDiff(projectPath, filePath, staged = false) {
-  const stagedFlag = staged ? '--cached ' : '';
-  const diff = await execGit(projectPath, `diff ${stagedFlag}-- "${filePath}"`, 10000);
+  const args = ['diff'];
+  if (staged) args.push('--cached');
+  args.push('--', filePath);
+  const diff = await execGit(projectPath, args, 10000);
   return diff || '';
 }
 
@@ -930,7 +955,7 @@ async function getFileDiff(projectPath, filePath, staged = false) {
  * @returns {Promise<string>} - Commit detail output
  */
 async function getCommitDetail(projectPath, commitHash) {
-  const output = await execGit(projectPath, `show --stat --format="commit %H%nAuthor: %an <%ae>%nDate:   %aI%n%n    %s%n%n    %b" ${commitHash}`, 10000);
+  const output = await execGit(projectPath, ['show', '--stat', '--format=commit %H%nAuthor: %an <%ae>%nDate:   %aI%n%n    %s%n%n    %b', commitHash], 10000);
   return output || '';
 }
 
@@ -1215,8 +1240,9 @@ async function detectWorktree(projectPath) {
  * @returns {Promise<string>} - Diff output
  */
 async function diffWorktreeBranches(projectPath, branch1, branch2, filePath = '') {
-  const fileArg = filePath ? ` -- "${filePath}"` : '';
-  const diff = await execGit(projectPath, `diff ${branch1}...${branch2}${fileArg}`, 15000);
+  const args = ['diff', `${branch1}...${branch2}`];
+  if (filePath) args.push('--', filePath);
+  const diff = await execGit(projectPath, args, 15000);
   if (diff === null) throw new Error(`git diff failed for ${branch1}...${branch2}`);
   return diff;
 }
