@@ -37,6 +37,7 @@ let renameActivePath = null;
 
 // Drag & drop state
 let draggedPaths = [];
+let _dragListenersAttached = false;
 
 // Keyboard cut/paste state
 let cutPaths = [];
@@ -979,7 +980,28 @@ async function moveItems(sourcePaths, targetDir) {
     if (isDescendant(sourcePath, targetDir)) continue;
     if (path.dirname(sourcePath) === targetDir) continue;
     if (!isPathSafe(destPath)) continue;
-    if (fs.existsSync(destPath)) continue;
+
+    // If destination already exists, ask user to confirm overwrite
+    if (fs.existsSync(destPath)) {
+      const overwrite = await showConfirm({
+        title: t('fileExplorer.rename') || 'Move',
+        message: (t('fileExplorer.renameOverwriteConfirm') || 'A file named "{name}" already exists. Overwrite?').replace('{name}', baseName),
+        confirmLabel: t('fileExplorer.overwrite') || 'Overwrite',
+        danger: true,
+      });
+      if (!overwrite) continue;
+      // Remove existing target before move
+      try {
+        const destStat = fs.statSync(destPath);
+        if (destStat.isDirectory()) {
+          fs.rmSync(destPath, { recursive: true, force: true });
+        } else {
+          fs.unlinkSync(destPath);
+        }
+      } catch (e) {
+        continue;
+      }
+    }
 
     try {
       fs.renameSync(sourcePath, destPath);
@@ -1135,89 +1157,93 @@ function attachListeners() {
     }
   };
 
-  // Drag & drop (event delegation)
-  treeEl.addEventListener('dragstart', (e) => {
-    const node = e.target.closest('.fe-node');
-    if (!node || node.classList.contains('fe-truncated')) return;
+  // Drag & drop (event delegation) — attach only once to avoid listener accumulation
+  if (!_dragListenersAttached) {
+    _dragListenersAttached = true;
 
-    const nodePath = node.dataset.path;
+    treeEl.addEventListener('dragstart', (e) => {
+      const node = e.target.closest('.fe-node');
+      if (!node || node.classList.contains('fe-truncated')) return;
 
-    // If dragging a selected item, drag all selected items
-    if (selectedFiles.has(nodePath)) {
-      draggedPaths = [...selectedFiles];
-    } else {
-      draggedPaths = [nodePath];
-    }
+      const nodePath = node.dataset.path;
 
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', draggedPaths.join('\n'));
-    node.classList.add('fe-dragging');
-
-    // Mark all dragged items
-    if (draggedPaths.length > 1) {
-      for (const dp of draggedPaths) {
-        const el = treeEl.querySelector(`.fe-node[data-path="${CSS.escape(dp)}"]`);
-        if (el) el.classList.add('fe-dragging');
+      // If dragging a selected item, drag all selected items
+      if (selectedFiles.has(nodePath)) {
+        draggedPaths = [...selectedFiles];
+      } else {
+        draggedPaths = [nodePath];
       }
-    }
-  });
 
-  treeEl.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', draggedPaths.join('\n'));
+      node.classList.add('fe-dragging');
 
-    const node = e.target.closest('.fe-node');
-    if (!node) return;
+      // Mark all dragged items
+      if (draggedPaths.length > 1) {
+        for (const dp of draggedPaths) {
+          const el = treeEl.querySelector(`.fe-node[data-path="${CSS.escape(dp)}"]`);
+          if (el) el.classList.add('fe-dragging');
+        }
+      }
+    });
 
-    const isDir = node.dataset.isDir === 'true';
-    if (isDir) {
-      // Remove previous drop target
-      const prev = treeEl.querySelector('.fe-drop-target');
-      if (prev) prev.classList.remove('fe-drop-target');
-      node.classList.add('fe-drop-target');
-    }
-  });
+    treeEl.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
 
-  treeEl.addEventListener('dragleave', (e) => {
-    const node = e.target.closest('.fe-node');
-    if (node) node.classList.remove('fe-drop-target');
-  });
+      const node = e.target.closest('.fe-node');
+      if (!node) return;
 
-  treeEl.addEventListener('drop', (e) => {
-    e.preventDefault();
+      const isDir = node.dataset.isDir === 'true';
+      if (isDir) {
+        // Remove previous drop target
+        const prev = treeEl.querySelector('.fe-drop-target');
+        if (prev) prev.classList.remove('fe-drop-target');
+        node.classList.add('fe-drop-target');
+      }
+    });
 
-    // Clean up
-    const dropTarget = treeEl.querySelector('.fe-drop-target');
-    if (dropTarget) dropTarget.classList.remove('fe-drop-target');
+    treeEl.addEventListener('dragleave', (e) => {
+      const node = e.target.closest('.fe-node');
+      if (node) node.classList.remove('fe-drop-target');
+    });
 
-    const node = e.target.closest('.fe-node');
-    if (!node) return;
+    treeEl.addEventListener('drop', (e) => {
+      e.preventDefault();
 
-    const targetPath = node.dataset.path;
-    const isDir = node.dataset.isDir === 'true';
+      // Clean up
+      const dropTarget = treeEl.querySelector('.fe-drop-target');
+      if (dropTarget) dropTarget.classList.remove('fe-drop-target');
 
-    if (!isDir || !draggedPaths.length) return;
+      const node = e.target.closest('.fe-node');
+      if (!node) return;
 
-    // Validate moves
-    const validPaths = draggedPaths.filter(p =>
-      p !== targetPath &&
-      !isDescendant(p, targetPath) &&
-      path.dirname(p) !== targetPath
-    );
+      const targetPath = node.dataset.path;
+      const isDir = node.dataset.isDir === 'true';
 
-    if (validPaths.length > 0) {
-      moveItems(validPaths, targetPath);
-    }
-  });
+      if (!isDir || !draggedPaths.length) return;
 
-  treeEl.addEventListener('dragend', () => {
-    // Clean all drag states
-    const dragging = treeEl.querySelectorAll('.fe-dragging');
-    for (const el of dragging) el.classList.remove('fe-dragging');
-    const dropTargets = treeEl.querySelectorAll('.fe-drop-target');
-    for (const el of dropTargets) el.classList.remove('fe-drop-target');
-    draggedPaths = [];
-  });
+      // Validate moves
+      const validPaths = draggedPaths.filter(p =>
+        p !== targetPath &&
+        !isDescendant(p, targetPath) &&
+        path.dirname(p) !== targetPath
+      );
+
+      if (validPaths.length > 0) {
+        moveItems(validPaths, targetPath);
+      }
+    });
+
+    treeEl.addEventListener('dragend', () => {
+      // Clean all drag states
+      const dragging = treeEl.querySelectorAll('.fe-dragging');
+      for (const el of dragging) el.classList.remove('fe-dragging');
+      const dropTargets = treeEl.querySelectorAll('.fe-drop-target');
+      for (const el of dropTargets) el.classList.remove('fe-drop-target');
+      draggedPaths = [];
+    });
+  }
 
   // Header buttons
   const btnCollapse = document.getElementById('btn-collapse-explorer');
