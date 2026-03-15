@@ -581,7 +581,7 @@ async function renderSettingsTab(initialTab = 'general') {
       <div class="settings-content">
         <!-- General Tab -->
         <div class="settings-panel ${initialTab === 'general' ? 'active' : ''}" data-panel="general">
-          <div class="settings-group">
+          <div class="settings-group" data-section="appearance">
             <div class="settings-group-title">${t('settings.appearance')}</div>
             <div class="settings-card">
               <div class="settings-row">
@@ -630,7 +630,7 @@ async function renderSettingsTab(initialTab = 'general') {
               </div>
             </div>
           </div>
-          <div class="settings-group">
+          <div class="settings-group" data-section="behavior">
             <div class="settings-group-title">${t('settings.system')}</div>
             <div class="settings-card">
             <div class="settings-toggle-row">
@@ -724,7 +724,7 @@ async function renderSettingsTab(initialTab = 'general') {
             </div>
             </div>
           </div>
-          <div class="settings-group">
+          <div class="settings-group" data-section="integration">
             <div class="settings-group-title">${t('settings.explorerGroup')}</div>
             <div class="settings-card">
               <div class="settings-toggle-row">
@@ -739,7 +739,7 @@ async function renderSettingsTab(initialTab = 'general') {
               </div>
             </div>
           </div>
-          <div class="settings-group">
+          <div class="settings-group" data-section="telemetry">
             <div class="settings-group-title">${t('settings.telemetryGroup')}</div>
             <div class="settings-card">
               <div class="settings-toggle-row">
@@ -753,7 +753,7 @@ async function renderSettingsTab(initialTab = 'general') {
                 </label>
               </div>
               ${settings.telemetryEnabled ? `
-              <div style="border-top: 1px solid var(--border-color); margin-top: 8px; padding-top: 8px;">
+              <div class="settings-card-section-divider">
                 <div class="settings-toggle-row">
                   <div class="settings-toggle-label">
                     <div>${t('settings.telemetryCategoryApp')}</div>

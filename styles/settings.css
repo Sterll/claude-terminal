@@ -2586,3 +2586,41 @@
   font-size: var(--font-xs);
   padding: 3px 6px;
 }
+
+/* ── Settings section visual hierarchy ── */
+.settings-group[data-section="appearance"] {
+  border-left: 3px solid var(--accent);
+  padding-left: 12px;
+}
+
+.settings-group[data-section="behavior"] {
+  border-left: 3px solid var(--info);
+  padding-left: 12px;
+}
+
+.settings-group[data-section="integration"] {
+  border-left: 3px solid var(--success);
+  padding-left: 12px;
+}
+
+.settings-group[data-section="telemetry"] {
+  border-left: 3px solid var(--text-muted);
+  padding-left: 12px;
+}
+
+.settings-group[data-section="tabs"] {
+  border-left: 3px solid var(--info);
+  padding-left: 12px;
+}
+
+.settings-group[data-section="cloud"] {
+  border-left: 3px solid var(--warning);
+  padding-left: 12px;
+}
+
+/* Inline divider inside settings cards */
+.settings-card-section-divider {
+  border-top: 1px solid var(--border-color);
+  margin-top: 8px;
+  padding-top: 8px;
+}
