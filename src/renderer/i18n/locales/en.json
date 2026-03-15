@@ -1799,7 +1799,14 @@
     "saveQuery": "Save query",
     "savedQueryName": "Query name",
     "savedQueryNamePlaceholder": "e.g. Users with orders",
-    "deleteSavedQuery": "Delete saved query"
+    "deleteSavedQuery": "Delete saved query",
+    "export": "Export",
+    "exportTitle": "Export data",
+    "exportSuccess": "Data exported successfully",
+    "exportNoData": "No data to export",
+    "selected": "selected",
+    "deleteSelected": "Delete selected rows",
+    "deleteSelectedConfirm": "Are you sure you want to delete {count} row(s)?"
   },
   "mdViewer": {
     "tableOfContents": "Table of Contents",

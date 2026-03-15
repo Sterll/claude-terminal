@@ -153,18 +153,12 @@
   display: flex;
   gap: 4px;
   flex-shrink: 0;
-  opacity: 0;
-  transform: translateX(4px);
-  transition: all 0.2s ease;
+  opacity: 0.4;
+  transition: opacity 0.15s ease;
 }
-.database-card:hover .database-card-actions {
-  opacity: 1;
-  transform: translateX(0);
-}
-/* Always show on touch / selected */
+.database-card:hover .database-card-actions,
 .database-card.selected .database-card-actions {
   opacity: 1;
-  transform: translateX(0);
 }
 
 /* ========== ACTION BUTTONS ========== */
@@ -517,6 +511,18 @@
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
 }
+.db-browser-table-rows {
+  font-size: 9px;
+  color: var(--text-muted);
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+.db-browser-table-item.active .db-browser-table-rows {
+  color: var(--accent);
+  opacity: 0.7;
+}
 
 /* ===== MAIN PANEL ===== */
 .db-browser-main {
@@ -821,6 +827,7 @@
 }
 .db-grid-th,
 .db-grid thead th {
+  position: relative;
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   font-weight: 600;
@@ -942,7 +949,7 @@
   position: relative;
 }
 .db-grid-row-delete {
-  display: none;
+  display: flex;
   position: absolute;
   inset: 0;
   align-items: center;
@@ -952,7 +959,8 @@
   cursor: pointer;
   color: var(--danger);
   padding: 0;
-  transition: background 0.1s;
+  opacity: 0;
+  transition: opacity 0.1s, background 0.1s;
 }
 .db-grid-row-delete svg {
   width: 12px;
@@ -962,7 +970,7 @@
   background: rgba(239, 68, 68, 0.2);
 }
 .db-grid tbody tr:hover .db-grid-row-delete {
-  display: flex;
+  opacity: 1;
 }
 .db-grid tbody tr:hover .db-grid-row-idx {
   display: none;
@@ -2055,4 +2063,116 @@
   border-radius: 1px;
   background: var(--warning);
   flex-shrink: 0;
+}
+
+/* ========== EXPORT DROPDOWN ========== */
+.db-export-wrap {
+  position: relative;
+}
+.db-export-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  min-width: 80px;
+  overflow: hidden;
+}
+.db-export-menu.open {
+  display: block;
+}
+.db-export-option {
+  display: block;
+  width: 100%;
+  padding: 6px 14px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.1s;
+}
+.db-export-option:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* ========== FK VISUALIZATION ========== */
+.db-col-chip.fk {
+  border-color: rgba(99, 102, 241, 0.25);
+  background: rgba(99, 102, 241, 0.06);
+}
+.db-col-fk {
+  font-size: 0.5625rem;
+  font-weight: 800;
+  color: #818cf8;
+  letter-spacing: 0.3px;
+}
+.db-col-fk-ref {
+  font-size: 9px;
+  color: #818cf8;
+  opacity: 0.8;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+.db-col-fk-ref:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+/* ========== MULTIPLE ROW SELECTION ========== */
+.db-grid-checkbox-col {
+  width: 32px;
+  min-width: 32px;
+  max-width: 32px;
+  text-align: center;
+  padding: 5px 4px !important;
+  cursor: default;
+}
+.db-grid-checkbox-col input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.db-grid tbody tr.selected > td {
+  background: rgba(217, 119, 6, 0.06);
+}
+.db-grid tbody tr.selected:hover > td {
+  background: rgba(217, 119, 6, 0.1);
+}
+.db-browser-selection-badge {
+  font-size: var(--font-2xs);
+  color: var(--accent);
+  font-weight: 600;
+  padding: 2px 8px;
+  background: var(--accent-dim);
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+/* ========== COLUMN RESIZE ========== */
+.db-grid-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  z-index: 3;
+  transition: background 0.1s;
+}
+.db-grid-resize-handle:hover,
+.db-grid-resize-handle:active {
+  background: var(--accent);
+}
+.database-results-table th {
+  position: relative;
 }

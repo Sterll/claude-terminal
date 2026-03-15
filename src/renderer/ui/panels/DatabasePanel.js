@@ -57,6 +57,11 @@ let panelState = {
   browserSearchTerm: '',
   browserSearchDebounce: null,
   _blurCommitTimer: null, // Timer ID for pending blur commit
+  browserTableRowCounts: {},  // { tableName: number }
+  browserColumnWidths: {},    // { tableName: { colName: widthPx } }
+  queryResultColumnWidths: {}, // { colName: widthPx }
+  browserSelectedRows: new Set(),
+  browserLastSelectedRow: null,
 };
 
 function init(context) {
@@ -317,13 +322,17 @@ function renderSchema(container) {
           <span class="db-browser-count">${filteredTables.length}</span>
         </div>
         <div class="db-browser-table-list" id="db-browser-table-list">
-          ${filteredTables.map(table => `
+          ${filteredTables.map(table => {
+            const rc = panelState.browserTableRowCounts[table.name];
+            const rcBadge = rc !== undefined ? `<span class="db-browser-table-rows" title="${rc} rows">${formatRowCount(rc)}</span>` : '';
+            return `
             <div class="db-browser-table-item ${table.name === selectedTable ? 'active' : ''}" data-table="${escapeHtml(table.name)}">
               <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13" class="db-browser-table-icon"><path d="M3 3h18v18H3V3zm2 4v4h6V7H5zm8 0v4h6V7h-6zm-8 6v4h6v-4H5zm8 0v4h6v-4h-6z"/></svg>
               <span class="db-browser-table-name">${escapeHtml(table.name)}</span>
+              ${rcBadge}
               <span class="db-browser-table-cols">${table.columns.length}</span>
-            </div>
-          `).join('')}
+            </div>`;
+          }).join('')}
         </div>
       </div>
       <div class="db-browser-main">
@@ -353,10 +362,14 @@ function renderBrowserDataPanel(tableName, tableMeta, isMongo, columnLabel) {
   // Column info strip
   const colsHtml = tableMeta.columns.map(col => {
     const pkClass = col.primaryKey ? ' pk' : '';
-    return `<span class="db-col-chip${pkClass}" title="${escapeHtml(col.type)}${col.primaryKey ? ' (PK)' : ''}${col.nullable ? ' NULL' : ''}">
+    const fkClass = col.foreignKey ? ' fk' : '';
+    const fkTitle = col.foreignKey ? ` FK \u2192 ${col.foreignKey.table}(${col.foreignKey.column})` : '';
+    return `<span class="db-col-chip${pkClass}${fkClass}" title="${escapeHtml(col.type)}${col.primaryKey ? ' (PK)' : ''}${col.nullable ? ' NULL' : ''}${fkTitle}">
       ${col.primaryKey ? '<span class="db-col-pk">PK</span>' : ''}
+      ${col.foreignKey ? `<span class="db-col-fk">FK</span>` : ''}
       ${escapeHtml(col.name)}
       <span class="db-col-type">${escapeHtml(col.type)}</span>
+      ${col.foreignKey ? `<span class="db-col-fk-ref" data-fk-table="${escapeHtml(col.foreignKey.table)}">\u2192 ${escapeHtml(col.foreignKey.table)}</span>` : ''}
     </span>`;
   }).join('');
 
@@ -370,21 +383,31 @@ function renderBrowserDataPanel(tableName, tableMeta, isMongo, columnLabel) {
     gridHtml = `<div class="db-browser-loading">${t('database.browserNoRows')}</div>`;
   } else {
     const cols = data.columns || [];
+    const selAll = panelState.browserSelectedRows.size > 0 && panelState.browserSelectedRows.size === data.rows.length;
+    const selSome = panelState.browserSelectedRows.size > 0 && !selAll;
     gridHtml = `
       <div class="db-grid-wrapper">
         <table class="db-grid">
           <thead><tr>
+            <th class="db-grid-checkbox-col"><input type="checkbox" class="db-grid-select-all" id="db-grid-select-all" ${selAll ? 'checked' : ''} ${selSome ? 'data-indeterminate' : ''}></th>
             <th class="db-grid-row-num">#</th>
-            ${cols.map(col => {
-              const isSorted = sortCol === col;
-              const arrow = isSorted ? (sortDir === 'ASC' ? ' &#9650;' : ' &#9660;') : '';
-              return `<th class="db-grid-th ${isSorted ? 'sorted' : ''}" data-col="${escapeHtml(col)}">${escapeHtml(col)}${arrow}</th>`;
-            }).join('')}
+            ${(() => {
+              const storedWidths = panelState.browserColumnWidths[tableName] || {};
+              return cols.map(col => {
+                const isSorted = sortCol === col;
+                const arrow = isSorted ? (sortDir === 'ASC' ? ' &#9650;' : ' &#9660;') : '';
+                const w = storedWidths[col];
+                const widthStyle = w ? ` style="width:${w}px;min-width:${w}px"` : '';
+                return `<th class="db-grid-th ${isSorted ? 'sorted' : ''}" data-col="${escapeHtml(col)}"${widthStyle}>${escapeHtml(col)}${arrow}<div class="db-grid-resize-handle" data-resize-col="${escapeHtml(col)}"></div></th>`;
+              }).join('');
+            })()}
           </tr></thead>
           <tbody>
             ${data.rows.map((row, ri) => {
               const globalIdx = page * pageSize + ri + 1;
-              return `<tr data-row="${ri}">
+              const isSelected = panelState.browserSelectedRows.has(ri);
+              return `<tr data-row="${ri}" class="${isSelected ? 'selected' : ''}">
+                <td class="db-grid-checkbox-col"><input type="checkbox" class="db-grid-row-checkbox" data-row="${ri}" ${isSelected ? 'checked' : ''}></td>
                 <td class="db-grid-row-num"><span class="db-grid-row-idx">${globalIdx}</span><button class="db-grid-row-delete" data-row="${ri}" title="${t('database.browserDeleteRow')}"><svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button></td>
                 ${cols.map(col => {
                   const val = row[col];
@@ -419,6 +442,11 @@ function renderBrowserDataPanel(tableName, tableMeta, isMongo, columnLabel) {
         <div class="db-browser-toolbar-left">
           <span class="db-browser-table-title">${escapeHtml(tableName)}</span>
           <span class="db-browser-row-info">${totalCount > 0 ? `${fromRow}-${toRow} / ${totalCount}` : ''}</span>
+          ${panelState.browserSelectedRows.size > 0 ? `
+            <span class="db-browser-selection-badge">${panelState.browserSelectedRows.size} ${t('database.selected')}</span>
+            <button class="db-browser-btn" id="db-browser-delete-selected" title="${t('database.deleteSelected')}">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+            </button>` : ''}
         </div>
         <div class="db-browser-toolbar-search">
           <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
@@ -434,6 +462,15 @@ function renderBrowserDataPanel(tableName, tableMeta, isMongo, columnLabel) {
           <button class="db-browser-btn" id="db-browser-add-row" title="${t('database.browserAddRow')}">
             <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
           </button>
+          <div class="db-export-wrap">
+            <button class="db-browser-btn" id="db-browser-export" title="${t('database.export')}">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            </button>
+            <div class="db-export-menu" id="db-browser-export-menu">
+              <button class="db-export-option" data-browser-export="csv">CSV</button>
+              <button class="db-export-option" data-browser-export="json">JSON</button>
+            </div>
+          </div>
           <div class="db-browser-pagination">
             <button class="db-browser-btn" id="db-browser-prev" ${page <= 0 ? 'disabled' : ''}>
               <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
@@ -478,6 +515,8 @@ function bindBrowserEvents(container) {
         panelState.browserEditingCell = null;
         panelState.browserPendingEdits.clear();
         panelState.browserSearchTerm = '';
+        panelState.browserSelectedRows = new Set();
+        panelState.browserLastSelectedRow = null;
         renderContent();
         loadTableData(tableName);
       }
@@ -527,9 +566,9 @@ function bindBrowserEvents(container) {
 
   // Pagination
   const prevBtn = container.querySelector('#db-browser-prev');
-  if (prevBtn) prevBtn.onclick = () => { panelState.browserPage--; loadTableData(panelState.browserSelectedTable); };
+  if (prevBtn) prevBtn.onclick = () => { panelState.browserPage--; panelState.browserSelectedRows = new Set(); panelState.browserLastSelectedRow = null; loadTableData(panelState.browserSelectedTable); };
   const nextBtn = container.querySelector('#db-browser-next');
-  if (nextBtn) nextBtn.onclick = () => { panelState.browserPage++; loadTableData(panelState.browserSelectedTable); };
+  if (nextBtn) nextBtn.onclick = () => { panelState.browserPage++; panelState.browserSelectedRows = new Set(); panelState.browserLastSelectedRow = null; loadTableData(panelState.browserSelectedTable); };
 
   // Column sort
   container.querySelectorAll('.db-grid-th').forEach(th => {
@@ -609,6 +648,89 @@ function bindBrowserEvents(container) {
       deleteRow(rowIdx);
     };
   });
+
+  // Export button (browser)
+  const exportBtn = container.querySelector('#db-browser-export');
+  const exportMenu = container.querySelector('#db-browser-export-menu');
+  if (exportBtn && exportMenu) {
+    exportBtn.onclick = (e) => {
+      e.stopPropagation();
+      exportMenu.classList.toggle('open');
+    };
+  }
+  container.querySelectorAll('[data-browser-export]').forEach(btn => {
+    btn.onclick = () => {
+      exportMenu && exportMenu.classList.remove('open');
+      exportResults(btn.dataset.browserExport, panelState.browserData, panelState.browserSelectedTable);
+    };
+  });
+
+  // Select all checkbox
+  const selectAllCb = container.querySelector('#db-grid-select-all');
+  if (selectAllCb) {
+    if (selectAllCb.hasAttribute('data-indeterminate')) {
+      selectAllCb.indeterminate = true;
+    }
+    selectAllCb.onchange = () => {
+      const data = panelState.browserData;
+      if (selectAllCb.checked && data && data.rows) {
+        panelState.browserSelectedRows = new Set(data.rows.map((_, i) => i));
+      } else {
+        panelState.browserSelectedRows = new Set();
+      }
+      panelState.browserLastSelectedRow = null;
+      renderContent();
+    };
+  }
+
+  // Individual row checkboxes
+  container.querySelectorAll('.db-grid-row-checkbox').forEach(cb => {
+    cb.onclick = (e) => e.stopPropagation();
+    cb.onchange = (e) => {
+      const rowIdx = parseInt(cb.dataset.row);
+      if (e.shiftKey && panelState.browserLastSelectedRow !== null) {
+        const start = Math.min(panelState.browserLastSelectedRow, rowIdx);
+        const end = Math.max(panelState.browserLastSelectedRow, rowIdx);
+        for (let i = start; i <= end; i++) panelState.browserSelectedRows.add(i);
+      } else if (cb.checked) {
+        panelState.browserSelectedRows.add(rowIdx);
+      } else {
+        panelState.browserSelectedRows.delete(rowIdx);
+      }
+      panelState.browserLastSelectedRow = rowIdx;
+      renderContent();
+    };
+  });
+
+  // Delete selected rows
+  const deleteSelectedBtn = container.querySelector('#db-browser-delete-selected');
+  if (deleteSelectedBtn) {
+    deleteSelectedBtn.onclick = () => deleteSelectedRows();
+  }
+
+  // FK navigation — click FK ref to jump to referenced table
+  container.querySelectorAll('.db-col-fk-ref').forEach(el => {
+    el.onclick = (e) => {
+      e.stopPropagation();
+      const targetTable = el.dataset.fkTable;
+      if (targetTable && targetTable !== panelState.browserSelectedTable) {
+        panelState.browserSelectedTable = targetTable;
+        panelState.browserPage = 0;
+        panelState.browserSortCol = null;
+        panelState.browserSortDir = 'ASC';
+        panelState.browserData = null;
+        panelState.browserEditingCell = null;
+        panelState.browserSearchTerm = '';
+        panelState.browserSelectedRows = new Set();
+        panelState.browserLastSelectedRow = null;
+        renderContent();
+        loadTableData(targetTable);
+      }
+    };
+  });
+
+  // Column resize
+  setupColumnResize(container, 'browserColumnWidths', panelState.browserSelectedTable);
 }
 
 async function commitCellEdit(input) {
@@ -822,6 +944,64 @@ async function deleteRow(rowIdx) {
   }
 }
 
+async function deleteSelectedRows() {
+  const selected = panelState.browserSelectedRows;
+  if (selected.size === 0) return;
+
+  const confirmed = await showConfirm({
+    title: t('database.deleteSelected'),
+    message: t('database.deleteSelectedConfirm', { count: selected.size }),
+    confirmLabel: t('common.delete') || 'Delete',
+    danger: true
+  });
+  if (!confirmed) return;
+
+  // Delete rows in reverse index order to keep indices valid
+  const indices = Array.from(selected).sort((a, b) => b - a);
+  for (const idx of indices) {
+    await deleteRow(idx);
+  }
+  panelState.browserSelectedRows = new Set();
+  panelState.browserLastSelectedRow = null;
+  loadTableData(panelState.browserSelectedTable);
+}
+
+function setupColumnResize(container, stateKey, tableName) {
+  container.querySelectorAll('.db-grid-resize-handle').forEach(handle => {
+    handle.onmousedown = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const th = handle.closest('th');
+      if (!th) return;
+      const col = handle.dataset.resizeCol;
+      const startX = e.clientX;
+      const startWidth = th.offsetWidth;
+
+      const onMouseMove = (moveEvt) => {
+        const delta = moveEvt.clientX - startX;
+        const newWidth = Math.max(60, startWidth + delta);
+        th.style.width = newWidth + 'px';
+        th.style.minWidth = newWidth + 'px';
+      };
+
+      const onMouseUp = () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        const finalWidth = th.offsetWidth;
+        if (stateKey === 'browserColumnWidths') {
+          if (!panelState.browserColumnWidths[tableName]) panelState.browserColumnWidths[tableName] = {};
+          panelState.browserColumnWidths[tableName][col] = finalWidth;
+        } else {
+          panelState.queryResultColumnWidths[col] = finalWidth;
+        }
+      };
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    };
+  });
+}
+
 async function loadTableData(tableName) {
   if (!tableName) return;
   const state = require('../../state');
@@ -930,6 +1110,7 @@ async function loadSchema(id) {
     state.setDatabaseSchema(id, { tables: result.tables });
     buildAutocompleteIndex();
     if (panelState.activeSubTab === 'schema') renderContent();
+    loadTableRowCounts(id);
   }
 }
 
@@ -1013,6 +1194,50 @@ function formatRelativeTime(timestamp) {
   if (days < 7) return `${days}d`;
   const date = new Date(timestamp);
   return `${date.getDate()}/${date.getMonth() + 1}`;
+}
+
+function formatRowCount(count) {
+  if (count === null || count === undefined) return '';
+  if (count >= 1000000) return (count / 1000000).toFixed(1).replace('.0', '') + 'M';
+  if (count >= 1000) return (count / 1000).toFixed(1).replace('.0', '') + 'k';
+  return String(count);
+}
+
+async function loadTableRowCounts(connectionId) {
+  const state = require('../../state');
+  const conn = state.getDatabaseConnection(connectionId);
+  if (!conn) return;
+  if (conn.type === 'redis' || conn.type === 'mongodb') return;
+
+  const schema = state.getDatabaseSchema(connectionId);
+  if (!schema || !schema.tables) return;
+
+  const counts = {};
+  const dbType = conn.type;
+  const BATCH = 10;
+
+  try {
+    for (let i = 0; i < schema.tables.length; i += BATCH) {
+      const batch = schema.tables.slice(i, i + BATCH);
+      const results = await Promise.all(batch.map(table => {
+        const escaped = escapeIdentifier(table.name, dbType);
+        return ctx.api.database.executeQuery({
+          id: connectionId,
+          sql: `SELECT COUNT(*) as cnt FROM ${escaped}`,
+          limit: 1
+        }).catch(() => null);
+      }));
+      results.forEach((result, idx) => {
+        if (result && result.rows && result.rows[0]) {
+          const val = Object.values(result.rows[0])[0];
+          counts[batch[idx].name] = typeof val === 'number' ? val : parseInt(val) || 0;
+        }
+      });
+    }
+  } catch (_) { /* ignore */ }
+
+  panelState.browserTableRowCounts = counts;
+  if (panelState.activeSubTab === 'schema') renderContent();
 }
 
 // ==================== Save Query Modal ====================
@@ -1422,6 +1647,15 @@ function renderQuery(container) {
         resultsHtml = `<div class="db-query-success">
           <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
           ${t('database.querySuccess', { count: queryResult.rowCount || 0, duration: queryResult.duration || 0 })}${stmtInfo}
+          <div class="db-export-wrap" style="margin-left:auto">
+            <button class="db-browser-btn" id="db-query-export" title="${t('database.export')}">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            </button>
+            <div class="db-export-menu" id="db-query-export-menu">
+              <button class="db-export-option" data-query-export="csv">CSV</button>
+              <button class="db-export-option" data-query-export="json">JSON</button>
+            </div>
+          </div>
         </div>`;
         resultsHtml += buildResultsTable(queryResult);
       }
@@ -1626,6 +1860,82 @@ function renderQuery(container) {
       renderContent();
     };
   });
+
+  // Export button (query results)
+  const queryExportBtn = document.getElementById('db-query-export');
+  const queryExportMenu = document.getElementById('db-query-export-menu');
+  if (queryExportBtn && queryExportMenu) {
+    queryExportBtn.onclick = (e) => {
+      e.stopPropagation();
+      queryExportMenu.classList.toggle('open');
+    };
+  }
+  container.querySelectorAll('[data-query-export]').forEach(btn => {
+    btn.onclick = () => {
+      queryExportMenu && queryExportMenu.classList.remove('open');
+      const result = state.getQueryResult(activeId);
+      exportResults(btn.dataset.queryExport, result, 'query-results');
+    };
+  });
+
+  // Column resize (query results)
+  const resultsWrapper = container.querySelector('.database-results-wrapper');
+  if (resultsWrapper) {
+    setupColumnResize(resultsWrapper, 'queryResultColumnWidths', null);
+  }
+}
+
+async function exportResults(format, data, sourceName) {
+  if (!data || !data.columns || !data.rows || data.rows.length === 0) {
+    ctx.showToast({ type: 'warning', title: t('database.exportNoData') });
+    return;
+  }
+
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const defaultName = `${sourceName || 'query-results'}-${dateStr}.${format}`;
+  const { fs } = window.electron_nodeModules;
+
+  if (format === 'csv') {
+    const header = data.columns.join(',');
+    const rows = data.rows.map(row =>
+      data.columns.map(col => {
+        const val = row[col];
+        if (val === null || val === undefined) return '';
+        const str = String(val);
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+          return '"' + str.replace(/"/g, '""') + '"';
+        }
+        return str;
+      }).join(',')
+    );
+    const csvContent = [header, ...rows].join('\n');
+
+    const filePath = await ctx.api.dialog.saveFileDialog({
+      defaultPath: defaultName,
+      title: t('database.exportTitle'),
+      filters: [{ name: 'CSV', extensions: ['csv'] }]
+    });
+    if (filePath) {
+      fs.writeFileSync(filePath, '\uFEFF' + csvContent, 'utf8');
+      ctx.showToast({ type: 'success', title: t('database.exportSuccess') });
+    }
+  } else {
+    const jsonData = data.rows.map(row => {
+      const obj = {};
+      for (const col of data.columns) obj[col] = row[col];
+      return obj;
+    });
+
+    const filePath = await ctx.api.dialog.saveFileDialog({
+      defaultPath: defaultName,
+      title: t('database.exportTitle'),
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    });
+    if (filePath) {
+      fs.writeFileSync(filePath, JSON.stringify(jsonData, null, 2), 'utf8');
+      ctx.showToast({ type: 'success', title: t('database.exportSuccess') });
+    }
+  }
 }
 
 function buildResultsTable(result) {
@@ -1633,9 +1943,12 @@ function buildResultsTable(result) {
     return '';
   }
 
+  const storedWidths = panelState.queryResultColumnWidths;
   let html = `<div class="database-results-wrapper"><table class="database-results-table"><thead><tr>`;
   for (const col of result.columns) {
-    html += `<th>${escapeHtml(String(col))}</th>`;
+    const w = storedWidths[col];
+    const widthStyle = w ? ` style="width:${w}px;min-width:${w}px"` : '';
+    html += `<th${widthStyle}>${escapeHtml(String(col))}<div class="db-grid-resize-handle" data-resize-col="${escapeHtml(String(col))}"></div></th>`;
   }
   html += `</tr></thead><tbody>`;
 

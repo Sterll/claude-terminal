@@ -1799,7 +1799,14 @@
     "saveQuery": "Sauvegarder la requête",
     "savedQueryName": "Nom de la requête",
     "savedQueryNamePlaceholder": "ex: Utilisateurs avec commandes",
-    "deleteSavedQuery": "Supprimer la requête"
+    "deleteSavedQuery": "Supprimer la requête",
+    "export": "Exporter",
+    "exportTitle": "Exporter les données",
+    "exportSuccess": "Données exportées avec succès",
+    "exportNoData": "Aucune donnée à exporter",
+    "selected": "sélectionnée(s)",
+    "deleteSelected": "Supprimer les lignes sélectionnées",
+    "deleteSelectedConfirm": "Êtes-vous sûr de vouloir supprimer {count} ligne(s) ?"
   },
   "mdViewer": {
     "tableOfContents": "Table des matières",
