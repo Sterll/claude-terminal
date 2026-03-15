@@ -216,6 +216,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     stageFiles: (params) => ipcRenderer.invoke('git-stage-files', params),
     commit: (params) => ipcRenderer.invoke('git-commit', params),
     generateCommitMessage: (params) => ipcRenderer.invoke('git-generate-commit-message', params),
+    generateMultiCommit: (params) => ipcRenderer.invoke('git-generate-multi-commit', params),
     createBranch: (params) => ipcRenderer.invoke('git-create-branch', params),
     deleteBranch: (params) => ipcRenderer.invoke('git-delete-branch', params),
     commitHistory: (params) => ipcRenderer.invoke('git-commit-history', params),
@@ -436,7 +437,9 @@ contextBridge.exposeInMainWorld('electron_api', {
   // ==================== CLAUDE ====================
   claude: {
     sessions: (projectPath) => ipcRenderer.invoke('claude-sessions', projectPath),
-    sessionReplay: (params) => ipcRenderer.invoke('claude-session-replay', params)
+    sessionReplay: (params) => ipcRenderer.invoke('claude-session-replay', params),
+    deleteSession: (params) => ipcRenderer.invoke('claude-delete-session', params),
+    exportSession: (params) => ipcRenderer.invoke('claude-export-session', params)
   },
 
   // ==================== CHAT (Agent SDK) ====================
@@ -459,6 +462,8 @@ contextBridge.exposeInMainWorld('electron_api', {
     loadHistory: (params) => ipcRenderer.invoke('chat-load-history', params),
     generateSkillAgent: (params) => ipcRenderer.invoke('chat-generate-skill-agent', params),
     cancelGeneration: (params) => ipcRenderer.send('chat-cancel-generation', params),
+    onGenerationProgress: createListener('chat-generation-progress'),
+    onGenerationComplete: createListener('chat-generation-complete'),
     generateSuggestions: (params) => ipcRenderer.invoke('chat-generate-suggestions', params),
     analyzeSession: (params) => ipcRenderer.invoke('chat-analyze-session', params),
     applyClaudeMd: (params) => ipcRenderer.invoke('claude-md-apply', params),
@@ -485,6 +490,8 @@ contextBridge.exposeInMainWorld('electron_api', {
     pushTimeData: (params) => ipcRenderer.send('remote:push-time-data', params),
     startServer: () => ipcRenderer.invoke('remote:start-server'),
     stopServer: () => ipcRenderer.invoke('remote:stop-server'),
+    getClients: () => ipcRenderer.invoke('remote:get-clients'),
+    disconnectClient: (params) => ipcRenderer.invoke('remote:disconnect-client', params),
     onOpenChatTab: createListener('remote:open-chat-tab'),
     onRequestTimePush: createListener('remote:request-time-push'),
     onUserMessage: createListener('remote:user-message'),
