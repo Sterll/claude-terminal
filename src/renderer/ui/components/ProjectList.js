@@ -132,7 +132,7 @@ function _setupMoreActionsCloseListeners(menuEl, triggerBtn) {
 /**
  * Render folder HTML
  */
-function renderFolderHtml(folder, depth) {
+function renderFolderHtml(folder, depth, searchQuery = '') {
   const projectCount = countProjectsRecursive(folder.id);
   const childFolders = getChildFolders(folder.id);
   const childProjects = getProjectsInFolder(folder.id);
@@ -140,7 +140,9 @@ function renderFolderHtml(folder, depth) {
   const folderColor = folder.color || null;
 
   let childrenHtml = '';
-  if (!folder.collapsed) {
+  // When searching, always expand folders to show matching children
+  const isExpanded = searchQuery ? true : !folder.collapsed;
+  if (isExpanded) {
     const children = folder.children || [];
     const renderedIds = new Set();
 
@@ -148,11 +150,15 @@ function renderFolderHtml(folder, depth) {
     children.forEach(childId => {
       const childFolder = getFolder(childId);
       if (childFolder) {
-        childrenHtml += renderFolderHtml(childFolder, depth + 1);
-        renderedIds.add(childId);
+        const subHtml = renderFolderHtml(childFolder, depth + 1, searchQuery);
+        if (subHtml) {
+          childrenHtml += subHtml;
+          renderedIds.add(childId);
+        }
       } else {
         const childProject = getProject(childId);
         if (childProject && childProject.folderId === folder.id) {
+          if (searchQuery && !childProject.name.toLowerCase().includes(searchQuery) && !childProject.path.toLowerCase().includes(searchQuery)) return;
           childrenHtml += renderProjectHtml(childProject, depth + 1);
           renderedIds.add(childId);
         }
@@ -162,10 +168,15 @@ function renderFolderHtml(folder, depth) {
     // Render any projects not in children array (legacy data)
     childProjects.forEach(project => {
       if (!renderedIds.has(project.id)) {
+        if (searchQuery && !project.name.toLowerCase().includes(searchQuery) && !project.path.toLowerCase().includes(searchQuery)) return;
         childrenHtml += renderProjectHtml(project, depth + 1);
       }
     });
   }
+
+  // When searching, skip folders with no matching content
+  const folderNameMatches = searchQuery && folder.name.toLowerCase().includes(searchQuery);
+  if (searchQuery && !childrenHtml && !folderNameMatches) return '';
 
   const safeFolderColor = sanitizeColor(folderColor);
   const colorStyle = safeFolderColor ? `style="color: ${safeFolderColor}"` : '';
@@ -295,6 +306,7 @@ function renderProjectHtml(project, depth) {
   // Git operations section
   if (isGitRepo) {
     menuItemsHtml += `
+      <div class="more-actions-section-label">${t('projects.sectionGit')}</div>
       <button class="more-actions-item btn-git-pull ${gitOps.pulling ? 'loading' : ''}" data-project-id="${project.id}" ${gitOps.pulling ? 'disabled' : ''}>
         ${menuIcons.gitPull}
         ${t('projects.gitPull')}
@@ -306,12 +318,12 @@ function renderProjectHtml(project, depth) {
       <button class="more-actions-item btn-new-worktree" data-project-id="${project.id}">
         ${menuIcons.gitBranch}
         ${t('projects.newWorktree')}
-      </button>
-      <div class="more-actions-divider"></div>`;
+      </button>`;
   }
 
-  // Main actions section
+  // Open section
   menuItemsHtml += `
+    <div class="more-actions-section-label">${t('projects.sectionOpen')}</div>
     <button class="more-actions-item btn-basic-terminal" data-project-id="${project.id}">
       ${menuIcons.terminal}
       ${t('projects.basicTerminal')}
@@ -323,21 +335,33 @@ function renderProjectHtml(project, depth) {
     <button class="more-actions-item btn-open-editor" data-project-id="${project.id}">
       ${menuIcons.code}
       ${t('projects.openInEditor', { editor: (EDITOR_OPTIONS.find(e => e.value === (getProjectEditor(project.id) || getSetting('editor'))) || EDITOR_OPTIONS[0]).label })}
-    </button>
-    ${cloudConnected ? (cloudUploadStatus.get(project.id)?.synced
-      ? `<button class="more-actions-item btn-cloud-upload" data-project-id="${project.id}">
+    </button>`;
+
+  // Cloud section
+  if (cloudConnected) {
+    menuItemsHtml += `<div class="more-actions-section-label">${t('projects.sectionCloud')}</div>`;
+    if (cloudUploadStatus.get(project.id)?.synced) {
+      menuItemsHtml += `
+    <button class="more-actions-item btn-cloud-upload" data-project-id="${project.id}">
       ${menuIcons.cloudUpload}
       ${t('cloud.resyncBtn')}
     </button>
     <button class="more-actions-item danger btn-cloud-delete" data-project-id="${project.id}">
       ${menuIcons.trash}
       ${t('cloud.deleteTitle')}
-    </button>`
-      : `<button class="more-actions-item btn-cloud-upload" data-project-id="${project.id}">
+    </button>`;
+    } else {
+      menuItemsHtml += `
+    <button class="more-actions-item btn-cloud-upload" data-project-id="${project.id}">
       ${menuIcons.cloudUpload}
       ${t('cloud.uploadTitle')}
-    </button>`) : ''}
-    <div class="more-actions-divider"></div>
+    </button>`;
+    }
+  }
+
+  // Project section
+  menuItemsHtml += `
+    <div class="more-actions-section-label">${t('projects.sectionProject')}</div>
     ${(() => {
       const typeSettings = typeHandler.getProjectSettings(project);
       return typeSettings && typeSettings.length > 0 ? `
@@ -1065,21 +1089,51 @@ function _renderNow() {
       <div class="empty-state small">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>
         <p>${t('projects.noProjects')}</p>
-        <p class="hint">${t('projects.addHint')}</p>
+        <p class="hint">${t('projects.emptyGuide')}</p>
+        <button class="empty-state-cta" id="empty-add-project">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+          ${t('projects.addFirstProject')}
+        </button>
+        <button class="empty-state-link" id="empty-add-folder">${t('projects.orCreateFolder')}</button>
       </div>`;
+    // Attach CTA handlers
+    list.querySelector('#empty-add-project')?.addEventListener('click', () => {
+      document.getElementById('btn-new-project')?.click();
+    });
+    list.querySelector('#empty-add-folder')?.addEventListener('click', () => {
+      if (callbacks.onCreateFolder) callbacks.onCreateFolder();
+    });
     return;
   }
+
+  // Search filter
+  const searchInput = document.getElementById('projects-search-input');
+  const searchQuery = searchInput?.value?.trim().toLowerCase() || '';
 
   let html = '';
   state.rootOrder.forEach(itemId => {
     const folder = getFolder(itemId);
     if (folder) {
-      html += renderFolderHtml(folder, 0);
+      const folderHtml = renderFolderHtml(folder, 0, searchQuery);
+      if (folderHtml) html += folderHtml;
     } else {
       const project = getProject(itemId);
-      if (project) html += renderProjectHtml(project, 0);
+      if (project) {
+        if (searchQuery && !project.name.toLowerCase().includes(searchQuery) && !project.path.toLowerCase().includes(searchQuery)) return;
+        html += renderProjectHtml(project, 0);
+      }
     }
   });
+
+  if (searchQuery && !html) {
+    list.innerHTML = `
+      <div class="empty-state small">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+        <p>${t('projects.noProjects')}</p>
+      </div>`;
+    return;
+  }
+
   html += `<div class="drop-zone-root" data-target="root"></div>`;
   list.innerHTML = html;
   attachListeners(list);
@@ -1089,6 +1143,31 @@ function _renderNow() {
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.more-actions')) closeAllMoreActionsMenus();
 });
+
+// ── Search filter ──────────────────────────────────────────────
+let _searchDebounce = null;
+const searchInput = document.getElementById('projects-search-input');
+const searchClear = document.getElementById('projects-search-clear');
+
+if (searchInput) {
+  searchInput.addEventListener('input', () => {
+    clearTimeout(_searchDebounce);
+    _searchDebounce = setTimeout(() => {
+      render();
+      if (searchClear) searchClear.style.display = searchInput.value ? '' : 'none';
+    }, 150);
+  });
+}
+
+if (searchClear) {
+  searchClear.addEventListener('click', () => {
+    if (searchInput) {
+      searchInput.value = '';
+      searchClear.style.display = 'none';
+      render();
+    }
+  });
+}
 
 module.exports = {
   render,

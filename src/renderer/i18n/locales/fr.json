@@ -67,7 +67,15 @@
     "cloudUpload": "Upload cloud...",
     "dragToReorder": "Glisser pour réordonner",
     "dropInvalidNesting": "Impossible de déplacer un dossier dans son propre contenu",
-    "terminalsClosedWithProject": "{count} terminal(aux) fermé(s) avec le projet"
+    "terminalsClosedWithProject": "{count} terminal(aux) fermé(s) avec le projet",
+    "searchPlaceholder": "Rechercher un projet...",
+    "emptyGuide": "Ajoutez un projet pour commencer avec Claude Code",
+    "addFirstProject": "Ajouter un projet",
+    "orCreateFolder": "ou créer un dossier",
+    "sectionGit": "Git",
+    "sectionOpen": "Ouvrir",
+    "sectionCloud": "Cloud",
+    "sectionProject": "Projet"
   },
   "terminals": {
     "noTerminals": "Aucun terminal pour ce projet",
@@ -519,7 +527,8 @@
     "moveToRoot": "Déplacer à la racine",
     "delete": "Supprimer",
     "newFolder": "Nouveau dossier",
-    "newProject": "Nouveau projet"
+    "newProject": "Nouveau projet",
+    "customize": "Personnaliser"
   },
   "closeDialog": {
     "whatToDo": "Que souhaitez-vous faire ?",

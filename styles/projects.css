@@ -138,6 +138,59 @@
   color: var(--text-primary);
 }
 
+/* Projects Search */
+.projects-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.projects-search-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.projects-search input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  font-family: inherit;
+  min-width: 0;
+}
+
+.projects-search input::placeholder {
+  color: var(--text-muted);
+}
+
+.projects-search-clear {
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.projects-search-clear:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
 /* Projects List */
 .projects-list {
   flex: 1;
@@ -350,6 +403,19 @@ body.compact-projects .project-item:not(.active):hover {
   text-overflow: ellipsis;
   white-space: nowrap;
   padding-left: 24px;
+}
+
+/* Hide secondary info by default, reveal on hover or active */
+.project-item:not(.active):not(:hover) .project-time {
+  opacity: 0;
+  height: 0;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+.project-item .project-time {
+  transition: opacity 0.15s;
 }
 
 .project-time {
@@ -707,6 +773,16 @@ body.compact-projects .project-item:not(.active):hover {
   background: var(--border-color);
   margin: 4px 8px;
   opacity: 0.5;
+}
+
+.more-actions-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  padding: 6px 12px 2px;
+  user-select: none;
 }
 
 /* Menu sections */

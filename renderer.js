@@ -2101,6 +2101,7 @@ ProjectList.setCallbacks({
   onDeleteProject: deleteProjectUI,
   onRenameProject: renameProjectUI,
   onRenderProjects: () => ProjectList.render(),
+  onCreateFolder: () => promptCreateFolder(null),
   onFilterTerminals: (idx) => { TerminalManager.filterByProject(idx); saveTerminalSessions(); },
   countTerminalsForProject: TerminalManager.countTerminalsForProject,
   getTerminalStatsForProject: TerminalManager.getTerminalStatsForProject
@@ -3013,6 +3014,9 @@ function showContextMenuForFolder(x, y, folderId) {
   const menu = document.getElementById('context-menu');
   menu.innerHTML = `
     <div class="context-menu-item" data-action="new-subfolder">${t('contextMenu.newSubfolder')}</div>
+    <div class="context-menu-item" data-action="new-project">${t('contextMenu.newProject')}</div>
+    <div class="context-menu-divider"></div>
+    <div class="context-menu-item" data-action="customize">${t('contextMenu.customize')}</div>
     <div class="context-menu-item" data-action="rename">${t('contextMenu.rename')}</div>
     <div class="context-menu-divider"></div>
     <div class="context-menu-item danger" data-action="delete">${t('contextMenu.deleteFolder')}</div>`;
@@ -3078,6 +3082,15 @@ async function handleContextAction(action) {
         });
       } else if (contextTarget.type === 'project') {
         deleteProjectUI(contextTarget.id);
+      }
+      break;
+    case 'customize':
+      if (contextTarget.type === 'folder') {
+        const folder = getFolder(contextTarget.id);
+        if (folder) {
+          const btn = document.querySelector(`.folder-item[data-folder-id="${contextTarget.id}"] .btn-folder-color`);
+          if (btn) btn.click();
+        }
       }
       break;
     case 'move-to-root':

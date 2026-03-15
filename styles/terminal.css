@@ -1172,6 +1172,50 @@
   opacity: 0.7;
 }
 
+.empty-state-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-top: 4px;
+}
+
+.empty-state-cta:hover {
+  background: var(--accent-hover);
+}
+
+.empty-state-cta svg {
+  width: 16px;
+  height: 16px;
+  opacity: 1;
+  animation: none;
+}
+
+.empty-state-link {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s;
+}
+
+.empty-state-link:hover {
+  color: var(--text-secondary);
+}
+
 /* ========== FILE EXPLORER PANEL ========== */
 .file-explorer-panel {
   width: 280px;
