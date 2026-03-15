@@ -2481,7 +2481,10 @@
       "prNoRemote": "No remote URL found for this repository",
       "prFailed": "Failed to create pull request",
       "prOpenedBrowser": "Branch pushed — opening PR page in browser",
-      "prPushed": "Branch pushed to remote successfully"
+      "prPushed": "Branch pushed to remote successfully",
+      "resolvingConflicts": "Resolving conflicts ({attempt}/{maxAttempts})...",
+      "resolvingFiles": "Conflicts in {count} files",
+      "resolvingBranch": "Resolving conflicts for {branch}"
     },
     "diff": {
       "title": "Diff",

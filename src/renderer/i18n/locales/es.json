@@ -2439,7 +2439,10 @@
       "prNoRemote": "No se encontró URL remota para este repositorio",
       "prFailed": "Error al crear el pull request",
       "prOpenedBrowser": "Rama enviada — abriendo la página del PR en el navegador",
-      "prPushed": "Rama enviada al remoto correctamente"
+      "prPushed": "Rama enviada al remoto correctamente",
+      "resolvingConflicts": "Resolviendo conflictos ({attempt}/{maxAttempts})...",
+      "resolvingFiles": "Conflictos en {count} archivos",
+      "resolvingBranch": "Resolviendo conflictos para {branch}"
     },
     "diff": {
       "title": "Diff",
