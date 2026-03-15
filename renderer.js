@@ -302,7 +302,7 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
   document.getElementById('btn-notifications').classList.toggle('active', isNotificationsEnabled());
 
   // ========== PANELS INIT (must run after state is loaded) ==========
-  MemoryEditor.init({ showModal, closeModal });
+  MemoryEditor.init({ showModal, closeModal, showToast });
 
   ShortcutsManager.init({
     settingsState, saveSettings,
