@@ -15,7 +15,11 @@ function registerHooksHandlers() {
     if (result.success) {
       sendFeaturePing('hooks:install');
       const win = BrowserWindow.fromWebContents(event.sender);
-      hookEventServer.start(win);
+      try {
+        hookEventServer.start(win);
+      } catch (err) {
+        result.eventServerError = err.message;
+      }
     }
     return result;
   });

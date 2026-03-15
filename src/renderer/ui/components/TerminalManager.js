@@ -653,6 +653,8 @@ function createTerminalKeyHandler(terminal, terminalId, inputChannel = 'terminal
   let shiftHeld = false;
   const _onBlur = () => { shiftHeld = false; };
   window.addEventListener('blur', _onBlur);
+  // Store reference for cleanup on terminal destroy
+  terminal._blurListener = _onBlur;
   return (e) => {
     // Check rebound terminal shortcuts (ctrlC / ctrlV) at call-time — read from settings
     if (e.ctrlKey && e.type === 'keydown') {
@@ -1307,6 +1309,12 @@ function cleanupTerminalResources(termData) {
     termData.resizeObserver.disconnect();
   }
 
+  // Remove blur listener from key handler
+  if (termData.terminal && termData.terminal._blurListener) {
+    window.removeEventListener('blur', termData.terminal._blurListener);
+    termData.terminal._blurListener = null;
+  }
+
   // Dispose terminal
   if (termData.terminal) {
     termData.terminal.dispose();
@@ -1548,7 +1556,15 @@ async function createTerminal(project, options = {}) {
 
   terminal.open(wrapper);
   loadWebglAddon(terminal);
-  setTimeout(() => fitAddon.fit(), 100);
+  // Defer fit() until container has non-zero dimensions
+  setTimeout(() => {
+    const fitContainer = wrapper.closest('.terminal-wrapper') || wrapper;
+    if (fitContainer.offsetWidth > 0 && fitContainer.offsetHeight > 0) {
+      fitAddon.fit();
+    } else {
+      requestAnimationFrame(() => fitAddon.fit());
+    }
+  }, 100);
   setActiveTerminal(id);
 
   // Prevent double-paste issue
@@ -1621,9 +1637,16 @@ async function createTerminal(project, options = {}) {
       console.warn(`[TerminalManager] Resume watchdog fired for terminal ${id} (session ${resumeSessionId}) — starting fresh`);
       closeTerminal(id);
       createTerminal(project, {
-        runClaude: true,
+        runClaude,
         cwd: overrideCwd || project.path,
-        skipPermissions
+        skipPermissions,
+        name: customName,
+        mode: explicitMode,
+        initialPrompt,
+        initialImages,
+        initialModel,
+        initialEffort,
+        onSessionStart
       });
     }, RESUME_WATCHDOG_MS);
   }
@@ -1852,7 +1875,15 @@ function createTypeConsole(project, projectIndex) {
   const consoleView = wrapper.querySelector(consoleViewSelector);
   terminal.open(consoleView);
   loadWebglAddon(terminal);
-  setTimeout(() => fitAddon.fit(), 100);
+  // Defer fit() until container has non-zero dimensions
+  setTimeout(() => {
+    const fitContainer = wrapper.closest('.terminal-wrapper') || wrapper;
+    if (fitContainer.offsetWidth > 0 && fitContainer.offsetHeight > 0) {
+      fitAddon.fit();
+    } else {
+      requestAnimationFrame(() => fitAddon.fit());
+    }
+  }, 100);
   setActiveTerminal(id);
 
   // Clipboard handlers + key handler for copy/paste
@@ -3021,7 +3052,15 @@ async function resumeSession(project, sessionId, options = {}) {
 
   terminal.open(wrapper);
   loadWebglAddon(terminal);
-  setTimeout(() => fitAddon.fit(), 100);
+  // Defer fit() until container has non-zero dimensions
+  setTimeout(() => {
+    const fitContainer = wrapper.closest('.terminal-wrapper') || wrapper;
+    if (fitContainer.offsetWidth > 0 && fitContainer.offsetHeight > 0) {
+      fitAddon.fit();
+    } else {
+      requestAnimationFrame(() => fitAddon.fit());
+    }
+  }, 100);
   setActiveTerminal(id);
 
   // Prevent double-paste issue
@@ -3180,7 +3219,15 @@ async function createTerminalWithPrompt(project, prompt) {
 
   terminal.open(wrapper);
   loadWebglAddon(terminal);
-  setTimeout(() => fitAddon.fit(), 100);
+  // Defer fit() until container has non-zero dimensions
+  setTimeout(() => {
+    const fitContainer = wrapper.closest('.terminal-wrapper') || wrapper;
+    if (fitContainer.offsetWidth > 0 && fitContainer.offsetHeight > 0) {
+      fitAddon.fit();
+    } else {
+      requestAnimationFrame(() => fitAddon.fit());
+    }
+  }, 100);
   setActiveTerminal(id);
 
   // Prevent double-paste issue
@@ -4113,7 +4160,15 @@ async function switchTerminalMode(id) {
       if (td && td.status === 'loading') updateTerminalStatus(id, 'ready');
     }, 30000));
 
-    setTimeout(() => fitAddon.fit(), 100);
+    // Defer fit() until container has non-zero dimensions
+    setTimeout(() => {
+      const fitContainer = wrapper.closest('.terminal-wrapper') || wrapper;
+      if (fitContainer.offsetWidth > 0 && fitContainer.offsetHeight > 0) {
+        fitAddon.fit();
+      } else {
+        requestAnimationFrame(() => fitAddon.fit());
+      }
+    }, 100);
 
     // Setup paste handler and key handler (use ptyId for PTY input routing)
     setupPasteHandler(wrapper, ptyId, 'terminal-input');

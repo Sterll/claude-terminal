@@ -132,15 +132,24 @@ function start(win) {
   });
 
   // Listen on random port, localhost only
-  server.listen(0, '127.0.0.1', () => {
+  server.listen(0, '127.0.0.1', async () => {
     const port = server.address().port;
 
-    // Write port and token files so hook handler scripts can find us
-    if (!fs.existsSync(PORT_DIR)) {
-      fs.mkdirSync(PORT_DIR, { recursive: true });
+    // Write port and token files atomically (temp + rename) so hook handler
+    // scripts never read a truncated/corrupted file on crash.
+    try {
+      if (!fs.existsSync(PORT_DIR)) {
+        fs.mkdirSync(PORT_DIR, { recursive: true });
+      }
+      const portTmp = PORT_FILE + '.tmp';
+      const tokenTmp = TOKEN_FILE + '.tmp';
+      await fs.promises.writeFile(portTmp, String(port));
+      await fs.promises.rename(portTmp, PORT_FILE);
+      await fs.promises.writeFile(tokenTmp, authToken);
+      await fs.promises.rename(tokenTmp, TOKEN_FILE);
+    } catch (e) {
+      console.error('[HookEventServer] Failed to write port/token files:', e);
     }
-    fs.writeFileSync(PORT_FILE, String(port));
-    fs.writeFileSync(TOKEN_FILE, authToken);
 
     console.log(`[HookEventServer] Listening on 127.0.0.1:${port}`);
   });

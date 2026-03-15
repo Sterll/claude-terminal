@@ -53,7 +53,7 @@ const TERMINAL_THEME = {
  * @param {boolean} options.runClaude - Run Claude CLI on start
  * @returns {Promise<number>} - Terminal ID
  */
-async function createTerminal(project, { runClaude = true } = {}) {
+async function createTerminal(project, { runClaude = true, resumeSessionId = null } = {}) {
   const skipPermissions = getSetting('skipPermissions');
   const projectIndex = require('../state').getProjectIndex(project.id);
 
@@ -64,7 +64,8 @@ async function createTerminal(project, { runClaude = true } = {}) {
   const id = await api.terminal.create({
     cwd: project.path,
     runClaude,
-    skipPermissions
+    skipPermissions,
+    ...(resumeSessionId ? { resumeSessionId } : {})
   });
 
   // Create xterm instance

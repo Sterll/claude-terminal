@@ -324,13 +324,14 @@ function _handleWsUpgrade(request, socket, head) {
   });
 }
 
-function _sendProjectsAndSessions(ws) {
+async function _sendProjectsAndSessions(ws) {
   try {
     let projects = [];
     let folders = [];
     let rootOrder = [];
     if (fs.existsSync(projectsFile)) {
-      const data = JSON.parse(fs.readFileSync(projectsFile, 'utf8'));
+      const raw = await fs.promises.readFile(projectsFile, 'utf8');
+      const data = JSON.parse(raw);
       projects = (data.projects || []).map(p => ({
         id: p.id,
         name: p.name,
@@ -433,10 +434,10 @@ function _handleClientMessage(ws, token, raw) {
         const cwd = sessionInfo?.cwd || null;
         _resolveMentions(mentions, cwd).then(resolvedText => {
           const fullText = resolvedText ? (data.text || '') + resolvedText : (data.text || '');
-          chatService.sendMessage(sessionId, fullText, images);
-        }).catch(() => {
-          try { chatService.sendMessage(sessionId, data.text || '', images); }
-          catch (sendErr) { _wsSend(ws, 'chat-error', { sessionId, error: sendErr.message }); }
+          return chatService.sendMessage(sessionId, fullText, images);
+        }).catch(err => {
+          console.warn(`[Remote] chat:send error: ${err.message}`);
+          _wsSend(ws, 'chat-error', { sessionId, error: err.message });
         });
         // Notify renderer so it can display the user message in ChatView
         if (_isMainWindowReady()) {
@@ -1007,7 +1008,7 @@ function start(win, port = 3712) {
   _startCleanupTimer();
 }
 
-function stop() {
+async function stop() {
   for (const ws of _connectedClients.values()) {
     try { ws.close(); } catch (e) {}
   }
@@ -1017,8 +1018,12 @@ function stop() {
   _failedAttempts = 0;
   _lockoutUntil = 0;
 
-  if (wss) { wss.close(); wss = null; }
-  if (httpServer) { httpServer.close(); httpServer = null; }
+  if (wss) {
+    await new Promise(resolve => { const s = wss; wss = null; s.close(resolve); });
+  }
+  if (httpServer) {
+    await new Promise(resolve => { const s = httpServer; httpServer = null; s.close(resolve); });
+  }
 
   // Only clear shared caches if no cloud client is registered
   if (!_cloudClient) {
