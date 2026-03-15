@@ -1168,6 +1168,7 @@
     "browseToInstall": "Explora la pestaña Descubrir para instalar skills",
     "confirmUninstall": "¿Desinstalar \"{name}\"?",
     "installError": "Error en la instalación",
+    "uninstallError": "Error en la desinstalación",
     "installedOn": "Instalado el {date}",
     "noReadme": "Sin descripción disponible",
     "readmeError": "No se pudo cargar la descripción",

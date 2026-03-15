@@ -1195,6 +1195,7 @@
     "browseToInstall": "Parcourez l'onglet Découvrir pour installer des skills",
     "confirmUninstall": "Désinstaller \"{name}\" ?",
     "installError": "Échec de l'installation",
+    "uninstallError": "Échec de la désinstallation",
     "installedOn": "Installé le {date}",
     "noReadme": "Aucune description disponible",
     "readmeError": "Impossible de charger la description",

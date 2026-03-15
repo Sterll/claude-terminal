@@ -1195,6 +1195,7 @@
     "browseToInstall": "Browse the Discover tab to install skills",
     "confirmUninstall": "Uninstall \"{name}\"?",
     "installError": "Installation failed",
+    "uninstallError": "Uninstall failed",
     "installedOn": "Installed on {date}",
     "noReadme": "No description available",
     "readmeError": "Could not load description",
