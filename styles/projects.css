@@ -1799,13 +1799,14 @@ body.compact-projects .project-item:not(.active):hover {
 /* Drag & Drop States */
 .dragging {
   opacity: 0.5;
+  transition: none !important;
 }
 
-/* Highlight all valid drop zones during active drag */
+/* Disable transitions during active drag to prevent lag */
 .drag-active .folder-header,
 .drag-active .project-item,
 .drag-active .drop-zone-root {
-  transition: border-color 0.15s, background 0.15s;
+  transition: none !important;
 }
 
 .drag-active .dragging {

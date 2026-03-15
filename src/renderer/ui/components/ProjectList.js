@@ -559,8 +559,17 @@ function setupDragAndDrop(list) {
     list.querySelectorAll('.drop-invalid').forEach(el => el.classList.remove('drop-invalid'));
   }
 
+  let _lastDragOver = 0;
   function onDragOver(e) {
     if (!dragState.dragging) return;
+
+    // Throttle dragover to avoid excessive repaints
+    const now = Date.now();
+    if (now - _lastDragOver < 50) {
+      e.preventDefault();
+      return;
+    }
+    _lastDragOver = now;
 
     // Folder header
     const folderHeader = e.target.closest('.folder-header');
