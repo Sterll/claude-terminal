@@ -331,6 +331,7 @@ contextBridge.exposeInMainWorld('electron_api', {
   dialog: {
     selectFolder: () => ipcRenderer.invoke('select-folder'),
     selectFile: (params) => ipcRenderer.invoke('select-file', params),
+    saveFileDialog: (params) => ipcRenderer.invoke('save-file-dialog', params),
     openInExplorer: (path) => ipcRenderer.send('open-in-explorer', path),
     openInEditor: (params) => ipcRenderer.send('open-in-editor', params),
     openExternal: (url) => ipcRenderer.send('open-external', url),
@@ -410,6 +411,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     marketplaces: () => ipcRenderer.invoke('plugin-marketplaces'),
     readme: (marketplace, pluginName) => ipcRenderer.invoke('plugin-readme', { marketplace, pluginName }),
     install: (marketplace, pluginName) => ipcRenderer.invoke('plugin-install', { marketplace, pluginName }),
+    uninstall: (pluginKey) => ipcRenderer.invoke('plugin-uninstall', { pluginKey }),
     addMarketplace: (url) => ipcRenderer.invoke('plugin-add-marketplace', { url })
   },
 

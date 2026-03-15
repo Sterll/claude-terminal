@@ -58,6 +58,17 @@ function registerDialogHandlers() {
     return result.filePaths[0] || null;
   });
 
+  // Save file dialog
+  ipcMain.handle('save-file-dialog', async (event, { defaultPath, filters, title }) => {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: title || 'Save file',
+      defaultPath: defaultPath || undefined,
+      filters: filters || [{ name: 'All Files', extensions: ['*'] }]
+    });
+    if (result.canceled) return null;
+    return result.filePath;
+  });
+
   // File dialog
   ipcMain.handle('select-file', async (event, { filters }) => {
     const result = await dialog.showOpenDialog(mainWindow, {
