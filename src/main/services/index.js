@@ -18,6 +18,7 @@ const remoteServer = require('./RemoteServer');
 const workflowService = require('./WorkflowService');
 const databaseService = require('./DatabaseService');
 const cloudSyncService = require('./CloudSyncService');
+const parallelTaskService = require('./ParallelTaskService');
 
 /**
  * Initialize all services with main window reference
@@ -123,6 +124,31 @@ function _startMcpTriggerPolling(mainWindow) {
       } else if (data.type === 'stop') {
         console.log(`[Services] MCP WebApp stop: ${data.projectId}`);
         webAppService.stop({ projectIndex });
+      }
+    });
+
+    // Parallel tasks
+    _pollTriggerDir(path.join(dataDir, 'parallel', 'triggers'), (data) => {
+      if (data.action === 'start' && data.projectPath && data.goal) {
+        console.log(`[Services] MCP parallel start: "${data.goal}"`);
+        parallelTaskService.startRun({
+          projectPath: data.projectPath,
+          mainBranch: data.mainBranch || 'main',
+          goal: data.goal,
+          maxTasks: data.maxTasks || 4,
+          autoTasks: data.autoTasks || false,
+          model: data.model,
+          effort: data.effort,
+        });
+      } else if (data.action === 'cancel' && data.runId) {
+        console.log(`[Services] MCP parallel cancel: ${data.runId}`);
+        parallelTaskService.cancelRun(data.runId);
+      } else if (data.action === 'cleanup' && data.runId) {
+        console.log(`[Services] MCP parallel cleanup: ${data.runId}`);
+        parallelTaskService.cleanupRun(data.runId, data.projectPath);
+      } else if (data.action === 'merge' && data.runId) {
+        console.log(`[Services] MCP parallel merge: ${data.runId}`);
+        parallelTaskService.mergeRun(data.runId);
       }
     });
 

@@ -440,6 +440,7 @@ module.exports = {
 | `webapp.js` | `webapp_stack`, `webapp_scripts`, `webapp_start`, `webapp_stop` |
 | `fivem.js` | `fivem_command`, `fivem_list_resources`, `fivem_read_manifest`, `fivem_resource_files`, `fivem_server_cfg` |
 | `workflow.js` | `workflow_*` (create, list, run, status, etc.) |
+| `parallel.js` | `parallel_list_runs`, `parallel_run_detail`, `parallel_start_run`, `parallel_cancel_run`, `parallel_cleanup_run`, `parallel_merge_run` |
 
 **Session tools (added with Session Replay feature):**
 - `session_list` — list recent sessions for a project (IDs, dates, first prompt). Params: `project_path`, `limit`
