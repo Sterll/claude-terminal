@@ -67,7 +67,23 @@
     "cloudUpload": "Upload cloud...",
     "dragToReorder": "Glisser pour réordonner",
     "dropInvalidNesting": "Impossible de déplacer un dossier dans son propre contenu",
-    "terminalsClosedWithProject": "{count} terminal(aux) fermé(s) avec le projet"
+    "terminalsClosedWithProject": "{count} terminal(aux) fermé(s) avec le projet",
+    "archive": "Archiver",
+    "unarchive": "Désarchiver",
+    "showArchived": "Afficher les archivés ({count})",
+    "hideArchived": "Masquer les archivés",
+    "chatSettings": "Paramètres chat",
+    "chatSettingsTitle": "Paramètres chat",
+    "chatModel": "Modèle",
+    "effortLevel": "Niveau d'effort",
+    "skipPermissions": "Ignorer les permissions",
+    "useGlobal": "Défaut global",
+    "tags": "Tags",
+    "addTag": "Ajouter un tag...",
+    "noTags": "Aucun tag",
+    "existingTags": "Tags existants",
+    "clearTagFilter": "Supprimer le filtre",
+    "manageTags": "Gérer les tags"
   },
   "terminals": {
     "noTerminals": "Aucun terminal pour ce projet",
@@ -157,6 +173,11 @@
     "presets": "Presets",
     "presetsHint": "Cliquer pour ajouter",
     "actions": "Actions",
+    "availableVars": "Variables disponibles",
+    "customVars": "Variables personnalisées",
+    "addVariable": "Ajouter une variable",
+    "varName": "Nom",
+    "varValue": "Valeur",
     "preset": {
       "build": "Build",
       "test": "Tests",
@@ -451,7 +472,10 @@
       "noCommits": "Aucun commit",
       "commitsOnDay": "{count} commit(s)",
       "commitsAtHour": "{hour}h : {count} commit(s)",
-      "today": "aujourd'hui"
+      "today": "aujourd'hui",
+      "contributionGraph": "Graphe de contributions (1 an)",
+      "less": "Moins",
+      "more": "Plus"
     }
   },
   "customize": {
@@ -2424,7 +2448,14 @@
     "noLabels": "Aucun label défini — créez-en dans le gestionnaire de labels.",
     "sessions": "Sessions",
     "sessionsLoading": "Chargement...",
-    "sessionsEmpty": "Aucune session trouvée"
+    "sessionsEmpty": "Aucune session trouvée",
+    "priority": "Priorité",
+    "priorityNone": "Aucune",
+    "priorityCritical": "Critique",
+    "priorityHigh": "Haute",
+    "priorityMedium": "Moyenne",
+    "priorityLow": "Basse",
+    "dueDate": "Date limite"
   },
   "parallel": {
     "tabTitle": "Tâches",

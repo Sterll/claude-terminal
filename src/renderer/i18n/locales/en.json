@@ -67,7 +67,23 @@
     "cloudUpload": "Cloud upload...",
     "dragToReorder": "Drag to reorder",
     "dropInvalidNesting": "Cannot move a folder into its own content",
-    "terminalsClosedWithProject": "{count} terminal(s) closed with the project"
+    "terminalsClosedWithProject": "{count} terminal(s) closed with the project",
+    "archive": "Archive",
+    "unarchive": "Unarchive",
+    "showArchived": "Show archived ({count})",
+    "hideArchived": "Hide archived",
+    "chatSettings": "Chat settings",
+    "chatSettingsTitle": "Chat settings",
+    "chatModel": "Model",
+    "effortLevel": "Effort level",
+    "skipPermissions": "Skip permissions",
+    "useGlobal": "Use global default",
+    "tags": "Tags",
+    "addTag": "Add a tag...",
+    "noTags": "No tags yet",
+    "existingTags": "Existing tags",
+    "clearTagFilter": "Clear filter",
+    "manageTags": "Manage tags"
   },
   "terminals": {
     "noTerminals": "No terminal for this project",
@@ -376,7 +392,10 @@
       "noCommits": "No commits",
       "commitsOnDay": "{count} commit(s)",
       "commitsAtHour": "{hour}h: {count} commit(s)",
-      "today": "today"
+      "today": "today",
+      "contributionGraph": "Contribution graph (1 year)",
+      "less": "Less",
+      "more": "More"
     }
   },
   "customize": {
@@ -967,6 +986,11 @@
     "presets": "Presets",
     "presetsHint": "Click to add",
     "actions": "Actions",
+    "availableVars": "Available variables",
+    "customVars": "Custom variables",
+    "addVariable": "Add variable",
+    "varName": "Name",
+    "varValue": "Value",
     "preset": {
       "build": "Build",
       "test": "Tests",
@@ -2424,7 +2448,14 @@
     "noLabels": "No labels defined yet — create some in Labels manager.",
     "sessions": "Sessions",
     "sessionsLoading": "Loading...",
-    "sessionsEmpty": "No sessions found"
+    "sessionsEmpty": "No sessions found",
+    "priority": "Priority",
+    "priorityNone": "None",
+    "priorityCritical": "Critical",
+    "priorityHigh": "High",
+    "priorityMedium": "Medium",
+    "priorityLow": "Low",
+    "dueDate": "Due date"
   },
   "parallel": {
     "tabTitle": "Tasks",
