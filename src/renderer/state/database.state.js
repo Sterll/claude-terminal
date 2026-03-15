@@ -1,9 +1,20 @@
 /**
  * Database State Module
- * Manages database connections state
+ * Manages database connections state, query history, and saved queries
  */
 
 const { State } = require('./State');
+const { queryHistoryFile, savedQueriesFile } = require('../utils/paths');
+const { fs } = window.electron_nodeModules;
+
+const MAX_HISTORY = 200;
+const MAX_SAVED = 50;
+const HISTORY_SAVE_DEBOUNCE = 1000;
+const SAVED_SAVE_DEBOUNCE = 500;
+
+let historyDebounceTimer = null;
+let savedDebounceTimer = null;
+let persistenceLoaded = false;
 
 const initialState = {
   connections: [],           // [{ id, name, type, host, port, database, projectId?, mcpProvisioned, mcpName }]
@@ -13,6 +24,8 @@ const initialState = {
   queryResults: {},          // { [id]: { columns, rows, rowCount, duration, error } }
   currentQuery: '',          // SQL text in editor
   detectedDatabases: [],     // Auto-detected configs from project scan
+  queryHistory: [],          // [{ id, timestamp, sql, connectionId, connectionName, dbType, duration, rowCount, error, success }]
+  savedQueries: [],          // [{ id, name, sql, createdAt }]
 };
 
 const databaseState = new State(initialState);
@@ -120,6 +133,120 @@ function setDetectedDatabases(detected) {
   databaseState.setProp('detectedDatabases', detected);
 }
 
+// ========== Query History ==========
+
+function getQueryHistory() {
+  return databaseState.get().queryHistory;
+}
+
+function addQueryHistoryEntry(entry) {
+  const history = [entry, ...databaseState.get().queryHistory];
+  if (history.length > MAX_HISTORY) history.length = MAX_HISTORY;
+  databaseState.setProp('queryHistory', history);
+  _debouncedSaveHistory();
+}
+
+function removeQueryHistoryEntry(id) {
+  const history = databaseState.get().queryHistory.filter(e => e.id !== id);
+  databaseState.setProp('queryHistory', history);
+  _debouncedSaveHistory();
+}
+
+function clearQueryHistory() {
+  databaseState.setProp('queryHistory', []);
+  _debouncedSaveHistory();
+}
+
+// ========== Saved Queries ==========
+
+function getSavedQueries() {
+  return databaseState.get().savedQueries;
+}
+
+function addSavedQuery(query) {
+  const saved = [...databaseState.get().savedQueries, query];
+  if (saved.length > MAX_SAVED) saved.shift();
+  databaseState.setProp('savedQueries', saved);
+  _debouncedSaveSaved();
+}
+
+function removeSavedQuery(id) {
+  const saved = databaseState.get().savedQueries.filter(q => q.id !== id);
+  databaseState.setProp('savedQueries', saved);
+  _debouncedSaveSaved();
+}
+
+// ========== Persistence ==========
+
+function _debouncedSaveHistory() {
+  clearTimeout(historyDebounceTimer);
+  historyDebounceTimer = setTimeout(_saveHistoryImmediate, HISTORY_SAVE_DEBOUNCE);
+}
+
+function _saveHistoryImmediate() {
+  clearTimeout(historyDebounceTimer);
+  const tmpFile = queryHistoryFile + '.tmp';
+  try {
+    fs.writeFileSync(tmpFile, JSON.stringify(databaseState.get().queryHistory, null, 2), 'utf8');
+    fs.renameSync(tmpFile, queryHistoryFile);
+  } catch (e) {
+    console.error('[Database] History save failed:', e.message);
+    try { if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile); } catch (_) {}
+  }
+}
+
+function _debouncedSaveSaved() {
+  clearTimeout(savedDebounceTimer);
+  savedDebounceTimer = setTimeout(_saveSavedImmediate, SAVED_SAVE_DEBOUNCE);
+}
+
+function _saveSavedImmediate() {
+  clearTimeout(savedDebounceTimer);
+  const tmpFile = savedQueriesFile + '.tmp';
+  try {
+    fs.writeFileSync(tmpFile, JSON.stringify(databaseState.get().savedQueries, null, 2), 'utf8');
+    fs.renameSync(tmpFile, savedQueriesFile);
+  } catch (e) {
+    console.error('[Database] Saved queries save failed:', e.message);
+    try { if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile); } catch (_) {}
+  }
+}
+
+function loadDatabasePersistence() {
+  if (persistenceLoaded) return;
+  persistenceLoaded = true;
+
+  // Load history
+  try {
+    if (fs.existsSync(queryHistoryFile)) {
+      const raw = fs.readFileSync(queryHistoryFile, 'utf8');
+      if (raw && raw.trim()) {
+        const data = JSON.parse(raw);
+        if (Array.isArray(data)) {
+          databaseState.setProp('queryHistory', data.slice(0, MAX_HISTORY));
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[Database] Failed to load history:', e.message);
+  }
+
+  // Load saved queries
+  try {
+    if (fs.existsSync(savedQueriesFile)) {
+      const raw = fs.readFileSync(savedQueriesFile, 'utf8');
+      if (raw && raw.trim()) {
+        const data = JSON.parse(raw);
+        if (Array.isArray(data)) {
+          databaseState.setProp('savedQueries', data.slice(0, MAX_SAVED));
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[Database] Failed to load saved queries:', e.message);
+  }
+}
+
 module.exports = {
   databaseState,
   getDatabaseConnections,
@@ -139,5 +266,13 @@ module.exports = {
   getCurrentQuery,
   setCurrentQuery,
   getDetectedDatabases,
-  setDetectedDatabases
+  setDetectedDatabases,
+  getQueryHistory,
+  addQueryHistoryEntry,
+  removeQueryHistoryEntry,
+  clearQueryHistory,
+  getSavedQueries,
+  addSavedQuery,
+  removeSavedQuery,
+  loadDatabasePersistence
 };

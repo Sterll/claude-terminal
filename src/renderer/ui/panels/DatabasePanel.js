@@ -7,7 +7,7 @@
 const { escapeHtml } = require('../../utils');
 const { highlight } = require('../../utils/syntaxHighlight');
 const { t } = require('../../i18n');
-const { showConfirm } = require('../components/Modal');
+const { showConfirm, createModal, showModal, closeModal } = require('../components/Modal');
 
 /**
  * Escape a SQL identifier (table/column name).
@@ -32,12 +32,17 @@ function escapeSqlValue(val) {
 
 let ctx = null;
 
+// ==================== Autocomplete Index ====================
+let autocompleteIndex = null; // { tables: string[], columnsByTable: {}, allColumns: string[], sqlKeywords: string[] }
+
 let panelState = {
   initialized: false,
   activeSubTab: 'connections', // 'connections' | 'schema' | 'query'
   expandedTables: new Set(),
   queryRunning: false,
   allowDestructive: false,
+  historyExpanded: false,
+  autocomplete: null, // { suggestions, selectedIndex, left, top, partial, partialStart }
   // Data browser state
   browserSelectedTable: null,
   browserTableFilter: '',
@@ -67,8 +72,11 @@ async function loadPanel() {
     setupHeaderButtons();
   }
 
-  // Load connections from disk on first visit
+  // Load persisted history & saved queries
   const state = require('../../state');
+  state.loadDatabasePersistence();
+
+  // Load connections from disk on first visit
   if (state.getDatabaseConnections().length === 0) {
     try {
       const connections = await ctx.api.database.loadConnections();
@@ -920,6 +928,7 @@ async function loadSchema(id) {
   const result = await ctx.api.database.getSchema({ id });
   if (result.success) {
     state.setDatabaseSchema(id, { tables: result.tables });
+    buildAutocompleteIndex();
     if (panelState.activeSubTab === 'schema') renderContent();
   }
 }
@@ -989,6 +998,371 @@ function getQueryTemplates(isMongo, dbType, isRedis) {
   ];
 }
 
+// ==================== Helpers ====================
+
+function formatRelativeTime(timestamp) {
+  const diff = Date.now() - timestamp;
+  const seconds = Math.floor(diff / 1000);
+  if (seconds < 10) return t('database.historyJustNow');
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  const date = new Date(timestamp);
+  return `${date.getDate()}/${date.getMonth() + 1}`;
+}
+
+// ==================== Save Query Modal ====================
+
+function showSaveQueryModal(sql) {
+  const state = require('../../state');
+  const content = `
+    <div class="db-save-query-form">
+      <label class="db-save-query-label">${t('database.savedQueryName')}</label>
+      <input type="text" id="save-query-name-input" class="database-form-input" placeholder="${escapeHtml(t('database.savedQueryNamePlaceholder'))}" />
+      <div class="db-save-query-preview">${escapeHtml(sql.length > 200 ? sql.substring(0, 200) + '...' : sql)}</div>
+    </div>
+  `;
+  const modal = createModal({
+    id: 'save-query-modal',
+    title: t('database.saveQuery'),
+    content,
+    size: 'small',
+    buttons: [
+      { label: t('database.cancel'), action: 'cancel', onClick: (m) => closeModal(m) },
+      { label: t('database.save'), action: 'save', primary: true, onClick: (m) => {
+        const nameInput = m.querySelector('#save-query-name-input');
+        const name = nameInput ? nameInput.value.trim() : '';
+        if (!name) { if (nameInput) nameInput.focus(); return; }
+        state.addSavedQuery({
+          id: _generateId(),
+          name,
+          sql,
+          createdAt: Date.now()
+        });
+        closeModal(m);
+        renderContent();
+      }}
+    ]
+  });
+  showModal(modal);
+
+  const inp = modal.querySelector('#save-query-name-input');
+  if (inp) {
+    inp.focus();
+    inp.onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        const name = inp.value.trim();
+        if (!name) return;
+        state.addSavedQuery({ id: _generateId(), name, sql, createdAt: Date.now() });
+        closeModal(modal);
+        renderContent();
+      }
+    };
+  }
+}
+
+// ==================== Autocomplete Engine ====================
+
+const SQL_KEYWORDS = [
+  'SELECT', 'FROM', 'WHERE', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP',
+  'ALTER', 'TABLE', 'INTO', 'VALUES', 'SET', 'JOIN', 'LEFT', 'RIGHT', 'INNER',
+  'OUTER', 'ON', 'AND', 'OR', 'NOT', 'NULL', 'IS', 'IN', 'LIKE', 'ORDER',
+  'BY', 'GROUP', 'HAVING', 'LIMIT', 'OFFSET', 'AS', 'DISTINCT', 'COUNT',
+  'SUM', 'AVG', 'MAX', 'MIN', 'EXISTS', 'BETWEEN', 'UNION', 'ALL', 'CASE',
+  'WHEN', 'THEN', 'ELSE', 'END', 'ASC', 'DESC', 'PRIMARY', 'KEY', 'INDEX',
+  'UNIQUE', 'DEFAULT', 'CONSTRAINT', 'FOREIGN', 'REFERENCES', 'CASCADE',
+  'BEGIN', 'COMMIT', 'ROLLBACK', 'TRUNCATE', 'CROSS', 'FULL', 'NATURAL',
+  'EXCEPT', 'INTERSECT', 'WITH', 'RECURSIVE', 'RETURNING', 'EXPLAIN', 'ANALYZE'
+];
+
+function buildAutocompleteIndex() {
+  const state = require('../../state');
+  const activeId = state.getActiveConnection();
+  if (!activeId) { autocompleteIndex = null; return; }
+
+  const conn = state.getDatabaseConnection(activeId);
+  if (conn && (conn.type === 'mongodb' || conn.type === 'redis')) { autocompleteIndex = null; return; }
+
+  const schema = state.getDatabaseSchema(activeId);
+  if (!schema || !schema.tables) { autocompleteIndex = null; return; }
+
+  const tables = schema.tables.map(t => t.name);
+  const columnsByTable = {};
+  const allColumnsSet = new Set();
+
+  for (const table of schema.tables) {
+    const cols = (table.columns || []).map(c => c.name);
+    columnsByTable[table.name] = cols;
+    cols.forEach(c => allColumnsSet.add(c));
+  }
+
+  autocompleteIndex = {
+    tables,
+    columnsByTable,
+    allColumns: [...allColumnsSet],
+    sqlKeywords: SQL_KEYWORDS
+  };
+}
+
+function getAutocompleteContext(text, cursorPos) {
+  const beforeCursor = text.substring(0, cursorPos);
+
+  // After a dot: table.column pattern
+  const dotMatch = beforeCursor.match(/(\w+)\.\s*(\w*)$/);
+  if (dotMatch) {
+    return { type: 'column_of_table', tableName: dotMatch[1], partial: dotMatch[2] || '' };
+  }
+
+  // Current word being typed
+  const wordMatch = beforeCursor.match(/(\w+)$/);
+  const partial = wordMatch ? wordMatch[1] : '';
+
+  // Context before partial
+  const contextBefore = partial
+    ? beforeCursor.substring(0, beforeCursor.length - partial.length).trimEnd()
+    : beforeCursor.trimEnd();
+
+  if (/\b(FROM|JOIN|INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|LEFT\s+OUTER\s+JOIN|RIGHT\s+OUTER\s+JOIN|INTO|UPDATE|TABLE)\s*$/i.test(contextBefore)) {
+    return { type: 'table', partial };
+  }
+
+  if (/\b(WHERE|AND|OR|ON|SET|BY|HAVING)\s*$/i.test(contextBefore) || /,\s*$/.test(contextBefore)) {
+    return { type: 'column', partial };
+  }
+
+  // After SELECT before FROM
+  if (/\bSELECT\b/i.test(contextBefore) && !/\bFROM\b/i.test(contextBefore)) {
+    return { type: 'column', partial };
+  }
+
+  if (partial.length >= 2) {
+    return { type: 'all', partial };
+  }
+
+  return null;
+}
+
+function getSuggestions(context) {
+  if (!autocompleteIndex || !context) return [];
+  const partial = context.partial.toLowerCase();
+  const max = 12;
+  let suggestions = [];
+
+  switch (context.type) {
+    case 'column_of_table': {
+      const tableKey = autocompleteIndex.tables.find(t => t.toLowerCase() === context.tableName.toLowerCase());
+      if (tableKey && autocompleteIndex.columnsByTable[tableKey]) {
+        suggestions = autocompleteIndex.columnsByTable[tableKey]
+          .filter(c => !partial || c.toLowerCase().startsWith(partial))
+          .map(c => ({ text: c, type: 'column', detail: tableKey }));
+      }
+      break;
+    }
+    case 'table':
+      suggestions = autocompleteIndex.tables
+        .filter(t => !partial || t.toLowerCase().startsWith(partial))
+        .map(t => ({ text: t, type: 'table' }));
+      break;
+    case 'column':
+      suggestions = autocompleteIndex.allColumns
+        .filter(c => !partial || c.toLowerCase().startsWith(partial))
+        .map(c => ({ text: c, type: 'column' }));
+      break;
+    case 'all': {
+      const tableMatches = autocompleteIndex.tables
+        .filter(t => t.toLowerCase().startsWith(partial))
+        .map(t => ({ text: t, type: 'table' }));
+      const colMatches = autocompleteIndex.allColumns
+        .filter(c => c.toLowerCase().startsWith(partial))
+        .map(c => ({ text: c, type: 'column' }));
+      const kwMatches = autocompleteIndex.sqlKeywords
+        .filter(k => k.toLowerCase().startsWith(partial))
+        .map(k => ({ text: k, type: 'keyword' }));
+      suggestions = [...tableMatches, ...colMatches, ...kwMatches];
+      break;
+    }
+  }
+  return suggestions.slice(0, max);
+}
+
+function getCaretCoordinates(textarea, position) {
+  const mirror = document.createElement('div');
+  const computed = getComputedStyle(textarea);
+  const props = ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+    'wordSpacing', 'whiteSpace', 'wordWrap', 'overflowWrap', 'padding',
+    'paddingLeft', 'paddingRight', 'paddingTop', 'paddingBottom',
+    'border', 'borderWidth', 'boxSizing', 'tabSize', 'width'];
+  mirror.style.position = 'absolute';
+  mirror.style.visibility = 'hidden';
+  mirror.style.overflow = 'hidden';
+  mirror.style.height = 'auto';
+  mirror.style.whiteSpace = 'pre-wrap';
+  mirror.style.wordWrap = 'break-word';
+  props.forEach(p => { mirror.style[p] = computed[p]; });
+  document.body.appendChild(mirror);
+
+  const textBefore = textarea.value.substring(0, position);
+  const textNode = document.createTextNode(textBefore);
+  mirror.appendChild(textNode);
+  const span = document.createElement('span');
+  span.textContent = '|';
+  mirror.appendChild(span);
+
+  const mirrorRect = mirror.getBoundingClientRect();
+  const spanRect = span.getBoundingClientRect();
+  const left = spanRect.left - mirrorRect.left;
+  const top = spanRect.top - mirrorRect.top + parseFloat(computed.lineHeight || computed.fontSize);
+  document.body.removeChild(mirror);
+
+  return { left: left - textarea.scrollLeft, top: top - textarea.scrollTop };
+}
+
+function renderAutocompleteDropdown() {
+  const existing = document.getElementById('db-autocomplete-dropdown');
+  if (existing) existing.remove();
+
+  const ac = panelState.autocomplete;
+  if (!ac || ac.suggestions.length === 0) return;
+
+  const dropdown = document.createElement('div');
+  dropdown.id = 'db-autocomplete-dropdown';
+  dropdown.className = 'db-autocomplete-dropdown';
+  dropdown.style.left = ac.left + 'px';
+  dropdown.style.top = ac.top + 'px';
+
+  dropdown.innerHTML = ac.suggestions.map((s, i) => {
+    const activeClass = i === ac.selectedIndex ? 'active' : '';
+    const detailHtml = s.detail ? `<span class="db-ac-detail">${escapeHtml(s.detail)}</span>` : '';
+    return `<div class="db-ac-item ${activeClass}" data-ac-idx="${i}">
+      <span class="db-ac-icon-${s.type}"></span>
+      <span class="db-ac-text">${escapeHtml(s.text)}</span>
+      ${detailHtml}
+    </div>`;
+  }).join('');
+
+  const editorWrap = document.querySelector('.db-query-highlight-wrap');
+  if (editorWrap) {
+    editorWrap.style.position = 'relative';
+    editorWrap.appendChild(dropdown);
+  }
+
+  dropdown.querySelectorAll('.db-ac-item').forEach(item => {
+    item.onmousedown = (e) => {
+      e.preventDefault();
+      applyAutocomplete(parseInt(item.dataset.acIdx));
+    };
+  });
+}
+
+function hideAutocomplete() {
+  panelState.autocomplete = null;
+  const existing = document.getElementById('db-autocomplete-dropdown');
+  if (existing) existing.remove();
+}
+
+function applyAutocomplete(index) {
+  const ac = panelState.autocomplete;
+  if (!ac || !ac.suggestions[index]) return;
+
+  const suggestion = ac.suggestions[index];
+  const textarea = document.getElementById('database-query-input');
+  if (!textarea) return;
+
+  const state = require('../../state');
+  const before = textarea.value.substring(0, ac.partialStart);
+  const after = textarea.value.substring(textarea.selectionStart);
+
+  textarea.value = before + suggestion.text + after;
+  const newPos = ac.partialStart + suggestion.text.length;
+  textarea.setSelectionRange(newPos, newPos);
+  state.setCurrentQuery(textarea.value);
+
+  // Sync highlight
+  const highlightEl = document.getElementById('database-query-highlight');
+  if (highlightEl) {
+    const code = highlightEl.querySelector('code');
+    const conn = state.getDatabaseConnection(state.getActiveConnection());
+    const isMongo = conn && conn.type === 'mongodb';
+    if (code) code.innerHTML = textarea.value ? highlight(textarea.value, isMongo ? 'js' : 'sql') + '\n' : '\n';
+  }
+
+  hideAutocomplete();
+  textarea.focus();
+}
+
+function triggerAutocomplete(textarea) {
+  if (!autocompleteIndex) { hideAutocomplete(); return; }
+
+  const cursorPos = textarea.selectionStart;
+  const text = textarea.value;
+  const context = getAutocompleteContext(text, cursorPos);
+  if (!context || context.partial.length === 0) { hideAutocomplete(); return; }
+
+  const suggestions = getSuggestions(context);
+  if (suggestions.length === 0) { hideAutocomplete(); return; }
+
+  // Don't show if only exact match
+  if (suggestions.length === 1 && suggestions[0].text.toLowerCase() === context.partial.toLowerCase()) { hideAutocomplete(); return; }
+
+  const coords = getCaretCoordinates(textarea, cursorPos - context.partial.length);
+  panelState.autocomplete = {
+    suggestions,
+    selectedIndex: 0,
+    left: coords.left,
+    top: coords.top,
+    partial: context.partial,
+    partialStart: cursorPos - context.partial.length
+  };
+  renderAutocompleteDropdown();
+}
+
+// ==================== History Section Builder ====================
+
+function _buildHistorySection(state) {
+  const history = state.getQueryHistory();
+  if (history.length === 0) return '';
+
+  const chevronSvg = '<svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>';
+  const xSvg = '<svg viewBox="0 0 24 24" fill="currentColor" width="10" height="10"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
+
+  let listHtml = '';
+  if (panelState.historyExpanded) {
+    listHtml = `<div class="db-query-history-list">` +
+      history.slice(0, 50).map(entry => {
+        const sqlPreview = entry.sql.length > 120 ? entry.sql.substring(0, 120) + '...' : entry.sql;
+        return `<div class="db-query-history-entry ${entry.success ? '' : 'error'}" data-history-id="${entry.id}">
+          <div class="db-query-history-meta">
+            <span class="db-query-history-time">${formatRelativeTime(entry.timestamp)}</span>
+            <span class="db-query-history-duration">${entry.duration || 0}ms</span>
+            ${entry.success
+              ? `<span class="db-query-history-rows">${entry.rowCount ?? '?'} rows</span>`
+              : `<span class="db-query-history-error-badge">${t('database.error')}</span>`
+            }
+          </div>
+          <div class="db-query-history-sql">${escapeHtml(sqlPreview.replace(/\n/g, ' '))}</div>
+          <button class="db-query-history-delete" data-history-delete="${entry.id}" title="${t('database.historyDelete')}">${xSvg}</button>
+        </div>`;
+      }).join('') +
+    `</div>`;
+  }
+
+  return `<div class="db-query-history ${panelState.historyExpanded ? 'expanded' : ''}">
+    <button class="db-query-history-toggle" id="db-history-toggle">
+      ${chevronSvg}
+      ${t('database.history')}
+      <span class="db-query-history-count">${history.length}</span>
+      ${history.length > 0 ? `<button class="db-query-history-clear" id="db-history-clear">${t('database.historyClearAll')}</button>` : ''}
+    </button>
+    ${listHtml}
+  </div>`;
+}
+
+// ==================== Query Tab ====================
+
 function renderQuery(container) {
   const state = require('../../state');
   const activeId = state.getActiveConnection();
@@ -1006,11 +1380,22 @@ function renderQuery(container) {
   const queryResult = state.getQueryResult(activeId);
   const templates = getQueryTemplates(isMongo, conn ? conn.type : 'mysql', isRedis);
 
+  // Build autocomplete index if needed
+  if (!isMongo && !isRedis) buildAutocompleteIndex();
+
   // Template chips
-  const templatesHtml = templates.map((tpl, i) => {
+  const builtinChipsHtml = templates.map((tpl, i) => {
     const catClass = `db-query-tpl-${tpl.cat}`;
     return `<button class="db-query-tpl ${catClass}" data-tpl-idx="${i}" title="${escapeHtml(tpl.sql.replace(/\n/g, ' '))}">${tpl.icon} ${escapeHtml(tpl.label)}</button>`;
   }).join('');
+
+  // Saved query chips
+  const savedQueries = state.getSavedQueries();
+  const savedChipsHtml = savedQueries.map((sq, i) => {
+    return `<button class="db-query-tpl db-query-tpl-saved" data-saved-idx="${i}" title="${escapeHtml(sq.sql.replace(/\n/g, ' '))}">&#x2B50; ${escapeHtml(sq.name)}</button>`;
+  }).join('');
+
+  const templatesHtml = builtinChipsHtml + (savedQueries.length > 0 ? '<span class="db-query-tpl-divider"></span>' + savedChipsHtml : '');
 
   // Build results
   let resultsHtml = '';
@@ -1059,6 +1444,9 @@ function renderQuery(container) {
                 : `<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M8 5v14l11-7z"/></svg> ${t('database.runQuery')}`
               }
             </button>
+            <button class="db-query-save" id="database-save-query-btn" title="${t('database.saveQuery')}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            </button>
             <button class="db-query-clear" id="database-clear-btn" title="${t('database.queryClear')}">
               <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
             </button>
@@ -1070,6 +1458,7 @@ function renderQuery(container) {
           </div>
         </div>
       </div>
+      ${_buildHistorySection(state)}
       <div class="db-query-results">
         ${resultsHtml}
       </div>
@@ -1089,6 +1478,14 @@ function renderQuery(container) {
     renderContent();
   };
 
+  // Save query button
+  const saveQueryBtn = document.getElementById('database-save-query-btn');
+  if (saveQueryBtn) saveQueryBtn.onclick = () => {
+    const sql = state.getCurrentQuery().trim();
+    if (!sql) return;
+    showSaveQueryModal(sql);
+  };
+
   const input = document.getElementById('database-query-input');
   const highlightEl = document.getElementById('database-query-highlight');
   const syncHighlight = () => {
@@ -1105,6 +1502,33 @@ function renderQuery(container) {
   };
   if (input) {
     input.onkeydown = (e) => {
+      // Autocomplete keyboard navigation
+      if (panelState.autocomplete && panelState.autocomplete.suggestions.length > 0) {
+        const ac = panelState.autocomplete;
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          ac.selectedIndex = (ac.selectedIndex + 1) % ac.suggestions.length;
+          renderAutocompleteDropdown();
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          ac.selectedIndex = (ac.selectedIndex - 1 + ac.suggestions.length) % ac.suggestions.length;
+          renderAutocompleteDropdown();
+          return;
+        }
+        if (e.key === 'Enter' || e.key === 'Tab') {
+          e.preventDefault();
+          applyAutocomplete(ac.selectedIndex);
+          return;
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          hideAutocomplete();
+          return;
+        }
+      }
+      // Ctrl+Enter to run query
       if (e.ctrlKey && e.key === 'Enter') {
         e.preventDefault();
         runQuery();
@@ -1113,12 +1537,16 @@ function renderQuery(container) {
     input.oninput = () => {
       state.setCurrentQuery(input.value);
       syncHighlight();
+      triggerAutocomplete(input);
+    };
+    input.onblur = () => {
+      setTimeout(() => hideAutocomplete(), 150);
     };
     input.onscroll = syncScroll;
   }
 
-  // Template click handlers
-  container.querySelectorAll('.db-query-tpl').forEach(btn => {
+  // Built-in template click handlers
+  container.querySelectorAll('.db-query-tpl[data-tpl-idx]').forEach(btn => {
     btn.onclick = () => {
       const idx = parseInt(btn.dataset.tplIdx);
       const tpl = templates[idx];
@@ -1130,6 +1558,72 @@ function renderQuery(container) {
         state.setCurrentQuery(tpl.sql);
         syncHighlight();
       }
+    };
+  });
+
+  // Saved query chip handlers
+  container.querySelectorAll('.db-query-tpl-saved').forEach(btn => {
+    const idx = parseInt(btn.dataset.savedIdx);
+    const sq = savedQueries[idx];
+    if (!sq) return;
+
+    btn.onclick = () => {
+      const textarea = document.getElementById('database-query-input');
+      if (textarea) {
+        textarea.value = sq.sql;
+        textarea.focus();
+        state.setCurrentQuery(sq.sql);
+        syncHighlight();
+      }
+    };
+
+    btn.oncontextmenu = (e) => {
+      e.preventDefault();
+      if (confirm(t('database.deleteSavedQuery') + ` "${sq.name}"?`)) {
+        state.removeSavedQuery(sq.id);
+        renderContent();
+      }
+    };
+  });
+
+  // History toggle
+  const historyToggle = document.getElementById('db-history-toggle');
+  if (historyToggle) historyToggle.onclick = (e) => {
+    if (e.target.closest('#db-history-clear')) return;
+    panelState.historyExpanded = !panelState.historyExpanded;
+    renderContent();
+  };
+
+  // History clear all
+  const historyClear = document.getElementById('db-history-clear');
+  if (historyClear) historyClear.onclick = (e) => {
+    e.stopPropagation();
+    state.clearQueryHistory();
+    renderContent();
+  };
+
+  // History entry click -> load, delete button
+  container.querySelectorAll('.db-query-history-entry').forEach(el => {
+    el.onclick = (e) => {
+      if (e.target.closest('.db-query-history-delete')) return;
+      const id = el.dataset.historyId;
+      const entry = state.getQueryHistory().find(h => h.id === id);
+      if (entry) {
+        const textarea = document.getElementById('database-query-input');
+        if (textarea) {
+          textarea.value = entry.sql;
+          textarea.focus();
+          state.setCurrentQuery(entry.sql);
+          syncHighlight();
+        }
+      }
+    };
+  });
+  container.querySelectorAll('.db-query-history-delete').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      state.removeQueryHistoryEntry(btn.dataset.historyDelete);
+      renderContent();
     };
   });
 }
@@ -1205,6 +1699,25 @@ function splitSqlStatements(sql) {
   return statements;
 }
 
+function _generateId() {
+  return Date.now().toString(36) + Math.random().toString(36).substring(2, 6);
+}
+
+function _recordHistory(state, sql, conn, activeId, result, duration) {
+  state.addQueryHistoryEntry({
+    id: _generateId(),
+    timestamp: Date.now(),
+    sql,
+    connectionId: activeId,
+    connectionName: conn ? conn.name : '',
+    dbType: conn ? conn.type : '',
+    duration: duration || result.duration || 0,
+    rowCount: result.error ? null : (result.rowCount ?? result.rows?.length ?? null),
+    error: result.error || null,
+    success: !result.error
+  });
+}
+
 async function runQuery() {
   const state = require('../../state');
   const activeId = state.getActiveConnection();
@@ -1225,6 +1738,7 @@ async function runQuery() {
     if (isMongo) {
       const result = await ctx.api.database.executeQuery({ id: activeId, sql, limit: 100, allowDestructive: panelState.allowDestructive });
       state.setQueryResult(activeId, result);
+      _recordHistory(state, sql, conn, activeId, result, result.duration);
     } else {
       const statements = splitSqlStatements(sql);
       if (statements.length === 0) {
@@ -1244,10 +1758,12 @@ async function runQuery() {
         totalDuration += result.duration || 0;
 
         if (result.error) {
-          state.setQueryResult(activeId, {
+          const errorResult = {
             error: t('database.statementError', { current: statementsRun, total: statements.length, error: result.error }),
             duration: totalDuration
-          });
+          };
+          state.setQueryResult(activeId, errorResult);
+          _recordHistory(state, sql, conn, activeId, errorResult, totalDuration);
           panelState.queryRunning = false;
           renderContent();
           return;
@@ -1269,9 +1785,12 @@ async function runQuery() {
         lastResult.statementsRun = statementsRun;
       }
       state.setQueryResult(activeId, lastResult);
+      _recordHistory(state, sql, conn, activeId, lastResult, totalDuration);
     }
   } catch (e) {
-    state.setQueryResult(activeId, { error: e.message });
+    const errorResult = { error: e.message };
+    state.setQueryResult(activeId, errorResult);
+    _recordHistory(state, sql, conn, activeId, errorResult, 0);
   }
 
   panelState.queryRunning = false;

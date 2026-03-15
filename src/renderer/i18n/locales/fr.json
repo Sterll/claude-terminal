@@ -1791,7 +1791,15 @@
     "browserSearchPlaceholder": "Rechercher dans les données...",
     "browserSearchClear": "Effacer la recherche",
     "statementsRun": "({count} instructions)",
-    "statementError": "Instruction {current}/{total} : {error}"
+    "statementError": "Instruction {current}/{total} : {error}",
+    "history": "Historique",
+    "historyClearAll": "Tout effacer",
+    "historyDelete": "Supprimer",
+    "historyJustNow": "à l'instant",
+    "saveQuery": "Sauvegarder la requête",
+    "savedQueryName": "Nom de la requête",
+    "savedQueryNamePlaceholder": "ex: Utilisateurs avec commandes",
+    "deleteSavedQuery": "Supprimer la requête"
   },
   "mdViewer": {
     "tableOfContents": "Table des matières",

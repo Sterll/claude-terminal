@@ -1791,7 +1791,15 @@
     "browserSearchPlaceholder": "Search in data...",
     "browserSearchClear": "Clear search",
     "statementsRun": "({count} statements)",
-    "statementError": "Statement {current}/{total}: {error}"
+    "statementError": "Statement {current}/{total}: {error}",
+    "history": "History",
+    "historyClearAll": "Clear all",
+    "historyDelete": "Remove",
+    "historyJustNow": "just now",
+    "saveQuery": "Save query",
+    "savedQueryName": "Query name",
+    "savedQueryNamePlaceholder": "e.g. Users with orders",
+    "deleteSavedQuery": "Delete saved query"
   },
   "mdViewer": {
     "tableOfContents": "Table of Contents",
