@@ -10,7 +10,8 @@ const { settingsFile } = require('../utils/paths');
 
 // Default settings
 const defaultSettings = {
-  editor: 'code', // 'code', 'cursor', 'webstorm', 'idea'
+  editor: 'code', // 'code', 'cursor', 'webstorm', 'idea', 'custom'
+  customEditorCommand: '', // Custom editor command when editor is 'custom'
   shortcut: typeof navigator !== 'undefined' && navigator.platform?.includes('Mac') ? 'Cmd+Shift+P' : 'Ctrl+Shift+P',
   skipPermissions: false,
   accentColor: '#d97706',
@@ -31,7 +32,10 @@ const defaultSettings = {
   remotePort: 3712, // Port for the remote control WebSocket/HTTP server
   restoreTerminalSessions: true, // Restore terminal tabs from previous session on startup
   remoteSelectedIp: null, // Selected network interface IP for pairing URL (null = auto)
+  remotePersistentPin: false, // Use a fixed PIN that never expires
+  remotePersistentPinValue: '', // The custom 6-digit PIN value
   showDotfiles: true, // true = show dotfiles in file explorer (default), false = hide them
+  explorerIgnorePatterns: [], // Additional ignore patterns for file explorer (user-configured)
   showTabModeToggle: true, // Show Chat/Terminal mode-switch button on terminal tabs
   tabRenameOnSlashCommand: false, // Rename terminal tab to slash command text when submitted
   aiTabNaming: true, // Use AI (Haiku) to generate short tab names from messages
@@ -50,6 +54,7 @@ const defaultSettings = {
   parallelMaxAgents: 3, // Default number of parallel agents for Parallel Task Manager (1-10)
   maxTurns: null, // null = SDK default (100), or custom number for max agentic turns per session
   autoClaudeMdUpdate: true, // Suggest CLAUDE.md updates after chat sessions
+  dailyGoal: 0, // Daily time goal in minutes (0 = disabled)
 };
 
 const settingsState = new State({ ...defaultSettings });
@@ -206,6 +211,9 @@ function resetSettings() {
  * @returns {string}
  */
 function getEditorCommand(editor) {
+  if (editor === 'custom') {
+    return settingsState.get().customEditorCommand || 'code';
+  }
   const commands = {
     code: 'code',
     cursor: 'cursor',
@@ -243,6 +251,7 @@ function toggleNotifications() {
 
 module.exports = {
   settingsState,
+  defaultSettings,
   getSettings,
   getSetting,
   updateSettings,
