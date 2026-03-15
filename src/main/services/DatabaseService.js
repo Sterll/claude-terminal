@@ -449,7 +449,7 @@ class DatabaseService {
     if (!dbPath || !fs.existsSync(dbPath)) {
       throw new Error(`SQLite file not found: ${dbPath}`);
     }
-    return new Database(dbPath, { readonly: true });
+    return new Database(dbPath, { readonly: false });
   }
 
   _createMysqlClient(config) {

@@ -662,7 +662,7 @@ async function commitCellEdit(input) {
   const sql = `UPDATE ${escapeIdentifier(panelState.browserSelectedTable, dbType)} SET ${escapeIdentifier(col, dbType)} = ${setVal} ${whereClause}`;
 
   try {
-    const result = await ctx.api.database.executeQuery({ id: activeId, sql });
+    const result = await ctx.api.database.executeQuery({ id: activeId, sql, allowDestructive: true });
     if (result.error) {
       ctx.showToast({ type: 'error', title: result.error });
     } else {
@@ -738,7 +738,7 @@ function insertNewRow() {
 
     const sql = `INSERT INTO ${escapeIdentifier(panelState.browserSelectedTable, dbType)} (${colNames.join(', ')}) VALUES (${values.join(', ')})`;
     try {
-      const result = await ctx.api.database.executeQuery({ id: activeId, sql });
+      const result = await ctx.api.database.executeQuery({ id: activeId, sql, allowDestructive: true });
       if (result.error) {
         ctx.showToast({ type: 'error', title: result.error });
       } else {
@@ -802,7 +802,7 @@ async function deleteRow(rowIdx) {
 
   const sql = `DELETE FROM ${escapeIdentifier(panelState.browserSelectedTable, dbType)} ${whereClause}`;
   try {
-    const result = await ctx.api.database.executeQuery({ id: activeId, sql });
+    const result = await ctx.api.database.executeQuery({ id: activeId, sql, allowDestructive: true });
     if (result.error) {
       ctx.showToast({ type: 'error', title: result.error });
     } else {

@@ -108,7 +108,7 @@ async function createClient(config, password) {
     return db;
   }
 
-  if (type === 'mysql') {
+  if (type === 'mysql' || type === 'mariadb') {
     const mysql = require('mysql2/promise');
     return await mysql.createConnection({
       host: config.host || 'localhost',
@@ -160,7 +160,7 @@ async function executeQuery(client, type, sql) {
     return `Rows affected: ${info.changes}`;
   }
 
-  if (type === 'mysql') {
+  if (type === 'mysql' || type === 'mariadb') {
     const [rows] = await client.execute(trimmed);
     if (Array.isArray(rows)) return formatRows(rows.slice(0, MAX_ROWS));
     return `Rows affected: ${rows.affectedRows}`;
@@ -198,7 +198,7 @@ async function listTables(client, type, filter) {
     return result.join('\n') || (filter ? `No tables matching "${filter}"` : 'No tables found');
   }
 
-  if (type === 'mysql') {
+  if (type === 'mysql' || type === 'mariadb') {
     const [tables] = await client.execute('SHOW TABLES');
     const key = Object.keys(tables[0] || {})[0];
     const result = [];
@@ -252,7 +252,7 @@ async function describeTable(client, type, tableName) {
     return `Table: ${tableName}\n${'─'.repeat(40)}\n${lines.join('\n')}`;
   }
 
-  if (type === 'mysql') {
+  if (type === 'mysql' || type === 'mariadb') {
     const [columns] = await client.execute(`SHOW FULL COLUMNS FROM ${mysqlId(tableName)}`);
     if (!columns.length) return `Table '${tableName}' not found`;
     const lines = columns.map(c => {
@@ -308,7 +308,7 @@ async function exportQuery(client, type, sql, format) {
 
   if (type === 'sqlite') {
     rows = client.prepare(trimmed).all().slice(0, MAX_ROWS);
-  } else if (type === 'mysql') {
+  } else if (type === 'mysql' || type === 'mariadb') {
     const [result] = await client.execute(trimmed);
     rows = Array.isArray(result) ? result.slice(0, MAX_ROWS) : [];
   } else if (type === 'postgresql') {
@@ -375,7 +375,7 @@ async function getFullSchema(client, type) {
     return sections.join('\n\n') || 'No tables found';
   }
 
-  if (type === 'mysql') {
+  if (type === 'mysql' || type === 'mariadb') {
     const [tables] = await client.execute('SHOW TABLES');
     const key = Object.keys(tables[0] || {})[0];
     const sections = [];
@@ -517,7 +517,7 @@ async function getStats(client, type) {
     return `Database size: ${sizeMB} MB\nTotal rows: ${totalRows.toLocaleString()}\nTables: ${tables.length}\n${'─'.repeat(40)}\n${lines.join('\n')}`;
   }
 
-  if (type === 'mysql') {
+  if (type === 'mysql' || type === 'mariadb') {
     const [tables] = await client.execute('SHOW TABLES');
     const key = Object.keys(tables[0] || {})[0];
     const lines = [];
@@ -742,7 +742,7 @@ async function cleanup() {
   for (const [id, { client, type }] of connections) {
     try {
       if (type === 'sqlite') client.close();
-      else if (type === 'mysql') await client.end();
+      else if (type === 'mysql' || type === 'mariadb') await client.end();
       else if (type === 'postgresql') await client.end();
       else if (type === 'mongodb') await client.mongoClient.close();
       log(`Closed connection: ${id}`);
