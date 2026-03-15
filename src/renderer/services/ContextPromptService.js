@@ -158,6 +158,49 @@ async function resolveContextPack(id, projectPath) {
           parts.push('');
           break;
         }
+        case 'glob': {
+          const { child_process } = window.electron_nodeModules;
+          const baseDir = projectPath || '';
+          try {
+            // Use git ls-files or find to match glob pattern
+            const pattern = item.pattern || item.path || '**/*';
+            const cmd = process.platform === 'win32'
+              ? `git -C "${baseDir}" ls-files "${pattern}"`
+              : `git -C '${baseDir}' ls-files '${pattern}'`;
+            const output = child_process.execSync(cmd, { encoding: 'utf8', maxBuffer: 1024 * 1024, timeout: 10000 });
+            const files = output.trim().split('\n').filter(Boolean);
+            parts.push(`--- Glob: ${pattern} (${files.length} files) ---`);
+            let totalChars = 0;
+            const maxChars = 40000;
+            for (const relFile of files.slice(0, 50)) {
+              const filePath = path.join(baseDir, relFile);
+              try {
+                const content = fs.readFileSync(filePath, 'utf8');
+                if (totalChars + content.length > maxChars) {
+                  parts.push(`\n--- ${relFile} [skipped: size limit reached] ---`);
+                  continue;
+                }
+                totalChars += content.length;
+                const lines = content.split('\n');
+                if (lines.length > 300) {
+                  parts.push(`--- ${relFile} (first 300 of ${lines.length} lines) ---`);
+                  parts.push(lines.slice(0, 300).join('\n'));
+                } else {
+                  parts.push(`--- ${relFile} ---`);
+                  parts.push(content);
+                }
+                parts.push('');
+              } catch (e) {
+                parts.push(`[Error reading ${relFile}: ${e.message}]`);
+              }
+            }
+            if (files.length > 50) parts.push(`\n... and ${files.length - 50} more files`);
+          } catch (e) {
+            parts.push(`[Error resolving glob ${item.pattern || item.path}: ${e.message}]`);
+          }
+          parts.push('');
+          break;
+        }
         case 'text':
         case 'rule': {
           if (item.type === 'rule') {
@@ -324,6 +367,25 @@ async function resolvePromptTemplate(id, project) {
   return text;
 }
 
+/**
+ * Preview a context pack's resolved content (for preview before injection)
+ */
+async function previewContextPack(id, projectPath) {
+  const resolved = await resolveContextPack(id, projectPath);
+  const lines = resolved.split('\n');
+  const charCount = resolved.length;
+  const lineCount = lines.length;
+  const fileMatches = resolved.match(/^--- .+ ---$/gm) || [];
+  return {
+    content: resolved,
+    stats: {
+      chars: charCount,
+      lines: lineCount,
+      files: fileMatches.length
+    }
+  };
+}
+
 module.exports = {
   loadContextPacks,
   getContextPacks,
@@ -331,6 +393,7 @@ module.exports = {
   saveContextPack,
   deleteContextPack,
   resolveContextPack,
+  previewContextPack,
   loadPromptTemplates,
   getPromptTemplates,
   getPromptTemplate,
