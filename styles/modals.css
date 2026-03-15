@@ -1317,6 +1317,24 @@ mark.qp-hl {
   font-size: 10px;
 }
 
+.quick-picker-footer-mode {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  padding: 1px 4px;
+  transition: background 0.15s;
+}
+
+.quick-picker-footer-mode:hover {
+  background: var(--bg-hover);
+}
+
+.quick-picker-more {
+  text-align: center;
+  padding: 8px;
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+}
+
 /* Toast Notifications */
 .toast-container {
   position: fixed;

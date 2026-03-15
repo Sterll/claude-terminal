@@ -147,6 +147,9 @@
     }
     .footer-modes { display: flex; gap: 10px; }
     .footer-modes span { display: flex; align-items: center; gap: 3px; }
+    .footer-mode { cursor: pointer; border-radius: 3px; padding: 1px 4px; transition: background 0.15s; }
+    .footer-mode:hover { background: #2a2a2a; }
+    .more-results { text-align: center; padding: 8px; color: #555; font-size: 10.5px; }
     .footer kbd, .footer-modes kbd {
       padding: 1px 5px;
       background: #2a2a2a;
@@ -160,21 +163,45 @@
   <div class="container">
     <div class="search-box">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-      <input type="text" id="search" placeholder="Rechercher partout..." autofocus>
+      <input type="text" id="search" placeholder="" autofocus>
       <span class="shortcut">Esc</span>
     </div>
     <div class="list" id="list"></div>
-    <div class="footer">
-      <div class="footer-modes">
-        <span><kbd>&gt;</kbd> commandes</span>
-        <span><kbd>@</kbd> branches</span>
-        <span><kbd>!</kbd> workflows</span>
-      </div>
-      <span><kbd>↑↓</kbd> naviguer &nbsp;<kbd>↵</kbd> ouvrir</span>
+    <div class="footer" id="footer">
+      <div class="footer-modes" id="footer-modes"></div>
+      <span id="footer-nav"></span>
     </div>
   </div>
 
   <script>
+    // ── i18n ───────────────────────────────────────────────────────────────
+    const LANG = pickerAPI.readLanguage ? pickerAPI.readLanguage() : 'fr';
+    const I18N = {
+      fr: {
+        placeholder: 'Rechercher partout...',
+        commands: 'commandes', branches: 'branches', workflows: 'workflows',
+        navigate: 'naviguer', open: 'ouvrir',
+        noResult: 'Aucun résultat',
+        moreResults: '{count} résultats supplémentaires...',
+        sectionProjects: 'Projets', sectionCommands: 'Commandes', sectionWorkflows: 'Workflows',
+        cmdSettings: 'Ouvrir les paramètres', cmdNewProject: 'Nouveau projet',
+        cmdGit: 'Panneau Git', cmdMcp: 'Panneau MCP', cmdSkills: 'Panneau Skills',
+        cmdAgents: 'Panneau Agents', cmdDashboard: 'Tableau de bord', cmdMemory: 'Éditeur mémoire',
+      },
+      en: {
+        placeholder: 'Search everywhere...',
+        commands: 'commands', branches: 'branches', workflows: 'workflows',
+        navigate: 'navigate', open: 'open',
+        noResult: 'No results',
+        moreResults: '{count} more results...',
+        sectionProjects: 'Projects', sectionCommands: 'Commands', sectionWorkflows: 'Workflows',
+        cmdSettings: 'Open Settings', cmdNewProject: 'New Project',
+        cmdGit: 'Git Panel', cmdMcp: 'MCP Panel', cmdSkills: 'Skills Panel',
+        cmdAgents: 'Agents Panel', cmdDashboard: 'Dashboard', cmdMemory: 'Memory Editor',
+      },
+    };
+    function tr(key) { return (I18N[LANG] || I18N.fr)[key] || I18N.fr[key] || key; }
+
     // ── Icons ──────────────────────────────────────────────────────────────
     const ICON = {
       project: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>',
@@ -193,14 +220,14 @@
 
     // ── Commands ───────────────────────────────────────────────────────────
     const COMMANDS = [
-      { id: 'cmd-settings',  label: 'Ouvrir les paramètres', hint: 'Ctrl+,', icon: ICON.settings,  tabId: 'settings'   },
-      { id: 'cmd-new-proj',  label: 'Nouveau projet',         hint: 'Ctrl+N', icon: ICON.newProject, action: 'new-project' },
-      { id: 'cmd-git',       label: 'Panneau Git',            icon: ICON.git,       tabId: 'git'       },
-      { id: 'cmd-mcp',       label: 'Panneau MCP',            icon: ICON.mcp,       tabId: 'mcp'       },
-      { id: 'cmd-skills',    label: 'Panneau Skills',          icon: ICON.skills,    tabId: 'skills'    },
-      { id: 'cmd-agents',    label: 'Panneau Agents',          icon: ICON.skills,    tabId: 'agents'    },
-      { id: 'cmd-dashboard', label: 'Tableau de bord',         icon: ICON.dashboard, tabId: 'dashboard' },
-      { id: 'cmd-memory',    label: 'Éditeur mémoire',         icon: ICON.memory,    tabId: 'memory'    },
+      { id: 'cmd-settings',  label: tr('cmdSettings'),  hint: 'Ctrl+,', icon: ICON.settings,  tabId: 'settings'   },
+      { id: 'cmd-new-proj',  label: tr('cmdNewProject'), hint: 'Ctrl+N', icon: ICON.newProject, action: 'new-project' },
+      { id: 'cmd-git',       label: tr('cmdGit'),       icon: ICON.git,       tabId: 'git'       },
+      { id: 'cmd-mcp',       label: tr('cmdMcp'),       icon: ICON.mcp,       tabId: 'mcp'       },
+      { id: 'cmd-skills',    label: tr('cmdSkills'),    icon: ICON.skills,    tabId: 'skills'    },
+      { id: 'cmd-agents',    label: tr('cmdAgents'),    icon: ICON.skills,    tabId: 'agents'    },
+      { id: 'cmd-dashboard', label: tr('cmdDashboard'), icon: ICON.dashboard, tabId: 'dashboard' },
+      { id: 'cmd-memory',    label: tr('cmdMemory'),    icon: ICON.memory,    tabId: 'memory'    },
     ];
 
     // ── State ──────────────────────────────────────────────────────────────
@@ -298,7 +325,7 @@
           if (!match) return null;
           return { kind: 'project', label: p.name, labelHtml, sublabel: p.path, icon: ICON.project, score, data: p };
         }).filter(Boolean).sort((a,b) => b.score - a.score);
-        if (items.length) sections.push({ label: 'Projets', items });
+        if (items.length) sections.push({ label: tr('sectionProjects'), items });
       }
 
       // Commands
@@ -308,7 +335,7 @@
           if (!match) return null;
           return { kind: 'command', label: c.label, labelHtml, hint: c.hint || '', icon: c.icon, score, data: c };
         }).filter(Boolean).sort((a,b) => b.score - a.score);
-        if (items.length) sections.push({ label: 'Commandes', items });
+        if (items.length) sections.push({ label: tr('sectionCommands'), items });
       }
 
       // Workflows
@@ -321,10 +348,25 @@
             : w.trigger_type || 'manual';
           return { kind: 'workflow', label, labelHtml, sublabel: triggerLabel, icon: ICON.workflow, score, data: w };
         }).filter(Boolean).sort((a,b) => b.score - a.score);
-        if (items.length || mode === 'workflows') sections.push({ label: 'Workflows', items });
+        if (items.length || mode === 'workflows') sections.push({ label: tr('sectionWorkflows'), items });
       }
 
       return sections;
+    }
+
+    // ── Selection update (no re-render) ──────────────────────────────────
+    const MAX_VISIBLE = 50;
+
+    function updateSelection(newIndex) {
+      if (newIndex === selectedIndex) return;
+      selectedIndex = newIndex;
+      const list = document.getElementById('list');
+      list.querySelectorAll('.item').forEach(el => {
+        const idx = parseInt(el.dataset.idx, 10);
+        el.classList.toggle('selected', idx === newIndex);
+      });
+      const sel = list.querySelector('.item.selected');
+      if (sel) sel.scrollIntoView({ block: 'nearest' });
     }
 
     // ── Render ─────────────────────────────────────────────────────────────
@@ -335,10 +377,20 @@
       flatItems = [];
       sections.forEach(s => s.items.forEach(i => flatItems.push(i)));
 
+      // Cap visible items
+      const totalCount = flatItems.length;
+      let truncated = false;
+      if (totalCount > MAX_VISIBLE) {
+        const visibleSet = new Set(flatItems.slice(0, MAX_VISIBLE));
+        sections.forEach(s => { s.items = s.items.filter(i => visibleSet.has(i)); });
+        flatItems.length = MAX_VISIBLE;
+        truncated = true;
+      }
+
       const list = document.getElementById('list');
 
       if (!flatItems.length) {
-        list.innerHTML = `<div class="empty">${ICON.empty}<p>Aucun résultat</p></div>`;
+        list.innerHTML = `<div class="empty">${ICON.empty}<p>${escHtml(tr('noResult'))}</p></div>`;
         return;
       }
 
@@ -359,16 +411,9 @@
         }).join('')}
       `).join('');
 
-      list.querySelectorAll('.item').forEach(el => {
-        const idx = parseInt(el.dataset.idx, 10);
-        el.addEventListener('mouseenter', () => {
-          selectedIndex = idx;
-          list.querySelectorAll('.item').forEach(i =>
-            i.classList.toggle('selected', parseInt(i.dataset.idx, 10) === idx)
-          );
-        });
-        el.addEventListener('click', () => activate(flatItems[idx]));
-      });
+      if (truncated) {
+        list.innerHTML += `<div class="more-results">${tr('moreResults').replace('{count}', totalCount - MAX_VISIBLE)}</div>`;
+      }
 
       const sel = list.querySelector('.item.selected');
       if (sel) sel.scrollIntoView({ block: 'nearest' });
@@ -401,6 +446,29 @@
       } catch { workflows = []; }
     }
 
+    function initI18n() {
+      document.getElementById('search').placeholder = tr('placeholder');
+      // Footer modes
+      const modesEl = document.getElementById('footer-modes');
+      modesEl.innerHTML = [
+        { prefix: '>', label: tr('commands') },
+        { prefix: '@', label: tr('branches') },
+        { prefix: '!', label: tr('workflows') },
+      ].map(m => `<span class="footer-mode" data-prefix="${m.prefix}"><kbd>${escHtml(m.prefix)}</kbd> ${escHtml(m.label)}</span>`).join('');
+      // Footer nav
+      document.getElementById('footer-nav').innerHTML = `<kbd>↑↓</kbd> ${escHtml(tr('navigate'))} &nbsp;<kbd>↵</kbd> ${escHtml(tr('open'))}`;
+      // Click on footer mode to pre-fill input
+      modesEl.querySelectorAll('.footer-mode').forEach(el => {
+        el.addEventListener('click', () => {
+          const input = document.getElementById('search');
+          input.value = el.dataset.prefix;
+          selectedIndex = 0;
+          render();
+          input.focus();
+        });
+      });
+    }
+
     function reset() {
       document.getElementById('search').value = '';
       selectedIndex = 0;
@@ -412,6 +480,20 @@
     }
 
     // ── Events ─────────────────────────────────────────────────────────────
+
+    // Event delegation on list (attached once)
+    const listEl = document.getElementById('list');
+    listEl.addEventListener('mouseenter', (e) => {
+      const item = e.target.closest('.item');
+      if (!item) return;
+      updateSelection(parseInt(item.dataset.idx, 10));
+    }, true);
+    listEl.addEventListener('click', (e) => {
+      const item = e.target.closest('.item');
+      if (!item) return;
+      activate(flatItems[parseInt(item.dataset.idx, 10)]);
+    });
+
     document.getElementById('search').addEventListener('input', () => {
       selectedIndex = 0;
       render();
@@ -421,13 +503,11 @@
       switch (e.key) {
         case 'ArrowDown':
           e.preventDefault();
-          selectedIndex = Math.min(selectedIndex + 1, flatItems.length - 1);
-          render();
+          updateSelection(Math.min(selectedIndex + 1, flatItems.length - 1));
           break;
         case 'ArrowUp':
           e.preventDefault();
-          selectedIndex = Math.max(selectedIndex - 1, 0);
-          render();
+          updateSelection(Math.max(selectedIndex - 1, 0));
           break;
         case 'Enter':
           e.preventDefault();
@@ -444,6 +524,7 @@
     pickerAPI.onReloadProjects(reset);
 
     // Init
+    initI18n();
     reset();
   </script>
 </body>

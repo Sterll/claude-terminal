@@ -599,6 +599,7 @@
     "placeholder": "Rechercher partout...",
     "noResult": "Aucun résultat",
     "noResultFor": "Aucun résultat pour \"{query}\"",
+    "moreResults": "{count} résultats supplémentaires...",
     "searchHint": "Essayez un autre terme ou utilisez un préfixe (>, @, #, ~)",
     "loadError": "Échec du chargement",
     "loading": "Chargement...",

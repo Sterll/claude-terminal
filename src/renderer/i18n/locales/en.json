@@ -524,6 +524,7 @@
     "placeholder": "Search everywhere...",
     "noResult": "No results",
     "noResultFor": "No results for \"{query}\"",
+    "moreResults": "{count} more results...",
     "searchHint": "Try a different search term or use a prefix (>, @, #, ~)",
     "loadError": "Failed to load",
     "loading": "Loading...",
