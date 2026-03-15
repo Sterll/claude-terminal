@@ -680,17 +680,22 @@ async function renderSettingsTab(initialTab = 'general') {
               </div>
               <div class="settings-dropdown" id="editor-dropdown" data-value="${settings.editor || 'code'}">
                 <div class="settings-dropdown-trigger">
-                  <span>${{'code':'VS Code','cursor':'Cursor','zed':'Zed','subl':'Sublime Text','webstorm':'WebStorm','idea':'IntelliJ IDEA','nvim':'Neovim','vim':'Vim'}[settings.editor || 'code'] || (settings.editor || 'code')}</span>
+                  <span>${{'code':'VS Code','cursor':'Cursor','zed':'Zed','subl':'Sublime Text','webstorm':'WebStorm','idea':'IntelliJ IDEA','nvim':'Neovim','vim':'Vim','custom':t('settings.editorCustom')}[settings.editor || 'code'] || (settings.editor || 'code')}</span>
                   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
                 </div>
                 <div class="settings-dropdown-menu">
-                  ${[{v:'code',l:'VS Code'},{v:'cursor',l:'Cursor'},{v:'zed',l:'Zed'},{v:'subl',l:'Sublime Text'},{v:'webstorm',l:'WebStorm'},{v:'idea',l:'IntelliJ IDEA'},{v:'nvim',l:'Neovim'},{v:'vim',l:'Vim'}].map(o =>
+                  ${[{v:'code',l:'VS Code'},{v:'cursor',l:'Cursor'},{v:'zed',l:'Zed'},{v:'subl',l:'Sublime Text'},{v:'webstorm',l:'WebStorm'},{v:'idea',l:'IntelliJ IDEA'},{v:'nvim',l:'Neovim'},{v:'vim',l:'Vim'},{v:'custom',l:t('settings.editorCustom')}].map(o =>
                     `<div class="settings-dropdown-option ${(settings.editor || 'code') === o.v ? 'selected' : ''}" data-value="${o.v}">
                       <span class="dropdown-check"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></span>
                       ${o.l}
                     </div>`
                   ).join('')}
                 </div>
+              </div>
+              <div class="settings-custom-editor" id="custom-editor-row" style="display: ${settings.editor === 'custom' ? 'block' : 'none'}; margin-top: 8px;">
+                <input type="text" class="settings-input" id="custom-editor-input"
+                  value="${(settings.customEditorCommand || '').replace(/"/g, '&quot;')}"
+                  placeholder="${t('settings.editorCustomPlaceholder')}" />
               </div>
             </div>
             <div class="settings-row">
@@ -736,6 +741,13 @@ async function renderSettingsTab(initialTab = 'general') {
                   <input type="checkbox" id="show-dotfiles-toggle" ${settings.showDotfiles !== false ? 'checked' : ''}>
                   <span class="settings-toggle-slider"></span>
                 </label>
+              </div>
+              <div class="settings-field" style="margin-top: 12px;">
+                <label>${t('settings.explorerIgnorePatterns')}</label>
+                <div class="settings-toggle-desc" style="margin-bottom: 6px;">${t('settings.explorerIgnorePatternsDesc')}</div>
+                <input type="text" id="explorer-ignore-patterns" class="settings-input"
+                  value="${escapeHtml((settings.explorerIgnorePatterns || []).join(', '))}"
+                  placeholder="e.g. .env, logs, tmp">
               </div>
             </div>
           </div>
@@ -1493,6 +1505,10 @@ async function renderSettingsTab(initialTab = 'general') {
     const newEnable1MContext = context1MToggle ? context1MToggle.checked : settings.enable1MContext || false;
     const showDotfilesToggle = document.getElementById('show-dotfiles-toggle');
     const newShowDotfiles = showDotfilesToggle ? showDotfilesToggle.checked : true;
+    const ignorePatternsInput = document.getElementById('explorer-ignore-patterns');
+    const newIgnorePatterns = ignorePatternsInput
+      ? ignorePatternsInput.value.split(',').map(s => s.trim()).filter(Boolean)
+      : (settings.explorerIgnorePatterns || []);
     const showTabModeToggleEl = document.getElementById('show-tab-mode-toggle');
     const newShowTabModeToggle = showTabModeToggleEl ? showTabModeToggleEl.checked : true;
     const telemetryEnabledToggle = document.getElementById('telemetry-enabled-toggle');
@@ -1507,8 +1523,10 @@ async function renderSettingsTab(initialTab = 'general') {
     };
 
     const editorDropdown = document.getElementById('editor-dropdown');
+    const customEditorInput = document.getElementById('custom-editor-input');
     const newSettings = {
       editor: editorDropdown?.dataset.value || settings.editor || 'code',
+      customEditorCommand: customEditorInput ? customEditorInput.value.trim() : (settings.customEditorCommand || ''),
       skipPermissions: selectedMode?.dataset.mode === 'dangerous',
       accentColor,
       closeAction: closeActionDropdown?.dataset.value || 'ask',
@@ -1522,6 +1540,7 @@ async function renderSettingsTab(initialTab = 'general') {
       hooksEnabled: newHooksEnabled,
       enable1MContext: newEnable1MContext,
       showDotfiles: newShowDotfiles,
+      explorerIgnorePatterns: newIgnorePatterns,
       showTabModeToggle: newShowTabModeToggle,
       tabRenameOnSlashCommand: newTabRenameOnSlashCommand,
       aiTabNaming: newAiTabNaming,
