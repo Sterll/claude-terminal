@@ -1047,7 +1047,14 @@
     "endDate": "Date de fin",
     "chartStart": "début",
     "chartEnd": "fin",
-    "chartProjects": "projets"
+    "chartProjects": "projets",
+    "streakTooltip": "Nombre de jours consécutifs avec de l'activité de code",
+    "avgTooltip": "Temps moyen passé à coder par jour sur cette période",
+    "sessionsTooltip": "Nombre de sessions de code séparées (une session se termine après 15 min d'inactivité)",
+    "topProjectTooltip": "Projet avec le plus de temps passé sur cette période",
+    "startTooltip": "Heure de la première session de code aujourd'hui",
+    "endTooltip": "Heure de la dernière session de code aujourd'hui",
+    "projectsTooltip": "Nombre de projets différents travaillés aujourd'hui"
   },
   "setup": {
     "welcome": {
