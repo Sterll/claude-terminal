@@ -6,6 +6,7 @@
 
 const { escapeHtml } = require('../../utils');
 const { t } = require('../../i18n');
+const { showConfirm } = require('../components/Modal');
 
 let ctx = null;
 
@@ -263,6 +264,9 @@ function renderPluginsInstalled() {
         ${plugin.homepage ? `<button class="btn-sm btn-secondary btn-plugin-homepage" title="Homepage" data-url="${escapeHtml(plugin.homepage)}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
         </button>` : ''}
+        <button class="btn-sm btn-danger btn-plugin-uninstall" title="${t('plugins.uninstall')}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+        </button>
       </div>
     </div>`;
   }).join('');
@@ -394,6 +398,38 @@ function bindPluginInstalledHandlers() {
         require('electron').shell.openExternal(homepageBtn.dataset.url);
       };
     }
+    const uninstallBtn = item.querySelector('.btn-plugin-uninstall');
+    if (uninstallBtn) {
+      uninstallBtn.onclick = async (e) => {
+        e.stopPropagation();
+        const pluginName = item.dataset.pluginName;
+        const marketplace = item.dataset.marketplace;
+        const pluginKey = `${pluginName}@${marketplace}`;
+
+        const confirmed = await showConfirm({
+          title: t('plugins.uninstall'),
+          message: t('plugins.confirmUninstall', { name: pluginName }),
+          confirmLabel: t('plugins.uninstall'),
+          danger: true
+        });
+        if (!confirmed) return;
+
+        uninstallBtn.disabled = true;
+        try {
+          const result = await ctx.api.plugins.uninstall(pluginKey);
+          if (result.success) {
+            ctx.showToast({ type: 'success', title: t('plugins.uninstallSuccess') });
+            await loadPlugins();
+          } else {
+            ctx.showToast({ type: 'error', title: t('plugins.uninstallError'), message: result.error || '' });
+            uninstallBtn.disabled = false;
+          }
+        } catch (err) {
+          ctx.showToast({ type: 'error', title: t('plugins.uninstallError'), message: err.message });
+          uninstallBtn.disabled = false;
+        }
+      };
+    }
   });
 }
 
@@ -461,7 +497,8 @@ async function showPluginDetail(plugin) {
       </div>
       <div class="plugin-detail-actions">
         ${isInstalled
-          ? `<button class="btn-secondary btn-plugin-open-folder-detail">${t('plugins.openFolder')}</button>`
+          ? `<button class="btn-secondary btn-plugin-open-folder-detail">${t('plugins.openFolder')}</button>
+             <button class="btn-danger btn-plugin-uninstall-detail">${t('plugins.uninstall')}</button>`
           : `<button class="btn-primary btn-plugin-install-detail" data-name="${escapeHtml(plugin.name)}" data-marketplace="${escapeHtml(plugin.marketplace)}">${t('plugins.install')}</button>`
         }
         ${plugin.homepage ? `<button class="btn-secondary btn-plugin-homepage-detail" data-url="${escapeHtml(plugin.homepage)}">${t('plugins.viewOnGithub')}</button>` : ''}
@@ -498,6 +535,38 @@ async function showPluginDetail(plugin) {
   const installDetailBtn = document.querySelector('.btn-plugin-install-detail');
   if (installDetailBtn) {
     installDetailBtn.onclick = () => handlePluginInstall(installDetailBtn.dataset.name, installDetailBtn.dataset.marketplace, installDetailBtn);
+  }
+  const uninstallDetailBtn = document.querySelector('.btn-plugin-uninstall-detail');
+  if (uninstallDetailBtn && installedInfo) {
+    uninstallDetailBtn.onclick = async () => {
+      const pluginKey = `${plugin.name}@${installedInfo.marketplace}`;
+      const confirmed = await showConfirm({
+        title: t('plugins.uninstall'),
+        message: t('plugins.confirmUninstall', { name: plugin.name }),
+        confirmLabel: t('plugins.uninstall'),
+        danger: true
+      });
+      if (!confirmed) return;
+
+      uninstallDetailBtn.disabled = true;
+      uninstallDetailBtn.textContent = t('plugins.uninstalling');
+      try {
+        const result = await ctx.api.plugins.uninstall(pluginKey);
+        if (result.success) {
+          ctx.showToast({ type: 'success', title: t('plugins.uninstallSuccess') });
+          ctx.closeModal();
+          await loadPlugins();
+        } else {
+          ctx.showToast({ type: 'error', title: t('plugins.uninstallError'), message: result.error || '' });
+          uninstallDetailBtn.disabled = false;
+          uninstallDetailBtn.textContent = t('plugins.uninstall');
+        }
+      } catch (err) {
+        ctx.showToast({ type: 'error', title: t('plugins.uninstallError'), message: err.message });
+        uninstallDetailBtn.disabled = false;
+        uninstallDetailBtn.textContent = t('plugins.uninstall');
+      }
+    };
   }
 }
 

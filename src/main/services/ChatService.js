@@ -996,21 +996,19 @@ class ChatService {
 
   /**
    * Run a background SDK session to generate a skill or agent.
-   * Does NOT forward messages to renderer — runs silently.
+   * Forwards progress messages to renderer via IPC events.
    * @param {Object} params
    * @param {'skill'|'agent'} params.type
    * @param {string} params.description
    * @param {string} params.cwd - Working directory for SDK context
    * @param {string} [params.model]
+   * @param {string} params.genId - Unique generation ID (provided by IPC handler)
    * @returns {Promise<{success: boolean, type: string, error?: string, genId: string}>}
    */
-  async generateSkillOrAgent({ type, description, cwd, model }) {
+  async generateSkillOrAgent({ type, description, cwd, model, genId }) {
     const sdk = await loadSDK();
-    const genId = `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const abortController = new AbortController();
 
-    // The SDK loads the skill guide (create-skill or create-agents) from ~/.claude/skills/
-    // which are installed at app startup by installBundledSkills()
     const skillName = type === 'skill' ? 'create-skill' : 'create-agents';
     const prompt = `${description}\n\nCreate the files immediately without asking for clarification.`;
 
@@ -1046,9 +1044,12 @@ class ChatService {
         }
       });
 
-      // Consume stream silently
-      for await (const _msg of queryStream) {
-        // No-op — we just need to drive the async generator to completion
+      // Forward progress messages to renderer
+      for await (const msg of queryStream) {
+        const summary = this._summarizeGenMessage(msg);
+        if (summary) {
+          this._send('chat-generation-progress', { genId, message: summary });
+        }
       }
 
       messageQueue.close();
@@ -1067,6 +1068,34 @@ class ChatService {
       this.backgroundGenerations.delete(genId);
       if (prevClaudeCode) process.env.CLAUDECODE = prevClaudeCode;
     }
+  }
+
+  /**
+   * Extract a lightweight progress summary from an SDK stream message.
+   */
+  _summarizeGenMessage(msg) {
+    if (!msg) return null;
+
+    if (msg.type === 'system' && msg.subtype === 'init') {
+      return { step: 'init', text: 'Initializing...' };
+    }
+    if (msg.type === 'assistant') {
+      const content = msg.message?.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (block.type === 'tool_use') {
+            return { step: 'tool', tool: block.name, text: `Using ${block.name}...` };
+          }
+          if (block.type === 'text' && block.text) {
+            return { step: 'thinking', text: block.text.substring(0, 120) };
+          }
+        }
+      }
+    }
+    if (msg.type === 'result') {
+      return { step: 'done', text: 'Generation complete' };
+    }
+    return null;
   }
 
   /**

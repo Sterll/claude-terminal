@@ -4268,15 +4268,63 @@ setTimeout(showTelemetryConsentModal, 3500);
 
 // ========== SKILLS/AGENTS CREATION MODAL ==========
 let createModalType = 'skill'; // 'skill' or 'agent'
+let createModalGenerating = false; // tracks if generation is in progress
+
+// Store original modal HTML for reset
+const createModalOriginalBody = `
+  <div class="create-modal-intro">
+    <p data-i18n="ui.describeWhatToCreate">${t('ui.describeWhatToCreate')}</p>
+  </div>
+  <div class="create-modal-field">
+    <label for="create-modal-description" data-i18n="ui.description">${t('ui.description')}</label>
+    <textarea id="create-modal-description" rows="4"></textarea>
+  </div>
+  <div class="create-modal-field">
+    <label data-i18n="ui.targetProject">${t('ui.targetProject')}</label>
+    <select id="create-modal-project">
+      <option value="">${t('ui.selectProject')}</option>
+    </select>
+    <p class="field-hint" data-i18n="ui.skillAgentHint">${t('ui.skillAgentHint')}</p>
+  </div>
+`;
+const createModalOriginalFooter = `
+  <button class="btn-secondary" id="create-modal-cancel">${t('common.cancel')}</button>
+  <button class="btn-primary btn-create-with-claude" id="create-modal-submit">
+    <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+    <span>${t('ui.createWithClaude')}</span>
+  </button>
+`;
+
+function resetCreateModal() {
+  const modalBody = document.querySelector('#create-modal .modal-body');
+  const modalFooter = document.querySelector('#create-modal .modal-footer');
+  if (modalBody) modalBody.innerHTML = createModalOriginalBody;
+  if (modalFooter) modalFooter.innerHTML = createModalOriginalFooter;
+
+  // Re-bind form event listeners
+  document.getElementById('create-modal-cancel')?.addEventListener('click', closeCreateModal);
+  document.getElementById('create-modal-submit')?.addEventListener('click', submitCreateModal);
+  document.getElementById('create-modal-description')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.ctrlKey) {
+      e.preventDefault();
+      submitCreateModal();
+    }
+  });
+  createModalGenerating = false;
+}
 
 function openCreateModal(type) {
   createModalType = type;
   const modal = document.getElementById('create-modal');
   const title = document.getElementById('create-modal-title');
+
+  // Reset modal to form mode if it was in progress mode
+  resetCreateModal();
+
+  title.textContent = type === 'skill' ? t('ui.newSkill') : t('ui.newAgent');
   const description = document.getElementById('create-modal-description');
   const projectSelect = document.getElementById('create-modal-project');
 
-  title.textContent = type === 'skill' ? 'New Skill' : 'New Agent';
   description.value = '';
   description.placeholder = type === 'skill'
     ? 'Ex: A skill that generates unit tests for TypeScript code using Vitest...'
@@ -4299,7 +4347,12 @@ function openCreateModal(type) {
 }
 
 function closeCreateModal() {
-  document.getElementById('create-modal').classList.remove('active');
+  const modal = document.getElementById('create-modal');
+  modal.classList.remove('active');
+  // Reset to form mode for next open (unless generation is still running)
+  if (!createModalGenerating) {
+    resetCreateModal();
+  }
 }
 
 async function submitCreateModal() {
@@ -4328,45 +4381,52 @@ async function submitCreateModal() {
   }
 
   const type = createModalType;
-  closeCreateModal();
+  createModalGenerating = true;
 
-  // Show persistent in-progress toast
-  const progressToast = showToast({
-    type: 'info',
-    title: t('ui.createWithClaude'),
-    message: type === 'skill' ? t('ui.generatingSkill') : t('ui.generatingAgent'),
-    duration: 0
-  });
+  // Switch modal to progress mode
+  const modalBody = document.querySelector('#create-modal .modal-body');
+  const modalFooter = document.querySelector('#create-modal .modal-footer');
 
-  const dismissToast = (toast) => {
-    if (toast && toast.parentNode) {
-      toast.classList.add('toast-exit');
-      setTimeout(() => toast.remove(), 300);
-    }
+  modalBody.innerHTML = `
+    <div class="create-progress">
+      <div class="create-progress-header">
+        <div class="spinner"></div>
+        <div class="create-progress-title">${type === 'skill' ? t('ui.generatingSkill') : t('ui.generatingAgent')}</div>
+      </div>
+      <div class="create-progress-log" id="create-progress-log"></div>
+    </div>
+  `;
+
+  modalFooter.innerHTML = `
+    <button class="btn-secondary" id="create-modal-cancel-gen">${t('common.cancel')}</button>
+  `;
+
+  let currentGenId = null;
+  let unsubProgress = null;
+  let unsubComplete = null;
+
+  const cleanup = () => {
+    if (unsubProgress) unsubProgress();
+    if (unsubComplete) unsubComplete();
+    unsubProgress = null;
+    unsubComplete = null;
+    createModalGenerating = false;
   };
 
-  try {
-    const result = await api.chat.generateSkillAgent({
-      type,
-      description,
-      cwd,
-      model: settingsState.get().chatModel || 'sonnet'
-    });
-
-    dismissToast(progressToast);
+  const handleResult = (result) => {
+    cleanup();
+    closeCreateModal();
 
     if (result.success) {
       const successMsg = type === 'skill' ? t('ui.skillCreatedSuccess') : t('ui.agentCreatedSuccess');
       showToast({ type: 'success', title: t('ui.createWithClaude'), message: successMsg });
 
-      // Desktop notification
       api.notification.show({
         title: type === 'skill' ? t('ui.newSkill') : t('ui.newAgent'),
         body: successMsg,
         autoDismiss: 6000
       });
 
-      // Refresh the skills/agents panel
       if (type === 'skill') {
         SkillsAgentsPanel.loadSkills();
       } else {
@@ -4381,8 +4441,64 @@ async function submitCreateModal() {
         duration: 8000
       });
     }
+  };
+
+  // Listen for progress events
+  unsubProgress = api.chat.onGenerationProgress(({ genId, message }) => {
+    if (!message || (currentGenId && genId !== currentGenId)) return;
+    const logEl = document.getElementById('create-progress-log');
+    if (!logEl) return;
+
+    const entry = document.createElement('div');
+    entry.className = 'create-progress-entry';
+
+    if (message.step === 'tool') {
+      entry.innerHTML = `<span class="create-progress-icon tool">&bull;</span> <span>${escapeHtml(message.text)}</span>`;
+    } else if (message.step === 'thinking') {
+      entry.innerHTML = `<span class="create-progress-icon think">&bull;</span> <span>${escapeHtml(message.text)}</span>`;
+    } else {
+      entry.innerHTML = `<span class="create-progress-icon">&bull;</span> <span>${escapeHtml(message.text)}</span>`;
+    }
+
+    logEl.appendChild(entry);
+    logEl.scrollTop = logEl.scrollHeight;
+  });
+
+  // Listen for completion event
+  unsubComplete = api.chat.onGenerationComplete(({ genId, result }) => {
+    if (currentGenId && genId !== currentGenId) return;
+    handleResult(result);
+  });
+
+  // Cancel button
+  document.getElementById('create-modal-cancel-gen').onclick = () => {
+    if (currentGenId) {
+      api.chat.cancelGeneration({ genId: currentGenId });
+    }
+    cleanup();
+    closeCreateModal();
+    showToast({ type: 'warning', title: t('ui.createWithClaude'), message: t('ui.generationCancelled') });
+  };
+
+  try {
+    // Fire-and-forget: get genId immediately
+    const response = await api.chat.generateSkillAgent({
+      type,
+      description,
+      cwd,
+      model: settingsState.get().chatModel || 'sonnet'
+    });
+
+    if (response.error) {
+      // Immediate error (not async)
+      handleResult({ success: false, error: response.error });
+      return;
+    }
+
+    currentGenId = response.genId;
   } catch (err) {
-    dismissToast(progressToast);
+    cleanup();
+    closeCreateModal();
     showToast({
       type: 'error',
       title: t('ui.createWithClaude'),
@@ -4588,6 +4704,9 @@ const updateProgressBar = document.getElementById('update-progress-bar');
 const updateProgressText = document.getElementById('update-progress-text');
 const updateBtn = document.getElementById('update-btn');
 const updateDismiss = document.getElementById('update-dismiss');
+const updateChangelogToggle = document.getElementById('update-changelog-toggle');
+const updateChangelog = document.getElementById('update-changelog');
+const updateChangelogContent = document.getElementById('update-changelog-content');
 
 let updateState = {
   available: false,
@@ -4595,7 +4714,8 @@ let updateState = {
   version: null,
   downloadedVersion: null,  // Track actual downloaded version
   dismissed: false,
-  dismissedVersion: null    // Track which version was dismissed
+  dismissedVersion: null,   // Track which version was dismissed
+  changelog: null
 };
 
 function showUpdateBanner() {
@@ -4607,6 +4727,8 @@ function showUpdateBanner() {
 
 function hideUpdateBanner() {
   updateBanner.style.display = 'none';
+  updateChangelog.style.display = 'none';
+  updateChangelogToggle.classList.remove('expanded');
   document.querySelector('.main-container').style.height = 'calc(100vh - 36px)';
 }
 
@@ -4634,9 +4756,12 @@ api.updates.onStatus((data) => {
 
       updateState.available = true;
       updateState.version = data.version;
+      updateState.changelog = null;
       updateMessage.textContent = t('updates.newVersionAvailable', { version: data.version });
       updateProgressContainer.style.display = 'flex';
       updateBtn.style.display = 'none';
+      updateChangelogToggle.style.display = 'none';
+      updateChangelog.style.display = 'none';
       updateBanner.classList.remove('downloaded');
       showUpdateBanner();
       break;
@@ -4649,12 +4774,25 @@ api.updates.onStatus((data) => {
       updateState.downloaded = true;
       updateState.downloadedVersion = data.version;  // Track actual downloaded version
       updateState.version = data.version;  // Update to actual version
+      updateState.changelog = data.changelog || null;
       updateMessage.textContent = t('updates.readyToInstall', { version: data.version });
       updateProgressContainer.style.display = 'none';
       updateBtn.style.display = 'block';
       updateBtn.disabled = false;  // Re-enable button
       updateBtn.textContent = t('updates.restartToUpdate');  // Reset button text
       updateBanner.classList.add('downloaded');
+      // Show changelog toggle if we have release notes
+      if (updateState.changelog) {
+        updateChangelogToggle.style.display = 'inline-flex';
+        try {
+          const { marked } = require('marked');
+          updateChangelogContent.innerHTML = marked(updateState.changelog);
+        } catch (e) {
+          updateChangelogContent.textContent = updateState.changelog;
+        }
+      } else {
+        updateChangelogToggle.style.display = 'none';
+      }
       showUpdateBanner();
       break;
 
@@ -4683,6 +4821,13 @@ updateBtn.addEventListener('click', () => {
   updateBtn.disabled = true;
   updateBtn.textContent = t('updates.installing');
   api.app.installUpdate();
+});
+
+// Changelog toggle button
+updateChangelogToggle.addEventListener('click', () => {
+  const isOpen = updateChangelog.style.display !== 'none';
+  updateChangelog.style.display = isOpen ? 'none' : 'block';
+  updateChangelogToggle.classList.toggle('expanded', !isOpen);
 });
 
 // Dismiss button
