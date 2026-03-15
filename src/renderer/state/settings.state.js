@@ -46,6 +46,7 @@ const defaultSettings = {
   agentColors: {}, // Custom colors per tool/agent name: { 'Grep': '#ff0000', 'my-agent': '#00ff00' }
   enableFollowupSuggestions: true, // Show AI-generated follow-up suggestion chips after Claude responds (uses Haiku)
   pinnedTabs: ['claude', 'git', 'database', 'mcp', 'plugins', 'skills', 'agents', 'workflows', 'tasks', 'control-tower', 'dashboard', 'timetracking', 'session-replay', 'memory', 'cloud-panel'], // Pinned sidebar tabs (rest go to More menu)
+  activeTab: 'claude', // Last active sidebar tab (restored on restart)
   tabsOrder: null, // null = canonical order, otherwise array of all tabIds in custom order
   parallelMaxAgents: 3, // Default number of parallel agents for Parallel Task Manager (1-10)
   autoClaudeMdUpdate: true, // Suggest CLAUDE.md updates after chat sessions

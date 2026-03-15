@@ -840,6 +840,7 @@
     "newMcp": "Nouveau MCP",
     "tabClaude": "Claude",
     "moreTabs": "Plus",
+    "hiddenTabsCount": "{count} masqué(s)",
     "separatorTools": "Outils",
     "separatorAI": "AI",
     "separatorExtensions": "Extensions",

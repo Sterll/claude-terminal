@@ -612,6 +612,36 @@ body.platform-darwin .titlebar-drag {
 .sidebar.collapsed .nav-tab {
   justify-content: center;
   padding: 10px;
+  position: relative;
+}
+
+/* Tooltip on hover when sidebar is collapsed */
+.sidebar.collapsed .nav-tab[data-tooltip]::after,
+.sidebar.collapsed .settings-btn[data-tooltip]::after,
+.sidebar.collapsed .notification-toggle[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 1000;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.sidebar.collapsed .nav-tab[data-tooltip]:hover::after,
+.sidebar.collapsed .settings-btn[data-tooltip]:hover::after,
+.sidebar.collapsed .notification-toggle[data-tooltip]:hover::after {
+  opacity: 1;
 }
 
 .sidebar.collapsed .sidebar-footer {
@@ -627,6 +657,7 @@ body.platform-darwin .titlebar-drag {
 .sidebar.collapsed .settings-btn {
   justify-content: center;
   padding: 10px;
+  position: relative;
 }
 
 .sidebar.collapsed .version {
@@ -1023,8 +1054,8 @@ body.platform-darwin .titlebar-drag {
 
 .more-tabs-badge {
   margin-left: auto;
-  background: var(--bg-tertiary);
-  color: var(--text-muted);
+  background: var(--accent-dim);
+  color: var(--accent);
   border-radius: 10px;
   padding: 1px 5px;
   font-size: 10px;
@@ -1034,8 +1065,22 @@ body.platform-darwin .titlebar-drag {
   line-height: 1.4;
 }
 
+.sidebar.collapsed .more-tabs-btn {
+  position: relative;
+}
+
 .sidebar.collapsed .more-tabs-badge {
-  display: none;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  margin: 0;
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  padding: 0;
+  font-size: 0;
+  border-radius: 50%;
+  background: var(--accent);
 }
 
 /* More button active state (an overflow tab is currently active) */

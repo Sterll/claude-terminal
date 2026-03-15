@@ -192,6 +192,24 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
   applyPinnedTabs(); // Apply sidebar tab visibility from settings
   _initSidebarDragDrop(); // Enable drag & drop reordering in sidebar
 
+  // Apply tooltips for collapsed sidebar
+  if (localStorage.getItem('sidebar-collapsed') === 'true') {
+    _applySidebarTooltips(true);
+  }
+
+  // Restore last active tab from settings
+  const savedActiveTab = settingsState.get().activeTab;
+  if (savedActiveTab && savedActiveTab !== 'claude') {
+    if (savedActiveTab === 'settings') {
+      document.getElementById('btn-settings')?.click();
+    } else {
+      const savedTab = document.querySelector(`.nav-tab[data-tab="${savedActiveTab}"]`);
+      if (savedTab && !savedTab.classList.contains('nav-tab--hidden')) {
+        savedTab.click();
+      }
+    }
+  }
+
   // Initialize Claude event bus and provider (hooks or scraping)
   initClaudeEvents();
 
@@ -2367,7 +2385,12 @@ document.getElementById('btn-notifications').onclick = () => {
   }
 };
 
-document.getElementById('btn-settings').onclick = () => SettingsPanel.switchToSettingsTab();
+document.getElementById('btn-settings').onclick = () => {
+  const currentActive = document.querySelector('.nav-tab[data-tab].active');
+  if (currentActive) _saveScrollPositions(currentActive.dataset.tab);
+  SettingsPanel.switchToSettingsTab();
+  setSetting('activeTab', 'settings');
+};
 
 // Sidebar collapse toggle
 const sidebarEl = document.querySelector('.sidebar');
@@ -2377,10 +2400,63 @@ if (localStorage.getItem('sidebar-collapsed') === 'true') {
 }
 btnCollapseSidebar.onclick = () => {
   sidebarEl.classList.toggle('collapsed');
-  localStorage.setItem('sidebar-collapsed', sidebarEl.classList.contains('collapsed'));
+  const isCollapsed = sidebarEl.classList.contains('collapsed');
+  localStorage.setItem('sidebar-collapsed', isCollapsed);
+  _applySidebarTooltips(isCollapsed);
 };
 
+// Toggle title ↔ data-tooltip for CSS tooltips in collapsed sidebar
+function _applySidebarTooltips(isCollapsed) {
+  const sidebar = document.querySelector('.sidebar');
+  if (!sidebar) return;
+  const els = sidebar.querySelectorAll('.nav-tab[data-tab], .settings-btn, .notification-toggle, #btn-more-tabs');
+  els.forEach(el => {
+    if (isCollapsed) {
+      const label = el.title || el.querySelector('span:not(.more-tabs-badge)')?.textContent?.trim() || '';
+      if (label) {
+        el.dataset.tooltip = label;
+        el.removeAttribute('title');
+      }
+    } else {
+      if (el.dataset.tooltip) {
+        el.title = el.dataset.tooltip;
+        delete el.dataset.tooltip;
+      }
+    }
+  });
+}
+
 // ========== TAB NAVIGATION ==========
+// Scroll position preservation across tab switches
+const _tabScrollPositions = new Map();
+
+function _saveScrollPositions(tabId) {
+  const panel = document.getElementById(`tab-${tabId}`);
+  if (!panel) return;
+  const entries = [];
+  const save = (el) => {
+    if (el.scrollTop || el.scrollLeft) {
+      entries.push({ el, top: el.scrollTop, left: el.scrollLeft });
+    }
+  };
+  save(panel);
+  panel.querySelectorAll('*').forEach(save);
+  if (entries.length) _tabScrollPositions.set(tabId, entries);
+}
+
+function _restoreScrollPositions(tabId) {
+  const entries = _tabScrollPositions.get(tabId);
+  if (!entries) return;
+  requestAnimationFrame(() => {
+    for (const { el, top, left } of entries) {
+      if (el.isConnected) {
+        el.scrollTop = top;
+        el.scrollLeft = left;
+      }
+    }
+  });
+}
+
 // Set ARIA roles on all nav-tabs (exclude More button which has its own role)
 document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
   tab.setAttribute('role', 'tab');
@@ -2396,6 +2472,10 @@ document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
   };
   tab.onclick = () => {
     const tabId = tab.dataset.tab;
+    // Save scroll positions of the currently active tab before switching
+    const currentActive = document.querySelector('.nav-tab[data-tab].active');
+    if (currentActive) _saveScrollPositions(currentActive.dataset.tab);
+
     document.querySelectorAll('.nav-tab[data-tab]').forEach(t => {
       t.classList.remove('active');
       t.setAttribute('aria-selected', 'false');
@@ -2471,6 +2551,10 @@ document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
         if (termData?.fitAddon) termData.fitAddon.fit();
       }
     }
+    // Restore scroll positions of the newly active tab
+    _restoreScrollPositions(tabId);
+    // Persist active tab for restart
+    setSetting('activeTab', tabId);
   };
 });
 
@@ -2499,6 +2583,12 @@ function applyPinnedTabs() {
   if (moreSep) moreSep.style.display = hiddenCount > 0 ? '' : 'none';
   const badge = document.getElementById('more-tabs-badge');
   if (badge) badge.textContent = hiddenCount > 0 ? hiddenCount : '';
+  // Update More button tooltip with hidden count
+  if (moreBtn && hiddenCount > 0) {
+    const label = t('ui.hiddenTabsCount', { count: hiddenCount });
+    moreBtn.title = label;
+    if (moreBtn.dataset.tooltip) moreBtn.dataset.tooltip = label;
+  }
 }
 
 function _updateSeparatorVisibility() {
