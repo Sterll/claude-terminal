@@ -289,13 +289,37 @@ async function installSkill({ source, skillId, name, installs }) {
       throw new Error(`Could not find SKILL.md in repository ${source}`);
     }
 
-    // 3. Copy to ~/.claude/skills/{skillId}/
+    // 3. Copy to ~/.claude/skills/{skillId}/ with rollback safety
     const destDir = path.join(skillsDir, skillId);
+    const oldDir = destDir + '.old';
+
+    // Rename existing to .old for rollback safety
     if (fs.existsSync(destDir)) {
-      fs.rmSync(destDir, { recursive: true, force: true });
+      // Clean up any leftover .old directory from a previous failed update
+      if (fs.existsSync(oldDir)) {
+        fs.rmSync(oldDir, { recursive: true, force: true });
+      }
+      fs.renameSync(destDir, oldDir);
     }
-    fs.mkdirSync(destDir, { recursive: true });
-    await copyDirAsync(skillSourceDir, destDir);
+
+    try {
+      fs.mkdirSync(destDir, { recursive: true });
+      await copyDirAsync(skillSourceDir, destDir);
+
+      // Copy succeeded, remove the old directory
+      if (fs.existsSync(oldDir)) {
+        fs.rmSync(oldDir, { recursive: true, force: true });
+      }
+    } catch (copyErr) {
+      // Copy failed — rollback: restore old directory
+      if (fs.existsSync(oldDir)) {
+        if (fs.existsSync(destDir)) {
+          try { fs.rmSync(destDir, { recursive: true, force: true }); } catch (_) {}
+        }
+        fs.renameSync(oldDir, destDir);
+      }
+      throw copyErr;
+    }
 
     // Remove .git if we copied the whole repo
     const gitDir = path.join(destDir, '.git');
@@ -404,13 +428,20 @@ function loadManifest() {
  * Save marketplace manifest
  */
 function saveManifest(manifest) {
+  const tempPath = manifestFile + '.tmp';
   try {
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
-    fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2), 'utf8');
+    // Atomic write: write to temp file then rename
+    fs.writeFileSync(tempPath, JSON.stringify(manifest, null, 2), 'utf8');
+    fs.renameSync(tempPath, manifestFile);
   } catch (e) {
     console.error('[Marketplace] Error saving manifest:', e);
+    // Cleanup temp file if it exists
+    try {
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    } catch (_) {}
   }
 }
 

@@ -394,7 +394,21 @@ function saveProjectsImmediate() {
 
     // Restore from backup if save failed
     if (fs.existsSync(backupFile)) {
-      try { fs.copyFileSync(backupFile, projectsFile); } catch (_) {}
+      try {
+        fs.copyFileSync(backupFile, projectsFile);
+      } catch (backupErr) {
+        console.warn('[Projects] Backup file locked or inaccessible, retrying in 100ms:', backupErr.code || backupErr.message);
+        // Retry once after a short delay (Windows file lock may be transient)
+        setTimeout(() => {
+          try {
+            if (fs.existsSync(backupFile)) {
+              fs.copyFileSync(backupFile, projectsFile);
+            }
+          } catch (retryErr) {
+            console.warn('[Projects] Backup restore failed after retry, data may need manual recovery:', retryErr.code || retryErr.message);
+          }
+        }, 100);
+      }
     }
 
     // Cleanup temp file if it exists
@@ -479,18 +493,22 @@ function deleteFolder(folderId) {
   const folder = state.folders.find(f => f.id === folderId);
   if (!folder) return;
 
-  let folders = [...state.folders];
-  let projects = [...state.projects];
+  // Deep-clone to avoid mutating existing state references
+  let folders = JSON.parse(JSON.stringify(state.folders));
+  let projects = JSON.parse(JSON.stringify(state.projects));
   let rootOrder = [...state.rootOrder];
+
+  // Re-find folder in cloned array
+  const clonedFolder = folders.find(f => f.id === folderId);
 
   // Move children folders to parent
   const childFolders = folders.filter(f => f.parentId === folderId);
   childFolders.forEach(child => {
-    child.parentId = folder.parentId;
-    if (folder.parentId === null) {
+    child.parentId = clonedFolder.parentId;
+    if (clonedFolder.parentId === null) {
       rootOrder.push(child.id);
     } else {
-      const newParent = folders.find(f => f.id === folder.parentId);
+      const newParent = folders.find(f => f.id === clonedFolder.parentId);
       if (newParent) {
         newParent.children = [...(newParent.children || []), child.id];
       }
@@ -500,12 +518,12 @@ function deleteFolder(folderId) {
   // Move projects to parent
   const childProjects = projects.filter(p => p.folderId === folderId);
   childProjects.forEach(project => {
-    project.folderId = folder.parentId;
-    if (folder.parentId === null) {
+    project.folderId = clonedFolder.parentId;
+    if (clonedFolder.parentId === null) {
       rootOrder.push(project.id);
     } else {
       // Add project to new parent's children array
-      const newParent = folders.find(f => f.id === folder.parentId);
+      const newParent = folders.find(f => f.id === clonedFolder.parentId);
       if (newParent) {
         newParent.children = [...(newParent.children || []), project.id];
       }
@@ -513,8 +531,8 @@ function deleteFolder(folderId) {
   });
 
   // Remove from parent's children
-  if (folder.parentId) {
-    const parent = folders.find(f => f.id === folder.parentId);
+  if (clonedFolder.parentId) {
+    const parent = folders.find(f => f.id === clonedFolder.parentId);
     if (parent && parent.children) {
       parent.children = parent.children.filter(id => id !== folderId);
     }
@@ -698,8 +716,9 @@ function deleteProject(projectId) {
  */
 function moveItemToFolder(itemType, itemId, targetFolderId) {
   const state = projectsState.get();
-  let folders = [...state.folders];
-  let projects = [...state.projects];
+  // Deep-clone to avoid mutating existing state references
+  let folders = JSON.parse(JSON.stringify(state.folders));
+  let projects = JSON.parse(JSON.stringify(state.projects));
   let rootOrder = [...state.rootOrder];
 
   if (itemType === 'folder') {
