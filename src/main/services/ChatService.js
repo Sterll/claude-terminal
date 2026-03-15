@@ -799,6 +799,13 @@ class ChatService {
       if (!this._namingQueue) return null;
 
       return new Promise((resolve) => {
+        // Reject any stale pending naming request (race condition: new request while old is waiting)
+        if (this._namingResolve) {
+          const staleResolve = this._namingResolve;
+          this._namingResolve = null;
+          staleResolve(null);
+        }
+
         // Timeout: if haiku doesn't respond in 4s, give up
         const timeout = setTimeout(() => {
           this._namingResolve = null;
@@ -911,6 +918,13 @@ class ChatService {
       if (!this._suggestionQueue) return [];
 
       return new Promise((resolve) => {
+        // Reject any stale pending suggestion request (race condition: new request while old is waiting)
+        if (this._suggestionResolve) {
+          const staleResolve = this._suggestionResolve;
+          this._suggestionResolve = null;
+          staleResolve(null);
+        }
+
         const timeout = setTimeout(() => {
           this._suggestionResolve = null;
           resolve([]);
@@ -1185,6 +1199,20 @@ class ChatService {
     if (this._namingQueue) {
       this._namingQueue.close();
       this._namingReady = false;
+    }
+    if (this._namingResolve) {
+      this._namingResolve(null);
+      this._namingResolve = null;
+    }
+    // Close suggestion session
+    if (this._suggestionResolve) {
+      this._suggestionResolve(null);
+      this._suggestionResolve = null;
+    }
+    if (this._suggestionQueue) {
+      this._suggestionQueue.close();
+      this._suggestionQueue = null;
+      this._suggestionReady = false;
     }
     // Cancel all background generations
     for (const [, gen] of this.backgroundGenerations) {
