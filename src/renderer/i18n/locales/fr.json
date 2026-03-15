@@ -349,7 +349,32 @@
     "prTitleRequired": "Le titre de la PR est requis",
     "prCreated": "PR #{number} créée",
     "noProjects": "Aucun projet",
-    "pruneWorktrees": "Nettoyer les worktrees inactifs"
+    "pruneWorktrees": "Nettoyer les worktrees inactifs",
+    "searchBranches": "Rechercher des branches...",
+    "ours": "Notre",
+    "theirs": "La leur",
+    "resolveOurs": "Garder notre version",
+    "resolveTheirs": "Garder leur version",
+    "resolvedWith": "Résolu avec {strategy}",
+    "orphanCommitWarning": "{count} commit(s) deviendront inaccessibles."
+  },
+  "gitErrors": {
+    "notARepo": "Ce dossier n'est pas un dépôt Git. Initialisez-en un avec 'git init'.",
+    "notSymbolicRef": "La référence n'est pas valide. La branche a peut-être été supprimée.",
+    "pathNotFound": "Le fichier ou chemin spécifié n'a pas été trouvé dans le dépôt.",
+    "invalidBranchName": "Nom de branche invalide. Évitez les espaces et caractères spéciaux.",
+    "localChangesOverwrite": "Vous avez des modifications non commitées qui seraient écrasées. Commitez ou stashez-les d'abord.",
+    "branchNotMerged": "Cette branche a des changements non fusionnés. Utilisez la suppression forcée si vous êtes sûr.",
+    "remoteRefNotFound": "La branche distante n'a pas été trouvée. Elle a peut-être été supprimée.",
+    "remoteNotFound": "Impossible de se connecter au dépôt distant. Vérifiez l'URL.",
+    "authFailed": "Échec de l'authentification. Vérifiez vos identifiants ou votre token.",
+    "networkError": "Erreur réseau. Vérifiez votre connexion internet.",
+    "pushRejected": "Push rejeté. Faites un pull des dernières modifications d'abord.",
+    "mergeConflict": "Conflits de fusion détectés. Résolvez-les avant de continuer.",
+    "unrelatedHistories": "Impossible de fusionner des historiques sans ancêtre commun.",
+    "lockFailed": "Impossible de verrouiller la référence. Une autre opération git est peut-être en cours.",
+    "alreadyExists": "Cet élément existe déjà. Choisissez un autre nom.",
+    "nothingToCommit": "Rien à commiter. L'arbre de travail est propre."
   },
   "dashboard": {
     "openFolder": "Ouvrir dossier",

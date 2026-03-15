@@ -274,7 +274,32 @@
     "prTitleRequired": "PR title is required",
     "prCreated": "PR #{number} created",
     "noProjects": "No projects",
-    "pruneWorktrees": "Prune stale worktrees"
+    "pruneWorktrees": "Prune stale worktrees",
+    "searchBranches": "Search branches...",
+    "ours": "Ours",
+    "theirs": "Theirs",
+    "resolveOurs": "Keep our version",
+    "resolveTheirs": "Keep their version",
+    "resolvedWith": "Resolved with {strategy}",
+    "orphanCommitWarning": "{count} commit(s) will become unreachable."
+  },
+  "gitErrors": {
+    "notARepo": "This folder is not a Git repository. Initialize one with 'git init'.",
+    "notSymbolicRef": "The reference is not valid. The branch may have been deleted.",
+    "pathNotFound": "The specified file or path was not found in the repository.",
+    "invalidBranchName": "Invalid branch name. Avoid spaces and special characters.",
+    "localChangesOverwrite": "You have uncommitted changes that would be overwritten. Commit or stash them first.",
+    "branchNotMerged": "This branch has unmerged changes. Use force delete if you're sure.",
+    "remoteRefNotFound": "The remote branch was not found. It may have been deleted.",
+    "remoteNotFound": "Cannot connect to the remote repository. Check the URL.",
+    "authFailed": "Authentication failed. Check your credentials or token.",
+    "networkError": "Network error. Check your internet connection.",
+    "pushRejected": "Push rejected. Pull the latest changes first.",
+    "mergeConflict": "Merge conflicts detected. Resolve them before continuing.",
+    "unrelatedHistories": "Cannot merge unrelated histories. The branches have no common ancestor.",
+    "lockFailed": "Cannot lock the reference. Another git operation may be in progress.",
+    "alreadyExists": "This already exists. Choose a different name.",
+    "nothingToCommit": "Nothing to commit. The working tree is clean."
   },
   "dashboard": {
     "openFolder": "Open folder",
