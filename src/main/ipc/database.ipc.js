@@ -11,47 +11,91 @@ const databaseService = require('../services/DatabaseService');
  */
 function registerDatabaseHandlers() {
   ipcMain.handle('database-test-connection', async (event, config) => {
-    return databaseService.testConnection(config);
+    try {
+      return await databaseService.testConnection(config);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   ipcMain.handle('database-connect', async (event, { id, config }) => {
-    return databaseService.connect(id, config);
+    try {
+      return await databaseService.connect(id, config);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   ipcMain.handle('database-disconnect', async (event, { id }) => {
-    return databaseService.disconnect(id);
+    try {
+      return await databaseService.disconnect(id);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   ipcMain.handle('database-get-schema', async (event, { id }) => {
-    return databaseService.getSchema(id);
+    try {
+      return await databaseService.getSchema(id);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   ipcMain.handle('database-execute-query', async (event, { id, sql, limit, allowDestructive }) => {
-    return databaseService.executeQuery(id, sql, limit, { allowDestructive: !!allowDestructive });
+    try {
+      return await databaseService.executeQuery(id, sql, limit, { allowDestructive: !!allowDestructive });
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   ipcMain.handle('database-detect', async (event, { projectPath }) => {
-    return databaseService.detectDatabases(projectPath);
+    try {
+      return await databaseService.detectDatabases(projectPath);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   ipcMain.handle('database-save-connections', async (event, { connections }) => {
-    return databaseService.saveConnections(connections);
+    try {
+      return await databaseService.saveConnections(connections);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   ipcMain.handle('database-load-connections', async () => {
-    return databaseService.loadConnections();
+    try {
+      return await databaseService.loadConnections();
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   ipcMain.handle('database-refresh-mcp', async () => {
-    return databaseService.provisionGlobalMcp();
+    try {
+      return await databaseService.provisionGlobalMcp();
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   ipcMain.handle('database-get-credential', async (event, { id }) => {
-    return databaseService.getCredential(id);
+    try {
+      return await databaseService.getCredential(id);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   ipcMain.handle('database-set-credential', async (event, { id, password }) => {
-    return databaseService.setCredential(id, password);
+    try {
+      return await databaseService.setCredential(id, password);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 }
 
