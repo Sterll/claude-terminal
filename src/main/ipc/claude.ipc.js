@@ -508,6 +508,125 @@ async function parseSessionReplay(projectPath, sessionId) {
 }
 
 /**
+ * Resolve the .jsonl file path for a given sessionId.
+ * Tries sessionId.jsonl first, then scans the directory.
+ * @param {string} sessionsDir
+ * @param {string} sessionId
+ * @returns {Promise<string|null>}
+ */
+async function resolveSessionFile(sessionsDir, sessionId) {
+  const direct = path.join(sessionsDir, `${sessionId}.jsonl`);
+  try {
+    await fs.promises.access(direct);
+    return direct;
+  } catch { /* not found by name */ }
+
+  // Scan directory for matching sessionId in first 5 lines
+  try {
+    const files = await fs.promises.readdir(sessionsDir);
+    for (const f of files.filter(f => f.endsWith('.jsonl'))) {
+      const candidate = path.join(sessionsDir, f);
+      const head = await readFirstLines(candidate, 5);
+      for (const line of head) {
+        try {
+          const obj = JSON.parse(line);
+          if (obj.sessionId === sessionId) return candidate;
+        } catch { /* skip */ }
+      }
+    }
+  } catch { /* dir not found */ }
+  return null;
+}
+
+/**
+ * Delete a session .jsonl file
+ * @param {string} projectPath
+ * @param {string} sessionId
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+async function deleteSession(projectPath, sessionId) {
+  const sessionsDir = getProjectSessionsDir(projectPath);
+  const filePath = await resolveSessionFile(sessionsDir, sessionId);
+  if (!filePath) {
+    return { success: false, error: 'Session file not found' };
+  }
+  await fs.promises.unlink(filePath);
+  return { success: true };
+}
+
+/**
+ * Export a session as Markdown or JSON
+ * @param {string} projectPath
+ * @param {string} sessionId
+ * @param {'markdown'|'json'} format
+ * @returns {Promise<{success: boolean, content?: string, error?: string}>}
+ */
+async function exportSession(projectPath, sessionId, format) {
+  const { steps, summary } = await parseSessionReplay(projectPath, sessionId);
+
+  if (format === 'json') {
+    return { success: true, content: JSON.stringify({ sessionId, summary, steps }, null, 2) };
+  }
+
+  // Markdown format
+  const lines = [];
+  lines.push(`# Session Replay: ${sessionId}`);
+  lines.push('');
+  lines.push(`- **Steps:** ${summary.totalSteps}`);
+  lines.push(`- **Estimated tokens:** ~${summary.totalEstimatedTokens}`);
+  lines.push(`- **Files touched:** ${summary.uniqueFileCount}`);
+  if (summary.toolBreakdown) {
+    const tools = Object.entries(summary.toolBreakdown).sort((a, b) => b[1] - a[1]).map(([n, c]) => `${n} (${c})`).join(', ');
+    lines.push(`- **Tools:** ${tools}`);
+  }
+  lines.push('');
+  lines.push('---');
+  lines.push('');
+
+  for (const step of steps) {
+    if (step.type === 'prompt') {
+      lines.push(`## User Prompt`);
+      lines.push('');
+      lines.push(`> ${step.text.replace(/\n/g, '\n> ')}`);
+      lines.push('');
+    } else if (step.type === 'response') {
+      lines.push(`## Assistant Response`);
+      lines.push('');
+      lines.push(step.text);
+      lines.push('');
+    } else if (step.type === 'thinking') {
+      lines.push(`<details><summary>Thinking</summary>`);
+      lines.push('');
+      lines.push(step.text);
+      lines.push('');
+      lines.push('</details>');
+      lines.push('');
+    } else if (step.type === 'tool') {
+      lines.push(`### Tool: ${step.toolName}${step.filePath ? ` — \`${step.filePath}\`` : ''}`);
+      lines.push('');
+      if (step.toolInput && !step.toolInput._truncated) {
+        lines.push('```json');
+        lines.push(JSON.stringify(step.toolInput, null, 2));
+        lines.push('```');
+      }
+      if (step.toolOutput) {
+        lines.push('');
+        lines.push('<details><summary>Output</summary>');
+        lines.push('');
+        lines.push('```');
+        lines.push(step.toolOutput);
+        lines.push('```');
+        lines.push('');
+        lines.push('</details>');
+      }
+      lines.push('');
+    }
+  }
+
+  return { success: true, content: lines.join('\n') };
+}
+
+/**
  * Register Claude IPC handlers
  */
 function registerClaudeHandlers() {
@@ -533,6 +652,26 @@ function registerClaudeHandlers() {
     } catch (err) {
       console.error('[claude-session-replay] Error:', err.message);
       return { success: false, error: err.message, steps: [], summary: {} };
+    }
+  });
+
+  // Delete a session .jsonl file
+  ipcMain.handle('claude-delete-session', async (event, { projectPath, sessionId }) => {
+    try {
+      return await deleteSession(projectPath, sessionId);
+    } catch (err) {
+      console.error('[claude-delete-session] Error:', err.message);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Export a session as Markdown or JSON
+  ipcMain.handle('claude-export-session', async (event, { projectPath, sessionId, format }) => {
+    try {
+      return await exportSession(projectPath, sessionId, format || 'markdown');
+    } catch (err) {
+      console.error('[claude-export-session] Error:', err.message);
+      return { success: false, error: err.message };
     }
   });
 }
