@@ -480,6 +480,39 @@
   }
 }
 
+/* Content exit transition (fade-out before re-render) */
+.tt-content-exit {
+  animation: tt-content-fade-out 0.15s ease-in forwards;
+}
+
+@keyframes tt-content-fade-out {
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* Stat items staggered pop animation */
+.tt-stat-item {
+  animation: tt-stat-pop 0.35s ease-out backwards;
+}
+
+.tt-stat-item:nth-child(1) { animation-delay: 0.1s; }
+.tt-stat-item:nth-child(2) { animation-delay: 0.15s; }
+.tt-stat-item:nth-child(3) { animation-delay: 0.2s; }
+.tt-stat-item:nth-child(4) { animation-delay: 0.25s; }
+
+@keyframes tt-stat-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .tt-card-header {
   display: flex;
   align-items: center;
