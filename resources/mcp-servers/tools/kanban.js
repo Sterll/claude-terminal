@@ -87,8 +87,10 @@ function generateId(prefix) {
 function formatTask(task, cols) {
   const col = cols.find(c => c.id === task.columnId);
   const colName = col ? col.title : task.columnId;
-  const lines = [`• [${colName}] ${task.title}`];
+  const priorityTag = task.priority ? ` [${task.priority.toUpperCase()}]` : '';
+  const lines = [`• [${colName}]${priorityTag} ${task.title}`];
   if (task.description) lines.push(`  Description: ${task.description}`);
+  if (task.dueDate) lines.push(`  Due: ${task.dueDate}`);
   if (task.worktreePath) lines.push(`  Worktree: ${task.worktreePath}`);
   if (task.sessionIds && task.sessionIds.length) lines.push(`  Sessions: ${task.sessionIds.length}`);
   if (task.labels && task.labels.length) lines.push(`  Labels: ${task.labels.length} label(s)`);
@@ -121,13 +123,15 @@ const tools = [
         title:       { type: 'string', description: 'Task title' },
         column:      { type: 'string', description: 'Column id or title (default: first column)' },
         description: { type: 'string', description: 'Optional task description' },
+        priority:    { type: 'string', enum: ['p0', 'p1', 'p2', 'p3'], description: 'Priority level: p0 (critical), p1 (high), p2 (medium), p3 (low)' },
+        dueDate:     { type: 'string', description: 'Due date in YYYY-MM-DD format' },
       },
       required: ['project', 'title'],
     },
   },
   {
     name: 'kanban_update_task',
-    description: 'Update a kanban task fields: title, description, or linked worktree path.',
+    description: 'Update a kanban task fields: title, description, worktree path, priority, or due date.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -136,6 +140,8 @@ const tools = [
         title:       { type: 'string', description: 'New title' },
         description: { type: 'string', description: 'New description' },
         worktreePath:{ type: 'string', description: 'Linked git worktree path (empty string to unlink)' },
+        priority:    { type: 'string', enum: ['p0', 'p1', 'p2', 'p3', ''], description: 'Priority level (empty string to remove)' },
+        dueDate:     { type: 'string', description: 'Due date in YYYY-MM-DD format (empty string to remove)' },
       },
       required: ['project', 'task'],
     },
@@ -272,6 +278,8 @@ async function handle(name, args) {
         columnId:    col.id,
         worktreePath: null,
         sessionIds:  [],
+        priority:    args.priority || null,
+        dueDate:     args.dueDate || null,
         order,
         createdAt:   now,
         updatedAt:   now,
@@ -308,8 +316,16 @@ async function handle(name, args) {
         task.worktreePath = args.worktreePath || null;
         updates.push('worktreePath');
       }
+      if (args.priority !== undefined) {
+        task.priority = args.priority || null;
+        updates.push('priority');
+      }
+      if (args.dueDate !== undefined) {
+        task.dueDate = args.dueDate || null;
+        updates.push('dueDate');
+      }
 
-      if (!updates.length) return fail('No updates provided. Specify title, description, or worktreePath.');
+      if (!updates.length) return fail('No updates provided. Specify title, description, worktreePath, priority, or dueDate.');
 
       task.updatedAt = Date.now();
       saveProjects(data);
