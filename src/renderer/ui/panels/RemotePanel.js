@@ -9,6 +9,7 @@ const QRCode = require('qrcode');
 
 let _ctx = null;
 let _pinRefreshInterval = null;
+let _statusInterval = null;
 
 function buildHtml(settings) {
   const remoteEnabled = settings.remoteEnabled || false;
@@ -305,9 +306,11 @@ function setupHandlers(context) {
   }
 
   // Server status refresh every 10s
-  const statusInterval = setInterval(() => {
+  if (_statusInterval) clearInterval(_statusInterval);
+  _statusInterval = setInterval(() => {
     if (!document.getElementById('remote-enabled-toggle')) {
-      clearInterval(statusInterval);
+      clearInterval(_statusInterval);
+      _statusInterval = null;
       _stopPinPolling();
       return;
     }
