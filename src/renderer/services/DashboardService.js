@@ -434,7 +434,7 @@ async function loadDashboardData(projectPath) {
   const [gitInfo, stats, commitHistory30d] = await Promise.all([
     getGitInfoFull(projectPath),
     getProjectStats(projectPath),
-    api.git.commitHistory({ projectPath, skip: 0, limit: 200 }).catch(() => [])
+    api.git.commitHistory({ projectPath, skip: 0, limit: 500 }).catch(() => [])
   ]);
 
   // Detect project type
@@ -1195,6 +1195,96 @@ function buildInsightsHealthHtml(gitInfo, workflowRuns, commits) {
 }
 
 /**
+ * Build GitHub-style contribution graph (52 weeks x 7 days)
+ * @param {Array} commits - Commit history array
+ * @returns {string}
+ */
+function buildContributionGraphHtml(commits) {
+  if (!commits || commits.length === 0) return '';
+
+  const now = new Date();
+  const dayMs = 86400000;
+
+  // Start from Sunday of 51 weeks ago
+  const todayDay = now.getDay(); // 0=Sun
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const gridStart = todayStart - ((51 * 7) + todayDay) * dayMs;
+
+  // Count commits per day
+  const dayCounts = new Map();
+  for (const c of commits) {
+    const d = new Date(c.isoDate || c.date);
+    const dayKey = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    dayCounts.set(dayKey, (dayCounts.get(dayKey) || 0) + 1);
+  }
+
+  // Calculate quartile thresholds
+  const values = [...dayCounts.values()].filter(v => v > 0).sort((a, b) => a - b);
+  const max = values.length > 0 ? values[values.length - 1] : 0;
+  const getLevel = (count) => {
+    if (count === 0) return 0;
+    if (max <= 4) return Math.min(count, 4);
+    const q1 = values[Math.floor(values.length * 0.25)] || 1;
+    const q2 = values[Math.floor(values.length * 0.5)] || 2;
+    const q3 = values[Math.floor(values.length * 0.75)] || 3;
+    if (count <= q1) return 1;
+    if (count <= q2) return 2;
+    if (count <= q3) return 3;
+    return 4;
+  };
+
+  // Build cells (7 rows x 52 cols, column-first)
+  const totalDays = 52 * 7;
+  let cellsHtml = '';
+  const monthLabels = [];
+  let lastMonth = -1;
+
+  for (let i = 0; i < totalDays; i++) {
+    const ts = gridStart + i * dayMs;
+    if (ts > todayStart) {
+      cellsHtml += `<div class="contrib-cell"></div>`;
+      continue;
+    }
+    const d = new Date(ts);
+    const count = dayCounts.get(ts) || 0;
+    const level = getLevel(count);
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const tooltip = count > 0 ? `${count} commit(s) — ${dateStr}` : `${t('kanban.noCards')} — ${dateStr}`;
+    cellsHtml += `<div class="contrib-cell level-${level}" title="${tooltip}"></div>`;
+
+    // Track month labels (on first Sunday of each month)
+    if (d.getDay() === 0 && d.getMonth() !== lastMonth) {
+      lastMonth = d.getMonth();
+      const col = Math.floor(i / 7);
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      monthLabels.push(`<span style="grid-column:${col + 1}">${monthNames[d.getMonth()]}</span>`);
+    }
+  }
+
+  const dayLabels = ['', 'Mon', '', 'Wed', '', 'Fri', ''];
+
+  return `
+    <div class="contrib-graph">
+      <div class="insights-sub-label">${t('dashboard.insights.contributionGraph')}</div>
+      <div class="contrib-month-labels">${monthLabels.join('')}</div>
+      <div class="contrib-wrapper">
+        <div class="contrib-day-labels">${dayLabels.map(d => `<span>${d}</span>`).join('')}</div>
+        <div class="contrib-grid">${cellsHtml}</div>
+      </div>
+      <div class="contrib-legend">
+        <span>${t('dashboard.insights.less')}</span>
+        <div class="contrib-cell level-0"></div>
+        <div class="contrib-cell level-1"></div>
+        <div class="contrib-cell level-2"></div>
+        <div class="contrib-cell level-3"></div>
+        <div class="contrib-cell level-4"></div>
+        <span>${t('dashboard.insights.more')}</span>
+      </div>
+    </div>
+  `;
+}
+
+/**
  * Build complete Project Insights section
  * @param {Object} data - Dashboard data
  * @param {string} projectId
@@ -1206,6 +1296,7 @@ function buildProjectInsightsHtml(data, projectId) {
 
   const isGit = gitInfo?.isGitRepo;
   const content = [
+    isGit ? buildContributionGraphHtml(commitHistory30d) : '',
     isGit ? buildInsightsHeatmapHtml(commitHistory30d) : '',
     isGit ? buildInsightsTimeVsCommitsHtml(projectId, commitHistory30d) : '',
     isGit ? buildInsightsHourDistributionHtml(commitHistory30d) : '',
