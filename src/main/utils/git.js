@@ -1262,6 +1262,36 @@ async function diffWorktreeBranchesWithStats(projectPath, branch1, branch2) {
 }
 
 /**
+ * Resolve a merge conflict for a specific file using ours/theirs strategy
+ * @param {string} projectPath - Path to the project
+ * @param {string} filePath - Path to the conflicted file
+ * @param {string} strategy - 'ours' or 'theirs'
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+async function resolveConflict(projectPath, filePath, strategy) {
+  if (strategy !== 'ours' && strategy !== 'theirs') {
+    return { success: false, error: 'Invalid strategy. Use "ours" or "theirs".' };
+  }
+  const checkoutResult = await spawnGit(projectPath, ['checkout', `--${strategy}`, '--', filePath]);
+  if (!checkoutResult.success) return checkoutResult;
+  const stageResult = await spawnGit(projectPath, ['add', '--', filePath]);
+  return stageResult;
+}
+
+/**
+ * Get number of commits unique to a branch (not on any other branch)
+ * @param {string} projectPath - Path to the project
+ * @param {string} branch - Branch name
+ * @returns {Promise<number>} - Number of orphan commits
+ */
+async function getBranchOrphanCommitCount(projectPath, branch) {
+  // Get commits on this branch that are not reachable from any other branch
+  const output = await execGit(projectPath, ['log', branch, '--not', '--remotes', '--exclude=' + branch, '--branches', '--oneline'], 10000);
+  if (!output) return 0;
+  return output.split('\n').filter(l => l.trim()).length;
+}
+
+/**
  * Kill all active git child processes.
  * Called during app shutdown to prevent orphaned git processes.
  */
@@ -1326,5 +1356,7 @@ module.exports = {
   pruneWorktrees,
   detectWorktree,
   diffWorktreeBranches,
-  diffWorktreeBranchesWithStats
+  diffWorktreeBranchesWithStats,
+  resolveConflict,
+  getBranchOrphanCommitCount
 };

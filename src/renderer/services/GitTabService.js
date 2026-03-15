@@ -11,6 +11,72 @@ const { t } = require('../i18n');
 const Toast = require('../ui/components/Toast');
 const { showConfirm, createModal, showModal, closeModal } = require('../ui/components/Modal');
 
+// ========== GIT ERROR MAPPER ==========
+
+const GIT_ERROR_PATTERNS = [
+  { pattern: /fatal: not a git repository/i, key: 'gitErrors.notARepo' },
+  { pattern: /fatal: ref .+ is not a symbolic ref/i, key: 'gitErrors.notSymbolicRef' },
+  { pattern: /error: pathspec .+ did not match any file/i, key: 'gitErrors.pathNotFound' },
+  { pattern: /fatal: .+ is not a valid branch name/i, key: 'gitErrors.invalidBranchName' },
+  { pattern: /error: your local changes .+ would be overwritten/i, key: 'gitErrors.localChangesOverwrite' },
+  { pattern: /error: the branch .+ is not fully merged/i, key: 'gitErrors.branchNotMerged' },
+  { pattern: /fatal: couldn't find remote ref/i, key: 'gitErrors.remoteRefNotFound' },
+  { pattern: /fatal: '.*' does not appear to be a git repo/i, key: 'gitErrors.remoteNotFound' },
+  { pattern: /fatal: authentication failed/i, key: 'gitErrors.authFailed' },
+  { pattern: /fatal: unable to access/i, key: 'gitErrors.networkError' },
+  { pattern: /fatal: could not read from remote/i, key: 'gitErrors.networkError' },
+  { pattern: /error: failed to push some refs/i, key: 'gitErrors.pushRejected' },
+  { pattern: /merge conflict/i, key: 'gitErrors.mergeConflict' },
+  { pattern: /conflict.*merge/i, key: 'gitErrors.mergeConflict' },
+  { pattern: /fatal: refusing to merge unrelated histories/i, key: 'gitErrors.unrelatedHistories' },
+  { pattern: /fatal: cannot lock ref/i, key: 'gitErrors.lockFailed' },
+  { pattern: /already exists/i, key: 'gitErrors.alreadyExists' },
+  { pattern: /nothing to commit/i, key: 'gitErrors.nothingToCommit' },
+];
+
+function friendlyGitError(rawError) {
+  if (!rawError || typeof rawError !== 'string') return rawError || t('common.errorOccurred');
+  for (const { pattern, key } of GIT_ERROR_PATTERNS) {
+    if (pattern.test(rawError)) {
+      const friendly = t(key);
+      if (friendly && friendly !== key) return friendly;
+    }
+  }
+  // Strip "fatal: " / "error: " prefixes for cleaner display
+  return rawError.replace(/^(fatal|error):\s*/i, '');
+}
+
+// ========== INPUT MODAL HELPER ==========
+
+function showGitInputModal({ title, placeholder = '', defaultValue = '' }) {
+  return new Promise((resolve) => {
+    const modal = createModal({
+      id: 'git-input-modal',
+      title,
+      content: `<div style="padding: 4px 0">
+        <input type="text" class="input" id="git-input-field" value="${escapeAttr(defaultValue)}" placeholder="${escapeAttr(placeholder)}" autocomplete="off" spellcheck="false" style="width:100%">
+      </div>`,
+      size: 'small',
+      buttons: [
+        { label: t('common.cancel'), action: 'cancel', onClick: (m) => { closeModal(m); resolve(null); } },
+        { label: t('common.confirm'), action: 'confirm', primary: true, onClick: (m) => { const v = m.querySelector('#git-input-field')?.value; closeModal(m); resolve(v); } }
+      ]
+    });
+    showModal(modal);
+    setTimeout(() => {
+      const inp = modal.querySelector('#git-input-field');
+      if (inp) { inp.focus(); inp.select(); }
+    }, 50);
+    // Enter to confirm, Escape to cancel
+    const inp = modal.querySelector('#git-input-field');
+    if (inp) {
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); const v = inp.value; closeModal(modal); resolve(v); }
+      });
+    }
+  });
+}
+
 // ========== STATE ==========
 let selectedProject = null;
 let selectedProjectId = null;
@@ -39,6 +105,9 @@ let worktreesData = [];
 // Merge conflict state
 let mergeInProgress = false;
 let conflictFiles = [];
+
+// Branch search filter
+let branchSearchQuery = '';
 
 // ========== HELPERS ==========
 function escapeAttr(str) {
@@ -446,20 +515,59 @@ function renderBranches() {
     return;
   }
 
+  // Branch search filter
+  const searchContainer = document.getElementById('git-branch-search');
+  if (searchContainer && !searchContainer.dataset.initialized) {
+    searchContainer.dataset.initialized = 'true';
+    searchContainer.innerHTML = `
+      <div class="git-branch-search-box">
+        <svg class="git-branch-search-icon" viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+        <input type="text" class="git-branch-search-input" id="git-branch-search-input" placeholder="${escapeAttr(t('gitTab.searchBranches'))}" autocomplete="off" spellcheck="false">
+      </div>
+    `;
+    const input = searchContainer.querySelector('#git-branch-search-input');
+    let debounceTimer;
+    input?.addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        branchSearchQuery = input.value.trim().toLowerCase();
+        renderBranches();
+      }, 150);
+    });
+  }
+
+  // Restore search input value
+  const searchInput = document.getElementById('git-branch-search-input');
+  if (searchInput && searchInput.value !== branchSearchQuery) {
+    searchInput.value = branchSearchQuery;
+  }
+
+  // Filter branches by search query
+  const filterBranches = (branches) => {
+    if (!branchSearchQuery) return branches;
+    return branches.filter(b => b.toLowerCase().includes(branchSearchQuery));
+  };
+
   let html = '';
+  const filteredLocal = filterBranches(branchesData.local || []);
+  const filteredRemote = filterBranches(branchesData.remote || []);
 
   // Local branches
-  if (branchesData.local?.length > 0) {
+  if (filteredLocal.length > 0) {
     html += `<div class="git-branch-group-label">${t('gitTab.localBranches')}</div>`;
-    const localTree = buildBranchTree(branchesData.local);
+    const localTree = buildBranchTree(filteredLocal);
     html += renderBranchTreeNode(localTree, 'local', 0);
   }
 
-  // Remote branches (strip origin/ prefix for grouping, but keep full name in data-branch)
-  if (branchesData.remote?.length > 0) {
+  // Remote branches
+  if (filteredRemote.length > 0) {
     html += `<div class="git-branch-group-label">${t('gitTab.remoteBranches')}</div>`;
-    const remoteTree = buildBranchTree(branchesData.remote);
+    const remoteTree = buildBranchTree(filteredRemote);
     html += renderBranchTreeNode(remoteTree, 'remote', 0);
+  }
+
+  if (branchSearchQuery && filteredLocal.length === 0 && filteredRemote.length === 0) {
+    html = `<div class="git-sidebar-empty">${t('git.noBranchesFound')}</div>`;
   }
 
   container.innerHTML = html;
@@ -680,7 +788,7 @@ async function handleCreateWorktree() {
               showToast(t('gitTab.worktreeCreated'), 'success');
               await refreshWorktrees();
             } else {
-              showToast(result.error, 'error');
+              showToast(friendlyGitError(result.error), 'error');
             }
           });
         }
@@ -785,7 +893,7 @@ async function handleLockWorktree(wtPath) {
       showToast(t('gitTab.worktreeLocked'), 'success');
       await refreshWorktrees();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -797,7 +905,7 @@ async function handleUnlockWorktree(wtPath) {
       showToast(t('gitTab.worktreeUnlocked'), 'success');
       await refreshWorktrees();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -828,7 +936,7 @@ async function handleRemoveWorktree(wtPath) {
       showToast(t('gitTab.worktreeRemoved'), 'success');
       await refreshWorktrees();
     } else if (result.error) {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -840,7 +948,7 @@ async function handlePruneWorktrees() {
       showToast(t('gitTab.worktreesPruned'), 'success');
       await refreshWorktrees();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -986,7 +1094,15 @@ function renderChanges(container) {
               <span class="git-file-name">${escapeHtml(name)}</span>
               ${dir ? `<span class="git-file-dir">${escapeHtml(dir)}</span>` : ''}
             </div>
-            <div class="git-file-actions">
+            <div class="git-file-actions git-conflict-actions">
+              <button class="git-file-btn resolve-ours-btn" title="${t('gitTab.resolveOurs')}">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                <span>${t('gitTab.ours')}</span>
+              </button>
+              <button class="git-file-btn resolve-theirs-btn" title="${t('gitTab.resolveTheirs')}">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                <span>${t('gitTab.theirs')}</span>
+              </button>
               <button class="git-file-btn diff-btn" title="${t('gitTab.viewDiff')}">
                 <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M19 19H5V5h7V3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
               </button>
@@ -1110,6 +1226,10 @@ function bindChangesEvents(container) {
       api.dialog.openInEditor({ filePath: fullPath });
     } else if (btn.classList.contains('resolve-btn') && fileItem) {
       handleMarkResolved(fileItem.dataset.path);
+    } else if (btn.classList.contains('resolve-ours-btn') && fileItem) {
+      handleResolveConflict(fileItem.dataset.path, 'ours');
+    } else if (btn.classList.contains('resolve-theirs-btn') && fileItem) {
+      handleResolveConflict(fileItem.dataset.path, 'theirs');
     }
 
     // Bulk actions
@@ -1649,7 +1769,7 @@ async function handleStageFiles(files) {
       renderSubTabContent();
       renderSidebar();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -1661,7 +1781,7 @@ async function handleUnstageFiles(files) {
       await refreshChanges();
       renderSubTabContent();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -1687,7 +1807,7 @@ async function handleCommit() {
       renderSubTabContent();
       renderSidebar();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -1706,52 +1826,77 @@ async function handleGenerateMessage() {
       const msgEl = document.getElementById('git-tab-commit-msg');
       if (msgEl) msgEl.value = result.message;
     } else {
-      showToast(result.error || t('common.errorOccurred'), 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   } finally {
     if (btn) btn.disabled = false;
   }
 }
 
+function renderDiffWithLineNumbers(diff) {
+  const lines = diff.split('\n');
+  let oldLine = 0, newLine = 0;
+  const rows = [];
+
+  for (const line of lines) {
+    if (line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++')) continue;
+
+    if (line.startsWith('@@')) {
+      const m = line.match(/@@ -(\d+)/);
+      if (m) oldLine = parseInt(m[1], 10);
+      const m2 = line.match(/\+(\d+)/);
+      if (m2) newLine = parseInt(m2[1], 10);
+      rows.push(`<div class="diff-row diff-hunk"><span class="diff-ln"></span><span class="diff-ln"></span><span class="diff-gutter"></span><span class="diff-text">${escapeHtml(line)}</span></div>`);
+      continue;
+    }
+
+    if (line.startsWith('+')) {
+      rows.push(`<div class="diff-row diff-add"><span class="diff-ln"></span><span class="diff-ln">${newLine}</span><span class="diff-gutter">+</span><span class="diff-text">${escapeHtml(line.slice(1))}</span></div>`);
+      newLine++;
+    } else if (line.startsWith('-')) {
+      rows.push(`<div class="diff-row diff-del"><span class="diff-ln">${oldLine}</span><span class="diff-ln"></span><span class="diff-gutter">-</span><span class="diff-text">${escapeHtml(line.slice(1))}</span></div>`);
+      oldLine++;
+    } else {
+      const text = line.startsWith(' ') ? line.slice(1) : line;
+      rows.push(`<div class="diff-row diff-ctx"><span class="diff-ln">${oldLine}</span><span class="diff-ln">${newLine}</span><span class="diff-gutter"></span><span class="diff-text">${escapeHtml(text)}</span></div>`);
+      oldLine++;
+      newLine++;
+    }
+  }
+
+  return `<div class="diff-table">${rows.join('')}</div>`;
+}
+
 async function handleViewDiff(filePath, staged) {
   const diff = await api.git.fileDiff({ projectPath: selectedProject.path, filePath, staged });
 
-  // Show in modal
-  const modalOverlay = document.getElementById('modal-overlay');
-  const modalTitle = document.getElementById('modal-title');
-  const modalBody = document.getElementById('modal-body');
-  const modalFooter = document.getElementById('modal-footer');
+  const content = !diff
+    ? `<p style="color:var(--text-secondary);padding:16px">${t('gitTab.noDiffAvailable')}</p>`
+    : `<div class="git-diff-view">${renderDiffWithLineNumbers(diff)}</div>`;
 
-  if (modalTitle) modalTitle.textContent = filePath;
-  if (modalBody) {
-    if (!diff) {
-      modalBody.innerHTML = `<p style="color:var(--text-secondary);padding:16px">${t('gitTab.noDiffAvailable')}</p>`;
-    } else {
-      const lines = diff.split('\n').map(line => {
-        const cls = line.startsWith('+') ? 'diff-add' : line.startsWith('-') ? 'diff-del' : line.startsWith('@@') ? 'diff-hunk' : '';
-        return `<div class="diff-line ${cls}">${escapeHtml(line)}</div>`;
-      }).join('');
-      modalBody.innerHTML = `<div class="git-diff-view"><pre class="git-diff-content">${lines}</pre></div>`;
-    }
-  }
-  if (modalFooter) modalFooter.style.display = 'none';
-  if (modalOverlay) modalOverlay.classList.add('active');
+  const modal = createModal({
+    id: 'git-diff-modal',
+    title: filePath,
+    content,
+    size: 'large'
+  });
+  showModal(modal);
 }
 
 async function handleCommitDetail(hash) {
   const detail = await api.git.commitDetail({ projectPath: selectedProject.path, commitHash: hash });
 
-  const modalOverlay = document.getElementById('modal-overlay');
-  const modalTitle = document.getElementById('modal-title');
-  const modalBody = document.getElementById('modal-body');
-  const modalFooter = document.getElementById('modal-footer');
+  const content = detail
+    ? `<div class="git-diff-view">${renderDiffWithLineNumbers(detail)}</div>`
+    : `<p style="color:var(--text-secondary);padding:16px">${t('gitTab.noDiffAvailable')}</p>`;
 
-  if (modalTitle) modalTitle.textContent = `${t('ui.commit')} ${hash.substring(0, 7)}`;
-  if (modalBody) {
-    modalBody.innerHTML = `<div class="git-diff-view"><pre class="git-diff-content">${escapeHtml(detail)}</pre></div>`;
-  }
-  if (modalFooter) modalFooter.style.display = 'none';
-  if (modalOverlay) modalOverlay.classList.add('active');
+  const modal = createModal({
+    id: 'git-commit-detail-modal',
+    title: `${t('ui.commit')} ${hash.substring(0, 7)}`,
+    content,
+    size: 'large'
+  });
+  showModal(modal);
 }
 
 async function handleCherryPick(hash) {
@@ -1767,7 +1912,7 @@ async function handleCherryPick(hash) {
       await loadAllData(selectedProject);
       renderGitTab();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -1786,7 +1931,7 @@ async function handleRevert(hash) {
       await loadAllData(selectedProject);
       renderGitTab();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -1812,47 +1957,73 @@ async function handleLoadMore() {
   historyLoadingMore = false;
 }
 
+function setButtonLoading(btnId, loading, label) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  if (loading) {
+    btn.classList.add('loading');
+    btn.disabled = true;
+    btn.dataset.originalHtml = btn.innerHTML;
+    btn.innerHTML = `<svg class="spin-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83"/></svg> ${escapeHtml(label)}`;
+  } else {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+    if (btn.dataset.originalHtml) { btn.innerHTML = btn.dataset.originalHtml; delete btn.dataset.originalHtml; }
+  }
+}
+
 async function handlePull() {
   await withLock(async () => {
-    showToast(t('git.pulling'), 'info');
-    const result = await api.git.pull({ projectPath: selectedProject.path });
-    if (result.success) {
-      api.telemetry?.sendFeature({ feature: 'git:pull', metadata: {} });
-      const isUpToDate = result.output && result.output.includes('Already up to date');
-      showToast(isUpToDate ? t('git.pullUpToDate') : t('git.pullSuccess'), isUpToDate ? 'info' : 'success');
-    } else if (result.hasConflicts) {
-      showToast(t('gitTab.mergeInProgress'), 'warning');
-    } else {
-      showToast(result.error, 'error');
+    setButtonLoading('git-btn-pull', true, t('git.pulling'));
+    try {
+      const result = await api.git.pull({ projectPath: selectedProject.path });
+      if (result.success) {
+        api.telemetry?.sendFeature({ feature: 'git:pull', metadata: {} });
+        const isUpToDate = result.output && result.output.includes('Already up to date');
+        showToast(isUpToDate ? t('git.pullUpToDate') : t('git.pullSuccess'), isUpToDate ? 'info' : 'success');
+      } else if (result.hasConflicts) {
+        showToast(t('gitTab.mergeInProgress'), 'warning');
+      } else {
+        showToast(friendlyGitError(result.error), 'error');
+      }
+      await loadAllData(selectedProject);
+      renderGitTab();
+    } finally {
+      setButtonLoading('git-btn-pull', false);
     }
-    await loadAllData(selectedProject);
-    renderGitTab();
   });
 }
 
 async function handlePush() {
   await withLock(async () => {
-    showToast(t('git.pushing'), 'info');
-    const result = await api.git.push({ projectPath: selectedProject.path });
-    if (result.success) {
-      api.telemetry?.sendFeature({ feature: 'git:push', metadata: {} });
-      showToast(t('git.pushSuccess'), 'success');
-      await loadAllData(selectedProject);
-      renderGitTab();
-    } else {
-      showToast(result.error, 'error');
+    setButtonLoading('git-btn-push', true, t('git.pushing'));
+    try {
+      const result = await api.git.push({ projectPath: selectedProject.path });
+      if (result.success) {
+        api.telemetry?.sendFeature({ feature: 'git:push', metadata: {} });
+        showToast(t('git.pushSuccess'), 'success');
+        await loadAllData(selectedProject);
+        renderGitTab();
+      } else {
+        showToast(friendlyGitError(result.error), 'error');
+      }
+    } finally {
+      setButtonLoading('git-btn-push', false);
     }
   });
 }
 
 async function handleFetch() {
   await withLock(async () => {
-    showToast(t('gitTab.fetchingMessage'), 'info');
-    // Fetch is done via infoFull with skipFetch=false
-    const info = await api.git.infoFull(selectedProject.path);
-    aheadBehind = info?.aheadBehind || aheadBehind;
-    renderQuickActions();
-    showToast(t('gitTab.fetchComplete'), 'success');
+    setButtonLoading('git-btn-fetch', true, t('gitTab.fetchingMessage'));
+    try {
+      const info = await api.git.infoFull(selectedProject.path);
+      aheadBehind = info?.aheadBehind || aheadBehind;
+      renderQuickActions();
+      showToast(t('gitTab.fetchComplete'), 'success');
+    } finally {
+      setButtonLoading('git-btn-fetch', false);
+    }
   });
 }
 
@@ -1864,13 +2035,13 @@ async function handleCheckout(branch) {
       await loadAllData(selectedProject);
       renderGitTab();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
 
 async function handleCreateBranch() {
-  const name = prompt(t('gitTab.newBranch'));
+  const name = await showGitInputModal({ title: t('gitTab.createBranch'), placeholder: 'feature/my-branch' });
   if (!name || !name.trim()) return;
   await withLock(async () => {
     const result = await api.git.createBranch({ projectPath: selectedProject.path, branch: name.trim() });
@@ -1879,15 +2050,25 @@ async function handleCreateBranch() {
       await loadAllData(selectedProject);
       renderGitTab();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
 
 async function handleDeleteBranch(branch) {
+  // Fetch orphan commit count before confirming
+  let orphanCount = 0;
+  try {
+    orphanCount = await api.git.branchOrphanCommits({ projectPath: selectedProject.path, branch });
+  } catch (_) {}
+
+  const orphanWarning = orphanCount > 0
+    ? `\n\n${t('gitTab.orphanCommitWarning', { count: orphanCount })}`
+    : '';
+
   const confirmed = await showConfirm({
     title: t('gitTab.deleteBranch').replace('{name}', branch),
-    message: t('gitTab.confirmDeleteBranch'),
+    message: t('gitTab.confirmDeleteBranch') + orphanWarning,
     confirmLabel: t('common.delete'),
     danger: true
   });
@@ -1899,7 +2080,7 @@ async function handleDeleteBranch(branch) {
       await refreshBranches();
       renderBranches();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -1917,7 +2098,7 @@ async function handleMerge(branch) {
     } else if (result.hasConflicts) {
       showToast(t('gitTab.mergeInProgress'), 'warning');
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
     await loadAllData(selectedProject);
     renderGitTab();
@@ -1941,7 +2122,7 @@ async function handleMergeAbort() {
       await loadAllData(selectedProject);
       renderGitTab();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -1956,7 +2137,7 @@ async function handleMergeContinue() {
       await loadAllData(selectedProject);
       renderGitTab();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -1969,14 +2150,28 @@ async function handleMarkResolved(filePath) {
       await refreshChanges();
       renderSubTabContent();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
+    }
+  });
+}
+
+async function handleResolveConflict(filePath, strategy) {
+  await withLock(async () => {
+    const result = await api.git.resolveConflict({ projectPath: selectedProject.path, filePath, strategy });
+    if (result.success) {
+      const label = strategy === 'ours' ? t('gitTab.ours') : t('gitTab.theirs');
+      showToast(`${fileBasename(filePath)} — ${t('gitTab.resolvedWith', { strategy: label })}`, 'success');
+      await refreshChanges();
+      renderSubTabContent();
+    } else {
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
 
 async function handleStashSave() {
   if (!selectedProject) return;
-  const message = prompt(t('gitTab.stashMessage'));
+  const message = await showGitInputModal({ title: t('gitTab.stashSave'), placeholder: t('gitTab.stashMessage') });
   if (message === null) return; // Cancelled
   await withLock(async () => {
     const result = await api.git.stashSave({ projectPath: selectedProject.path, message: message || '' });
@@ -1985,7 +2180,7 @@ async function handleStashSave() {
       await loadAllData(selectedProject);
       renderGitTab();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -1998,7 +2193,7 @@ async function handleStashApply(ref) {
       await loadAllData(selectedProject);
       renderGitTab();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -2019,7 +2214,7 @@ async function handleStashDrop(ref) {
       stashesData = info?.stashes || [];
       renderStashes();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -2045,7 +2240,7 @@ async function handleCreatePR() {
       const content = document.getElementById('git-sub-content');
       if (content && currentSubTab === 'pullrequests') renderPullRequests(content);
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }

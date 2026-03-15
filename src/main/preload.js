@@ -238,6 +238,8 @@ contextBridge.exposeInMainWorld('electron_api', {
     worktreeDiff: (params) => ipcRenderer.invoke('git-worktree-diff', params),
     worktreeDiffStats: (params) => ipcRenderer.invoke('git-worktree-diff-stats', params),
     generateSessionRecap: (context) => ipcRenderer.invoke('git-generate-session-recap', context),
+    resolveConflict: (params) => ipcRenderer.invoke('git-resolve-conflict', params),
+    branchOrphanCommits: (params) => ipcRenderer.invoke('git-branch-orphan-commits', params),
   },
 
   // ==================== WEBAPP ====================
