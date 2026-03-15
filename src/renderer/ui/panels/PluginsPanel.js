@@ -400,7 +400,7 @@ function bindPluginInstalledHandlers() {
 async function handlePluginInstall(pluginName, marketplace, btn) {
   const originalText = btn.textContent;
   btn.disabled = true;
-  btn.textContent = t('plugins.installing');
+  btn.innerHTML = `<span class="btn-install-spinner"></span>${t('plugins.installing')}`;
   btn.classList.add('installing');
 
   try {
