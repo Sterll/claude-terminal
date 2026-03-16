@@ -1263,6 +1263,8 @@
     "unableToCreateFolder": "Impossible de créer le dossier : {error}",
     "folderAlreadyExists": "Ce dossier existe déjà",
     "folderCreatedGitInitError": "Dossier créé mais erreur git init : {error}",
+    "duplicatePath": "Un projet existe déjà à ce chemin : {name}",
+    "registrationError": "Impossible d'enregistrer le projet : {error}",
     "untitledConversation": "Conversation sans titre",
     "categories": {
       "general": "Général",

@@ -3438,7 +3438,7 @@ document.getElementById('btn-new-project').onclick = () => {
           ${buildTypeRows()}
         </div>
         <div class="wizard-actions">
-          <button type="button" class="wizard-btn-secondary" onclick="closeModal()">${t('common.cancel')}</button>
+          <button type="button" class="wizard-btn-secondary" id="btn-cancel-wizard">${t('common.cancel')}</button>
           <button type="button" class="wizard-btn-primary" id="btn-next-step">
             <span>${t('newProject.next')}</span>
             <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
@@ -3552,6 +3552,7 @@ document.getElementById('btn-new-project').onclick = () => {
     }
   }
 
+  document.getElementById('btn-cancel-wizard').onclick = () => closeModal();
   document.getElementById('btn-next-step').onclick = () => goToStep(2);
   document.getElementById('btn-prev-step').onclick = () => goToStep(1);
 
@@ -3639,13 +3640,22 @@ document.getElementById('btn-new-project').onclick = () => {
 
     if (!name || !projPath) return;
 
+    // Disable submit button to prevent double-click (BUG 5)
+    const submitBtn = document.getElementById('btn-create-project');
+    submitBtn.disabled = true;
+
+    // Track whether we created a new directory (for cleanup on failure)
+    let createdDir = null;
+
     // If using existing folder, ensure the directory exists
     if (selectedSource === 'folder') {
       if (!fs.existsSync(projPath)) {
         try {
           fs.mkdirSync(projPath, { recursive: true });
+          createdDir = projPath;
         } catch (err) {
           showToast(t('newProject.unableToCreateFolder', { error: err.message }), 'error');
+          submitBtn.disabled = false;
           return;
         }
       }
@@ -3657,9 +3667,11 @@ document.getElementById('btn-new-project').onclick = () => {
       try {
         if (fs.existsSync(projPath)) {
           showToast(t('newProject.folderAlreadyExists'), 'error');
+          submitBtn.disabled = false;
           return;
         }
         fs.mkdirSync(projPath, { recursive: true });
+        createdDir = projPath;
 
         // Init git repo if checked
         if (document.getElementById('chk-init-git')?.checked) {
@@ -3683,6 +3695,7 @@ document.getElementById('btn-new-project').onclick = () => {
         }
       } catch (err) {
         showToast(t('newProject.unableToCreateFolder', { error: err.message }), 'error');
+        submitBtn.disabled = false;
         return;
       }
     }
@@ -3692,9 +3705,7 @@ document.getElementById('btn-new-project').onclick = () => {
       projPath = path.join(projPath, name);
 
       // Show progress
-      const submitBtn = document.getElementById('btn-create-project');
       const cloneStatus = document.querySelector('.clone-status');
-      submitBtn.disabled = true;
       submitBtn.innerHTML = `<span class="btn-spinner"></span> ${t('newProject.cloning')}`;
       cloneStatus.style.display = 'block';
 
@@ -3702,12 +3713,17 @@ document.getElementById('btn-new-project').onclick = () => {
         const result = await api.git.clone({ repoUrl, targetPath: projPath });
 
         if (!result.success) {
+          // Clean up partial clone directory (BUG 3)
+          try { if (fs.existsSync(projPath)) fs.rmSync(projPath, { recursive: true, force: true }); } catch (_) {}
           cloneStatus.innerHTML = `<div class="clone-error">${result.error}</div>`;
           submitBtn.disabled = false;
           submitBtn.textContent = t('newProject.create');
           return;
         }
+        createdDir = projPath;
       } catch (err) {
+        // Clean up partial clone directory (BUG 3)
+        try { if (fs.existsSync(projPath)) fs.rmSync(projPath, { recursive: true, force: true }); } catch (_) {}
         cloneStatus.innerHTML = `<div class="clone-error">${err.message}</div>`;
         submitBtn.disabled = false;
         submitBtn.textContent = t('newProject.create');
@@ -3715,26 +3731,44 @@ document.getElementById('btn-new-project').onclick = () => {
       }
     }
 
-    const project = { id: generateProjectId(), name, path: projPath, type: selectedType, folderId: null };
-    // Merge type-specific wizard config
-    const typeHandler = registry.get(selectedType);
-    const typeConfig = typeHandler.getWizardConfig(document.getElementById('form-project'));
-    Object.assign(project, typeConfig);
-
-    // Generate template files if type supports it
-    if (typeHandler.afterProjectCreate) {
-      await typeHandler.afterProjectCreate(project, projPath);
+    // Check for duplicate project path (BUG 2)
+    const normalizedPath = projPath.replace(/[\\/]+$/, '').replace(/\\/g, '/').toLowerCase();
+    const existingProject = projectsState.get().projects.find(p =>
+      p.path.replace(/[\\/]+$/, '').replace(/\\/g, '/').toLowerCase() === normalizedPath
+    );
+    if (existingProject) {
+      showToast(t('newProject.duplicatePath', { name: existingProject.name }), 'error');
+      submitBtn.disabled = false;
+      return;
     }
 
-    const projects = [...projectsState.get().projects, project];
-    const rootOrder = [...projectsState.get().rootOrder, project.id];
-    projectsState.set({ projects, rootOrder });
-    saveProjects();
-    ProjectList.render();
-    closeModal();
+    // Register project — wrapped in try-catch (BUG 1)
+    try {
+      const project = { id: generateProjectId(), name, path: projPath, type: selectedType, folderId: null };
+      // Merge type-specific wizard config
+      const typeHandler = registry.get(selectedType);
+      const typeConfig = typeHandler.getWizardConfig(document.getElementById('form-project'));
+      Object.assign(project, typeConfig);
 
-    // Detect git status for the new project
-    checkProjectGitStatus(project);
+      // Generate template files if type supports it
+      if (typeHandler.afterProjectCreate) {
+        await typeHandler.afterProjectCreate(project, projPath);
+      }
+
+      const projects = [...projectsState.get().projects, project];
+      const rootOrder = [...projectsState.get().rootOrder, project.id];
+      projectsState.set({ projects, rootOrder });
+      saveProjects();
+      ProjectList.render();
+      closeModal();
+
+      // Detect git status for the new project
+      checkProjectGitStatus(project);
+    } catch (err) {
+      console.error('[NewProject] Failed to register project:', err);
+      showToast(t('newProject.registrationError', { error: err.message }), 'error');
+      submitBtn.disabled = false;
+    }
   };
 };
 
