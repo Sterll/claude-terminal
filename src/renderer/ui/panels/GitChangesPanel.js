@@ -7,6 +7,7 @@
 const { escapeHtml } = require('../../utils');
 const { t } = require('../../i18n');
 const { getSetting } = require('../../state');
+const { createModal, showModal, closeModal } = require('../components/Modal');
 
 const api = window.electron_api;
 
@@ -29,6 +30,7 @@ let gitSelectAll = null;
 let gitCommitMessage = null;
 let btnCommitSelected = null;
 let btnGenerateCommit = null;
+let btnSmartCommit = null;
 let commitCountSpan = null;
 let changesCountBadge = null;
 let filterBtnChanges = null;
@@ -61,6 +63,7 @@ function init(context) {
   gitCommitMessage = document.getElementById('git-commit-message');
   btnCommitSelected = document.getElementById('btn-commit-selected');
   btnGenerateCommit = document.getElementById('btn-generate-commit');
+  btnSmartCommit = document.getElementById('btn-smart-commit');
   commitCountSpan = document.getElementById('commit-count');
   changesCountBadge = document.getElementById('changes-count');
   filterBtnChanges = document.getElementById('filter-btn-changes');
@@ -181,6 +184,47 @@ function setupEventListeners() {
     } finally {
       btnGenerateCommit.disabled = false;
       btnSpan.textContent = originalText;
+    }
+  };
+
+  // Smart Commit - generate multi-commit messages and show modal
+  btnSmartCommit.onclick = async () => {
+    if (gitChangesState.selectedFiles.size === 0) {
+      showToast({ type: 'warning', title: t('gitChanges.filesRequired'), message: t('gitChanges.selectAtLeastOne'), duration: 3000 });
+      return;
+    }
+
+    const selectedFiles = Array.from(gitChangesState.selectedFiles)
+      .map(i => gitChangesState.files[i])
+      .filter(Boolean);
+
+    btnSmartCommit.disabled = true;
+    const btnSpan = btnSmartCommit.querySelector('span');
+    const origText = btnSpan.textContent;
+    btnSpan.textContent = t('gitChanges.generating');
+
+    try {
+      const result = await api.git.generateMultiCommit({
+        projectPath: gitChangesState.projectPath,
+        files: selectedFiles,
+        useAi: getSetting('aiCommitMessages') !== false
+      });
+
+      if (!result.success || !result.commits || result.commits.length <= 1) {
+        // Only one group — use normal flow
+        if (result.commits && result.commits.length === 1) {
+          gitCommitMessage.value = result.commits[0].message;
+          showToast({ type: 'info', message: t('gitChanges.generated', { source: result.commits[0].source === 'ai' ? t('gitChanges.sourceAi') : t('gitChanges.sourceHeuristic') }), duration: 3000 });
+        }
+        return;
+      }
+
+      _showSmartCommitModal(result.commits);
+    } catch (e) {
+      showToast({ type: 'error', title: t('gitChanges.errorGenerate'), message: e.message, duration: 3000 });
+    } finally {
+      btnSmartCommit.disabled = false;
+      btnSpan.textContent = origText;
     }
   };
 
@@ -639,6 +683,7 @@ function updateCommitButton() {
   const count = gitChangesState.selectedFiles.size;
   if (commitCountSpan) commitCountSpan.textContent = count;
   btnCommitSelected.disabled = count === 0 || !gitCommitMessage.value.trim();
+  _updateSmartCommitVisibility();
 }
 
 function updateChangesCount() {
@@ -656,6 +701,127 @@ function updateChangesCount() {
 async function refreshGitChangesIfOpen() {
   if (gitChangesPanel && gitChangesPanel.classList.contains('active')) {
     await loadGitChanges();
+  }
+}
+
+function _updateSmartCommitVisibility() {
+  if (!btnSmartCommit) return;
+  // Show smart commit button only when 2+ selected files span multiple directories
+  const selectedFiles = Array.from(gitChangesState.selectedFiles)
+    .map(i => gitChangesState.files[i])
+    .filter(Boolean);
+  if (selectedFiles.length < 2) {
+    btnSmartCommit.style.display = 'none';
+    return;
+  }
+  const dirs = new Set(selectedFiles.map(f => {
+    const parts = f.path.replace(/\\/g, '/').split('/').filter(p => p !== 'src' && p !== '.');
+    return parts.length > 1 ? parts[0] : 'root';
+  }));
+  btnSmartCommit.style.display = dirs.size > 1 ? '' : 'none';
+}
+
+async function _showSmartCommitModal(commits) {
+  const groupCards = commits.map((c, i) => {
+    const fileList = c.files.map(f => `<div class="sc-file"><span class="git-file-status ${f.status}">${f.status}</span> ${escapeHtml(f.path)}</div>`).join('');
+    return `
+      <div class="sc-group" data-group-index="${i}">
+        <div class="sc-group-header">
+          <span class="sc-group-name">${escapeHtml(c.group)}</span>
+          <span class="sc-group-count">${c.files.length} file${c.files.length > 1 ? 's' : ''}</span>
+          <span class="sc-group-status" data-status="pending"></span>
+        </div>
+        <div class="sc-group-files">${fileList}</div>
+        <textarea class="sc-group-message" rows="2">${escapeHtml(c.message)}</textarea>
+        <button class="sc-group-commit btn-primary btn-sm" data-group-index="${i}">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+          ${t('gitChanges.commitGroup')}
+        </button>
+      </div>`;
+  }).join('');
+
+  const modal = createModal({
+    id: 'smart-commit-modal',
+    title: t('gitChanges.smartCommitTitle', { count: commits.length }),
+    size: 'large',
+    content: `
+      <div class="sc-container">
+        ${groupCards}
+      </div>
+    `,
+    buttons: [
+      { label: t('common.cancel'), action: 'cancel' },
+      { label: t('gitChanges.commitAll', { count: commits.length }), action: 'confirm', primary: true }
+    ]
+  });
+
+  showModal(modal);
+
+  // Commit a single group
+  async function commitGroup(index) {
+    const group = commits[index];
+    const el = modal.querySelector(`[data-group-index="${index}"]`);
+    const msgEl = el.querySelector('.sc-group-message');
+    const btnEl = el.querySelector('.sc-group-commit');
+    const statusEl = el.querySelector('.sc-group-status');
+    const message = msgEl.value.trim();
+
+    if (!message) return false;
+
+    btnEl.disabled = true;
+    statusEl.dataset.status = 'committing';
+    statusEl.innerHTML = '<span class="loading-spinner"></span>';
+
+    try {
+      const paths = group.files.map(f => f.path);
+      const stageResult = await api.git.stageFiles({ projectPath: gitChangesState.projectPath, files: paths });
+      if (!stageResult.success) throw new Error(stageResult.error);
+
+      const commitResult = await api.git.commit({ projectPath: gitChangesState.projectPath, message });
+      if (!commitResult.success) throw new Error(commitResult.error);
+
+      statusEl.dataset.status = 'done';
+      statusEl.innerHTML = '<svg viewBox="0 0 24 24" fill="var(--success)" width="16" height="16"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
+      btnEl.style.display = 'none';
+      msgEl.disabled = true;
+      showToast({ type: 'success', message: t('gitChanges.groupCommitted', { name: group.group }), duration: 2000 });
+      return true;
+    } catch (e) {
+      statusEl.dataset.status = 'error';
+      statusEl.innerHTML = '<svg viewBox="0 0 24 24" fill="var(--danger)" width="16" height="16"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
+      btnEl.disabled = false;
+      showToast({ type: 'error', title: t('gitChanges.commitError'), message: e.message, duration: 4000 });
+      return false;
+    }
+  }
+
+  // Individual commit buttons
+  modal.querySelectorAll('.sc-group-commit').forEach(btn => {
+    btn.addEventListener('click', () => commitGroup(parseInt(btn.dataset.groupIndex)));
+  });
+
+  // Commit All button
+  const confirmBtn = modal.querySelector('[data-action="confirm"]');
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      confirmBtn.disabled = true;
+      let successCount = 0;
+      for (let i = 0; i < commits.length; i++) {
+        const statusEl = modal.querySelector(`[data-group-index="${i}"] .sc-group-status`);
+        if (statusEl && statusEl.dataset.status === 'done') { successCount++; continue; }
+        const ok = await commitGroup(i);
+        if (ok) successCount++;
+      }
+      if (successCount === commits.length) {
+        showToast({ type: 'success', message: t('gitChanges.allGroupsCommitted', { count: successCount }), duration: 3000 });
+        closeModal(modal);
+        loadGitChanges();
+        if (refreshDashboardAsync) refreshDashboardAsync(gitChangesState.projectId);
+      } else {
+        confirmBtn.disabled = false;
+      }
+    });
   }
 }
 

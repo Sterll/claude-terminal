@@ -909,16 +909,34 @@ function _updateRunMerge(run) {
   // ── Phase: merging (progress) ─────────────────────────────────
   if (run.phase === 'merging') {
     const p = run.mergeProgress || {};
+    const r = run.resolving || null;
+
+    let statusHtml;
+    if (r) {
+      // Conflict resolution in progress
+      statusHtml = `
+        <p class="parallel-merge-hint parallel-merge-resolving">
+          ${t('parallel.merge.resolvingBranch', { branch: escapeHtml((r.branch || '').split('/').pop()) })}
+        </p>
+        <p class="parallel-merge-hint">
+          ${t('parallel.merge.resolvingConflicts', { attempt: r.attempt || 1, maxAttempts: r.maxAttempts || 2 })}
+          — ${t('parallel.merge.resolvingFiles', { count: (r.files || []).length })}
+        </p>`;
+    } else {
+      statusHtml = `
+        <p class="parallel-merge-hint">
+          ${p.current && p.total ? t('parallel.merge.progress', { current: p.current, total: p.total }) : t('parallel.merge.preparing')}
+          ${p.branch ? ` — <code>${escapeHtml(p.branch.split('/').pop())}</code>` : ''}
+        </p>`;
+    }
+
     mergeSection.innerHTML = `
       <div class="parallel-merge-inner parallel-merge-merging">
         <div class="parallel-merge-header">
           <div class="parallel-merge-spinner"></div>
           <h3 class="parallel-merge-title">${t('parallel.phase.merging')}</h3>
         </div>
-        <p class="parallel-merge-hint">
-          ${p.current && p.total ? t('parallel.merge.progress', { current: p.current, total: p.total }) : t('parallel.merge.preparing')}
-          ${p.branch ? ` — <code>${escapeHtml(p.branch.split('/').pop())}</code>` : ''}
-        </p>
+        ${statusHtml}
       </div>`;
     return;
   }

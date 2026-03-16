@@ -8,7 +8,9 @@
  *
  * Tools: workflow_list, workflow_get, workflow_trigger, workflow_cancel,
  *        workflow_runs, workflow_status, workflow_run_logs, workflow_diagnose,
- *        workflow_add_variable, workflow_get_variables, workflow_rename
+ *        workflow_add_variable, workflow_get_variables, workflow_rename,
+ *        workflow_clone, workflow_export, workflow_import, workflow_delete,
+ *        workflow_enable, workflow_test_node
  */
 
 const fs = require('fs');
@@ -599,6 +601,79 @@ const tools = [
         run_id: { type: 'string', description: 'Run ID to diagnose. Get it from workflow_runs output.' },
       },
       required: ['run_id'],
+    },
+  },
+
+  // ── Management tools ──────────────────────────────────────────────────────
+
+  {
+    name: 'workflow_clone',
+    description: 'Duplicate an existing workflow with a new name.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workflow: { type: 'string', description: 'Source workflow name or ID' },
+        name: { type: 'string', description: 'Name for the clone' },
+      },
+      required: ['workflow', 'name'],
+    },
+  },
+  {
+    name: 'workflow_export',
+    description: 'Export a workflow definition as JSON for sharing or backup.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workflow: { type: 'string', description: 'Workflow name or ID' },
+      },
+      required: ['workflow'],
+    },
+  },
+  {
+    name: 'workflow_import',
+    description: 'Import a workflow from a JSON definition.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        json: { type: 'string', description: 'JSON workflow definition' },
+        name: { type: 'string', description: 'Override the workflow name (optional)' },
+      },
+      required: ['json'],
+    },
+  },
+  {
+    name: 'workflow_delete',
+    description: 'Delete a workflow permanently.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workflow: { type: 'string', description: 'Workflow name or ID' },
+      },
+      required: ['workflow'],
+    },
+  },
+  {
+    name: 'workflow_enable',
+    description: 'Enable or disable a workflow.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workflow: { type: 'string', description: 'Workflow name or ID' },
+        enabled: { type: 'boolean', description: 'true to enable, false to disable' },
+      },
+      required: ['workflow', 'enabled'],
+    },
+  },
+  {
+    name: 'workflow_test_node',
+    description: 'Test a single workflow node by writing a test trigger. The node will be executed in isolation by Claude Terminal.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workflow: { type: 'string', description: 'Workflow name or ID' },
+        node_id: { type: 'number', description: 'The node ID to test' },
+      },
+      required: ['workflow', 'node_id'],
     },
   },
 ];
@@ -1381,6 +1456,217 @@ async function handle(name, args) {
 
       log(`Deleted node ${args.node_id} (+ ${removedLinks} links) from workflow ${wf.id}`);
       return ok(`Node ${args.node_id} deleted (${removedLinks} link(s) also removed).`);
+    }
+
+    // ── workflow_clone ──────────────────────────────────────────────────────
+
+    if (name === 'workflow_clone') {
+      if (!args.workflow) return fail('Missing required parameter: workflow');
+      if (!args.name) return fail('Missing required parameter: name');
+
+      const wf = loadWorkflowDef(args.workflow);
+      if (!wf) return fail(`Workflow "${args.workflow}" not found. Use workflow_list to see available workflows.`);
+
+      const crypto = require('crypto');
+      const newId = `wf-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+
+      // Deep copy the workflow definition
+      const cloned = JSON.parse(JSON.stringify(wf));
+      cloned.id = newId;
+      cloned.name = args.name.trim();
+      cloned.createdAt = new Date().toISOString();
+      cloned.updatedAt = new Date().toISOString();
+
+      saveWorkflowDef(cloned);
+      signalReload();
+
+      log(`Cloned workflow "${wf.name}" → "${cloned.name}" (${newId})`);
+      return ok(`Workflow cloned successfully.\nSource: "${wf.name}" (${wf.id})\nClone: "${cloned.name}" (${newId})\nNodes: ${cloned.graph?.nodes?.length || 0}`);
+    }
+
+    // ── workflow_export ──────────────────────────────────────────────────────
+
+    if (name === 'workflow_export') {
+      if (!args.workflow) return fail('Missing required parameter: workflow');
+
+      const wf = loadWorkflowDef(args.workflow);
+      if (!wf) return fail(`Workflow "${args.workflow}" not found. Use workflow_list to see available workflows.`);
+
+      // Strip internal/runtime metadata, keep only the definition
+      const exportData = {
+        name: wf.name,
+        enabled: wf.enabled,
+        trigger: wf.trigger,
+        graph: wf.graph,
+        variables: wf.variables,
+        concurrency: wf.concurrency,
+        scope: wf.scope,
+        dependsOn: wf.dependsOn,
+        createdAt: wf.createdAt,
+        updatedAt: wf.updatedAt,
+      };
+
+      // Remove undefined keys
+      for (const key of Object.keys(exportData)) {
+        if (exportData[key] === undefined) delete exportData[key];
+      }
+
+      const json = JSON.stringify(exportData, null, 2);
+      log(`Exported workflow "${wf.name}" (${wf.id})`);
+      return ok(json);
+    }
+
+    // ── workflow_import ──────────────────────────────────────────────────────
+
+    if (name === 'workflow_import') {
+      if (!args.json) return fail('Missing required parameter: json');
+
+      let parsed;
+      try {
+        parsed = JSON.parse(args.json);
+      } catch (e) {
+        return fail(`Invalid JSON: ${e.message}`);
+      }
+
+      // Validate required fields
+      if (!parsed.name && !args.name) {
+        return fail('Imported workflow must have a "name" field, or provide a name override.');
+      }
+      if (!parsed.graph && !parsed.nodes) {
+        return fail('Imported workflow must have a "graph" field (with nodes and links).');
+      }
+
+      const crypto = require('crypto');
+      const newId = `wf-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+
+      // If the JSON has a flat nodes/links structure, wrap it into graph
+      const graph = parsed.graph || { nodes: parsed.nodes || [], links: parsed.links || [] };
+
+      const workflow = {
+        id: newId,
+        name: (args.name || parsed.name).trim(),
+        enabled: parsed.enabled !== undefined ? parsed.enabled : true,
+        trigger: parsed.trigger || { type: 'manual', value: '' },
+        graph,
+        variables: parsed.variables,
+        concurrency: parsed.concurrency,
+        scope: parsed.scope,
+        dependsOn: parsed.dependsOn,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Remove undefined keys
+      for (const key of Object.keys(workflow)) {
+        if (workflow[key] === undefined) delete workflow[key];
+      }
+
+      saveWorkflowDef(workflow);
+      signalReload();
+
+      log(`Imported workflow "${workflow.name}" (${newId})`);
+      return ok(`Workflow imported successfully.\nName: "${workflow.name}"\nID: ${newId}\nNodes: ${graph.nodes?.length || 0}\nLinks: ${graph.links?.length || 0}`);
+    }
+
+    // ── workflow_delete ──────────────────────────────────────────────────────
+
+    if (name === 'workflow_delete') {
+      if (!args.workflow) return fail('Missing required parameter: workflow');
+
+      const wf = findWorkflow(args.workflow);
+      if (!wf) return fail(`Workflow "${args.workflow}" not found. Use workflow_list to see available workflows.`);
+
+      // Remove from definitions
+      const file = path.join(getDataDir(), 'workflows', 'definitions.json');
+      let defs = [];
+      try {
+        if (fs.existsSync(file)) defs = JSON.parse(fs.readFileSync(file, 'utf8'));
+      } catch (_) {}
+
+      defs = defs.filter(entry => {
+        const w = entry.workflow || entry;
+        return w.id !== wf.id;
+      });
+
+      const tmp = file + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(defs, null, 2), 'utf8');
+      fs.renameSync(tmp, file);
+
+      // Delete run result files for this workflow
+      const history = loadHistory();
+      const runIds = history.filter(r => r.workflowId === wf.id).map(r => r.id);
+      const resultsDir = path.join(getDataDir(), 'workflows', 'results');
+      for (const runId of runIds) {
+        const resultFile = path.join(resultsDir, `${runId}.json`);
+        try {
+          if (fs.existsSync(resultFile)) fs.unlinkSync(resultFile);
+        } catch (_) {}
+      }
+
+      // Remove runs from history
+      if (runIds.length) {
+        const historyFile = path.join(getDataDir(), 'workflows', 'history.json');
+        try {
+          const allHistory = JSON.parse(fs.readFileSync(historyFile, 'utf8'));
+          const filtered = allHistory.filter(r => r.workflowId !== wf.id);
+          const htmp = historyFile + '.tmp';
+          fs.writeFileSync(htmp, JSON.stringify(filtered, null, 2), 'utf8');
+          fs.renameSync(htmp, historyFile);
+        } catch (_) {}
+      }
+
+      signalReload();
+
+      log(`Deleted workflow "${wf.name}" (${wf.id}) and ${runIds.length} run result(s)`);
+      return ok(`Workflow "${wf.name}" (${wf.id}) deleted permanently.\nRemoved ${runIds.length} run result(s).`);
+    }
+
+    // ── workflow_enable ──────────────────────────────────────────────────────
+
+    if (name === 'workflow_enable') {
+      if (!args.workflow) return fail('Missing required parameter: workflow');
+      if (args.enabled === undefined) return fail('Missing required parameter: enabled');
+
+      const wf = loadWorkflowDef(args.workflow);
+      if (!wf) return fail(`Workflow "${args.workflow}" not found. Use workflow_list to see available workflows.`);
+
+      wf.enabled = !!args.enabled;
+      wf.updatedAt = new Date().toISOString();
+      saveWorkflowDef(wf);
+      signalReload();
+
+      const state = wf.enabled ? 'enabled' : 'disabled';
+      log(`Workflow "${wf.name}" (${wf.id}) ${state}`);
+      return ok(`Workflow "${wf.name}" is now ${state}.`);
+    }
+
+    // ── workflow_test_node ───────────────────────────────────────────────────
+
+    if (name === 'workflow_test_node') {
+      if (!args.workflow) return fail('Missing required parameter: workflow');
+      if (args.node_id == null) return fail('Missing required parameter: node_id');
+
+      const wf = loadWorkflowDef(args.workflow);
+      if (!wf) return fail(`Workflow "${args.workflow}" not found. Use workflow_list to see available workflows.`);
+
+      const graph = wf.graph || { nodes: [] };
+      const node = (graph.nodes || []).find(n => n.id === args.node_id);
+      if (!node) return fail(`Node ${args.node_id} not found in workflow "${wf.name}".`);
+
+      const triggerDir = path.join(getDataDir(), 'workflows', 'triggers');
+      if (!fs.existsSync(triggerDir)) fs.mkdirSync(triggerDir, { recursive: true });
+
+      const triggerFile = path.join(triggerDir, `test_node_${Date.now()}.json`);
+      fs.writeFileSync(triggerFile, JSON.stringify({
+        action: 'test_node',
+        workflowId: wf.id,
+        nodeId: args.node_id,
+        source: 'mcp',
+        timestamp: new Date().toISOString(),
+      }), 'utf8');
+
+      log(`Test trigger written for node ${args.node_id} (${node.type}) in workflow ${wf.id}`);
+      return ok(`Test trigger created for node ${args.node_id} (${node.type}) in workflow "${wf.name}".\nClaude Terminal will execute this node in isolation.`);
     }
 
     return fail(`Unknown workflow tool: ${name}`);

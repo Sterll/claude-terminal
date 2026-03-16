@@ -195,7 +195,7 @@ function bindMarketplaceCardHandlers() {
     if (installBtn) {
       installBtn.onclick = async () => {
         installBtn.disabled = true;
-        installBtn.textContent = t('marketplace.installing');
+        installBtn.innerHTML = `<span class="btn-install-spinner"></span>${t('marketplace.installing')}`;
 
         try {
           const result = await ctx.api.marketplace.install({ source, skillId, name, installs });
@@ -204,7 +204,7 @@ function bindMarketplaceCardHandlers() {
         } catch (e) {
           installBtn.disabled = false;
           installBtn.textContent = t('marketplace.install');
-          alert(`${t('marketplace.installError')}: ${e.message}`);
+          ctx.showToast({ type: 'error', title: t('marketplace.installError'), message: e.message });
         }
       };
     }
@@ -225,7 +225,7 @@ function bindMarketplaceCardHandlers() {
           if (!result.success) throw new Error(result.error);
           await loadMarketplaceContent();
         } catch (e) {
-          alert(e.message);
+          ctx.showToast({ type: 'error', title: t('marketplace.uninstallError'), message: e.message });
         }
       };
     }
@@ -259,7 +259,7 @@ async function showMarketplaceDetail(skill) {
     <div class="marketplace-detail-actions">
       ${installed
         ? (isSkillFromMarketplace(skillId)
-            ? `<button class="btn-primary btn-uninstall-detail" style="background: var(--danger);">${t('marketplace.uninstall')}</button>
+            ? `<button class="btn-primary btn-uninstall-detail btn-danger-fill">${t('marketplace.uninstall')}</button>
                <button class="btn-secondary btn-open-folder-detail">${t('marketplace.openFolder')}</button>`
             : `<span class="marketplace-installed-badge">${t('marketplace.installedBadge')}</span>
                <button class="btn-secondary btn-open-folder-detail">${t('marketplace.openFolder')}</button>`)
@@ -289,7 +289,7 @@ async function showMarketplaceDetail(skill) {
   if (installDetailBtn) {
     installDetailBtn.onclick = async () => {
       installDetailBtn.disabled = true;
-      installDetailBtn.textContent = t('marketplace.installing');
+      installDetailBtn.innerHTML = `<span class="btn-install-spinner"></span>${t('marketplace.installing')}`;
       try {
         const result = await ctx.api.marketplace.install({ source, skillId, name, installs });
         if (!result.success) throw new Error(result.error);
@@ -298,7 +298,7 @@ async function showMarketplaceDetail(skill) {
       } catch (e) {
         installDetailBtn.disabled = false;
         installDetailBtn.textContent = t('marketplace.install');
-        alert(`${t('marketplace.installError')}: ${e.message}`);
+        ctx.showToast({ type: 'error', title: t('marketplace.installError'), message: e.message });
       }
     };
   }
@@ -318,7 +318,7 @@ async function showMarketplaceDetail(skill) {
         ctx.closeModal();
         loadMarketplaceContent();
       } catch (e) {
-        alert(e.message);
+        ctx.showToast({ type: 'error', title: t('marketplace.uninstallError'), message: e.message });
       }
     };
   }

@@ -2,6 +2,65 @@
 
 All notable changes to Claude Terminal are documented in this file.
 
+## [1.2.0] - 2026-03-15
+
+### Added
+- **Database**: query history, saved queries, and SQL autocompletion
+- **Database**: export results, row counts, row selection, column resize and FK visualization
+- **Database**: cell viewer modal, sidebar resize, connection string display, explain plan and multi-tab queries
+- **Database**: Redis support via MCP tools
+- **Database**: MariaDB support
+- **Git**: 13 new operations — rebase, tags, blame, fetch, rename branch, remote delete, file history, commit file diffs, issues, PR merge
+- **Git**: smart commit multi-group workflow (split changes by area with per-group messages)
+- **Git**: conflict resolution (ours/theirs), branch search filter, diff viewer with line numbers, button loading states
+- **Sessions**: delete sessions from UI, filter by git branch, export as Markdown/JSON
+- **Sessions**: CLAUDE.md review prompt after significant sessions
+- **Chat**: initializing state indicator, interruption marker, permission timeout UX
+- **Chat**: project-contextual followup suggestions
+- **Chat**: async skill/agent generation with real-time progress display
+- **Chat**: 20+ improvements from audit (2 batches)
+- **File Explorer**: copy, duplicate, content search, sorting and configurable ignore patterns
+- **Dashboard**: yearly contribution graph (GitHub-style)
+- **Time Tracking**: daily goal, period comparison and data export
+- **Time Tracking**: stat tooltips (streak, avg, sessions, top project)
+- **Kanban**: priority levels and due dates
+- **Quick Actions**: variable substitution and custom environment variables
+- **Projects**: archive, tags, and per-project chat settings
+- **Projects**: search/filter in project list
+- **Projects**: close terminals on project delete, sync rename to tabs
+- **Remote**: push notifications for mobile PWA (done, error, permission)
+- **Remote**: persistent PIN, connected clients management (kick)
+- **Settings**: import/export settings as JSON
+- **Settings**: custom editor support
+- **Settings**: performance tab with disable animations toggle
+- **Settings**: validation, save feedback, setup wizard rerun
+- **Plugins**: uninstall plugins from UI
+- **Updater**: changelog fetch and native OS notification
+- **UI/UX**: improved quick picker (performance, clickable prefixes, i18n)
+- **UI/UX**: improved modals, toasts, and file explorer accessibility
+- **UI/UX**: sidebar scroll preservation, active tab persistence, tooltips
+- **Tests**: +93 tests from audit, IPC/security/integration tests, service tests, state/i18n coherence tests, utils tests
+
+### Changed
+- Drag-drop improved with handles and invalid drop feedback
+- TODO suggestions moved from placeholder to followup chips
+- Project item borders and drag-active outlines removed for cleaner look
+
+### Performance
+- Throttle dragover and disable transitions during drag
+- Reduce-motion media query support
+
+### Fixed
+- Chat race conditions in naming/suggestion flows and cleanup leaks
+- Memory leaks in dashboard, state, and marketplace listeners
+- RemoteServer and RemotePanel (4 bugs)
+- File Explorer drag listener accumulation and move conflict
+- Terminal (5 bugs across terminal-related files)
+- IPC error handling and git utils hardening
+- State mutation prevention, locked backup, and data loss bugs
+- CSS vendor fix for xterm and litegraph runtime refs
+- Services cleanup and error resilience on shutdown
+
 ## [1.1.1] - 2026-03-11
 
 ### Added

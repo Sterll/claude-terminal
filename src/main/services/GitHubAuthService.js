@@ -286,7 +286,7 @@ async function getTokenForGit() {
  * @param {number} perPage - Number of results (default: 5)
  * @returns {Promise<Object>} - Workflow runs data
  */
-async function getWorkflowRuns(owner, repo, perPage = 5) {
+async function getWorkflowRuns(owner, repo, perPage = 5, page = 1) {
   const token = await getToken();
   if (!token) {
     return { authenticated: false, runs: [] };
@@ -295,7 +295,7 @@ async function getWorkflowRuns(owner, repo, perPage = 5) {
   try {
     const response = await httpsRequest({
       hostname: 'api.github.com',
-      path: `/repos/${owner}/${repo}/actions/runs?per_page=${perPage}`,
+      path: `/repos/${owner}/${repo}/actions/runs?per_page=${perPage}&page=${page}`,
       method: 'GET',
       headers: {
         'Accept': 'application/vnd.github.v3+json',
@@ -366,7 +366,7 @@ function parseGitHubRemote(remoteUrl) {
  * @param {number} perPage - Number of results (default: 5)
  * @returns {Promise<Object>} - Pull requests data
  */
-async function getPullRequests(owner, repo, perPage = 5) {
+async function getPullRequests(owner, repo, perPage = 5, page = 1, state = 'all') {
   const token = await getToken();
   if (!token) {
     return { authenticated: false, pullRequests: [] };
@@ -375,7 +375,7 @@ async function getPullRequests(owner, repo, perPage = 5) {
   try {
     const response = await httpsRequest({
       hostname: 'api.github.com',
-      path: `/repos/${owner}/${repo}/pulls?per_page=${perPage}&state=all&sort=updated&direction=desc`,
+      path: `/repos/${owner}/${repo}/pulls?per_page=${perPage}&page=${page}&state=${state}&sort=updated&direction=desc`,
       method: 'GET',
       headers: {
         'Accept': 'application/vnd.github.v3+json',
@@ -543,6 +543,203 @@ async function getJobLogs(owner, repo, jobId) {
   }
 }
 
+/**
+ * Get check runs (CI status) for a specific commit ref
+ */
+async function getCheckRuns(owner, repo, ref) {
+  const token = await getToken();
+  if (!token) return { authenticated: false, checkRuns: [] };
+
+  try {
+    const response = await httpsRequest({
+      hostname: 'api.github.com',
+      path: `/repos/${owner}/${repo}/commits/${ref}/check-runs`,
+      method: 'GET',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'Claude-Terminal'
+      },
+      etagKey: `check-runs:${owner}/${repo}/${ref}`
+    });
+
+    if (response.status === 200) {
+      const checkRuns = (response.data.check_runs || []).map(cr => ({
+        id: cr.id,
+        name: cr.name,
+        status: cr.status,
+        conclusion: cr.conclusion,
+        startedAt: cr.started_at,
+        completedAt: cr.completed_at,
+        url: cr.html_url
+      }));
+      return { authenticated: true, checkRuns, total: response.data.total_count };
+    }
+
+    return { authenticated: true, checkRuns: [], error: `API error: ${response.status}` };
+  } catch (e) {
+    console.error('Error fetching check runs:', e);
+    return { authenticated: true, checkRuns: [], error: e.message };
+  }
+}
+
+/**
+ * Merge a pull request
+ */
+async function mergePullRequest(owner, repo, pullNumber, mergeMethod = 'merge') {
+  const token = await getToken();
+  if (!token) return { success: false, error: 'Not authenticated' };
+
+  try {
+    const postData = JSON.stringify({ merge_method: mergeMethod });
+    const response = await httpsRequest({
+      hostname: 'api.github.com',
+      path: `/repos/${owner}/${repo}/pulls/${pullNumber}/merge`,
+      method: 'PUT',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'Claude-Terminal',
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    }, postData);
+
+    if (response.status === 200) {
+      return { success: true, sha: response.data.sha, message: response.data.message };
+    }
+
+    return { success: false, error: response.data.message || `API error: ${response.status}` };
+  } catch (e) {
+    console.error('Error merging pull request:', e);
+    return { success: false, error: e.message };
+  }
+}
+
+/**
+ * Get issues for a repository
+ */
+async function getIssues(owner, repo, perPage = 10, page = 1, state = 'open') {
+  const token = await getToken();
+  if (!token) return { authenticated: false, issues: [] };
+
+  try {
+    const response = await httpsRequest({
+      hostname: 'api.github.com',
+      path: `/repos/${owner}/${repo}/issues?per_page=${perPage}&page=${page}&state=${state}&sort=updated&direction=desc`,
+      method: 'GET',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'Claude-Terminal'
+      },
+      etagKey: `issues:${owner}/${repo}:${state}:${page}`
+    });
+
+    if (response.status === 200) {
+      // Filter out PRs (GitHub API returns PRs as issues too)
+      const issues = (response.data || [])
+        .filter(item => !item.pull_request)
+        .map(issue => ({
+          id: issue.id,
+          number: issue.number,
+          title: issue.title,
+          state: issue.state,
+          author: issue.user?.login,
+          createdAt: issue.created_at,
+          updatedAt: issue.updated_at,
+          url: issue.html_url,
+          comments: issue.comments,
+          labels: (issue.labels || []).map(l => ({ name: l.name, color: l.color })),
+          assignees: (issue.assignees || []).map(a => a.login)
+        }));
+      return { authenticated: true, issues };
+    }
+
+    if (response.status === 404) {
+      return { authenticated: true, issues: [], notFound: true };
+    }
+
+    return { authenticated: true, issues: [], error: `API error: ${response.status}` };
+  } catch (e) {
+    console.error('Error fetching issues:', e);
+    return { authenticated: true, issues: [], error: e.message };
+  }
+}
+
+/**
+ * Create an issue
+ */
+async function createIssue(owner, repo, title, body, labels = []) {
+  const token = await getToken();
+  if (!token) return { success: false, error: 'Not authenticated' };
+
+  try {
+    const postData = JSON.stringify({ title, body, labels });
+    const response = await httpsRequest({
+      hostname: 'api.github.com',
+      path: `/repos/${owner}/${repo}/issues`,
+      method: 'POST',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'Claude-Terminal',
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    }, postData);
+
+    if (response.status === 201) {
+      return {
+        success: true,
+        issue: {
+          number: response.data.number,
+          title: response.data.title,
+          url: response.data.html_url
+        }
+      };
+    }
+
+    return { success: false, error: response.data.message || `API error: ${response.status}` };
+  } catch (e) {
+    console.error('Error creating issue:', e);
+    return { success: false, error: e.message };
+  }
+}
+
+/**
+ * Close an issue
+ */
+async function closeIssue(owner, repo, issueNumber) {
+  const token = await getToken();
+  if (!token) return { success: false, error: 'Not authenticated' };
+
+  try {
+    const postData = JSON.stringify({ state: 'closed' });
+    const response = await httpsRequest({
+      hostname: 'api.github.com',
+      path: `/repos/${owner}/${repo}/issues/${issueNumber}`,
+      method: 'PATCH',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'Claude-Terminal',
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    }, postData);
+
+    if (response.status === 200) {
+      return { success: true };
+    }
+
+    return { success: false, error: response.data.message || `API error: ${response.status}` };
+  } catch (e) {
+    console.error('Error closing issue:', e);
+    return { success: false, error: e.message };
+  }
+}
+
 module.exports = {
   startDeviceFlow,
   pollForToken,
@@ -556,5 +753,10 @@ module.exports = {
   getJobLogs,
   getPullRequests,
   createPullRequest,
-  parseGitHubRemote
+  parseGitHubRemote,
+  getCheckRuns,
+  mergePullRequest,
+  getIssues,
+  createIssue,
+  closeIssue
 };

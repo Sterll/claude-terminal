@@ -319,4 +319,36 @@ async function generateCommitMessage(files, diffContent, githubToken) {
   return { message, source: 'heuristic', groups };
 }
 
-module.exports = { generateCommitMessage, generateSessionRecap, generateSessionRecapHeuristic };
+/**
+ * Generate separate commit messages for each file group.
+ * Returns an array of { group, files, message, source }.
+ * @param {Array} files - All changed files
+ * @param {Object} diffs - Map of group name to diff content
+ * @param {string|null} githubToken
+ */
+async function generateMultiCommitMessages(files, diffs, githubToken) {
+  if (!files || files.length === 0) return [];
+
+  const groups = groupFiles(files);
+  if (groups.length <= 1) {
+    // Single group — use regular generation
+    const diff = Object.values(diffs).join('\n\n');
+    const result = await generateCommitMessage(files, diff, githubToken);
+    return [{ group: groups[0]?.name || 'root', files, message: result.message, source: result.source }];
+  }
+
+  // Generate a message per group
+  const results = await Promise.all(groups.map(async (g) => {
+    const diff = diffs[g.name] || '';
+    if (githubToken) {
+      const aiMessage = await generateWithGitHubModels(githubToken, g.files, diff, 8000);
+      if (aiMessage) return { group: g.name, files: g.files, message: aiMessage, source: 'ai' };
+    }
+    const message = generateHeuristicMessage(g.files, diff);
+    return { group: g.name, files: g.files, message, source: 'heuristic' };
+  }));
+
+  return results;
+}
+
+module.exports = { generateCommitMessage, generateMultiCommitMessages, generateSessionRecap, generateSessionRecapHeuristic, groupFiles };

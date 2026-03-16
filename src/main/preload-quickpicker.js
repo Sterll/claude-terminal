@@ -38,5 +38,15 @@ contextBridge.exposeInMainWorld('pickerAPI', {
       }
     } catch (_) {}
     return null;
+  },
+  readLanguage: () => {
+    try {
+      const settingsFile = path.join(os.homedir(), '.claude-terminal', 'settings.json');
+      if (fs.existsSync(settingsFile)) {
+        const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+        return settings.language || 'fr';
+      }
+    } catch (_) {}
+    return 'fr';
   }
 });

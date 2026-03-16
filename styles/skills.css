@@ -1252,3 +1252,31 @@
   border-color: var(--accent);
   box-shadow: 0 2px 8px rgba(217, 119, 6, 0.25);
 }
+
+/* Shared install button spinner (used by plugins, marketplace, mcp) */
+.btn-install-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: btn-install-spin 0.7s linear infinite;
+  vertical-align: middle;
+  margin-right: 5px;
+  flex-shrink: 0;
+}
+
+@keyframes btn-install-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Danger button fill (uninstall, delete) */
+.btn-danger-fill {
+  background: var(--danger) !important;
+  color: white !important;
+}
+
+.btn-danger-fill:hover {
+  background: #dc2626 !important;
+}

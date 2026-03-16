@@ -41,7 +41,9 @@ function resolveProject(cwd) {
         return { projectId: p.id, projectPath: pPath };
       }
     }
-  } catch (e) { /* state not ready yet */ }
+  } catch (e) {
+    console.error('[HooksProvider] Failed to resolve project — hook events may be lost:', e);
+  }
   return { projectId: null, projectPath: normalized };
 }
 
@@ -68,7 +70,9 @@ function hasActiveTerminal(projectId) {
     for (const [, td] of terminals) {
       if (td.project?.id === projectId) return true;
     }
-  } catch (e) { /* state not ready */ }
+  } catch (e) {
+    console.error('[HooksProvider] Failed to check active terminals:', e);
+  }
   return false;
 }
 

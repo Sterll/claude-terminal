@@ -441,6 +441,7 @@ function _openWS() {
     conn.retryCount = 0;
     _debugLog('[WS] Connected to relay');
     connSetState('connected');
+    _requestNotificationPermission();
   };
 
   ws.onmessage = (event) => {
@@ -465,6 +466,19 @@ function _openWS() {
       }
       connSetState('auth');
       _showAuth(wasRelay);
+      return;
+    }
+    // Kicked by administrator
+    if (e.code === 4403) {
+      conn.token = null;
+      localStorage.removeItem('remote_session_token');
+      connSetState('auth');
+      _showAuth(false);
+      const errEl = $('auth-error');
+      if (errEl) {
+        errEl.textContent = _isFr ? 'Déconnecté par l\'administrateur' : 'Disconnected by administrator';
+        errEl.classList.remove('hidden');
+      }
       return;
     }
     // Too many mobiles
@@ -545,6 +559,36 @@ function _onRelayKicked() {
 function wsSend(type, data) {
   if (conn.ws && conn.ws.readyState === 1) {
     conn.ws.send(JSON.stringify({ type, data }));
+  }
+}
+
+// ─── Notifications ───────────────────────────────────────────────────────────
+
+function _requestNotificationPermission() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}
+
+function _showNotification(title, body, tag) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (document.visibilityState === 'visible') return;
+  try {
+    const notif = new Notification(title, {
+      body,
+      tag,
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      vibrate: [200, 100, 200],
+    });
+    notif.onclick = () => { window.focus(); notif.close(); };
+  } catch (e) {
+    if (navigator.serviceWorker?.ready) {
+      navigator.serviceWorker.ready.then(reg => {
+        reg.showNotification(title, { body, tag, icon: '/icon-192.png' });
+      });
+    }
   }
 }
 
@@ -1030,6 +1074,11 @@ function onChatDone({ sessionId }) {
   _renderIfActive(sessionId);
   _saveSessions();
   if (state.currentView !== 'chat') $('chat-badge')?.classList.remove('hidden');
+  _showNotification(
+    _isFr ? 'Claude a terminé' : 'Claude finished',
+    session.tabName || 'Chat',
+    `done-${sessionId}`
+  );
 }
 
 function onChatError({ sessionId, error }) {
@@ -1046,6 +1095,11 @@ function onChatError({ sessionId, error }) {
   _renderIfActive(sessionId);
   _saveSessions();
   if (state.currentView !== 'chat') $('chat-badge')?.classList.remove('hidden');
+  _showNotification(
+    _isFr ? 'Erreur Claude' : 'Claude error',
+    (error || '').slice(0, 80),
+    `error-${sessionId}`
+  );
 }
 
 function onPermissionRequest(data) {
@@ -1064,6 +1118,13 @@ function onPermissionRequest(data) {
   state.pendingPermissions.set(data.requestId, data);
   _renderIfActive(data.sessionId);
   if (state.currentView !== 'chat') $('chat-badge')?.classList.remove('hidden');
+  const toolName = data.toolName || 'Tool';
+  _showNotification(
+    _isFr ? 'Permission requise' : 'Permission required',
+    toolName,
+    `perm-${data.requestId}`
+  );
+  if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
 }
 
 // ─── Streaming Helpers ────────────────────────────────────────────────────────

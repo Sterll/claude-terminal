@@ -83,10 +83,19 @@ function registerChatHandlers() {
     }
   });
 
-  // Background skill/agent generation via Agent SDK
+  // Background skill/agent generation via Agent SDK (fire-and-forget)
   ipcMain.handle('chat-generate-skill-agent', async (_event, params) => {
     try {
-      return await chatService.generateSkillOrAgent(params);
+      const genId = `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      // Run generation in background, send result via IPC event
+      chatService.generateSkillOrAgent({ ...params, genId })
+        .then(result => {
+          chatService._send('chat-generation-complete', { genId, result });
+        })
+        .catch(err => {
+          chatService._send('chat-generation-complete', { genId, result: { success: false, type: params.type, error: err.message, genId } });
+        });
+      return { genId };
     } catch (err) {
       console.error('[chat-generate-skill-agent] Error:', err.message);
       return { success: false, error: err.message };

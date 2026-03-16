@@ -544,6 +544,62 @@ function wireSessionRecapConsumer() {
   );
 }
 
+// ── Consumer: CLAUDE.md Review Prompt (hooks-only) ──
+// After a significant session (>5 tool calls), show a non-intrusive toast
+// suggesting the user review their CLAUDE.md for updates.
+function wireClaudeMdReviewConsumer() {
+  const { t } = require('../i18n');
+  const claudeMdReviewedProjects = new Set();
+
+  consumerUnsubscribers.push(
+    eventBus.on(EVENT_TYPES.SESSION_END, (e) => {
+      if (e.source !== 'hooks' || !e.projectId) return;
+      if (claudeMdReviewedProjects.has(e.projectId)) return;
+
+      // Get accumulated context from session recap's own context (read-only)
+      const ctx = sessionContext.get(e.projectId);
+      if (!ctx || ctx.toolCount < 5) return;
+
+      // Check if this was a real session end, not just a turn end
+      if (e.data?.reason !== 'end') return;
+
+      // Debounce: show toast after 3 seconds (after the done notification)
+      setTimeout(() => {
+        try {
+          const { showToast } = require('../ui/components/Toast');
+          const { projectsState } = require('../state/projects.state');
+          const project = (projectsState.get().projects || []).find(p => p.id === e.projectId);
+          if (!project) return;
+
+          const { path: pathModule, fs } = window.electron_nodeModules;
+          const claudeMdPath = pathModule.join(project.path, 'CLAUDE.md');
+
+          // Only suggest if CLAUDE.md exists
+          try { fs.accessSync(claudeMdPath); } catch { return; }
+
+          claudeMdReviewedProjects.add(e.projectId);
+          // Auto-cleanup after 1 hour
+          setTimeout(() => claudeMdReviewedProjects.delete(e.projectId), 3600000);
+
+          showToast({
+            type: 'info',
+            title: t('terminals.claudeMdAnalyze'),
+            message: t('terminals.claudeMdAnalyzeDesc', { count: ctx.toolCount }),
+            duration: 10000,
+            action: t('terminals.claudeMdOpen'),
+            onAction: () => {
+              // Open CLAUDE.md in the default editor
+              window.electron_api.dialog.openInEditor({ filePath: claudeMdPath });
+            }
+          });
+        } catch (err) {
+          console.warn('[Events] CLAUDE.md review prompt error:', err.message);
+        }
+      }, 3000);
+    })
+  );
+}
+
 // ── Debug: wildcard listener (disabled by default to avoid log spam) ──
 // Enable via: window.__CLAUDE_EVENT_DEBUG = true
 function wireDebugListener() {
@@ -617,6 +673,7 @@ function initClaudeEvents() {
   wireTerminalStatusConsumer();
   wireSessionIdCapture();
   wireTabRenameConsumer();
+  wireClaudeMdReviewConsumer();
   wireDebugListener();
 
   // Activate provider

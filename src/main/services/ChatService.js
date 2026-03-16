@@ -614,7 +614,14 @@ class ChatService {
     for (const [id, pending] of this.pendingPermissions) {
       if (pending.sessionId === sessionId) {
         this.pendingPermissions.delete(id);
-        pending.reject(new Error(reason));
+        // Swallow unhandled rejection before rejecting — the promise may not
+        // have a .catch() handler attached yet, which would crash on Node 18+.
+        pending.promise?.catch?.(() => {});
+        try {
+          pending.reject(new Error(reason));
+        } catch (e) {
+          // Already settled, ignore
+        }
       }
     }
   }
@@ -794,11 +801,22 @@ class ChatService {
    * Generate a short tab name via the persistent haiku session.
    */
   async generateTabName(userMessage) {
+    // Mutex: skip if a naming request is already in flight
+    if (this._namingInFlight) return null;
+
+    this._namingInFlight = true;
     try {
       await this._ensureNamingSession();
       if (!this._namingQueue) return null;
 
-      return new Promise((resolve) => {
+      return await new Promise((resolve) => {
+        // Reject any stale pending naming request (race condition: new request while old is waiting)
+        if (this._namingResolve) {
+          const staleResolve = this._namingResolve;
+          this._namingResolve = null;
+          staleResolve(null);
+        }
+
         // Timeout: if haiku doesn't respond in 4s, give up
         const timeout = setTimeout(() => {
           this._namingResolve = null;
@@ -831,6 +849,8 @@ class ChatService {
       this._namingReady = false;
       this._namingStarting = null;
       return null;
+    } finally {
+      this._namingInFlight = false;
     }
   }
 
@@ -911,6 +931,13 @@ class ChatService {
       if (!this._suggestionQueue) return [];
 
       return new Promise((resolve) => {
+        // Reject any stale pending suggestion request (race condition: new request while old is waiting)
+        if (this._suggestionResolve) {
+          const staleResolve = this._suggestionResolve;
+          this._suggestionResolve = null;
+          staleResolve(null);
+        }
+
         const timeout = setTimeout(() => {
           this._suggestionResolve = null;
           resolve([]);
@@ -969,21 +996,19 @@ class ChatService {
 
   /**
    * Run a background SDK session to generate a skill or agent.
-   * Does NOT forward messages to renderer — runs silently.
+   * Forwards progress messages to renderer via IPC events.
    * @param {Object} params
    * @param {'skill'|'agent'} params.type
    * @param {string} params.description
    * @param {string} params.cwd - Working directory for SDK context
    * @param {string} [params.model]
+   * @param {string} params.genId - Unique generation ID (provided by IPC handler)
    * @returns {Promise<{success: boolean, type: string, error?: string, genId: string}>}
    */
-  async generateSkillOrAgent({ type, description, cwd, model }) {
+  async generateSkillOrAgent({ type, description, cwd, model, genId }) {
     const sdk = await loadSDK();
-    const genId = `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const abortController = new AbortController();
 
-    // The SDK loads the skill guide (create-skill or create-agents) from ~/.claude/skills/
-    // which are installed at app startup by installBundledSkills()
     const skillName = type === 'skill' ? 'create-skill' : 'create-agents';
     const prompt = `${description}\n\nCreate the files immediately without asking for clarification.`;
 
@@ -1019,9 +1044,12 @@ class ChatService {
         }
       });
 
-      // Consume stream silently
-      for await (const _msg of queryStream) {
-        // No-op — we just need to drive the async generator to completion
+      // Forward progress messages to renderer
+      for await (const msg of queryStream) {
+        const summary = this._summarizeGenMessage(msg);
+        if (summary) {
+          this._send('chat-generation-progress', { genId, message: summary });
+        }
       }
 
       messageQueue.close();
@@ -1040,6 +1068,34 @@ class ChatService {
       this.backgroundGenerations.delete(genId);
       if (prevClaudeCode) process.env.CLAUDECODE = prevClaudeCode;
     }
+  }
+
+  /**
+   * Extract a lightweight progress summary from an SDK stream message.
+   */
+  _summarizeGenMessage(msg) {
+    if (!msg) return null;
+
+    if (msg.type === 'system' && msg.subtype === 'init') {
+      return { step: 'init', text: 'Initializing...' };
+    }
+    if (msg.type === 'assistant') {
+      const content = msg.message?.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (block.type === 'tool_use') {
+            return { step: 'tool', tool: block.name, text: `Using ${block.name}...` };
+          }
+          if (block.type === 'text' && block.text) {
+            return { step: 'thinking', text: block.text.substring(0, 120) };
+          }
+        }
+      }
+    }
+    if (msg.type === 'result') {
+      return { step: 'done', text: 'Generation complete' };
+    }
+    return null;
   }
 
   /**
@@ -1185,6 +1241,20 @@ class ChatService {
     if (this._namingQueue) {
       this._namingQueue.close();
       this._namingReady = false;
+    }
+    if (this._namingResolve) {
+      this._namingResolve(null);
+      this._namingResolve = null;
+    }
+    // Close suggestion session
+    if (this._suggestionResolve) {
+      this._suggestionResolve(null);
+      this._suggestionResolve = null;
+    }
+    if (this._suggestionQueue) {
+      this._suggestionQueue.close();
+      this._suggestionQueue = null;
+      this._suggestionReady = false;
     }
     // Cancel all background generations
     for (const [, gen] of this.backgroundGenerations) {

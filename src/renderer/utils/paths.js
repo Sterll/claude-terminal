@@ -21,6 +21,8 @@ const timeTrackingDir = path.join(dataDir, 'timetracking');
 const sessionRecapsDir = path.join(dataDir, 'session-recaps');
 const contextPacksFile = path.join(dataDir, 'context-packs.json');
 const promptTemplatesFile = path.join(dataDir, 'prompt-templates.json');
+const queryHistoryFile = path.join(dataDir, 'query-history.json');
+const savedQueriesFile = path.join(dataDir, 'saved-queries.json');
 
 // Claude configuration files
 const claudeSettingsFile = path.join(claudeDir, 'settings.json');
@@ -66,6 +68,8 @@ module.exports = {
   sessionRecapsDir,
   contextPacksFile,
   promptTemplatesFile,
+  queryHistoryFile,
+  savedQueriesFile,
   claudeSettingsFile,
   claudeConfigFile,
   skillsDir,

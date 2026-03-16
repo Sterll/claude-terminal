@@ -643,20 +643,6 @@
   color: #22c55e;
 }
 
-/* Install button spinner */
-.btn-install-spinner {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border: 1.5px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: mcp-spin 0.7s linear infinite;
-  vertical-align: middle;
-  margin-right: 5px;
-  flex-shrink: 0;
-}
-
 .mcp-registry-card-actions {
   display: flex;
   gap: 6px;

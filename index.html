@@ -122,9 +122,16 @@
         <span class="update-progress-text" id="update-progress-text">0%</span>
       </div>
       <button class="update-btn" id="update-btn" style="display: none;" data-i18n="ui.restartToUpdate">Restart to update</button>
+      <button class="update-changelog-toggle" id="update-changelog-toggle" style="display: none;">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M7 10l5 5 5-5z"/></svg>
+        <span data-i18n="updates.whatsNew">What's new</span>
+      </button>
       <button class="update-dismiss" id="update-dismiss" data-i18n-title="common.close">
         <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
       </button>
+    </div>
+    <div class="update-changelog" id="update-changelog" style="display: none;">
+      <div class="update-changelog-content" id="update-changelog-content"></div>
     </div>
   </div>
 
@@ -296,6 +303,11 @@
                 </button>
               </div>
             </div>
+            <div class="projects-search" id="projects-search">
+              <svg class="projects-search-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+              <input type="text" id="projects-search-input" data-i18n-placeholder="projects.searchPlaceholder" placeholder="Search projects..." autocomplete="off" spellcheck="false">
+              <button class="projects-search-clear" id="projects-search-clear" style="display:none" aria-label="Clear">&times;</button>
+            </div>
             <div class="projects-list" id="projects-list" role="list" aria-label="Projects"></div>
             <div class="panel-resizer" id="projects-panel-resizer"></div>
           </div>
@@ -319,6 +331,12 @@
             <div class="fe-search-container" id="fe-search-container" style="display: none;">
               <svg class="fe-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
               <input type="text" id="fe-search-input" class="fe-search-input" data-i18n-placeholder="fileExplorer.searchPlaceholder" placeholder="Search files...">
+              <button class="fe-content-search-toggle" id="fe-content-search-toggle" data-i18n-title="fileExplorer.searchContentToggle" title="Search in contents">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              </button>
+              <button class="fe-sort-btn" id="fe-sort-btn" data-i18n-title="fileExplorer.sortFiles" title="Sort">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M3 6h18M3 12h12M3 18h6"/></svg>
+              </button>
               <button class="fe-search-clear" id="fe-search-clear" data-i18n-title="ui.clearSearch" title="Clear" style="display: none;">
                 <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
               </button>
@@ -452,6 +470,10 @@
                     <button class="btn-generate" id="btn-generate-commit" data-i18n-title="ui.generateCommitMessage">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2z"/></svg>
                       <span data-i18n="ui.generate">Generate</span>
+                    </button>
+                    <button class="btn-smart-commit" id="btn-smart-commit" style="display:none">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+                      <span data-i18n="gitChanges.smartCommit">Smart Commit</span>
                     </button>
                   </div>
                   <textarea id="git-commit-message" data-i18n-placeholder="gitChanges.commitPlaceholder" placeholder="feat: describe changes..." rows="2"></textarea>
@@ -588,6 +610,7 @@
                   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
                 </button>
               </div>
+              <div class="git-branch-search" id="git-branch-search"></div>
               <div class="git-branches-list" id="git-branches-list"></div>
             </div>
             <div class="git-sidebar-section git-sidebar-worktrees">
@@ -603,6 +626,12 @@
                 </div>
               </div>
               <div class="git-worktrees-list" id="git-worktrees-list"></div>
+            </div>
+            <div class="git-sidebar-section git-sidebar-tags">
+              <div class="git-sidebar-header">
+                <h3 data-i18n="gitTab.tags">Tags</h3>
+              </div>
+              <div class="git-tags-list" id="git-tags-list"></div>
             </div>
             <div class="git-sidebar-section git-sidebar-stashes">
               <div class="git-sidebar-header">
@@ -626,6 +655,11 @@
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM4 6a2 2 0 1 1 4 0 2 2 0 0 1-4 0zm2 8a1 1 0 0 0-1 1v3a3 3 0 1 0 2 0v-3a1 1 0 0 0-1-1zm-2 7a2 2 0 1 1 4 0 2 2 0 0 1-4 0zm14-7a3 3 0 1 0 0 6 3 3 0 0 0 0-6zm-2 3a2 2 0 1 1 4 0 2 2 0 0 1-4 0zM6 7a1 1 0 0 0-1 1v5a1 1 0 1 0 2 0V8a1 1 0 0 0-1-1zm12-4a3 3 0 0 0-3 3v8a1 1 0 1 0 2 0V6a1 1 0 1 1 2 0v8a1 1 0 1 0 2 0V6a3 3 0 0 0-3-3z"/></svg>
                 <span data-i18n="gitTab.pullRequests">Pull Requests</span>
                 <span class="git-sub-tab-badge" id="git-pr-badge" style="display:none">0</span>
+              </button>
+              <button class="git-sub-tab" data-subtab="issues">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+                <span data-i18n="gitTab.issues">Issues</span>
+                <span class="git-sub-tab-badge" id="git-issues-badge" style="display:none">0</span>
               </button>
             </div>
             <div class="git-sub-content" id="git-sub-content">

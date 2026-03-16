@@ -3,7 +3,8 @@
 /**
  * Projects Tools Module for Claude Terminal MCP
  *
- * Provides project listing and info tools. Reads from CT_DATA_DIR/projects.json.
+ * Provides project listing, info, CRUD, stats, and quick action tools.
+ * Reads/writes CT_DATA_DIR/projects.json with atomic writes.
  */
 
 const fs = require('fs');
@@ -31,8 +32,27 @@ function loadProjects() {
   return { projects: [], folders: [], rootOrder: [] };
 }
 
+function saveProjects(data) {
+  const file = path.join(getDataDir(), 'projects.json');
+  const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+  fs.renameSync(tmp, file);
+}
+
+function generateId(prefix) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
 function findProject(nameOrId) {
   const data = loadProjects();
+  return data.projects.find(p =>
+    p.id === nameOrId ||
+    (p.name || '').toLowerCase() === nameOrId.toLowerCase() ||
+    path.basename(p.path || '').toLowerCase() === nameOrId.toLowerCase()
+  );
+}
+
+function findProjectInData(data, nameOrId) {
   return data.projects.find(p =>
     p.id === nameOrId ||
     (p.name || '').toLowerCase() === nameOrId.toLowerCase() ||
@@ -99,6 +119,70 @@ const tools = [
       required: ['project', 'action'],
     },
   },
+  {
+    name: 'project_create',
+    description: 'Add a new project to Claude Terminal.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path:  { type: 'string', description: 'Absolute path to the project directory' },
+        name:  { type: 'string', description: 'Display name (defaults to folder name)' },
+        type:  { type: 'string', enum: ['general', 'webapp', 'api', 'fivem', 'minecraft', 'python'], description: 'Project type (default: general)' },
+        color: { type: 'string', description: 'Hex color (e.g. #d97706)' },
+        icon:  { type: 'string', description: 'Icon name' },
+      },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'project_delete',
+    description: 'Remove a project from Claude Terminal. This only removes it from the project list, it does not delete any files.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project: { type: 'string', description: 'Project name or ID' },
+      },
+      required: ['project'],
+    },
+  },
+  {
+    name: 'project_update',
+    description: 'Update project settings in Claude Terminal (name, color, icon, type, editor).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project: { type: 'string', description: 'Project name or ID' },
+        name:    { type: 'string', description: 'New display name' },
+        color:   { type: 'string', description: 'Hex color (e.g. #d97706)' },
+        icon:    { type: 'string', description: 'Icon name' },
+        type:    { type: 'string', enum: ['general', 'webapp', 'api', 'fivem', 'minecraft', 'python'], description: 'Project type' },
+        editor:  { type: 'string', description: 'Preferred code editor (e.g. code, cursor)' },
+      },
+      required: ['project'],
+    },
+  },
+  {
+    name: 'project_stats',
+    description: 'Get project statistics: lines of code per language, file count, directory size.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project: { type: 'string', description: 'Project name or ID' },
+      },
+      required: ['project'],
+    },
+  },
+  {
+    name: 'project_open',
+    description: 'Open a project in the configured code editor (VS Code, Cursor, etc.) via Claude Terminal.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project: { type: 'string', description: 'Project name or ID' },
+      },
+      required: ['project'],
+    },
+  },
 ];
 
 // -- TODO scanner -------------------------------------------------------------
@@ -138,6 +222,91 @@ function scanTodos(dir, pattern, results, depth = 0) {
             }
           }
         } catch (_) {}
+      }
+    }
+  } catch (_) {}
+}
+
+// -- Stats scanner ------------------------------------------------------------
+
+const LANG_MAP = {
+  '.js':      'JavaScript',
+  '.jsx':     'JavaScript',
+  '.ts':      'TypeScript',
+  '.tsx':     'TypeScript',
+  '.py':      'Python',
+  '.lua':     'Lua',
+  '.go':      'Go',
+  '.rs':      'Rust',
+  '.java':    'Java',
+  '.cs':      'C#',
+  '.rb':      'Ruby',
+  '.php':     'PHP',
+  '.css':     'CSS',
+  '.scss':    'CSS',
+  '.html':    'HTML',
+  '.vue':     'Vue',
+  '.svelte':  'Svelte',
+  '.json':    'JSON',
+  '.md':      'Markdown',
+  '.c':       'C',
+  '.cpp':     'C++',
+  '.h':       'C',
+  '.hpp':     'C++',
+  '.swift':   'Swift',
+  '.kt':      'Kotlin',
+  '.sh':      'Shell',
+  '.bash':    'Shell',
+  '.zsh':     'Shell',
+  '.yaml':    'YAML',
+  '.yml':     'YAML',
+  '.toml':    'TOML',
+  '.xml':     'XML',
+  '.sql':     'SQL',
+  '.r':       'R',
+  '.dart':    'Dart',
+  '.ex':      'Elixir',
+  '.exs':     'Elixir',
+};
+
+const STATS_SKIP_DIRS = new Set([
+  'node_modules', '.git', 'dist', 'build', 'out', '.next', '__pycache__',
+  'vendor', 'target', '.cache', 'coverage', '.vscode', '.idea', '.svn',
+  '.hg', 'bower_components', '.parcel-cache', '.turbo', '.nuxt',
+]);
+
+function scanStats(dir, stats, depth = 0) {
+  if (depth > 5 || stats.fileCount >= 5000) return;
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (stats.fileCount >= 5000) break;
+      if (entry.isDirectory()) {
+        if (!STATS_SKIP_DIRS.has(entry.name) && !entry.name.startsWith('.')) {
+          scanStats(path.join(dir, entry.name), stats, depth + 1);
+        }
+      } else if (entry.isFile()) {
+        stats.fileCount++;
+        const ext = path.extname(entry.name).toLowerCase();
+        const lang = LANG_MAP[ext];
+        if (lang) {
+          try {
+            const filePath = path.join(dir, entry.name);
+            const fileStat = fs.statSync(filePath);
+            // Skip files larger than 1MB to avoid hanging
+            if (fileStat.size > 1024 * 1024) {
+              if (!stats.languages[lang]) stats.languages[lang] = { files: 0, lines: 0 };
+              stats.languages[lang].files++;
+              continue;
+            }
+            const content = fs.readFileSync(filePath, 'utf8');
+            const lineCount = content.split('\n').length;
+            if (!stats.languages[lang]) stats.languages[lang] = { files: 0, lines: 0 };
+            stats.languages[lang].files++;
+            stats.languages[lang].lines += lineCount;
+            stats.totalLines += lineCount;
+          } catch (_) {}
+        }
       }
     }
   } catch (_) {}
@@ -303,6 +472,185 @@ async function handle(name, args) {
       }), 'utf8');
 
       return ok(`Quick action "${action.name}" triggered on ${p.name || path.basename(p.path || '?')}. Command: ${action.command}`);
+    }
+
+    // ── project_create ────────────────────────────────────────────────────
+    if (name === 'project_create') {
+      if (!args.path) return fail('Missing required parameter: path');
+
+      const projectPath = path.resolve(args.path);
+      if (!fs.existsSync(projectPath)) return fail(`Path does not exist: ${projectPath}`);
+
+      const stat = fs.statSync(projectPath);
+      if (!stat.isDirectory()) return fail(`Path is not a directory: ${projectPath}`);
+
+      const data = loadProjects();
+      const normalizedPath = projectPath.replace(/\\/g, '/');
+      const existing = data.projects.find(p =>
+        (p.path || '').replace(/\\/g, '/').toLowerCase() === normalizedPath.toLowerCase()
+      );
+      if (existing) {
+        return fail(`Project already exists: "${existing.name || path.basename(existing.path)}" (${existing.path})`);
+      }
+
+      const validTypes = ['general', 'webapp', 'api', 'fivem', 'minecraft', 'python'];
+      const projectType = args.type && validTypes.includes(args.type) ? args.type : 'general';
+
+      const project = {
+        id:              generateId('proj'),
+        name:            (args.name || path.basename(projectPath)).trim(),
+        path:            projectPath,
+        type:            projectType,
+        color:           args.color || null,
+        icon:            args.icon || null,
+        preferredEditor: null,
+        quickActions:    [],
+        createdAt:       Date.now(),
+      };
+
+      if (!data.projects) data.projects = [];
+      if (!data.rootOrder) data.rootOrder = [];
+
+      data.projects.push(project);
+      data.rootOrder.push(project.id);
+      saveProjects(data);
+
+      return ok(`Project created:\n  Name: ${project.name}\n  Path: ${project.path}\n  Type: ${project.type}\n  ID: ${project.id}`);
+    }
+
+    // ── project_delete ────────────────────────────────────────────────────
+    if (name === 'project_delete') {
+      if (!args.project) return fail('Missing required parameter: project');
+
+      const data = loadProjects();
+      const p = findProjectInData(data, args.project);
+      if (!p) return fail(`Project "${args.project}" not found. Use project_list to see available projects.`);
+
+      const projectName = p.name || path.basename(p.path || '?');
+      const projectPath = p.path || '?';
+
+      data.projects = data.projects.filter(proj => proj.id !== p.id);
+      data.rootOrder = (data.rootOrder || []).filter(id => id !== p.id);
+
+      // Also remove from any folder children
+      for (const folder of (data.folders || [])) {
+        if (folder.children) {
+          folder.children = folder.children.filter(id => id !== p.id);
+        }
+      }
+
+      saveProjects(data);
+
+      return ok(`Project removed from Claude Terminal:\n  Name: ${projectName}\n  Path: ${projectPath}\n\nNote: No files were deleted on disk.`);
+    }
+
+    // ── project_update ────────────────────────────────────────────────────
+    if (name === 'project_update') {
+      if (!args.project) return fail('Missing required parameter: project');
+
+      const data = loadProjects();
+      const p = findProjectInData(data, args.project);
+      if (!p) return fail(`Project "${args.project}" not found. Use project_list to see available projects.`);
+
+      const updates = [];
+
+      if (args.name !== undefined) {
+        p.name = args.name.trim();
+        updates.push(`name → "${p.name}"`);
+      }
+      if (args.color !== undefined) {
+        p.color = args.color || null;
+        updates.push(`color → ${p.color || 'removed'}`);
+      }
+      if (args.icon !== undefined) {
+        p.icon = args.icon || null;
+        updates.push(`icon → ${p.icon || 'removed'}`);
+      }
+      if (args.type !== undefined) {
+        const validTypes = ['general', 'webapp', 'api', 'fivem', 'minecraft', 'python'];
+        if (!validTypes.includes(args.type)) {
+          return fail(`Invalid type "${args.type}". Valid types: ${validTypes.join(', ')}`);
+        }
+        p.type = args.type;
+        updates.push(`type → ${p.type}`);
+      }
+      if (args.editor !== undefined) {
+        p.preferredEditor = args.editor || null;
+        updates.push(`editor → ${p.preferredEditor || 'removed'}`);
+      }
+
+      if (!updates.length) return fail('No updates provided. Specify name, color, icon, type, or editor.');
+
+      saveProjects(data);
+
+      const projectName = p.name || path.basename(p.path || '?');
+      return ok(`Project "${projectName}" updated:\n  ${updates.join('\n  ')}`);
+    }
+
+    // ── project_stats ─────────────────────────────────────────────────────
+    if (name === 'project_stats') {
+      if (!args.project) return fail('Missing required parameter: project');
+
+      const p = findProject(args.project);
+      if (!p) return fail(`Project "${args.project}" not found. Use project_list to see available projects.`);
+      if (!p.path || !fs.existsSync(p.path)) return fail(`Project path not found: ${p.path}`);
+
+      const stats = { fileCount: 0, totalLines: 0, languages: {} };
+      scanStats(p.path, stats);
+
+      const projectName = p.name || path.basename(p.path);
+
+      // Sort languages by lines descending
+      const sorted = Object.entries(stats.languages)
+        .sort((a, b) => b[1].lines - a[1].lines);
+
+      if (!sorted.length) {
+        return ok(`# ${projectName} — Stats\n\nTotal files scanned: ${stats.fileCount}\nNo recognized source files found.`);
+      }
+
+      let output = `# ${projectName} — Stats\n\n`;
+      output += `Total files scanned: ${stats.fileCount}\n`;
+      output += `Total lines of code: ${stats.totalLines.toLocaleString()}\n`;
+      output += `Languages detected: ${sorted.length}\n\n`;
+
+      output += `## Lines by Language\n`;
+      output += `${'─'.repeat(50)}\n`;
+
+      const maxLangLen = Math.max(...sorted.map(([lang]) => lang.length));
+      for (const [lang, data] of sorted) {
+        const pct = stats.totalLines > 0 ? ((data.lines / stats.totalLines) * 100).toFixed(1) : '0.0';
+        output += `  ${lang.padEnd(maxLangLen)}  ${data.lines.toLocaleString().padStart(8)} lines  ${data.files.toString().padStart(4)} files  (${pct}%)\n`;
+      }
+
+      if (stats.fileCount >= 5000) {
+        output += `\nNote: Scan was limited to 5000 files. Results may be incomplete.`;
+      }
+
+      return ok(output);
+    }
+
+    // ── project_open ──────────────────────────────────────────────────────
+    if (name === 'project_open') {
+      if (!args.project) return fail('Missing required parameter: project');
+
+      const p = findProject(args.project);
+      if (!p) return fail(`Project "${args.project}" not found. Use project_list to see available projects.`);
+
+      // Write trigger file for the app to pick up
+      const triggerDir = path.join(getDataDir(), 'projects', 'triggers');
+      if (!fs.existsSync(triggerDir)) fs.mkdirSync(triggerDir, { recursive: true });
+
+      const triggerFile = path.join(triggerDir, `open_${Date.now()}.json`);
+      fs.writeFileSync(triggerFile, JSON.stringify({
+        action: 'open',
+        projectId: p.id,
+        projectPath: p.path,
+        source: 'mcp',
+        timestamp: new Date().toISOString(),
+      }), 'utf8');
+
+      const projectName = p.name || path.basename(p.path || '?');
+      return ok(`Opening project "${projectName}" in editor. Trigger sent to Claude Terminal.`);
     }
 
     return fail(`Unknown project tool: ${name}`);

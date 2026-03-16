@@ -13,6 +13,7 @@ const { path, fs, process: nodeProcess } = window.electron_nodeModules;
 
 let showModal = null;
 let closeModal = null;
+let showToast = null;
 
 const memoryState = {
   currentSource: 'global',
@@ -167,6 +168,7 @@ function getClaudeSettingsJson() {
 function init(context) {
   showModal = context.showModal;
   closeModal = context.closeModal;
+  showToast = context.showToast;
 }
 
 async function loadMemory() {
@@ -509,7 +511,7 @@ async function createMemoryFromTemplate(templateKey) {
       fs.writeFileSync(filePath, content, 'utf8');
       await loadMemoryContent(memoryState.currentSource, memoryState.currentProject);
     } catch (e) {
-      alert(t('memory.errorCreating', { message: e.message }));
+      if (showToast) showToast({ type: 'error', title: t('memory.errorCreating', { message: e.message }) });
     }
   }
 }
@@ -634,7 +636,12 @@ function enterMemoryEditMode() {
     ${t('memory.save')}
   `;
 
-  document.getElementById('memory-editor').focus();
+  const editor = document.getElementById('memory-editor');
+  editor.addEventListener('input', () => {
+    const isDirty = editor.value !== memoryState.content;
+    editBtn.classList.toggle('memory-dirty', isDirty);
+  });
+  editor.focus();
 }
 
 function saveMemoryEdit() {
@@ -660,7 +667,7 @@ function saveMemoryEdit() {
       fs.writeFileSync(filePath, newContent, 'utf8');
       memoryState.content = newContent;
     } catch (e) {
-      alert(t('memory.errorSaving', { message: e.message }));
+      if (showToast) showToast({ type: 'error', title: t('memory.errorSaving', { message: e.message }) });
       return;
     }
   }

@@ -10,7 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
-const { createWorktree, removeWorktree, gitMerge, gitMergeAbort, getMergeConflicts, checkoutBranch, createBranch, isMergeInProgress, execGit } = require('../utils/git');
+const { createWorktree, removeWorktree, gitMerge, gitMergeAbort, gitMergeContinue, getMergeConflicts, checkoutBranch, createBranch, isMergeInProgress, execGit } = require('../utils/git');
 const chatService = require('./ChatService');
 
 const HISTORY_FILE = path.join(os.homedir(), '.claude-terminal', 'parallel-runs.json');
@@ -513,7 +513,8 @@ class ParallelTaskService {
 
   /**
    * Merge all task branches into a unified branch `parallel/{feature}/all`.
-   * Resolves conflicts via Claude agent when possible, skips on failure.
+   * Uses a temporary worktree so the user's main project checkout is never touched.
+   * Resolves conflicts via Claude agent with retry and fallback finalization.
    */
   async mergeRun(runId) {
     // Load run from disk history
@@ -531,23 +532,27 @@ class ParallelTaskService {
     // Emit merging phase
     this._send('parallel-run-status', { runId, phase: 'merging', mergeBranch });
 
-    try {
-      // Checkout main branch first
-      const coResult = await checkoutBranch(projectPath, mainBranch);
-      if (!coResult.success) {
-        this._send('parallel-run-status', { runId, phase: 'done', error: `Failed to checkout ${mainBranch}: ${coResult.error}` });
-        return { success: false, error: coResult.error };
-      }
+    // Create a temporary worktree for the merge — never touch the main project checkout
+    const mergeWorktreePath = path.join(this._worktreeBase(runId), '_merge');
 
+    try {
       // Delete existing merge branch if any (stale from previous attempt)
       await execGit(projectPath, ['branch', '-D', mergeBranch], 10000).catch(() => {});
 
-      // Create the unified branch from mainBranch
-      const brResult = await createBranch(projectPath, mergeBranch);
-      if (!brResult.success) {
-        this._send('parallel-run-status', { runId, phase: 'done', error: `Failed to create branch ${mergeBranch}` });
-        return { success: false, error: `Failed to create branch: ${brResult.error}` };
+      // Ensure worktree parent dir exists
+      fs.mkdirSync(path.dirname(mergeWorktreePath), { recursive: true });
+
+      // Create worktree with a new branch based on mainBranch
+      const wtResult = await createWorktree(projectPath, mergeWorktreePath, {
+        newBranch: mergeBranch,
+        startPoint: mainBranch
+      });
+      if (!wtResult.success) {
+        this._send('parallel-run-status', { runId, phase: 'done', error: `Failed to create merge worktree: ${wtResult.error}` });
+        return { success: false, error: `Failed to create merge worktree: ${wtResult.error}` };
       }
+
+      console.log(`[ParallelTask] Merge worktree created at ${mergeWorktreePath} on branch ${mergeBranch}`);
 
       const merged = [];
       const skipped = [];
@@ -561,8 +566,8 @@ class ParallelTaskService {
           mergeProgress: { current: i + 1, total: doneTasks.length, branch: task.branch }
         });
 
-        // Attempt merge
-        const mergeResult = await gitMerge(projectPath, task.branch);
+        // Attempt merge inside the worktree
+        const mergeResult = await gitMerge(mergeWorktreePath, task.branch);
         if (mergeResult.success) {
           merged.push(task.branch);
           continue;
@@ -570,17 +575,23 @@ class ParallelTaskService {
 
         // Conflict — try auto-resolve with Claude
         if (mergeResult.hasConflicts) {
-          const resolved = await this._resolveConflicts(projectPath, task.branch, model || 'claude-sonnet-4-6', effort || 'high');
+          const resolved = await this._resolveConflicts(mergeWorktreePath, task.branch, model || 'claude-sonnet-4-6', effort || 'high', runId);
           if (resolved) {
             merged.push(task.branch);
             continue;
           }
+          console.warn(`[ParallelTask] Could not resolve conflicts for ${task.branch} after all attempts — skipping`);
         }
 
         // Failed — abort and skip
-        await gitMergeAbort(projectPath).catch(() => {});
+        await gitMergeAbort(mergeWorktreePath).catch(() => {});
         skipped.push({ branch: task.branch, error: mergeResult.error || 'Merge failed' });
       }
+
+      // Clean up the merge worktree (branch persists in the repo)
+      await removeWorktree(projectPath, mergeWorktreePath, true).catch(err => {
+        console.warn('[ParallelTask] Failed to remove merge worktree:', err.message || err);
+      });
 
       // Emit merged phase
       this._send('parallel-run-status', {
@@ -593,6 +604,8 @@ class ParallelTaskService {
 
       return { success: true, mergeBranch, merged: merged.length, skipped };
     } catch (err) {
+      // Clean up worktree on error
+      await removeWorktree(projectPath, mergeWorktreePath, true).catch(() => {});
       this._send('parallel-run-status', { runId, phase: 'done', error: `Merge failed: ${err.message}` });
       return { success: false, error: err.message };
     }
@@ -607,16 +620,14 @@ class ParallelTaskService {
     const run = history.find(r => r.id === runId);
     if (!run) return { success: false, error: 'Run not found' };
 
-    const { projectPath, mainBranch, mergeBranch } = run;
+    const { projectPath, mergeBranch } = run;
 
     try {
-      // Checkout main so we can delete the merge branch (can't delete current branch)
-      const coResult = await checkoutBranch(projectPath, mainBranch);
-      if (!coResult.success) {
-        console.error('[cancelMerge] checkout failed:', coResult.error);
-      }
+      // Remove merge worktree if it still exists (normally cleaned up after mergeRun)
+      const mergeWorktreePath = path.join(this._worktreeBase(runId), '_merge');
+      await removeWorktree(projectPath, mergeWorktreePath, true).catch(() => {});
 
-      // Delete merge branch — use array args to avoid parsing issues
+      // Delete merge branch — safe since merge happens in worktree, not on main checkout
       if (mergeBranch) {
         const delResult = await execGit(projectPath, ['branch', '-D', mergeBranch], 10000);
         if (delResult === null) {
@@ -644,49 +655,144 @@ class ParallelTaskService {
   }
 
   /**
-   * Try to resolve merge conflicts via Claude agent.
+   * Try to resolve merge conflicts via Claude agent with retry and fallback.
    * Returns true if conflicts were resolved, false otherwise.
    */
-  async _resolveConflicts(projectPath, branchName, model, effort) {
-    try {
+  async _resolveConflicts(projectPath, branchName, model, effort, runId) {
+    const MAX_ATTEMPTS = 2;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       const conflicts = await getMergeConflicts(projectPath);
-      if (conflicts.length === 0) return true;
-
-      await chatService.runSinglePrompt({
-        cwd: projectPath,
-        prompt: `Resolve the merge conflicts from merging branch "${branchName}". Conflicted files: ${conflicts.join(', ')}. Read each file, resolve all conflict markers, then run: git add -A && git commit --no-edit`,
-        model,
-        effort,
-        maxTurns: 20,
-        permissionMode: 'bypassPermissions',
-        systemPrompt: {
-          type: 'preset',
-          preset: 'claude_code',
-          append: [
-            '## Merge Conflict Resolution',
-            '',
-            'You are resolving git merge conflicts in a repository.',
-            '',
-            'RULES:',
-            '- Read each conflicted file and resolve the conflict markers (<<<<<<, ======, >>>>>>)',
-            '- Keep ALL changes from both sides — integrate both features',
-            '- After resolving all files, stage them with git add -A and complete the merge with git commit --no-edit',
-            '- Do NOT discard functionality from either side',
-            '- Be concise, focus on correct resolution',
-            '- Never mention AI or Claude in commit messages',
-          ].join('\n'),
-        },
-        disallowedTools: ['AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode'],
-      });
-
-      // Check if conflicts are actually resolved
-      const remaining = await getMergeConflicts(projectPath);
-      if (remaining.length === 0 && !(await isMergeInProgress(projectPath))) {
+      if (conflicts.length === 0) {
+        // No conflict markers left — finalize merge if still in progress
+        if (await isMergeInProgress(projectPath)) {
+          const finalized = await this._finalizeMerge(projectPath);
+          if (!finalized) {
+            console.error(`[ParallelTask] Merge finalization failed for ${branchName} (attempt ${attempt})`);
+            continue;
+          }
+        }
+        console.log(`[ParallelTask] Conflicts resolved for ${branchName} (attempt ${attempt})`);
         return true;
       }
 
-      return false;
-    } catch {
+      console.log(`[ParallelTask] Resolving ${conflicts.length} conflicts for ${branchName} (attempt ${attempt}/${MAX_ATTEMPTS})`);
+
+      // Emit resolving progress to UI
+      if (runId) {
+        this._send('parallel-run-status', {
+          runId, phase: 'merging',
+          resolving: { branch: branchName, attempt, maxAttempts: MAX_ATTEMPTS, files: conflicts }
+        });
+      }
+
+      // Extract conflict sections from files to give Claude context
+      let conflictDetails = '';
+      for (const file of conflicts.slice(0, 15)) {
+        try {
+          const content = fs.readFileSync(path.join(projectPath, file), 'utf8');
+          const markers = content.match(/^<<<<<<<[\s\S]*?^>>>>>>>.*/gm);
+          if (markers) {
+            conflictDetails += `\n### ${file}\nConflict sections:\n\`\`\`\n${markers.join('\n---\n')}\n\`\`\`\n`;
+          }
+        } catch (_) {}
+      }
+
+      const prompt = attempt === 1
+        ? [
+          `Resolve the merge conflicts from merging branch "${branchName}".`,
+          `Conflicted files: ${conflicts.join(', ')}.`,
+          conflictDetails ? `\nHere are the conflict sections for context:${conflictDetails}` : '',
+          '\nIMPORTANT: Read each conflicted file completely, resolve ALL conflict markers (<<<<<<< / ======= / >>>>>>>), keeping changes from BOTH sides integrated properly.',
+          'After resolving all files: git add -A && git commit --no-edit',
+        ].join('\n')
+        : [
+          `Previous conflict resolution attempt failed. There are still ${conflicts.length} unresolved file(s): ${conflicts.join(', ')}.`,
+          conflictDetails ? `\nRemaining conflict sections:${conflictDetails}` : '',
+          '\nCarefully re-read each file listed above. Find and fix ALL remaining <<<<<<< / ======= / >>>>>>> markers.',
+          'Integrate changes from both sides — do NOT discard any functionality.',
+          'After fixing all markers: git add -A && git commit --no-edit',
+        ].join('\n');
+
+      try {
+        await chatService.runSinglePrompt({
+          cwd: projectPath,
+          prompt,
+          model,
+          effort,
+          maxTurns: 30,
+          permissionMode: 'bypassPermissions',
+          systemPrompt: {
+            type: 'preset',
+            preset: 'claude_code',
+            append: [
+              '## Merge Conflict Resolution',
+              '',
+              'You are resolving git merge conflicts in a repository.',
+              'This is a fully autonomous execution — there is no human to interact with.',
+              '',
+              'RULES:',
+              '- Read each conflicted file COMPLETELY using the Read tool',
+              '- Resolve ALL conflict markers: <<<<<<< (ours), ======= (separator), >>>>>>> (theirs)',
+              '- Keep ALL changes from both sides — integrate both features coherently',
+              '- If both sides modify the same code block, merge them logically (e.g. combine imports, merge function bodies)',
+              '- After resolving all files, run: git add -A && git commit --no-edit',
+              '- Do NOT discard functionality from either side',
+              '- Do NOT leave any conflict markers in the files',
+              '- Be concise, focus on correct resolution',
+              '- Never mention AI or Claude in commit messages',
+            ].join('\n'),
+          },
+          disallowedTools: ['AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode'],
+        });
+      } catch (err) {
+        console.error(`[ParallelTask] Conflict resolution SDK error for ${branchName} (attempt ${attempt}):`, err.message);
+        // Don't return false yet — check if Claude partially resolved before crashing
+      }
+
+      // Check if conflicts are actually resolved
+      const remaining = await getMergeConflicts(projectPath);
+      if (remaining.length === 0) {
+        // Conflicts resolved — finalize merge if still in progress
+        if (await isMergeInProgress(projectPath)) {
+          const finalized = await this._finalizeMerge(projectPath);
+          if (finalized) {
+            console.log(`[ParallelTask] Conflicts resolved for ${branchName} after finalization (attempt ${attempt})`);
+            return true;
+          }
+          console.error(`[ParallelTask] Conflicts resolved but merge finalization failed for ${branchName}`);
+          continue; // retry
+        }
+        console.log(`[ParallelTask] Conflicts resolved for ${branchName} (attempt ${attempt})`);
+        return true;
+      }
+
+      console.warn(`[ParallelTask] ${remaining.length} conflicts remain for ${branchName} after attempt ${attempt}`);
+      // Loop will retry with a more specific prompt
+    }
+
+    console.error(`[ParallelTask] Failed to resolve conflicts for ${branchName} after ${MAX_ATTEMPTS} attempts`);
+    return false;
+  }
+
+  /**
+   * Finalize a merge when conflicts are resolved but the merge commit hasn't been made.
+   * Stages all files and attempts git merge --continue, falling back to git commit --no-edit.
+   */
+  async _finalizeMerge(projectPath) {
+    try {
+      // Stage all resolved files
+      await execGit(projectPath, ['add', '-A'], 10000);
+
+      // Try merge --continue first (uses the default merge commit message)
+      const result = await gitMergeContinue(projectPath);
+      if (result.success) return true;
+
+      // Fallback: commit directly with --no-edit
+      const commitOutput = await execGit(projectPath, ['commit', '--no-edit'], 15000);
+      return commitOutput !== null;
+    } catch (err) {
+      console.error('[ParallelTask] _finalizeMerge error:', err.message);
       return false;
     }
   }

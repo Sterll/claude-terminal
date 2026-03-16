@@ -449,7 +449,7 @@ class DatabaseService {
     if (!dbPath || !fs.existsSync(dbPath)) {
       throw new Error(`SQLite file not found: ${dbPath}`);
     }
-    return new Database(dbPath, { readonly: true });
+    return new Database(dbPath, { readonly: false });
   }
 
   _createMysqlClient(config) {
@@ -574,6 +574,9 @@ class DatabaseService {
       // Use single-quoted string literal for PRAGMA (safer across SQLite versions)
       const escapedName = "'" + t.name.replace(/'/g, "''") + "'";
       const columns = db.prepare(`PRAGMA table_info(${escapedName})`).all();
+      const fks = db.prepare(`PRAGMA foreign_key_list(${escapedName})`).all();
+      const fkMap = {};
+      for (const fk of fks) fkMap[fk.from] = { table: fk.table, column: fk.to };
       return {
         name: t.name,
         columns: columns.map(c => ({
@@ -581,38 +584,54 @@ class DatabaseService {
           type: c.type || 'TEXT',
           nullable: !c.notnull,
           primaryKey: !!c.pk,
-          defaultValue: c.dflt_value
+          defaultValue: c.dflt_value,
+          foreignKey: fkMap[c.name] || null
         }))
       };
     });
   }
 
   async _getMysqlSchema(client) {
-    // Single query to get all columns for all tables at once
+    // Two queries: all columns + foreign keys
     const [rows] = await client.query(
       `SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT
        FROM information_schema.columns
        WHERE TABLE_SCHEMA = DATABASE()
        ORDER BY TABLE_NAME, ORDINAL_POSITION`
     );
+    // FK info
+    let fkMap = {};
+    try {
+      const [fkRows] = await client.query(
+        `SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+         FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+         WHERE TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME IS NOT NULL`
+      );
+      for (const fk of fkRows) {
+        fkMap[`${fk.TABLE_NAME}.${fk.COLUMN_NAME}`] = { table: fk.REFERENCED_TABLE_NAME, column: fk.REFERENCED_COLUMN_NAME };
+      }
+    } catch (_) { /* ignore FK query failure */ }
+
     const tableMap = new Map();
     for (const row of rows) {
       const tableName = row.TABLE_NAME;
       if (!tableMap.has(tableName)) tableMap.set(tableName, []);
+      const fkKey = `${tableName}.${row.COLUMN_NAME}`;
       tableMap.get(tableName).push({
         name: row.COLUMN_NAME,
         type: row.COLUMN_TYPE,
         nullable: row.IS_NULLABLE === 'YES',
         primaryKey: row.COLUMN_KEY === 'PRI',
-        defaultValue: row.COLUMN_DEFAULT
+        defaultValue: row.COLUMN_DEFAULT,
+        foreignKey: fkMap[fkKey] || null
       });
     }
     return Array.from(tableMap.entries()).map(([name, columns]) => ({ name, columns }));
   }
 
   async _getPgSchema(client) {
-    // Two queries to get everything: all columns + all primary keys
-    const [colResult, pkResult] = await Promise.all([
+    // Three queries: all columns + primary keys + foreign keys
+    const [colResult, pkResult, fkResult] = await Promise.all([
       client.query(
         `SELECT table_name, column_name, data_type, is_nullable, column_default
          FROM information_schema.columns
@@ -625,7 +644,17 @@ class DatabaseService {
          JOIN information_schema.key_column_usage kcu
            ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
          WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = 'public'`
-      )
+      ),
+      client.query(
+        `SELECT kcu.table_name, kcu.column_name,
+                ccu.table_name AS ref_table, ccu.column_name AS ref_column
+         FROM information_schema.table_constraints tc
+         JOIN information_schema.key_column_usage kcu
+           ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+         JOIN information_schema.constraint_column_usage ccu
+           ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema
+         WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public'`
+      ).catch(() => ({ rows: [] }))
     ]);
 
     // Build PK lookup: tableName -> Set of PK column names
@@ -633,6 +662,12 @@ class DatabaseService {
     for (const row of pkResult.rows) {
       if (!pkMap.has(row.table_name)) pkMap.set(row.table_name, new Set());
       pkMap.get(row.table_name).add(row.column_name);
+    }
+
+    // Build FK lookup
+    const fkMap = {};
+    for (const fk of fkResult.rows) {
+      fkMap[`${fk.table_name}.${fk.column_name}`] = { table: fk.ref_table, column: fk.ref_column };
     }
 
     // Group columns by table
@@ -645,7 +680,8 @@ class DatabaseService {
         type: c.data_type,
         nullable: c.is_nullable === 'YES',
         primaryKey: pks ? pks.has(c.column_name) : false,
-        defaultValue: c.column_default
+        defaultValue: c.column_default,
+        foreignKey: fkMap[`${c.table_name}.${c.column_name}`] || null
       });
     }
     return Array.from(tableMap.entries()).map(([name, columns]) => ({ name, columns }));

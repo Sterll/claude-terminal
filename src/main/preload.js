@@ -216,6 +216,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     stageFiles: (params) => ipcRenderer.invoke('git-stage-files', params),
     commit: (params) => ipcRenderer.invoke('git-commit', params),
     generateCommitMessage: (params) => ipcRenderer.invoke('git-generate-commit-message', params),
+    generateMultiCommit: (params) => ipcRenderer.invoke('git-generate-multi-commit', params),
     createBranch: (params) => ipcRenderer.invoke('git-create-branch', params),
     deleteBranch: (params) => ipcRenderer.invoke('git-delete-branch', params),
     commitHistory: (params) => ipcRenderer.invoke('git-commit-history', params),
@@ -238,6 +239,24 @@ contextBridge.exposeInMainWorld('electron_api', {
     worktreeDiff: (params) => ipcRenderer.invoke('git-worktree-diff', params),
     worktreeDiffStats: (params) => ipcRenderer.invoke('git-worktree-diff-stats', params),
     generateSessionRecap: (context) => ipcRenderer.invoke('git-generate-session-recap', context),
+    // New git operations
+    deleteRemoteBranch: (params) => ipcRenderer.invoke('git-delete-remote-branch', params),
+    fetch: (params) => ipcRenderer.invoke('git-fetch', params),
+    renameBranch: (params) => ipcRenderer.invoke('git-rename-branch', params),
+    rebase: (params) => ipcRenderer.invoke('git-rebase', params),
+    rebaseAbort: (params) => ipcRenderer.invoke('git-rebase-abort', params),
+    rebaseContinue: (params) => ipcRenderer.invoke('git-rebase-continue', params),
+    fileHistory: (params) => ipcRenderer.invoke('git-file-history', params),
+    commitFileDiffs: (params) => ipcRenderer.invoke('git-commit-file-diffs', params),
+    commitFileDiff: (params) => ipcRenderer.invoke('git-commit-file-diff', params),
+    blame: (params) => ipcRenderer.invoke('git-blame', params),
+    tagList: (params) => ipcRenderer.invoke('git-tag-list', params),
+    tagCreate: (params) => ipcRenderer.invoke('git-tag-create', params),
+    tagDelete: (params) => ipcRenderer.invoke('git-tag-delete', params),
+    tagPush: (params) => ipcRenderer.invoke('git-tag-push', params),
+    remotes: (params) => ipcRenderer.invoke('git-remotes', params),
+    resolveConflict: (params) => ipcRenderer.invoke('git-resolve-conflict', params),
+    branchOrphanCommits: (params) => ipcRenderer.invoke('git-branch-orphan-commits', params),
   },
 
   // ==================== WEBAPP ====================
@@ -315,6 +334,7 @@ contextBridge.exposeInMainWorld('electron_api', {
   dialog: {
     selectFolder: () => ipcRenderer.invoke('select-folder'),
     selectFile: (params) => ipcRenderer.invoke('select-file', params),
+    saveFileDialog: (params) => ipcRenderer.invoke('save-file-dialog', params),
     openInExplorer: (path) => ipcRenderer.send('open-in-explorer', path),
     openInEditor: (params) => ipcRenderer.send('open-in-editor', params),
     openExternal: (url) => ipcRenderer.send('open-external', url),
@@ -370,8 +390,14 @@ contextBridge.exposeInMainWorld('electron_api', {
     workflowRuns: (remoteUrl) => ipcRenderer.invoke('github-workflow-runs', { remoteUrl }),
     workflowJobs: (remoteUrl, runId) => ipcRenderer.invoke('github-workflow-jobs', { remoteUrl, runId }),
     jobLogs: (remoteUrl, jobId) => ipcRenderer.invoke('github-job-logs', { remoteUrl, jobId }),
-    pullRequests: (remoteUrl) => ipcRenderer.invoke('github-pull-requests', { remoteUrl }),
-    createPR: (params) => ipcRenderer.invoke('github-create-pr', params)
+    pullRequests: (params) => ipcRenderer.invoke('github-pull-requests', params),
+    createPR: (params) => ipcRenderer.invoke('github-create-pr', params),
+    workflowRunsPaginated: (params) => ipcRenderer.invoke('github-workflow-runs-paginated', params),
+    checkRuns: (params) => ipcRenderer.invoke('github-check-runs', params),
+    mergePR: (params) => ipcRenderer.invoke('github-merge-pr', params),
+    issues: (params) => ipcRenderer.invoke('github-issues', params),
+    createIssue: (params) => ipcRenderer.invoke('github-create-issue', params),
+    closeIssue: (params) => ipcRenderer.invoke('github-close-issue', params),
   },
 
   // ==================== MCP REGISTRY ====================
@@ -388,6 +414,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     marketplaces: () => ipcRenderer.invoke('plugin-marketplaces'),
     readme: (marketplace, pluginName) => ipcRenderer.invoke('plugin-readme', { marketplace, pluginName }),
     install: (marketplace, pluginName) => ipcRenderer.invoke('plugin-install', { marketplace, pluginName }),
+    uninstall: (pluginKey) => ipcRenderer.invoke('plugin-uninstall', { pluginKey }),
     addMarketplace: (url) => ipcRenderer.invoke('plugin-add-marketplace', { url })
   },
 
@@ -412,7 +439,9 @@ contextBridge.exposeInMainWorld('electron_api', {
   // ==================== CLAUDE ====================
   claude: {
     sessions: (projectPath) => ipcRenderer.invoke('claude-sessions', projectPath),
-    sessionReplay: (params) => ipcRenderer.invoke('claude-session-replay', params)
+    sessionReplay: (params) => ipcRenderer.invoke('claude-session-replay', params),
+    deleteSession: (params) => ipcRenderer.invoke('claude-delete-session', params),
+    exportSession: (params) => ipcRenderer.invoke('claude-export-session', params)
   },
 
   // ==================== CHAT (Agent SDK) ====================
@@ -435,6 +464,8 @@ contextBridge.exposeInMainWorld('electron_api', {
     loadHistory: (params) => ipcRenderer.invoke('chat-load-history', params),
     generateSkillAgent: (params) => ipcRenderer.invoke('chat-generate-skill-agent', params),
     cancelGeneration: (params) => ipcRenderer.send('chat-cancel-generation', params),
+    onGenerationProgress: createListener('chat-generation-progress'),
+    onGenerationComplete: createListener('chat-generation-complete'),
     generateSuggestions: (params) => ipcRenderer.invoke('chat-generate-suggestions', params),
     analyzeSession: (params) => ipcRenderer.invoke('chat-analyze-session', params),
     applyClaudeMd: (params) => ipcRenderer.invoke('claude-md-apply', params),
@@ -461,6 +492,8 @@ contextBridge.exposeInMainWorld('electron_api', {
     pushTimeData: (params) => ipcRenderer.send('remote:push-time-data', params),
     startServer: () => ipcRenderer.invoke('remote:start-server'),
     stopServer: () => ipcRenderer.invoke('remote:stop-server'),
+    getClients: () => ipcRenderer.invoke('remote:get-clients'),
+    disconnectClient: (params) => ipcRenderer.invoke('remote:disconnect-client', params),
     onOpenChatTab: createListener('remote:open-chat-tab'),
     onRequestTimePush: createListener('remote:request-time-push'),
     onUserMessage: createListener('remote:user-message'),

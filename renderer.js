@@ -192,6 +192,24 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
   applyPinnedTabs(); // Apply sidebar tab visibility from settings
   _initSidebarDragDrop(); // Enable drag & drop reordering in sidebar
 
+  // Apply tooltips for collapsed sidebar
+  if (localStorage.getItem('sidebar-collapsed') === 'true') {
+    _applySidebarTooltips(true);
+  }
+
+  // Restore last active tab from settings
+  const savedActiveTab = settingsState.get().activeTab;
+  if (savedActiveTab && savedActiveTab !== 'claude') {
+    if (savedActiveTab === 'settings') {
+      document.getElementById('btn-settings')?.click();
+    } else {
+      const savedTab = document.querySelector(`.nav-tab[data-tab="${savedActiveTab}"]`);
+      if (savedTab && !savedTab.classList.contains('nav-tab--hidden')) {
+        savedTab.click();
+      }
+    }
+  }
+
   // Initialize Claude event bus and provider (hooks or scraping)
   initClaudeEvents();
 
@@ -284,7 +302,7 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
   document.getElementById('btn-notifications').classList.toggle('active', isNotificationsEnabled());
 
   // ========== PANELS INIT (must run after state is loaded) ==========
-  MemoryEditor.init({ showModal, closeModal });
+  MemoryEditor.init({ showModal, closeModal, showToast });
 
   ShortcutsManager.init({
     settingsState, saveSettings,
@@ -2061,6 +2079,7 @@ ProjectList.setExternalState({
   cloudUploadStatus,
   cloudConnected
 });
+QuickActions.setGitRepoStatus(localState.gitRepoStatus);
 
 ProjectList.setCallbacks({
   onCreateTerminal: createTerminalForProject,
@@ -2083,6 +2102,7 @@ ProjectList.setCallbacks({
   onDeleteProject: deleteProjectUI,
   onRenameProject: renameProjectUI,
   onRenderProjects: () => ProjectList.render(),
+  onCreateFolder: () => promptCreateFolder(null),
   onFilterTerminals: (idx) => { TerminalManager.filterByProject(idx); saveTerminalSessions(); },
   countTerminalsForProject: TerminalManager.countTerminalsForProject,
   getTerminalStatsForProject: TerminalManager.getTerminalStatsForProject
@@ -2367,7 +2387,12 @@ document.getElementById('btn-notifications').onclick = () => {
   }
 };
 
-document.getElementById('btn-settings').onclick = () => SettingsPanel.switchToSettingsTab();
+document.getElementById('btn-settings').onclick = () => {
+  const currentActive = document.querySelector('.nav-tab[data-tab].active');
+  if (currentActive) _saveScrollPositions(currentActive.dataset.tab);
+  SettingsPanel.switchToSettingsTab();
+  setSetting('activeTab', 'settings');
+};
 
 // Sidebar collapse toggle
 const sidebarEl = document.querySelector('.sidebar');
@@ -2377,10 +2402,63 @@ if (localStorage.getItem('sidebar-collapsed') === 'true') {
 }
 btnCollapseSidebar.onclick = () => {
   sidebarEl.classList.toggle('collapsed');
-  localStorage.setItem('sidebar-collapsed', sidebarEl.classList.contains('collapsed'));
+  const isCollapsed = sidebarEl.classList.contains('collapsed');
+  localStorage.setItem('sidebar-collapsed', isCollapsed);
+  _applySidebarTooltips(isCollapsed);
 };
 
+// Toggle title ↔ data-tooltip for CSS tooltips in collapsed sidebar
+function _applySidebarTooltips(isCollapsed) {
+  const sidebar = document.querySelector('.sidebar');
+  if (!sidebar) return;
+  const els = sidebar.querySelectorAll('.nav-tab[data-tab], .settings-btn, .notification-toggle, #btn-more-tabs');
+  els.forEach(el => {
+    if (isCollapsed) {
+      const label = el.title || el.querySelector('span:not(.more-tabs-badge)')?.textContent?.trim() || '';
+      if (label) {
+        el.dataset.tooltip = label;
+        el.removeAttribute('title');
+      }
+    } else {
+      if (el.dataset.tooltip) {
+        el.title = el.dataset.tooltip;
+        delete el.dataset.tooltip;
+      }
+    }
+  });
+}
+
 // ========== TAB NAVIGATION ==========
+// Scroll position preservation across tab switches
+const _tabScrollPositions = new Map();
+
+function _saveScrollPositions(tabId) {
+  const panel = document.getElementById(`tab-${tabId}`);
+  if (!panel) return;
+  const entries = [];
+  const save = (el) => {
+    if (el.scrollTop || el.scrollLeft) {
+      entries.push({ el, top: el.scrollTop, left: el.scrollLeft });
+    }
+  };
+  save(panel);
+  panel.querySelectorAll('*').forEach(save);
+  if (entries.length) _tabScrollPositions.set(tabId, entries);
+}
+
+function _restoreScrollPositions(tabId) {
+  const entries = _tabScrollPositions.get(tabId);
+  if (!entries) return;
+  requestAnimationFrame(() => {
+    for (const { el, top, left } of entries) {
+      if (el.isConnected) {
+        el.scrollTop = top;
+        el.scrollLeft = left;
+      }
+    }
+  });
+}
+
 // Set ARIA roles on all nav-tabs (exclude More button which has its own role)
 document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
   tab.setAttribute('role', 'tab');
@@ -2396,6 +2474,10 @@ document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
   };
   tab.onclick = () => {
     const tabId = tab.dataset.tab;
+    // Save scroll positions of the currently active tab before switching
+    const currentActive = document.querySelector('.nav-tab[data-tab].active');
+    if (currentActive) _saveScrollPositions(currentActive.dataset.tab);
+
     document.querySelectorAll('.nav-tab[data-tab]').forEach(t => {
       t.classList.remove('active');
       t.setAttribute('aria-selected', 'false');
@@ -2471,6 +2553,10 @@ document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
         if (termData?.fitAddon) termData.fitAddon.fit();
       }
     }
+    // Restore scroll positions of the newly active tab
+    _restoreScrollPositions(tabId);
+    // Persist active tab for restart
+    setSetting('activeTab', tabId);
   };
 });
 
@@ -2499,6 +2585,12 @@ function applyPinnedTabs() {
   if (moreSep) moreSep.style.display = hiddenCount > 0 ? '' : 'none';
   const badge = document.getElementById('more-tabs-badge');
   if (badge) badge.textContent = hiddenCount > 0 ? hiddenCount : '';
+  // Update More button tooltip with hidden count
+  if (moreBtn && hiddenCount > 0) {
+    const label = t('ui.hiddenTabsCount', { count: hiddenCount });
+    moreBtn.title = label;
+    if (moreBtn.dataset.tooltip) moreBtn.dataset.tooltip = label;
+  }
 }
 
 function _updateSeparatorVisibility() {
@@ -2923,6 +3015,9 @@ function showContextMenuForFolder(x, y, folderId) {
   const menu = document.getElementById('context-menu');
   menu.innerHTML = `
     <div class="context-menu-item" data-action="new-subfolder">${t('contextMenu.newSubfolder')}</div>
+    <div class="context-menu-item" data-action="new-project">${t('contextMenu.newProject')}</div>
+    <div class="context-menu-divider"></div>
+    <div class="context-menu-item" data-action="customize">${t('contextMenu.customize')}</div>
     <div class="context-menu-item" data-action="rename">${t('contextMenu.rename')}</div>
     <div class="context-menu-divider"></div>
     <div class="context-menu-item danger" data-action="delete">${t('contextMenu.deleteFolder')}</div>`;
@@ -2988,6 +3083,15 @@ async function handleContextAction(action) {
         });
       } else if (contextTarget.type === 'project') {
         deleteProjectUI(contextTarget.id);
+      }
+      break;
+    case 'customize':
+      if (contextTarget.type === 'folder') {
+        const folder = getFolder(contextTarget.id);
+        if (folder) {
+          const btn = document.querySelector(`.folder-item[data-folder-id="${contextTarget.id}"] .btn-folder-color`);
+          if (btn) btn.click();
+        }
       }
       break;
     case 'move-to-root':
@@ -3334,7 +3438,7 @@ document.getElementById('btn-new-project').onclick = () => {
           ${buildTypeRows()}
         </div>
         <div class="wizard-actions">
-          <button type="button" class="wizard-btn-secondary" onclick="closeModal()">${t('common.cancel')}</button>
+          <button type="button" class="wizard-btn-secondary" id="btn-cancel-wizard">${t('common.cancel')}</button>
           <button type="button" class="wizard-btn-primary" id="btn-next-step">
             <span>${t('newProject.next')}</span>
             <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
@@ -3448,6 +3552,7 @@ document.getElementById('btn-new-project').onclick = () => {
     }
   }
 
+  document.getElementById('btn-cancel-wizard').onclick = () => closeModal();
   document.getElementById('btn-next-step').onclick = () => goToStep(2);
   document.getElementById('btn-prev-step').onclick = () => goToStep(1);
 
@@ -3535,13 +3640,22 @@ document.getElementById('btn-new-project').onclick = () => {
 
     if (!name || !projPath) return;
 
+    // Disable submit button to prevent double-click (BUG 5)
+    const submitBtn = document.getElementById('btn-create-project');
+    submitBtn.disabled = true;
+
+    // Track whether we created a new directory (for cleanup on failure)
+    let createdDir = null;
+
     // If using existing folder, ensure the directory exists
     if (selectedSource === 'folder') {
       if (!fs.existsSync(projPath)) {
         try {
           fs.mkdirSync(projPath, { recursive: true });
+          createdDir = projPath;
         } catch (err) {
           showToast(t('newProject.unableToCreateFolder', { error: err.message }), 'error');
+          submitBtn.disabled = false;
           return;
         }
       }
@@ -3553,9 +3667,11 @@ document.getElementById('btn-new-project').onclick = () => {
       try {
         if (fs.existsSync(projPath)) {
           showToast(t('newProject.folderAlreadyExists'), 'error');
+          submitBtn.disabled = false;
           return;
         }
         fs.mkdirSync(projPath, { recursive: true });
+        createdDir = projPath;
 
         // Init git repo if checked
         if (document.getElementById('chk-init-git')?.checked) {
@@ -3579,6 +3695,7 @@ document.getElementById('btn-new-project').onclick = () => {
         }
       } catch (err) {
         showToast(t('newProject.unableToCreateFolder', { error: err.message }), 'error');
+        submitBtn.disabled = false;
         return;
       }
     }
@@ -3588,9 +3705,7 @@ document.getElementById('btn-new-project').onclick = () => {
       projPath = path.join(projPath, name);
 
       // Show progress
-      const submitBtn = document.getElementById('btn-create-project');
       const cloneStatus = document.querySelector('.clone-status');
-      submitBtn.disabled = true;
       submitBtn.innerHTML = `<span class="btn-spinner"></span> ${t('newProject.cloning')}`;
       cloneStatus.style.display = 'block';
 
@@ -3598,12 +3713,17 @@ document.getElementById('btn-new-project').onclick = () => {
         const result = await api.git.clone({ repoUrl, targetPath: projPath });
 
         if (!result.success) {
+          // Clean up partial clone directory (BUG 3)
+          try { if (fs.existsSync(projPath)) fs.rmSync(projPath, { recursive: true, force: true }); } catch (_) {}
           cloneStatus.innerHTML = `<div class="clone-error">${result.error}</div>`;
           submitBtn.disabled = false;
           submitBtn.textContent = t('newProject.create');
           return;
         }
+        createdDir = projPath;
       } catch (err) {
+        // Clean up partial clone directory (BUG 3)
+        try { if (fs.existsSync(projPath)) fs.rmSync(projPath, { recursive: true, force: true }); } catch (_) {}
         cloneStatus.innerHTML = `<div class="clone-error">${err.message}</div>`;
         submitBtn.disabled = false;
         submitBtn.textContent = t('newProject.create');
@@ -3611,26 +3731,44 @@ document.getElementById('btn-new-project').onclick = () => {
       }
     }
 
-    const project = { id: generateProjectId(), name, path: projPath, type: selectedType, folderId: null };
-    // Merge type-specific wizard config
-    const typeHandler = registry.get(selectedType);
-    const typeConfig = typeHandler.getWizardConfig(document.getElementById('form-project'));
-    Object.assign(project, typeConfig);
-
-    // Generate template files if type supports it
-    if (typeHandler.afterProjectCreate) {
-      await typeHandler.afterProjectCreate(project, projPath);
+    // Check for duplicate project path (BUG 2)
+    const normalizedPath = projPath.replace(/[\\/]+$/, '').replace(/\\/g, '/').toLowerCase();
+    const existingProject = projectsState.get().projects.find(p =>
+      p.path.replace(/[\\/]+$/, '').replace(/\\/g, '/').toLowerCase() === normalizedPath
+    );
+    if (existingProject) {
+      showToast(t('newProject.duplicatePath', { name: existingProject.name }), 'error');
+      submitBtn.disabled = false;
+      return;
     }
 
-    const projects = [...projectsState.get().projects, project];
-    const rootOrder = [...projectsState.get().rootOrder, project.id];
-    projectsState.set({ projects, rootOrder });
-    saveProjects();
-    ProjectList.render();
-    closeModal();
+    // Register project — wrapped in try-catch (BUG 1)
+    try {
+      const project = { id: generateProjectId(), name, path: projPath, type: selectedType, folderId: null };
+      // Merge type-specific wizard config
+      const typeHandler = registry.get(selectedType);
+      const typeConfig = typeHandler.getWizardConfig(document.getElementById('form-project'));
+      Object.assign(project, typeConfig);
 
-    // Detect git status for the new project
-    checkProjectGitStatus(project);
+      // Generate template files if type supports it
+      if (typeHandler.afterProjectCreate) {
+        await typeHandler.afterProjectCreate(project, projPath);
+      }
+
+      const projects = [...projectsState.get().projects, project];
+      const rootOrder = [...projectsState.get().rootOrder, project.id];
+      projectsState.set({ projects, rootOrder });
+      saveProjects();
+      ProjectList.render();
+      closeModal();
+
+      // Detect git status for the new project
+      checkProjectGitStatus(project);
+    } catch (err) {
+      console.error('[NewProject] Failed to register project:', err);
+      showToast(t('newProject.registrationError', { error: err.message }), 'error');
+      submitBtn.disabled = false;
+    }
   };
 };
 
@@ -4267,15 +4405,63 @@ setTimeout(showTelemetryConsentModal, 3500);
 
 // ========== SKILLS/AGENTS CREATION MODAL ==========
 let createModalType = 'skill'; // 'skill' or 'agent'
+let createModalGenerating = false; // tracks if generation is in progress
+
+// Store original modal HTML for reset
+const createModalOriginalBody = `
+  <div class="create-modal-intro">
+    <p data-i18n="ui.describeWhatToCreate">${t('ui.describeWhatToCreate')}</p>
+  </div>
+  <div class="create-modal-field">
+    <label for="create-modal-description" data-i18n="ui.description">${t('ui.description')}</label>
+    <textarea id="create-modal-description" rows="4"></textarea>
+  </div>
+  <div class="create-modal-field">
+    <label data-i18n="ui.targetProject">${t('ui.targetProject')}</label>
+    <select id="create-modal-project">
+      <option value="">${t('ui.selectProject')}</option>
+    </select>
+    <p class="field-hint" data-i18n="ui.skillAgentHint">${t('ui.skillAgentHint')}</p>
+  </div>
+`;
+const createModalOriginalFooter = `
+  <button class="btn-secondary" id="create-modal-cancel">${t('common.cancel')}</button>
+  <button class="btn-primary btn-create-with-claude" id="create-modal-submit">
+    <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+    <span>${t('ui.createWithClaude')}</span>
+  </button>
+`;
+
+function resetCreateModal() {
+  const modalBody = document.querySelector('#create-modal .modal-body');
+  const modalFooter = document.querySelector('#create-modal .modal-footer');
+  if (modalBody) modalBody.innerHTML = createModalOriginalBody;
+  if (modalFooter) modalFooter.innerHTML = createModalOriginalFooter;
+
+  // Re-bind form event listeners
+  document.getElementById('create-modal-cancel')?.addEventListener('click', closeCreateModal);
+  document.getElementById('create-modal-submit')?.addEventListener('click', submitCreateModal);
+  document.getElementById('create-modal-description')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.ctrlKey) {
+      e.preventDefault();
+      submitCreateModal();
+    }
+  });
+  createModalGenerating = false;
+}
 
 function openCreateModal(type) {
   createModalType = type;
   const modal = document.getElementById('create-modal');
   const title = document.getElementById('create-modal-title');
+
+  // Reset modal to form mode if it was in progress mode
+  resetCreateModal();
+
+  title.textContent = type === 'skill' ? t('ui.newSkill') : t('ui.newAgent');
   const description = document.getElementById('create-modal-description');
   const projectSelect = document.getElementById('create-modal-project');
 
-  title.textContent = type === 'skill' ? 'New Skill' : 'New Agent';
   description.value = '';
   description.placeholder = type === 'skill'
     ? 'Ex: A skill that generates unit tests for TypeScript code using Vitest...'
@@ -4298,7 +4484,12 @@ function openCreateModal(type) {
 }
 
 function closeCreateModal() {
-  document.getElementById('create-modal').classList.remove('active');
+  const modal = document.getElementById('create-modal');
+  modal.classList.remove('active');
+  // Reset to form mode for next open (unless generation is still running)
+  if (!createModalGenerating) {
+    resetCreateModal();
+  }
 }
 
 async function submitCreateModal() {
@@ -4327,45 +4518,52 @@ async function submitCreateModal() {
   }
 
   const type = createModalType;
-  closeCreateModal();
+  createModalGenerating = true;
 
-  // Show persistent in-progress toast
-  const progressToast = showToast({
-    type: 'info',
-    title: t('ui.createWithClaude'),
-    message: type === 'skill' ? t('ui.generatingSkill') : t('ui.generatingAgent'),
-    duration: 0
-  });
+  // Switch modal to progress mode
+  const modalBody = document.querySelector('#create-modal .modal-body');
+  const modalFooter = document.querySelector('#create-modal .modal-footer');
 
-  const dismissToast = (toast) => {
-    if (toast && toast.parentNode) {
-      toast.classList.add('toast-exit');
-      setTimeout(() => toast.remove(), 300);
-    }
+  modalBody.innerHTML = `
+    <div class="create-progress">
+      <div class="create-progress-header">
+        <div class="spinner"></div>
+        <div class="create-progress-title">${type === 'skill' ? t('ui.generatingSkill') : t('ui.generatingAgent')}</div>
+      </div>
+      <div class="create-progress-log" id="create-progress-log"></div>
+    </div>
+  `;
+
+  modalFooter.innerHTML = `
+    <button class="btn-secondary" id="create-modal-cancel-gen">${t('common.cancel')}</button>
+  `;
+
+  let currentGenId = null;
+  let unsubProgress = null;
+  let unsubComplete = null;
+
+  const cleanup = () => {
+    if (unsubProgress) unsubProgress();
+    if (unsubComplete) unsubComplete();
+    unsubProgress = null;
+    unsubComplete = null;
+    createModalGenerating = false;
   };
 
-  try {
-    const result = await api.chat.generateSkillAgent({
-      type,
-      description,
-      cwd,
-      model: settingsState.get().chatModel || 'sonnet'
-    });
-
-    dismissToast(progressToast);
+  const handleResult = (result) => {
+    cleanup();
+    closeCreateModal();
 
     if (result.success) {
       const successMsg = type === 'skill' ? t('ui.skillCreatedSuccess') : t('ui.agentCreatedSuccess');
       showToast({ type: 'success', title: t('ui.createWithClaude'), message: successMsg });
 
-      // Desktop notification
       api.notification.show({
         title: type === 'skill' ? t('ui.newSkill') : t('ui.newAgent'),
         body: successMsg,
         autoDismiss: 6000
       });
 
-      // Refresh the skills/agents panel
       if (type === 'skill') {
         SkillsAgentsPanel.loadSkills();
       } else {
@@ -4380,8 +4578,64 @@ async function submitCreateModal() {
         duration: 8000
       });
     }
+  };
+
+  // Listen for progress events
+  unsubProgress = api.chat.onGenerationProgress(({ genId, message }) => {
+    if (!message || (currentGenId && genId !== currentGenId)) return;
+    const logEl = document.getElementById('create-progress-log');
+    if (!logEl) return;
+
+    const entry = document.createElement('div');
+    entry.className = 'create-progress-entry';
+
+    if (message.step === 'tool') {
+      entry.innerHTML = `<span class="create-progress-icon tool">&bull;</span> <span>${escapeHtml(message.text)}</span>`;
+    } else if (message.step === 'thinking') {
+      entry.innerHTML = `<span class="create-progress-icon think">&bull;</span> <span>${escapeHtml(message.text)}</span>`;
+    } else {
+      entry.innerHTML = `<span class="create-progress-icon">&bull;</span> <span>${escapeHtml(message.text)}</span>`;
+    }
+
+    logEl.appendChild(entry);
+    logEl.scrollTop = logEl.scrollHeight;
+  });
+
+  // Listen for completion event
+  unsubComplete = api.chat.onGenerationComplete(({ genId, result }) => {
+    if (currentGenId && genId !== currentGenId) return;
+    handleResult(result);
+  });
+
+  // Cancel button
+  document.getElementById('create-modal-cancel-gen').onclick = () => {
+    if (currentGenId) {
+      api.chat.cancelGeneration({ genId: currentGenId });
+    }
+    cleanup();
+    closeCreateModal();
+    showToast({ type: 'warning', title: t('ui.createWithClaude'), message: t('ui.generationCancelled') });
+  };
+
+  try {
+    // Fire-and-forget: get genId immediately
+    const response = await api.chat.generateSkillAgent({
+      type,
+      description,
+      cwd,
+      model: settingsState.get().chatModel || 'sonnet'
+    });
+
+    if (response.error) {
+      // Immediate error (not async)
+      handleResult({ success: false, error: response.error });
+      return;
+    }
+
+    currentGenId = response.genId;
   } catch (err) {
-    dismissToast(progressToast);
+    cleanup();
+    closeCreateModal();
     showToast({
       type: 'error',
       title: t('ui.createWithClaude'),
@@ -4587,6 +4841,9 @@ const updateProgressBar = document.getElementById('update-progress-bar');
 const updateProgressText = document.getElementById('update-progress-text');
 const updateBtn = document.getElementById('update-btn');
 const updateDismiss = document.getElementById('update-dismiss');
+const updateChangelogToggle = document.getElementById('update-changelog-toggle');
+const updateChangelog = document.getElementById('update-changelog');
+const updateChangelogContent = document.getElementById('update-changelog-content');
 
 let updateState = {
   available: false,
@@ -4594,7 +4851,8 @@ let updateState = {
   version: null,
   downloadedVersion: null,  // Track actual downloaded version
   dismissed: false,
-  dismissedVersion: null    // Track which version was dismissed
+  dismissedVersion: null,   // Track which version was dismissed
+  changelog: null
 };
 
 function showUpdateBanner() {
@@ -4606,6 +4864,8 @@ function showUpdateBanner() {
 
 function hideUpdateBanner() {
   updateBanner.style.display = 'none';
+  updateChangelog.style.display = 'none';
+  updateChangelogToggle.classList.remove('expanded');
   document.querySelector('.main-container').style.height = 'calc(100vh - 36px)';
 }
 
@@ -4633,9 +4893,12 @@ api.updates.onStatus((data) => {
 
       updateState.available = true;
       updateState.version = data.version;
+      updateState.changelog = null;
       updateMessage.textContent = t('updates.newVersionAvailable', { version: data.version });
       updateProgressContainer.style.display = 'flex';
       updateBtn.style.display = 'none';
+      updateChangelogToggle.style.display = 'none';
+      updateChangelog.style.display = 'none';
       updateBanner.classList.remove('downloaded');
       showUpdateBanner();
       break;
@@ -4648,12 +4911,25 @@ api.updates.onStatus((data) => {
       updateState.downloaded = true;
       updateState.downloadedVersion = data.version;  // Track actual downloaded version
       updateState.version = data.version;  // Update to actual version
+      updateState.changelog = data.changelog || null;
       updateMessage.textContent = t('updates.readyToInstall', { version: data.version });
       updateProgressContainer.style.display = 'none';
       updateBtn.style.display = 'block';
       updateBtn.disabled = false;  // Re-enable button
       updateBtn.textContent = t('updates.restartToUpdate');  // Reset button text
       updateBanner.classList.add('downloaded');
+      // Show changelog toggle if we have release notes
+      if (updateState.changelog) {
+        updateChangelogToggle.style.display = 'inline-flex';
+        try {
+          const { marked } = require('marked');
+          updateChangelogContent.innerHTML = marked(updateState.changelog);
+        } catch (e) {
+          updateChangelogContent.textContent = updateState.changelog;
+        }
+      } else {
+        updateChangelogToggle.style.display = 'none';
+      }
       showUpdateBanner();
       break;
 
@@ -4682,6 +4958,13 @@ updateBtn.addEventListener('click', () => {
   updateBtn.disabled = true;
   updateBtn.textContent = t('updates.installing');
   api.app.installUpdate();
+});
+
+// Changelog toggle button
+updateChangelogToggle.addEventListener('click', () => {
+  const isOpen = updateChangelog.style.display !== 'none';
+  updateChangelog.style.display = isOpen ? 'none' : 'block';
+  updateChangelogToggle.classList.toggle('expanded', !isOpen);
 });
 
 // Dismiss button

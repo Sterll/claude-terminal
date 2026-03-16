@@ -627,6 +627,55 @@ async function addMarketplace(url) {
   }
 }
 
+/**
+ * Uninstall a plugin by its key (pluginName@marketplace)
+ * Removes from installed_plugins.json and deletes the cache directory
+ */
+async function uninstallPlugin(pluginKey) {
+  console.debug(`[PluginService] uninstallPlugin: ${pluginKey}`);
+  try {
+    if (!fs.existsSync(installedFile)) {
+      return { success: false, error: 'No installed plugins file found' };
+    }
+
+    let installed;
+    try {
+      installed = JSON.parse(fs.readFileSync(installedFile, 'utf8'));
+    } catch (e) {
+      return { success: false, error: `Failed to parse installed_plugins.json: ${e.message}` };
+    }
+
+    if (!installed.plugins || !installed.plugins[pluginKey]) {
+      return { success: false, error: `Plugin '${pluginKey}' is not installed` };
+    }
+
+    const entry = installed.plugins[pluginKey][0];
+    const installPath = entry?.installPath;
+
+    // Remove from manifest
+    delete installed.plugins[pluginKey];
+
+    // Atomic write (temp + rename)
+    const tmp = installedFile + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(installed, null, 2), 'utf8');
+    fs.renameSync(tmp, installedFile);
+
+    // Delete cache directory (non-fatal if fails)
+    if (installPath) {
+      try {
+        fs.rmSync(installPath, { recursive: true, force: true });
+      } catch (e) {
+        console.warn(`[PluginService] Could not delete install dir ${installPath}:`, e.message);
+      }
+    }
+
+    return { success: true };
+  } catch (e) {
+    console.error('[PluginService] uninstallPlugin error:', e);
+    return { success: false, error: e.message };
+  }
+}
+
 module.exports = {
   getInstalledPlugins,
   getMarketplaces,
@@ -634,5 +683,6 @@ module.exports = {
   getCatalog,
   getPluginReadme,
   installPlugin,
+  uninstallPlugin,
   addMarketplace
 };

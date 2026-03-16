@@ -10,7 +10,9 @@ const {
   getQuickActions,
   addQuickAction,
   updateQuickAction,
-  deleteQuickAction
+  deleteQuickAction,
+  getProjectEnvVars,
+  setProjectEnvVars,
 } = require('../../state');
 const { escapeHtml } = require('../../utils');
 const { t } = require('../../i18n');
@@ -46,6 +48,36 @@ const QUICK_ACTION_PRESETS = [
 
 // Track running actions: actionId -> { terminalId, projectId }
 const actionTerminals = new Map();
+
+// External state ref for git branch
+let _gitRepoStatus = new Map();
+function setGitRepoStatus(status) { _gitRepoStatus = status; }
+
+/**
+ * Substitute variables in a command string
+ * @param {string} command
+ * @param {Object} project
+ * @returns {string}
+ */
+function substituteVariables(command, project) {
+  const branch = _gitRepoStatus.get(project.id)?.branch || '';
+  const vars = {
+    '$PROJECT_PATH': project.path,
+    '$PROJECT_NAME': project.name,
+    '$BRANCH': branch,
+    '$HOME': window.electron_nodeModules.os.homedir(),
+  };
+  // Add custom env vars
+  const envVars = getProjectEnvVars(project.id);
+  for (const [key, value] of Object.entries(envVars)) {
+    vars[`$${key}`] = value;
+  }
+  let result = command;
+  for (const [key, value] of Object.entries(vars)) {
+    result = result.replaceAll(key, value);
+  }
+  return result;
+}
 
 /**
  * Get all presets (built-in + custom from settings)
@@ -186,11 +218,13 @@ async function executeQuickAction(project, actionId) {
 
   const existing = actionTerminals.get(actionId);
 
+  const resolvedCommand = substituteVariables(action.command, project);
+
   if (existing && existing.projectId === project.id) {
     // Reuse existing terminal: send Ctrl+C to interrupt, then rerun
     api.terminal.input({ id: existing.terminalId, data: '\x03' });
     setTimeout(() => {
-      api.terminal.input({ id: existing.terminalId, data: action.command + '\r' });
+      api.terminal.input({ id: existing.terminalId, data: resolvedCommand + '\r' });
     }, 200);
     return;
   }
@@ -210,7 +244,7 @@ async function executeQuickAction(project, actionId) {
 
       // Send the command after a short delay for terminal to initialize
       setTimeout(() => {
-        api.terminal.input({ id: terminalId, data: action.command + '\r' });
+        api.terminal.input({ id: terminalId, data: resolvedCommand + '\r' });
       }, 300);
 
       // Listen for terminal exit to clean up mapping
@@ -364,6 +398,10 @@ function renderActionForm(action = null) {
         <div class="quick-action-form-field">
           <label>${t('quickActions.command')}</label>
           <input type="text" id="qa-form-command" placeholder="${t('quickActions.commandPlaceholder')}">
+          <div class="qa-variables-hint">
+            <span>${t('quickActions.availableVars')}:</span>
+            <code>$PROJECT_PATH</code> <code>$BRANCH</code> <code>$PROJECT_NAME</code> <code>$HOME</code>
+          </div>
         </div>
       </div>
       <div class="quick-action-form-row">
@@ -537,6 +575,7 @@ module.exports = {
   hideQuickActionsBar,
   executeQuickAction,
   setTerminalCallback,
+  setGitRepoStatus,
   QUICK_ACTION_ICONS,
   QUICK_ACTION_PRESETS
 };

@@ -441,6 +441,88 @@ body.platform-darwin .titlebar-drag {
   height: 9px;
 }
 
+/* Changelog toggle button */
+.update-changelog-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.update-changelog-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.update-changelog-toggle svg {
+  transition: transform 0.2s;
+}
+
+.update-changelog-toggle.expanded svg {
+  transform: rotate(180deg);
+}
+
+/* Changelog container */
+.update-changelog {
+  border-top: 1px solid var(--border-color);
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--bg-primary);
+}
+
+.update-changelog-content {
+  padding: 12px 16px;
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.update-changelog-content h1,
+.update-changelog-content h2,
+.update-changelog-content h3 {
+  font-size: var(--font-base);
+  color: var(--text-primary);
+  margin: 8px 0 4px;
+}
+
+.update-changelog-content h1:first-child,
+.update-changelog-content h2:first-child,
+.update-changelog-content h3:first-child {
+  margin-top: 0;
+}
+
+.update-changelog-content ul {
+  padding-left: 20px;
+  margin: 4px 0;
+}
+
+.update-changelog-content li {
+  margin: 2px 0;
+}
+
+.update-changelog-content code {
+  background: var(--bg-tertiary);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: var(--font-xs);
+}
+
+.update-changelog-content a {
+  color: var(--accent);
+}
+
+.update-changelog-content a:hover {
+  color: var(--accent-hover);
+}
+
 /* Main Container */
 .main-container {
   display: flex;
@@ -612,6 +694,36 @@ body.platform-darwin .titlebar-drag {
 .sidebar.collapsed .nav-tab {
   justify-content: center;
   padding: 10px;
+  position: relative;
+}
+
+/* Tooltip on hover when sidebar is collapsed */
+.sidebar.collapsed .nav-tab[data-tooltip]::after,
+.sidebar.collapsed .settings-btn[data-tooltip]::after,
+.sidebar.collapsed .notification-toggle[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 1000;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.sidebar.collapsed .nav-tab[data-tooltip]:hover::after,
+.sidebar.collapsed .settings-btn[data-tooltip]:hover::after,
+.sidebar.collapsed .notification-toggle[data-tooltip]:hover::after {
+  opacity: 1;
 }
 
 .sidebar.collapsed .sidebar-footer {
@@ -627,6 +739,7 @@ body.platform-darwin .titlebar-drag {
 .sidebar.collapsed .settings-btn {
   justify-content: center;
   padding: 10px;
+  position: relative;
 }
 
 .sidebar.collapsed .version {
@@ -1023,8 +1136,8 @@ body.platform-darwin .titlebar-drag {
 
 .more-tabs-badge {
   margin-left: auto;
-  background: var(--bg-tertiary);
-  color: var(--text-muted);
+  background: var(--accent-dim);
+  color: var(--accent);
   border-radius: 10px;
   padding: 1px 5px;
   font-size: 10px;
@@ -1034,8 +1147,22 @@ body.platform-darwin .titlebar-drag {
   line-height: 1.4;
 }
 
+.sidebar.collapsed .more-tabs-btn {
+  position: relative;
+}
+
 .sidebar.collapsed .more-tabs-badge {
-  display: none;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  margin: 0;
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  padding: 0;
+  font-size: 0;
+  border-radius: 50%;
+  background: var(--accent);
 }
 
 /* More button active state (an overflow tab is currently active) */

@@ -16,6 +16,8 @@ let currentSessionId = null;
 let currentSteps = [];
 let currentSummary = {};
 let selectedStepIndex = -1;
+let allSessions = []; // All sessions for current project (for branch filtering)
+let currentBranchFilter = ''; // '' = all branches
 
 // ── Player state ───────────────────────────────────────────────────────────────
 let playerSteps = [];
@@ -28,6 +30,7 @@ let currentView = 'timeline'; // 'timeline' | 'player'
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 let projectSelect = null;
+let branchSelect = null;
 let sessionSelect = null;
 let loadBtn = null;
 let summaryBar = null;
@@ -641,23 +644,90 @@ async function loadSessions(projectPath) {
   sessionSelect.setOptions(`<option value="">${t('sessionReplay.loadingSessions')}</option>`);
   sessionSelect.disabled = true;
   loadBtn.disabled = true;
+  currentBranchFilter = '';
   try {
     const sessions = await window.electron_api.claude.sessions(projectPath);
-    if (!sessions || sessions.length === 0) {
+    allSessions = sessions || [];
+    if (allSessions.length === 0) {
       sessionSelect.setOptions(`<option value="">${t('sessionReplay.noSessions')}</option>`);
+      _updateBranchFilter([]);
       return;
     }
-    sessionSelect.setOptions(
-      `<option value="">${t('sessionReplay.selectSession')}</option>` +
-      sessions.map(s => {
-        const label = s.summary || truncate(s.firstPrompt, 70) || s.sessionId;
-        const date = s.modified ? new Date(s.modified).toLocaleDateString() : '';
-        return `<option value="${escapeHtml(s.sessionId)}">${escapeHtml(label)} — ${escapeHtml(date)}</option>`;
-      }).join('')
-    );
+    // Populate branch filter
+    const branches = [...new Set(allSessions.map(s => s.gitBranch).filter(Boolean))].sort();
+    _updateBranchFilter(branches);
+    // Populate sessions
+    _renderSessionOptions(allSessions);
     sessionSelect.disabled = false;
   } catch (e) {
     sessionSelect.setOptions(`<option value="">${t('sessionReplay.errorLoadingSessions')}</option>`);
+    _updateBranchFilter([]);
+  }
+}
+
+function _updateBranchFilter(branches) {
+  if (!branchSelect) return;
+  if (branches.length === 0) {
+    branchSelect.el.style.display = 'none';
+    return;
+  }
+  branchSelect.el.style.display = '';
+  branchSelect.setOptions(
+    `<option value="">${t('sessions.allBranches')}</option>` +
+    branches.map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('')
+  );
+  branchSelect.disabled = false;
+}
+
+function _renderSessionOptions(sessions) {
+  sessionSelect.setOptions(
+    `<option value="">${t('sessionReplay.selectSession')}</option>` +
+    sessions.map(s => {
+      const label = s.summary || truncate(s.firstPrompt, 70) || s.sessionId;
+      const date = s.modified ? new Date(s.modified).toLocaleDateString() : '';
+      const branch = s.gitBranch ? ` [${s.gitBranch}]` : '';
+      return `<option value="${escapeHtml(s.sessionId)}">${escapeHtml(label)} — ${escapeHtml(date)}${escapeHtml(branch)}</option>`;
+    }).join('')
+  );
+}
+
+function _applyBranchFilter() {
+  const filtered = currentBranchFilter
+    ? allSessions.filter(s => s.gitBranch === currentBranchFilter)
+    : allSessions;
+  if (filtered.length === 0) {
+    sessionSelect.setOptions(`<option value="">${t('sessionReplay.noSessions')}</option>`);
+    sessionSelect.disabled = true;
+    loadBtn.disabled = true;
+  } else {
+    _renderSessionOptions(filtered);
+    sessionSelect.disabled = false;
+  }
+}
+
+async function _deleteCurrentSession(sessionId) {
+  const projectPath = projectSelect.value;
+  if (!projectPath || !sessionId) return;
+  try {
+    const result = await window.electron_api.claude.deleteSession({ projectPath, sessionId });
+    if (result.success) {
+      // Reload sessions
+      await loadSessions(projectPath);
+      // Reset replay if the deleted session was loaded
+      if (currentSessionId === sessionId) {
+        currentSessionId = null;
+        currentSteps = [];
+        currentSummary = {};
+        summaryBar.innerHTML = '';
+        timeline.innerHTML = buildEmptyStateHtml();
+        if (viewToggleEl) viewToggleEl.hidden = true;
+      }
+      return true;
+    } else {
+      return false;
+    }
+  } catch {
+    return false;
   }
 }
 
@@ -683,6 +753,9 @@ async function loadReplay() {
     currentView = 'timeline';
     renderTimeline(currentSteps);
     _renderViewToggle();
+    // Show export button
+    const exportBtn = container.querySelector('#sr-export-btn');
+    if (exportBtn) exportBtn.hidden = false;
   } catch (e) {
     timeline.innerHTML = `<div class="sr-empty sr-empty--error">${t('sessionReplay.errorLoading')}: ${escapeHtml(e.message)}</div>`;
   } finally {
@@ -1189,13 +1262,23 @@ function buildHtml() {
         </div>
         <div class="sr-controls">
           <div class="sr-cs-container" id="sr-project-select-wrap"></div>
-          <div class="sr-cs-container" id="sr-session-select-wrap"></div>
+          <div class="sr-cs-container" id="sr-branch-select-wrap" style="display:none"></div>
+          <div class="sr-cs-container sr-session-select-row" id="sr-session-select-wrap"></div>
+          <button class="sr-action-btn sr-delete-btn" id="sr-delete-btn" title="${t('sessions.delete')}" disabled>
+            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          </button>
           <button class="sr-load-btn" id="sr-load-btn" disabled>${t('sessionReplay.load')}</button>
         </div>
       </div>
       <div class="sr-meta">
         <div class="sr-summary" id="sr-summary"></div>
-        <div id="sr-view-toggle" class="sr-view-toggle" hidden></div>
+        <div class="sr-meta-actions">
+          <button class="sr-action-btn sr-export-btn" id="sr-export-btn" title="${t('sessions.export')}" hidden>
+            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            <span>${t('sessions.export')}</span>
+          </button>
+          <div id="sr-view-toggle" class="sr-view-toggle" hidden></div>
+        </div>
       </div>
       <div class="sr-timeline" id="sr-timeline">
         ${buildEmptyStateHtml()}
@@ -1219,13 +1302,20 @@ function init(containerEl, opts = {}) {
   playerChatEl = container.querySelector('#sr-player-chat');
   playerBarEl = container.querySelector('#sr-player-bar');
 
+  const deleteBtn = container.querySelector('#sr-delete-btn');
+  const exportBtn = container.querySelector('#sr-export-btn');
+
   // Create and inject custom select widgets
   const projWidget = makeCustomSelect(t('sessionReplay.selectProject'));
+  const branchWidget = makeCustomSelect(t('sessions.allBranches'));
   const sessWidget = makeCustomSelect(t('sessionReplay.selectSession'));
+  branchWidget.disabled = true;
   sessWidget.disabled = true;
   container.querySelector('#sr-project-select-wrap').appendChild(projWidget.el);
+  container.querySelector('#sr-branch-select-wrap').appendChild(branchWidget.el);
   container.querySelector('#sr-session-select-wrap').appendChild(sessWidget.el);
   projectSelect = projWidget;
+  branchSelect = branchWidget;
   sessionSelect = sessWidget;
 
   // Populate project list
@@ -1254,6 +1344,8 @@ function init(containerEl, opts = {}) {
     sessionSelect.setOptions(`<option value="">${t('sessionReplay.selectSession')}</option>`);
     sessionSelect.disabled = true;
     loadBtn.disabled = true;
+    deleteBtn.disabled = true;
+    allSessions = [];
     // Reset player
     _playerPause();
     if (playerChatEl) { playerChatEl.hidden = true; playerChatEl.innerHTML = ''; }
@@ -1262,6 +1354,7 @@ function init(containerEl, opts = {}) {
     playerCurrentStep = -1;
     currentView = 'timeline';
     if (viewToggleEl) viewToggleEl.hidden = true;
+    if (exportBtn) exportBtn.hidden = true;
     timeline.hidden = false;
     timeline.innerHTML = buildEmptyStateHtml();
     summaryBar.innerHTML = '';
@@ -1269,8 +1362,91 @@ function init(containerEl, opts = {}) {
     if (path) loadSessions(path);
   });
 
+  // Branch filter
+  branchSelect.addEventListener('change', () => {
+    currentBranchFilter = branchSelect.value;
+    _applyBranchFilter();
+  });
+
   sessionSelect.addEventListener('change', () => {
-    loadBtn.disabled = !sessionSelect.value;
+    const hasValue = !!sessionSelect.value;
+    loadBtn.disabled = !hasValue;
+    deleteBtn.disabled = !hasValue;
+  });
+
+  // Delete session
+  deleteBtn.addEventListener('click', async () => {
+    const sessionId = sessionSelect.value;
+    if (!sessionId) return;
+    // Inline confirmation
+    const { showConfirm } = require('../components/Modal');
+    const confirmed = await showConfirm({
+      title: t('sessions.delete'),
+      message: t('sessions.confirmDelete'),
+      confirmLabel: t('common.delete'),
+      cancelLabel: t('common.cancel'),
+      danger: true
+    });
+    if (!confirmed) return;
+    const ok = await _deleteCurrentSession(sessionId);
+    const { showToast } = require('../components/Toast');
+    if (ok) {
+      showToast({ type: 'success', message: t('sessions.deleted'), duration: 3000 });
+    } else {
+      showToast({ type: 'error', message: t('sessions.deleteError'), duration: 4000 });
+    }
+  });
+
+  // Export session
+  exportBtn.addEventListener('click', async () => {
+    if (!currentProjectPath || !currentSessionId) return;
+    const { createModal, showModal, closeModal } = require('../components/Modal');
+    const modal = createModal({
+      id: 'export-session-modal',
+      title: t('sessions.exportFormat'),
+      size: 'small',
+      content: `
+        <div style="display:flex;gap:12px;justify-content:center;padding:16px 0">
+          <button class="sr-export-format-btn" data-format="markdown" style="padding:10px 24px;border-radius:var(--radius);border:1px solid var(--border-color);background:var(--bg-tertiary);color:var(--text-primary);cursor:pointer;font-size:var(--font-base)">
+            ${t('sessions.exportMarkdown')}
+          </button>
+          <button class="sr-export-format-btn" data-format="json" style="padding:10px 24px;border-radius:var(--radius);border:1px solid var(--border-color);background:var(--bg-tertiary);color:var(--text-primary);cursor:pointer;font-size:var(--font-base)">
+            ${t('sessions.exportJson')}
+          </button>
+        </div>
+      `,
+      buttons: [{ label: t('common.cancel'), action: 'cancel' }]
+    });
+    showModal(modal);
+    modal.querySelectorAll('.sr-export-format-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const format = btn.dataset.format;
+        closeModal(modal);
+        try {
+          const result = await window.electron_api.claude.exportSession({
+            projectPath: currentProjectPath,
+            sessionId: currentSessionId,
+            format
+          });
+          if (!result.success) throw new Error(result.error);
+          // Save to file via dialog
+          const ext = format === 'json' ? 'json' : 'md';
+          const filePath = await window.electron_api.dialog.saveFileDialog({
+            defaultPath: `session-${currentSessionId.slice(0, 8)}.${ext}`,
+            filters: [{ name: format === 'json' ? 'JSON' : 'Markdown', extensions: [ext] }]
+          });
+          if (filePath) {
+            const { fs } = window.electron_nodeModules;
+            await fs.promises.writeFile(filePath, result.content, 'utf8');
+            const { showToast } = require('../components/Toast');
+            showToast({ type: 'success', message: t('sessions.exportedTo', { path: filePath }), duration: 4000 });
+          }
+        } catch (e) {
+          const { showToast } = require('../components/Toast');
+          showToast({ type: 'error', message: t('sessions.exportError') + ': ' + e.message, duration: 4000 });
+        }
+      });
+    });
   });
 
   loadBtn.addEventListener('click', loadReplay);
@@ -1280,11 +1456,14 @@ function cleanup() {
   currentSteps = [];
   currentSummary = {};
   selectedStepIndex = -1;
+  allSessions = [];
+  currentBranchFilter = '';
   _playerPause();
   if (_playerDragCleanup) { _playerDragCleanup(); _playerDragCleanup = null; }
   playerSteps = [];
   playerCurrentStep = -1;
   if (projectSelect?.destroy) projectSelect.destroy();
+  if (branchSelect?.destroy) branchSelect.destroy();
   if (sessionSelect?.destroy) sessionSelect.destroy();
 }
 

@@ -1457,6 +1457,142 @@
   border-color: rgba(239, 68, 68, 0.3);
 }
 
+/* ── Deny with feedback ── */
+.chat-perm-feedback,
+.chat-plan-feedback {
+  display: flex;
+  gap: 8px;
+  padding: 6px 14px 12px;
+  align-items: center;
+  animation: chat-msg-in 0.15s ease-out;
+}
+
+.chat-perm-feedback-input,
+.chat-plan-feedback-input {
+  flex: 1;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  outline: none;
+}
+
+.chat-perm-feedback-input:focus,
+.chat-plan-feedback-input:focus {
+  border-color: var(--accent-color);
+}
+
+.chat-perm-btn.deny-send,
+.chat-plan-btn.deny-send {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--font-xs);
+  white-space: nowrap;
+}
+
+.chat-perm-btn.deny-send:hover,
+.chat-plan-btn.deny-send:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+/* ── Plan inline editor ── */
+.chat-plan-edit-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px 6px;
+  margin-left: auto;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.chat-plan-edit-btn:hover {
+  opacity: 1;
+  color: var(--accent-color);
+}
+
+.chat-plan-edit-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.chat-plan-editor {
+  width: 100%;
+  min-height: 200px;
+  max-height: 500px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  font-size: var(--font-sm);
+  resize: vertical;
+  outline: none;
+  margin: 0 16px 8px;
+  box-sizing: border-box;
+  width: calc(100% - 32px);
+}
+
+.chat-plan-editor:focus {
+  border-color: var(--accent-color);
+}
+
+/* ── Export button ── */
+.chat-export-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  margin-left: 8px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.chat-input-footer:hover .chat-export-btn {
+  opacity: 0.5;
+}
+
+.chat-export-btn:hover {
+  opacity: 1 !important;
+  color: var(--accent-color);
+}
+
+.chat-export-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* ── Context pack preview button ── */
+.chat-mention-preview-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.chat-mention-item:hover .chat-mention-preview-btn {
+  opacity: 0.7;
+}
+
+.chat-mention-preview-btn:hover {
+  opacity: 1 !important;
+  color: var(--accent-color);
+}
+
 /* ── Plan cards (EnterPlanMode / ExitPlanMode) ── */
 .chat-plan-card {
   margin: 10px 0;

@@ -55,9 +55,12 @@ temp/
 # Brand & Website (assets managed outside git)
 brand/
 website/
+website2/
+website3/
 
 # Docs / plans
 docs/
+.planning/
 
 # External projects
 remotion-apple/

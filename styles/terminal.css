@@ -1172,6 +1172,50 @@
   opacity: 0.7;
 }
 
+.empty-state-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-top: 4px;
+}
+
+.empty-state-cta:hover {
+  background: var(--accent-hover);
+}
+
+.empty-state-cta svg {
+  width: 16px;
+  height: 16px;
+  opacity: 1;
+  animation: none;
+}
+
+.empty-state-link {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s;
+}
+
+.empty-state-link:hover {
+  color: var(--text-secondary);
+}
+
 /* ========== FILE EXPLORER PANEL ========== */
 .file-explorer-panel {
   width: 280px;
@@ -1425,6 +1469,34 @@
   color: var(--text-tertiary);
 }
 
+/* Content search toggle & sort button */
+.fe-content-search-toggle,
+.fe-sort-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.fe-content-search-toggle:hover,
+.fe-sort-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.fe-content-search-toggle.active {
+  color: var(--accent-color);
+  background: var(--accent-dim);
+}
+
 .fe-search-clear {
   background: none;
   border: none;
@@ -1466,6 +1538,38 @@
   font-weight: 600;
 }
 
+/* Content search results */
+.fe-content-match {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-height: 22px;
+}
+
+.fe-content-match:hover {
+  background: var(--bg-tertiary);
+}
+
+.fe-match-line {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-family: monospace;
+  flex-shrink: 0;
+  min-width: 28px;
+}
+
+.fe-match-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: monospace;
+  font-size: 11px;
+}
+
 /* Inline Rename */
 .fe-inline-rename {
   background: var(--bg-tertiary);
@@ -1489,6 +1593,12 @@
 .fe-node.fe-cut {
   opacity: 0.5;
   font-style: italic;
+}
+
+.fe-node.fe-copied {
+  outline: 1px dashed color-mix(in srgb, var(--accent-color) 40%, transparent);
+  outline-offset: -1px;
+  border-radius: 3px;
 }
 
 .fe-node.fe-drop-target {

@@ -50,10 +50,18 @@ function buildBoardHtml(project) {
   `;
 }
 
+const PRIORITY_ORDER = { p0: 0, p1: 1, p2: 2, p3: 3 };
+const PRIORITY_LABELS = { p0: 'P0', p1: 'P1', p2: 'P2', p3: 'P3' };
+
 function buildColumnHtml(project, col) {
   const tasks = getTasks(project.id)
     .filter(task => task.columnId === col.id)
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    .sort((a, b) => {
+      const pa = PRIORITY_ORDER[a.priority] ?? 99;
+      const pb = PRIORITY_ORDER[b.priority] ?? 99;
+      if (pa !== pb) return pa - pb;
+      return (a.order ?? 0) - (b.order ?? 0);
+    });
 
   return `
     <div class="kanban-column" data-col-id="${escapeHtml(col.id)}" draggable="false">
@@ -97,13 +105,27 @@ function buildCardHtml(project, task) {
     ? `<span class="kanban-card-desc">${escapeHtml(task.description.slice(0, 80))}${task.description.length > 80 ? '…' : ''}</span>`
     : '';
 
+  const priorityHtml = task.priority
+    ? `<span class="kanban-priority kanban-priority-${escapeHtml(task.priority)}">${PRIORITY_LABELS[task.priority] || task.priority.toUpperCase()}</span>`
+    : '';
+
+  let dueDateHtml = '';
+  if (task.dueDate) {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const due = new Date(task.dueDate); due.setHours(0,0,0,0);
+    const isOverdue = due < today;
+    const formatted = `${due.getDate()}/${due.getMonth() + 1}`;
+    dueDateHtml = `<span class="kanban-due-date${isOverdue ? ' overdue' : ''}" title="${escapeHtml(task.dueDate)}">${formatted}</span>`;
+  }
+
   return `
     <div class="kanban-card" data-task-id="${escapeHtml(task.id)}" data-col-id="${escapeHtml(task.columnId)}">
       <span class="kanban-card-drag-handle" title="Drag">⠿</span>
+      ${priorityHtml}
       <span class="kanban-card-title">${escapeHtml(task.title)}</span>
       ${descHtml}
       ${labelsHtml ? `<div class="kanban-card-labels">${labelsHtml}</div>` : ''}
-      ${worktreeHtml || sessionsHtml ? `<div class="kanban-card-meta">${worktreeHtml}${sessionsHtml}</div>` : ''}
+      ${worktreeHtml || sessionsHtml || dueDateHtml ? `<div class="kanban-card-meta">${worktreeHtml}${sessionsHtml}${dueDateHtml}</div>` : ''}
       <button class="kanban-card-delete" data-task-id="${escapeHtml(task.id)}" title="${t('kanban.delete')}">✕</button>
     </div>
   `;
@@ -310,6 +332,22 @@ async function showCreateCardModal(container, project, colId, options) {
           <textarea id="kanban-create-desc" class="kanban-add-card-input" style="margin-top:4px;resize:vertical;min-height:70px"
             placeholder="${t('kanban.cardDescriptionPlaceholder')}"></textarea>
         </div>
+        <div style="display:flex;gap:12px">
+          <div style="flex:1">
+            <label class="kanban-modal-label">${t('kanban.priority')}</label>
+            <select id="kanban-create-priority" class="kanban-add-card-input" style="margin-top:4px">
+              <option value="">${t('kanban.priorityNone')}</option>
+              <option value="p0">P0 — ${t('kanban.priorityCritical')}</option>
+              <option value="p1">P1 — ${t('kanban.priorityHigh')}</option>
+              <option value="p2">P2 — ${t('kanban.priorityMedium')}</option>
+              <option value="p3">P3 — ${t('kanban.priorityLow')}</option>
+            </select>
+          </div>
+          <div style="flex:1">
+            <label class="kanban-modal-label">${t('kanban.dueDate')}</label>
+            <input type="date" id="kanban-create-duedate" class="kanban-add-card-input" style="margin-top:4px">
+          </div>
+        </div>
         ${labels.length > 0 ? `
         <div>
           <label class="kanban-modal-label">${t('kanban.cardLabels')}</label>
@@ -344,11 +382,14 @@ async function showCreateCardModal(container, project, colId, options) {
           return;
         }
         const description = m.querySelector('#kanban-create-desc')?.value || '';
+        const priority = m.querySelector('#kanban-create-priority')?.value || null;
+        const dueDate = m.querySelector('#kanban-create-duedate')?.value || null;
         addTask(project.id, {
           title, description, labels: selectedLabels,
           columnId: colId,
           worktreePath: selectedWorktreePath || null,
           sessionIds: selectedSessionIds,
+          priority, dueDate,
         });
         closeModal(m);
         render(container, project, options);
@@ -549,6 +590,22 @@ async function showEditCardModal(container, project, taskId, options) {
           <textarea id="kanban-edit-desc" class="kanban-add-card-input" style="margin-top:4px;resize:vertical;min-height:70px"
             placeholder="${t('kanban.cardDescriptionPlaceholder')}">${escapeHtml(task.description || '')}</textarea>
         </div>
+        <div style="display:flex;gap:12px">
+          <div style="flex:1">
+            <label class="kanban-modal-label">${t('kanban.priority')}</label>
+            <select id="kanban-edit-priority" class="kanban-add-card-input" style="margin-top:4px">
+              <option value="">${t('kanban.priorityNone')}</option>
+              <option value="p0"${task.priority === 'p0' ? ' selected' : ''}>P0 — ${t('kanban.priorityCritical')}</option>
+              <option value="p1"${task.priority === 'p1' ? ' selected' : ''}>P1 — ${t('kanban.priorityHigh')}</option>
+              <option value="p2"${task.priority === 'p2' ? ' selected' : ''}>P2 — ${t('kanban.priorityMedium')}</option>
+              <option value="p3"${task.priority === 'p3' ? ' selected' : ''}>P3 — ${t('kanban.priorityLow')}</option>
+            </select>
+          </div>
+          <div style="flex:1">
+            <label class="kanban-modal-label">${t('kanban.dueDate')}</label>
+            <input type="date" id="kanban-edit-duedate" class="kanban-add-card-input" style="margin-top:4px" value="${task.dueDate || ''}">
+          </div>
+        </div>
         ${labels.length > 0 ? `
         <div>
           <label class="kanban-modal-label">${t('kanban.cardLabels')}</label>
@@ -580,10 +637,13 @@ async function showEditCardModal(container, project, taskId, options) {
         const title = m.querySelector('#kanban-edit-title')?.value.trim();
         if (!title) return;
         const description = m.querySelector('#kanban-edit-desc')?.value || '';
+        const priority = m.querySelector('#kanban-edit-priority')?.value || null;
+        const dueDate = m.querySelector('#kanban-edit-duedate')?.value || null;
         updateTask(project.id, taskId, {
           title, description, labels: selectedLabels,
           worktreePath: selectedWorktreePath || null,
           sessionIds: selectedSessionIds,
+          priority, dueDate,
         });
         closeModal(m);
         render(container, project, options);

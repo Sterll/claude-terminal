@@ -656,6 +656,22 @@
   background: #16a34a !important;
 }
 
+/* ── Unsaved changes indicator ── */
+#btn-memory-edit {
+  position: relative;
+}
+
+#btn-memory-edit.memory-dirty::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+}
+
 /* ── Responsive ── */
 @media (max-width: 900px) {
   .memory-stats {

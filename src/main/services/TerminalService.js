@@ -122,6 +122,8 @@ class TerminalService {
 
     // Handle exit
     const exitDisposable = ptyProcess.onExit(() => {
+      if (ptyProcess._exited) return;
+      ptyProcess._exited = true;
       try { ptyProcess.kill(); } catch (e) {}
       this.terminals.delete(id);
       this.sendToRenderer('terminal-exit', { id });
@@ -205,6 +207,7 @@ class TerminalService {
     if (!term) return;
 
     const pid = term.pid;
+    term._exited = true;
     this.terminals.delete(id);
 
     // Notify renderer before disposing listeners

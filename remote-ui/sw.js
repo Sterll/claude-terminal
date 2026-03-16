@@ -49,3 +49,35 @@ self.addEventListener('fetch', (event) => {
 self.addEventListener('message', (event) => {
   if (event.data === 'skipWaiting') self.skipWaiting();
 });
+
+// Handle notification click — bring app to foreground
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow('/');
+    })
+  );
+});
+
+// Future: handle push events from cloud relay
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+  try {
+    const data = event.data.json();
+    event.waitUntil(
+      self.registration.showNotification(data.title || 'Claude Terminal', {
+        body: data.body || '',
+        tag: data.tag || 'ct-push',
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        vibrate: data.vibrate || [200, 100, 200],
+      })
+    );
+  } catch (e) {}
+});

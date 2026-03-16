@@ -335,6 +335,7 @@ function createChatView(wrapperEl, project, options = {}) {
   let selectedEffort = initialEffort || getSetting('effortLevel') || 'high';
   let totalCost = 0;
   let totalTokens = 0;
+  let inputTokens = 0; // tracks context window usage
   const toolCards = new Map(); // content_block index -> element
   const toolInputBuffers = new Map(); // content_block index -> accumulated JSON string
   const todoToolIndices = new Set(); // block indices that are TodoWrite tools
@@ -398,6 +399,9 @@ function createChatView(wrapperEl, project, options = {}) {
           <div class="chat-footer-left">
             <span class="chat-status-dot"></span>
             <span class="chat-status-text">${escapeHtml(t('chat.ready'))}</span>
+            <button class="chat-export-btn" title="${escapeHtml(t('chat.exportConversation') || 'Export conversation')}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </button>
           </div>
           <div class="chat-footer-right">
             <div class="chat-effort-selector">
@@ -438,6 +442,75 @@ function createChatView(wrapperEl, project, options = {}) {
   const mentionDropdown = chatView.querySelector('.chat-mention-dropdown');
   const mentionChipsEl = chatView.querySelector('.chat-mention-chips');
   const followupSuggestionsEl = chatView.querySelector('.chat-followup-suggestions');
+  const exportBtn = chatView.querySelector('.chat-export-btn');
+
+  // ── Export conversation ──
+
+  function exportConversation(format) {
+    if (!conversationHistory.length) return;
+    let content, ext, mime;
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const filename = `conversation-${timestamp}`;
+
+    if (format === 'json') {
+      content = JSON.stringify(conversationHistory, null, 2);
+      ext = 'json';
+      mime = 'application/json';
+    } else if (format === 'html') {
+      const msgs = conversationHistory.map(m => {
+        const role = m.role === 'user' ? 'You' : 'Claude';
+        const rendered = m.role === 'assistant' ? renderMarkdown(m.content) : escapeHtml(m.content);
+        return `<div class="msg ${m.role}"><strong>${role}:</strong><div>${rendered}</div></div>`;
+      }).join('\n');
+      content = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Conversation</title><style>body{font-family:system-ui;max-width:800px;margin:0 auto;padding:20px;background:#1a1a1a;color:#e0e0e0}.msg{margin:16px 0;padding:12px;border-radius:8px}.user{background:#252525}.assistant{background:#1e2a1e}strong{color:#d97706}pre{background:#111;padding:8px;border-radius:4px;overflow-x:auto}code{font-size:0.9em}</style></head><body><h1>Conversation Export</h1>${msgs}</body></html>`;
+      ext = 'html';
+      mime = 'text/html';
+    } else {
+      // markdown
+      content = conversationHistory.map(m => {
+        const role = m.role === 'user' ? '## You' : '## Claude';
+        return `${role}\n\n${m.content}\n`;
+      }).join('\n---\n\n');
+      ext = 'md';
+      mime = 'text/markdown';
+    }
+
+    // Download via blob
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${filename}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  if (exportBtn) {
+    exportBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Show format dropdown
+      const existing = chatView.querySelector('.chat-export-dropdown');
+      if (existing) { existing.remove(); return; }
+      const dd = document.createElement('div');
+      dd.className = 'chat-export-dropdown';
+      dd.innerHTML = ['markdown', 'html', 'json'].map(f =>
+        `<button class="chat-export-option" data-format="${f}">${f.toUpperCase()}</button>`
+      ).join('');
+      dd.style.cssText = 'position:absolute;bottom:100%;left:0;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:4px;display:flex;gap:4px;z-index:100;margin-bottom:4px';
+      exportBtn.style.position = 'relative';
+      exportBtn.appendChild(dd);
+      dd.addEventListener('click', (ev) => {
+        const fmt = ev.target.dataset.format;
+        if (fmt) { exportConversation(fmt); dd.remove(); }
+      });
+      setTimeout(() => {
+        const close = () => { dd.remove(); document.removeEventListener('click', close); };
+        document.addEventListener('click', close);
+      }, 0);
+    });
+  }
 
   // ── Attach interactive markdown block handlers (sort, collapse, preview, etc.) ──
   MarkdownRenderer.attachInteractivity(messagesEl);
@@ -883,10 +956,12 @@ function createChatView(wrapperEl, project, options = {}) {
   const MENTION_TYPES = [
     { type: 'file', label: '@file', desc: t('chat.mentionFile'), icon: '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>' },
     { type: 'git', label: '@git', desc: t('chat.mentionGit'), icon: '<svg viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 012 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>' },
+    { type: 'diff', label: '@diff', desc: t('chat.mentionDiff'), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18"/><path d="M18 9l-6-6-6 6"/><path d="M6 15l6 6 6-6"/></svg>' },
     { type: 'terminal', label: '@terminal', desc: t('chat.mentionTerminal'), icon: '<svg viewBox="0 0 24 24"><polyline points="4,17 10,11 4,5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>' },
     { type: 'errors', label: '@errors', desc: t('chat.mentionErrors'), icon: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>' },
     { type: 'selection', label: '@selection', desc: t('chat.mentionSelection'), icon: '<svg viewBox="0 0 24 24"><path d="M5 3l14 9-14 9V3z"/></svg>' },
     { type: 'todos', label: '@todos', desc: t('chat.mentionTodos'), icon: '<svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22,4 12,14.01 9,11.01"/></svg>' },
+    { type: 'symbol', label: '@symbol', desc: t('chat.mentionSymbol'), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h4v10H4z"/><path d="M16 7h4v10h-4z"/><path d="M8 12h8"/></svg>' },
     { type: 'project', label: '@project', desc: t('chat.mentionProject'), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>' },
     { type: 'context', label: '@context', desc: t('chat.mentionContext'), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>' },
     { type: 'prompt', label: '@prompt', desc: t('chat.mentionPrompt'), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>' },
@@ -953,7 +1028,13 @@ function createChatView(wrapperEl, project, options = {}) {
       onSelect: (el) => {
         if (el.dataset.path) {
           removeAtTrigger();
-          addMentionChip('file', { path: el.dataset.path, fullPath: el.dataset.fullpath });
+          // Check if user typed a line range after the file path (e.g. @file src/app.ts:100-200)
+          const text = inputEl.value;
+          const cursorPos = inputEl.selectionStart;
+          const beforeCursor = text.substring(0, cursorPos);
+          const rangeMatch = beforeCursor.match(/:(\d+)(?:-(\d+))?\s*$/);
+          const lineRange = rangeMatch ? { start: parseInt(rangeMatch[1]), end: rangeMatch[2] ? parseInt(rangeMatch[2]) : null } : null;
+          addMentionChip('file', { path: el.dataset.path, fullPath: el.dataset.fullpath, lineRange });
           hideMentionDropdown();
           inputEl.focus();
         }
@@ -1007,9 +1088,14 @@ function createChatView(wrapperEl, project, options = {}) {
         <div class="chat-mention-item-info">
           <span class="chat-mention-item-name">${escapeHtml(pack.name)}</span>
           <span class="chat-mention-item-desc">${escapeHtml(pack.description || '')}${pack.scope === 'project' ? ' <span class="chat-mention-badge">project</span>' : ''}</span>
-        </div>`,
+        </div>
+        <button class="chat-mention-preview-btn" data-previewid="${escapeHtml(pack.id)}" title="${escapeHtml(t('chat.previewContextPack') || 'Preview')}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>`,
       itemAttrs: (pack) => `data-packid="${escapeHtml(pack.id)}" data-packname="${escapeHtml(pack.name)}"`,
       onSelect: (el) => {
+        // Ignore clicks on preview button
+        if (el.dataset.previewid) return;
         if (el.dataset.packid) {
           removeAtTrigger();
           addMentionChip('context', { id: el.dataset.packid, name: el.dataset.packname });
@@ -1090,6 +1176,27 @@ function createChatView(wrapperEl, project, options = {}) {
       el.addEventListener('mouseenter', () => {
         mentionSelectedIndex = idx;
         highlightMentionItem(mentionDropdown.querySelectorAll('.chat-mention-item'));
+      });
+    });
+    // Context pack preview buttons
+    mentionDropdown.querySelectorAll('.chat-mention-preview-btn').forEach(btn => {
+      btn.addEventListener('mousedown', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const packId = btn.dataset.previewid;
+        if (!packId) return;
+        try {
+          const ContextPromptService = require('../../services/ContextPromptService');
+          const { content, stats } = await ContextPromptService.previewContextPack(packId, project?.path);
+          const { showModal } = require('./Modal');
+          showModal({
+            title: `${t('chat.previewContextPack') || 'Context Pack Preview'} (${stats.files} files, ${stats.lines} lines, ${Math.round(stats.chars / 1024)}KB)`,
+            content: `<pre style="max-height:400px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-all;background:var(--bg-primary);padding:12px;border-radius:var(--radius-sm)">${escapeHtml(content)}</pre>`,
+            size: 'large'
+          });
+        } catch (err) {
+          console.error('[ChatView] Preview failed:', err);
+        }
       });
     });
   }
@@ -1206,6 +1313,30 @@ function createChatView(wrapperEl, project, options = {}) {
       return;
     }
 
+    // @diff — prompt for ref (default HEAD~1)
+    if (type === 'diff') {
+      removeAtTrigger();
+      hideMentionDropdown();
+      const ref = prompt(t('chat.diffRefPrompt') || 'Git ref to diff against (e.g. HEAD~3, main, abc1234):', 'HEAD~1');
+      if (ref && ref.trim()) {
+        addMentionChip('diff', { ref: ref.trim() });
+      }
+      inputEl.focus();
+      return;
+    }
+
+    // @symbol — prompt for symbol name
+    if (type === 'symbol') {
+      removeAtTrigger();
+      hideMentionDropdown();
+      const name = prompt(t('chat.symbolNamePrompt') || 'Symbol name (function, class, variable):');
+      if (name && name.trim()) {
+        addMentionChip('symbol', { name: name.trim() });
+      }
+      inputEl.focus();
+      return;
+    }
+
     // Direct mention types — add chip immediately
     removeAtTrigger();
     addMentionChip(type);
@@ -1222,7 +1353,14 @@ function createChatView(wrapperEl, project, options = {}) {
 
   function addMentionChip(type, data = null) {
     let label;
-    if (type === 'file') label = `@${data.path}`;
+    if (type === 'file') {
+      label = `@${data.path}`;
+      if (data.lineRange) {
+        label += `:${data.lineRange.start}${data.lineRange.end ? '-' + data.lineRange.end : ''}`;
+      }
+    }
+    else if (type === 'diff' && data?.ref) label = `@diff:${data.ref}`;
+    else if (type === 'symbol' && data?.name) label = `@symbol:${data.name}`;
     else if (type === 'project' && data?.name) label = `@project:${data.name}`;
     else if (type === 'context' && data?.name) label = `@context:${data.name}`;
     else label = `@${type}`;
@@ -1284,7 +1422,13 @@ function createChatView(wrapperEl, project, options = {}) {
           try {
             const raw = await fs.promises.readFile(mention.data.fullPath, 'utf8');
             const lines = raw.split('\n');
-            if (lines.length > 500) {
+            const range = mention.data.lineRange;
+            if (range) {
+              const start = Math.max(1, range.start);
+              const end = range.end ? Math.min(lines.length, range.end) : Math.min(lines.length, start + 499);
+              const slice = lines.slice(start - 1, end);
+              content = `File: ${mention.data.path} (lines ${start}-${end} of ${lines.length})\n\n${slice.map((l, i) => `${start + i}: ${l}`).join('\n')}`;
+            } else if (lines.length > 500) {
               content = `File: ${mention.data.path} (showing first 500 of ${lines.length} lines)\n\n${lines.slice(0, 500).join('\n')}`;
             } else {
               content = `File: ${mention.data.path}\n\n${raw}`;
@@ -1361,6 +1505,74 @@ function createChatView(wrapperEl, project, options = {}) {
             content = await ContextPromptService.resolveContextPack(mention.data.id, project?.path);
           } catch (e) {
             content = `[Error resolving context pack: ${mention.data.name}]`;
+          }
+          break;
+        }
+
+        case 'diff': {
+          try {
+            const ref = mention.data?.ref || 'HEAD';
+            const { execSync } = window.electron_nodeModules.child_process;
+            const diff = execSync(`git diff ${ref}`, { cwd: project.path, encoding: 'utf8', maxBuffer: 1024 * 1024, timeout: 15000 });
+            if (diff.trim()) {
+              content = `Git Diff (${ref}):\n\n${diff.length > 30000 ? diff.slice(0, 30000) + '\n\n[Diff truncated at 30,000 chars]' : diff}`;
+            } else {
+              content = `[No diff found for ${ref}]`;
+            }
+          } catch (e) {
+            content = `[Error running git diff: ${e.message}]`;
+          }
+          break;
+        }
+
+        case 'symbol': {
+          try {
+            const symbolName = mention.data?.name || '';
+            if (!symbolName) { content = '[No symbol name provided]'; break; }
+            const { execSync } = window.electron_nodeModules.child_process;
+            // Use git grep for fast symbol search across the project
+            const grepResult = execSync(
+              `git grep -n -E "(function|class|const|let|var|def |interface |type |enum |export )\\s*${symbolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b"`,
+              { cwd: project.path, encoding: 'utf8', maxBuffer: 512 * 1024, timeout: 10000 }
+            ).trim();
+            if (grepResult) {
+              const matches = grepResult.split('\n').slice(0, 10);
+              const parts = [`Symbol: ${symbolName} (${matches.length} definition(s) found)\n`];
+              for (const match of matches) {
+                const [fileLine, ...rest] = match.split(':');
+                const sepIdx = fileLine.lastIndexOf(':');
+                // git grep format: file:line:content
+                parts.push(match);
+              }
+              // Read the first match's surrounding context
+              const firstMatch = matches[0];
+              const firstColon = firstMatch.indexOf(':');
+              const secondColon = firstMatch.indexOf(':', firstColon + 1);
+              if (firstColon > 0 && secondColon > 0) {
+                const filePath = firstMatch.substring(0, firstColon);
+                const lineNum = parseInt(firstMatch.substring(firstColon + 1, secondColon));
+                if (!isNaN(lineNum)) {
+                  const fullPath = window.electron_nodeModules.path.join(project.path, filePath);
+                  try {
+                    const fileContent = await fs.promises.readFile(fullPath, 'utf8');
+                    const allLines = fileContent.split('\n');
+                    const start = Math.max(0, lineNum - 3);
+                    const end = Math.min(allLines.length, lineNum + 30);
+                    parts.push(`\n--- ${filePath}:${start + 1}-${end} ---`);
+                    parts.push(allLines.slice(start, end).map((l, i) => `${start + i + 1}: ${l}`).join('\n'));
+                  } catch (_) { /* file read error */ }
+                }
+              }
+              content = parts.join('\n');
+            } else {
+              content = `[Symbol "${symbolName}" not found in project]`;
+            }
+          } catch (e) {
+            if (e.status === 1) {
+              content = `[Symbol "${mention.data?.name}" not found in project]`;
+            } else {
+              content = `[Error searching for symbol: ${e.message}]`;
+            }
           }
           break;
         }
@@ -1776,7 +1988,8 @@ function createChatView(wrapperEl, project, options = {}) {
           mentions: resolvedMentions,
           model: selectedModel,
           effort: selectedEffort,
-          enable1MContext: getSetting('enable1MContext') || false
+          enable1MContext: getSetting('enable1MContext') || false,
+          maxTurns: getSetting('maxTurns') || null
         };
         // Built-in prompt (global/project-type): appends to claude_code preset, keeps CLAUDE.md
         if (builtinSystemPrompt) {
@@ -1855,6 +2068,21 @@ function createChatView(wrapperEl, project, options = {}) {
     // Clear permission reminder timers
     _clearPermTimers(requestId);
 
+    // Deny → show feedback input first
+    if (action === 'deny') {
+      const feedbackRow = card.querySelector('.chat-perm-feedback');
+      if (feedbackRow && feedbackRow.style.display === 'none') {
+        btn.classList.add('chosen');
+        card.querySelectorAll('.chat-perm-btn:not(.deny)').forEach(b => {
+          b.disabled = true;
+          b.classList.add('disabled');
+        });
+        feedbackRow.style.display = '';
+        feedbackRow.querySelector('.chat-perm-feedback-input')?.focus();
+        return;
+      }
+    }
+
     card.querySelectorAll('.chat-perm-btn').forEach(b => {
       b.disabled = true;
       b.classList.add('disabled');
@@ -1881,11 +2109,14 @@ function createChatView(wrapperEl, project, options = {}) {
       }
       api.chat.respondPermission({ requestId, result });
     } else {
-      btn.classList.add('chosen');
+      // deny or deny-send: include feedback message if provided
+      const feedbackInput = card.querySelector('.chat-perm-feedback-input');
+      const message = feedbackInput?.value?.trim() || 'User denied this action';
+      card.querySelector('.chat-perm-btn.deny')?.classList.add('chosen');
       card.classList.add('resolved', 'denied');
       api.chat.respondPermission({
         requestId,
-        result: { behavior: 'deny', message: 'User denied this action' }
+        result: { behavior: 'deny', message }
       });
     }
 
@@ -1910,6 +2141,21 @@ function createChatView(wrapperEl, project, options = {}) {
     const requestId = card.dataset.requestId;
     const action = btn.dataset.action;
 
+    // Deny → show feedback input first
+    if (action === 'deny') {
+      const feedbackRow = card.querySelector('.chat-plan-feedback');
+      if (feedbackRow && feedbackRow.style.display === 'none') {
+        btn.classList.add('chosen');
+        card.querySelectorAll('.chat-plan-btn:not(.reject)').forEach(b => {
+          b.disabled = true;
+          b.classList.add('disabled');
+        });
+        feedbackRow.style.display = '';
+        feedbackRow.querySelector('.chat-plan-feedback-input')?.focus();
+        return;
+      }
+    }
+
     card.querySelectorAll('.chat-plan-btn').forEach(b => {
       b.disabled = true;
       b.classList.add('disabled');
@@ -1919,16 +2165,26 @@ function createChatView(wrapperEl, project, options = {}) {
       btn.classList.add('chosen');
       card.classList.add('resolved', 'approved');
       const inputData = JSON.parse(card.dataset.toolInput || '{}');
+      // If plan was edited inline, save back to file
+      const editedRaw = card.dataset.planEdited;
+      if (editedRaw && card.dataset.planFilePath) {
+        try {
+          window.electron_nodeModules.fs.writeFileSync(card.dataset.planFilePath, editedRaw);
+        } catch (e) { console.warn('[ChatView] Failed to save edited plan:', e); }
+      }
       api.chat.respondPermission({
         requestId,
         result: { behavior: 'allow', updatedInput: inputData }
       });
     } else {
-      btn.classList.add('chosen');
+      // deny or deny-send: include feedback if provided
+      const feedbackInput = card.querySelector('.chat-plan-feedback-input');
+      const message = feedbackInput?.value?.trim() || 'User rejected the plan';
+      card.querySelector('.chat-plan-btn.reject')?.classList.add('chosen');
       card.classList.add('resolved', 'rejected');
       api.chat.respondPermission({
         requestId,
-        result: { behavior: 'deny', message: 'User rejected the plan' }
+        result: { behavior: 'deny', message }
       });
     }
 
@@ -2898,8 +3154,18 @@ function createChatView(wrapperEl, project, options = {}) {
         <button class="chat-perm-btn always-allow" data-action="always-allow">${escapeHtml(alwaysAllowText)}</button>
         <button class="chat-perm-btn deny" data-action="deny">${escapeHtml(denyText)}</button>
       </div>
+      <div class="chat-perm-feedback" style="display:none">
+        <input type="text" class="chat-perm-feedback-input" placeholder="${escapeHtml(t('chat.denyFeedbackPlaceholder') || 'Explain why (optional)...')}" />
+        <button class="chat-perm-btn deny-send" data-action="deny-send">${escapeHtml(t('chat.sendFeedback') || 'Deny with feedback')}</button>
+      </div>
     `;
     messagesEl.appendChild(el);
+    el.querySelector('.chat-perm-feedback-input')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handlePermissionClick(el.querySelector('[data-action="deny-send"]'));
+      }
+    });
     requestAnimationFrame(() => {
       el.scrollIntoView({ behavior: 'smooth', block: 'end' });
     });
@@ -3041,6 +3307,7 @@ function createChatView(wrapperEl, project, options = {}) {
     if (isExit) {
       let planContent = '';
       let planFilePath = null;
+      let rawPlanText = '';
 
       // 1. Try reading plan from disk (~/.claude/plans/)
       planFilePath = findPlanFilePath();
@@ -3048,7 +3315,8 @@ function createChatView(wrapperEl, project, options = {}) {
         try {
           const raw = await window.electron_nodeModules.fs.promises.readFile(planFilePath, 'utf-8');
           if (raw && raw.trim()) {
-            planContent = renderMarkdown(raw.trim());
+            rawPlanText = raw.trim();
+            planContent = renderMarkdown(rawPlanText);
           }
         } catch (e) {
           console.warn('[ChatView] Failed to read plan file:', planFilePath, e);
@@ -3086,16 +3354,30 @@ function createChatView(wrapperEl, project, options = {}) {
         ? `<span class="chat-plan-file-path" title="${escapeHtml(planFilePath)}">${escapeHtml(window.electron_nodeModules.path.basename(planFilePath))}</span>`
         : '';
 
+      // Store raw content and file path for inline editing
+      if (planFilePath) el.dataset.planFilePath = planFilePath;
+      if (rawPlanText) el.dataset.planRaw = rawPlanText;
+
+      const editBtn = planContent
+        ? `<button class="chat-plan-edit-btn" title="${escapeHtml(t('chat.editPlan') || 'Edit plan')}""><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>`
+        : '';
+
       el.innerHTML = `
         <div class="chat-plan-header">
           <div class="chat-plan-icon">${icon}</div>
           <span>${escapeHtml(t('chat.planReady') || 'Plan ready for review')}</span>
           ${fileInfo}
+          ${editBtn}
         </div>
         ${planPreview}
+        <textarea class="chat-plan-editor" style="display:none" spellcheck="false"></textarea>
         <div class="chat-plan-actions">
           <button class="chat-plan-btn approve" data-action="allow">${escapeHtml(t('chat.approvePlan') || 'Approve plan')}</button>
           <button class="chat-plan-btn reject" data-action="deny">${escapeHtml(t('chat.rejectPlan') || 'Reject plan')}</button>
+        </div>
+        <div class="chat-plan-feedback" style="display:none">
+          <input type="text" class="chat-plan-feedback-input" placeholder="${escapeHtml(t('chat.denyFeedbackPlaceholder') || 'Explain why (optional)...')}" />
+          <button class="chat-plan-btn deny-send" data-action="deny-send">${escapeHtml(t('chat.sendFeedback') || 'Reject with feedback')}</button>
         </div>
       `;
     } else {
@@ -3108,10 +3390,48 @@ function createChatView(wrapperEl, project, options = {}) {
           <button class="chat-plan-btn approve" data-action="allow">${escapeHtml(t('chat.allow') || 'Allow')}</button>
           <button class="chat-plan-btn reject" data-action="deny">${escapeHtml(t('chat.deny') || 'Deny')}</button>
         </div>
+        <div class="chat-plan-feedback" style="display:none">
+          <input type="text" class="chat-plan-feedback-input" placeholder="${escapeHtml(t('chat.denyFeedbackPlaceholder') || 'Explain why (optional)...')}" />
+          <button class="chat-plan-btn deny-send" data-action="deny-send">${escapeHtml(t('chat.sendFeedback') || 'Reject with feedback')}</button>
+        </div>
       `;
     }
 
     messagesEl.appendChild(el);
+    // Feedback input: Enter to send
+    el.querySelector('.chat-plan-feedback-input')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handlePlanClick(el.querySelector('[data-action="deny-send"]'));
+      }
+    });
+    // Inline plan editor toggle
+    const editBtnEl = el.querySelector('.chat-plan-edit-btn');
+    if (editBtnEl) {
+      editBtnEl.addEventListener('click', () => {
+        const contentEl = el.querySelector('.chat-plan-content');
+        const editorEl = el.querySelector('.chat-plan-editor');
+        if (!contentEl || !editorEl) return;
+        const isEditing = editorEl.style.display !== 'none';
+        if (isEditing) {
+          // Save edited content and re-render
+          const edited = editorEl.value;
+          el.dataset.planEdited = edited;
+          contentEl.querySelector('.chat-plan-content-inner').innerHTML = renderMarkdown(edited);
+          contentEl.style.display = '';
+          editorEl.style.display = 'none';
+          editBtnEl.title = t('chat.editPlan') || 'Edit plan';
+        } else {
+          // Show editor with raw or previously-edited content
+          editorEl.value = el.dataset.planEdited || el.dataset.planRaw || '';
+          contentEl.style.display = 'none';
+          editorEl.style.display = '';
+          editorEl.style.height = Math.min(400, editorEl.scrollHeight) + 'px';
+          editorEl.focus();
+          editBtnEl.title = t('chat.doneEditing') || 'Done editing';
+        }
+      });
+    }
     requestAnimationFrame(() => {
       el.scrollIntoView({ behavior: 'smooth', block: 'end' });
     });
@@ -3179,7 +3499,15 @@ function createChatView(wrapperEl, project, options = {}) {
       if (match) modelLabel.textContent = match.label;
       else modelLabel.textContent = model.split('-').slice(1, 3).join('-');
     }
-    if (totalTokens > 0) statusTokens.textContent = `${totalTokens.toLocaleString()} tokens`;
+    if (inputTokens > 0) {
+      const contextLimit = getSetting('enable1MContext') ? 1000000 : 200000;
+      const pct = Math.round((inputTokens / contextLimit) * 100);
+      const formatK = (n) => n >= 1000 ? Math.round(n / 1000) + 'K' : n;
+      statusTokens.textContent = `${formatK(inputTokens)} / ${formatK(contextLimit)} (${pct}%)`;
+      statusTokens.title = `${t('chat.contextWindowUsage') || 'Context window'}: ${inputTokens.toLocaleString()} / ${contextLimit.toLocaleString()} tokens`;
+    } else if (totalTokens > 0) {
+      statusTokens.textContent = `${totalTokens.toLocaleString()} tokens`;
+    }
     if (totalCost > 0) statusCost.textContent = `$${totalCost.toFixed(4)}`;
   }
 
@@ -3303,6 +3631,7 @@ function createChatView(wrapperEl, project, options = {}) {
       if (message.total_cost_usd != null) totalCost = message.total_cost_usd;
       if (message.usage) {
         totalTokens = (message.usage.input_tokens || 0) + (message.usage.output_tokens || 0);
+        inputTokens = message.usage.input_tokens || 0;
       }
       if (message.model) model = message.model;
       updateStatusInfo();
@@ -3314,7 +3643,7 @@ function createChatView(wrapperEl, project, options = {}) {
         if (!isAborting) {
           let errorMsg;
           if (message.subtype === 'error_max_turns') {
-            errorMsg = t('chat.errorMaxTurns', { count: 100 });
+            errorMsg = t('chat.errorMaxTurns', { count: getSetting('maxTurns') || 100 });
           } else if (message.subtype === 'error_max_budget_usd') {
             errorMsg = t('chat.errorMaxBudget', { cost: message.total_cost_usd?.toFixed(2) || '?' });
           } else if (message.subtype === 'error_during_execution') {

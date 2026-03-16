@@ -61,6 +61,7 @@ let _pinUsed = false;  // true after one successful auth (PIN stays displayed bu
 // Valid session tokens → { issuedAt } (once authenticated via PIN)
 const _sessionTokens = new Map(); // Map<token, { issuedAt }>
 const _connectedClients = new Map(); // Map<sessionToken, WebSocket>
+const _clientMeta = new Map(); // Map<sessionToken, { connectedAt, ip, userAgent }>
 
 // Brute-force protection
 let _failedAttempts = 0;
@@ -139,6 +140,17 @@ function _getNetworkInterfaces() {
 // ─── PIN Management ───────────────────────────────────────────────────────────
 
 function generatePin() {
+  const settings = _loadSettings();
+  if (settings.remotePersistentPin && settings.remotePersistentPinValue) {
+    const ppin = String(settings.remotePersistentPinValue).padStart(6, '0');
+    if (/^\d{6}$/.test(ppin)) {
+      _pin = ppin;
+      _pinExpiry = Infinity;
+      _pinUsed = false;
+      console.debug('[Remote] Using persistent PIN');
+      return _pin;
+    }
+  }
   _pin = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
   _pinExpiry = Date.now() + PIN_TTL_MS;
   _pinUsed = false;
@@ -148,7 +160,9 @@ function generatePin() {
 
 function _isPinValid(pin) {
   if (Date.now() < _lockoutUntil) return false;
-  if (_pin !== null && !_pinUsed && pin === _pin && Date.now() < _pinExpiry) {
+  const settings = _loadSettings();
+  const isPersistent = settings.remotePersistentPin && !!settings.remotePersistentPinValue;
+  if (_pin !== null && pin === _pin && (isPersistent || (!_pinUsed && Date.now() < _pinExpiry))) {
     _failedAttempts = 0;
     return true;
   }
@@ -156,8 +170,8 @@ function _isPinValid(pin) {
   if (_failedAttempts >= MAX_AUTH_ATTEMPTS) {
     _lockoutUntil = Date.now() + AUTH_LOCKOUT_MS;
     _failedAttempts = 0;
-    generatePin();
-    console.warn('[Remote] Too many failed PIN attempts — locked out for 60s, new PIN generated');
+    if (!isPersistent) generatePin();
+    console.warn('[Remote] Too many failed PIN attempts — locked out for 60s');
   }
   return false;
 }
@@ -173,7 +187,9 @@ function _isTokenValid(token) {
 }
 
 function getPin() {
-  return { pin: _pin, expiresAt: _pinExpiry, used: _pinUsed };
+  const settings = _loadSettings();
+  const isPersistent = settings.remotePersistentPin && !!settings.remotePersistentPinValue;
+  return { pin: _pin, expiresAt: isPersistent ? Infinity : _pinExpiry, used: _pinUsed, persistent: isPersistent };
 }
 
 // ─── HTTP Handler ─────────────────────────────────────────────────────────────
@@ -209,13 +225,16 @@ function _handleHttpRequest(req, res) {
           res.end(JSON.stringify({ error: 'Invalid or expired PIN' }));
           return;
         }
-        // Generate a session token and mark PIN as used (keeps displaying until expiry)
+        // Generate a session token
         const token = crypto.randomBytes(24).toString('hex');
         _sessionTokens.set(token, { issuedAt: Date.now() });
-        _pinUsed = true;
+        const authSettings = _loadSettings();
+        const isPersistentPin = authSettings.remotePersistentPin && !!authSettings.remotePersistentPinValue;
+        if (!isPersistentPin) {
+          _pinUsed = true;
+          generatePin(); // Fresh PIN for next auth
+        }
         console.debug(`[Remote] Auth OK — session token issued, ${_sessionTokens.size} active token(s)`);
-        // Immediately generate a fresh PIN for next auth
-        generatePin();
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ token }));
       } catch (e) {
@@ -292,16 +311,23 @@ function _handleWsUpgrade(request, socket, head) {
     if (existing) { try { existing.close(); } catch (e) {} }
 
     _connectedClients.set(token, ws);
+    _clientMeta.set(token, {
+      connectedAt: Date.now(),
+      ip: request.socket.remoteAddress || 'unknown',
+      userAgent: request.headers['user-agent'] || 'unknown',
+    });
     console.debug(`[Remote] WS connected — ${_connectedClients.size} client(s) active`);
 
     ws.on('message', (raw) => _handleClientMessage(ws, token, raw));
     ws.on('close', (code) => {
       _connectedClients.delete(token);
+      _clientMeta.delete(token);
       _sessionTokens.delete(token);
       console.debug(`[Remote] WS disconnected (code: ${code}) — ${_connectedClients.size} client(s) remaining`);
     });
     ws.on('error', (e) => {
       _connectedClients.delete(token);
+      _clientMeta.delete(token);
       _sessionTokens.delete(token);
       console.warn(`[Remote] WS error: ${e.message}`);
     });
@@ -324,13 +350,14 @@ function _handleWsUpgrade(request, socket, head) {
   });
 }
 
-function _sendProjectsAndSessions(ws) {
+async function _sendProjectsAndSessions(ws) {
   try {
     let projects = [];
     let folders = [];
     let rootOrder = [];
     if (fs.existsSync(projectsFile)) {
-      const data = JSON.parse(fs.readFileSync(projectsFile, 'utf8'));
+      const raw = await fs.promises.readFile(projectsFile, 'utf8');
+      const data = JSON.parse(raw);
       projects = (data.projects || []).map(p => ({
         id: p.id,
         name: p.name,
@@ -433,10 +460,10 @@ function _handleClientMessage(ws, token, raw) {
         const cwd = sessionInfo?.cwd || null;
         _resolveMentions(mentions, cwd).then(resolvedText => {
           const fullText = resolvedText ? (data.text || '') + resolvedText : (data.text || '');
-          chatService.sendMessage(sessionId, fullText, images);
-        }).catch(() => {
-          try { chatService.sendMessage(sessionId, data.text || '', images); }
-          catch (sendErr) { _wsSend(ws, 'chat-error', { sessionId, error: sendErr.message }); }
+          return chatService.sendMessage(sessionId, fullText, images);
+        }).catch(err => {
+          console.warn(`[Remote] chat:send error: ${err.message}`);
+          _wsSend(ws, 'chat-error', { sessionId, error: err.message });
         });
         // Notify renderer so it can display the user message in ChatView
         if (_isMainWindowReady()) {
@@ -1007,18 +1034,23 @@ function start(win, port = 3712) {
   _startCleanupTimer();
 }
 
-function stop() {
+async function stop() {
   for (const ws of _connectedClients.values()) {
     try { ws.close(); } catch (e) {}
   }
   _connectedClients.clear();
+  _clientMeta.clear();
   _sessionTokens.clear();
   _pin = null;
   _failedAttempts = 0;
   _lockoutUntil = 0;
 
-  if (wss) { wss.close(); wss = null; }
-  if (httpServer) { httpServer.close(); httpServer = null; }
+  if (wss) {
+    await new Promise(resolve => { const s = wss; wss = null; s.close(resolve); });
+  }
+  if (httpServer) {
+    await new Promise(resolve => { const s = httpServer; httpServer = null; s.close(resolve); });
+  }
 
   // Only clear shared caches if no cloud client is registered
   if (!_cloudClient) {
@@ -1125,6 +1157,33 @@ function getServerInfo() {
   };
 }
 
+function getConnectedClients() {
+  const clients = [];
+  for (const [token] of _connectedClients.entries()) {
+    const meta = _clientMeta.get(token) || {};
+    clients.push({
+      id: token.slice(0, 8),
+      connectedAt: meta.connectedAt || 0,
+      ip: meta.ip || 'unknown',
+      userAgent: meta.userAgent || 'unknown',
+    });
+  }
+  return clients;
+}
+
+function disconnectClient(clientId) {
+  for (const [token, ws] of _connectedClients.entries()) {
+    if (token.slice(0, 8) === clientId) {
+      try { ws.close(4403, 'Disconnected by administrator'); } catch (e) {}
+      _connectedClients.delete(token);
+      _clientMeta.delete(token);
+      _sessionTokens.delete(token);
+      return true;
+    }
+  }
+  return false;
+}
+
 module.exports = {
   start,
   stop,
@@ -1132,6 +1191,8 @@ module.exports = {
   getPin,
   generatePin,
   getServerInfo,
+  getConnectedClients,
+  disconnectClient,
   broadcastProjectsUpdate,
   broadcastSessionStarted,
   broadcastTabRenamed,

@@ -12,23 +12,46 @@ const _activeProcesses = new Set();
 
 /**
  * Build safe.directory args array for git
+ * Includes worktree parent repo when a .git file (not dir) points to a parent.
  * @param {string} cwd - Working directory
- * @returns {string[]} - Args array ['-c', 'safe.directory=...']
+ * @returns {string[]} - Args array ['-c', 'safe.directory=...', ...]
  */
 function safeDirArgs(cwd) {
-  return ['-c', `safe.directory=${cwd.replace(/\\/g, '/')}`];
+  const cwdNorm = cwd.replace(/\\/g, '/');
+  const args = ['-c', `safe.directory=${cwdNorm}`];
+  try {
+    const gitPath = path.join(cwd, '.git');
+    const stat = fs.statSync(gitPath);
+    if (stat.isFile()) {
+      // Worktree: .git is a file containing "gitdir: <path>"
+      const content = fs.readFileSync(gitPath, 'utf8').trim();
+      const match = content.match(/^gitdir:\s*(.+)$/);
+      if (match) {
+        const gitDir = path.resolve(cwd, match[1]);
+        // Parent repo is typically two levels up from the worktree gitdir
+        // e.g. gitdir points to /repo/.git/worktrees/<name>
+        const parentRepo = path.resolve(gitDir, '..', '..', '..').replace(/\\/g, '/');
+        if (parentRepo !== cwdNorm) {
+          args.push('-c', `safe.directory=${parentRepo}`);
+        }
+      }
+    }
+  } catch (_) {
+    // Not a worktree or .git doesn't exist — ignore
+  }
+  return args;
 }
 
 /**
  * Execute a git command in a specific directory using execFile (no shell injection)
  * @param {string} cwd - Working directory
- * @param {string|string[]} args - Git command arguments (string parsed by split, or array)
+ * @param {string|string[]} args - Git command arguments as array (preferred) or space-separated string (simple commands only)
  * @param {number} timeout - Timeout in ms (default: 10000)
  * @returns {Promise<string|null>} - Command output or null on error
  */
 function execGit(cwd, args, timeout = 10000) {
   return new Promise((resolve) => {
-    const argsArray = Array.isArray(args) ? args : args.match(/(?:[^\s"]+|"[^"]*")+/g).map(a => a.replace(/^"|"$/g, ''));
+    const argsArray = Array.isArray(args) ? args : args.split(' ');
     const fullArgs = [...safeDirArgs(cwd), ...argsArray];
     const child = execFile('git', fullArgs, { cwd, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout) => {
       if (timer) clearTimeout(timer);
@@ -918,8 +941,10 @@ async function getCommitHistory(projectPath, { skip = 0, limit = 30, branch = ''
  * @returns {Promise<string>} - Raw diff output
  */
 async function getFileDiff(projectPath, filePath, staged = false) {
-  const stagedFlag = staged ? '--cached ' : '';
-  const diff = await execGit(projectPath, `diff ${stagedFlag}-- "${filePath}"`, 10000);
+  const args = ['diff'];
+  if (staged) args.push('--cached');
+  args.push('--', filePath);
+  const diff = await execGit(projectPath, args, 10000);
   return diff || '';
 }
 
@@ -930,7 +955,7 @@ async function getFileDiff(projectPath, filePath, staged = false) {
  * @returns {Promise<string>} - Commit detail output
  */
 async function getCommitDetail(projectPath, commitHash) {
-  const output = await execGit(projectPath, `show --stat --format="commit %H%nAuthor: %an <%ae>%nDate:   %aI%n%n    %s%n%n    %b" ${commitHash}`, 10000);
+  const output = await execGit(projectPath, ['show', '--stat', '--format=commit %H%nAuthor: %an <%ae>%nDate:   %aI%n%n    %s%n%n    %b', commitHash], 10000);
   return output || '';
 }
 
@@ -1215,8 +1240,9 @@ async function detectWorktree(projectPath) {
  * @returns {Promise<string>} - Diff output
  */
 async function diffWorktreeBranches(projectPath, branch1, branch2, filePath = '') {
-  const fileArg = filePath ? ` -- "${filePath}"` : '';
-  const diff = await execGit(projectPath, `diff ${branch1}...${branch2}${fileArg}`, 15000);
+  const args = ['diff', `${branch1}...${branch2}`];
+  if (filePath) args.push('--', filePath);
+  const diff = await execGit(projectPath, args, 15000);
   if (diff === null) throw new Error(`git diff failed for ${branch1}...${branch2}`);
   return diff;
 }
@@ -1262,6 +1288,36 @@ async function diffWorktreeBranchesWithStats(projectPath, branch1, branch2) {
 }
 
 /**
+ * Resolve a merge conflict for a specific file using ours/theirs strategy
+ * @param {string} projectPath - Path to the project
+ * @param {string} filePath - Path to the conflicted file
+ * @param {string} strategy - 'ours' or 'theirs'
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+async function resolveConflict(projectPath, filePath, strategy) {
+  if (strategy !== 'ours' && strategy !== 'theirs') {
+    return { success: false, error: 'Invalid strategy. Use "ours" or "theirs".' };
+  }
+  const checkoutResult = await spawnGit(projectPath, ['checkout', `--${strategy}`, '--', filePath]);
+  if (!checkoutResult.success) return checkoutResult;
+  const stageResult = await spawnGit(projectPath, ['add', '--', filePath]);
+  return stageResult;
+}
+
+/**
+ * Get number of commits unique to a branch (not on any other branch)
+ * @param {string} projectPath - Path to the project
+ * @param {string} branch - Branch name
+ * @returns {Promise<number>} - Number of orphan commits
+ */
+async function getBranchOrphanCommitCount(projectPath, branch) {
+  // Get commits on this branch that are not reachable from any other branch
+  const output = await execGit(projectPath, ['log', branch, '--not', '--remotes', '--exclude=' + branch, '--branches', '--oneline'], 10000);
+  if (!output) return 0;
+  return output.split('\n').filter(l => l.trim()).length;
+}
+
+/**
  * Kill all active git child processes.
  * Called during app shutdown to prevent orphaned git processes.
  */
@@ -1279,6 +1335,157 @@ function killAllGitProcesses() {
     }
   }
   _activeProcesses.clear();
+}
+
+// ── Delete remote branch ──
+
+async function deleteRemoteBranch(projectPath, branch, remote = 'origin') {
+  return execGit(projectPath, `push ${remote} --delete ${branch}`, 30000);
+}
+
+// ── Dedicated fetch ──
+
+async function gitFetch(projectPath, remote = 'origin') {
+  return execGit(projectPath, `fetch ${remote} --prune`, 30000);
+}
+
+// ── Branch rename ──
+
+async function renameBranch(projectPath, oldName, newName) {
+  return execGit(projectPath, `branch -m ${oldName} ${newName}`);
+}
+
+// ── Rebase ──
+
+async function gitRebase(projectPath, branch) {
+  return execGit(projectPath, `rebase ${branch}`, 60000);
+}
+
+async function gitRebaseAbort(projectPath) {
+  return execGit(projectPath, 'rebase --abort');
+}
+
+async function gitRebaseContinue(projectPath) {
+  return execGit(projectPath, 'rebase --continue');
+}
+
+// ── File history ──
+
+async function getFileHistory(projectPath, filePath, options = {}) {
+  const { skip = 0, limit = 30 } = options;
+  const output = await execGit(projectPath, `log --skip=${skip} -n ${limit} --pretty=format:"%H|%an|%aI|%s" -- "${filePath}"`, 15000);
+  if (!output) return [];
+  return output.split('\n').filter(Boolean).map(line => {
+    const parts = line.replace(/^"|"$/g, '').split('|');
+    return { hash: parts[0], author: parts[1], date: parts[2], message: parts.slice(3).join('|') };
+  });
+}
+
+// ── Commit file-by-file diffs ──
+
+async function getCommitFileDiffs(projectPath, commitHash) {
+  // Get list of changed files with stats
+  const statsOutput = await execGit(projectPath, `diff-tree --no-commit-id -r --numstat ${commitHash}`, 15000);
+  const files = [];
+  if (statsOutput) {
+    for (const line of statsOutput.split('\n').filter(Boolean)) {
+      const match = line.match(/^(\d+|-)\s+(\d+|-)\s+(.+)$/);
+      if (match) {
+        files.push({
+          additions: match[1] === '-' ? 0 : parseInt(match[1]) || 0,
+          deletions: match[2] === '-' ? 0 : parseInt(match[2]) || 0,
+          path: match[3]
+        });
+      }
+    }
+  }
+  return files;
+}
+
+async function getCommitFileDiff(projectPath, commitHash, filePath) {
+  const output = await execGit(projectPath, `diff ${commitHash}~1 ${commitHash} -- "${filePath}"`, 15000);
+  return output || '';
+}
+
+// ── Git blame ──
+
+async function gitBlame(projectPath, filePath) {
+  const output = await execGit(projectPath, `blame --porcelain "${filePath}"`, 30000);
+  if (!output) return [];
+  const lines = [];
+  let current = null;
+  const commits = {};
+  for (const line of output.split('\n')) {
+    const headerMatch = line.match(/^([a-f0-9]{40})\s+(\d+)\s+(\d+)/);
+    if (headerMatch) {
+      current = { hash: headerMatch[1], origLine: parseInt(headerMatch[2]), finalLine: parseInt(headerMatch[3]) };
+      if (!commits[current.hash]) commits[current.hash] = {};
+      continue;
+    }
+    if (current && line.startsWith('author ')) commits[current.hash].author = line.slice(7);
+    if (current && line.startsWith('author-time ')) commits[current.hash].timestamp = parseInt(line.slice(12));
+    if (current && line.startsWith('summary ')) commits[current.hash].summary = line.slice(8);
+    if (current && line.startsWith('\t')) {
+      lines.push({
+        line: current.finalLine,
+        hash: current.hash,
+        author: commits[current.hash]?.author || '',
+        timestamp: commits[current.hash]?.timestamp || 0,
+        summary: commits[current.hash]?.summary || '',
+        content: line.slice(1)
+      });
+      current = null;
+    }
+  }
+  return lines;
+}
+
+// ── Tags ──
+
+async function getTags(projectPath) {
+  const output = await execGit(projectPath, 'tag -l --sort=-creatordate --format=%(refname:short)|%(creatordate:iso-strict)|%(subject)');
+  if (!output) return [];
+  return output.split('\n').filter(Boolean).map(line => {
+    const [name, date, ...msgParts] = line.split('|');
+    return { name, date, message: msgParts.join('|') };
+  });
+}
+
+async function createTag(projectPath, name, message, commitHash) {
+  if (message) {
+    return execGit(projectPath, `tag -a "${name}" -m "${message}"${commitHash ? ' ' + commitHash : ''}`);
+  }
+  return execGit(projectPath, `tag "${name}"${commitHash ? ' ' + commitHash : ''}`);
+}
+
+async function deleteTag(projectPath, name) {
+  return execGit(projectPath, `tag -d "${name}"`);
+}
+
+async function pushTag(projectPath, name, remote = 'origin') {
+  return execGit(projectPath, `push ${remote} "${name}"`, 30000);
+}
+
+async function pushAllTags(projectPath, remote = 'origin') {
+  return execGit(projectPath, `push ${remote} --tags`, 30000);
+}
+
+// ── Remotes ──
+
+async function getRemotes(projectPath) {
+  const output = await execGit(projectPath, 'remote -v');
+  if (!output) return [];
+  const map = new Map();
+  for (const line of output.split('\n').filter(Boolean)) {
+    const match = line.match(/^(\S+)\s+(\S+)\s+\((\w+)\)$/);
+    if (match) {
+      if (!map.has(match[1])) map.set(match[1], { name: match[1], fetchUrl: '', pushUrl: '' });
+      const remote = map.get(match[1]);
+      if (match[3] === 'fetch') remote.fetchUrl = match[2];
+      if (match[3] === 'push') remote.pushUrl = match[2];
+    }
+  }
+  return Array.from(map.values());
 }
 
 module.exports = {
@@ -1326,5 +1533,24 @@ module.exports = {
   pruneWorktrees,
   detectWorktree,
   diffWorktreeBranches,
-  diffWorktreeBranchesWithStats
+  diffWorktreeBranchesWithStats,
+  // New operations
+  deleteRemoteBranch,
+  gitFetch,
+  renameBranch,
+  gitRebase,
+  gitRebaseAbort,
+  gitRebaseContinue,
+  getFileHistory,
+  getCommitFileDiffs,
+  getCommitFileDiff,
+  gitBlame,
+  getTags,
+  createTag,
+  deleteTag,
+  pushTag,
+  pushAllTags,
+  getRemotes,
+  resolveConflict,
+  getBranchOrphanCommitCount
 };

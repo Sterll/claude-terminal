@@ -107,7 +107,7 @@ function initParallelListeners() {
   const api = window.electron_api?.parallel;
   if (!api) return;
 
-  api.onRunStatus(({ runId, phase, error, endedAt, proposedTasks, featureName, mergeBranch, mergeProgress, mergeResult }) => {
+  api.onRunStatus(({ runId, phase, error, endedAt, proposedTasks, featureName, mergeBranch, mergeProgress, mergeResult, resolving }) => {
     const run = getRunById(runId);
     if (run) {
       setRunPhase(runId, phase, {
@@ -118,6 +118,7 @@ function initParallelListeners() {
         ...(mergeBranch && { mergeBranch }),
         ...(mergeProgress && { mergeProgress }),
         ...(mergeResult && { mergeResult }),
+        ...(resolving !== undefined && { resolving }),
       });
     }
   });

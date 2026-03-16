@@ -42,6 +42,14 @@ You are running inside **Claude Terminal**, a desktop application for managing C
 - \`workflow_diagnose\` — Diagnose why a run failed with suggested fixes
 - \`workflow_status\` — Currently active (running/queued) executions
 - \`workflow_cancel\` — Cancel a running workflow
+
+### Parallel Tasks
+- \`parallel_list_runs\` — List parallel task runs for a project (goal, phase, task count, duration, branches)
+- \`parallel_run_detail\` — Detailed info about a run: all tasks with status, branches, worktree paths, errors
+- \`parallel_start_run\` — Start a new parallel run: decompose a goal into independent sub-tasks executed in parallel via git worktrees
+- \`parallel_cancel_run\` — Cancel an active parallel run (aborts all running tasks)
+- \`parallel_cleanup_run\` — Clean up a completed run: remove worktrees, delete branches, remove from history
+- \`parallel_merge_run\` — Merge all completed task branches into a unified branch (with AI conflict resolution)
 `.trim();
 
 const RICH_MARKDOWN_APPEND = `

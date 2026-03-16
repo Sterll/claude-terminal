@@ -2507,6 +2507,126 @@
   border-color: var(--accent);
 }
 
+/* ── Persistent PIN ── */
+.rp-advanced-separator {
+  border-top: 1px solid var(--border-color);
+  padding-top: 12px;
+  margin-top: 4px;
+}
+
+.rp-persistent-pin-config {
+  padding: 0 0 4px 0;
+}
+
+.rp-persistent-pin-hint {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  margin-top: 4px;
+  padding: 0 4px;
+}
+
+.rp-pin-countdown.persistent {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* ── Connected Clients Section ── */
+.rp-clients-section {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 12px;
+}
+
+.rp-clients-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.rp-clients-title {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+
+.rp-clients-count {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.rp-clients-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rp-clients-empty {
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+  text-align: center;
+  padding: 12px 0;
+}
+
+.rp-client-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: border-color 0.15s;
+}
+
+.rp-client-item:hover {
+  border-color: var(--border-color);
+}
+
+.rp-client-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rp-client-device {
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.rp-client-ip {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+}
+
+.rp-client-kick-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s, background 0.15s;
+}
+
+.rp-client-kick-btn:hover {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.rp-client-kick-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
 /* Cloud styles moved to cloud.css */
 
 /* ── Shared: keep old remote-status classes for back-compat if referenced elsewhere ── */
@@ -2585,4 +2705,42 @@
 .cp-project-key-input {
   font-size: var(--font-xs);
   padding: 3px 6px;
+}
+
+/* ── Settings section visual hierarchy ── */
+.settings-group[data-section="appearance"] {
+  border-left: 3px solid var(--accent);
+  padding-left: 12px;
+}
+
+.settings-group[data-section="behavior"] {
+  border-left: 3px solid var(--info);
+  padding-left: 12px;
+}
+
+.settings-group[data-section="integration"] {
+  border-left: 3px solid var(--success);
+  padding-left: 12px;
+}
+
+.settings-group[data-section="telemetry"] {
+  border-left: 3px solid var(--text-muted);
+  padding-left: 12px;
+}
+
+.settings-group[data-section="tabs"] {
+  border-left: 3px solid var(--info);
+  padding-left: 12px;
+}
+
+.settings-group[data-section="cloud"] {
+  border-left: 3px solid var(--warning);
+  padding-left: 12px;
+}
+
+/* Inline divider inside settings cards */
+.settings-card-section-divider {
+  border-top: 1px solid var(--border-color);
+  margin-top: 8px;
+  padding-top: 8px;
 }

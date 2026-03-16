@@ -4,7 +4,8 @@
  */
 
 const { autoUpdater } = require('electron-updater');
-const { app } = require('electron');
+const { app, Notification } = require('electron');
+const https = require('https');
 const path = require('path');
 const fs = require('fs');
 
@@ -85,6 +86,8 @@ class UpdaterService {
     autoUpdater.on('update-available', (info) => {
       this.lastKnownVersion = info.version;
       this.isDownloading = true;
+      // Pre-fetch changelog while downloading
+      this.pendingChangelog = this.fetchReleaseNotes(info.version);
       this.safeSend('update-status', { status: 'available', version: info.version });
     });
 
@@ -203,8 +206,80 @@ class UpdaterService {
       console.error('Verify latest failed:', err);
     }
 
+    // Use pre-fetched changelog or fetch now
+    const changelog = await (this.pendingChangelog || this.fetchReleaseNotes(downloadedVersion));
+    this.pendingChangelog = null;
+
     // Downloaded version is the latest, show banner
-    this.safeSend('update-status', { status: 'downloaded', version: downloadedVersion });
+    this.safeSend('update-status', { status: 'downloaded', version: downloadedVersion, changelog });
+
+    // Show native OS notification if main window is not visible (minimized to tray)
+    this.showNativeUpdateNotification(downloadedVersion);
+  }
+
+  /**
+   * Show native OS notification when update is ready and window is hidden
+   * @param {string} version
+   */
+  showNativeUpdateNotification(version) {
+    try {
+      const { isMainWindowVisible, showMainWindow } = require('../windows/MainWindow');
+      if (!isMainWindowVisible()) {
+        const iconName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+        const iconPath = app.isPackaged
+          ? path.join(process.resourcesPath, 'assets', iconName)
+          : path.join(__dirname, '..', '..', '..', 'assets', iconName);
+
+        const notif = new Notification({
+          title: 'Claude Terminal',
+          body: `v${version} ready to install`,
+          icon: fs.existsSync(iconPath) ? iconPath : undefined
+        });
+        notif.on('click', () => showMainWindow());
+        notif.show();
+      }
+    } catch (err) {
+      console.error('Failed to show native update notification:', err);
+    }
+  }
+
+  /**
+   * Fetch release notes from GitHub for a specific version
+   * @param {string} version
+   * @returns {Promise<string|null>} Markdown body or null
+   */
+  fetchReleaseNotes(version) {
+    return new Promise((resolve) => {
+      const options = {
+        hostname: 'api.github.com',
+        path: `/repos/Sterll/claude-terminal/releases/tags/v${version}`,
+        headers: {
+          'User-Agent': 'ClaudeTerminal',
+          'Accept': 'application/vnd.github.v3+json'
+        },
+        timeout: 10000
+      };
+
+      const req = https.get(options, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          try {
+            if (res.statusCode === 200) {
+              const json = JSON.parse(data);
+              resolve(json.body || null);
+            } else {
+              resolve(null);
+            }
+          } catch {
+            resolve(null);
+          }
+        });
+      });
+
+      req.on('error', () => resolve(null));
+      req.on('timeout', () => { req.destroy(); resolve(null); });
+    });
   }
 
   /**
@@ -230,14 +305,21 @@ class UpdaterService {
       // Proceed with install anyway
     }
 
-    // Force quit (bypass minimize to tray)
-    const { setQuitting } = require('../windows/MainWindow');
-    setQuitting(true);
-
     // Stop periodic checks before quitting
     this.stopPeriodicCheck();
 
-    autoUpdater.quitAndInstall();
+    // Set quitting flag only right before install — if quitAndInstall throws,
+    // the app remains functional (tray icon, reopen from tray, etc.)
+    try {
+      const { setQuitting } = require('../windows/MainWindow');
+      setQuitting(true);
+      autoUpdater.quitAndInstall();
+    } catch (err) {
+      console.error('quitAndInstall failed:', err);
+      const { setQuitting } = require('../windows/MainWindow');
+      setQuitting(false);
+      this.safeSend('update-status', { status: 'error', error: err.message });
+    }
   }
 }
 

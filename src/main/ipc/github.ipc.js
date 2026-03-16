@@ -142,19 +142,87 @@ function registerGitHubHandlers() {
     }
   });
 
-  // Get pull requests for a repository
-  ipcMain.handle('github-pull-requests', async (event, { remoteUrl }) => {
-    // console.log('[GitHub IPC] Fetching pull requests for:', remoteUrl);
+  // Get pull requests for a repository (with pagination)
+  ipcMain.handle('github-pull-requests', async (event, { remoteUrl, perPage, page, state }) => {
     try {
       const parsed = GitHubAuthService.parseGitHubRemote(remoteUrl);
       if (!parsed) {
         return { success: false, error: 'Not a GitHub repository' };
       }
 
-      const result = await GitHubAuthService.getPullRequests(parsed.owner, parsed.repo);
+      const result = await GitHubAuthService.getPullRequests(parsed.owner, parsed.repo, perPage || 5, page || 1, state || 'all');
       return { success: true, ...result, owner: parsed.owner, repo: parsed.repo };
     } catch (e) {
       console.error('[GitHub IPC] Error:', e);
+      return { success: false, error: e.message };
+    }
+  });
+
+  // Get workflow runs with pagination
+  ipcMain.handle('github-workflow-runs-paginated', async (event, { remoteUrl, perPage, page }) => {
+    try {
+      const parsed = GitHubAuthService.parseGitHubRemote(remoteUrl);
+      if (!parsed) return { success: false, error: 'Not a GitHub repository' };
+      const result = await GitHubAuthService.getWorkflowRuns(parsed.owner, parsed.repo, perPage || 5, page || 1);
+      return { success: true, ...result, owner: parsed.owner, repo: parsed.repo };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  // Get check runs (CI status) for a commit
+  ipcMain.handle('github-check-runs', async (event, { remoteUrl, ref }) => {
+    try {
+      const parsed = GitHubAuthService.parseGitHubRemote(remoteUrl);
+      if (!parsed) return { success: false, error: 'Not a GitHub repository' };
+      const result = await GitHubAuthService.getCheckRuns(parsed.owner, parsed.repo, ref);
+      return { success: true, ...result };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  // Merge a pull request
+  ipcMain.handle('github-merge-pr', async (event, { remoteUrl, pullNumber, mergeMethod }) => {
+    try {
+      const parsed = GitHubAuthService.parseGitHubRemote(remoteUrl);
+      if (!parsed) return { success: false, error: 'Not a GitHub repository' };
+      return await GitHubAuthService.mergePullRequest(parsed.owner, parsed.repo, pullNumber, mergeMethod);
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  // Get issues
+  ipcMain.handle('github-issues', async (event, { remoteUrl, perPage, page, state }) => {
+    try {
+      const parsed = GitHubAuthService.parseGitHubRemote(remoteUrl);
+      if (!parsed) return { success: false, error: 'Not a GitHub repository' };
+      const result = await GitHubAuthService.getIssues(parsed.owner, parsed.repo, perPage || 10, page || 1, state || 'open');
+      return { success: true, ...result, owner: parsed.owner, repo: parsed.repo };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  // Create issue
+  ipcMain.handle('github-create-issue', async (event, { remoteUrl, title, body, labels }) => {
+    try {
+      const parsed = GitHubAuthService.parseGitHubRemote(remoteUrl);
+      if (!parsed) return { success: false, error: 'Not a GitHub repository' };
+      return await GitHubAuthService.createIssue(parsed.owner, parsed.repo, title, body, labels);
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  // Close issue
+  ipcMain.handle('github-close-issue', async (event, { remoteUrl, issueNumber }) => {
+    try {
+      const parsed = GitHubAuthService.parseGitHubRemote(remoteUrl);
+      if (!parsed) return { success: false, error: 'Not a GitHub repository' };
+      return await GitHubAuthService.closeIssue(parsed.owner, parsed.repo, issueNumber);
+    } catch (e) {
       return { success: false, error: e.message };
     }
   });

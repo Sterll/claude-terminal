@@ -1,7 +1,8 @@
 /**
  * FileExplorer Component
  * Displays a file tree for the selected project with preview and context menu
- * Features: multi-selection, inline rename, git status, search, drag & drop, keyboard cut/paste
+ * Features: multi-selection, inline rename, git status, search, drag & drop, copy/cut/paste,
+ *           content search, duplicate, configurable sort & ignore patterns
  */
 
 const api = window.electron_api;
@@ -37,17 +38,42 @@ let renameActivePath = null;
 
 // Drag & drop state
 let draggedPaths = [];
+let _dragListenersAttached = false;
 
 // Keyboard cut/paste state
 let cutPaths = [];
 
-// Patterns to ignore
-const IGNORE_PATTERNS = new Set([
+// Copy state (distinct from cut - copies files instead of moving)
+let copiedPaths = [];
+
+// Content search state
+let contentSearchQuery = '';
+let contentSearchResults = [];
+let isContentSearching = false;
+
+// Sort state
+let currentSortMode = 'name'; // 'name' | 'size' | 'date' | 'type'
+
+// Default ignore patterns
+const DEFAULT_IGNORE_PATTERNS = [
   'node_modules', '.git', 'dist', 'build', '__pycache__',
   '.next', 'vendor', '.cache', '.idea', '.vscode',
   '.DS_Store', 'Thumbs.db', '.env.local', 'coverage',
   '.nuxt', '.output', '.turbo', '.parcel-cache'
-]);
+];
+
+// Active ignore patterns (merges default + user-configured)
+function getIgnorePatterns() {
+  const { getSetting } = require('../../state/settings.state');
+  const custom = getSetting('explorerIgnorePatterns');
+  const patterns = new Set(DEFAULT_IGNORE_PATTERNS);
+  if (Array.isArray(custom)) {
+    for (const p of custom) {
+      if (p.trim()) patterns.add(p.trim());
+    }
+  }
+  return patterns;
+}
 
 // Max entries displayed per folder
 const MAX_DISPLAY_ENTRIES = 500;
@@ -79,6 +105,9 @@ function setRootPath(projectPath) {
   searchQuery = '';
   searchResults = [];
   cutPaths = [];
+  copiedPaths = [];
+  contentSearchQuery = '';
+  contentSearchResults = [];
   if (rootPath && !manuallyHidden) {
     show();
     render();
@@ -230,13 +259,14 @@ async function readDirectoryAsync(dirPath) {
 
     const { getSetting } = require('../../state/settings.state');
     const showDotfiles = getSetting('showDotfiles');
+    const ignorePatterns = getIgnorePatterns();
 
     const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
     const result = [];
     let skipped = 0;
 
     for (const entry of entries) {
-      if (IGNORE_PATTERNS.has(entry.name)) continue;
+      if (ignorePatterns.has(entry.name)) continue;
       if (showDotfiles === false && entry.name.startsWith('.')) continue;
 
       if (result.length >= MAX_DISPLAY_ENTRIES) {
@@ -244,19 +274,26 @@ async function readDirectoryAsync(dirPath) {
         continue;
       }
 
-      result.push({
+      const fullPath = path.join(dirPath, entry.name);
+      const item = {
         name: entry.name,
-        path: path.join(dirPath, entry.name),
+        path: fullPath,
         isDirectory: entry.isDirectory()
-      });
+      };
+
+      // Fetch stat info for sort modes other than name
+      if (currentSortMode !== 'name') {
+        try {
+          const stat = await fs.promises.stat(fullPath);
+          item.size = stat.size;
+          item.mtime = stat.mtimeMs;
+        } catch { /* ignore stat errors */ }
+      }
+
+      result.push(item);
     }
 
-    // Sort: directories first, then alphabetical
-    result.sort((a, b) => {
-      if (a.isDirectory && !b.isDirectory) return -1;
-      if (!a.isDirectory && b.isDirectory) return 1;
-      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-    });
+    sortEntries(result);
 
     if (skipped > 0) {
       const truncLabel = (t('fileExplorer.truncatedItems') || '{count} more items hidden').replace('{count}', skipped);
@@ -272,6 +309,29 @@ async function readDirectoryAsync(dirPath) {
   } catch (e) {
     return [];
   }
+}
+
+function sortEntries(entries) {
+  entries.sort((a, b) => {
+    // Always directories first
+    if (a.isDirectory && !b.isDirectory) return -1;
+    if (!a.isDirectory && b.isDirectory) return 1;
+
+    switch (currentSortMode) {
+      case 'size':
+        return (b.size || 0) - (a.size || 0);
+      case 'date':
+        return (b.mtime || 0) - (a.mtime || 0);
+      case 'type': {
+        const extA = path.extname(a.name).toLowerCase();
+        const extB = path.extname(b.name).toLowerCase();
+        if (extA !== extB) return extA.localeCompare(extB);
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      }
+      default: // 'name'
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    }
+  });
 }
 
 function getOrLoadFolder(folderPath) {
@@ -407,8 +467,10 @@ function updateSelectionVisuals() {
   const nodes = treeEl.querySelectorAll('.fe-node[data-path]');
   for (const node of nodes) {
     const isCut = cutPaths.includes(node.dataset.path);
+    const isCopied = copiedPaths.includes(node.dataset.path);
     node.classList.toggle('selected', selectedFiles.has(node.dataset.path));
     node.classList.toggle('fe-cut', isCut);
+    node.classList.toggle('fe-copied', isCopied);
   }
 }
 
@@ -416,6 +478,7 @@ function updateSelectionVisuals() {
 async function collectAllFiles(dirPath, maxFiles = 5000) {
   const { getSetting } = require('../../state/settings.state');
   const showDotfiles = getSetting('showDotfiles');
+  const ignorePatterns = getIgnorePatterns();
 
   const results = [];
   const queue = [dirPath];
@@ -425,7 +488,7 @@ async function collectAllFiles(dirPath, maxFiles = 5000) {
     try {
       const names = await fs.promises.readdir(dir);
       for (const name of names) {
-        if (IGNORE_PATTERNS.has(name)) continue;
+        if (ignorePatterns.has(name)) continue;
         if (showDotfiles === false && name.startsWith('.')) continue;
 
         const fullPath = path.join(dir, name);
@@ -628,6 +691,7 @@ async function executeRename(filePath, newName) {
 function cutSelectedFiles() {
   if (selectedFiles.size === 0) return;
   cutPaths = [...selectedFiles];
+  copiedPaths = []; // Clear copy if cutting
   updateSelectionVisuals();
 }
 
@@ -640,6 +704,231 @@ async function pasteFiles(targetDir) {
   await moveItems(sourcePaths, targetDir);
 }
 
+// ========== COPY FILES ==========
+function copySelectedFiles() {
+  if (selectedFiles.size === 0) return;
+  copiedPaths = [...selectedFiles];
+  cutPaths = []; // Clear cut if copying
+  updateSelectionVisuals();
+}
+
+async function pasteCopiedFiles(targetDir) {
+  if (copiedPaths.length === 0 || !targetDir) return;
+
+  const sourcePaths = [...copiedPaths];
+
+  for (const sourcePath of sourcePaths) {
+    const baseName = path.basename(sourcePath);
+    let destPath = path.join(targetDir, baseName);
+
+    if (sourcePath === destPath) continue;
+    if (!isPathSafe(destPath)) continue;
+
+    // If destination exists, generate unique name
+    if (fs.existsSync(destPath)) {
+      destPath = generateCopyName(targetDir, baseName);
+    }
+
+    try {
+      const stat = fs.statSync(sourcePath);
+      if (stat.isDirectory()) {
+        copyDirRecursive(sourcePath, destPath);
+      } else {
+        fs.copyFileSync(sourcePath, destPath);
+      }
+    } catch (e) {
+      // Skip failed copies
+    }
+  }
+
+  await refreshFolder(targetDir);
+  render();
+  refreshGitStatus();
+}
+
+function generateCopyName(targetDir, baseName) {
+  const ext = path.extname(baseName);
+  const nameNoExt = ext ? baseName.slice(0, -ext.length) : baseName;
+  let counter = 1;
+  let newPath;
+  do {
+    const newName = ext ? `${nameNoExt} (${counter})${ext}` : `${nameNoExt} (${counter})`;
+    newPath = path.join(targetDir, newName);
+    counter++;
+  } while (fs.existsSync(newPath));
+  return newPath;
+}
+
+function copyDirRecursive(src, dest) {
+  fs.mkdirSync(dest, { recursive: true });
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyDirRecursive(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+// ========== DUPLICATE FILE ==========
+async function duplicateFile(filePath) {
+  const dirPath = path.dirname(filePath);
+  const baseName = path.basename(filePath);
+  const destPath = generateCopyName(dirPath, baseName);
+
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.isDirectory()) {
+      copyDirRecursive(filePath, destPath);
+    } else {
+      fs.copyFileSync(filePath, destPath);
+    }
+
+    await refreshFolder(dirPath);
+    render();
+
+    // Select the new file
+    selectedFiles.clear();
+    selectedFiles.add(destPath);
+    lastSelectedFile = destPath;
+    updateSelectionVisuals();
+    refreshGitStatus();
+  } catch (e) {
+    alert(`Error: ${e.message}`);
+  }
+}
+
+// ========== CONTENT SEARCH ==========
+const performContentSearch = debounce(async () => {
+  const query = contentSearchQuery.trim();
+  if (!query || !rootPath) {
+    contentSearchResults = [];
+    isContentSearching = false;
+    render();
+    return;
+  }
+
+  isContentSearching = true;
+  render();
+
+  const results = [];
+  const allFiles = await collectAllFiles(rootPath, 3000);
+
+  // Binary file extensions to skip
+  const binaryExts = new Set([
+    '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.svg', '.webp',
+    '.mp3', '.mp4', '.wav', '.avi', '.mov', '.mkv',
+    '.zip', '.tar', '.gz', '.rar', '.7z',
+    '.exe', '.dll', '.so', '.dylib', '.bin',
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx',
+    '.woff', '.woff2', '.ttf', '.eot', '.otf'
+  ]);
+
+  for (const file of allFiles) {
+    if (results.length >= 100) break;
+
+    const ext = path.extname(file.name).toLowerCase();
+    if (binaryExts.has(ext)) continue;
+
+    try {
+      const content = await fs.promises.readFile(file.path, 'utf-8');
+      const lines = content.split('\n');
+      const matches = [];
+
+      for (let i = 0; i < lines.length; i++) {
+        const idx = lines[i].toLowerCase().indexOf(query.toLowerCase());
+        if (idx !== -1) {
+          matches.push({ line: i + 1, text: lines[i].trim().substring(0, 200) });
+          if (matches.length >= 3) break; // Max 3 matches per file
+        }
+      }
+
+      if (matches.length > 0) {
+        results.push({ name: file.name, path: file.path, matches });
+      }
+    } catch { /* skip unreadable files */ }
+  }
+
+  contentSearchResults = results;
+  isContentSearching = false;
+  render();
+}, 400);
+
+function renderContentSearchResults() {
+  if (isContentSearching) {
+    return `<div class="fe-empty">${t('common.loading') || 'Searching...'}</div>`;
+  }
+  if (contentSearchResults.length === 0) {
+    return `<div class="fe-empty">${t('fileExplorer.noResults') || 'No results'}</div>`;
+  }
+
+  const parts = [];
+  const query = contentSearchQuery.trim().toLowerCase();
+
+  for (const file of contentSearchResults) {
+    const icon = getFileIcon(file.name, false, false);
+    const relativePath = rootPath ? path.relative(rootPath, file.path) : file.path;
+    const isSelected = selectedFiles.has(file.path);
+
+    parts.push(`<div class="fe-node fe-file fe-search-result ${isSelected ? 'selected' : ''}"
+      data-path="${escapeHtml(file.path)}"
+      data-name="${escapeHtml(file.name)}"
+      data-is-dir="false"
+      style="padding-left: 8px;">
+      <span class="fe-node-icon">${icon}</span>
+      <span class="fe-node-name">${escapeHtml(file.name)}</span>
+      <span class="fe-search-path">${escapeHtml(relativePath)}</span>
+    </div>`);
+
+    for (const match of file.matches) {
+      // Highlight matching text in line
+      const lineText = match.text;
+      const idx = lineText.toLowerCase().indexOf(query);
+      let lineHtml;
+      if (idx !== -1) {
+        const before = escapeHtml(lineText.slice(0, idx));
+        const matched = escapeHtml(lineText.slice(idx, idx + query.length));
+        const after = escapeHtml(lineText.slice(idx + query.length));
+        lineHtml = `${before}<span class="fe-search-highlight">${matched}</span>${after}`;
+      } else {
+        lineHtml = escapeHtml(lineText);
+      }
+
+      parts.push(`<div class="fe-content-match" data-path="${escapeHtml(file.path)}" data-line="${match.line}" style="padding-left: 28px;">
+        <span class="fe-match-line">L${match.line}</span>
+        <span class="fe-match-text">${lineHtml}</span>
+      </div>`);
+    }
+  }
+
+  return parts.join('');
+}
+
+// ========== SORT ==========
+function setSortMode(mode) {
+  if (currentSortMode === mode) return;
+  currentSortMode = mode;
+  // Reload all expanded folders with new sort
+  const foldersToReload = [...expandedFolders.keys()];
+  for (const folderPath of foldersToReload) {
+    const entry = expandedFolders.get(folderPath);
+    if (entry && entry.loaded) {
+      entry.loaded = false;
+      entry.loading = true;
+      readDirectoryAsync(folderPath).then(children => {
+        entry.children = children;
+        entry.loaded = true;
+        entry.loading = false;
+        render();
+      });
+    }
+  }
+  render();
+}
+
 // ========== RENDER ==========
 function render() {
   if (!rootPath) return;
@@ -647,7 +936,9 @@ function render() {
   const treeEl = document.getElementById('file-explorer-tree');
   if (!treeEl) return;
 
-  if (searchQuery.trim()) {
+  if (contentSearchQuery.trim()) {
+    treeEl.innerHTML = renderContentSearchResults();
+  } else if (searchQuery.trim()) {
     treeEl.innerHTML = renderSearchResults();
   } else {
     treeEl.innerHTML = renderTreeNodes(rootPath, 0);
@@ -680,6 +971,7 @@ function renderTreeNodes(dirPath, depth) {
     const isExpanded = expandedFolders.has(item.path) && expandedFolders.get(item.path).loaded;
     const isSelected = selectedFiles.has(item.path);
     const isCut = cutPaths.includes(item.path);
+    const isCopied = copiedPaths.includes(item.path);
 
     const indent = depth * 16;
     const icon = getFileIcon(item.name, item.isDirectory, isExpanded);
@@ -689,7 +981,7 @@ function renderTreeNodes(dirPath, depth) {
 
     const gitBadge = getGitBadgeHtml(item.path, item.isDirectory);
 
-    parts.push(`<div class="fe-node ${isSelected ? 'selected' : ''} ${isCut ? 'fe-cut' : ''} ${item.isDirectory ? 'fe-dir' : 'fe-file'}"
+    parts.push(`<div class="fe-node ${isSelected ? 'selected' : ''} ${isCut ? 'fe-cut' : ''} ${isCopied ? 'fe-copied' : ''} ${item.isDirectory ? 'fe-dir' : 'fe-file'}"
       data-path="${escapeHtml(item.path)}"
       data-name="${escapeHtml(item.name)}"
       data-is-dir="${item.isDirectory}"
@@ -746,6 +1038,12 @@ function showFileContextMenu(e, filePath, isDirectory) {
     });
     items.push({ separator: true });
     items.push({
+      label: t('fileExplorer.copy') || 'Copy',
+      icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>',
+      shortcut: 'Ctrl+C',
+      onClick: () => copySelectedFiles()
+    });
+    items.push({
       label: t('fileExplorer.cut') || 'Cut',
       icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M9.64 7.64c.23-.5.36-1.05.36-1.64 0-2.21-1.79-4-4-4S2 3.79 2 6s1.79 4 4 4c.59 0 1.14-.13 1.64-.36L10 12l-2.36 2.36C7.14 14.13 6.59 14 6 14c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4c0-.59-.13-1.14-.36-1.64L12 14l7 7h3v-1L9.64 7.64zM6 8c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm0 12c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm6-7.5c-.28 0-.5-.22-.5-.5s.22-.5.5-.5.5.22.5.5-.22.5-.5.5zM19 3l-6 6 2 2 7-7V3z"/></svg>',
       shortcut: 'Ctrl+X',
@@ -779,6 +1077,15 @@ function showFileContextMenu(e, filePath, isDirectory) {
         icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 2h-4.18C14.4.84 13.3 0 12 0c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm7 18H5V4h2v3h10V4h2v16z"/></svg>',
         shortcut: 'Ctrl+V',
         onClick: () => pasteFiles(filePath)
+      });
+      items.push({ separator: true });
+    }
+    if (copiedPaths.length > 0) {
+      items.push({
+        label: (t('fileExplorer.pasteHere') || 'Paste here') + ` (${copiedPaths.length})`,
+        icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 2h-4.18C14.4.84 13.3 0 12 0c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm7 18H5V4h2v3h10V4h2v16z"/></svg>',
+        shortcut: 'Ctrl+V',
+        onClick: () => pasteCopiedFiles(filePath)
       });
       items.push({ separator: true });
     }
@@ -818,10 +1125,23 @@ function showFileContextMenu(e, filePath, isDirectory) {
   items.push({ separator: true });
 
   items.push({
+    label: t('fileExplorer.copy') || 'Copy',
+    icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>',
+    shortcut: 'Ctrl+C',
+    onClick: () => copySelectedFiles()
+  });
+
+  items.push({
     label: t('fileExplorer.cut') || 'Cut',
     icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M9.64 7.64c.23-.5.36-1.05.36-1.64 0-2.21-1.79-4-4-4S2 3.79 2 6s1.79 4 4 4c.59 0 1.14-.13 1.64-.36L10 12l-2.36 2.36C7.14 14.13 6.59 14 6 14c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4c0-.59-.13-1.14-.36-1.64L12 14l7 7h3v-1L9.64 7.64zM6 8c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm0 12c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm6-7.5c-.28 0-.5-.22-.5-.5s.22-.5.5-.5.5.22.5.5-.22.5-.5.5zM19 3l-6 6 2 2 7-7V3z"/></svg>',
     shortcut: 'Ctrl+X',
     onClick: () => cutSelectedFiles()
+  });
+
+  items.push({
+    label: t('fileExplorer.duplicate') || 'Duplicate',
+    icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm-1 4l6 6v10c0 1.1-.9 2-2 2H7.99C6.89 23 6 22.1 6 21l.01-14c0-1.1.89-2 1.99-2h7zm-1 7h5.5L14 6.5V12z"/></svg>',
+    onClick: () => duplicateFile(filePath)
   });
 
   items.push({
@@ -979,7 +1299,28 @@ async function moveItems(sourcePaths, targetDir) {
     if (isDescendant(sourcePath, targetDir)) continue;
     if (path.dirname(sourcePath) === targetDir) continue;
     if (!isPathSafe(destPath)) continue;
-    if (fs.existsSync(destPath)) continue;
+
+    // If destination already exists, ask user to confirm overwrite
+    if (fs.existsSync(destPath)) {
+      const overwrite = await showConfirm({
+        title: t('fileExplorer.rename') || 'Move',
+        message: (t('fileExplorer.renameOverwriteConfirm') || 'A file named "{name}" already exists. Overwrite?').replace('{name}', baseName),
+        confirmLabel: t('fileExplorer.overwrite') || 'Overwrite',
+        danger: true,
+      });
+      if (!overwrite) continue;
+      // Remove existing target before move
+      try {
+        const destStat = fs.statSync(destPath);
+        if (destStat.isDirectory()) {
+          fs.rmSync(destPath, { recursive: true, force: true });
+        } else {
+          fs.unlinkSync(destPath);
+        }
+      } catch (e) {
+        continue;
+      }
+    }
 
     try {
       fs.renameSync(sourcePath, destPath);
@@ -1115,13 +1456,18 @@ function attachListeners() {
         promptDeleteMultiple();
       }
     }
+    // Ctrl+C: copy selected files
+    if (e.key === 'c' && (e.ctrlKey || e.metaKey) && selectedFiles.size > 0) {
+      e.preventDefault();
+      copySelectedFiles();
+    }
     // Ctrl+X: cut selected files
     if (e.key === 'x' && (e.ctrlKey || e.metaKey) && selectedFiles.size > 0) {
       e.preventDefault();
       cutSelectedFiles();
     }
-    // Ctrl+V: paste cut files into selected folder or parent of selected file
-    if (e.key === 'v' && (e.ctrlKey || e.metaKey) && cutPaths.length > 0) {
+    // Ctrl+V: paste (cut takes priority over copy)
+    if (e.key === 'v' && (e.ctrlKey || e.metaKey) && (cutPaths.length > 0 || copiedPaths.length > 0)) {
       e.preventDefault();
       let targetDir = rootPath;
       if (lastSelectedFile) {
@@ -1131,93 +1477,101 @@ function attachListeners() {
           targetDir = path.dirname(lastSelectedFile);
         }
       }
-      pasteFiles(targetDir);
+      if (cutPaths.length > 0) {
+        pasteFiles(targetDir);
+      } else {
+        pasteCopiedFiles(targetDir);
+      }
     }
   };
 
-  // Drag & drop (event delegation)
-  treeEl.addEventListener('dragstart', (e) => {
-    const node = e.target.closest('.fe-node');
-    if (!node || node.classList.contains('fe-truncated')) return;
+  // Drag & drop (event delegation) — attach only once to avoid listener accumulation
+  if (!_dragListenersAttached) {
+    _dragListenersAttached = true;
 
-    const nodePath = node.dataset.path;
+    treeEl.addEventListener('dragstart', (e) => {
+      const node = e.target.closest('.fe-node');
+      if (!node || node.classList.contains('fe-truncated')) return;
 
-    // If dragging a selected item, drag all selected items
-    if (selectedFiles.has(nodePath)) {
-      draggedPaths = [...selectedFiles];
-    } else {
-      draggedPaths = [nodePath];
-    }
+      const nodePath = node.dataset.path;
 
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', draggedPaths.join('\n'));
-    node.classList.add('fe-dragging');
-
-    // Mark all dragged items
-    if (draggedPaths.length > 1) {
-      for (const dp of draggedPaths) {
-        const el = treeEl.querySelector(`.fe-node[data-path="${CSS.escape(dp)}"]`);
-        if (el) el.classList.add('fe-dragging');
+      // If dragging a selected item, drag all selected items
+      if (selectedFiles.has(nodePath)) {
+        draggedPaths = [...selectedFiles];
+      } else {
+        draggedPaths = [nodePath];
       }
-    }
-  });
 
-  treeEl.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', draggedPaths.join('\n'));
+      node.classList.add('fe-dragging');
 
-    const node = e.target.closest('.fe-node');
-    if (!node) return;
+      // Mark all dragged items
+      if (draggedPaths.length > 1) {
+        for (const dp of draggedPaths) {
+          const el = treeEl.querySelector(`.fe-node[data-path="${CSS.escape(dp)}"]`);
+          if (el) el.classList.add('fe-dragging');
+        }
+      }
+    });
 
-    const isDir = node.dataset.isDir === 'true';
-    if (isDir) {
-      // Remove previous drop target
-      const prev = treeEl.querySelector('.fe-drop-target');
-      if (prev) prev.classList.remove('fe-drop-target');
-      node.classList.add('fe-drop-target');
-    }
-  });
+    treeEl.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
 
-  treeEl.addEventListener('dragleave', (e) => {
-    const node = e.target.closest('.fe-node');
-    if (node) node.classList.remove('fe-drop-target');
-  });
+      const node = e.target.closest('.fe-node');
+      if (!node) return;
 
-  treeEl.addEventListener('drop', (e) => {
-    e.preventDefault();
+      const isDir = node.dataset.isDir === 'true';
+      if (isDir) {
+        // Remove previous drop target
+        const prev = treeEl.querySelector('.fe-drop-target');
+        if (prev) prev.classList.remove('fe-drop-target');
+        node.classList.add('fe-drop-target');
+      }
+    });
 
-    // Clean up
-    const dropTarget = treeEl.querySelector('.fe-drop-target');
-    if (dropTarget) dropTarget.classList.remove('fe-drop-target');
+    treeEl.addEventListener('dragleave', (e) => {
+      const node = e.target.closest('.fe-node');
+      if (node) node.classList.remove('fe-drop-target');
+    });
 
-    const node = e.target.closest('.fe-node');
-    if (!node) return;
+    treeEl.addEventListener('drop', (e) => {
+      e.preventDefault();
 
-    const targetPath = node.dataset.path;
-    const isDir = node.dataset.isDir === 'true';
+      // Clean up
+      const dropTarget = treeEl.querySelector('.fe-drop-target');
+      if (dropTarget) dropTarget.classList.remove('fe-drop-target');
 
-    if (!isDir || !draggedPaths.length) return;
+      const node = e.target.closest('.fe-node');
+      if (!node) return;
 
-    // Validate moves
-    const validPaths = draggedPaths.filter(p =>
-      p !== targetPath &&
-      !isDescendant(p, targetPath) &&
-      path.dirname(p) !== targetPath
-    );
+      const targetPath = node.dataset.path;
+      const isDir = node.dataset.isDir === 'true';
 
-    if (validPaths.length > 0) {
-      moveItems(validPaths, targetPath);
-    }
-  });
+      if (!isDir || !draggedPaths.length) return;
 
-  treeEl.addEventListener('dragend', () => {
-    // Clean all drag states
-    const dragging = treeEl.querySelectorAll('.fe-dragging');
-    for (const el of dragging) el.classList.remove('fe-dragging');
-    const dropTargets = treeEl.querySelectorAll('.fe-drop-target');
-    for (const el of dropTargets) el.classList.remove('fe-drop-target');
-    draggedPaths = [];
-  });
+      // Validate moves
+      const validPaths = draggedPaths.filter(p =>
+        p !== targetPath &&
+        !isDescendant(p, targetPath) &&
+        path.dirname(p) !== targetPath
+      );
+
+      if (validPaths.length > 0) {
+        moveItems(validPaths, targetPath);
+      }
+    });
+
+    treeEl.addEventListener('dragend', () => {
+      // Clean all drag states
+      const dragging = treeEl.querySelectorAll('.fe-dragging');
+      for (const el of dragging) el.classList.remove('fe-dragging');
+      const dropTargets = treeEl.querySelectorAll('.fe-drop-target');
+      for (const el of dropTargets) el.classList.remove('fe-drop-target');
+      draggedPaths = [];
+    });
+  }
 
   // Header buttons
   const btnCollapse = document.getElementById('btn-collapse-explorer');
@@ -1258,9 +1612,22 @@ function attachListeners() {
   const searchClear = document.getElementById('fe-search-clear');
   if (searchInput) {
     searchInput.oninput = () => {
-      searchQuery = searchInput.value;
-      if (searchClear) searchClear.style.display = searchQuery ? 'flex' : 'none';
-      performSearch();
+      const contentToggle = document.getElementById('fe-content-search-toggle');
+      const isContentMode = contentToggle && contentToggle.classList.contains('active');
+
+      if (isContentMode) {
+        contentSearchQuery = searchInput.value;
+        searchQuery = '';
+        searchResults = [];
+        if (searchClear) searchClear.style.display = contentSearchQuery ? 'flex' : 'none';
+        performContentSearch();
+      } else {
+        searchQuery = searchInput.value;
+        contentSearchQuery = '';
+        contentSearchResults = [];
+        if (searchClear) searchClear.style.display = searchQuery ? 'flex' : 'none';
+        performSearch();
+      }
     };
 
     searchInput.onkeydown = (e) => {
@@ -1268,6 +1635,8 @@ function attachListeners() {
         searchInput.value = '';
         searchQuery = '';
         searchResults = [];
+        contentSearchQuery = '';
+        contentSearchResults = [];
         if (searchClear) searchClear.style.display = 'none';
         render();
       }
@@ -1280,9 +1649,66 @@ function attachListeners() {
       if (input) input.value = '';
       searchQuery = '';
       searchResults = [];
+      contentSearchQuery = '';
+      contentSearchResults = [];
       searchClear.style.display = 'none';
       render();
     };
+  }
+
+  // Content search toggle
+  const contentToggle = document.getElementById('fe-content-search-toggle');
+  if (contentToggle) {
+    contentToggle.onclick = () => {
+      contentToggle.classList.toggle('active');
+      const input = document.getElementById('fe-search-input');
+      if (input) {
+        const isContent = contentToggle.classList.contains('active');
+        input.placeholder = isContent
+          ? (t('fileExplorer.searchContentPlaceholder') || 'Search in file contents...')
+          : (t('fileExplorer.searchPlaceholder') || 'Search files...');
+        // Re-trigger search if there's a query
+        if (input.value) {
+          input.dispatchEvent(new Event('input'));
+        }
+      }
+    };
+  }
+
+  // Sort dropdown
+  const sortBtn = document.getElementById('fe-sort-btn');
+  if (sortBtn) {
+    sortBtn.onclick = (e) => {
+      e.stopPropagation();
+      const sortModes = [
+        { key: 'name', label: t('fileExplorer.sortByName') || 'Name' },
+        { key: 'size', label: t('fileExplorer.sortBySize') || 'Size' },
+        { key: 'date', label: t('fileExplorer.sortByDate') || 'Date' },
+        { key: 'type', label: t('fileExplorer.sortByType') || 'Type' },
+      ];
+      const menuItems = sortModes.map(m => ({
+        label: m.label,
+        icon: currentSortMode === m.key
+          ? '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>'
+          : '',
+        onClick: () => setSortMode(m.key)
+      }));
+      showContextMenu({ x: e.clientX, y: e.clientY, items: menuItems });
+    };
+  }
+
+  // Content match click handler (open file at line)
+  const treeElForContent = document.getElementById('file-explorer-tree');
+  if (treeElForContent) {
+    treeElForContent.addEventListener('click', (e) => {
+      const matchEl = e.target.closest('.fe-content-match');
+      if (matchEl) {
+        const matchPath = matchEl.dataset.path;
+        if (matchPath) {
+          openFile(matchPath);
+        }
+      }
+    });
   }
 }
 
@@ -1370,5 +1796,22 @@ module.exports = {
   toggle,
   toggleDotfiles,
   init,
-  applyWatcherChanges
+  applyWatcherChanges,
+  setSortMode,
+  reloadIgnorePatterns: () => {
+    // Reload all expanded folders when ignore patterns change
+    for (const [folderPath, entry] of expandedFolders) {
+      if (entry.loaded) {
+        entry.loaded = false;
+        entry.loading = true;
+        readDirectoryAsync(folderPath).then(children => {
+          entry.children = children;
+          entry.loaded = true;
+          entry.loading = false;
+          render();
+        });
+      }
+    }
+    render();
+  }
 };

@@ -532,7 +532,7 @@ function switchToSettingsTab(initialSubTab = 'general') {
   document.getElementById('btn-settings').classList.add('active');
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.getElementById('tab-settings').classList.add('active');
-  ctx.TimeTrackingDashboard.cleanup();
+  ctx?.TimeTrackingDashboard?.cleanup();
   renderSettingsTab(initialSubTab);
 }
 
@@ -581,7 +581,7 @@ async function renderSettingsTab(initialTab = 'general') {
       <div class="settings-content">
         <!-- General Tab -->
         <div class="settings-panel ${initialTab === 'general' ? 'active' : ''}" data-panel="general">
-          <div class="settings-group">
+          <div class="settings-group" data-section="appearance">
             <div class="settings-group-title">${t('settings.appearance')}</div>
             <div class="settings-card">
               <div class="settings-row">
@@ -630,7 +630,7 @@ async function renderSettingsTab(initialTab = 'general') {
               </div>
             </div>
           </div>
-          <div class="settings-group">
+          <div class="settings-group" data-section="behavior">
             <div class="settings-group-title">${t('settings.system')}</div>
             <div class="settings-card">
             <div class="settings-toggle-row">
@@ -655,16 +655,6 @@ async function renderSettingsTab(initialTab = 'general') {
             </div>
             <div class="settings-toggle-row">
               <div class="settings-toggle-label">
-                <div>${t('settings.reduceMotion')}</div>
-                <div class="settings-toggle-desc">${t('settings.reduceMotionDesc')}</div>
-              </div>
-              <label class="settings-toggle">
-                <input type="checkbox" id="reduce-motion-toggle" ${settings.reduceMotion ? 'checked' : ''}>
-                <span class="settings-toggle-slider"></span>
-              </label>
-            </div>
-            <div class="settings-toggle-row">
-              <div class="settings-toggle-label">
                 <div>${t('settings.aiCommitMessages')}</div>
                 <div class="settings-toggle-desc">${t('settings.aiCommitMessagesDesc')}</div>
               </div>
@@ -680,17 +670,22 @@ async function renderSettingsTab(initialTab = 'general') {
               </div>
               <div class="settings-dropdown" id="editor-dropdown" data-value="${settings.editor || 'code'}">
                 <div class="settings-dropdown-trigger">
-                  <span>${{'code':'VS Code','cursor':'Cursor','zed':'Zed','subl':'Sublime Text','webstorm':'WebStorm','idea':'IntelliJ IDEA','nvim':'Neovim','vim':'Vim'}[settings.editor || 'code'] || (settings.editor || 'code')}</span>
+                  <span>${{'code':'VS Code','cursor':'Cursor','zed':'Zed','subl':'Sublime Text','webstorm':'WebStorm','idea':'IntelliJ IDEA','nvim':'Neovim','vim':'Vim','custom':t('settings.editorCustom')}[settings.editor || 'code'] || (settings.editor || 'code')}</span>
                   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
                 </div>
                 <div class="settings-dropdown-menu">
-                  ${[{v:'code',l:'VS Code'},{v:'cursor',l:'Cursor'},{v:'zed',l:'Zed'},{v:'subl',l:'Sublime Text'},{v:'webstorm',l:'WebStorm'},{v:'idea',l:'IntelliJ IDEA'},{v:'nvim',l:'Neovim'},{v:'vim',l:'Vim'}].map(o =>
+                  ${[{v:'code',l:'VS Code'},{v:'cursor',l:'Cursor'},{v:'zed',l:'Zed'},{v:'subl',l:'Sublime Text'},{v:'webstorm',l:'WebStorm'},{v:'idea',l:'IntelliJ IDEA'},{v:'nvim',l:'Neovim'},{v:'vim',l:'Vim'},{v:'custom',l:t('settings.editorCustom')}].map(o =>
                     `<div class="settings-dropdown-option ${(settings.editor || 'code') === o.v ? 'selected' : ''}" data-value="${o.v}">
                       <span class="dropdown-check"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></span>
                       ${o.l}
                     </div>`
                   ).join('')}
                 </div>
+              </div>
+              <div class="settings-custom-editor" id="custom-editor-row" style="display: ${settings.editor === 'custom' ? 'block' : 'none'}; margin-top: 8px;">
+                <input type="text" class="settings-input" id="custom-editor-input"
+                  value="${(settings.customEditorCommand || '').replace(/"/g, '&quot;')}"
+                  placeholder="${t('settings.editorCustomPlaceholder')}" />
               </div>
             </div>
             <div class="settings-row">
@@ -724,7 +719,7 @@ async function renderSettingsTab(initialTab = 'general') {
             </div>
             </div>
           </div>
-          <div class="settings-group">
+          <div class="settings-group" data-section="integration">
             <div class="settings-group-title">${t('settings.explorerGroup')}</div>
             <div class="settings-card">
               <div class="settings-toggle-row">
@@ -737,9 +732,16 @@ async function renderSettingsTab(initialTab = 'general') {
                   <span class="settings-toggle-slider"></span>
                 </label>
               </div>
+              <div class="settings-field" style="margin-top: 12px;">
+                <label>${t('settings.explorerIgnorePatterns')}</label>
+                <div class="settings-toggle-desc" style="margin-bottom: 6px;">${t('settings.explorerIgnorePatternsDesc')}</div>
+                <input type="text" id="explorer-ignore-patterns" class="settings-input"
+                  value="${escapeHtml((settings.explorerIgnorePatterns || []).join(', '))}"
+                  placeholder="e.g. .env, logs, tmp">
+              </div>
             </div>
           </div>
-          <div class="settings-group">
+          <div class="settings-group" data-section="telemetry">
             <div class="settings-group-title">${t('settings.telemetryGroup')}</div>
             <div class="settings-card">
               <div class="settings-toggle-row">
@@ -753,7 +755,7 @@ async function renderSettingsTab(initialTab = 'general') {
                 </label>
               </div>
               ${settings.telemetryEnabled ? `
-              <div style="border-top: 1px solid var(--border-color); margin-top: 8px; padding-top: 8px;">
+              <div class="settings-card-section-divider">
                 <div class="settings-toggle-row">
                   <div class="settings-toggle-label">
                     <div>${t('settings.telemetryCategoryApp')}</div>
@@ -819,6 +821,31 @@ async function renderSettingsTab(initialTab = 'general') {
                 <span>${t('settings.addPreset')}</span>
               </button>
             </div>
+            </div>
+          </div>
+          <div class="settings-group">
+            <div class="settings-group-title">${t('settings.importExportGroup')}</div>
+            <div class="settings-card">
+              <div class="settings-row">
+                <div class="settings-label">
+                  <div>${t('settings.exportSettings')}</div>
+                  <div class="settings-desc">${t('settings.exportSettingsDesc')}</div>
+                </div>
+                <button type="button" class="btn-outline" id="btn-export-settings">
+                  <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                  ${t('settings.exportBtn')}
+                </button>
+              </div>
+              <div class="settings-row">
+                <div class="settings-label">
+                  <div>${t('settings.importSettings')}</div>
+                  <div class="settings-desc">${t('settings.importSettingsDesc')}</div>
+                </div>
+                <button type="button" class="btn-outline" id="btn-import-settings">
+                  <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/></svg>
+                  ${t('settings.importBtn')}
+                </button>
+              </div>
             </div>
           </div>
           <div class="settings-group">
@@ -1109,9 +1136,29 @@ async function renderSettingsTab(initialTab = 'general') {
                   </div>
                 </div>`;
             });
+            // Inject core performance settings into the performance tab
+            let coreHtml = '';
+            if (tabId === 'performance') {
+              coreHtml = `
+                <div class="settings-group">
+                  <div class="settings-group-title">${t('settings.performanceAnimations')}</div>
+                  <div class="settings-card">
+                    <div class="settings-toggle-row">
+                      <div class="settings-toggle-label">
+                        <div>${t('settings.reduceMotion')}</div>
+                        <div class="settings-toggle-desc">${t('settings.reduceMotionDesc')}</div>
+                      </div>
+                      <label class="settings-toggle">
+                        <input type="checkbox" id="reduce-motion-toggle" ${settings.reduceMotion ? 'checked' : ''}>
+                        <span class="settings-toggle-slider"></span>
+                      </label>
+                    </div>
+                  </div>
+                </div>`;
+            }
             panelsHtml += `
               <div class="settings-panel ${initialTab === tabId ? 'active' : ''}" data-panel="${tabId}">
-                ${sectionsHtml}
+                ${coreHtml}${sectionsHtml}
               </div>`;
           });
           return panelsHtml;
@@ -1403,6 +1450,18 @@ async function renderSettingsTab(initialTab = 'general') {
       };
     });
   });
+  // Show/hide custom editor input when editor dropdown changes
+  const editorDropdownEl = document.getElementById('editor-dropdown');
+  if (editorDropdownEl) {
+    const observer = new MutationObserver(() => {
+      const customRow = document.getElementById('custom-editor-row');
+      if (customRow) {
+        customRow.style.display = editorDropdownEl.dataset.value === 'custom' ? 'block' : 'none';
+      }
+    });
+    observer.observe(editorDropdownEl, { attributes: true, attributeFilter: ['data-value'] });
+  }
+
   // Issue 7: centralized cleanup — tear down previous listeners before registering new ones
   _runCleanups();
 
@@ -1493,6 +1552,10 @@ async function renderSettingsTab(initialTab = 'general') {
     const newEnable1MContext = context1MToggle ? context1MToggle.checked : settings.enable1MContext || false;
     const showDotfilesToggle = document.getElementById('show-dotfiles-toggle');
     const newShowDotfiles = showDotfilesToggle ? showDotfilesToggle.checked : true;
+    const ignorePatternsInput = document.getElementById('explorer-ignore-patterns');
+    const newIgnorePatterns = ignorePatternsInput
+      ? ignorePatternsInput.value.split(',').map(s => s.trim()).filter(Boolean)
+      : (settings.explorerIgnorePatterns || []);
     const showTabModeToggleEl = document.getElementById('show-tab-mode-toggle');
     const newShowTabModeToggle = showTabModeToggleEl ? showTabModeToggleEl.checked : true;
     const telemetryEnabledToggle = document.getElementById('telemetry-enabled-toggle');
@@ -1507,8 +1570,10 @@ async function renderSettingsTab(initialTab = 'general') {
     };
 
     const editorDropdown = document.getElementById('editor-dropdown');
+    const customEditorInput = document.getElementById('custom-editor-input');
     const newSettings = {
       editor: editorDropdown?.dataset.value || settings.editor || 'code',
+      customEditorCommand: customEditorInput ? customEditorInput.value.trim() : (settings.customEditorCommand || ''),
       skipPermissions: selectedMode?.dataset.mode === 'dangerous',
       accentColor,
       closeAction: closeActionDropdown?.dataset.value || 'ask',
@@ -1522,6 +1587,7 @@ async function renderSettingsTab(initialTab = 'general') {
       hooksEnabled: newHooksEnabled,
       enable1MContext: newEnable1MContext,
       showDotfiles: newShowDotfiles,
+      explorerIgnorePatterns: newIgnorePatterns,
       showTabModeToggle: newShowTabModeToggle,
       tabRenameOnSlashCommand: newTabRenameOnSlashCommand,
       aiTabNaming: newAiTabNaming,
@@ -1602,6 +1668,83 @@ async function renderSettingsTab(initialTab = 'general') {
   if (btnRerunSetup) {
     btnRerunSetup.onclick = () => {
       ctx.api.setupWizard.rerun();
+    };
+  }
+
+  // Export settings
+  const btnExportSettings = document.getElementById('btn-export-settings');
+  if (btnExportSettings) {
+    btnExportSettings.onclick = async () => {
+      const settings = ctx.settingsState.get();
+      const exportData = {
+        _exportVersion: 1,
+        _appVersion: await ctx.api.app.getVersion(),
+        _exportedAt: new Date().toISOString(),
+        settings
+      };
+      const content = JSON.stringify(exportData, null, 2);
+      const filePath = await ctx.api.dialog.saveFileDialog({
+        defaultPath: `claude-terminal-settings-${new Date().toISOString().slice(0, 10)}.json`,
+        filters: [{ name: 'JSON', extensions: ['json'] }]
+      });
+      if (filePath) {
+        try {
+          const { fs } = window.electron_nodeModules;
+          fs.writeFileSync(filePath, content, 'utf8');
+          const { showSuccess } = require('../components/Toast');
+          showSuccess(t('settings.exportSuccess'));
+        } catch (err) {
+          console.error('Export settings error:', err);
+          const { showError } = require('../components/Toast');
+          showError(t('settings.importError'));
+        }
+      }
+    };
+  }
+
+  // Import settings
+  const btnImportSettings = document.getElementById('btn-import-settings');
+  if (btnImportSettings) {
+    btnImportSettings.onclick = async () => {
+      const filePath = await ctx.api.dialog.selectFile({
+        filters: [{ name: 'JSON', extensions: ['json'] }]
+      });
+      if (!filePath) return;
+      try {
+        const { fs } = window.electron_nodeModules;
+        const raw = fs.readFileSync(filePath, 'utf8');
+        const data = JSON.parse(raw);
+
+        // Accept both wrapped format { settings: {...} } and raw settings object
+        const importedSettings = data.settings || data;
+        if (typeof importedSettings !== 'object' || Array.isArray(importedSettings)) {
+          throw new Error('Invalid settings format');
+        }
+
+        // Merge with defaults: only keep known keys
+        const { defaultSettings } = require('../../state/settings.state');
+        const validKeys = Object.keys(defaultSettings);
+        const merged = { ...defaultSettings };
+        for (const key of validKeys) {
+          if (key in importedSettings) {
+            merged[key] = importedSettings[key];
+          }
+        }
+
+        ctx.settingsState.set(merged);
+        ctx.saveSettingsImmediate();
+        ctx.applyAccentColor(merged.accentColor);
+
+        const { showSuccess } = require('../components/Toast');
+        showSuccess(t('settings.importSuccess'));
+
+        // Re-render to reflect imported settings
+        renderSettingsTab('general');
+      } catch (err) {
+        console.error('Import settings error:', err);
+        const { showError } = require('../components/Toast');
+        showError(t('settings.importError'));
+      }
     };
   }
 }

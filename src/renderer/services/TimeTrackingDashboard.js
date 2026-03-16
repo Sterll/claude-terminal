@@ -3,7 +3,7 @@
  * Renders a detailed time tracking dashboard with charts, stats, and project breakdown
  */
 
-const { projectsState, getGlobalTimes, getProjectTimes, getProjectSessions, getGlobalTrackingData } = require('../state');
+const { projectsState, getGlobalTimes, getProjectTimes, getProjectSessions, getGlobalTrackingData, getSetting, setSetting } = require('../state');
 const { escapeHtml } = require('../utils');
 const { sanitizeColor } = require('../utils/color');
 const { formatDuration, formatDurationLarge } = require('../utils/format');
@@ -20,6 +20,8 @@ let calendarPopup = null;
 let calendarOutsideClickHandler = null;
 let calendarEscHandler = null;
 let calendarListenerTimer = null;
+let goalPopup = null;
+let goalOutsideClickHandler = null;
 
 /**
  * Get period label based on current period and offset
@@ -462,6 +464,192 @@ async function getDayStats() {
 }
 
 /**
+ * Get total time for the previous equivalent period
+ * Day → yesterday, Week → last week, Month → last month
+ */
+async function getPreviousPeriodTime() {
+  if (currentPeriod === 'custom') return null;
+
+  const savedOffset = currentOffset;
+  currentOffset = savedOffset - 1;
+  const prevTime = await getTotalTimeForPeriod();
+  currentOffset = savedOffset;
+  return prevTime;
+}
+
+/**
+ * Close the goal config popup
+ */
+function closeGoalPopup() {
+  if (goalOutsideClickHandler) {
+    document.removeEventListener('mousedown', goalOutsideClickHandler);
+    goalOutsideClickHandler = null;
+  }
+  if (goalPopup) {
+    goalPopup.remove();
+    goalPopup = null;
+  }
+}
+
+/**
+ * Show goal configuration popup
+ */
+function showGoalConfigPopup(container, anchorEl) {
+  if (goalPopup) {
+    closeGoalPopup();
+    return;
+  }
+
+  const currentGoal = getSetting('dailyGoal') || 0;
+  const popup = document.createElement('div');
+  popup.className = 'tt-goal-popup';
+  goalPopup = popup;
+
+  const presets = [
+    { label: '2h', value: 120 },
+    { label: '4h', value: 240 },
+    { label: '6h', value: 360 },
+    { label: '8h', value: 480 },
+  ];
+
+  popup.innerHTML = `
+    <div class="tt-goal-popup-title">${t('timetracking.goalTitle')}</div>
+    <div class="tt-goal-popup-desc">${t('timetracking.goalDesc')}</div>
+    <div class="tt-goal-input-row">
+      <input type="number" class="tt-goal-input" id="tt-goal-input" min="0" max="1440" step="15" value="${currentGoal || ''}" placeholder="0">
+      <span class="tt-goal-input-unit">${t('timetracking.goalMinutes')}</span>
+    </div>
+    <div class="tt-goal-presets">
+      ${presets.map(p => `<button class="tt-goal-preset-btn ${currentGoal === p.value ? 'active' : ''}" data-value="${p.value}">${p.label}</button>`).join('')}
+    </div>
+    <div class="tt-goal-actions">
+      <button class="tt-goal-disable-btn" id="tt-goal-disable">${t('timetracking.goalDisable')}</button>
+      <button class="tt-goal-apply-btn" id="tt-goal-apply">${t('timetracking.goalApply')}</button>
+    </div>
+  `;
+
+  anchorEl.appendChild(popup);
+
+  // Preset buttons
+  popup.querySelectorAll('.tt-goal-preset-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const val = parseInt(btn.dataset.value);
+      popup.querySelector('#tt-goal-input').value = val;
+      popup.querySelectorAll('.tt-goal-preset-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  // Input change clears preset active
+  popup.querySelector('#tt-goal-input')?.addEventListener('input', () => {
+    popup.querySelectorAll('.tt-goal-preset-btn').forEach(b => b.classList.remove('active'));
+  });
+
+  // Disable
+  popup.querySelector('#tt-goal-disable')?.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    setSetting('dailyGoal', 0);
+    closeGoalPopup();
+    await render(container);
+  });
+
+  // Apply
+  popup.querySelector('#tt-goal-apply')?.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const val = parseInt(popup.querySelector('#tt-goal-input')?.value) || 0;
+    setSetting('dailyGoal', Math.max(0, Math.min(1440, val)));
+    closeGoalPopup();
+    await render(container);
+  });
+
+  // Outside click
+  setTimeout(() => {
+    goalOutsideClickHandler = (e) => {
+      if (goalPopup && !goalPopup.contains(e.target) && !e.target.closest('.tt-goal-btn')) {
+        closeGoalPopup();
+      }
+    };
+    document.addEventListener('mousedown', goalOutsideClickHandler);
+  }, 0);
+}
+
+/**
+ * Export time tracking data for the current period
+ * @param {'csv'|'json'} format
+ */
+async function exportData(format) {
+  const { sessions, periodStart, periodEnd } = await getSessionsForPeriod();
+  const periodLabel = getPeriodLabel();
+  const locale = t('language.code') === 'fr' ? 'fr-FR' : 'en-US';
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const defaultName = `timetracking-${dateStr}.${format}`;
+
+  if (format === 'csv') {
+    const header = 'Date,Project,Duration (hours),Duration (formatted),Session Start,Session End';
+    const rows = sessions.map(s => {
+      const startDate = new Date(s.startTime);
+      const endDate = new Date(s.endTime);
+      const durationHours = (s.duration / 3600000).toFixed(2);
+      const durationFormatted = formatDuration(s.duration);
+      return [
+        startDate.toLocaleDateString(locale),
+        `"${(s.projectName || '').replace(/"/g, '""')}"`,
+        durationHours,
+        durationFormatted,
+        startDate.toISOString(),
+        endDate.toISOString()
+      ].join(',');
+    });
+
+    const csvContent = [header, ...rows].join('\n');
+    const filePath = await window.electron_api.dialog.saveFileDialog({
+      defaultPath: defaultName,
+      title: t('timetracking.exportTitle'),
+      filters: [{ name: 'CSV', extensions: ['csv'] }]
+    });
+
+    if (filePath) {
+      const { fs } = window.electron_nodeModules;
+      fs.writeFileSync(filePath, '\uFEFF' + csvContent, 'utf8');
+    }
+  } else {
+    const totalDuration = sessions.reduce((sum, s) => sum + (s.duration || 0), 0);
+    const jsonData = {
+      metadata: {
+        exportedAt: new Date().toISOString(),
+        period: periodLabel,
+        periodStart: periodStart.toISOString(),
+        periodEnd: periodEnd.toISOString(),
+        totalSessions: sessions.length,
+        totalDuration,
+        totalDurationFormatted: formatDuration(totalDuration)
+      },
+      sessions: sessions.map(s => ({
+        project: s.projectName,
+        projectId: s.projectId,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        duration: s.duration,
+        durationHours: parseFloat((s.duration / 3600000).toFixed(2)),
+        durationFormatted: formatDuration(s.duration)
+      }))
+    };
+
+    const filePath = await window.electron_api.dialog.saveFileDialog({
+      defaultPath: defaultName,
+      title: t('timetracking.exportTitle'),
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    });
+
+    if (filePath) {
+      const { fs } = window.electron_nodeModules;
+      fs.writeFileSync(filePath, JSON.stringify(jsonData, null, 2), 'utf8');
+    }
+  }
+}
+
+/**
  * Render the time tracking dashboard
  */
 async function render(container) {
@@ -482,6 +670,37 @@ async function render(container) {
   // Calculate percentages based on project time breakdown
   const totalProjectTime = projectBreakdown.reduce((sum, p) => sum + p.time, 0);
 
+  // Daily goal
+  const dailyGoal = getSetting('dailyGoal') || 0;
+  const todayTimeMs = getGlobalTimes().today;
+  const goalProgressPercent = dailyGoal > 0 ? Math.min(100, Math.round((todayTimeMs / (dailyGoal * 60000)) * 100)) : 0;
+  const goalReached = goalProgressPercent >= 100;
+  const RING_CIRCUMFERENCE = 2 * Math.PI * 54; // r=54
+
+  // Period comparison
+  const prevPeriodTime = await getPreviousPeriodTime();
+  let comparisonHtml = '';
+  if (prevPeriodTime !== null && currentPeriod !== 'custom') {
+    const delta = totalPeriodTime - prevPeriodTime;
+    const deltaPercent = prevPeriodTime > 0 ? Math.round((delta / prevPeriodTime) * 100) : (totalPeriodTime > 0 ? 100 : 0);
+    const isPositive = delta >= 0;
+    const absDelta = Math.abs(delta);
+    const vsLabel = currentPeriod === 'day' ? t('timetracking.vsYesterday')
+      : currentPeriod === 'week' ? t('timetracking.vsLastWeek')
+      : t('timetracking.vsLastMonth');
+
+    if (absDelta > 60000) {
+      comparisonHtml = `
+        <div class="tt-comparison ${isPositive ? 'positive' : 'negative'}">
+          <span class="tt-comparison-arrow">${isPositive ? '&#x2191;' : '&#x2193;'}</span>
+          <span class="tt-comparison-delta">${isPositive ? '+' : '-'}${formatDuration(absDelta)}</span>
+          <span class="tt-comparison-percent">(${isPositive ? '+' : ''}${deltaPercent}%)</span>
+          <span class="tt-comparison-label">${vsLabel}</span>
+        </div>
+      `;
+    }
+  }
+
   container.innerHTML = `
     <div class="tt-dashboard">
       <!-- Ambient background effects -->
@@ -500,6 +719,21 @@ async function render(container) {
             </svg>
             ${t('timetracking.title')}
           </h1>
+          <div class="tt-header-actions">
+            <button class="tt-goal-btn" data-action="configure-goal" title="${t('timetracking.configureGoal')}">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+            </button>
+            <div class="tt-export-dropdown">
+              <button class="tt-export-btn" data-action="export-toggle" title="${t('timetracking.export')}">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                ${t('timetracking.export')}
+              </button>
+              <div class="tt-export-menu" id="tt-export-menu" style="display:none;">
+                <button class="tt-export-option" data-action="export-csv">CSV</button>
+                <button class="tt-export-option" data-action="export-json">JSON</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="tt-period-nav" style="position: relative;">
@@ -532,35 +766,50 @@ async function render(container) {
             </div>
             <div class="tt-hero-label">${t('timetracking.totalTime')}</div>
             <div class="tt-hero-sublabel">${getPeriodLabel()}</div>
+            ${comparisonHtml}
           </div>
+          ${dailyGoal > 0 && currentPeriod === 'day' && currentOffset === 0 ? `
+          <div class="tt-hero-ring ${goalReached ? 'tt-goal-reached' : ''}">
+            <svg viewBox="0 0 120 120">
+              <circle class="tt-ring-bg" cx="60" cy="60" r="54" fill="none" stroke-width="6"/>
+              <circle class="tt-ring-progress" cx="60" cy="60" r="54" fill="none" stroke-width="6"
+                stroke-dasharray="${(goalProgressPercent / 100) * RING_CIRCUMFERENCE} ${RING_CIRCUMFERENCE}"
+                transform="rotate(-90 60 60)"/>
+            </svg>
+            <div class="tt-ring-label">
+              <span class="tt-ring-value">${goalProgressPercent}%</span>
+              <span class="tt-ring-text">${goalReached ? t('timetracking.goalReached') : t('timetracking.ofGoal')}</span>
+            </div>
+          </div>
+          ` : ''}
         </div>
 
         <!-- Quick Stats -->
         <div class="tt-card tt-card-stats">
           ${currentPeriod === 'day' ? `
           <!-- Day view stats -->
-          <div class="tt-stat-item">
+          <div class="tt-stat-item" title="${escapeHtml(t('timetracking.sessionsTooltip'))}">
             <div class="tt-stat-icon tt-stat-sessions">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14h-2v-4H8v-2h2V9h2v2h2v2h-2v4z"/></svg>
             </div>
             <div class="tt-stat-value">${sessionCount}</div>
             <div class="tt-stat-label">${t('timetracking.sessions')}</div>
           </div>
-          <div class="tt-stat-item">
+          <div class="tt-stat-item" title="${escapeHtml(t('timetracking.startTooltip'))}">
             <div class="tt-stat-icon tt-stat-start">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
             </div>
             <div class="tt-stat-value">${dayStats.firstSession ? dayStats.firstSession.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) : '-'}</div>
             <div class="tt-stat-label">${t('timetracking.chartStart')}</div>
           </div>
-          <div class="tt-stat-item">
+          <div class="tt-stat-item" title="${escapeHtml(t('timetracking.endTooltip'))}">
             <div class="tt-stat-icon tt-stat-end">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
             </div>
             <div class="tt-stat-value">${dayStats.lastSession ? dayStats.lastSession.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) : '-'}</div>
             <div class="tt-stat-label">${t('timetracking.chartEnd')}</div>
           </div>
-          <div class="tt-stat-item">
+          <div class="tt-stat-item" title="${escapeHtml(t('timetracking.projectsTooltip'))}">
             <div class="tt-stat-icon tt-stat-projects">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>
             </div>
@@ -569,21 +818,21 @@ async function render(container) {
           </div>
           ` : `
           <!-- Week/Month view stats -->
-          <div class="tt-stat-item">
+          <div class="tt-stat-item" title="${escapeHtml(t('timetracking.streakTooltip'))}">
             <div class="tt-stat-icon tt-stat-streak">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"/></svg>
             </div>
             <div class="tt-stat-value">${streak}</div>
             <div class="tt-stat-label">${t('timetracking.streak')}</div>
           </div>
-          <div class="tt-stat-item">
+          <div class="tt-stat-item" title="${escapeHtml(t('timetracking.avgTooltip'))}">
             <div class="tt-stat-icon tt-stat-avg">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17h18v2H3v-2zm0-7h18v5H3v-5zm0-4h18v2H3V6z"/></svg>
             </div>
             <div class="tt-stat-value">${formatDuration(avgDaily)}</div>
             <div class="tt-stat-label">${t('timetracking.avgPerDay')}</div>
           </div>
-          <div class="tt-stat-item">
+          <div class="tt-stat-item" title="${escapeHtml(t('timetracking.sessionsTooltip'))}">
             <div class="tt-stat-icon tt-stat-sessions">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14h-2v-4H8v-2h2V9h2v2h2v2h-2v4z"/></svg>
             </div>
@@ -591,7 +840,7 @@ async function render(container) {
             <div class="tt-stat-label">${t('timetracking.sessions')}</div>
           </div>
           ${mostActive ? `
-          <div class="tt-stat-item tt-stat-project">
+          <div class="tt-stat-item tt-stat-project" title="${escapeHtml(t('timetracking.topProjectTooltip'))}">
             <div class="tt-stat-icon" style="background: ${sanitizeColor(mostActive.project.color) || '#d97706'}20; color: ${sanitizeColor(mostActive.project.color) || '#d97706'}">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>
             </div>
@@ -924,7 +1173,7 @@ function showCalendarPopup(container, anchorEl) {
         }
 
         closeCalendarPopup();
-        await render(container);
+        await transitionAndRender(container);
       });
     });
 
@@ -964,7 +1213,7 @@ function showCalendarPopup(container, anchorEl) {
         currentPeriod = 'custom';
         currentOffset = 0;
         closeCalendarPopup();
-        await render(container);
+        await transitionAndRender(container);
       }
     });
   }
@@ -993,6 +1242,18 @@ function showCalendarPopup(container, anchorEl) {
 }
 
 /**
+ * Smooth transition: fade-out existing content, then re-render with fade-in
+ */
+async function transitionAndRender(container) {
+  const content = container.querySelector('.tt-content');
+  if (content) {
+    content.classList.add('tt-content-exit');
+    await new Promise(r => setTimeout(r, 150));
+  }
+  await render(container);
+}
+
+/**
  * Attach event listeners to the dashboard
  */
 function attachEventListeners(container) {
@@ -1004,7 +1265,7 @@ function attachEventListeners(container) {
       customStartDate = null;
       customEndDate = null;
       closeCalendarPopup();
-      await render(container);
+      await transitionAndRender(container);
     });
   });
 
@@ -1013,6 +1274,40 @@ function attachEventListeners(container) {
     e.stopPropagation();
     const periodNav = container.querySelector('.tt-period-nav');
     showCalendarPopup(container, periodNav);
+  });
+
+  // Goal config button
+  container.querySelector('[data-action="configure-goal"]')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const headerLeft = container.querySelector('.tt-header-left');
+    showGoalConfigPopup(container, headerLeft);
+  });
+
+  // Export toggle
+  container.querySelector('[data-action="export-toggle"]')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const menu = container.querySelector('#tt-export-menu');
+    if (menu) menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+  });
+
+  // Export CSV
+  container.querySelector('[data-action="export-csv"]')?.addEventListener('click', async () => {
+    container.querySelector('#tt-export-menu').style.display = 'none';
+    await exportData('csv');
+  });
+
+  // Export JSON
+  container.querySelector('[data-action="export-json"]')?.addEventListener('click', async () => {
+    container.querySelector('#tt-export-menu').style.display = 'none';
+    await exportData('json');
+  });
+
+  // Close export menu on outside click
+  document.addEventListener('click', (e) => {
+    const menu = container.querySelector('#tt-export-menu');
+    if (menu && !e.target.closest('.tt-export-dropdown')) {
+      menu.style.display = 'none';
+    }
   });
 
   // Navigation buttons
@@ -1024,14 +1319,14 @@ function attachEventListeners(container) {
       currentOffset = 0;
     }
     currentOffset--;
-    await render(container);
+    await transitionAndRender(container);
   });
 
   container.querySelector('#tt-next')?.addEventListener('click', async () => {
     if (currentPeriod === 'custom') return;
     if (currentOffset < 0) {
       currentOffset++;
-      await render(container);
+      await transitionAndRender(container);
     }
   });
 }
@@ -1065,6 +1360,7 @@ function cleanup() {
     updateInterval = null;
   }
   closeCalendarPopup();
+  closeGoalPopup();
 }
 
 module.exports = {

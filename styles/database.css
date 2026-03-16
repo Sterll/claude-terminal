@@ -153,18 +153,12 @@
   display: flex;
   gap: 4px;
   flex-shrink: 0;
-  opacity: 0;
-  transform: translateX(4px);
-  transition: all 0.2s ease;
+  opacity: 0.4;
+  transition: opacity 0.15s ease;
 }
-.database-card:hover .database-card-actions {
-  opacity: 1;
-  transform: translateX(0);
-}
-/* Always show on touch / selected */
+.database-card:hover .database-card-actions,
 .database-card.selected .database-card-actions {
   opacity: 1;
-  transform: translateX(0);
 }
 
 /* ========== ACTION BUTTONS ========== */
@@ -387,7 +381,7 @@
 .db-browser-sidebar {
   width: 240px;
   min-width: 180px;
-  max-width: 300px;
+  max-width: 400px;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border-color);
@@ -516,6 +510,18 @@
   opacity: 0.6;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
+}
+.db-browser-table-rows {
+  font-size: 9px;
+  color: var(--text-muted);
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+.db-browser-table-item.active .db-browser-table-rows {
+  color: var(--accent);
+  opacity: 0.7;
 }
 
 /* ===== MAIN PANEL ===== */
@@ -821,6 +827,7 @@
 }
 .db-grid-th,
 .db-grid thead th {
+  position: relative;
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   font-weight: 600;
@@ -942,7 +949,7 @@
   position: relative;
 }
 .db-grid-row-delete {
-  display: none;
+  display: flex;
   position: absolute;
   inset: 0;
   align-items: center;
@@ -952,7 +959,8 @@
   cursor: pointer;
   color: var(--danger);
   padding: 0;
-  transition: background 0.1s;
+  opacity: 0;
+  transition: opacity 0.1s, background 0.1s;
 }
 .db-grid-row-delete svg {
   width: 12px;
@@ -962,7 +970,7 @@
   background: rgba(239, 68, 68, 0.2);
 }
 .db-grid tbody tr:hover .db-grid-row-delete {
-  display: flex;
+  opacity: 1;
 }
 .db-grid tbody tr:hover .db-grid-row-idx {
   display: none;
@@ -1722,4 +1730,748 @@
 
 .database-form-test-result.error {
   color: var(--danger);
+}
+
+/* ========== QUERY HISTORY ========== */
+
+.db-query-history {
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.db-query-history-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 4px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: var(--font-2xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.12s;
+  text-align: left;
+}
+
+.db-query-history-toggle:hover {
+  color: var(--text-secondary);
+}
+
+.db-query-history-toggle svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.db-query-history.expanded .db-query-history-toggle svg:first-child {
+  transform: rotate(90deg);
+}
+
+.db-query-history-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  padding: 1px 6px;
+  min-width: 18px;
+  text-align: center;
+}
+
+.db-query-history-clear {
+  margin-left: auto;
+  padding: 2px 8px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.db-query-history-clear:hover {
+  color: var(--danger);
+  border-color: rgba(239, 68, 68, 0.15);
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.db-query-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 2px 0 4px;
+}
+
+.db-query-history-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.db-query-history-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+}
+
+.db-query-history-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.1s;
+  position: relative;
+}
+
+.db-query-history-entry:hover {
+  background: var(--bg-hover);
+}
+
+.db-query-history-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+}
+
+.db-query-history-time {
+  color: var(--text-muted);
+}
+
+.db-query-history-duration {
+  color: var(--text-muted);
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+
+.db-query-history-rows {
+  color: var(--success);
+  font-weight: 500;
+}
+
+.db-query-history-error-badge {
+  color: var(--danger);
+  font-weight: 600;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.db-query-history-sql {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  padding-right: 20px;
+}
+
+.db-query-history-entry.error .db-query-history-sql {
+  color: var(--text-muted);
+}
+
+.db-query-history-delete {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 18px;
+  height: 18px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: none;
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.db-query-history-entry:hover .db-query-history-delete {
+  display: flex;
+}
+
+.db-query-history-delete:hover {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* ========== SAVED QUERIES ========== */
+
+.db-query-tpl-saved {
+  border-color: rgba(217, 119, 6, 0.2) !important;
+  color: var(--accent) !important;
+}
+
+.db-query-tpl-saved:hover {
+  background: rgba(217, 119, 6, 0.08) !important;
+  border-color: rgba(217, 119, 6, 0.35) !important;
+  color: var(--accent-hover) !important;
+}
+
+.db-query-tpl-divider {
+  display: inline-block;
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.06);
+  vertical-align: middle;
+  margin: 0 2px;
+}
+
+.db-query-save {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.db-query-save:hover {
+  background: rgba(217, 119, 6, 0.08);
+  border-color: rgba(217, 119, 6, 0.15);
+  color: var(--accent);
+}
+
+.db-query-save svg {
+  width: 13px;
+  height: 13px;
+}
+
+.db-save-query-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.db-save-query-label {
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+}
+
+.db-save-query-preview {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  max-height: 60px;
+  overflow: auto;
+  padding: 8px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ========== AUTOCOMPLETE DROPDOWN ========== */
+
+.db-autocomplete-dropdown {
+  position: absolute;
+  z-index: 100;
+  min-width: 180px;
+  max-width: 340px;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  padding: 4px;
+}
+
+.db-autocomplete-dropdown::-webkit-scrollbar {
+  width: 4px;
+}
+
+.db-autocomplete-dropdown::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+}
+
+.db-ac-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: background 0.08s;
+}
+
+.db-ac-item:hover,
+.db-ac-item.active {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.db-ac-item.active {
+  background: var(--accent-dim);
+}
+
+.db-ac-text {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 12px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-ac-detail {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.db-ac-icon-table::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--info);
+  flex-shrink: 0;
+}
+
+.db-ac-icon-column::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  flex-shrink: 0;
+}
+
+.db-ac-icon-keyword::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  background: var(--warning);
+  flex-shrink: 0;
+}
+
+/* ========== EXPORT DROPDOWN ========== */
+.db-export-wrap {
+  position: relative;
+}
+.db-export-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  min-width: 80px;
+  overflow: hidden;
+}
+.db-export-menu.open {
+  display: block;
+}
+.db-export-option {
+  display: block;
+  width: 100%;
+  padding: 6px 14px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.1s;
+}
+.db-export-option:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* ========== FK VISUALIZATION ========== */
+.db-col-chip.fk {
+  border-color: rgba(99, 102, 241, 0.25);
+  background: rgba(99, 102, 241, 0.06);
+}
+.db-col-fk {
+  font-size: 0.5625rem;
+  font-weight: 800;
+  color: #818cf8;
+  letter-spacing: 0.3px;
+}
+.db-col-fk-ref {
+  font-size: 9px;
+  color: #818cf8;
+  opacity: 0.8;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+.db-col-fk-ref:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+/* ========== MULTIPLE ROW SELECTION ========== */
+.db-grid-checkbox-col {
+  width: 32px;
+  min-width: 32px;
+  max-width: 32px;
+  text-align: center;
+  padding: 5px 4px !important;
+  cursor: default;
+}
+.db-grid-checkbox-col input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.db-grid tbody tr.selected > td {
+  background: rgba(217, 119, 6, 0.06);
+}
+.db-grid tbody tr.selected:hover > td {
+  background: rgba(217, 119, 6, 0.1);
+}
+.db-browser-selection-badge {
+  font-size: var(--font-2xs);
+  color: var(--accent);
+  font-weight: 600;
+  padding: 2px 8px;
+  background: var(--accent-dim);
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+/* ========== COLUMN RESIZE ========== */
+.db-grid-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  z-index: 3;
+  transition: background 0.1s;
+}
+.db-grid-resize-handle:hover,
+.db-grid-resize-handle:active {
+  background: var(--accent);
+}
+.database-results-table th {
+  position: relative;
+}
+
+/* ========== SIDEBAR RESIZE ========== */
+.db-browser-resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.db-browser-resize-handle:hover,
+.db-browser-resize-handle:active {
+  background: var(--accent);
+}
+
+/* ========== CELL VALUE VIEWER ========== */
+.db-cell-expand-btn {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  z-index: 2;
+}
+.db-grid-cell:hover .db-cell-expand-btn,
+.database-results-table td:hover .db-cell-expand-btn {
+  display: flex;
+}
+.db-cell-expand-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.db-grid-cell,
+.database-results-table td {
+  position: relative;
+}
+.db-cell-viewer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.db-cell-viewer-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-xs);
+}
+.db-cell-viewer-col {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.db-cell-viewer-type {
+  font-family: 'Cascadia Code', monospace;
+  font-size: var(--font-2xs);
+  color: var(--accent);
+}
+.db-cell-viewer-length {
+  color: var(--text-muted);
+  font-size: var(--font-2xs);
+}
+.db-cell-viewer-badge {
+  padding: 1px 6px;
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--success);
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+}
+.db-cell-viewer-content {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 14px;
+  font-family: 'Cascadia Code', monospace;
+  font-size: var(--font-xs);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 400px;
+  overflow: auto;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* ========== CONNECTION STRING TOGGLE ========== */
+.database-form-connstring-toggle {
+  display: flex;
+  gap: 0;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  padding: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  margin-bottom: 8px;
+}
+.database-form-toggle-btn {
+  flex: 1;
+  padding: 5px 12px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.database-form-toggle-btn:hover {
+  color: var(--text-primary);
+}
+.database-form-toggle-btn.active {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* ========== EXPLAIN VIEW ========== */
+.db-query-explain {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.db-query-explain:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+.db-query-explain:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.db-explain-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.db-explain-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  color: var(--info);
+  font-size: 11px;
+  font-weight: 600;
+}
+.db-explain-content {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 14px;
+  font-family: 'Cascadia Code', monospace;
+  font-size: var(--font-xs);
+  color: var(--text-primary);
+  max-height: 400px;
+  overflow: auto;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  margin: 0;
+}
+.db-explain-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.db-explain-tree-node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  font-size: var(--font-xs);
+  border-radius: var(--radius-sm);
+}
+.db-explain-tree-node:hover {
+  background: var(--bg-hover);
+}
+.db-explain-tree-id {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  font-family: 'Cascadia Code', monospace;
+  min-width: 20px;
+}
+.db-explain-tree-detail {
+  color: var(--text-primary);
+  font-family: 'Cascadia Code', monospace;
+}
+
+/* ========== QUERY TABS ========== */
+.db-query-tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+.db-query-tabs-scroll {
+  display: flex;
+  flex: 1;
+  overflow-x: auto;
+  gap: 0;
+}
+.db-query-tabs-scroll::-webkit-scrollbar {
+  height: 0;
+}
+.db-query-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.12s;
+  white-space: nowrap;
+  user-select: none;
+}
+.db-query-tab:hover {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.02);
+}
+.db-query-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+}
+.db-query-tab-name {
+  font-weight: 500;
+}
+.db-query-tab-close {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  opacity: 0;
+  transition: all 0.1s;
+}
+.db-query-tab:hover .db-query-tab-close {
+  opacity: 0.6;
+}
+.db-query-tab-close:hover {
+  opacity: 1 !important;
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+}
+.db-query-tab-add {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: 2px;
+  transition: all 0.12s;
+}
+.db-query-tab-add:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.db-query-tab-rename-input {
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: var(--font-xs);
+  font-weight: 500;
+  padding: 1px 4px;
+  width: 80px;
+  outline: none;
 }

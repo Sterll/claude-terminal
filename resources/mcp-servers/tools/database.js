@@ -6,13 +6,26 @@
  * Provides database access tools. Reads connection configs from
  * CT_DATA_DIR/databases.json and passwords from CT_DB_PASS_{id} env vars.
  *
- * Supports: SQLite, MySQL, PostgreSQL, MongoDB
+ * Supports: SQLite, MySQL, MariaDB, PostgreSQL, MongoDB, Redis
  */
 
 const fs = require('fs');
 const path = require('path');
 
 const MAX_ROWS = 100;
+
+// -- Redis allowed commands ---------------------------------------------------
+
+const REDIS_ALLOWED_COMMANDS = new Set([
+  'get', 'set', 'del', 'keys', 'type', 'info', 'scan', 'select', 'ping',
+  'hget', 'hgetall', 'hset', 'hdel', 'hkeys', 'hvals', 'hlen', 'hexists',
+  'lrange', 'llen', 'lindex', 'lpush', 'rpush', 'lpop', 'rpop',
+  'smembers', 'scard', 'sismember', 'sadd', 'srem',
+  'zrange', 'zcard', 'zscore', 'zadd', 'zrem', 'zrangebyscore',
+  'exists', 'expire', 'ttl', 'pttl', 'persist', 'rename',
+  'dbsize', 'randomkey', 'mget', 'strlen', 'append', 'incr', 'decr',
+  'getrange', 'setex', 'setnx', 'mset'
+]);
 
 // -- SQL identifier escaping --------------------------------------------------
 
@@ -108,7 +121,7 @@ async function createClient(config, password) {
     return db;
   }
 
-  if (type === 'mysql') {
+  if (type === 'mysql' || type === 'mariadb') {
     const mysql = require('mysql2/promise');
     return await mysql.createConnection({
       host: config.host || 'localhost',
@@ -142,6 +155,20 @@ async function createClient(config, password) {
     return { mongoClient, db: mongoClient.db(dbName) };
   }
 
+  if (type === 'redis') {
+    const Redis = require('ioredis');
+    const client = new Redis({
+      host: config.host || 'localhost',
+      port: parseInt(config.port || '6379', 10),
+      password: password || undefined,
+      db: parseInt(config.database || '0', 10),
+      connectTimeout: 10000,
+      lazyConnect: true,
+    });
+    await client.connect();
+    return client;
+  }
+
   throw new Error(`Unsupported database type: ${type}`);
 }
 
@@ -160,7 +187,7 @@ async function executeQuery(client, type, sql) {
     return `Rows affected: ${info.changes}`;
   }
 
-  if (type === 'mysql') {
+  if (type === 'mysql' || type === 'mariadb') {
     const [rows] = await client.execute(trimmed);
     if (Array.isArray(rows)) return formatRows(rows.slice(0, MAX_ROWS));
     return `Rows affected: ${rows.affectedRows}`;
@@ -176,7 +203,75 @@ async function executeQuery(client, type, sql) {
     return 'MongoDB: use db_list_tables and db_describe_table. For queries, use the query tool with MongoDB shell syntax.';
   }
 
+  if (type === 'redis') {
+    return await executeRedisCommand(client, sql);
+  }
+
   return 'Unsupported database type';
+}
+
+async function executeRedisCommand(client, command) {
+  const trimmed = command.trim();
+
+  // Special _REDIS_SCAN command: _REDIS_SCAN {dbIndex} {limit} {pattern?}
+  const scanMatch = trimmed.match(/^_REDIS_SCAN\s+(\d+)\s+(\d+)(?:\s+(.+))?$/);
+  if (scanMatch) {
+    const dbIndex = parseInt(scanMatch[1]);
+    const pageSize = parseInt(scanMatch[2]);
+    const pattern = scanMatch[3] ? `*${scanMatch[3]}*` : '*';
+
+    await client.select(dbIndex);
+    const allKeys = await redisGetAllKeys(client, pattern);
+    const pageKeys = allKeys.slice(0, pageSize);
+
+    const rows = [];
+    for (const key of pageKeys) {
+      const type = await client.type(key);
+      const ttl = await client.ttl(key);
+      let value = null;
+      try {
+        if (type === 'string') value = await client.get(key);
+        else if (type === 'hash') value = JSON.stringify(await client.hgetall(key));
+        else if (type === 'list') value = JSON.stringify(await client.lrange(key, 0, 9));
+        else if (type === 'set') value = JSON.stringify(await client.smembers(key));
+        else if (type === 'zset') value = JSON.stringify(await client.zrange(key, 0, 9, 'WITHSCORES'));
+        else value = `(${type})`;
+      } catch { /* ignore */ }
+      rows.push({ key, type, ttl: ttl < 0 ? null : ttl, value });
+    }
+
+    const header = 'key | type | ttl | value';
+    const separator = '─'.repeat(60);
+    const lines = rows.map(r => `${r.key} | ${r.type} | ${r.ttl ?? '-'} | ${(r.value || '').slice(0, 100)}`);
+    return `${allKeys.length} keys found\n${header}\n${separator}\n${lines.join('\n')}`;
+  }
+
+  // Native Redis command
+  const parts = trimmed.split(/\s+/);
+  const cmd = parts[0].toLowerCase();
+  const args = parts.slice(1);
+
+  if (!REDIS_ALLOWED_COMMANDS.has(cmd)) {
+    throw new Error(`Redis command "${cmd.toUpperCase()}" is not allowed. Allowed: ${[...REDIS_ALLOWED_COMMANDS].join(', ')}`);
+  }
+
+  const result = await client[cmd](...args);
+  if (result === null) return '(nil)';
+  if (Array.isArray(result)) {
+    return result.map((v, i) => `${i + 1}) ${v === null ? '(nil)' : String(v)}`).join('\n') || '(empty array)';
+  }
+  return String(result);
+}
+
+async function redisGetAllKeys(client, pattern = '*') {
+  const keys = [];
+  let cursor = '0';
+  do {
+    const [nextCursor, batch] = await client.scan(cursor, 'MATCH', pattern, 'COUNT', 500);
+    cursor = nextCursor;
+    keys.push(...batch);
+  } while (cursor !== '0');
+  return keys.sort();
 }
 
 // -- Schema operations --------------------------------------------------------
@@ -198,7 +293,7 @@ async function listTables(client, type, filter) {
     return result.join('\n') || (filter ? `No tables matching "${filter}"` : 'No tables found');
   }
 
-  if (type === 'mysql') {
+  if (type === 'mysql' || type === 'mariadb') {
     const [tables] = await client.execute('SHOW TABLES');
     const key = Object.keys(tables[0] || {})[0];
     const result = [];
@@ -235,6 +330,23 @@ async function listTables(client, type, filter) {
     return collections.map(c => c.name).join('\n') || (filter ? `No collections matching "${filter}"` : 'No collections found');
   }
 
+  if (type === 'redis') {
+    const info = await client.info('keyspace');
+    const result = [];
+    for (const line of info.split('\r\n')) {
+      const m = line.match(/^db(\d+):keys=(\d+),expires=(\d+)/);
+      if (m) {
+        const name = `db:${m[1]}`;
+        if (match(name)) result.push(`${name}: ${m[2]} keys, ${m[3]} expiring`);
+      }
+    }
+    if (result.length === 0) {
+      // Show db:0 even if empty
+      if (match('db:0')) result.push('db:0: 0 keys');
+    }
+    return result.join('\n') || (filter ? `No databases matching "${filter}"` : 'No databases found');
+  }
+
   return 'Unsupported database type';
 }
 
@@ -252,7 +364,7 @@ async function describeTable(client, type, tableName) {
     return `Table: ${tableName}\n${'─'.repeat(40)}\n${lines.join('\n')}`;
   }
 
-  if (type === 'mysql') {
+  if (type === 'mysql' || type === 'mariadb') {
     const [columns] = await client.execute(`SHOW FULL COLUMNS FROM ${mysqlId(tableName)}`);
     if (!columns.length) return `Table '${tableName}' not found`;
     const lines = columns.map(c => {
@@ -297,6 +409,31 @@ async function describeTable(client, type, tableName) {
     return `Collection: ${tableName} (sample document)\n${'─'.repeat(40)}\n${fields.join('\n')}`;
   }
 
+  if (type === 'redis') {
+    // tableName = "db:0", "db:1", etc.
+    const dbMatch = tableName.match(/^db:(\d+)$/);
+    if (!dbMatch) return `Invalid Redis database name '${tableName}'. Use db:0, db:1, etc.`;
+    const dbIndex = parseInt(dbMatch[1]);
+    await client.select(dbIndex);
+    const dbSize = await client.dbsize();
+    const keys = await redisGetAllKeys(client, '*');
+    const sampleKeys = keys.slice(0, 20);
+
+    const lines = [];
+    for (const key of sampleKeys) {
+      const type = await client.type(key);
+      const ttl = await client.ttl(key);
+      lines.push(`${key} | ${type} | TTL: ${ttl < 0 ? 'none' : ttl + 's'}`);
+    }
+
+    let result = `Redis db:${dbIndex}\n${'─'.repeat(40)}\nTotal keys: ${dbSize}\nSchema: key (string) | type (string) | ttl (number) | value (any)`;
+    if (lines.length > 0) {
+      result += `\n\nSample keys (first ${sampleKeys.length}):\n${lines.join('\n')}`;
+    }
+    if (dbSize > 20) result += `\n... and ${dbSize - 20} more keys`;
+    return result;
+  }
+
   return 'Unsupported database type';
 }
 
@@ -308,12 +445,40 @@ async function exportQuery(client, type, sql, format) {
 
   if (type === 'sqlite') {
     rows = client.prepare(trimmed).all().slice(0, MAX_ROWS);
-  } else if (type === 'mysql') {
+  } else if (type === 'mysql' || type === 'mariadb') {
     const [result] = await client.execute(trimmed);
     rows = Array.isArray(result) ? result.slice(0, MAX_ROWS) : [];
   } else if (type === 'postgresql') {
     const result = await client.query(trimmed);
     rows = (result.rows || []).slice(0, MAX_ROWS);
+  } else if (type === 'redis') {
+    // For Redis, scan keys and export key/type/ttl/value
+    const scanMatch = sql.trim().match(/^_REDIS_SCAN\s+(\d+)\s+(\d+)(?:\s+(.+))?$/);
+    if (scanMatch) {
+      const dbIndex = parseInt(scanMatch[1]);
+      const pageSize = parseInt(scanMatch[2]);
+      const pattern = scanMatch[3] ? `*${scanMatch[3]}*` : '*';
+      await client.select(dbIndex);
+      const allKeys = await redisGetAllKeys(client, pattern);
+      const pageKeys = allKeys.slice(0, pageSize);
+      rows = [];
+      for (const key of pageKeys) {
+        const keyType = await client.type(key);
+        const ttl = await client.ttl(key);
+        let value = null;
+        try {
+          if (keyType === 'string') value = await client.get(key);
+          else if (keyType === 'hash') value = JSON.stringify(await client.hgetall(key));
+          else if (keyType === 'list') value = JSON.stringify(await client.lrange(key, 0, -1));
+          else if (keyType === 'set') value = JSON.stringify(await client.smembers(key));
+          else if (keyType === 'zset') value = JSON.stringify(await client.zrange(key, 0, -1, 'WITHSCORES'));
+          else value = `(${keyType})`;
+        } catch { /* ignore */ }
+        rows.push({ key, type: keyType, ttl: ttl < 0 ? null : ttl, value });
+      }
+    } else {
+      return 'Redis export: use _REDIS_SCAN {dbIndex} {limit} {pattern?} to export keys';
+    }
   } else {
     return 'Export not supported for this database type';
   }
@@ -375,7 +540,7 @@ async function getFullSchema(client, type) {
     return sections.join('\n\n') || 'No tables found';
   }
 
-  if (type === 'mysql') {
+  if (type === 'mysql' || type === 'mariadb') {
     const [tables] = await client.execute('SHOW TABLES');
     const key = Object.keys(tables[0] || {})[0];
     const sections = [];
@@ -495,6 +660,35 @@ async function getFullSchema(client, type) {
     return sections.join('\n\n') || 'No collections found';
   }
 
+  if (type === 'redis') {
+    const info = await client.info('keyspace');
+    const sections = [];
+    const dbInfos = [];
+    for (const line of info.split('\r\n')) {
+      const m = line.match(/^db(\d+):keys=(\d+),expires=(\d+)/);
+      if (m) dbInfos.push({ dbIndex: parseInt(m[1]), keys: parseInt(m[2]), expires: parseInt(m[3]) });
+    }
+    if (dbInfos.length === 0) dbInfos.push({ dbIndex: 0, keys: 0, expires: 0 });
+
+    for (const { dbIndex, keys, expires } of dbInfos) {
+      let s = `## db:${dbIndex}\n  Keys: ${keys}, Expiring: ${expires}`;
+      s += '\n  Schema: key (string PK) | type (string) | ttl (number) | value (any)';
+      if (keys > 0) {
+        await client.select(dbIndex);
+        const sampleKeys = await redisGetAllKeys(client, '*');
+        const sample = sampleKeys.slice(0, 10);
+        const typeCounts = {};
+        for (const key of sample) {
+          const t = await client.type(key);
+          typeCounts[t] = (typeCounts[t] || 0) + 1;
+        }
+        s += `\n  Key types (sample): ${Object.entries(typeCounts).map(([t, c]) => `${t}(${c})`).join(', ')}`;
+      }
+      sections.push(s);
+    }
+    return sections.join('\n\n') || 'No Redis databases found';
+  }
+
   return 'Unsupported database type';
 }
 
@@ -517,7 +711,7 @@ async function getStats(client, type) {
     return `Database size: ${sizeMB} MB\nTotal rows: ${totalRows.toLocaleString()}\nTables: ${tables.length}\n${'─'.repeat(40)}\n${lines.join('\n')}`;
   }
 
-  if (type === 'mysql') {
+  if (type === 'mysql' || type === 'mariadb') {
     const [tables] = await client.execute('SHOW TABLES');
     const key = Object.keys(tables[0] || {})[0];
     const lines = [];
@@ -566,6 +760,38 @@ async function getStats(client, type) {
     return `Database size: ${sizeMB} MB\nTotal documents: ${totalDocs.toLocaleString()}\nCollections: ${collections.length}\n${'─'.repeat(40)}\n${lines.join('\n')}`;
   }
 
+  if (type === 'redis') {
+    const info = await client.info();
+    const lines = [];
+    let totalKeys = 0;
+
+    // Parse keyspace info
+    const keyspaceInfo = await client.info('keyspace');
+    for (const line of keyspaceInfo.split('\r\n')) {
+      const m = line.match(/^db(\d+):keys=(\d+),expires=(\d+)/);
+      if (m) {
+        const keys = parseInt(m[2]);
+        totalKeys += keys;
+        lines.push(`db:${m[1]}: ${keys.toLocaleString()} keys (${m[3]} expiring)`);
+      }
+    }
+
+    // Parse memory info
+    const memMatch = info.match(/used_memory_human:(\S+)/);
+    const memory = memMatch ? memMatch[1] : '?';
+
+    // Parse server info
+    const versionMatch = info.match(/redis_version:(\S+)/);
+    const version = versionMatch ? versionMatch[1] : '?';
+    const uptimeMatch = info.match(/uptime_in_seconds:(\d+)/);
+    const uptime = uptimeMatch ? Math.floor(parseInt(uptimeMatch[1]) / 3600) + 'h' : '?';
+
+    const dbCount = lines.length || 1;
+    if (lines.length === 0) lines.push('db:0: 0 keys');
+
+    return `Redis ${version} | Memory: ${memory} | Uptime: ${uptime}\nTotal keys: ${totalKeys.toLocaleString()}\nDatabases: ${dbCount}\n${'─'.repeat(40)}\n${lines.join('\n')}`;
+  }
+
   return 'Unsupported database type';
 }
 
@@ -586,12 +812,12 @@ function formatRows(rows) {
 const tools = [
   {
     name: 'db_list_connections',
-    description: 'List all database connections configured in Claude Terminal. Returns connection name, type (sqlite/mysql/postgresql/mongodb), and connection details. Call this first to discover available databases.',
+    description: 'List all database connections configured in Claude Terminal. Returns connection name, type (sqlite/mysql/postgresql/mongodb/redis), and connection details. Call this first to discover available databases.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'db_list_tables',
-    description: 'List tables (or MongoDB collections) in a database connection, with their column names. Use filter to search by name.',
+    description: 'List tables (or MongoDB collections, or Redis databases) in a database connection, with their column names. Use filter to search by name.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -615,7 +841,7 @@ const tools = [
   },
   {
     name: 'db_query',
-    description: 'Execute a SQL query against a database connection. Supports SELECT, INSERT, UPDATE, DELETE. Results limited to 100 rows for SELECT queries.',
+    description: 'Execute a SQL query against a database connection. Supports SELECT, INSERT, UPDATE, DELETE. For Redis: use native commands (GET, SET, KEYS, etc.) or _REDIS_SCAN {dbIndex} {limit} {pattern?}. Results limited to 100 rows.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -677,6 +903,7 @@ async function handle(name, args) {
         const parts = [`${c.name} (${c.type})`];
         if (c.type === 'sqlite') parts.push(`— ${c.filePath}`);
         else if (c.type === 'mongodb') parts.push(`— ${c.connectionString ? c.connectionString.replace(/\/\/[^:]+:[^@]+@/, '//***:***@') : 'no URI'}`);
+        else if (c.type === 'redis') parts.push(`— ${c.host || 'localhost'}:${c.port || '6379'}/db${c.database || '0'}`);
         else parts.push(`— ${c.host || 'localhost'}:${c.port || '?'}/${c.database || '?'}`);
         return parts.join(' ');
       });
@@ -742,9 +969,10 @@ async function cleanup() {
   for (const [id, { client, type }] of connections) {
     try {
       if (type === 'sqlite') client.close();
-      else if (type === 'mysql') await client.end();
+      else if (type === 'mysql' || type === 'mariadb') await client.end();
       else if (type === 'postgresql') await client.end();
       else if (type === 'mongodb') await client.mongoClient.close();
+      else if (type === 'redis') client.disconnect();
       log(`Closed connection: ${id}`);
     } catch (e) {
       log(`Error closing ${id}: ${e.message}`);

@@ -4,8 +4,8 @@
  */
 
 const { ipcMain } = require('electron');
-const { execGit, getGitInfo, getGitInfoFull, getGitStatusQuick, getGitStatusDetailed, gitPull, gitPush, gitPushBranch, gitMerge, gitMergeAbort, gitMergeContinue, getMergeConflicts, isMergeInProgress, gitClone, gitStageFiles, gitCommit, getProjectStats, getBranches, getCurrentBranch, checkoutBranch, createBranch, deleteBranch, getCommitHistory, getFileDiff, getCommitDetail, cherryPick, revertCommit, gitUnstageFiles, stashApply, stashDrop, gitStashSave, getWorktrees, createWorktree, removeWorktree, lockWorktree, unlockWorktree, pruneWorktrees, detectWorktree, diffWorktreeBranches, diffWorktreeBranchesWithStats } = require('../utils/git');
-const { generateCommitMessage, generateSessionRecap } = require('../utils/commitMessageGenerator');
+const { execGit, getGitInfo, getGitInfoFull, getGitStatusQuick, getGitStatusDetailed, gitPull, gitPush, gitPushBranch, gitMerge, gitMergeAbort, gitMergeContinue, getMergeConflicts, isMergeInProgress, gitClone, gitStageFiles, gitCommit, getProjectStats, getBranches, getCurrentBranch, checkoutBranch, createBranch, deleteBranch, getCommitHistory, getFileDiff, getCommitDetail, cherryPick, revertCommit, gitUnstageFiles, stashApply, stashDrop, gitStashSave, getWorktrees, createWorktree, removeWorktree, lockWorktree, unlockWorktree, pruneWorktrees, detectWorktree, diffWorktreeBranches, diffWorktreeBranchesWithStats, deleteRemoteBranch, gitFetch, renameBranch, gitRebase, gitRebaseAbort, gitRebaseContinue, getFileHistory, getCommitFileDiffs, getCommitFileDiff, gitBlame, getTags, createTag, deleteTag, pushTag, pushAllTags, getRemotes, resolveConflict, getBranchOrphanCommitCount } = require('../utils/git');
+const { generateCommitMessage, generateMultiCommitMessages, generateSessionRecap, groupFiles } = require('../utils/commitMessageGenerator');
 const GitHubAuthService = require('../services/GitHubAuthService');
 const { sendFeaturePing } = require('../services/TelemetryService');
 
@@ -20,82 +20,155 @@ const isValidStashRef = (r) => typeof r === 'string' && /^stash@\{\d+\}$/.test(r
 function registerGitHandlers() {
   // Get git info for dashboard (basic)
   ipcMain.handle('git-info', async (event, projectPath) => {
-    return getGitInfo(projectPath);
+    try {
+      return await getGitInfo(projectPath);
+    } catch (err) {
+      return { error: true, message: err.message };
+    }
   });
 
   // Get full git info for dashboard (comprehensive)
   ipcMain.handle('git-info-full', async (event, projectPath) => {
-    return getGitInfoFull(projectPath);
+    try {
+      return await getGitInfoFull(projectPath);
+    } catch (err) {
+      return { error: true, message: err.message };
+    }
   });
 
   // Get project statistics (lines of code, etc.)
   ipcMain.handle('project-stats', async (event, projectPath) => {
-    return getProjectStats(projectPath);
+    try {
+      return await getProjectStats(projectPath);
+    } catch (err) {
+      return { error: true, message: err.message };
+    }
   });
 
   // Git pull
   ipcMain.handle('git-pull', async (event, { projectPath }) => {
-    sendFeaturePing('git:pull');
-    return gitPull(projectPath);
+    try {
+      sendFeaturePing('git:pull');
+      return await gitPull(projectPath);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Git push
   ipcMain.handle('git-push', async (event, { projectPath }) => {
-    sendFeaturePing('git:push');
-    return gitPush(projectPath);
+    try {
+      sendFeaturePing('git:push');
+      return await gitPush(projectPath);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Git push a specific branch to origin
   ipcMain.handle('git-push-branch', async (event, { projectPath, branch }) => {
-    sendFeaturePing('git:push');
-    return gitPushBranch(projectPath, branch);
+    try {
+      sendFeaturePing('git:push');
+      return await gitPushBranch(projectPath, branch);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Git status (quick check)
   ipcMain.handle('git-status-quick', async (event, { projectPath }) => {
-    return getGitStatusQuick(projectPath);
+    try {
+      return await getGitStatusQuick(projectPath);
+    } catch (err) {
+      return { error: true, message: err.message };
+    }
   });
 
   // Get list of branches
   ipcMain.handle('git-branches', async (event, { projectPath }) => {
-    return getBranches(projectPath, { skipFetch: false });
+    try {
+      return await getBranches(projectPath, { skipFetch: false });
+    } catch (err) {
+      return { error: true, message: err.message };
+    }
   });
 
   // Get current branch
   ipcMain.handle('git-current-branch', async (event, { projectPath }) => {
-    return getCurrentBranch(projectPath);
+    try {
+      return await getCurrentBranch(projectPath);
+    } catch (err) {
+      return null;
+    }
   });
 
   // Checkout branch
   ipcMain.handle('git-checkout', async (event, { projectPath, branch }) => {
     if (!isValidBranchName(branch)) return { success: false, error: 'Invalid branch name' };
-    return checkoutBranch(projectPath, branch);
+    try {
+      return await checkoutBranch(projectPath, branch);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Git merge
   ipcMain.handle('git-merge', async (event, { projectPath, branch }) => {
     if (!isValidBranchName(branch)) return { success: false, error: 'Invalid branch name' };
-    return gitMerge(projectPath, branch);
+    try {
+      return await gitMerge(projectPath, branch);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Git merge abort
   ipcMain.handle('git-merge-abort', async (event, { projectPath }) => {
-    return gitMergeAbort(projectPath);
+    try {
+      return await gitMergeAbort(projectPath);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Git merge continue
   ipcMain.handle('git-merge-continue', async (event, { projectPath }) => {
-    return gitMergeContinue(projectPath);
+    try {
+      return await gitMergeContinue(projectPath);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Get merge conflicts
   ipcMain.handle('git-merge-conflicts', async (event, { projectPath }) => {
-    return getMergeConflicts(projectPath);
+    try {
+      return await getMergeConflicts(projectPath);
+    } catch (err) {
+      return { error: true, message: err.message };
+    }
   });
 
   // Check if merge in progress
   ipcMain.handle('git-merge-in-progress', async (event, { projectPath }) => {
-    return isMergeInProgress(projectPath);
+    try {
+      return await isMergeInProgress(projectPath);
+    } catch (err) {
+      return false;
+    }
+  });
+
+  // Resolve a merge conflict with ours/theirs strategy
+  ipcMain.handle('git-resolve-conflict', async (event, { projectPath, filePath, strategy }) => {
+    if (!filePath || typeof filePath !== 'string') return { success: false, error: 'Invalid file path' };
+    if (strategy !== 'ours' && strategy !== 'theirs') return { success: false, error: 'Invalid strategy' };
+    return resolveConflict(projectPath, filePath, strategy);
+  });
+
+  // Get orphan commit count for a branch
+  ipcMain.handle('git-branch-orphan-commits', async (event, { projectPath, branch }) => {
+    if (!isValidBranchName(branch)) return 0;
+    return getBranchOrphanCommitCount(projectPath, branch);
   });
 
   // Git clone (auto-uses GitHub token if available)
@@ -104,87 +177,147 @@ function registerGitHandlers() {
     if (!repoUrl || typeof repoUrl !== 'string') return { success: false, error: 'Invalid repository URL' };
     const allowed = /^(https?:\/\/|git@[\w.-]+:)/i;
     if (!allowed.test(repoUrl.trim())) return { success: false, error: 'Only https:// and git@ URLs are allowed' };
-    // Get GitHub token if available
-    const token = await GitHubAuthService.getTokenForGit();
-    return gitClone(repoUrl, targetPath, { token });
+    try {
+      // Get GitHub token if available
+      const token = await GitHubAuthService.getTokenForGit();
+      return await gitClone(repoUrl, targetPath, { token });
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Git status detailed (for changes panel)
   ipcMain.handle('git-status-detailed', async (event, { projectPath }) => {
-    return getGitStatusDetailed(projectPath);
+    try {
+      return await getGitStatusDetailed(projectPath);
+    } catch (err) {
+      return { error: true, message: err.message };
+    }
   });
 
   // Stage specific files
   ipcMain.handle('git-stage-files', async (event, { projectPath, files }) => {
-    return gitStageFiles(projectPath, files);
+    try {
+      return await gitStageFiles(projectPath, files);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Create commit
   ipcMain.handle('git-commit', async (event, { projectPath, message }) => {
-    sendFeaturePing('git:commit');
-    return gitCommit(projectPath, message);
+    try {
+      sendFeaturePing('git:commit');
+      return await gitCommit(projectPath, message);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Create a new branch
   ipcMain.handle('git-create-branch', async (event, { projectPath, branch }) => {
     if (!isValidBranchName(branch)) return { success: false, error: 'Invalid branch name' };
-    return createBranch(projectPath, branch);
+    try {
+      return await createBranch(projectPath, branch);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Delete a branch
   ipcMain.handle('git-delete-branch', async (event, { projectPath, branch, force }) => {
     if (!isValidBranchName(branch)) return { success: false, error: 'Invalid branch name' };
-    return deleteBranch(projectPath, branch, force);
+    try {
+      return await deleteBranch(projectPath, branch, force);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Get paginated commit history
   ipcMain.handle('git-commit-history', async (event, { projectPath, skip, limit, branch, allBranches }) => {
-    return getCommitHistory(projectPath, { skip, limit, branch, allBranches });
+    try {
+      return await getCommitHistory(projectPath, { skip, limit, branch, allBranches });
+    } catch (err) {
+      return { error: true, message: err.message };
+    }
   });
 
   // Get file diff
   ipcMain.handle('git-file-diff', async (event, { projectPath, filePath, staged }) => {
-    return getFileDiff(projectPath, filePath, staged);
+    try {
+      return await getFileDiff(projectPath, filePath, staged);
+    } catch (err) {
+      return null;
+    }
   });
 
   // Get commit detail
   ipcMain.handle('git-commit-detail', async (event, { projectPath, commitHash }) => {
     if (!isValidCommitHash(commitHash)) return '';
-    return getCommitDetail(projectPath, commitHash);
+    try {
+      return await getCommitDetail(projectPath, commitHash);
+    } catch (err) {
+      return '';
+    }
   });
 
   // Cherry-pick a commit
   ipcMain.handle('git-cherry-pick', async (event, { projectPath, commitHash }) => {
     if (!isValidCommitHash(commitHash)) return { success: false, error: 'Invalid commit hash' };
-    return cherryPick(projectPath, commitHash);
+    try {
+      return await cherryPick(projectPath, commitHash);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Revert a commit
   ipcMain.handle('git-revert', async (event, { projectPath, commitHash }) => {
     if (!isValidCommitHash(commitHash)) return { success: false, error: 'Invalid commit hash' };
-    return revertCommit(projectPath, commitHash);
+    try {
+      return await revertCommit(projectPath, commitHash);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Unstage files
   ipcMain.handle('git-unstage-files', async (event, { projectPath, files }) => {
-    return gitUnstageFiles(projectPath, files);
+    try {
+      return await gitUnstageFiles(projectPath, files);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Apply stash
   ipcMain.handle('git-stash-apply', async (event, { projectPath, stashRef }) => {
     if (!isValidStashRef(stashRef)) return { success: false, error: 'Invalid stash reference' };
-    return stashApply(projectPath, stashRef);
+    try {
+      return await stashApply(projectPath, stashRef);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Drop stash
   ipcMain.handle('git-stash-drop', async (event, { projectPath, stashRef }) => {
     if (!isValidStashRef(stashRef)) return { success: false, error: 'Invalid stash reference' };
-    return stashDrop(projectPath, stashRef);
+    try {
+      return await stashDrop(projectPath, stashRef);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Save stash
   ipcMain.handle('git-stash-save', async (event, { projectPath, message }) => {
-    return gitStashSave(projectPath, message);
+    try {
+      return await gitStashSave(projectPath, message);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Generate commit message from file statuses and diff
@@ -232,6 +365,53 @@ function registerGitHandlers() {
     }
   });
 
+  // Generate multi-commit messages (one per file group)
+  ipcMain.handle('git-generate-multi-commit', async (event, { projectPath, files, useAi }) => {
+    try {
+      const path = require('path');
+      const fs = require('fs');
+
+      const groups = groupFiles(files);
+      const diffs = {};
+
+      for (const g of groups) {
+        const diffParts = [];
+        const tracked = g.files.filter(f => f.status !== '?');
+        const untracked = g.files.filter(f => f.status === '?');
+
+        if (tracked.length > 0) {
+          const diff = await execGit(projectPath, ['diff', 'HEAD', '--', ...tracked.map(f => f.path)], 15000);
+          if (diff) diffParts.push(diff);
+        }
+
+        for (const f of untracked) {
+          try {
+            const fullPath = path.join(projectPath, f.path);
+            const stat = fs.statSync(fullPath);
+            if (stat.isDirectory()) {
+              diffParts.push(`--- New directory: ${f.path}/`);
+            } else if (stat.size > 500000) {
+              diffParts.push(`--- New file: ${f.path} (${(stat.size / 1024).toFixed(0)}KB)`);
+            } else {
+              const content = fs.readFileSync(fullPath, 'utf8').slice(0, 3000);
+              diffParts.push(`--- New file: ${f.path}\n${content.split('\n').map(l => '+' + l).join('\n')}`);
+            }
+          } catch (_) {
+            diffParts.push(`--- New file: ${f.path}`);
+          }
+        }
+
+        diffs[g.name] = diffParts.join('\n\n');
+      }
+
+      const githubToken = useAi !== false ? await GitHubAuthService.getToken() : null;
+      const results = await generateMultiCommitMessages(files, diffs, githubToken);
+      return { success: true, commits: results };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
   // Generate session recap via GitHub Models API
   ipcMain.handle('git-generate-session-recap', async (_event, context) => {
     try {
@@ -246,39 +426,67 @@ function registerGitHandlers() {
 
   // List worktrees
   ipcMain.handle('git-worktree-list', async (event, { projectPath }) => {
-    const worktrees = await getWorktrees(projectPath);
-    return { success: true, worktrees };
+    try {
+      const worktrees = await getWorktrees(projectPath);
+      return { success: true, worktrees };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Create worktree
   ipcMain.handle('git-worktree-create', async (event, { projectPath, worktreePath, branch, newBranch, startPoint }) => {
-    sendFeaturePing('worktree:create');
-    return createWorktree(projectPath, worktreePath, { branch, newBranch, startPoint });
+    try {
+      sendFeaturePing('worktree:create');
+      return await createWorktree(projectPath, worktreePath, { branch, newBranch, startPoint });
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Remove worktree
   ipcMain.handle('git-worktree-remove', async (event, { projectPath, worktreePath, force }) => {
-    return removeWorktree(projectPath, worktreePath, force);
+    try {
+      return await removeWorktree(projectPath, worktreePath, force);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Lock worktree
   ipcMain.handle('git-worktree-lock', async (event, { projectPath, worktreePath, reason }) => {
-    return lockWorktree(projectPath, worktreePath, reason);
+    try {
+      return await lockWorktree(projectPath, worktreePath, reason);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Unlock worktree
   ipcMain.handle('git-worktree-unlock', async (event, { projectPath, worktreePath }) => {
-    return unlockWorktree(projectPath, worktreePath);
+    try {
+      return await unlockWorktree(projectPath, worktreePath);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Prune stale worktrees
   ipcMain.handle('git-worktree-prune', async (event, { projectPath }) => {
-    return pruneWorktrees(projectPath);
+    try {
+      return await pruneWorktrees(projectPath);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
   // Detect if path is a worktree
   ipcMain.handle('git-worktree-detect', async (event, { projectPath }) => {
-    return detectWorktree(projectPath);
+    try {
+      return await detectWorktree(projectPath);
+    } catch (err) {
+      return { isWorktree: false };
+    }
   });
 
   // Diff between worktree branches
@@ -296,6 +504,154 @@ function registerGitHandlers() {
     try {
       const files = await diffWorktreeBranchesWithStats(projectPath, branch1, branch2);
       return { success: true, files };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  // ── New git operations ──
+
+  ipcMain.handle('git-delete-remote-branch', async (event, { projectPath, branch, remote }) => {
+    if (!isValidBranchName(branch)) return { success: false, error: 'Invalid branch name' };
+    try {
+      await deleteRemoteBranch(projectPath, branch, remote);
+      sendFeaturePing('git_delete_remote_branch');
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('git-fetch', async (event, { projectPath, remote }) => {
+    try {
+      await gitFetch(projectPath, remote);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('git-rename-branch', async (event, { projectPath, oldName, newName }) => {
+    if (!isValidBranchName(oldName) || !isValidBranchName(newName)) return { success: false, error: 'Invalid branch name' };
+    try {
+      await renameBranch(projectPath, oldName, newName);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('git-rebase', async (event, { projectPath, branch }) => {
+    if (!isValidBranchName(branch)) return { success: false, error: 'Invalid branch name' };
+    try {
+      const output = await gitRebase(projectPath, branch);
+      sendFeaturePing('git_rebase');
+      return { success: true, output };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('git-rebase-abort', async (event, { projectPath }) => {
+    try {
+      await gitRebaseAbort(projectPath);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('git-rebase-continue', async (event, { projectPath }) => {
+    try {
+      await gitRebaseContinue(projectPath);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('git-file-history', async (event, { projectPath, filePath, skip, limit }) => {
+    try {
+      const commits = await getFileHistory(projectPath, filePath, { skip, limit });
+      return { success: true, commits };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('git-commit-file-diffs', async (event, { projectPath, commitHash }) => {
+    if (!isValidCommitHash(commitHash)) return { success: false, error: 'Invalid commit hash' };
+    try {
+      const files = await getCommitFileDiffs(projectPath, commitHash);
+      return { success: true, files };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('git-commit-file-diff', async (event, { projectPath, commitHash, filePath }) => {
+    if (!isValidCommitHash(commitHash)) return { success: false, error: 'Invalid commit hash' };
+    try {
+      const diff = await getCommitFileDiff(projectPath, commitHash, filePath);
+      return { success: true, diff };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('git-blame', async (event, { projectPath, filePath }) => {
+    try {
+      const lines = await gitBlame(projectPath, filePath);
+      return { success: true, lines };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('git-tag-list', async (event, { projectPath }) => {
+    try {
+      const tags = await getTags(projectPath);
+      return { success: true, tags };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('git-tag-create', async (event, { projectPath, name, message, commitHash }) => {
+    try {
+      await createTag(projectPath, name, message, commitHash);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('git-tag-delete', async (event, { projectPath, name }) => {
+    try {
+      await deleteTag(projectPath, name);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('git-tag-push', async (event, { projectPath, name, remote }) => {
+    try {
+      if (name) {
+        await pushTag(projectPath, name, remote);
+      } else {
+        await pushAllTags(projectPath, remote);
+      }
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('git-remotes', async (event, { projectPath }) => {
+    try {
+      const remotes = await getRemotes(projectPath);
+      return { success: true, remotes };
     } catch (err) {
       return { success: false, error: err.message };
     }

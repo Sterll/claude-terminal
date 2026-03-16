@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Claude Terminal is a cross-platform Electron desktop application (v0.9.6) for managing Claude Code projects with an integrated terminal, chat UI, git management, and plugin ecosystem. Primary target: Windows 10/11 with NSIS installer. Also builds for macOS (DMG) and Linux (AppImage).
+Claude Terminal is a cross-platform Electron desktop application (v1.2.0) for managing Claude Code projects with an integrated terminal, chat UI, git management, and plugin ecosystem. Primary target: Windows 10/11 with NSIS installer. Also builds for macOS (DMG) and Linux (AppImage).
 
 **Repository:** `github.com/Sterll/claude-terminal` | **License:** GPL-3.0 | **Author:** Yanis
 
@@ -47,7 +47,7 @@ Electron Renderer Process (Browser)
 ├── src/renderer/ui/panels/          # UI panels (10 panels)
 ├── src/renderer/features/           # Keyboard shortcuts, quick picker, drag-drop
 ├── src/renderer/events/             # Claude event bus + hook/scraping providers
-├── src/renderer/i18n/               # EN/FR internationalization (~800 keys each)
+├── src/renderer/i18n/               # EN/FR/ES internationalization (~2400 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting
 
 Project Types (Plugin System)
@@ -220,11 +220,11 @@ Base class `State.js`: Observable with `subscribe()`, batched notifications via 
 
 ### Internationalization (`src/renderer/i18n/`)
 
-- **Languages:** French (default), English
-- **Keys:** ~800 per locale file
+- **Languages:** French (default), English, Spanish
+- **Keys:** ~2400 per locale file
 - **System:** Dot-notation keys with `{variable}` interpolation
 - **Detection:** Auto-detect from `navigator.language`, fallback to `fr`
-- **Files:** `locales/en.json`, `locales/fr.json`
+- **Files:** `locales/en.json`, `locales/fr.json`, `locales/es.json`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`
 - **HTML:** `data-i18n` attributes for static text
 
@@ -440,6 +440,7 @@ module.exports = {
 | `webapp.js` | `webapp_stack`, `webapp_scripts`, `webapp_start`, `webapp_stop` |
 | `fivem.js` | `fivem_command`, `fivem_list_resources`, `fivem_read_manifest`, `fivem_resource_files`, `fivem_server_cfg` |
 | `workflow.js` | `workflow_*` (create, list, run, status, etc.) |
+| `parallel.js` | `parallel_list_runs`, `parallel_run_detail`, `parallel_start_run`, `parallel_cancel_run`, `parallel_cleanup_run`, `parallel_merge_run` |
 
 **Session tools (added with Session Replay feature):**
 - `session_list` — list recent sessions for a project (IDs, dates, first prompt). Params: `project_path`, `limit`

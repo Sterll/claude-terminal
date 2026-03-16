@@ -58,7 +58,17 @@ function registerPluginHandlers() {
     }
   });
 
-ipcMain.handle('plugin-add-marketplace', async (event, { url }) => {
+ipcMain.handle('plugin-uninstall', async (event, { pluginKey }) => {
+    try {
+      sendFeaturePing('plugin:uninstall');
+      return await PluginService.uninstallPlugin(pluginKey);
+    } catch (e) {
+      console.error('[Plugin IPC] Uninstall error:', e);
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('plugin-add-marketplace', async (event, { url }) => {
     try {
       return await PluginService.addMarketplace(url);
     } catch (e) {

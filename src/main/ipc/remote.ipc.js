@@ -81,6 +81,28 @@ function registerRemoteHandlers() {
     remoteServer.setTimeData({ todayMs });
   });
 
+  // List connected clients with metadata
+  ipcMain.handle('remote:get-clients', () => {
+    try {
+      return { success: true, clients: remoteServer.getConnectedClients() };
+    } catch (err) {
+      return { success: false, error: err.message, clients: [] };
+    }
+  });
+
+  // Disconnect a specific client by short ID
+  ipcMain.handle('remote:disconnect-client', (_e, { clientId }) => {
+    try {
+      if (!clientId || typeof clientId !== 'string') {
+        return { success: false, error: 'Invalid client ID' };
+      }
+      const result = remoteServer.disconnectClient(clientId);
+      return { success: result, error: result ? null : 'Client not found' };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
 }
 
 module.exports = { registerRemoteHandlers };

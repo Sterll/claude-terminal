@@ -372,7 +372,23 @@ function buildSections(query, mode, currentProject) {
   return sections;
 }
 
+// ── Selection update (no re-render) ──────────────────────────────────────
+function updateSelection(list, newIndex) {
+  const oldIndex = quickPickerState.selectedIndex;
+  if (newIndex === oldIndex) return;
+  quickPickerState.selectedIndex = newIndex;
+  const items = list.querySelectorAll('.quick-picker-item:not(.quick-picker-skeleton):not(.quick-picker-error)');
+  items.forEach(el => {
+    const idx = parseInt(el.dataset.flatIndex, 10);
+    el.classList.toggle('selected', idx === newIndex);
+  });
+  const selected = list.querySelector('.quick-picker-item.selected');
+  if (selected) selected.scrollIntoView({ block: 'nearest' });
+}
+
 // ── List renderer ─────────────────────────────────────────────────────────
+const MAX_VISIBLE = 50;
+
 function renderList(list, handlers, picker, currentProject) {
   const { mode, query } = detectMode(quickPickerState.query);
   quickPickerState.mode = mode;
@@ -382,6 +398,16 @@ function renderList(list, handlers, picker, currentProject) {
   // Build flat item list for keyboard navigation
   const flatItems = [];
   sections.forEach(s => s.items.forEach(item => flatItems.push(item)));
+
+  // Cap visible items to avoid heavy DOM with many projects
+  const totalCount = flatItems.length;
+  let truncated = false;
+  if (totalCount > MAX_VISIBLE) {
+    const visibleSet = new Set(flatItems.slice(0, MAX_VISIBLE));
+    sections.forEach(s => { s.items = s.items.filter(i => visibleSet.has(i)); });
+    flatItems.length = MAX_VISIBLE;
+    truncated = true;
+  }
   quickPickerState.flatItems = flatItems;
 
   const hasContent = flatItems.length > 0 || sections.some(s => s.loading);
@@ -447,18 +473,10 @@ function renderList(list, handlers, picker, currentProject) {
       }).join('')}`;
   }).join('');
 
-  // Event handlers
-  list.querySelectorAll('.quick-picker-item:not(.quick-picker-skeleton):not(.quick-picker-error)').forEach(el => {
-    const idx = parseInt(el.dataset.flatIndex, 10);
-    if (isNaN(idx)) return;
-    el.onmouseenter = () => {
-      quickPickerState.selectedIndex = idx;
-      list.querySelectorAll('.quick-picker-item').forEach(i =>
-        i.classList.toggle('selected', parseInt(i.dataset.flatIndex, 10) === idx)
-      );
-    };
-    el.onclick = () => activateItem(flatItems[idx], handlers, picker);
-  });
+  // "More results" indicator when truncated
+  if (truncated) {
+    list.innerHTML += `<div class="quick-picker-more">${(t('quickPicker.moreResults') || '{count} more results...').replace('{count}', totalCount - MAX_VISIBLE)}</div>`;
+  }
 
   // Scroll selected into view
   const selected = list.querySelector('.quick-picker-item.selected');
@@ -549,10 +567,10 @@ function openQuickPicker(container, optionsOrOnSelect) {
       <div class="quick-picker-list"></div>
       <div class="quick-picker-footer">
         <span class="quick-picker-footer-modes">
-          <span><kbd>&gt;</kbd>${t('quickPicker.mode.commands')}</span>
-          <span><kbd>@</kbd>${t('quickPicker.mode.branches')}</span>
-          <span><kbd>#</kbd>${t('quickPicker.mode.sessions')}</span>
-          <span><kbd>~</kbd>${t('quickPicker.mode.mcp')}</span>
+          <span class="quick-picker-footer-mode" data-prefix=">"><kbd>&gt;</kbd>${t('quickPicker.mode.commands')}</span>
+          <span class="quick-picker-footer-mode" data-prefix="@"><kbd>@</kbd>${t('quickPicker.mode.branches')}</span>
+          <span class="quick-picker-footer-mode" data-prefix="#"><kbd>#</kbd>${t('quickPicker.mode.sessions')}</span>
+          <span class="quick-picker-footer-mode" data-prefix="~"><kbd>~</kbd>${t('quickPicker.mode.mcp')}</span>
         </span>
         <span><kbd>↑↓</kbd> ${t('quickPicker.nav.navigate')} &nbsp;<kbd>↵</kbd> ${t('quickPicker.nav.open')}</span>
       </div>
@@ -564,6 +582,33 @@ function openQuickPicker(container, optionsOrOnSelect) {
   const input = picker.querySelector('.quick-picker-input');
   const list = picker.querySelector('.quick-picker-list');
   const rerender = () => renderList(list, handlers, picker, currentProject);
+
+  // Event delegation on the list container (attached once, not per render)
+  list.addEventListener('mouseenter', (e) => {
+    const item = e.target.closest('.quick-picker-item:not(.quick-picker-skeleton):not(.quick-picker-error)');
+    if (!item) return;
+    const idx = parseInt(item.dataset.flatIndex, 10);
+    if (!isNaN(idx)) updateSelection(list, idx);
+  }, true); // capture phase for mouseenter delegation
+
+  list.addEventListener('click', (e) => {
+    const item = e.target.closest('.quick-picker-item:not(.quick-picker-skeleton):not(.quick-picker-error)');
+    if (!item) return;
+    const idx = parseInt(item.dataset.flatIndex, 10);
+    if (!isNaN(idx)) activateItem(quickPickerState.flatItems[idx], handlers, picker);
+  });
+
+  // Footer mode prefixes — click to pre-fill
+  picker.querySelectorAll('.quick-picker-footer-mode').forEach(el => {
+    el.addEventListener('click', () => {
+      const prefix = el.dataset.prefix;
+      input.value = prefix;
+      quickPickerState.query = prefix;
+      quickPickerState.selectedIndex = 0;
+      rerender();
+      input.focus();
+    });
+  });
 
   // Start async loads if we have a current project
   if (currentProject?.path) {
@@ -589,13 +634,11 @@ function openQuickPicker(container, optionsOrOnSelect) {
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        quickPickerState.selectedIndex = Math.min(quickPickerState.selectedIndex + 1, flatItems.length - 1);
-        rerender();
+        updateSelection(list, Math.min(quickPickerState.selectedIndex + 1, flatItems.length - 1));
         break;
       case 'ArrowUp':
         e.preventDefault();
-        quickPickerState.selectedIndex = Math.max(quickPickerState.selectedIndex - 1, 0);
-        rerender();
+        updateSelection(list, Math.max(quickPickerState.selectedIndex - 1, 0));
         break;
       case 'Enter':
         e.preventDefault();
