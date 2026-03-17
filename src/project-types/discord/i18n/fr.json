@@ -1,0 +1,59 @@
+{
+  "discord": {
+    "bot": "Bot",
+    "startBot": "Lancer le bot",
+    "stopBot": "Arrêter le bot",
+    "online": "En ligne",
+    "offline": "Hors ligne",
+    "starting": "Démarrage...",
+    "console": "Console",
+    "commands": "Commandes",
+    "events": "Événements",
+    "guilds": "serveurs",
+    "library": "Librairie",
+    "botName": "Nom du bot",
+    "noCommands": "Aucune commande détectée. Cliquez sur 'Scanner' pour analyser vos fichiers.",
+    "scanCommands": "Scanner les commandes",
+    "scanning": "Analyse des fichiers source...",
+    "searchCommands": "Rechercher une commande...",
+    "clearEvents": "Effacer",
+    "noEvents": "Aucun événement. Lancez votre bot pour voir l'activité.",
+    "startCommand": "Commande de lancement",
+    "startCommandHint": "Laissez vide pour la détection automatique (node bot.js, python bot.py, etc.)",
+    "devServer": "Bot",
+    "devCommandHint": "Commande pour lancer le bot (ex: node bot.js, python bot.py)",
+    "embedBuilder": "Embed Builder",
+    "componentBuilder": "Composants",
+    "builderPreview": "Aperçu",
+    "builderAuthor": "Auteur",
+    "builderAuthorName": "Nom de l'auteur",
+    "builderAuthorIcon": "URL icône auteur",
+    "builderAuthorUrl": "URL auteur",
+    "builderTitle": "Titre",
+    "builderTitleHint": "Titre de l'embed",
+    "builderTitleUrl": "URL du titre",
+    "builderDescription": "Description",
+    "builderDescHint": "Description de l'embed (**gras**, *italique*, `code`)",
+    "builderColor": "Couleur",
+    "builderTimestamp": "Horodatage",
+    "builderTimestampNow": "Heure actuelle",
+    "builderFields": "Champs",
+    "builderImages": "Images",
+    "builderThumbnail": "URL miniature (petit, en haut à droite)",
+    "builderImage": "URL image (grand, en bas)",
+    "builderFooter": "Pied de page",
+    "builderFooterText": "Texte du pied de page",
+    "builderFooterIcon": "URL icône pied de page",
+    "builderActionRows": "Lignes d'actions",
+    "builderAddRow": "Ajouter une ligne"
+  },
+  "newProject": {
+    "types": {
+      "discord": "Bot Discord",
+      "discordDesc": "Bot Discord avec gestion du cycle de vie et scan des commandes"
+    },
+    "categories": {
+      "bots": "Bots"
+    }
+  }
+}

@@ -79,6 +79,10 @@ async function initialize() {
 
   // API listeners are registered in renderer.js (same pattern as webapp)
 
+  // Register Discord listeners
+  const { registerListeners: registerDiscordListeners } = require('../project-types/discord/renderer/DiscordRendererService');
+  registerDiscordListeners();
+
   services.FivemService.registerFivemListeners(
     // onData callback
     (projectIndex, data) => {

@@ -1045,6 +1045,60 @@ api.api.onPortDetected(({ projectIndex, port }) => {
   ProjectList.render();
 });
 
+// ========== DISCORD ==========
+async function startDiscordBot(projectIndex) {
+  const projects = projectsState.get().projects;
+  const project = projects[projectIndex];
+  if (!project) return;
+
+  const { startBot } = require('./src/project-types/discord/renderer/DiscordRendererService');
+  await startBot(projectIndex);
+  ProjectList.render();
+}
+
+async function stopDiscordBot(projectIndex) {
+  const { stopBot } = require('./src/project-types/discord/renderer/DiscordRendererService');
+  await stopBot(projectIndex);
+  ProjectList.render();
+}
+
+function openDiscordConsole(projectIndex) {
+  const projects = projectsState.get().projects;
+  const project = projects[projectIndex];
+  if (!project) return;
+
+  TerminalManager.createTypeConsole(project, projectIndex);
+}
+
+async function scanDiscordCommands(projectIndex) {
+  const { scanCommands } = require('./src/project-types/discord/renderer/DiscordRendererService');
+  await scanCommands(projectIndex);
+}
+
+// Register Discord listeners - write to TerminalManager's Discord console
+api.discord.onData(({ projectIndex, data }) => {
+  const { addDiscordLog, setDiscordServerStatus } = require('./src/project-types/discord/renderer/DiscordState');
+  addDiscordLog(projectIndex, data);
+  setDiscordServerStatus(projectIndex, 'running');
+  TerminalManager.writeTypeConsole(projectIndex, 'discord', data);
+});
+
+api.discord.onExit(({ projectIndex, code }) => {
+  const { setDiscordServerStatus } = require('./src/project-types/discord/renderer/DiscordState');
+  setDiscordServerStatus(projectIndex, 'stopped');
+  TerminalManager.writeTypeConsole(projectIndex, 'discord', `\r\n[Bot exited with code ${code}]\r\n`);
+  ProjectList.render();
+});
+
+api.discord.onStatusChange(({ projectIndex, status, botName, guildCount }) => {
+  const { setDiscordServerStatus, setDiscordBotInfo } = require('./src/project-types/discord/renderer/DiscordState');
+  if (status) setDiscordServerStatus(projectIndex, status);
+  if (botName !== undefined || guildCount !== undefined) {
+    setDiscordBotInfo(projectIndex, { botName, guildCount });
+  }
+  ProjectList.render();
+});
+
 // ========== DELETE PROJECT ==========
 async function deleteProjectUI(projectId) {
   const project = getProject(projectId);
@@ -2093,6 +2147,10 @@ ProjectList.setCallbacks({
   onStartApi: startApiServer,
   onStopApi: stopApiServer,
   onOpenApiConsole: openApiConsole,
+  onStartDiscordBot: startDiscordBot,
+  onStopDiscordBot: stopDiscordBot,
+  onOpenDiscordConsole: openDiscordConsole,
+  onScanDiscordCommands: scanDiscordCommands,
   onGitPull: gitPull,
   onGitPush: gitPush,
   onNewWorktree: openNewWorktreeModal,
@@ -3413,7 +3471,7 @@ document.getElementById('btn-new-project').onclick = () => {
   const categoriesGrouped = registry.getByCategory();
 
   let typeIndex = 0;
-  const typeColors = { standalone: 'var(--accent)', webapp: '#3b82f6', python: '#3776ab', api: '#a855f7', fivem: 'var(--success)' };
+  const typeColors = { standalone: 'var(--accent)', webapp: '#3b82f6', python: '#3776ab', api: '#a855f7', fivem: 'var(--success)', discord: '#5865F2' };
   const buildTypeRows = () => categoriesGrouped.map(({ category: cat, types }) => `
       <div class="wizard-type-category">${t(cat.nameKey)}</div>
       <div class="wizard-type-grid">

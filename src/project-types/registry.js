@@ -11,6 +11,7 @@ const types = new Map();
 // Categories for wizard grouping
 const categories = [
   { id: 'general', nameKey: 'newProject.categories.general' },
+  { id: 'bots', nameKey: 'newProject.categories.bots' },
   { id: 'gamedev', nameKey: 'newProject.categories.gameDev' }
 ];
 
@@ -60,6 +61,11 @@ function discoverAll() {
     register(require('./minecraft'));
   } catch (e) {
     console.warn('[Registry] Failed to load minecraft type:', e.message);
+  }
+  try {
+    register(require('./discord'));
+  } catch (e) {
+    console.warn('[Registry] Failed to load discord type:', e.message);
   }
 
   console.debug(`[Registry] Discovered ${types.size} project type(s): ${[...types.keys()].join(', ')}`);

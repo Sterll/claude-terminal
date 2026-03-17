@@ -302,6 +302,19 @@ contextBridge.exposeInMainWorld('electron_api', {
     onPlayerCount: createListener('minecraft-playercount')
   },
 
+  // ==================== DISCORD ====================
+  discord: {
+    start: (params) => ipcRenderer.invoke('discord-start', params),
+    stop: (params) => ipcRenderer.invoke('discord-stop', params),
+    input: (params) => ipcRenderer.send('discord-input', params),
+    resize: (params) => ipcRenderer.send('discord-resize', params),
+    detectLibrary: (params) => ipcRenderer.invoke('discord-detect-library', params),
+    scanCommands: (params) => ipcRenderer.invoke('discord-scan-commands', params),
+    onData: createListener('discord-data'),
+    onExit: createListener('discord-exit'),
+    onStatusChange: createListener('discord-status-change')
+  },
+
   // ==================== PYTHON ====================
   python: {
     detectInfo: (params) => ipcRenderer.invoke('python-detect-info', params)

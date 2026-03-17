@@ -1,0 +1,59 @@
+{
+  "discord": {
+    "bot": "Bot",
+    "startBot": "Start bot",
+    "stopBot": "Stop bot",
+    "online": "Online",
+    "offline": "Offline",
+    "starting": "Starting...",
+    "console": "Console",
+    "commands": "Commands",
+    "events": "Events",
+    "guilds": "guilds",
+    "library": "Library",
+    "botName": "Bot name",
+    "noCommands": "No commands detected. Click 'Scan' to search your source files.",
+    "scanCommands": "Scan commands",
+    "scanning": "Scanning source files...",
+    "searchCommands": "Search commands...",
+    "clearEvents": "Clear",
+    "noEvents": "No events yet. Start your bot to see activity.",
+    "startCommand": "Start command",
+    "startCommandHint": "Leave empty for auto-detection (node bot.js, python bot.py, etc.)",
+    "devServer": "Bot",
+    "devCommandHint": "Command to start the bot (e.g. node bot.js, python bot.py)",
+    "embedBuilder": "Embed Builder",
+    "componentBuilder": "Components",
+    "builderPreview": "Preview",
+    "builderAuthor": "Author",
+    "builderAuthorName": "Author name",
+    "builderAuthorIcon": "Author icon URL",
+    "builderAuthorUrl": "Author URL",
+    "builderTitle": "Title",
+    "builderTitleHint": "Embed title",
+    "builderTitleUrl": "Title URL",
+    "builderDescription": "Description",
+    "builderDescHint": "Embed description (supports **bold**, *italic*, `code`)",
+    "builderColor": "Color",
+    "builderTimestamp": "Timestamp",
+    "builderTimestampNow": "Current time",
+    "builderFields": "Fields",
+    "builderImages": "Images",
+    "builderThumbnail": "Thumbnail URL (small, top right)",
+    "builderImage": "Image URL (large, bottom)",
+    "builderFooter": "Footer",
+    "builderFooterText": "Footer text",
+    "builderFooterIcon": "Footer icon URL",
+    "builderActionRows": "Action Rows",
+    "builderAddRow": "Add action row"
+  },
+  "newProject": {
+    "types": {
+      "discord": "Discord Bot",
+      "discordDesc": "Discord bot with lifecycle management and command scanning"
+    },
+    "categories": {
+      "bots": "Bots"
+    }
+  }
+}
