@@ -16,6 +16,7 @@ const SPECIAL_LANGS = new Set([
   'timeline', 'steps', 'compare', 'links', 'tabs',
   'metrics', 'api', 'endpoint', 'resource', 'eventflow',
   'config', 'convars', 'command', 'cmd',
+  'embed', 'discord-embed', 'discord-component', 'discord-components', 'discord-message',
 ]);
 
 // Callout types: > [!TYPE]
@@ -141,6 +142,21 @@ function configure() {
         // Game Command Reference
         if (langLower === 'command' || langLower === 'cmd') {
           return renderCommandBlock(raw);
+        }
+
+        // Discord Embed Preview
+        if (langLower === 'embed' || langLower === 'discord-embed') {
+          return renderDiscordEmbedBlock(raw);
+        }
+
+        // Discord Component Preview
+        if (langLower === 'discord-component' || langLower === 'discord-components') {
+          return renderDiscordComponentBlock(raw);
+        }
+
+        // Discord Message Preview
+        if (langLower === 'discord-message') {
+          return renderDiscordMessageBlock(raw);
         }
 
         // ── Standard code block ──
@@ -1397,6 +1413,48 @@ function attachInteractivity(container) {
       return;
     }
 
+    // ── Discord preview toggle (Code/Preview/Copy JSON) ──
+    if (target.classList.contains('dc-chat-toggle-btn')) {
+      const preview = target.closest('.dc-chat-preview');
+      if (preview) {
+        const action = target.dataset.action;
+        const previewBody = preview.querySelector('.dc-chat-preview-body');
+        const codeBody = preview.querySelector('.dc-chat-code-body');
+        const allBtns = preview.querySelectorAll('.dc-chat-toggle-btn');
+
+        if (action === 'dc-show-preview') {
+          allBtns.forEach(b => b.classList.remove('active'));
+          target.classList.add('active');
+          if (previewBody) previewBody.classList.remove('hidden');
+          if (codeBody) codeBody.classList.remove('visible');
+        } else if (action === 'dc-show-code') {
+          allBtns.forEach(b => b.classList.remove('active'));
+          target.classList.add('active');
+          if (previewBody) previewBody.classList.add('hidden');
+          if (codeBody) codeBody.classList.add('visible');
+        } else if (action === 'dc-copy-json') {
+          const rawEl = preview.querySelector('.dc-chat-raw');
+          if (rawEl) {
+            const text = rawEl.textContent;
+            if (window.electron_api?.app?.clipboardWrite) {
+              window.electron_api.app.clipboardWrite(text);
+            } else {
+              navigator.clipboard.writeText(text).catch(() => {});
+            }
+            target.textContent = 'Copied!';
+            setTimeout(() => { target.textContent = 'Copy JSON'; }, 1500);
+          }
+        }
+      }
+      return;
+    }
+
+    // ── Discord spoiler toggle ──
+    if (target.classList.contains('dc-spoiler')) {
+      target.classList.toggle('revealed');
+      return;
+    }
+
     // ── File tree folder toggle ──
     if (target.closest('.ft-toggle')) {
       const item = target.closest('.ft-item');
@@ -1584,6 +1642,76 @@ function initializePreviewIframe(container) {
 
   // Use srcdoc for Electron compatibility (blob URLs blocked by sandbox)
   iframe.srcdoc = html;
+}
+
+// ── Discord Preview Blocks ──
+
+function renderDiscordEmbedBlock(raw) {
+  const DiscordRenderer = require('../ui/discord/DiscordRenderer');
+  const result = DiscordRenderer.autoRender(raw);
+  if (!result) {
+    // Fallback: show as standard code block
+    return `<pre class="code-block"><code>${escapeHtml(raw)}</code></pre>`;
+  }
+
+  const codeEscaped = escapeHtml(raw);
+  const uid = 'dc-preview-' + Math.random().toString(36).slice(2, 8);
+
+  return `<div class="dc-chat-preview" data-dc-uid="${uid}">`
+    + `<div class="dc-chat-preview-toolbar">`
+    + `<span class="dc-chat-preview-label">Discord Embed</span>`
+    + `<button class="dc-chat-toggle-btn active" data-action="dc-show-preview">Preview</button>`
+    + `<button class="dc-chat-toggle-btn" data-action="dc-show-code">Code</button>`
+    + `<button class="dc-chat-toggle-btn" data-action="dc-copy-json">Copy JSON</button>`
+    + `</div>`
+    + `<div class="dc-chat-preview-body">${result.html}</div>`
+    + `<div class="dc-chat-code-body"><pre class="code-block"><code>${codeEscaped}</code></pre></div>`
+    + `<div class="dc-chat-raw" style="display:none">${codeEscaped}</div>`
+    + `</div>`;
+}
+
+function renderDiscordComponentBlock(raw) {
+  const DiscordRenderer = require('../ui/discord/DiscordRenderer');
+  const html = DiscordRenderer.renderComponents(raw);
+  if (!html) {
+    return `<pre class="code-block"><code>${escapeHtml(raw)}</code></pre>`;
+  }
+
+  const codeEscaped = escapeHtml(raw);
+  const uid = 'dc-preview-' + Math.random().toString(36).slice(2, 8);
+
+  return `<div class="dc-chat-preview" data-dc-uid="${uid}">`
+    + `<div class="dc-chat-preview-toolbar">`
+    + `<span class="dc-chat-preview-label">Discord Components</span>`
+    + `<button class="dc-chat-toggle-btn active" data-action="dc-show-preview">Preview</button>`
+    + `<button class="dc-chat-toggle-btn" data-action="dc-show-code">Code</button>`
+    + `<button class="dc-chat-toggle-btn" data-action="dc-copy-json">Copy JSON</button>`
+    + `</div>`
+    + `<div class="dc-chat-preview-body">${html}</div>`
+    + `<div class="dc-chat-code-body"><pre class="code-block"><code>${codeEscaped}</code></pre></div>`
+    + `<div class="dc-chat-raw" style="display:none">${codeEscaped}</div>`
+    + `</div>`;
+}
+
+function renderDiscordMessageBlock(raw) {
+  const DiscordRenderer = require('../ui/discord/DiscordRenderer');
+  const html = DiscordRenderer.renderMessage(raw);
+  if (!html) {
+    return `<pre class="code-block"><code>${escapeHtml(raw)}</code></pre>`;
+  }
+
+  const codeEscaped = escapeHtml(raw);
+  const uid = 'dc-preview-' + Math.random().toString(36).slice(2, 8);
+
+  return `<div class="dc-chat-preview" data-dc-uid="${uid}">`
+    + `<div class="dc-chat-preview-toolbar">`
+    + `<span class="dc-chat-preview-label">Discord Message</span>`
+    + `<button class="dc-chat-toggle-btn active" data-action="dc-show-preview">Preview</button>`
+    + `<button class="dc-chat-toggle-btn" data-action="dc-show-code">Code</button>`
+    + `</div>`
+    + `<div class="dc-chat-preview-body">${html}</div>`
+    + `<div class="dc-chat-code-body"><pre class="code-block"><code>${codeEscaped}</code></pre></div>`
+    + `</div>`;
 }
 
 /**
