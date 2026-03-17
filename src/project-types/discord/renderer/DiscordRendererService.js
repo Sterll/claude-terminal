@@ -7,10 +7,18 @@ const { setDiscordServerStatus, setDiscordBotInfo, addDiscordLog, setDiscordLibr
 
 const api = window.electron_api;
 
-async function startBot(projectIndex, projectPath, startCommand) {
+async function startBot(projectIndex) {
+  const { projectsState } = require('../../../renderer/state');
+  const project = projectsState.get().projects[projectIndex];
+  if (!project) return { success: false, error: 'Project not found' };
+
   setDiscordServerStatus(projectIndex, 'starting');
   try {
-    const result = await api.discord.start({ projectIndex, projectPath, startCommand });
+    const result = await api.discord.start({
+      projectIndex,
+      projectPath: project.path,
+      startCommand: project.startCommand
+    });
     if (!result.success) {
       setDiscordServerStatus(projectIndex, 'stopped');
     }
@@ -31,9 +39,13 @@ async function stopBot(projectIndex) {
   }
 }
 
-async function detectLibrary(projectIndex, projectPath) {
+async function detectLibrary(projectIndex) {
+  const { projectsState } = require('../../../renderer/state');
+  const project = projectsState.get().projects[projectIndex];
+  if (!project) return null;
+
   try {
-    const lib = await api.discord.detectLibrary({ projectPath });
+    const lib = await api.discord.detectLibrary({ projectPath: project.path });
     if (lib) setDiscordLibrary(projectIndex, lib);
     return lib;
   } catch (e) {
@@ -41,10 +53,14 @@ async function detectLibrary(projectIndex, projectPath) {
   }
 }
 
-async function scanCommands(projectIndex, projectPath) {
+async function scanCommands(projectIndex) {
+  const { projectsState } = require('../../../renderer/state');
+  const project = projectsState.get().projects[projectIndex];
+  if (!project) return [];
+
   setDiscordCommandsLoading(projectIndex, true);
   try {
-    const commands = await api.discord.scanCommands({ projectPath });
+    const commands = await api.discord.scanCommands({ projectPath: project.path });
     setDiscordCommands(projectIndex, commands || []);
     return commands || [];
   } catch (e) {
