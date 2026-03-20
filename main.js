@@ -227,11 +227,18 @@ function bootstrapApp() {
     return { overrides: {}, enabled: true };
   }
 
+  /** Currently registered accelerators (for selective unregister) */
+  const registeredAccelerators = new Set();
+
   /**
    * Register global keyboard shortcuts (reads config from settings or IPC payload)
    */
   function registerGlobalShortcuts(overrides) {
-    globalShortcut.unregisterAll();
+    // Unregister only our own shortcuts (not all global shortcuts)
+    for (const acc of registeredAccelerators) {
+      try { globalShortcut.unregister(acc); } catch (_) {}
+    }
+    registeredAccelerators.clear();
 
     const config = overrides || loadGlobalShortcutSettings();
     if (!config.enabled) return;
@@ -243,6 +250,7 @@ function bootstrapApp() {
       if (accelerator && action) {
         try {
           globalShortcut.register(accelerator, action);
+          registeredAccelerators.add(accelerator);
         } catch (e) {
           console.error(`[GlobalShortcuts] Failed to register ${id} (${accelerator}):`, e);
         }

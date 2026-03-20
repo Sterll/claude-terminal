@@ -304,7 +304,7 @@ function renderShortcutsPanel() {
         </label>
       </div>
       <div class="settings-group-description">${t('shortcuts.globalShortcutsDescription')}</div>
-      <div class="settings-card" ${!globalEnabled ? 'style="opacity: 0.5; pointer-events: none;"' : ''} id="global-shortcuts-card">
+      <div class="settings-card ${!globalEnabled ? 'disabled' : ''}" id="global-shortcuts-card">
         <div class="shortcuts-list">
   `;
 

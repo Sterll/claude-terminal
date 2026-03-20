@@ -39,6 +39,11 @@
   overflow: hidden;
 }
 
+.settings-card.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 /* Legacy compat */
 .settings-section {
   margin-bottom: 28px;
