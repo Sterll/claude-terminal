@@ -12,6 +12,7 @@ const fs = require('fs');
 const { cloudRelayClient } = require('../services/CloudRelayClient');
 const remoteServer = require('../services/RemoteServer');
 const cloudSyncService = require('../services/CloudSyncService');
+const { syncEngine } = require('../services/SyncEngine');
 const { sendFeaturePing } = require('../services/TelemetryService');
 const { zipProject } = require('../utils/zipProject');
 const { settingsFile } = require('../utils/paths');
@@ -125,12 +126,16 @@ function registerCloudHandlers() {
     if (status.connected) {
       remoteServer.sendInitToCloud();
       cloudSyncService.start();
+      // Start entity sync engine
+      const settings = _loadSettings();
+      syncEngine.start(settings.cloudServerUrl, settings.cloudApiKey);
+      // Trigger full sync on connect
+      setImmediate(() => syncEngine.fullSync());
       // Check for pending changes from headless sessions
       setImmediate(() => _checkPendingChangesOnReconnect());
       // Auto-sync skills if enabled
       setImmediate(async () => {
         try {
-          const settings = _loadSettings();
           if (settings.cloudSyncSkills) {
             const result = await _syncSkillsToCloud();
             console.log(`[Cloud] Auto skills sync: ${result.skillCount} skill(s), ${result.agentCount} agent(s)`);
@@ -139,6 +144,8 @@ function registerCloudHandlers() {
           console.warn('[Cloud] Auto skills sync failed:', e.message);
         }
       });
+    } else {
+      syncEngine.stop();
     }
     // Note: we do NOT call setCloudClient(null) here on disconnect because
     // CloudRelayClient auto-reconnects. Only explicit cloud:disconnect clears it.
@@ -163,6 +170,7 @@ function registerCloudHandlers() {
     cloudRelayClient.disconnect();
     remoteServer.setCloudClient(null);
     cloudSyncService.stop();
+    syncEngine.stop();
     return { ok: true };
   });
 

@@ -1760,6 +1760,28 @@
     "cloudProjectImporting": "Import...",
     "cloudProjectImported": "« {name} » importé avec succès"
   },
+  "sync": {
+    "conflictTitle": "Conflits de synchronisation détectés",
+    "conflictDescription": "Certaines données ont été modifiées à la fois localement et dans le cloud. Choisissez quelle version conserver pour chaque élément.",
+    "keepLocal": "Garder local",
+    "keepCloud": "Garder cloud",
+    "useAllLocal": "Tout local",
+    "useAllCloud": "Tout cloud",
+    "applyResolutions": "Appliquer",
+    "justNow": "À l'instant",
+    "minutesAgo": "Il y a {count}min",
+    "hoursAgo": "Il y a {count}h",
+    "daysAgo": "Il y a {count}j",
+    "syncing": "Synchronisation...",
+    "synced": "Synchronisé",
+    "syncError": "Erreur de sync",
+    "fullSyncStarted": "Synchronisation complète lancée",
+    "fullSyncCompleted": "Synchronisation terminée",
+    "entityPushed": "{entity} synchronisé vers le cloud",
+    "settingsUpdated": "Paramètres mis à jour depuis le cloud",
+    "projectsUpdated": "Projets mis à jour depuis le cloud",
+    "fullSyncBtn": "Synchronisation complète"
+  },
   "database": {
     "title": "Base de données",
     "connections": "Connexions",

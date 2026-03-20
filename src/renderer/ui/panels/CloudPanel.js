@@ -32,6 +32,10 @@ function buildHtml(settings) {
           </div>
         </div>
         <div class="cp-topbar-right">
+          <div class="cp-sync-status" id="cp-sync-status" style="display:none">
+            <span class="cp-sync-status-icon"></span>
+            <span class="cp-sync-status-text" id="cp-sync-status-text"></span>
+          </div>
           <div class="cp-status-pill" id="cp-status-pill">
             <span class="cp-status-dot"></span>
             <span id="cp-status-text">${t('cloud.disconnected')}</span>
@@ -308,6 +312,13 @@ function buildHtml(settings) {
                     <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
                   </svg>
                   ${t('cloud.syncCheckBtn')}
+                </button>
+                <button class="cp-btn-full cp-btn-accent" id="cp-full-sync-btn" style="margin-top:6px">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                  </svg>
+                  ${t('sync.fullSyncBtn')}
                 </button>
               </div>
             </div>
@@ -938,6 +949,57 @@ function setupHandlers(context) {
       } finally {
         syncCheckBtn.disabled = false;
         syncCheckBtn.classList.remove('loading');
+      }
+    });
+  }
+
+  // ── Full Sync button ──
+  const fullSyncBtn = document.getElementById('cp-full-sync-btn');
+  if (fullSyncBtn) {
+    fullSyncBtn.addEventListener('click', async () => {
+      fullSyncBtn.disabled = true;
+      fullSyncBtn.classList.add('loading');
+      _updateSyncStatusUI('syncing');
+      try {
+        await api.sync.fullSync();
+      } catch {
+        _updateSyncStatusUI('error');
+      } finally {
+        fullSyncBtn.disabled = false;
+        fullSyncBtn.classList.remove('loading');
+      }
+    });
+  }
+
+  // ── Sync status indicator ──
+  function _updateSyncStatusUI(state, detail) {
+    const el = document.getElementById('cp-sync-status');
+    const textEl = document.getElementById('cp-sync-status-text');
+    if (!el || !textEl) return;
+
+    el.style.display = '';
+    el.className = `cp-sync-status ${state}`;
+
+    if (state === 'syncing') {
+      textEl.textContent = t('sync.syncing');
+    } else if (state === 'synced') {
+      textEl.textContent = t('sync.synced');
+      setTimeout(() => { el.style.display = 'none'; }, 5000);
+    } else if (state === 'error') {
+      textEl.textContent = t('sync.syncError');
+      setTimeout(() => { el.style.display = 'none'; }, 8000);
+    }
+  }
+
+  // Listen for sync status from main process
+  if (api.sync?.onStatus) {
+    api.sync.onStatus(({ type, status }) => {
+      if (status === 'started') {
+        _updateSyncStatusUI('syncing');
+      } else if (status === 'completed') {
+        _updateSyncStatusUI('synced');
+      } else if (status === 'error') {
+        _updateSyncStatusUI('error');
       }
     });
   }

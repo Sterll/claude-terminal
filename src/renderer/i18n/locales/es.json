@@ -1724,6 +1724,28 @@
     "cloudProjectImporting": "Importando...",
     "cloudProjectImported": "\"{name}\" importado correctamente"
   },
+  "sync": {
+    "conflictTitle": "Conflictos de sincronización detectados",
+    "conflictDescription": "Algunos datos se han modificado tanto localmente como en la nube. Elige qué versión conservar para cada elemento.",
+    "keepLocal": "Mantener local",
+    "keepCloud": "Mantener nube",
+    "useAllLocal": "Todo local",
+    "useAllCloud": "Todo nube",
+    "applyResolutions": "Aplicar",
+    "justNow": "Ahora mismo",
+    "minutesAgo": "Hace {count}min",
+    "hoursAgo": "Hace {count}h",
+    "daysAgo": "Hace {count}d",
+    "syncing": "Sincronizando...",
+    "synced": "Sincronizado",
+    "syncError": "Error de sync",
+    "fullSyncStarted": "Sincronización completa iniciada",
+    "fullSyncCompleted": "Sincronización completada",
+    "entityPushed": "{entity} sincronizado a la nube",
+    "settingsUpdated": "Ajustes actualizados desde la nube",
+    "projectsUpdated": "Proyectos actualizados desde la nube",
+    "fullSyncBtn": "Sincronización completa"
+  },
   "database": {
     "title": "Base de datos",
     "connections": "Conexiones",

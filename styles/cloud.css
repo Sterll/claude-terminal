@@ -996,3 +996,70 @@
   font-size: var(--font-xs);
   color: var(--text-secondary);
 }
+
+/* ===== Sync Status Indicator ===== */
+
+.cp-sync-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: var(--font-2xs);
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.cp-sync-status.syncing {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--info);
+}
+
+.cp-sync-status.syncing .cp-sync-status-icon::after {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: cp-spin 0.8s linear infinite;
+}
+
+.cp-sync-status.synced {
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--success);
+}
+
+.cp-sync-status.synced .cp-sync-status-icon::after {
+  content: '\2713';
+}
+
+.cp-sync-status.error {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--danger);
+}
+
+.cp-sync-status.error .cp-sync-status-icon::after {
+  content: '\2717';
+}
+
+@keyframes cp-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Full sync button accent variant */
+.cp-btn-full.cp-btn-accent {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: transparent;
+}
+
+.cp-btn-full.cp-btn-accent:hover {
+  background: rgba(217, 119, 6, 0.25);
+}
+
+.cp-btn-full.cp-btn-accent.loading {
+  opacity: 0.6;
+  pointer-events: none;
+}

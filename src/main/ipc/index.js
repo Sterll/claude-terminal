@@ -30,6 +30,7 @@ const { registerTelemetryHandlers } = require('./telemetry.ipc');
 const { registerExplorerHandlers } = require('./explorer.ipc');
 const { registerTimeHandlers } = require('./time.ipc');
 const { registerParallelHandlers } = require('./parallel.ipc');
+const { registerSyncHandlers, setMainWindow: setSyncMainWindow } = require('./sync.ipc');
 
 /**
  * Register all IPC handlers
@@ -39,6 +40,7 @@ function registerAllHandlers(mainWindow) {
   // Set main window references where needed
   setDialogMainWindow(mainWindow);
   setCloudMainWindow(mainWindow);
+  setSyncMainWindow(mainWindow);
 
   // Register all handlers
   registerTerminalHandlers();
@@ -68,6 +70,7 @@ function registerAllHandlers(mainWindow) {
   registerExplorerHandlers(mainWindow);
   registerTimeHandlers();
   registerParallelHandlers(mainWindow);
+  registerSyncHandlers();
 }
 
 module.exports = {

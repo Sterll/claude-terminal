@@ -1760,6 +1760,28 @@
     "cloudProjectImporting": "Importing...",
     "cloudProjectImported": "\"{name}\" imported successfully"
   },
+  "sync": {
+    "conflictTitle": "Sync conflicts detected",
+    "conflictDescription": "Some data has been modified both locally and in the cloud. Choose which version to keep for each item.",
+    "keepLocal": "Keep local",
+    "keepCloud": "Keep cloud",
+    "useAllLocal": "All local",
+    "useAllCloud": "All cloud",
+    "applyResolutions": "Apply",
+    "justNow": "Just now",
+    "minutesAgo": "{count}m ago",
+    "hoursAgo": "{count}h ago",
+    "daysAgo": "{count}d ago",
+    "syncing": "Syncing...",
+    "synced": "Synced",
+    "syncError": "Sync error",
+    "fullSyncStarted": "Full sync started",
+    "fullSyncCompleted": "Sync completed",
+    "entityPushed": "{entity} synced to cloud",
+    "settingsUpdated": "Settings updated from cloud",
+    "projectsUpdated": "Projects updated from cloud",
+    "fullSyncBtn": "Full Sync"
+  },
   "database": {
     "title": "Database",
     "connections": "Connections",

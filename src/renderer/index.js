@@ -126,8 +126,9 @@ async function initialize() {
     });
   }
 
-  // ── Cloud reconnect listeners ──
+  // ── Cloud reconnect listeners + sync listeners ──
   _registerCloudListeners(api);
+  _registerSyncListeners(api);
 
   // Initialize Claude event bus and provider
   events.initClaudeEvents();
@@ -233,6 +234,72 @@ function _registerCloudListeners(api) {
           }
         }
       }
+    });
+  }
+}
+
+// ── Sync listeners (wire local changes → SyncEngine via IPC) ──────────────────
+
+function _registerSyncListeners(api) {
+  if (!api?.sync) return;
+
+  const { onSaveFlush } = require('./state/settings.state');
+  const { projectsState } = require('./state/projects.state');
+  const Toast = require('./ui/components/Toast');
+  const { t } = require('./i18n');
+  const { showConflictResolver } = require('./ui/components/ConflictResolver');
+
+  // Wire settings save → push to cloud
+  onSaveFlush(({ success }) => {
+    if (success) {
+      api.sync.pushEntity('settings');
+    }
+  });
+
+  // Wire projects changes → push to cloud
+  let projectsPushTimer = null;
+  projectsState.subscribe(() => {
+    clearTimeout(projectsPushTimer);
+    projectsPushTimer = setTimeout(() => {
+      api.sync.pushEntity('projects');
+    }, 2000);
+  });
+
+  // Listen for sync status updates (from main process)
+  if (api.sync.onStatus) {
+    api.sync.onStatus(({ type, status, detail }) => {
+      if (type === 'full-sync' && status === 'completed') {
+        Toast.show(t('sync.fullSyncCompleted'), 'success', 3000);
+      } else if (status === 'error' && detail) {
+        Toast.show(`${t('sync.syncError')}: ${detail}`, 'error', 5000);
+      }
+    });
+  }
+
+  // Listen for conflict resolution requests from SyncEngine
+  if (api.sync.onConflicts) {
+    api.sync.onConflicts(async (conflicts) => {
+      if (!conflicts || conflicts.length === 0) return;
+      const resolutions = await showConflictResolver(conflicts);
+      api.sync.resolveConflicts(resolutions);
+    });
+  }
+
+  // Listen for settings updated from cloud (reload locally)
+  if (api.sync.onSettingsUpdated) {
+    const { loadSettings } = require('./state/settings.state');
+    api.sync.onSettingsUpdated(async () => {
+      await loadSettings();
+      Toast.show(t('sync.settingsUpdated'), 'info', 3000);
+    });
+  }
+
+  // Listen for projects updated from cloud (reload locally)
+  if (api.sync.onProjectsUpdated) {
+    const { loadProjects } = require('./state/projects.state');
+    api.sync.onProjectsUpdated(async () => {
+      await loadProjects();
+      Toast.show(t('sync.projectsUpdated'), 'info', 3000);
     });
   }
 }

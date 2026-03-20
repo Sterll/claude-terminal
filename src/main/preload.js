@@ -552,6 +552,19 @@ contextBridge.exposeInMainWorld('electron_api', {
     getMachineId: () => ipcRenderer.invoke('cloud:get-machine-id'),
   },
 
+  // ==================== SYNC ====================
+  sync: {
+    fullSync: () => ipcRenderer.invoke('sync:full'),
+    pushEntity: (entityType, entityId) => ipcRenderer.invoke('sync:push-entity', { entityType, entityId }),
+    pullConversation: (sessionId, projectPath) => ipcRenderer.invoke('sync:pull-conversation', { sessionId, projectPath }),
+    resolveConflicts: (resolutions) => ipcRenderer.invoke('sync:resolve-conflicts', resolutions),
+    getManifest: () => ipcRenderer.invoke('sync:get-manifest'),
+    onStatus: createListener('sync:status'),
+    onConflicts: createListener('sync:conflicts'),
+    onSettingsUpdated: createListener('sync:settings-updated'),
+    onProjectsUpdated: createListener('sync:projects-updated'),
+  },
+
   // ==================== USAGE ====================
   usage: {
     getData: () => ipcRenderer.invoke('get-usage-data'),
