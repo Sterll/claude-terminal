@@ -3,204 +3,130 @@
  * Handles project-related operations in the renderer
  */
 
-// Use preload API instead of direct ipcRenderer
-const api = window.electron_api;
+const { BaseService } = require('../core/BaseService');
 const { t } = require('../i18n');
 const { showConfirm } = require('../ui/components/Modal');
 const {
-  projectsState,
-  getProject,
-  getProjectIndex,
-  addProject,
-  updateProject,
-  deleteProject: deleteProjectState,
-  loadProjects,
-  saveProjects,
-  setSelectedProjectFilter,
-  setOpenedProjectId
+  projectsState, getProject, getProjectIndex,
+  addProject, updateProject, deleteProject: deleteProjectState,
+  loadProjects, saveProjects,
+  setSelectedProjectFilter, setOpenedProjectId
 } = require('../state');
 
-/**
- * Open folder dialog and add a new project
- * @param {string} type - Project type ('standalone' or 'fivem')
- * @returns {Promise<Object|null>}
- */
-async function addProjectFromDialog(type = 'standalone') {
-  const folderPath = await api.dialog.selectFolder();
-  if (!folderPath) return null;
-
-  // Extract project name from path
-  const name = folderPath.split(/[/\\]/).pop();
-
-  const project = addProject({
-    name,
-    path: folderPath,
-    type
-  });
-
-  return project;
-}
-
-/**
- * Add a FiveM project with run command selection
- * @returns {Promise<Object|null>}
- */
-async function addFivemProject() {
-  const folderPath = await api.dialog.selectFolder();
-  if (!folderPath) return null;
-
-  const name = folderPath.split(/[/\\]/).pop();
-
-  // Ask for run command
-  const runCommand = await api.dialog.selectFile({
-    filters: [
-      { name: t('projects.filterBatch'), extensions: ['bat', 'cmd'] },
-      { name: t('projects.filterExe'), extensions: ['exe'] },
-      { name: t('projects.filterAll'), extensions: ['*'] }
-    ]
-  });
-
-  const project = addProject({
-    name,
-    path: folderPath,
-    type: 'fivem',
-    runCommand: runCommand || null
-  });
-
-  return project;
-}
-
-/**
- * Delete a project
- * @param {string} projectId
- * @param {Function} onConfirm - Callback before deletion
- * @returns {boolean}
- */
-async function deleteProjectWithConfirm(projectId, onConfirm) {
-  const project = getProject(projectId);
-  if (!project) return false;
-
-  const confirmed = await showConfirm({
-    title: t('projects.deleteProject') || 'Delete project',
-    message: t('projects.confirmDelete', { name: project.name }),
-    confirmLabel: t('common.delete'),
-    danger: true
-  });
-  if (!confirmed) return false;
-
-  if (onConfirm) {
-    onConfirm(projectId, project);
+class ProjectService extends BaseService {
+  async addProjectFromDialog(type = 'standalone') {
+    const folderPath = await this.api.dialog.selectFolder();
+    if (!folderPath) return null;
+    const name = folderPath.split(/[/\\]/).pop();
+    return addProject({ name, path: folderPath, type });
   }
 
-  deleteProjectState(projectId);
-  return true;
-}
-
-/**
- * Open project in external editor
- * @param {string} projectId
- * @param {string} editor - Editor command ('code', 'cursor', etc.)
- */
-function openInEditor(projectId, editor = 'code') {
-  const project = getProject(projectId);
-  if (!project) return;
-
-  api.dialog.openInEditor({ editor, path: project.path });
-}
-
-/**
- * Open project folder in file explorer
- * @param {string} projectId
- */
-function openInExplorer(projectId) {
-  const project = getProject(projectId);
-  if (project) {
-    api.dialog.openInExplorer(project.path);
+  async addFivemProject() {
+    const folderPath = await this.api.dialog.selectFolder();
+    if (!folderPath) return null;
+    const name = folderPath.split(/[/\\]/).pop();
+    const runCommand = await this.api.dialog.selectFile({
+      filters: [
+        { name: t('projects.filterBatch'), extensions: ['bat', 'cmd'] },
+        { name: t('projects.filterExe'), extensions: ['exe'] },
+        { name: t('projects.filterAll'), extensions: ['*'] }
+      ]
+    });
+    return addProject({ name, path: folderPath, type: 'fivem', runCommand: runCommand || null });
   }
-}
 
-/**
- * Select a project for terminal filtering
- * @param {string} projectId
- */
-function selectProject(projectId) {
-  const projectIndex = getProjectIndex(projectId);
-  setSelectedProjectFilter(projectIndex);
-  setOpenedProjectId(null);
-}
+  async deleteProjectWithConfirm(projectId, onConfirm) {
+    const project = getProject(projectId);
+    if (!project) return false;
+    const confirmed = await showConfirm({
+      title: t('projects.deleteProject') || 'Delete project',
+      message: t('projects.confirmDelete', { name: project.name }),
+      confirmLabel: t('common.delete'),
+      danger: true
+    });
+    if (!confirmed) return false;
+    if (onConfirm) onConfirm(projectId, project);
+    deleteProjectState(projectId);
+    return true;
+  }
 
-/**
- * Clear project selection
- */
-function clearProjectSelection() {
-  setSelectedProjectFilter(null);
-  setOpenedProjectId(null);
-}
+  openInEditor(projectId, editor = 'code') {
+    const project = getProject(projectId);
+    if (project) this.api.dialog.openInEditor({ editor, path: project.path });
+  }
 
-/**
- * Get all projects
- * @returns {Array}
- */
-function getAllProjects() {
-  return projectsState.get().projects;
-}
+  openInExplorer(projectId) {
+    const project = getProject(projectId);
+    if (project) this.api.dialog.openInExplorer(project.path);
+  }
 
-/**
- * Get projects by type
- * @param {string} type
- * @returns {Array}
- */
-function getProjectsByType(type) {
-  return projectsState.get().projects.filter(p => p.type === type);
-}
+  selectProject(projectId) {
+    setSelectedProjectFilter(getProjectIndex(projectId));
+    setOpenedProjectId(null);
+  }
 
-/**
- * Search projects by name
- * @param {string} query
- * @returns {Array}
- */
-function searchProjects(query) {
-  const lowerQuery = query.toLowerCase();
-  return projectsState.get().projects.filter(p =>
-    p.name.toLowerCase().includes(lowerQuery) ||
-    p.path.toLowerCase().includes(lowerQuery)
-  );
-}
+  clearProjectSelection() {
+    setSelectedProjectFilter(null);
+    setOpenedProjectId(null);
+  }
 
-/**
- * Check git status for all projects
- * @param {Function} renderCallback - Callback to render after check
- */
-async function checkAllProjectsGitStatus(renderCallback) {
-  const { setGitRepoStatus } = require('../state');
-  const projects = projectsState.get().projects;
+  getAllProjects() {
+    return projectsState.get().projects;
+  }
 
-  for (const project of projects) {
-    try {
-      const result = await api.git.statusQuick({ projectPath: project.path });
-      setGitRepoStatus(project.id, result.isGitRepo);
-    } catch (e) {
-      setGitRepoStatus(project.id, false);
+  getProjectsByType(type) {
+    return projectsState.get().projects.filter(p => p.type === type);
+  }
+
+  searchProjects(query) {
+    const lowerQuery = query.toLowerCase();
+    return projectsState.get().projects.filter(p =>
+      p.name.toLowerCase().includes(lowerQuery) ||
+      p.path.toLowerCase().includes(lowerQuery)
+    );
+  }
+
+  async checkAllProjectsGitStatus(renderCallback) {
+    const { setGitRepoStatus } = require('../state');
+    const projects = projectsState.get().projects;
+    for (const project of projects) {
+      try {
+        const result = await this.api.git.statusQuick({ projectPath: project.path });
+        setGitRepoStatus(project.id, result.isGitRepo);
+      } catch (e) {
+        setGitRepoStatus(project.id, false);
+      }
     }
+    if (renderCallback) renderCallback();
   }
+}
 
-  if (renderCallback) {
-    renderCallback();
+// ── Lazy singleton + legacy exports ──
+
+let _instance = null;
+
+function _getInstance() {
+  if (!_instance) {
+    const { getApiProvider, getContainer } = require('../core');
+    _instance = new ProjectService(getApiProvider(), getContainer());
   }
+  return _instance;
 }
 
 module.exports = {
-  addProjectFromDialog,
-  addFivemProject,
-  deleteProjectWithConfirm,
-  openInEditor,
-  openInExplorer,
-  selectProject,
-  clearProjectSelection,
-  getAllProjects,
-  getProjectsByType,
-  searchProjects,
-  checkAllProjectsGitStatus,
-  loadProjects,
-  saveProjects
+  ProjectService,
+  getInstance: _getInstance,
+  addProjectFromDialog: (...a) => _getInstance().addProjectFromDialog(...a),
+  addFivemProject: (...a) => _getInstance().addFivemProject(...a),
+  deleteProjectWithConfirm: (...a) => _getInstance().deleteProjectWithConfirm(...a),
+  openInEditor: (...a) => _getInstance().openInEditor(...a),
+  openInExplorer: (...a) => _getInstance().openInExplorer(...a),
+  selectProject: (...a) => _getInstance().selectProject(...a),
+  clearProjectSelection: (...a) => _getInstance().clearProjectSelection(...a),
+  getAllProjects: (...a) => _getInstance().getAllProjects(...a),
+  getProjectsByType: (...a) => _getInstance().getProjectsByType(...a),
+  searchProjects: (...a) => _getInstance().searchProjects(...a),
+  checkAllProjectsGitStatus: (...a) => _getInstance().checkAllProjectsGitStatus(...a),
+  // Re-exported state helpers (unchanged)
+  loadProjects, saveProjects
 };
