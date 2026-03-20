@@ -42,6 +42,8 @@ const defaultSettings = {
   cloudServerUrl: '', // Cloud relay server URL (e.g. 'https://cloud.example.com')
   cloudApiKey: '', // Cloud API key (e.g. 'ctc_abc123...')
   cloudAutoConnect: true, // Auto-connect to cloud relay on startup
+  globalShortcuts: {}, // Custom global shortcut overrides: { globalQuickPicker: 'Ctrl+Shift+X', ... }
+  globalShortcutsEnabled: true, // Master toggle for OS-level global shortcuts
   terminalShortcuts: {}, // Terminal shortcut toggles (empty = all enabled by default)
   telemetryEnabled: false, // Opt-in anonymous telemetry
   telemetryUuid: null, // Random UUID for anonymous tracking

@@ -14,10 +14,19 @@
 }
 
 .settings-group-title {
+  display: flex;
+  align-items: center;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  padding-left: 4px;
+}
+
+.settings-group-description {
+  font-size: var(--font-xs);
   color: var(--text-muted);
   margin-bottom: 8px;
   padding-left: 4px;
@@ -28,6 +37,11 @@
   border: 1px solid var(--border-color);
   border-radius: 10px;
   overflow: hidden;
+}
+
+.settings-card.disabled {
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 /* Legacy compat */
