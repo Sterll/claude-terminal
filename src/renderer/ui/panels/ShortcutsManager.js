@@ -25,6 +25,12 @@ const DEFAULT_SHORTCUTS = {
   toggleFileExplorer: { key: 'Ctrl+E', labelKey: 'shortcuts.toggleFileExplorer' }
 };
 
+const GLOBAL_SHORTCUTS = {
+  globalQuickPicker: { key: 'Ctrl+Shift+P', labelKey: 'shortcuts.globalQuickPicker' },
+  globalNewTerminal: { key: 'Ctrl+Shift+T', labelKey: 'shortcuts.globalNewTerminal' },
+  globalNewWorktree: { key: 'Ctrl+Shift+W', labelKey: 'shortcuts.globalNewWorktree' }
+};
+
 const TERMINAL_SHORTCUTS = {
   ctrlC: { labelKey: 'shortcuts.terminalCopy', defaultEnabled: true },
   ctrlV: { labelKey: 'shortcuts.terminalPaste', defaultEnabled: true },
@@ -45,18 +51,31 @@ function init(context) {
 }
 
 function getShortcutLabel(id) {
-  const shortcut = DEFAULT_SHORTCUTS[id];
+  const shortcut = DEFAULT_SHORTCUTS[id] || GLOBAL_SHORTCUTS[id];
   return shortcut ? t(shortcut.labelKey) : id;
 }
 
 function getShortcutKey(id) {
+  if (GLOBAL_SHORTCUTS[id]) {
+    const globalOverrides = ctx.settingsState.get().globalShortcuts || {};
+    return globalOverrides[id] || GLOBAL_SHORTCUTS[id].key;
+  }
   const customShortcuts = ctx.settingsState.get().shortcuts || {};
   return customShortcuts[id] || DEFAULT_SHORTCUTS[id]?.key || '';
 }
 
 function checkShortcutConflict(key, excludeId) {
   const normalizedKey = normalizeKey(key);
+  // Check app shortcuts
   for (const [id] of Object.entries(DEFAULT_SHORTCUTS)) {
+    if (id === excludeId) continue;
+    const currentKey = getShortcutKey(id);
+    if (normalizeKey(currentKey) === normalizedKey) {
+      return { id, label: getShortcutLabel(id) };
+    }
+  }
+  // Check global shortcuts
+  for (const [id] of Object.entries(GLOBAL_SHORTCUTS)) {
     if (id === excludeId) continue;
     const currentKey = getShortcutKey(id);
     if (normalizeKey(currentKey) === normalizedKey) {
@@ -67,6 +86,10 @@ function checkShortcutConflict(key, excludeId) {
 }
 
 function applyShortcut(id, key) {
+  if (GLOBAL_SHORTCUTS[id]) {
+    applyGlobalShortcut(id, key);
+    return;
+  }
   const customShortcuts = ctx.settingsState.get().shortcuts || {};
   if (normalizeKey(key) === normalizeKey(DEFAULT_SHORTCUTS[id]?.key || '')) {
     delete customShortcuts[id];
@@ -78,7 +101,27 @@ function applyShortcut(id, key) {
   registerAllShortcuts();
 }
 
+function applyGlobalShortcut(id, key) {
+  const globalShortcuts = { ...(ctx.settingsState.get().globalShortcuts || {}) };
+  if (normalizeKey(key) === normalizeKey(GLOBAL_SHORTCUTS[id].key)) {
+    delete globalShortcuts[id];
+  } else {
+    globalShortcuts[id] = key;
+  }
+  ctx.settingsState.setProp('globalShortcuts', globalShortcuts);
+  ctx.saveSettings();
+  syncGlobalShortcutsToMain();
+}
+
 function resetShortcut(id) {
+  if (GLOBAL_SHORTCUTS[id]) {
+    const globalShortcuts = { ...(ctx.settingsState.get().globalShortcuts || {}) };
+    delete globalShortcuts[id];
+    ctx.settingsState.setProp('globalShortcuts', globalShortcuts);
+    ctx.saveSettings();
+    syncGlobalShortcutsToMain();
+    return;
+  }
   const customShortcuts = ctx.settingsState.get().shortcuts || {};
   delete customShortcuts[id];
   ctx.settingsState.setProp('shortcuts', customShortcuts);
@@ -89,8 +132,24 @@ function resetShortcut(id) {
 function resetAllShortcuts() {
   ctx.settingsState.setProp('shortcuts', {});
   ctx.settingsState.setProp('terminalShortcuts', {});
+  ctx.settingsState.setProp('globalShortcuts', {});
+  ctx.settingsState.setProp('globalShortcutsEnabled', true);
   ctx.saveSettings();
   registerAllShortcuts();
+  syncGlobalShortcutsToMain();
+}
+
+/**
+ * Send current global shortcut config to the main process for re-registration
+ */
+function syncGlobalShortcutsToMain() {
+  const api = window.electron_api;
+  if (api?.tray?.updateGlobalShortcuts) {
+    api.tray.updateGlobalShortcuts({
+      overrides: ctx.settingsState.get().globalShortcuts || {},
+      enabled: ctx.settingsState.get().globalShortcutsEnabled !== false
+    });
+  }
 }
 
 function formatKeyForDisplay(key) {
@@ -231,6 +290,49 @@ function renderShortcutsPanel() {
     </div>
   `;
 
+  // Global shortcuts section
+  const globalOverrides = ctx.settingsState.get().globalShortcuts || {};
+  const globalEnabled = ctx.settingsState.get().globalShortcutsEnabled !== false;
+
+  html += `
+    <div class="settings-group">
+      <div class="settings-group-title">
+        ${t('shortcuts.globalShortcutsTitle')}
+        <label class="settings-toggle" style="margin-left: auto;">
+          <input type="checkbox" id="toggle-global-shortcuts" ${globalEnabled ? 'checked' : ''}>
+          <span class="settings-toggle-slider"></span>
+        </label>
+      </div>
+      <div class="settings-group-description">${t('shortcuts.globalShortcutsDescription')}</div>
+      <div class="settings-card" ${!globalEnabled ? 'style="opacity: 0.5; pointer-events: none;"' : ''} id="global-shortcuts-card">
+        <div class="shortcuts-list">
+  `;
+
+  for (const [id] of Object.entries(GLOBAL_SHORTCUTS)) {
+    const currentKey = getShortcutKey(id);
+    const isCustom = globalOverrides[id] !== undefined;
+
+    html += `
+      <div class="shortcut-row" data-shortcut-id="${id}">
+        <div class="shortcut-label">${getShortcutLabel(id)}</div>
+        <div class="shortcut-controls">
+          <button type="button" class="shortcut-key-btn ${isCustom ? 'custom' : ''}" title="${t('shortcuts.clickToEdit')}">
+            ${formatKeyForDisplay(currentKey)}
+          </button>
+          ${isCustom ? `<button type="button" class="shortcut-reset-btn" title="${t('shortcuts.reset')}">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+          </button>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  html += `
+        </div>
+      </div>
+    </div>
+  `;
+
   // Terminal shortcuts section
   const terminalShortcuts = ctx.settingsState.get().terminalShortcuts || {};
 
@@ -289,6 +391,22 @@ function setupShortcutsPanelHandlers() {
       }
     };
   });
+
+  // Global shortcuts master toggle
+  const globalToggle = document.getElementById('toggle-global-shortcuts');
+  if (globalToggle) {
+    globalToggle.onchange = () => {
+      ctx.settingsState.setProp('globalShortcutsEnabled', globalToggle.checked);
+      ctx.saveSettings();
+      syncGlobalShortcutsToMain();
+      // Re-render to update disabled state
+      const panel = document.querySelector('[data-panel="shortcuts"]');
+      if (panel) {
+        panel.innerHTML = renderShortcutsPanel();
+        setupShortcutsPanelHandlers();
+      }
+    };
+  }
 
   document.querySelectorAll('.terminal-shortcut-toggle').forEach(toggle => {
     toggle.onchange = () => {
@@ -383,5 +501,6 @@ module.exports = {
   setupShortcutsPanelHandlers,
   registerAllShortcuts,
   getShortcutKey,
-  formatKeyForDisplay
+  formatKeyForDisplay,
+  syncGlobalShortcutsToMain
 };

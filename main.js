@@ -164,14 +164,22 @@ function bootstrapApp() {
   });
 
   /**
-   * Register global keyboard shortcuts
+   * Default global shortcut keybindings
    */
-  function registerGlobalShortcuts() {
-    globalShortcut.register('CommandOrControl+Shift+P', () => {
-      createQuickPickerWindow();
-    });
+  const GLOBAL_SHORTCUT_DEFAULTS = {
+    globalQuickPicker: 'CommandOrControl+Shift+P',
+    globalNewTerminal: 'CommandOrControl+Shift+T',
+    globalNewWorktree: 'CommandOrControl+Shift+W'
+  };
 
-    globalShortcut.register('CommandOrControl+Shift+T', () => {
+  /**
+   * Global shortcut action handlers
+   */
+  const GLOBAL_SHORTCUT_ACTIONS = {
+    globalQuickPicker: () => {
+      createQuickPickerWindow();
+    },
+    globalNewTerminal: () => {
       let mainWindow = getMainWindow();
       if (!mainWindow) {
         mainWindow = createMainWindow({ isDev: process.argv.includes('--dev') });
@@ -180,9 +188,8 @@ function bootstrapApp() {
       setTimeout(() => {
         mainWindow.webContents.send('open-terminal-current-project');
       }, 100);
-    });
-
-    globalShortcut.register('CommandOrControl+Shift+W', () => {
+    },
+    globalNewWorktree: () => {
       const mainWindow = getMainWindow();
       if (mainWindow) {
         showMainWindow();
@@ -190,8 +197,63 @@ function bootstrapApp() {
           mainWindow.webContents.send('open-new-worktree');
         }, 100);
       }
-    });
+    }
+  };
+
+  /**
+   * Convert renderer-style key string (Ctrl+Shift+P) to Electron accelerator format
+   */
+  function toElectronAccelerator(key) {
+    if (!key) return null;
+    return key.replace(/Ctrl/gi, 'CommandOrControl')
+      .replace(/Meta/gi, 'CommandOrControl');
   }
+
+  /**
+   * Load global shortcut overrides from settings.json
+   */
+  function loadGlobalShortcutSettings() {
+    try {
+      if (fs.existsSync(settingsFile)) {
+        const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+        return {
+          overrides: settings.globalShortcuts || {},
+          enabled: settings.globalShortcutsEnabled !== false
+        };
+      }
+    } catch (e) {
+      console.error('[GlobalShortcuts] Failed to load settings:', e);
+    }
+    return { overrides: {}, enabled: true };
+  }
+
+  /**
+   * Register global keyboard shortcuts (reads config from settings or IPC payload)
+   */
+  function registerGlobalShortcuts(overrides) {
+    globalShortcut.unregisterAll();
+
+    const config = overrides || loadGlobalShortcutSettings();
+    if (!config.enabled) return;
+
+    for (const [id, defaultKey] of Object.entries(GLOBAL_SHORTCUT_DEFAULTS)) {
+      const customKey = config.overrides[id];
+      const accelerator = customKey ? toElectronAccelerator(customKey) : defaultKey;
+      const action = GLOBAL_SHORTCUT_ACTIONS[id];
+      if (accelerator && action) {
+        try {
+          globalShortcut.register(accelerator, action);
+        } catch (e) {
+          console.error(`[GlobalShortcuts] Failed to register ${id} (${accelerator}):`, e);
+        }
+      }
+    }
+  }
+
+  // IPC: Renderer requests global shortcut re-registration
+  ipcMain.on('update-global-shortcuts', (_event, payload) => {
+    registerGlobalShortcuts(payload);
+  });
 
   /**
    * Cleanup before quit

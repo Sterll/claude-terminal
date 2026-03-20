@@ -574,7 +574,8 @@ contextBridge.exposeInMainWorld('electron_api', {
     updateAccentColor: (color) => ipcRenderer.send('update-accent-color', color),
     onOpenTerminal: createListener('open-terminal-current-project'),
     onShowSessions: createListener('show-sessions-panel'),
-    onOpenNewWorktree: createListener('open-new-worktree')
+    onOpenNewWorktree: createListener('open-new-worktree'),
+    updateGlobalShortcuts: (payload) => ipcRenderer.send('update-global-shortcuts', payload)
   },
 
   // ==================== UPDATES ====================
