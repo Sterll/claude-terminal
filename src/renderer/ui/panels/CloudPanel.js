@@ -372,13 +372,6 @@ function buildHtml(settings) {
                 </div>
               </div>
 
-              <!-- Cloud Keys -->
-              <div class="cp-adv-group">
-                <div class="cp-adv-group-title">${t('cloud.projectKeysTitle')}</div>
-                <div class="cp-field-hint" style="margin-bottom:8px">${t('cloud.projectKeysHint')}</div>
-                <div class="cp-project-keys-list" id="cp-project-keys-list"></div>
-              </div>
-
             </div>
           </details>
 
@@ -588,45 +581,8 @@ function setupHandlers(context) {
       }
     } catch { /* ignore */ }
 
-    _renderProjectKeysList();
     _loadSyncManifest();
   })();
-
-  // ── Project cloud key overrides ──
-  function _renderProjectKeysList() {
-    const list = document.getElementById('cp-project-keys-list');
-    if (!list || !_ctx?.projectsState) return;
-    const { projects } = _ctx.projectsState.get();
-    if (!projects || projects.length === 0) return;
-
-    list.innerHTML = projects.map(p => {
-      const name = p.name || window.electron_nodeModules.path.basename(p.path || '');
-      const override = _escapeHtml(p.cloudProjectKey || '');
-      return `
-        <div class="cp-project-key-row" data-project-id="${p.id}">
-          <span class="cp-project-key-name" title="${_escapeHtml(p.path || '')}">${_escapeHtml(name)}</span>
-          <input type="text" class="cp-input cp-project-key-input"
-            placeholder="${_escapeHtml(t('cloud.projectKeyPlaceholder'))}"
-            value="${override}" data-project-id="${p.id}">
-        </div>`;
-    }).join('');
-
-    list.querySelectorAll('.cp-project-key-input').forEach(input => {
-      let saveTimer = null;
-      input.addEventListener('input', () => {
-        clearTimeout(saveTimer);
-        saveTimer = setTimeout(async () => {
-          const projectId = input.dataset.projectId;
-          const value = input.value.trim();
-          try {
-            await api.project.setCloudKey(projectId, value || null);
-          } catch (e) {
-            console.warn('[CloudPanel] Failed to save cloudProjectKey:', e.message);
-          }
-        }, 500);
-      });
-    });
-  }
 
   // ── User profile ──
   async function _loadCloudUser() {
