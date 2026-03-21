@@ -42,6 +42,17 @@ const defaultSettings = {
   cloudServerUrl: '', // Cloud relay server URL (e.g. 'https://cloud.example.com')
   cloudApiKey: '', // Cloud API key (e.g. 'ctc_abc123...')
   cloudAutoConnect: true, // Auto-connect to cloud relay on startup
+  cloudAutoSync: true, // Auto-sync local changes to cloud
+  cloudSyncSettings: true, // Sync app settings
+  cloudSyncProjects: true, // Sync project list
+  cloudSyncTimeTracking: true, // Sync time tracking + archives
+  cloudSyncConversations: true, // Sync chat conversations
+  cloudSyncSkills: false, // Sync skills & agents directories (opt-in)
+  cloudSyncMcpConfigs: true, // Sync MCP server configs
+  cloudSyncKeybindings: true, // Sync keybindings
+  cloudSyncMemory: true, // Sync MEMORY.md
+  cloudSyncHooksConfig: true, // Sync hooks config
+  cloudSyncPlugins: true, // Sync installed plugins list
   globalShortcuts: {}, // Custom global shortcut overrides: { globalQuickPicker: 'Ctrl+Shift+X', ... }
   globalShortcutsEnabled: true, // Master toggle for OS-level global shortcuts
   terminalShortcuts: {}, // Terminal shortcut toggles (empty = all enabled by default)

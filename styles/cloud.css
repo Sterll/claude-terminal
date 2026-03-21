@@ -533,6 +533,23 @@
   gap: 10px;
 }
 
+.cp-sync-data-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border-color);
+  margin-top: 2px;
+}
+
+.cp-auto.cp-auto-sm {
+  gap: 8px;
+}
+
+.cp-auto.cp-auto-sm .cp-auto-label {
+  font-size: var(--font-2xs);
+}
+
 /* ── Section Card ── */
 .cp-section {
   background: var(--bg-secondary);
