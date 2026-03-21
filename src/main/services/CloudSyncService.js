@@ -276,6 +276,7 @@ async function _handleLocalChanges(projectId, changes) {
     return;
   }
   _uploadLocks.add(projectId);
+  let zipPath = null;
 
   try {
     const { url, key } = _getCloudConfig();
@@ -293,7 +294,7 @@ async function _handleLocalChanges(projectId, changes) {
 
     // Build incremental zip
     const archiver = require('archiver');
-    const zipPath = path.join(os.tmpdir(), `ct-incremental-${Date.now()}.zip`);
+    zipPath = path.join(os.tmpdir(), `ct-incremental-${Date.now()}.zip`);
 
     await new Promise((resolve, reject) => {
       const output = fs.createWriteStream(zipPath);
@@ -364,9 +365,6 @@ async function _handleLocalChanges(projectId, changes) {
       fileCount: changes.size,
     });
 
-    // Cleanup
-    await fs.promises.unlink(zipPath).catch(() => {});
-
     console.log(`[CloudSync] Incremental upload: ${changes.size} files for ${projectName}`);
   } catch (err) {
     console.error(`[CloudSync] Incremental upload failed for ${projectId}:`, err.message);
@@ -378,6 +376,8 @@ async function _handleLocalChanges(projectId, changes) {
     });
   } finally {
     _uploadLocks.delete(projectId);
+    // Cleanup zip in finally to avoid orphaned tmp files on error
+    if (zipPath) await fs.promises.unlink(zipPath).catch(() => {});
   }
 }
 
@@ -442,9 +442,10 @@ function _startWatchingAllSyncedProjects() {
       }
     }
 
-    // Clean up stale entries
+    // Clean up stale entries and stop their watchers
     for (const id of toRemove) {
       _syncMeta.delete(id);
+      fileWatcherService.unwatch(id);
     }
     if (toRemove.length > 0) _saveSyncMetadata();
   } catch (err) {

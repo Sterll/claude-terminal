@@ -171,6 +171,21 @@ function formatEntityLabel(entityType, entityId) {
   if (entityType === 'hooksConfig') {
     return t('sync.entityLabelHooksConfig');
   }
+  if (entityType === 'timeTracking' || entityType === 'timeTrackingArchives') {
+    return t('sync.entityLabelTimeTracking');
+  }
+  if (entityType === 'conversations') {
+    return t('sync.entityLabelConversations');
+  }
+  if (entityType === 'skills') {
+    return t('sync.entityLabelSkills', { id: entityId || '' });
+  }
+  if (entityType === 'agents') {
+    return t('sync.entityLabelAgents', { id: entityId || '' });
+  }
+  if (entityType === 'installedPlugins') {
+    return t('sync.entityLabelPlugins');
+  }
   return `${entityType}${entityId ? '.' + entityId : ''}`;
 }
 

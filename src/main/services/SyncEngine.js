@@ -42,7 +42,14 @@ const ENTITY_TYPES = {
   settings: {
     granularity: 'per-key',
     localPath: () => settingsFile,
-    excludeKeys: ['cloudServerUrl', 'cloudApiKey', 'cloudAutoConnect', 'cloudAutoSync', 'machineId'],
+    excludeKeys: [
+      'cloudServerUrl', 'cloudApiKey', 'cloudAutoConnect', 'cloudAutoSync',
+      'cloudSyncSettings', 'cloudSyncProjects', 'cloudSyncTimeTracking',
+      'cloudSyncConversations', 'cloudSyncSkills', 'cloudSyncMcpConfigs',
+      'cloudSyncKeybindings', 'cloudSyncMemory', 'cloudSyncHooksConfig',
+      'cloudSyncPlugins', 'cloudAutoUploadProjects', 'cloudExcludeSensitiveFiles',
+      'machineId',
+    ],
     autoResolve: false,
   },
   projects: {
