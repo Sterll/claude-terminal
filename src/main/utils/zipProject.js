@@ -6,6 +6,7 @@
 const path = require('path');
 const fs = require('fs');
 const { execSync } = require('child_process');
+const { filterSensitiveFiles } = require('./sensitiveFiles');
 
 // Directories always excluded from zip
 const EXCLUDE_DIRS = new Set([
@@ -123,7 +124,9 @@ async function zipProject(projectPath, zipPath, onProgress, options = {}) {
 
   if (onProgress) onProgress({ phase: 'scanning', percent: 0 });
 
-  const files = getProjectFiles(projectPath, options);
+  const rawFiles = getProjectFiles(projectPath, options);
+  // Filter out sensitive files (.env, keys, credentials) unless user opted out
+  const files = filterSensitiveFiles(rawFiles);
   if (files.length === 0) throw new Error('No files found in project');
 
   if (onProgress) onProgress({ phase: 'compressing', percent: 10 });

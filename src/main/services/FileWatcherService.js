@@ -7,6 +7,7 @@
 
 const path = require('path');
 const { execSync } = require('child_process');
+const { isSensitiveFile, isExcludeSensitiveEnabled } = require('../utils/sensitiveFiles');
 
 // Same exclusion list as zipProject.js
 const EXCLUDE_DIRS = [
@@ -167,8 +168,16 @@ class FileWatcherService {
 
   _flushChanges(projectId, state) {
     if (state.changes.size === 0) return;
-    const filtered = this.filterByGitignore(state.projectPath, state.changes);
+    let filtered = this.filterByGitignore(state.projectPath, state.changes);
     state.changes.clear();
+    // Strip sensitive files (.env, keys, credentials) unless user opted out
+    if (isExcludeSensitiveEnabled()) {
+      const safe = new Map();
+      for (const [file, type] of filtered) {
+        if (!isSensitiveFile(file)) safe.set(file, type);
+      }
+      filtered = safe;
+    }
     if (filtered.size === 0) return;
     if (this._onChanges) {
       this._onChanges(projectId, filtered);

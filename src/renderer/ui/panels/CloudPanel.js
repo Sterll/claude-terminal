@@ -322,6 +322,17 @@ function buildHtml(settings) {
                     </div>
                   `).join('')}
                 </div>
+                <div class="cp-adv-group-title" style="margin-top:8px">${t('cloud.securityTitle')}</div>
+                <div class="cp-toggle-list">
+                  <div class="cp-auto">
+                    <label class="settings-toggle rp-mini-toggle">
+                      <input type="checkbox" id="cp-exclude-sensitive" ${settings.cloudExcludeSensitiveFiles !== false ? 'checked' : ''}>
+                      <span class="settings-toggle-slider"></span>
+                    </label>
+                    <span class="cp-auto-label">${t('cloud.excludeSensitiveFiles')}</span>
+                  </div>
+                  <div class="cp-field-hint" style="margin-top:2px">${t('cloud.excludeSensitiveFilesHint')}</div>
+                </div>
               </div>
 
               <!-- Cloud Keys -->
@@ -456,6 +467,14 @@ function setupHandlers(context) {
     if (el) {
       el.addEventListener('change', () => _saveField(prop, el.checked));
     }
+  }
+
+  // Sensitive files exclusion toggle
+  const excludeSensitiveToggle = document.getElementById('cp-exclude-sensitive');
+  if (excludeSensitiveToggle) {
+    excludeSensitiveToggle.addEventListener('change', () => {
+      _saveField('cloudExcludeSensitiveFiles', excludeSensitiveToggle.checked);
+    });
   }
 
   function _updateStatusUI(connected) {

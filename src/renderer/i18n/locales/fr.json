@@ -1774,7 +1774,10 @@
     "cloudProjectImported": "« {name} » importé avec succès",
     "autoUploadProjects": "Upload auto des nouveaux projets",
     "newCloudProjectsTitle": "Nouveaux projets cloud",
-    "newCloudProjectsMessage": "{count} projet(s) disponible(s) : {list}. Cliquez pour voir dans le panneau Cloud."
+    "newCloudProjectsMessage": "{count} projet(s) disponible(s) : {list}. Cliquez pour voir dans le panneau Cloud.",
+    "securityTitle": "Sécurité",
+    "excludeSensitiveFiles": "Exclure les fichiers sensibles",
+    "excludeSensitiveFilesHint": ".env, credentials, clés privées et secrets sont exclus de la sync cloud. Désactiver à vos risques et périls."
   },
   "sync": {
     "conflictTitle": "Conflits de synchronisation détectés",
@@ -1810,6 +1813,11 @@
     "entityLabelMemory": "CLAUDE.md",
     "entityLabelHooksConfig": "Config des hooks",
     "entityLabelKeybindings": "Raccourcis clavier",
+    "entityLabelTimeTracking": "Suivi du temps",
+    "entityLabelConversations": "Conversations",
+    "entityLabelSkills": "Skill : {id}",
+    "entityLabelAgents": "Agent : {id}",
+    "entityLabelPlugins": "Plugins installes",
     "stepFetch": "Récupération de l'état cloud",
     "stepSettings": "Paramètres",
     "stepProjects": "Projets",
