@@ -1188,12 +1188,9 @@ class DatabaseService {
 
   _getNodeModulesPath() {
     if (app.isPackaged) {
-      // Native modules live in asar.unpacked, pure JS deps stay in the asar.
-      // NODE_PATH must include both so require() resolves either location.
-      const sep = process.platform === 'win32' ? ';' : ':';
-      const unpacked = path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules');
-      const asar = path.join(process.resourcesPath, 'app.asar', 'node_modules');
-      return unpacked + sep + asar;
+      // MCP server runs as an external `node` process which cannot read asar archives.
+      // All required modules must be in asarUnpack — only point to the unpacked directory.
+      return path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules');
     }
     return path.join(__dirname, '..', '..', '..', 'node_modules');
   }
