@@ -530,7 +530,7 @@ function setupHandlers(context) {
       _loadCloudProjects(true);
       _startSessionsPolling();
       _checkCloudChanges();
-      // Sync polling is now handled by CloudSyncService in main process
+      _loadSyncManifest(); // load last sync times + entity statuses on connect
     } else {
       _stopSessionsPolling();
       _updateSyncBadge(0);
@@ -879,10 +879,6 @@ function setupHandlers(context) {
     }, 15000);
   }
 
-  function _stopSessionsPolling() {
-    if (_cloudSessionsInterval) { clearInterval(_cloudSessionsInterval); _cloudSessionsInterval = null; }
-  }
-
   const sessionsRefresh = document.getElementById('cp-sessions-refresh');
   if (sessionsRefresh) {
     sessionsRefresh.addEventListener('click', async () => {
@@ -1125,11 +1121,19 @@ function setupHandlers(context) {
     fullSyncBtn.addEventListener('click', async () => {
       fullSyncBtn.disabled = true;
       fullSyncBtn.classList.add('loading');
-      // Don't manually set 'syncing' — the IPC 'started' event will do it.
-      // This prevents the UI from getting stuck if fullSync returns early
-      // (e.g. already syncing, or not active).
       try {
-        await api.sync.fullSync();
+        const result = await api.sync.fullSync();
+        if (result && !result.ok) {
+          if (result.reason === 'already_syncing') {
+            _updateSyncStatusUI('syncing');
+          } else if (result.reason === 'server_not_supported') {
+            _updateSyncStatusUI('error', { message: t('sync.serverNotSupported') });
+          } else if (result.reason === 'fetch_failed') {
+            _updateSyncStatusUI('error', { message: t('sync.fetchFailed') });
+          } else {
+            _updateSyncStatusUI('error', { message: result.message || null });
+          }
+        }
       } catch {
         _updateSyncStatusUI('error');
       } finally {
