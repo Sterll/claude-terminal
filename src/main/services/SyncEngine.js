@@ -381,29 +381,37 @@ class SyncEngine {
       if (data === null) return;
 
       const entityKey = entityId ? `${entityType}.${entityId}` : entityType;
-      const hash = this._hash(JSON.stringify(data));
+      const body = JSON.stringify({
+        machineId: getMachineId(),
+        entityType,
+        entityId: entityId || null,
+        data,
+        hash: this._hash(JSON.stringify(data)),
+        timestamp: Date.now(),
+      });
+
+      // Skip if payload too large (> 5MB) to avoid 413 errors
+      if (body.length > 5 * 1024 * 1024) {
+        console.warn(`[SyncEngine] Skipping push for ${entityKey}: payload too large (${(body.length / 1024 / 1024).toFixed(1)}MB)`);
+        return;
+      }
 
       const resp = await this._fetchCloud('/api/sync/push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          machineId: getMachineId(),
-          entityType,
-          entityId: entityId || null,
-          data,
-          hash,
-          timestamp: Date.now(),
-        }),
+        body,
       });
 
       if (resp.ok) {
         this.manifest.entities[entityKey] = {
-          localHash: hash,
-          cloudHash: hash,
+          localHash: this._hash(JSON.stringify(data)),
+          cloudHash: this._hash(JSON.stringify(data)),
           lastSyncAt: Date.now(),
         };
         this._saveManifest();
         this._emitStatus('push', 'completed', { entityType, entityId });
+      } else if (resp.status === 413) {
+        console.warn(`[SyncEngine] Server rejected ${entityKey}: payload too large (413)`);
       }
     } catch (err) {
       console.warn(`[SyncEngine] Push failed for ${entityType}${entityId ? '.' + entityId : ''}:`, err.message);
@@ -696,6 +704,13 @@ class SyncEngine {
     if (!this.active || !fs.existsSync(filePath)) return;
 
     try {
+      // Skip files larger than 5MB to avoid 413 errors
+      const stat = fs.statSync(filePath);
+      if (stat.size > 5 * 1024 * 1024) {
+        console.warn(`[SyncEngine] Skipping conversation ${sessionId}: file too large (${(stat.size / 1024 / 1024).toFixed(1)}MB)`);
+        return;
+      }
+
       const entityKey = `conversations.${sessionId}`;
       const manifestEntry = this.manifest.entities[entityKey];
       const content = fs.readFileSync(filePath, 'utf8');
@@ -706,15 +721,23 @@ class SyncEngine {
       const newLines = lines.slice(lastSyncedLineCount);
       if (newLines.length === 0) return;
 
+      const payload = JSON.stringify({
+        machineId: getMachineId(),
+        appendLines: newLines.join('\n'),
+        totalLineCount: lines.length,
+        timestamp: Date.now(),
+      });
+
+      // Double-check serialized size
+      if (payload.length > 5 * 1024 * 1024) {
+        console.warn(`[SyncEngine] Skipping conversation ${sessionId}: payload too large`);
+        return;
+      }
+
       const resp = await this._fetchCloud(`/api/sync/conversation/${encodeURIComponent(sessionId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          machineId: getMachineId(),
-          appendLines: newLines.join('\n'),
-          totalLineCount: lines.length,
-          timestamp: Date.now(),
-        }),
+        body: payload,
       });
 
       if (resp.ok) {
@@ -725,6 +748,8 @@ class SyncEngine {
           cloudLineCount: lines.length,
         };
         this._saveManifest();
+      } else if (resp.status === 413) {
+        console.warn(`[SyncEngine] Server rejected conversation ${sessionId}: payload too large (413)`);
       }
     } catch (err) {
       console.warn(`[SyncEngine] Push conversation ${sessionId} failed:`, err.message);
@@ -891,8 +916,11 @@ class SyncEngine {
     const localHash = this._hash(typeof localValue === 'string' ? localValue : JSON.stringify(localValue));
     const cloudHash = cloudData?.hash || this._hash(typeof cloudValue === 'string' ? cloudValue : JSON.stringify(cloudValue));
 
-    // Both null/missing — nothing to sync
-    if (localValue === null && cloudValue === null) return conflicts;
+    // Both null/missing — nothing to sync, but mark as consistent
+    if (localValue === null && cloudValue === null) {
+      this.manifest.entities[entityKey] = { localHash: null, cloudHash: null, lastSyncAt: Date.now() };
+      return conflicts;
+    }
 
     // Same content
     if (localHash === cloudHash) {
