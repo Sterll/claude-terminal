@@ -53,6 +53,7 @@ const defaultSettings = {
   cloudSyncMemory: true, // Sync MEMORY.md
   cloudSyncHooksConfig: true, // Sync hooks config
   cloudSyncPlugins: true, // Sync installed plugins list
+  cloudAutoUploadProjects: true, // Auto-upload new projects to cloud on creation
   globalShortcuts: {}, // Custom global shortcut overrides: { globalQuickPicker: 'Ctrl+Shift+X', ... }
   globalShortcutsEnabled: true, // Master toggle for OS-level global shortcuts
   terminalShortcuts: {}, // Terminal shortcut toggles (empty = all enabled by default)

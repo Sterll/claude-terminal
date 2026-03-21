@@ -1875,6 +1875,47 @@ function _updateCloudConnected(connected) {
   ProjectList.render();
 }
 
+/**
+ * Check for new cloud projects not present locally and show a notification.
+ */
+async function _checkNewCloudProjects() {
+  try {
+    const { projects: cloudProjects } = await api.cloud.getProjects();
+    if (!cloudProjects || !Array.isArray(cloudProjects)) return;
+
+    const localProjects = projectsState.get().projects || [];
+    const localNames = new Set(localProjects.map(p => p.name));
+    const localBasenames = new Set(
+      localProjects.map(p => p.path?.replace(/\\/g, '/').split('/').pop()).filter(Boolean)
+    );
+
+    const newProjects = cloudProjects.filter(
+      p => !localNames.has(p.name) && !localBasenames.has(p.name)
+    );
+
+    if (newProjects.length === 0) return;
+
+    const names = newProjects.map(p => p.name);
+    const list = names.length <= 3 ? names.join(', ') : `${names.slice(0, 3).join(', ')} (+${names.length - 3})`;
+
+    const toast = showToast({
+      type: 'info',
+      title: t('cloud.newCloudProjectsTitle'),
+      message: t('cloud.newCloudProjectsMessage', { list, count: names.length }),
+      duration: 12000,
+    });
+    // Make toast clickable → navigate to cloud panel
+    if (toast) {
+      toast.style.cursor = 'pointer';
+      toast.querySelector('.toast-content')?.addEventListener('click', () => {
+        const cloudTab = document.querySelector('[data-tab="cloud-panel"]');
+        if (cloudTab) cloudTab.click();
+        toast.querySelector('.toast-close')?.click();
+      });
+    }
+  } catch { /* ignore */ }
+}
+
 if (api.cloud?.onStatusChanged) {
   api.cloud.onStatusChanged((status) => {
     _updateCloudConnected(status.connected);
@@ -1882,6 +1923,7 @@ if (api.cloud?.onStatusChanged) {
       refreshCloudProjects();
       api.cloud.checkPendingChanges().then(r => _updateProjectPendingChanges(r.changes)).catch(() => {});
       _checkAllProjectsDiff();
+      _checkNewCloudProjects();
     }
   });
 }
@@ -1893,9 +1935,32 @@ setTimeout(async () => {
       refreshCloudProjects();
       api.cloud.checkPendingChanges().then(r => _updateProjectPendingChanges(r.changes)).catch(() => {});
       _checkAllProjectsDiff();
+      _checkNewCloudProjects();
     }
   } catch { /* ignore */ }
 }, 3000);
+
+// ── Auto-upload new projects to cloud ──
+let _knownProjectIds = new Set(projectsState.get().projects.map(p => p.id));
+let _skipAutoUploadIds = new Set(); // IDs imported from cloud — skip re-upload
+/** Mark a project ID to skip auto-upload (called from CloudPanel on import) */
+window._cloudSkipAutoUpload = (id) => _skipAutoUploadIds.add(id);
+projectsState.subscribe((state) => {
+  const currentIds = new Set(state.projects.map(p => p.id));
+  const newIds = [...currentIds].filter(id => !_knownProjectIds.has(id));
+  _knownProjectIds = currentIds;
+
+  if (newIds.length === 0) return;
+  if (!cloudConnected) return;
+  if (settingsState.get().cloudAutoUploadProjects === false) return;
+
+  for (const id of newIds) {
+    if (_skipAutoUploadIds.has(id)) { _skipAutoUploadIds.delete(id); continue; }
+    // Check if already synced (e.g. imported from cloud)
+    if (cloudUploadStatus.get(id)?.synced) continue;
+    cloudUploadProject(id).catch(() => {});
+  }
+});
 
 /**
  * Compare local vs cloud for all synced projects.

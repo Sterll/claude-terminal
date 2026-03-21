@@ -1771,7 +1771,10 @@
     "cloudProjectLocal": "Local",
     "cloudProjectImport": "Import",
     "cloudProjectImporting": "Importing...",
-    "cloudProjectImported": "\"{name}\" imported successfully"
+    "cloudProjectImported": "\"{name}\" imported successfully",
+    "autoUploadProjects": "Auto-upload new projects",
+    "newCloudProjectsTitle": "New cloud projects",
+    "newCloudProjectsMessage": "{count} project(s) available: {list}. Click to view in Cloud panel."
   },
   "sync": {
     "conflictTitle": "Sync conflicts detected",

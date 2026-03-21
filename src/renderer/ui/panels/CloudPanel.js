@@ -291,6 +291,13 @@ function buildHtml(settings) {
                     </label>
                     <span class="cp-auto-label">${t('cloud.autoSyncToggle')}</span>
                   </div>
+                  <div class="cp-auto">
+                    <label class="settings-toggle rp-mini-toggle">
+                      <input type="checkbox" id="cp-auto-upload-projects" ${settings.cloudAutoUploadProjects !== false ? 'checked' : ''}>
+                      <span class="settings-toggle-slider"></span>
+                    </label>
+                    <span class="cp-auto-label">${t('cloud.autoUploadProjects')}</span>
+                  </div>
                 </div>
                 <div class="cp-adv-group-title" style="margin-top:8px">${t('cloud.syncDataTitle')}</div>
                 <div class="cp-sync-data-toggles">
@@ -427,6 +434,14 @@ function setupHandlers(context) {
   if (autoSyncToggle) {
     autoSyncToggle.addEventListener('change', () => {
       _saveField('cloudAutoSync', autoSyncToggle.checked);
+    });
+  }
+
+  // Auto-upload new projects toggle
+  const autoUploadToggle = document.getElementById('cp-auto-upload-projects');
+  if (autoUploadToggle) {
+    autoUploadToggle.addEventListener('change', () => {
+      _saveField('cloudAutoUploadProjects', autoUploadToggle.checked);
     });
   }
 
@@ -775,9 +790,10 @@ function setupHandlers(context) {
               btn.textContent = t('cloud.cloudProjectImport');
               return;
             }
-            // Add to local projects state
+            // Add to local projects state (skip auto-upload since it's already in cloud)
             const { addProject } = require('../../state');
-            addProject({ name: result.projectName, path: result.projectPath, type: 'standalone' });
+            const imported = addProject({ name: result.projectName, path: result.projectPath, type: 'standalone' });
+            if (imported && window._cloudSkipAutoUpload) window._cloudSkipAutoUpload(imported.id);
             Toast.show(t('cloud.cloudProjectImported', { name: projectName }), 'success');
             await _loadCloudProjects(false);
           } catch (err) {
