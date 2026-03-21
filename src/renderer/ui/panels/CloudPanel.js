@@ -129,12 +129,49 @@ function buildHtml(settings) {
             <div class="cp-upload-details" id="cp-upload-details"></div>
           </div>
 
-          <!-- Profile (compact inline) -->
-          <div class="cp-profile-bar">
-            <div class="cp-user-avatar" id="cp-user-avatar">?</div>
-            <div class="cp-user-name" id="cp-user-display-name">\u2014</div>
-            <span class="cp-badge" id="cp-user-claude-badge">\u2014</span>
+          <!-- Profile + Sync Summary Card -->
+          <div class="cp-hero-card">
+            <div class="cp-hero-top">
+              <div class="cp-user-avatar" id="cp-user-avatar">?</div>
+              <div class="cp-hero-info">
+                <div class="cp-user-name" id="cp-user-display-name">\u2014</div>
+                <div class="cp-hero-meta">
+                  <span class="cp-badge" id="cp-user-claude-badge">\u2014</span>
+                  <span class="cp-hero-machine" id="cp-hero-machine"></span>
+                </div>
+              </div>
+            </div>
+            <div class="cp-hero-divider"></div>
+            <div class="cp-hero-stats">
+              <div class="cp-hero-stat">
+                <div class="cp-hero-stat-icon">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                  </svg>
+                </div>
+                <div class="cp-hero-stat-content">
+                  <div class="cp-hero-stat-label">${t('sync.lastFullSync')}</div>
+                  <div class="cp-hero-stat-value" id="cp-last-sync-time">\u2014</div>
+                </div>
+              </div>
+              <div class="cp-hero-stat">
+                <div class="cp-hero-stat-icon">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                    <polyline points="22 4 12 14.01 9 11.01"/>
+                  </svg>
+                </div>
+                <div class="cp-hero-stat-content">
+                  <div class="cp-hero-stat-label">${t('sync.entitiesSynced', { count: '...' })}</div>
+                  <div class="cp-hero-stat-value" id="cp-entities-synced">\u2014</div>
+                </div>
+              </div>
+            </div>
           </div>
+
+          <!-- Entity Sync Overview (collapsible grid) -->
+          <div class="cp-entity-grid" id="cp-entity-grid"></div>
 
           <!-- Entity Sync -->
           <div class="cp-section">
@@ -543,9 +580,16 @@ function setupHandlers(context) {
         machineIdEl.querySelector('.cloud-machine-id-value').textContent = machineId;
         machineIdEl.style.display = 'flex';
       }
+      // Show machine ID in hero card too
+      const heroMachine = document.getElementById('cp-hero-machine');
+      if (heroMachine && machineId) {
+        heroMachine.textContent = machineId.slice(0, 8);
+        heroMachine.title = machineId;
+      }
     } catch { /* ignore */ }
 
     _renderProjectKeysList();
+    _loadSyncManifest();
   })();
 
   // ── Project cloud key overrides ──
@@ -633,6 +677,105 @@ function setupHandlers(context) {
         userSaveBtn.disabled = false;
       }
     });
+  }
+
+  // ── Sync manifest & entity overview ──
+  const ENTITY_ICONS = {
+    settings: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+    projects: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
+    timeTracking: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+    conversations: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+    skills: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+    agents: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+    mcpConfigs: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2M15 20v2M2 15h2M20 15h2M9 2v2M9 20v2M2 9h2M20 9h2"/></svg>',
+    keybindings: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></svg>',
+    memory: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 0 1 10 10 10 10 0 0 1-10 10A10 10 0 0 1 2 12 10 10 0 0 1 12 2z"/><path d="M12 8v4l3 3"/></svg>',
+    hooksConfig: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
+    timeTrackingArchives: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>',
+    installedPlugins: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v3"/></svg>',
+  };
+
+  const ENTITY_LABELS = {
+    settings: t('sync.stepSettings'),
+    projects: t('sync.stepProjects'),
+    timeTracking: t('sync.stepTimeTracking'),
+    conversations: t('sync.stepConversations'),
+    skills: t('sync.stepSkills'),
+    agents: t('sync.stepAgents'),
+    mcpConfigs: t('sync.stepMcp'),
+    keybindings: t('sync.stepKeybindings'),
+    memory: t('sync.stepMemory'),
+    hooksConfig: t('sync.stepHooks'),
+    timeTrackingArchives: t('sync.stepArchives'),
+    installedPlugins: t('sync.stepPlugins'),
+  };
+
+  function _syncTimeAgo(ts) {
+    if (!ts) return t('sync.never');
+    const diff = Math.floor((Date.now() - ts) / 1000);
+    if (diff < 30) return t('sync.secondsAgo');
+    if (diff < 60) return t('sync.secondsAgo');
+    if (diff < 3600) return t('sync.minutesAgo', { count: Math.floor(diff / 60) });
+    if (diff < 86400) return t('sync.hoursAgo', { count: Math.floor(diff / 3600) });
+    return t('sync.daysAgo', { count: Math.floor(diff / 86400) });
+  }
+
+  async function _loadSyncManifest() {
+    try {
+      const manifest = await api.sync.getManifest();
+      if (!manifest) return;
+
+      // Last full sync time
+      const lastSyncEl = document.getElementById('cp-last-sync-time');
+      if (lastSyncEl) {
+        if (manifest.lastFullSync && manifest.lastFullSync > 0) {
+          lastSyncEl.textContent = _syncTimeAgo(manifest.lastFullSync);
+          lastSyncEl.classList.add('has-value');
+        } else {
+          lastSyncEl.textContent = t('sync.never');
+        }
+      }
+
+      // Count synced entities and render grid
+      const entities = manifest.entities || {};
+      const entityTypes = Object.keys(ENTITY_LABELS);
+      let syncedCount = 0;
+      const entityStatuses = [];
+
+      for (const entityType of entityTypes) {
+        // Check if any key starting with this entity type is synced
+        const keys = Object.keys(entities).filter(k => k === entityType || k.startsWith(entityType + '.'));
+        const isSynced = keys.length > 0;
+        if (isSynced) syncedCount++;
+
+        const lastEntry = keys.reduce((latest, k) => {
+          const e = entities[k];
+          return (e?.lastSyncAt && e.lastSyncAt > (latest || 0)) ? e.lastSyncAt : latest;
+        }, null);
+
+        entityStatuses.push({ type: entityType, synced: isSynced, lastSyncAt: lastEntry });
+      }
+
+      // Update entities count
+      const entitiesEl = document.getElementById('cp-entities-synced');
+      if (entitiesEl) {
+        entitiesEl.textContent = `${syncedCount} / ${entityTypes.length}`;
+        entitiesEl.classList.add('has-value');
+      }
+
+      // Render entity grid
+      const gridEl = document.getElementById('cp-entity-grid');
+      if (gridEl) {
+        gridEl.innerHTML = entityStatuses.map(({ type, synced, lastSyncAt }) => `
+          <div class="cp-entity-chip ${synced ? 'synced' : 'not-synced'}">
+            <span class="cp-entity-chip-icon">${ENTITY_ICONS[type] || ''}</span>
+            <span class="cp-entity-chip-label">${ENTITY_LABELS[type]}</span>
+            ${synced && lastSyncAt ? `<span class="cp-entity-chip-time">${_syncTimeAgo(lastSyncAt)}</span>` : ''}
+            <span class="cp-entity-chip-dot"></span>
+          </div>
+        `).join('');
+      }
+    } catch { /* ignore */ }
   }
 
   // ── Sessions ──
@@ -982,7 +1125,9 @@ function setupHandlers(context) {
     fullSyncBtn.addEventListener('click', async () => {
       fullSyncBtn.disabled = true;
       fullSyncBtn.classList.add('loading');
-      _updateSyncStatusUI('syncing');
+      // Don't manually set 'syncing' — the IPC 'started' event will do it.
+      // This prevents the UI from getting stuck if fullSync returns early
+      // (e.g. already syncing, or not active).
       try {
         await api.sync.fullSync();
       } catch {
@@ -1061,6 +1206,7 @@ function setupHandlers(context) {
         _updateSyncStatusUI('progress', detail);
       } else if (status === 'completed') {
         _updateSyncStatusUI('synced');
+        _loadSyncManifest(); // refresh last sync time + entity statuses
       } else if (status === 'error') {
         _updateSyncStatusUI('error', { message: typeof detail === 'string' ? detail : null });
       }

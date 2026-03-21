@@ -1794,7 +1794,15 @@
     "stepMemory": "Memoria",
     "stepHooks": "Config de hooks",
     "stepArchives": "Archivos",
-    "stepPlugins": "Plugins"
+    "stepPlugins": "Plugins",
+    "lastFullSync": "Ultima sincronizacion completa",
+    "never": "Nunca",
+    "entitiesSynced": "{count} entidades sincronizadas",
+    "machineLabel": "Maquina",
+    "syncOverview": "Resumen de sincronizacion",
+    "entitySynced": "Sincronizado",
+    "entityNotSynced": "No sincronizado",
+    "secondsAgo": "hace unos segundos"
   },
   "database": {
     "title": "Base de datos",

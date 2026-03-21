@@ -1830,7 +1830,15 @@
     "stepMemory": "Memory",
     "stepHooks": "Hooks config",
     "stepArchives": "Archives",
-    "stepPlugins": "Plugins"
+    "stepPlugins": "Plugins",
+    "lastFullSync": "Last full sync",
+    "never": "Never",
+    "entitiesSynced": "{count} entities synced",
+    "machineLabel": "Machine",
+    "syncOverview": "Sync overview",
+    "entitySynced": "Synced",
+    "entityNotSynced": "Not synced",
+    "secondsAgo": "a few seconds ago"
   },
   "database": {
     "title": "Database",
