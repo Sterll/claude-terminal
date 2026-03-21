@@ -168,6 +168,7 @@ class SyncEngine {
    */
   stop() {
     this.active = false;
+    this._syncing = false;
     for (const timer of this._debounceTimers.values()) {
       clearTimeout(timer);
     }
@@ -232,56 +233,79 @@ class SyncEngine {
       const conflicts = [];
 
       // Sync settings (per-key)
+      if (!this.active) return;
       emitProgress('settings');
       const settingsConflicts = await this._syncSettings(cloudState.settings || {});
       conflicts.push(...settingsConflicts);
+      this._saveManifest();
 
       // Sync projects (per-item)
+      if (!this.active) return;
       emitProgress('projects');
       const projectsConflicts = await this._syncProjects(cloudState.projects || {});
       conflicts.push(...projectsConflicts);
+      this._saveManifest();
 
       // Sync time tracking (additive merge, no conflicts)
+      if (!this.active) return;
       emitProgress('timeTracking');
       await this._syncTimeTracking(cloudState.timeTracking || {});
+      this._saveManifest();
 
       // Sync conversations (append-only, no conflicts)
+      if (!this.active) return;
       emitProgress('conversations');
       await this._syncConversations(cloudState.conversations || {});
+      this._saveManifest();
 
       // Sync skills (per-directory, auto-resolve last-write-wins)
+      if (!this.active) return;
       emitProgress('skills');
       await this._syncDirectoryEntities('skills', SKILLS_DIR, cloudState.skills || {});
+      this._saveManifest();
 
       // Sync agents (per-directory, auto-resolve last-write-wins)
+      if (!this.active) return;
       emitProgress('agents');
       await this._syncDirectoryEntities('agents', AGENTS_DIR, cloudState.agents || {});
+      this._saveManifest();
 
       // Sync MCP configs (per-key)
+      if (!this.active) return;
       emitProgress('mcpConfigs');
       const mcpConflicts = await this._syncMcpConfigs(cloudState.mcpConfigs || {});
       conflicts.push(...mcpConflicts);
+      this._saveManifest();
 
       // Sync keybindings (whole-file)
+      if (!this.active) return;
       emitProgress('keybindings');
       const kbConflicts = await this._syncWholeFile('keybindings', KEYBINDINGS_FILE, cloudState.keybindings || null);
       conflicts.push(...kbConflicts);
+      this._saveManifest();
 
       // Sync memory (whole-file, text)
+      if (!this.active) return;
       emitProgress('memory');
       const memConflicts = await this._syncWholeFile('memory', MEMORY_FILE, cloudState.memory || null, true);
       conflicts.push(...memConflicts);
+      this._saveManifest();
 
       // Sync hooks config (whole-file)
+      if (!this.active) return;
       emitProgress('hooksConfig');
       const hooksConflicts = await this._syncWholeFile('hooksConfig', CLAUDE_SETTINGS_FILE, cloudState.hooksConfig || null);
       conflicts.push(...hooksConflicts);
+      this._saveManifest();
 
       // Sync time tracking archives (per-file, additive)
+      if (!this.active) return;
       emitProgress('timeTrackingArchives');
       await this._syncTimeTrackingArchives(cloudState.timeTrackingArchives || {});
+      this._saveManifest();
 
       // Sync installed plugins (whole-file, merge)
+      if (!this.active) return;
       emitProgress('installedPlugins');
       await this._syncInstalledPlugins(cloudState.installedPlugins || null);
 
