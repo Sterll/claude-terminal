@@ -245,7 +245,12 @@ class SyncEngine {
    * Called on initial cloud connect.
    */
   async fullSync() {
-    if (this._syncing || !this.active) return;
+    if (!this.active) return;
+    if (this._syncing) {
+      // Already syncing — don't start a duplicate, but notify so UI doesn't get stuck
+      console.log('[SyncEngine] Full sync already in progress, skipping');
+      return;
+    }
     if (!this._serverSupportsSync) {
       this._emitStatus('full-sync', 'error', 'Server does not support entity sync (needs update)');
       return;
@@ -262,6 +267,7 @@ class SyncEngine {
     const enabledSteps = ALL_SYNC_STEPS.filter(s => toggles[s] !== false);
     const totalSteps = enabledSteps.length + 1; // +1 for initial fetch
     let currentStep = 0;
+    let didEmitFinal = false;
 
     const emitProgress = (label) => {
       currentStep++;
@@ -273,127 +279,55 @@ class SyncEngine {
       emitProgress('fetch');
       const cloudState = await this._fetchCloudState();
       if (!cloudState) {
+        didEmitFinal = true;
         this._emitStatus('full-sync', 'error', 'Failed to fetch cloud state');
         return;
       }
 
       const conflicts = [];
 
-      // Sync settings (per-key)
-      if (!this.active) return;
-      if (toggles.settings !== false) {
-        emitProgress('settings');
-        const settingsConflicts = await this._syncSettings(cloudState.settings || {});
-        conflicts.push(...settingsConflicts);
-        this._saveManifest();
-      }
+      const syncSteps = [
+        { key: 'settings', fn: async () => { conflicts.push(...await this._syncSettings(cloudState.settings || {})); } },
+        { key: 'projects', fn: async () => { conflicts.push(...await this._syncProjects(cloudState.projects || {})); } },
+        { key: 'timeTracking', fn: async () => { await this._syncTimeTracking(cloudState.timeTracking || {}); } },
+        { key: 'conversations', fn: async () => { await this._syncConversations(cloudState.conversations || {}); } },
+        { key: 'skills', fn: async () => { await this._syncDirectoryEntities('skills', SKILLS_DIR, cloudState.skills || {}); } },
+        { key: 'agents', fn: async () => { await this._syncDirectoryEntities('agents', AGENTS_DIR, cloudState.agents || {}); } },
+        { key: 'mcpConfigs', fn: async () => { conflicts.push(...await this._syncMcpConfigs(cloudState.mcpConfigs || {})); } },
+        { key: 'keybindings', fn: async () => { conflicts.push(...await this._syncWholeFile('keybindings', KEYBINDINGS_FILE, cloudState.keybindings || null)); } },
+        { key: 'memory', fn: async () => { conflicts.push(...await this._syncWholeFile('memory', MEMORY_FILE, cloudState.memory || null, true)); } },
+        { key: 'hooksConfig', fn: async () => { conflicts.push(...await this._syncWholeFile('hooksConfig', CLAUDE_SETTINGS_FILE, cloudState.hooksConfig || null)); } },
+        { key: 'timeTrackingArchives', fn: async () => { await this._syncTimeTrackingArchives(cloudState.timeTrackingArchives || {}); } },
+        { key: 'installedPlugins', fn: async () => { await this._syncInstalledPlugins(cloudState.installedPlugins || null); } },
+      ];
 
-      // Sync projects (per-item)
-      if (!this.active) return;
-      if (toggles.projects !== false) {
-        emitProgress('projects');
-        const projectsConflicts = await this._syncProjects(cloudState.projects || {});
-        conflicts.push(...projectsConflicts);
+      for (const { key, fn } of syncSteps) {
+        if (!this.active) break;
+        if (toggles[key] === false) continue;
+        emitProgress(key);
+        await fn();
         this._saveManifest();
-      }
-
-      // Sync time tracking (additive merge, no conflicts)
-      if (!this.active) return;
-      if (toggles.timeTracking !== false) {
-        emitProgress('timeTracking');
-        await this._syncTimeTracking(cloudState.timeTracking || {});
-        this._saveManifest();
-      }
-
-      // Sync conversations (append-only, no conflicts)
-      if (!this.active) return;
-      if (toggles.conversations !== false) {
-        emitProgress('conversations');
-        await this._syncConversations(cloudState.conversations || {});
-        this._saveManifest();
-      }
-
-      // Sync skills (per-directory, auto-resolve last-write-wins)
-      if (!this.active) return;
-      if (toggles.skills !== false) {
-        emitProgress('skills');
-        await this._syncDirectoryEntities('skills', SKILLS_DIR, cloudState.skills || {});
-        this._saveManifest();
-      }
-
-      // Sync agents (per-directory, auto-resolve last-write-wins)
-      if (!this.active) return;
-      if (toggles.agents !== false) {
-        emitProgress('agents');
-        await this._syncDirectoryEntities('agents', AGENTS_DIR, cloudState.agents || {});
-        this._saveManifest();
-      }
-
-      // Sync MCP configs (per-key)
-      if (!this.active) return;
-      if (toggles.mcpConfigs !== false) {
-        emitProgress('mcpConfigs');
-        const mcpConflicts = await this._syncMcpConfigs(cloudState.mcpConfigs || {});
-        conflicts.push(...mcpConflicts);
-        this._saveManifest();
-      }
-
-      // Sync keybindings (whole-file)
-      if (!this.active) return;
-      if (toggles.keybindings !== false) {
-        emitProgress('keybindings');
-        const kbConflicts = await this._syncWholeFile('keybindings', KEYBINDINGS_FILE, cloudState.keybindings || null);
-        conflicts.push(...kbConflicts);
-        this._saveManifest();
-      }
-
-      // Sync memory (whole-file, text)
-      if (!this.active) return;
-      if (toggles.memory !== false) {
-        emitProgress('memory');
-        const memConflicts = await this._syncWholeFile('memory', MEMORY_FILE, cloudState.memory || null, true);
-        conflicts.push(...memConflicts);
-        this._saveManifest();
-      }
-
-      // Sync hooks config (whole-file)
-      if (!this.active) return;
-      if (toggles.hooksConfig !== false) {
-        emitProgress('hooksConfig');
-        const hooksConflicts = await this._syncWholeFile('hooksConfig', CLAUDE_SETTINGS_FILE, cloudState.hooksConfig || null);
-        conflicts.push(...hooksConflicts);
-        this._saveManifest();
-      }
-
-      // Sync time tracking archives (per-file, additive)
-      if (!this.active) return;
-      if (toggles.timeTrackingArchives !== false) {
-        emitProgress('timeTrackingArchives');
-        await this._syncTimeTrackingArchives(cloudState.timeTrackingArchives || {});
-        this._saveManifest();
-      }
-
-      // Sync installed plugins (whole-file, merge)
-      if (!this.active) return;
-      if (toggles.installedPlugins !== false) {
-        emitProgress('installedPlugins');
-        await this._syncInstalledPlugins(cloudState.installedPlugins || null);
       }
 
       // Handle conflicts
-      if (conflicts.length > 0 && this._onConflict) {
+      if (this.active && conflicts.length > 0 && this._onConflict) {
         const resolutions = await this._onConflict(conflicts);
         await this._applyResolutions(resolutions);
       }
 
       this.manifest.lastFullSync = Date.now();
       this._saveManifest();
+      didEmitFinal = true;
       this._emitStatus('full-sync', 'completed', { conflicts: conflicts.length });
     } catch (err) {
       console.error('[SyncEngine] Full sync failed:', err.message);
+      didEmitFinal = true;
       this._emitStatus('full-sync', 'error', err.message);
     } finally {
       this._syncing = false;
+      if (!didEmitFinal) {
+        this._emitStatus('full-sync', 'completed', { aborted: true });
+      }
     }
   }
 
