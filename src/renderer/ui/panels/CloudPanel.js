@@ -35,6 +35,9 @@ function buildHtml(settings) {
           <div class="cp-sync-status" id="cp-sync-status" style="display:none">
             <span class="cp-sync-status-icon"></span>
             <span class="cp-sync-status-text" id="cp-sync-status-text"></span>
+            <div class="cp-sync-progress" id="cp-sync-progress" style="display:none">
+              <div class="cp-sync-progress-bar" id="cp-sync-progress-bar"></div>
+            </div>
           </div>
           <div class="cp-status-pill" id="cp-status-pill">
             <span class="cp-status-dot"></span>
@@ -961,35 +964,75 @@ function setupHandlers(context) {
     });
   }
 
+  // ── Sync step label map ──
+  const SYNC_STEP_LABELS = {
+    fetch: t('sync.stepFetch'),
+    settings: t('sync.stepSettings'),
+    projects: t('sync.stepProjects'),
+    timeTracking: t('sync.stepTimeTracking'),
+    conversations: t('sync.stepConversations'),
+    skills: t('sync.stepSkills'),
+    agents: t('sync.stepAgents'),
+    mcpConfigs: t('sync.stepMcp'),
+    keybindings: t('sync.stepKeybindings'),
+    memory: t('sync.stepMemory'),
+    hooksConfig: t('sync.stepHooks'),
+    timeTrackingArchives: t('sync.stepArchives'),
+    installedPlugins: t('sync.stepPlugins'),
+  };
+
   // ── Sync status indicator ──
+  let _syncHideTimer = null;
+
   function _updateSyncStatusUI(state, detail) {
     const el = document.getElementById('cp-sync-status');
     const textEl = document.getElementById('cp-sync-status-text');
+    const progressEl = document.getElementById('cp-sync-progress');
+    const progressBar = document.getElementById('cp-sync-progress-bar');
     if (!el || !textEl) return;
+
+    if (_syncHideTimer) { clearTimeout(_syncHideTimer); _syncHideTimer = null; }
 
     el.style.display = '';
     el.className = `cp-sync-status ${state}`;
 
     if (state === 'syncing') {
       textEl.textContent = t('sync.syncing');
+      if (progressEl) { progressEl.style.display = 'none'; }
+    } else if (state === 'progress') {
+      const { step, total, label } = detail || {};
+      const pct = Math.round((step / total) * 100);
+      const stepLabel = SYNC_STEP_LABELS[label] || label || '';
+      textEl.textContent = `${stepLabel} (${step}/${total})`;
+      if (progressEl && progressBar) {
+        progressEl.style.display = '';
+        progressBar.style.width = `${pct}%`;
+      }
     } else if (state === 'synced') {
       textEl.textContent = t('sync.synced');
-      setTimeout(() => { el.style.display = 'none'; }, 5000);
+      if (progressEl && progressBar) {
+        progressBar.style.width = '100%';
+        setTimeout(() => { if (progressEl) progressEl.style.display = 'none'; }, 600);
+      }
+      _syncHideTimer = setTimeout(() => { el.style.display = 'none'; }, 5000);
     } else if (state === 'error') {
-      textEl.textContent = t('sync.syncError');
-      setTimeout(() => { el.style.display = 'none'; }, 8000);
+      textEl.textContent = detail?.message || t('sync.syncError');
+      if (progressEl) { progressEl.style.display = 'none'; }
+      _syncHideTimer = setTimeout(() => { el.style.display = 'none'; }, 8000);
     }
   }
 
   // Listen for sync status from main process
   if (api.sync?.onStatus) {
-    api.sync.onStatus(({ type, status }) => {
+    api.sync.onStatus(({ type, status, detail }) => {
       if (status === 'started') {
         _updateSyncStatusUI('syncing');
+      } else if (status === 'progress') {
+        _updateSyncStatusUI('progress', detail);
       } else if (status === 'completed') {
         _updateSyncStatusUI('synced');
       } else if (status === 'error') {
-        _updateSyncStatusUI('error');
+        _updateSyncStatusUI('error', { message: typeof detail === 'string' ? detail : null });
       }
     });
   }

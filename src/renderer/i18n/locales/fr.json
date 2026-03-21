@@ -1795,7 +1795,20 @@
     "entityLabelMcp": "MCP : {id}",
     "entityLabelMemory": "CLAUDE.md",
     "entityLabelHooksConfig": "Config des hooks",
-    "entityLabelKeybindings": "Raccourcis clavier"
+    "entityLabelKeybindings": "Raccourcis clavier",
+    "stepFetch": "Récupération de l'état cloud",
+    "stepSettings": "Paramètres",
+    "stepProjects": "Projets",
+    "stepTimeTracking": "Suivi du temps",
+    "stepConversations": "Conversations",
+    "stepSkills": "Skills",
+    "stepAgents": "Agents",
+    "stepMcp": "Configs MCP",
+    "stepKeybindings": "Raccourcis clavier",
+    "stepMemory": "Mémoire",
+    "stepHooks": "Config des hooks",
+    "stepArchives": "Archives",
+    "stepPlugins": "Plugins"
   },
   "database": {
     "title": "Base de données",

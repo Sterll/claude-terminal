@@ -1071,19 +1071,23 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 10px;
+  padding: 4px 12px;
   border-radius: 12px;
   font-size: var(--font-2xs);
   font-weight: 500;
   transition: all 0.2s ease;
+  flex-wrap: wrap;
+  max-width: 260px;
 }
 
-.cp-sync-status.syncing {
+.cp-sync-status.syncing,
+.cp-sync-status.progress {
   background: rgba(59, 130, 246, 0.12);
   color: var(--info);
 }
 
-.cp-sync-status.syncing .cp-sync-status-icon::after {
+.cp-sync-status.syncing .cp-sync-status-icon::after,
+.cp-sync-status.progress .cp-sync-status-icon::after {
   content: '';
   display: inline-block;
   width: 10px;
@@ -1110,6 +1114,24 @@
 
 .cp-sync-status.error .cp-sync-status-icon::after {
   content: '\2717';
+}
+
+/* Sync progress bar */
+.cp-sync-progress {
+  width: 100%;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.cp-sync-progress-bar {
+  height: 100%;
+  background: currentColor;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+  width: 0%;
 }
 
 @keyframes cp-spin {
