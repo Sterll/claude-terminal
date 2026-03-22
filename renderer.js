@@ -1111,6 +1111,11 @@ async function deleteProjectUI(projectId) {
   const project = getProject(projectId);
   if (!project) return;
   const projectIndex = getProjectIndex(projectId);
+
+  // Capture cloud state before deletion
+  const wasCloudSynced = cloudConnected && cloudUploadStatus.get(projectId)?.synced;
+  const projectName = project.name || path.basename(project.path);
+
   const confirmed = await ModalComponent.showConfirm({
     title: t('projects.deleteProject') || 'Delete project',
     message: t('projects.confirmDelete', { name: project.name }) || `Delete "${project.name}"?`,
@@ -1160,6 +1165,26 @@ async function deleteProjectUI(projectId) {
   }
   ProjectList.render();
   TerminalManager.filterByProject(projectsState.get().selectedProjectFilter);
+
+  // Propose to delete cloud copy if project was synced
+  if (wasCloudSynced) {
+    const cloudConfirmed = await ModalComponent.showConfirm({
+      title: t('cloud.deleteCloudCopyTitle'),
+      message: t('cloud.deleteCloudCopyMessage', { name: projectName }),
+      confirmLabel: t('cloud.deleteCloudCopyConfirm'),
+      cancelLabel: t('cloud.deleteCloudCopyKeep'),
+      danger: true,
+    });
+    if (cloudConfirmed) {
+      try {
+        await api.cloud.deleteProject({ projectId, projectName });
+        showToast({ type: 'success', title: t('cloud.deleteSuccess'), message: projectName });
+      } catch (err) {
+        showToast({ type: 'error', title: t('cloud.deleteError'), message: err.message });
+      }
+    }
+  }
+  cloudUploadStatus.delete(projectId);
 }
 
 // ========== TERMINAL CREATION WRAPPER ==========
@@ -1578,6 +1603,28 @@ window.closeModal = closeModal;
 window.createTerminalForProject = createTerminalForProject;
 window.projectsState = projectsState;
 
+// ========== CLOUD STATE PERSISTENCE ==========
+const _cloudStateFile = path.join(os.homedir(), '.claude-terminal', 'cloud-state.json');
+
+function _loadCloudState() {
+  try {
+    if (fs.existsSync(_cloudStateFile)) {
+      return JSON.parse(fs.readFileSync(_cloudStateFile, 'utf8'));
+    }
+  } catch {}
+  return {};
+}
+
+function _saveCloudState(partial) {
+  try {
+    const current = _loadCloudState();
+    const merged = { ...current, ...partial };
+    fs.writeFileSync(_cloudStateFile, JSON.stringify(merged, null, 2), 'utf8');
+  } catch (err) {
+    console.warn('[Cloud] Failed to save cloud state:', err.message);
+  }
+}
+
 // ========== CLOUD UPLOAD ==========
 // cloudUploadStatus: projectId -> { uploading?: boolean, synced?: boolean }
 const cloudUploadStatus = new Map();
@@ -1590,8 +1637,11 @@ async function refreshCloudProjects() {
     if (!status.connected) return;
     const { projects: cloudProjects } = await api.cloud.getProjects();
     if (!cloudProjects || !Array.isArray(cloudProjects)) return;
-    const cloudNames = new Set(cloudProjects.map(p => p.name));
+    const cloudIds = new Set(cloudProjects.map(p => p.name)); // cloud name = project UUID
     const localProjects = projectsState.get().projects || [];
+
+    // Persist cloud project IDs for deletion detection
+    _saveCloudState({ lastKnownCloudProjectIds: [...cloudIds] });
 
     // Fetch sync metadata from main process (lastSync, errors, watcher status)
     let syncStatuses = {};
@@ -1600,9 +1650,8 @@ async function refreshCloudProjects() {
     } catch { /* ignore if not available */ }
 
     for (const p of localProjects) {
-      const name = p.name || path.basename(p.path);
       const cur = cloudUploadStatus.get(p.id) || {};
-      if (cloudNames.has(name)) {
+      if (cloudIds.has(p.id)) {
         const meta = syncStatuses[p.id];
         cloudUploadStatus.set(p.id, {
           ...cur,
@@ -1922,8 +1971,10 @@ if (api.cloud?.onStatusChanged) {
     if (status.connected) {
       refreshCloudProjects();
       api.cloud.checkPendingChanges().then(r => _updateProjectPendingChanges(r.changes)).catch(() => {});
+      _autoSyncLocalChangesToCloud();
       _checkAllProjectsDiff();
       _checkNewCloudProjects();
+      _checkCloudDeletedProjects();
     }
   });
 }
@@ -1934,8 +1985,10 @@ setTimeout(async () => {
       _updateCloudConnected(true);
       refreshCloudProjects();
       api.cloud.checkPendingChanges().then(r => _updateProjectPendingChanges(r.changes)).catch(() => {});
+      _autoSyncLocalChangesToCloud();
       _checkAllProjectsDiff();
       _checkNewCloudProjects();
+      _checkCloudDeletedProjects();
     }
   } catch { /* ignore */ }
 }, 3000);
@@ -1963,6 +2016,110 @@ projectsState.subscribe((state) => {
 });
 
 /**
+ * Auto-push local changes to cloud for all synced projects on reconnect.
+ * Silent — only logs to console. Skips projects with bidirectional changes.
+ */
+async function _autoSyncLocalChangesToCloud() {
+  try {
+    if (settingsState.get().cloudAutoUploadProjects === false) return;
+
+    const statuses = await api.cloud.getSyncStatus({});
+    if (!statuses || typeof statuses !== 'object') return;
+
+    const localProjects = projectsState.get().projects || [];
+    const registeredIds = Object.entries(statuses)
+      .filter(([, meta]) => meta.registered)
+      .map(([id]) => id);
+
+    if (registeredIds.length === 0) return;
+
+    let updatedCount = 0;
+    for (const projectId of registeredIds) {
+      const project = localProjects.find(p => p.id === projectId);
+      if (!project) continue;
+      if (cloudUploadStatus.get(projectId)?.uploading) continue;
+
+      const projectName = project.name || path.basename(project.path);
+      try {
+        const diff = await api.cloud.compareFiles({ projectId, projectName, localProjectPath: project.path });
+        const hasLocalChanges = diff.onlyLocal.length > 0 || diff.sizeDiff.length > 0;
+        if (!hasLocalChanges) continue;
+        // Skip bidirectional — leave for interactive modal
+        if (diff.onlyCloud.length > 0) continue;
+
+        await cloudUploadProject(projectId);
+        updatedCount++;
+      } catch { /* skip */ }
+    }
+
+    if (updatedCount > 0) {
+      console.log(`[Cloud] Auto-sync: ${updatedCount}/${registeredIds.length} project(s) updated`);
+    }
+  } catch (err) {
+    console.warn('[Cloud] Auto-sync failed:', err.message);
+  }
+}
+
+/**
+ * Detect projects deleted from cloud since last session.
+ * Prompts user to delete locally or keep.
+ */
+async function _checkCloudDeletedProjects() {
+  try {
+    const cloudState = _loadCloudState();
+    const previousIds = new Set(cloudState.lastKnownCloudProjectIds || []);
+    if (previousIds.size === 0) return; // No previous data — first connection
+
+    const { projects: currentCloudProjects } = await api.cloud.getProjects();
+    if (!currentCloudProjects || !Array.isArray(currentCloudProjects)) return;
+    const currentIds = new Set(currentCloudProjects.map(p => p.name));
+
+    const localProjects = projectsState.get().projects || [];
+
+    for (const project of localProjects) {
+      const wasOnCloud = previousIds.has(project.id);
+      const stillOnCloud = currentIds.has(project.id);
+
+      if (wasOnCloud && !stillOnCloud) {
+        const confirmed = await ModalComponent.showConfirm({
+          title: t('cloud.projectRemovedFromCloudTitle'),
+          message: t('cloud.projectRemovedFromCloudMessage', { name: project.name }),
+          confirmLabel: t('cloud.projectRemovedDelete'),
+          cancelLabel: t('cloud.projectRemovedKeep'),
+          danger: true,
+        });
+        if (confirmed) {
+          const projectIndex = getProjectIndex(project.id);
+          // Close associated terminals
+          const terminals = terminalsState.get().terminals;
+          terminals.forEach((term, id) => {
+            if (term.projectIndex === projectIndex) {
+              TerminalManager.closeTerminal(id);
+            }
+          });
+
+          const projects = projectsState.get().projects.filter(p => p.id !== project.id);
+          let rootOrder = projectsState.get().rootOrder;
+          if (project.folderId === null) {
+            rootOrder = rootOrder.filter(id => id !== project.id);
+          }
+          projectsState.set({ projects, rootOrder });
+          saveProjects();
+          clearProjectSessions(project.id);
+          cloudUploadStatus.delete(project.id);
+        }
+      }
+    }
+
+    // Update stored state with current data
+    _saveCloudState({ lastKnownCloudProjectIds: [...currentIds] });
+    ProjectList.render();
+  } catch (err) {
+    console.warn('[Cloud] Check cloud-deleted projects failed:', err.message);
+  }
+}
+
+/**
  * Compare local vs cloud for all synced projects.
  * Shows a resolution modal per project if differences are found.
  */
@@ -1981,7 +2138,7 @@ async function _checkAllProjectsDiff() {
       const projectName = project.name || path.basename(project.path);
 
       try {
-        const diff = await api.cloud.compareFiles({ projectName, localProjectPath: project.path });
+        const diff = await api.cloud.compareFiles({ projectId, projectName, localProjectPath: project.path });
         if (diff.onlyLocal.length === 0 && diff.onlyCloud.length === 0 && diff.sizeDiff.length === 0) continue;
         projectDiffs.push({ projectId, project, projectName, diff });
       } catch { /* skip this project */ }
@@ -2000,7 +2157,7 @@ async function _checkAllProjectsDiff() {
         if (action === 'push') {
           await cloudUploadProject(projectId);
         } else if (action === 'pull') {
-          await api.cloud.downloadChanges({ projectName, localProjectPath: project.path });
+          await api.cloud.downloadChanges({ projectId, projectName, localProjectPath: project.path });
           cloudUploadStatus.set(projectId, { synced: true, lastSync: Date.now() });
           ProjectList.render();
           showToast({ type: 'success', title: t('cloud.syncApplied'), message: projectName });
@@ -3291,6 +3448,13 @@ async function renameProjectUI(projectId) {
   if (name && name.trim()) {
     const newName = name.trim();
     renameProject(projectId, newName);
+
+    // Propagate displayName to cloud (fire-and-forget)
+    if (cloudConnected && cloudUploadStatus.get(project.id)?.synced) {
+      api.cloud.updateDisplayName({ projectId: project.id, displayName: newName }).catch(err => {
+        console.warn('[Cloud] Failed to update display name:', err.message);
+      });
+    }
 
     // Propagate rename to terminal tabs that still use the old project name
     const projectIndex = getProjectIndex(projectId);
