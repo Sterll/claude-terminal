@@ -78,6 +78,17 @@ function loadConnectionConfigs() {
   return [];
 }
 
+function saveConnectionConfigs(configs) {
+  const dbFile = path.join(getDataDir(), 'databases.json');
+  const tmpFile = dbFile + '.tmp';
+  fs.writeFileSync(tmpFile, JSON.stringify(configs, null, 2), 'utf8');
+  fs.renameSync(tmpFile, dbFile);
+}
+
+function generateId() {
+  return 'db-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+}
+
 function getPassword(id) {
   // Env var format: CT_DB_PASS_{id} with dots/hyphens replaced
   const envKey = `CT_DB_PASS_${id}`;
@@ -886,6 +897,35 @@ const tools = [
       required: ['connection'],
     },
   },
+  {
+    name: 'db_add_connection',
+    description: 'Add a new database connection to Claude Terminal. Supports sqlite, mysql, mariadb, postgresql, mongodb, and redis. The connection is saved and immediately available for use.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Display name for the connection (e.g. "My Production DB")' },
+        type: { type: 'string', enum: ['sqlite', 'mysql', 'mariadb', 'postgresql', 'mongodb', 'redis'], description: 'Database type' },
+        host: { type: 'string', description: 'Hostname (default: localhost). Not needed for sqlite.' },
+        port: { type: 'number', description: 'Port number. Defaults: mysql=3306, postgresql=5432, redis=6379. Not needed for sqlite.' },
+        database: { type: 'string', description: 'Database name. For redis: DB index (default: 0). Not needed for sqlite.' },
+        username: { type: 'string', description: 'Username. Not needed for sqlite or redis.' },
+        filePath: { type: 'string', description: 'Path to SQLite file. Required for sqlite type.' },
+        connectionString: { type: 'string', description: 'MongoDB connection URI. Required for mongodb type.' },
+      },
+      required: ['name', 'type'],
+    },
+  },
+  {
+    name: 'db_remove_connection',
+    description: 'Remove a database connection from Claude Terminal. Closes any active connection and deletes the configuration.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        connection: { type: 'string', description: 'Connection name or ID to remove (from db_list_connections)' },
+      },
+      required: ['connection'],
+    },
+  },
 ];
 
 // -- Tool handler -------------------------------------------------------------
@@ -954,6 +994,82 @@ async function handle(name, args) {
       const { client, type } = await getClient(args.connection);
       const result = await getStats(client, type);
       return ok(result);
+    }
+
+    if (name === 'db_add_connection') {
+      if (!args.name) return fail('Missing required parameter: name');
+      if (!args.type) return fail('Missing required parameter: type');
+
+      const validTypes = ['sqlite', 'mysql', 'mariadb', 'postgresql', 'mongodb', 'redis'];
+      if (!validTypes.includes(args.type)) return fail(`Invalid type "${args.type}". Must be one of: ${validTypes.join(', ')}`);
+
+      if (args.type === 'sqlite' && !args.filePath) return fail('SQLite connections require filePath');
+      if (args.type === 'mongodb' && !args.connectionString) return fail('MongoDB connections require connectionString');
+
+      const configs = loadConnectionConfigs();
+      const existing = configs.find(c => c.name.toLowerCase() === args.name.toLowerCase());
+      if (existing) return fail(`A connection named "${args.name}" already exists`);
+
+      const newConfig = {
+        id: generateId(),
+        name: args.name,
+        type: args.type,
+      };
+
+      if (args.type === 'sqlite') {
+        newConfig.filePath = args.filePath;
+      } else if (args.type === 'mongodb') {
+        newConfig.connectionString = args.connectionString;
+        if (args.database) newConfig.database = args.database;
+      } else {
+        newConfig.host = args.host || 'localhost';
+        if (args.type === 'mysql' || args.type === 'mariadb') newConfig.port = args.port || 3306;
+        else if (args.type === 'postgresql') newConfig.port = args.port || 5432;
+        else if (args.type === 'redis') newConfig.port = args.port || 6379;
+        if (args.database) newConfig.database = args.database;
+        if (args.username) newConfig.username = args.username;
+      }
+
+      configs.push(newConfig);
+      saveConnectionConfigs(configs);
+      log(`Added connection: ${newConfig.name} (${newConfig.type})`);
+
+      return ok(`Connection "${newConfig.name}" (${newConfig.type}) added successfully with ID: ${newConfig.id}`);
+    }
+
+    if (name === 'db_remove_connection') {
+      if (!args.connection) return fail('Missing required parameter: connection');
+
+      const configs = loadConnectionConfigs();
+      const idx = configs.findIndex(c =>
+        c.id === args.connection ||
+        c.name.toLowerCase() === args.connection.toLowerCase()
+      );
+
+      if (idx === -1) return fail(`Connection "${args.connection}" not found. Use db_list_connections to see available connections.`);
+
+      const removed = configs[idx];
+
+      // Close cached connection if active
+      if (connections.has(removed.id)) {
+        try {
+          const { client, type } = connections.get(removed.id);
+          if (type === 'sqlite') client.close();
+          else if (type === 'mysql' || type === 'mariadb') await client.end();
+          else if (type === 'postgresql') await client.end();
+          else if (type === 'mongodb') await client.mongoClient.close();
+          else if (type === 'redis') client.disconnect();
+        } catch (e) {
+          log(`Error closing connection ${removed.id}: ${e.message}`);
+        }
+        connections.delete(removed.id);
+      }
+
+      configs.splice(idx, 1);
+      saveConnectionConfigs(configs);
+      log(`Removed connection: ${removed.name} (${removed.type})`);
+
+      return ok(`Connection "${removed.name}" (${removed.type}) removed successfully.`);
     }
 
     return fail(`Unknown database tool: ${name}`);
