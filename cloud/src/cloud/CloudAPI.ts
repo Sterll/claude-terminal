@@ -201,7 +201,7 @@ export function createCloudRouter(relay?: RelayServer): Router {
   // Clone a GitHub repo into a project (faster than ZIP upload)
   router.post('/projects/clone', async (req: AuthRequest, res: Response) => {
     try {
-      const { name, cloneUrl } = req.body;
+      const { name, cloneUrl, displayName } = req.body;
       if (!name || !cloneUrl) {
         res.status(400).json({ error: 'Missing name or cloneUrl' });
         return;
@@ -233,13 +233,13 @@ export function createCloudRouter(relay?: RelayServer): Router {
       const user = await store.getUser(req.userName!);
       if (user) {
         const existing = user.projects.findIndex((p: any) => p.name === name);
-        const entry = { name, createdAt: Date.now(), lastActivity: null };
+        const entry = { name, displayName: displayName || name, createdAt: Date.now(), lastActivity: null };
         if (existing >= 0) user.projects[existing] = entry;
         else user.projects.push(entry);
         await store.saveUser(req.userName!, user);
       }
 
-      res.status(201).json({ name, path: projectPath });
+      res.status(201).json({ name, displayName: displayName || name, path: projectPath });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }
@@ -294,6 +294,7 @@ export function createCloudRouter(relay?: RelayServer): Router {
   router.post('/projects', upload.single('zip'), async (req: AuthRequest, res: Response) => {
     try {
       const name = req.body?.name;
+      const displayName = req.body?.displayName || name;
       if (!name) {
         res.status(400).json({ error: 'Missing project name' });
         return;
@@ -303,8 +304,8 @@ export function createCloudRouter(relay?: RelayServer): Router {
         return;
       }
 
-      const projectPath = await projectManager.createFromZip(req.userName!, name, req.file.path);
-      res.status(201).json({ name, path: projectPath });
+      const projectPath = await projectManager.createFromZip(req.userName!, name, req.file.path, displayName);
+      res.status(201).json({ name, displayName, path: projectPath });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }
@@ -424,13 +425,22 @@ export function createCloudRouter(relay?: RelayServer): Router {
 
   router.patch('/projects/:name', async (req: AuthRequest, res: Response) => {
     try {
-      const oldName = req.params.name as string;
-      const { newName } = req.body;
-      if (!newName || typeof newName !== 'string') {
-        res.status(400).json({ error: 'Missing newName' });
+      const name = req.params.name as string;
+      const { newName, displayName } = req.body;
+
+      // Update display name only (no folder rename)
+      if (displayName && typeof displayName === 'string' && !newName) {
+        await projectManager.updateDisplayName(req.userName!, name, displayName);
+        res.json({ ok: true, displayName });
         return;
       }
-      await projectManager.renameProject(req.userName!, oldName, newName);
+
+      // Full rename (folder + metadata)
+      if (!newName || typeof newName !== 'string') {
+        res.status(400).json({ error: 'Missing newName or displayName' });
+        return;
+      }
+      await projectManager.renameProject(req.userName!, name, newName);
       res.json({ ok: true, newName });
     } catch (err: any) {
       res.status(400).json({ error: err.message });

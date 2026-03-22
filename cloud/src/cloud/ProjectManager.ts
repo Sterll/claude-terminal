@@ -7,20 +7,21 @@ import { config } from '../config';
 
 export class ProjectManager {
 
-  async listProjects(userName: string): Promise<Array<{ name: string; createdAt: number | null; lastActivity: number | null }>> {
+  async listProjects(userName: string): Promise<Array<{ name: string; displayName: string; createdAt: number | null; lastActivity: number | null }>> {
     const dirs = await store.listProjectDirs(userName);
     const user = await store.getUser(userName);
     return dirs.map(name => {
       const meta = user?.projects.find(p => p.name === name);
       return {
         name,
+        displayName: meta?.displayName || name,
         createdAt: meta?.createdAt || null,
         lastActivity: meta?.lastActivity || null,
       };
     });
   }
 
-  async createFromZip(userName: string, projectName: string, zipPath: string): Promise<string> {
+  async createFromZip(userName: string, projectName: string, zipPath: string, displayName?: string): Promise<string> {
     this.validateProjectName(projectName);
     await this.checkProjectLimit(userName);
 
@@ -40,7 +41,7 @@ export class ProjectManager {
     const user = await store.getUser(userName);
     if (user) {
       const existing = user.projects.findIndex(p => p.name === projectName);
-      const entry = { name: projectName, createdAt: Date.now(), lastActivity: null };
+      const entry = { name: projectName, displayName: displayName || projectName, createdAt: Date.now(), lastActivity: null };
       if (existing >= 0) {
         user.projects[existing] = entry;
       } else {
@@ -202,6 +203,16 @@ export class ProjectManager {
     if (user) {
       const project = user.projects.find(p => p.name === oldName);
       if (project) project.name = newName;
+      await store.saveUser(userName, user);
+    }
+  }
+
+  async updateDisplayName(userName: string, projectName: string, displayName: string): Promise<void> {
+    const user = await store.getUser(userName);
+    if (!user) return;
+    const project = user.projects.find(p => p.name === projectName);
+    if (project) {
+      project.displayName = displayName;
       await store.saveUser(userName, user);
     }
   }

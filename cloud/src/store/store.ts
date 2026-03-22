@@ -5,6 +5,7 @@ import { config } from '../config';
 
 export interface UserProject {
   name: string;
+  displayName?: string;
   createdAt: number;
   lastActivity: number | null;
 }
