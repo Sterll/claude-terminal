@@ -519,9 +519,11 @@ function createChatView(wrapperEl, project, options = {}) {
 
   const pendingMentions = []; // Array of { type, label, icon, data }
   let mentionSelectedIndex = 0;
-  let mentionMode = null; // null | 'types' | 'file' | 'projects'
+  let mentionMode = null; // null | 'types' | 'file' | 'projects' | 'tabs' | 'conversations'
   let mentionFileCache = null; // { files: [], timestamp, projectPath }
   const MENTION_FILE_CACHE_TTL = 5 * 60 * 1000;
+  let conversationCache = null; // { sessions: [], timestamp, projectPath }
+  const CONVERSATION_CACHE_TTL = 30 * 1000;
 
   // ── Image attachments ──
 
@@ -963,6 +965,8 @@ function createChatView(wrapperEl, project, options = {}) {
     { type: 'todos', label: '@todos', desc: t('chat.mentionTodos'), icon: '<svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22,4 12,14.01 9,11.01"/></svg>' },
     { type: 'symbol', label: '@symbol', desc: t('chat.mentionSymbol'), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h4v10H4z"/><path d="M16 7h4v10h-4z"/><path d="M8 12h8"/></svg>' },
     { type: 'project', label: '@project', desc: t('chat.mentionProject'), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>' },
+    { type: 'tab', label: '@tab', desc: t('chat.mentionTab'), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 8h8l2-4h8"/><polyline points="7,13 10,16 7,19"/></svg>' },
+    { type: 'conversation', label: '@conversation', desc: t('chat.mentionConversation'), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/><path d="M8 9h8"/><path d="M8 13h5"/></svg>' },
     { type: 'context', label: '@context', desc: t('chat.mentionContext'), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>' },
     { type: 'prompt', label: '@prompt', desc: t('chat.mentionPrompt'), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>' },
     { type: 'ParallelTask', label: '@ParallelTask', desc: t('chat.mentionParallelTask'), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>' },
@@ -1139,10 +1143,82 @@ function createChatView(wrapperEl, project, options = {}) {
         }
       },
     },
+    tabs: {
+      mode: 'tabs',
+      keyword: '@tab',
+      maxItems: 20,
+      emptyText: () => t('chat.mentionNoTabs'),
+      getData: () => {
+        const { getTerminals, getActiveTerminal } = require('../../state');
+        const terminals = getTerminals();
+        const activeId = getActiveTerminal();
+        const items = [];
+        terminals.forEach((term, id) => {
+          if (id === activeId) return;
+          const projName = term.project?.name || term.project?.path || '';
+          items.push({ id, name: term.name || `Terminal ${id}`, projectName: projName, status: term.status || 'ready', mode: term.mode || 'terminal', isBasic: !!term.isBasic });
+        });
+        return items;
+      },
+      filter: (items, q) => items.filter(t => (t.name || '').toLowerCase().includes(q) || (t.projectName || '').toLowerCase().includes(q)),
+      renderItem: (tab) => {
+        const statusDot = tab.status === 'working' ? '🟢' : tab.status === 'loading' ? '🟡' : '⚪';
+        const modeLabel = tab.mode === 'chat' ? 'Chat' : tab.isBasic ? 'Terminal' : 'Claude';
+        return `
+        <span class="chat-mention-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 8h8l2-4h8"/><polyline points="7,13 10,16 7,19"/></svg></span>
+        <div class="chat-mention-item-info">
+          <span class="chat-mention-item-name">${statusDot} ${escapeHtml(tab.name)}</span>
+          <span class="chat-mention-item-desc">${escapeHtml(tab.projectName)} · ${modeLabel}</span>
+        </div>`;
+      },
+      itemAttrs: (tab) => `data-terminalid="${tab.id}" data-terminalname="${escapeHtml(tab.name)}"`,
+      onSelect: (el) => {
+        if (el.dataset.terminalid) {
+          removeAtTrigger();
+          addMentionChip('tab', { terminalId: parseInt(el.dataset.terminalid) || el.dataset.terminalid, name: el.dataset.terminalname });
+          hideMentionDropdown();
+          inputEl.focus();
+        }
+      },
+    },
+    conversations: {
+      mode: 'conversations',
+      keyword: '@conversation',
+      maxItems: 20,
+      emptyText: () => conversationCache?._loading ? (t('chat.mentionConversationsLoading') || 'Loading...') : t('chat.mentionNoConversations'),
+      getData: () => {
+        if (conversationCache && conversationCache.projectPath === project?.path && !conversationCache._loading) {
+          return conversationCache.sessions || [];
+        }
+        return [];
+      },
+      filter: (items, q) => items.filter(s => (s.firstPrompt || '').toLowerCase().includes(q) || (s.summary || '').toLowerCase().includes(q)),
+      renderItem: (session) => {
+        const date = session.modified ? new Date(session.modified) : null;
+        const dateStr = date ? date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : '';
+        const prompt = session.firstPrompt || session.summary || session.sessionId?.slice(0, 8) || '?';
+        const truncated = prompt.length > 80 ? prompt.slice(0, 80) + '…' : prompt;
+        return `
+        <span class="chat-mention-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/><path d="M8 9h8"/><path d="M8 13h5"/></svg></span>
+        <div class="chat-mention-item-info">
+          <span class="chat-mention-item-name">${escapeHtml(truncated)}</span>
+          <span class="chat-mention-item-desc">${escapeHtml(dateStr)}${session.messageCount ? ` · ${session.messageCount} msgs` : ''}${session.gitBranch ? ` · ${escapeHtml(session.gitBranch)}` : ''}</span>
+        </div>`;
+      },
+      itemAttrs: (session) => `data-sessionid="${escapeHtml(session.sessionId)}" data-sessionname="${escapeHtml((session.firstPrompt || session.summary || '').slice(0, 60))}"`,
+      onSelect: (el) => {
+        if (el.dataset.sessionid) {
+          removeAtTrigger();
+          addMentionChip('conversation', { sessionId: el.dataset.sessionid, firstPrompt: el.dataset.sessionname, projectPath: project?.path });
+          hideMentionDropdown();
+          inputEl.focus();
+        }
+      },
+    },
   };
 
   // Map mention type names to their picker config key
-  const PICKER_TYPE_MAP = { file: 'file', project: 'projects', context: 'context', prompt: 'prompt' };
+  const PICKER_TYPE_MAP = { file: 'file', project: 'projects', context: 'context', prompt: 'prompt', tab: 'tabs', conversation: 'conversations' };
 
   /**
    * Generic picker dropdown renderer — used by all picker modes
@@ -1310,6 +1386,22 @@ function createChatView(wrapperEl, project, options = {}) {
       mentionMode = cfg.mode;
       renderPickerDropdown(cfg, '');
       inputEl.focus();
+      // Async data loading for conversation picker
+      if (type === 'conversation' && project?.path) {
+        const projectPath = project.path;
+        const isFresh = conversationCache && conversationCache.projectPath === projectPath && !conversationCache._loading && Date.now() - conversationCache.timestamp < CONVERSATION_CACHE_TTL;
+        if (!isFresh) {
+          conversationCache = { sessions: [], timestamp: 0, projectPath, _loading: true };
+          renderPickerDropdown(cfg, '');
+          api.claude.sessions(projectPath).then(sessions => {
+            conversationCache = { sessions: sessions || [], timestamp: Date.now(), projectPath, _loading: false };
+            if (mentionMode === 'conversations') renderPickerDropdown(cfg, '');
+          }).catch(() => {
+            conversationCache = { sessions: [], timestamp: Date.now(), projectPath, _loading: false };
+            if (mentionMode === 'conversations') renderPickerDropdown(cfg, '');
+          });
+        }
+      }
       return;
     }
 
@@ -1363,6 +1455,8 @@ function createChatView(wrapperEl, project, options = {}) {
     else if (type === 'symbol' && data?.name) label = `@symbol:${data.name}`;
     else if (type === 'project' && data?.name) label = `@project:${data.name}`;
     else if (type === 'context' && data?.name) label = `@context:${data.name}`;
+    else if (type === 'tab' && data?.name) label = `@tab:${data.name}`;
+    else if (type === 'conversation' && data?.firstPrompt) label = `@conversation:${data.firstPrompt.slice(0, 40)}${data.firstPrompt.length > 40 ? '…' : ''}`;
     else label = `@${type}`;
     let icon = getMentionIcon(type);
     // Use project emoji if available
@@ -1685,6 +1779,62 @@ function createChatView(wrapperEl, project, options = {}) {
           }
           break;
         }
+
+        case 'tab': {
+          const tabName = mention.data?.name || 'Unknown';
+          const termId = mention.data?.terminalId;
+          if (termId == null) {
+            content = `[Tab "${tabName}" not found]`;
+            break;
+          }
+          const lines = extractTerminalLines(300, termId);
+          content = lines.length > 0
+            ? `Tab "${tabName}" Output (last ${lines.length} lines):\n\n${lines.join('\n')}`
+            : `[Tab "${tabName}" has no output]`;
+          break;
+        }
+
+        case 'conversation': {
+          const sessionId = mention.data?.sessionId;
+          const sessionName = mention.data?.firstPrompt || 'Unknown';
+          const sessionProjectPath = mention.data?.projectPath || project?.path;
+          if (!sessionId || !sessionProjectPath) {
+            content = `[Conversation not found]`;
+            break;
+          }
+          try {
+            const replay = await api.claude.sessionReplay({ projectPath: sessionProjectPath, sessionId, max_steps: 100 });
+            if (!replay?.steps?.length) {
+              content = `[Conversation "${sessionName}" is empty]`;
+              break;
+            }
+            const parts = [`Conversation: "${sessionName}"`];
+            if (replay.summary) {
+              parts.push(`Steps: ${replay.summary.totalSteps || 0}, Est. tokens: ${(replay.summary.totalEstimatedTokens || 0).toLocaleString()}`);
+              if (replay.summary.toolBreakdown) {
+                const tools = Object.entries(replay.summary.toolBreakdown).map(([k, v]) => `${k}(${v})`).join(', ');
+                parts.push(`Tools used: ${tools}`);
+              }
+            }
+            parts.push('');
+            for (const step of replay.steps) {
+              if (step.type === 'prompt') {
+                const txt = step.text?.length > 500 ? step.text.slice(0, 500) + '…' : step.text;
+                parts.push(`[User] ${txt}`);
+              } else if (step.type === 'response') {
+                const txt = step.text?.length > 1000 ? step.text.slice(0, 1000) + '…' : step.text;
+                parts.push(`[Claude] ${txt}`);
+              } else if (step.type === 'tool') {
+                parts.push(`[Tool: ${step.toolName}]${step.filePath ? ` ${step.filePath}` : ''}`);
+              }
+            }
+            content = parts.join('\n');
+            if (content.length > 30000) content = content.slice(0, 30000) + '\n\n[Truncated at 30,000 chars]';
+          } catch (e) {
+            content = `[Error loading conversation "${sessionName}": ${e.message}]`;
+          }
+          break;
+        }
       }
 
       resolved.push({ label: mention.label, content });
@@ -1693,24 +1843,8 @@ function createChatView(wrapperEl, project, options = {}) {
     return resolved;
   }
 
-  function extractTerminalLines(maxLines) {
-    // Access active terminal's xterm.js buffer via state
+  function extractTerminalLinesFrom(termData, maxLines) {
     try {
-      const { getActiveTerminal, getTerminal, getTerminalsForProject } = require('../../state');
-      const { getProjectIndex } = require('../../state');
-
-      // Try active terminal first, then find one for this project
-      let termData = null;
-      const activeId = getActiveTerminal();
-      if (activeId != null) {
-        const t = getTerminal(activeId);
-        if (t?.projectIndex === getProjectIndex(project?.id)) termData = t;
-      }
-      if (!termData) {
-        const projectTerminals = getTerminalsForProject(getProjectIndex(project?.id));
-        if (projectTerminals.length > 0) termData = getTerminal(projectTerminals[0].id);
-      }
-
       if (!termData?.terminal?.buffer?.active) return [];
       const buf = termData.terminal.buffer.active;
       const totalLines = buf.baseY + buf.cursorY;
@@ -1724,6 +1858,32 @@ function createChatView(wrapperEl, project, options = {}) {
         }
       }
       return lines;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function extractTerminalLines(maxLines, targetTerminalId) {
+    try {
+      const { getActiveTerminal, getTerminal, getTerminalsForProject } = require('../../state');
+      const { getProjectIndex } = require('../../state');
+
+      let termData = null;
+      if (targetTerminalId != null) {
+        termData = getTerminal(targetTerminalId);
+      } else {
+        const activeId = getActiveTerminal();
+        if (activeId != null) {
+          const t = getTerminal(activeId);
+          if (t?.projectIndex === getProjectIndex(project?.id)) termData = t;
+        }
+        if (!termData) {
+          const projectTerminals = getTerminalsForProject(getProjectIndex(project?.id));
+          if (projectTerminals.length > 0) termData = getTerminal(projectTerminals[0].id);
+        }
+      }
+
+      return extractTerminalLinesFrom(termData, maxLines);
     } catch (e) {
       return [];
     }
@@ -2505,7 +2665,7 @@ function createChatView(wrapperEl, project, options = {}) {
         const tagColorRaw = (m.type === 'project' && m.data?.color) ? m.data.color : '';
         const tagColor = sanitizeColor(tagColorRaw);
         const tagStyle = tagColor ? ` style="--chip-color: ${tagColor}"` : '';
-        return `<span class="chat-msg-mention-tag${tagColor ? ' has-project-color' : ''}"${tagStyle}>${escapeHtml(m.icon)}<span>${escapeHtml(m.label)}</span></span>`;
+        return `<span class="chat-msg-mention-tag${tagColor ? ' has-project-color' : ''}"${tagStyle}>${m.icon}<span>${escapeHtml(m.label)}</span></span>`;
       }).join('')}</div>`;
     }
     if (images.length > 0) {
