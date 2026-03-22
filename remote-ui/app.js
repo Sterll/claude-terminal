@@ -1450,6 +1450,13 @@ function resumePastSession(sessionId, projectId) {
   const project = state.projects.find(p => p.id === projectId);
   if (!project) return;
 
+  // Visual feedback: dim the card to show it's loading
+  const card = document.querySelector(`.session-card-past[data-resume-id="${sessionId}"]`);
+  if (card) {
+    card.style.opacity = '0.4';
+    card.style.pointerEvents = 'none';
+  }
+
   // Cloud/headless mode: resume via cloud API
   if (state.desktopOffline && conn.cloudUrl && conn.cloudApiKey) {
     const projectName = project.name || project.path?.split(/[\\/]/).pop() || '';
@@ -1463,7 +1470,6 @@ function resumePastSession(sessionId, projectId) {
   renderChatView();
   wsSend('chat:start', {
     cwd: project.path,
-    prompt: '',
     resumeSessionId: sessionId,
   });
 }
