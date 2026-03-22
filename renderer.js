@@ -1664,9 +1664,9 @@ async function cloudUploadProject(projectId) {
 
   try {
     if (useGitClone) {
-      await api.cloud.uploadProjectGit({ projectName, projectPath: project.path, cloudProjectKey: project.cloudProjectKey || null });
+      await api.cloud.uploadProjectGit({ projectId: project.id, projectName, projectPath: project.path });
     } else {
-      await api.cloud.uploadProject({ projectName, projectPath: project.path, cloudProjectKey: project.cloudProjectKey || null });
+      await api.cloud.uploadProject({ projectId: project.id, projectName, projectPath: project.path });
     }
     cloudUploadStatus.set(projectId, { synced: true, lastSync: Date.now() });
     // Register for auto-sync (file watcher)
@@ -1701,7 +1701,7 @@ async function cloudDeleteProject(projectId) {
   if (!confirmed) return;
 
   try {
-    await api.cloud.deleteProject({ projectId, projectName, cloudProjectKey: project.cloudProjectKey || null });
+    await api.cloud.deleteProject({ projectId, projectName });
     cloudUploadStatus.delete(projectId);
     ProjectList.render();
     showToast({ type: 'success', title: t('cloud.deleteSuccess'), message: projectName });
@@ -1725,9 +1725,9 @@ async function cloudSyncProject(projectId) {
   try {
     // Check for conflicts before downloading
     const { conflicts, totalFiles } = await api.cloud.checkConflicts({
+      projectId: project.id,
       projectName,
       localProjectPath: project.path,
-      cloudProjectKey: project.cloudProjectKey || null,
     });
 
     if (conflicts.length > 0) {
@@ -1740,14 +1740,14 @@ async function cloudSyncProject(projectId) {
         return;
       }
       await api.cloud.downloadWithResolutions({
+        projectId: project.id,
         projectName,
         localProjectPath: project.path,
         resolutions,
-        cloudProjectKey: project.cloudProjectKey || null,
       });
     } else {
       // No conflicts — download directly
-      await api.cloud.downloadChanges({ projectName, localProjectPath: project.path, cloudProjectKey: project.cloudProjectKey || null });
+      await api.cloud.downloadChanges({ projectId: project.id, projectName, localProjectPath: project.path });
     }
 
     cloudUploadStatus.set(projectId, { synced: true, lastSync: Date.now() });

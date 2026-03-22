@@ -177,13 +177,13 @@ function _registerCloudListeners(api) {
           try {
             const projects = _getAllProjects();
             const localProject = projects.find(p =>
-              p.name === session.projectName || p.path?.replace(/\\/g, '/').split('/').pop() === session.projectName
+              p.id === session.projectName || p.name === session.projectName || p.path?.replace(/\\/g, '/').split('/').pop() === session.projectName
             );
             await api.cloud.takeoverSession({
               sessionId: session.id,
+              projectId: localProject?.id || session.projectName,
               projectName: session.projectName,
               localProjectPath: localProject?.path || null,
-              cloudProjectKey: session.projectName, // already scoped, use as-is
             });
             Toast.show(t('cloud.syncApplied'), 'success');
           } catch (err) {
@@ -198,14 +198,15 @@ function _registerCloudListeners(api) {
   if (api.cloud.onPendingChanges) {
     api.cloud.onPendingChanges(async ({ changes }) => {
       if (!changes || changes.length === 0) return;
-      for (const { projectName, changes: fileChanges } of changes) {
+      for (const { projectName, displayName, changes: fileChanges } of changes) {
         const files = fileChanges.flatMap(c => c.changedFiles || []);
         if (files.length === 0) continue;
 
+        const showName = displayName || projectName;
         // Build a message with the file list preview
         const preview = files.slice(0, 8).map(f => `  - ${f}`).join('\n');
         const moreText = files.length > 8 ? `\n  ... +${files.length - 8} ${t('cloud.syncMoreFiles')}` : '';
-        const message = t('cloud.syncMessage', { project: projectName, count: files.length }) + '\n\n' + preview + moreText;
+        const message = t('cloud.syncMessage', { project: showName, count: files.length }) + '\n\n' + preview + moreText;
 
         const confirmed = await showConfirm({
           title: t('cloud.syncTitle'),
@@ -217,17 +218,17 @@ function _registerCloudListeners(api) {
           try {
             const projects = _getAllProjects();
             const localProject = projects.find(p =>
-              p.name === projectName || p.path?.replace(/\\/g, '/').split('/').pop() === projectName
+              p.id === projectName || p.name === projectName || p.path?.replace(/\\/g, '/').split('/').pop() === projectName
             );
             if (localProject) {
               await api.cloud.downloadChanges({
+                projectId: localProject.id,
                 projectName,
                 localProjectPath: localProject.path,
-                cloudProjectKey: projectName, // already scoped (comes from cloud), use as-is
               });
               Toast.show(t('cloud.syncApplied'), 'success');
             } else {
-              Toast.show(t('cloud.syncNoLocalProject', { project: projectName }), 'warning');
+              Toast.show(t('cloud.syncNoLocalProject', { project: showName }), 'warning');
             }
           } catch (err) {
             Toast.show(t('cloud.syncError') || t('cloud.uploadError'), 'error');

@@ -73,33 +73,6 @@ function registerProjectHandlers() {
     await scanDir(resolvedPath);
     return todos;
   });
-
-  ipcMain.handle('project:set-cloud-key', async (_event, { projectId, cloudProjectKey }) => {
-    if (!projectId || typeof projectId !== 'string') throw new Error('Invalid projectId');
-    let data = { projects: [] };
-    try {
-      data = JSON.parse(fs.readFileSync(projectsFile, 'utf8'));
-    } catch (e) {}
-
-    const project = (data.projects || []).find(p => p.id === projectId);
-    if (!project) throw new Error('Project not found');
-
-    if (cloudProjectKey && typeof cloudProjectKey === 'string' && cloudProjectKey.trim()) {
-      project.cloudProjectKey = cloudProjectKey.trim();
-    } else {
-      delete project.cloudProjectKey;
-    }
-
-    const tmp = projectsFile + '.tmp';
-    try {
-      fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
-      fs.renameSync(tmp, projectsFile);
-    } catch (writeErr) {
-      try { fs.unlinkSync(tmp); } catch (_) {}
-      throw writeErr;
-    }
-    return { ok: true };
-  });
 }
 
 module.exports = { registerProjectHandlers };

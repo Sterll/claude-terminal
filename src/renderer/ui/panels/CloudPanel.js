@@ -873,24 +873,15 @@ function setupHandlers(context) {
       }
 
       const localProjects = _ctx.projectsState?.get()?.projects || [];
-      // Build lookup sets for matching cloud projects to local ones
-      const localCloudKeys = new Set(localProjects.filter(p => p.cloudProjectKey).map(p => p.cloudProjectKey));
-      const localNames = new Set(localProjects.map(p => p.name));
-      const localBasenames = new Set(localProjects.map(p => p.path?.replace(/\\/g, '/').split('/').pop()).filter(Boolean));
-
-      // Extract display name from cloud key: strip machineId prefix ({hostname}-{8hex}-)
-      function _extractProjectName(cloudKey) {
-        // Cloud key format: {machineId}-{projectName} where machineId = {hostname}-{8hex}
-        const match = cloudKey.match(/^.+-[0-9a-f]{8}-(.+)$/);
-        return match ? match[1] : cloudKey;
-      }
+      // Match cloud projects to local by project ID (UUID)
+      const localProjectIds = new Set(localProjects.map(p => p.id));
 
       listEl.innerHTML = cloudProjects.map(p => {
-        const displayName = _extractProjectName(p.name);
-        const isLocal = localCloudKeys.has(p.name) || localNames.has(displayName) || localBasenames.has(displayName);
+        const displayName = p.displayName || p.name;
+        const isLocal = localProjectIds.has(p.name);
         const badge = isLocal
           ? `<span class="cp-cloud-project-local">${t('cloud.cloudProjectLocal')}</span>`
-          : `<button class="cp-btn-sm cp-cloud-project-import" data-name="${_escapeHtml(p.name)}">${t('cloud.cloudProjectImport')}</button>`;
+          : `<button class="cp-btn-sm cp-cloud-project-import" data-name="${_escapeHtml(p.name)}" data-display="${_escapeHtml(displayName)}">${t('cloud.cloudProjectImport')}</button>`;
         return `<div class="cp-session-item">
           <div class="cp-session-info">
             <div class="cp-session-top">
@@ -904,21 +895,25 @@ function setupHandlers(context) {
       listEl.querySelectorAll('.cp-cloud-project-import').forEach(btn => {
         btn.addEventListener('click', async () => {
           const projectName = btn.dataset.name;
+          const displayName = btn.dataset.display || projectName;
           btn.disabled = true;
           btn.textContent = t('cloud.cloudProjectImporting');
           const Toast = require('../../ui/components/Toast');
           try {
-            const result = await api.cloud.importProject({ projectName });
+            const result = await api.cloud.importProject({ projectName, displayName });
             if (result.canceled) {
               btn.disabled = false;
               btn.textContent = t('cloud.cloudProjectImport');
               return;
             }
-            // Add to local projects state (skip auto-upload since it's already in cloud)
+            // Add to local projects state with matching ID so it links to cloud
             const { addProject } = require('../../state');
-            const imported = addProject({ name: result.projectName, path: result.projectPath, type: 'standalone' });
+            const importData = { name: result.projectName, path: result.projectPath, type: 'standalone' };
+            // Use the cloud project ID as the local project ID for cross-machine linking
+            if (result.cloudProjectId) importData.id = result.cloudProjectId;
+            const imported = addProject(importData);
             if (imported && window._cloudSkipAutoUpload) window._cloudSkipAutoUpload(imported.id);
-            Toast.show(t('cloud.cloudProjectImported', { name: projectName }), 'success');
+            Toast.show(t('cloud.cloudProjectImported', { name: displayName }), 'success');
             await _loadCloudProjects(false);
           } catch (err) {
             Toast.show(err.message || t('cloud.uploadError'), 'error');
@@ -1028,7 +1023,7 @@ function setupHandlers(context) {
           try {
             const projects = _ctx.projectsState?.get()?.projects || [];
             const localProject = projects.find(p =>
-              p.name === projName || p.path?.replace(/\\/g, '/').split('/').pop() === projName
+              p.id === projName || p.name === projName || p.path?.replace(/\\/g, '/').split('/').pop() === projName
             );
             if (!localProject) {
               const Toast = require('../../ui/components/Toast');
@@ -1037,7 +1032,7 @@ function setupHandlers(context) {
               btn.textContent = t('cloud.syncApply');
               return;
             }
-            await api.cloud.downloadChanges({ projectName: projName, localProjectPath: localProject.path, cloudProjectKey: projName });
+            await api.cloud.downloadChanges({ projectId: localProject.id, projectName: projName, localProjectPath: localProject.path });
             const Toast = require('../../ui/components/Toast');
             Toast.show(t('cloud.syncApplied'), 'success');
             await _checkCloudChanges();
