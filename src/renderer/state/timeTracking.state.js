@@ -12,7 +12,7 @@
  * - Crash-safe: tick saves active session startedAt as checkpoint
  */
 
-const { fs } = window.electron_nodeModules;
+const { fs, path } = window.electron_nodeModules;
 const { State } = require('./State');
 const { timeTrackingFile, projectsFile } = require('../utils/paths');
 const ArchiveService = require('../services/ArchiveService');
@@ -114,15 +114,29 @@ function saveImmediate() {
 
     const tmpFile = timeTrackingFile + '.tmp';
     const bakFile = timeTrackingFile + '.bak';
+    const jsonStr = JSON.stringify(data, null, 2);
 
-    fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2), 'utf8');
-
-    // Atomic rename
-    if (fs.existsSync(timeTrackingFile)) {
-      try { fs.copyFileSync(timeTrackingFile, bakFile); } catch (e) { /* ignore */ }
+    // Ensure parent directory exists
+    const dir = path.dirname(timeTrackingFile);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
     }
-    fs.renameSync(tmpFile, timeTrackingFile);
-    try { if (fs.existsSync(bakFile)) fs.unlinkSync(bakFile); } catch (e) { /* ignore */ }
+
+    try {
+      fs.writeFileSync(tmpFile, jsonStr, 'utf8');
+
+      // Atomic rename
+      if (fs.existsSync(timeTrackingFile)) {
+        try { fs.copyFileSync(timeTrackingFile, bakFile); } catch (e) { /* ignore */ }
+      }
+      fs.renameSync(tmpFile, timeTrackingFile);
+      try { if (fs.existsSync(bakFile)) fs.unlinkSync(bakFile); } catch (e) { /* ignore */ }
+    } catch (renameErr) {
+      // Fallback: write directly if atomic rename fails (e.g. antivirus lock on Windows)
+      console.warn('[TimeTracking] Atomic save failed, falling back to direct write:', renameErr.message);
+      fs.writeFileSync(timeTrackingFile, jsonStr, 'utf8');
+      try { if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile); } catch (e) { /* ignore */ }
+    }
 
     dirty = false;
   } catch (e) {
