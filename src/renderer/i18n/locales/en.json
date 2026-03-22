@@ -1768,6 +1768,8 @@
     "projectRemovedFromCloudMessage": "The project \"{name}\" was deleted from the cloud. Remove it locally too?",
     "projectRemovedDelete": "Remove locally",
     "projectRemovedKeep": "Keep local copy",
+    "projectUpdatedRemotely": "Project updated",
+    "projectUpdatedRemotelyMessage": "\"{name}\" was updated from another machine",
     "relayTitle": "Cloud Relay",
     "toggleVisibility": "Toggle visibility",
     "deleteSession": "Delete",

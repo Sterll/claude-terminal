@@ -1768,6 +1768,8 @@
     "projectRemovedFromCloudMessage": "Le projet « {name} » a été supprimé du cloud. Le supprimer localement aussi ?",
     "projectRemovedDelete": "Supprimer localement",
     "projectRemovedKeep": "Garder la copie locale",
+    "projectUpdatedRemotely": "Projet mis à jour",
+    "projectUpdatedRemotelyMessage": "« {name} » a été mis à jour depuis une autre machine",
     "relayTitle": "Cloud Relay",
     "toggleVisibility": "Basculer la visibilité",
     "deleteSession": "Supprimer",

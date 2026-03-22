@@ -20,5 +20,6 @@ export const config = {
   dataDir: path.resolve(__dirname, '..', 'data'),
   usersDir: path.resolve(__dirname, '..', 'data', 'users'),
 
+  maxDesktopsPerUser: 5,
   maxMobilesPerUser: 5,
 };

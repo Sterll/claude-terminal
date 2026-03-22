@@ -9,7 +9,7 @@ export interface RoomClient {
 
 export class Room {
   readonly userName: string;
-  private desktop: RoomClient | null = null;
+  private desktops: Map<WebSocket, RoomClient> = new Map();
   private mobiles: Map<WebSocket, RoomClient> = new Map();
 
   constructor(userName: string) {
@@ -17,11 +17,15 @@ export class Room {
   }
 
   get isEmpty(): boolean {
-    return !this.desktop && this.mobiles.size === 0;
+    return this.desktops.size === 0 && this.mobiles.size === 0;
   }
 
   get hasDesktop(): boolean {
-    return this.desktop !== null;
+    return this.desktops.size > 0;
+  }
+
+  get desktopCount(): number {
+    return this.desktops.size;
   }
 
   get mobileCount(): number {
@@ -29,16 +33,22 @@ export class Room {
   }
 
   get desktopConnectedAt(): number | null {
-    return this.desktop?.connectedAt ?? null;
+    let min = Infinity;
+    for (const [, c] of this.desktops) min = Math.min(min, c.connectedAt);
+    return min === Infinity ? null : min;
   }
 
   addDesktop(ws: WebSocket): boolean {
-    if (this.desktop) {
-      // Kick previous desktop
-      this.sendTo(this.desktop.ws, { type: 'relay:kicked', reason: 'new-desktop' });
-      this.desktop.ws.close(4001, 'Replaced by new desktop');
+    if (this.desktops.size >= config.maxDesktopsPerUser) {
+      // Kick oldest desktop to make room
+      const oldest = [...this.desktops.entries()].sort((a, b) => a[1].connectedAt - b[1].connectedAt)[0];
+      if (oldest) {
+        this.sendTo(oldest[0], { type: 'relay:kicked', reason: 'too-many-desktops' });
+        oldest[0].close(4001, 'Too many desktops');
+        this.desktops.delete(oldest[0]);
+      }
     }
-    this.desktop = { ws, role: 'desktop', connectedAt: Date.now() };
+    this.desktops.set(ws, { ws, role: 'desktop', connectedAt: Date.now() });
 
     // Notify mobiles
     this.broadcastToMobiles({ type: 'relay:desktop-online' });
@@ -52,7 +62,7 @@ export class Room {
     this.mobiles.set(ws, { ws, role: 'mobile', connectedAt: Date.now() });
 
     // Tell mobile if desktop is online or not
-    if (this.desktop) {
+    if (this.desktops.size > 0) {
       this.sendTo(ws, { type: 'relay:desktop-online' });
     } else {
       this.sendTo(ws, { type: 'relay:desktop-offline' });
@@ -61,37 +71,64 @@ export class Room {
   }
 
   removeClient(ws: WebSocket): void {
-    if (this.desktop?.ws === ws) {
-      this.desktop = null;
-      this.broadcastToMobiles({ type: 'relay:desktop-offline' });
+    if (this.desktops.delete(ws)) {
+      if (this.desktops.size === 0) {
+        this.broadcastToMobiles({ type: 'relay:desktop-offline' });
+      }
       return;
     }
     this.mobiles.delete(ws);
   }
 
   handleMessage(senderWs: WebSocket, data: string): void {
-    if (this.desktop?.ws === senderWs) {
+    if (this.desktops.has(senderWs)) {
       // Desktop → all mobiles
       this.broadcastToMobiles(data);
     } else if (this.mobiles.has(senderWs)) {
-      // Mobile → desktop
-      if (this.desktop && this.desktop.ws.readyState === WebSocket.OPEN) {
-        this.desktop.ws.send(typeof data === 'string' ? data : JSON.stringify(data));
-      }
+      // Mobile → all desktops
+      this.broadcastToDesktops(data);
     }
   }
 
   sendToDesktop(data: string | object): boolean {
-    if (this.desktop && this.desktop.ws.readyState === WebSocket.OPEN) {
-      const msg = typeof data === 'string' ? data : JSON.stringify(data);
-      this.desktop.ws.send(msg);
-      return true;
+    // Send to all desktops (backwards compat — used by webhook)
+    if (this.desktops.size === 0) return false;
+    const msg = typeof data === 'string' ? data : JSON.stringify(data);
+    let sent = false;
+    for (const [, client] of this.desktops) {
+      if (client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(msg);
+        sent = true;
+      }
     }
-    return false;
+    return sent;
+  }
+
+  broadcastToDesktops(data: string | object): void {
+    const msg = typeof data === 'string' ? data : JSON.stringify(data);
+    for (const [, client] of this.desktops) {
+      if (client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(msg);
+      }
+    }
   }
 
   broadcastToMobiles(data: string | object): void {
     const msg = typeof data === 'string' ? data : JSON.stringify(data);
+    for (const [, client] of this.mobiles) {
+      if (client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(msg);
+      }
+    }
+  }
+
+  broadcastToAll(data: string | object): void {
+    const msg = typeof data === 'string' ? data : JSON.stringify(data);
+    for (const [, client] of this.desktops) {
+      if (client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(msg);
+      }
+    }
     for (const [, client] of this.mobiles) {
       if (client.ws.readyState === WebSocket.OPEN) {
         client.ws.send(msg);

@@ -96,6 +96,10 @@ async function _migrateLegacyProject(url, key, projectId, projectName) {
 function registerCloudHandlers() {
   // Wire callbacks once (they just register listeners, not start anything)
   cloudRelayClient.onMessage((msg) => {
+    // Forward cloud events to renderer
+    if (msg?.type === 'cloud:project-updated' && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('cloud:project-updated', msg);
+    }
     remoteServer.handleCloudMessage(msg);
   });
 
@@ -180,7 +184,7 @@ function registerCloudHandlers() {
       // Zip the project (include .git so cloud sessions can push/pull)
       await zipProject(projectPath, zipPath, (progress) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('cloud:upload-progress', progress);
+          mainWindow.webContents.send('cloud:upload-progress', { ...progress, projectId });
         }
       }, { includeGit: true });
 
@@ -196,7 +200,7 @@ function registerCloudHandlers() {
       const totalMB = Math.round(zipSize / 1024 / 1024);
 
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('cloud:upload-progress', { phase: 'uploading', percent: 0, uploadedMB: 0, totalMB });
+        mainWindow.webContents.send('cloud:upload-progress', { phase: 'uploading', percent: 0, uploadedMB: 0, totalMB, projectId });
       }
 
       const http = url.startsWith('https') ? require('https') : require('http');
@@ -262,7 +266,7 @@ function registerCloudHandlers() {
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('cloud:upload-progress', {
                 phase: 'uploading', percent: pct,
-                uploadedMB: Math.round(uploadedBytes / 1024 / 1024), totalMB,
+                uploadedMB: Math.round(uploadedBytes / 1024 / 1024), totalMB, projectId,
               });
             }
           }
@@ -271,7 +275,7 @@ function registerCloudHandlers() {
       });
 
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('cloud:upload-progress', { phase: 'done', percent: 100 });
+        mainWindow.webContents.send('cloud:upload-progress', { phase: 'done', percent: 100, projectId });
       }
 
       return { success: true, ...result };
@@ -322,7 +326,7 @@ function registerCloudHandlers() {
       cloneUrl = cloneUrl.replace('https://github.com/', `https://${token}@github.com/`);
 
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('cloud:upload-progress', { phase: 'cloning', percent: 10 });
+        mainWindow.webContents.send('cloud:upload-progress', { phase: 'cloning', percent: 10, projectId });
       }
 
       // Ask cloud server to git clone
@@ -338,7 +342,7 @@ function registerCloudHandlers() {
       }
 
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('cloud:upload-progress', { phase: 'patching', percent: 70 });
+        mainWindow.webContents.send('cloud:upload-progress', { phase: 'patching', percent: 70, projectId });
       }
 
       // Generate diffs: unpushed commits + working tree changes + untracked files
@@ -399,7 +403,7 @@ function registerCloudHandlers() {
       }
 
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('cloud:upload-progress', { phase: 'done', percent: 100 });
+        mainWindow.webContents.send('cloud:upload-progress', { phase: 'done', percent: 100, projectId });
       }
 
       return { success: true, method: 'git-clone' };

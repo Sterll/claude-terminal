@@ -239,6 +239,7 @@ export function createCloudRouter(relay?: RelayServer): Router {
         await store.saveUser(req.userName!, user);
       }
 
+      relay?.notifyRoom(req.userName!, { type: 'cloud:project-updated', projectId: name, displayName: displayName || name, timestamp: Date.now() });
       res.status(201).json({ name, displayName: displayName || name, path: projectPath });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
@@ -305,6 +306,7 @@ export function createCloudRouter(relay?: RelayServer): Router {
       }
 
       const projectPath = await projectManager.createFromZip(req.userName!, name, req.file.path, displayName);
+      relay?.notifyRoom(req.userName!, { type: 'cloud:project-updated', projectId: name, displayName, timestamp: Date.now() });
       res.status(201).json({ name, displayName, path: projectPath });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
@@ -319,6 +321,7 @@ export function createCloudRouter(relay?: RelayServer): Router {
       }
       const name = req.params.name as string;
       await projectManager.syncProject(req.userName!, name, req.file.path);
+      relay?.notifyRoom(req.userName!, { type: 'cloud:project-updated', projectId: name, timestamp: Date.now() });
       res.json({ ok: true });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
@@ -334,6 +337,7 @@ export function createCloudRouter(relay?: RelayServer): Router {
       }
       const name = req.params.name as string;
       const result = await projectManager.patchProject(req.userName!, name, req.file.path);
+      relay?.notifyRoom(req.userName!, { type: 'cloud:project-updated', projectId: name, timestamp: Date.now() });
       res.json({ ok: true, ...result });
     } catch (err: any) {
       res.status(400).json({ error: err.message });

@@ -1732,6 +1732,8 @@
     "projectRemovedFromCloudMessage": "El proyecto \"{name}\" fue eliminado de la nube. ¿Eliminarlo localmente también?",
     "projectRemovedDelete": "Eliminar localmente",
     "projectRemovedKeep": "Conservar copia local",
+    "projectUpdatedRemotely": "Proyecto actualizado",
+    "projectUpdatedRemotelyMessage": "\"{name}\" fue actualizado desde otra máquina",
     "relayTitle": "Relay en la nube",
     "toggleVisibility": "Alternar visibilidad",
     "deleteSession": "Eliminar",

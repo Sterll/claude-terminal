@@ -1890,6 +1890,18 @@ let _uploadSpeedStart = null;
 let _uploadSpeedLastMB = 0;
 if (api.cloud?.onUploadProgress) {
   api.cloud.onUploadProgress((progress) => {
+    // Update cloudUploadStatus for project list badge (SVG ring)
+    if (progress.projectId) {
+      const current = cloudUploadStatus.get(progress.projectId) || {};
+      if (progress.phase === 'done') {
+        cloudUploadStatus.set(progress.projectId, { ...current, uploadProgress: null });
+      } else {
+        cloudUploadStatus.set(progress.projectId, { ...current, uploadProgress: progress });
+      }
+      ProjectList.render();
+    }
+
+    // Update toast message
     if (!_activeUploadToast) { _uploadSpeedStart = null; return; }
     const msgEl = _activeUploadToast.querySelector('.toast-message');
     if (!msgEl) return;
@@ -1912,6 +1924,27 @@ if (api.cloud?.onUploadProgress) {
         const pct = typeof progress.percent === 'number' ? ` (${progress.percent}%)` : '';
         msgEl.textContent = phases[progress.phase] + pct;
       }
+    }
+  });
+}
+
+// Cross-machine notification: another desktop uploaded a project
+if (api.cloud?.onProjectUpdated) {
+  api.cloud.onProjectUpdated((data) => {
+    const localProjects = projectsState.get().projects || [];
+    const project = localProjects.find(p => p.id === data.projectId);
+    const displayName = data.displayName || project?.name || data.projectId;
+
+    showToast({
+      type: 'info',
+      title: t('cloud.projectUpdatedRemotely'),
+      message: t('cloud.projectUpdatedRemotelyMessage', { name: displayName }),
+      duration: 8000,
+    });
+
+    // Trigger diff check to sync changes
+    if (project) {
+      _checkAllProjectsDiff();
     }
   });
 }

@@ -77,7 +77,7 @@ export class RelayServer {
     let desktops = 0;
     let mobiles = 0;
     for (const [, room] of this.rooms) {
-      if (room.hasDesktop) desktops++;
+      desktops += room.desktopCount;
       mobiles += room.mobileCount;
     }
     return { rooms: this.rooms.size, desktops, mobiles };
@@ -85,6 +85,13 @@ export class RelayServer {
 
   getRoomForUser(userName: string): Room | undefined {
     return this.rooms.get(userName);
+  }
+
+  notifyRoom(userName: string, data: object): boolean {
+    const room = this.rooms.get(userName);
+    if (!room) return false;
+    room.broadcastToAll(data);
+    return true;
   }
 
   listRooms(): Array<{ userName: string; hasDesktop: boolean; mobileCount: number; desktopConnectedAt: number | null }> {

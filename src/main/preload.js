@@ -528,6 +528,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     uploadProjectGit: (params) => ipcRenderer.invoke('cloud:upload-project-git', params),
     checkGitRemote: (params) => ipcRenderer.invoke('cloud:check-git-remote', params),
     onUploadProgress: createListener('cloud:upload-progress'),
+    onProjectUpdated: createListener('cloud:project-updated'),
     getProjects: () => ipcRenderer.invoke('cloud:get-projects'),
     checkPendingChanges: () => ipcRenderer.invoke('cloud:check-pending-changes'),
     downloadChanges: (params) => ipcRenderer.invoke('cloud:download-changes', params),
