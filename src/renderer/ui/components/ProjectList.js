@@ -230,8 +230,15 @@ function _renderCloudBadge(projectId) {
   if (!st) return '';
 
   if (st.uploading || st.autoSyncing) {
-    const tip = t('cloud.uploadProgress');
-    return `<span class="project-cloud-badge uploading" title="${escapeHtml(tip)}" aria-label="${escapeHtml(tip)}">&#8679;</span>`;
+    const progress = st.uploadProgress;
+    const pct = progress?.percent || 0;
+    const tip = progress?.phase === 'uploading' && progress.uploadedMB != null
+      ? `${progress.uploadedMB}/${progress.totalMB} MB (${pct}%)`
+      : t('cloud.uploadProgress');
+    // SVG ring progress indicator (16x16)
+    const r = 6, cx = 8, cy = 8, c = Math.round(2 * Math.PI * r * 100) / 100;
+    const offset = Math.round((c - (c * pct / 100)) * 100) / 100;
+    return `<span class="project-cloud-badge uploading" title="${escapeHtml(tip)}" aria-label="${escapeHtml(tip)}"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--bg-hover)" stroke-width="2"/><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="${c}" stroke-dashoffset="${offset}" transform="rotate(-90 ${cx} ${cy})" style="transition:stroke-dashoffset .3s"/>${pct > 0 ? `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" fill="var(--accent)" font-size="6" font-weight="600">${pct}</text>` : ''}</svg></span>`;
   }
   if (st.lastError) {
     const ago = _formatTimeAgo(st.lastError.timestamp);

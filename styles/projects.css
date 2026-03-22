@@ -491,7 +491,10 @@ body.compact-projects .project-item:not(.active):hover {
 
 .project-cloud-badge.uploading {
   color: var(--accent);
-  animation: cloud-pulse 1.5s ease-in-out infinite;
+}
+
+.project-cloud-badge.uploading svg {
+  display: block;
 }
 
 /* Cloud sync action button (in project-actions, next to terminal btn) */
