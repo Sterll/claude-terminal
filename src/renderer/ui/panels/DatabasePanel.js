@@ -118,6 +118,14 @@ function setupHeaderButtons() {
   if (detectBtn) detectBtn.onclick = () => runAutoDetect();
 }
 
+function switchToSubTab(name) {
+  document.querySelectorAll('.database-sub-tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.subtab === name);
+  });
+  panelState.activeSubTab = name;
+  renderContent();
+}
+
 // ==================== Render Router ====================
 
 function renderContent() {
@@ -180,45 +188,32 @@ function buildConnectionCard(conn, status) {
   const state = require('../../state');
   const active = state.getActiveConnection() === conn.id;
   const projectName = conn.projectId ? getProjectName(conn.projectId) : '';
-  const statusKey = ({
-    connected: 'database.connected',
-    disconnected: 'database.disconnected',
-    connecting: 'database.connecting',
-    error: 'database.error',
-  })[status];
-  const statusLabel = statusKey ? t(statusKey) : String(status || '');
+
+  // Status dot: green=connected, orange=connecting, red=error, nothing=disconnected
+  const dotClass = status === 'connected' ? 'connected' : status === 'connecting' ? 'connecting' : status === 'error' ? 'error' : '';
 
   return `
-    <div class="database-card ${active ? 'selected' : ''}" data-id="${escapeHtml(conn.id)}">
+    <div class="database-card ${active ? 'selected' : ''} ${status === 'connecting' ? 'connecting' : ''}" data-id="${escapeHtml(conn.id)}">
       <div class="database-card-header">
         <div class="database-card-title-row">
+          ${dotClass ? `<span class="database-status-dot ${dotClass}"></span>` : ''}
           <span class="database-type-badge ${conn.type}">${escapeHtml(conn.type.toUpperCase())}</span>
           <span class="database-card-title">${escapeHtml(conn.name || conn.id)}</span>
         </div>
-        <span class="database-status-badge ${status}">${escapeHtml(statusLabel)}</span>
-      </div>
-      <div class="database-card-bottom">
-        <div class="database-card-info">
-          ${conn.type === 'sqlite' ? escapeHtml(conn.filePath || '') :
-            conn.type === 'mongodb' ? escapeHtml(conn.connectionString ? conn.connectionString.replace(/\/\/[^@]+@/, '//***@') : `${conn.host}:${conn.port}`) :
-            escapeHtml(`${conn.host || 'localhost'}:${conn.port || ''} / ${conn.database || ''}`)}
-          ${projectName ? ` <span class="database-card-project">${escapeHtml(projectName)}</span>` : ''}
-        </div>
         <div class="database-card-actions">
-        ${status === 'connected' ?
-          `<button class="btn-database" data-action="disconnect" data-id="${escapeHtml(conn.id)}" title="${t('database.disconnect')}">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42A6.92 6.92 0 0119 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.05.89-3.89 2.3-5.16L5.88 5.46A8.94 8.94 0 003 12a9 9 0 0018 0c0-2.74-1.23-5.19-3.17-6.83z"/></svg>
-          </button>` :
-          `<button class="btn-database primary" data-action="connect" data-id="${escapeHtml(conn.id)}" title="${t('database.connect')}">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M8 5v14l11-7z"/></svg>
-          </button>`}
-        <button class="btn-database" data-action="edit" data-id="${escapeHtml(conn.id)}" title="${t('database.editConnection')}">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-        </button>
-        <button class="btn-database danger" data-action="delete" data-id="${escapeHtml(conn.id)}" title="${t('database.deleteConnection')}">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-        </button>
+          <button class="btn-database" data-action="edit" data-id="${escapeHtml(conn.id)}" title="${t('database.editConnection')}">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+          </button>
+          <button class="btn-database danger" data-action="delete" data-id="${escapeHtml(conn.id)}" title="${t('database.deleteConnection')}">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          </button>
+        </div>
       </div>
+      <div class="database-card-info">
+        ${conn.type === 'sqlite' ? escapeHtml(conn.filePath || '') :
+          conn.type === 'mongodb' ? escapeHtml(conn.connectionString ? conn.connectionString.replace(/\/\/[^@]+@/, '//***@') : `${conn.host}:${conn.port}`) :
+          escapeHtml(`${conn.host || 'localhost'}:${conn.port || ''} / ${conn.database || ''}`)}
+        ${projectName ? ` <span class="database-card-project">${escapeHtml(projectName)}</span>` : ''}
       </div>
     </div>`;
 }
@@ -255,8 +250,6 @@ function bindConnectionEvents(container) {
       const id = btn.dataset.id;
 
       switch (action) {
-        case 'connect': await connectDatabase(id); break;
-        case 'disconnect': await disconnectDatabase(id); break;
         case 'edit': showConnectionForm(id); break;
         case 'delete': await deleteConnection(id); break;
         case 'import-detected': importDetected(btn.dataset.detected); break;
@@ -264,12 +257,26 @@ function bindConnectionEvents(container) {
     };
   });
 
-  // Click card to select
+  // Click card to select + auto-connect
   container.querySelectorAll('.database-card:not(.detected)').forEach(card => {
-    card.onclick = () => {
+    card.onclick = async () => {
+      const id = card.dataset.id;
       const state = require('../../state');
-      state.setActiveConnection(card.dataset.id);
-      renderContent();
+      const currentStatus = state.getConnectionStatus(id);
+
+      // Already connected and active → switch to schema
+      if (currentStatus === 'connected' && state.getActiveConnection() === id) {
+        switchToSubTab('schema');
+        return;
+      }
+
+      // Auto-connect (connectDatabase handles disconnecting the previous one)
+      await connectDatabase(id);
+
+      // If connection succeeded, switch to schema
+      if (state.getConnectionStatus(id) === 'connected') {
+        switchToSubTab('schema');
+      }
     };
   });
 }
@@ -2278,7 +2285,16 @@ async function connectDatabase(id) {
   const conn = state.getDatabaseConnection(id);
   if (!conn) return;
 
+  // Auto-disconnect previous connection if any
+  const previousId = state.getActiveConnection();
+  if (previousId && previousId !== id && state.getConnectionStatus(previousId) === 'connected') {
+    await ctx.api.database.disconnect({ id: previousId }).catch(() => {});
+    state.setConnectionStatus(previousId, 'disconnected');
+    state.setDatabaseSchema(previousId, null);
+  }
+
   state.setConnectionStatus(id, 'connecting');
+  state.setActiveConnection(id);
   renderContent();
 
   // Retrieve password from keychain if needed
@@ -2292,11 +2308,9 @@ async function connectDatabase(id) {
 
   const result = await ctx.api.database.connect({ id, config });
   state.setConnectionStatus(id, result.success ? 'connected' : 'error');
-  state.setActiveConnection(id);
 
   if (result.success) {
     ctx.showToast({ type: 'success', title: t('database.connectionSuccess') });
-    // Preload schema
     loadSchema(id);
   } else {
     ctx.showToast({ type: 'error', title: t('database.connectionFailed', { error: result.error }) });
