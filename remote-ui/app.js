@@ -1349,12 +1349,16 @@ function renderSessionsView() {
   }).join('');
 
   // Past sessions from disk
+  const PAST_INITIAL_LIMIT = 10;
   const pastList = (state.pastSessions[projectId] || [])
     .filter(ps => !state.sessions[ps.sessionId]);
+  const pastExpanded = list._pastExpanded || false;
+  const visiblePast = pastExpanded ? pastList : pastList.slice(0, PAST_INITIAL_LIMIT);
+  const hasMore = pastList.length > PAST_INITIAL_LIMIT && !pastExpanded;
 
   if (pastList.length > 0) {
-    list.innerHTML += `<div class="past-sessions-divider"><span>${_isFr ? 'Sessions pr\u00e9c\u00e9dentes' : 'Past sessions'}</span></div>`;
-    list.innerHTML += pastList.map(s => {
+    list.innerHTML += `<div class="past-sessions-divider"><span>${_isFr ? 'Sessions pr\u00e9c\u00e9dentes' : 'Past sessions'} (${pastList.length})</span></div>`;
+    list.innerHTML += visiblePast.map(s => {
       const timeAgo = _formatTimeAgo(s.modified);
       const preview = s.summary || s.firstPrompt || '';
       return `
@@ -1373,12 +1377,21 @@ function renderSessionsView() {
           </div>
         </div>`;
     }).join('');
+    if (hasMore) {
+      list.innerHTML += `<button class="past-sessions-show-more">${_isFr ? `Voir ${pastList.length - PAST_INITIAL_LIMIT} de plus…` : `Show ${pastList.length - PAST_INITIAL_LIMIT} more…`}</button>`;
+    }
   }
 
   // Event delegation — attach once, not per render
   if (!list._sessionDelegated) {
     list._sessionDelegated = true;
     list.addEventListener('click', (e) => {
+      // "Show more" past sessions
+      if (e.target.closest('.past-sessions-show-more')) {
+        list._pastExpanded = true;
+        renderSessionsView();
+        return;
+      }
       // Past session resume
       const pastCard = e.target.closest('.session-card-past');
       if (pastCard && pastCard.dataset.resumeId) {
@@ -1460,7 +1473,13 @@ function resumePastSession(sessionId, projectId) {
   // Cloud/headless mode: resume via cloud API
   if (state.desktopOffline && conn.cloudUrl && conn.cloudApiKey) {
     const projectName = project.name || project.path?.split(/[\\/]/).pop() || '';
-    _startHeadlessSession(projectName, 'Continue from where we left off.', sessionId);
+    _startHeadlessSession(projectName, 'Continue from where we left off.', sessionId).catch(() => {
+      // Restore card on failure (banner already shows error via _startHeadlessSession)
+      if (card) {
+        card.style.opacity = '';
+        card.style.pointerEvents = '';
+      }
+    });
     return;
   }
 
