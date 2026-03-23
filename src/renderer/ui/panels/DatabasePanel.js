@@ -116,6 +116,23 @@ function setupHeaderButtons() {
 
   const detectBtn = document.getElementById('database-detect-btn');
   if (detectBtn) detectBtn.onclick = () => runAutoDetect();
+
+  // Database picker — custom dropdown
+  const trigger = document.getElementById('database-picker-trigger');
+  if (trigger) {
+    trigger.onclick = (e) => {
+      e.stopPropagation();
+      const dropdown = document.getElementById('database-picker-dropdown');
+      if (!dropdown) return;
+      const isOpen = dropdown.classList.contains('open');
+      dropdown.classList.toggle('open', !isOpen);
+      if (!isOpen) {
+        // Close on outside click
+        const close = () => { dropdown.classList.remove('open'); document.removeEventListener('click', close); };
+        setTimeout(() => document.addEventListener('click', close), 0);
+      }
+    };
+  }
 }
 
 function switchToSubTab(name) {
@@ -132,11 +149,68 @@ function renderContent() {
   const container = document.getElementById('database-content');
   if (!container) return;
 
+  updateDatabasePicker();
+
   switch (panelState.activeSubTab) {
     case 'connections': renderConnections(container); break;
     case 'schema': renderSchema(container); break;
     case 'query': renderQuery(container); break;
   }
+}
+
+function updateDatabasePicker() {
+  const picker = document.getElementById('database-picker');
+  const trigger = document.getElementById('database-picker-trigger');
+  const dropdown = document.getElementById('database-picker-dropdown');
+  if (!picker || !trigger || !dropdown) return;
+
+  const state = require('../../state');
+  const connections = state.getDatabaseConnections();
+  const activeId = state.getActiveConnection();
+  const showPicker = panelState.activeSubTab !== 'connections' && connections.length > 0;
+
+  picker.style.display = showPicker ? '' : 'none';
+  if (!showPicker) return;
+
+  // Update trigger label
+  const activeConn = activeId ? connections.find(c => c.id === activeId) : null;
+  const activeStatus = activeId ? state.getConnectionStatus(activeId) : '';
+  if (activeConn) {
+    const dotHtml = activeStatus === 'connected' ? '<span class="database-picker-dot connected"></span>' :
+                    activeStatus === 'connecting' ? '<span class="database-picker-dot connecting"></span>' :
+                    activeStatus === 'error' ? '<span class="database-picker-dot error"></span>' : '';
+    trigger.innerHTML = `${dotHtml}<span class="database-picker-type">${escapeHtml(activeConn.type.toUpperCase())}</span><span class="database-picker-name">${escapeHtml(activeConn.name || activeConn.database || activeConn.filePath || activeConn.id)}</span><svg class="database-picker-chevron" viewBox="0 0 10 6" width="10" height="6"><path d="M0 0l5 6 5-6z" fill="currentColor"/></svg>`;
+  } else {
+    trigger.innerHTML = `<span class="database-picker-name" style="opacity:0.5">${t('database.noActiveConnection')}</span><svg class="database-picker-chevron" viewBox="0 0 10 6" width="10" height="6"><path d="M0 0l5 6 5-6z" fill="currentColor"/></svg>`;
+  }
+
+  // Build dropdown items (only if changed)
+  const optionsKey = connections.map(c => `${c.id}:${state.getConnectionStatus(c.id)}`).join(',') + '|' + (activeId || '');
+  if (dropdown._lastKey === optionsKey) return;
+  dropdown._lastKey = optionsKey;
+
+  dropdown.innerHTML = connections.map(c => {
+    const status = state.getConnectionStatus(c.id);
+    const isActive = c.id === activeId;
+    const dotCls = status === 'connected' ? 'connected' : status === 'connecting' ? 'connecting' : status === 'error' ? 'error' : '';
+    return `<div class="database-picker-item ${isActive ? 'active' : ''}" data-id="${escapeHtml(c.id)}">
+      ${dotCls ? `<span class="database-picker-dot ${dotCls}"></span>` : '<span class="database-picker-dot-placeholder"></span>'}
+      <span class="database-picker-item-type">${escapeHtml(c.type.toUpperCase())}</span>
+      <span class="database-picker-item-name">${escapeHtml(c.name || c.database || c.filePath || c.id)}</span>
+    </div>`;
+  }).join('');
+
+  // Bind click events on items
+  dropdown.querySelectorAll('.database-picker-item').forEach(item => {
+    item.onclick = async (e) => {
+      e.stopPropagation();
+      dropdown.classList.remove('open');
+      const id = item.dataset.id;
+      if (id === activeId && state.getConnectionStatus(id) === 'connected') return;
+      await connectDatabase(id);
+      renderContent();
+    };
+  });
 }
 
 // ==================== Connections Tab ====================

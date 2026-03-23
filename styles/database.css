@@ -27,7 +27,110 @@
   gap: 12px;
 }
 .database-header-left { display: flex; align-items: center; gap: 16px; }
-.database-header-right { display: flex; align-items: center; gap: 12px; }
+.database-header-right { display: flex; align-items: center; gap: 10px; }
+
+/* Database picker — custom dropdown for switching DB */
+.database-picker {
+  position: relative;
+}
+.database-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: var(--font-xs);
+  font-family: inherit;
+  max-width: 260px;
+  transition: border-color 0.12s;
+  white-space: nowrap;
+}
+.database-picker-trigger:hover { border-color: rgba(255, 255, 255, 0.14); }
+.database-picker-chevron {
+  flex-shrink: 0;
+  opacity: 0.4;
+  margin-left: 2px;
+}
+.database-picker-type {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.database-picker-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.database-picker-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.database-picker-dot.connected { background: var(--success); box-shadow: 0 0 5px rgba(34, 197, 94, 0.5); }
+.database-picker-dot.connecting { background: var(--info); animation: pulse-connecting 1.2s ease-in-out infinite; }
+.database-picker-dot.error { background: var(--danger); }
+.database-picker-dot-placeholder { width: 6px; flex-shrink: 0; }
+
+/* Dropdown panel */
+.database-picker-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 100%;
+  max-width: 320px;
+  background: var(--bg-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  overflow: hidden;
+  display: none;
+  padding: 4px;
+}
+.database-picker-dropdown.open { display: block; }
+
+.database-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: var(--font-xs);
+  transition: background 0.1s;
+  white-space: nowrap;
+}
+.database-picker-item:hover { background: rgba(255, 255, 255, 0.05); }
+.database-picker-item.active {
+  background: rgba(217, 119, 6, 0.1);
+}
+.database-picker-item-type {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.database-picker-item-name {
+  color: var(--text-primary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* ========== SUB-TABS ========== */
 .database-sub-tabs {
