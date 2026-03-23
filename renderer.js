@@ -317,7 +317,6 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
     terminalsState, TerminalManager,
     projectsState, setSelectedProjectFilter, ProjectList,
     showSessionsModal,
-    openQuickPicker, getProjectIndex,
     createTerminalForProject, FileExplorer
   });
 
@@ -5163,6 +5162,21 @@ api.tray.onOpenNewWorktree(() => {
   const projects = projectsState.get().projects;
   const project = selectedFilter !== null ? projects[selectedFilter] : projects[0];
   if (project) openNewWorktreeModal(project);
+});
+
+api.tray.onOpenQuickPicker(() => {
+  const { projects, selectedProjectFilter } = projectsState.get();
+  const currentProject = selectedProjectFilter !== null ? projects[selectedProjectFilter] : null;
+  openQuickPicker(document.body, {
+    currentProject,
+    onSelectProject: (project) => {
+      const projectIndex = getProjectIndex(project.id);
+      setSelectedProjectFilter(projectIndex);
+      ProjectList.render();
+      TerminalManager.filterByProject(projectIndex);
+      createTerminalForProject(project);
+    },
+  });
 });
 
 api.tray.onShowSessions(() => {

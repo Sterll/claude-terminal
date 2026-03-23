@@ -17,7 +17,6 @@ const DEFAULT_SHORTCUTS = {
   openSettings: { key: 'Ctrl+,', labelKey: 'shortcuts.openSettings' },
   closeTerminal: { key: 'Ctrl+W', labelKey: 'shortcuts.closeTerminal' },
   showSessionsPanel: { key: 'Ctrl+Shift+E', labelKey: 'shortcuts.sessionsPanel' },
-  openQuickPicker: { key: 'Ctrl+Shift+P', labelKey: 'shortcuts.quickPicker' },
   newProject: { key: 'Ctrl+N', labelKey: 'shortcuts.newProject' },
   newTerminal: { key: 'Ctrl+T', labelKey: 'shortcuts.newTerminal' },
   toggleFileExplorer: { key: 'Ctrl+E', labelKey: 'shortcuts.toggleFileExplorer' }
@@ -449,21 +448,6 @@ class ShortcutsManager extends BasePanel {
         this._ctx.ProjectList.render();
         this._ctx.showSessionsModal(projects[0]);
       }
-    }, { global: true });
-
-    registerShortcut(this.getShortcutKey('openQuickPicker'), () => {
-      const { projects, selectedProjectFilter } = this._ctx.projectsState.get();
-      const currentProject = selectedProjectFilter !== null ? projects[selectedProjectFilter] : null;
-      this._ctx.openQuickPicker(document.body, {
-        currentProject,
-        onSelectProject: (project) => {
-          const projectIndex = this._ctx.getProjectIndex(project.id);
-          this._ctx.setSelectedProjectFilter(projectIndex);
-          this._ctx.ProjectList.render();
-          this._ctx.TerminalManager.filterByProject(projectIndex);
-          this._ctx.createTerminalForProject(project);
-        },
-      });
     }, { global: true });
 
     registerShortcut(this.getShortcutKey('newProject'), () => {

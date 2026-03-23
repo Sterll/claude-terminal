@@ -1,6 +1,5 @@
 const {
   registerShortcut,
-  registerCommonShortcuts,
   clearAllShortcuts,
   getRegisteredShortcuts,
   getKeyFromEvent,
@@ -117,90 +116,3 @@ describe('registerShortcut', () => {
   });
 });
 
-// --- registerCommonShortcuts ---
-
-describe('registerCommonShortcuts', () => {
-  const originalNavigator = global.navigator;
-
-  afterEach(() => {
-    Object.defineProperty(global, 'navigator', { value: originalNavigator, writable: true });
-    clearAllShortcuts();
-  });
-
-  test('registers Ctrl shortcuts on non-Mac', () => {
-    Object.defineProperty(global, 'navigator', {
-      value: { platform: 'Win32', userAgent: 'Windows' },
-      writable: true
-    });
-
-    const handlers = {
-      newTerminal: jest.fn(),
-      closeTerminal: jest.fn(),
-      quickPicker: jest.fn(),
-      settings: jest.fn(),
-      escape: jest.fn(),
-      nextTerminal: jest.fn(),
-      prevTerminal: jest.fn()
-    };
-
-    registerCommonShortcuts(handlers);
-    const registered = getRegisteredShortcuts();
-
-    expect(registered.has('ctrl+t')).toBe(true);
-    expect(registered.has('ctrl+w')).toBe(true);
-    expect(registered.has('ctrl+p')).toBe(true);
-    expect(registered.has('ctrl+,')).toBe(true);
-    expect(registered.has('escape')).toBe(true);
-    expect(registered.has('ctrl+tab')).toBe(true);
-    expect(registered.has('ctrl+shift+tab')).toBe(true);
-
-    // Meta variants should NOT be registered
-    expect(registered.has('meta+t')).toBe(false);
-    expect(registered.has('meta+w')).toBe(false);
-  });
-
-  test('registers Meta shortcuts on Mac', () => {
-    Object.defineProperty(global, 'navigator', {
-      value: { platform: 'MacIntel', userAgent: 'Macintosh' },
-      writable: true
-    });
-
-    const handlers = {
-      newTerminal: jest.fn(),
-      closeTerminal: jest.fn(),
-      quickPicker: jest.fn(),
-      settings: jest.fn(),
-      escape: jest.fn(),
-      nextTerminal: jest.fn(),
-      prevTerminal: jest.fn()
-    };
-
-    registerCommonShortcuts(handlers);
-    const registered = getRegisteredShortcuts();
-
-    expect(registered.has('meta+t')).toBe(true);
-    expect(registered.has('meta+w')).toBe(true);
-    expect(registered.has('meta+p')).toBe(true);
-    expect(registered.has('meta+,')).toBe(true);
-    expect(registered.has('escape')).toBe(true);
-    expect(registered.has('meta+tab')).toBe(true);
-    expect(registered.has('shift+meta+tab')).toBe(true);
-
-    // Ctrl variants should NOT be registered
-    expect(registered.has('ctrl+t')).toBe(false);
-    expect(registered.has('ctrl+w')).toBe(false);
-  });
-
-  test('only registers provided handlers', () => {
-    Object.defineProperty(global, 'navigator', {
-      value: { platform: 'Win32', userAgent: 'Windows' },
-      writable: true
-    });
-
-    registerCommonShortcuts({ newTerminal: jest.fn() });
-    const registered = getRegisteredShortcuts();
-
-    expect(registered.size).toBe(1);
-    expect(registered.has('ctrl+t')).toBe(true);
-  });
-});

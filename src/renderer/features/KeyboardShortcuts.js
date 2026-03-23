@@ -100,37 +100,6 @@ function initKeyboardShortcuts() {
 }
 
 /**
- * Register common shortcuts
- * @param {Object} handlers
- */
-function registerCommonShortcuts(handlers) {
-  const isMac = navigator.platform?.includes('Mac') || navigator.userAgent?.includes('Mac');
-  const mod = isMac ? 'Meta' : 'Ctrl';
-
-  if (handlers.newTerminal) {
-    registerShortcut(`${mod}+T`, handlers.newTerminal);
-  }
-  if (handlers.closeTerminal) {
-    registerShortcut(`${mod}+W`, handlers.closeTerminal);
-  }
-  if (handlers.quickPicker) {
-    registerShortcut(`${mod}+P`, handlers.quickPicker);
-  }
-  if (handlers.settings) {
-    registerShortcut(`${mod}+,`, handlers.settings);
-  }
-  if (handlers.escape) {
-    registerShortcut('Escape', handlers.escape, { global: true });
-  }
-  if (handlers.nextTerminal) {
-    registerShortcut(`${mod}+Tab`, handlers.nextTerminal);
-  }
-  if (handlers.prevTerminal) {
-    registerShortcut(`${mod}+Shift+Tab`, handlers.prevTerminal);
-  }
-}
-
-/**
  * Clear all shortcuts
  */
 function clearAllShortcuts() {
@@ -148,7 +117,6 @@ function getRegisteredShortcuts() {
 module.exports = {
   registerShortcut,
   initKeyboardShortcuts,
-  registerCommonShortcuts,
   clearAllShortcuts,
   getRegisteredShortcuts,
   getKeyFromEvent,

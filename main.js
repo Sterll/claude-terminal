@@ -177,7 +177,13 @@ function bootstrapApp() {
    */
   const GLOBAL_SHORTCUT_ACTIONS = {
     globalQuickPicker: () => {
-      createQuickPickerWindow();
+      const mainWindow = getMainWindow();
+      if (mainWindow) {
+        showMainWindow();
+        setTimeout(() => {
+          mainWindow.webContents.send('open-quick-picker');
+        }, 100);
+      }
     },
     globalNewTerminal: () => {
       let mainWindow = getMainWindow();

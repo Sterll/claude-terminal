@@ -596,6 +596,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     onOpenTerminal: createListener('open-terminal-current-project'),
     onShowSessions: createListener('show-sessions-panel'),
     onOpenNewWorktree: createListener('open-new-worktree'),
+    onOpenQuickPicker: createListener('open-quick-picker'),
     updateGlobalShortcuts: (payload) => ipcRenderer.send('update-global-shortcuts', payload)
   },
 
