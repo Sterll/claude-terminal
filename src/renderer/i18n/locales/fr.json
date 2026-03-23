@@ -1042,7 +1042,20 @@
     "templateInsertHint": "Le template sera inséré à la position du curseur.",
     "errorLoading": "Erreur lors du chargement : {message}",
     "errorCreating": "Erreur lors de la création : {message}",
-    "errorSaving": "Erreur lors de la sauvegarde : {message}"
+    "errorSaving": "Erreur lors de la sauvegarde : {message}",
+    "globalSection": "Global",
+    "projectsSection": "Projets",
+    "globalRules": "Règles globales",
+    "privateInstructions": "Instructions privées",
+    "autoMemory": "Mémoire auto",
+    "noMemoryFiles": "Aucun fichier mémoire",
+    "memoryFiles": "{count} fichiers",
+    "backToMemory": "Retour",
+    "createPrivate": "Créer des instructions privées pour {name} (non committées dans le repo).",
+    "createRules": "Créer le fichier de règles globales",
+    "rulesHint": "Définir des règles de développement globales appliquées à tous les projets.",
+    "noRulesMd": "Aucun fichier rules.md",
+    "noPrivateClaudeMd": "Aucun fichier CLAUDE.md privé"
   },
   "gitChanges": {
     "filesRequired": "Fichiers requis",

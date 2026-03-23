@@ -950,7 +950,20 @@
     "templateInsertHint": "La plantilla se insertará en la posición del cursor.",
     "errorLoading": "Error al cargar: {message}",
     "errorCreating": "Error al crear: {message}",
-    "errorSaving": "Error al guardar: {message}"
+    "errorSaving": "Error al guardar: {message}",
+    "globalSection": "Global",
+    "projectsSection": "Proyectos",
+    "globalRules": "Reglas globales",
+    "privateInstructions": "Instrucciones privadas",
+    "autoMemory": "Memoria auto",
+    "noMemoryFiles": "Sin archivos de memoria",
+    "memoryFiles": "{count} archivos",
+    "backToMemory": "Volver",
+    "createPrivate": "Crear instrucciones privadas para {name} (no se suben al repo).",
+    "createRules": "Crear archivo de reglas globales",
+    "rulesHint": "Definir reglas de desarrollo globales aplicadas a todos los proyectos.",
+    "noRulesMd": "Sin archivo rules.md",
+    "noPrivateClaudeMd": "Sin CLAUDE.md privado"
   },
   "gitChanges": {
     "filesRequired": "Archivos requeridos",

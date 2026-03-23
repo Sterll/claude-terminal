@@ -1,7 +1,8 @@
 /**
  * MemoryEditor Panel
  * CLAUDE.md editor with templates, markdown preview, and search
- * Extracted from renderer.js — migrated to BasePanel OOP pattern
+ * Supports: global CLAUDE.md, rules.md, settings, commands,
+ *           per-project CLAUDE.md (repo), private CLAUDE.md, auto-memory folder
  */
 
 const { BasePanel } = require('../../core/BasePanel');
@@ -9,7 +10,20 @@ const { escapeHtml } = require('../../utils');
 const { t } = require('../../i18n');
 const { projectsState } = require('../../state');
 
-// ── Module-level constants (no instance state) ──
+// ── Path encoding (mirrors claude.ipc.js) ──
+
+function encodeProjectPath(projectPath) {
+  const MAX_LEN = 200;
+  const encoded = projectPath.replace(/[^a-zA-Z0-9]/g, '-');
+  if (encoded.length <= MAX_LEN) return encoded;
+  let hash = 0;
+  for (let i = 0; i < projectPath.length; i++) {
+    hash = ((hash << 5) - hash + projectPath.charCodeAt(i)) | 0;
+  }
+  return `${encoded.slice(0, MAX_LEN)}-${Math.abs(hash).toString(36)}`;
+}
+
+// ── Module-level constants ──
 
 const MEMORY_TEMPLATES = {
   minimal: {
@@ -139,7 +153,7 @@ Documentez les fonctions exportees ici.
   }
 };
 
-// ── Module-level pure functions (no state dependency) ──
+// ── Module-level pure functions ──
 
 function parseMarkdownToHtml(md) {
   const { marked } = require('marked');
@@ -210,15 +224,6 @@ function calculateMemoryStats(content, source) {
 // ── MemoryEditor class ──
 
 class MemoryEditor extends BasePanel {
-  /**
-   * @param {HTMLElement} el
-   * @param {object} options
-   * @param {import('../../core/ApiProvider').ApiProvider} options.api
-   * @param {import('../../core/ServiceContainer').ServiceContainer} options.container
-   * @param {Function} options.showModal
-   * @param {Function} options.closeModal
-   * @param {Function} options.showToast
-   */
   constructor(el, options = {}) {
     super(el, options);
     this._showModal = options.showModal || null;
@@ -227,11 +232,13 @@ class MemoryEditor extends BasePanel {
     this._state = {
       currentSource: 'global',
       currentProject: null,
+      currentMemoryFile: null,
       content: '',
       isEditing: false,
       listenersAttached: false,
       fileExists: false,
-      searchQuery: ''
+      searchQuery: '',
+      expandedProjects: new Set()
     };
   }
 
@@ -245,8 +252,24 @@ class MemoryEditor extends BasePanel {
     return this.api.path.join(this._getClaudeDir(), 'CLAUDE.md');
   }
 
+  _getRulesMd() {
+    return this.api.path.join(this._getClaudeDir(), 'rules.md');
+  }
+
   _getClaudeSettingsJson() {
     return this.api.path.join(this._getClaudeDir(), 'settings.json');
+  }
+
+  _getProjectEncodedDir(projectPath) {
+    return this.api.path.join(this._getClaudeDir(), 'projects', encodeProjectPath(projectPath));
+  }
+
+  _getProjectPrivateClaudeMd(projectPath) {
+    return this.api.path.join(this._getProjectEncodedDir(projectPath), 'CLAUDE.md');
+  }
+
+  _getProjectMemoryDir(projectPath) {
+    return this.api.path.join(this._getProjectEncodedDir(projectPath), 'memory');
   }
 
   // ── Public entry points ──
@@ -304,6 +327,12 @@ class MemoryEditor extends BasePanel {
     const projects = projectsState.get().projects;
     const searchQuery = filter.toLowerCase();
 
+    // Update active states for global items
+    document.querySelectorAll('#memory-sources-list > .memory-source-item').forEach(item => {
+      const source = item.dataset.source;
+      item.classList.toggle('active', source === this._state.currentSource && this._state.currentProject === null);
+    });
+
     if (projects.length === 0) {
       projectsList.innerHTML = `<div class="memory-no-projects">${t('memory.noProjects')}</div>`;
       return;
@@ -320,34 +349,73 @@ class MemoryEditor extends BasePanel {
     projectsList.innerHTML = filteredProjects.map(p => {
       const claudeMdPath = this.api.path.join(p.path, 'CLAUDE.md');
       const hasClaudeMd = this.api.fs.existsSync(claudeMdPath);
-      const claudeIgnorePath = this.api.path.join(p.path, '.claudeignore');
-      const hasClaudeIgnore = this.api.fs.existsSync(claudeIgnorePath);
-      const localClaudeDir = this.api.path.join(p.path, '.claude');
-      const hasLocalSettings = this.api.fs.existsSync(this.api.path.join(localClaudeDir, 'settings.json'));
+
+      const privateClaudeMdPath = this._getProjectPrivateClaudeMd(p.path);
+      const hasPrivateClaudeMd = this.api.fs.existsSync(privateClaudeMdPath);
+
+      const memoryDir = this._getProjectMemoryDir(p.path);
+      let memoryFiles = [];
+      try {
+        if (this.api.fs.existsSync(memoryDir)) {
+          memoryFiles = this.api.fs.readdirSync(memoryDir).filter(f => f.endsWith('.md'));
+        }
+      } catch { /* ignore */ }
+      const hasMemory = memoryFiles.length > 0;
+
+      const isExpanded = this._state.expandedProjects.has(p.index);
+      const isProjectActive = this._state.currentProject === p.index;
+
+      // Build children
+      let childrenHtml = '';
+      if (isExpanded) {
+        // CLAUDE.md (repo)
+        const claudeActive = isProjectActive && this._state.currentSource === 'project' ? 'active' : '';
+        childrenHtml += `
+          <div class="memory-source-item memory-child-item ${claudeActive}" data-source="project" data-project="${p.index}">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+            <span>CLAUDE.md</span>
+            ${hasClaudeMd ? '' : '<span class="memory-child-missing">--</span>'}
+          </div>
+        `;
+
+        // Private CLAUDE.md
+        const privateActive = isProjectActive && this._state.currentSource === 'project-private' ? 'active' : '';
+        childrenHtml += `
+          <div class="memory-source-item memory-child-item ${privateActive}" data-source="project-private" data-project="${p.index}">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+            <span>${t('memory.privateInstructions')}</span>
+            ${hasPrivateClaudeMd ? '' : '<span class="memory-child-missing">--</span>'}
+          </div>
+        `;
+
+        // Auto Memory folder
+        const memoryActive = isProjectActive && (this._state.currentSource === 'project-memory' || this._state.currentSource === 'project-memory-file') ? 'active' : '';
+        childrenHtml += `
+          <div class="memory-source-item memory-child-item ${memoryActive}" data-source="project-memory" data-project="${p.index}">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 10H6v-2h8v2zm4-4H6v-2h12v2z"/></svg>
+            <span>${t('memory.autoMemory')}</span>
+            ${hasMemory ? `<span class="memory-badge memory">${memoryFiles.length}</span>` : '<span class="memory-child-missing">--</span>'}
+          </div>
+        `;
+      }
 
       return `
-        <div class="memory-source-item ${this._state.currentSource === 'project' && this._state.currentProject === p.index ? 'active' : ''}"
-             data-source="project" data-project="${p.index}">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/>
-          </svg>
-          <span>${escapeHtml(p.name)}</span>
-          <div class="memory-source-badges">
-            ${hasClaudeMd ? '<span class="memory-badge" title="CLAUDE.md">MD</span>' : ''}
-            ${hasClaudeIgnore ? '<span class="memory-badge ignore" title=".claudeignore">IG</span>' : ''}
-            ${hasLocalSettings ? '<span class="memory-badge settings" title="Settings locaux">\u2699</span>' : ''}
+        <div class="memory-project-group ${isExpanded ? 'expanded' : ''}">
+          <div class="memory-project-header" data-project="${p.index}">
+            <svg class="memory-chevron" viewBox="0 0 24 24" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
+            <span>${escapeHtml(p.name)}</span>
+            <div class="memory-source-badges">
+              ${hasClaudeMd ? '<span class="memory-badge" title="CLAUDE.md">MD</span>' : ''}
+              ${hasPrivateClaudeMd ? '<span class="memory-badge private" title="Private">PV</span>' : ''}
+              ${hasMemory ? '<span class="memory-badge memory" title="Memory">' + memoryFiles.length + '</span>' : ''}
+            </div>
+          </div>
+          <div class="memory-project-children">
+            ${childrenHtml}
           </div>
         </div>
       `;
     }).join('');
-
-    // Update active states for global, settings, and commands
-    document.querySelectorAll('#memory-sources-list > .memory-source-item').forEach(item => {
-      const source = item.dataset.source;
-      const isActive = source === this._state.currentSource &&
-        (this._state.currentSource !== 'project' || parseInt(item.dataset.project) === this._state.currentProject);
-      item.classList.toggle('active', isActive);
-    });
   }
 
   // ── Content loading ──
@@ -356,6 +424,11 @@ class MemoryEditor extends BasePanel {
     this._state.currentSource = source;
     this._state.currentProject = projectIndex;
     this._state.isEditing = false;
+
+    // Reset memory file if switching away from memory-file
+    if (source !== 'project-memory-file') {
+      this._state.currentMemoryFile = null;
+    }
 
     const titleEl = document.getElementById('memory-title');
     const pathEl = document.getElementById('memory-path');
@@ -375,11 +448,14 @@ class MemoryEditor extends BasePanel {
         filePath = this._getGlobalClaudeMd();
         title = t('memory.globalMemory');
         fileExists = this.api.fs.existsSync(filePath);
-        if (fileExists) {
-          content = await this.api.fs.promises.readFile(filePath, 'utf8');
-        } else {
-          content = '';
-        }
+        if (fileExists) content = await this.api.fs.promises.readFile(filePath, 'utf8');
+
+      } else if (source === 'rules') {
+        filePath = this._getRulesMd();
+        title = t('memory.globalRules');
+        fileExists = this.api.fs.existsSync(filePath);
+        if (fileExists) content = await this.api.fs.promises.readFile(filePath, 'utf8');
+
       } else if (source === 'settings') {
         filePath = this._getClaudeSettingsJson();
         title = t('memory.claudeSettings');
@@ -390,6 +466,7 @@ class MemoryEditor extends BasePanel {
         } else {
           content = '{}';
         }
+
       } else if (source === 'commands') {
         filePath = this._getClaudeSettingsJson();
         title = t('memory.allowedCommands');
@@ -400,17 +477,41 @@ class MemoryEditor extends BasePanel {
         } else {
           content = '{}';
         }
+
       } else if (source === 'project' && projectIndex !== null) {
         const project = projectsState.get().projects[projectIndex];
         if (project) {
           filePath = this.api.path.join(project.path, 'CLAUDE.md');
-          title = project.name;
+          title = `${project.name} \u2014 CLAUDE.md`;
           fileExists = this.api.fs.existsSync(filePath);
-          if (fileExists) {
-            content = await this.api.fs.promises.readFile(filePath, 'utf8');
-          } else {
-            content = '';
-          }
+          if (fileExists) content = await this.api.fs.promises.readFile(filePath, 'utf8');
+        }
+
+      } else if (source === 'project-private' && projectIndex !== null) {
+        const project = projectsState.get().projects[projectIndex];
+        if (project) {
+          filePath = this._getProjectPrivateClaudeMd(project.path);
+          title = `${project.name} \u2014 ${t('memory.privateInstructions')}`;
+          fileExists = this.api.fs.existsSync(filePath);
+          if (fileExists) content = await this.api.fs.promises.readFile(filePath, 'utf8');
+        }
+
+      } else if (source === 'project-memory' && projectIndex !== null) {
+        const project = projectsState.get().projects[projectIndex];
+        if (project) {
+          filePath = this._getProjectMemoryDir(project.path);
+          title = `${project.name} \u2014 ${t('memory.autoMemory')}`;
+          fileExists = this.api.fs.existsSync(filePath);
+          // Content handled specially in renderMemoryContent
+        }
+
+      } else if (source === 'project-memory-file' && projectIndex !== null) {
+        const project = projectsState.get().projects[projectIndex];
+        if (project && this._state.currentMemoryFile) {
+          filePath = this.api.path.join(this._getProjectMemoryDir(project.path), this._state.currentMemoryFile);
+          title = `${project.name} \u2014 ${this._state.currentMemoryFile}`;
+          fileExists = this.api.fs.existsSync(filePath);
+          if (fileExists) content = await this.api.fs.promises.readFile(filePath, 'utf8');
         }
       }
     } catch (e) {
@@ -424,7 +525,7 @@ class MemoryEditor extends BasePanel {
     pathEl.textContent = filePath.replace(this.api.os.homedir(), '~');
 
     // Show/hide buttons based on context
-    const isMarkdownSource = source === 'global' || source === 'project';
+    const isMarkdownSource = ['global', 'rules', 'project', 'project-private', 'project-memory-file'].includes(source);
     editBtn.style.display = (isMarkdownSource && fileExists) ? 'flex' : 'none';
     createBtn.style.display = (isMarkdownSource && !fileExists) ? 'flex' : 'none';
     templateBtn.style.display = (isMarkdownSource && this._state.isEditing) ? 'flex' : 'none';
@@ -434,7 +535,7 @@ class MemoryEditor extends BasePanel {
     }
 
     // Render stats
-    if (fileExists && content) {
+    if (fileExists && content && source !== 'project-memory') {
       const stats = calculateMemoryStats(content, source);
       statsEl.innerHTML = stats;
       statsEl.style.display = 'flex';
@@ -451,19 +552,50 @@ class MemoryEditor extends BasePanel {
   renderMemoryContent(content, source, fileExists = true) {
     const contentEl = document.getElementById('memory-content');
 
+    // Memory folder → show file grid
+    if (source === 'project-memory') {
+      this._renderMemoryFileGrid(contentEl, fileExists);
+      return;
+    }
+
     if (!fileExists) {
       const isProject = source === 'project';
-      const projectName = isProject && this._state.currentProject !== null
-        ? projectsState.get().projects[this._state.currentProject]?.name || 'Projet'
-        : 'Global';
+      const isPrivate = source === 'project-private';
+      const isRules = source === 'rules';
+      const isMemoryFile = source === 'project-memory-file';
+
+      let emptyTitle = t('memory.noClaudeMd');
+      let emptyHint = '';
+      let showTemplates = true;
+
+      if (isRules) {
+        emptyTitle = t('memory.noRulesMd');
+        emptyHint = t('memory.rulesHint');
+        showTemplates = false;
+      } else if (isPrivate) {
+        emptyTitle = t('memory.noPrivateClaudeMd');
+        const projectName = this._state.currentProject !== null
+          ? projectsState.get().projects[this._state.currentProject]?.name || 'Project'
+          : 'Project';
+        emptyHint = t('memory.createPrivate', { name: escapeHtml(projectName) });
+      } else if (isMemoryFile) {
+        emptyTitle = t('memory.noMemoryFiles');
+        showTemplates = false;
+      } else {
+        const projectName = isProject && this._state.currentProject !== null
+          ? projectsState.get().projects[this._state.currentProject]?.name || 'Projet'
+          : 'Global';
+        emptyHint = t('memory.createHint', { name: escapeHtml(projectName) });
+      }
 
       contentEl.innerHTML = `
         <div class="memory-empty-state">
           <div class="memory-empty-icon">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
           </div>
-          <h3>${t('memory.noClaudeMd')}</h3>
-          <p>${t('memory.createHint', { name: escapeHtml(projectName) })}</p>
+          <h3>${emptyTitle}</h3>
+          <p>${emptyHint}</p>
+          ${showTemplates ? `
           <div class="memory-empty-templates">
             <p class="template-hint">${t('memory.chooseTemplate')}</p>
             <div class="template-grid">
@@ -475,12 +607,29 @@ class MemoryEditor extends BasePanel {
               `).join('')}
             </div>
           </div>
+          ` : `
+          <button class="btn-primary btn-create" id="btn-empty-create">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            <span>${isRules ? t('memory.createRules') : t('memory.edit')}</span>
+          </button>
+          `}
         </div>
       `;
 
       contentEl.querySelectorAll('.template-card').forEach(card => {
         card.onclick = async () => await this.createMemoryFromTemplate(card.dataset.template);
       });
+
+      const emptyCreateBtn = contentEl.querySelector('#btn-empty-create');
+      if (emptyCreateBtn) {
+        emptyCreateBtn.onclick = async () => {
+          if (isRules) {
+            await this._createEmptyFile(this._getRulesMd(), `# Rules\n\n## Code\n- Write clean, readable code\n`);
+          }
+          await this.loadMemoryContent(this._state.currentSource, this._state.currentProject);
+        };
+      }
+
       return;
     }
 
@@ -492,13 +641,123 @@ class MemoryEditor extends BasePanel {
     // Parse markdown and render with search highlighting
     let html = parseMarkdownToHtml(content);
 
-    // Highlight search terms if any
     if (this._state.searchQuery) {
       const regex = new RegExp(`(${escapeHtml(this._state.searchQuery)})`, 'gi');
       html = html.replace(regex, '<mark class="search-highlight">$1</mark>');
     }
 
-    contentEl.innerHTML = `<div class="memory-markdown">${html}</div>`;
+    // Add back button for memory file view
+    let backBtn = '';
+    if (source === 'project-memory-file') {
+      backBtn = `
+        <button class="memory-back-btn" id="btn-memory-back">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+          ${t('memory.backToMemory')}
+        </button>
+      `;
+    }
+
+    contentEl.innerHTML = `${backBtn}<div class="memory-markdown">${html}</div>`;
+
+    if (source === 'project-memory-file') {
+      const backBtnEl = document.getElementById('btn-memory-back');
+      if (backBtnEl) {
+        backBtnEl.onclick = () => {
+          this.loadMemoryContent('project-memory', this._state.currentProject);
+        };
+      }
+    }
+  }
+
+  // ── Memory file grid rendering ──
+
+  _renderMemoryFileGrid(contentEl, dirExists) {
+    if (!dirExists) {
+      contentEl.innerHTML = `
+        <div class="memory-empty-state">
+          <div class="memory-empty-icon">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>
+          </div>
+          <h3>${t('memory.noMemoryFiles')}</h3>
+          <p>${t('memory.autoMemory')}</p>
+        </div>
+      `;
+      return;
+    }
+
+    const project = projectsState.get().projects[this._state.currentProject];
+    if (!project) return;
+
+    const memoryDir = this._getProjectMemoryDir(project.path);
+    let files = [];
+    try {
+      files = this.api.fs.readdirSync(memoryDir).filter(f => f.endsWith('.md'));
+    } catch { /* ignore */ }
+
+    if (files.length === 0) {
+      contentEl.innerHTML = `
+        <div class="memory-empty-state">
+          <div class="memory-empty-icon">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>
+          </div>
+          <h3>${t('memory.noMemoryFiles')}</h3>
+        </div>
+      `;
+      return;
+    }
+
+    // Get file stats
+    const fileInfos = files.map(f => {
+      const fp = this.api.path.join(memoryDir, f);
+      try {
+        const stat = this.api.fs.statSync(fp);
+        const content = this.api.fs.readFileSync(fp, 'utf8');
+        const lines = content.split('\n').length;
+        const firstLine = content.split('\n').find(l => l.trim() && !l.startsWith('#')) || '';
+        return { name: f, lines, size: stat.size, modified: stat.mtime, preview: firstLine.trim().slice(0, 80) };
+      } catch {
+        return { name: f, lines: 0, size: 0, modified: new Date(), preview: '' };
+      }
+    }).sort((a, b) => {
+      // MEMORY.md first, then alphabetical
+      if (a.name === 'MEMORY.md') return -1;
+      if (b.name === 'MEMORY.md') return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    contentEl.innerHTML = `
+      <div class="memory-file-grid">
+        ${fileInfos.map(f => `
+          <div class="memory-file-card" data-file="${escapeHtml(f.name)}">
+            <div class="memory-file-card-icon">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+            </div>
+            <div class="memory-file-card-info">
+              <span class="memory-file-name">${escapeHtml(f.name)}</span>
+              <span class="memory-file-meta">${f.lines} ${t('memory.lines')}</span>
+              ${f.preview ? `<span class="memory-file-preview">${escapeHtml(f.preview)}</span>` : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    contentEl.querySelectorAll('.memory-file-card').forEach(card => {
+      card.onclick = () => {
+        this._state.currentMemoryFile = card.dataset.file;
+        this.loadMemoryContent('project-memory-file', this._state.currentProject);
+      };
+    });
+  }
+
+  // ── Helper: create empty file ──
+
+  async _createEmptyFile(filePath, defaultContent = '') {
+    const dir = this.api.path.dirname(filePath);
+    if (!this.api.fs.existsSync(dir)) {
+      this.api.fs.mkdirSync(dir, { recursive: true });
+    }
+    this.api.fs.writeFileSync(filePath, defaultContent, 'utf8');
   }
 
   // ── Template creation ──
@@ -508,25 +767,36 @@ class MemoryEditor extends BasePanel {
     if (!template) return;
 
     let projectName = 'Mon Projet';
-    if (this._state.currentSource === 'project' && this._state.currentProject !== null) {
+    const source = this._state.currentSource;
+
+    if ((source === 'project' || source === 'project-private') && this._state.currentProject !== null) {
       const project = projectsState.get().projects[this._state.currentProject];
       if (project) projectName = project.name;
-    } else if (this._state.currentSource === 'global') {
+    } else if (source === 'global') {
       projectName = 'Instructions Globales Claude';
     }
 
     const content = template.content.replace(/\{PROJECT_NAME\}/g, projectName);
 
     let filePath = '';
-    if (this._state.currentSource === 'global') {
+    if (source === 'global') {
       filePath = this._getGlobalClaudeMd();
       const claudeDir = this._getClaudeDir();
       if (!this.api.fs.existsSync(claudeDir)) {
         this.api.fs.mkdirSync(claudeDir, { recursive: true });
       }
-    } else if (this._state.currentSource === 'project' && this._state.currentProject !== null) {
+    } else if (source === 'project' && this._state.currentProject !== null) {
       const project = projectsState.get().projects[this._state.currentProject];
       if (project) filePath = this.api.path.join(project.path, 'CLAUDE.md');
+    } else if (source === 'project-private' && this._state.currentProject !== null) {
+      const project = projectsState.get().projects[this._state.currentProject];
+      if (project) {
+        filePath = this._getProjectPrivateClaudeMd(project.path);
+        const dir = this.api.path.dirname(filePath);
+        if (!this.api.fs.existsSync(dir)) {
+          this.api.fs.mkdirSync(dir, { recursive: true });
+        }
+      }
     }
 
     if (filePath) {
@@ -558,11 +828,24 @@ class MemoryEditor extends BasePanel {
 
     document.getElementById('memory-sources-list').onclick = async (e) => {
       const item = e.target.closest('.memory-source-item');
-      if (!item) return;
+      if (item) {
+        const source = item.dataset.source;
+        const projectIndex = item.dataset.project !== undefined ? parseInt(item.dataset.project) : null;
+        await this.loadMemoryContent(source, projectIndex);
+        return;
+      }
 
-      const source = item.dataset.source;
-      const projectIndex = item.dataset.project !== undefined ? parseInt(item.dataset.project) : null;
-      await this.loadMemoryContent(source, projectIndex);
+      // Handle project group header click (expand/collapse)
+      const header = e.target.closest('.memory-project-header');
+      if (header) {
+        const projectIndex = parseInt(header.dataset.project);
+        if (this._state.expandedProjects.has(projectIndex)) {
+          this._state.expandedProjects.delete(projectIndex);
+        } else {
+          this._state.expandedProjects.add(projectIndex);
+        }
+        this.renderMemorySources(this._state.searchQuery);
+      }
     };
 
     document.getElementById('btn-memory-refresh').onclick = async () => {
@@ -571,13 +854,28 @@ class MemoryEditor extends BasePanel {
 
     document.getElementById('btn-memory-open').onclick = () => {
       let filePath = '';
-      if (this._state.currentSource === 'global') {
+      const source = this._state.currentSource;
+
+      if (source === 'global') {
         filePath = this._getGlobalClaudeMd();
-      } else if (this._state.currentSource === 'settings' || this._state.currentSource === 'commands') {
+      } else if (source === 'rules') {
+        filePath = this._getRulesMd();
+      } else if (source === 'settings' || source === 'commands') {
         filePath = this._getClaudeSettingsJson();
-      } else if (this._state.currentSource === 'project' && this._state.currentProject !== null) {
+      } else if (source === 'project' && this._state.currentProject !== null) {
         const project = projectsState.get().projects[this._state.currentProject];
         if (project) filePath = this.api.path.join(project.path, 'CLAUDE.md');
+      } else if (source === 'project-private' && this._state.currentProject !== null) {
+        const project = projectsState.get().projects[this._state.currentProject];
+        if (project) filePath = this._getProjectPrivateClaudeMd(project.path);
+      } else if (source === 'project-memory' && this._state.currentProject !== null) {
+        const project = projectsState.get().projects[this._state.currentProject];
+        if (project) filePath = this._getProjectMemoryDir(project.path);
+      } else if (source === 'project-memory-file' && this._state.currentProject !== null) {
+        const project = projectsState.get().projects[this._state.currentProject];
+        if (project && this._state.currentMemoryFile) {
+          filePath = this.api.path.join(this._getProjectMemoryDir(project.path), this._state.currentMemoryFile);
+        }
       }
 
       if (filePath) {
@@ -589,7 +887,15 @@ class MemoryEditor extends BasePanel {
     };
 
     document.getElementById('btn-memory-create').onclick = async () => {
-      await this.createMemoryFromTemplate('minimal');
+      const source = this._state.currentSource;
+      if (source === 'rules') {
+        await this._createEmptyFile(this._getRulesMd(), `# Rules\n\n## Code\n- Write clean, readable code\n`);
+        await this.loadMemoryContent('rules');
+      } else if (source === 'project-private' && this._state.currentProject !== null) {
+        await this.createMemoryFromTemplate('minimal');
+      } else {
+        await this.createMemoryFromTemplate('minimal');
+      }
     };
 
     document.getElementById('btn-memory-template').onclick = () => {
@@ -679,16 +985,33 @@ class MemoryEditor extends BasePanel {
 
     const newContent = editor.value;
     let filePath = '';
+    const source = this._state.currentSource;
 
-    if (this._state.currentSource === 'global') {
+    if (source === 'global') {
       filePath = this._getGlobalClaudeMd();
       const claudeDir = this._getClaudeDir();
       if (!this.api.fs.existsSync(claudeDir)) {
         this.api.fs.mkdirSync(claudeDir, { recursive: true });
       }
-    } else if (this._state.currentSource === 'project' && this._state.currentProject !== null) {
+    } else if (source === 'rules') {
+      filePath = this._getRulesMd();
+    } else if (source === 'project' && this._state.currentProject !== null) {
       const project = projectsState.get().projects[this._state.currentProject];
       if (project) filePath = this.api.path.join(project.path, 'CLAUDE.md');
+    } else if (source === 'project-private' && this._state.currentProject !== null) {
+      const project = projectsState.get().projects[this._state.currentProject];
+      if (project) {
+        filePath = this._getProjectPrivateClaudeMd(project.path);
+        const dir = this.api.path.dirname(filePath);
+        if (!this.api.fs.existsSync(dir)) {
+          this.api.fs.mkdirSync(dir, { recursive: true });
+        }
+      }
+    } else if (source === 'project-memory-file' && this._state.currentProject !== null) {
+      const project = projectsState.get().projects[this._state.currentProject];
+      if (project && this._state.currentMemoryFile) {
+        filePath = this.api.path.join(this._getProjectMemoryDir(project.path), this._state.currentMemoryFile);
+      }
     }
 
     if (filePath) {
@@ -696,7 +1019,7 @@ class MemoryEditor extends BasePanel {
         this.api.fs.writeFileSync(filePath, newContent, 'utf8');
         this._state.content = newContent;
         // Push global CLAUDE.md changes to cloud sync
-        if (this._state.currentSource === 'global' && window.electron_api?.sync?.pushEntity) {
+        if (source === 'global' && window.electron_api?.sync?.pushEntity) {
           window.electron_api.sync.pushEntity('memory');
         }
       } catch (e) {
@@ -738,7 +1061,6 @@ module.exports = {
   MemoryEditor,
   init: (context) => {
     _ensureInstance(context);
-    // Update modal/toast references in case they changed
     _instance._showModal = context.showModal;
     _instance._closeModal = context.closeModal;
     _instance._showToast = context.showToast;

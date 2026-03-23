@@ -953,7 +953,20 @@
     "templateInsertHint": "The template will be inserted at the cursor position.",
     "errorLoading": "Error loading: {message}",
     "errorCreating": "Error creating: {message}",
-    "errorSaving": "Error saving: {message}"
+    "errorSaving": "Error saving: {message}",
+    "globalSection": "Global",
+    "projectsSection": "Projects",
+    "globalRules": "Global Rules",
+    "privateInstructions": "Private Instructions",
+    "autoMemory": "Auto Memory",
+    "noMemoryFiles": "No memory files",
+    "memoryFiles": "{count} files",
+    "backToMemory": "Back",
+    "createPrivate": "Create private instructions for {name} (not committed to repo).",
+    "createRules": "Create global rules file",
+    "rulesHint": "Define global development rules applied to all projects.",
+    "noRulesMd": "No rules.md file",
+    "noPrivateClaudeMd": "No private CLAUDE.md"
   },
   "gitChanges": {
     "filesRequired": "Files required",
