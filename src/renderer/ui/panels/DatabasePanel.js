@@ -1404,14 +1404,14 @@ async function loadRedisKeys(dbName) {
   try {
     const result = await ctx.api.database.executeQuery({ id: activeId, sql: `_REDIS_KEYS ${dbIndex}`, limit: 100000 });
     if (result.error) {
-      ctx.showToast({ type: 'error', title: result.error });
+      ctx.showToast({ type: 'error', title: t('database.browserQueryError'), message: result.error });
       panelState.redisTreeKeys = [];
     } else {
       panelState.redisTreeKeys = (result.rows || []).map(r => r.key);
     }
   } catch (e) {
     panelState.redisTreeKeys = [];
-    ctx.showToast({ type: 'error', title: e.message });
+    ctx.showToast({ type: 'error', title: t('database.browserQueryError'), message: e.message });
   }
 
   panelState.redisTreeLoading = false;
@@ -1430,14 +1430,14 @@ async function loadRedisKeyInfo(dbName, key) {
   try {
     const result = await ctx.api.database.executeQuery({ id: activeId, sql: `_REDIS_KEY_INFO ${dbIndex} ${key}`, limit: 1 });
     if (result.error) {
-      ctx.showToast({ type: 'error', title: result.error });
+      ctx.showToast({ type: 'error', title: t('database.browserQueryError'), message: result.error });
       panelState.redisKeyInfo = null;
     } else if (result.rows && result.rows.length > 0) {
       panelState.redisKeyInfo = result.rows[0];
     }
   } catch (e) {
     panelState.redisKeyInfo = null;
-    ctx.showToast({ type: 'error', title: e.message });
+    ctx.showToast({ type: 'error', title: t('database.browserQueryError'), message: e.message });
   }
 
   panelState.redisKeyInfoLoading = false;
@@ -1534,11 +1534,11 @@ async function loadTableData(tableName) {
     };
 
     if (dataResult.error) {
-      ctx.showToast({ type: 'error', title: dataResult.error });
+      ctx.showToast({ type: 'error', title: t('database.browserQueryError'), message: dataResult.error });
     }
   } catch (e) {
     panelState.browserData = { columns: [], rows: [], totalCount: 0, error: e.message };
-    ctx.showToast({ type: 'error', title: e.message });
+    ctx.showToast({ type: 'error', title: t('database.browserQueryError'), message: e.message });
   }
 
   panelState.browserLoading = false;
