@@ -603,10 +603,10 @@ class GitChangesPanel extends BasePanel {
         try {
           const result = await this.api.git.stashSave({ projectPath: this._state.projectPath, message: msg });
           if (result && result.success !== false) {
-            this._showToast({ type: 'success', title: t('gitTab.stashSave'), message: t('gitTab.stashAppliedSuccess'), duration: 3000 });
+            this._showToast({ type: 'success', title: t('gitTab.stashSave'), message: t('gitTab.stashSavedSuccess'), duration: 3000 });
             await this.loadGitChanges();
           } else {
-            this._showToast({ type: 'error', title: t('gitTab.stashSave'), message: result?.error || 'Failed', duration: 4000 });
+            this._showToast({ type: 'error', title: t('gitTab.stashSave'), message: result?.error || t('common.errorOccurred'), duration: 4000 });
             saveBtn.disabled = false;
           }
         } catch (e) {
@@ -637,7 +637,7 @@ class GitChangesPanel extends BasePanel {
             });
             await this.loadGitChanges();
           } else {
-            this._showToast({ type: 'error', title: isApply ? t('gitTab.applyStash') : t('gitTab.dropStash'), message: result?.error || 'Failed', duration: 4000 });
+            this._showToast({ type: 'error', title: isApply ? t('gitTab.applyStash') : t('gitTab.dropStash'), message: result?.error || t('common.errorOccurred'), duration: 4000 });
             btn.disabled = false;
           }
         } catch (err) {

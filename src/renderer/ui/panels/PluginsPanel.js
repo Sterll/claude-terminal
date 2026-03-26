@@ -419,7 +419,7 @@ class PluginsPanel extends BasePanel {
           try {
             const result = await this.api.plugins.uninstall(pluginKey);
             if (result.success) {
-              this._showToast({ type: 'success', title: t('plugins.uninstallSuccess') });
+              this._showToast({ type: 'success', title: t('plugins.uninstallSuccess', { name: pluginKey }) });
               await this.loadPlugins();
             } else {
               this._showToast({ type: 'error', title: t('plugins.uninstallError'), message: result.error || '' });
@@ -443,7 +443,7 @@ class PluginsPanel extends BasePanel {
     try {
       const result = await this.api.plugins.install(marketplace, pluginName);
       if (result.success) {
-        this._showToast({ type: 'success', title: t('plugins.installSuccess') });
+        this._showToast({ type: 'success', title: t('plugins.installSuccess', { name: pluginName }) });
         await this.loadPlugins();
       } else {
         this._showToast({ type: 'error', title: t('plugins.installError'), message: result.error || '' });

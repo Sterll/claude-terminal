@@ -2602,7 +2602,7 @@ async function handleRebase(branch) {
     if (result.success) {
       showToast(t('gitTab.rebaseSuccess'), 'success');
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
     await loadAllData(selectedProject);
     renderGitTab();
@@ -2619,7 +2619,7 @@ async function handleRenameBranch(branch) {
       await loadAllData(selectedProject);
       renderGitTab();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -2639,7 +2639,7 @@ async function handleDeleteRemoteBranch(branch) {
       await refreshBranches();
       renderBranches();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -2658,7 +2658,7 @@ async function handleMergePR(pullNumber) {
       prsData = await api.github.pullRequests({ remoteUrl });
       renderSubTabContent();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -2690,7 +2690,7 @@ async function handleCreateIssue() {
       issuesData = await api.github.issues({ remoteUrl, state: issuesState });
       renderSubTabContent();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -2708,7 +2708,7 @@ async function handleCloseIssue(issueNumber) {
       issuesData = await api.github.issues({ remoteUrl, state: issuesState });
       renderSubTabContent();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -2735,7 +2735,7 @@ async function handleCreateTag() {
       if (tagsRes?.success) tagsData = tagsRes.tags || [];
       renderTags();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -2756,7 +2756,7 @@ async function handleDeleteTag(tagName) {
       if (tagsRes?.success) tagsData = tagsRes.tags || [];
       renderTags();
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }
@@ -2767,7 +2767,7 @@ async function handlePushTag(tagName) {
     if (result.success) {
       showToast(t('gitTab.tagPushed', { name: tagName }), 'success');
     } else {
-      showToast(result.error, 'error');
+      showToast(friendlyGitError(result.error), 'error');
     }
   });
 }

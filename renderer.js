@@ -777,8 +777,8 @@ async function gitPull(projectId, overridePath) {
     ProjectList.render();
     showGitToast({
       success: false,
-      title: 'Pull error',
-      message: e.message || 'An error occurred',
+      title: t('git.pullError'),
+      message: e.message || t('common.errorOccurred'),
       duration: 6000
     });
   }
@@ -819,8 +819,8 @@ async function gitPush(projectId, overridePath) {
     ProjectList.render();
     showGitToast({
       success: false,
-      title: 'Push error',
-      message: e.message || 'An error occurred',
+      title: t('git.pushError'),
+      message: e.message || t('common.errorOccurred'),
       duration: 6000
     });
   }
@@ -4127,7 +4127,7 @@ document.getElementById('btn-new-project').onclick = () => {
         const templates = webappType.getScaffoldTemplates ? webappType.getScaffoldTemplates() : [];
         const tpl = templates.find(t => t.id === selectedTemplate);
         if (!tpl) {
-          showToast('Unknown template', 'error');
+          showToast({ type: 'error', title: t('newProject.unknownTemplate', { id: selectedTemplate }) });
           submitBtn.disabled = false;
           submitBtn.textContent = t('newProject.create');
           return;
@@ -4481,7 +4481,7 @@ filterBtnBranch.onclick = async (e) => {
           filterBtnBranch.classList.remove('open');
           refreshDashboardAsync(currentFilterProjectId);
         } else {
-          showGitToast({ success: false, title: t('common.error'), message: result.error || t('git.unableToCreateBranch'), duration: 5000 });
+          showGitToast({ success: false, title: t('git.branchCreateError'), message: result.error || t('git.unableToCreateBranch'), duration: 5000 });
           createConfirm.disabled = false;
           createInput.disabled = false;
         }
@@ -4540,7 +4540,7 @@ filterBtnBranch.onclick = async (e) => {
                 item.remove();
                 refreshDashboardAsync(currentFilterProjectId);
               } else {
-                showGitToast({ success: false, title: t('common.error'), message: result.error || t('git.deletionFailed'), duration: 5000 });
+                showGitToast({ success: false, title: t('git.branchDeleteError'), message: result.error || t('git.deletionFailed'), duration: 5000 });
                 // Restore UI
                 confirmRow.remove();
                 item.classList.remove('confirm-delete');
@@ -4595,7 +4595,7 @@ filterBtnBranch.onclick = async (e) => {
           } else {
             showGitToast({
               success: false,
-              title: t('common.error'),
+              title: t('git.checkoutError'),
               message: result.error || t('git.unableToSwitchBranch'),
               duration: 5000
             });

@@ -32,6 +32,42 @@ function escapeSqlValue(val) {
 
 let ctx = null;
 
+// ==================== Redis Tree Builder ====================
+
+function buildRedisTree(keys, filter = '') {
+  const root = { children: new Map(), keys: [], keyCount: 0 };
+  const filtered = filter
+    ? keys.filter(k => k.toLowerCase().includes(filter.toLowerCase()))
+    : keys;
+
+  for (const key of filtered) {
+    const parts = key.split(':');
+    let node = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!node.children.has(parts[i])) {
+        node.children.set(parts[i], { children: new Map(), keys: [], keyCount: 0 });
+      }
+      node = node.children.get(parts[i]);
+    }
+    node.keys.push(key);
+  }
+
+  (function count(n) {
+    let c = n.keys.length;
+    for (const child of n.children.values()) c += count(child);
+    return (n.keyCount = c);
+  })(root);
+
+  return root;
+}
+
+function formatTtl(seconds) {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+  return `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h`;
+}
+
 // ==================== Autocomplete Index ====================
 let autocompleteIndex = null; // { tables: string[], columnsByTable: {}, allColumns: string[], sqlKeywords: string[] }
 
@@ -65,6 +101,14 @@ let panelState = {
   browserSidebarWidth: 240,
   explainResult: null,         // { dbType, rawResult, sql }
   tabStates: {},               // { [tabId]: { queryRunning, explainResult, queryResultColumnWidths } }
+  // Redis tree view state
+  redisTreeKeys: null,              // string[] — all key names for current db
+  redisTreeFilter: '',              // search filter for tree
+  redisExpandedFolders: new Set(),  // expanded folder paths (e.g. "user", "user:123")
+  redisSelectedKey: null,           // full key name of selected leaf
+  redisKeyInfo: null,               // { key, type, ttl, pttl, size, length, value }
+  redisKeyInfoLoading: false,
+  redisTreeLoading: false,
 };
 
 function init(context) {
@@ -380,7 +424,8 @@ function renderSchema(container) {
 
   const conn = state.getDatabaseConnection(activeId);
   const isMongo = conn && conn.type === 'mongodb';
-  const tableLabel = isMongo ? t('database.collections') : t('database.tables');
+  const isRedis = conn && conn.type === 'redis';
+  const tableLabel = isRedis ? t('database.databases') : (isMongo ? t('database.collections') : t('database.tables'));
   const columnLabel = isMongo ? t('database.fields') : t('database.columns');
 
   if (!schema.tables || schema.tables.length === 0) {
@@ -409,23 +454,198 @@ function renderSchema(container) {
           ${filteredTables.map(table => {
             const rc = panelState.browserTableRowCounts[table.name];
             const rcBadge = rc !== undefined ? `<span class="db-browser-table-rows" title="${rc} rows">${formatRowCount(rc)}</span>` : '';
+            const icon = isRedis
+              ? '<svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13" class="db-browser-table-icon"><path d="M12 3C7.58 3 4 4.79 4 7v10c0 2.21 3.58 4 8 4s8-1.79 8-4V7c0-2.21-3.58-4-8-4zm6 14c0 .5-2.13 2-6 2s-6-1.5-6-2v-2.23c1.61.78 3.72 1.23 6 1.23s4.39-.45 6-1.23V17zm0-5c0 .5-2.13 2-6 2s-6-1.5-6-2V9.77C7.61 10.55 9.72 11 12 11s4.39-.45 6-1.23V12zm-6-3c-3.87 0-6-1.5-6-2s2.13-2 6-2 6 1.5 6 2-2.13 2-6 2z"/></svg>'
+              : '<svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13" class="db-browser-table-icon"><path d="M3 3h18v18H3V3zm2 4v4h6V7H5zm8 0v4h6V7h-6zm-8 6v4h6v-4H5zm8 0v4h6v-4h-6z"/></svg>';
             return `
             <div class="db-browser-table-item ${table.name === selectedTable ? 'active' : ''}" data-table="${escapeHtml(table.name)}">
-              <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13" class="db-browser-table-icon"><path d="M3 3h18v18H3V3zm2 4v4h6V7H5zm8 0v4h6V7h-6zm-8 6v4h6v-4H5zm8 0v4h6v-4h-6z"/></svg>
+              ${icon}
               <span class="db-browser-table-name">${escapeHtml(table.name)}</span>
               ${rcBadge}
-              <span class="db-browser-table-cols">${table.columns.length}</span>
+              ${isRedis ? '' : `<span class="db-browser-table-cols">${table.columns.length}</span>`}
             </div>`;
           }).join('')}
         </div>
       </div>
       <div class="db-browser-resize-handle"></div>
       <div class="db-browser-main">
-        ${selectedTable && selectedMeta ? renderBrowserDataPanel(selectedTable, selectedMeta, isMongo, columnLabel) : renderBrowserEmptyState(tableLabel)}
+        ${isRedis
+          ? (selectedTable ? renderRedisBrowserPanel(selectedTable) : renderBrowserEmptyState(tableLabel))
+          : (selectedTable && selectedMeta ? renderBrowserDataPanel(selectedTable, selectedMeta, isMongo, columnLabel) : renderBrowserEmptyState(tableLabel))}
       </div>
     </div>`;
 
   bindBrowserEvents(container);
+}
+
+// ==================== Redis Tree Browser ====================
+
+function renderRedisBrowserPanel(dbName) {
+  const treeKeys = panelState.redisTreeKeys;
+  const loading = panelState.redisTreeLoading;
+  const filter = panelState.redisTreeFilter;
+  const selectedKey = panelState.redisSelectedKey;
+  const keyInfo = panelState.redisKeyInfo;
+  const keyInfoLoading = panelState.redisKeyInfoLoading;
+
+  let treeHtml = '';
+  if (loading) {
+    treeHtml = `<div class="redis-tree-loading"><div class="db-browser-spinner"></div>${t('database.redisLoadingKeys')}</div>`;
+  } else if (!treeKeys) {
+    treeHtml = `<div class="redis-tree-empty">${t('database.redisNoKeys')}</div>`;
+  } else if (treeKeys.length === 0) {
+    treeHtml = `<div class="redis-tree-empty">${t('database.redisNoKeys')}</div>`;
+  } else {
+    const tree = buildRedisTree(treeKeys, filter);
+    treeHtml = renderRedisTreeNodes(tree, '', panelState.redisExpandedFolders, selectedKey);
+  }
+
+  let detailHtml = '';
+  if (keyInfoLoading) {
+    detailHtml = `<div class="redis-detail-loading"><div class="db-browser-spinner"></div>${t('database.redisLoadingKey')}</div>`;
+  } else if (!selectedKey) {
+    detailHtml = `<div class="redis-detail-empty">
+      <svg viewBox="0 0 24 24" fill="currentColor" width="40" height="40" style="opacity:0.3"><path d="M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1z"/></svg>
+      <span>${t('database.redisSelectKey')}</span>
+    </div>`;
+  } else if (keyInfo) {
+    detailHtml = renderRedisKeyDetail(keyInfo);
+  }
+
+  const filteredCount = filter && treeKeys
+    ? treeKeys.filter(k => k.toLowerCase().includes(filter.toLowerCase())).length
+    : (treeKeys ? treeKeys.length : 0);
+
+  return `
+    <div class="redis-browser">
+      <div class="redis-tree-panel">
+        <div class="redis-tree-header">
+          <div class="redis-tree-search">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+            <input type="text" class="redis-tree-search-input" id="redis-tree-filter" placeholder="${t('database.redisFilterKeys')}" value="${escapeHtml(filter)}">
+            <span class="redis-tree-count">${filteredCount}</span>
+          </div>
+          <button class="db-browser-btn" id="redis-tree-refresh" title="${t('database.redisRefreshKeys')}">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+          </button>
+        </div>
+        <div class="redis-tree-list" id="redis-tree-list">
+          ${treeHtml}
+        </div>
+      </div>
+      <div class="redis-detail-panel" id="redis-detail-panel">
+        ${detailHtml}
+      </div>
+    </div>`;
+}
+
+function renderRedisTreeNodes(node, pathPrefix, expandedFolders, selectedKey) {
+  let html = '';
+  const sortedChildren = [...node.children.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const sortedKeys = [...node.keys].sort();
+
+  for (const [name, childNode] of sortedChildren) {
+    const folderPath = pathPrefix ? `${pathPrefix}:${name}` : name;
+    const isExpanded = expandedFolders.has(folderPath);
+    const childHtml = isExpanded ? renderRedisTreeNodes(childNode, folderPath, expandedFolders, selectedKey) : '';
+    html += `
+      <div class="redis-tree-folder ${isExpanded ? 'expanded' : ''}">
+        <div class="redis-tree-folder-header" data-folder-toggle="${escapeHtml(folderPath)}">
+          <svg class="redis-tree-chevron" viewBox="0 0 10 10" width="10" height="10">
+            <path d="${isExpanded ? 'M1 3l4 4 4-4' : 'M3 1l4 4-4 4'}" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+          <svg class="redis-tree-folder-icon" viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+            <path d="${isExpanded
+              ? 'M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z'
+              : 'M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z'}"/>
+          </svg>
+          <span class="redis-tree-folder-name">${escapeHtml(name)}</span>
+          <span class="redis-tree-folder-count">${childNode.keyCount}</span>
+        </div>
+        <div class="redis-tree-folder-children" ${isExpanded ? '' : 'style="display:none"'}>
+          ${childHtml}
+        </div>
+      </div>`;
+  }
+
+  for (const key of sortedKeys) {
+    const leafName = key.split(':').pop();
+    const isSelected = key === selectedKey;
+    html += `
+      <div class="redis-tree-key ${isSelected ? 'active' : ''}" data-redis-key="${escapeHtml(key)}">
+        <svg class="redis-tree-key-icon" viewBox="0 0 24 24" fill="currentColor" width="12" height="12">
+          <path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h3v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/>
+        </svg>
+        <span class="redis-tree-key-name">${escapeHtml(leafName)}</span>
+      </div>`;
+  }
+  return html;
+}
+
+function renderRedisKeyDetail(info) {
+  const { key, type, ttl, size, length, value } = info;
+  const ttlDisplay = ttl === null ? t('database.redisNoExpiry') : `${ttl}s (${formatTtl(ttl)})`;
+
+  let valueHtml = '';
+  try {
+    if (type === 'string') {
+      let formatted = value, isJson = false;
+      try { formatted = JSON.stringify(JSON.parse(value), null, 2); isJson = true; } catch {}
+      valueHtml = `<pre class="redis-value-pre ${isJson ? 'json' : ''}">${escapeHtml(formatted || '')}</pre>`;
+    } else if (type === 'hash') {
+      const entries = typeof value === 'string' ? JSON.parse(value) : (value || {});
+      const pairs = Object.entries(entries);
+      valueHtml = `<div class="redis-value-table-wrapper"><table class="redis-value-table">
+        <thead><tr><th>${t('database.redisField')}</th><th>${t('database.redisValue')}</th></tr></thead>
+        <tbody>${pairs.map(([f, v]) => `<tr><td class="redis-field-name">${escapeHtml(f)}</td><td>${escapeHtml(String(v))}</td></tr>`).join('')}</tbody>
+      </table></div>`;
+    } else if (type === 'list') {
+      const items = typeof value === 'string' ? JSON.parse(value) : (value || []);
+      valueHtml = `<div class="redis-value-table-wrapper"><table class="redis-value-table">
+        <thead><tr><th>#</th><th>${t('database.redisValue')}</th></tr></thead>
+        <tbody>${items.map((v, i) => `<tr><td class="redis-list-index">${i}</td><td>${escapeHtml(String(v))}</td></tr>`).join('')}</tbody>
+      </table></div>`;
+    } else if (type === 'set') {
+      const members = typeof value === 'string' ? JSON.parse(value) : (value || []);
+      valueHtml = `<div class="redis-value-table-wrapper"><table class="redis-value-table">
+        <thead><tr><th>${t('database.redisMember')}</th></tr></thead>
+        <tbody>${members.map(m => `<tr><td>${escapeHtml(String(m))}</td></tr>`).join('')}</tbody>
+      </table></div>`;
+    } else if (type === 'zset') {
+      const arr = typeof value === 'string' ? JSON.parse(value) : (value || []);
+      const pairs = [];
+      for (let i = 0; i < arr.length; i += 2) pairs.push({ member: arr[i], score: arr[i + 1] });
+      valueHtml = `<div class="redis-value-table-wrapper"><table class="redis-value-table">
+        <thead><tr><th>${t('database.redisScore')}</th><th>${t('database.redisMember')}</th></tr></thead>
+        <tbody>${pairs.map(p => `<tr><td class="redis-zset-score">${escapeHtml(String(p.score))}</td><td>${escapeHtml(String(p.member))}</td></tr>`).join('')}</tbody>
+      </table></div>`;
+    } else {
+      valueHtml = `<pre class="redis-value-pre">${escapeHtml(String(value || ''))}</pre>`;
+    }
+  } catch {
+    valueHtml = `<pre class="redis-value-pre">${escapeHtml(String(value || ''))}</pre>`;
+  }
+
+  return `
+    <div class="redis-detail">
+      <div class="redis-detail-header">
+        <div class="redis-detail-key-row">
+          <span class="redis-detail-key-name" title="${escapeHtml(key)}">${escapeHtml(key)}</span>
+          <span class="redis-type-badge ${type}">${type.toUpperCase()}</span>
+        </div>
+        <div class="redis-detail-meta">
+          <span class="redis-detail-ttl">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            ${escapeHtml(ttlDisplay)}
+          </span>
+          ${size !== null && size !== undefined ? `<span class="redis-detail-size">${t('database.redisBytes', { count: size })}</span>` : ''}
+          ${length !== null && length !== undefined ? `<span class="redis-detail-length">${t('database.redisItems', { count: length })}</span>` : ''}
+        </div>
+      </div>
+      <div class="redis-detail-value">
+        ${valueHtml}
+      </div>
+    </div>`;
 }
 
 function renderBrowserEmptyState(tableLabel) {
@@ -602,8 +822,21 @@ function bindBrowserEvents(container) {
         panelState.browserSearchTerm = '';
         panelState.browserSelectedRows = new Set();
         panelState.browserLastSelectedRow = null;
-        renderContent();
-        loadTableData(tableName);
+
+        const state2 = require('../../state');
+        const conn2 = state2.getDatabaseConnection(state2.getActiveConnection());
+        if (conn2 && conn2.type === 'redis') {
+          panelState.redisTreeKeys = null;
+          panelState.redisSelectedKey = null;
+          panelState.redisKeyInfo = null;
+          panelState.redisTreeFilter = '';
+          panelState.redisExpandedFolders = new Set();
+          renderContent();
+          loadRedisKeys(tableName);
+        } else {
+          renderContent();
+          loadTableData(tableName);
+        }
       }
     };
   });
@@ -900,14 +1133,14 @@ async function commitCellEdit(input) {
   try {
     const result = await ctx.api.database.executeQuery({ id: activeId, sql, allowDestructive: true });
     if (result.error) {
-      ctx.showToast({ type: 'error', title: result.error });
+      ctx.showToast({ type: 'error', title: t('database.browserQueryError'), message: result.error });
     } else {
       // Update local data
       data.rows[row][col] = newVal === '' ? null : newVal;
-      ctx.showToast({ type: 'success', title: t('database.browserRowUpdated') });
+      ctx.showToast({ type: 'success', title: t('database.browserRowUpdated', { table: panelState.browserSelectedTable }) });
     }
   } catch (e) {
-    ctx.showToast({ type: 'error', title: e.message });
+    ctx.showToast({ type: 'error', title: t('database.browserQueryError'), message: e.message });
   }
 
   renderContent();
@@ -976,14 +1209,14 @@ function insertNewRow() {
     try {
       const result = await ctx.api.database.executeQuery({ id: activeId, sql, allowDestructive: true });
       if (result.error) {
-        ctx.showToast({ type: 'error', title: result.error });
+        ctx.showToast({ type: 'error', title: t('database.browserQueryError'), message: result.error });
       } else {
-        ctx.showToast({ type: 'success', title: t('database.browserRowInserted') });
+        ctx.showToast({ type: 'success', title: t('database.browserRowInserted', { table: panelState.browserSelectedTable }) });
         ctx.closeModal();
         loadTableData(panelState.browserSelectedTable);
       }
     } catch (e) {
-      ctx.showToast({ type: 'error', title: e.message });
+      ctx.showToast({ type: 'error', title: t('database.browserQueryError'), message: e.message });
     }
   };
 }
@@ -1040,13 +1273,13 @@ async function deleteRow(rowIdx) {
   try {
     const result = await ctx.api.database.executeQuery({ id: activeId, sql, allowDestructive: true });
     if (result.error) {
-      ctx.showToast({ type: 'error', title: result.error });
+      ctx.showToast({ type: 'error', title: t('database.browserQueryError'), message: result.error });
     } else {
-      ctx.showToast({ type: 'success', title: t('database.browserRowDeleted') });
+      ctx.showToast({ type: 'success', title: t('database.browserRowDeleted', { table: panelState.browserSelectedTable }) });
       loadTableData(panelState.browserSelectedTable);
     }
   } catch (e) {
-    ctx.showToast({ type: 'error', title: e.message });
+    ctx.showToast({ type: 'error', title: t('database.browserQueryError'), message: e.message });
   }
 }
 
@@ -1106,6 +1339,109 @@ function setupColumnResize(container, stateKey, tableName) {
       document.addEventListener('mouseup', onMouseUp);
     };
   });
+
+  // Redis tree events
+  bindRedisBrowserEvents(container);
+}
+
+// ==================== Redis Tree Events & Loading ====================
+
+function bindRedisBrowserEvents(container) {
+  const filterInput = container.querySelector('#redis-tree-filter');
+  if (filterInput) {
+    filterInput.oninput = () => {
+      panelState.redisTreeFilter = filterInput.value;
+      renderContent();
+      setTimeout(() => {
+        const input = document.querySelector('#redis-tree-filter');
+        if (input) { input.focus(); input.selectionStart = input.selectionEnd = input.value.length; }
+      }, 0);
+    };
+  }
+
+  const refreshBtn = container.querySelector('#redis-tree-refresh');
+  if (refreshBtn) {
+    refreshBtn.onclick = () => loadRedisKeys(panelState.browserSelectedTable);
+  }
+
+  // Folder toggle (event delegation)
+  container.querySelectorAll('[data-folder-toggle]').forEach(el => {
+    el.onclick = () => {
+      const folder = el.dataset.folderToggle;
+      if (panelState.redisExpandedFolders.has(folder)) {
+        panelState.redisExpandedFolders.delete(folder);
+      } else {
+        panelState.redisExpandedFolders.add(folder);
+      }
+      renderContent();
+    };
+  });
+
+  // Key selection (event delegation)
+  container.querySelectorAll('.redis-tree-key').forEach(el => {
+    el.onclick = () => {
+      const key = el.dataset.redisKey;
+      if (key && key !== panelState.redisSelectedKey) {
+        panelState.redisSelectedKey = key;
+        panelState.redisKeyInfo = null;
+        renderContent();
+        loadRedisKeyInfo(panelState.browserSelectedTable, key);
+      }
+    };
+  });
+}
+
+async function loadRedisKeys(dbName) {
+  if (!dbName) return;
+  const state = require('../../state');
+  const activeId = state.getActiveConnection();
+  if (!activeId) return;
+
+  panelState.redisTreeLoading = true;
+  renderContent();
+
+  const dbIndex = dbName.startsWith('db:') ? parseInt(dbName.slice(3)) : 0;
+  try {
+    const result = await ctx.api.database.executeQuery({ id: activeId, sql: `_REDIS_KEYS ${dbIndex}`, limit: 100000 });
+    if (result.error) {
+      ctx.showToast({ type: 'error', title: result.error });
+      panelState.redisTreeKeys = [];
+    } else {
+      panelState.redisTreeKeys = (result.rows || []).map(r => r.key);
+    }
+  } catch (e) {
+    panelState.redisTreeKeys = [];
+    ctx.showToast({ type: 'error', title: e.message });
+  }
+
+  panelState.redisTreeLoading = false;
+  renderContent();
+}
+
+async function loadRedisKeyInfo(dbName, key) {
+  const state = require('../../state');
+  const activeId = state.getActiveConnection();
+  if (!activeId) return;
+
+  panelState.redisKeyInfoLoading = true;
+  renderContent();
+
+  const dbIndex = dbName && dbName.startsWith('db:') ? parseInt(dbName.slice(3)) : 0;
+  try {
+    const result = await ctx.api.database.executeQuery({ id: activeId, sql: `_REDIS_KEY_INFO ${dbIndex} ${key}`, limit: 1 });
+    if (result.error) {
+      ctx.showToast({ type: 'error', title: result.error });
+      panelState.redisKeyInfo = null;
+    } else if (result.rows && result.rows.length > 0) {
+      panelState.redisKeyInfo = result.rows[0];
+    }
+  } catch (e) {
+    panelState.redisKeyInfo = null;
+    ctx.showToast({ type: 'error', title: e.message });
+  }
+
+  panelState.redisKeyInfoLoading = false;
+  renderContent();
 }
 
 async function loadTableData(tableName) {
