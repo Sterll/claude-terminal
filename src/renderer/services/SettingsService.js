@@ -49,22 +49,6 @@ class SettingsService extends BaseService {
     return getSetting('skipPermissions') || false;
   }
 
-  toggleNotificationsWithUI() {
-    toggleNotifications();
-    const enabled = isNotificationsEnabled();
-    if (enabled && 'Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-    return enabled;
-  }
-
-  showNotification(title, body, terminalId) {
-    if (!isNotificationsEnabled()) return;
-    const { getActiveTerminal } = require('../state');
-    if (document.hasFocus() && getActiveTerminal() === terminalId) return;
-    this.api.notification.show({ title, body, terminalId });
-  }
-
   getEditorOptions() {
     return EDITOR_OPTIONS;
   }
@@ -134,8 +118,6 @@ module.exports = {
   getEditor: (...a) => _getInstance().getEditor(...a),
   setSkipPermissions: (...a) => _getInstance().setSkipPermissions(...a),
   getSkipPermissions: (...a) => _getInstance().getSkipPermissions(...a),
-  toggleNotificationsWithUI: (...a) => _getInstance().toggleNotificationsWithUI(...a),
-  showNotification: (...a) => _getInstance().showNotification(...a),
   getEditorOptions: (...a) => _getInstance().getEditorOptions(...a),
   getAccentColorOptions: (...a) => _getInstance().getAccentColorOptions(...a),
   getLaunchAtStartup: (...a) => _getInstance().getLaunchAtStartup(...a),

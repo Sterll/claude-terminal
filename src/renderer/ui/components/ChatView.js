@@ -9,7 +9,7 @@ const { escapeHtml, highlight } = require('../../utils');
 const { sanitizeColor } = require('../../utils/color');
 const { t } = require('../../i18n');
 const { heartbeat } = require('../../state');
-const { getSetting, setSetting } = require('../../state/settings.state');
+const { getSetting, setSetting, isNotificationsEnabled } = require('../../state/settings.state');
 const { updateTerminal } = require('../../state/terminals.state');
 const { saveTerminalSessions } = require('../../services/TerminalSessionService');
 
@@ -4316,8 +4316,9 @@ function createChatView(wrapperEl, project, options = {}) {
       if (card) card.classList.add('perm-attention');
     }, 30000);
 
-    // After 60s, send a system notification
+    // After 60s, send a system notification (respects user preference)
     const notifTimer = setTimeout(() => {
+      if (!isNotificationsEnabled()) return;
       const card = messagesEl.querySelector(`.chat-perm-card[data-request-id="${CSS.escape(requestId)}"]:not(.resolved)`);
       if (card) {
         api.notification?.show?.({

@@ -234,7 +234,7 @@ async function loadProjects() {
         console.error('Projects file is corrupted:', parseError);
         const backupPath = createCorruptedBackup(projectsFile);
 
-        // Show notification to user via preload API (if available)
+        // Critical system alert — always shown regardless of notificationsEnabled
         try {
           window.electron_api.notification.show({
             title: t('errors.corruptedFile'),
@@ -427,7 +427,7 @@ function saveProjectsImmediate() {
       return;
     }
 
-    // All retries exhausted — notify user
+    // All retries exhausted — critical system alert, always shown
     saveRetryCount = 0;
     try {
       window.electron_api.notification.show({

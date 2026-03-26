@@ -1456,7 +1456,7 @@ async function createTerminal(project, options = {}) {
     if (!result.success) {
       console.error('Failed to create terminal:', result.error);
       if (callbacks.onNotification) {
-        callbacks.onNotification(`❌ ${t('common.error')}`, result.error || t('terminals.createError'), null);
+        callbacks.onNotification('info', result.error || t('terminals.createError'), null);
       }
       return null;
     }
@@ -2986,7 +2986,7 @@ async function resumeSession(project, sessionId, options = {}) {
     if (!result.success) {
       console.error('Failed to resume session:', result.error);
       if (callbacks.onNotification) {
-        callbacks.onNotification(`❌ ${t('common.error')}`, result.error || t('terminals.resumeError'), null);
+        callbacks.onNotification('info', result.error || t('terminals.resumeError'), null);
       }
       return null;
     }
@@ -4134,7 +4134,7 @@ async function switchTerminalMode(id) {
       wrapper.innerHTML = `<div class="terminal-error-state"><p>${escapeHtml(result.error || t('terminals.createError'))}</p></div>`;
       updateTerminal(id, { mode: 'terminal', chatView: null, terminal: null, fitAddon: null, status: 'error' });
       if (callbacks.onNotification) {
-        callbacks.onNotification(`❌ ${t('common.error')}`, result.error || t('terminals.createError'), null);
+        callbacks.onNotification('info', result.error || t('terminals.createError'), null);
       }
       return;
     }

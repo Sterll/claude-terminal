@@ -13,6 +13,7 @@
 'use strict';
 
 const { State } = require('./State');
+const { isNotificationsEnabled } = require('./settings.state');
 
 // ─── Initial state ────────────────────────────────────────────────────────────
 
@@ -168,7 +169,7 @@ function initWorkflowListeners() {
   });
 
   api.onNotifyDesktop(({ title, message, type }) => {
-    // Delegate to app's notification system if available
+    if (!isNotificationsEnabled()) return;
     if (window.electron_api?.notification?.show) {
       window.electron_api.notification.show({ title, body: message });
     }

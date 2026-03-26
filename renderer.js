@@ -2701,9 +2701,6 @@ document.getElementById('btn-notifications').onclick = () => {
   toggleNotifications();
   const enabled = isNotificationsEnabled();
   document.getElementById('btn-notifications').classList.toggle('active', enabled);
-  if (enabled && 'Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission();
-  }
 };
 
 document.getElementById('btn-settings').onclick = () => {
@@ -4982,11 +4979,11 @@ async function submitCreateModal() {
       const successMsg = type === 'skill' ? t('ui.skillCreatedSuccess') : t('ui.agentCreatedSuccess');
       showToast({ type: 'success', title: t('ui.createWithClaude'), message: successMsg });
 
-      api.notification.show({
-        title: type === 'skill' ? t('ui.newSkill') : t('ui.newAgent'),
-        body: successMsg,
-        autoDismiss: 6000
-      });
+      // Desktop notification only if app is not focused (respects user preference)
+      showNotification('done',
+        type === 'skill' ? t('ui.newSkill') : t('ui.newAgent'),
+        successMsg
+      );
 
       if (type === 'skill') {
         SkillsAgentsPanel.loadSkills();
