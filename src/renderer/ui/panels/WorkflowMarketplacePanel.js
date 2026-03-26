@@ -13,6 +13,7 @@
 
 const { escapeHtml } = require('../../utils');
 const { t, getCurrentLanguage } = require('../../i18n');
+const Toast = require('../components/Toast');
 
 const HUB_URL = 'https://claude-terminal-hub.claudeterminal.workers.dev';
 const PAGE_SIZE = 20;
@@ -752,12 +753,7 @@ async function _submitPublish(overlay) {
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
 function _toast(msg, type = 'info') {
-  const t = document.createElement('div');
-  t.className = `hub-toast hub-toast--${type}`;
-  t.textContent = msg;
-  document.body.appendChild(t);
-  requestAnimationFrame(() => t.classList.add('hub-toast--in'));
-  setTimeout(() => { t.classList.remove('hub-toast--in'); setTimeout(() => t.remove(), 300); }, 3500);
+  Toast.showToast({ message: msg, type, duration: 3500 });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
