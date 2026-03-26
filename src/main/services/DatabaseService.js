@@ -872,6 +872,54 @@ class DatabaseService {
       return { columns: ['key', 'type', 'ttl', 'value'], rows, rowCount: total };
     }
 
+    // Fast key listing: _REDIS_KEYS {dbIndex} {pattern?}
+    const keysMatch = trimmed.match(/^_REDIS_KEYS\s+(\d+)(?:\s+(.+))?$/);
+    if (keysMatch) {
+      const dbIndex = parseInt(keysMatch[1]);
+      const pattern = keysMatch[2] ? `*${keysMatch[2]}*` : '*';
+      await client.select(dbIndex);
+      const allKeys = await this._redisGetAllKeys(client, pattern);
+      return { columns: ['key'], rows: allKeys.map(k => ({ key: k })), rowCount: allKeys.length };
+    }
+
+    // Single key detail: _REDIS_KEY_INFO {dbIndex} {key}
+    const keyInfoMatch = trimmed.match(/^_REDIS_KEY_INFO\s+(\d+)\s+(.+)$/);
+    if (keyInfoMatch) {
+      const dbIndex = parseInt(keyInfoMatch[1]);
+      const key = keyInfoMatch[2].trim();
+      await client.select(dbIndex);
+      const type = await client.type(key);
+      if (type === 'none') throw new Error(`Key "${key}" does not exist`);
+      const ttl = await client.ttl(key);
+      const pttl = await client.pttl(key);
+      let size = null, length = null, value = null;
+      try {
+        if (type === 'string') {
+          value = await client.get(key);
+          size = await client.strlen(key);
+        } else if (type === 'hash') {
+          length = await client.hlen(key);
+          value = JSON.stringify(await client.hgetall(key));
+        } else if (type === 'list') {
+          length = await client.llen(key);
+          value = JSON.stringify(await client.lrange(key, 0, 499));
+        } else if (type === 'set') {
+          length = await client.scard(key);
+          value = JSON.stringify(await client.smembers(key));
+        } else if (type === 'zset') {
+          length = await client.zcard(key);
+          value = JSON.stringify(await client.zrange(key, 0, 499, 'WITHSCORES'));
+        } else {
+          value = `(${type})`;
+        }
+      } catch { /* ignore */ }
+      return {
+        columns: ['key', 'type', 'ttl', 'pttl', 'size', 'length', 'value'],
+        rows: [{ key, type, ttl: ttl < 0 ? null : ttl, pttl: pttl < 0 ? null : pttl, size, length, value }],
+        rowCount: 1,
+      };
+    }
+
     // Native Redis command (e.g. "GET mykey", "SET foo bar", "KEYS *")
     const parts = trimmed.split(/\s+/);
     const cmd = parts[0].toLowerCase();

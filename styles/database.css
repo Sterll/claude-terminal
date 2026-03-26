@@ -2597,3 +2597,289 @@
   width: 80px;
   outline: none;
 }
+
+/* ========== REDIS TREE BROWSER ========== */
+
+.redis-browser {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  gap: 0;
+}
+
+/* --- Tree panel (left) --- */
+.redis-tree-panel {
+  width: 320px;
+  min-width: 220px;
+  max-width: 500px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+.redis-tree-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 8px 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+.redis-tree-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+.redis-tree-search svg { width: 14px; height: 14px; color: var(--text-muted); flex-shrink: 0; }
+.redis-tree-search-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: var(--font-xs);
+  font-family: inherit;
+  min-width: 0;
+}
+.redis-tree-search-input::placeholder { color: var(--text-muted); }
+.redis-tree-count {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.redis-tree-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0;
+}
+.redis-tree-list::-webkit-scrollbar { width: 4px; }
+.redis-tree-list::-webkit-scrollbar-track { background: transparent; }
+.redis-tree-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 2px; }
+
+.redis-tree-loading,
+.redis-tree-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+}
+
+/* --- Folder node --- */
+.redis-tree-folder-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s;
+  border-radius: var(--radius-sm);
+  margin: 0 4px;
+}
+.redis-tree-folder-header:hover { background: var(--bg-hover); }
+.redis-tree-chevron {
+  width: 10px; height: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: transform 0.12s;
+}
+.redis-tree-folder-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+.redis-tree-folder.expanded > .redis-tree-folder-header .redis-tree-folder-icon {
+  color: var(--accent);
+  opacity: 1;
+}
+.redis-tree-folder-name {
+  font-size: var(--font-xs);
+  color: var(--text-primary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.redis-tree-folder-count {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0 5px;
+  border-radius: 6px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.redis-tree-folder-children {
+  padding-left: 16px;
+}
+
+/* --- Leaf key node --- */
+.redis-tree-key {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 24px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s;
+  border-radius: var(--radius-sm);
+  margin: 0 4px;
+}
+.redis-tree-key:hover { background: var(--bg-hover); }
+.redis-tree-key.active { background: var(--accent-dim); }
+.redis-tree-key-icon { color: var(--text-muted); flex-shrink: 0; }
+.redis-tree-key.active .redis-tree-key-icon { color: var(--accent); }
+.redis-tree-key-name {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+.redis-tree-key.active .redis-tree-key-name { color: var(--text-primary); }
+
+/* --- Detail panel (right) --- */
+.redis-detail-panel {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--bg-primary);
+}
+.redis-detail-empty,
+.redis-detail-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+}
+.redis-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  height: 100%;
+}
+.redis-detail-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.redis-detail-key-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.redis-detail-key-name {
+  font-size: var(--font-base);
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+/* Type badges */
+.redis-type-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+.redis-type-badge.string { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+.redis-type-badge.hash   { background: rgba(168, 85, 247, 0.15); color: #c084fc; }
+.redis-type-badge.list   { background: rgba(34, 197, 94, 0.15);  color: #4ade80; }
+.redis-type-badge.set    { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+.redis-type-badge.zset   { background: rgba(239, 68, 68, 0.15);  color: #f87171; }
+
+.redis-detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+}
+.redis-detail-ttl,
+.redis-detail-size,
+.redis-detail-length {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.redis-detail-ttl svg { width: 12px; height: 12px; }
+
+/* Value area */
+.redis-detail-value {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+.redis-value-pre {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: var(--font-xs);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: var(--bg-secondary);
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-color);
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* Value tables (hash, list, set, zset) */
+.redis-value-table-wrapper {
+  overflow-x: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+}
+.redis-value-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-xs);
+}
+.redis-value-table thead { position: sticky; top: 0; z-index: 1; }
+.redis-value-table th {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: var(--font-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  border-bottom: 1px solid var(--border-color);
+}
+.redis-value-table td {
+  padding: 6px 12px;
+  color: var(--text-primary);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  word-break: break-all;
+}
+.redis-value-table tbody tr:hover td { background: rgba(255, 255, 255, 0.02); }
+.redis-field-name { color: var(--accent); font-weight: 500; white-space: nowrap; }
+.redis-list-index,
+.redis-zset-score { color: var(--text-muted); white-space: nowrap; width: 60px; }
