@@ -239,8 +239,16 @@ async function _pollForChanges() {
     if (!projectsResp.ok) return;
     const { projects } = await projectsResp.json();
 
+    // Build set of local project IDs for matching — only notify for known projects
+    const localProjectIds = new Set();
+    try {
+      const data = JSON.parse(fs.readFileSync(projectsFile, 'utf8'));
+      (data.projects || []).forEach(p => localProjectIds.add(p.id));
+    } catch {}
+
     const allChanges = [];
     for (const project of projects) {
+      if (!localProjectIds.has(project.name)) continue;
       try {
         const changesResp = await _fetchCloud(
           `${url}/api/projects/${encodeURIComponent(project.name)}/changes`,
@@ -249,7 +257,7 @@ async function _pollForChanges() {
         if (!changesResp.ok) continue;
         const { changes } = await changesResp.json();
         if (changes && changes.length > 0) {
-          allChanges.push({ projectName: project.name, changes });
+          allChanges.push({ projectName: project.name, displayName: project.displayName || project.name, changes });
         }
       } catch {
         // Skip this project on error
@@ -258,7 +266,7 @@ async function _pollForChanges() {
 
     // Hash-filter: auto-dismiss changes where local files already match cloud
     const filtered = await _hashFilterPendingChanges(allChanges, url, key);
-    if (_mainWindow && !_mainWindow.isDestroyed()) {
+    if (filtered.length > 0 && _mainWindow && !_mainWindow.isDestroyed()) {
       _mainWindow.webContents.send('cloud:pending-changes', { changes: filtered });
     }
   } catch (err) {

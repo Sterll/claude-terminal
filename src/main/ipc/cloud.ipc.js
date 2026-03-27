@@ -1166,34 +1166,8 @@ async function _checkPendingChangesOnReconnect() {
       }
     }
 
-    // Check for pending file changes
-    const projectsResp = await _fetchCloud(`${url}/api/projects`, { headers });
-    if (projectsResp.ok) {
-      const { projects } = await projectsResp.json();
-
-      // Build set of local project IDs for matching
-      const localProjectIds = new Set();
-      try {
-        const data = JSON.parse(fs.readFileSync(projectsFile, 'utf8'));
-        (data.projects || []).forEach(p => localProjectIds.add(p.id));
-      } catch {}
-
-      const allChanges = [];
-      for (const project of projects) {
-        if (!localProjectIds.has(project.name)) continue;
-        const changesResp = await _fetchCloud(`${url}/api/projects/${encodeURIComponent(project.name)}/changes`, { headers });
-        if (!changesResp.ok) continue;
-        const { changes } = await changesResp.json();
-        if (changes.length > 0) {
-          allChanges.push({ projectName: project.name, displayName: project.displayName || project.name, changes });
-        }
-      }
-      // Hash-filter: auto-dismiss changes where local files already match cloud
-      const filtered = await _hashFilterPendingChanges(allChanges, url, key);
-      if (filtered.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('cloud:pending-changes', { changes: filtered });
-      }
-    }
+    // Pending file changes are now handled exclusively by CloudSyncService polling
+    // (avoids duplicate cloud:pending-changes events)
   } catch (err) {
     console.warn('[Cloud] Failed to check pending changes on reconnect:', err.message);
   }
