@@ -14,7 +14,7 @@ const { registerApiHandlers } = require('../../project-types/api/main/api.ipc');
 const { registerDialogHandlers, setMainWindow: setDialogMainWindow } = require('./dialog.ipc');
 const { registerProjectHandlers } = require('./project.ipc');
 const { registerClaudeHandlers } = require('./claude.ipc');
-const { registerUsageHandlers } = require('./usage.ipc');
+const { registerUsageHandlers, setMainWindow: setUsageMainWindow } = require('./usage.ipc');
 const { registerMarketplaceHandlers } = require('./marketplace.ipc');
 const { registerMcpRegistryHandlers } = require('./mcpRegistry.ipc');
 const { registerPluginHandlers } = require('./plugin.ipc');
@@ -39,6 +39,7 @@ const { registerSyncHandlers, setMainWindow: setSyncMainWindow } = require('./sy
 function registerAllHandlers(mainWindow) {
   // Set main window references where needed
   setDialogMainWindow(mainWindow);
+  setUsageMainWindow(mainWindow);
   setCloudMainWindow(mainWindow);
   setSyncMainWindow(mainWindow);
 
