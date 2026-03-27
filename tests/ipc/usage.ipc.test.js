@@ -4,7 +4,8 @@ const mockUsageService = {
   getUsageData: jest.fn(),
   refreshUsage: jest.fn(),
   startPeriodicFetch: jest.fn(),
-  stopPeriodicFetch: jest.fn()
+  stopPeriodicFetch: jest.fn(),
+  onUpdate: jest.fn()
 };
 
 jest.mock('electron', () => ({

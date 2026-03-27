@@ -13,6 +13,7 @@ let usageData = null;
 let lastFetch = null;
 let fetchInterval = null;
 let isFetching = false;
+let _onUpdateCallback = null;
 
 const USAGE_API_URL = 'https://api.anthropic.com/api/oauth/usage';
 const OAUTH_BETA_HEADER = 'oauth-2025-04-20';
@@ -121,6 +122,7 @@ async function fetchUsage() {
         usageData = data;
         lastFetch = new Date();
         console.log('[Usage] Fetched via API');
+        if (_onUpdateCallback) _onUpdateCallback(data);
         return data;
       } catch (apiErr) {
         console.log('[Usage] API failed, falling back to PTY:', apiErr.message);
@@ -203,11 +205,20 @@ function onWindowShow() {
   }
 }
 
+/**
+ * Register a callback to receive usage data updates (push model)
+ * @param {Function} cb - Called with usage data object
+ */
+function onUpdate(cb) {
+  _onUpdateCallback = cb;
+}
+
 module.exports = {
   startPeriodicFetch,
   stopPeriodicFetch,
   getUsageData,
   refreshUsage,
   fetchUsage,
-  onWindowShow
+  onWindowShow,
+  onUpdate
 };

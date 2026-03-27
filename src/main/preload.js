@@ -578,7 +578,8 @@ contextBridge.exposeInMainWorld('electron_api', {
     getData: () => ipcRenderer.invoke('get-usage-data'),
     refresh: () => ipcRenderer.invoke('refresh-usage'),
     startMonitor: (intervalMs) => ipcRenderer.invoke('start-usage-monitor', intervalMs),
-    stopMonitor: () => ipcRenderer.invoke('stop-usage-monitor')
+    stopMonitor: () => ipcRenderer.invoke('stop-usage-monitor'),
+    onDataUpdated: (callback) => ipcRenderer.on('usage-data-updated', (event, data) => callback(data))
   },
 
   // ==================== QUICK PICKER ====================

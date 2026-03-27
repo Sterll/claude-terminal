@@ -494,11 +494,20 @@ async function checkAllProjectsGitStatus() {
         localState.gitRepoStatus.set(project.id, { isGitRepo: false });
       }
     }));
+
+    // After each batch, update git buttons if the currently selected project was just checked
+    const selectedFilter = projectsState.get().selectedProjectFilter;
+    if (selectedFilter !== null && projects[selectedFilter]) {
+      const selectedId = projects[selectedFilter].id;
+      if (batch.some(p => p.id === selectedId)) {
+        showFilterGitActions(selectedId);
+      }
+    }
   }
   localState.gitStatusInitialized = true;
   ProjectList.render();
 
-  // Update filter git actions if a project is selected
+  // Final update for the currently selected project
   const selectedFilter = projectsState.get().selectedProjectFilter;
   if (selectedFilter !== null && projects[selectedFilter]) {
     showFilterGitActions(projects[selectedFilter].id);
@@ -4626,8 +4635,9 @@ projectsState.subscribe(() => {
 
   if (selectedFilter !== null && projects[selectedFilter]) {
     const projectId = projects[selectedFilter].id;
-    // Skip if git status hasn't been loaded yet — checkAllProjectsGitStatus will handle it
-    if (!localState.gitStatusInitialized && !localState.gitRepoStatus.has(projectId)) return;
+    // showFilterGitActions handles the case where git status is not yet loaded
+    // (it hides buttons when gitRepoStatus is missing). checkAllProjectsGitStatus
+    // will re-call showFilterGitActions when the status becomes available.
     showFilterGitActions(projectId);
   } else {
     hideFilterGitActions();
@@ -5613,7 +5623,16 @@ if (usageElements.container) {
   // Start periodic monitoring (every 60 seconds)
   api.usage.startMonitor(60000).catch(console.error);
 
-  // Poll for updates every 5 seconds (check cached data)
+  // Listen for push updates from main process (no polling needed)
+  if (api.usage.onDataUpdated) {
+    api.usage.onDataUpdated((usagePayload) => {
+      if (usagePayload && usagePayload.data) {
+        updateUsageDisplay(usagePayload);
+      }
+    });
+  }
+
+  // Fallback poll every 30s (in case push event is missed)
   setInterval(async () => {
     try {
       const data = await api.usage.getData();
@@ -5623,9 +5642,9 @@ if (usageElements.container) {
     } catch (e) {
       // Ignore errors during polling
     }
-  }, 5000);
+  }, 30000);
 
-  // Initial fetch
+  // Initial fetch (after 2s to let main process start)
   setTimeout(() => {
     refreshUsageDisplay();
   }, 2000);

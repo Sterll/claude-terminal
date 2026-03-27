@@ -45,6 +45,13 @@ function registerUsageHandlers() {
     usageService.stopPeriodicFetch();
     return { success: true };
   });
+
+  // Push usage updates to renderer when data arrives from periodic fetch
+  usageService.onUpdate((data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('usage-data-updated', { data, lastFetch: new Date().toISOString() });
+    }
+  });
 }
 
 module.exports = { registerUsageHandlers, setMainWindow };
