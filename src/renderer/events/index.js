@@ -299,7 +299,7 @@ function wireAttentionConsumer() {
         if (notificationFn) {
           notificationFn(match.type, projectName || 'Claude Terminal', body, terminalId, {
             buttons,
-            autoDismiss: 0 // don't auto-dismiss while waiting for an answer
+            autoDismiss: 8000
           });
         }
         return;
@@ -345,7 +345,7 @@ function wireAttentionConsumer() {
       if (notificationFn) {
         notificationFn('permission', projectName || 'Claude Terminal', body, terminalId, {
           buttons,
-          autoDismiss: requestId ? 0 : 15000, // no auto-dismiss when we can block Claude
+          autoDismiss: 8000,
           meta: { requestId }
         });
       } else {
