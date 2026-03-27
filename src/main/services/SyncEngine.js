@@ -583,11 +583,6 @@ class SyncEngine {
     const merged = { ...local };
     if (!cloud || !local) return merged;
 
-    // Merge global stats: take max
-    if (cloud.global && merged.global) {
-      merged.global.totalMs = Math.max(merged.global.totalMs || 0, cloud.global.totalMs || 0);
-    }
-
     // Merge per-project data: combine sessions, sum unique durations
     if (cloud.projects) {
       if (!merged.projects) merged.projects = {};
@@ -611,6 +606,15 @@ class SyncEngine {
           }
         }
       }
+    }
+
+    // Recalculate global.totalMs from all merged project totals
+    if (merged.projects && merged.global) {
+      let totalMs = 0;
+      for (const projectData of Object.values(merged.projects)) {
+        totalMs += projectData.totalMs || 0;
+      }
+      merged.global.totalMs = totalMs;
     }
 
     return merged;
@@ -653,8 +657,8 @@ class SyncEngine {
             const filePath = path.join(projPath, file);
             try {
               const stat = fs.statSync(filePath);
-              // Only push sessions from last 7 days to avoid flooding
-              if (Date.now() - stat.mtimeMs > 7 * 24 * 60 * 60 * 1000) continue;
+              // Only push sessions from last 30 days to avoid flooding
+              if (Date.now() - stat.mtimeMs > 30 * 24 * 60 * 60 * 1000) continue;
               await this.pushConversation(sessionId, filePath);
             } catch {}
           }
@@ -1528,11 +1532,11 @@ class SyncEngine {
     if (!remotePath) return remotePath;
     // If path is from another OS, try to make it work locally
     const homeDir = os.homedir();
-    // Replace common home dir patterns
+    // Replace home dir patterns (any Windows drive letter, Linux/macOS home)
     const homePatterns = [
-      /^C:\\Users\\[^\\]+/i,
-      /^\/home\/[^/]+/,
-      /^\/Users\/[^/]+/,
+      /^[A-Z]:\\Users\\[^\\]+/i,  // Any drive: C:\Users\X, D:\Users\X, etc.
+      /^\/home\/[^/]+/,            // Linux: /home/user
+      /^\/Users\/[^/]+/,           // macOS: /Users/user
     ];
     for (const pattern of homePatterns) {
       if (pattern.test(remotePath)) {
