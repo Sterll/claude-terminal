@@ -90,13 +90,19 @@ function _registerCloudListeners(api) {
     });
   }
 
-  // Pending file changes detected on reconnect
+  // Pending file changes detected on reconnect / polling
+  // Track skipped projects so we don't re-prompt for the same changes
+  const _skippedChanges = new Map(); // projectName -> fileCount (skip until count changes)
   if (api.cloud.onPendingChanges) {
     api.cloud.onPendingChanges(async ({ changes }) => {
       if (!changes || changes.length === 0) return;
       for (const { projectName, displayName, changes: fileChanges } of changes) {
         const files = fileChanges.flatMap(c => c.changedFiles || []);
         if (files.length === 0) continue;
+
+        // Skip if user already dismissed this exact set of changes
+        const skippedCount = _skippedChanges.get(projectName);
+        if (skippedCount === files.length) continue;
 
         const showName = displayName || projectName;
         // Build a message with the file list preview
@@ -111,6 +117,7 @@ function _registerCloudListeners(api) {
           cancelLabel: t('cloud.syncSkip'),
         });
         if (confirmed) {
+          _skippedChanges.delete(projectName);
           try {
             const projects = _getAllProjects();
             const localProject = projects.find(p =>
@@ -129,6 +136,9 @@ function _registerCloudListeners(api) {
           } catch (err) {
             Toast.show(t('cloud.syncError') || t('cloud.uploadError'), 'error');
           }
+        } else {
+          // Remember skip — won't re-prompt until file count changes (new changes pushed)
+          _skippedChanges.set(projectName, files.length);
         }
       }
     });
