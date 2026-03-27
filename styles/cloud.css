@@ -1335,3 +1335,34 @@
   opacity: 0.6;
   pointer-events: none;
 }
+
+/* Danger Zone */
+.cp-danger-zone {
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-top: 8px;
+}
+
+.cp-danger-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cp-danger-desc {
+  flex: 1;
+  min-width: 0;
+}
+
+.cp-danger-label {
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.cp-danger-zone .cp-btn-danger {
+  flex-shrink: 0;
+  white-space: nowrap;
+}

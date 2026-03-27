@@ -547,6 +547,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     downloadWithResolutions: (params) => ipcRenderer.invoke('cloud:download-with-resolutions', params),
     onAutoSyncStatus: createListener('cloud:auto-sync-status'),
     deleteProject: (params) => ipcRenderer.invoke('cloud:delete-project', params),
+    reset: () => ipcRenderer.invoke('cloud:reset'),
     updateDisplayName: (params) => ipcRenderer.invoke('cloud:update-display-name', params),
     syncSkills: () => ipcRenderer.invoke('cloud:sync-skills'),
     importProject: (params) => ipcRenderer.invoke('cloud:import-project', params),

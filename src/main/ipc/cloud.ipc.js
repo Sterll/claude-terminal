@@ -431,6 +431,44 @@ function registerCloudHandlers() {
     return { ok: true };
   });
 
+  // ── Reset cloud (delete all projects + entities + local sync state) ──
+
+  ipcMain.handle('cloud:reset', async () => {
+    const { url, key } = _getCloudConfig();
+    const headers = { 'Authorization': `Bearer ${key}` };
+
+    // 1. Fetch all cloud projects
+    const projResp = await _fetchCloud(`${url}/api/projects`, { headers });
+    if (!projResp.ok) throw new Error(`Failed to list projects: HTTP ${projResp.status}`);
+    const { projects } = await projResp.json();
+
+    // 2. Delete each project on the server
+    for (const project of (projects || [])) {
+      const id = project.id || project.name;
+      const delResp = await _fetchCloud(`${url}/api/projects/${encodeURIComponent(id)}`, {
+        method: 'DELETE', headers,
+      });
+      if (!delResp.ok && delResp.status !== 404) {
+        console.warn(`[Cloud] Failed to delete project ${id}: HTTP ${delResp.status}`);
+      }
+      cloudSyncService.unregisterProject(id);
+    }
+
+    // 3. Delete cloud entities
+    try {
+      await _fetchCloud(`${url}/api/entities`, { method: 'DELETE', headers });
+    } catch (e) {
+      console.warn('[Cloud] Failed to delete entities:', e.message);
+    }
+
+    // 4. Reset local sync manifest
+    syncEngine.manifest = { lastFullSync: 0, entities: {} };
+    syncEngine._saveManifest();
+
+    console.log('[Cloud] Reset complete — all cloud data cleared');
+    return { ok: true, deleted: (projects || []).length };
+  });
+
   // ── Update cloud project display name ──
 
   ipcMain.handle('cloud:update-display-name', async (_event, { projectId, displayName }) => {

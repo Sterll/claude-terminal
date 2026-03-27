@@ -1810,7 +1810,17 @@
     "newCloudProjectsMessage": "{count} projet(s) disponible(s) : {list}. Cliquez pour voir dans le panneau Cloud.",
     "securityTitle": "Sécurité",
     "excludeSensitiveFiles": "Exclure les fichiers sensibles",
-    "excludeSensitiveFilesHint": ".env, credentials, clés privées et secrets sont exclus de la sync cloud. Désactiver à vos risques et périls."
+    "excludeSensitiveFilesHint": ".env, credentials, clés privées et secrets sont exclus de la sync cloud. Désactiver à vos risques et périls.",
+    "dangerZone": "Zone dangereuse",
+    "resetCloud": "Réinitialiser",
+    "resetCloudLabel": "Réinitialiser toutes les données cloud",
+    "resetCloudHint": "Supprime tous les projets, entités et l'état de synchronisation du serveur cloud. Les fichiers locaux ne sont pas affectés.",
+    "resetCloudConfirm": "Cela supprimera définitivement TOUTES les données du serveur cloud (projets, entités, état de sync). Continuer ?",
+    "resetCloudConfirm2": "Êtes-vous vraiment sûr ? Cette action est irréversible.",
+    "resetCloudProgress": "Réinitialisation...",
+    "resetCloudSuccess": "Cloud réinitialisé",
+    "resetCloudSuccessMsg": "{count} projet(s) supprimé(s). Le cloud est maintenant vide.",
+    "resetCloudError": "Échec de la réinitialisation"
   },
   "sync": {
     "conflictTitle": "Conflits de synchronisation détectés",

@@ -372,6 +372,18 @@ function buildHtml(settings) {
                 </div>
               </div>
 
+              <!-- Danger Zone -->
+              <div class="cp-adv-group cp-danger-zone">
+                <div class="cp-adv-group-title" style="color:var(--danger)">${t('cloud.dangerZone')}</div>
+                <div class="cp-danger-row">
+                  <div class="cp-danger-desc">
+                    <div class="cp-danger-label">${t('cloud.resetCloudLabel')}</div>
+                    <div class="cp-field-hint">${t('cloud.resetCloudHint')}</div>
+                  </div>
+                  <button class="cp-btn-sm cp-btn-danger" id="cp-reset-cloud-btn">${t('cloud.resetCloud')}</button>
+                </div>
+              </div>
+
             </div>
           </details>
 
@@ -504,6 +516,39 @@ function setupHandlers(context) {
   if (excludeSensitiveToggle) {
     excludeSensitiveToggle.addEventListener('change', () => {
       _saveField('cloudExcludeSensitiveFiles', excludeSensitiveToggle.checked);
+    });
+  }
+
+  // ── Reset Cloud ──
+  const resetCloudBtn = document.getElementById('cp-reset-cloud-btn');
+  if (resetCloudBtn) {
+    resetCloudBtn.addEventListener('click', async () => {
+      // Double confirmation
+      const confirmed = confirm(t('cloud.resetCloudConfirm'));
+      if (!confirmed) return;
+      const confirmed2 = confirm(t('cloud.resetCloudConfirm2'));
+      if (!confirmed2) return;
+
+      resetCloudBtn.disabled = true;
+      resetCloudBtn.textContent = t('cloud.resetCloudProgress');
+      try {
+        const result = await api.cloud.reset();
+        resetCloudBtn.textContent = t('cloud.resetCloud');
+        resetCloudBtn.disabled = false;
+        if (_ctx && _ctx.showToast) {
+          _ctx.showToast({ type: 'success', title: t('cloud.resetCloudSuccess'), message: t('cloud.resetCloudSuccessMsg', { count: result.deleted || 0 }) });
+        }
+        // Refresh UI
+        _loadCloudProjects(true);
+        _loadCloudSessions(true);
+        _loadSyncManifest();
+      } catch (e) {
+        resetCloudBtn.textContent = t('cloud.resetCloud');
+        resetCloudBtn.disabled = false;
+        if (_ctx && _ctx.showToast) {
+          _ctx.showToast({ type: 'error', title: t('cloud.resetCloudError'), message: e.message });
+        }
+      }
     });
   }
 
