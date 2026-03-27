@@ -536,7 +536,7 @@ async function _fetchCloudProjects() {
       // Map cloud projects to the format the PWA expects
       state.projects = projects.map(p => ({
         id: `cloud-${p.name}`,
-        name: p.name,
+        name: p.displayName || p.name,
         path: p.name,
         color: '',
         icon: '',
