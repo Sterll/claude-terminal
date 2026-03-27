@@ -335,7 +335,12 @@ This is a **Discord bot project**. Claude Terminal provides dedicated tools to m
  * @returns {{ type: 'preset', preset: 'claude_code', append: string }}
  */
 function getBuiltinSystemPrompt(projectType) {
-  let append = GLOBAL_APPEND + '\n\n' + RICH_MARKDOWN_APPEND;
+  const FORMATTING_RULES = `
+## Formatting Rules
+
+- NEVER use the em dash character " — " (U+2014) in your responses. Use a simple dash "-" or rewrite the sentence instead.`;
+
+  let append = GLOBAL_APPEND + '\n\n' + RICH_MARKDOWN_APPEND + '\n\n' + FORMATTING_RULES.trim();
 
   if (projectType === 'webapp') {
     append += '\n\n' + WEBAPP_APPEND;
