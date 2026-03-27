@@ -37,116 +37,12 @@ state.skillsAgentsState.subscribe(() => {
   window._skillsAgentsState = state.skillsAgentsState.get();
 });
 
-/**
- * Initialize all renderer modules
- */
-async function initialize() {
-  // Tag platform on body for CSS targeting (macOS traffic lights, etc.)
-  const platform = window.electron_nodeModules?.process?.platform || 'win32';
-  document.body.classList.add(`platform-${platform}`);
-
-  // Initialize core OOP infrastructure (ApiProvider + ServiceContainer)
-  const { container } = core.initCore(window.electron_api, window.electron_nodeModules);
-
-  // Register legacy services in the container for future OOP consumers
-  container.register('ProjectService', services.ProjectService);
-  container.register('TerminalService', services.TerminalService);
-  container.register('DashboardService', services.DashboardService);
-  container.register('SettingsService', services.SettingsService);
-  container.register('GitTabService', services.GitTabService);
-  container.register('FivemService', services.FivemService);
-  container.register('TimeTrackingDashboard', services.TimeTrackingDashboard);
-
-  // Ensure directories exist
-  utils.ensureDirectories();
-
-  // Initialize state
-  await state.initializeState();
-
-  // Initialize i18n with saved language or auto-detect
-  const savedLanguage = state.getSetting('language');
-  i18n.initI18n(savedLanguage);
-
-  // Initialize settings (applies accent color, etc.)
-  await services.SettingsService.initializeSettings();
-
-  // Terminal IPC listeners are handled by TerminalManager's centralized dispatcher
-
-  services.McpService.registerMcpListeners(
-    // onOutput callback
-    (id, type, data) => {
-      // MCP output received
-    },
-    // onExit callback
-    (id, code) => {
-      // MCP process exited
-    }
-  );
-
-  // Register WebApp listeners
-  const { registerWebAppListeners } = require('../project-types/webapp/renderer/WebAppRendererService');
-  registerWebAppListeners(
-    (projectIndex, data) => {},
-    (projectIndex, code) => {
-      // WebApp dev server stopped - re-render sidebar
-    }
-  );
-
-  // API listeners are registered in renderer.js (same pattern as webapp)
-
-  // Register Discord listeners
-  const { registerListeners: registerDiscordListeners } = require('../project-types/discord/renderer/DiscordRendererService');
-  registerDiscordListeners();
-
-  services.FivemService.registerFivemListeners(
-    // onData callback
-    (projectIndex, data) => {
-      // FiveM output received
-    },
-    // onExit callback
-    (projectIndex, code) => {
-      // FiveM server stopped
-    },
-    // onError callback
-    (projectIndex, error) => {
-      // FiveM error detected - show debug button
-      ui.TerminalManager.showTypeErrorOverlay(projectIndex, error);
-    }
-  );
-
-  // Listen for MCP-triggered quick actions
-  const api = window.electron_api;
-  if (api?.project?.onQuickActionRun) {
-    api.project.onQuickActionRun((data) => {
-      const { projectId, actionId } = data;
-      if (!projectId || !actionId) return;
-      const project = state.getProject(projectId);
-      if (!project) return;
-      ui.QuickActions.executeQuickAction(project, actionId);
-    });
-  }
-
-  // ── Cloud reconnect listeners + sync listeners ──
-  _registerCloudListeners(api);
-  _registerSyncListeners(api);
-
-  // Initialize Claude event bus and provider
-  events.initClaudeEvents();
-
-  // Load disk-cached dashboard data then refresh from APIs in background
-  services.DashboardService.loadAllDiskCaches().then(() => {
-    setTimeout(() => {
-      services.DashboardService.preloadAllProjects();
-    }, 500);
-  }).catch(e => {
-    console.error('Error loading disk caches:', e);
-    // Still try to preload even if disk cache fails
-    setTimeout(() => {
-      services.DashboardService.preloadAllProjects();
-    }, 500);
-  });
-
-}
+// ── Register cloud reconnect + sync listeners at module load ──
+// These are event listener registrations that wire up IPC listeners for cloud sync.
+// They must run once when the module is first required (before the renderer IIFE completes).
+const _api = window.electron_api;
+_registerCloudListeners(_api);
+_registerSyncListeners(_api);
 
 // ── Cloud reconnect handlers ──────────────────────────────────────────────────
 
@@ -466,8 +362,5 @@ module.exports = {
 
   // Events
   events,
-  ...events,
-
-  // Initialize function
-  initialize
+  ...events
 };
