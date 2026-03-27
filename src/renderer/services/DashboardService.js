@@ -417,7 +417,7 @@ async function getPullRequests(remoteUrl) {
   }
 
   try {
-    const result = await api.github.pullRequests(remoteUrl);
+    const result = await api.github.pullRequests({ remoteUrl });
     return result;
   } catch (e) {
     console.error('[Dashboard] Error fetching pull requests:', e);
@@ -1955,11 +1955,25 @@ function getDashboardProjects() {
   }));
 }
 
+let _preloadLock = false;
+
 /**
  * Preload dashboard data for all projects in background
  * This should be called at app startup to warm up the cache
  */
 async function preloadAllProjects() {
+  // Prevent concurrent preload runs
+  if (_preloadLock) return;
+  _preloadLock = true;
+
+  try {
+    await _preloadAllProjectsInner();
+  } finally {
+    _preloadLock = false;
+  }
+}
+
+async function _preloadAllProjectsInner() {
   const projects = projectsState.get().projects;
   if (!projects || projects.length === 0) return;
 
