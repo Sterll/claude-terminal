@@ -1887,7 +1887,8 @@
     "resetCloudProgress": "Réinitialisation...",
     "resetCloudSuccess": "Cloud réinitialisé",
     "resetCloudSuccessMsg": "{count} projet(s) supprimé(s). Le cloud est maintenant vide.",
-    "resetCloudError": "Échec de la réinitialisation"
+    "resetCloudError": "Échec de la réinitialisation",
+    "advancedSettings": "Paramètres avancés"
   },
   "sync": {
     "conflictTitle": "Conflits de synchronisation détectés",

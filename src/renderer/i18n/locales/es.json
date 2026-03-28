@@ -1815,7 +1815,8 @@
     "resetCloudProgress": "Reiniciando...",
     "resetCloudSuccess": "Cloud reiniciado",
     "resetCloudSuccessMsg": "{count} proyecto(s) eliminado(s). La nube está ahora vacía.",
-    "resetCloudError": "Error al reiniciar"
+    "resetCloudError": "Error al reiniciar",
+    "advancedSettings": "Ajustes avanzados"
   },
   "sync": {
     "conflictTitle": "Conflictos de sincronización detectados",

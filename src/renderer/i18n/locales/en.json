@@ -1887,7 +1887,8 @@
     "resetCloudProgress": "Resetting...",
     "resetCloudSuccess": "Cloud reset",
     "resetCloudSuccessMsg": "{count} project(s) deleted. Cloud is now empty.",
-    "resetCloudError": "Reset failed"
+    "resetCloudError": "Reset failed",
+    "advancedSettings": "Advanced settings"
   },
   "sync": {
     "conflictTitle": "Sync conflicts detected",
