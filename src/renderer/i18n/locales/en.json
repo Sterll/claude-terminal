@@ -1612,7 +1612,8 @@
     },
     "mermaid": {
       "loading": "Rendering diagram...",
-      "error": "Diagram render failed"
+      "error": "Diagram render failed",
+      "showSource": "Show source"
     },
     "math": {
       "loading": "Rendering math...",

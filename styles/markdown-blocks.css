@@ -443,6 +443,29 @@ code.line-numbers-off .code-line::before {
   font-size: 12px;
   padding: 8px;
 }
+.chat-mermaid-error-msg {
+  color: var(--danger);
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.chat-mermaid-error-details summary {
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+}
+.chat-mermaid-error-details summary:hover {
+  color: var(--text-primary);
+}
+.chat-mermaid-error-details pre {
+  margin-top: 6px;
+  font-size: 12px;
+  max-height: 200px;
+  overflow: auto;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+}
 
 
 /* ══════════════════════════════════════════════
@@ -461,6 +484,30 @@ code.line-numbers-off .code-line::before {
 }
 .chat-math-inline {
   display: inline;
+}
+.chat-math-error {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+.chat-math-error-msg {
+  color: var(--danger);
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+.chat-math-error-source {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+}
+.chat-math-error-inline {
+  color: var(--danger);
+  cursor: help;
+  border-bottom: 1px dashed var(--danger);
 }
 
 

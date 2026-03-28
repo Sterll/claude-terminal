@@ -1612,7 +1612,8 @@
     },
     "mermaid": {
       "loading": "Rendu du diagramme...",
-      "error": "Échec du rendu du diagramme"
+      "error": "Échec du rendu du diagramme",
+      "showSource": "Voir la source"
     },
     "math": {
       "loading": "Rendu de la formule...",
