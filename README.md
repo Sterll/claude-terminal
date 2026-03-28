@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/downloads/Sterll/claude-terminal/total?color=d97706&label=downloads" alt="Downloads" />
-  <img src="https://img.shields.io/badge/version-1.2.0-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.2.1-orange" alt="Version" />
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-blue" alt="Platform" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="License" />
   <img src="https://img.shields.io/badge/electron-28-purple" alt="Electron" />
@@ -144,7 +144,7 @@ npm install
 
 ### Chat UI (Claude Agent SDK)
 - Built-in chat interface powered by the Claude Agent SDK with streaming responses
-- Real-time markdown rendering: code blocks, tables, lists, headers, links
+- **Rich markdown rendering**: mermaid diagrams, KaTeX math, syntax-highlighted code, file trees, kanban boards, diff blocks, HTML previews, and more
 - **Permission cards**: Allow, Always Allow, or Deny tool use requests
 - **Plan mode**: review and approve/reject agent plans before execution
 - **Thinking blocks**: expandable sections showing Claude's reasoning
@@ -161,6 +161,7 @@ npm install
 - **Follow-up suggestions**: context-aware suggestion chips appear after Claude responds to help guide the conversation
 - **Session recaps**: automatic AI-generated summaries of completed sessions
 - Type @project to attach README.md and file tree from any project as context
+- Type **@tab** to share your current terminal session or **@conversation** to reference another chat thread
 - Type **@context** to inject a context pack or **@prompt** to insert a saved prompt template directly into your message
 - Interrupt streaming mid-turn, auto-generated tab names via haiku model
 - Compacting indicator shown during conversation compaction so you know when context is being compressed
@@ -188,15 +189,19 @@ npm install
 - **Commit history**: IntelliJ-style commit graph with SVG rendering, branch/author filtering, infinite scroll
 - **Cherry-pick & revert**: advanced commit operations from history
 - **Worktree management**: create, switch, and delete Git worktrees with quick-switch badge in the toolbar
-- **Stash management**: save, apply, drop stashes
+- **Stash management**: save, apply, pop, and inspect stashes
+- **History search**: full-text search across commit history
+- **Discard changes**: quickly discard unstaged edits per file
+- **Amend commits**: edit the last commit message or staged content before pushing
 - **AI commit messages**: auto-generate conventional commit messages via GitHub Models API
 - **Pull Requests**: create and view PRs directly from the app
 
 ### GitHub Integration
 - OAuth Device Flow authentication (secure, no token copy-paste)
+- **GitHub Enterprise support**: connect to self-hosted GitHub Enterprise instances
 - **CI/CD status pill**: live inline status of the latest workflow run shown directly in the terminal header bar, with a Fix-it button to jump straight to a failing step
 - View CI/CD workflow runs per repository
-- View and create pull requests from the app; multi-forge support (GitHub, GitLab)
+- View, create, and review pull requests from the app; multi-forge support (GitHub, GitLab)
 - Token stored securely via keytar (Windows Credential Manager, macOS Keychain, Linux libsecret)
 
 ### Control Tower
@@ -250,6 +255,7 @@ npm install
 ### Skill Marketplace
 - Search and browse available skills
 - One-click install and uninstall
+- **Update checking**: see which installed skills and plugins have new versions available
 - View skill README and details
 - Local cache for fast browsing
 
@@ -304,6 +310,9 @@ npm install
 ### Cloud Sync
 - Self-hosted Docker relay server for remote project access
 - Project upload and auto-sync with file watcher and conflict resolution
+- **Per-entity sync toggles**: choose exactly which data syncs (projects, settings, skills, agents, MCP configs, keybindings, memory, hooks, archives)
+- **Session resume from cloud**: pick up any session from another machine
+- **Cross-machine notifications**: get notified on your desktop when a cloud session finishes
 - Headless Claude sessions running in the cloud
 - Diff modal for local vs cloud file comparison
 - User profiles and session management
@@ -311,9 +320,11 @@ npm install
 
 ### Database Panel
 - Multi-driver support: SQLite, MySQL, PostgreSQL, MongoDB
+- **Redis browser**: tree-view key explorer with type-aware value inspection
 - Split-pane data browser with inline editing
 - SQL query editor with syntax highlighting, templates, and multi-statement execution
 - Insert/delete rows, search filter
+- Custom database picker for quick connection switching
 - Connection pooling with idle eviction
 
 ### MCP Server (claude-terminal)
@@ -354,7 +365,7 @@ npm install
 
 ### Other
 - **Session restore**: save and restore full workspace sessions across restarts
-- **Terminal markdown viewer**: integrated .md file viewer in the terminal panel
+- **File viewers**: integrated .md viewer, PDF viewer, and 3D model viewer (.glb, .gltf, .obj) in the terminal panel
 - **Dashboard insights**: project health badges and commit heatmap
 - **File explorer watcher**: automatic tree updates on filesystem changes
 - **Tab context menus**: right-click on any tab for quick actions
@@ -367,9 +378,10 @@ npm install
 - Custom NSIS installer with branded images (Windows), DMG (macOS), AppImage (Linux), Snapcraft, Flatpak
 - FiveM server management (launch, integrated console, resource scanning, resource creator wizard)
 - Minecraft project type with Java plugin generator and platform-aware launch scripts
-- Web app management with framework auto-detection
+- Web app management with framework auto-detection and scaffold templates
 - Python project detection (version, venv, dependencies, entry point)
 - API project type with integrated route tester, variables, and console
+- **Discord bot project type**: visual embed and component builder with live preview
 
 ## Usage
 
