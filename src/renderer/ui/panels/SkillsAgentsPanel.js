@@ -10,6 +10,7 @@ const { showConfirm, createModal, showModal, closeModal } = require('../componen
 const { loadSkills: loadSkillsService, getSkills, writeSkillContent } = require('../../services/SkillService');
 const { loadAgents: loadAgentsService, getAgents, writeAgentContent } = require('../../services/AgentService');
 const { renderReadmeMarkdown } = require('../../utils/markdown');
+const { highlight } = require('../../utils/syntaxHighlight');
 
 class SkillsAgentsPanel extends BasePanel {
   constructor(el, options = {}) {
@@ -259,6 +260,9 @@ class SkillsAgentsPanel extends BasePanel {
     const shortPath = filePath.replace(this.api.os.homedir(), '~').replace(/\\/g, '/');
     const titleKey = type === 'skill' ? (t('skillsAgents.editSkill') || 'Edit Skill') : (t('skillsAgents.editAgent') || 'Edit Agent');
 
+    const highlightId = `highlight-${Date.now()}`;
+    const gutterId = `gutter-${Date.now()}`;
+
     const modalContent = `
       <div class="skill-editor-container">
         <div class="skill-editor-pane">
@@ -266,7 +270,13 @@ class SkillsAgentsPanel extends BasePanel {
             <span>${t('skillsAgents.editor') || 'Editor'}</span>
             <span class="skill-editor-path" title="${escapeHtml(filePath)}">${escapeHtml(shortPath)}</span>
           </div>
-          <textarea class="skill-editor-textarea" id="${editorId}" spellcheck="false">${escapeHtml(content)}</textarea>
+          <div class="skill-editor-code-wrap">
+            <div class="skill-editor-gutter" id="${gutterId}"></div>
+            <div class="skill-editor-overlay-wrap">
+              <pre class="skill-editor-highlight" id="${highlightId}"><code></code></pre>
+              <textarea class="skill-editor-textarea" id="${editorId}" spellcheck="false">${escapeHtml(content)}</textarea>
+            </div>
+          </div>
         </div>
         <div class="skill-editor-divider"></div>
         <div class="skill-editor-pane">
@@ -318,22 +328,53 @@ class SkillsAgentsPanel extends BasePanel {
 
     const editorEl = modal.querySelector(`#${editorId}`);
     const previewEl = modal.querySelector(`#${previewId}`);
+    const highlightEl = modal.querySelector(`#${highlightId}`);
+    const gutterEl = modal.querySelector(`#${gutterId}`);
+    const codeEl = highlightEl.querySelector('code');
+
+    // Sync highlighted overlay + line numbers
+    function updateHighlight() {
+      const code = editorEl.value;
+      codeEl.innerHTML = highlight(code, 'md') + '\n';
+      // Line numbers
+      const lines = code.split('\n');
+      gutterEl.innerHTML = lines.map((_, i) => `<span>${i + 1}</span>`).join('');
+    }
 
     let previewTimeout;
     function updatePreview() {
       previewEl.innerHTML = renderReadmeMarkdown(editorEl.value);
     }
 
+    updateHighlight();
     updatePreview();
+
     editorEl.addEventListener('input', () => {
+      updateHighlight();
       clearTimeout(previewTimeout);
       previewTimeout = setTimeout(updatePreview, 150);
     });
 
+    // Scroll sync: textarea -> highlight + gutter
+    editorEl.addEventListener('scroll', () => {
+      highlightEl.scrollTop = editorEl.scrollTop;
+      highlightEl.scrollLeft = editorEl.scrollLeft;
+      gutterEl.scrollTop = editorEl.scrollTop;
+    });
+
     editorEl.focus();
 
-    // Ctrl+S to save
+    // Tab key inserts 2 spaces
     editorEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = editorEl.selectionStart;
+        const end = editorEl.selectionEnd;
+        editorEl.value = editorEl.value.substring(0, start) + '  ' + editorEl.value.substring(end);
+        editorEl.selectionStart = editorEl.selectionEnd = start + 2;
+        editorEl.dispatchEvent(new Event('input'));
+      }
+      // Ctrl+S to save
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
         modal.querySelector('[data-action="save"]').click();

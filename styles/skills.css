@@ -1501,20 +1501,95 @@
   white-space: nowrap;
 }
 
-.skill-editor-textarea {
+/* Code editor wrapper: gutter + overlay area */
+.skill-editor-code-wrap {
   flex: 1;
-  width: 100%;
-  border: none;
-  outline: none;
-  resize: none;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
   background: var(--bg-primary);
-  color: var(--text-primary);
+}
+
+/* Line number gutter */
+.skill-editor-gutter {
+  flex-shrink: 0;
+  width: 48px;
+  padding: 12px 0;
+  overflow: hidden;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
+  user-select: none;
+}
+
+.skill-editor-gutter span {
+  display: block;
   font-family: 'Cascadia Code', 'Consolas', 'SF Mono', monospace;
   font-size: 13px;
   line-height: 1.6;
-  padding: 16px;
+  text-align: right;
+  padding-right: 12px;
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+/* Overlay area: pre behind, textarea in front */
+.skill-editor-overlay-wrap {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Highlighted code layer (behind) */
+.skill-editor-highlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+  padding: 12px 16px;
+  overflow: hidden;
+  pointer-events: none;
+  background: transparent;
+  border: none;
+}
+
+.skill-editor-highlight code {
+  font-family: 'Cascadia Code', 'Consolas', 'SF Mono', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  tab-size: 2;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: var(--text-primary);
+  background: transparent;
+}
+
+/* Textarea layer (in front, transparent text) */
+.skill-editor-textarea {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--text-primary);
+  font-family: 'Cascadia Code', 'Consolas', 'SF Mono', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 12px 16px;
   tab-size: 2;
   overflow-y: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.skill-editor-textarea::selection {
+  background: rgba(217, 119, 6, 0.25);
 }
 
 .skill-editor-textarea::placeholder {
