@@ -76,6 +76,9 @@ class GitChangesPanel extends BasePanel {
     this._commitCountSpan = document.getElementById('commit-count');
     this._changesCountBadge = document.getElementById('changes-count');
     this._filterBtnChanges = document.getElementById('filter-btn-changes');
+    this._amendCheckbox = document.getElementById('git-amend-checkbox');
+    this._btnDiscardSelected = document.getElementById('btn-discard-selected');
+    this._btnGitReset = document.getElementById('btn-git-reset');
 
     this._setupEventListeners();
   }
@@ -237,15 +240,18 @@ class GitChangesPanel extends BasePanel {
       }
     };
 
-    // Commit selected files
+    // Commit selected files (supports amend)
     this._btnCommitSelected.onclick = async () => {
       const message = this._gitCommitMessage.value.trim();
-      if (!message) {
+      const isAmend = this._amendCheckbox && this._amendCheckbox.checked;
+
+      if (!message && !isAmend) {
         this._showToast({ type: 'warning', title: t('gitChanges.messageRequired'), message: t('gitChanges.enterCommitMessage'), duration: 3000 });
         return;
       }
 
-      if (this._state.selectedFiles.size === 0) {
+      // For amend without selected files, just amend the message
+      if (!isAmend && this._state.selectedFiles.size === 0) {
         this._showToast({ type: 'warning', title: t('gitChanges.filesRequired'), message: t('gitChanges.selectAtLeastOne'), duration: 3000 });
         return;
       }
@@ -258,28 +264,37 @@ class GitChangesPanel extends BasePanel {
       this._btnCommitSelected.innerHTML = `<span class="loading-spinner"></span> ${t('gitChanges.committing')}`;
 
       try {
-        const stageResult = await this.api.git.stageFiles({
-          projectPath: this._state.projectPath,
-          files: selectedPaths
-        });
-
-        if (!stageResult.success) {
-          throw new Error(stageResult.error);
+        // Stage selected files if any
+        if (selectedPaths.length > 0) {
+          const stageResult = await this.api.git.stageFiles({
+            projectPath: this._state.projectPath,
+            files: selectedPaths
+          });
+          if (!stageResult.success) throw new Error(stageResult.error);
         }
 
-        const commitResult = await this.api.git.commit({
-          projectPath: this._state.projectPath,
-          message: message
-        });
+        let commitResult;
+        if (isAmend) {
+          commitResult = await this.api.git.commitAmend({
+            projectPath: this._state.projectPath,
+            message: message || null
+          });
+        } else {
+          commitResult = await this.api.git.commit({
+            projectPath: this._state.projectPath,
+            message: message
+          });
+        }
 
         if (commitResult.success) {
           this._showGitToast({
             success: true,
-            title: t('gitChanges.commitCreated'),
-            message: t('gitChanges.commitFiles', { count: selectedPaths.length }),
+            title: isAmend ? t('gitChanges.commitAmended') : t('gitChanges.commitCreated'),
+            message: isAmend ? t('gitChanges.amendSuccess') : t('gitChanges.commitFiles', { count: selectedPaths.length }),
             duration: 3000
           });
           this._gitCommitMessage.value = '';
+          if (this._amendCheckbox) this._amendCheckbox.checked = false;
           this.loadGitChanges();
           this._refreshDashboardAsync(this._state.projectId);
         } else {
@@ -295,10 +310,40 @@ class GitChangesPanel extends BasePanel {
       } finally {
         this._btnCommitSelected.disabled = false;
         this._btnCommitSelected.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> <span>${t('ui.commitSelected')}</span> (<span id="commit-count">${this._state.selectedFiles.size}</span>)`;
-        // Re-acquire since innerHTML replaced it
         this._commitCountSpan = document.getElementById('commit-count');
       }
     };
+
+    // Discard selected files
+    if (this._btnDiscardSelected) {
+      this._btnDiscardSelected.onclick = () => this._discardSelected();
+    }
+
+    // Git reset (undo last commit)
+    if (this._btnGitReset) {
+      this._btnGitReset.onclick = async () => {
+        if (!window.confirm(t('gitChanges.confirmReset'))) return;
+        this._btnGitReset.disabled = true;
+        try {
+          const result = await this.api.git.reset({
+            projectPath: this._state.projectPath,
+            mode: 'soft',
+            target: 'HEAD~1'
+          });
+          if (result?.success !== false) {
+            this._showToast({ type: 'success', title: t('gitChanges.resetSuccess'), message: t('gitChanges.resetSoftDone'), duration: 3000 });
+            await this.loadGitChanges();
+            this._refreshDashboardAsync(this._state.projectId);
+          } else {
+            this._showToast({ type: 'error', title: t('gitChanges.resetError'), message: result?.error || t('common.errorOccurred'), duration: 4000 });
+          }
+        } catch (e) {
+          this._showToast({ type: 'error', title: t('gitChanges.resetError'), message: e.message, duration: 4000 });
+        } finally {
+          this._btnGitReset.disabled = false;
+        }
+      };
+    }
   }
 
   async loadGitChanges() {
@@ -397,6 +442,9 @@ class GitChangesPanel extends BasePanel {
               ${file.additions ? `<span class="additions">+${file.additions}</span>` : ''}
               ${file.deletions ? `<span class="deletions">-${file.deletions}</span>` : ''}
             </div>
+            <button class="git-discard-btn" title="${t('gitChanges.discardFile')}" data-index="${index}">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            </button>
             <button class="git-diff-toggle" title="${t('gitChanges.showDiff')}" data-index="${index}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
             </button>
@@ -466,6 +514,14 @@ class GitChangesPanel extends BasePanel {
         diffToggle.onclick = (e) => {
           e.stopPropagation();
           this._openDiffModal(index);
+        };
+      }
+
+      const discardBtn = item.querySelector('.git-discard-btn');
+      if (discardBtn) {
+        discardBtn.onclick = (e) => {
+          e.stopPropagation();
+          this._discardFile(index);
         };
       }
     });
@@ -579,8 +635,14 @@ class GitChangesPanel extends BasePanel {
           </div>
           <div class="git-changes-stash-date">${escapeHtml(stash.date || '')}</div>
           <div class="git-changes-stash-actions">
-            <button class="git-changes-stash-btn apply" title="${t('gitTab.applyStash')}" data-ref="${escapeHtml(stash.ref)}">
+            <button class="git-changes-stash-btn preview" title="${t('gitChanges.stashPreview')}" data-ref="${escapeHtml(stash.ref)}">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+            </button>
+            <button class="git-changes-stash-btn pop" title="${t('gitTab.popStash')}" data-ref="${escapeHtml(stash.ref)}">
               <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+            </button>
+            <button class="git-changes-stash-btn apply" title="${t('gitTab.applyStash')}" data-ref="${escapeHtml(stash.ref)}">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M5 13h14v-2H5v2zm-2 4h14v-2H3v2zM7 7v2h14V7H7z"/></svg>
             </button>
             <button class="git-changes-stash-btn drop" title="${t('gitTab.dropStash')}" data-ref="${escapeHtml(stash.ref)}">
               <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
@@ -616,32 +678,52 @@ class GitChangesPanel extends BasePanel {
       };
     }
 
-    // Apply / Drop buttons
+    // Preview / Pop / Apply / Drop buttons
     stashSection.querySelectorAll('.git-changes-stash-btn').forEach(btn => {
       btn.onclick = async (e) => {
         e.stopPropagation();
         const ref = btn.dataset.ref;
+        const isPreview = btn.classList.contains('preview');
+        const isPop = btn.classList.contains('pop');
         const isApply = btn.classList.contains('apply');
-        if (!isApply && !window.confirm(t('gitTab.confirmDropStash', { ref }))) return;
+
+        // Preview shows diff modal
+        if (isPreview) {
+          this._showStashPreview(ref);
+          return;
+        }
+
+        // Drop needs confirmation
+        if (!isPop && !isApply && !window.confirm(t('gitTab.confirmDropStash', { ref }))) return;
+
         btn.disabled = true;
         try {
-          const result = isApply
-            ? await this.api.git.stashApply({ projectPath: this._state.projectPath, stashRef: ref })
-            : await this.api.git.stashDrop({ projectPath: this._state.projectPath, stashRef: ref });
+          let result;
+          let actionTitle;
+          let successMsg;
+          if (isPop) {
+            result = await this.api.git.stashPop({ projectPath: this._state.projectPath, stashRef: ref });
+            actionTitle = t('gitTab.popStash');
+            successMsg = t('gitTab.stashPoppedSuccess');
+          } else if (isApply) {
+            result = await this.api.git.stashApply({ projectPath: this._state.projectPath, stashRef: ref });
+            actionTitle = t('gitTab.applyStash');
+            successMsg = t('gitTab.stashAppliedSuccess');
+          } else {
+            result = await this.api.git.stashDrop({ projectPath: this._state.projectPath, stashRef: ref });
+            actionTitle = t('gitTab.dropStash');
+            successMsg = t('gitTab.stashDroppedSuccess');
+          }
+
           if (result?.success !== false) {
-            this._showToast({
-              type: 'success',
-              title: isApply ? t('gitTab.applyStash') : t('gitTab.dropStash'),
-              message: isApply ? t('gitTab.stashAppliedSuccess') : t('gitTab.stashDroppedSuccess'),
-              duration: 3000
-            });
+            this._showToast({ type: 'success', title: actionTitle, message: successMsg, duration: 3000 });
             await this.loadGitChanges();
           } else {
-            this._showToast({ type: 'error', title: isApply ? t('gitTab.applyStash') : t('gitTab.dropStash'), message: result?.error || t('common.errorOccurred'), duration: 4000 });
+            this._showToast({ type: 'error', title: actionTitle, message: result?.error || t('common.errorOccurred'), duration: 4000 });
             btn.disabled = false;
           }
         } catch (err) {
-          this._showToast({ type: 'error', title: isApply ? t('gitTab.applyStash') : t('gitTab.dropStash'), message: err.message, duration: 4000 });
+          this._showToast({ type: 'error', message: err.message, duration: 4000 });
           btn.disabled = false;
         }
       };
@@ -692,7 +774,10 @@ class GitChangesPanel extends BasePanel {
   _updateCommitButton() {
     const count = this._state.selectedFiles.size;
     if (this._commitCountSpan) this._commitCountSpan.textContent = count;
-    this._btnCommitSelected.disabled = count === 0 || !this._gitCommitMessage.value.trim();
+    const isAmend = this._amendCheckbox && this._amendCheckbox.checked;
+    this._btnCommitSelected.disabled = !isAmend && (count === 0 || !this._gitCommitMessage.value.trim());
+    if (isAmend) this._btnCommitSelected.disabled = false;
+    if (this._btnDiscardSelected) this._btnDiscardSelected.disabled = count === 0;
     this._updateSmartCommitVisibility();
   }
 
@@ -711,6 +796,87 @@ class GitChangesPanel extends BasePanel {
   async refreshGitChangesIfOpen() {
     if (this._gitChangesPanel && this._gitChangesPanel.classList.contains('active')) {
       await this.loadGitChanges();
+    }
+  }
+
+  // ── Discard file changes ──
+
+  async _discardFile(index) {
+    const file = this._state.files[index];
+    if (!file) return;
+    if (!window.confirm(t('gitChanges.confirmDiscard', { path: file.path }))) return;
+
+    try {
+      const result = await this.api.git.discardFiles({
+        projectPath: this._state.projectPath,
+        files: [file.path]
+      });
+      if (result?.success !== false) {
+        this._showToast({ type: 'success', title: t('gitChanges.discardSuccess'), message: file.path, duration: 3000 });
+        await this.loadGitChanges();
+      } else {
+        this._showToast({ type: 'error', title: t('gitChanges.discardError'), message: result?.error || t('common.errorOccurred'), duration: 4000 });
+      }
+    } catch (e) {
+      this._showToast({ type: 'error', title: t('gitChanges.discardError'), message: e.message, duration: 4000 });
+    }
+  }
+
+  async _discardSelected() {
+    const selectedPaths = Array.from(this._state.selectedFiles)
+      .map(i => this._state.files[i]?.path)
+      .filter(Boolean);
+    if (selectedPaths.length === 0) return;
+    if (!window.confirm(t('gitChanges.confirmDiscardAll', { count: selectedPaths.length }))) return;
+
+    try {
+      const result = await this.api.git.discardFiles({
+        projectPath: this._state.projectPath,
+        files: selectedPaths
+      });
+      if (result?.success !== false) {
+        this._showToast({ type: 'success', title: t('gitChanges.discardSuccess'), message: t('gitChanges.discardedFiles', { count: selectedPaths.length }), duration: 3000 });
+        await this.loadGitChanges();
+      } else {
+        this._showToast({ type: 'error', title: t('gitChanges.discardError'), message: result?.error || t('common.errorOccurred'), duration: 4000 });
+      }
+    } catch (e) {
+      this._showToast({ type: 'error', title: t('gitChanges.discardError'), message: e.message, duration: 4000 });
+    }
+  }
+
+  // ── Stash preview ──
+
+  async _showStashPreview(stashRef) {
+    const modalOverlay = document.getElementById('modal-overlay');
+    const modalTitle = document.getElementById('modal-title');
+    const modalBody = document.getElementById('modal-body');
+    const modalFooter = document.getElementById('modal-footer');
+    if (!modalOverlay) return;
+
+    if (modalTitle) modalTitle.textContent = `${t('gitChanges.stashPreview')} — ${stashRef}`;
+    if (modalBody) modalBody.innerHTML = '<div class="git-diff-view"><div style="padding:24px;text-align:center;color:var(--text-muted)"><span class="loading-spinner"></span></div></div>';
+    if (modalFooter) modalFooter.style.display = 'none';
+    modalOverlay.classList.add('active');
+
+    try {
+      const result = await this.api.git.stashShow({
+        projectPath: this._state.projectPath,
+        stashRef
+      });
+      if (!modalBody) return;
+      const diff = result?.diff || '';
+      if (!diff.trim()) {
+        modalBody.innerHTML = '<p style="color:var(--text-secondary);padding:16px">' + t('gitChanges.noDiff') + '</p>';
+        return;
+      }
+      const lines = diff.split('\n').map(line => {
+        const cls = line.startsWith('+') ? 'diff-add' : line.startsWith('-') ? 'diff-del' : line.startsWith('@@') ? 'diff-hunk' : '';
+        return `<div class="diff-line ${cls}">${escapeHtml(line)}</div>`;
+      }).join('');
+      modalBody.innerHTML = `<div class="git-diff-view"><pre class="git-diff-content">${lines}</pre></div>`;
+    } catch (e) {
+      if (modalBody) modalBody.innerHTML = `<p style="color:var(--danger);padding:16px">${escapeHtml(e.message)}</p>`;
     }
   }
 

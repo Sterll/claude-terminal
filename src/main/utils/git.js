@@ -1470,6 +1470,210 @@ async function pushAllTags(projectPath, remote = 'origin') {
   return execGit(projectPath, `push ${remote} --tags`, 30000);
 }
 
+// ── Discard file changes (git restore) ──
+
+/**
+ * Discard working-tree changes for specific files
+ * @param {string} projectPath - Path to the project
+ * @param {string[]} files - List of file paths to discard
+ * @returns {Promise<Object>} - Result object
+ */
+async function gitDiscardFiles(projectPath, files) {
+  if (!files || files.length === 0) return { success: false, error: 'No files specified' };
+
+  // Separate tracked vs untracked files
+  const statusOutput = await execGit(projectPath, ['status', '--porcelain', '--', ...files]);
+  const untrackedFiles = [];
+  const trackedFiles = [];
+  if (statusOutput) {
+    for (const line of statusOutput.split('\n').filter(Boolean)) {
+      const status = line.substring(0, 2);
+      const filePath = line.substring(3).trim();
+      if (status === '??') {
+        untrackedFiles.push(filePath);
+      } else {
+        trackedFiles.push(filePath);
+      }
+    }
+  }
+
+  // Discard tracked file changes with git restore
+  if (trackedFiles.length > 0) {
+    const result = await spawnGit(projectPath, ['restore', '--', ...trackedFiles]);
+    if (!result.success) return result;
+  }
+
+  // Remove untracked files with git clean
+  for (const f of untrackedFiles) {
+    try {
+      const fullPath = path.join(projectPath, f);
+      const stat = fs.statSync(fullPath);
+      if (stat.isDirectory()) {
+        fs.rmSync(fullPath, { recursive: true, force: true });
+      } else {
+        fs.unlinkSync(fullPath);
+      }
+    } catch (_) { /* ignore cleanup errors */ }
+  }
+
+  return { success: true, output: `Discarded ${files.length} file(s)` };
+}
+
+// ── Stash pop (atomic apply + drop) ──
+
+/**
+ * Pop a stash (apply + drop atomically)
+ * @param {string} projectPath - Path to the project
+ * @param {string} stashRef - Stash reference (e.g., stash@{0})
+ * @returns {Promise<Object>} - Result object
+ */
+async function stashPop(projectPath, stashRef) {
+  const result = await spawnGit(projectPath, ['stash', 'pop', stashRef]);
+  if (!result.success) return result;
+  return { success: true, output: result.output || 'Stash popped.' };
+}
+
+// ── Stash show/preview ──
+
+/**
+ * Show stash diff (preview before applying)
+ * @param {string} projectPath - Path to the project
+ * @param {string} stashRef - Stash reference
+ * @returns {Promise<string>} - Diff output
+ */
+async function stashShow(projectPath, stashRef) {
+  const output = await execGit(projectPath, ['stash', 'show', '-p', stashRef], 15000);
+  return output || '';
+}
+
+// ── Amend commit ──
+
+/**
+ * Amend the last commit with new message and/or staged changes
+ * @param {string} projectPath - Path to the project
+ * @param {string} [message] - New commit message (if null, keeps original)
+ * @returns {Promise<Object>} - Result object
+ */
+async function gitAmendCommit(projectPath, message) {
+  const args = ['commit', '--amend'];
+  if (message && message.trim()) {
+    args.push('-m', message.trim());
+  } else {
+    args.push('--no-edit');
+  }
+  const result = await spawnGit(projectPath, args);
+  if (!result.success) return result;
+  return { success: true, output: result.output || 'Commit amended.' };
+}
+
+// ── Rebase detection ──
+
+/**
+ * Check if there's a rebase in progress
+ * @param {string} projectPath - Path to the project
+ * @returns {Promise<boolean>} - True if rebase in progress
+ */
+async function isRebaseInProgress(projectPath) {
+  const gitDir = await execGit(projectPath, 'rev-parse --git-dir');
+  if (!gitDir) return false;
+  const resolvedGitDir = path.resolve(projectPath, gitDir);
+  // Interactive rebase
+  const rebaseMerge = path.join(resolvedGitDir, 'rebase-merge');
+  if (fs.existsSync(rebaseMerge)) return true;
+  // Non-interactive rebase (git rebase --apply)
+  const rebaseApply = path.join(resolvedGitDir, 'rebase-apply');
+  return fs.existsSync(rebaseApply);
+}
+
+// ── Git reset ──
+
+/**
+ * Reset HEAD to a previous commit
+ * @param {string} projectPath - Path to the project
+ * @param {string} mode - Reset mode: 'soft', 'mixed', or 'hard'
+ * @param {string} [target] - Reset target (default: HEAD~1)
+ * @returns {Promise<Object>} - Result object
+ */
+async function gitReset(projectPath, mode = 'soft', target = 'HEAD~1') {
+  const allowedModes = ['soft', 'mixed', 'hard'];
+  if (!allowedModes.includes(mode)) return { success: false, error: 'Invalid reset mode' };
+  const result = await spawnGit(projectPath, ['reset', `--${mode}`, target]);
+  if (!result.success) return result;
+  return { success: true, output: result.output || `Reset ${mode} to ${target}` };
+}
+
+// ── History search ──
+
+/**
+ * Search commit history by message (--grep) or content changes (-S pickaxe)
+ * @param {string} projectPath - Path to the project
+ * @param {Object} options
+ * @param {string} [options.grep] - Search in commit messages
+ * @param {string} [options.pickaxe] - Search for changes adding/removing string (-S)
+ * @param {number} [options.skip] - Skip N commits
+ * @param {number} [options.limit] - Max results
+ * @param {string} [options.branch] - Branch to search
+ * @param {boolean} [options.allBranches] - Search all branches
+ * @returns {Promise<Array>} - List of matching commits
+ */
+async function searchCommitHistory(projectPath, options = {}) {
+  const { grep, pickaxe, skip = 0, limit = 30, branch = '', allBranches = false } = options;
+  if (!grep && !pickaxe) return [];
+
+  const RS = '%x1e';
+  const format = `%H${RS}%h${RS}%s${RS}%an${RS}%ae${RS}%ar${RS}%aI${RS}%P${RS}%D`;
+  const args = ['log', `--skip=${skip}`, `-${limit}`, `--format=${format}`];
+
+  if (grep) {
+    args.push(`--grep=${grep}`, '-i');
+  }
+  if (pickaxe) {
+    args.push(`-S${pickaxe}`);
+  }
+  if (allBranches) {
+    args.push('--all');
+  }
+  if (branch) {
+    args.push(branch);
+  }
+
+  const output = await execGit(projectPath, args, 15000);
+  if (!output) return [];
+  return output.split('\n').filter(l => l.trim()).map(line => {
+    const parts = line.split('\x1e');
+    const [fullHash, hash, message, author, email, date, isoDate, parentStr, decorations] = parts;
+    const parents = parentStr ? parentStr.trim().split(' ').filter(Boolean) : [];
+    return { fullHash, hash, message, author, email, date, isoDate, parents, decorations: decorations || '' };
+  });
+}
+
+// ── Remote management ──
+
+/**
+ * Add a remote
+ * @param {string} projectPath
+ * @param {string} name - Remote name
+ * @param {string} url - Remote URL
+ * @returns {Promise<Object>}
+ */
+async function addRemote(projectPath, name, url) {
+  const result = await spawnGit(projectPath, ['remote', 'add', name, url]);
+  if (!result.success) return result;
+  return { success: true, output: `Remote '${name}' added.` };
+}
+
+/**
+ * Remove a remote
+ * @param {string} projectPath
+ * @param {string} name - Remote name
+ * @returns {Promise<Object>}
+ */
+async function removeRemote(projectPath, name) {
+  const result = await spawnGit(projectPath, ['remote', 'remove', name]);
+  if (!result.success) return result;
+  return { success: true, output: `Remote '${name}' removed.` };
+}
+
 // ── Remotes ──
 
 async function getRemotes(projectPath) {
@@ -1552,5 +1756,15 @@ module.exports = {
   pushAllTags,
   getRemotes,
   resolveConflict,
-  getBranchOrphanCommitCount
+  getBranchOrphanCommitCount,
+  // New git features
+  gitDiscardFiles,
+  stashPop,
+  stashShow,
+  gitAmendCommit,
+  isRebaseInProgress,
+  gitReset,
+  searchCommitHistory,
+  addRemote,
+  removeRemote
 };

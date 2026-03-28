@@ -279,6 +279,16 @@ contextBridge.exposeInMainWorld('electron_api', {
     remotes: (params) => ipcRenderer.invoke('git-remotes', params),
     resolveConflict: (params) => ipcRenderer.invoke('git-resolve-conflict', params),
     branchOrphanCommits: (params) => ipcRenderer.invoke('git-branch-orphan-commits', params),
+    // New git features
+    discardFiles: (params) => ipcRenderer.invoke('git-discard-files', params),
+    stashPop: (params) => ipcRenderer.invoke('git-stash-pop', params),
+    stashShow: (params) => ipcRenderer.invoke('git-stash-show', params),
+    commitAmend: (params) => ipcRenderer.invoke('git-commit-amend', params),
+    rebaseInProgress: (params) => ipcRenderer.invoke('git-rebase-in-progress', params),
+    reset: (params) => ipcRenderer.invoke('git-reset', params),
+    searchHistory: (params) => ipcRenderer.invoke('git-search-history', params),
+    remoteAdd: (params) => ipcRenderer.invoke('git-remote-add', params),
+    remoteRemove: (params) => ipcRenderer.invoke('git-remote-remove', params),
   },
 
   // ==================== WEBAPP ====================

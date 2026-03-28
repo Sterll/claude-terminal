@@ -123,6 +123,15 @@ let historyFileFilter = '';
 let mergeInProgress = false;
 let conflictFiles = [];
 
+// Rebase state
+let rebaseInProgress = false;
+
+// History search
+let historySearchQuery = '';
+
+// Diff display mode
+let diffMode = 'unified'; // 'unified' | 'sidebyside'
+
 // Branch search filter
 let branchSearchQuery = '';
 
@@ -220,13 +229,14 @@ async function loadAllData(project) {
   issuesPage = 1;
   historyFileFilter = '';
 
-  // Check merge in progress
+  // Check merge/rebase in progress
   mergeInProgress = await api.git.mergeInProgress({ projectPath: path });
   if (mergeInProgress) {
     conflictFiles = await api.git.mergeConflicts({ projectPath: path });
   } else {
     conflictFiles = [];
   }
+  rebaseInProgress = await api.git.rebaseInProgress({ projectPath: path });
 
   if (remoteUrl) {
     api.github.pullRequests({ remoteUrl }).then(result => {
@@ -258,13 +268,14 @@ async function refreshChanges() {
     badge.textContent = changesData.files.length;
     badge.style.display = changesData.files.length > 0 ? '' : 'none';
   }
-  // Refresh merge state
+  // Refresh merge/rebase state
   mergeInProgress = await api.git.mergeInProgress({ projectPath: selectedProject.path });
   if (mergeInProgress) {
     conflictFiles = await api.git.mergeConflicts({ projectPath: selectedProject.path });
   } else {
     conflictFiles = [];
   }
+  rebaseInProgress = await api.git.rebaseInProgress({ projectPath: selectedProject.path });
 }
 
 async function refreshBranches() {
@@ -291,6 +302,7 @@ function renderSidebar() {
   renderTags();
   renderWorktrees();
   renderStashes();
+  renderRemotes();
 }
 
 function countFolderProjects(folder, folders, projects) {
@@ -1107,6 +1119,74 @@ function renderStashes() {
   };
 }
 
+function renderRemotes() {
+  const container = document.getElementById('git-remotes-list');
+  if (!container) return;
+
+  // Add remote button in header
+  const sectionHeader = container.closest('.git-sidebar-section')?.querySelector('.git-sidebar-header h3');
+  if (sectionHeader && !sectionHeader.querySelector('.git-remote-add-btn')) {
+    const addBtn = document.createElement('button');
+    addBtn.className = 'git-remote-add-btn';
+    addBtn.title = t('gitTab.addRemote');
+    addBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
+    addBtn.onclick = async () => {
+      const name = prompt(t('gitTab.remoteName'));
+      if (!name || !name.trim()) return;
+      const url = prompt(t('gitTab.remoteUrl'));
+      if (!url || !url.trim()) return;
+      const result = await api.git.remoteAdd({ projectPath: selectedProject.path, name: name.trim(), url: url.trim() });
+      if (result?.success) {
+        showToast(t('gitTab.remoteAdded', { name: name.trim() }), 'success');
+        const remotesRes = await api.git.remotes({ projectPath: selectedProject.path });
+        remotesData = remotesRes?.remotes || [];
+        renderRemotes();
+      } else {
+        showToast(friendlyGitError(result?.error), 'error');
+      }
+    };
+    sectionHeader.appendChild(addBtn);
+  }
+
+  if (!remotesData || remotesData.length === 0) {
+    container.innerHTML = `<div class="git-sidebar-empty">${t('gitTab.noRemotes')}</div>`;
+    return;
+  }
+
+  let html = '';
+  for (const remote of remotesData) {
+    html += `<div class="git-remote-item" data-name="${escapeAttr(remote.name)}">
+      <div class="git-remote-info">
+        <span class="git-remote-name">${escapeHtml(remote.name)}</span>
+        <span class="git-remote-url" title="${escapeAttr(remote.fetchUrl)}">${escapeHtml(remote.fetchUrl)}</span>
+      </div>
+      <div class="git-remote-actions">
+        <button class="git-remote-btn remove" title="${t('gitTab.removeRemote')}">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        </button>
+      </div>
+    </div>`;
+  }
+  container.innerHTML = html;
+
+  // Delegated click handler for remotes
+  container.onclick = async (e) => {
+    const btn = e.target.closest('.git-remote-btn.remove');
+    if (!btn) return;
+    const name = btn.closest('.git-remote-item').dataset.name;
+    if (!confirm(t('gitTab.confirmRemoveRemote', { name }))) return;
+    const result = await api.git.remoteRemove({ projectPath: selectedProject.path, name });
+    if (result?.success) {
+      showToast(t('gitTab.remoteRemoved', { name }), 'success');
+      const remotesRes = await api.git.remotes({ projectPath: selectedProject.path });
+      remotesData = remotesRes?.remotes || [];
+      renderRemotes();
+    } else {
+      showToast(friendlyGitError(result?.error), 'error');
+    }
+  };
+}
+
 function renderSubTabContent() {
   const content = document.getElementById('git-sub-content');
   if (!content || !selectedProject) return;
@@ -1126,6 +1206,19 @@ function renderSubTabContent() {
       <div class="git-merge-banner-actions">
         <button class="git-merge-btn abort" id="git-merge-abort-btn">${t('gitTab.abortMerge')}</button>
         <button class="git-merge-btn continue ${canContinue ? '' : 'disabled'}" id="git-merge-continue-btn" ${canContinue ? '' : 'disabled'}>${t('gitTab.continueMerge')}</button>
+      </div>
+    </div>`;
+  } else if (rebaseInProgress) {
+    bannerHtml = `<div class="git-merge-banner git-rebase-banner">
+      <div class="git-merge-banner-content">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+        <span class="git-merge-banner-text">
+          <strong>${t('gitTab.rebaseInProgress')}</strong> — ${t('gitTab.rebaseResolveHint')}
+        </span>
+      </div>
+      <div class="git-merge-banner-actions">
+        <button class="git-merge-btn abort" id="git-rebase-abort-btn">${t('gitTab.abortRebase')}</button>
+        <button class="git-merge-btn continue" id="git-rebase-continue-btn">${t('gitTab.continueRebase')}</button>
       </div>
     </div>`;
   }
@@ -1155,6 +1248,12 @@ function renderSubTabContent() {
   if (mergeInProgress) {
     document.getElementById('git-merge-abort-btn')?.addEventListener('click', handleMergeAbort);
     document.getElementById('git-merge-continue-btn')?.addEventListener('click', handleMergeContinue);
+  }
+
+  // Bind rebase banner buttons
+  if (rebaseInProgress) {
+    document.getElementById('git-rebase-abort-btn')?.addEventListener('click', handleRebaseAbort);
+    document.getElementById('git-rebase-continue-btn')?.addEventListener('click', handleRebaseContinue);
   }
 }
 
@@ -1622,6 +1721,12 @@ function buildHistoryToolbar(commits) {
   html += `<input type="text" class="git-history-file-filter" id="git-history-file-filter" placeholder="${t('gitTab.filterByFile')}" value="${escapeAttr(historyFileFilter)}">`;
   html += '</div>';
 
+  // Search filter (--grep / -S)
+  html += '<div class="git-filter-group git-filter-search">';
+  html += `<svg class="git-filter-icon" viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>`;
+  html += `<input type="text" class="git-history-search-input" id="git-history-search" placeholder="${t('gitTab.searchHistory')}" value="${escapeAttr(historySearchQuery)}">`;
+  html += '</div>';
+
   // Commit count indicator
   html += `<span class="git-history-count">${commits.length} commits</span>`;
 
@@ -1771,6 +1876,42 @@ function bindHistoryEvents(container) {
     };
   }
 
+  // History search (--grep / -S)
+  const searchInput = container.querySelector('#git-history-search');
+  if (searchInput) {
+    let searchTimeout;
+    searchInput.oninput = () => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(async () => {
+        historySearchQuery = searchInput.value.trim();
+        historyPage = 0;
+        historyHasMore = true;
+        if (historySearchQuery) {
+          // Use server-side search with --grep and -S
+          const results = await api.git.searchHistory({
+            projectPath: selectedProject.path,
+            grep: historySearchQuery,
+            skip: 0,
+            limit: 50,
+            branch: historyBranchFilter,
+            allBranches: historyAllBranches
+          });
+          historyData = Array.isArray(results) ? results : [];
+        } else {
+          historyData = await api.git.commitHistory({
+            projectPath: selectedProject.path,
+            skip: 0,
+            limit: 50,
+            branch: historyBranchFilter,
+            allBranches: historyAllBranches
+          });
+        }
+        if (historyData.length < 50) historyHasMore = false;
+        renderSubTabContent();
+      }, 500);
+    };
+  }
+
   // Infinite scroll with IntersectionObserver
   setupHistoryInfiniteScroll();
 }
@@ -1879,6 +2020,10 @@ function renderPullRequests(container) {
           ${pr.labels?.length > 0 ? pr.labels.map(l => { const c = sanitizeColor('#' + l.color) || '#888'; return `<span class="git-pr-label" style="background:${c}20;color:${c};border-color:${c}40">${escapeHtml(l.name)}</span>`; }).join('') : ''}
         </div>
         <div class="git-pr-item-actions">
+          ${pr.state === 'open' ? `<button class="git-pr-reviews-btn" data-number="${pr.number}" title="${t('gitTab.reviews') || 'Reviews'}">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M20 2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/></svg>
+            ${t('gitTab.reviews') || 'Reviews'}
+          </button>` : ''}
           ${pr.state === 'open' && !pr.draft ? `<button class="git-pr-merge-btn" data-number="${pr.number}" title="${t('gitTab.mergePR')}">
             <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M17 20.41L18.41 19 15 15.59 13.59 17 17 20.41zM7.5 8H11v5.59L5.59 19 7 20.41l6-6V8h3.5L12 3.5 7.5 8z"/></svg>
             ${t('gitTab.mergePR')}
@@ -1909,6 +2054,11 @@ function bindPullRequestEvents(container) {
       handleCreatePR();
       return;
     }
+    if (e.target.closest('.git-pr-reviews-btn')) {
+      const number = e.target.closest('.git-pr-reviews-btn').dataset.number;
+      showPRReviewModal(parseInt(number));
+      return;
+    }
     if (e.target.closest('.git-pr-merge-btn')) {
       const number = e.target.closest('.git-pr-merge-btn').dataset.number;
       handleMergePR(parseInt(number));
@@ -1929,6 +2079,106 @@ function bindPullRequestEvents(container) {
       api.dialog.openExternal(item.dataset.url);
     }
   };
+}
+
+// ========== PR REVIEW MODAL ==========
+
+async function showPRReviewModal(pullNumber) {
+  if (!remoteUrl) return;
+
+  const modal = createModal({
+    title: `${t('gitTab.reviews') || 'Reviews'} - PR #${pullNumber}`,
+    size: 'medium',
+    content: `
+      <div class="git-review-container">
+        <div class="git-review-list" id="git-review-list">
+          <div class="git-empty-state"><div class="loading-spinner"></div></div>
+        </div>
+        <div class="git-review-form">
+          <textarea id="git-review-body" class="git-pr-textarea" rows="3" placeholder="${t('gitTab.reviewBody') || 'Review comment...'}"></textarea>
+          <div class="git-review-actions">
+            <button class="git-review-btn comment" id="git-review-comment">${t('gitTab.reviewComment') || 'Comment'}</button>
+            <button class="git-review-btn approve" id="git-review-approve">${t('gitTab.reviewApprove') || 'Approve'}</button>
+            <button class="git-review-btn request-changes" id="git-review-request-changes">${t('gitTab.reviewRequestChanges') || 'Request Changes'}</button>
+          </div>
+        </div>
+      </div>
+    `
+  });
+
+  showModal(modal);
+
+  // Load reviews
+  try {
+    const [reviewsResult, commentsResult] = await Promise.all([
+      api.github.prReviews({ remoteUrl, pullNumber }),
+      api.github.prComments({ remoteUrl, pullNumber })
+    ]);
+
+    const listEl = document.getElementById('git-review-list');
+    if (!listEl) return;
+
+    const reviews = reviewsResult?.reviews || [];
+    const comments = commentsResult?.comments || [];
+
+    if (reviews.length === 0 && comments.length === 0) {
+      listEl.innerHTML = `<div class="git-empty-state"><p>${t('gitTab.noReviews') || 'No reviews yet'}</p></div>`;
+    } else {
+      let html = '';
+      for (const review of reviews) {
+        const stateClass = review.state.toLowerCase();
+        const stateLabel = t(`gitTab.reviewState${review.state}`) || review.state;
+        html += `<div class="git-review-item ${stateClass}">
+          <div class="git-review-item-header">
+            <strong>${escapeHtml(review.user || 'Unknown')}</strong>
+            <span class="git-review-state ${stateClass}">${stateLabel}</span>
+            <span class="git-review-date">${review.submittedAt ? new Date(review.submittedAt).toLocaleDateString() : ''}</span>
+          </div>
+          ${review.body ? `<div class="git-review-body">${escapeHtml(review.body)}</div>` : ''}
+        </div>`;
+      }
+      if (comments.length > 0) {
+        html += `<div class="git-review-comments-header">${t('gitTab.reviewComments') || 'Inline comments'} (${comments.length})</div>`;
+        for (const c of comments.slice(0, 20)) {
+          html += `<div class="git-review-comment">
+            <div class="git-review-comment-header">
+              <strong>${escapeHtml(c.user || 'Unknown')}</strong>
+              ${c.path ? `<code class="git-review-comment-path">${escapeHtml(c.path)}${c.line ? `:${c.line}` : ''}</code>` : ''}
+            </div>
+            <div class="git-review-body">${escapeHtml(c.body || '')}</div>
+          </div>`;
+        }
+      }
+      listEl.innerHTML = html;
+    }
+  } catch (e) {
+    const listEl = document.getElementById('git-review-list');
+    if (listEl) listEl.innerHTML = `<div class="git-empty-state"><p>${e.message}</p></div>`;
+  }
+
+  // Review action handlers
+  const submitReview = async (event) => {
+    const body = document.getElementById('git-review-body')?.value?.trim() || '';
+    if (event !== 'COMMENT' && event !== 'APPROVE' && !body) {
+      showToast(t('gitTab.reviewBodyRequired') || 'A comment is required for this review type', 'warning');
+      return;
+    }
+    try {
+      const result = await api.github.createPRReview({ remoteUrl, pullNumber, reviewEvent: event, body });
+      if (result.success) {
+        closeModal(modal);
+        showToast(t('gitTab.reviewSubmitted') || 'Review submitted', 'success');
+      } else {
+        showToast(result.error || 'Review failed', 'error');
+      }
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
+  };
+
+  document.getElementById('git-review-comment')?.addEventListener('click', () => submitReview('COMMENT'));
+  document.getElementById('git-review-approve')?.addEventListener('click', () => submitReview('APPROVE'));
+  document.getElementById('git-review-request-changes')?.addEventListener('click', () => submitReview('REQUEST_CHANGES'));
 }
 
 // ========== OPERATION HANDLERS ==========
@@ -2039,12 +2289,77 @@ function renderDiffWithLineNumbers(diff) {
   return `<div class="diff-table">${rows.join('')}</div>`;
 }
 
+function renderDiffSideBySide(diff) {
+  const lines = diff.split('\n');
+  let oldLine = 0, newLine = 0;
+  const rows = [];
+
+  // Collect hunks: group consecutive -/+ lines for pairing
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++')) { i++; continue; }
+
+    if (line.startsWith('@@')) {
+      const m = line.match(/@@ -(\d+)/);
+      if (m) oldLine = parseInt(m[1], 10);
+      const m2 = line.match(/\+(\d+)/);
+      if (m2) newLine = parseInt(m2[1], 10);
+      rows.push(`<div class="diff-sbs-row diff-hunk"><div class="diff-sbs-left"><span class="diff-ln"></span><span class="diff-text">${escapeHtml(line)}</span></div><div class="diff-sbs-right"><span class="diff-ln"></span><span class="diff-text"></span></div></div>`);
+      i++;
+      continue;
+    }
+
+    // Collect a block of - and + lines to pair them
+    const delLines = [];
+    const addLines = [];
+    while (i < lines.length && lines[i].startsWith('-')) { delLines.push(lines[i].slice(1)); i++; }
+    while (i < lines.length && lines[i].startsWith('+')) { addLines.push(lines[i].slice(1)); i++; }
+
+    if (delLines.length > 0 || addLines.length > 0) {
+      const maxLen = Math.max(delLines.length, addLines.length);
+      for (let j = 0; j < maxLen; j++) {
+        const leftText = j < delLines.length ? escapeHtml(delLines[j]) : '';
+        const leftLn = j < delLines.length ? oldLine + j : '';
+        const leftCls = j < delLines.length ? 'diff-del' : '';
+        const rightText = j < addLines.length ? escapeHtml(addLines[j]) : '';
+        const rightLn = j < addLines.length ? newLine + j : '';
+        const rightCls = j < addLines.length ? 'diff-add' : '';
+        rows.push(`<div class="diff-sbs-row"><div class="diff-sbs-left ${leftCls}"><span class="diff-ln">${leftLn}</span><span class="diff-text">${leftText}</span></div><div class="diff-sbs-right ${rightCls}"><span class="diff-ln">${rightLn}</span><span class="diff-text">${rightText}</span></div></div>`);
+      }
+      oldLine += delLines.length;
+      newLine += addLines.length;
+      continue;
+    }
+
+    // Context line
+    if (line !== undefined) {
+      const text = line.startsWith(' ') ? line.slice(1) : line;
+      rows.push(`<div class="diff-sbs-row diff-ctx"><div class="diff-sbs-left"><span class="diff-ln">${oldLine}</span><span class="diff-text">${escapeHtml(text)}</span></div><div class="diff-sbs-right"><span class="diff-ln">${newLine}</span><span class="diff-text">${escapeHtml(text)}</span></div></div>`);
+      oldLine++;
+      newLine++;
+    }
+    i++;
+  }
+
+  return `<div class="diff-sbs-table">${rows.join('')}</div>`;
+}
+
+function renderDiffContent(diff) {
+  return diffMode === 'sidebyside' ? renderDiffSideBySide(diff) : renderDiffWithLineNumbers(diff);
+}
+
 async function handleViewDiff(filePath, staged) {
   const diff = await api.git.fileDiff({ projectPath: selectedProject.path, filePath, staged });
 
+  const toggleHtml = diff ? `<div class="diff-mode-toggle">
+    <button class="diff-mode-btn ${diffMode === 'unified' ? 'active' : ''}" data-mode="unified">${t('gitTab.diffUnified')}</button>
+    <button class="diff-mode-btn ${diffMode === 'sidebyside' ? 'active' : ''}" data-mode="sidebyside">${t('gitTab.diffSideBySide')}</button>
+  </div>` : '';
+
   const content = !diff
     ? `<p style="color:var(--text-secondary);padding:16px">${t('gitTab.noDiffAvailable')}</p>`
-    : `<div class="git-diff-view">${renderDiffWithLineNumbers(diff)}</div>`;
+    : `${toggleHtml}<div class="git-diff-view" id="git-diff-content">${renderDiffContent(diff)}</div>`;
 
   const modal = createModal({
     id: 'git-diff-modal',
@@ -2053,6 +2368,18 @@ async function handleViewDiff(filePath, staged) {
     size: 'large'
   });
   showModal(modal);
+
+  // Bind toggle buttons
+  if (diff) {
+    modal.querySelectorAll('.diff-mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        diffMode = btn.dataset.mode;
+        modal.querySelectorAll('.diff-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === diffMode));
+        const diffContainer = modal.querySelector('#git-diff-content');
+        if (diffContainer) diffContainer.innerHTML = renderDiffContent(diff);
+      });
+    });
+  }
 }
 
 async function handleCommitDetail(hash) {
@@ -2601,6 +2928,34 @@ async function handleRebase(branch) {
     const result = await api.git.rebase({ projectPath: selectedProject.path, branch });
     if (result.success) {
       showToast(t('gitTab.rebaseSuccess'), 'success');
+    } else {
+      showToast(friendlyGitError(result.error), 'error');
+    }
+    await loadAllData(selectedProject);
+    renderGitTab();
+  });
+}
+
+async function handleRebaseAbort() {
+  await withLock(async () => {
+    const result = await api.git.rebaseAbort({ projectPath: selectedProject.path });
+    if (result.success) {
+      rebaseInProgress = false;
+      showToast(t('gitTab.rebaseAbortedSuccess'), 'success');
+    } else {
+      showToast(friendlyGitError(result.error), 'error');
+    }
+    await loadAllData(selectedProject);
+    renderGitTab();
+  });
+}
+
+async function handleRebaseContinue() {
+  await withLock(async () => {
+    const result = await api.git.rebaseContinue({ projectPath: selectedProject.path });
+    if (result.success) {
+      rebaseInProgress = false;
+      showToast(t('gitTab.rebaseCompletedSuccess'), 'success');
     } else {
       showToast(friendlyGitError(result.error), 'error');
     }

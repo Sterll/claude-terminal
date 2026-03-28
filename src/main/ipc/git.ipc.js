@@ -4,7 +4,7 @@
  */
 
 const { ipcMain } = require('electron');
-const { execGit, getGitInfo, getGitInfoFull, getGitStatusQuick, getGitStatusDetailed, gitPull, gitPush, gitPushBranch, gitMerge, gitMergeAbort, gitMergeContinue, getMergeConflicts, isMergeInProgress, gitClone, gitStageFiles, gitCommit, getProjectStats, getBranches, getCurrentBranch, checkoutBranch, createBranch, deleteBranch, getCommitHistory, getFileDiff, getCommitDetail, cherryPick, revertCommit, gitUnstageFiles, stashApply, stashDrop, gitStashSave, getWorktrees, createWorktree, removeWorktree, lockWorktree, unlockWorktree, pruneWorktrees, detectWorktree, diffWorktreeBranches, diffWorktreeBranchesWithStats, deleteRemoteBranch, gitFetch, renameBranch, gitRebase, gitRebaseAbort, gitRebaseContinue, getFileHistory, getCommitFileDiffs, getCommitFileDiff, gitBlame, getTags, createTag, deleteTag, pushTag, pushAllTags, getRemotes, resolveConflict, getBranchOrphanCommitCount } = require('../utils/git');
+const { execGit, getGitInfo, getGitInfoFull, getGitStatusQuick, getGitStatusDetailed, gitPull, gitPush, gitPushBranch, gitMerge, gitMergeAbort, gitMergeContinue, getMergeConflicts, isMergeInProgress, gitClone, gitStageFiles, gitCommit, getProjectStats, getBranches, getCurrentBranch, checkoutBranch, createBranch, deleteBranch, getCommitHistory, getFileDiff, getCommitDetail, cherryPick, revertCommit, gitUnstageFiles, stashApply, stashDrop, gitStashSave, getWorktrees, createWorktree, removeWorktree, lockWorktree, unlockWorktree, pruneWorktrees, detectWorktree, diffWorktreeBranches, diffWorktreeBranchesWithStats, deleteRemoteBranch, gitFetch, renameBranch, gitRebase, gitRebaseAbort, gitRebaseContinue, getFileHistory, getCommitFileDiffs, getCommitFileDiff, gitBlame, getTags, createTag, deleteTag, pushTag, pushAllTags, getRemotes, resolveConflict, getBranchOrphanCommitCount, gitDiscardFiles, stashPop, stashShow, gitAmendCommit, isRebaseInProgress, gitReset, searchCommitHistory, addRemote, removeRemote } = require('../utils/git');
 const { generateCommitMessage, generateMultiCommitMessages, generateSessionRecap, groupFiles } = require('../utils/commitMessageGenerator');
 const GitHubAuthService = require('../services/GitHubAuthService');
 const { sendFeaturePing } = require('../services/TelemetryService');
@@ -652,6 +652,101 @@ function registerGitHandlers() {
     try {
       const remotes = await getRemotes(projectPath);
       return { success: true, remotes };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  // ── New git features ──
+
+  // Discard file changes (git restore / clean)
+  ipcMain.handle('git-discard-files', async (event, { projectPath, files }) => {
+    if (!Array.isArray(files) || files.length === 0) return { success: false, error: 'No files specified' };
+    try {
+      sendFeaturePing('git:discard');
+      return await gitDiscardFiles(projectPath, files);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Stash pop (atomic apply + drop)
+  ipcMain.handle('git-stash-pop', async (event, { projectPath, stashRef }) => {
+    if (!isValidStashRef(stashRef)) return { success: false, error: 'Invalid stash reference' };
+    try {
+      return await stashPop(projectPath, stashRef);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Stash show/preview
+  ipcMain.handle('git-stash-show', async (event, { projectPath, stashRef }) => {
+    if (!isValidStashRef(stashRef)) return { success: false, error: 'Invalid stash reference' };
+    try {
+      const diff = await stashShow(projectPath, stashRef);
+      return { success: true, diff };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Amend last commit
+  ipcMain.handle('git-commit-amend', async (event, { projectPath, message }) => {
+    try {
+      sendFeaturePing('git:amend');
+      return await gitAmendCommit(projectPath, message);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Check if rebase in progress
+  ipcMain.handle('git-rebase-in-progress', async (event, { projectPath }) => {
+    try {
+      return await isRebaseInProgress(projectPath);
+    } catch (err) {
+      return false;
+    }
+  });
+
+  // Git reset
+  ipcMain.handle('git-reset', async (event, { projectPath, mode, target }) => {
+    const allowedModes = ['soft', 'mixed', 'hard'];
+    if (mode && !allowedModes.includes(mode)) return { success: false, error: 'Invalid reset mode' };
+    try {
+      sendFeaturePing('git:reset');
+      return await gitReset(projectPath, mode || 'soft', target || 'HEAD~1');
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Search commit history
+  ipcMain.handle('git-search-history', async (event, { projectPath, grep, pickaxe, skip, limit, branch, allBranches }) => {
+    try {
+      return await searchCommitHistory(projectPath, { grep, pickaxe, skip, limit, branch, allBranches });
+    } catch (err) {
+      return { error: true, message: err.message };
+    }
+  });
+
+  // Add remote
+  ipcMain.handle('git-remote-add', async (event, { projectPath, name, url }) => {
+    if (!name || typeof name !== 'string') return { success: false, error: 'Invalid remote name' };
+    if (!url || typeof url !== 'string') return { success: false, error: 'Invalid remote URL' };
+    try {
+      return await addRemote(projectPath, name, url);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Remove remote
+  ipcMain.handle('git-remote-remove', async (event, { projectPath, name }) => {
+    if (!name || typeof name !== 'string') return { success: false, error: 'Invalid remote name' };
+    try {
+      return await removeRemote(projectPath, name);
     } catch (err) {
       return { success: false, error: err.message };
     }
