@@ -51,6 +51,7 @@ const { createModal, showModal, closeModal } = require('./Modal');
 const Toast = require('./Toast');
 const registry = require('../../../project-types/registry');
 const menuIcons = require('../icons/menuIcons');
+const { getWorkspacesForProject } = require('../../state/workspace.state');
 
 // Local state
 let dragState = { dragging: null, dropTarget: null };
@@ -408,6 +409,10 @@ function renderProjectHtml(project, depth) {
       ${menuIcons.rename}
       ${t('common.rename')}
     </button>
+    <button class="more-actions-item btn-add-to-workspace" data-project-id="${project.id}">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm2 2v4h4V5H5zm8-2h8v8h-8V3zm2 2v4h4V5h-4zM3 13h8v8H3v-8zm2 2v4h4v-4H5zm11 0v3h-3v2h3v3h2v-3h3v-2h-3v-3h-2z"/></svg>
+      ${t('workspace.addToWorkspace')}
+    </button>
     <div class="more-actions-divider"></div>
     <button class="more-actions-item btn-archive-project" data-project-id="${project.id}">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.54 5.23l-1.39-1.68C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27zM12 17.5L6.5 12H10v-2h4v2h3.5L12 17.5zM5.12 5l.81-1h12l.94 1H5.12z"/></svg>
@@ -465,6 +470,7 @@ function renderProjectHtml(project, depth) {
           ${terminalStats.total > 0 ? `<span class="terminal-count"><span class="working-count">${terminalStats.working}</span><span class="count-separator">/</span><span class="total-count">${terminalStats.total}</span></span>` : ''}
           ${project.isWorktree && project.worktreeBranch ? `<span class="project-worktree-badge" title="Worktree: ${escapeHtml(project.worktreeBranch)}">${escapeHtml(project.worktreeBranch)}</span>` : project.isWorktree ? '<span class="project-worktree-badge" title="Worktree">WT</span>' : ''}
           ${_renderCloudBadge(project.id)}
+          ${(() => { const pws = getWorkspacesForProject(project.id); return pws.length > 0 ? `<span class="project-workspace-badge" title="${escapeHtml(pws.map(w => w.name).join(', '))}" style="color: ${sanitizeColor(pws[0].color) || 'var(--accent)'}">${escapeHtml(pws[0].icon || t('workspace.badge'))}</span>` : ''; })()}
         </div>
         <div class="project-path">${escapeHtml(project.path)}</div>
         ${hasTime ? `<div class="project-time">
@@ -988,6 +994,9 @@ function attachListeners(list) {
             onClose: () => {}
           });
         }
+      } else if (btn.classList.contains('btn-add-to-workspace')) {
+        closeAllMoreActionsMenus();
+        _showAddToWorkspaceMenu(btn, projectId);
       }
       return;
     }
@@ -1387,6 +1396,73 @@ if (searchClear) {
       render();
     }
   });
+}
+
+/**
+ * Show a submenu to pick which workspace to add the project to
+ */
+function _showAddToWorkspaceMenu(anchorEl, projectId) {
+  const { workspaceState, addProjectToWorkspace } = require('../../state/workspace.state');
+  const workspaces = workspaceState.get().workspaces || [];
+  const alreadyIn = getWorkspacesForProject(projectId).map(w => w.id);
+
+  if (workspaces.length === 0) {
+    Toast.showToast({ message: t('workspace.noWorkspaces'), type: 'info' });
+    return;
+  }
+
+  // Build submenu
+  const menu = document.createElement('div');
+  menu.className = 'editor-context-menu';
+  menu.style.cssText = `position:fixed;z-index:10001;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:8px;padding:4px 0;min-width:200px;box-shadow:0 8px 24px rgba(0,0,0,0.4);`;
+
+  let itemsHtml = '';
+  for (const ws of workspaces) {
+    const isIn = alreadyIn.includes(ws.id);
+    itemsHtml += `<button class="editor-ctx-item" data-ws-id="${ws.id}" ${isIn ? 'disabled' : ''} style="display:flex;align-items:center;gap:8px;width:100%;padding:6px 12px;background:none;border:none;color:${isIn ? 'var(--text-muted)' : 'var(--text-primary)'};cursor:${isIn ? 'default' : 'pointer'};font-size:13px;text-align:left;">
+      <span style="width:16px;text-align:center;">${isIn ? '&#10003;' : (ws.icon || '&#128193;')}</span>
+      ${escapeHtml(ws.name)}
+    </button>`;
+  }
+  menu.innerHTML = itemsHtml;
+
+  document.body.appendChild(menu);
+
+  // Position near anchor
+  const anchorRect = anchorEl.getBoundingClientRect();
+  menu.style.left = `${anchorRect.right + 4}px`;
+  menu.style.top = `${anchorRect.top}px`;
+
+  const menuRect = menu.getBoundingClientRect();
+  if (menuRect.right > window.innerWidth) menu.style.left = `${anchorRect.left - menuRect.width - 4}px`;
+  if (menuRect.bottom > window.innerHeight) menu.style.top = `${window.innerHeight - menuRect.height - 4}px`;
+
+  menu.onclick = (ev) => {
+    const item = ev.target.closest('.editor-ctx-item');
+    if (item && !item.disabled) {
+      const wsId = item.dataset.wsId;
+      addProjectToWorkspace(wsId, projectId);
+      menu.remove();
+      Toast.showToast({ message: t('workspace.projectsCount', { count: '1' }) + ' +', type: 'success' });
+      if (callbacks.onRenderProjects) callbacks.onRenderProjects();
+    }
+  };
+  menu.onmouseover = (ev) => {
+    const item = ev.target.closest('.editor-ctx-item');
+    if (item && !item.disabled) item.style.background = 'var(--bg-hover)';
+  };
+  menu.onmouseout = (ev) => {
+    const item = ev.target.closest('.editor-ctx-item');
+    if (item) item.style.background = 'none';
+  };
+
+  const closeMenu = (ev) => {
+    if (!menu.contains(ev.target)) {
+      menu.remove();
+      document.removeEventListener('click', closeMenu, true);
+    }
+  };
+  setTimeout(() => document.addEventListener('click', closeMenu, true), 0);
 }
 
 module.exports = {

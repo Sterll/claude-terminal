@@ -1431,6 +1431,122 @@ If there are no new useful discoveries, return exactly: []`;
     }
   }
 
+  /**
+   * Analyze a chat session for workspace knowledge base enrichment.
+   * Reads existing docs, asks Haiku to suggest new docs or updates.
+   * @param {Array} messages - conversation history
+   * @param {Object} workspace - { id, name, description }
+   * @param {Array} existingDocs - [{ title, summary }]
+   * @returns {{ suggestions: Array<{ title, content, isUpdate }> }}
+   */
+  async analyzeSessionForWorkspace(messages, workspace, existingDocs) {
+    const truncated = messages.slice(-50);
+    const conversationText = truncated.map(m => {
+      const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+      const truncContent = content.length > 2000 ? content.slice(0, 2000) + '...' : content;
+      return `${m.role.toUpperCase()}: ${truncContent}`;
+    }).join('\n\n');
+
+    if (!conversationText.trim()) return { suggestions: [] };
+
+    const docsContext = existingDocs.length > 0
+      ? existingDocs.map(d => `- "${d.title}": ${d.summary || '(no summary)'}`).join('\n')
+      : '(no docs yet)';
+
+    const prompt = `You are analyzing a conversation between a user and Claude Code (an AI coding assistant).
+This conversation happened in the context of workspace "${workspace.name}" (${workspace.description || 'no description'}).
+
+Existing knowledge base docs:
+${docsContext}
+
+Conversation:
+<conversation>
+${conversationText}
+</conversation>
+
+Instructions:
+- Identify 0-3 pieces of knowledge that should be saved to the workspace knowledge base.
+- Focus on: architecture decisions, API contracts, deployment procedures, conventions, important discoveries.
+- If a doc already exists on the topic, suggest an UPDATE with the new information appended.
+- If it's a new topic, suggest a NEW doc.
+- Be concise. Each content should be useful markdown (3-15 lines).
+- Return ONLY a valid JSON array:
+
+[
+  {
+    "title": "Doc title",
+    "content": "Markdown content",
+    "isUpdate": false
+  }
+]
+
+If there are no useful discoveries, return exactly: []`;
+
+    try {
+      const claudeDir = process.env.CLAUDE_CONFIG_DIR || require('path').join(require('os').homedir(), '.claude');
+      const credPath = require('path').join(claudeDir, '.credentials.json');
+      let apiKey = null;
+      try {
+        const creds = JSON.parse(require('fs').readFileSync(credPath, 'utf8'));
+        const oauthCreds = creds.claudeAiOauth;
+        if (oauthCreds?.accessToken) {
+          if (!oauthCreds.expiresAt || oauthCreds.expiresAt > Date.now() + 60000) {
+            apiKey = oauthCreds.accessToken;
+          }
+        } else {
+          apiKey = creds.accessToken || null;
+        }
+      } catch { /* no credentials */ }
+
+      if (!apiKey) {
+        console.warn('[ChatService] No credentials for workspace enrichment');
+        return { suggestions: [] };
+      }
+
+      const abortController = new AbortController();
+      const timeoutId = setTimeout(() => abortController.abort(), 15000);
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        signal: abortController.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'oauth-2025-04-20',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 1024,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        console.warn(`[ChatService] Workspace enrichment API error: ${response.status}`);
+        return { suggestions: [] };
+      }
+
+      const data = await response.json();
+      const text = data.content?.[0]?.text || '[]';
+
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) return { suggestions: [] };
+
+      const suggestions = JSON.parse(jsonMatch[0]);
+      if (!Array.isArray(suggestions)) return { suggestions: [] };
+
+      const valid = suggestions.filter(s =>
+        s && typeof s.title === 'string' && typeof s.content === 'string'
+      );
+
+      return { suggestions: valid };
+    } catch (err) {
+      console.warn('[ChatService] Workspace enrichment failed:', err.message);
+      return { suggestions: [] };
+    }
+  }
+
   destroy() {
     if (this._unhandledRejectionHandler) {
       process.removeListener('unhandledRejection', this._unhandledRejectionHandler);

@@ -31,6 +31,7 @@
   <link rel="stylesheet" href="styles/control-tower.css">
   <link rel="stylesheet" href="styles/session-replay.css">
   <link rel="stylesheet" href="styles/discord-theme.css">
+  <link rel="stylesheet" href="styles/workspace.css">
 </head>
 <body>
   <!-- Title Bar -->
@@ -238,6 +239,15 @@
             <path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/>
           </svg>
           <span data-i18n="ui.memory">Memory</span>
+        </button>
+        <button class="nav-tab" data-tab="workspace" title="Workspaces">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7" rx="1"/>
+            <rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/>
+            <rect x="14" y="14" width="7" height="7" rx="1"/>
+          </svg>
+          <span data-i18n="workspace.title">Workspaces</span>
         </button>
         <button class="nav-tab" data-tab="cloud-panel" title="Cloud" role="tab" aria-selected="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -790,6 +800,11 @@
       </div>
 
       <!-- Settings Tab -->
+      <!-- Workspace Tab -->
+      <div class="tab-content" id="tab-workspace">
+        <div class="workspace-layout" id="workspace-panel-root"></div>
+      </div>
+
       <!-- Cloud Tab -->
       <div class="tab-content" id="tab-cloud-panel"></div>
 

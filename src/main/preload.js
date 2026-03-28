@@ -487,6 +487,17 @@ contextBridge.exposeInMainWorld('electron_api', {
     checkUpdates: () => ipcRenderer.invoke('marketplace-check-updates')
   },
 
+  // ==================== WORKSPACE ====================
+  workspace: {
+    list: () => ipcRenderer.invoke('workspace-list'),
+    overview: (workspaceId) => ipcRenderer.invoke('workspace-overview', { workspaceId }),
+    searchDocs: (params) => ipcRenderer.invoke('workspace-search-docs', params),
+    readDoc: (params) => ipcRenderer.invoke('workspace-read-doc', params),
+    writeDoc: (params) => ipcRenderer.invoke('workspace-write-doc', params),
+    createDoc: (params) => ipcRenderer.invoke('workspace-create-doc', params),
+    deleteDoc: (params) => ipcRenderer.invoke('workspace-delete-doc', params),
+  },
+
   // ==================== PROJECT ====================
   project: {
     scanTodos: (projectPath) => ipcRenderer.invoke('scan-todos', projectPath),
@@ -527,6 +538,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     generateSuggestions: (params) => ipcRenderer.invoke('chat-generate-suggestions', params),
     analyzeSession: (params) => ipcRenderer.invoke('chat-analyze-session', params),
     applyClaudeMd: (params) => ipcRenderer.invoke('claude-md-apply', params),
+    analyzeSessionForWorkspace: (params) => ipcRenderer.invoke('workspace-analyze-session', params),
   },
 
   // ==================== HOOKS ====================

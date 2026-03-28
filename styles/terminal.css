@@ -1075,6 +1075,17 @@
   outline: none;
 }
 
+.tab-tag {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
 .tab-close {
   width: 18px;
   height: 18px;

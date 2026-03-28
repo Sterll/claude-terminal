@@ -1216,10 +1216,39 @@ function createChatView(wrapperEl, project, options = {}) {
         }
       },
     },
+    workspace: {
+      mode: 'workspace',
+      keyword: '@workspace',
+      maxItems: 20,
+      emptyText: () => t('workspace.noWorkspaces') || 'No workspaces',
+      getData: () => {
+        const wsState = require('../../state/workspace.state');
+        return wsState.workspaceState.get().workspaces || [];
+      },
+      filter: (items, q) => items.filter(w => (w.name || '').toLowerCase().includes(q) || (w.description || '').toLowerCase().includes(q)),
+      renderItem: (w) => {
+        const projCount = w.projectIds?.length || 0;
+        return `
+        <span class="chat-mention-item-emoji"${w.color ? ` style="color:${w.color}"` : ''}>${w.icon || '📦'}</span>
+        <div class="chat-mention-item-info">
+          <span class="chat-mention-item-name">${escapeHtml(w.name)}</span>
+          <span class="chat-mention-item-desc">${projCount} project(s)</span>
+        </div>`;
+      },
+      itemAttrs: (w) => `data-workspaceid="${escapeHtml(w.id)}" data-workspacename="${escapeHtml(w.name)}"`,
+      onSelect: (el) => {
+        if (el.dataset.workspaceid) {
+          removeAtTrigger();
+          addMentionChip('workspace', { id: el.dataset.workspaceid, name: el.dataset.workspacename });
+          hideMentionDropdown();
+          inputEl.focus();
+        }
+      },
+    },
   };
 
   // Map mention type names to their picker config key
-  const PICKER_TYPE_MAP = { file: 'file', project: 'projects', context: 'context', prompt: 'prompt', tab: 'tabs', conversation: 'conversations' };
+  const PICKER_TYPE_MAP = { file: 'file', project: 'projects', context: 'context', prompt: 'prompt', tab: 'tabs', conversation: 'conversations', workspace: 'workspace' };
 
   /**
    * Generic picker dropdown renderer — used by all picker modes
@@ -1833,6 +1862,67 @@ function createChatView(wrapperEl, project, options = {}) {
             if (content.length > 30000) content = content.slice(0, 30000) + '\n\n[Truncated at 30,000 chars]';
           } catch (e) {
             content = `[Error loading conversation "${sessionName}": ${e.message}]`;
+          }
+          break;
+        }
+
+        case 'workspace': {
+          try {
+            const { path: wsPath } = window.electron_nodeModules;
+            const wsState = require('../../state/workspace.state');
+            const ws = wsState.getWorkspace(mention.data.id);
+            if (!ws) { content = `[Workspace "${mention.data.name}" not found]`; break; }
+
+            const parts = [`# Workspace: ${ws.name}`];
+            if (ws.description) parts.push(ws.description);
+            parts.push('');
+
+            // List projects
+            const { projectsState: pState } = require('../../state/projects.state');
+            const allProjects = pState.get().projects;
+            const wsProjects = (ws.projectIds || []).map(id => allProjects.find(p => p.id === id)).filter(Boolean);
+            parts.push(`## Projects (${wsProjects.length})`);
+            for (const p of wsProjects) {
+              parts.push(`- ${p.name || wsPath.basename(p.path)} (${p.path})`);
+            }
+            parts.push('');
+
+            // Load and include docs
+            const { workspacesDir } = require('../../utils/paths');
+            const docsIndexPath = wsPath.join(workspacesDir, ws.id, 'docs-index.json');
+            try {
+              const indexRaw = await fs.promises.readFile(docsIndexPath, 'utf8');
+              const docsIndex = JSON.parse(indexRaw);
+              if (docsIndex.docs?.length > 0) {
+                parts.push(`## Knowledge Base (${docsIndex.docs.length} documents)`);
+                for (const doc of docsIndex.docs) {
+                  const docPath = wsPath.join(workspacesDir, ws.id, 'docs', doc.filename);
+                  try {
+                    const docContent = await fs.promises.readFile(docPath, 'utf8');
+                    const truncated = docContent.length > 5000 ? docContent.slice(0, 5000) + '\n\n[Truncated]' : docContent;
+                    parts.push(`### ${doc.title}\n${truncated}\n`);
+                  } catch { parts.push(`### ${doc.title}\n[Error reading document]\n`); }
+                }
+              }
+            } catch { /* no docs index */ }
+
+            // Include links
+            const linksPath = wsPath.join(workspacesDir, ws.id, 'links.json');
+            try {
+              const linksRaw = await fs.promises.readFile(linksPath, 'utf8');
+              const linksData = JSON.parse(linksRaw);
+              if (linksData.links?.length > 0) {
+                parts.push(`## Concept Links`);
+                for (const link of linksData.links) {
+                  parts.push(`- ${link.sourceId} --[${link.label}]--> ${link.targetId}${link.description ? ': ' + link.description : ''}`);
+                }
+              }
+            } catch { /* no links */ }
+
+            content = parts.join('\n');
+            if (content.length > 50000) content = content.slice(0, 50000) + '\n\n[Content truncated at 50,000 characters]';
+          } catch (e) {
+            content = `[Error resolving workspace: ${e.message}]`;
           }
           break;
         }
@@ -4637,6 +4727,62 @@ function createChatView(wrapperEl, project, options = {}) {
             }
           })
           .catch(err => console.warn('[ChatView] CLAUDE.md analysis error:', err.message));
+      }
+      // Trigger workspace KB auto-enrichment if project belongs to a workspace
+      if (conversationHistory.length >= 4 && project?.id) {
+        try {
+          const { getWorkspacesForProject } = require('../../state/workspace.state');
+          const Toast = require('./Toast');
+          const projectWorkspaces = getWorkspacesForProject(project.id);
+          if (projectWorkspaces.length > 0) {
+            const ws = projectWorkspaces[0]; // use first workspace
+            Toast.showToast({
+              message: t('workspace.enrichToast', { name: ws.name }),
+              type: 'info',
+              duration: 8000,
+              action: t('workspace.enrichAction'),
+              onAction: () => {
+                // Get existing docs summaries
+                api.workspace.overview(ws.id).then(ov => {
+                  const existingDocs = (ov.docs || []).map(d => ({ title: d.title, summary: d.summary || '' }));
+                  return api.chat.analyzeSessionForWorkspace({
+                    messages: conversationHistory,
+                    workspace: { id: ws.id, name: ws.name, description: ws.description || '' },
+                    existingDocs
+                  });
+                }).then(({ suggestions }) => {
+                  if (!suggestions || suggestions.length === 0) {
+                    Toast.showToast({ message: t('workspace.enrichNoSuggestions'), type: 'info' });
+                    return;
+                  }
+                  // Apply each suggestion
+                  const writes = suggestions.map(s =>
+                    api.workspace.writeDoc({ workspaceId: ws.id, title: s.title, content: s.content })
+                  );
+                  return Promise.all(writes).then(() => {
+                    const docTitles = suggestions.map(s => `${s.isUpdate ? '~' : '+'}${s.title}`).join(', ');
+                    Toast.showToast({
+                      message: t('workspace.enrichDone', { count: suggestions.length, name: ws.name, docs: docTitles }),
+                      type: 'success',
+                      duration: 8000,
+                      action: t('workspace.enrichView'),
+                      onAction: () => {
+                        // Navigate to workspace panel
+                        const wsTab = document.querySelector('[data-tab="workspaces"]');
+                        if (wsTab) wsTab.click();
+                      }
+                    });
+                  });
+                }).catch(err => {
+                  console.warn('[ChatView] Workspace enrichment error:', err.message);
+                  Toast.showToast({ message: t('workspace.enrichError'), type: 'error' });
+                });
+              }
+            });
+          }
+        } catch (e) {
+          console.warn('[ChatView] Workspace enrichment check error:', e.message);
+        }
       }
       for (const unsub of unsubscribers) {
         if (typeof unsub === 'function') unsub();

@@ -12,6 +12,7 @@ const gitState = require('./git.state');
 const settingsState = require('./settings.state');
 const timeTrackingState = require('./timeTracking.state');
 const databaseState = require('./database.state');
+const workspaceState = require('./workspace.state');
 
 // Quick picker state (simple, doesn't need a module)
 const quickPickerState = new State({
@@ -55,6 +56,7 @@ async function initializeState() {
   const { loadSkills } = require('../services/SkillService');
   const { loadAgents } = require('../services/AgentService');
   const { loadContextPacks, loadPromptTemplates } = require('../services/ContextPromptService');
+  await workspaceState.loadWorkspaces();
   Promise.all([loadSkills(), loadAgents(), loadContextPacks(), loadPromptTemplates()]).catch(e => {
     console.error('Error loading skills/agents/library:', e);
   });
@@ -88,6 +90,9 @@ module.exports = {
 
   // Database
   ...databaseState,
+
+  // Workspaces
+  ...workspaceState,
 
   // Simple states
   quickPickerState,

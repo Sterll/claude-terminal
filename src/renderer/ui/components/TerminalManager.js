@@ -1434,7 +1434,7 @@ function closeTerminal(id) {
  * Create a new terminal for a project
  */
 async function createTerminal(project, options = {}) {
-  const { skipPermissions = false, runClaude = true, name: customName = null, mode: explicitMode = null, cwd: overrideCwd = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, resumeSessionId = null } = options;
+  const { skipPermissions = false, runClaude = true, name: customName = null, mode: explicitMode = null, cwd: overrideCwd = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, resumeSessionId = null, systemPrompt = null, tabTag = null } = options;
 
   // Determine mode: explicit > setting > default
   const mode = explicitMode || (runClaude ? (getSetting('defaultTerminalMode') || 'terminal') : 'terminal');
@@ -1442,7 +1442,7 @@ async function createTerminal(project, options = {}) {
   // Chat mode: skip PTY creation entirely
   if (mode === 'chat' && runClaude) {
     const chatProject = overrideCwd ? { ...project, path: overrideCwd } : project;
-    return createChatTerminal(chatProject, { skipPermissions, name: customName, parentProjectId: overrideCwd ? project.id : null, resumeSessionId, initialPrompt, initialImages, initialModel, initialEffort, onSessionStart });
+    return createChatTerminal(chatProject, { skipPermissions, name: customName, parentProjectId: overrideCwd ? project.id : null, resumeSessionId, initialPrompt, initialImages, initialModel, initialEffort, onSessionStart, systemPrompt, tabTag });
   }
 
   const result = await api.terminal.create({
@@ -3957,7 +3957,7 @@ function focusPrevTerminal() {
  * Create a chat-mode terminal (Claude Agent SDK UI)
  */
 async function createChatTerminal(project, options = {}) {
-  const { skipPermissions = false, name: customName = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null, parentProjectId = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null } = options;
+  const { skipPermissions = false, name: customName = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null, parentProjectId = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, systemPrompt = null, tabTag = null } = options;
 
   const id = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   let _chatSessionId = null;
@@ -3992,10 +3992,12 @@ async function createChatTerminal(project, options = {}) {
   tab.tabIndex = 0;
   tab.setAttribute('role', 'tab');
   const worktreeIconHtmlChat = isWorktreeChatTab ? `<span class="tab-worktree-icon" title="Worktree"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="4" r="1.5"/><circle cx="12" cy="4" r="1.5"/><circle cx="4" cy="12" r="1.5"/><path d="M4 5.5v5M5.5 4h5M12 5.5v2.5a2 2 0 01-2 2H7"/></svg></span>` : '';
+  const tabTagHtml = tabTag ? `<span class="tab-tag" style="background:${tabTag.color || 'var(--accent)'}20;color:${tabTag.color || 'var(--accent)'};border:1px solid ${tabTag.color || 'var(--accent)'}40">${escapeHtml(tabTag.label)}</span>` : '';
   tab.innerHTML = `
     <span class="status-dot"></span>
     ${worktreeIconHtmlChat}
     <span class="tab-name">${escapeHtml(tabName)}</span>
+    ${tabTagHtml}
     <button class="tab-mode-toggle" title="${escapeHtml(t('chat.switchToTerminal'))}">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v12zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"/></svg>
     </button>
@@ -4029,6 +4031,7 @@ async function createChatTerminal(project, options = {}) {
     initialModel: effectiveModel,
     initialEffort: effectiveEffort,
     builtinSystemPrompt: getBuiltinSystemPrompt(project.type),
+    ...(systemPrompt ? { systemPrompt } : {}),
     onSessionStart: (sid) => {
       _chatSessionId = sid;
       // Persist session ID on termData for TerminalSessionService (fresh sessions)

@@ -23,6 +23,8 @@ const contextPacksFile = path.join(dataDir, 'context-packs.json');
 const promptTemplatesFile = path.join(dataDir, 'prompt-templates.json');
 const queryHistoryFile = path.join(dataDir, 'query-history.json');
 const savedQueriesFile = path.join(dataDir, 'saved-queries.json');
+const workspacesFile = path.join(dataDir, 'workspaces.json');
+const workspacesDir = path.join(dataDir, 'workspaces');
 
 // Claude configuration files
 const claudeSettingsFile = path.join(claudeDir, 'settings.json');
@@ -35,7 +37,7 @@ const agentsDir = path.join(claudeDir, 'agents');
  */
 async function ensureDirectories() {
   const { ensureDirs } = require('./fs-async');
-  await ensureDirs(dataDir, skillsDir, agentsDir, timeTrackingDir, sessionRecapsDir);
+  await ensureDirs(dataDir, skillsDir, agentsDir, timeTrackingDir, sessionRecapsDir, workspacesDir);
 }
 
 /**
@@ -68,6 +70,8 @@ module.exports = {
   promptTemplatesFile,
   queryHistoryFile,
   savedQueriesFile,
+  workspacesFile,
+  workspacesDir,
   claudeSettingsFile,
   claudeConfigFile,
   skillsDir,
