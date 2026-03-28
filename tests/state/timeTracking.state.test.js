@@ -290,6 +290,10 @@ describe('getProjectTimes with sessions', () => {
 
 describe('getGlobalTimes with sessions', () => {
   test('computes today/week/month from sessions', () => {
+    // Use a fixed time at noon to avoid timezone edge cases near midnight
+    const noon = new Date();
+    noon.setHours(12, 0, 0, 0);
+    jest.setSystemTime(noon);
     const now = Date.now();
     dataState.set({
       version: 3,
@@ -308,6 +312,10 @@ describe('getGlobalTimes with sessions', () => {
   });
 
   test('week includes today', () => {
+    // Use a fixed time at noon to avoid timezone edge cases near midnight
+    const noon = new Date();
+    noon.setHours(12, 0, 0, 0);
+    jest.setSystemTime(noon);
     const now = Date.now();
     dataState.set({
       version: 3,
