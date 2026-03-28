@@ -47,16 +47,18 @@ class SkillService extends BaseService {
     }
   }
 
-  getSkillFiles(id) {
+  async getSkillFiles(id) {
     const skill = this.getSkill(id);
     if (!skill) return [];
+    const fsp = this.api.fs.promises;
     const files = [];
     try {
-      this.api.fs.readdirSync(skill.path).forEach(file => {
+      const entries = await fsp.readdir(skill.path);
+      for (const file of entries) {
         const filePath = this.api.path.join(skill.path, file);
-        const stat = this.api.fs.statSync(filePath);
+        const stat = await fsp.stat(filePath);
         files.push({ name: file, path: filePath, isDirectory: stat.isDirectory(), size: stat.size });
-      });
+      }
     } catch (e) {
       console.error('Error reading skill files:', e);
     }
@@ -72,6 +74,22 @@ class SkillService extends BaseService {
       return true;
     } catch (e) {
       console.error('Error deleting skill:', e);
+      return false;
+    }
+  }
+
+  async writeSkillContent(id, content) {
+    const skill = this.getSkill(id);
+    if (!skill) return false;
+    const skillFile = this.api.path.join(skill.path, 'SKILL.md');
+    try {
+      const tmpFile = skillFile + '.tmp';
+      this.api.fs.writeFileSync(tmpFile, content, 'utf8');
+      this.api.fs.renameSync(tmpFile, skillFile);
+      await this.loadSkills();
+      return true;
+    } catch (e) {
+      console.error('Error writing skill:', e);
       return false;
     }
   }
@@ -99,14 +117,16 @@ class SkillService extends BaseService {
             const skillFile = this.api.path.join(itemPath, 'SKILL.md');
             try {
               const content = await this.api.fs.promises.readFile(skillFile, 'utf8');
-              const { metadata, body } = parseFrontmatter(content);
-              const nameMatch = body.match(/^#\s+(.+)/m);
+              const { parsed } = parseFrontmatter(content);
               skills.push({
                 id: `${source}:${item}`,
-                name: metadata.name || (nameMatch ? nameMatch[1] : item),
-                description: metadata.description || t('common.noDescription'),
-                userInvocable: metadata['user-invocable'] === 'true',
-                path: itemPath, source, sourceLabel,
+                name: parsed.name || item,
+                description: parsed.description || t('common.noDescription'),
+                userInvocable: parsed.userInvocable,
+                tools: parsed.tools,
+                sections: parsed.sections,
+                path: itemPath, filePath: skillFile,
+                source, sourceLabel,
                 isPlugin: source !== 'local'
               });
             } catch { /* SKILL.md doesn't exist */ }
@@ -171,6 +191,7 @@ module.exports = {
   getSkills: (...a) => _getInstance().getSkills(...a),
   getSkill: (...a) => _getInstance().getSkill(...a),
   readSkillContent: (...a) => _getInstance().readSkillContent(...a),
+  writeSkillContent: (...a) => _getInstance().writeSkillContent(...a),
   getSkillFiles: (...a) => _getInstance().getSkillFiles(...a),
   deleteSkill: (...a) => _getInstance().deleteSkill(...a),
   openSkillInExplorer: (...a) => _getInstance().openSkillInExplorer(...a),

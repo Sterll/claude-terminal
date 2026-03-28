@@ -1316,6 +1316,32 @@
   margin-top: 16px;
 }
 
+.workflow-dispatch-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  margin-left: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.12s;
+  vertical-align: middle;
+}
+.workflow-dispatch-btn:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.workflow-dispatch-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
 .workflow-runs-list {
   display: flex;
   flex-direction: column;

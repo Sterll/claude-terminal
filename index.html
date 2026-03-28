@@ -478,6 +478,20 @@
                     </button>
                   </div>
                   <textarea id="git-commit-message" data-i18n-placeholder="gitChanges.commitPlaceholder" placeholder="feat: describe changes..." rows="2"></textarea>
+                  <div class="git-commit-options">
+                    <label class="git-amend-label" title="Amend last commit">
+                      <input type="checkbox" id="git-amend-checkbox">
+                      <span data-i18n="gitChanges.amendCommit">Amend</span>
+                    </label>
+                    <button class="git-discard-selected-btn" id="btn-discard-selected" disabled>
+                      <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                      <span data-i18n="gitChanges.discardSelected">Discard</span>
+                    </button>
+                    <button class="git-reset-btn" id="btn-git-reset">
+                      <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg>
+                      <span data-i18n="gitChanges.undoLastCommit">Undo commit</span>
+                    </button>
+                  </div>
                   <div class="git-commit-actions">
                     <button class="btn-primary" id="btn-commit-selected" disabled>
                       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
@@ -639,6 +653,12 @@
                 <h3 data-i18n="ui.stashes">Stashes</h3>
               </div>
               <div class="git-stashes-list" id="git-stashes-list"></div>
+            </div>
+            <div class="git-sidebar-section git-sidebar-remotes">
+              <div class="git-sidebar-header">
+                <h3 data-i18n="gitTab.remotes">Remotes</h3>
+              </div>
+              <div class="git-remotes-list" id="git-remotes-list"></div>
             </div>
           </div>
           <div class="git-tab-main">

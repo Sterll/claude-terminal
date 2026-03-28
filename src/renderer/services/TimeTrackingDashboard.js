@@ -611,7 +611,7 @@ async function exportData(format) {
 
     if (filePath) {
       const { fs } = window.electron_nodeModules;
-      fs.writeFileSync(filePath, '\uFEFF' + csvContent, 'utf8');
+      await fs.promises.writeFile(filePath, '\uFEFF' + csvContent, 'utf8');
     }
   } else {
     const totalDuration = sessions.reduce((sum, s) => sum + (s.duration || 0), 0);
@@ -644,7 +644,7 @@ async function exportData(format) {
 
     if (filePath) {
       const { fs } = window.electron_nodeModules;
-      fs.writeFileSync(filePath, JSON.stringify(jsonData, null, 2), 'utf8');
+      await fs.promises.writeFile(filePath, JSON.stringify(jsonData, null, 2), 'utf8');
     }
   }
 }

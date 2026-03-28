@@ -27,25 +27,26 @@ class AgentService extends BaseService {
           const stat = await this.api.fs.promises.stat(itemPath);
           if (stat.isFile() && item.endsWith('.md')) {
             const content = await this.api.fs.promises.readFile(itemPath, 'utf8');
-            const { metadata } = parseFrontmatter(content);
+            const { parsed } = parseFrontmatter(content);
             const id = item.replace(/\.md$/, '');
             agents.push({
-              id, name: metadata.name || id,
-              description: metadata.description || t('common.noDescription'),
-              tools: metadata.tools || '', model: metadata.model || 'sonnet',
-              path: itemPath
+              id, name: parsed.name || id,
+              description: parsed.description || t('common.noDescription'),
+              tools: parsed.tools, sections: parsed.sections,
+              model: parsed.model || 'sonnet',
+              path: itemPath, filePath: itemPath
             });
           } else if (stat.isDirectory()) {
             const agentFile = this.api.path.join(itemPath, 'AGENT.md');
             try {
               const content = await this.api.fs.promises.readFile(agentFile, 'utf8');
-              const { metadata } = parseFrontmatter(content);
-              const nameMatch = content.match(/^#\s+(.+)/m);
+              const { parsed } = parseFrontmatter(content);
               agents.push({
-                id: item, name: metadata.name || (nameMatch ? nameMatch[1] : item),
-                description: metadata.description || t('common.noDescription'),
-                tools: metadata.tools || '', model: metadata.model || 'sonnet',
-                path: itemPath
+                id: item, name: parsed.name || item,
+                description: parsed.description || t('common.noDescription'),
+                tools: parsed.tools, sections: parsed.sections,
+                model: parsed.model || 'sonnet',
+                path: itemPath, filePath: agentFile
               });
             } catch { /* No AGENT.md */ }
           }
@@ -85,20 +86,22 @@ class AgentService extends BaseService {
     }
   }
 
-  getAgentFiles(id) {
+  async getAgentFiles(id) {
     const agent = this.getAgent(id);
     if (!agent) return [];
+    const fsp = this.api.fs.promises;
     const files = [];
     try {
       if (this.isAgentFile(agent)) {
-        const stat = this.api.fs.statSync(agent.path);
+        const stat = await fsp.stat(agent.path);
         files.push({ name: this.api.path.basename(agent.path), path: agent.path, isDirectory: false, size: stat.size });
       } else {
-        this.api.fs.readdirSync(agent.path).forEach(file => {
+        const entries = await fsp.readdir(agent.path);
+        for (const file of entries) {
           const filePath = this.api.path.join(agent.path, file);
-          const stat = this.api.fs.statSync(filePath);
+          const stat = await fsp.stat(filePath);
           files.push({ name: file, path: filePath, isDirectory: stat.isDirectory(), size: stat.size });
-        });
+        }
       }
     } catch (e) {
       console.error('Error reading agent files:', e);
@@ -119,6 +122,22 @@ class AgentService extends BaseService {
       return true;
     } catch (e) {
       console.error('Error deleting agent:', e);
+      return false;
+    }
+  }
+
+  async writeAgentContent(id, content) {
+    const agent = this.getAgent(id);
+    if (!agent) return false;
+    try {
+      const filePath = this.isAgentFile(agent) ? agent.path : this.api.path.join(agent.path, 'AGENT.md');
+      const tmpFile = filePath + '.tmp';
+      this.api.fs.writeFileSync(tmpFile, content, 'utf8');
+      this.api.fs.renameSync(tmpFile, filePath);
+      await this.loadAgents();
+      return true;
+    } catch (e) {
+      console.error('Error writing agent:', e);
       return false;
     }
   }
@@ -151,6 +170,7 @@ module.exports = {
   getAgents: (...a) => _getInstance().getAgents(...a),
   getAgent: (...a) => _getInstance().getAgent(...a),
   readAgentContent: (...a) => _getInstance().readAgentContent(...a),
+  writeAgentContent: (...a) => _getInstance().writeAgentContent(...a),
   getAgentFiles: (...a) => _getInstance().getAgentFiles(...a),
   deleteAgent: (...a) => _getInstance().deleteAgent(...a),
   openAgentInExplorer: (...a) => _getInstance().openAgentInExplorer(...a),

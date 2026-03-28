@@ -6,7 +6,7 @@
 // Use preload API instead of direct ipcRenderer
 const api = window.electron_api;
 const { fs, path } = window.electron_nodeModules;
-const { projectsState, setGitPulling, setGitPushing, setGitMerging, setMergeInProgress, getGitOperation, getProjectTimes, getProjectSessions, getFolder, getProject, countProjectsRecursive } = require('../state');
+const { projectsState, settingsState, setGitPulling, setGitPushing, setGitMerging, setMergeInProgress, getGitOperation, getProjectTimes, getProjectSessions, getFolder, getProject, countProjectsRecursive } = require('../state');
 const { showConfirm, createModal, showModal, closeModal } = require('../ui/components/Modal');
 const { escapeHtml } = require('../utils');
 const { sanitizeColor } = require('../utils/color');
@@ -72,7 +72,6 @@ function getDiskCachePath(projectPath) {
 async function readDiskCache(projectPath) {
   try {
     const filePath = getDiskCachePath(projectPath);
-    if (!fs.existsSync(filePath)) return null;
     const raw = await fs.promises.readFile(filePath, 'utf-8');
     const parsed = JSON.parse(raw);
     if (!parsed || !parsed.dashboard) return null;
@@ -143,7 +142,6 @@ const PROJECT_TYPE_MARKERS = [
 async function getPackageDeps(projectPath) {
   try {
     const pkgPath = path.join(projectPath, 'package.json');
-    if (!fs.existsSync(pkgPath)) return new Set();
     const pkg = JSON.parse(await fs.promises.readFile(pkgPath, 'utf-8'));
     return new Set([
       ...Object.keys(pkg.dependencies || {}),
@@ -156,7 +154,7 @@ async function getPackageDeps(projectPath) {
 
 /**
  * Detect project type from marker files.
- * Optimisation: readdirSync once + getPackageDeps once (lazy), then pure in-memory checks.
+ * Optimisation: readdir once + getPackageDeps once (lazy), then pure in-memory checks.
  * @param {string} projectPath
  * @returns {Promise<{ type: string, label: string, color: string }|null>}
  */
@@ -164,9 +162,9 @@ async function detectProjectType(projectPath) {
   try {
     // Read directory listing once (covers all *.ext glob patterns + exact filenames)
     let dirEntries = null;
-    const getDirEntries = () => {
+    const getDirEntries = async () => {
       if (dirEntries === null) {
-        try { dirEntries = fs.readdirSync(projectPath); } catch { dirEntries = []; }
+        try { dirEntries = await fs.promises.readdir(projectPath); } catch { dirEntries = []; }
       }
       return dirEntries;
     };
@@ -181,7 +179,7 @@ async function detectProjectType(projectPath) {
     for (const marker of PROJECT_TYPE_MARKERS) {
       // Check file markers using cached dir listing
       if (marker.files) {
-        const entries = getDirEntries();
+        const entries = await getDirEntries();
         const hasFile = marker.files.some(f => {
           if (f.startsWith('*.')) {
             const ext = f.slice(1); // e.g. '.lua'
@@ -391,7 +389,8 @@ async function getProjectStats(projectPath) {
  * @returns {Promise<Object>}
  */
 async function getWorkflowRuns(remoteUrl) {
-  if (!remoteUrl || !remoteUrl.includes('github.com')) {
+  const ghHostname = settingsState.get().githubHostname || 'github.com';
+  if (!remoteUrl || !remoteUrl.includes(ghHostname)) {
     // Not a GitHub repo
     return { runs: [], notGitHub: true };
   }
@@ -412,7 +411,8 @@ async function getWorkflowRuns(remoteUrl) {
  * @returns {Promise<Object>}
  */
 async function getPullRequests(remoteUrl) {
-  if (!remoteUrl || !remoteUrl.includes('github.com')) {
+  const ghHostname = settingsState.get().githubHostname || 'github.com';
+  if (!remoteUrl || !remoteUrl.includes(ghHostname)) {
     return { pullRequests: [], notGitHub: true };
   }
 
@@ -766,10 +766,10 @@ function buildGitStatusHtml(gitInfo) {
  * @param {string} projectId
  * @returns {string}
  */
-function buildSessionRecapsHtml(projectId) {
+async function buildSessionRecapsHtml(projectId) {
   try {
     const { getRecaps } = require('./SessionRecapService');
-    const recaps = getRecaps(projectId);
+    const recaps = await getRecaps(projectId);
     if (!recaps || recaps.length === 0) return '';
 
     const itemsHtml = recaps.map(recap => {
@@ -1391,6 +1391,9 @@ function buildWorkflowRunsHtml(workflowRuns) {
       <h3>
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM10 17l-3.5-3.5 1.41-1.41L10 14.17l4.59-4.59L16 11l-6 6z"/></svg>
         GitHub Actions
+        <button class="workflow-dispatch-btn" title="${t('github.runWorkflow') || 'Run workflow'}">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M8 5v14l11-7z"/></svg>
+        </button>
       </h3>
       <div class="workflow-runs-list">
         ${workflowRuns.runs.map(run => `
@@ -1497,7 +1500,7 @@ function buildPullRequestsHtml(pullRequestsData) {
  * @param {Object} options
  * @param {boolean} isRefreshing - Show refresh indicator
  */
-function renderDashboardHtml(container, project, data, options, isRefreshing = false) {
+async function renderDashboardHtml(container, project, data, options, isRefreshing = false) {
   const {
     terminalCount = 0,
     fivemStatus = 'stopped',
@@ -1520,9 +1523,9 @@ function renderDashboardHtml(container, project, data, options, isRefreshing = f
       onSessionOpen: options.onTaskSessionOpen,
     });
     container.querySelectorAll('.dashboard-view-tab').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         _dashViews.set(project.id, btn.dataset.view);
-        renderDashboardHtml(container, project, data, options, isRefreshing);
+        await renderDashboardHtml(container, project, data, options, isRefreshing);
       });
     });
     return;
@@ -1619,7 +1622,7 @@ function renderDashboardHtml(container, project, data, options, isRefreshing = f
         ${buildPullRequestsHtml(pullRequests)}
       </div>
       <div class="dashboard-col">
-        ${buildSessionRecapsHtml(project.id)}
+        ${await buildSessionRecapsHtml(project.id)}
         ${buildStatsHtml(stats, gitInfo)}
         ${buildClaudeActivityHtml()}
         ${gitInfo.isGitRepo ? buildContributorsHtml(gitInfo.contributors) : ''}
@@ -1634,10 +1637,10 @@ function renderDashboardHtml(container, project, data, options, isRefreshing = f
   if (_sessionRecapHandler) {
     window.removeEventListener('session-recap-updated', _sessionRecapHandler);
   }
-  _sessionRecapHandler = (e) => {
+  _sessionRecapHandler = async (e) => {
     if (e.detail?.projectId !== project.id) return;
     const existing = container.querySelector('.session-recaps-section');
-    const newHtml = buildSessionRecapsHtml(project.id);
+    const newHtml = await buildSessionRecapsHtml(project.id);
     if (!newHtml) return;
     const tmp = document.createElement('div');
     tmp.innerHTML = newHtml;
@@ -1661,6 +1664,25 @@ function renderDashboardHtml(container, project, data, options, isRefreshing = f
     });
     item.style.cursor = 'pointer';
   });
+
+  // Workflow dispatch button
+  const dispatchBtn = container.querySelector('.workflow-dispatch-btn');
+  if (dispatchBtn && gitInfo.remoteUrl) {
+    dispatchBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showWorkflowDispatchModal(gitInfo.remoteUrl);
+    });
+  }
+
+  // Start polling if any workflow runs are in-progress
+  if (workflowRuns?.runs?.some(r => r.status === 'in_progress' || r.status === 'queued') && gitInfo.remoteUrl) {
+    startWorkflowPolling(gitInfo.remoteUrl, project.id);
+  } else {
+    stopWorkflowPolling();
+  }
+
+  // Setup rate limit listener (once)
+  setupRateLimitListener();
 
   // Attach click handlers for pull requests
   container.querySelectorAll('.pull-request-item').forEach(item => {
@@ -1722,9 +1744,9 @@ function renderDashboardHtml(container, project, data, options, isRefreshing = f
 
   // View tab switcher
   container.querySelectorAll('.dashboard-view-tab').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       _dashViews.set(project.id, btn.dataset.view);
-      renderDashboardHtml(container, project, data, options, isRefreshing);
+      await renderDashboardHtml(container, project, data, options, isRefreshing);
     });
   });
 }
@@ -1815,12 +1837,12 @@ function animateDashboardIn(container) {
  * @param {Object} options - Render options
  * @param {boolean} isRefreshing - Show refresh indicator
  */
-function transitionDashboard(container, project, data, options, isRefreshing = false) {
+async function transitionDashboard(container, project, data, options, isRefreshing = false) {
   const hasExistingContent = container.querySelector('.dashboard-project-header');
 
   if (!hasExistingContent) {
     // No existing content - render directly with entrance animations
-    renderDashboardHtml(container, project, data, options, isRefreshing);
+    await renderDashboardHtml(container, project, data, options, isRefreshing);
     animateDashboardIn(container);
     return;
   }
@@ -1846,7 +1868,7 @@ function transitionDashboard(container, project, data, options, isRefreshing = f
   container.appendChild(wrapper);
 
   // Render new content into incoming (just for visual)
-  renderDashboardHtml(incoming, project, data, options, isRefreshing);
+  await renderDashboardHtml(incoming, project, data, options, isRefreshing);
 
   // Trigger cross-fade
   requestAnimationFrame(() => {
@@ -1855,9 +1877,9 @@ function transitionDashboard(container, project, data, options, isRefreshing = f
   });
 
   // After fade completes, replace with final rendered content (with event listeners)
-  setTimeout(() => {
+  setTimeout(async () => {
     container.innerHTML = '';
-    renderDashboardHtml(container, project, data, options, isRefreshing);
+    await renderDashboardHtml(container, project, data, options, isRefreshing);
     animateDashboardIn(container);
   }, 220);
 }
@@ -1878,7 +1900,7 @@ async function renderDashboard(container, project, options = {}) {
   // Case 1: We have cached data - show it immediately
   if (cachedData) {
     // Use cross-fade transition when switching projects (existing content visible)
-    transitionDashboard(container, project, cachedData, options, !cacheValid && !alreadyRefreshing);
+    await transitionDashboard(container, project, cachedData, options, !cacheValid && !alreadyRefreshing);
 
     // If cache is still valid or already refreshing, we're done
     if (cacheValid || alreadyRefreshing) {
@@ -1898,7 +1920,7 @@ async function renderDashboard(container, project, options = {}) {
 
       // Only update UI if this project is still displayed — discrete refresh, no animation
       if (container.querySelector('#dash-btn-open-folder')) {
-        renderDashboardHtml(container, project, newData, options, false);
+        await renderDashboardHtml(container, project, newData, options, false);
       }
     } catch (e) {
       console.error('Error refreshing dashboard:', e);
@@ -1925,7 +1947,7 @@ async function renderDashboard(container, project, options = {}) {
     // Discard if user switched to a different project during load
     if (targetProjectId !== projectsState.get().openedProjectId) return;
 
-    renderDashboardHtml(container, project, data, options, false);
+    await renderDashboardHtml(container, project, data, options, false);
     animateDashboardIn(container);
   } catch (e) {
     console.error('Error loading dashboard:', e);
@@ -2276,6 +2298,175 @@ function renderOverview(container, projects, options = {}) {
   });
 }
 
+// ==================== WORKFLOW POLLING ====================
+let _workflowPollingTimer = null;
+const WORKFLOW_POLL_INTERVAL = 30000; // 30 seconds
+
+function startWorkflowPolling(remoteUrl, projectId) {
+  stopWorkflowPolling();
+  _workflowPollingTimer = setInterval(async () => {
+    try {
+      const result = await api.github.workflowRuns(remoteUrl);
+      if (!result?.runs?.length) { stopWorkflowPolling(); return; }
+
+      const hasInProgress = result.runs.some(r => r.status === 'in_progress' || r.status === 'queued');
+
+      // Update DOM in-place
+      const container = document.getElementById('project-content');
+      if (container) {
+        const section = container.querySelector('.workflow-runs-section');
+        if (section) {
+          const newHtml = buildWorkflowRunsHtml(result);
+          if (newHtml) {
+            const tmp = document.createElement('div');
+            tmp.innerHTML = newHtml;
+            const newSection = tmp.firstElementChild;
+            section.replaceWith(newSection);
+            // Re-bind click handlers
+            newSection.querySelectorAll('.workflow-run-item').forEach(item => {
+              if (item.dataset.url) {
+                item.style.cursor = 'pointer';
+                item.addEventListener('click', () => api.dialog.openExternal(item.dataset.url));
+              }
+            });
+            // Re-bind dispatch button
+            const dispatchBtn = newSection.querySelector('.workflow-dispatch-btn');
+            if (dispatchBtn) {
+              dispatchBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showWorkflowDispatchModal(remoteUrl);
+              });
+            }
+          }
+        }
+      }
+
+      if (!hasInProgress) stopWorkflowPolling();
+    } catch (e) {
+      console.error('[Dashboard] Workflow polling error:', e);
+    }
+  }, WORKFLOW_POLL_INTERVAL);
+}
+
+function stopWorkflowPolling() {
+  if (_workflowPollingTimer) {
+    clearInterval(_workflowPollingTimer);
+    _workflowPollingTimer = null;
+  }
+}
+
+// ==================== WORKFLOW DISPATCH MODAL ====================
+async function showWorkflowDispatchModal(remoteUrl) {
+  const modal = createModal({
+    title: t('github.runWorkflow') || 'Run workflow',
+    size: 'small',
+    content: `
+      <div class="workflow-dispatch-form">
+        <div class="settings-row" style="margin-bottom: 12px;">
+          <label style="display: block; margin-bottom: 4px; color: var(--text-secondary); font-size: var(--font-sm);">${t('github.selectWorkflow') || 'Select workflow'}</label>
+          <select id="dispatch-workflow-select" class="git-pr-select" style="width: 100%;">
+            <option value="">${t('common.loading') || 'Loading...'}</option>
+          </select>
+        </div>
+        <div class="settings-row" style="margin-bottom: 12px;">
+          <label style="display: block; margin-bottom: 4px; color: var(--text-secondary); font-size: var(--font-sm);">${t('github.workflowRef') || 'Branch'}</label>
+          <input type="text" id="dispatch-workflow-ref" class="git-pr-input" placeholder="main" style="width: 100%;" />
+        </div>
+        <button id="dispatch-workflow-btn" class="git-pr-create-btn" style="width: 100%;">${t('github.dispatchWorkflow') || 'Dispatch'}</button>
+      </div>
+    `
+  });
+
+  showModal(modal);
+
+  // Load workflows
+  try {
+    const result = await api.github.workflows({ remoteUrl });
+    const select = document.getElementById('dispatch-workflow-select');
+    if (!select) return;
+    if (result.workflows && result.workflows.length > 0) {
+      select.innerHTML = result.workflows.map(w =>
+        `<option value="${w.id}">${escapeHtml(w.name)}</option>`
+      ).join('');
+    } else {
+      select.innerHTML = `<option value="">${t('github.noWorkflows') || 'No workflows found'}</option>`;
+    }
+  } catch (e) {
+    console.error('[Dashboard] Error loading workflows:', e);
+  }
+
+  // Pre-fill branch from current project
+  const refInput = document.getElementById('dispatch-workflow-ref');
+  try {
+    const openedId = projectsState.get().openedProjectId;
+    if (openedId) {
+      const project = getProject(openedId);
+      if (project?.path) {
+        const gitInfo = await api.git.infoFull(project.path);
+        if (gitInfo?.branch && refInput) {
+          refInput.value = gitInfo.branch;
+        }
+      }
+    }
+  } catch (e) { /* ignore */ }
+
+  // Dispatch button handler
+  const dispatchBtn = document.getElementById('dispatch-workflow-btn');
+  if (dispatchBtn) {
+    dispatchBtn.addEventListener('click', async () => {
+      const select = document.getElementById('dispatch-workflow-select');
+      const workflowId = select?.value;
+      const ref = refInput?.value?.trim();
+      if (!workflowId || !ref) return;
+
+      dispatchBtn.disabled = true;
+      dispatchBtn.textContent = '...';
+      try {
+        const result = await api.github.dispatchWorkflow({ remoteUrl, workflowId: parseInt(workflowId), ref });
+        if (result.success) {
+          closeModal(modal);
+          const { showToast } = require('../ui/components/Toast');
+          showToast(t('github.workflowDispatched') || 'Workflow dispatched successfully', 'success');
+          // Refresh workflow runs after a short delay
+          setTimeout(async () => {
+            const openedId = projectsState.get().openedProjectId;
+            if (openedId) invalidateCache(openedId);
+          }, 2000);
+        } else {
+          const { showToast } = require('../ui/components/Toast');
+          showToast(result.error || 'Dispatch failed', 'error');
+          dispatchBtn.disabled = false;
+          dispatchBtn.textContent = t('github.dispatchWorkflow') || 'Dispatch';
+        }
+      } catch (e) {
+        const { showToast } = require('../ui/components/Toast');
+        showToast(e.message, 'error');
+        dispatchBtn.disabled = false;
+        dispatchBtn.textContent = t('github.dispatchWorkflow') || 'Dispatch';
+      }
+    });
+  }
+}
+
+// ==================== RATE LIMIT LISTENER ====================
+let _rateLimitListenerSetup = false;
+function setupRateLimitListener() {
+  if (_rateLimitListenerSetup) return;
+  _rateLimitListenerSetup = true;
+  api.github.onRateLimitUpdate((state) => {
+    const { showToast } = require('../ui/components/Toast');
+    if (state.remaining === 0) {
+      const resetDate = new Date(state.reset * 1000);
+      const resetTime = resetDate.toLocaleTimeString();
+      showToast(t('github.rateLimitExhausted', { time: resetTime }) || `GitHub API rate limit reached. Resets at ${resetTime}.`, 'error', 10000);
+    } else if (state.remaining !== null && state.remaining < 10) {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const minutes = Math.max(1, Math.ceil((state.reset - nowSec) / 60));
+      showToast(t('github.rateLimitWarning', { remaining: state.remaining, minutes }) || `GitHub API: ${state.remaining} calls remaining (resets in ${minutes}min)`, 'warning', 5000);
+    }
+  });
+}
+
 module.exports = {
   getGitInfo,
   getGitInfoFull,
@@ -2292,6 +2483,11 @@ module.exports = {
   renderOverview,
   formatNumber,
   getGitOperation,
+  // Workflow polling & dispatch
+  startWorkflowPolling,
+  stopWorkflowPolling,
+  showWorkflowDispatchModal,
+  setupRateLimitListener,
   // Cache management
   getCachedData,
   invalidateCache,

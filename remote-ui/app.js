@@ -11,50 +11,9 @@
 
 const _debugLog = console.log.bind(console);
 
-// ─── i18n ─────────────────────────────────────────────────────────────────────
+// ─── i18n (provided by i18n.js loaded before this file) ──────────────────────
 
-const _isFr = navigator.language.toLowerCase().startsWith('fr');
-
-const STRINGS = {
-  pinMessage: _isFr ? 'Entrez le code affiché dans\nParamètres → Télécommande' : 'Enter the 6-digit PIN shown in\nSettings → Remote Control',
-  pinError: _isFr ? 'Code invalide ou expiré. Réessayez.' : 'Invalid or expired PIN. Try again.',
-  pinConnFail: _isFr ? 'Connexion impossible. Le serveur est-il démarré ?' : 'Connection failed. Is the server running?',
-  noSession: _isFr ? 'Nouveau chat' : 'New chat',
-  noSessionHint: _isFr ? 'Écrivez un message pour commencer' : 'Type a message to get started',
-  noProjects: _isFr ? 'Aucun projet.' : 'No projects yet.',
-  navProjects: _isFr ? 'Projets' : 'Projects',
-  navChat: 'Chat',
-  navDashboard: 'Dashboard',
-  allow: _isFr ? 'Autoriser' : 'Allow',
-  deny: _isFr ? 'Refuser' : 'Deny',
-  reconnecting: _isFr ? 'Reconnexion…' : 'Reconnecting…',
-  connected: _isFr ? 'Connecté' : 'Connected',
-  disconnected: _isFr ? 'Déconnecté' : 'Disconnected',
-  thinking: _isFr ? 'Réflexion…' : 'Thinking…',
-  noOutput: _isFr ? '(aucune sortie)' : '(no output)',
-  headlessBanner: _isFr ? 'PC hors ligne — Session cloud disponible' : 'Desktop offline — Cloud mode available',
-  headlessBannerActive: _isFr ? 'Session cloud active' : 'Cloud session active',
-  headlessCreating: _isFr ? 'Lancement session cloud…' : 'Starting cloud session…',
-  headlessError: _isFr ? 'Erreur session cloud' : 'Cloud session error',
-  headlessSelectProject: _isFr ? 'Sélectionnez un projet pour démarrer' : 'Select a project to start',
-  cloudPopupTitle: _isFr ? 'Travaillez dans le cloud' : 'Work in the cloud',
-  cloudPopupDesc: _isFr ? 'Votre PC est hors ligne. Continuez à travailler avec des sessions cloud directement sur le serveur.' : 'Your PC is offline. Continue working with cloud sessions directly on the server.',
-  cloudPopupCta: _isFr ? 'Passer en mode cloud' : 'Switch to cloud',
-};
-
-function applyStrings() {
-  const authMsg = document.querySelector('.auth-message');
-  if (authMsg) authMsg.textContent = STRINGS.pinMessage;
-  document.querySelectorAll('.nav-item').forEach(btn => {
-    const view = btn.dataset.view;
-    const span = btn.querySelector('span:not(.nav-badge)');
-    if (span && view === 'projects') span.textContent = STRINGS.navProjects;
-    if (span && view === 'chat') span.textContent = STRINGS.navChat;
-    if (span && view === 'dashboard') span.textContent = STRINGS.navDashboard;
-  });
-  const newSessionLabel = $('new-session-label');
-  if (newSessionLabel) newSessionLabel.textContent = _isFr ? 'Nouveau chat' : 'New Chat';
-}
+const { t } = window.i18n;
 
 // ─── Tool Icons (SVG) ─────────────────────────────────────────────────────────
 
@@ -172,10 +131,10 @@ function connSetState(s) {
     statusEl.classList.toggle('reconnecting', s === 'reconnecting');
   }
   if (labelEl) {
-    if (s === 'connected') labelEl.textContent = STRINGS.connected;
-    else if (s === 'reconnecting') labelEl.textContent = STRINGS.reconnecting;
+    if (s === 'connected') labelEl.textContent = t('status.connected');
+    else if (s === 'reconnecting') labelEl.textContent = t('status.reconnecting');
     else if (s === 'connecting') labelEl.textContent = '…';
-    else labelEl.textContent = STRINGS.disconnected;
+    else labelEl.textContent = t('status.disconnected');
   }
   const banner = $('reconnecting-banner');
   if (banner) banner.classList.toggle('hidden', s !== 'reconnecting');
@@ -189,7 +148,7 @@ const $ = (id) => document.getElementById(id);
 
 function init() {
   _debugLog('[Init] mode=' + conn.mode, 'cloudUrl=' + (conn.cloudUrl || 'none'), 'hasKey=' + !!conn.cloudApiKey);
-  applyStrings();
+  i18n.applyDOM();
   _restoreSessions();
   setupPinEntry();
   setupCloudKeyEntry();
@@ -328,7 +287,7 @@ async function submitPin(pin) {
     _showMain();
     _openWS();
   } catch (e) {
-    if (errorEl) { errorEl.textContent = STRINGS.pinConnFail; errorEl.classList.remove('hidden'); }
+    if (errorEl) { errorEl.textContent = t('pin.connFail'); errorEl.classList.remove('hidden'); }
     if (pinInput) { pinInput.disabled = false; pinInput.focus(); }
     if (submitBtn) submitBtn.disabled = false;
   }
@@ -477,7 +436,7 @@ function _openWS() {
       _showAuth(false);
       const errEl = $('auth-error');
       if (errEl) {
-        errEl.textContent = _isFr ? 'Déconnecté par l\'administrateur' : 'Disconnected by administrator';
+        errEl.textContent = t('misc.disconnectedAdmin');
         errEl.classList.remove('hidden');
       }
       return;
@@ -485,7 +444,7 @@ function _openWS() {
     // Too many mobiles
     if (e.code === 4002) {
       const labelEl = $('status-label');
-      if (labelEl) labelEl.textContent = _isFr ? 'Trop de mobiles connectés' : 'Too many mobile connections';
+      if (labelEl) labelEl.textContent = t('misc.tooManyMobile');
       return;
     }
     if (conn.state !== 'auth') _scheduleReconnect();
@@ -514,7 +473,7 @@ function _onDesktopOffline() {
   state.selectedSessionId = null;
   renderSessionBar(); renderChatMessages();
   const labelEl = $('status-label');
-  if (labelEl) labelEl.textContent = _isFr ? 'PC hors ligne' : 'Desktop offline';
+  if (labelEl) labelEl.textContent = t('misc.desktopOffline');
   const dot = $('connection-dot');
   if (dot) { dot.classList.add('disconnected'); dot.classList.remove('reconnecting'); }
   // Show cloud popup if in relay mode (cloud server available)
@@ -607,6 +566,7 @@ function handleMessage(msg) {
       if (data.chatModel) { state.selectedModel = data.chatModel; }
       if (data.effortLevel) { state.selectedEffort = data.effortLevel; }
       if (data.accentColor) _applyAccentColor(data.accentColor);
+      if (data.language) i18n.setLang(data.language);
       _updatePlusMenuSelection();
       renderSessionBar(); renderChatMessages();
       break;
@@ -1028,12 +988,10 @@ function onChatUserMessage({ sessionId, text, images }) {
   const lastMsg = session.messages[session.messages.length - 1];
   if (lastMsg?.role === 'user' && lastMsg.content === text) return;
   const imageCount = typeof images === 'number' ? images : (Array.isArray(images) ? images.length : 0);
-  const imageLabel = imageCount > 0
-    ? (_isFr ? ` (${imageCount} image${imageCount > 1 ? 's' : ''})` : ` (${imageCount} image${imageCount > 1 ? 's' : ''})`)
-    : '';
+  const imageLabel = imageCount > 0 ? ` (${imageCount} image${imageCount > 1 ? 's' : ''})` : '';
   let content = text || '';
   if (imageLabel) content += imageLabel;
-  if (!content) content = _isFr ? '(image jointe)' : '(image attached)';
+  if (!content) content = t('chat.imageAttached');
   session.messages.push({ role: 'user', content });
   _renderIfActive(sessionId);
 }
@@ -1044,7 +1002,7 @@ function onChatIdle({ sessionId, projectId }) {
   const session = _getOrCreateSession(sessionId, projectId);
   if (!session.projectId && projectId) session.projectId = projectId;
   session.status = 'active';
-  session.lastActivity = _isFr ? 'Claude travaille…' : 'Claude is working…';
+  session.lastActivity = t('status.claudeWorking');
   _refreshControlIfActive();
   if (!state.selectedSessionId) {
     state.selectedSessionId = sessionId;
@@ -1070,14 +1028,14 @@ function onChatDone({ sessionId }) {
   _finalizeStream(session);
   _setThinking(sessionId, false);
   session.status = 'idle';
-  session.lastActivity = _isFr ? 'Terminé' : 'Done';
+  session.lastActivity = t('status.done');
   _refreshControlIfActive();
   setInputState('idle');
   _renderIfActive(sessionId);
   _saveSessions();
   if (state.currentView !== 'chat') $('chat-badge')?.classList.remove('hidden');
   _showNotification(
-    _isFr ? 'Claude a terminé' : 'Claude finished',
+    t('status.claudeFinished'),
     session.tabName || 'Chat',
     `done-${sessionId}`
   );
@@ -1098,7 +1056,7 @@ function onChatError({ sessionId, error }) {
   _saveSessions();
   if (state.currentView !== 'chat') $('chat-badge')?.classList.remove('hidden');
   _showNotification(
-    _isFr ? 'Erreur Claude' : 'Claude error',
+    t('status.claudeError'),
     (error || '').slice(0, 80),
     `error-${sessionId}`
   );
@@ -1114,7 +1072,7 @@ function onPermissionRequest(data) {
       permData: data,
     });
     session.status = 'permission';
-    session.lastActivity = `${_isFr ? 'Permission :' : 'Permission:'} ${data.toolName || 'Tool'}`;
+    session.lastActivity = `${t('status.permPrefix')} ${data.toolName || 'Tool'}`;
     _refreshControlIfActive();
   }
   state.pendingPermissions.set(data.requestId, data);
@@ -1122,7 +1080,7 @@ function onPermissionRequest(data) {
   if (state.currentView !== 'chat') $('chat-badge')?.classList.remove('hidden');
   const toolName = data.toolName || 'Tool';
   _showNotification(
-    _isFr ? 'Permission requise' : 'Permission required',
+    t('status.permRequired'),
     toolName,
     `perm-${data.requestId}`
   );
@@ -1313,8 +1271,8 @@ function renderSessionsView() {
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
           </svg>
         </div>
-        <div class="sessions-empty-title">${_isFr ? 'Aucun chat' : 'No chats yet'}</div>
-        <div class="sessions-empty-hint">${_isFr ? 'Cliquez le bouton ci-dessous pour commencer' : 'Tap the button below to get started'}</div>
+        <div class="sessions-empty-title">${t('session.noChats')}</div>
+        <div class="sessions-empty-hint">${t('session.noChatsHint')}</div>
       </div>`;
     return;
   }
@@ -1325,11 +1283,11 @@ function renderSessionsView() {
 
   list.innerHTML = sorted.map(s => {
     const statusLabel = {
-      active: _isFr ? 'Actif' : 'Active',
-      permission: 'Permission',
-      idle: _isFr ? 'Inactif' : 'Idle',
-      error: _isFr ? 'Erreur' : 'Error',
-    }[s.status] || 'Idle';
+      active: t('status.active'),
+      permission: t('status.permission'),
+      idle: t('status.idle'),
+      error: t('status.error'),
+    }[s.status] || t('status.idle');
     const lastMsg = s.lastActivity || _getSessionLastMessage(s);
     const isSelected = s.sessionId === state.selectedSessionId;
 
@@ -1357,7 +1315,7 @@ function renderSessionsView() {
   const hasMore = pastList.length > PAST_INITIAL_LIMIT && !pastExpanded;
 
   if (pastList.length > 0) {
-    list.innerHTML += `<div class="past-sessions-divider"><span>${_isFr ? 'Sessions pr\u00e9c\u00e9dentes' : 'Past sessions'} (${pastList.length})</span></div>`;
+    list.innerHTML += `<div class="past-sessions-divider"><span>${t('session.pastDivider')} (${pastList.length})</span></div>`;
     list.innerHTML += visiblePast.map(s => {
       const timeAgo = _formatTimeAgo(s.modified);
       const preview = s.summary || s.firstPrompt || '';
@@ -1378,7 +1336,7 @@ function renderSessionsView() {
         </div>`;
     }).join('');
     if (hasMore) {
-      list.innerHTML += `<button class="past-sessions-show-more">${_isFr ? `Voir ${pastList.length - PAST_INITIAL_LIMIT} de plus…` : `Show ${pastList.length - PAST_INITIAL_LIMIT} more…`}</button>`;
+      list.innerHTML += `<button class="past-sessions-show-more">${t('session.showMore', { count: pastList.length - PAST_INITIAL_LIMIT })}</button>`;
     }
   }
 
@@ -1496,7 +1454,7 @@ function resumePastSession(sessionId, projectId) {
 function _formatTimeAgo(isoDate) {
   const diff = Date.now() - new Date(isoDate).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return _isFr ? "a l'instant" : 'just now';
+  if (mins < 1) return t('misc.justNow');
   if (mins < 60) return `${mins}m`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h`;
@@ -1537,11 +1495,11 @@ function renderControlView() {
     const projectName = project?.name || s.tabName || 'Chat';
     const projectColor = /^#[0-9a-fA-F]{3,8}$/.test(project?.color) ? project.color : 'var(--accent)';
     const statusLabel = {
-      active: _isFr ? 'Actif' : 'Active',
-      permission: _isFr ? 'Permission' : 'Permission',
-      idle: _isFr ? 'Inactif' : 'Idle',
-      error: _isFr ? 'Erreur' : 'Error',
-    }[s.status] || 'Idle';
+      active: t('status.active'),
+      permission: t('status.permission'),
+      idle: t('status.idle'),
+      error: t('status.error'),
+    }[s.status] || t('status.idle');
     const lastMsg = _getSessionLastMessage(s);
 
     return `
@@ -1750,8 +1708,8 @@ function renderChatMessages() {
             <line x1="9" y1="21" x2="15" y2="21"/>
           </svg>
         </div>
-        <div class="no-session-title">${STRINGS.noSession}</div>
-        <div class="no-session-hint">${STRINGS.noSessionHint}${project ? ' — ' + escHtml(project.name) : ''}</div>
+        <div class="no-session-title">${t('session.noChats')}</div>
+        <div class="no-session-hint">${t('session.noChatsHint')}${project ? ' — ' + escHtml(project.name) : ''}</div>
       </div>`;
     return;
   }
@@ -1889,10 +1847,10 @@ function _formatToolExpandContent(m) {
       <pre class="tool-output">${useHighlight ? syntaxHighlight(outputText, ext) : escHtml(outputText)}${truncated ? `\n<span class="syn-cmt">… (${lines.length - maxLines} more)</span>` : ''}</pre>
     </div>`;
   } else if (name === 'bash' && m.status === 'complete') {
-    html += `<div class="tool-expand-section"><pre class="tool-output tool-output-empty">${STRINGS.noOutput}</pre></div>`;
+    html += `<div class="tool-expand-section"><pre class="tool-output tool-output-empty">${t('status.noOutput')}</pre></div>`;
   }
 
-  return html || '<div class="tool-expand-section" style="color:var(--text-muted);font-size:12px">No details available</div>';
+  return html || `<div class="tool-expand-section" style="color:var(--text-muted);font-size:12px">${t('misc.noDetails')}</div>`;
 }
 
 // ── Inline Permission Rendering ──
@@ -1920,8 +1878,8 @@ function _renderInlinePermission(m) {
     ${resolved
       ? '<div class="perm-inline-resolved">Resolved</div>'
       : `<div class="perm-inline-actions">
-          <button class="btn-action btn-allow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> ${STRINGS.allow}</button>
-          <button class="btn-action btn-deny"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> ${STRINGS.deny}</button>
+          <button class="btn-action btn-allow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> ${t('misc.allow')}</button>
+          <button class="btn-action btn-deny"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> ${t('misc.deny')}</button>
         </div>`
     }
   </div>`;
@@ -1972,19 +1930,31 @@ function setupChatInput() {
 
 // ─── Autocomplete System (Slash Commands + Mentions) ─────────────────────────
 
-const MENTION_TYPES = [
-  { type: 'file', label: '@file', desc: _isFr ? 'Joindre un fichier' : 'Attach a file', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>', hasPicker: true },
-  { type: 'git', label: '@git', desc: _isFr ? 'Changements git' : 'Git changes', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>' },
-  { type: 'terminal', label: '@terminal', desc: _isFr ? 'Sortie du terminal' : 'Terminal output', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>' },
-  { type: 'errors', label: '@errors', desc: _isFr ? 'Erreurs du terminal' : 'Terminal errors', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>' },
-  { type: 'todos', label: '@todos', desc: _isFr ? 'TODO/FIXME du projet' : 'Project TODO/FIXME', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' },
-];
+const _MENTION_ICONS = {
+  file: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+  git: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>',
+  terminal: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>',
+  errors: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+  todos: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+};
 
-const SLASH_DEFAULTS = [
-  { cmd: '/compact', desc: _isFr ? 'Compacter l\'historique' : 'Compact conversation' },
-  { cmd: '/clear', desc: _isFr ? 'Effacer la conversation' : 'Clear conversation' },
-  { cmd: '/help', desc: _isFr ? 'Aide' : 'Show help' },
-];
+function _getMentionTypes() {
+  return [
+    { type: 'file', label: '@file', desc: t('mention.file'), icon: _MENTION_ICONS.file, hasPicker: true },
+    { type: 'git', label: '@git', desc: t('mention.git'), icon: _MENTION_ICONS.git },
+    { type: 'terminal', label: '@terminal', desc: t('mention.terminal'), icon: _MENTION_ICONS.terminal },
+    { type: 'errors', label: '@errors', desc: t('mention.errors'), icon: _MENTION_ICONS.errors },
+    { type: 'todos', label: '@todos', desc: t('mention.todos'), icon: _MENTION_ICONS.todos },
+  ];
+}
+
+function _getSlashDefaults() {
+  return [
+    { cmd: '/compact', desc: t('slash.compact') },
+    { cmd: '/clear', desc: t('slash.clear') },
+    { cmd: '/help', desc: t('slash.help') },
+  ];
+}
 
 let _acMode = null; // 'slash' | 'mention-types' | 'mention-file' | null
 let _acIndex = 0;
@@ -2030,10 +2000,10 @@ function _showSlashDropdown(query) {
   const all = state.slashCommands.length > 0
     ? state.slashCommands.map(c => {
         const cmd = c.startsWith('/') ? c : '/' + c;
-        const def = SLASH_DEFAULTS.find(d => d.cmd === cmd);
+        const def = _getSlashDefaults().find(d => d.cmd === cmd);
         return { cmd, desc: def?.desc || '' };
       })
-    : SLASH_DEFAULTS;
+    : _getSlashDefaults();
 
   const filtered = all.filter(c => c.cmd.slice(1).includes(query));
   if (!filtered.length) { _hideAutocomplete(); return; }
@@ -2054,7 +2024,7 @@ function _showSlashDropdown(query) {
 }
 
 function _showMentionTypes(query) {
-  const filtered = MENTION_TYPES.filter(m => m.type.includes(query));
+  const filtered = _getMentionTypes().filter(m => m.type.includes(query));
   if (!filtered.length) { _hideAutocomplete(); return; }
 
   _acMode = 'mention-types';
@@ -2086,7 +2056,7 @@ function _showFilePicker(query) {
 
   const dd = $('autocomplete-dropdown');
   if (!shown.length) {
-    dd.innerHTML = `<div class="ac-item ac-empty">${_isFr ? 'Aucun fichier trouvé' : 'No files found'}</div>`;
+    dd.innerHTML = `<div class="ac-item ac-empty">${t('chat.noFiles')}</div>`;
     dd.classList.remove('hidden');
     return;
   }
@@ -2151,7 +2121,7 @@ function _selectAcItem() {
     const item = _acItems[_acIndex];
     if (!item) return;
     _removeAtTrigger();
-    _addMentionChip('file', `@${item.path}`, MENTION_TYPES[0].icon, { path: item.path, fullPath: item.fullPath });
+    _addMentionChip('file', `@${item.path}`, _getMentionTypes()[0].icon, { path: item.path, fullPath: item.fullPath });
     _hideAutocomplete();
     $('chat-input')?.focus();
   }
@@ -2388,7 +2358,7 @@ function sendMessage() {
   if (!state.selectedSessionId) {
     const project = state.projects.find(p => p.id === state.selectedProjectId);
     if (!project) return;
-    state._pendingUserMessage = text || (image ? (_isFr ? '(image jointe)' : '(image attached)') : mentions.map(m => m.label).join(' '));
+    state._pendingUserMessage = text || (image ? t('chat.imageAttached') : mentions.map(m => m.label).join(' '));
     wsSend('chat:start', {
       cwd: project.path,
       prompt: text || '',
@@ -2410,7 +2380,7 @@ function sendMessage() {
   if (session) {
     session.messages.push({
       role: 'user',
-      content: text || (_isFr ? '(image jointe)' : '(image attached)'),
+      content: text || t('chat.imageAttached'),
       imageUrl: image?.dataUrl || null,
       mentionLabels: mentions.map(m => m.label),
     });
@@ -2626,7 +2596,7 @@ function renderGitView() {
     container.innerHTML = `
       <div class="git-loading">
         <div class="tool-spinner"></div>
-        <span style="margin-left:10px;color:var(--text-muted)">${_isFr ? 'Chargement…' : 'Loading…'}</span>
+        <span style="margin-left:10px;color:var(--text-muted)">${t('git.loading')}</span>
       </div>`;
     return;
   }
@@ -2660,7 +2630,7 @@ function _updateGitBadges(git) {
 
 function _renderGitData(container, git) {
   if (!git.isGitRepo) {
-    container.innerHTML = `<div class="git-empty">${_isFr ? 'Pas un dépôt Git' : 'Not a Git repository'}</div>`;
+    container.innerHTML = `<div class="git-empty">${t('git.notRepo')}</div>`;
     return;
   }
 
@@ -2684,7 +2654,7 @@ function _renderGitData(container, git) {
         <div class="git-branch-meta">
           ${ahead > 0 ? `<span class="git-ahead">↑${ahead}</span>` : ''}
           ${behind > 0 ? `<span class="git-behind">↓${behind}</span>` : ''}
-          ${ahead === 0 && behind === 0 ? `<span class="git-synced">${_isFr ? 'À jour' : 'Up to date'}</span>` : ''}
+          ${ahead === 0 && behind === 0 ? `<span class="git-synced">${t('git.upToDate')}</span>` : ''}
         </div>
       </div>
     </div>`;
@@ -2705,7 +2675,7 @@ function _renderGitData(container, git) {
 
   // Changes section
   if (totalChanges > 0) {
-    html += `<div class="git-section-title">${_isFr ? 'Changements' : 'Changes'} <span class="git-changes-count">${totalChanges}</span></div>`;
+    html += `<div class="git-section-title">${t('git.changes')} <span class="git-changes-count">${totalChanges}</span></div>`;
 
     const renderFile = (f, type) => {
       const statusClass = type === 'staged' ? 'staged' : type === 'untracked' ? 'untracked' : 'modified';
@@ -2723,12 +2693,12 @@ function _renderGitData(container, git) {
       files.untracked.forEach(f => { html += renderFile(f, 'untracked'); });
     }
   } else {
-    html += `<div class="git-clean">${_isFr ? 'Working tree propre' : 'Working tree clean'} ✓</div>`;
+    html += `<div class="git-clean">${t('git.clean')} ✓</div>`;
   }
 
   // Recent commits
   if (git.recentCommits?.length) {
-    html += `<div class="git-section-title">${_isFr ? 'Commits récents' : 'Recent commits'}</div>`;
+    html += `<div class="git-section-title">${t('git.recentCommits')}</div>`;
     for (const c of git.recentCommits.slice(0, 5)) {
       html += `
         <div class="git-commit-row">
@@ -2768,7 +2738,7 @@ function renderDashboard() {
   if (!list) return;
   const projects = state.projects.slice(0, 8);
   if (!projects.length) {
-    list.innerHTML = `<div class="dash-empty-hint">${_isFr ? 'Aucun projet' : 'No projects yet'}</div>`;
+    list.innerHTML = `<div class="dash-empty-hint">${t('project.noProjectsDash')}</div>`;
     return;
   }
   list.innerHTML = projects.map((p, i) => {
@@ -3014,9 +2984,9 @@ function _showCloudPopup(show) {
     const title = $('cloud-popup-title');
     const desc = $('cloud-popup-desc');
     const ctaLabel = $('cloud-popup-cta-label');
-    if (title) title.textContent = STRINGS.cloudPopupTitle;
-    if (desc) desc.textContent = STRINGS.cloudPopupDesc;
-    if (ctaLabel) ctaLabel.textContent = STRINGS.cloudPopupCta;
+    if (title) title.textContent = t('cloud.popupTitle');
+    if (desc) desc.textContent = t('cloud.popupDesc');
+    if (ctaLabel) ctaLabel.textContent = t('cloud.popupCta');
     overlay.classList.remove('hidden');
   } else {
     overlay.classList.add('hidden');
@@ -3047,7 +3017,7 @@ function _showHeadlessBanner(show) {
   if (!banner) return;
   if (show) {
     banner.classList.remove('hidden');
-    if (text) text.textContent = STRINGS.headlessBanner;
+    if (text) text.textContent = t('headless.banner');
     if (badge) badge.style.display = state.cloudSessionMode ? '' : 'none';
   } else {
     banner.classList.add('hidden');
@@ -3065,7 +3035,7 @@ async function _startHeadlessSession(projectName, prompt, resumeSessionId) {
 
   // Update banner
   const text = $('headless-banner-text');
-  if (text) text.textContent = STRINGS.headlessCreating;
+  if (text) text.textContent = t('headless.creating');
 
   try {
     // Create session via cloud API
@@ -3093,7 +3063,7 @@ async function _startHeadlessSession(projectName, prompt, resumeSessionId) {
     state.cloudSessionMode = true;
 
     // Update banner
-    if (text) text.textContent = STRINGS.headlessBannerActive;
+    if (text) text.textContent = t('headless.bannerActive');
     const badge = $('headless-badge');
     if (badge) badge.style.display = '';
 
@@ -3116,10 +3086,10 @@ async function _startHeadlessSession(projectName, prompt, resumeSessionId) {
 
   } catch (err) {
     _debugLog('[Headless] Failed to create session:', err?.message || err);
-    if (text) text.textContent = STRINGS.headlessError;
+    if (text) text.textContent = t('headless.error');
     setTimeout(() => {
       if (state.desktopOffline) {
-        if (text) text.textContent = STRINGS.headlessBanner;
+        if (text) text.textContent = t('headless.banner');
       }
     }, 3000);
   }

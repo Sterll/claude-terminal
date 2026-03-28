@@ -20,29 +20,29 @@ function getHookTypes() {
   ];
 }
 
-function _getCloudSettings() {
+async function _getCloudSettings() {
   try {
-    const fs = window.electron_nodeModules?.fs;
     const os = window.electron_nodeModules?.os;
     const path = window.electron_nodeModules?.path;
-    if (!fs || !os || !path) return {};
+    if (!os || !path) return {};
+    const { fileExists, fsp } = require('../utils/fs-async');
     const settingsPath = path.join(os.homedir(), '.claude-terminal', 'settings.json');
-    if (!fs.existsSync(settingsPath)) return {};
-    return JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    if (!(await fileExists(settingsPath))) return {};
+    return JSON.parse(await fsp.readFile(settingsPath, 'utf8'));
   } catch { return {}; }
 }
 
-function _buildWebhookUrl(workflowId) {
-  const settings = _getCloudSettings();
+async function _buildWebhookUrl(workflowId) {
+  const settings = await _getCloudSettings();
   const cloudUrl = (settings.cloudServerUrl || '').replace(/\/$/, '');
   if (!cloudUrl || !workflowId) return '';
   return `${cloudUrl}/api/webhook/${workflowId}`;
 }
 
-function _renderWebhookSection(workflowId, esc) {
-  const settings = _getCloudSettings();
+async function _renderWebhookSection(workflowId, esc) {
+  const settings = await _getCloudSettings();
   const cloudUrl = (settings.cloudServerUrl || '').replace(/\/$/, '');
-  const webhookUrl = _buildWebhookUrl(workflowId);
+  const webhookUrl = await _buildWebhookUrl(workflowId);
   let noCloudHtml = '';
   if (!cloudUrl) {
     noCloudHtml = `<span class="wf-field-hint wf-webhook-no-cloud">${t('workflow.webhook.noCloud')}</span>`;
@@ -81,7 +81,7 @@ function _bindWebhookCopyBtn(root) {
 module.exports = {
   type: 'trigger-config',
 
-  render(field, value, node) {
+  async render(field, value, node) {
     const props = node.properties || {};
     const triggerType = props.triggerType || 'manual';
     const workflows =
@@ -121,7 +121,7 @@ module.exports = {
 </div>` : '';
 
     const webhookSection = triggerType === 'webhook'
-      ? _renderWebhookSection(node.properties._workflowId || '', escapeAttr)
+      ? await _renderWebhookSection(node.properties._workflowId || '', escapeAttr)
       : '';
 
     return `<div class="wf-field-group" data-key="triggerType">
@@ -149,7 +149,7 @@ module.exports = {
     // Bind copy button for initial render (if webhook is already selected)
     _bindWebhookCopyBtn(container);
 
-    typeSelect.addEventListener('change', () => {
+    typeSelect.addEventListener('change', async () => {
       node.properties.triggerType = typeSelect.value;
       onChange(typeSelect.value);
 
@@ -192,7 +192,7 @@ module.exports = {
   </select>
 </div>`;
       } else if (tType === 'webhook') {
-        html = _renderWebhookSection(node.properties._workflowId || '', esc);
+        html = await _renderWebhookSection(node.properties._workflowId || '', esc);
       }
 
       condDiv.innerHTML = html;

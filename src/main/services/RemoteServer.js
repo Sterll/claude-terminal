@@ -340,6 +340,7 @@ function _handleWsUpgrade(request, socket, head) {
       chatModel: settings.chatModel || null,
       effortLevel: settings.effortLevel || null,
       accentColor: settings.accentColor || '#d97706',
+      language: settings.language || 'fr',
     });
     // 2. projets + sessions actives en différé (lecture disque)
     setImmediate(() => _sendProjectsAndSessions(ws));
@@ -623,6 +624,7 @@ function _handleClientMessage(ws, token, raw) {
           chatModel: settings.chatModel || null,
           effortLevel: settings.effortLevel || null,
           accentColor: settings.accentColor || '#d97706',
+          language: settings.language || 'fr',
         });
         setImmediate(() => {
           _sendProjectsAndSessions(ws);
@@ -1138,6 +1140,7 @@ function sendInitToCloud() {
       chatModel: settings.chatModel || null,
       effortLevel: settings.effortLevel || null,
       accentColor: settings.accentColor || '#d97706',
+      language: settings.language || 'fr',
     },
   }));
 

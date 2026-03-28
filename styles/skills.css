@@ -1280,3 +1280,259 @@
 .btn-danger-fill:hover {
   background: #dc2626 !important;
 }
+
+/* ==================== UPDATE BADGES ==================== */
+
+.update-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  border-radius: 10px;
+  white-space: nowrap;
+  animation: update-badge-pulse 2s ease-in-out infinite;
+}
+
+@keyframes update-badge-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.btn-sm.btn-update {
+  background: rgba(251, 191, 36, 0.12);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-sm.btn-update:hover {
+  background: #fbbf24;
+  color: #000;
+  border-color: #fbbf24;
+  box-shadow: 0 2px 8px rgba(251, 191, 36, 0.25);
+}
+
+.btn-sm.btn-update:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ==================== README MARKDOWN RENDERING ==================== */
+
+.readme-markdown {
+  white-space: normal !important;
+  font-family: inherit !important;
+}
+
+.readme-markdown h1,
+.readme-markdown h2,
+.readme-markdown h3,
+.readme-markdown h4 {
+  color: var(--text-primary);
+  margin: 16px 0 8px;
+  line-height: 1.3;
+}
+
+.readme-markdown h1:first-child,
+.readme-markdown h2:first-child {
+  margin-top: 0;
+}
+
+.readme-markdown h1 { font-size: 1.4em; }
+.readme-markdown h2 { font-size: 1.2em; }
+.readme-markdown h3 { font-size: 1.05em; }
+
+.readme-markdown p {
+  margin: 8px 0;
+}
+
+.readme-markdown strong {
+  color: var(--text-primary);
+}
+
+.readme-markdown a,
+.readme-markdown .readme-link {
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.readme-markdown a:hover {
+  text-decoration: underline;
+}
+
+.readme-markdown .readme-inline-code,
+.readme-markdown code {
+  background: var(--bg-secondary);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+}
+
+.readme-markdown .readme-code-block,
+.readme-markdown pre {
+  background: var(--bg-secondary);
+  padding: 12px;
+  border-radius: var(--radius);
+  overflow-x: auto;
+  margin: 12px 0;
+}
+
+.readme-markdown pre code {
+  background: none;
+  padding: 0;
+}
+
+.readme-markdown ul,
+.readme-markdown ol {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+
+.readme-markdown li {
+  margin: 4px 0;
+}
+
+.readme-markdown .readme-img,
+.readme-markdown img {
+  max-width: 100%;
+  border-radius: var(--radius-sm);
+  margin: 8px 0;
+}
+
+.readme-markdown blockquote {
+  border-left: 3px solid var(--accent-dim);
+  padding-left: 12px;
+  margin: 12px 0;
+  color: var(--text-muted);
+}
+
+.readme-markdown hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 16px 0;
+}
+
+.readme-markdown .readme-table,
+.readme-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+}
+
+.readme-markdown th,
+.readme-markdown td {
+  border: 1px solid var(--border-color);
+  padding: 6px 10px;
+  text-align: left;
+  font-size: 12px;
+}
+
+.readme-markdown th {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.readme-markdown details {
+  margin: 8px 0;
+}
+
+.readme-markdown summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.readme-markdown del {
+  opacity: 0.6;
+}
+
+/* ==================== SKILL/AGENT EDITOR MODAL ==================== */
+
+.skill-editor-container {
+  display: flex;
+  gap: 0;
+  height: 60vh;
+  min-height: 400px;
+}
+
+.skill-editor-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.skill-editor-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  flex-shrink: 0;
+}
+
+.skill-editor-path {
+  font-weight: 400;
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.7;
+  text-transform: none;
+  letter-spacing: normal;
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-editor-textarea {
+  flex: 1;
+  width: 100%;
+  border: none;
+  outline: none;
+  resize: none;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Cascadia Code', 'Consolas', 'SF Mono', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 16px;
+  tab-size: 2;
+  overflow-y: auto;
+}
+
+.skill-editor-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.skill-editor-divider {
+  width: 1px;
+  background: var(--border-color);
+  flex-shrink: 0;
+}
+
+.skill-editor-preview {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+}

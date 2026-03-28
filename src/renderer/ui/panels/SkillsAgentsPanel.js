@@ -6,7 +6,10 @@
 const { BasePanel } = require('../../core/BasePanel');
 const { escapeHtml } = require('../../utils');
 const { t } = require('../../i18n');
-const { showConfirm } = require('../components/Modal');
+const { showConfirm, createModal, showModal, closeModal } = require('../components/Modal');
+const { loadSkills: loadSkillsService, getSkills, writeSkillContent } = require('../../services/SkillService');
+const { loadAgents: loadAgentsService, getAgents, writeAgentContent } = require('../../services/AgentService');
+const { renderReadmeMarkdown } = require('../../utils/markdown');
 
 class SkillsAgentsPanel extends BasePanel {
   constructor(el, options = {}) {
@@ -41,75 +44,16 @@ class SkillsAgentsPanel extends BasePanel {
   }
 
   async loadAgents() {
-    this._state.agents = [];
-    try {
-      await this.api.fs.promises.access(this._agentsDir);
-      const items = await this.api.fs.promises.readdir(this._agentsDir);
-      for (const item of items) {
-        const itemPath = this.api.path.join(this._agentsDir, item);
-        try {
-          const stat = await this.api.fs.promises.stat(itemPath);
-
-          if (stat.isFile() && item.endsWith('.md')) {
-            const content = await this.api.fs.promises.readFile(itemPath, 'utf8');
-            const parsed = _parseAgentMd(content);
-            const id = item.replace(/\.md$/, '');
-            this._state.agents.push({
-              id, name: parsed.name || id,
-              description: parsed.description || t('common.noDescription'),
-              tools: parsed.tools || [], sections: parsed.sections || [],
-              path: itemPath, filePath: itemPath
-            });
-          } else if (stat.isDirectory()) {
-            const agentFile = this.api.path.join(itemPath, 'AGENT.md');
-            try {
-              const content = await this.api.fs.promises.readFile(agentFile, 'utf8');
-              const parsed = _parseAgentMd(content);
-              this._state.agents.push({
-                id: item, name: parsed.name || item,
-                description: parsed.description || t('common.noDescription'),
-                tools: parsed.tools || [], sections: parsed.sections || [],
-                path: itemPath, filePath: agentFile
-              });
-            } catch { /* AGENT.md not found, skip */ }
-          }
-        } catch { /* can't stat, skip */ }
-      }
-    } catch (e) {
-      if (e.code !== 'ENOENT') console.error('Error loading agents:', e);
-    }
+    await loadAgentsService();
+    this._state.agents = getAgents();
     this._renderAgents();
   }
 
   // ── Private ──
 
   async _loadLocalSkills() {
-    this._state.skills = [];
-    try {
-      await this.api.fs.promises.access(this._skillsDir);
-      const items = await this.api.fs.promises.readdir(this._skillsDir);
-      for (const item of items) {
-        const itemPath = this.api.path.join(this._skillsDir, item);
-        try {
-          const stat = await this.api.fs.promises.stat(itemPath);
-          if (stat.isDirectory()) {
-            const skillFile = this.api.path.join(itemPath, 'SKILL.md');
-            try {
-              const content = await this.api.fs.promises.readFile(skillFile, 'utf8');
-              const parsed = _parseSkillMd(content);
-              this._state.skills.push({
-                id: item, name: parsed.name || item,
-                description: parsed.description || t('common.noDescription'),
-                sections: parsed.sections || [],
-                path: itemPath, filePath: skillFile
-              });
-            } catch { /* SKILL.md not found, skip */ }
-          }
-        } catch { /* can't stat, skip */ }
-      }
-    } catch (e) {
-      if (e.code !== 'ENOENT') console.error('Error loading skills:', e);
-    }
+    await loadSkillsService();
+    this._state.skills = getSkills();
     this._renderSkills();
   }
 
@@ -163,7 +107,7 @@ class SkillsAgentsPanel extends BasePanel {
     const filePath = s.filePath ? s.filePath.replace(/"/g, '&quot;') : '';
 
     return `
-    <div class="${cardClass}" data-path="${s.path.replace(/"/g, '&quot;')}" data-file-path="${filePath}" data-is-plugin="${isPlugin}">
+    <div class="${cardClass}" data-path="${s.path.replace(/"/g, '&quot;')}" data-file-path="${filePath}" data-skill-id="${escapeHtml(s.id)}" data-is-plugin="${isPlugin}">
       <div class="card-initial">${initial}</div>
       <div class="list-card-header">
         <div class="list-card-title">${escapeHtml(s.name)}</div>
@@ -228,7 +172,7 @@ class SkillsAgentsPanel extends BasePanel {
       if (editBtn) {
         editBtn.onclick = () => {
           const fp = card.dataset.filePath;
-          if (fp) this.api.dialog.openInEditor({ editor: this._getSetting('editor') || 'code', path: fp });
+          if (fp) this._showEditorModal('skill', card.dataset.skillId, fp);
         };
       }
       const delBtn = card.querySelector('.btn-del');
@@ -259,7 +203,7 @@ class SkillsAgentsPanel extends BasePanel {
         ? `<div class="skill-sections agent-tools">${a.tools.slice(0, 5).map(tool => `<span class="skill-section-chip agent-tool-chip">${escapeHtml(tool)}</span>`).join('')}</div>`
         : '';
       return `
-      <div class="list-card agent-card" data-path="${a.path.replace(/"/g, '&quot;')}" data-file-path="${filePath}">
+      <div class="list-card agent-card" data-path="${a.path.replace(/"/g, '&quot;')}" data-file-path="${filePath}" data-agent-id="${escapeHtml(a.id)}">
         <div class="card-initial">${initial}</div>
         <div class="list-card-header">
           <div class="list-card-title">${escapeHtml(a.name)}</div>
@@ -292,7 +236,7 @@ class SkillsAgentsPanel extends BasePanel {
       if (editBtn) {
         editBtn.onclick = () => {
           const fp = card.dataset.filePath;
-          if (fp) this.api.dialog.openInEditor({ editor: this._getSetting('editor') || 'code', path: fp });
+          if (fp) this._showEditorModal('agent', card.dataset.agentId, fp);
         };
       }
       card.querySelector('.btn-del').onclick = async () => {
@@ -301,102 +245,101 @@ class SkillsAgentsPanel extends BasePanel {
       };
     });
   }
-}
 
-// ── Static parsing helpers ──
-
-function _parseSkillMd(content) {
-  let name = null;
-  let description = null;
-
-  const yamlMatch = content.match(/^---\n([\s\S]*?)\n---/);
-  if (yamlMatch) {
-    const yaml = yamlMatch[1];
-    const descMatch = yaml.match(/description\s*:\s*["']?(.+?)["']?\s*$/m);
-    if (descMatch) description = descMatch[1].trim();
-    const nameMatch = yaml.match(/name\s*:\s*["']?(.+?)["']?\s*$/m);
-    if (nameMatch) name = nameMatch[1].trim();
-  }
-
-  const titleMatch = content.match(/^#\s+(.+)/m);
-  if (titleMatch && !name) name = titleMatch[1].trim();
-
-  if (!description) {
-    let body = content.replace(/^---\n[\s\S]*?\n---\n?/, '');
-    const afterTitle = body.replace(/^#\s+.+\n/, '');
-    const untilNextSection = afterTitle.split(/\n##\s/)[0];
-    const paragraphs = untilNextSection.split(/\n\n+/);
-    for (const p of paragraphs) {
-      const cleaned = p.trim();
-      if (cleaned && !cleaned.startsWith('#') && !cleaned.startsWith('```') && cleaned.length > 10) {
-        description = cleaned.split('\n')[0].trim();
-        break;
-      }
+  async _showEditorModal(type, id, filePath) {
+    let content;
+    try {
+      content = await this.api.fs.promises.readFile(filePath, 'utf8');
+    } catch {
+      content = '';
     }
-  }
 
-  const sections = [];
-  const sectionMatches = content.matchAll(/^#{2,3}\s+(.+)/mg);
-  for (const m of sectionMatches) {
-    const title = m[1].trim();
-    if (title && sections.length < 6) sections.push(title);
-  }
+    const editorId = `editor-${Date.now()}`;
+    const previewId = `preview-${Date.now()}`;
+    const shortPath = filePath.replace(this.api.os.homedir(), '~').replace(/\\/g, '/');
+    const titleKey = type === 'skill' ? (t('skillsAgents.editSkill') || 'Edit Skill') : (t('skillsAgents.editAgent') || 'Edit Agent');
 
-  return { name, description, sections };
-}
+    const modalContent = `
+      <div class="skill-editor-container">
+        <div class="skill-editor-pane">
+          <div class="skill-editor-pane-header">
+            <span>${t('skillsAgents.editor') || 'Editor'}</span>
+            <span class="skill-editor-path" title="${escapeHtml(filePath)}">${escapeHtml(shortPath)}</span>
+          </div>
+          <textarea class="skill-editor-textarea" id="${editorId}" spellcheck="false">${escapeHtml(content)}</textarea>
+        </div>
+        <div class="skill-editor-divider"></div>
+        <div class="skill-editor-pane">
+          <div class="skill-editor-pane-header">
+            <span>${t('skillsAgents.preview') || 'Preview'}</span>
+          </div>
+          <div class="skill-editor-preview readme-markdown" id="${previewId}"></div>
+        </div>
+      </div>
+    `;
 
-function _parseAgentMd(content) {
-  let name = null;
-  let description = null;
-  let tools = [];
+    const modal = createModal({
+      id: 'skill-editor-modal',
+      title: titleKey,
+      content: modalContent,
+      buttons: [
+        {
+          label: t('skillsAgents.openExternal') || 'Open in editor',
+          action: 'external',
+          onClick: () => {
+            this.api.dialog.openInEditor({ editor: this._getSetting('editor') || 'code', path: filePath });
+          }
+        },
+        {
+          label: t('common.save') || 'Save',
+          action: 'save',
+          primary: true,
+          onClick: async (m) => {
+            const editorEl = m.querySelector(`#${editorId}`);
+            const newContent = editorEl.value;
+            let success;
+            if (type === 'skill') {
+              success = await writeSkillContent(id, newContent);
+            } else {
+              success = await writeAgentContent(id, newContent);
+            }
+            if (success) {
+              closeModal(m);
+              if (type === 'skill') this.loadSkills();
+              else this.loadAgents();
+            }
+          }
+        }
+      ],
+      size: 'large'
+    });
 
-  const yamlMatch = content.match(/^---\n([\s\S]*?)\n---/);
-  if (yamlMatch) {
-    const yaml = yamlMatch[1];
-    const descMatch = yaml.match(/description\s*:\s*["']?(.+?)["']?\s*$/m);
-    if (descMatch) description = descMatch[1].trim();
-    const nameMatch = yaml.match(/name\s*:\s*["']?(.+?)["']?\s*$/m);
-    if (nameMatch) name = nameMatch[1].trim();
-    const toolsMatch = yaml.match(/tools\s*:\s*\[([^\]]+)\]/);
-    if (toolsMatch) tools = toolsMatch[1].split(',').map(t => t.trim().replace(/["']/g, ''));
-  }
+    showModal(modal);
 
-  const titleMatch = content.match(/^#\s+(.+)/m);
-  if (titleMatch && !name) name = titleMatch[1].trim();
+    const editorEl = modal.querySelector(`#${editorId}`);
+    const previewEl = modal.querySelector(`#${previewId}`);
 
-  if (!description) {
-    const descInBody = content.match(/description\s*:\s*["']([^"']+)["']/i) ||
-                       content.match(/description\s*:\s*(.+)$/im);
-    if (descInBody) description = descInBody[1].trim().replace(/^["']|["']$/g, '');
-  }
-
-  if (tools.length === 0) {
-    const toolsInBody = content.match(/tools\s*:\s*\[([^\]]+)\]/i);
-    if (toolsInBody) tools = toolsInBody[1].split(',').map(t => t.trim().replace(/["']/g, ''));
-  }
-
-  if (!description) {
-    let body = content.replace(/^---\n[\s\S]*?\n---\n?/, '');
-    const afterTitle = body.replace(/^#\s+.+\n/, '');
-    const untilNextSection = afterTitle.split(/\n##\s/)[0];
-    const paragraphs = untilNextSection.split(/\n\n+/);
-    for (const p of paragraphs) {
-      const cleaned = p.trim();
-      if (cleaned && !cleaned.startsWith('#') && !cleaned.startsWith('```') && !cleaned.match(/^\w+\s*:/) && cleaned.length > 10) {
-        description = cleaned.split('\n')[0].trim();
-        break;
-      }
+    let previewTimeout;
+    function updatePreview() {
+      previewEl.innerHTML = renderReadmeMarkdown(editorEl.value);
     }
-  }
 
-  const sections = [];
-  const sectionMatches = content.matchAll(/^#{2,3}\s+(.+)/mg);
-  for (const m of sectionMatches) {
-    const title = m[1].trim();
-    if (title && sections.length < 6) sections.push(title);
-  }
+    updatePreview();
+    editorEl.addEventListener('input', () => {
+      clearTimeout(previewTimeout);
+      previewTimeout = setTimeout(updatePreview, 150);
+    });
 
-  return { name, description, tools, sections };
+    editorEl.focus();
+
+    // Ctrl+S to save
+    editorEl.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        modal.querySelector('[data-action="save"]').click();
+      }
+    });
+  }
 }
 
 // ── Lazy singleton + legacy exports ──

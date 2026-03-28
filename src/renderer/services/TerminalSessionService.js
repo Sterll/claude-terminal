@@ -29,17 +29,15 @@ function getSessionFilePath() {
 
 /**
  * Load session data from disk.
- * @returns {Object|null} Session data or null if not available/disabled
+ * @returns {Promise<Object|null>} Session data or null if not available/disabled
  */
-function loadSessionData() {
+async function loadSessionData() {
   try {
     const { getSetting } = require('../state/settings.state');
     if (!getSetting('restoreTerminalSessions')) return null;
 
     const filePath = getSessionFilePath();
-    if (!fs.existsSync(filePath)) return null;
-
-    const raw = fs.readFileSync(filePath, 'utf8');
+    const raw = await fs.promises.readFile(filePath, 'utf8');
     const data = JSON.parse(raw);
 
     // Validate structure
@@ -47,7 +45,9 @@ function loadSessionData() {
 
     return data;
   } catch (e) {
-    console.error('[TerminalSessionService] Error loading session data:', e);
+    if (e.code !== 'ENOENT') {
+      console.error('[TerminalSessionService] Error loading session data:', e);
+    }
     return null;
   }
 }
@@ -65,7 +65,7 @@ function saveTerminalSessions() {
 /**
  * Save terminal sessions to disk immediately.
  */
-function saveTerminalSessionsImmediate() {
+async function saveTerminalSessionsImmediate() {
   clearTimeout(saveTimer);
   try {
     const { getSetting } = require('../state/settings.state');
@@ -84,7 +84,7 @@ function saveTerminalSessionsImmediate() {
 
     for (const [id, td] of terminals) {
       if (!td.project?.id) continue;
-      // Skip project-type consoles (fivem, webapp, api, etc.) — they can't be restored properly
+      // Skip project-type consoles (fivem, webapp, api, etc.) -- they can't be restored properly
       if (td.type && td.type !== 'terminal') continue;
 
       const projectId = td.project.id;
@@ -110,7 +110,7 @@ function saveTerminalSessionsImmediate() {
     }
 
     // Merge existing explorer state from disk (preserve state for projects not currently active)
-    const existingData = loadSessionData();
+    const existingData = await loadSessionData();
     for (const [pid, existing] of Object.entries((existingData && existingData.projects) || {})) {
       if (existing.explorer) {
         if (!projectSessions[pid]) {
@@ -132,7 +132,7 @@ function saveTerminalSessionsImmediate() {
         const FileExplorer = require('../ui/components/FileExplorer');
         projectSessions[currentProject.id].explorer = FileExplorer.getState();
       } catch (e) {
-        // FileExplorer not initialized yet — skip
+        // FileExplorer not initialized yet -- skip
       }
     }
 
@@ -148,8 +148,8 @@ function saveTerminalSessionsImmediate() {
 
     const filePath = getSessionFilePath();
     const tmpPath = filePath + '.tmp';
-    fs.writeFileSync(tmpPath, JSON.stringify(sessionData, null, 2), 'utf8');
-    fs.renameSync(tmpPath, filePath);
+    await fs.promises.writeFile(tmpPath, JSON.stringify(sessionData, null, 2), 'utf8');
+    await fs.promises.rename(tmpPath, filePath);
   } catch (e) {
     console.error('[TerminalSessionService] Error saving session data:', e);
   }
@@ -159,33 +159,33 @@ function saveTerminalSessionsImmediate() {
  * Clear saved sessions for a specific project.
  * @param {string} projectId
  */
-function clearProjectSessions(projectId) {
+async function clearProjectSessions(projectId) {
   try {
     const filePath = getSessionFilePath();
-    if (!fs.existsSync(filePath)) return;
-
-    const raw = fs.readFileSync(filePath, 'utf8');
+    const raw = await fs.promises.readFile(filePath, 'utf8');
     const data = JSON.parse(raw);
     if (data && data.projects && data.projects[projectId]) {
       delete data.projects[projectId];
-      fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+      await fs.promises.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8');
     }
   } catch (e) {
-    console.error('[TerminalSessionService] Error clearing project sessions:', e);
+    if (e.code !== 'ENOENT') {
+      console.error('[TerminalSessionService] Error clearing project sessions:', e);
+    }
   }
 }
 
 /**
  * Clear all session data (e.g., when feature is disabled).
  */
-function clearAllSessions() {
+async function clearAllSessions() {
   try {
     const filePath = getSessionFilePath();
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
+    await fs.promises.unlink(filePath);
   } catch (e) {
-    console.error('[TerminalSessionService] Error clearing all sessions:', e);
+    if (e.code !== 'ENOENT') {
+      console.error('[TerminalSessionService] Error clearing all sessions:', e);
+    }
   }
 }
 

@@ -1008,7 +1008,7 @@ function extractTitleFromInput(input) {
 /**
  * Update terminal tab name
  */
-function updateTerminalTabName(id, name) {
+async function updateTerminalTabName(id, name) {
   const termData = getTerminal(id);
   if (!termData) return;
 
@@ -1017,7 +1017,7 @@ function updateTerminalTabName(id, name) {
 
   // Propagate tab name to session-names.json (resume dialog)
   if (termData.claudeSessionId && name) {
-    setSessionCustomName(termData.claudeSessionId, name);
+    await setSessionCustomName(termData.claudeSessionId, name);
   }
 
   // Update DOM
@@ -1361,8 +1361,9 @@ function closeTerminal(id) {
     }
     removeTerminal(id);
   } else if (termData && termData.type === 'file') {
-    // File tabs have no terminal process to kill; run markdown cleanup if set
+    // File tabs have no terminal process to kill; run cleanup if set
     if (termData.mdCleanup) termData.mdCleanup();
+    if (termData.viewerCleanup) termData.viewerCleanup();
     removeTerminal(id);
   } else {
     api.terminal.kill({ id });
@@ -2524,13 +2525,14 @@ const SESSION_SVG_DEFS = `<svg style="display:none" xmlns="http://www.w3.org/200
  * ── Session Pins ──
  * Persist pinned session IDs in ~/.claude-terminal/session-pins.json
  */
+const { fileExists, fsp } = require('../../utils/fs-async');
 const _pinsFile = path.join(window.electron_nodeModules.os.homedir(), '.claude-terminal', 'session-pins.json');
 let _pinsCache = null;
 
-function loadPins() {
+async function loadPins() {
   if (_pinsCache) return _pinsCache;
   try {
-    const raw = fs.readFileSync(_pinsFile, 'utf8');
+    const raw = await fsp.readFile(_pinsFile, 'utf8');
     _pinsCache = JSON.parse(raw);
   } catch {
     _pinsCache = {};
@@ -2538,25 +2540,25 @@ function loadPins() {
   return _pinsCache;
 }
 
-function savePins() {
+async function savePins() {
   try {
-    fs.writeFileSync(_pinsFile, JSON.stringify(_pinsCache || {}, null, 2), 'utf8');
+    await fsp.writeFile(_pinsFile, JSON.stringify(_pinsCache || {}, null, 2), 'utf8');
   } catch { /* ignore write errors */ }
 }
 
-function isSessionPinned(sessionId) {
-  return !!loadPins()[sessionId];
+async function isSessionPinned(sessionId) {
+  return !!(await loadPins())[sessionId];
 }
 
-function toggleSessionPin(sessionId) {
-  const pins = loadPins();
+async function toggleSessionPin(sessionId) {
+  const pins = await loadPins();
   if (pins[sessionId]) {
     delete pins[sessionId];
   } else {
     pins[sessionId] = true;
   }
   _pinsCache = pins;
-  savePins();
+  await savePins();
   return !!pins[sessionId];
 }
 
@@ -2567,10 +2569,10 @@ function toggleSessionPin(sessionId) {
 const _namesFile = path.join(window.electron_nodeModules.os.homedir(), '.claude-terminal', 'session-names.json');
 let _namesCache = null;
 
-function loadSessionNames() {
+async function loadSessionNames() {
   if (_namesCache) return _namesCache;
   try {
-    const raw = fs.readFileSync(_namesFile, 'utf8');
+    const raw = await fsp.readFile(_namesFile, 'utf8');
     _namesCache = JSON.parse(raw);
   } catch {
     _namesCache = {};
@@ -2578,37 +2580,38 @@ function loadSessionNames() {
   return _namesCache;
 }
 
-function saveSessionNames() {
+async function saveSessionNames() {
   try {
-    fs.writeFileSync(_namesFile, JSON.stringify(_namesCache || {}, null, 2), 'utf8');
+    await fsp.writeFile(_namesFile, JSON.stringify(_namesCache || {}, null, 2), 'utf8');
   } catch { /* ignore write errors */ }
 }
 
-function getSessionCustomName(sessionId) {
-  return loadSessionNames()[sessionId] || '';
+async function getSessionCustomName(sessionId) {
+  return (await loadSessionNames())[sessionId] || '';
 }
 
-function setSessionCustomName(sessionId, name) {
-  const names = loadSessionNames();
+async function setSessionCustomName(sessionId, name) {
+  const names = await loadSessionNames();
   if (name) {
     names[sessionId] = name;
   } else {
     delete names[sessionId];
   }
   _namesCache = names;
-  saveSessionNames();
+  await saveSessionNames();
 }
 
 /**
  * Pre-process sessions: clean text once and cache display data
  */
-function preprocessSessions(sessions) {
+async function preprocessSessions(sessions) {
   const now = Date.now();
-  return sessions.map(session => {
+  const results = [];
+  for (const session of sessions) {
     const promptResult = cleanSessionText(session.firstPrompt);
     const summaryResult = cleanSessionText(session.summary);
     const skillName = promptResult.skillName || summaryResult.skillName;
-    const customName = getSessionCustomName(session.sessionId);
+    const customName = await getSessionCustomName(session.sessionId);
 
     let displayTitle = '';
     let displaySubtitle = '';
@@ -2638,9 +2641,10 @@ function preprocessSessions(sessions) {
     // Pre-build searchable text (lowercase, computed once)
     const searchText = (displayTitle + ' ' + displaySubtitle + ' ' + (session.gitBranch || '') + ' ' + customName).toLowerCase();
 
-    const pinned = isSessionPinned(session.sessionId);
-    return { ...session, displayTitle, displaySubtitle, isSkill, isRenamed, freshness, searchText, pinned };
-  });
+    const pinned = await isSessionPinned(session.sessionId);
+    results.push({ ...session, displayTitle, displaySubtitle, isSkill, isRenamed, freshness, searchText, pinned });
+  }
+  return results;
 }
 
 /**
@@ -2663,18 +2667,18 @@ function startInlineRename(titleEl, sessionId, sessionData, onDone) {
   input.focus();
   input.select();
 
-  function commit() {
+  async function commit() {
     const newName = input.value.trim();
     cleanup();
     if (newName && newName !== currentName) {
-      setSessionCustomName(sessionId, newName);
+      await setSessionCustomName(sessionId, newName);
       if (sessionData) {
         sessionData.displayTitle = newName;
         sessionData.isRenamed = true;
       }
     } else if (!newName) {
       // Clearing name removes custom name
-      setSessionCustomName(sessionId, '');
+      await setSessionCustomName(sessionId, '');
     }
     if (onDone) onDone();
   }
@@ -2769,7 +2773,7 @@ async function renderSessionsPanel(project, emptyState) {
     }
 
     // Pre-process all sessions once (clean text, compute display data)
-    const processed = preprocessSessions(sessions);
+    const processed = await preprocessSessions(sessions);
 
     // Group by time
     const groups = groupSessionsByTime(processed);
@@ -2867,14 +2871,14 @@ async function renderSessionsPanel(project, emptyState) {
     }
 
     // Event delegation for card clicks (single listener on list)
-    listEl.addEventListener('click', (e) => {
+    listEl.addEventListener('click', async (e) => {
       // Pin button click
       const pinBtn = e.target.closest('.session-card-pin');
       if (pinBtn) {
         e.stopPropagation();
         const sid = pinBtn.dataset.pinSid;
         if (!sid) return;
-        const nowPinned = toggleSessionPin(sid);
+        const nowPinned = await toggleSessionPin(sid);
         const session = sessionMap.get(sid);
         if (session) session.pinned = nowPinned;
         renderSessionsPanel(project, emptyState);
@@ -3025,7 +3029,7 @@ async function resumeSession(project, sessionId, options = {}) {
 
   // If a saved name was passed, persist it immediately
   if (sessionName) {
-    setSessionCustomName(sessionId, sessionName);
+    await setSessionCustomName(sessionId, sessionName);
   }
 
   // Start time tracking for this project
@@ -3407,7 +3411,7 @@ function buildMdToc(content) {
  * @param {string} filePath - Absolute path to the file
  * @param {Object} project - Project object
  */
-function openFileTab(filePath, project) {
+async function openFileTab(filePath, project) {
   // Check if file is already open → switch to existing tab
   const terminals = terminalsState.get().terminals;
   let existingId = null;
@@ -3430,20 +3434,24 @@ function openFileTab(filePath, project) {
   const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'ico', 'avif']);
   const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'ogg', 'mov']);
   const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'ogg', 'flac', 'aac', 'wma']);
+  const PDF_EXTENSIONS = new Set(['pdf']);
+  const MODEL_3D_EXTENSIONS = new Set(['obj', 'stl', 'gltf', 'glb']);
   const isImage = IMAGE_EXTENSIONS.has(ext);
   const isVideo = VIDEO_EXTENSIONS.has(ext);
   const isAudio = AUDIO_EXTENSIONS.has(ext);
-  const isMedia = isImage || isVideo || isAudio;
+  const isPdf = PDF_EXTENSIONS.has(ext);
+  const is3D = MODEL_3D_EXTENSIONS.has(ext);
+  const isMedia = isImage || isVideo || isAudio || isPdf || is3D;
   const isMarkdown = ext === 'md';
 
   // Read file content (skip for binary/media files)
   let content = '';
   let fileSize = 0;
   try {
-    const stat = fs.statSync(filePath);
+    const stat = await fsp.stat(filePath);
     fileSize = stat.size;
     if (!isMedia) {
-      content = fs.readFileSync(filePath, 'utf-8');
+      content = await fsp.readFile(filePath, 'utf-8');
     }
   } catch (e) {
     content = `Error reading file: ${e.message}`;
@@ -3504,6 +3512,18 @@ function openFileTab(filePath, project) {
       <svg viewBox="0 0 24 24" fill="currentColor" width="64" height="64" style="opacity:0.3"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
       <audio controls src="${fileUrl}"></audio>
     </div>`;
+  } else if (isPdf) {
+    viewerBody = `
+    <div class="file-viewer-pdf" id="pdf-viewer-${id}">
+      <div class="file-viewer-pdf-toolbar"></div>
+      <div class="file-viewer-pdf-pages"></div>
+    </div>`;
+    termData.isPdf = true;
+  } else if (is3D) {
+    viewerBody = `
+    <div class="file-viewer-3d" id="three-viewer-${id}"></div>`;
+    termData.is3D = true;
+    termData.modelExt = ext;
   } else if (isMarkdown) {
     const basePath = path.dirname(filePath);
     const mdRenderer = createMdRenderer(basePath);
@@ -3570,6 +3590,30 @@ function openFileTab(filePath, project) {
 
   container.appendChild(wrapper);
   document.getElementById('empty-terminals').style.display = 'none';
+
+  // PDF viewer: lazy-load the pdf-viewer bundle
+  if (termData.isPdf) {
+    const pdfContainer = wrapper.querySelector('.file-viewer-pdf');
+    import('./dist/pdf-viewer.bundle.js').then(m => {
+      const viewer = m.renderPdf(pdfContainer, fileUrl);
+      termData.viewerCleanup = () => viewer.destroy();
+    }).catch(err => {
+      pdfContainer.querySelector('.file-viewer-pdf-pages').innerHTML =
+        `<div class="pdf-loading pdf-error">Failed to load PDF viewer: ${err.message}</div>`;
+    });
+  }
+
+  // 3D viewer: lazy-load the three-viewer bundle
+  if (termData.is3D) {
+    const threeContainer = wrapper.querySelector('.file-viewer-3d');
+    import('./dist/three-viewer.bundle.js').then(m => {
+      const viewer = m.render3D(threeContainer, fileUrl, termData.modelExt);
+      termData.viewerCleanup = () => viewer.destroy();
+    }).catch(err => {
+      threeContainer.innerHTML =
+        `<div class="file-viewer-3d-error">Failed to load 3D viewer: ${err.message}</div>`;
+    });
+  }
 
   // Markdown-specific: add toggle button and wire event handlers
   if (isMarkdown) {
@@ -3652,9 +3696,9 @@ function openFileTab(filePath, project) {
     const unsubscribeWatch = api.dialog.onFileChanged((changedPath) => {
       if (changedPath !== filePath) return;
       clearTimeout(reloadTimer);
-      reloadTimer = setTimeout(() => {
+      reloadTimer = setTimeout(async () => {
         try {
-          const newContent = fs.readFileSync(filePath, 'utf-8');
+          const newContent = await fsp.readFile(filePath, 'utf-8');
           const bodyEl = document.getElementById(`md-body-${id}`);
           if (!bodyEl) return;
           const scroll = bodyEl.scrollTop;
@@ -3991,14 +4035,14 @@ async function createChatTerminal(project, options = {}) {
       updateTerminal(id, { claudeSessionId: sid });
       if (onSessionStart) onSessionStart(sid);
     },
-    onTabRename: (name) => {
+    onTabRename: async (name) => {
       const nameEl = tab.querySelector('.tab-name');
       if (nameEl) nameEl.textContent = name;
       const data = getTerminal(id);
       if (data) data.name = name;
       // Propagate tab name to session-names.json (resume dialog)
       if (_chatSessionId && name) {
-        setSessionCustomName(_chatSessionId, name);
+        await setSessionCustomName(_chatSessionId, name);
       }
       // Notify remote PWA of tab rename
       if (_chatSessionId && api.remote?.notifyTabRenamed) {
