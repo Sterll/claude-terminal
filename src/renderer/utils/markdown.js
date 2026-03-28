@@ -3,8 +3,12 @@
  * Shared renderer for README display in Marketplace, Plugins, and Editor panels
  */
 
-const { marked } = require('marked');
+const { Marked } = require('marked');
 const DOMPurify = require('dompurify');
+
+// Use a separate Marked instance to avoid polluting the global singleton
+// (which is configured by the chat markdown renderer with custom block renderers)
+const readmeMarked = new Marked();
 
 const renderer = {
   code({ text, lang }) {
@@ -26,7 +30,7 @@ const renderer = {
   }
 };
 
-marked.use({ renderer, gfm: true, breaks: false });
+readmeMarked.use({ renderer, gfm: true, breaks: false });
 
 /**
  * Render markdown to sanitized HTML
@@ -35,7 +39,7 @@ marked.use({ renderer, gfm: true, breaks: false });
  */
 function renderReadmeMarkdown(md) {
   if (!md) return '';
-  const rawHtml = marked.parse(md);
+  const rawHtml = readmeMarked.parse(md);
   return DOMPurify.sanitize(rawHtml, {
     ALLOWED_TAGS: [
       'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'br', 'strong', 'em', 'b', 'i',

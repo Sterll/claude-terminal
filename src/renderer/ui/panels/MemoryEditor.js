@@ -157,8 +157,12 @@ Documentez les fonctions exportees ici.
 // ── Module-level pure functions ──
 
 function parseMarkdownToHtml(md) {
-  const { marked } = require('marked');
+  const { Marked } = require('marked');
   const DOMPurify = require('dompurify');
+
+  // Use a separate Marked instance to avoid polluting the global singleton
+  // (which is configured by the chat markdown renderer with custom block renderers)
+  const memoryMarked = new Marked();
 
   const renderer = {
     code({ text, lang }) {
@@ -180,8 +184,8 @@ function parseMarkdownToHtml(md) {
     }
   };
 
-  marked.use({ renderer, gfm: true, breaks: false });
-  const rawHtml = marked.parse(md);
+  memoryMarked.use({ renderer, gfm: true, breaks: false });
+  const rawHtml = memoryMarked.parse(md);
   return DOMPurify.sanitize(rawHtml, {
     ALLOWED_TAGS: ['h1','h2','h3','h4','h5','h6','p','br','strong','em','code','pre',
                    'ul','ol','li','a','table','thead','tbody','tr','th','td','mark',
