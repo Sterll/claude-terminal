@@ -801,56 +801,59 @@ class ChatService {
    * Generate a short tab name via the persistent haiku session.
    */
   async generateTabName(userMessage) {
-    // Mutex: skip if a naming request is already in flight
-    if (this._namingInFlight) return null;
+    // Queue: wait for any in-flight naming request to finish before starting ours
+    if (this._namingInFlight) {
+      await this._namingInFlight.catch(() => {});
+    }
 
-    this._namingInFlight = true;
+    const task = (async () => {
+      try {
+        await this._ensureNamingSession();
+        if (!this._namingQueue) return null;
+
+        return await new Promise((resolve) => {
+          // Timeout: if haiku doesn't respond in 4s, give up
+          const timeout = setTimeout(() => {
+            this._namingResolve = null;
+            resolve(null);
+          }, 4000);
+
+          this._namingResolve = (rawText) => {
+            clearTimeout(timeout);
+            const name = (rawText || '').trim().replace(/^["'`]+|["'`]+$/g, '').split('\n')[0].slice(0, 40);
+            resolve(name || null);
+          };
+
+          try {
+            this._namingQueue.push({
+              type: 'user',
+              message: { role: 'user', content: `Title for: "${userMessage.slice(0, 200)}"` }
+            });
+          } catch (pushErr) {
+            // Transport died — reset naming session so next call recreates it
+            console.error('[ChatService] Naming transport dead, resetting:', pushErr.message);
+            this._namingReady = false;
+            this._namingStarting = null;
+            this._namingQueue = null;
+            clearTimeout(timeout);
+            resolve(null);
+          }
+        });
+      } catch (err) {
+        console.error('[ChatService] generateTabName error:', err.message);
+        this._namingReady = false;
+        this._namingStarting = null;
+        return null;
+      }
+    })();
+
+    this._namingInFlight = task;
     try {
-      await this._ensureNamingSession();
-      if (!this._namingQueue) return null;
-
-      return await new Promise((resolve) => {
-        // Reject any stale pending naming request (race condition: new request while old is waiting)
-        if (this._namingResolve) {
-          const staleResolve = this._namingResolve;
-          this._namingResolve = null;
-          staleResolve(null);
-        }
-
-        // Timeout: if haiku doesn't respond in 4s, give up
-        const timeout = setTimeout(() => {
-          this._namingResolve = null;
-          resolve(null);
-        }, 4000);
-
-        this._namingResolve = (rawText) => {
-          clearTimeout(timeout);
-          const name = (rawText || '').trim().replace(/^["'`]+|["'`]+$/g, '').split('\n')[0].slice(0, 40);
-          resolve(name || null);
-        };
-
-        try {
-          this._namingQueue.push({
-            type: 'user',
-            message: { role: 'user', content: `Title for: "${userMessage.slice(0, 200)}"` }
-          });
-        } catch (pushErr) {
-          // Transport died — reset naming session so next call recreates it
-          console.error('[ChatService] Naming transport dead, resetting:', pushErr.message);
-          this._namingReady = false;
-          this._namingStarting = null;
-          this._namingQueue = null;
-          clearTimeout(timeout);
-          resolve(null);
-        }
-      });
-    } catch (err) {
-      console.error('[ChatService] generateTabName error:', err.message);
-      this._namingReady = false;
-      this._namingStarting = null;
-      return null;
+      return await task;
     } finally {
-      this._namingInFlight = false;
+      if (this._namingInFlight === task) {
+        this._namingInFlight = null;
+      }
     }
   }
 

@@ -974,24 +974,25 @@ function createChatView(wrapperEl, project, options = {}) {
 
   // ── Mention picker infrastructure ──
 
-  function scanProjectFiles(projectPath) {
-    const { fs, path } = window.electron_nodeModules;
+  async function scanProjectFiles(projectPath) {
+    const { fileExists, fsp } = require('../../utils/fs-async');
+    const { path } = window.electron_nodeModules;
     const files = [];
     const ignoreDirs = new Set(['node_modules', '.git', 'dist', 'build', '.next', '__pycache__', 'vendor', '.cache', 'coverage', '.nuxt']);
 
-    function scan(dir, depth) {
+    async function scan(dir, depth) {
       if (depth > 6 || files.length >= 500) return;
       try {
-        const entries = fs.readdirSync(dir);
+        const entries = await fsp.readdir(dir);
         for (const entry of entries) {
           if (files.length >= 500) break;
           if (entry.startsWith('.') && entry !== '.env') continue;
           if (ignoreDirs.has(entry)) continue;
           const fullPath = path.join(dir, entry);
           try {
-            const stat = fs.statSync(fullPath);
+            const stat = await fsp.stat(fullPath);
             if (stat.isDirectory()) {
-              scan(fullPath, depth + 1);
+              await scan(fullPath, depth + 1);
             } else if (stat.isFile()) {
               files.push({ path: path.relative(projectPath, fullPath).replace(/\\/g, '/'), fullPath, mtime: stat.mtimeMs });
             }
@@ -1000,18 +1001,18 @@ function createChatView(wrapperEl, project, options = {}) {
       } catch (e) { /* skip inaccessible */ }
     }
 
-    scan(projectPath, 0);
+    await scan(projectPath, 0);
     files.sort((a, b) => b.mtime - a.mtime);
     return files;
   }
 
-  function getFileCache() {
+  async function getFileCache() {
     const projectPath = project?.path;
     if (!projectPath) return [];
     if (mentionFileCache && mentionFileCache.projectPath === projectPath && Date.now() - mentionFileCache.timestamp < MENTION_FILE_CACHE_TTL) {
       return mentionFileCache.files;
     }
-    const files = scanProjectFiles(projectPath);
+    const files = await scanProjectFiles(projectPath);
     mentionFileCache = { files, timestamp: Date.now(), projectPath };
     return files;
   }
@@ -1223,8 +1224,8 @@ function createChatView(wrapperEl, project, options = {}) {
   /**
    * Generic picker dropdown renderer — used by all picker modes
    */
-  function renderPickerDropdown(cfg, query) {
-    const items = cfg.getData();
+  async function renderPickerDropdown(cfg, query) {
+    const items = await cfg.getData();
     const q = query.trim().toLowerCase();
     const filtered = q ? cfg.filter(items, q) : items;
     const shown = filtered.slice(0, cfg.maxItems);
@@ -2295,7 +2296,7 @@ function createChatView(wrapperEl, project, options = {}) {
 
   // ── Plan handling ──
 
-  function handlePlanClick(btn) {
+  async function handlePlanClick(btn) {
     const card = btn.closest('.chat-plan-card');
     if (!card) return;
     const requestId = card.dataset.requestId;
@@ -2329,7 +2330,8 @@ function createChatView(wrapperEl, project, options = {}) {
       const editedRaw = card.dataset.planEdited;
       if (editedRaw && card.dataset.planFilePath) {
         try {
-          window.electron_nodeModules.fs.writeFileSync(card.dataset.planFilePath, editedRaw);
+          const { fsp } = require('../../utils/fs-async');
+          await fsp.writeFile(card.dataset.planFilePath, editedRaw);
         } catch (e) { console.warn('[ChatView] Failed to save edited plan:', e); }
       }
       api.chat.respondPermission({
@@ -3412,8 +3414,9 @@ function createChatView(wrapperEl, project, options = {}) {
     });
   }
 
-  function findPlanFilePath() {
-    const { fs, path, os } = window.electron_nodeModules;
+  async function findPlanFilePath() {
+    const { fileExists, fsp } = require('../../utils/fs-async');
+    const { path, os } = window.electron_nodeModules;
     const plansDir = path.join(os.homedir(), '.claude', 'plans');
 
     // Strategy 1: Find Write tool card targeting ~/.claude/plans/
@@ -3434,15 +3437,16 @@ function createChatView(wrapperEl, project, options = {}) {
 
     // Strategy 2: Most recent .md file in ~/.claude/plans/ (< 60s old)
     try {
-      if (!fs.existsSync(plansDir)) return null;
-      const files = fs.readdirSync(plansDir)
-        .filter(f => f.endsWith('.md'))
-        .map(f => {
-          const fullPath = path.join(plansDir, f);
-          const stat = fs.statSync(fullPath);
-          return { path: fullPath, mtime: stat.mtime };
-        })
-        .sort((a, b) => b.mtime - a.mtime);
+      if (!await fileExists(plansDir)) return null;
+      const entries = await fsp.readdir(plansDir);
+      const files = [];
+      for (const f of entries) {
+        if (!f.endsWith('.md')) continue;
+        const fullPath = path.join(plansDir, f);
+        const stat = await fsp.stat(fullPath);
+        files.push({ path: fullPath, mtime: stat.mtime });
+      }
+      files.sort((a, b) => b.mtime - a.mtime);
       if (files.length > 0 && Date.now() - files[0].mtime.getTime() < 60000) {
         return files[0].path;
       }
@@ -3470,7 +3474,7 @@ function createChatView(wrapperEl, project, options = {}) {
       let rawPlanText = '';
 
       // 1. Try reading plan from disk (~/.claude/plans/)
-      planFilePath = findPlanFilePath();
+      planFilePath = await findPlanFilePath();
       if (planFilePath) {
         try {
           const raw = await window.electron_nodeModules.fs.promises.readFile(planFilePath, 'utf-8');
@@ -4396,7 +4400,13 @@ function createChatView(wrapperEl, project, options = {}) {
       if (welcomeEl) welcomeEl.remove();
 
       if (result?.success && result.messages?.length > 0) {
-        renderHistoryMessages(result.messages);
+        // When forking at a specific message, only show history up to that point
+        let msgs = result.messages;
+        if (pendingResumeAt) {
+          const cutIdx = msgs.findIndex(m => m.uuid === pendingResumeAt);
+          if (cutIdx >= 0) msgs = msgs.slice(0, cutIdx + 1);
+        }
+        renderHistoryMessages(msgs);
       }
 
       // Show resume/fork divider
@@ -4451,6 +4461,19 @@ function createChatView(wrapperEl, project, options = {}) {
           el.className = 'chat-msg chat-msg-assistant history';
           el.innerHTML = `<div class="chat-msg-content">${renderMarkdown(msg.text)}</div>`;
           injectInlineImages(el);
+          // Add fork button if message has a UUID (from session JSONL)
+          if (msg.uuid && onForkSession) {
+            el.dataset.messageUuid = msg.uuid;
+            const forkBtn = document.createElement('button');
+            forkBtn.className = 'chat-msg-fork-btn';
+            forkBtn.title = t('chat.forkSession') || 'Fork from here';
+            forkBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/><path d="M6 9a9 9 0 0 0 9 9"/></svg>';
+            forkBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              forkFromMessage(msg.uuid);
+            });
+            el.appendChild(forkBtn);
+          }
           fragment.appendChild(el);
 
         } else if (msg.role === 'assistant' && msg.type === 'thinking') {

@@ -253,7 +253,7 @@ async function loadSessionHistory(projectPath, sessionId) {
           const blocks = obj.message.content;
           for (const block of blocks) {
             if (block.type === 'text' && block.text) {
-              messages.push({ role: 'assistant', type: 'text', text: block.text });
+              messages.push({ role: 'assistant', type: 'text', text: block.text, ...(obj.uuid ? { uuid: obj.uuid } : {}) });
             } else if (block.type === 'tool_use') {
               messages.push({
                 role: 'assistant',
