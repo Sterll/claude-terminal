@@ -252,6 +252,7 @@ function renderDetail() {
         <span class="workspace-header-title"${ws.color ? ` style="color:${escapeHtml(ws.color)}"` : ''}>${escapeHtml(ws.name)}</span>
       </div>
       <div class="workspace-header-actions">
+        <button class="workspace-btn workspace-btn-primary workspace-btn-sm" id="ws-chat-btn">${ICONS.chat} ${escapeHtml(t('workspace.openChat'))}</button>
         <button class="workspace-btn workspace-btn-secondary workspace-btn-sm" id="ws-edit-btn">${ICONS.edit} ${escapeHtml(t('workspace.edit'))}</button>
         <button class="workspace-btn workspace-btn-danger workspace-btn-sm" id="ws-delete-btn">${ICONS.trash} ${escapeHtml(t('workspace.delete'))}</button>
       </div>
@@ -307,6 +308,9 @@ function renderDetail() {
     _view = 'list';
     render();
   });
+
+  // Chat workspace
+  document.getElementById('ws-chat-btn')?.addEventListener('click', () => openWorkspaceChat(ws, wsProjects, docs, links));
 
   // Add project
   document.getElementById('ws-add-project')?.addEventListener('click', () => showAddProjectDropdown(ws));
@@ -777,6 +781,94 @@ function showAddLinkModal(workspaceId, projects, docs) {
 
 function bindCreate(btnId) {
   document.getElementById(btnId)?.addEventListener('click', () => showCreateEditModal());
+}
+
+// ========== WORKSPACE CHAT ==========
+
+async function openWorkspaceChat(ws, projects, docs, links) {
+  const { path: pathModule, fs: fsModule } = window.electron_nodeModules;
+  const TerminalManager = require('../components/TerminalManager');
+  const paths = require('../../utils/paths');
+
+  // Read all doc contents for context
+  const docsContent = [];
+  const wsDocsDir = pathModule.join(paths.workspacesDir, ws.id, 'docs');
+  for (const doc of docs) {
+    try {
+      const content = fsModule.readFileSync(pathModule.join(wsDocsDir, doc.filename), 'utf8');
+      docsContent.push({ title: doc.title, content: content.substring(0, 8000) });
+    } catch { /* skip unreadable */ }
+  }
+
+  // Build the system prompt
+  const projectsList = projects.map(p =>
+    `- **${p.name}** (\`${p.path}\`)${p.type ? ` [${p.type}]` : ''}`
+  ).join('\n');
+
+  const docsSection = docsContent.length > 0
+    ? docsContent.map(d => `### ${d.title}\n${d.content}`).join('\n\n---\n\n')
+    : '(No documents yet)';
+
+  const linksSection = links.length > 0
+    ? links.map(l => `- ${l.sourceId} **${l.label}** ${l.targetId}${l.description ? ` — ${l.description}` : ''}`).join('\n')
+    : '';
+
+  const systemPrompt = `You are a **Product Advisor & Knowledge Manager** for the workspace "${ws.name}".
+${ws.description ? `\nWorkspace purpose: ${ws.description}` : ''}
+
+## Your Role
+
+You are a strategic partner who deeply understands all the projects in this workspace. You help the user think about their product as a whole — architecture, decisions, priorities, and cross-project concerns.
+
+## Your Responsibilities
+
+1. **Strategic Thinking** — Help reason about architecture, tradeoffs, roadmap priorities, and cross-project impacts. When the user discusses a change in one project, proactively consider how it affects the others.
+
+2. **Knowledge Management** — You are the guardian of this workspace's knowledge base. During conversations:
+   - When important decisions are made, note them for documentation
+   - When architecture patterns are discussed, suggest documenting them
+   - When you notice gaps in the KB, mention what should be documented
+   - At the end of significant discussions, summarize what should be added to the KB
+
+3. **Cross-Project Awareness** — You know all the projects, their relationships, and their tech stacks. Connect the dots between projects when relevant. If the user asks about one project, consider the implications for related ones.
+
+4. **Advisory Mode** — This is a discussion chat, not a coding session. You advise, analyze, suggest, and document. You don't write code directly but you can discuss code architecture, review approaches, and suggest implementations.
+
+## Projects in this Workspace
+
+${projectsList || '(No projects linked yet)'}
+
+## Knowledge Base
+
+${docsSection}
+
+${linksSection ? `## Concept Links\n\n${linksSection}` : ''}
+
+## Guidelines
+
+- Reference specific docs from the KB when relevant
+- When giving advice, consider the full workspace context
+- Suggest KB updates when new knowledge emerges from the conversation
+- Be concise but thorough — you're talking to a developer, not writing documentation
+- Use the workspace MCP tools (workspace_write_doc, workspace_search) to actually update the KB when asked`;
+
+  // Use the first project as the "anchor" for the chat terminal, or a fallback
+  const homedir = window.electron_nodeModules.os.homedir();
+  const anchorProject = projects[0] || { id: 'workspace', name: ws.name, path: homedir, type: 'general' };
+
+  // Switch to the Claude tab (terminal/chat view)
+  const termTab = document.querySelector('[data-tab="claude"]');
+  if (termTab) termTab.click();
+
+  // Small delay to let tab switch complete
+  await new Promise(r => setTimeout(r, 100));
+
+  await TerminalManager.createTerminal(anchorProject, {
+    mode: 'chat',
+    name: `${ws.icon || '📦'} ${ws.name}`,
+    systemPrompt,
+    skipPermissions: true,
+  });
 }
 
 module.exports = { init, loadPanel, cleanup };

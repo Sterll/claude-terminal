@@ -1434,7 +1434,7 @@ function closeTerminal(id) {
  * Create a new terminal for a project
  */
 async function createTerminal(project, options = {}) {
-  const { skipPermissions = false, runClaude = true, name: customName = null, mode: explicitMode = null, cwd: overrideCwd = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, resumeSessionId = null } = options;
+  const { skipPermissions = false, runClaude = true, name: customName = null, mode: explicitMode = null, cwd: overrideCwd = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, resumeSessionId = null, systemPrompt = null } = options;
 
   // Determine mode: explicit > setting > default
   const mode = explicitMode || (runClaude ? (getSetting('defaultTerminalMode') || 'terminal') : 'terminal');
@@ -1442,7 +1442,7 @@ async function createTerminal(project, options = {}) {
   // Chat mode: skip PTY creation entirely
   if (mode === 'chat' && runClaude) {
     const chatProject = overrideCwd ? { ...project, path: overrideCwd } : project;
-    return createChatTerminal(chatProject, { skipPermissions, name: customName, parentProjectId: overrideCwd ? project.id : null, resumeSessionId, initialPrompt, initialImages, initialModel, initialEffort, onSessionStart });
+    return createChatTerminal(chatProject, { skipPermissions, name: customName, parentProjectId: overrideCwd ? project.id : null, resumeSessionId, initialPrompt, initialImages, initialModel, initialEffort, onSessionStart, systemPrompt });
   }
 
   const result = await api.terminal.create({
@@ -3957,7 +3957,7 @@ function focusPrevTerminal() {
  * Create a chat-mode terminal (Claude Agent SDK UI)
  */
 async function createChatTerminal(project, options = {}) {
-  const { skipPermissions = false, name: customName = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null, parentProjectId = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null } = options;
+  const { skipPermissions = false, name: customName = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null, parentProjectId = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, systemPrompt = null } = options;
 
   const id = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   let _chatSessionId = null;
@@ -4029,6 +4029,7 @@ async function createChatTerminal(project, options = {}) {
     initialModel: effectiveModel,
     initialEffort: effectiveEffort,
     builtinSystemPrompt: getBuiltinSystemPrompt(project.type),
+    ...(systemPrompt ? { systemPrompt } : {}),
     onSessionStart: (sid) => {
       _chatSessionId = sid;
       // Persist session ID on termData for TerminalSessionService (fresh sessions)
