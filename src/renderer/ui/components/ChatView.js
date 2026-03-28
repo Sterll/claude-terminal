@@ -4760,9 +4760,17 @@ function createChatView(wrapperEl, project, options = {}) {
                     api.workspace.writeDoc({ workspaceId: ws.id, title: s.title, content: s.content })
                   );
                   return Promise.all(writes).then(() => {
+                    const docTitles = suggestions.map(s => `${s.isUpdate ? '~' : '+'}${s.title}`).join(', ');
                     Toast.showToast({
-                      message: t('workspace.enrichDone', { count: suggestions.length, name: ws.name }),
-                      type: 'success'
+                      message: t('workspace.enrichDone', { count: suggestions.length, name: ws.name, docs: docTitles }),
+                      type: 'success',
+                      duration: 8000,
+                      action: t('workspace.enrichView'),
+                      onAction: () => {
+                        // Navigate to workspace panel
+                        const wsTab = document.querySelector('[data-tab="workspaces"]');
+                        if (wsTab) wsTab.click();
+                      }
                     });
                   });
                 }).catch(err => {

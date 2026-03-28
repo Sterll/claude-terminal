@@ -1783,7 +1783,8 @@
     "enrichToast": "Mettre a jour la base de connaissances \"{name}\" avec les insights de cette conversation ?",
     "enrichAction": "Mettre a jour",
     "enrichNoSuggestions": "Aucun nouvel insight a ajouter a la base de connaissances.",
-    "enrichDone": "{count} document(s) mis a jour dans la base \"{name}\".",
+    "enrichDone": "KB \"{name}\" : {docs}",
+    "enrichView": "Voir",
     "enrichError": "Erreur lors de l'analyse de la conversation pour l'enrichissement.",
     "addToWorkspace": "Ajouter au workspace...",
     "badge": "WS"

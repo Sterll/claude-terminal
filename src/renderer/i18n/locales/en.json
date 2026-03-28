@@ -1783,7 +1783,8 @@
     "enrichToast": "Update \"{name}\" knowledge base with insights from this conversation?",
     "enrichAction": "Update KB",
     "enrichNoSuggestions": "No new insights to add to the knowledge base.",
-    "enrichDone": "{count} document(s) updated in \"{name}\" knowledge base.",
+    "enrichDone": "KB \"{name}\": {docs}",
+    "enrichView": "View",
     "enrichError": "Failed to analyze conversation for workspace enrichment.",
     "addToWorkspace": "Add to Workspace...",
     "badge": "WS"
