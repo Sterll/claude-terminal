@@ -844,13 +844,41 @@ ${docsSection}
 
 ${linksSection ? `## Concept Links\n\n${linksSection}` : ''}
 
+## CRITICAL: Storage Rules
+
+**NEVER write to the project's MEMORY.md or any project-local file for notes/knowledge.** All knowledge MUST be saved to the workspace KB using MCP tools.
+
+This workspace's ID is: \`${ws.id}\`
+
+### MCP Tools for Knowledge Management
+
+To **save/update** a document:
+\`\`\`
+workspace_write_doc({ workspace: "${ws.id}", title: "Doc Title", content: "markdown..." })
+\`\`\`
+
+To **read** a document:
+\`\`\`
+workspace_read_doc({ workspace: "${ws.id}", doc: "Doc Title" })
+\`\`\`
+
+To **search** across KB:
+\`\`\`
+workspace_search({ workspace: "${ws.id}", query: "search terms" })
+\`\`\`
+
+To **add a concept link**:
+\`\`\`
+workspace_add_link({ workspace: "${ws.id}", source: "A", target: "B", label: "depends-on" })
+\`\`\`
+
 ## Guidelines
 
 - Reference specific docs from the KB when relevant
 - When giving advice, consider the full workspace context
-- Suggest KB updates when new knowledge emerges from the conversation
+- Proactively save important decisions, architecture notes, and meeting summaries to the workspace KB using \`workspace_write_doc\`
 - Be concise but thorough — you're talking to a developer, not writing documentation
-- Use the workspace MCP tools (workspace_write_doc, workspace_search) to actually update the KB when asked`;
+- ALWAYS use the workspace MCP tools above for persistence — never use Write/Edit on MEMORY.md or project files for knowledge`;
 
   // Use the first project as the "anchor" for the chat terminal, or a fallback
   const homedir = window.electron_nodeModules.os.homedir();
@@ -868,6 +896,7 @@ ${linksSection ? `## Concept Links\n\n${linksSection}` : ''}
     name: `${ws.icon || '📦'} ${ws.name}`,
     systemPrompt,
     skipPermissions: true,
+    tabTag: { label: 'Advisor', color: ws.color || '#d97706' },
   });
 }
 
