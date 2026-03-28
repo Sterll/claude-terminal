@@ -334,6 +334,19 @@
     "confirmMergePR": "¿Fusionar la pull request #{number}?",
     "prMerged": "PR #{number} fusionada",
     "openInBrowser": "Abrir en el navegador",
+    "reviews": "Reviews",
+    "reviewComment": "Comentar",
+    "reviewApprove": "Aprobar",
+    "reviewRequestChanges": "Solicitar cambios",
+    "reviewBody": "Comentario de review...",
+    "reviewSubmitted": "Review enviada",
+    "reviewBodyRequired": "Se requiere un comentario para este tipo de review",
+    "noReviews": "Sin reviews",
+    "reviewComments": "Comentarios inline",
+    "reviewStateAPPROVED": "Aprobada",
+    "reviewStateCHANGES_REQUESTED": "Cambios solicitados",
+    "reviewStateCOMMENTED": "Comentada",
+    "reviewStateDISMISSED": "Rechazada",
     "issues": "Issues",
     "noIssues": "Sin issues",
     "openIssues": "Abiertas",
@@ -794,6 +807,11 @@
     "githubConnectDesc": "Introduce un Personal Access Token para clonar repos privados",
     "githubTokenHelp": "¿Cómo crear un token?",
     "githubTokenInvalid": "Token inválido",
+    "githubEnterprise": "GitHub Enterprise",
+    "githubApiUrl": "URL de la API",
+    "githubApiUrlDesc": "Para GitHub Enterprise Server (ej: https://github.mycompany.com/api/v3)",
+    "githubHostname": "Nombre de host",
+    "githubHostnameDesc": "Nombre de host de GitHub usado para detectar URLs remotas",
     "themesTitle": "Tema de terminal",
     "themesDesc": "Elige un tema para personalizar los colores de tu terminal",
     "terminalGroup": "Terminal",
@@ -1013,7 +1031,12 @@
     "confirmDeleteSkill": "¿Eliminar este skill?",
     "deleteSkill": "Eliminar skill",
     "confirmDeleteAgent": "¿Eliminar este agente?",
-    "deleteAgent": "Eliminar agente"
+    "deleteAgent": "Eliminar agente",
+    "editor": "Editor",
+    "preview": "Vista previa",
+    "editSkill": "Editar Skill",
+    "editAgent": "Editar Agente",
+    "openExternal": "Abrir en editor"
   },
   "mcpLocal": {
     "noServers": "Sin servidores MCP",
@@ -1339,7 +1362,11 @@
     "addMarketplacePlaceholder": "https://github.com/owner/repo o owner/repo",
     "adding": "Añadiendo...",
     "addMarketplaceSuccess": "Marketplace añadido correctamente",
-    "addMarketplaceError": "Error al añadir el marketplace"
+    "addMarketplaceError": "Error al añadir el marketplace",
+    "updateAvailable": "Actualización",
+    "update": "Actualizar",
+    "updateSuccess": "\"{name}\" actualizado con éxito",
+    "updateError": "Error al actualizar"
   },
   "marketplace": {
     "title": "Marketplace",
@@ -1365,7 +1392,11 @@
     "installedOn": "Instalado el {date}",
     "noReadme": "Sin descripción disponible",
     "readmeError": "No se pudo cargar la descripción",
-    "searchHint": "Escribe para buscar skills en skills.sh"
+    "searchHint": "Escribe para buscar skills en skills.sh",
+    "updateAvailable": "Actualización",
+    "update": "Actualizar",
+    "updating": "Actualizando...",
+    "updateError": "Error al actualizar"
   },
   "mcpRegistry": {
     "myServers": "Mis servidores",
@@ -1977,6 +2008,22 @@
     "ctrlClickToOpen": "Ctrl+clic para abrir",
     "searchPlaceholder": "Buscar en el documento...",
     "noResults": "Sin resultados"
+  },
+  "pdfViewer": {
+    "page": "Página",
+    "of": "de",
+    "zoomIn": "Acercar",
+    "zoomOut": "Alejar",
+    "fitWidth": "Ajustar al ancho",
+    "loading": "Cargando PDF..."
+  },
+  "modelViewer": {
+    "resetView": "Restablecer vista",
+    "wireframe": "Malla de alambre",
+    "toggleGrid": "Alternar cuadrícula",
+    "vertices": "Vértices",
+    "faces": "Caras",
+    "loading": "Cargando modelo..."
   },
   "tabs": {
     "rename": "Renombrar",
@@ -2893,5 +2940,15 @@
   },
   "toast": {
     "undo": "Deshacer"
+  },
+  "github": {
+    "runWorkflow": "Ejecutar workflow",
+    "selectWorkflow": "Seleccionar workflow",
+    "workflowRef": "Rama",
+    "dispatchWorkflow": "Ejecutar",
+    "workflowDispatched": "Workflow ejecutado con éxito",
+    "noWorkflows": "No se encontraron workflows",
+    "rateLimitWarning": "API GitHub: {remaining} llamadas restantes (se reinicia en {minutes}min)",
+    "rateLimitExhausted": "Límite de API GitHub alcanzado. Se reinicia a las {time}."
   }
 }

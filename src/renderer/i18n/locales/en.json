@@ -327,6 +327,19 @@
     "confirmMergePR": "Merge pull request #{number}?",
     "prMerged": "PR #{number} merged",
     "openInBrowser": "Open in browser",
+    "reviews": "Reviews",
+    "reviewComment": "Comment",
+    "reviewApprove": "Approve",
+    "reviewRequestChanges": "Request Changes",
+    "reviewBody": "Review comment...",
+    "reviewSubmitted": "Review submitted",
+    "reviewBodyRequired": "A comment is required for this review type",
+    "noReviews": "No reviews yet",
+    "reviewComments": "Inline comments",
+    "reviewStateAPPROVED": "Approved",
+    "reviewStateCHANGES_REQUESTED": "Changes Requested",
+    "reviewStateCOMMENTED": "Commented",
+    "reviewStateDISMISSED": "Dismissed",
     "issues": "Issues",
     "noIssues": "No issues",
     "openIssues": "Open",
@@ -348,7 +361,27 @@
     "resolveOurs": "Keep our version",
     "resolveTheirs": "Keep their version",
     "resolvedWith": "Resolved with {strategy}",
-    "orphanCommitWarning": "{count} commit(s) will become unreachable."
+    "orphanCommitWarning": "{count} commit(s) will become unreachable.",
+    "rebaseInProgress": "Rebase in progress",
+    "rebaseResolveHint": "Resolve conflicts, then continue or abort",
+    "abortRebase": "Abort Rebase",
+    "continueRebase": "Continue Rebase",
+    "rebaseAbortedSuccess": "Rebase aborted",
+    "rebaseCompletedSuccess": "Rebase completed",
+    "searchHistory": "Search commits...",
+    "diffUnified": "Unified",
+    "diffSideBySide": "Side by side",
+    "remotes": "Remotes",
+    "noRemotes": "No remotes",
+    "addRemote": "Add remote",
+    "removeRemote": "Remove",
+    "remoteName": "Remote name (e.g. origin):",
+    "remoteUrl": "Remote URL:",
+    "remoteAdded": "Remote \"{name}\" added",
+    "remoteRemoved": "Remote \"{name}\" removed",
+    "confirmRemoveRemote": "Remove remote \"{name}\"?",
+    "popStash": "Pop (apply + drop)",
+    "stashPoppedSuccess": "Stash popped"
   },
   "gitErrors": {
     "notARepo": "This folder is not a Git repository. Initialize one with 'git init'.",
@@ -797,6 +830,11 @@
     "githubConnectDesc": "Enter a Personal Access Token to clone private repos",
     "githubTokenHelp": "How to create a token?",
     "githubTokenInvalid": "Invalid token",
+    "githubEnterprise": "GitHub Enterprise",
+    "githubApiUrl": "API URL",
+    "githubApiUrlDesc": "For GitHub Enterprise Server (e.g. https://github.mycompany.com/api/v3)",
+    "githubHostname": "Hostname",
+    "githubHostnameDesc": "GitHub hostname used for remote URL detection",
     "themesTitle": "Terminal theme",
     "themesDesc": "Choose a theme to customize your terminal colors",
     "terminalGroup": "Terminal",
@@ -1002,7 +1040,23 @@
     "commitAll": "Commit All ({count})",
     "groupCommitted": "Group \"{name}\" committed",
     "allGroupsCommitted": "All {count} commits created",
-    "generating": "Generating..."
+    "generating": "Generating...",
+    "discardFile": "Discard changes",
+    "confirmDiscard": "Discard changes to \"{file}\"?",
+    "discardSuccess": "Changes discarded",
+    "discardError": "Failed to discard changes",
+    "discardSelected": "Discard Selected",
+    "confirmDiscardAll": "Discard changes to {count} file(s)?",
+    "discardedFiles": "{count} file(s) discarded",
+    "stashPreview": "Preview stash",
+    "amendCommit": "Amend",
+    "commitAmended": "Commit amended",
+    "amendSuccess": "Last commit amended successfully",
+    "undoLastCommit": "Undo Last Commit",
+    "confirmReset": "Undo last commit? Changes will be kept as staged.",
+    "resetSuccess": "Last commit undone",
+    "resetSoftDone": "Last commit undone (changes kept staged)",
+    "resetError": "Failed to undo commit"
   },
   "skillsAgents": {
     "noSkills": "No skills",
@@ -1016,7 +1070,12 @@
     "confirmDeleteSkill": "Delete this skill?",
     "deleteSkill": "Delete skill",
     "confirmDeleteAgent": "Delete this agent?",
-    "deleteAgent": "Delete agent"
+    "deleteAgent": "Delete agent",
+    "editor": "Editor",
+    "preview": "Preview",
+    "editSkill": "Edit Skill",
+    "editAgent": "Edit Agent",
+    "openExternal": "Open in editor"
   },
   "mcpLocal": {
     "noServers": "No MCP servers",
@@ -1342,7 +1401,11 @@
     "addMarketplacePlaceholder": "https://github.com/owner/repo or owner/repo",
     "adding": "Adding...",
     "addMarketplaceSuccess": "Marketplace added successfully",
-    "addMarketplaceError": "Failed to add marketplace"
+    "addMarketplaceError": "Failed to add marketplace",
+    "updateAvailable": "Update",
+    "update": "Update",
+    "updateSuccess": "\"{name}\" updated successfully",
+    "updateError": "Update failed"
   },
   "marketplace": {
     "title": "Marketplace",
@@ -1368,7 +1431,11 @@
     "installedOn": "Installed on {date}",
     "noReadme": "No description available",
     "readmeError": "Could not load description",
-    "searchHint": "Type to search for skills on skills.sh"
+    "searchHint": "Type to search for skills on skills.sh",
+    "updateAvailable": "Update",
+    "update": "Update",
+    "updating": "Updating...",
+    "updateError": "Update failed"
   },
   "mcpRegistry": {
     "myServers": "My Servers",
@@ -2013,6 +2080,22 @@
     "ctrlClickToOpen": "Ctrl+click to open",
     "searchPlaceholder": "Search in document...",
     "noResults": "No results"
+  },
+  "pdfViewer": {
+    "page": "Page",
+    "of": "of",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "fitWidth": "Fit width",
+    "loading": "Loading PDF..."
+  },
+  "modelViewer": {
+    "resetView": "Reset view",
+    "wireframe": "Wireframe",
+    "toggleGrid": "Toggle grid",
+    "vertices": "Vertices",
+    "faces": "Faces",
+    "loading": "Loading model..."
   },
   "tabs": {
     "rename": "Rename",
@@ -2926,5 +3009,15 @@
     "create": "Create CLAUDE.md",
     "willCreate": "The CLAUDE.md file will be created in this project.",
     "noSuggestions": "No new discoveries detected."
+  },
+  "github": {
+    "runWorkflow": "Run workflow",
+    "selectWorkflow": "Select workflow",
+    "workflowRef": "Branch",
+    "dispatchWorkflow": "Dispatch",
+    "workflowDispatched": "Workflow dispatched successfully",
+    "noWorkflows": "No workflows found",
+    "rateLimitWarning": "GitHub API: {remaining} calls remaining (resets in {minutes}min)",
+    "rateLimitExhausted": "GitHub API rate limit reached. Resets at {time}."
   }
 }

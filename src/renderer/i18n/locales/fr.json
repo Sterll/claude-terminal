@@ -416,6 +416,19 @@
     "confirmMergePR": "Merger la pull request #{number} ?",
     "prMerged": "PR #{number} mergée",
     "openInBrowser": "Ouvrir dans le navigateur",
+    "reviews": "Reviews",
+    "reviewComment": "Commenter",
+    "reviewApprove": "Approuver",
+    "reviewRequestChanges": "Demander des modifications",
+    "reviewBody": "Commentaire de review...",
+    "reviewSubmitted": "Review soumise",
+    "reviewBodyRequired": "Un commentaire est requis pour ce type de review",
+    "noReviews": "Aucune review",
+    "reviewComments": "Commentaires inline",
+    "reviewStateAPPROVED": "Approuvee",
+    "reviewStateCHANGES_REQUESTED": "Modifications demandees",
+    "reviewStateCOMMENTED": "Commentee",
+    "reviewStateDISMISSED": "Rejetee",
     "issues": "Issues",
     "noIssues": "Aucune issue",
     "openIssues": "Ouvertes",
@@ -437,7 +450,27 @@
     "resolveOurs": "Garder notre version",
     "resolveTheirs": "Garder leur version",
     "resolvedWith": "Résolu avec {strategy}",
-    "orphanCommitWarning": "{count} commit(s) deviendront inaccessibles."
+    "orphanCommitWarning": "{count} commit(s) deviendront inaccessibles.",
+    "rebaseInProgress": "Rebase en cours",
+    "rebaseResolveHint": "Résolvez les conflits, puis continuez ou annulez",
+    "abortRebase": "Annuler le rebase",
+    "continueRebase": "Continuer le rebase",
+    "rebaseAbortedSuccess": "Rebase annulé",
+    "rebaseCompletedSuccess": "Rebase terminé",
+    "searchHistory": "Rechercher des commits...",
+    "diffUnified": "Unifié",
+    "diffSideBySide": "Côte à côte",
+    "remotes": "Remotes",
+    "noRemotes": "Aucun remote",
+    "addRemote": "Ajouter un remote",
+    "removeRemote": "Supprimer",
+    "remoteName": "Nom du remote (ex. origin) :",
+    "remoteUrl": "URL du remote :",
+    "remoteAdded": "Remote \"{name}\" ajouté",
+    "remoteRemoved": "Remote \"{name}\" supprimé",
+    "confirmRemoveRemote": "Supprimer le remote \"{name}\" ?",
+    "popStash": "Pop (appliquer + supprimer)",
+    "stashPoppedSuccess": "Stash poppé"
   },
   "gitErrors": {
     "notARepo": "Ce dossier n'est pas un dépôt Git. Initialisez-en un avec 'git init'.",
@@ -886,6 +919,11 @@
     "githubConnectDesc": "Entrez un Personal Access Token pour cloner vos repos privés",
     "githubTokenHelp": "Comment créer un token ?",
     "githubTokenInvalid": "Token invalide",
+    "githubEnterprise": "GitHub Enterprise",
+    "githubApiUrl": "URL de l'API",
+    "githubApiUrlDesc": "Pour GitHub Enterprise Server (ex : https://github.mycompany.com/api/v3)",
+    "githubHostname": "Nom d'hote",
+    "githubHostnameDesc": "Nom d'hote GitHub utilise pour la detection des URLs distantes",
     "themesTitle": "Thème du terminal",
     "themesDesc": "Choisissez un thème pour personnaliser les couleurs de vos terminaux",
     "terminalGroup": "Terminal",
@@ -1091,7 +1129,23 @@
     "commitAll": "Tout commiter ({count})",
     "groupCommitted": "Groupe \"{name}\" commité",
     "allGroupsCommitted": "{count} commits créés",
-    "generating": "Génération..."
+    "generating": "Génération...",
+    "discardFile": "Annuler les modifications",
+    "confirmDiscard": "Annuler les modifications de \"{file}\" ?",
+    "discardSuccess": "Modifications annulées",
+    "discardError": "Impossible d'annuler les modifications",
+    "discardSelected": "Annuler la sélection",
+    "confirmDiscardAll": "Annuler les modifications de {count} fichier(s) ?",
+    "discardedFiles": "{count} fichier(s) annulé(s)",
+    "stashPreview": "Aperçu du stash",
+    "amendCommit": "Amend",
+    "commitAmended": "Commit amendé",
+    "amendSuccess": "Dernier commit amendé avec succès",
+    "undoLastCommit": "Annuler le dernier commit",
+    "confirmReset": "Annuler le dernier commit ? Les modifications seront conservées en staging.",
+    "resetSuccess": "Dernier commit annulé",
+    "resetSoftDone": "Dernier commit annulé (modifications conservées en staging)",
+    "resetError": "Impossible d'annuler le commit"
   },
   "skillsAgents": {
     "noSkills": "Aucun skill",
@@ -1105,7 +1159,12 @@
     "confirmDeleteSkill": "Supprimer ce skill ?",
     "deleteSkill": "Supprimer le skill",
     "confirmDeleteAgent": "Supprimer cet agent ?",
-    "deleteAgent": "Supprimer l'agent"
+    "deleteAgent": "Supprimer l'agent",
+    "editor": "Editeur",
+    "preview": "Apercu",
+    "editSkill": "Modifier le Skill",
+    "editAgent": "Modifier l'Agent",
+    "openExternal": "Ouvrir dans l'editeur"
   },
   "mcpLocal": {
     "noServers": "Aucun serveur MCP",
@@ -1342,7 +1401,11 @@
     "addMarketplacePlaceholder": "https://github.com/owner/repo ou owner/repo",
     "adding": "Ajout...",
     "addMarketplaceSuccess": "Marketplace ajouté avec succès",
-    "addMarketplaceError": "Échec de l'ajout du marketplace"
+    "addMarketplaceError": "Échec de l'ajout du marketplace",
+    "updateAvailable": "Mise à jour",
+    "update": "Mettre à jour",
+    "updateSuccess": "\"{name}\" mis à jour avec succès",
+    "updateError": "Échec de la mise à jour"
   },
   "marketplace": {
     "title": "Marketplace",
@@ -1368,7 +1431,11 @@
     "installedOn": "Installé le {date}",
     "noReadme": "Aucune description disponible",
     "readmeError": "Impossible de charger la description",
-    "searchHint": "Tapez pour rechercher des skills sur skills.sh"
+    "searchHint": "Tapez pour rechercher des skills sur skills.sh",
+    "updateAvailable": "Mise à jour",
+    "update": "Mettre à jour",
+    "updating": "Mise à jour...",
+    "updateError": "Échec de la mise à jour"
   },
   "mcpRegistry": {
     "myServers": "Mes Serveurs",
@@ -2013,6 +2080,22 @@
     "ctrlClickToOpen": "Ctrl+clic pour ouvrir",
     "searchPlaceholder": "Rechercher dans le document...",
     "noResults": "Aucun résultat"
+  },
+  "pdfViewer": {
+    "page": "Page",
+    "of": "sur",
+    "zoomIn": "Zoom avant",
+    "zoomOut": "Zoom arrière",
+    "fitWidth": "Ajuster à la largeur",
+    "loading": "Chargement du PDF..."
+  },
+  "modelViewer": {
+    "resetView": "Réinitialiser la vue",
+    "wireframe": "Fil de fer",
+    "toggleGrid": "Afficher/masquer la grille",
+    "vertices": "Sommets",
+    "faces": "Faces",
+    "loading": "Chargement du modèle..."
   },
   "tabs": {
     "rename": "Renommer",
@@ -2926,5 +3009,15 @@
     "create": "Créer le CLAUDE.md",
     "willCreate": "Le fichier CLAUDE.md sera créé dans le projet.",
     "noSuggestions": "Aucune nouvelle découverte détectée."
+  },
+  "github": {
+    "runWorkflow": "Lancer un workflow",
+    "selectWorkflow": "Sélectionner un workflow",
+    "workflowRef": "Branche",
+    "dispatchWorkflow": "Lancer",
+    "workflowDispatched": "Workflow lancé avec succès",
+    "noWorkflows": "Aucun workflow trouvé",
+    "rateLimitWarning": "API GitHub : {remaining} appels restants (reset dans {minutes}min)",
+    "rateLimitExhausted": "Limite API GitHub atteinte. Reset à {time}."
   }
 }
