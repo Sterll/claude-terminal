@@ -1007,10 +1007,10 @@ class GitChangesPanel extends BasePanel {
 let _instance = null;
 
 function init(context) {
-  const { getApiProvider, getContainer } = require('../../core');
+  const core = require('../../core');
   _instance = new GitChangesPanel(null, {
-    api: getApiProvider(),
-    container: getContainer(),
+    api: core.getApiProvider() || window.electron_api,
+    container: core.getContainer(),
     showToast: context.showToast,
     showGitToast: context.showGitToast,
     getCurrentFilterProjectId: context.getCurrentFilterProjectId,
