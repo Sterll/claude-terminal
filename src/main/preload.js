@@ -155,6 +155,28 @@ contextBridge.exposeInMainWorld('electron_nodeModules', {
           size: stat.size,
           mtime: stat.mtime
         }));
+      },
+      mkdir: (p, options) => {
+        throwIfBlocked(p);
+        return fs.promises.mkdir(p, options);
+      },
+      writeFile: (p, data, options) => {
+        throwIfBlocked(p);
+        return fs.promises.writeFile(p, data, options);
+      },
+      rename: (oldPath, newPath) => {
+        throwIfBlocked(oldPath);
+        throwIfBlocked(newPath);
+        return fs.promises.rename(oldPath, newPath);
+      },
+      unlink: (p) => {
+        throwIfBlocked(p);
+        return fs.promises.unlink(p);
+      },
+      copyFile: (src, dest) => {
+        throwIfBlocked(src);
+        throwIfBlocked(dest);
+        return fs.promises.copyFile(src, dest);
       }
     }
   },
