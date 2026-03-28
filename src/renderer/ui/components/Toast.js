@@ -247,6 +247,7 @@ function clearAllToasts() {
 
 module.exports = {
   showToast,
+  show: (message, type = 'info', duration) => showToast({ message, type, duration }),
   hideToast,
   showSuccess,
   showError,
