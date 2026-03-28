@@ -122,6 +122,16 @@ function registerChatHandlers() {
     }
   });
 
+  // Analyze chat session for workspace knowledge base enrichment
+  ipcMain.handle('workspace-analyze-session', async (_event, { messages, workspace, existingDocs }) => {
+    try {
+      return await chatService.analyzeSessionForWorkspace(messages, workspace, existingDocs || []);
+    } catch (err) {
+      console.error('[workspace-analyze-session] Error:', err.message);
+      return { suggestions: [] };
+    }
+  });
+
   // Cancel a background generation
   ipcMain.on('chat-cancel-generation', (_event, { genId }) => {
     chatService.cancelGeneration(genId);
