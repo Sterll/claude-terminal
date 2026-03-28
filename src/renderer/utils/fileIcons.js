@@ -55,6 +55,13 @@ const ICON_MAP = {
   // Docs
   md: `<svg viewBox="0 0 24 24" fill="#083fa1" class="fe-icon"><rect width="24" height="24" rx="2"/><text x="12" y="17" text-anchor="middle" font-size="8" font-weight="bold" fill="#fff">MD</text></svg>`,
   txt: `<svg viewBox="0 0 24 24" fill="currentColor" class="fe-icon"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>`,
+  pdf: `<svg viewBox="0 0 24 24" fill="#e53935" class="fe-icon"><rect width="24" height="24" rx="2"/><text x="12" y="17" text-anchor="middle" font-size="8" font-weight="bold" fill="#fff">PDF</text></svg>`,
+
+  // 3D Models
+  obj: `<svg viewBox="0 0 24 24" fill="#7b1fa2" class="fe-icon"><rect width="24" height="24" rx="2"/><text x="12" y="17" text-anchor="middle" font-size="8" font-weight="bold" fill="#fff">OBJ</text></svg>`,
+  stl: `<svg viewBox="0 0 24 24" fill="#00897b" class="fe-icon"><rect width="24" height="24" rx="2"/><text x="12" y="17" text-anchor="middle" font-size="8" font-weight="bold" fill="#fff">STL</text></svg>`,
+  gltf: `<svg viewBox="0 0 24 24" fill="#43a047" class="fe-icon"><rect width="24" height="24" rx="2"/><text x="12" y="17" text-anchor="middle" font-size="7" font-weight="bold" fill="#fff">GLTF</text></svg>`,
+  glb: `<svg viewBox="0 0 24 24" fill="#43a047" class="fe-icon"><rect width="24" height="24" rx="2"/><text x="12" y="17" text-anchor="middle" font-size="8" font-weight="bold" fill="#fff">GLB</text></svg>`,
 
   // Images (deduplicated)
   png: IMAGE_ICON,

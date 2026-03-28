@@ -4,6 +4,7 @@
  */
 
 const esbuild = require('esbuild');
+const fs = require('fs');
 const path = require('path');
 
 const isWatch = process.argv.includes('--watch');
@@ -39,6 +40,28 @@ const mermaidBuildOptions = {
   minify: true,
 };
 
+// PDF viewer bundle (ESM, lazy-loaded when opening a PDF)
+const pdfViewerBuildOptions = {
+  entryPoints: [path.join(__dirname, '..', 'src', 'renderer', 'viewers', 'pdf-viewer.js')],
+  bundle: true,
+  outfile: path.join(__dirname, '..', 'dist', 'pdf-viewer.bundle.js'),
+  format: 'esm',
+  platform: 'browser',
+  target: 'chrome120',
+  minify: true,
+};
+
+// Three.js 3D viewer bundle (ESM, lazy-loaded when opening a 3D model)
+const threeViewerBuildOptions = {
+  entryPoints: [path.join(__dirname, '..', 'src', 'renderer', 'viewers', 'three-viewer.js')],
+  bundle: true,
+  outfile: path.join(__dirname, '..', 'dist', 'three-viewer.bundle.js'),
+  format: 'esm',
+  platform: 'browser',
+  target: 'chrome120',
+  minify: true,
+};
+
 async function build() {
   try {
     if (isWatch) {
@@ -49,8 +72,15 @@ async function build() {
       await Promise.all([
         esbuild.build(buildOptions),
         esbuild.build(mermaidBuildOptions),
+        esbuild.build(pdfViewerBuildOptions),
+        esbuild.build(threeViewerBuildOptions),
       ]);
-      console.log('Build complete: dist/renderer.bundle.js + dist/mermaid.bundle.js');
+      // Copy pdf.js worker to dist/ for runtime loading
+      const workerSrc = path.join(__dirname, '..', 'node_modules', 'pdfjs-dist', 'build', 'pdf.worker.min.mjs');
+      const workerDest = path.join(__dirname, '..', 'dist', 'pdf.worker.min.mjs');
+      fs.copyFileSync(workerSrc, workerDest);
+
+      console.log('Build complete: dist/renderer.bundle.js + dist/mermaid.bundle.js + dist/pdf-viewer.bundle.js + dist/three-viewer.bundle.js + dist/pdf.worker.min.mjs');
     }
   } catch (error) {
     console.error('Build failed:', error);
