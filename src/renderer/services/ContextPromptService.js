@@ -281,7 +281,7 @@ class ContextPromptService extends BaseService {
       if (!raw.trim()) return null;
       return JSON.parse(raw);
     } catch (e) {
-      if (e.code !== 'ENOENT') console.error(`Error reading ${filePath}:`, e);
+      if (e.code !== 'ENOENT' && !String(e).includes('ENOENT')) console.error(`Error reading ${filePath}:`, e);
       return null;
     }
   }
