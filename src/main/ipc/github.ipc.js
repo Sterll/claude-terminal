@@ -1,18 +1,34 @@
 /**
  * GitHub IPC Handlers
- * Handles GitHub authentication IPC communication
+ * Handles GitHub authentication, PR reviews, workflow dispatch, and rate limiting
  */
 
 const { ipcMain, shell } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
 const GitHubAuthService = require('../services/GitHubAuthService');
-
-// Store active polling sessions
-const pollingSessions = new Map();
 
 /**
  * Register GitHub IPC handlers
  */
 function registerGitHubHandlers() {
+  // Load GitHub Enterprise config from settings at startup
+  try {
+    const settingsFile = path.join(os.homedir(), '.claude-terminal', 'settings.json');
+    if (fs.existsSync(settingsFile)) {
+      const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+      if (settings.githubApiUrl || settings.githubHostname) {
+        GitHubAuthService.configure({
+          githubApiUrl: settings.githubApiUrl,
+          githubHostname: settings.githubHostname
+        });
+      }
+    }
+  } catch (e) {
+    console.error('[GitHub IPC] Error loading GHE config:', e);
+  }
+
   // Start device flow
   ipcMain.handle('github-start-auth', async () => {
     // console.log('[GitHub IPC] github-start-auth called');
@@ -222,6 +238,79 @@ function registerGitHubHandlers() {
       const parsed = GitHubAuthService.parseGitHubRemote(remoteUrl);
       if (!parsed) return { success: false, error: 'Not a GitHub repository' };
       return await GitHubAuthService.closeIssue(parsed.owner, parsed.repo, issueNumber);
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  // Get rate limit state
+  ipcMain.handle('github-rate-limit', async () => {
+    return { success: true, ...GitHubAuthService.getRateLimitState() };
+  });
+
+  // Configure GitHub Enterprise URLs
+  ipcMain.handle('github-configure', async (event, ghConfig) => {
+    try {
+      GitHubAuthService.configure(ghConfig);
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  // Get PR reviews
+  ipcMain.handle('github-pr-reviews', async (event, { remoteUrl, pullNumber }) => {
+    try {
+      const parsed = GitHubAuthService.parseGitHubRemote(remoteUrl);
+      if (!parsed) return { success: false, error: 'Not a GitHub repository' };
+      const result = await GitHubAuthService.getPullRequestReviews(parsed.owner, parsed.repo, pullNumber);
+      return { success: true, ...result };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  // Create PR review (approve, request changes, comment)
+  ipcMain.handle('github-create-pr-review', async (event, { remoteUrl, pullNumber, reviewEvent, body }) => {
+    try {
+      const parsed = GitHubAuthService.parseGitHubRemote(remoteUrl);
+      if (!parsed) return { success: false, error: 'Not a GitHub repository' };
+      return await GitHubAuthService.createPullRequestReview(parsed.owner, parsed.repo, pullNumber, reviewEvent, body);
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  // Get PR review comments
+  ipcMain.handle('github-pr-comments', async (event, { remoteUrl, pullNumber }) => {
+    try {
+      const parsed = GitHubAuthService.parseGitHubRemote(remoteUrl);
+      if (!parsed) return { success: false, error: 'Not a GitHub repository' };
+      const result = await GitHubAuthService.getPullRequestComments(parsed.owner, parsed.repo, pullNumber);
+      return { success: true, ...result };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  // List available workflows
+  ipcMain.handle('github-workflows', async (event, { remoteUrl }) => {
+    try {
+      const parsed = GitHubAuthService.parseGitHubRemote(remoteUrl);
+      if (!parsed) return { success: false, error: 'Not a GitHub repository' };
+      const result = await GitHubAuthService.getWorkflows(parsed.owner, parsed.repo);
+      return { success: true, ...result };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  // Dispatch (trigger) a workflow
+  ipcMain.handle('github-dispatch-workflow', async (event, { remoteUrl, workflowId, ref, inputs }) => {
+    try {
+      const parsed = GitHubAuthService.parseGitHubRemote(remoteUrl);
+      if (!parsed) return { success: false, error: 'Not a GitHub repository' };
+      return await GitHubAuthService.dispatchWorkflow(parsed.owner, parsed.repo, workflowId, ref, inputs);
     } catch (e) {
       return { success: false, error: e.message };
     }

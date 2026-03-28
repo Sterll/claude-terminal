@@ -5,6 +5,7 @@
 
 const keytar = require('keytar');
 const https = require('https');
+const { BrowserWindow } = require('electron');
 
 const SERVICE_NAME = 'claude-terminal';
 const ACCOUNT_NAME = 'github-token';
@@ -12,6 +13,49 @@ const ACCOUNT_NAME = 'github-token';
 // GitHub OAuth App Client ID (public, not a secret for device flow)
 // Users can also use their own or a PAT
 const GITHUB_CLIENT_ID = 'Ov23liYfl42qwDVVk99l';
+
+// GitHub Enterprise configurable hostnames
+let config = {
+  apiHostname: 'api.github.com',
+  webHostname: 'github.com',
+};
+
+// Rate limit state (updated from every API response)
+const rateLimitState = {
+  remaining: null,
+  limit: null,
+  reset: null, // Unix timestamp (seconds)
+};
+
+function notifyRateLimitUpdate() {
+  try {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('github-rate-limit-update', rateLimitState);
+      }
+    }
+  } catch (e) {
+    // Ignore errors during shutdown
+  }
+}
+
+function getRateLimitState() {
+  return { ...rateLimitState };
+}
+
+function configure(newConfig) {
+  if (newConfig.githubApiUrl) {
+    try {
+      const url = new URL(newConfig.githubApiUrl);
+      config.apiHostname = url.hostname;
+    } catch (e) {
+      console.error('[GitHubAuth] Invalid API URL:', newConfig.githubApiUrl);
+    }
+  }
+  if (newConfig.githubHostname) {
+    config.webHostname = newConfig.githubHostname;
+  }
+}
 
 /**
  * Make an HTTPS request (follows redirects)
@@ -21,6 +65,16 @@ const etagCache = new Map();
 
 function httpsRequest(options, postData = null, maxRedirects = 3) {
   const timeout = options.timeout || 15000;
+
+  // Rate limit guard: reject early if quota exhausted
+  if (rateLimitState.remaining === 0 && rateLimitState.reset) {
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (nowSec < rateLimitState.reset) {
+      const resetDate = new Date(rateLimitState.reset * 1000);
+      const resetTime = resetDate.toLocaleTimeString();
+      return Promise.reject(new Error(`GitHub API rate limit exhausted. Resets at ${resetTime}.`));
+    }
+  }
 
   // Inject ETag for conditional requests if available
   const cacheKey = options.etagKey;
@@ -56,6 +110,21 @@ function httpsRequest(options, postData = null, maxRedirects = 3) {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
+        // Track rate limit from response headers
+        const rlRemaining = res.headers['x-ratelimit-remaining'];
+        const rlLimit = res.headers['x-ratelimit-limit'];
+        const rlReset = res.headers['x-ratelimit-reset'];
+        if (rlRemaining !== undefined) {
+          const prev = rateLimitState.remaining;
+          rateLimitState.remaining = parseInt(rlRemaining, 10);
+          rateLimitState.limit = parseInt(rlLimit, 10);
+          rateLimitState.reset = parseInt(rlReset, 10);
+          // Notify renderer when remaining changes significantly (< 10 or every 10 calls)
+          if (prev !== rateLimitState.remaining && (rateLimitState.remaining < 10 || rateLimitState.remaining % 10 === 0)) {
+            notifyRateLimitUpdate();
+          }
+        }
+
         // Raw text mode: skip JSON parsing (used for log downloads)
         if (options.rawText) {
           return resolve({ status: res.statusCode, data });
@@ -93,7 +162,7 @@ function httpsRequest(options, postData = null, maxRedirects = 3) {
  * @returns {Promise<Object>} - { device_code, user_code, verification_uri, expires_in, interval }
  */
 async function startDeviceFlow() {
-  const postData = `client_id=${GITHUB_CLIENT_ID}&scope=repo:status,public_repo,workflow`;
+  const postData = `client_id=${GITHUB_CLIENT_ID}&scope=repo,workflow`;
 
   console.debug('[GitHubAuth] Starting device flow');
 
@@ -243,7 +312,7 @@ async function getAuthStatus() {
 
   try {
     const response = await httpsRequest({
-      hostname: 'api.github.com',
+      hostname: config.apiHostname,
       path: '/user',
       method: 'GET',
       headers: {
@@ -294,7 +363,7 @@ async function getWorkflowRuns(owner, repo, perPage = 5, page = 1) {
 
   try {
     const response = await httpsRequest({
-      hostname: 'api.github.com',
+      hostname: config.apiHostname,
       path: `/repos/${owner}/${repo}/actions/runs?per_page=${perPage}&page=${page}`,
       method: 'GET',
       headers: {
@@ -344,14 +413,16 @@ async function getWorkflowRuns(owner, repo, perPage = 5, page = 1) {
 function parseGitHubRemote(remoteUrl) {
   if (!remoteUrl) return null;
 
-  // HTTPS: https://github.com/owner/repo.git
-  const httpsMatch = remoteUrl.match(/github\.com\/([^\/]+)\/([^\/\.]+)/);
+  const escaped = config.webHostname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  // HTTPS: https://github.com/owner/repo.git (or custom GHE hostname)
+  const httpsMatch = remoteUrl.match(new RegExp(escaped + '\\/([^\\/]+)\\/([^\\/\\.]+)'));
   if (httpsMatch) {
     return { owner: httpsMatch[1], repo: httpsMatch[2] };
   }
 
-  // SSH: git@github.com:owner/repo.git
-  const sshMatch = remoteUrl.match(/github\.com:([^\/]+)\/([^\/\.]+)/);
+  // SSH: git@github.com:owner/repo.git (or custom GHE hostname)
+  const sshMatch = remoteUrl.match(new RegExp(escaped + ':([^\\/]+)\\/([^\\/\\.]+)'));
   if (sshMatch) {
     return { owner: sshMatch[1], repo: sshMatch[2] };
   }
@@ -374,7 +445,7 @@ async function getPullRequests(owner, repo, perPage = 5, page = 1, state = 'all'
 
   try {
     const response = await httpsRequest({
-      hostname: 'api.github.com',
+      hostname: config.apiHostname,
       path: `/repos/${owner}/${repo}/pulls?per_page=${perPage}&page=${page}&state=${state}&sort=updated&direction=desc`,
       method: 'GET',
       headers: {
@@ -431,7 +502,7 @@ async function createPullRequest(owner, repo, title, body, head, base) {
   try {
     const postData = JSON.stringify({ title, body, head, base });
     const response = await httpsRequest({
-      hostname: 'api.github.com',
+      hostname: config.apiHostname,
       path: `/repos/${owner}/${repo}/pulls`,
       method: 'POST',
       headers: {
@@ -472,7 +543,7 @@ async function getWorkflowJobs(owner, repo, runId) {
 
   try {
     const response = await httpsRequest({
-      hostname: 'api.github.com',
+      hostname: config.apiHostname,
       path: `/repos/${owner}/${repo}/actions/runs/${runId}/jobs`,
       method: 'GET',
       headers: {
@@ -517,7 +588,7 @@ async function getJobLogs(owner, repo, jobId) {
 
   try {
     const response = await httpsRequest({
-      hostname: 'api.github.com',
+      hostname: config.apiHostname,
       path: `/repos/${owner}/${repo}/actions/jobs/${jobId}/logs`,
       method: 'GET',
       headers: {
@@ -552,7 +623,7 @@ async function getCheckRuns(owner, repo, ref) {
 
   try {
     const response = await httpsRequest({
-      hostname: 'api.github.com',
+      hostname: config.apiHostname,
       path: `/repos/${owner}/${repo}/commits/${ref}/check-runs`,
       method: 'GET',
       headers: {
@@ -593,7 +664,7 @@ async function mergePullRequest(owner, repo, pullNumber, mergeMethod = 'merge') 
   try {
     const postData = JSON.stringify({ merge_method: mergeMethod });
     const response = await httpsRequest({
-      hostname: 'api.github.com',
+      hostname: config.apiHostname,
       path: `/repos/${owner}/${repo}/pulls/${pullNumber}/merge`,
       method: 'PUT',
       headers: {
@@ -625,7 +696,7 @@ async function getIssues(owner, repo, perPage = 10, page = 1, state = 'open') {
 
   try {
     const response = await httpsRequest({
-      hostname: 'api.github.com',
+      hostname: config.apiHostname,
       path: `/repos/${owner}/${repo}/issues?per_page=${perPage}&page=${page}&state=${state}&sort=updated&direction=desc`,
       method: 'GET',
       headers: {
@@ -677,7 +748,7 @@ async function createIssue(owner, repo, title, body, labels = []) {
   try {
     const postData = JSON.stringify({ title, body, labels });
     const response = await httpsRequest({
-      hostname: 'api.github.com',
+      hostname: config.apiHostname,
       path: `/repos/${owner}/${repo}/issues`,
       method: 'POST',
       headers: {
@@ -717,7 +788,7 @@ async function closeIssue(owner, repo, issueNumber) {
   try {
     const postData = JSON.stringify({ state: 'closed' });
     const response = await httpsRequest({
-      hostname: 'api.github.com',
+      hostname: config.apiHostname,
       path: `/repos/${owner}/${repo}/issues/${issueNumber}`,
       method: 'PATCH',
       headers: {
@@ -740,6 +811,194 @@ async function closeIssue(owner, repo, issueNumber) {
   }
 }
 
+/**
+ * Get reviews for a pull request
+ */
+async function getPullRequestReviews(owner, repo, pullNumber) {
+  const token = await getToken();
+  if (!token) return { authenticated: false, reviews: [] };
+
+  try {
+    const response = await httpsRequest({
+      hostname: config.apiHostname,
+      path: `/repos/${owner}/${repo}/pulls/${pullNumber}/reviews`,
+      method: 'GET',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'Claude-Terminal'
+      },
+      etagKey: `pr-reviews:${owner}/${repo}/${pullNumber}`
+    });
+
+    if (response.status === 200) {
+      const reviews = (response.data || []).map(r => ({
+        id: r.id,
+        user: r.user?.login,
+        avatarUrl: r.user?.avatar_url,
+        state: r.state,
+        body: r.body,
+        submittedAt: r.submitted_at,
+        htmlUrl: r.html_url
+      }));
+      return { authenticated: true, reviews };
+    }
+
+    return { authenticated: true, reviews: [], error: `API error: ${response.status}` };
+  } catch (e) {
+    console.error('Error fetching PR reviews:', e);
+    return { authenticated: true, reviews: [], error: e.message };
+  }
+}
+
+/**
+ * Create a review on a pull request
+ * @param {string} event - APPROVE, REQUEST_CHANGES, or COMMENT
+ */
+async function createPullRequestReview(owner, repo, pullNumber, event, body) {
+  const token = await getToken();
+  if (!token) return { success: false, error: 'Not authenticated' };
+
+  try {
+    const postData = JSON.stringify({ event, body: body || '' });
+    const response = await httpsRequest({
+      hostname: config.apiHostname,
+      path: `/repos/${owner}/${repo}/pulls/${pullNumber}/reviews`,
+      method: 'POST',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'Claude-Terminal',
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    }, postData);
+
+    if (response.status === 200 || response.status === 201) {
+      return { success: true, review: { id: response.data.id, state: response.data.state } };
+    }
+
+    return { success: false, error: response.data?.message || `API error: ${response.status}` };
+  } catch (e) {
+    console.error('Error creating PR review:', e);
+    return { success: false, error: e.message };
+  }
+}
+
+/**
+ * Get review comments on a pull request
+ */
+async function getPullRequestComments(owner, repo, pullNumber) {
+  const token = await getToken();
+  if (!token) return { authenticated: false, comments: [] };
+
+  try {
+    const response = await httpsRequest({
+      hostname: config.apiHostname,
+      path: `/repos/${owner}/${repo}/pulls/${pullNumber}/comments`,
+      method: 'GET',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'Claude-Terminal'
+      },
+      etagKey: `pr-comments:${owner}/${repo}/${pullNumber}`
+    });
+
+    if (response.status === 200) {
+      const comments = (response.data || []).map(c => ({
+        id: c.id,
+        user: c.user?.login,
+        body: c.body,
+        path: c.path,
+        line: c.line,
+        createdAt: c.created_at,
+        htmlUrl: c.html_url
+      }));
+      return { authenticated: true, comments };
+    }
+
+    return { authenticated: true, comments: [], error: `API error: ${response.status}` };
+  } catch (e) {
+    console.error('Error fetching PR comments:', e);
+    return { authenticated: true, comments: [], error: e.message };
+  }
+}
+
+/**
+ * List available workflows for a repository
+ */
+async function getWorkflows(owner, repo) {
+  const token = await getToken();
+  if (!token) return { authenticated: false, workflows: [] };
+
+  try {
+    const response = await httpsRequest({
+      hostname: config.apiHostname,
+      path: `/repos/${owner}/${repo}/actions/workflows`,
+      method: 'GET',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'Claude-Terminal'
+      },
+      etagKey: `workflows:${owner}/${repo}`
+    });
+
+    if (response.status === 200) {
+      const workflows = (response.data.workflows || [])
+        .filter(w => w.state === 'active')
+        .map(w => ({
+          id: w.id,
+          name: w.name,
+          path: w.path,
+          state: w.state,
+          htmlUrl: w.html_url
+        }));
+      return { authenticated: true, workflows, total: response.data.total_count };
+    }
+
+    return { authenticated: true, workflows: [], error: `API error: ${response.status}` };
+  } catch (e) {
+    console.error('Error fetching workflows:', e);
+    return { authenticated: true, workflows: [], error: e.message };
+  }
+}
+
+/**
+ * Dispatch (trigger) a workflow
+ */
+async function dispatchWorkflow(owner, repo, workflowId, ref, inputs = {}) {
+  const token = await getToken();
+  if (!token) return { success: false, error: 'Not authenticated' };
+
+  try {
+    const postData = JSON.stringify({ ref, inputs });
+    const response = await httpsRequest({
+      hostname: config.apiHostname,
+      path: `/repos/${owner}/${repo}/actions/workflows/${workflowId}/dispatches`,
+      method: 'POST',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'Claude-Terminal',
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    }, postData);
+
+    // 204 No Content = success
+    if (response.status === 204) {
+      return { success: true };
+    }
+
+    return { success: false, error: response.data?.message || `API error: ${response.status}` };
+  } catch (e) {
+    console.error('Error dispatching workflow:', e);
+    return { success: false, error: e.message };
+  }
+}
+
 module.exports = {
   startDeviceFlow,
   pollForToken,
@@ -758,5 +1017,16 @@ module.exports = {
   mergePullRequest,
   getIssues,
   createIssue,
-  closeIssue
+  closeIssue,
+  // New: Rate limit
+  getRateLimitState,
+  // New: GitHub Enterprise config
+  configure,
+  // New: PR Reviews
+  getPullRequestReviews,
+  createPullRequestReview,
+  getPullRequestComments,
+  // New: Workflow dispatch
+  getWorkflows,
+  dispatchWorkflow
 };

@@ -443,6 +443,18 @@ contextBridge.exposeInMainWorld('electron_api', {
     issues: (params) => ipcRenderer.invoke('github-issues', params),
     createIssue: (params) => ipcRenderer.invoke('github-create-issue', params),
     closeIssue: (params) => ipcRenderer.invoke('github-close-issue', params),
+    // Rate limiting
+    rateLimit: () => ipcRenderer.invoke('github-rate-limit'),
+    onRateLimitUpdate: createListener('github-rate-limit-update'),
+    // GitHub Enterprise config
+    configure: (config) => ipcRenderer.invoke('github-configure', config),
+    // PR Reviews
+    prReviews: (params) => ipcRenderer.invoke('github-pr-reviews', params),
+    createPRReview: (params) => ipcRenderer.invoke('github-create-pr-review', params),
+    prComments: (params) => ipcRenderer.invoke('github-pr-comments', params),
+    // Workflow dispatch
+    workflows: (params) => ipcRenderer.invoke('github-workflows', params),
+    dispatchWorkflow: (params) => ipcRenderer.invoke('github-dispatch-workflow', params),
   },
 
   // ==================== MCP REGISTRY ====================

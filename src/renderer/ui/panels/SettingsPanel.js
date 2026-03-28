@@ -456,7 +456,8 @@ class SettingsPanel extends BasePanel {
     const content = document.getElementById('agent-colors-content');
     if (!content) return;
 
-    const { fs, path, os } = window.electron_nodeModules;
+    const { fileExists: fileExistsAsync, fsp: fspLocal } = require('../../utils/fs-async');
+    const { path, os } = window.electron_nodeModules;
     const home = os.homedir();
     const agentColors = this._ctx.settingsState.get().agentColors || {};
 
@@ -464,8 +465,8 @@ class SettingsPanel extends BasePanel {
     const agents = [];
     const agentsDir = path.join(home, '.claude', 'agents');
     try {
-      if (fs.existsSync(agentsDir)) {
-        const entries = fs.readdirSync(agentsDir, { withFileTypes: true });
+      if (await fileExistsAsync(agentsDir)) {
+        const entries = await fspLocal.readdir(agentsDir, { withFileTypes: true });
         for (const entry of entries) {
           if (entry.isFile() && entry.name.endsWith('.md')) {
             agents.push({ id: entry.name.replace(/\.md$/, ''), name: entry.name.replace(/\.md$/, '') });
@@ -480,8 +481,8 @@ class SettingsPanel extends BasePanel {
     const mcps = [];
     const claudeConfigFile = path.join(home, '.claude.json');
     try {
-      if (fs.existsSync(claudeConfigFile)) {
-        const config = JSON.parse(await fs.promises.readFile(claudeConfigFile, 'utf8'));
+      if (await fileExistsAsync(claudeConfigFile)) {
+        const config = JSON.parse(await fspLocal.readFile(claudeConfigFile, 'utf8'));
         const servers = config.mcpServers || {};
         Object.keys(servers).forEach(name => mcps.push({ id: name, name }));
       }
@@ -1088,6 +1089,25 @@ class SettingsPanel extends BasePanel {
               <div class="github-device-flow-container" id="github-device-flow" style="display: none;"></div>
               </div>
             </div>
+            <div class="settings-group">
+              <div class="settings-group-title">${t('settings.githubEnterprise') || 'GitHub Enterprise'}</div>
+              <div class="settings-card">
+                <div class="settings-row">
+                  <div class="settings-row-label">
+                    <div class="settings-toggle-label">${t('settings.githubApiUrl') || 'API URL'}</div>
+                    <div class="settings-toggle-desc">${t('settings.githubApiUrlDesc') || 'For GitHub Enterprise Server (e.g. https://github.mycompany.com/api/v3)'}</div>
+                  </div>
+                  <input type="text" class="settings-input" id="settings-github-api-url" value="${escapeHtml(settings.githubApiUrl || 'https://api.github.com')}" placeholder="https://api.github.com" style="width: 300px;">
+                </div>
+                <div class="settings-row">
+                  <div class="settings-row-label">
+                    <div class="settings-toggle-label">${t('settings.githubHostname') || 'Hostname'}</div>
+                    <div class="settings-toggle-desc">${t('settings.githubHostnameDesc') || 'GitHub hostname used for remote URL detection'}</div>
+                  </div>
+                  <input type="text" class="settings-input" id="settings-github-hostname" value="${escapeHtml(settings.githubHostname || 'github.com')}" placeholder="github.com" style="width: 300px;">
+                </div>
+              </div>
+            </div>
           </div>
           <!-- Themes Tab -->
           <div class="settings-panel ${initialTab === 'themes' ? 'active' : ''}" data-panel="themes">
@@ -1406,6 +1426,20 @@ class SettingsPanel extends BasePanel {
     }
     setupGitHubAuth();
 
+    // GitHub Enterprise settings
+    const gheApiUrlInput = document.getElementById('settings-github-api-url');
+    const gheHostnameInput = document.getElementById('settings-github-hostname');
+    const saveGheSettings = () => {
+      const { settingsState } = require('../../state');
+      const apiUrl = gheApiUrlInput?.value?.trim() || 'https://api.github.com';
+      const hostname = gheHostnameInput?.value?.trim() || 'github.com';
+      settingsState.saveSetting('githubApiUrl', apiUrl);
+      settingsState.saveSetting('githubHostname', hostname);
+      self.api.github.configure({ githubApiUrl: apiUrl, githubHostname: hostname });
+    };
+    if (gheApiUrlInput) gheApiUrlInput.addEventListener('change', saveGheSettings);
+    if (gheHostnameInput) gheHostnameInput.addEventListener('change', saveGheSettings);
+
     // Library tab handlers
     const btnNewPack = document.getElementById('btn-new-context-pack');
     if (btnNewPack) btnNewPack.onclick = () => self.showContextPackModal();
@@ -1426,7 +1460,7 @@ class SettingsPanel extends BasePanel {
         const confirmed = await showConfirm({ title: t('settings.contextPacks'), message: t('settings.confirmDeleteContextPack'), confirmLabel: t('common.delete') });
         if (!confirmed) return;
         const ContextPromptService = require('../../services/ContextPromptService');
-        ContextPromptService.deleteContextPack(btn.dataset.id);
+        await ContextPromptService.deleteContextPack(btn.dataset.id);
         self.renderSettingsTab('library');
       };
     });
@@ -1443,7 +1477,7 @@ class SettingsPanel extends BasePanel {
         const confirmed = await showConfirm({ title: t('settings.promptTemplates'), message: t('settings.confirmDeletePromptTemplate'), confirmLabel: t('common.delete') });
         if (!confirmed) return;
         const ContextPromptService = require('../../services/ContextPromptService');
-        ContextPromptService.deletePromptTemplate(btn.dataset.id);
+        await ContextPromptService.deletePromptTemplate(btn.dataset.id);
         self.renderSettingsTab('library');
       };
     });
@@ -1715,8 +1749,8 @@ class SettingsPanel extends BasePanel {
         });
         if (filePath) {
           try {
-            const { fs } = window.electron_nodeModules;
-            fs.writeFileSync(filePath, content, 'utf8');
+            const { fsp: fspExport } = require('../../utils/fs-async');
+            await fspExport.writeFile(filePath, content, 'utf8');
             const { showSuccess } = require('../components/Toast');
             showSuccess(t('settings.exportSuccess'));
           } catch (err) {
@@ -1737,8 +1771,8 @@ class SettingsPanel extends BasePanel {
         });
         if (!filePath) return;
         try {
-          const { fs } = window.electron_nodeModules;
-          const raw = fs.readFileSync(filePath, 'utf8');
+          const { fsp: fspImport } = require('../../utils/fs-async');
+          const raw = await fspImport.readFile(filePath, 'utf8');
           const data = JSON.parse(raw);
 
           // Accept both wrapped format { settings: {...} } and raw settings object
