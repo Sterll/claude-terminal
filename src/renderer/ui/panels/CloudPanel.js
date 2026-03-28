@@ -737,41 +737,61 @@ function setupHandlers(context) {
         }
       }
 
+      // Determine which entities are enabled via sync toggles
+      const s = _ctx?.settingsState?.get() || {};
+      const entityEnabled = {
+        settings: s.cloudSyncSettings !== false,
+        projects: s.cloudSyncProjects !== false,
+        timeTracking: s.cloudSyncTimeTracking !== false,
+        conversations: s.cloudSyncConversations !== false,
+        skills: s.cloudSyncSkills === true,
+        agents: s.cloudSyncSkills === true,
+        mcpConfigs: s.cloudSyncMcpConfigs !== false,
+        keybindings: s.cloudSyncKeybindings !== false,
+        memory: s.cloudSyncMemory !== false,
+        hooksConfig: s.cloudSyncHooksConfig !== false,
+        timeTrackingArchives: s.cloudSyncTimeTracking !== false,
+        installedPlugins: s.cloudSyncPlugins !== false,
+      };
+
       // Count synced entities and render grid
       const entities = manifest.entities || {};
       const entityTypes = Object.keys(ENTITY_LABELS);
       let syncedCount = 0;
+      let enabledCount = 0;
       const entityStatuses = [];
 
       for (const entityType of entityTypes) {
+        const enabled = entityEnabled[entityType] !== false;
+        if (enabled) enabledCount++;
         // Check if any key starting with this entity type is synced
         const keys = Object.keys(entities).filter(k => k === entityType || k.startsWith(entityType + '.'));
         const isSynced = keys.length > 0;
-        if (isSynced) syncedCount++;
+        if (isSynced && enabled) syncedCount++;
 
         const lastEntry = keys.reduce((latest, k) => {
           const e = entities[k];
           return (e?.lastSyncAt && e.lastSyncAt > (latest || 0)) ? e.lastSyncAt : latest;
         }, null);
 
-        entityStatuses.push({ type: entityType, synced: isSynced, lastSyncAt: lastEntry });
+        entityStatuses.push({ type: entityType, synced: isSynced, lastSyncAt: lastEntry, enabled });
       }
 
-      // Update entities count
+      // Update entities count (only count enabled entities)
       const entitiesEl = document.getElementById('cp-entities-synced');
       if (entitiesEl) {
-        entitiesEl.textContent = `${syncedCount} / ${entityTypes.length}`;
+        entitiesEl.textContent = `${syncedCount} / ${enabledCount}`;
         entitiesEl.classList.add('has-value');
       }
 
       // Render entity grid
       const gridEl = document.getElementById('cp-entity-grid');
       if (gridEl) {
-        gridEl.innerHTML = entityStatuses.map(({ type, synced, lastSyncAt }) => `
-          <div class="cp-entity-chip ${synced ? 'synced' : 'not-synced'}">
+        gridEl.innerHTML = entityStatuses.map(({ type, synced, lastSyncAt, enabled }) => `
+          <div class="cp-entity-chip ${!enabled ? 'disabled' : synced ? 'synced' : 'not-synced'}">
             <span class="cp-entity-chip-icon">${ENTITY_ICONS[type] || ''}</span>
             <span class="cp-entity-chip-label">${ENTITY_LABELS[type]}</span>
-            ${synced && lastSyncAt ? `<span class="cp-entity-chip-time">${_syncTimeAgo(lastSyncAt)}</span>` : ''}
+            ${synced && lastSyncAt && enabled ? `<span class="cp-entity-chip-time">${_syncTimeAgo(lastSyncAt)}</span>` : ''}
             <span class="cp-entity-chip-dot"></span>
           </div>
         `).join('');

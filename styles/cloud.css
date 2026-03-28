@@ -555,6 +555,15 @@
   opacity: 0.55;
 }
 
+.cp-entity-chip.disabled {
+  opacity: 0.35;
+  border-style: dashed;
+}
+
+.cp-entity-chip.disabled .cp-entity-chip-dot {
+  display: none;
+}
+
 .cp-entity-chip-icon {
   display: flex;
   align-items: center;
