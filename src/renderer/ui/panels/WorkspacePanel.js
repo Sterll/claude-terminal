@@ -121,10 +121,11 @@ function renderList() {
       </div>
       <div class="workspace-content">
         <div class="workspace-empty">
-          <svg class="workspace-empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-            <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
-          </svg>
+          <div class="workspace-empty-graphic">
+            <div class="empty-block"></div>
+            <div class="empty-block"></div>
+            <div class="empty-block"></div>
+          </div>
           <div class="workspace-empty-title">${escapeHtml(t('workspace.noWorkspaces'))}</div>
           <div class="workspace-empty-hint">${escapeHtml(t('workspace.noWorkspacesHint'))}</div>
           <button class="workspace-btn workspace-btn-primary" id="ws-create-btn-empty">${ICONS.plus} ${escapeHtml(t('workspace.create'))}</button>
@@ -142,17 +143,25 @@ function renderList() {
 
   const cardsHtml = workspaces.map(ws => {
     const projCount = ws.projectIds ? ws.projectIds.length : 0;
-    const colorStyle = ws.color ? ` style="border-left: 3px solid ${escapeHtml(ws.color)}"` : '';
+    const wsColor = ws.color || 'var(--accent)';
+    const wsProjs = (ws.projectIds || []).map(id => allProjects.find(p => p.id === id)).filter(Boolean);
+    const avatarsHtml = wsProjs.slice(0, 4).map(p =>
+      `<span class="workspace-card-avatar" title="${escapeHtml(p.name || '')}">${p.icon || '📁'}</span>`
+    ).join('') + (wsProjs.length > 4 ? `<span class="workspace-card-avatar workspace-card-avatar-more">+${wsProjs.length - 4}</span>` : '');
+
     return `
-      <div class="workspace-card" data-wsid="${escapeHtml(ws.id)}"${colorStyle}>
+      <div class="workspace-card" data-wsid="${escapeHtml(ws.id)}" style="--ws-color: ${escapeHtml(wsColor)}">
         <div class="workspace-card-top">
           <span class="workspace-card-icon">${ws.icon || '📦'}</span>
           <span class="workspace-card-name">${escapeHtml(ws.name)}</span>
+          ${avatarsHtml ? `<div class="workspace-card-avatars">${avatarsHtml}</div>` : ''}
         </div>
         ${ws.description ? `<div class="workspace-card-desc">${escapeHtml(ws.description)}</div>` : ''}
-        <div class="workspace-card-meta">
-          <span>${escapeHtml(t('workspace.projectsCount', { count: projCount }))}</span>
-          <span>${formatDate(ws.updatedAt)}</span>
+        <div class="workspace-card-stats">
+          <span class="workspace-card-stat">
+            <span class="workspace-card-stat-value">${projCount}</span> ${projCount === 1 ? 'project' : 'projects'}
+          </span>
+          <span class="workspace-card-time">${formatDate(ws.updatedAt)}</span>
         </div>
       </div>
     `;
@@ -203,16 +212,18 @@ function renderDetail() {
   // Projects section
   const projectsHtml = wsProjects.length === 0
     ? `<div style="color:var(--text-muted);font-size:var(--font-sm);padding:8px">${escapeHtml(t('workspace.noProjects'))}</div>`
-    : wsProjects.map(p => `
+    : wsProjects.map(p => {
+        const pName = p.name || window.electron_nodeModules.path.basename(p.path);
+        return `
         <div class="workspace-project-item" data-pid="${escapeHtml(p.id)}">
           <span class="workspace-project-icon">${p.icon || '📁'}</span>
           <div class="workspace-project-info">
-            <div class="workspace-project-name">${escapeHtml(p.name || window.electron_nodeModules.path.basename(p.path))}</div>
+            <div class="workspace-project-name">${escapeHtml(pName)}</div>
             <div class="workspace-project-path">${escapeHtml(p.path)}</div>
           </div>
           <button class="workspace-project-remove" data-pid="${escapeHtml(p.id)}" title="${escapeHtml(t('workspace.removeProject'))}">${ICONS.close}</button>
         </div>
-      `).join('');
+      `;}).join('');
 
   // Docs section
   const docsHtml = docs.length === 0
@@ -221,6 +232,7 @@ function renderDetail() {
         <div class="workspace-doc-item" data-docid="${escapeHtml(d.id)}">
           ${ICONS.doc}
           <span class="workspace-doc-title">${escapeHtml(d.title)}</span>
+          ${d.summary ? `<span class="workspace-doc-summary">${escapeHtml(d.summary.substring(0, 60))}</span>` : ''}
           <span class="workspace-doc-date">${formatDate(d.updatedAt)}</span>
           <button class="workspace-doc-delete" data-docid="${escapeHtml(d.id)}" title="${escapeHtml(t('workspace.deleteDoc'))}">${ICONS.close}</button>
         </div>
@@ -248,40 +260,37 @@ function renderDetail() {
     <div class="workspace-header">
       <div class="workspace-header-left">
         <button class="workspace-back-btn" id="ws-back-list" title="${escapeHtml(t('workspace.backToList'))}">${ICONS.back}</button>
-        <span class="workspace-card-icon" style="font-size:1.5rem">${ws.icon || '📦'}</span>
-        <span class="workspace-header-title"${ws.color ? ` style="color:${escapeHtml(ws.color)}"` : ''}>${escapeHtml(ws.name)}</span>
+        <span class="workspace-card-icon" style="font-size:1.3rem">${ws.icon || '📦'}</span>
+        <span class="workspace-header-title">${escapeHtml(ws.name)}</span>
       </div>
       <div class="workspace-header-actions">
-        <button class="workspace-btn workspace-btn-primary workspace-btn-sm" id="ws-chat-btn">${ICONS.chat} ${escapeHtml(t('workspace.openChat'))}</button>
-        <button class="workspace-btn workspace-btn-secondary workspace-btn-sm" id="ws-edit-btn">${ICONS.edit} ${escapeHtml(t('workspace.edit'))}</button>
-        <button class="workspace-btn workspace-btn-danger workspace-btn-sm" id="ws-delete-btn">${ICONS.trash} ${escapeHtml(t('workspace.delete'))}</button>
+        <button class="workspace-btn workspace-btn-primary workspace-btn-sm" id="ws-chat-btn">${ICONS.chat} Advisor</button>
+        <button class="workspace-btn workspace-btn-secondary workspace-btn-sm" id="ws-edit-btn">${ICONS.edit}</button>
+        <button class="workspace-btn workspace-btn-danger workspace-btn-sm" id="ws-delete-btn">${ICONS.trash}</button>
       </div>
     </div>
-    ${ws.description ? `<div style="padding:0 16px 8px;color:var(--text-secondary);font-size:var(--font-sm)">${escapeHtml(ws.description)}</div>` : ''}
+    ${ws.description ? `<div class="workspace-detail-desc">${escapeHtml(ws.description)}</div>` : ''}
     <div class="workspace-content">
       <div class="workspace-sections">
-        <!-- Projects -->
         <div class="workspace-section">
           <div class="workspace-section-header">
-            <div class="workspace-section-title">${escapeHtml(t('workspace.projects'))} <span class="workspace-section-count">(${wsProjects.length})</span></div>
+            <div class="workspace-section-title">${escapeHtml(t('workspace.projects'))} <span class="workspace-section-count">${wsProjects.length}</span></div>
             <button class="workspace-btn workspace-btn-secondary workspace-btn-sm" id="ws-add-project">${ICONS.plus} ${escapeHtml(t('workspace.addProject'))}</button>
           </div>
           <div id="ws-projects-list">${projectsHtml}</div>
         </div>
 
-        <!-- Knowledge Base -->
         <div class="workspace-section">
           <div class="workspace-section-header">
-            <div class="workspace-section-title">${escapeHtml(t('workspace.knowledgeBase'))} <span class="workspace-section-count">(${docs.length})</span></div>
+            <div class="workspace-section-title">${escapeHtml(t('workspace.knowledgeBase'))} <span class="workspace-section-count">${docs.length}</span></div>
             <button class="workspace-btn workspace-btn-secondary workspace-btn-sm" id="ws-new-doc">${ICONS.plus} ${escapeHtml(t('workspace.newDoc'))}</button>
           </div>
           <div id="ws-docs-list">${docsHtml}</div>
         </div>
 
-        <!-- Concept Links -->
         <div class="workspace-section">
           <div class="workspace-section-header">
-            <div class="workspace-section-title">${escapeHtml(t('workspace.conceptLinks'))} <span class="workspace-section-count">(${links.length})</span></div>
+            <div class="workspace-section-title">${escapeHtml(t('workspace.conceptLinks'))} <span class="workspace-section-count">${links.length}</span></div>
             <button class="workspace-btn workspace-btn-secondary workspace-btn-sm" id="ws-add-link">${ICONS.link} ${escapeHtml(t('workspace.addLink'))}</button>
           </div>
           <div id="ws-links-list">${linksHtml}</div>
@@ -303,7 +312,13 @@ function renderDetail() {
 
   // Delete workspace
   document.getElementById('ws-delete-btn')?.addEventListener('click', async () => {
-    if (!confirm(t('workspace.deleteConfirm', { name: ws.name }))) return;
+    const Modal = require('../components/Modal');
+    const confirmed = await Modal.showConfirm({
+      title: t('workspace.delete'),
+      message: t('workspace.deleteConfirm', { name: ws.name }),
+      danger: true,
+    });
+    if (!confirmed) return;
     await wsState.deleteWorkspace(ws.id);
     _view = 'list';
     render();
@@ -345,7 +360,13 @@ function renderDetail() {
       const docId = btn.dataset.docid;
       const doc = wsState.getDoc(docId);
       if (!doc) return;
-      if (!confirm(t('workspace.deleteDocConfirm', { title: doc.title }))) return;
+      const Modal = require('../components/Modal');
+      const confirmed = await Modal.showConfirm({
+        title: t('workspace.deleteDoc'),
+        message: t('workspace.deleteDocConfirm', { title: doc.title }),
+        danger: true,
+      });
+      if (!confirmed) return;
       await wsState.deleteDoc(ws.id, docId);
     });
   });
