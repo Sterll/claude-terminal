@@ -472,7 +472,8 @@ contextBridge.exposeInMainWorld('electron_api', {
     readme: (marketplace, pluginName) => ipcRenderer.invoke('plugin-readme', { marketplace, pluginName }),
     install: (marketplace, pluginName) => ipcRenderer.invoke('plugin-install', { marketplace, pluginName }),
     uninstall: (pluginKey) => ipcRenderer.invoke('plugin-uninstall', { pluginKey }),
-    addMarketplace: (url) => ipcRenderer.invoke('plugin-add-marketplace', { url })
+    addMarketplace: (url) => ipcRenderer.invoke('plugin-add-marketplace', { url }),
+    checkUpdates: () => ipcRenderer.invoke('plugin-check-updates')
   },
 
   // ==================== MARKETPLACE ====================
@@ -482,7 +483,8 @@ contextBridge.exposeInMainWorld('electron_api', {
     readme: (source, skillId) => ipcRenderer.invoke('marketplace-readme', { source, skillId }),
     install: (skill) => ipcRenderer.invoke('marketplace-install', { skill }),
     uninstall: (skillId) => ipcRenderer.invoke('marketplace-uninstall', { skillId }),
-    installed: () => ipcRenderer.invoke('marketplace-installed')
+    installed: () => ipcRenderer.invoke('marketplace-installed'),
+    checkUpdates: () => ipcRenderer.invoke('marketplace-check-updates')
   },
 
   // ==================== PROJECT ====================

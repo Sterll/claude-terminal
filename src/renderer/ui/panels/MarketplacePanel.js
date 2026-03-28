@@ -7,6 +7,7 @@ const { BasePanel } = require('../../core/BasePanel');
 const { escapeHtml } = require('../../utils');
 const { t } = require('../../i18n');
 const { showConfirm } = require('../components/Modal');
+const { renderReadmeMarkdown, bindReadmeLinks } = require('../../utils/markdown');
 
 class MarketplacePanel extends BasePanel {
   constructor(el, options = {}) {
@@ -17,7 +18,8 @@ class MarketplacePanel extends BasePanel {
       installed: [],
       loading: false,
       searchQuery: '',
-      searchCache: new Map()
+      searchCache: new Map(),
+      updateStatuses: {}
     };
     this._showToast = options.showToast;
     this._showModal = options.showModal;
@@ -39,6 +41,62 @@ class MarketplacePanel extends BasePanel {
     } else {
       await this.loadMarketplaceFeatured();
     }
+    this._checkUpdates();
+  }
+
+  async _checkUpdates() {
+    try {
+      const result = await this.api.marketplace.checkUpdates();
+      if (result.success && result.updates) {
+        this._state.updateStatuses = {};
+        for (const u of result.updates) {
+          this._state.updateStatuses[u.skillId] = u;
+        }
+        this._applyUpdateBadges();
+      }
+    } catch { /* silent */ }
+  }
+
+  _applyUpdateBadges() {
+    const cards = document.querySelectorAll('.marketplace-card.installed');
+    cards.forEach(card => {
+      const skillId = card.dataset.skillId;
+      if (this._state.updateStatuses[skillId]) {
+        const existing = card.querySelector('.update-badge');
+        if (!existing) {
+          const badge = document.createElement('span');
+          badge.className = 'update-badge';
+          badge.textContent = t('marketplace.updateAvailable');
+          const header = card.querySelector('.list-card-header');
+          if (header) header.appendChild(badge);
+        }
+        const footer = card.querySelector('.list-card-footer');
+        if (footer && !footer.querySelector('.btn-update')) {
+          const btn = document.createElement('button');
+          btn.className = 'btn-sm btn-update';
+          btn.textContent = t('marketplace.update');
+          btn.onclick = async (e) => {
+            e.stopPropagation();
+            btn.disabled = true;
+            btn.innerHTML = `<span class="btn-install-spinner"></span>${t('marketplace.updating')}`;
+            try {
+              const source = card.dataset.source;
+              const name = card.dataset.name;
+              const installs = parseInt(card.dataset.installs) || 0;
+              const result = await this.api.marketplace.install({ source, skillId, name, installs });
+              if (!result.success) throw new Error(result.error);
+              delete this._state.updateStatuses[skillId];
+              await this.loadMarketplaceContent();
+            } catch (err) {
+              btn.disabled = false;
+              btn.textContent = t('marketplace.update');
+              this._showToast({ type: 'error', title: t('marketplace.updateError'), message: err.message });
+            }
+          };
+          footer.appendChild(btn);
+        }
+      }
+    });
   }
 
   async searchMarketplace(query) {
@@ -47,7 +105,7 @@ class MarketplacePanel extends BasePanel {
     const cachedResults = this._state.searchCache.get(query);
     if (cachedResults) {
       this._state.searchResults = cachedResults;
-      this._renderCards(cachedResults, t('marketplace.searchResults'));
+      await this._renderCards(cachedResults, t('marketplace.searchResults'));
     } else {
       list.innerHTML = `<div class="marketplace-loading"><div class="spinner"></div>${t('common.loading')}</div>`;
     }
@@ -68,7 +126,7 @@ class MarketplacePanel extends BasePanel {
 
       if (JSON.stringify(newSkills) !== JSON.stringify(this._state.searchResults)) {
         this._state.searchResults = newSkills;
-        this._renderCards(newSkills, t('marketplace.searchResults'));
+        await this._renderCards(newSkills, t('marketplace.searchResults'));
       }
     } catch (e) {
       if (!cachedResults) {
@@ -81,7 +139,7 @@ class MarketplacePanel extends BasePanel {
     const list = document.getElementById('skills-list');
 
     if (this._state.featured.length > 0) {
-      this._renderCards(this._state.featured, t('marketplace.featured'));
+      await this._renderCards(this._state.featured, t('marketplace.featured'));
     } else {
       list.innerHTML = `<div class="marketplace-loading"><div class="spinner"></div>${t('common.loading')}</div>`;
     }
@@ -100,7 +158,7 @@ class MarketplacePanel extends BasePanel {
 
       if (JSON.stringify(newSkills) !== JSON.stringify(this._state.featured)) {
         this._state.featured = newSkills;
-        this._renderCards(this._state.featured, t('marketplace.featured'));
+        await this._renderCards(this._state.featured, t('marketplace.featured'));
       }
     } catch (e) {
       if (this._state.featured.length === 0) {
@@ -111,10 +169,11 @@ class MarketplacePanel extends BasePanel {
 
   // ── Private ──
 
-  _isSkillInstalled(skillId) {
+  async _isSkillInstalled(skillId) {
     try {
+      const { fileExists } = require('../../utils/fs-async');
       const skillPath = this.api.path.join(this._skillsDir, skillId);
-      return this.api.fs.existsSync(skillPath) && this.api.fs.existsSync(this.api.path.join(skillPath, 'SKILL.md'));
+      return await fileExists(skillPath) && await fileExists(this.api.path.join(skillPath, 'SKILL.md'));
     } catch { return false; }
   }
 
@@ -129,7 +188,7 @@ class MarketplacePanel extends BasePanel {
     return n.toString();
   }
 
-  _renderCards(skills, sectionTitle) {
+  async _renderCards(skills, sectionTitle) {
     const list = document.getElementById('skills-list');
 
     if (!skills || skills.length === 0) {
@@ -145,12 +204,12 @@ class MarketplacePanel extends BasePanel {
       <div class="list-section-title">${escapeHtml(sectionTitle)} <span class="list-section-count">${skills.length}</span></div>
       <div class="list-section-grid">`;
 
-    html += skills.map(skill => {
-      const installed = this._isSkillInstalled(skill.skillId || skill.name);
+    for (const skill of skills) {
+      const installed = await this._isSkillInstalled(skill.skillId || skill.name);
       const cardClass = installed ? 'list-card marketplace-card installed' : 'list-card marketplace-card';
       const skillName = skill.name || skill.skillId;
       const initial = escapeHtml((skillName || '?').charAt(0).toUpperCase());
-      return `
+      html += `
       <div class="${cardClass}" data-skill-id="${escapeHtml(skill.skillId || skill.name)}" data-source="${escapeHtml(skill.source || '')}" data-name="${escapeHtml(skillName)}" data-installs="${skill.installs || 0}">
         <div class="card-initial">${initial}</div>
         <div class="list-card-header">
@@ -174,7 +233,7 @@ class MarketplacePanel extends BasePanel {
           }
         </div>
       </div>`;
-    }).join('');
+    }
 
     html += `</div></div>`;
     list.innerHTML = html;
@@ -244,7 +303,7 @@ class MarketplacePanel extends BasePanel {
 
   async _showDetail(skill) {
     const { skillId, source, name, installs } = skill;
-    const installed = this._isSkillInstalled(skillId);
+    const installed = await this._isSkillInstalled(skillId);
 
     let readmeHtml = `<div class="marketplace-loading"><div class="spinner"></div>${t('common.loading')}</div>`;
 
@@ -279,7 +338,9 @@ class MarketplacePanel extends BasePanel {
       const readmeEl = document.getElementById('marketplace-readme-content');
       if (readmeEl) {
         if (result.success && result.readme) {
-          readmeEl.textContent = result.readme;
+          readmeEl.innerHTML = renderReadmeMarkdown(result.readme);
+          readmeEl.classList.add('readme-markdown');
+          bindReadmeLinks(readmeEl, (url) => this.api.dialog.openExternal(url));
         } else {
           readmeEl.innerHTML = `<em>${t('marketplace.noReadme')}</em>`;
         }

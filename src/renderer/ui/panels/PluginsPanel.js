@@ -7,6 +7,7 @@ const { BasePanel } = require('../../core/BasePanel');
 const { escapeHtml } = require('../../utils');
 const { t } = require('../../i18n');
 const { showConfirm } = require('../components/Modal');
+const { renderReadmeMarkdown, bindReadmeLinks } = require('../../utils/markdown');
 
 const PLUGIN_CATEGORIES = {
   all: { label: 'All', icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/></svg>' },
@@ -34,7 +35,8 @@ class PluginsPanel extends BasePanel {
         marketplaces: [],
         searchQuery: '',
         activeCategory: 'all'
-      }
+      },
+      updateStatuses: {}
     };
     this._showToast = options.showToast;
     this._showModal = options.showModal;
@@ -64,9 +66,81 @@ class PluginsPanel extends BasePanel {
       if (mpRes.success) this._state.data.marketplaces = mpRes.marketplaces;
 
       this._renderContent();
+      this._checkUpdates();
     } catch (e) {
       content.innerHTML = `<div class="plugins-empty-state"><h3>${t('common.error')}</h3><p>${escapeHtml(e.message)}</p></div>`;
     }
+  }
+
+  async _checkUpdates() {
+    try {
+      const result = await this.api.plugins.checkUpdates();
+      if (result.success && result.updates) {
+        this._state.updateStatuses = {};
+        for (const u of result.updates) {
+          this._state.updateStatuses[u.pluginKey || u.name] = u;
+        }
+        this._applyUpdateBadges();
+      }
+    } catch { /* silent */ }
+  }
+
+  _applyUpdateBadges() {
+    document.querySelectorAll('.plugin-installed-item').forEach(item => {
+      const pluginName = item.dataset.pluginName;
+      const marketplace = item.dataset.marketplace;
+      const key = `${pluginName}@${marketplace}`;
+      const update = this._state.updateStatuses[key] || this._state.updateStatuses[pluginName];
+      if (update) {
+        const nameRow = item.querySelector('.plugin-installed-name-row');
+        if (nameRow && !nameRow.querySelector('.update-badge')) {
+          const badge = document.createElement('span');
+          badge.className = 'update-badge';
+          badge.textContent = t('plugins.updateAvailable');
+          nameRow.appendChild(badge);
+        }
+        const actions = item.querySelector('.plugin-installed-actions');
+        if (actions && !actions.querySelector('.btn-update')) {
+          const btn = document.createElement('button');
+          btn.className = 'btn-sm btn-update';
+          btn.title = t('plugins.update');
+          btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`;
+          btn.onclick = async (e) => {
+            e.stopPropagation();
+            btn.disabled = true;
+            try {
+              const result = await this.api.plugins.install(marketplace, pluginName);
+              if (result.success) {
+                delete this._state.updateStatuses[key];
+                delete this._state.updateStatuses[pluginName];
+                this._showToast({ type: 'success', title: t('plugins.updateSuccess', { name: pluginName }) });
+                await this.loadPlugins();
+              } else {
+                throw new Error(result.error);
+              }
+            } catch (err) {
+              btn.disabled = false;
+              this._showToast({ type: 'error', title: t('plugins.updateError'), message: err.message });
+            }
+          };
+          actions.insertBefore(btn, actions.firstChild);
+        }
+      }
+    });
+
+    document.querySelectorAll('.plugin-card.is-installed').forEach(card => {
+      const pluginName = card.dataset.pluginName;
+      const marketplace = card.dataset.marketplace;
+      const key = `${pluginName}@${marketplace}`;
+      const update = this._state.updateStatuses[key] || this._state.updateStatuses[pluginName];
+      if (update && !card.querySelector('.update-badge')) {
+        const badge = document.createElement('span');
+        badge.className = 'update-badge';
+        badge.textContent = t('plugins.updateAvailable');
+        const top = card.querySelector('.plugin-card-top');
+        if (top) top.appendChild(badge);
+      }
+    });
   }
 
   // ── Private ──
@@ -514,8 +588,9 @@ class PluginsPanel extends BasePanel {
       const readmeEl = document.getElementById('plugin-detail-readme');
       if (readmeEl) {
         if (result.success && result.readme) {
-          readmeEl.textContent = result.readme;
-          readmeEl.style.whiteSpace = 'pre-wrap';
+          readmeEl.innerHTML = renderReadmeMarkdown(result.readme);
+          readmeEl.classList.add('readme-markdown');
+          bindReadmeLinks(readmeEl, (url) => require('electron').shell.openExternal(url));
         } else {
           readmeEl.innerHTML = `<em>${t('plugins.noReadme')}</em>`;
         }

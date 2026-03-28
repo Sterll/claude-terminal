@@ -445,11 +445,53 @@ function saveManifest(manifest) {
   }
 }
 
+/**
+ * Check for updates on all installed marketplace skills
+ * Uses GitHub API to compare latest commit date with installedAt
+ * @returns {Object} Map of skillId -> { hasUpdate, latestDate }
+ */
+async function checkSkillUpdates() {
+  const cached = getCached('updates:skills');
+  if (cached) return cached;
+
+  const manifest = loadManifest();
+  const results = {};
+  const entries = Object.entries(manifest.installed);
+
+  const checks = entries.map(async ([skillId, info]) => {
+    try {
+      if (!info.source || !info.installedAt) {
+        results[skillId] = { hasUpdate: false };
+        return;
+      }
+      const encodedPath = encodeURIComponent(`skills/${skillId}`);
+      const url = `https://api.github.com/repos/${info.source}/commits?path=${encodedPath}&per_page=1`;
+      const result = await httpsGet(url);
+
+      if (result.status === 200 && Array.isArray(result.data) && result.data.length > 0) {
+        const latestDate = result.data[0].commit.committer.date;
+        const hasUpdate = new Date(latestDate) > new Date(info.installedAt);
+        results[skillId] = { hasUpdate, latestDate };
+      } else {
+        results[skillId] = { hasUpdate: false };
+      }
+    } catch (e) {
+      console.warn(`[Marketplace] Update check failed for ${skillId}:`, e.message);
+      results[skillId] = { hasUpdate: false };
+    }
+  });
+
+  await Promise.allSettled(checks);
+  setCache('updates:skills', results, 30 * 60 * 1000); // 30 min cache
+  return results;
+}
+
 module.exports = {
   searchSkills,
   getFeatured,
   getSkillReadme,
   installSkill,
   uninstallSkill,
-  getInstalled
+  getInstalled,
+  checkSkillUpdates
 };

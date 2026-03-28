@@ -76,6 +76,16 @@ ipcMain.handle('plugin-uninstall', async (event, { pluginKey }) => {
       return { success: false, error: e.message };
     }
   });
+
+  ipcMain.handle('plugin-check-updates', async () => {
+    try {
+      const updates = PluginService.checkPluginUpdates();
+      return { success: true, updates };
+    } catch (e) {
+      console.error('[Plugin IPC] Check updates error:', e);
+      return { success: false, error: e.message };
+    }
+  });
 }
 
 module.exports = { registerPluginHandlers };

@@ -77,6 +77,17 @@ function registerMarketplaceHandlers() {
       return { success: false, error: e.message };
     }
   });
+
+  // Check for skill updates
+  ipcMain.handle('marketplace-check-updates', async () => {
+    try {
+      const updates = await MarketplaceService.checkSkillUpdates();
+      return { success: true, updates };
+    } catch (e) {
+      console.error('[Marketplace IPC] Check updates error:', e);
+      return { success: false, error: e.message };
+    }
+  });
 }
 
 module.exports = { registerMarketplaceHandlers };

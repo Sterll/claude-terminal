@@ -676,6 +676,34 @@ async function uninstallPlugin(pluginKey) {
   }
 }
 
+/**
+ * Check for updates on all installed plugins
+ * Compares installed version with catalog version
+ * @returns {Object} Map of pluginKey -> { hasUpdate, installedVersion, catalogVersion }
+ */
+function checkPluginUpdates() {
+  try {
+    const installed = getInstalledPlugins();
+    const catalog = getCatalog();
+    const results = {};
+
+    for (const plugin of installed) {
+      const catalogEntry = catalog.find(c => c.name === plugin.pluginName && c.marketplace === plugin.marketplace);
+      if (catalogEntry && catalogEntry.version && plugin.version) {
+        const hasUpdate = catalogEntry.version !== plugin.version;
+        results[plugin.key] = { hasUpdate, installedVersion: plugin.version, catalogVersion: catalogEntry.version };
+      } else {
+        results[plugin.key] = { hasUpdate: false };
+      }
+    }
+
+    return results;
+  } catch (e) {
+    console.error('[PluginService] checkPluginUpdates error:', e);
+    return {};
+  }
+}
+
 module.exports = {
   getInstalledPlugins,
   getMarketplaces,
@@ -684,5 +712,6 @@ module.exports = {
   getPluginReadme,
   installPlugin,
   uninstallPlugin,
-  addMarketplace
+  addMarketplace,
+  checkPluginUpdates
 };
