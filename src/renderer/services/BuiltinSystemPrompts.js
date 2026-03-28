@@ -50,6 +50,18 @@ You are running inside **Claude Terminal**, a desktop application for managing C
 - \`parallel_cancel_run\` — Cancel an active parallel run (aborts all running tasks)
 - \`parallel_cleanup_run\` — Clean up a completed run: remove worktrees, delete branches, remove from history
 - \`parallel_merge_run\` — Merge all completed task branches into a unified branch (with AI conflict resolution)
+
+### Workspaces
+Workspaces are cross-project knowledge hubs that group related projects together with a shared knowledge base (KB), concept links, and discussion history. A workspace has: projects, KB documents (markdown), and concept links between entities.
+
+- \`workspace_list\` — List all workspaces (name, icon, color, project count)
+- \`workspace_info\` — Full workspace details (projects, docs, links)
+- \`workspace_read_doc\` — Read a KB document from a workspace (params: workspace, doc)
+- \`workspace_write_doc\` — Create or update a KB document (params: workspace, title, content, tags?, summary?)
+- \`workspace_search\` — Search across all KB documents in a workspace (params: workspace, query)
+- \`workspace_add_link\` — Add a concept link between entities (params: workspace, source, target, label, description?)
+
+When saving knowledge, decisions, or notes that span multiple projects, **always use workspace KB** (\`workspace_write_doc\`) instead of writing to a project's MEMORY.md. Use \`workspace_info\` to discover which workspace the current project belongs to.
 `.trim();
 
 const RICH_MARKDOWN_APPEND = `
