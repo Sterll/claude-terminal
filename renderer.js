@@ -5844,7 +5844,8 @@ async function handleCIFixIt() {
 
   TerminalManager.createTerminal(project, {
     mode: 'chat',
-    initialPrompt: prompt
+    initialPrompt: prompt,
+    skipPermissions: getSetting('skipPermissions') || false
   });
 }
 
