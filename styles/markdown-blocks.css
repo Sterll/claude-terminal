@@ -827,11 +827,33 @@ code.line-numbers-off .code-line::before {
    SYNTAX HIGHLIGHTING
    ══════════════════════════════════════════════ */
 
-.syn-kw  { color: #c586c0; }              /* keywords — purple/pink */
-.syn-str { color: #ce9178; }              /* strings — warm orange */
-.syn-num { color: #b5cea8; }              /* numbers — soft green */
-.syn-fn  { color: #dcdcaa; }             /* functions — yellow */
-.syn-cmt { color: #6a9955; font-style: italic; }  /* comments — muted green */
+/* Keywords, built-ins, types */
+.hljs-keyword, .hljs-built_in, .hljs-type,
+.hljs-literal, .hljs-selector-tag         { color: #c586c0; }
+/* Strings, regex, additions */
+.hljs-string, .hljs-regexp, .hljs-addition,
+.hljs-selector-attr, .hljs-selector-pseudo { color: #ce9178; }
+/* Numbers, symbols */
+.hljs-number, .hljs-symbol                { color: #b5cea8; }
+/* Functions, titles, sections */
+.hljs-title, .hljs-title.function_,
+.hljs-section, .hljs-selector-class,
+.hljs-selector-id                          { color: #dcdcaa; }
+/* Comments, quotes, meta */
+.hljs-comment, .hljs-quote, .hljs-meta     { color: #6a9955; font-style: italic; }
+/* Attributes, params */
+.hljs-attr, .hljs-params                   { color: #9cdcfe; }
+/* Variables */
+.hljs-variable, .hljs-template-variable    { color: #4fc1ff; }
+/* Tags */
+.hljs-tag                                  { color: #569cd6; }
+/* Type names */
+.hljs-name                                 { color: #4ec9b0; }
+/* Deletions */
+.hljs-deletion                             { color: #ef4444; }
+/* Emphasis */
+.hljs-emphasis                             { font-style: italic; }
+.hljs-strong                               { font-weight: bold; }
 
 
 /* ══════════════════════════════════════════════

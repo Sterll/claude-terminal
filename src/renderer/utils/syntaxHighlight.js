@@ -1,138 +1,92 @@
 /**
- * Simple Syntax Highlighting
- * Regex-based highlighting for code preview
+ * Syntax Highlighting (highlight.js)
+ * Professional-grade highlighting with selective language loading.
  */
 
 const { escapeHtml } = require('./dom');
+const hljs = require('highlight.js/lib/core');
+
+// Register languages selectively (not the full 192-lang bundle)
+hljs.registerLanguage('javascript', require('highlight.js/lib/languages/javascript'));
+hljs.registerLanguage('typescript', require('highlight.js/lib/languages/typescript'));
+hljs.registerLanguage('python', require('highlight.js/lib/languages/python'));
+hljs.registerLanguage('lua', require('highlight.js/lib/languages/lua'));
+hljs.registerLanguage('xml', require('highlight.js/lib/languages/xml'));
+hljs.registerLanguage('css', require('highlight.js/lib/languages/css'));
+hljs.registerLanguage('scss', require('highlight.js/lib/languages/scss'));
+hljs.registerLanguage('less', require('highlight.js/lib/languages/less'));
+hljs.registerLanguage('json', require('highlight.js/lib/languages/json'));
+hljs.registerLanguage('yaml', require('highlight.js/lib/languages/yaml'));
+hljs.registerLanguage('bash', require('highlight.js/lib/languages/bash'));
+hljs.registerLanguage('sql', require('highlight.js/lib/languages/sql'));
+hljs.registerLanguage('rust', require('highlight.js/lib/languages/rust'));
+hljs.registerLanguage('go', require('highlight.js/lib/languages/go'));
+hljs.registerLanguage('java', require('highlight.js/lib/languages/java'));
+hljs.registerLanguage('cpp', require('highlight.js/lib/languages/cpp'));
+hljs.registerLanguage('c', require('highlight.js/lib/languages/c'));
+hljs.registerLanguage('csharp', require('highlight.js/lib/languages/csharp'));
+hljs.registerLanguage('php', require('highlight.js/lib/languages/php'));
+hljs.registerLanguage('ruby', require('highlight.js/lib/languages/ruby'));
+hljs.registerLanguage('markdown', require('highlight.js/lib/languages/markdown'));
+hljs.registerLanguage('diff', require('highlight.js/lib/languages/diff'));
+hljs.registerLanguage('kotlin', require('highlight.js/lib/languages/kotlin'));
+hljs.registerLanguage('swift', require('highlight.js/lib/languages/swift'));
+hljs.registerLanguage('powershell', require('highlight.js/lib/languages/powershell'));
 
 // Max size for syntax highlighting (50KB) - plain text above this
 const MAX_HIGHLIGHT_SIZE = 50 * 1024;
 
-// Language detection by extension
+// Language alias map (extension/shorthand → hljs language name)
 const LANG_MAP = {
   js: 'javascript', mjs: 'javascript', cjs: 'javascript',
-  ts: 'typescript', tsx: 'typescript',
   jsx: 'javascript',
+  ts: 'typescript', tsx: 'typescript',
   json: 'json',
-  html: 'html', htm: 'html',
-  css: 'css', scss: 'css', less: 'css',
+  html: 'xml', htm: 'xml', xml: 'xml',
+  css: 'css', scss: 'scss', less: 'less',
   lua: 'lua',
   py: 'python',
-  md: 'markdown',
+  md: 'markdown', markdown: 'markdown',
   yaml: 'yaml', yml: 'yaml',
   sh: 'bash', bash: 'bash', zsh: 'bash',
-  bat: 'bash', ps1: 'bash',
+  bat: 'powershell', ps1: 'powershell',
   sql: 'sql',
-  xml: 'html',
-  rs: 'rust',
+  rs: 'rust', rust: 'rust',
   go: 'go',
-  java: 'java', cs: 'java', cpp: 'java', c: 'java', php: 'java',
-  rb: 'ruby',
+  java: 'java',
+  cs: 'csharp', csharp: 'csharp',
+  cpp: 'cpp', cc: 'cpp', cxx: 'cpp',
+  c: 'c', h: 'c',
+  php: 'php',
+  rb: 'ruby', ruby: 'ruby',
   diff: 'diff',
-};
-
-// Comment patterns by language
-const COMMENT_PATTERNS = {
-  lua: /(--[^\n]*)/g,
-  sql: /(--[^\n]*)/g,
-  python: /(#[^\n]*)/g,
-  ruby: /(#[^\n]*)/g,
-  bash: /(#[^\n]*)/g,
-  yaml: /(#[^\n]*)/g,
-  html: /(&lt;!--[\s\S]*?--&gt;)/g,
-};
-const DEFAULT_COMMENT_PATTERN = /(\/\/[^\n]*)/g;
-
-const KEYWORDS = {
-  javascript: /\b(const|let|var|function|return|if|else|for|while|do|switch|case|break|continue|new|this|class|extends|import|export|default|from|async|await|try|catch|finally|throw|typeof|instanceof|in|of|null|undefined|true|false|yield|delete|void|super|static|get|set)\b/g,
-  typescript: /\b(const|let|var|function|return|if|else|for|while|do|switch|case|break|continue|new|this|class|extends|import|export|default|from|async|await|try|catch|finally|throw|typeof|instanceof|in|of|null|undefined|true|false|yield|delete|void|super|static|get|set|type|interface|enum|namespace|declare|abstract|implements|readonly|as|is|keyof|infer|never|unknown|any)\b/g,
-  python: /\b(def|class|return|if|elif|else|for|while|break|continue|import|from|as|try|except|finally|raise|with|yield|lambda|pass|del|global|nonlocal|assert|True|False|None|and|or|not|in|is|async|await|self)\b/g,
-  lua: /\b(local|function|return|if|then|else|elseif|end|for|while|do|repeat|until|break|in|and|or|not|nil|true|false|goto|self)\b/g,
-  html: /\b(DOCTYPE|html|head|body|div|span|script|style|link|meta|title|class|id|src|href|rel|type)\b/g,
-  css: /\b(display|flex|grid|position|width|height|margin|padding|border|background|color|font|text|align|justify|content|items|overflow|z-index|opacity|transition|transform|animation|none|auto|inherit|initial|important)\b/g,
-  json: null,
-  markdown: null,
-  yaml: /\b(true|false|null|yes|no)\b/g,
-  bash: /\b(if|then|else|elif|fi|for|while|do|done|case|esac|function|return|exit|echo|export|source|alias|cd|ls|grep|sed|awk|cat|mkdir|rm|cp|mv|chmod|chown|sudo|apt|npm|node|git|docker)\b/g,
-  sql: /\b(SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TABLE|INTO|VALUES|SET|JOIN|LEFT|RIGHT|INNER|OUTER|ON|AND|OR|NOT|NULL|IS|IN|LIKE|ORDER|BY|GROUP|HAVING|LIMIT|OFFSET|AS|DISTINCT|COUNT|SUM|AVG|MAX|MIN|INDEX|PRIMARY|KEY|FOREIGN|REFERENCES|CASCADE|UNIQUE|DEFAULT|CHECK|CONSTRAINT|EXISTS|BETWEEN|UNION|ALL|ANY|CASE|WHEN|THEN|ELSE|END|BEGIN|COMMIT|ROLLBACK)\b/gi,
-  rust: /\b(fn|let|mut|const|if|else|for|while|loop|break|continue|return|match|struct|enum|impl|trait|pub|use|mod|crate|self|super|as|in|ref|move|async|await|unsafe|where|type|true|false|Some|None|Ok|Err)\b/g,
-  go: /\b(func|var|const|if|else|for|range|switch|case|default|break|continue|return|go|defer|select|chan|map|struct|interface|type|package|import|true|false|nil|make|new|len|cap|append|delete|copy|panic|recover)\b/g,
-  java: /\b(public|private|protected|static|final|abstract|class|interface|extends|implements|return|if|else|for|while|do|switch|case|break|continue|new|this|super|try|catch|finally|throw|throws|import|package|void|int|long|float|double|boolean|char|byte|short|null|true|false|instanceof|synchronized|volatile|transient|native|enum|assert|override|using|namespace|string|var|const|virtual|struct)\b/g,
-  ruby: /\b(def|class|module|return|if|elsif|else|unless|for|while|do|end|begin|rescue|ensure|raise|yield|block_given|include|require|attr_reader|attr_writer|attr_accessor|self|super|nil|true|false|and|or|not|in|puts|print|lambda|proc)\b/g,
+  kt: 'kotlin', kotlin: 'kotlin',
+  swift: 'swift',
+  powershell: 'powershell',
+  javascript: 'javascript',
+  typescript: 'typescript',
+  python: 'python',
 };
 
 /**
  * Apply syntax highlighting to code
  * @param {string} code - Raw code string
- * @param {string} ext - File extension
+ * @param {string} ext - File extension or language name
  * @returns {string} HTML with syntax spans
  */
 function highlight(code, ext) {
-  const lang = LANG_MAP[ext] || null;
-  if (!lang) return escapeHtml(code);
+  if (!code) return escapeHtml(code);
+  const lang = LANG_MAP[ext] || ext;
+  if (!lang || !hljs.getLanguage(lang)) return escapeHtml(code);
 
   // Size limit: highlight only the first portion, plain text for the rest
   if (code.length > MAX_HIGHLIGHT_SIZE) {
     const truncated = code.substring(0, MAX_HIGHLIGHT_SIZE);
     const rest = code.substring(MAX_HIGHLIGHT_SIZE);
-    return highlightCore(truncated, lang) + escapeHtml(rest);
+    return hljs.highlight(truncated, { language: lang }).value + escapeHtml(rest);
   }
 
-  return highlightCore(code, lang);
-}
-
-function highlightCore(code, lang) {
-  if (lang === 'json') return highlightJSON(code);
-  if (lang === 'markdown') return highlightMarkdown(code);
-
-  let escaped = escapeHtml(code);
-  const tokens = [];
-
-  function protect(html) {
-    const id = tokens.length;
-    tokens.push(html);
-    return `\x00T${id}\x00`;
-  }
-
-  const commentPattern = COMMENT_PATTERNS[lang] || DEFAULT_COMMENT_PATTERN;
-  escaped = escaped.replace(commentPattern, (_, m) => protect(`<span class="syn-cmt">${m}</span>`));
-
-  escaped = escaped.replace(/(&quot;(?:[^&]|&(?!quot;))*?&quot;)/g, (_, m) => protect(`<span class="syn-str">${m}</span>`));
-  escaped = escaped.replace(/(&#x27;(?:[^&]|&(?!#x27;))*?&#x27;)/g, (_, m) => protect(`<span class="syn-str">${m}</span>`));
-  if (lang === 'javascript' || lang === 'typescript') {
-    escaped = escaped.replace(/(&#96;(?:[^&]|&(?!#96;))*?&#96;)/g, (_, m) => protect(`<span class="syn-str">${m}</span>`));
-  }
-
-  escaped = escaped.replace(/\b(\d+\.?\d*)\b/g, (_, m) => protect(`<span class="syn-num">${m}</span>`));
-
-  const kwRegex = KEYWORDS[lang];
-  if (kwRegex) {
-    escaped = escaped.replace(kwRegex, (_, m) => protect(`<span class="syn-kw">${m}</span>`));
-  }
-
-  escaped = escaped.replace(/\b([a-zA-Z_]\w*)\s*\(/g, (_, m) => protect(`<span class="syn-fn">${m}</span>`) + '(');
-
-  escaped = escaped.replace(/\x00T(\d+)\x00/g, (_, i) => tokens[i]);
-
-  return escaped;
-}
-
-function highlightJSON(code) {
-  let escaped = escapeHtml(code);
-  escaped = escaped.replace(/(&quot;[^&]*?&quot;)\s*:/g, '<span class="syn-fn">$1</span>:');
-  escaped = escaped.replace(/:\s*(&quot;[^&]*?&quot;)/g, ': <span class="syn-str">$1</span>');
-  escaped = escaped.replace(/:\s*(\d+\.?\d*)/g, ': <span class="syn-num">$1</span>');
-  escaped = escaped.replace(/:\s*(true|false|null)\b/g, ': <span class="syn-kw">$1</span>');
-  return escaped;
-}
-
-function highlightMarkdown(code) {
-  let escaped = escapeHtml(code);
-  escaped = escaped.replace(/^(#{1,6}\s.*)$/gm, '<span class="syn-kw">$1</span>');
-  escaped = escaped.replace(/(\*\*[^*]+\*\*)/g, '<span class="syn-fn">$1</span>');
-  escaped = escaped.replace(/(&#96;[^&]+?&#96;)/g, '<span class="syn-str">$1</span>');
-  escaped = escaped.replace(/(\[[^\]]+\]\([^)]+\))/g, '<span class="syn-str">$1</span>');
-  return escaped;
+  return hljs.highlight(code, { language: lang }).value;
 }
 
 module.exports = {

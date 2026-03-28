@@ -1450,12 +1450,23 @@ html, body {
   letter-spacing: 0.04em;
 }
 
-/* Syntax highlighting */
-.syn-kw  { color: #c586c0; }
-.syn-str { color: #ce9178; }
-.syn-cmt { color: #6a9955; font-style: italic; }
-.syn-num { color: #b5cea8; }
-.syn-fn  { color: #dcdcaa; }
+/* Syntax highlighting (highlight.js classes) */
+.hljs-keyword, .hljs-built_in, .hljs-type,
+.hljs-literal, .hljs-selector-tag         { color: #c586c0; }
+.hljs-string, .hljs-regexp, .hljs-addition,
+.hljs-selector-attr, .hljs-selector-pseudo { color: #ce9178; }
+.hljs-comment, .hljs-quote, .hljs-meta     { color: #6a9955; font-style: italic; }
+.hljs-number, .hljs-symbol                { color: #b5cea8; }
+.hljs-title, .hljs-title.function_,
+.hljs-section, .hljs-selector-class,
+.hljs-selector-id                          { color: #dcdcaa; }
+.hljs-attr, .hljs-params                   { color: #9cdcfe; }
+.hljs-variable, .hljs-template-variable    { color: #4fc1ff; }
+.hljs-tag                                  { color: #569cd6; }
+.hljs-name                                 { color: #4ec9b0; }
+.hljs-deletion                             { color: #ef4444; }
+.hljs-emphasis                             { font-style: italic; }
+.hljs-strong                               { font-weight: bold; }
 
 /* Thinking indicator */
 .thinking-indicator {
