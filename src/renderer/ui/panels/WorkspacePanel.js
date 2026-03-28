@@ -503,8 +503,8 @@ function showCreateEditModal(existingWs = null) {
   const colors = ['#d97706', '#ef4444', '#22c55e', '#3b82f6', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
   modal.innerHTML = `
-    <div class="modal-overlay" id="ws-modal-overlay">
-      <div class="modal-dialog" style="width:440px">
+    <div id="ws-modal-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:1000">
+      <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:var(--radius);width:440px;max-width:90%;max-height:80vh;overflow:auto">
         <div class="modal-header">
           <h3>${escapeHtml(isEdit ? t('workspace.edit') : t('workspace.create'))}</h3>
           <button class="modal-close" id="ws-modal-close">${ICONS.close}</button>
@@ -618,8 +618,7 @@ function showAddProjectDropdown(ws) {
   dropdown.id = 'ws-add-project-dropdown';
   dropdown.className = 'workspace-add-project-dropdown';
   dropdown.style.position = 'fixed';
-  dropdown.style.top = (rect.bottom + 4) + 'px';
-  dropdown.style.left = rect.left + 'px';
+  dropdown.style.zIndex = '1001';
 
   dropdown.innerHTML = available.map(p => `
     <div class="workspace-project-item" data-pid="${escapeHtml(p.id)}">
@@ -632,6 +631,15 @@ function showAddProjectDropdown(ws) {
   `).join('');
 
   document.body.appendChild(dropdown);
+
+  // Position with viewport bounds
+  const ddRect = dropdown.getBoundingClientRect();
+  let top = rect.bottom + 4;
+  let left = rect.right - ddRect.width;
+  if (left < 4) left = 4;
+  if (top + ddRect.height > window.innerHeight) top = rect.top - ddRect.height - 4;
+  dropdown.style.top = top + 'px';
+  dropdown.style.left = left + 'px';
 
   // Click to add
   dropdown.querySelectorAll('.workspace-project-item').forEach(item => {
@@ -655,8 +663,8 @@ function showAddProjectDropdown(ws) {
 function showNewDocModal(workspaceId) {
   const modal = createGenericModal();
   modal.innerHTML = `
-    <div class="modal-overlay" id="ws-doc-modal-overlay">
-      <div class="modal-dialog" style="width:380px">
+    <div id="ws-doc-modal-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:1000">
+      <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:var(--radius);width:380px;max-width:90%">
         <div class="modal-header">
           <h3>${escapeHtml(t('workspace.newDoc'))}</h3>
           <button class="modal-close" id="ws-doc-modal-close">${ICONS.close}</button>
@@ -708,8 +716,8 @@ function showAddLinkModal(workspaceId, projects, docs) {
   const labelsHtml = labels.map(l => `<option value="${l}">${escapeHtml(t(`workspace.linkLabels.${l}`))}</option>`).join('');
 
   modal.innerHTML = `
-    <div class="modal-overlay" id="ws-link-modal-overlay">
-      <div class="modal-dialog" style="width:420px">
+    <div id="ws-link-modal-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:1000">
+      <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:var(--radius);width:420px;max-width:90%">
         <div class="modal-header">
           <h3>${escapeHtml(t('workspace.addLink'))}</h3>
           <button class="modal-close" id="ws-link-modal-close">${ICONS.close}</button>
