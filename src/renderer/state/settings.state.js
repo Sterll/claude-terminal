@@ -5,6 +5,8 @@
 
 // Use preload API for Node.js modules
 const { fs } = window.electron_nodeModules;
+const { fileExists, atomicWriteJSON } = require('../utils/fs-async');
+const fsp = require('../utils/fs-async').fsp;
 const { State } = require('./State');
 const { settingsFile } = require('../utils/paths');
 
@@ -71,6 +73,8 @@ const defaultSettings = {
   maxTurns: null, // null = SDK default (100), or custom number for max agentic turns per session
   autoClaudeMdUpdate: true, // Suggest CLAUDE.md updates after chat sessions
   dailyGoal: 0, // Daily time goal in minutes (0 = disabled)
+  githubApiUrl: 'https://api.github.com', // GitHub API base URL (for GitHub Enterprise)
+  githubHostname: 'github.com', // GitHub hostname for remote URL detection
 };
 
 const settingsState = new State({ ...defaultSettings });
@@ -117,8 +121,8 @@ function setSetting(key, value) {
 async function loadSettings() {
   const backupFile = `${settingsFile}.bak`;
   try {
-    if (fs.existsSync(settingsFile)) {
-      const raw = await fs.promises.readFile(settingsFile, 'utf8');
+    if (await fileExists(settingsFile)) {
+      const raw = await fsp.readFile(settingsFile, 'utf8');
       if (raw && raw.trim()) {
         const saved = JSON.parse(raw);
         settingsState.set({ ...defaultSettings, ...saved });
@@ -129,8 +133,8 @@ async function loadSettings() {
     console.error('Error loading settings, attempting backup restore:', e);
     // Try to restore from backup
     try {
-      if (fs.existsSync(backupFile)) {
-        const backupRaw = await fs.promises.readFile(backupFile, 'utf8');
+      if (await fileExists(backupFile)) {
+        const backupRaw = await fsp.readFile(backupFile, 'utf8');
         if (backupRaw && backupRaw.trim()) {
           const saved = JSON.parse(backupRaw);
           settingsState.set({ ...defaultSettings, ...saved });
@@ -183,32 +187,15 @@ function saveSettings() {
 
 /**
  * Save settings to file immediately (no debounce)
- * Uses atomic write: tmp file → backup old → rename
+ * Uses atomic write: tmp file -> backup old -> rename
  */
-function saveSettingsImmediate() {
+async function saveSettingsImmediate() {
   clearTimeout(saveSettingsTimer);
-  const tempFile = `${settingsFile}.tmp`;
-  const backupFile = `${settingsFile}.bak`;
   try {
-    // Backup existing file before writing
-    if (fs.existsSync(settingsFile)) {
-      try { fs.copyFileSync(settingsFile, backupFile); } catch (_) {}
-    }
-    // Write to temp file first
-    fs.writeFileSync(tempFile, JSON.stringify(settingsState.get(), null, 2));
-    // Atomic rename
-    fs.renameSync(tempFile, settingsFile);
-    // Remove backup on success
-    try { if (fs.existsSync(backupFile)) fs.unlinkSync(backupFile); } catch (_) {}
+    await atomicWriteJSON(settingsFile, settingsState.get());
     _notifySaveListeners({ success: true });
   } catch (e) {
     console.error('Error saving settings:', e);
-    // Restore from backup if save failed
-    if (fs.existsSync(backupFile)) {
-      try { fs.copyFileSync(backupFile, settingsFile); } catch (_) {}
-    }
-    // Cleanup temp file
-    try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (_) {}
     _notifySaveListeners({ success: false, error: e });
   }
 }

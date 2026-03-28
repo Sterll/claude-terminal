@@ -89,13 +89,13 @@ function _extractFile(toolInput) {
   return null;
 }
 
-function _getProjectBranch(projectPath) {
+async function _getProjectBranch(projectPath) {
   try {
-    const { fs } = window.electron_nodeModules;
+    const { fileExists, fsp } = require('../../utils/fs-async');
     const path = window.electron_nodeModules.path;
     const headFile = path.join(projectPath, '.git', 'HEAD');
-    if (!fs.existsSync(headFile)) return null;
-    const content = fs.readFileSync(headFile, 'utf8').trim();
+    if (!await fileExists(headFile)) return null;
+    const content = (await fsp.readFile(headFile, 'utf8')).trim();
     if (content.startsWith('ref: refs/heads/')) {
       return content.slice('ref: refs/heads/'.length);
     }
@@ -157,7 +157,7 @@ function _wireEventBus() {
   } catch { return; }
 
   _unsubscribers.push(
-    eventBus.on(EVENT_TYPES.SESSION_START, (e) => {
+    eventBus.on(EVENT_TYPES.SESSION_START, async (e) => {
       if (!e.projectId) return;
 
       // Skip if this project runs in chat mode — covered by chat IPC events
@@ -180,7 +180,7 @@ function _wireEventBus() {
           type: 'terminal',
           projectName: project.name,
           projectPath: project.path,
-          branch: _getProjectBranch(project.path),
+          branch: await _getProjectBranch(project.path),
           status: 'THINKING',
           currentTool: null,
           currentFile: null,
@@ -198,7 +198,7 @@ function _wireEventBus() {
       _render();
     }),
 
-    eventBus.on(EVENT_TYPES.TOOL_START, (e) => {
+    eventBus.on(EVENT_TYPES.TOOL_START, async (e) => {
       if (!e.projectId) return;
       if (_projectHasChatTerminal(e.projectId)) return;
       const key = `hooks:${e.projectId}`;
@@ -212,7 +212,7 @@ function _wireEventBus() {
           type: 'terminal',
           projectName: project.name,
           projectPath: project.path,
-          branch: _getProjectBranch(project.path),
+          branch: await _getProjectBranch(project.path),
           status: 'RUNNING_TOOL',
           currentTool: e.data?.toolName || null,
           currentFile: _extractFile(e.data?.input),
@@ -467,19 +467,19 @@ function _findChatSession(sessionId) {
 
 // ── Terminals state scan ─────────────────────────────────────────────────────
 
-function _scanTerminals() {
+async function _scanTerminals() {
   try {
     const { terminalsState } = require('../../state/terminals.state');
     const terminals = terminalsState.get().terminals;
-    terminals.forEach((td, id) => {
+    for (const [id, td] of terminals) {
       // Only track Claude terminals (not basic, not fivem/webapp)
-      if (td.isBasic || td.type === 'fivem' || td.type === 'webapp') return;
+      if (td.isBasic || td.type === 'fivem' || td.type === 'webapp') continue;
 
       // Chat mode sessions are tracked via IPC events
-      if (td.mode === 'chat') return;
+      if (td.mode === 'chat') continue;
 
       // Hooks already tracks this project — skip to avoid duplicate
-      if (td.project?.id && _agents.has(`hooks:${td.project.id}`)) return;
+      if (td.project?.id && _agents.has(`hooks:${td.project.id}`)) continue;
 
       const key = `terminal:${id}`;
       console.log('[CT] scanTerminals → key:', key, 'status:', td.status);
@@ -490,7 +490,7 @@ function _scanTerminals() {
           type: 'terminal',
           projectName: td.projectName || td.project?.name || 'Unknown',
           projectPath: td.projectPath || td.project?.path || '',
-          branch: td.projectPath ? _getProjectBranch(td.projectPath) : null,
+          branch: td.projectPath ? await _getProjectBranch(td.projectPath) : null,
           status,
           currentTool: null,
           currentFile: null,
@@ -513,7 +513,7 @@ function _scanTerminals() {
         // Update terminalId if it changed
         a.terminalId = id;
       }
-    });
+    }
 
     // Remove terminal agents for terminals that no longer exist
     for (const [key, a] of _agents) {

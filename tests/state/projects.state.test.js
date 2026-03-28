@@ -566,13 +566,15 @@ describe('UI state', () => {
 
 describe('loadProjects', () => {
   test('handles missing file gracefully', async () => {
-    window.electron_nodeModules.fs.existsSync.mockReturnValue(false);
+    window.electron_nodeModules.fs.promises.access.mockRejectedValue(new Error('ENOENT'));
+    window.electron_nodeModules.fs.promises.mkdir.mockResolvedValue(undefined);
     await loadProjects();
     // Should not throw
   });
 
   test('handles empty file', async () => {
-    window.electron_nodeModules.fs.existsSync.mockReturnValue(true);
+    window.electron_nodeModules.fs.promises.access.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.mkdir.mockResolvedValue(undefined);
     window.electron_nodeModules.fs.promises.readFile.mockResolvedValue('   ');
     await loadProjects();
     const state = projectsState.get();
@@ -581,7 +583,8 @@ describe('loadProjects', () => {
   });
 
   test('migrates old array format', async () => {
-    window.electron_nodeModules.fs.existsSync.mockReturnValue(true);
+    window.electron_nodeModules.fs.promises.access.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.mkdir.mockResolvedValue(undefined);
     window.electron_nodeModules.fs.promises.readFile.mockResolvedValue(
       JSON.stringify([
         { name: 'Test', path: '/test' }
@@ -596,7 +599,8 @@ describe('loadProjects', () => {
   });
 
   test('loads new format correctly', async () => {
-    window.electron_nodeModules.fs.existsSync.mockReturnValue(true);
+    window.electron_nodeModules.fs.promises.access.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.mkdir.mockResolvedValue(undefined);
     window.electron_nodeModules.fs.promises.readFile.mockResolvedValue(
       JSON.stringify({
         projects: [{ id: 'p1', name: 'Test', path: '/test', type: 'webapp', folderId: null }],
@@ -612,7 +616,8 @@ describe('loadProjects', () => {
   });
 
   test('handles corrupted JSON', async () => {
-    window.electron_nodeModules.fs.existsSync.mockReturnValue(true);
+    window.electron_nodeModules.fs.promises.access.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.mkdir.mockResolvedValue(undefined);
     window.electron_nodeModules.fs.promises.readFile.mockResolvedValue('{corrupted json');
     // Mock notification API
     window.electron_api.notification = { show: jest.fn() };

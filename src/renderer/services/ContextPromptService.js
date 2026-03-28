@@ -15,8 +15,8 @@ class ContextPromptService extends BaseService {
 
   // ── Context Packs ──
 
-  loadContextPacks() {
-    const data = this._readJsonFile(contextPacksFile);
+  async loadContextPacks() {
+    const data = await this._readJsonFile(contextPacksFile);
     if (data) {
       this._contextPacks = {
         global: Array.isArray(data.global) ? data.global : [],
@@ -45,7 +45,7 @@ class ContextPromptService extends BaseService {
     return null;
   }
 
-  saveContextPack(pack, projectId = null) {
+  async saveContextPack(pack, projectId = null) {
     const now = Date.now();
     if (!pack.id) pack.id = _generateId('ctx');
     pack.updatedAt = now;
@@ -56,22 +56,22 @@ class ContextPromptService extends BaseService {
       : this._contextPacks.global;
     const idx = target.findIndex(p => p.id === pack.id);
     if (idx >= 0) target[idx] = pack; else target.push(pack);
-    this._writeJsonFile(contextPacksFile, this._contextPacks);
+    await this._writeJsonFile(contextPacksFile, this._contextPacks);
     return pack;
   }
 
-  deleteContextPack(id) {
+  async deleteContextPack(id) {
     let idx = this._contextPacks.global.findIndex(p => p.id === id);
     if (idx >= 0) {
       this._contextPacks.global.splice(idx, 1);
-      this._writeJsonFile(contextPacksFile, this._contextPacks);
+      await this._writeJsonFile(contextPacksFile, this._contextPacks);
       return true;
     }
     for (const packs of Object.values(this._contextPacks.projects)) {
       idx = packs.findIndex(p => p.id === id);
       if (idx >= 0) {
         packs.splice(idx, 1);
-        this._writeJsonFile(contextPacksFile, this._contextPacks);
+        await this._writeJsonFile(contextPacksFile, this._contextPacks);
         return true;
       }
     }
@@ -91,26 +91,33 @@ class ContextPromptService extends BaseService {
         switch (item.type) {
           case 'file': {
             const filePath = this.api.path.isAbsolute(item.path) ? item.path : this.api.path.join(projectPath || '', item.path);
-            if (!this.api.fs.existsSync(filePath)) { parts.push(`[File not found: ${item.path}]`); break; }
-            const raw = this.api.fs.readFileSync(filePath, 'utf8');
-            const lines = raw.split('\n');
-            if (lines.length > 500) {
-              parts.push(`--- ${item.path} (first 500 of ${lines.length} lines) ---`);
-              parts.push(lines.slice(0, 500).join('\n'));
-            } else {
-              parts.push(`--- ${item.path} ---`);
-              parts.push(raw);
+            try {
+              const raw = await this.api.fs.promises.readFile(filePath, 'utf8');
+              const lines = raw.split('\n');
+              if (lines.length > 500) {
+                parts.push(`--- ${item.path} (first 500 of ${lines.length} lines) ---`);
+                parts.push(lines.slice(0, 500).join('\n'));
+              } else {
+                parts.push(`--- ${item.path} ---`);
+                parts.push(raw);
+              }
+            } catch {
+              parts.push(`[File not found: ${item.path}]`);
             }
             parts.push('');
             break;
           }
           case 'folder': {
             const folderPath = this.api.path.isAbsolute(item.path) ? item.path : this.api.path.join(projectPath || '', item.path);
-            if (!this.api.fs.existsSync(folderPath)) { parts.push(`[Folder not found: ${item.path}]`); break; }
-            const files = this._listFolderFiles(folderPath, item.maxDepth || 2);
-            parts.push(`--- ${item.path}/ (${files.length} files) ---`);
-            for (const f of files.slice(0, 30)) parts.push(`  ${f}`);
-            if (files.length > 30) parts.push(`  ... and ${files.length - 30} more`);
+            try {
+              await this.api.fs.promises.access(folderPath);
+              const files = await this._listFolderFiles(folderPath, item.maxDepth || 2);
+              parts.push(`--- ${item.path}/ (${files.length} files) ---`);
+              for (const f of files.slice(0, 30)) parts.push(`  ${f}`);
+              if (files.length > 30) parts.push(`  ... and ${files.length - 30} more`);
+            } catch {
+              parts.push(`[Folder not found: ${item.path}]`);
+            }
             parts.push('');
             break;
           }
@@ -130,7 +137,7 @@ class ContextPromptService extends BaseService {
               for (const relFile of files.slice(0, 50)) {
                 const filePath = this.api.path.join(baseDir, relFile);
                 try {
-                  const content = this.api.fs.readFileSync(filePath, 'utf8');
+                  const content = await this.api.fs.promises.readFile(filePath, 'utf8');
                   if (totalChars + content.length > maxChars) { parts.push(`\n--- ${relFile} [skipped: size limit reached] ---`); continue; }
                   totalChars += content.length;
                   const lines = content.split('\n');
@@ -173,8 +180,8 @@ class ContextPromptService extends BaseService {
 
   // ── Prompt Templates ──
 
-  loadPromptTemplates() {
-    const data = this._readJsonFile(promptTemplatesFile);
+  async loadPromptTemplates() {
+    const data = await this._readJsonFile(promptTemplatesFile);
     if (data) {
       this._promptTemplates = {
         global: Array.isArray(data.global) ? data.global : [],
@@ -203,7 +210,7 @@ class ContextPromptService extends BaseService {
     return null;
   }
 
-  savePromptTemplate(template, projectId = null) {
+  async savePromptTemplate(template, projectId = null) {
     const now = Date.now();
     if (!template.id) template.id = _generateId('prompt');
     template.updatedAt = now;
@@ -214,22 +221,22 @@ class ContextPromptService extends BaseService {
       : this._promptTemplates.global;
     const idx = target.findIndex(t => t.id === template.id);
     if (idx >= 0) target[idx] = template; else target.push(template);
-    this._writeJsonFile(promptTemplatesFile, this._promptTemplates);
+    await this._writeJsonFile(promptTemplatesFile, this._promptTemplates);
     return template;
   }
 
-  deletePromptTemplate(id) {
+  async deletePromptTemplate(id) {
     let idx = this._promptTemplates.global.findIndex(t => t.id === id);
     if (idx >= 0) {
       this._promptTemplates.global.splice(idx, 1);
-      this._writeJsonFile(promptTemplatesFile, this._promptTemplates);
+      await this._writeJsonFile(promptTemplatesFile, this._promptTemplates);
       return true;
     }
     for (const tmpls of Object.values(this._promptTemplates.projects)) {
       idx = tmpls.findIndex(t => t.id === id);
       if (idx >= 0) {
         tmpls.splice(idx, 1);
-        this._writeJsonFile(promptTemplatesFile, this._promptTemplates);
+        await this._writeJsonFile(promptTemplatesFile, this._promptTemplates);
         return true;
       }
     }
@@ -268,34 +275,33 @@ class ContextPromptService extends BaseService {
 
   // ── Private helpers ──
 
-  _readJsonFile(filePath) {
+  async _readJsonFile(filePath) {
     try {
-      if (!this.api.fs.existsSync(filePath)) return null;
-      const raw = this.api.fs.readFileSync(filePath, 'utf8');
+      const raw = await this.api.fs.promises.readFile(filePath, 'utf8');
       if (!raw.trim()) return null;
       return JSON.parse(raw);
     } catch (e) {
-      console.error(`Error reading ${filePath}:`, e);
+      if (e.code !== 'ENOENT') console.error(`Error reading ${filePath}:`, e);
       return null;
     }
   }
 
-  _writeJsonFile(filePath, data) {
-    try { this.api.fs.writeFileSync(filePath, JSON.stringify(data, null, 2)); }
+  async _writeJsonFile(filePath, data) {
+    try { await this.api.fs.promises.writeFile(filePath, JSON.stringify(data, null, 2)); }
     catch (e) { console.error(`Error writing ${filePath}:`, e); }
   }
 
-  _listFolderFiles(dirPath, maxDepth, currentDepth = 0) {
+  async _listFolderFiles(dirPath, maxDepth, currentDepth = 0) {
     if (currentDepth >= maxDepth) return [];
     const ignoreDirs = new Set(['node_modules', '.git', 'dist', 'build', '__pycache__', '.next', '.cache', 'coverage']);
     const results = [];
     try {
-      const entries = this.api.fs.readdirSync(dirPath, { withFileTypes: true });
+      const entries = await this.api.fs.promises.readdir(dirPath, { withFileTypes: true });
       for (const entry of entries) {
         if (entry.name.startsWith('.') && entry.isDirectory()) continue;
         if (ignoreDirs.has(entry.name)) continue;
         if (entry.isDirectory()) {
-          const sub = this._listFolderFiles(this.api.path.join(dirPath, entry.name), maxDepth, currentDepth + 1);
+          const sub = await this._listFolderFiles(this.api.path.join(dirPath, entry.name), maxDepth, currentDepth + 1);
           for (const s of sub) results.push(`${entry.name}/${s}`);
         } else {
           results.push(entry.name);

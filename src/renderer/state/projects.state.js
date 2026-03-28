@@ -5,6 +5,8 @@
 
 // Use preload API for Node.js modules
 const { fs, path } = window.electron_nodeModules;
+const { fileExists, atomicWriteJSON } = require('../utils/fs-async');
+const fsp = require('../utils/fs-async').fsp;
 const { State } = require('./State');
 const { projectsFile, dataDir } = require('../utils/paths');
 const { t } = require('../i18n');
@@ -185,22 +187,20 @@ function isDescendantOf(folderId, ancestorId) {
 /**
  * Ensure data directory exists
  */
-function ensureDataDir() {
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
+async function ensureDataDir() {
+  await fsp.mkdir(dataDir, { recursive: true });
 }
 
 /**
  * Create backup of corrupted file
  * @param {string} filePath - Path to corrupted file
- * @returns {string|null} - Backup path or null if failed
+ * @returns {Promise<string|null>} - Backup path or null if failed
  */
-function createCorruptedBackup(filePath) {
+async function createCorruptedBackup(filePath) {
   try {
-    if (fs.existsSync(filePath)) {
+    if (await fileExists(filePath)) {
       const backupPath = `${filePath}.corrupted.${Date.now()}`;
-      fs.copyFileSync(filePath, backupPath);
+      await fsp.copyFile(filePath, backupPath);
       return backupPath;
     }
   } catch (e) {
@@ -214,10 +214,10 @@ function createCorruptedBackup(filePath) {
  */
 async function loadProjects() {
   try {
-    ensureDataDir();
+    await ensureDataDir();
 
-    if (fs.existsSync(projectsFile)) {
-      const rawContent = await fs.promises.readFile(projectsFile, 'utf8');
+    if (await fileExists(projectsFile)) {
+      const rawContent = await fsp.readFile(projectsFile, 'utf8');
 
       // Check for empty or whitespace-only file
       if (!rawContent || !rawContent.trim()) {
@@ -232,7 +232,7 @@ async function loadProjects() {
       } catch (parseError) {
         // JSON is corrupted - create backup and notify
         console.error('Projects file is corrupted:', parseError);
-        const backupPath = createCorruptedBackup(projectsFile);
+        const backupPath = await createCorruptedBackup(projectsFile);
 
         // Critical system alert — always shown regardless of notificationsEnabled
         try {
@@ -324,7 +324,7 @@ async function loadProjects() {
     console.error('Error loading projects:', e);
 
     // Create backup before resetting
-    createCorruptedBackup(projectsFile);
+    await createCorruptedBackup(projectsFile);
 
     projectsState.set({ projects: [], folders: [], rootOrder: [] });
   }
@@ -360,7 +360,7 @@ function saveProjects() {
 /**
  * Save projects immediately (atomic write pattern with lock)
  */
-function saveProjectsImmediate() {
+async function saveProjectsImmediate() {
   if (saveInProgress) {
     pendingSave = true;
     return;
@@ -370,51 +370,11 @@ function saveProjectsImmediate() {
 
   const { folders, projects, rootOrder } = projectsState.get();
   const data = { folders, projects, rootOrder };
-  const tempFile = `${projectsFile}.tmp`;
-  const backupFile = `${projectsFile}.bak`;
 
   try {
-    ensureDataDir();
-
-    // Create backup before writing
-    if (fs.existsSync(projectsFile)) {
-      try { fs.copyFileSync(projectsFile, backupFile); } catch (_) {}
-    }
-
-    // Write to temporary file first
-    fs.writeFileSync(tempFile, JSON.stringify(data, null, 2));
-
-    // Atomic rename (on most filesystems this is atomic)
-    fs.renameSync(tempFile, projectsFile);
-
-    // Remove backup on success
-    try { if (fs.existsSync(backupFile)) fs.unlinkSync(backupFile); } catch (_) {}
+    await atomicWriteJSON(projectsFile, data);
   } catch (error) {
     console.error('Failed to save projects:', error);
-
-    // Restore from backup if save failed
-    if (fs.existsSync(backupFile)) {
-      try {
-        fs.copyFileSync(backupFile, projectsFile);
-      } catch (backupErr) {
-        console.warn('[Projects] Backup file locked or inaccessible, retrying in 100ms:', backupErr.code || backupErr.message);
-        // Retry once after a short delay (Windows file lock may be transient)
-        setTimeout(() => {
-          try {
-            if (fs.existsSync(backupFile)) {
-              fs.copyFileSync(backupFile, projectsFile);
-            }
-          } catch (retryErr) {
-            console.warn('[Projects] Backup restore failed after retry, data may need manual recovery:', retryErr.code || retryErr.message);
-          }
-        }, 100);
-      }
-    }
-
-    // Cleanup temp file if it exists
-    try {
-      if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
-    } catch (_) {}
 
     saveInProgress = false;
 
@@ -427,7 +387,7 @@ function saveProjectsImmediate() {
       return;
     }
 
-    // All retries exhausted — critical system alert, always shown
+    // All retries exhausted -- critical system alert, always shown
     saveRetryCount = 0;
     try {
       window.electron_api.notification.show({

@@ -9,6 +9,7 @@ const { BasePanel } = require('../../core/BasePanel');
 const { escapeHtml } = require('../../utils');
 const { t } = require('../../i18n');
 const { projectsState } = require('../../state');
+const { fileExists, fsp } = require('../../utils/fs-async');
 
 // ── Path encoding (mirrors claude.ipc.js) ──
 
@@ -275,7 +276,7 @@ class MemoryEditor extends BasePanel {
   // ── Public entry points ──
 
   async loadMemory() {
-    this.renderMemorySources();
+    await this.renderMemorySources();
     await this.loadMemoryContent('global');
     this.setupMemoryEventListeners();
     this.initMemorySidebarResizer();
@@ -322,7 +323,7 @@ class MemoryEditor extends BasePanel {
 
   // ── Source list rendering ──
 
-  renderMemorySources(filter = '') {
+  async renderMemorySources(filter = '') {
     const projectsList = document.getElementById('memory-projects-list');
     const projects = projectsState.get().projects;
     const searchQuery = filter.toLowerCase();
@@ -346,18 +347,19 @@ class MemoryEditor extends BasePanel {
       return;
     }
 
-    projectsList.innerHTML = filteredProjects.map(p => {
+    const htmlParts = [];
+    for (const p of filteredProjects) {
       const claudeMdPath = this.api.path.join(p.path, 'CLAUDE.md');
-      const hasClaudeMd = this.api.fs.existsSync(claudeMdPath);
+      const hasClaudeMd = await fileExists(claudeMdPath);
 
       const privateClaudeMdPath = this._getProjectPrivateClaudeMd(p.path);
-      const hasPrivateClaudeMd = this.api.fs.existsSync(privateClaudeMdPath);
+      const hasPrivateClaudeMd = await fileExists(privateClaudeMdPath);
 
       const memoryDir = this._getProjectMemoryDir(p.path);
       let memoryFiles = [];
       try {
-        if (this.api.fs.existsSync(memoryDir)) {
-          memoryFiles = this.api.fs.readdirSync(memoryDir).filter(f => f.endsWith('.md'));
+        if (await fileExists(memoryDir)) {
+          memoryFiles = (await fsp.readdir(memoryDir)).filter(f => f.endsWith('.md'));
         }
       } catch { /* ignore */ }
       const hasMemory = memoryFiles.length > 0;
@@ -399,7 +401,7 @@ class MemoryEditor extends BasePanel {
         `;
       }
 
-      return `
+      htmlParts.push(`
         <div class="memory-project-group ${isExpanded ? 'expanded' : ''}">
           <div class="memory-project-header" data-project="${p.index}">
             <svg class="memory-chevron" viewBox="0 0 24 24" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
@@ -414,8 +416,9 @@ class MemoryEditor extends BasePanel {
             ${childrenHtml}
           </div>
         </div>
-      `;
-    }).join('');
+      `);
+    }
+    projectsList.innerHTML = htmlParts.join('');
   }
 
   // ── Content loading ──
@@ -441,27 +444,27 @@ class MemoryEditor extends BasePanel {
     let filePath = '';
     let title = '';
     let content = '';
-    let fileExists = false;
+    let fileFound = false;
 
     try {
       if (source === 'global') {
         filePath = this._getGlobalClaudeMd();
         title = t('memory.globalMemory');
-        fileExists = this.api.fs.existsSync(filePath);
-        if (fileExists) content = await this.api.fs.promises.readFile(filePath, 'utf8');
+        fileFound = await fileExists(filePath);
+        if (fileFound) content = await fsp.readFile(filePath, 'utf8');
 
       } else if (source === 'rules') {
         filePath = this._getRulesMd();
         title = t('memory.globalRules');
-        fileExists = this.api.fs.existsSync(filePath);
-        if (fileExists) content = await this.api.fs.promises.readFile(filePath, 'utf8');
+        fileFound = await fileExists(filePath);
+        if (fileFound) content = await fsp.readFile(filePath, 'utf8');
 
       } else if (source === 'settings') {
         filePath = this._getClaudeSettingsJson();
         title = t('memory.claudeSettings');
-        fileExists = this.api.fs.existsSync(filePath);
-        if (fileExists) {
-          const jsonContent = JSON.parse(await this.api.fs.promises.readFile(filePath, 'utf8'));
+        fileFound = await fileExists(filePath);
+        if (fileFound) {
+          const jsonContent = JSON.parse(await fsp.readFile(filePath, 'utf8'));
           content = JSON.stringify(jsonContent, null, 2);
         } else {
           content = '{}';
@@ -470,9 +473,9 @@ class MemoryEditor extends BasePanel {
       } else if (source === 'commands') {
         filePath = this._getClaudeSettingsJson();
         title = t('memory.allowedCommands');
-        fileExists = this.api.fs.existsSync(filePath);
-        if (fileExists) {
-          const jsonContent = JSON.parse(await this.api.fs.promises.readFile(filePath, 'utf8'));
+        fileFound = await fileExists(filePath);
+        if (fileFound) {
+          const jsonContent = JSON.parse(await fsp.readFile(filePath, 'utf8'));
           content = JSON.stringify(jsonContent.allowedCommands || jsonContent.permissions || {}, null, 2);
         } else {
           content = '{}';
@@ -483,8 +486,8 @@ class MemoryEditor extends BasePanel {
         if (project) {
           filePath = this.api.path.join(project.path, 'CLAUDE.md');
           title = `${project.name} \u2014 CLAUDE.md`;
-          fileExists = this.api.fs.existsSync(filePath);
-          if (fileExists) content = await this.api.fs.promises.readFile(filePath, 'utf8');
+          fileFound = await fileExists(filePath);
+          if (fileFound) content = await fsp.readFile(filePath, 'utf8');
         }
 
       } else if (source === 'project-private' && projectIndex !== null) {
@@ -492,8 +495,8 @@ class MemoryEditor extends BasePanel {
         if (project) {
           filePath = this._getProjectPrivateClaudeMd(project.path);
           title = `${project.name} \u2014 ${t('memory.privateInstructions')}`;
-          fileExists = this.api.fs.existsSync(filePath);
-          if (fileExists) content = await this.api.fs.promises.readFile(filePath, 'utf8');
+          fileFound = await fileExists(filePath);
+          if (fileFound) content = await fsp.readFile(filePath, 'utf8');
         }
 
       } else if (source === 'project-memory' && projectIndex !== null) {
@@ -501,7 +504,7 @@ class MemoryEditor extends BasePanel {
         if (project) {
           filePath = this._getProjectMemoryDir(project.path);
           title = `${project.name} \u2014 ${t('memory.autoMemory')}`;
-          fileExists = this.api.fs.existsSync(filePath);
+          fileFound = await fileExists(filePath);
           // Content handled specially in renderMemoryContent
         }
 
@@ -510,8 +513,8 @@ class MemoryEditor extends BasePanel {
         if (project && this._state.currentMemoryFile) {
           filePath = this.api.path.join(this._getProjectMemoryDir(project.path), this._state.currentMemoryFile);
           title = `${project.name} \u2014 ${this._state.currentMemoryFile}`;
-          fileExists = this.api.fs.existsSync(filePath);
-          if (fileExists) content = await this.api.fs.promises.readFile(filePath, 'utf8');
+          fileFound = await fileExists(filePath);
+          if (fileFound) content = await fsp.readFile(filePath, 'utf8');
         }
       }
     } catch (e) {
@@ -519,15 +522,15 @@ class MemoryEditor extends BasePanel {
     }
 
     this._state.content = content;
-    this._state.fileExists = fileExists;
+    this._state.fileExists = fileFound;
 
     titleEl.textContent = title;
     pathEl.textContent = filePath.replace(this.api.os.homedir(), '~');
 
     // Show/hide buttons based on context
     const isMarkdownSource = ['global', 'rules', 'project', 'project-private', 'project-memory-file'].includes(source);
-    editBtn.style.display = (isMarkdownSource && fileExists) ? 'flex' : 'none';
-    createBtn.style.display = (isMarkdownSource && !fileExists) ? 'flex' : 'none';
+    editBtn.style.display = (isMarkdownSource && fileFound) ? 'flex' : 'none';
+    createBtn.style.display = (isMarkdownSource && !fileFound) ? 'flex' : 'none';
     templateBtn.style.display = (isMarkdownSource && this._state.isEditing) ? 'flex' : 'none';
 
     if (isMarkdownSource) {
@@ -535,7 +538,7 @@ class MemoryEditor extends BasePanel {
     }
 
     // Render stats
-    if (fileExists && content && source !== 'project-memory') {
+    if (fileFound && content && source !== 'project-memory') {
       const stats = calculateMemoryStats(content, source);
       statsEl.innerHTML = stats;
       statsEl.style.display = 'flex';
@@ -543,18 +546,18 @@ class MemoryEditor extends BasePanel {
       statsEl.style.display = 'none';
     }
 
-    this.renderMemoryContent(content, source, fileExists);
-    this.renderMemorySources(this._state.searchQuery);
+    await this.renderMemoryContent(content, source, fileFound);
+    await this.renderMemorySources(this._state.searchQuery);
   }
 
   // ── Content rendering ──
 
-  renderMemoryContent(content, source, fileExists = true) {
+  async renderMemoryContent(content, source, fileExists = true) {
     const contentEl = document.getElementById('memory-content');
 
     // Memory folder → show file grid
     if (source === 'project-memory') {
-      this._renderMemoryFileGrid(contentEl, fileExists);
+      await this._renderMemoryFileGrid(contentEl, fileExists);
       return;
     }
 
@@ -671,7 +674,7 @@ class MemoryEditor extends BasePanel {
 
   // ── Memory file grid rendering ──
 
-  _renderMemoryFileGrid(contentEl, dirExists) {
+  async _renderMemoryFileGrid(contentEl, dirExists) {
     if (!dirExists) {
       contentEl.innerHTML = `
         <div class="memory-empty-state">
@@ -691,7 +694,7 @@ class MemoryEditor extends BasePanel {
     const memoryDir = this._getProjectMemoryDir(project.path);
     let files = [];
     try {
-      files = this.api.fs.readdirSync(memoryDir).filter(f => f.endsWith('.md'));
+      files = (await fsp.readdir(memoryDir)).filter(f => f.endsWith('.md'));
     } catch { /* ignore */ }
 
     if (files.length === 0) {
@@ -707,18 +710,20 @@ class MemoryEditor extends BasePanel {
     }
 
     // Get file stats
-    const fileInfos = files.map(f => {
+    const fileInfos = [];
+    for (const f of files) {
       const fp = this.api.path.join(memoryDir, f);
       try {
-        const stat = this.api.fs.statSync(fp);
-        const content = this.api.fs.readFileSync(fp, 'utf8');
+        const stat = await fsp.stat(fp);
+        const content = await fsp.readFile(fp, 'utf8');
         const lines = content.split('\n').length;
         const firstLine = content.split('\n').find(l => l.trim() && !l.startsWith('#')) || '';
-        return { name: f, lines, size: stat.size, modified: stat.mtime, preview: firstLine.trim().slice(0, 80) };
+        fileInfos.push({ name: f, lines, size: stat.size, modified: stat.mtime, preview: firstLine.trim().slice(0, 80) });
       } catch {
-        return { name: f, lines: 0, size: 0, modified: new Date(), preview: '' };
+        fileInfos.push({ name: f, lines: 0, size: 0, modified: new Date(), preview: '' });
       }
-    }).sort((a, b) => {
+    }
+    fileInfos.sort((a, b) => {
       // MEMORY.md first, then alphabetical
       if (a.name === 'MEMORY.md') return -1;
       if (b.name === 'MEMORY.md') return 1;
@@ -754,10 +759,10 @@ class MemoryEditor extends BasePanel {
 
   async _createEmptyFile(filePath, defaultContent = '') {
     const dir = this.api.path.dirname(filePath);
-    if (!this.api.fs.existsSync(dir)) {
-      this.api.fs.mkdirSync(dir, { recursive: true });
+    if (!await fileExists(dir)) {
+      await fsp.mkdir(dir, { recursive: true });
     }
-    this.api.fs.writeFileSync(filePath, defaultContent, 'utf8');
+    await fsp.writeFile(filePath, defaultContent, 'utf8');
   }
 
   // ── Template creation ──
@@ -782,8 +787,8 @@ class MemoryEditor extends BasePanel {
     if (source === 'global') {
       filePath = this._getGlobalClaudeMd();
       const claudeDir = this._getClaudeDir();
-      if (!this.api.fs.existsSync(claudeDir)) {
-        this.api.fs.mkdirSync(claudeDir, { recursive: true });
+      if (!await fileExists(claudeDir)) {
+        await fsp.mkdir(claudeDir, { recursive: true });
       }
     } else if (source === 'project' && this._state.currentProject !== null) {
       const project = projectsState.get().projects[this._state.currentProject];
@@ -793,15 +798,15 @@ class MemoryEditor extends BasePanel {
       if (project) {
         filePath = this._getProjectPrivateClaudeMd(project.path);
         const dir = this.api.path.dirname(filePath);
-        if (!this.api.fs.existsSync(dir)) {
-          this.api.fs.mkdirSync(dir, { recursive: true });
+        if (!await fileExists(dir)) {
+          await fsp.mkdir(dir, { recursive: true });
         }
       }
     }
 
     if (filePath) {
       try {
-        this.api.fs.writeFileSync(filePath, content, 'utf8');
+        await fsp.writeFile(filePath, content, 'utf8');
         await this.loadMemoryContent(this._state.currentSource, this._state.currentProject);
       } catch (e) {
         if (this._showToast) this._showToast({ type: 'error', title: t('memory.errorCreating', { message: e.message }) });
@@ -817,11 +822,11 @@ class MemoryEditor extends BasePanel {
 
     const searchInput = document.getElementById('memory-search-input');
     if (searchInput) {
-      searchInput.oninput = (e) => {
+      searchInput.oninput = async (e) => {
         this._state.searchQuery = e.target.value;
-        this.renderMemorySources(e.target.value);
+        await this.renderMemorySources(e.target.value);
         if (this._state.fileExists) {
-          this.renderMemoryContent(this._state.content, this._state.currentSource, this._state.fileExists);
+          await this.renderMemoryContent(this._state.content, this._state.currentSource, this._state.fileExists);
         }
       };
     }
@@ -844,7 +849,7 @@ class MemoryEditor extends BasePanel {
         } else {
           this._state.expandedProjects.add(projectIndex);
         }
-        this.renderMemorySources(this._state.searchQuery);
+        await this.renderMemorySources(this._state.searchQuery);
       }
     };
 
@@ -852,7 +857,7 @@ class MemoryEditor extends BasePanel {
       await this.loadMemoryContent(this._state.currentSource, this._state.currentProject);
     };
 
-    document.getElementById('btn-memory-open').onclick = () => {
+    document.getElementById('btn-memory-open').onclick = async () => {
       let filePath = '';
       const source = this._state.currentSource;
 
@@ -879,7 +884,7 @@ class MemoryEditor extends BasePanel {
       }
 
       if (filePath) {
-        if (!this.api.fs.existsSync(filePath)) {
+        if (!await fileExists(filePath)) {
           filePath = this.api.path.dirname(filePath);
         }
         this.api.dialog.openInExplorer(filePath);
@@ -902,17 +907,17 @@ class MemoryEditor extends BasePanel {
       this.showTemplateModal();
     };
 
-    document.getElementById('btn-memory-edit').onclick = () => {
+    document.getElementById('btn-memory-edit').onclick = async () => {
       if (this._state.currentSource === 'settings' || this._state.currentSource === 'commands') {
         const filePath = this._getClaudeSettingsJson();
-        if (this.api.fs.existsSync(filePath)) {
+        if (await fileExists(filePath)) {
           this.api.dialog.openInExplorer(filePath);
         }
         return;
       }
 
       if (this._state.isEditing) {
-        this.saveMemoryEdit();
+        await this.saveMemoryEdit();
       } else {
         this.enterMemoryEditMode();
       }
@@ -979,7 +984,7 @@ class MemoryEditor extends BasePanel {
     editor.focus();
   }
 
-  saveMemoryEdit() {
+  async saveMemoryEdit() {
     const editor = document.getElementById('memory-editor');
     if (!editor) return;
 
@@ -990,8 +995,8 @@ class MemoryEditor extends BasePanel {
     if (source === 'global') {
       filePath = this._getGlobalClaudeMd();
       const claudeDir = this._getClaudeDir();
-      if (!this.api.fs.existsSync(claudeDir)) {
-        this.api.fs.mkdirSync(claudeDir, { recursive: true });
+      if (!await fileExists(claudeDir)) {
+        await fsp.mkdir(claudeDir, { recursive: true });
       }
     } else if (source === 'rules') {
       filePath = this._getRulesMd();
@@ -1003,8 +1008,8 @@ class MemoryEditor extends BasePanel {
       if (project) {
         filePath = this._getProjectPrivateClaudeMd(project.path);
         const dir = this.api.path.dirname(filePath);
-        if (!this.api.fs.existsSync(dir)) {
-          this.api.fs.mkdirSync(dir, { recursive: true });
+        if (!await fileExists(dir)) {
+          await fsp.mkdir(dir, { recursive: true });
         }
       }
     } else if (source === 'project-memory-file' && this._state.currentProject !== null) {
@@ -1016,7 +1021,7 @@ class MemoryEditor extends BasePanel {
 
     if (filePath) {
       try {
-        this.api.fs.writeFileSync(filePath, newContent, 'utf8');
+        await fsp.writeFile(filePath, newContent, 'utf8');
         this._state.content = newContent;
         // Push global CLAUDE.md changes to cloud sync
         if (source === 'global' && window.electron_api?.sync?.pushEntity) {
@@ -1035,7 +1040,7 @@ class MemoryEditor extends BasePanel {
       ${t('memory.edit')}
     `;
 
-    this.renderMemoryContent(newContent, this._state.currentSource);
+    await this.renderMemoryContent(newContent, this._state.currentSource);
   }
 }
 

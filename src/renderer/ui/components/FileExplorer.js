@@ -7,6 +7,7 @@
 
 const api = window.electron_api;
 const { path, fs } = window.electron_nodeModules;
+const { fileExists, copyDirRecursive, fsp } = require('../../utils/fs-async');
 const { escapeHtml, debounce } = require('../../utils/dom');
 const { getFileIcon, CHEVRON_ICON } = require('../../utils/fileIcons');
 const { showContextMenu } = require('./ContextMenu');
@@ -632,7 +633,7 @@ async function executeRename(filePath, newName) {
   }
 
   // Check if target already exists — ask for confirmation
-  if (fs.existsSync(newPath)) {
+  if (await fileExists(newPath)) {
     const overwrite = await showConfirm({
       title: t('fileExplorer.rename') || 'Rename',
       message: (t('fileExplorer.renameOverwriteConfirm') || 'A file named "{name}" already exists. Overwrite?').replace('{name}', sanitized),
@@ -645,11 +646,11 @@ async function executeRename(filePath, newName) {
     }
     // Remove existing target before rename
     try {
-      const stat = fs.statSync(newPath);
+      const stat = await fsp.stat(newPath);
       if (stat.isDirectory()) {
-        fs.rmSync(newPath, { recursive: true, force: true });
+        await fsp.rm(newPath, { recursive: true, force: true });
       } else {
-        fs.unlinkSync(newPath);
+        await fsp.unlink(newPath);
       }
     } catch (e) {
       alert(`Error removing existing file: ${e.message}`);
@@ -659,7 +660,7 @@ async function executeRename(filePath, newName) {
   }
 
   try {
-    fs.renameSync(filePath, newPath);
+    await fsp.rename(filePath, newPath);
 
     if (expandedFolders.has(filePath)) {
       const entry = expandedFolders.get(filePath);
@@ -725,16 +726,16 @@ async function pasteCopiedFiles(targetDir) {
     if (!isPathSafe(destPath)) continue;
 
     // If destination exists, generate unique name
-    if (fs.existsSync(destPath)) {
-      destPath = generateCopyName(targetDir, baseName);
+    if (await fileExists(destPath)) {
+      destPath = await generateCopyName(targetDir, baseName);
     }
 
     try {
-      const stat = fs.statSync(sourcePath);
+      const stat = await fsp.stat(sourcePath);
       if (stat.isDirectory()) {
-        copyDirRecursive(sourcePath, destPath);
+        await copyDirRecursive(sourcePath, destPath);
       } else {
-        fs.copyFileSync(sourcePath, destPath);
+        await fsp.copyFile(sourcePath, destPath);
       }
     } catch (e) {
       // Skip failed copies
@@ -746,7 +747,7 @@ async function pasteCopiedFiles(targetDir) {
   refreshGitStatus();
 }
 
-function generateCopyName(targetDir, baseName) {
+async function generateCopyName(targetDir, baseName) {
   const ext = path.extname(baseName);
   const nameNoExt = ext ? baseName.slice(0, -ext.length) : baseName;
   let counter = 1;
@@ -755,36 +756,22 @@ function generateCopyName(targetDir, baseName) {
     const newName = ext ? `${nameNoExt} (${counter})${ext}` : `${nameNoExt} (${counter})`;
     newPath = path.join(targetDir, newName);
     counter++;
-  } while (fs.existsSync(newPath));
+  } while (await fileExists(newPath));
   return newPath;
-}
-
-function copyDirRecursive(src, dest) {
-  fs.mkdirSync(dest, { recursive: true });
-  const entries = fs.readdirSync(src, { withFileTypes: true });
-  for (const entry of entries) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-    if (entry.isDirectory()) {
-      copyDirRecursive(srcPath, destPath);
-    } else {
-      fs.copyFileSync(srcPath, destPath);
-    }
-  }
 }
 
 // ========== DUPLICATE FILE ==========
 async function duplicateFile(filePath) {
   const dirPath = path.dirname(filePath);
   const baseName = path.basename(filePath);
-  const destPath = generateCopyName(dirPath, baseName);
+  const destPath = await generateCopyName(dirPath, baseName);
 
   try {
-    const stat = fs.statSync(filePath);
+    const stat = await fsp.stat(filePath);
     if (stat.isDirectory()) {
-      copyDirRecursive(filePath, destPath);
+      await copyDirRecursive(filePath, destPath);
     } else {
-      fs.copyFileSync(filePath, destPath);
+      await fsp.copyFile(filePath, destPath);
     }
 
     await refreshFolder(dirPath);
@@ -1183,7 +1170,7 @@ async function promptNewFile(dirPath) {
   }
 
   try {
-    fs.writeFileSync(fullPath, '', 'utf-8');
+    await fsp.writeFile(fullPath, '', 'utf-8');
     await refreshFolder(dirPath);
     render();
     selectedFiles.clear();
@@ -1209,7 +1196,7 @@ async function promptNewFolder(dirPath) {
   }
 
   try {
-    fs.mkdirSync(fullPath, { recursive: true });
+    await fsp.mkdir(fullPath, { recursive: true });
     await refreshFolder(dirPath);
     render();
     refreshGitStatus();
@@ -1231,9 +1218,9 @@ async function promptDelete(filePath, fileName, isDirectory) {
 
   try {
     if (isDirectory) {
-      fs.rmSync(filePath, { recursive: true, force: true });
+      await fsp.rm(filePath, { recursive: true, force: true });
     } else {
-      fs.unlinkSync(filePath);
+      await fsp.unlink(filePath);
     }
 
     expandedFolders.delete(filePath);
@@ -1258,11 +1245,11 @@ async function promptDeleteMultiple() {
   const toDelete = [...selectedFiles];
   for (const filePath of toDelete) {
     try {
-      const stat = fs.statSync(filePath);
+      const stat = await fsp.stat(filePath);
       if (stat.isDirectory()) {
-        fs.rmSync(filePath, { recursive: true, force: true });
+        await fsp.rm(filePath, { recursive: true, force: true });
       } else {
-        fs.unlinkSync(filePath);
+        await fsp.unlink(filePath);
       }
       expandedFolders.delete(filePath);
       selectedFiles.delete(filePath);
@@ -1301,7 +1288,7 @@ async function moveItems(sourcePaths, targetDir) {
     if (!isPathSafe(destPath)) continue;
 
     // If destination already exists, ask user to confirm overwrite
-    if (fs.existsSync(destPath)) {
+    if (await fileExists(destPath)) {
       const overwrite = await showConfirm({
         title: t('fileExplorer.rename') || 'Move',
         message: (t('fileExplorer.renameOverwriteConfirm') || 'A file named "{name}" already exists. Overwrite?').replace('{name}', baseName),
@@ -1311,11 +1298,11 @@ async function moveItems(sourcePaths, targetDir) {
       if (!overwrite) continue;
       // Remove existing target before move
       try {
-        const destStat = fs.statSync(destPath);
+        const destStat = await fsp.stat(destPath);
         if (destStat.isDirectory()) {
-          fs.rmSync(destPath, { recursive: true, force: true });
+          await fsp.rm(destPath, { recursive: true, force: true });
         } else {
-          fs.unlinkSync(destPath);
+          await fsp.unlink(destPath);
         }
       } catch (e) {
         continue;
@@ -1323,7 +1310,7 @@ async function moveItems(sourcePaths, targetDir) {
     }
 
     try {
-      fs.renameSync(sourcePath, destPath);
+      await fsp.rename(sourcePath, destPath);
 
       if (expandedFolders.has(sourcePath)) {
         const entry = expandedFolders.get(sourcePath);
@@ -1439,7 +1426,7 @@ function attachListeners() {
   };
 
   // Keyboard: F2 for rename, Delete key, Ctrl+X/Ctrl+V for cut/paste
-  treeEl.onkeydown = (e) => {
+  treeEl.onkeydown = async (e) => {
     if (e.key === 'F2' && lastSelectedFile) {
       e.preventDefault();
       const fileName = path.basename(lastSelectedFile);
@@ -1450,7 +1437,11 @@ function attachListeners() {
       if (selectedFiles.size === 1) {
         const filePath = [...selectedFiles][0];
         const fileName = path.basename(filePath);
-        const isDir = fs.existsSync(filePath) && fs.statSync(filePath).isDirectory();
+        let isDir = false;
+        try {
+          const stat = await fsp.stat(filePath);
+          isDir = stat.isDirectory();
+        } catch (e) { /* file may not exist */ }
         promptDelete(filePath, fileName, isDir);
       } else {
         promptDeleteMultiple();
@@ -1471,9 +1462,14 @@ function attachListeners() {
       e.preventDefault();
       let targetDir = rootPath;
       if (lastSelectedFile) {
-        if (fs.existsSync(lastSelectedFile) && fs.statSync(lastSelectedFile).isDirectory()) {
-          targetDir = lastSelectedFile;
-        } else {
+        try {
+          const stat = await fsp.stat(lastSelectedFile);
+          if (stat.isDirectory()) {
+            targetDir = lastSelectedFile;
+          } else {
+            targetDir = path.dirname(lastSelectedFile);
+          }
+        } catch (e) {
           targetDir = path.dirname(lastSelectedFile);
         }
       }

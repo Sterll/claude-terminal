@@ -39,7 +39,24 @@ window.electron_nodeModules = {
       }),
       writeFile: jest.fn(async (p, data) => {
         fileStore[p] = typeof data === 'string' ? data : data.toString();
-      })
+      }),
+      access: jest.fn(async (p) => {
+        if (p in fileStore) return undefined;
+        const err = new Error('ENOENT');
+        err.code = 'ENOENT';
+        throw err;
+      }),
+      mkdir: jest.fn(async () => undefined),
+      copyFile: jest.fn(async (src, dest) => {
+        if (fileStore[src] !== undefined) fileStore[dest] = fileStore[src];
+      }),
+      rename: jest.fn(async (src, dest) => {
+        if (fileStore[src] !== undefined) {
+          fileStore[dest] = fileStore[src];
+          delete fileStore[src];
+        }
+      }),
+      unlink: jest.fn(async (p) => { delete fileStore[p]; })
     }
   },
   os: { homedir: () => '/mock/home' },
@@ -101,13 +118,17 @@ describe('projects state persistence', () => {
 
     // Trigger save (debounced 500ms)
     jest.advanceTimersByTime(600);
+    // Flush async saveProjectsImmediate
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
 
-    // Verify file was written (via renameSync for atomic write)
+    // Verify file was written (via async fsp.writeFile)
     const { fs } = window.electron_nodeModules;
-    expect(fs.writeFileSync).toHaveBeenCalled();
+    expect(fs.promises.writeFile).toHaveBeenCalled();
 
     // Get the saved data
-    const writeCall = fs.writeFileSync.mock.calls[fs.writeFileSync.mock.calls.length - 1];
+    const writeCall = fs.promises.writeFile.mock.calls[fs.promises.writeFile.mock.calls.length - 1];
     const tmpPath = writeCall[0];
     const savedContent = writeCall[1];
 
@@ -130,9 +151,12 @@ describe('projects state persistence', () => {
     projectsModule.moveItemToFolder('project', project.id, folder.id);
 
     jest.advanceTimersByTime(600);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
 
     const { fs } = window.electron_nodeModules;
-    const lastWrite = fs.writeFileSync.mock.calls[fs.writeFileSync.mock.calls.length - 1];
+    const lastWrite = fs.promises.writeFile.mock.calls[fs.promises.writeFile.mock.calls.length - 1];
     const parsed = JSON.parse(lastWrite[1]);
 
     expect(parsed.folders).toHaveLength(1);
@@ -141,7 +165,7 @@ describe('projects state persistence', () => {
     expect(parsed.projects[0].folderId).toBe(folder.id);
   });
 
-  test('debounce: rapid updates result in single write', () => {
+  test('debounce: rapid updates result in single write', async () => {
     const { fs } = window.electron_nodeModules;
 
     projectsModule.addProject({ name: 'P1', path: '/p1' });
@@ -149,13 +173,16 @@ describe('projects state persistence', () => {
     projectsModule.addProject({ name: 'P3', path: '/p3' });
 
     // Before debounce fires, no writes
-    expect(fs.writeFileSync).not.toHaveBeenCalled();
+    expect(fs.promises.writeFile).not.toHaveBeenCalled();
 
     // Advance past debounce
     jest.advanceTimersByTime(600);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
 
     // Should have written once (the final state)
-    const writeCalls = fs.writeFileSync.mock.calls;
+    const writeCalls = fs.promises.writeFile.mock.calls;
     // Only count calls that write to .tmp files (save calls)
     const saveCalls = writeCalls.filter(c => c[0].endsWith('.tmp'));
     expect(saveCalls.length).toBe(1);
@@ -164,39 +191,42 @@ describe('projects state persistence', () => {
     expect(parsed.projects).toHaveLength(3);
   });
 
-  test('atomic write pattern: writes to .tmp then renames', () => {
+  test('atomic write pattern: writes to .tmp then renames', async () => {
     const { fs } = window.electron_nodeModules;
 
     projectsModule.addProject({ name: 'Test', path: '/test' });
     jest.advanceTimersByTime(600);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
 
-    // Check that writeFileSync was called with .tmp path
-    const tmpWrites = fs.writeFileSync.mock.calls.filter(c => c[0].endsWith('.tmp'));
+    // Check that fsp.writeFile was called with .tmp path
+    const tmpWrites = fs.promises.writeFile.mock.calls.filter(c => c[0].endsWith('.tmp'));
     expect(tmpWrites.length).toBeGreaterThan(0);
 
-    // Check that renameSync was called (tmp → final)
-    expect(fs.renameSync).toHaveBeenCalled();
-    const renameCall = fs.renameSync.mock.calls[0];
+    // Check that fsp.rename was called (tmp -> final)
+    expect(fs.promises.rename).toHaveBeenCalled();
+    const renameCall = fs.promises.rename.mock.calls[0];
     expect(renameCall[0]).toMatch(/\.tmp$/);
     expect(renameCall[1]).toMatch(/projects\.json$/);
   });
 
-  test('backup file is created before write', () => {
+  test('backup file is created before write', async () => {
     const { fs } = window.electron_nodeModules;
+    const projectsFilePath = require('../../src/renderer/utils/paths').projectsFile;
 
-    // Simulate existing file
-    fs.existsSync.mockImplementation((p) => {
-      if (p.endsWith('projects.json')) return true;
-      if (p.endsWith('.bak')) return false;
-      return p in fileStore;
-    });
+    // Simulate existing file in the store so copyFile finds it
+    fileStore[projectsFilePath] = '{}';
 
     projectsModule.addProject({ name: 'Test', path: '/test' });
     jest.advanceTimersByTime(600);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
 
-    // copyFileSync should be called for backup
-    expect(fs.copyFileSync).toHaveBeenCalled();
-    const copyCall = fs.copyFileSync.mock.calls[0];
+    // fsp.copyFile should be called for backup
+    expect(fs.promises.copyFile).toHaveBeenCalled();
+    const copyCall = fs.promises.copyFile.mock.calls[0];
     expect(copyCall[0]).toMatch(/projects\.json$/);
     expect(copyCall[1]).toMatch(/\.bak$/);
   });
@@ -205,12 +235,8 @@ describe('projects state persistence', () => {
     const { fs } = window.electron_nodeModules;
     const projectsFilePath = require('../../src/renderer/utils/paths').projectsFile;
 
-    // Simulate corrupted main file and valid backup
-    fs.existsSync.mockImplementation((p) => {
-      if (p === projectsFilePath) return true;
-      return false;
-    });
-    fs.promises.readFile.mockResolvedValue('{corrupted data!!!');
+    // Simulate corrupted main file in store
+    fileStore[projectsFilePath] = '{corrupted data!!!';
 
     window.electron_api.notification = { show: jest.fn() };
 
@@ -221,7 +247,7 @@ describe('projects state persistence', () => {
     expect(state.projects).toEqual([]);
   });
 
-  test('quick actions are preserved in roundtrip', () => {
+  test('quick actions are preserved in roundtrip', async () => {
     const project = projectsModule.addProject({ name: 'Test', path: '/test' });
     projectsModule.addQuickAction(project.id, {
       name: 'Build',
@@ -230,9 +256,12 @@ describe('projects state persistence', () => {
     });
 
     jest.advanceTimersByTime(600);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
 
     const { fs } = window.electron_nodeModules;
-    const lastWrite = fs.writeFileSync.mock.calls[fs.writeFileSync.mock.calls.length - 1];
+    const lastWrite = fs.promises.writeFile.mock.calls[fs.promises.writeFile.mock.calls.length - 1];
     const parsed = JSON.parse(lastWrite[1]);
 
     expect(parsed.projects[0].quickActions).toHaveLength(1);
@@ -263,12 +292,15 @@ describe('settings state persistence', () => {
 
     // Run debounce
     jest.advanceTimersByTime(600);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
 
     // Verify write was called
-    expect(fs.writeFileSync).toHaveBeenCalled();
+    expect(fs.promises.writeFile).toHaveBeenCalled();
 
     // Parse the saved data (from the tmp file)
-    const tmpWrites = fs.writeFileSync.mock.calls.filter(c => c[0].endsWith('.tmp'));
+    const tmpWrites = fs.promises.writeFile.mock.calls.filter(c => c[0].endsWith('.tmp'));
     const lastWrite = tmpWrites[tmpWrites.length - 1];
     const parsed = JSON.parse(lastWrite[1]);
 
@@ -277,32 +309,30 @@ describe('settings state persistence', () => {
     expect(parsed.language).toBe('en');
   });
 
-  test('accent color hex is preserved exactly', () => {
+  test('accent color hex is preserved exactly', async () => {
     const { fs } = window.electron_nodeModules;
 
     settingsModule.setSetting('accentColor', '#d97706');
     jest.advanceTimersByTime(600);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
 
-    const tmpWrites = fs.writeFileSync.mock.calls.filter(c => c[0].endsWith('.tmp'));
+    const tmpWrites = fs.promises.writeFile.mock.calls.filter(c => c[0].endsWith('.tmp'));
     const parsed = JSON.parse(tmpWrites[tmpWrites.length - 1][1]);
 
     expect(parsed.accentColor).toBe('#d97706');
   });
 
   test('unknown settings keys are preserved (forward compatibility)', async () => {
-    const { fs } = window.electron_nodeModules;
     const settingsFilePath = require('../../src/renderer/utils/paths').settingsFile;
 
-    // Simulate loading a settings file with unknown keys
-    fs.existsSync.mockImplementation((p) => {
-      if (p === settingsFilePath) return true;
-      return p in fileStore;
-    });
-    fs.promises.readFile.mockResolvedValue(JSON.stringify({
+    // Simulate loading a settings file with unknown keys via in-memory store
+    fileStore[settingsFilePath] = JSON.stringify({
       accentColor: '#ff0000',
       unknownFutureKey: 'preserved',
       anotherNewSetting: { nested: true }
-    }));
+    });
 
     await settingsModule.loadSettings();
 
@@ -313,16 +343,12 @@ describe('settings state persistence', () => {
   });
 
   test('defaults are applied for missing keys on load', async () => {
-    const { fs } = window.electron_nodeModules;
     const settingsFilePath = require('../../src/renderer/utils/paths').settingsFile;
 
-    fs.existsSync.mockImplementation((p) => {
-      if (p === settingsFilePath) return true;
-      return p in fileStore;
-    });
-    fs.promises.readFile.mockResolvedValue(JSON.stringify({
+    // Simulate file with only one key via in-memory store
+    fileStore[settingsFilePath] = JSON.stringify({
       editor: 'webstorm'
-    }));
+    });
 
     await settingsModule.loadSettings();
 
@@ -338,17 +364,18 @@ describe('settings state persistence', () => {
     const settingsFilePath = require('../../src/renderer/utils/paths').settingsFile;
     const backupPath = settingsFilePath + '.bak';
 
-    fs.existsSync.mockImplementation((p) => {
-      if (p === settingsFilePath) return true;
-      if (p === backupPath) return true;
-      return p in fileStore;
-    });
+    // Both main and backup exist in the store
+    fileStore[settingsFilePath] = 'corrupted-data';
+    fileStore[backupPath] = JSON.stringify({ editor: 'cursor', accentColor: '#00ff00' });
 
-    let callCount = 0;
-    fs.promises.readFile.mockImplementation(async (p) => {
+    // Override readFile to throw on main file (simulating parse error after read)
+    const origReadFile = fs.promises.readFile;
+    fs.promises.readFile = jest.fn(async (p) => {
       if (p === settingsFilePath) throw new Error('Corrupted');
-      if (p === backupPath) return JSON.stringify({ editor: 'cursor', accentColor: '#00ff00' });
-      throw new Error('ENOENT');
+      if (p === backupPath) return fileStore[backupPath];
+      const err = new Error('ENOENT');
+      err.code = 'ENOENT';
+      throw err;
     });
 
     await settingsModule.loadSettings();
@@ -356,36 +383,39 @@ describe('settings state persistence', () => {
     const settings = settingsModule.getSettings();
     expect(settings.editor).toBe('cursor');
     expect(settings.accentColor).toBe('#00ff00');
+
+    // Restore original mock
+    fs.promises.readFile = origReadFile;
   });
 
-  test('save uses atomic write pattern', () => {
+  test('save uses atomic write pattern', async () => {
     const { fs } = window.electron_nodeModules;
 
     settingsModule.setSetting('editor', 'code');
 
     // Force immediate save
-    settingsModule.saveSettingsImmediate();
+    await settingsModule.saveSettingsImmediate();
 
     // Should write to tmp file
-    const tmpWrites = fs.writeFileSync.mock.calls.filter(c => c[0].endsWith('.tmp'));
+    const tmpWrites = fs.promises.writeFile.mock.calls.filter(c => c[0].endsWith('.tmp'));
     expect(tmpWrites.length).toBeGreaterThan(0);
 
     // Should rename tmp to final
-    expect(fs.renameSync).toHaveBeenCalled();
+    expect(fs.promises.rename).toHaveBeenCalled();
   });
 
-  test('onSaveFlush callback is notified on successful save', () => {
+  test('onSaveFlush callback is notified on successful save', async () => {
     const callback = jest.fn();
     const unsub = settingsModule.onSaveFlush(callback);
 
-    settingsModule.saveSettingsImmediate();
+    await settingsModule.saveSettingsImmediate();
 
     expect(callback).toHaveBeenCalledWith({ success: true });
 
     unsub();
   });
 
-  test('boolean settings are preserved correctly', () => {
+  test('boolean settings are preserved correctly', async () => {
     const { fs } = window.electron_nodeModules;
 
     settingsModule.setSetting('notificationsEnabled', false);
@@ -393,8 +423,11 @@ describe('settings state persistence', () => {
     settingsModule.setSetting('compactProjects', false);
 
     jest.advanceTimersByTime(600);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
 
-    const tmpWrites = fs.writeFileSync.mock.calls.filter(c => c[0].endsWith('.tmp'));
+    const tmpWrites = fs.promises.writeFile.mock.calls.filter(c => c[0].endsWith('.tmp'));
     const parsed = JSON.parse(tmpWrites[tmpWrites.length - 1][1]);
 
     expect(parsed.notificationsEnabled).toBe(false);

@@ -15,9 +15,12 @@ const { claudeConfigFile, legacyMcpsFile } = require('../utils/paths');
 class McpService extends BaseService {
   async loadMcps() {
     let mcps = [];
+    const fsp = this.api.fs.promises;
     try {
-      if (this.api.fs.existsSync(claudeConfigFile)) {
-        const config = JSON.parse(await this.api.fs.promises.readFile(claudeConfigFile, 'utf8'));
+      let configExists = false;
+      try { await fsp.access(claudeConfigFile); configExists = true; } catch {}
+      if (configExists) {
+        const config = JSON.parse(await fsp.readFile(claudeConfigFile, 'utf8'));
 
         if (config.mcpServers) {
           mcps = Object.entries(config.mcpServers).map(([id, sc]) => {
@@ -44,12 +47,16 @@ class McpService extends BaseService {
         }
       }
 
-      if (mcps.length === 0 && this.api.fs.existsSync(legacyMcpsFile)) {
-        const legacyMcps = JSON.parse(await this.api.fs.promises.readFile(legacyMcpsFile, 'utf8'));
-        if (Array.isArray(legacyMcps)) {
-          mcps = legacyMcps;
-          await this.saveMcps(mcps);
-          this.api.fs.unlinkSync(legacyMcpsFile);
+      if (mcps.length === 0) {
+        let legacyExists = false;
+        try { await fsp.access(legacyMcpsFile); legacyExists = true; } catch {}
+        if (legacyExists) {
+          const legacyMcps = JSON.parse(await fsp.readFile(legacyMcpsFile, 'utf8'));
+          if (Array.isArray(legacyMcps)) {
+            mcps = legacyMcps;
+            await this.saveMcps(mcps);
+            await fsp.unlink(legacyMcpsFile);
+          }
         }
       }
     } catch (e) {
@@ -62,10 +69,13 @@ class McpService extends BaseService {
   }
 
   async saveMcps(mcps) {
+    const fsp = this.api.fs.promises;
     try {
       let config = {};
-      if (this.api.fs.existsSync(claudeConfigFile)) {
-        config = JSON.parse(await this.api.fs.promises.readFile(claudeConfigFile, 'utf8'));
+      try {
+        config = JSON.parse(await fsp.readFile(claudeConfigFile, 'utf8'));
+      } catch (e) {
+        if (e.code !== 'ENOENT') throw e;
       }
 
       config.mcpServers = {};
@@ -78,8 +88,8 @@ class McpService extends BaseService {
       });
 
       const tmpFile = claudeConfigFile + '.tmp';
-      this.api.fs.writeFileSync(tmpFile, JSON.stringify(config, null, 2));
-      this.api.fs.renameSync(tmpFile, claudeConfigFile);
+      await fsp.writeFile(tmpFile, JSON.stringify(config, null, 2));
+      await fsp.rename(tmpFile, claudeConfigFile);
     } catch (e) {
       console.error('Error saving MCPs:', e);
     }

@@ -7,6 +7,7 @@
 // The API is exposed via contextBridge in preload.js
 const api = window.electron_api;
 const { path, fs, process: nodeProcess, __dirname } = window.electron_nodeModules;
+const { fileExists, fsp, ensureDirs } = require('./src/renderer/utils/fs-async');
 
 document.body.classList.add(`platform-${nodeProcess.platform}`);
 
@@ -166,7 +167,7 @@ const { initClaudeEvents, switchProvider, getDashboardStats, setNotificationFn }
 const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require('./src/renderer/services/TerminalSessionService');
 
 (async () => {
-  ensureDirectories();
+  await ensureDirectories();
 
   // Initialize core OOP infrastructure (ApiProvider + ServiceContainer)
   core.initCore(window.electron_api, window.electron_nodeModules);
@@ -224,7 +225,7 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
   try {
     const { setSkipExplorerCapture } = require('./src/renderer/services/TerminalSessionService');
     setSkipExplorerCapture(true);
-    const sessionData = loadSessionData();
+    const sessionData = await loadSessionData();
     if (sessionData && sessionData.projects) {
       const projects = projectsState.get().projects;
 
@@ -232,11 +233,11 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
         const saved = sessionData.projects[projectId];
         const project = projects.find(p => p.id === projectId);
         if (!project) continue;
-        if (!fs.existsSync(project.path)) continue;
+        if (!(await fileExists(project.path))) continue;
         if (!saved.tabs || saved.tabs.length === 0) continue;
 
         for (const tab of saved.tabs) {
-          const cwd = fs.existsSync(tab.cwd) ? tab.cwd : project.path;
+          const cwd = (await fileExists(tab.cwd)) ? tab.cwd : project.path;
           await TerminalManager.createTerminal(project, {
             runClaude: !tab.isBasic,
             cwd,
@@ -1337,23 +1338,24 @@ async function openNewWorktreeModal(project) {
 const _modalPinsFile = path.join(window.electron_nodeModules.os.homedir(), '.claude-terminal', 'session-pins.json');
 let _modalPinsCache = null;
 
-function _loadModalPins() {
+async function _loadModalPins() {
   if (_modalPinsCache) return _modalPinsCache;
   try {
-    _modalPinsCache = JSON.parse(fs.readFileSync(_modalPinsFile, 'utf8'));
+    const raw = await fsp.readFile(_modalPinsFile, 'utf8');
+    _modalPinsCache = JSON.parse(raw);
   } catch { _modalPinsCache = {}; }
   return _modalPinsCache;
 }
 
-function _saveModalPins() {
-  try { fs.writeFileSync(_modalPinsFile, JSON.stringify(_modalPinsCache || {}, null, 2), 'utf8'); } catch {}
+async function _saveModalPins() {
+  try { await fsp.writeFile(_modalPinsFile, JSON.stringify(_modalPinsCache || {}, null, 2), 'utf8'); } catch {}
 }
 
-function _toggleModalPin(sessionId) {
-  const pins = _loadModalPins();
+async function _toggleModalPin(sessionId) {
+  const pins = await _loadModalPins();
   if (pins[sessionId]) delete pins[sessionId]; else pins[sessionId] = true;
   _modalPinsCache = pins;
-  _saveModalPins();
+  await _saveModalPins();
   return !!pins[sessionId];
 }
 
@@ -1405,9 +1407,9 @@ function _truncateModalText(text, max) {
   return text.length <= max ? text : text.slice(0, max) + '...';
 }
 
-function _preprocessModalSessions(sessions) {
+async function _preprocessModalSessions(sessions) {
   const now = Date.now();
-  const pins = _loadModalPins();
+  const pins = await _loadModalPins();
   return sessions.map(session => {
     const promptResult = _cleanModalSessionText(session.firstPrompt);
     const summaryResult = _cleanModalSessionText(session.summary);
@@ -1495,7 +1497,7 @@ async function showSessionsModal(project) {
     const modalEl = document.getElementById('modal');
     modalEl?.classList.add('modal--sessions');
 
-    const processed = _preprocessModalSessions(sessions);
+    const processed = await _preprocessModalSessions(sessions);
     const groups = _groupModalSessions(processed);
     const flatSessions = [];
     groups.forEach(g => g.sessions.forEach(s => flatSessions.push(s)));
@@ -1541,13 +1543,13 @@ async function showSessionsModal(project) {
     const listEl = document.querySelector('.sessions-modal-modern .sessions-list');
 
     // Event delegation for clicks
-    listEl?.addEventListener('click', (e) => {
+    listEl?.addEventListener('click', async (e) => {
       const pinBtn = e.target.closest('.session-card-pin');
       if (pinBtn) {
         e.stopPropagation();
         const sid = pinBtn.dataset.pinSid;
         if (!sid) return;
-        _toggleModalPin(sid);
+        await _toggleModalPin(sid);
         // Invalidate cache in TerminalManager too
         _modalPinsCache = null;
         // Re-render
@@ -1614,20 +1616,21 @@ window.projectsState = projectsState;
 // ========== CLOUD STATE PERSISTENCE ==========
 const _cloudStateFile = path.join(window.electron_nodeModules.os.homedir(), '.claude-terminal', 'cloud-state.json');
 
-function _loadCloudState() {
+async function _loadCloudState() {
   try {
-    if (fs.existsSync(_cloudStateFile)) {
-      return JSON.parse(fs.readFileSync(_cloudStateFile, 'utf8'));
+    if (await fileExists(_cloudStateFile)) {
+      const raw = await fsp.readFile(_cloudStateFile, 'utf8');
+      return JSON.parse(raw);
     }
   } catch {}
   return {};
 }
 
-function _saveCloudState(partial) {
+async function _saveCloudState(partial) {
   try {
-    const current = _loadCloudState();
+    const current = await _loadCloudState();
     const merged = { ...current, ...partial };
-    fs.writeFileSync(_cloudStateFile, JSON.stringify(merged, null, 2), 'utf8');
+    await fsp.writeFile(_cloudStateFile, JSON.stringify(merged, null, 2), 'utf8');
   } catch (err) {
     console.warn('[Cloud] Failed to save cloud state:', err.message);
   }
@@ -1649,7 +1652,7 @@ async function refreshCloudProjects() {
     const localProjects = projectsState.get().projects || [];
 
     // Persist cloud project IDs for deletion detection
-    _saveCloudState({ lastKnownCloudProjectIds: [...cloudIds] });
+    await _saveCloudState({ lastKnownCloudProjectIds: [...cloudIds] });
 
     // Fetch sync metadata from main process (lastSync, errors, watcher status)
     let syncStatuses = {};
@@ -2107,7 +2110,7 @@ async function _autoSyncLocalChangesToCloud() {
  */
 async function _checkCloudDeletedProjects() {
   try {
-    const cloudState = _loadCloudState();
+    const cloudState = await _loadCloudState();
     const previousIds = new Set(cloudState.lastKnownCloudProjectIds || []);
     if (previousIds.size === 0) return; // No previous data — first connection
 
@@ -2153,7 +2156,7 @@ async function _checkCloudDeletedProjects() {
     }
 
     // Update stored state with current data
-    _saveCloudState({ lastKnownCloudProjectIds: [...currentIds] });
+    await _saveCloudState({ lastKnownCloudProjectIds: [...currentIds] });
     ProjectList.render();
   } catch (err) {
     console.warn('[Cloud] Check cloud-deleted projects failed:', err.message);
@@ -4001,8 +4004,8 @@ document.getElementById('btn-new-project').onclick = () => {
         if (detectionHint) {
           try {
             const pkgPath = path.join(folder, 'package.json');
-            if (fs.existsSync(pkgPath)) {
-              const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+            if (await fileExists(pkgPath)) {
+              const pkg = JSON.parse(await fsp.readFile(pkgPath, 'utf8'));
               const webappType = registry.get('webapp');
               const detected = webappType.detectFramework ? webappType.detectFramework(pkg) : null;
               if (detected) {
@@ -4038,9 +4041,9 @@ document.getElementById('btn-new-project').onclick = () => {
 
     // If using existing folder, ensure the directory exists
     if (selectedSource === 'folder') {
-      if (!fs.existsSync(projPath)) {
+      if (!(await fileExists(projPath))) {
         try {
-          fs.mkdirSync(projPath, { recursive: true });
+          await fsp.mkdir(projPath, { recursive: true });
           createdDir = projPath;
         } catch (err) {
           showToast(t('newProject.unableToCreateFolder', { error: err.message }), 'error');
@@ -4054,12 +4057,12 @@ document.getElementById('btn-new-project').onclick = () => {
     if (selectedSource === 'create') {
       projPath = path.join(projPath, name);
       try {
-        if (fs.existsSync(projPath)) {
+        if (await fileExists(projPath)) {
           showToast(t('newProject.folderAlreadyExists'), 'error');
           submitBtn.disabled = false;
           return;
         }
-        fs.mkdirSync(projPath, { recursive: true });
+        await fsp.mkdir(projPath, { recursive: true });
         createdDir = projPath;
 
         // Init git repo if checked
@@ -4067,7 +4070,7 @@ document.getElementById('btn-new-project').onclick = () => {
           const { execSync } = window.electron_nodeModules.child_process;
           try {
             execSync('git init', { cwd: projPath, stdio: 'ignore' });
-            fs.writeFileSync(path.join(projPath, '.gitignore'), [
+            await fsp.writeFile(path.join(projPath, '.gitignore'), [
               'node_modules/',
               'dist/',
               'build/',
@@ -4103,7 +4106,7 @@ document.getElementById('btn-new-project').onclick = () => {
 
         if (!result.success) {
           // Clean up partial clone directory (BUG 3)
-          try { if (fs.existsSync(projPath)) fs.rmSync(projPath, { recursive: true, force: true }); } catch (_) {}
+          try { if (await fileExists(projPath)) await fsp.rm(projPath, { recursive: true, force: true }); } catch (_) {}
           cloneStatus.innerHTML = `<div class="clone-error">${result.error}</div>`;
           submitBtn.disabled = false;
           submitBtn.textContent = t('newProject.create');
@@ -4112,7 +4115,7 @@ document.getElementById('btn-new-project').onclick = () => {
         createdDir = projPath;
       } catch (err) {
         // Clean up partial clone directory (BUG 3)
-        try { if (fs.existsSync(projPath)) fs.rmSync(projPath, { recursive: true, force: true }); } catch (_) {}
+        try { if (await fileExists(projPath)) await fsp.rm(projPath, { recursive: true, force: true }); } catch (_) {}
         cloneStatus.innerHTML = `<div class="clone-error">${err.message}</div>`;
         submitBtn.disabled = false;
         submitBtn.textContent = t('newProject.create');
@@ -4126,7 +4129,7 @@ document.getElementById('btn-new-project').onclick = () => {
       submitBtn.innerHTML = `<span class="btn-spinner"></span> ${t('newProject.scaffolding')}`;
 
       try {
-        if (fs.existsSync(projPath)) {
+        if (await fileExists(projPath)) {
           showToast(t('newProject.folderAlreadyExists'), 'error');
           submitBtn.disabled = false;
           submitBtn.textContent = t('newProject.create');
@@ -4153,7 +4156,7 @@ document.getElementById('btn-new-project').onclick = () => {
         selectedType = 'webapp';
       } catch (err) {
         // Clean up partial scaffold directory
-        try { if (fs.existsSync(projPath)) fs.rmSync(projPath, { recursive: true, force: true }); } catch (_) {}
+        try { if (await fileExists(projPath)) await fsp.rm(projPath, { recursive: true, force: true }); } catch (_) {}
         showToast(t('newProject.scaffoldError', { error: err.message }), 'error');
         submitBtn.disabled = false;
         submitBtn.textContent = t('newProject.create');
@@ -4658,25 +4661,25 @@ GitChangesPanel.init({
 
 
 // ========== BUNDLED SKILLS INSTALLATION ==========
-function installBundledSkills() {
+async function installBundledSkills() {
   const bundledSkillsPath = path.join(__dirname, 'resources', 'bundled-skills');
   const bundledSkills = ['create-skill', 'create-agents'];
 
-  bundledSkills.forEach(skillName => {
+  for (const skillName of bundledSkills) {
     const targetPath = path.join(skillsDir, skillName);
     const sourcePath = path.join(bundledSkillsPath, skillName, 'SKILL.md');
 
     // Only install if not already present
-    if (!fs.existsSync(targetPath) && fs.existsSync(sourcePath)) {
+    if (!(await fileExists(targetPath)) && (await fileExists(sourcePath))) {
       try {
-        fs.mkdirSync(targetPath, { recursive: true });
-        fs.copyFileSync(sourcePath, path.join(targetPath, 'SKILL.md'));
+        await fsp.mkdir(targetPath, { recursive: true });
+        await fsp.copyFile(sourcePath, path.join(targetPath, 'SKILL.md'));
         console.debug(`Installed bundled skill: ${skillName}`);
       } catch (e) {
         console.error(`Failed to install bundled skill ${skillName}:`, e);
       }
     }
-  });
+  }
 }
 
 // Install bundled skills on startup

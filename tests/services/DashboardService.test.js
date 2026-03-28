@@ -9,6 +9,10 @@ jest.mock('../../src/renderer/state', () => ({
     get: jest.fn(() => ({ projects: [] })),
     subscribe: jest.fn(),
   },
+  settingsState: {
+    get: jest.fn(() => ({ githubHostname: 'github.com' })),
+    subscribe: jest.fn(),
+  },
   setGitPulling: jest.fn(),
   setGitPushing: jest.fn(),
   setGitMerging: jest.fn(),

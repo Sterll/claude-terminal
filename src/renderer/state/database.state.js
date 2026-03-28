@@ -6,6 +6,8 @@
 const { State } = require('./State');
 const { queryHistoryFile, savedQueriesFile } = require('../utils/paths');
 const { fs } = window.electron_nodeModules;
+const { fileExists } = require('../utils/fs-async');
+const fsp = require('../utils/fs-async').fsp;
 
 const MAX_HISTORY = 200;
 const MAX_SAVED = 50;
@@ -235,15 +237,15 @@ function _debouncedSaveHistory() {
   historyDebounceTimer = setTimeout(_saveHistoryImmediate, HISTORY_SAVE_DEBOUNCE);
 }
 
-function _saveHistoryImmediate() {
+async function _saveHistoryImmediate() {
   clearTimeout(historyDebounceTimer);
   const tmpFile = queryHistoryFile + '.tmp';
   try {
-    fs.writeFileSync(tmpFile, JSON.stringify(databaseState.get().queryHistory, null, 2), 'utf8');
-    fs.renameSync(tmpFile, queryHistoryFile);
+    await fsp.writeFile(tmpFile, JSON.stringify(databaseState.get().queryHistory, null, 2), 'utf8');
+    await fsp.rename(tmpFile, queryHistoryFile);
   } catch (e) {
     console.error('[Database] History save failed:', e.message);
-    try { if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile); } catch (_) {}
+    try { await fsp.unlink(tmpFile); } catch (_) {}
   }
 }
 
@@ -252,26 +254,26 @@ function _debouncedSaveSaved() {
   savedDebounceTimer = setTimeout(_saveSavedImmediate, SAVED_SAVE_DEBOUNCE);
 }
 
-function _saveSavedImmediate() {
+async function _saveSavedImmediate() {
   clearTimeout(savedDebounceTimer);
   const tmpFile = savedQueriesFile + '.tmp';
   try {
-    fs.writeFileSync(tmpFile, JSON.stringify(databaseState.get().savedQueries, null, 2), 'utf8');
-    fs.renameSync(tmpFile, savedQueriesFile);
+    await fsp.writeFile(tmpFile, JSON.stringify(databaseState.get().savedQueries, null, 2), 'utf8');
+    await fsp.rename(tmpFile, savedQueriesFile);
   } catch (e) {
     console.error('[Database] Saved queries save failed:', e.message);
-    try { if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile); } catch (_) {}
+    try { await fsp.unlink(tmpFile); } catch (_) {}
   }
 }
 
-function loadDatabasePersistence() {
+async function loadDatabasePersistence() {
   if (persistenceLoaded) return;
   persistenceLoaded = true;
 
   // Load history
   try {
-    if (fs.existsSync(queryHistoryFile)) {
-      const raw = fs.readFileSync(queryHistoryFile, 'utf8');
+    if (await fileExists(queryHistoryFile)) {
+      const raw = await fsp.readFile(queryHistoryFile, 'utf8');
       if (raw && raw.trim()) {
         const data = JSON.parse(raw);
         if (Array.isArray(data)) {
@@ -292,8 +294,8 @@ function loadDatabasePersistence() {
 
   // Load saved queries
   try {
-    if (fs.existsSync(savedQueriesFile)) {
-      const raw = fs.readFileSync(savedQueriesFile, 'utf8');
+    if (await fileExists(savedQueriesFile)) {
+      const raw = await fsp.readFile(savedQueriesFile, 'utf8');
       if (raw && raw.trim()) {
         const data = JSON.parse(raw);
         if (Array.isArray(data)) {

@@ -13,6 +13,8 @@
  */
 
 const { fs, path } = window.electron_nodeModules;
+const { fileExists } = require('../utils/fs-async');
+const fsp = require('../utils/fs-async').fsp;
 const { State } = require('./State');
 const { timeTrackingFile, projectsFile } = require('../utils/paths');
 const ArchiveService = require('../services/ArchiveService');
@@ -63,8 +65,8 @@ let dirty = false;
 
 async function loadData() {
   try {
-    if (!fs.existsSync(timeTrackingFile)) return;
-    const content = await fs.promises.readFile(timeTrackingFile, 'utf8');
+    if (!await fileExists(timeTrackingFile)) return;
+    const content = await fsp.readFile(timeTrackingFile, 'utf8');
     if (!content || !content.trim()) return;
     const data = JSON.parse(content);
     dataState.set({
@@ -87,7 +89,7 @@ function save() {
   }, SAVE_DEBOUNCE);
 }
 
-function saveImmediate() {
+async function saveImmediate() {
   if (saveInProgress) { pendingSave = true; return; }
   saveInProgress = true;
 
@@ -118,24 +120,18 @@ function saveImmediate() {
 
     // Ensure parent directory exists
     const dir = path.dirname(timeTrackingFile);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
+    await fsp.mkdir(dir, { recursive: true });
 
     try {
-      fs.writeFileSync(tmpFile, jsonStr, 'utf8');
-
-      // Atomic rename
-      if (fs.existsSync(timeTrackingFile)) {
-        try { fs.copyFileSync(timeTrackingFile, bakFile); } catch (e) { /* ignore */ }
-      }
-      fs.renameSync(tmpFile, timeTrackingFile);
-      try { if (fs.existsSync(bakFile)) fs.unlinkSync(bakFile); } catch (e) { /* ignore */ }
+      await fsp.writeFile(tmpFile, jsonStr, 'utf8');
+      try { await fsp.copyFile(timeTrackingFile, bakFile); } catch {}
+      await fsp.rename(tmpFile, timeTrackingFile);
+      try { await fsp.unlink(bakFile); } catch {}
     } catch (renameErr) {
       // Fallback: write directly if atomic rename fails (e.g. antivirus lock on Windows)
       console.warn('[TimeTracking] Atomic save failed, falling back to direct write:', renameErr.message);
-      fs.writeFileSync(timeTrackingFile, jsonStr, 'utf8');
-      try { if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile); } catch (e) { /* ignore */ }
+      await fsp.writeFile(timeTrackingFile, jsonStr, 'utf8');
+      try { await fsp.unlink(tmpFile); } catch {}
     }
 
     dirty = false;
@@ -144,7 +140,7 @@ function saveImmediate() {
     // Try to restore from backup
     const bakFile = timeTrackingFile + '.bak';
     try {
-      if (fs.existsSync(bakFile)) fs.copyFileSync(bakFile, timeTrackingFile);
+      if (await fileExists(bakFile)) await fsp.copyFile(bakFile, timeTrackingFile);
     } catch (e2) { /* ignore */ }
   } finally {
     saveInProgress = false;
@@ -163,7 +159,7 @@ async function initTimeTracking(projectsState) {
   projectsStateRef = projectsState;
 
   // 1. Migrate old archive format
-  ArchiveService.migrateOldArchives();
+  await ArchiveService.migrateOldArchives();
 
   // 2. Load data
   await loadData();
@@ -175,7 +171,7 @@ async function initTimeTracking(projectsState) {
   recoverFromCheckpoint();
 
   // 5. Archive past-month sessions
-  archivePastMonths();
+  await archivePastMonths();
 
   // 6. Cleanup orphaned projects
   cleanupOrphans();
@@ -263,7 +259,7 @@ function recoverFromCheckpoint() {
   }
 }
 
-function archivePastMonths() {
+async function archivePastMonths() {
   const state = dataState.get();
   const currentMonthStr = getMonthString(); // "YYYY-MM"
 
@@ -296,7 +292,7 @@ function archivePastMonths() {
   }
 
   // The stored month is truly past — copy file as archive then reset
-  ArchiveService.archiveCurrentFile(state.month);
+  await ArchiveService.archiveCurrentFile(state.month);
 
   dataState.set({
     version: 3,
@@ -477,7 +473,7 @@ function tick() {
     const oldMonth = lastKnownDate.substring(0, 7);
     const newMonth = todayStr.substring(0, 7);
     if (oldMonth !== newMonth) {
-      archivePastMonths();
+      archivePastMonths().catch(e => console.warn('[TimeTracking] archivePastMonths error:', e.message));
     }
 
     lastKnownDate = todayStr;

@@ -8,6 +8,7 @@ const { BasePanel } = require('../../core/BasePanel');
 const { escapeHtml } = require('../../utils');
 const { t } = require('../../i18n');
 const { projectsState } = require('../../state');
+const { fileExists, fsp } = require('../../utils/fs-async');
 
 // ========== CATEGORY DETECTION ==========
 
@@ -179,8 +180,8 @@ class McpPanel extends BasePanel {
     this._state.mcps = [];
 
     try {
-      if (this.api.fs.existsSync(this._claudeConfigFile)) {
-        const config = JSON.parse(await this.api.fs.promises.readFile(this._claudeConfigFile, 'utf8'));
+      if (await fileExists(this._claudeConfigFile)) {
+        const config = JSON.parse(await fsp.readFile(this._claudeConfigFile, 'utf8'));
         if (config.mcpServers) {
           Object.entries(config.mcpServers).forEach(([name, mcpConfig]) => {
             this._state.mcps.push({
@@ -198,8 +199,8 @@ class McpPanel extends BasePanel {
     } catch (e) { console.error('Error loading MCPs from ~/.claude.json:', e); }
 
     try {
-      if (this.api.fs.existsSync(this._claudeSettingsFile)) {
-        const settings = JSON.parse(await this.api.fs.promises.readFile(this._claudeSettingsFile, 'utf8'));
+      if (await fileExists(this._claudeSettingsFile)) {
+        const settings = JSON.parse(await fsp.readFile(this._claudeSettingsFile, 'utf8'));
         if (settings.mcpServers) {
           Object.entries(settings.mcpServers).forEach(([name, config]) => {
             if (!this._state.mcps.find(m => m.name === name)) {
@@ -222,8 +223,8 @@ class McpPanel extends BasePanel {
     for (const project of projects) {
       try {
         const projectMcpFile = this.api.path.join(project.path, '.claude', 'settings.local.json');
-        if (this.api.fs.existsSync(projectMcpFile)) {
-          const projectSettings = JSON.parse(await this.api.fs.promises.readFile(projectMcpFile, 'utf8'));
+        if (await fileExists(projectMcpFile)) {
+          const projectSettings = JSON.parse(await fsp.readFile(projectMcpFile, 'utf8'));
           if (projectSettings.mcpServers) {
             Object.entries(projectSettings.mcpServers).forEach(([name, config]) => {
               const existingGlobal = this._state.mcps.find(m => m.name === name && m.source === 'global');
@@ -316,15 +317,15 @@ class McpPanel extends BasePanel {
     try {
       const tools = [];
 
-      const mainSource = await this.api.fs.promises.readFile(filePath, 'utf8');
+      const mainSource = await fsp.readFile(filePath, 'utf8');
       tools.push(...extractTools(mainSource));
 
       const toolsDir = this.api.path.join(this.api.path.dirname(filePath), 'tools');
-      if (this.api.fs.existsSync(toolsDir)) {
-        const files = this.api.fs.readdirSync(toolsDir).filter(f => f.endsWith('.js'));
+      if (await fileExists(toolsDir)) {
+        const files = (await fsp.readdir(toolsDir)).filter(f => f.endsWith('.js'));
         for (const file of files) {
           try {
-            const src = await this.api.fs.promises.readFile(this.api.path.join(toolsDir, file), 'utf8');
+            const src = await fsp.readFile(this.api.path.join(toolsDir, file), 'utf8');
             tools.push(...extractTools(src));
           } catch { /* ignore */ }
         }
@@ -1000,14 +1001,14 @@ class McpPanel extends BasePanel {
   async _saveMcpToConfig(serverName, mcpConfig) {
     try {
       let config = {};
-      if (this.api.fs.existsSync(this._claudeConfigFile)) {
-        config = JSON.parse(await this.api.fs.promises.readFile(this._claudeConfigFile, 'utf8'));
+      if (await fileExists(this._claudeConfigFile)) {
+        config = JSON.parse(await fsp.readFile(this._claudeConfigFile, 'utf8'));
       }
       if (!config.mcpServers) {
         config.mcpServers = {};
       }
       config.mcpServers[serverName] = mcpConfig;
-      this.api.fs.writeFileSync(this._claudeConfigFile, JSON.stringify(config, null, 2), 'utf8');
+      await fsp.writeFile(this._claudeConfigFile, JSON.stringify(config, null, 2), 'utf8');
     } catch (e) {
       console.error('Error saving MCP to config:', e);
       throw new Error('Failed to save configuration: ' + e.message);
@@ -1017,8 +1018,8 @@ class McpPanel extends BasePanel {
   async _loadLocalMcpsQuiet() {
     this._state.mcps = [];
     try {
-      if (this.api.fs.existsSync(this._claudeConfigFile)) {
-        const config = JSON.parse(await this.api.fs.promises.readFile(this._claudeConfigFile, 'utf8'));
+      if (await fileExists(this._claudeConfigFile)) {
+        const config = JSON.parse(await fsp.readFile(this._claudeConfigFile, 'utf8'));
         if (config.mcpServers) {
           Object.entries(config.mcpServers).forEach(([name, mcpConfig]) => {
             this._state.mcps.push({ id: `global-${name}`, name, command: mcpConfig.command || '', args: mcpConfig.args || [], env: mcpConfig.env || {}, source: 'global', sourceLabel: 'Global' });
@@ -1027,8 +1028,8 @@ class McpPanel extends BasePanel {
       }
     } catch { /* ignore */ }
     try {
-      if (this.api.fs.existsSync(this._claudeSettingsFile)) {
-        const settings = JSON.parse(await this.api.fs.promises.readFile(this._claudeSettingsFile, 'utf8'));
+      if (await fileExists(this._claudeSettingsFile)) {
+        const settings = JSON.parse(await fsp.readFile(this._claudeSettingsFile, 'utf8'));
         if (settings.mcpServers) {
           Object.entries(settings.mcpServers).forEach(([name, config]) => {
             if (!this._state.mcps.find(m => m.name === name)) {

@@ -21,16 +21,15 @@ function getRecapFilePath(projectId) {
 }
 
 /**
- * Get recaps for a project (synchronous, safe to call in HTML builders).
+ * Get recaps for a project.
  * @param {string} projectId
- * @returns {Array}
+ * @returns {Promise<Array>}
  */
-function getRecaps(projectId) {
+async function getRecaps(projectId) {
   if (!projectId) return [];
   try {
     const filePath = getRecapFilePath(projectId);
-    if (!fs.existsSync(filePath)) return [];
-    const raw = fs.readFileSync(filePath, 'utf-8');
+    const raw = await fs.promises.readFile(filePath, 'utf-8');
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed.recaps) ? parsed.recaps : [];
   } catch (e) {
@@ -38,12 +37,12 @@ function getRecaps(projectId) {
   }
 }
 
-function saveRecaps(projectId, recaps) {
+async function saveRecaps(projectId, recaps) {
   try {
     const filePath = getRecapFilePath(projectId);
     const tmpPath = filePath + '.tmp';
-    fs.writeFileSync(tmpPath, JSON.stringify({ _version: 1, recaps }, null, 2), 'utf-8');
-    fs.renameSync(tmpPath, filePath);
+    await fs.promises.writeFile(tmpPath, JSON.stringify({ _version: 1, recaps }, null, 2), 'utf-8');
+    await fs.promises.rename(tmpPath, filePath);
   } catch (e) {
     console.warn('[SessionRecap] Failed to save recaps:', e.message);
   }
@@ -101,9 +100,9 @@ async function handleSessionEnd(projectId, ctx) {
   };
 
   // Prepend new recap, cap to MAX_RECAPS (FIFO: newest first)
-  const existing = getRecaps(projectId);
+  const existing = await getRecaps(projectId);
   const updated = [recap, ...existing].slice(0, MAX_RECAPS);
-  saveRecaps(projectId, updated);
+  await saveRecaps(projectId, updated);
 
   console.debug(`[SessionRecap] Saved recap for project ${projectId} (source: ${source})`);
 

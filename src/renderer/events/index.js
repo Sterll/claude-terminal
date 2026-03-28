@@ -564,18 +564,19 @@ function wireClaudeMdReviewConsumer() {
       if (e.data?.reason !== 'end') return;
 
       // Debounce: show toast after 3 seconds (after the done notification)
-      setTimeout(() => {
+      setTimeout(async () => {
         try {
           const { showToast } = require('../ui/components/Toast');
           const { projectsState } = require('../state/projects.state');
           const project = (projectsState.get().projects || []).find(p => p.id === e.projectId);
           if (!project) return;
 
-          const { path: pathModule, fs } = window.electron_nodeModules;
+          const { path: pathModule } = window.electron_nodeModules;
+          const { fileExists } = require('../utils/fs-async');
           const claudeMdPath = pathModule.join(project.path, 'CLAUDE.md');
 
           // Only suggest if CLAUDE.md exists
-          try { fs.accessSync(claudeMdPath); } catch { return; }
+          if (!(await fileExists(claudeMdPath))) return;
 
           claudeMdReviewedProjects.add(e.projectId);
           // Auto-cleanup after 1 hour

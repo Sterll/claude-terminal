@@ -125,7 +125,7 @@ describe('loadSettings', () => {
   });
 
   test('loads valid JSON from settings file', async () => {
-    window.electron_nodeModules.fs.existsSync.mockReturnValue(true);
+    window.electron_nodeModules.fs.promises.access.mockResolvedValue(undefined);
     window.electron_nodeModules.fs.promises.readFile.mockResolvedValue(
       JSON.stringify({ editor: 'cursor', accentColor: '#ff0000' })
     );
@@ -137,7 +137,7 @@ describe('loadSettings', () => {
   });
 
   test('merges saved settings with defaults', async () => {
-    window.electron_nodeModules.fs.existsSync.mockReturnValue(true);
+    window.electron_nodeModules.fs.promises.access.mockResolvedValue(undefined);
     window.electron_nodeModules.fs.promises.readFile.mockResolvedValue(
       JSON.stringify({ editor: 'webstorm' })
     );
@@ -152,7 +152,7 @@ describe('loadSettings', () => {
   });
 
   test('handles missing file gracefully', async () => {
-    window.electron_nodeModules.fs.existsSync.mockReturnValue(false);
+    window.electron_nodeModules.fs.promises.access.mockRejectedValue(new Error('ENOENT'));
 
     await loadSettings();
     // Defaults should remain
@@ -160,9 +160,7 @@ describe('loadSettings', () => {
   });
 
   test('handles corrupted JSON — falls back to backup', async () => {
-    window.electron_nodeModules.fs.existsSync
-      .mockReturnValueOnce(true) // settings file exists
-      .mockReturnValueOnce(true); // backup file exists
+    window.electron_nodeModules.fs.promises.access.mockResolvedValue(undefined);
     window.electron_nodeModules.fs.promises.readFile
       .mockRejectedValueOnce(new Error('Parse error')) // main file fails
       .mockResolvedValueOnce(JSON.stringify({ editor: 'idea' })); // backup works
@@ -178,9 +176,7 @@ describe('loadSettings', () => {
   });
 
   test('handles corrupted main and backup gracefully', async () => {
-    window.electron_nodeModules.fs.existsSync
-      .mockReturnValueOnce(true) // settings file exists
-      .mockReturnValueOnce(true); // backup file exists
+    window.electron_nodeModules.fs.promises.access.mockResolvedValue(undefined);
     window.electron_nodeModules.fs.promises.readFile
       .mockRejectedValueOnce(new Error('Parse error'))
       .mockRejectedValueOnce(new Error('Backup also corrupt'));
@@ -188,13 +184,13 @@ describe('loadSettings', () => {
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
     await loadSettings();
-    // Should not throw — defaults remain
+    // Should not throw -- defaults remain
     expect(getSetting('editor')).toBeDefined();
     consoleSpy.mockRestore();
   });
 
   test('handles empty file content', async () => {
-    window.electron_nodeModules.fs.existsSync.mockReturnValue(true);
+    window.electron_nodeModules.fs.promises.access.mockResolvedValue(undefined);
     window.electron_nodeModules.fs.promises.readFile.mockResolvedValue('   ');
 
     await loadSettings();
@@ -210,11 +206,12 @@ describe('saveSettingsImmediate', () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
     resetSettingsState();
-    window.electron_nodeModules.fs.existsSync.mockReturnValue(false);
-    window.electron_nodeModules.fs.writeFileSync.mockImplementation(() => {});
-    window.electron_nodeModules.fs.renameSync.mockImplementation(() => {});
-    window.electron_nodeModules.fs.copyFileSync.mockImplementation(() => {});
-    window.electron_nodeModules.fs.unlinkSync.mockImplementation(() => {});
+    window.electron_nodeModules.fs.promises.access.mockRejectedValue(new Error('ENOENT'));
+    window.electron_nodeModules.fs.promises.mkdir.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.writeFile.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.rename.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.copyFile.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.unlink.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -222,43 +219,41 @@ describe('saveSettingsImmediate', () => {
     jest.useRealTimers();
   });
 
-  test('writes settings JSON to temp file', () => {
-    saveSettingsImmediate();
-    expect(window.electron_nodeModules.fs.writeFileSync).toHaveBeenCalled();
-    const callArgs = window.electron_nodeModules.fs.writeFileSync.mock.calls[0];
+  test('writes settings JSON to temp file', async () => {
+    await saveSettingsImmediate();
+    expect(window.electron_nodeModules.fs.promises.writeFile).toHaveBeenCalled();
+    const callArgs = window.electron_nodeModules.fs.promises.writeFile.mock.calls[0];
     expect(callArgs[0]).toContain('.tmp');
     const written = JSON.parse(callArgs[1]);
     expect(written.editor).toBe('code');
   });
 
-  test('renames temp file to settings file', () => {
-    saveSettingsImmediate();
-    expect(window.electron_nodeModules.fs.renameSync).toHaveBeenCalled();
+  test('renames temp file to settings file', async () => {
+    await saveSettingsImmediate();
+    expect(window.electron_nodeModules.fs.promises.rename).toHaveBeenCalled();
   });
 
-  test('backs up existing file before writing', () => {
-    window.electron_nodeModules.fs.existsSync.mockReturnValue(true);
-    saveSettingsImmediate();
-    expect(window.electron_nodeModules.fs.copyFileSync).toHaveBeenCalled();
+  test('backs up existing file before writing', async () => {
+    window.electron_nodeModules.fs.promises.copyFile.mockResolvedValue(undefined);
+    await saveSettingsImmediate();
+    expect(window.electron_nodeModules.fs.promises.copyFile).toHaveBeenCalled();
   });
 
-  test('notifies save listeners on success', () => {
+  test('notifies save listeners on success', async () => {
     const listener = jest.fn();
     const unsub = onSaveFlush(listener);
-    saveSettingsImmediate();
+    await saveSettingsImmediate();
     expect(listener).toHaveBeenCalledWith({ success: true });
     unsub();
   });
 
-  test('notifies save listeners on error', () => {
-    window.electron_nodeModules.fs.writeFileSync.mockImplementation(() => {
-      throw new Error('Disk full');
-    });
+  test('notifies save listeners on error', async () => {
+    window.electron_nodeModules.fs.promises.mkdir.mockRejectedValue(new Error('Disk full'));
     const listener = jest.fn();
     const unsub = onSaveFlush(listener);
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
-    saveSettingsImmediate();
+    await saveSettingsImmediate();
 
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
     consoleSpy.mockRestore();
@@ -271,9 +266,12 @@ describe('saveSettings (debounced)', () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
     resetSettingsState();
-    window.electron_nodeModules.fs.existsSync.mockReturnValue(false);
-    window.electron_nodeModules.fs.writeFileSync.mockImplementation(() => {});
-    window.electron_nodeModules.fs.renameSync.mockImplementation(() => {});
+    window.electron_nodeModules.fs.promises.access.mockRejectedValue(new Error('ENOENT'));
+    window.electron_nodeModules.fs.promises.mkdir.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.writeFile.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.rename.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.copyFile.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.unlink.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -283,21 +281,27 @@ describe('saveSettings (debounced)', () => {
 
   test('does not write immediately', () => {
     saveSettings();
-    expect(window.electron_nodeModules.fs.writeFileSync).not.toHaveBeenCalled();
+    expect(window.electron_nodeModules.fs.promises.writeFile).not.toHaveBeenCalled();
   });
 
-  test('writes after debounce period (500ms)', () => {
+  test('writes after debounce period (500ms)', async () => {
     saveSettings();
     jest.advanceTimersByTime(500);
-    expect(window.electron_nodeModules.fs.writeFileSync).toHaveBeenCalled();
+    // Flush microtasks for async saveSettingsImmediate
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(window.electron_nodeModules.fs.promises.writeFile).toHaveBeenCalled();
   });
 
-  test('multiple calls within debounce only write once', () => {
+  test('multiple calls within debounce only write once', async () => {
     saveSettings();
     saveSettings();
     saveSettings();
     jest.advanceTimersByTime(500);
-    expect(window.electron_nodeModules.fs.writeFileSync).toHaveBeenCalledTimes(1);
+    // Flush microtasks for async saveSettingsImmediate
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(window.electron_nodeModules.fs.promises.writeFile).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -308,9 +312,12 @@ describe('setSetting', () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
     resetSettingsState();
-    window.electron_nodeModules.fs.existsSync.mockReturnValue(false);
-    window.electron_nodeModules.fs.writeFileSync.mockImplementation(() => {});
-    window.electron_nodeModules.fs.renameSync.mockImplementation(() => {});
+    window.electron_nodeModules.fs.promises.access.mockRejectedValue(new Error('ENOENT'));
+    window.electron_nodeModules.fs.promises.mkdir.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.writeFile.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.rename.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.copyFile.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.unlink.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -323,10 +330,12 @@ describe('setSetting', () => {
     expect(getSetting('editor')).toBe('cursor');
   });
 
-  test('triggers save', () => {
+  test('triggers save', async () => {
     setSetting('editor', 'cursor');
     jest.advanceTimersByTime(500);
-    expect(window.electron_nodeModules.fs.writeFileSync).toHaveBeenCalled();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(window.electron_nodeModules.fs.promises.writeFile).toHaveBeenCalled();
   });
 
   test('preserves other settings', () => {
@@ -343,9 +352,12 @@ describe('updateSettings', () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
     resetSettingsState();
-    window.electron_nodeModules.fs.existsSync.mockReturnValue(false);
-    window.electron_nodeModules.fs.writeFileSync.mockImplementation(() => {});
-    window.electron_nodeModules.fs.renameSync.mockImplementation(() => {});
+    window.electron_nodeModules.fs.promises.access.mockRejectedValue(new Error('ENOENT'));
+    window.electron_nodeModules.fs.promises.mkdir.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.writeFile.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.rename.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.copyFile.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.unlink.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -359,10 +371,12 @@ describe('updateSettings', () => {
     expect(getSetting('accentColor')).toBe('#00ff00');
   });
 
-  test('triggers save', () => {
+  test('triggers save', async () => {
     updateSettings({ editor: 'cursor' });
     jest.advanceTimersByTime(500);
-    expect(window.electron_nodeModules.fs.writeFileSync).toHaveBeenCalled();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(window.electron_nodeModules.fs.promises.writeFile).toHaveBeenCalled();
   });
 });
 
@@ -373,9 +387,12 @@ describe('resetSettings', () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
     resetSettingsState();
-    window.electron_nodeModules.fs.existsSync.mockReturnValue(false);
-    window.electron_nodeModules.fs.writeFileSync.mockImplementation(() => {});
-    window.electron_nodeModules.fs.renameSync.mockImplementation(() => {});
+    window.electron_nodeModules.fs.promises.access.mockRejectedValue(new Error('ENOENT'));
+    window.electron_nodeModules.fs.promises.mkdir.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.writeFile.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.rename.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.copyFile.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.unlink.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -391,10 +408,12 @@ describe('resetSettings', () => {
     expect(getSetting('accentColor')).toBe('#d97706');
   });
 
-  test('triggers save after reset', () => {
+  test('triggers save after reset', async () => {
     resetSettings();
     jest.advanceTimersByTime(500);
-    expect(window.electron_nodeModules.fs.writeFileSync).toHaveBeenCalled();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(window.electron_nodeModules.fs.promises.writeFile).toHaveBeenCalled();
   });
 });
 
@@ -501,9 +520,12 @@ describe('isNotificationsEnabled / toggleNotifications', () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
     resetSettingsState();
-    window.electron_nodeModules.fs.existsSync.mockReturnValue(false);
-    window.electron_nodeModules.fs.writeFileSync.mockImplementation(() => {});
-    window.electron_nodeModules.fs.renameSync.mockImplementation(() => {});
+    window.electron_nodeModules.fs.promises.access.mockRejectedValue(new Error('ENOENT'));
+    window.electron_nodeModules.fs.promises.mkdir.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.writeFile.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.rename.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.copyFile.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.unlink.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -533,33 +555,36 @@ describe('onSaveFlush', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     resetSettingsState();
-    window.electron_nodeModules.fs.existsSync.mockReturnValue(false);
-    window.electron_nodeModules.fs.writeFileSync.mockImplementation(() => {});
-    window.electron_nodeModules.fs.renameSync.mockImplementation(() => {});
+    window.electron_nodeModules.fs.promises.access.mockRejectedValue(new Error('ENOENT'));
+    window.electron_nodeModules.fs.promises.mkdir.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.writeFile.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.rename.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.copyFile.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.unlink.mockResolvedValue(undefined);
   });
 
-  test('listener is called on successful save', () => {
+  test('listener is called on successful save', async () => {
     const listener = jest.fn();
     const unsub = onSaveFlush(listener);
-    saveSettingsImmediate();
+    await saveSettingsImmediate();
     expect(listener).toHaveBeenCalledWith({ success: true });
     unsub();
   });
 
-  test('unsubscribe removes listener', () => {
+  test('unsubscribe removes listener', async () => {
     const listener = jest.fn();
     const unsub = onSaveFlush(listener);
     unsub();
-    saveSettingsImmediate();
+    await saveSettingsImmediate();
     expect(listener).not.toHaveBeenCalled();
   });
 
-  test('multiple listeners all receive notification', () => {
+  test('multiple listeners all receive notification', async () => {
     const listener1 = jest.fn();
     const listener2 = jest.fn();
     const unsub1 = onSaveFlush(listener1);
     const unsub2 = onSaveFlush(listener2);
-    saveSettingsImmediate();
+    await saveSettingsImmediate();
     expect(listener1).toHaveBeenCalled();
     expect(listener2).toHaveBeenCalled();
     unsub1();

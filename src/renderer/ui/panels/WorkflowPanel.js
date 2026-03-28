@@ -1293,8 +1293,8 @@ function openEditor(workflowId = null) {
    * @param {Object} node - Le node LiteGraph courant
    * @returns {string} HTML généré
    */
-  function _renderFieldsFromDef(fields, props, node) {
-    return fields.map(field => {
+  async function _renderFieldsFromDef(fields, props, node) {
+    const results = await Promise.all(fields.map(async (field) => {
       // Gérer conditional fields (showIf déjà hydraté en fonction par NodeRegistry)
       if (field.showIf && typeof field.showIf === 'function') {
         if (!field.showIf(props)) return '';
@@ -1310,7 +1310,7 @@ function openEditor(workflowId = null) {
       // Inline custom field (render/bind définis directement dans le field)
       if (field.type === 'custom' && typeof field.render === 'function') {
         try {
-          return field.render(field, props, node);
+          return await field.render(field, props, node);
         } catch (e) {
           console.warn('[WorkflowPanel] custom field render error', field.key, e);
           return '';
@@ -1320,7 +1320,7 @@ function openEditor(workflowId = null) {
       // Essayer le field renderer custom d'abord
       const customRenderer = fieldRegistry.get(field.type);
       if (customRenderer) {
-        return customRenderer.render(field, props[field.key] ?? '', node);
+        return await customRenderer.render(field, props[field.key] ?? '', node);
       }
 
       // Renderers built-in
@@ -1381,11 +1381,12 @@ function openEditor(workflowId = null) {
             <input class="wf-step-edit-input wf-node-prop" data-key="${key}" value="${escapeHtml(String(value))}" />
           </div>`;
       }
-    }).join('');
+    }));
+    return results.join('');
   }
 
   // ── Properties panel rendering ──
-  const renderProperties = (node) => {
+  const renderProperties = async (node) => {
     const propsEl = panel.querySelector('#wf-ed-properties');
     if (!propsEl) return;
 
@@ -1444,7 +1445,7 @@ function openEditor(workflowId = null) {
     // ── Moteur générique (registry-driven) ──────────────────────────────────
     const nodeDef = nodeRegistry.get(node.type);
     if (nodeDef && nodeDef.fields && nodeDef.fields.length > 0) {
-      fieldsHtml = _renderFieldsFromDef(nodeDef.fields, props, node);
+      fieldsHtml = await _renderFieldsFromDef(nodeDef.fields, props, node);
     }
 
     const customTitle = node.properties._customTitle || '';

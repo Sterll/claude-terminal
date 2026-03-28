@@ -13,6 +13,11 @@ window.electron_nodeModules = {
     promises: {
       readFile: jest.fn(),
       writeFile: jest.fn(),
+      access: jest.fn(),
+      mkdir: jest.fn(),
+      copyFile: jest.fn(),
+      rename: jest.fn(),
+      unlink: jest.fn(),
     }
   },
   os: { homedir: () => '/mock/home' },

@@ -2459,7 +2459,7 @@ async function exportResults(format, data, sourceName) {
 
   const dateStr = new Date().toISOString().slice(0, 10);
   const defaultName = `${sourceName || 'query-results'}-${dateStr}.${format}`;
-  const { fs } = window.electron_nodeModules;
+  const { fsp } = require('../../utils/fs-async');
 
   if (format === 'csv') {
     const header = data.columns.join(',');
@@ -2482,7 +2482,7 @@ async function exportResults(format, data, sourceName) {
       filters: [{ name: 'CSV', extensions: ['csv'] }]
     });
     if (filePath) {
-      fs.writeFileSync(filePath, '\uFEFF' + csvContent, 'utf8');
+      await fsp.writeFile(filePath, '\uFEFF' + csvContent, 'utf8');
       ctx.showToast({ type: 'success', title: t('database.exportSuccess') });
     }
   } else {
@@ -2498,7 +2498,7 @@ async function exportResults(format, data, sourceName) {
       filters: [{ name: 'JSON', extensions: ['json'] }]
     });
     if (filePath) {
-      fs.writeFileSync(filePath, JSON.stringify(jsonData, null, 2), 'utf8');
+      await fsp.writeFile(filePath, JSON.stringify(jsonData, null, 2), 'utf8');
       ctx.showToast({ type: 'success', title: t('database.exportSuccess') });
     }
   }

@@ -49,38 +49,43 @@ class ArchiveService extends BaseService {
     return data;
   }
 
-  writeArchive(year, month, archiveData) {
-    this._ensureYearDir(year);
+  async writeArchive(year, month, archiveData) {
+    const fsp = this.api.fs.promises;
+    await this._ensureYearDir(year);
     const filePath = this.getArchiveFilePath(year, month);
     const tempFile = `${filePath}.tmp`;
     try {
-      this.api.fs.writeFileSync(tempFile, JSON.stringify(archiveData, null, 2));
-      this.api.fs.renameSync(tempFile, filePath);
+      await fsp.writeFile(tempFile, JSON.stringify(archiveData, null, 2));
+      await fsp.rename(tempFile, filePath);
     } catch (error) {
       console.error('[ArchiveService] Failed to write archive:', filePath, error.message);
-      try { if (this.api.fs.existsSync(tempFile)) this.api.fs.unlinkSync(tempFile); } catch (_) {}
+      try { await fsp.unlink(tempFile); } catch (_) {}
     }
   }
 
-  archiveCurrentFile(monthStr) {
+  async archiveCurrentFile(monthStr) {
+    const fsp = this.api.fs.promises;
     try {
-      if (!this.api.fs.existsSync(timeTrackingFile)) return;
+      try { await fsp.access(timeTrackingFile); } catch { return; }
       const [yearStr, monthNumStr] = monthStr.split('-');
       const year = parseInt(yearStr, 10);
       const month = parseInt(monthNumStr, 10) - 1;
 
-      this._ensureYearDir(year);
+      await this._ensureYearDir(year);
       const destPath = this.getArchiveFilePath(year, month);
 
-      if (this.api.fs.existsSync(destPath)) {
-        const existing = JSON.parse(this.api.fs.readFileSync(destPath, 'utf8'));
-        const current = JSON.parse(this.api.fs.readFileSync(timeTrackingFile, 'utf8'));
+      let destExists = false;
+      try { await fsp.access(destPath); destExists = true; } catch {}
+
+      if (destExists) {
+        const existing = JSON.parse(await fsp.readFile(destPath, 'utf8'));
+        const current = JSON.parse(await fsp.readFile(timeTrackingFile, 'utf8'));
         const merged = this._mergeArchives(existing, current, monthStr);
         const tempFile = `${destPath}.tmp`;
-        this.api.fs.writeFileSync(tempFile, JSON.stringify(merged, null, 2));
-        this.api.fs.renameSync(tempFile, destPath);
+        await fsp.writeFile(tempFile, JSON.stringify(merged, null, 2));
+        await fsp.rename(tempFile, destPath);
       } else {
-        this.api.fs.copyFileSync(timeTrackingFile, destPath);
+        await fsp.copyFile(timeTrackingFile, destPath);
       }
 
       this.invalidateArchiveCache(year, month);
@@ -116,7 +121,7 @@ class ArchiveService extends BaseService {
     }
 
     archive.lastModifiedAt = new Date().toISOString();
-    this.writeArchive(year, month, archive);
+    await this.writeArchive(year, month, archive);
     this.invalidateArchiveCache(year, month);
   }
 
@@ -152,11 +157,12 @@ class ArchiveService extends BaseService {
   }
 
   async migrateOldArchives() {
+    const fsp = this.api.fs.promises;
     try {
-      if (!this.api.fs.existsSync(archivesDir)) return;
-      const files = this.api.fs.readdirSync(archivesDir);
+      try { await fsp.access(archivesDir); } catch { return; }
+      const files = await fsp.readdir(archivesDir);
       if (files.length === 0) {
-        try { this.api.fs.rmdirSync(archivesDir); } catch (_) {}
+        try { await fsp.rmdir(archivesDir); } catch (_) {}
         return;
       }
 
@@ -172,17 +178,19 @@ class ArchiveService extends BaseService {
         const oldPath = this.api.path.join(archivesDir, file);
         const newPath = this.getArchiveFilePath(year, monthIndex);
 
-        if (this.api.fs.existsSync(newPath)) {
-          try { this.api.fs.unlinkSync(oldPath); } catch (_) {}
+        let newExists = false;
+        try { await fsp.access(newPath); newExists = true; } catch {}
+        if (newExists) {
+          try { await fsp.unlink(oldPath); } catch (_) {}
           continue;
         }
 
         const data = await this._readFromDisk(oldPath);
         if (data) {
-          this._ensureYearDir(year);
+          await this._ensureYearDir(year);
           try {
-            this.api.fs.writeFileSync(newPath, JSON.stringify(data, null, 2));
-            this.api.fs.unlinkSync(oldPath);
+            await fsp.writeFile(newPath, JSON.stringify(data, null, 2));
+            await fsp.unlink(oldPath);
             migratedCount++;
           } catch (err) {
             console.warn('[ArchiveService] Failed to migrate:', file, err.message);
@@ -191,7 +199,8 @@ class ArchiveService extends BaseService {
       }
 
       try {
-        if (this.api.fs.readdirSync(archivesDir).length === 0) this.api.fs.rmdirSync(archivesDir);
+        const remaining = await fsp.readdir(archivesDir);
+        if (remaining.length === 0) await fsp.rmdir(archivesDir);
       } catch (_) {}
 
       if (migratedCount > 0) console.debug(`[ArchiveService] Migrated ${migratedCount} archive(s)`);
@@ -202,19 +211,20 @@ class ArchiveService extends BaseService {
 
   // ── Private ──
 
-  _ensureYearDir(year) {
+  async _ensureYearDir(year) {
     const yearDir = this.api.path.join(timeTrackingDir, String(year));
-    if (!this.api.fs.existsSync(yearDir)) this.api.fs.mkdirSync(yearDir, { recursive: true });
+    await this.api.fs.promises.mkdir(yearDir, { recursive: true });
   }
 
   async _readFromDisk(filePath) {
     try {
-      if (!this.api.fs.existsSync(filePath)) return null;
       const content = await this.api.fs.promises.readFile(filePath, 'utf8');
       if (!content || !content.trim()) return null;
       return _normalizeArchive(JSON.parse(content));
     } catch (error) {
-      console.warn('[ArchiveService] Failed to read archive:', filePath, error.message);
+      if (error.code !== 'ENOENT') {
+        console.warn('[ArchiveService] Failed to read archive:', filePath, error.message);
+      }
       return null;
     }
   }

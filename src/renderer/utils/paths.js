@@ -33,23 +33,21 @@ const agentsDir = path.join(claudeDir, 'agents');
 /**
  * Ensure all required directories exist
  */
-function ensureDirectories() {
-  [dataDir, skillsDir, agentsDir, timeTrackingDir, sessionRecapsDir].forEach(dir => {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-  });
+async function ensureDirectories() {
+  const { ensureDirs } = require('./fs-async');
+  await ensureDirs(dataDir, skillsDir, agentsDir, timeTrackingDir, sessionRecapsDir);
 }
 
 /**
  * Get the application assets directory
- * @returns {string}
+ * @returns {Promise<string>}
  */
-function getAssetsDir() {
+async function getAssetsDir() {
+  const { fileExists } = require('./fs-async');
   // In development: appDir/assets (appDir is the project root)
   // In production: resources/assets
   const devPath = path.join(appDir, 'assets');
-  if (fs.existsSync(devPath)) {
+  if (await fileExists(devPath)) {
     return devPath;
   }
   return path.join(nodeProcess.resourcesPath, 'assets');
