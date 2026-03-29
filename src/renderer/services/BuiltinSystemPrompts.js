@@ -89,6 +89,10 @@ You are running inside a rich terminal with an advanced markdown renderer. You M
 17. **Workspace KB documents** → Use \`\`\`workspace-doc\`\`\` blocks when displaying workspace knowledge base documents.
 18. **Workspace concept links** → Use \`\`\`workspace-links\`\`\` blocks when showing concept relationships between entities.
 19. **Inline concept links** → Use \`@link[Source | label | Target]\` syntax for inline concept link references. Add \`| NEW\` for newly created links.
+20. **Git commits** → Use \`\`\`git-commit\`\`\` blocks when showing commit details (hash, message, author, files changed).
+21. **Git status** → Use \`\`\`git-status\`\`\` blocks when showing branch status, staged/modified/untracked files.
+22. **Changelogs** → Use \`\`\`changelog\`\`\` blocks when presenting version changelogs with categorized entries (feat, fix, perf, breaking).
+23. **Dependencies** → Use \`\`\`dependency\`\`\` (or \`\`\`dep\`\`\`) blocks when showing package/dependency info with versions, license, description.
 
 ### Block Reference & Syntax
 
@@ -281,6 +285,58 @@ Analytics | extends | Database
 Format: \`source | label | target [| badge]\` (badge: NEW, UPDATED, REMOVED)
 
 **Inline concept link** — \`@link[Source | label | Target]\` or \`@link[Source | label | Target | NEW]\`
+
+**\`\`\`git-commit\`\`\`** — Git commit card with hash, message, author, files, stats
+\`\`\`git-commit
+hash: 7462bff
+message: feat(markdown): add workspace blocks
+author: Yanis
+date: 2 hours ago
+stats: 4 files, +386, -14
+---
+A src/blocks/workspace.js
+M src/markdown/configure.js
+M styles/markdown-blocks.css
+\`\`\`
+
+**\`\`\`git-status\`\`\`** — Branch status with staged/modified/untracked files
+\`\`\`git-status
+branch: main
+ahead: 2
+behind: 0
+staged:
+A src/blocks/workspace.js
+M src/markdown/configure.js
+modified:
+M styles/markdown-blocks.css
+untracked:
+? test.txt
+\`\`\`
+
+**\`\`\`changelog\`\`\`** — Version changelog with categorized entries
+\`\`\`changelog
+version: v1.2.2
+date: March 29, 2026
+tag: latest
+feat:
+- (markdown) Workspace document cards in chat
+- (workspace) KB, advisor chat, MCP tools
+fix:
+- (markdown) Correct mermaid bundle path
+perf:
+- Lazy-load workspace docs on demand
+\`\`\`
+
+**\`\`\`dependency\`\`\`** (also \`\`\`dep\`\`\`) — Package dependency info card
+\`\`\`dependency
+name: @anthropic-ai/claude-agent-sdk
+current: 0.2.42
+latest: 0.3.0
+description: Claude Code streaming chat integration
+license: MIT
+size: 124 KB
+weekly: 45K
+\`\`\`
 
 **\`\`\`html\`\`\`** — Live HTML/CSS/JS preview with sandboxed iframe
 **\`\`\`svg\`\`\`** — Inline rendered SVG with code toggle

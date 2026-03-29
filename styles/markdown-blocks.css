@@ -2015,3 +2015,352 @@ code.line-numbers-off .code-line::before {
   background: rgba(34, 197, 94, 0.15);
   color: var(--success);
 }
+
+/* ======================================================
+   GIT BLOCKS
+   ====================================================== */
+
+/* ── Git Commit Card ── */
+
+.chat-git-commit {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+.chat-git-commit-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-primary);
+}
+.chat-git-commit-hash {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 600;
+  padding: 2px 8px;
+  background: var(--accent-dim);
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.chat-git-commit-msg {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-git-commit-body {
+  padding: 10px 14px;
+}
+.chat-git-commit-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+.chat-git-commit-author {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.chat-git-commit-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(168, 85, 247, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #a855f7;
+}
+.chat-git-commit-date {
+  color: var(--text-muted);
+}
+.chat-git-commit-stats {
+  display: flex;
+  gap: 12px;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--border-primary);
+  margin-top: 8px;
+  font-size: 11px;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+.chat-git-stat-files {
+  color: var(--text-secondary);
+}
+.chat-git-stat-add {
+  color: var(--success);
+}
+.chat-git-stat-del {
+  color: var(--danger);
+}
+.chat-git-commit-files {
+  padding: 6px 0 0;
+}
+
+/* ── Shared Git File Row ── */
+
+.chat-git-file-row,
+.chat-git-status-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12px;
+}
+.chat-git-file-status {
+  font-size: 9px;
+  font-weight: 700;
+  width: 14px;
+  text-align: center;
+  padding: 1px 0;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.chat-git-file-status.M { color: var(--warning); }
+.chat-git-file-status.A { color: var(--success); }
+.chat-git-file-status.D { color: var(--danger); }
+.chat-git-file-status.R { color: #a855f7; }
+.chat-git-file-status.U { color: var(--danger); }
+.chat-git-file-path {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.chat-git-file-path .dir {
+  color: var(--text-muted);
+}
+.chat-git-file-path .name {
+  color: var(--text-primary);
+}
+
+/* ── Git Status ── */
+
+.chat-git-status {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+.chat-git-status-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-primary);
+}
+.chat-git-branch-name {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 12px;
+  color: #a855f7;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.chat-git-branch-icon {
+  font-size: 14px;
+}
+.chat-git-ahead-behind {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+.chat-git-ahead {
+  color: var(--success);
+}
+.chat-git-behind {
+  color: var(--danger);
+}
+.chat-git-status-section {
+  padding: 6px 14px;
+}
+.chat-git-status-section-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  padding: 6px 0 4px;
+}
+
+/* ── Changelog ── */
+
+.chat-changelog {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+.chat-changelog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-primary);
+}
+.chat-changelog-version {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.chat-changelog-tag {
+  font-size: 10px;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+.chat-changelog-date {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.chat-changelog-body {
+  padding: 8px 14px 14px;
+}
+.chat-changelog-category {
+  padding: 6px 0;
+}
+.chat-changelog-cat-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  display: inline-flex;
+  margin-bottom: 6px;
+}
+.chat-changelog-cat-label.feat { background: rgba(34, 197, 94, 0.1); color: var(--success); }
+.chat-changelog-cat-label.fix { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+.chat-changelog-cat-label.perf { background: rgba(168, 85, 247, 0.1); color: #a855f7; }
+.chat-changelog-cat-label.breaking { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+.chat-changelog-cat-label.chore { background: rgba(255, 255, 255, 0.05); color: var(--text-secondary); }
+.chat-changelog-cat-label.docs { background: rgba(59, 130, 246, 0.1); color: var(--info); }
+.chat-changelog-cat-label.refactor { background: rgba(168, 85, 247, 0.08); color: #a855f7; }
+.chat-changelog-cat-label.test { background: rgba(34, 197, 94, 0.08); color: var(--success); }
+.chat-changelog-cat-label.style { background: rgba(245, 158, 11, 0.08); color: var(--warning); }
+.chat-changelog-item {
+  display: flex;
+  gap: 8px;
+  padding: 3px 0 3px 12px;
+  font-size: 12.5px;
+  color: var(--text-primary);
+}
+.chat-changelog-item::before {
+  content: '';
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  margin-top: 8px;
+  flex-shrink: 0;
+}
+.chat-changelog-scope {
+  font-size: 10.5px;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 0 5px;
+  border-radius: 3px;
+}
+
+/* ── Dependency Info ── */
+
+.chat-dep-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+.chat-dep-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-primary);
+}
+.chat-dep-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(239, 68, 68, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+.chat-dep-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+.chat-dep-version {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  margin-left: auto;
+}
+.chat-dep-version .current {
+  color: var(--danger);
+}
+.chat-dep-version .arrow {
+  color: var(--text-muted);
+  margin: 0 4px;
+}
+.chat-dep-version .latest {
+  color: var(--success);
+}
+.chat-dep-body {
+  padding: 8px 14px 10px;
+}
+.chat-dep-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+.chat-dep-meta {
+  display: flex;
+  gap: 12px;
+}
+.chat-dep-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+}
+.chat-dep-meta-label {
+  color: var(--text-muted);
+}
+.chat-dep-meta-value {
+  color: var(--text-secondary);
+}
+.chat-dep-license {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--success);
+}

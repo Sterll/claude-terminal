@@ -14,6 +14,7 @@ const { renderLinksBlock, renderMetricsBlock, renderApiBlock, renderResourceBloc
 const { renderFileTree, renderTerminalBlock, renderTimelineBlock, renderCompareBlock, renderTabsBlock, renderEventFlowBlock } = require('./blocks/layout');
 const { renderDiscordEmbedBlock, renderDiscordComponentBlock, renderDiscordMessageBlock } = require('./blocks/discord');
 const { renderWorkspaceDocBlock, renderWorkspaceLinksBlock } = require('./blocks/workspace');
+const { renderGitCommitBlock, renderGitStatusBlock, renderChangelogBlock, renderDependencyBlock } = require('./blocks/git');
 
 // ── Special language identifiers for custom blocks ──
 const SPECIAL_LANGS = new Set([
@@ -24,6 +25,7 @@ const SPECIAL_LANGS = new Set([
   'config', 'convars', 'command', 'cmd',
   'embed', 'discord-embed', 'discord-component', 'discord-components', 'discord-message',
   'workspace-doc', 'workspace-links',
+  'git-commit', 'git-status', 'changelog', 'dependency', 'dep',
 ]);
 
 // Callout types: > [!TYPE]
@@ -121,6 +123,10 @@ function configure() {
         if (langLower === 'discord-message') return renderDiscordMessageBlock(raw);
         if (langLower === 'workspace-doc') return renderWorkspaceDocBlock(raw);
         if (langLower === 'workspace-links') return renderWorkspaceLinksBlock(raw);
+        if (langLower === 'git-commit') return renderGitCommitBlock(raw);
+        if (langLower === 'git-status') return renderGitStatusBlock(raw);
+        if (langLower === 'changelog') return renderChangelogBlock(raw);
+        if (langLower === 'dependency' || langLower === 'dep') return renderDependencyBlock(raw);
 
         // ── Standard code block ──
         const highlighted = language ? highlight(raw, language) : escapeHtml(raw);
