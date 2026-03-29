@@ -237,7 +237,10 @@ describe('getGlobalTrackingData', () => {
 
 describe('getProjectTimes with sessions', () => {
   test('computes total from saved sessions', () => {
-    const now = Date.now();
+    // Place sessions right after start of today to guarantee they fall within today
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const base = todayStart.getTime() + 1000; // 1 second after midnight
     dataState.set({
       version: 3,
       month: null,
@@ -245,8 +248,8 @@ describe('getProjectTimes with sessions', () => {
       projects: {
         'proj-1': {
           sessions: [
-            { startTime: new Date(now - 7200000).toISOString(), endTime: new Date(now - 3600000).toISOString(), duration: 3600000 },
-            { startTime: new Date(now - 1800000).toISOString(), endTime: new Date(now - 600000).toISOString(), duration: 1200000 },
+            { startTime: new Date(base).toISOString(), endTime: new Date(base + 3600000).toISOString(), duration: 3600000 },
+            { startTime: new Date(base + 3600000).toISOString(), endTime: new Date(base + 4800000).toISOString(), duration: 1200000 },
           ]
         }
       }
