@@ -323,12 +323,12 @@ async function handle(name, args) {
       const linksData = loadLinks(w.id);
       const links = linksData.links || [];
       if (links.length) {
-        output += `\n## Links (${links.length})\n`;
+        output += '\n```workspace-links\n';
+        output += 'title: CONCEPT LINKS\n';
         for (const l of links) {
-          output += `  - [${l.sourceType}] ${l.sourceId} --${l.label}--> [${l.targetType}] ${l.targetId}`;
-          if (l.description) output += ` (${l.description})`;
-          output += '\n';
+          output += `${l.sourceId} | ${l.label} | ${l.targetId}\n`;
         }
+        output += '```\n';
       } else {
         output += `\n## Links\n  (none)\n`;
       }
@@ -358,13 +358,14 @@ async function handle(name, args) {
 
       const content = fs.readFileSync(docPath, 'utf8');
 
-      let header = `# ${doc.title}\n`;
-      if (doc.tags && doc.tags.length) header += `Tags: ${doc.tags.join(', ')}\n`;
-      if (doc.summary) header += `Summary: ${doc.summary}\n`;
-      header += `Updated: ${doc.updatedAt || doc.createdAt || 'unknown'}\n`;
-      header += `${'─'.repeat(50)}\n\n`;
+      const tagStr = (doc.tags && doc.tags.length) ? doc.tags.join(', ') : '';
+      const blockHeader = [
+        `title: ${doc.title}`,
+        `icon: \uD83D\uDCC4`,
+        tagStr ? `tags: ${tagStr}` : '',
+      ].filter(Boolean).join('\n');
 
-      return ok(header + content);
+      return ok('```workspace-doc\n' + blockHeader + '\n---\n' + content + '\n```');
     }
 
     // ── workspace_write_doc ─────────────────────────────────────────────
@@ -530,10 +531,10 @@ async function handle(name, args) {
       saveLinks(w.id, linksData);
 
       return ok(
-        `Link created in workspace "${w.name}":\n` +
-        `  [${sourceEntity.type}] ${sourceEntity.name} --${newLink.label}--> [${targetEntity.type}] ${targetEntity.name}\n` +
-        (newLink.description ? `  Description: ${newLink.description}\n` : '') +
-        `  ID: ${newLink.id}`
+        `Link created in workspace "${w.name}":\n\n` +
+        `@link[${sourceEntity.name} | ${newLink.label} | ${targetEntity.name} | NEW]\n\n` +
+        (newLink.description ? `Description: ${newLink.description}\n` : '') +
+        `ID: ${newLink.id}`
       );
     }
 

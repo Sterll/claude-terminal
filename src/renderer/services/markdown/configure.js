@@ -13,6 +13,7 @@ const { renderDiffBlock, renderMermaidBlock, renderSvgBlock, renderMathBlock, re
 const { renderLinksBlock, renderMetricsBlock, renderApiBlock, renderResourceBlock, renderConfigBlock, renderCommandBlock } = require('./blocks/data');
 const { renderFileTree, renderTerminalBlock, renderTimelineBlock, renderCompareBlock, renderTabsBlock, renderEventFlowBlock } = require('./blocks/layout');
 const { renderDiscordEmbedBlock, renderDiscordComponentBlock, renderDiscordMessageBlock } = require('./blocks/discord');
+const { renderWorkspaceDocBlock, renderWorkspaceLinksBlock } = require('./blocks/workspace');
 
 // ── Special language identifiers for custom blocks ──
 const SPECIAL_LANGS = new Set([
@@ -22,6 +23,7 @@ const SPECIAL_LANGS = new Set([
   'metrics', 'api', 'endpoint', 'resource', 'eventflow',
   'config', 'convars', 'command', 'cmd',
   'embed', 'discord-embed', 'discord-component', 'discord-components', 'discord-message',
+  'workspace-doc', 'workspace-links',
 ]);
 
 // Callout types: > [!TYPE]
@@ -117,6 +119,8 @@ function configure() {
         if (langLower === 'embed' || langLower === 'discord-embed') return renderDiscordEmbedBlock(raw);
         if (langLower === 'discord-component' || langLower === 'discord-components') return renderDiscordComponentBlock(raw);
         if (langLower === 'discord-message') return renderDiscordMessageBlock(raw);
+        if (langLower === 'workspace-doc') return renderWorkspaceDocBlock(raw);
+        if (langLower === 'workspace-links') return renderWorkspaceLinksBlock(raw);
 
         // ── Standard code block ──
         const highlighted = language ? highlight(raw, language) : escapeHtml(raw);
@@ -269,6 +273,48 @@ function configure() {
       },
       renderer(token) {
         return `<span class="chat-math-inline" data-math-source="${escapeHtml(token.text)}">${escapeHtml(token.text)}</span>`;
+      }
+    }]
+  });
+
+  // Inline workspace concept link: @link[Source | label | Target] or @link[Source | label | Target | NEW]
+  marked.use({
+    extensions: [{
+      name: 'workspaceLink',
+      level: 'inline',
+      start(src) {
+        const match = src.match(/@link\[/);
+        return match ? match.index : -1;
+      },
+      tokenizer(src) {
+        const match = src.match(/^@link\[([^\]]+)\]/);
+        if (match) {
+          const parts = match[1].split('|').map(s => s.trim());
+          if (parts.length >= 3) {
+            return {
+              type: 'workspaceLink',
+              raw: match[0],
+              source: parts[0],
+              label: parts[1],
+              target: parts[2],
+              badge: parts[3] || '',
+            };
+          }
+        }
+        return undefined;
+      },
+      renderer(token) {
+        const badgeHtml = token.badge
+          ? ` <span class="chat-ws-inline-badge ${escapeHtml(token.badge.toLowerCase())}">${escapeHtml(token.badge)}</span>`
+          : '';
+        return `<span class="chat-ws-inline-link">`
+          + `<span class="chat-ws-inline-entity">${escapeHtml(token.source)}</span>`
+          + `<span class="chat-ws-inline-arrow">\u2192</span>`
+          + `<span class="chat-ws-inline-label">${escapeHtml(token.label)}</span>`
+          + `<span class="chat-ws-inline-arrow">\u2192</span>`
+          + `<span class="chat-ws-inline-entity">${escapeHtml(token.target)}</span>`
+          + badgeHtml
+          + `</span>`;
       }
     }]
   });
