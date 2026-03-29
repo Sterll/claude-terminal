@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/downloads/Sterll/claude-terminal/total?color=d97706&label=downloads" alt="Downloads" />
-  <img src="https://img.shields.io/badge/version-1.2.1-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.2.2-orange" alt="Version" />
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-blue" alt="Platform" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="License" />
   <img src="https://img.shields.io/badge/electron-28-purple" alt="Electron" />
@@ -268,6 +268,7 @@ npm install
 ### Skills & Agents
 - Browse and manage Claude Code skills and agents
 - View SKILL.md and agent configuration files
+- **Syntax-highlighted editor**: edit skill and agent files with line numbers and full highlight.js code highlighting
 - Load skills from `~/.claude/skills`, plugins, and bundled resources
 
 ### MCP Servers
@@ -326,6 +327,12 @@ npm install
 - Insert/delete rows, search filter
 - Custom database picker for quick connection switching
 - Connection pooling with idle eviction
+
+### Workspace
+- Project-level knowledge base for storing persistent context, documentation snippets, and notes
+- **Advisor chat**: ask questions about your workspace and get answers based on your knowledge base content
+- **@workspace mention**: type @workspace in chat to inject your workspace knowledge base as context
+- MCP tools for reading and writing workspace content from Claude Code
 
 ### MCP Server (claude-terminal)
 - Unified MCP server exposing all Claude Terminal features to Claude Code
