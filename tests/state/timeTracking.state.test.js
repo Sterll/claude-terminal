@@ -237,9 +237,12 @@ describe('getGlobalTrackingData', () => {
 
 describe('getProjectTimes with sessions', () => {
   test('computes total from saved sessions', () => {
-    // Place sessions right after start of today to guarantee they fall within today
+    // Mock Date.now to noon today so sessions are always in the past and within today
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
+    const noon = todayStart.getTime() + 12 * 3600000;
+    jest.spyOn(Date, 'now').mockReturnValue(noon);
+
     const base = todayStart.getTime() + 1000; // 1 second after midnight
     dataState.set({
       version: 3,
@@ -257,6 +260,8 @@ describe('getProjectTimes with sessions', () => {
     const times = getProjectTimes('proj-1');
     expect(times.total).toBe(3600000 + 1200000);
     expect(times.today).toBeGreaterThan(0);
+
+    Date.now.mockRestore();
   });
 
   test('today only counts today portion of sessions', () => {
