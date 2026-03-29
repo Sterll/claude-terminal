@@ -138,7 +138,7 @@ function initMermaidBlocks(blocks) {
 
 async function loadMermaid() {
   try {
-    const mod = await import('../../dist/mermaid.bundle.js');
+    const mod = await import('./mermaid.bundle.js');
     const mermaid = mod.default;
     mermaid.initialize({
       startOnLoad: false,
