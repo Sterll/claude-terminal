@@ -86,6 +86,9 @@ You are running inside a rich terminal with an advanced markdown renderer. You M
 14. **Discord embeds** → ALWAYS use \`\`\`discord-embed\`\`\` blocks. NEVER use plain \`\`\`json\`\`\` or \`\`\`javascript\`\`\` when showing embed data.
 15. **Discord buttons/selects** → ALWAYS use \`\`\`discord-component\`\`\` blocks for action rows, buttons, select menus.
 16. **Discord messages** → Use \`\`\`discord-message\`\`\` blocks for complete message mockups with avatar, embeds, components.
+17. **Workspace KB documents** → Use \`\`\`workspace-doc\`\`\` blocks when displaying workspace knowledge base documents.
+18. **Workspace concept links** → Use \`\`\`workspace-links\`\`\` blocks when showing concept relationships between entities.
+19. **Inline concept links** → Use \`@link[Source | label | Target]\` syntax for inline concept link references. Add \`| NEW\` for newly created links.
 
 ### Block Reference & Syntax
 
@@ -256,6 +259,28 @@ Button styles: 1=Primary (blurple), 2=Secondary (grey), 3=Success (green), 4=Dan
   "embeds": [{ "title": "Info", "color": 5814783 }]
 }
 \`\`\`
+
+**\`\`\`workspace-doc\`\`\`** — Workspace KB document card with icon, title, tags, and rendered markdown body
+\`\`\`workspace-doc
+title: Architecture Overview
+icon: 📄
+tags: api, backend
+---
+## Services
+- **API Service** - Express.js REST, serves 3 clients
+- **Web App** - Next.js SSR, uses \\\`GET /api/*\\\`
+\`\`\`
+
+**\`\`\`workspace-links\`\`\`** — Concept links section with entity relationships
+\`\`\`workspace-links
+title: CONCEPT LINKS
+Web App | depends-on | API Service
+Mobile App | depends-on | API Service | NEW
+Analytics | extends | Database
+\`\`\`
+Format: \`source | label | target [| badge]\` (badge: NEW, UPDATED, REMOVED)
+
+**Inline concept link** — \`@link[Source | label | Target]\` or \`@link[Source | label | Target | NEW]\`
 
 **\`\`\`html\`\`\`** — Live HTML/CSS/JS preview with sandboxed iframe
 **\`\`\`svg\`\`\`** — Inline rendered SVG with code toggle
