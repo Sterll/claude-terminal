@@ -477,7 +477,7 @@
 
 /* ── Code blocks ── */
 .chat-code-block {
-  margin: 10px 0;
+  margin: 8px 0;
   border-radius: 10px;
   overflow: hidden;
   background: var(--bg-secondary);
@@ -488,14 +488,15 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 12px;
-  background: var(--bg-tertiary);
+  padding: 5px 12px;
+  background: rgba(255,255,255,0.02);
   border-bottom: 1px solid var(--border-primary);
+  min-height: 32px;
 }
 
 .chat-code-lang {
   font-size: 10px;
-  color: var(--text-tertiary);
+  color: var(--text-muted);
   text-transform: uppercase;
   font-weight: 500;
   letter-spacing: 0.5px;
@@ -504,22 +505,27 @@
 .chat-code-copy {
   background: none;
   border: none;
-  color: var(--text-tertiary);
+  color: var(--text-muted);
   cursor: pointer;
-  padding: 3px;
-  border-radius: 4px;
+  padding: 4px;
+  border-radius: 5px;
   display: flex;
   align-items: center;
   transition: all 0.15s ease;
+  opacity: 0;
+}
+.chat-code-block:hover .chat-code-copy {
+  opacity: 1;
 }
 
 .chat-code-copy:hover {
   color: var(--text-primary);
-  background: var(--bg-primary);
+  background: rgba(255,255,255,0.06);
 }
 
 .chat-code-copy.copied {
   color: var(--success);
+  opacity: 1;
 }
 
 .chat-code-copy svg {
@@ -529,11 +535,11 @@
 
 .chat-code-block pre {
   margin: 0;
-  padding: 12px 14px;
+  padding: 10px 14px;
   overflow-x: auto;
   font-family: 'Cascadia Code', 'Fira Code', monospace;
   font-size: 12.5px;
-  line-height: 1.45;
+  line-height: 1.4;
 }
 
 .chat-code-block code {

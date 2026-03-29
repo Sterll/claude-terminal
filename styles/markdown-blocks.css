@@ -11,7 +11,7 @@
 /* ── Filename display ── */
 .chat-code-filename {
   font-size: 11px;
-  color: var(--text-primary);
+  color: var(--text-secondary);
   font-weight: 500;
   margin-right: auto;
 }
@@ -27,17 +27,21 @@
 .chat-code-line-toggle {
   background: none;
   border: none;
-  color: var(--text-tertiary);
+  color: var(--text-muted);
   cursor: pointer;
-  padding: 3px;
-  border-radius: 4px;
+  padding: 4px;
+  border-radius: 5px;
   display: flex;
   align-items: center;
   transition: all 0.15s ease;
+  opacity: 0;
+}
+.chat-code-block:hover .chat-code-line-toggle {
+  opacity: 1;
 }
 .chat-code-line-toggle:hover {
   color: var(--text-primary);
-  background: var(--bg-primary);
+  background: rgba(255,255,255,0.06);
 }
 .chat-code-line-toggle svg {
   width: 14px;
@@ -117,7 +121,8 @@ code.line-numbers-off .code-line::before {
 
 .diff-line {
   display: flex;
-  line-height: 1.6;
+  line-height: 1.35;
+  padding: 1px 0;
   font-family: 'Cascadia Code', 'Fira Code', monospace;
   font-size: 12px;
 }
@@ -148,7 +153,7 @@ code.line-numbers-off .code-line::before {
 }
 
 .diff-line.diff-add {
-  background: rgba(34, 197, 94, 0.12);
+  background: rgba(34, 197, 94, 0.08);
 }
 .diff-line.diff-add .diff-sym {
   color: var(--success);
@@ -158,7 +163,7 @@ code.line-numbers-off .code-line::before {
 }
 
 .diff-line.diff-del {
-  background: rgba(239, 68, 68, 0.12);
+  background: rgba(239, 68, 68, 0.08);
 }
 .diff-line.diff-del .diff-sym {
   color: var(--danger);
@@ -168,13 +173,14 @@ code.line-numbers-off .code-line::before {
 }
 
 .diff-line.diff-info {
-  background: rgba(168, 85, 247, 0.15);
+  background: rgba(168, 85, 247, 0.08);
 }
 .diff-info-content {
   color: #a855f7;
   flex: 1;
   padding: 0 8px;
-  font-style: italic;
+  font-size: 11px;
+  opacity: 0.8;
 }
 
 .diff-line.diff-ctx .diff-content {
@@ -187,17 +193,17 @@ code.line-numbers-off .code-line::before {
    ══════════════════════════════════════════════ */
 
 .chat-callout {
-  border-left: 3px solid;
   border-radius: 8px;
   padding: 10px 14px;
   margin: 8px 0;
+  border: none;
 }
 
 .chat-callout-header {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 
 .chat-callout-icon {
@@ -205,53 +211,52 @@ code.line-numbers-off .code-line::before {
   align-items: center;
 }
 .chat-callout-icon svg {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
+  opacity: 0.85;
 }
 
 .chat-callout-title {
   font-weight: 600;
-  font-size: 12px;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .chat-callout-body {
   font-size: 12.5px;
   line-height: 1.5;
+  color: var(--text-secondary);
 }
 .chat-callout-body p:first-child { margin-top: 0; }
 .chat-callout-body p:last-child { margin-bottom: 0; }
 
 /* ── Callout types ── */
 .chat-callout-note {
-  border-color: var(--info);
   background: rgba(59, 130, 246, 0.06);
 }
 .chat-callout-note .chat-callout-icon,
 .chat-callout-note .chat-callout-title { color: var(--info); }
 
 .chat-callout-tip {
-  border-color: var(--success);
   background: rgba(34, 197, 94, 0.06);
 }
 .chat-callout-tip .chat-callout-icon,
 .chat-callout-tip .chat-callout-title { color: var(--success); }
 
 .chat-callout-important {
-  border-color: #a855f7;
   background: rgba(168, 85, 247, 0.06);
 }
 .chat-callout-important .chat-callout-icon,
 .chat-callout-important .chat-callout-title { color: #a855f7; }
 
 .chat-callout-warning {
-  border-color: var(--warning);
   background: rgba(245, 158, 11, 0.06);
 }
 .chat-callout-warning .chat-callout-icon,
 .chat-callout-warning .chat-callout-title { color: var(--warning); }
 
 .chat-callout-caution {
-  border-color: var(--danger);
   background: rgba(239, 68, 68, 0.06);
 }
 .chat-callout-caution .chat-callout-icon,
@@ -320,16 +325,17 @@ code.line-numbers-off .code-line::before {
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--border-primary);
-  margin: 10px 0;
+  margin: 8px 0;
 }
 
 .chat-preview-toolbar {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 12px;
-  background: var(--bg-tertiary);
+  padding: 5px 12px;
+  background: rgba(255,255,255,0.02);
   border-bottom: 1px solid var(--border-primary);
+  min-height: 32px;
 }
 
 .chat-preview-btn {
@@ -391,11 +397,11 @@ code.line-numbers-off .code-line::before {
 }
 .chat-preview-code-wrap pre {
   margin: 0;
-  padding: 12px 14px;
+  padding: 10px 14px;
   overflow-x: auto;
   font-family: 'Cascadia Code', 'Fira Code', monospace;
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.4;
 }
 
 .chat-preview-resize {
@@ -425,7 +431,7 @@ code.line-numbers-off .code-line::before {
   background: var(--bg-secondary);
   border-radius: 10px;
   padding: 16px;
-  margin: 10px 0;
+  margin: 8px 0;
   text-align: center;
   overflow-x: auto;
   border: 1px solid var(--border-primary);
@@ -519,7 +525,7 @@ code.line-numbers-off .code-line::before {
   background: var(--bg-secondary);
   border-radius: 10px;
   padding: 16px;
-  margin: 10px 0;
+  margin: 8px 0;
   text-align: center;
   border: 1px solid var(--border-primary);
 }
@@ -587,7 +593,7 @@ code.line-numbers-off .code-line::before {
    ══════════════════════════════════════════════ */
 
 .chat-filetree {
-  margin: 10px 0;
+  margin: 8px 0;
   border-radius: 10px;
   overflow: hidden;
   background: var(--bg-secondary);
@@ -597,13 +603,14 @@ code.line-numbers-off .code-line::before {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
-  background: var(--bg-tertiary);
+  padding: 5px 12px;
+  background: rgba(255,255,255,0.02);
   border-bottom: 1px solid var(--border-primary);
+  min-height: 32px;
 }
 .chat-filetree-label {
   font-size: 10px;
-  color: var(--text-tertiary);
+  color: var(--text-muted);
   text-transform: uppercase;
   font-weight: 500;
   letter-spacing: 0.5px;
@@ -613,17 +620,17 @@ code.line-numbers-off .code-line::before {
 }
 .chat-filetree-label svg { width: 13px; height: 13px; }
 .chat-filetree-body {
-  padding: 8px 0;
+  padding: 6px 0;
 }
 
 .ft-item {
   display: flex;
   align-items: center;
-  padding: 2px 14px 2px 0;
+  padding: 1px 14px 1px 0;
   cursor: default;
   transition: background 0.1s;
-  font-size: 12.5px;
-  line-height: 1.6;
+  font-size: 12px;
+  line-height: 1.5;
 }
 .ft-item:hover { background: var(--bg-hover); }
 .ft-indent { flex-shrink: 0; display: inline-block; }
@@ -683,7 +690,7 @@ code.line-numbers-off .code-line::before {
    ══════════════════════════════════════════════ */
 
 .chat-terminal-block {
-  margin: 10px 0;
+  margin: 8px 0;
   border-radius: 10px;
   overflow: hidden;
   background: #0a0a0a;
@@ -693,40 +700,41 @@ code.line-numbers-off .code-line::before {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
-  background: rgba(255,255,255,0.03);
+  padding: 5px 12px;
+  background: rgba(255,255,255,0.02);
   border-bottom: 1px solid var(--border-primary);
-  font-size: 11.5px;
-  color: var(--text-secondary);
+  font-size: 11px;
+  color: var(--text-muted);
+  min-height: 32px;
 }
 .chat-terminal-header .terminal-icon {
-  font-size: 12px;
-  opacity: 0.6;
+  font-size: 11px;
+  opacity: 0.5;
 }
 .chat-terminal-header .terminal-shell {
   font-family: 'Cascadia Code', 'Fira Code', monospace;
-  font-size: 11px;
+  font-size: 10.5px;
 }
 .chat-terminal-header .terminal-exit {
   margin-left: auto;
   font-family: 'Cascadia Code', 'Fira Code', monospace;
-  font-size: 10.5px;
-  padding: 1px 6px;
-  border-radius: 3px;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
 }
 .chat-terminal-header .terminal-exit.exit-ok {
-  background: rgba(34,197,94,0.1);
+  background: rgba(34,197,94,0.08);
   color: var(--success);
 }
 .chat-terminal-header .terminal-exit.exit-err {
-  background: rgba(239,68,68,0.1);
+  background: rgba(239,68,68,0.08);
   color: var(--danger);
 }
 .chat-terminal-body {
-  padding: 12px 14px;
+  padding: 10px 14px;
   font-family: 'Cascadia Code', 'Fira Code', monospace;
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.4;
   overflow-x: auto;
 }
 .chat-terminal-body .term-prompt {
@@ -765,10 +773,10 @@ code.line-numbers-off .code-line::before {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 14px;
+  padding: 8px 14px;
   cursor: pointer;
   user-select: none;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-primary);
   transition: background 0.15s;
@@ -871,23 +879,24 @@ code.line-numbers-off .code-line::before {
    ══════════════════════════════════════════════ */
 
 .chat-timeline {
-  margin: 10px 0;
+  margin: 8px 0;
   border-radius: 10px;
   overflow: hidden;
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
 }
 .chat-timeline-header {
-  padding: 10px 14px;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--border-primary);
+  background: rgba(255,255,255,0.02);
 }
 .chat-timeline-label {
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--text-primary);
 }
 .chat-timeline-body {
-  padding: 16px 14px;
+  padding: 14px 14px;
 }
 .tl-step {
   display: flex;
@@ -901,8 +910,8 @@ code.line-numbers-off .code-line::before {
   width: 20px;
 }
 .tl-dot {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
   border: 2px solid;
@@ -910,38 +919,36 @@ code.line-numbers-off .code-line::before {
 .tl-dot.done {
   background: var(--success);
   border-color: var(--success);
-  box-shadow: 0 0 8px rgba(34,197,94,0.4);
 }
 .tl-dot.active {
   background: transparent;
   border-color: var(--accent);
-  box-shadow: 0 0 8px rgba(217,119,6,0.4);
   animation: tl-pulse 2s ease-in-out infinite;
 }
 .tl-dot.pending {
   background: transparent;
-  border-color: var(--text-muted);
+  border-color: var(--border-primary);
 }
 @keyframes tl-pulse {
-  0%, 100% { box-shadow: 0 0 4px rgba(217,119,6,0.3); }
-  50% { box-shadow: 0 0 12px rgba(217,119,6,0.6); }
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
 }
 .tl-line {
-  width: 2px;
+  width: 1px;
   flex: 1;
-  min-height: 24px;
+  min-height: 20px;
   background: var(--border-primary);
-  margin: 4px 0;
+  margin: 3px 0;
 }
-.tl-step.done .tl-line { background: var(--success); opacity: 0.4; }
+.tl-step.done .tl-line { background: var(--success); opacity: 0.25; }
 .tl-content {
-  padding-bottom: 16px;
+  padding-bottom: 14px;
   flex: 1;
   min-width: 0;
 }
 .tl-step:last-child .tl-content { padding-bottom: 0; }
 .tl-title {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--text-primary);
   display: flex;
@@ -951,20 +958,20 @@ code.line-numbers-off .code-line::before {
 }
 .tl-badge {
   font-size: 9px;
-  font-weight: 700;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 2px 8px;
+  letter-spacing: 0.3px;
+  padding: 2px 7px;
   border-radius: 4px;
 }
-.tl-badge.done { background: rgba(34,197,94,0.12); color: var(--success); }
-.tl-badge.active { background: rgba(217,119,6,0.12); color: var(--accent); }
-.tl-badge.pending { background: rgba(255,255,255,0.05); color: var(--text-muted); }
+.tl-badge.done { background: rgba(34,197,94,0.08); color: var(--success); }
+.tl-badge.active { background: rgba(217,119,6,0.08); color: var(--accent); }
+.tl-badge.pending { background: rgba(255,255,255,0.04); color: var(--text-muted); }
 .tl-desc {
   font-size: 12px;
-  color: var(--text-secondary);
-  margin-top: 4px;
-  line-height: 1.5;
+  color: var(--text-muted);
+  margin-top: 3px;
+  line-height: 1.45;
 }
 
 
@@ -973,7 +980,7 @@ code.line-numbers-off .code-line::before {
    ══════════════════════════════════════════════ */
 
 .chat-compare {
-  margin: 10px 0;
+  margin: 8px 0;
   border-radius: 10px;
   overflow: hidden;
   background: var(--bg-secondary);
@@ -982,12 +989,13 @@ code.line-numbers-off .code-line::before {
 .chat-compare-header {
   display: flex;
   align-items: center;
-  padding: 8px 14px;
+  padding: 6px 14px;
   border-bottom: 1px solid var(--border-primary);
   background: rgba(255,255,255,0.02);
+  min-height: 32px;
 }
 .chat-compare-label {
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -1018,11 +1026,11 @@ code.line-numbers-off .code-line::before {
   flex-shrink: 0;
 }
 .chat-compare-side.before .chat-compare-side-header {
-  background: rgba(239,68,68,0.05);
+  background: rgba(239,68,68,0.04);
   color: var(--danger);
 }
 .chat-compare-side.after .chat-compare-side-header {
-  background: rgba(34,197,94,0.05);
+  background: rgba(34,197,94,0.04);
   color: var(--success);
 }
 .chat-compare-code {
@@ -1033,7 +1041,7 @@ code.line-numbers-off .code-line::before {
   padding: 10px 12px;
   font-family: 'Cascadia Code', 'Fira Code', monospace;
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.4;
   overflow-x: auto;
   background: transparent;
 }
@@ -1049,10 +1057,10 @@ code.line-numbers-off .code-line::before {
 .chat-link-card {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 12px 14px;
-  margin: 6px 0;
-  border-radius: 10px;
+  gap: 10px;
+  padding: 10px 14px;
+  margin: 4px 0;
+  border-radius: 8px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
   text-decoration: none;
@@ -1060,14 +1068,14 @@ code.line-numbers-off .code-line::before {
   transition: border-color 0.15s, background 0.15s;
 }
 .chat-link-card:hover {
-  border-color: var(--accent);
+  border-color: rgba(255,255,255,0.12);
   background: var(--bg-tertiary);
 }
 .chat-link-card-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  background: rgba(255,255,255,0.05);
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  background: rgba(255,255,255,0.04);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1105,7 +1113,7 @@ code.line-numbers-off .code-line::before {
    ══════════════════════════════════════════════ */
 
 .chat-tabs-block {
-  margin: 10px 0;
+  margin: 8px 0;
   border-radius: 10px;
   overflow: hidden;
   background: var(--bg-secondary);
@@ -1119,11 +1127,11 @@ code.line-numbers-off .code-line::before {
   overflow-x: auto;
 }
 .chat-tab-btn {
-  padding: 8px 16px;
+  padding: 7px 14px;
   border: none;
   background: none;
-  color: var(--text-secondary);
-  font-size: 12px;
+  color: var(--text-muted);
+  font-size: 11.5px;
   font-weight: 500;
   cursor: pointer;
   border-bottom: 2px solid transparent;
@@ -1132,10 +1140,9 @@ code.line-numbers-off .code-line::before {
 }
 .chat-tab-btn:hover {
   color: var(--text-primary);
-  background: rgba(255,255,255,0.03);
 }
 .chat-tab-btn.active {
-  color: var(--accent);
+  color: var(--text-primary);
   border-bottom-color: var(--accent);
 }
 .chat-tab-panel {
@@ -1146,10 +1153,10 @@ code.line-numbers-off .code-line::before {
 }
 .chat-tab-panel pre {
   margin: 0;
-  padding: 12px 14px;
+  padding: 10px 14px;
   font-family: 'Cascadia Code', 'Fira Code', monospace;
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.4;
   overflow-x: auto;
   background: transparent;
 }
@@ -1164,8 +1171,8 @@ code.line-numbers-off .code-line::before {
 
 .chat-metrics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 6px;
   margin: 8px 0;
 }
 .chat-metric-card {
@@ -1174,24 +1181,24 @@ code.line-numbers-off .code-line::before {
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
 }
-.chat-metric-card.accent-success { border-left: 3px solid var(--success); }
-.chat-metric-card.accent-danger { border-left: 3px solid var(--danger); }
-.chat-metric-card.accent-info { border-left: 3px solid var(--info); }
-.chat-metric-card.accent-warning { border-left: 3px solid var(--warning); }
-.chat-metric-card.accent-accent { border-left: 3px solid var(--accent); }
+.chat-metric-card.accent-success { border-color: rgba(34,197,94,0.25); }
+.chat-metric-card.accent-danger { border-color: rgba(239,68,68,0.25); }
+.chat-metric-card.accent-info { border-color: rgba(59,130,246,0.25); }
+.chat-metric-card.accent-warning { border-color: rgba(245,158,11,0.25); }
+.chat-metric-card.accent-accent { border-color: rgba(217,119,6,0.25); }
 .chat-metric-label {
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.8px;
+  letter-spacing: 0.5px;
   color: var(--text-muted);
-  font-weight: 600;
-  margin-bottom: 4px;
+  font-weight: 500;
+  margin-bottom: 6px;
 }
 .chat-metric-value {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--text-primary);
-  line-height: 1.2;
+  line-height: 1.1;
 }
 .chat-metric-trend {
   font-size: 10.5px;
@@ -1201,15 +1208,15 @@ code.line-numbers-off .code-line::before {
 .chat-metric-trend.down { color: var(--danger); }
 .chat-metric-trend.neutral { color: var(--text-muted); }
 .chat-metric-bar {
-  height: 3px;
-  border-radius: 2px;
-  background: rgba(255,255,255,0.06);
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(255,255,255,0.04);
   margin-top: 8px;
   overflow: hidden;
 }
 .chat-metric-bar-fill {
   height: 100%;
-  border-radius: 2px;
+  border-radius: 1px;
   transition: width 0.4s ease;
 }
 
@@ -1229,9 +1236,10 @@ code.line-numbers-off .code-line::before {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--border-primary);
   background: rgba(255,255,255,0.02);
+  min-height: 36px;
 }
 .chat-api-method {
   font-family: 'Cascadia Code', 'Fira Code', monospace;
@@ -1353,8 +1361,9 @@ code.line-numbers-off .code-line::before {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 14px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--border-primary);
+  background: rgba(255,255,255,0.02);
 }
 .chat-resource-icon {
   width: 36px;
@@ -1477,11 +1486,11 @@ code.line-numbers-off .code-line::before {
    ══════════════════════════════════════════════ */
 
 .chat-event-flow {
-  margin: 10px 0;
+  margin: 8px 0;
   border-radius: 10px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
-  padding: 16px;
+  padding: 14px;
   overflow: hidden;
 }
 .chat-ef-title {
@@ -1595,7 +1604,7 @@ code.line-numbers-off .code-line::before {
    ══════════════════════════════════════════════ */
 
 .chat-config-block {
-  margin: 10px 0;
+  margin: 8px 0;
   border-radius: 10px;
   overflow: hidden;
   background: var(--bg-secondary);
@@ -1605,12 +1614,13 @@ code.line-numbers-off .code-line::before {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 14px;
+  padding: 6px 14px;
   background: rgba(255,255,255,0.02);
   border-bottom: 1px solid var(--border-primary);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--text-primary);
+  min-height: 32px;
 }
 .chat-config-header-icon {
   font-size: 13px;
@@ -1679,11 +1689,12 @@ code.line-numbers-off .code-line::before {
   border: 1px solid var(--border-primary);
 }
 .chat-gcmd-header {
-  padding: 10px 14px;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--border-primary);
   display: flex;
   align-items: center;
   gap: 10px;
+  background: rgba(255,255,255,0.02);
 }
 .chat-gcmd-name {
   font-family: 'Cascadia Code', 'Fira Code', monospace;
