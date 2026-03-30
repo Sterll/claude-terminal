@@ -3,6 +3,7 @@
  * Elegant popover for customizing project/folder colors and icons
  */
 
+const { BaseComponent } = require('../../core/BaseComponent');
 const { t } = require('../../i18n');
 const { escapeHtml } = require('../../utils/dom');
 
@@ -109,10 +110,6 @@ const ICON_LIBRARY = {
   }
 };
 
-// Active picker state
-let activePicker = null;
-let previewState = { originalColor: null, originalIcon: null };
-
 /**
  * Get all colors as flat array
  */
@@ -137,7 +134,6 @@ function createPickerHtml(itemType, item) {
   const currentIcon = item?.icon || null;
   const itemName = item?.name || 'Item';
 
-  // Generate preview
   const previewIcon = currentIcon || (itemType === 'folder' ? '📁' : '📄');
   const previewColor = currentColor || 'var(--text-primary)';
 
@@ -256,21 +252,17 @@ function positionPicker(picker, targetRect) {
   const viewportHeight = window.innerHeight;
   const padding = 12;
 
-  // Try to position to the right of the target
   let left = targetRect.right + padding;
   let top = targetRect.top;
 
-  // If it would overflow right, position to the left
   if (left + pickerRect.width > viewportWidth - padding) {
     left = targetRect.left - pickerRect.width - padding;
   }
 
-  // If it would overflow left, center it
   if (left < padding) {
     left = Math.max(padding, (viewportWidth - pickerRect.width) / 2);
   }
 
-  // If it would overflow bottom, adjust top
   if (top + pickerRect.height > viewportHeight - padding) {
     top = Math.max(padding, viewportHeight - pickerRect.height - padding);
   }
@@ -279,230 +271,210 @@ function positionPicker(picker, targetRect) {
   picker.style.top = `${top}px`;
 }
 
-/**
- * Show the customize picker
- * @param {HTMLElement} target - Element to position relative to
- * @param {string} itemType - 'folder' or 'project'
- * @param {string} itemId - Item ID
- * @param {Object} item - Item data
- * @param {Object} callbacks - { onColorChange, onIconChange, onClose }
- */
-function show(target, itemType, itemId, item, callbacks) {
-  // Close existing picker
-  hide();
-
-  // Store original values for preview restoration
-  previewState = {
-    originalColor: item?.color || null,
-    originalIcon: item?.icon || null
-  };
-
-  // Create backdrop
-  const backdrop = document.createElement('div');
-  backdrop.className = 'customize-picker-backdrop';
-  document.body.appendChild(backdrop);
-
-  // Create picker container
-  const container = document.createElement('div');
-  container.className = 'customize-picker-container';
-  container.innerHTML = createPickerHtml(itemType, item);
-  document.body.appendChild(container);
-
-  const picker = container.querySelector('.customize-picker');
-  activePicker = { container, backdrop, itemId, itemType, callbacks };
-
-  // Position picker
-  const targetRect = target.getBoundingClientRect();
-  requestAnimationFrame(() => {
-    positionPicker(container, targetRect);
-    container.classList.add('visible');
-  });
-
-  // Setup event handlers
-  setupEventHandlers(picker, itemType, itemId, item, callbacks);
-
-  // Close on backdrop click
-  backdrop.onclick = () => hide();
-
-  // Close on Escape
-  const escHandler = (e) => {
-    if (e.key === 'Escape') hide();
-  };
-  document.addEventListener('keydown', escHandler);
-  activePicker.escHandler = escHandler;
-}
-
-/**
- * Setup all event handlers for the picker
- */
-function setupEventHandlers(picker, itemType, itemId, item, callbacks) {
-  // Tab switching
-  picker.querySelectorAll('.customize-picker-tab').forEach(tab => {
-    tab.onclick = () => {
-      picker.querySelectorAll('.customize-picker-tab').forEach(t => t.classList.remove('active'));
-      picker.querySelectorAll('.customize-picker-panel').forEach(p => p.classList.remove('active'));
-      tab.classList.add('active');
-      picker.querySelector(`[data-panel="${tab.dataset.tab}"]`).classList.add('active');
-    };
-  });
-
-  // Close button
-  picker.querySelector('.customize-picker-close').onclick = () => hide();
-
-  // Color selection
-  picker.querySelectorAll('.customize-color-btn').forEach(btn => {
-    btn.onclick = () => {
-      const color = btn.dataset.color || null;
-
-      // Update UI - clear all selections including custom
-      picker.querySelectorAll('.customize-color-btn').forEach(b => {
-        b.classList.remove('selected');
-        b.innerHTML = '';
-      });
-      const customColorEl = picker.querySelector('.customize-color-custom');
-      if (customColorEl) {
-        customColorEl.classList.remove('selected');
-        const checkIcon = customColorEl.querySelector('.check-icon');
-        if (checkIcon) checkIcon.remove();
-      }
-
-      btn.classList.add('selected');
-      btn.innerHTML = '<svg class="check-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
-
-      // Update preview
-      const preview = picker.querySelector('.customize-picker-preview');
-      preview.style.setProperty('--preview-color', color || 'var(--text-primary)');
-
-      // Callback
-      if (callbacks.onColorChange) {
-        callbacks.onColorChange(itemId, color);
-      }
-    };
-  });
-
-  // Custom color picker
-  const customColorInput = picker.querySelector('.customize-color-input');
-  const customColorEl = picker.querySelector('.customize-color-custom');
-  if (customColorInput && customColorEl) {
-    customColorInput.oninput = (e) => {
-      const color = e.target.value;
-
-      // Update UI - clear preset selections
-      picker.querySelectorAll('.customize-color-btn').forEach(b => {
-        b.classList.remove('selected');
-        b.innerHTML = '';
-      });
-
-      // Update custom swatch
-      customColorEl.style.setProperty('--swatch-color', color);
-      customColorEl.classList.add('selected');
-      if (!customColorEl.querySelector('.check-icon')) {
-        customColorEl.insertAdjacentHTML('beforeend', '<svg class="check-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>');
-      }
-
-      // Update preview
-      const preview = picker.querySelector('.customize-picker-preview');
-      preview.style.setProperty('--preview-color', color);
-
-      // Callback
-      if (callbacks.onColorChange) {
-        callbacks.onColorChange(itemId, color);
-      }
-    };
-
-    customColorEl.onclick = (e) => {
-      if (e.target === customColorInput) return;
-      customColorInput.click();
-    };
+class CustomizePicker extends BaseComponent {
+  constructor() {
+    super(null);
+    this._activePicker = null;
+    this._previewState = { originalColor: null, originalIcon: null };
   }
 
-  // Icon selection
-  picker.querySelectorAll('.customize-icon-btn').forEach(btn => {
-    btn.onclick = () => {
-      const icon = btn.dataset.icon || null;
+  show(target, itemType, itemId, item, callbacks) {
+    this.hide();
 
-      // Update UI
-      picker.querySelectorAll('.customize-icon-btn').forEach(b => {
-        b.classList.remove('selected');
-        const badge = b.querySelector('.check-badge');
-        if (badge) badge.remove();
-      });
-      btn.classList.add('selected');
-      if (!btn.querySelector('.check-badge')) {
-        btn.insertAdjacentHTML('beforeend', '<span class="check-badge">✓</span>');
-      }
-
-      // Update preview
-      const previewIcon = picker.querySelector('.customize-picker-preview-icon');
-      previewIcon.textContent = icon || (itemType === 'folder' ? '📁' : '📄');
-
-      // Callback
-      if (callbacks.onIconChange) {
-        callbacks.onIconChange(itemId, icon);
-      }
+    this._previewState = {
+      originalColor: item?.color || null,
+      originalIcon: item?.icon || null
     };
-  });
 
-  // Icon search
-  const searchInput = picker.querySelector('.customize-icon-search-input');
-  if (searchInput) {
-    searchInput.oninput = (e) => {
-      const query = e.target.value.toLowerCase().trim();
-      picker.querySelectorAll('.customize-picker-icon-category[data-category]').forEach(cat => {
-        const buttons = cat.querySelectorAll('.customize-icon-btn');
-        let hasVisible = false;
+    const backdrop = document.createElement('div');
+    backdrop.className = 'customize-picker-backdrop';
+    document.body.appendChild(backdrop);
 
-        buttons.forEach(btn => {
-          const name = btn.title.toLowerCase();
-          const matches = !query || name.includes(query);
-          btn.style.display = matches ? '' : 'none';
-          if (matches) hasVisible = true;
+    const container = document.createElement('div');
+    container.className = 'customize-picker-container';
+    container.innerHTML = createPickerHtml(itemType, item);
+    document.body.appendChild(container);
+
+    const picker = container.querySelector('.customize-picker');
+    this._activePicker = { container, backdrop, itemId, itemType, callbacks };
+
+    const targetRect = target.getBoundingClientRect();
+    requestAnimationFrame(() => {
+      positionPicker(container, targetRect);
+      container.classList.add('visible');
+    });
+
+    this._setupEventHandlers(picker, itemType, itemId, item, callbacks);
+
+    backdrop.onclick = () => this.hide();
+
+    const escHandler = (e) => {
+      if (e.key === 'Escape') this.hide();
+    };
+    document.addEventListener('keydown', escHandler);
+    this._activePicker.escHandler = escHandler;
+  }
+
+  _setupEventHandlers(picker, itemType, itemId, item, callbacks) {
+    picker.querySelectorAll('.customize-picker-tab').forEach(tab => {
+      tab.onclick = () => {
+        picker.querySelectorAll('.customize-picker-tab').forEach(t => t.classList.remove('active'));
+        picker.querySelectorAll('.customize-picker-panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        picker.querySelector(`[data-panel="${tab.dataset.tab}"]`).classList.add('active');
+      };
+    });
+
+    picker.querySelector('.customize-picker-close').onclick = () => this.hide();
+
+    picker.querySelectorAll('.customize-color-btn').forEach(btn => {
+      btn.onclick = () => {
+        const color = btn.dataset.color || null;
+
+        picker.querySelectorAll('.customize-color-btn').forEach(b => {
+          b.classList.remove('selected');
+          b.innerHTML = '';
+        });
+        const customColorEl = picker.querySelector('.customize-color-custom');
+        if (customColorEl) {
+          customColorEl.classList.remove('selected');
+          const checkIcon = customColorEl.querySelector('.check-icon');
+          if (checkIcon) checkIcon.remove();
+        }
+
+        btn.classList.add('selected');
+        btn.innerHTML = '<svg class="check-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
+
+        const preview = picker.querySelector('.customize-picker-preview');
+        preview.style.setProperty('--preview-color', color || 'var(--text-primary)');
+
+        if (callbacks.onColorChange) {
+          callbacks.onColorChange(itemId, color);
+        }
+      };
+    });
+
+    const customColorInput = picker.querySelector('.customize-color-input');
+    const customColorEl = picker.querySelector('.customize-color-custom');
+    if (customColorInput && customColorEl) {
+      customColorInput.oninput = (e) => {
+        const color = e.target.value;
+
+        picker.querySelectorAll('.customize-color-btn').forEach(b => {
+          b.classList.remove('selected');
+          b.innerHTML = '';
         });
 
-        cat.style.display = hasVisible ? '' : 'none';
-      });
-    };
+        customColorEl.style.setProperty('--swatch-color', color);
+        customColorEl.classList.add('selected');
+        if (!customColorEl.querySelector('.check-icon')) {
+          customColorEl.insertAdjacentHTML('beforeend', '<svg class="check-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>');
+        }
+
+        const preview = picker.querySelector('.customize-picker-preview');
+        preview.style.setProperty('--preview-color', color);
+
+        if (callbacks.onColorChange) {
+          callbacks.onColorChange(itemId, color);
+        }
+      };
+
+      customColorEl.onclick = (e) => {
+        if (e.target === customColorInput) return;
+        customColorInput.click();
+      };
+    }
+
+    picker.querySelectorAll('.customize-icon-btn').forEach(btn => {
+      btn.onclick = () => {
+        const icon = btn.dataset.icon || null;
+
+        picker.querySelectorAll('.customize-icon-btn').forEach(b => {
+          b.classList.remove('selected');
+          const badge = b.querySelector('.check-badge');
+          if (badge) badge.remove();
+        });
+        btn.classList.add('selected');
+        if (!btn.querySelector('.check-badge')) {
+          btn.insertAdjacentHTML('beforeend', '<span class="check-badge">✓</span>');
+        }
+
+        const previewIcon = picker.querySelector('.customize-picker-preview-icon');
+        previewIcon.textContent = icon || (itemType === 'folder' ? '📁' : '📄');
+
+        if (callbacks.onIconChange) {
+          callbacks.onIconChange(itemId, icon);
+        }
+      };
+    });
+
+    const searchInput = picker.querySelector('.customize-icon-search-input');
+    if (searchInput) {
+      searchInput.oninput = (e) => {
+        const query = e.target.value.toLowerCase().trim();
+        picker.querySelectorAll('.customize-picker-icon-category[data-category]').forEach(cat => {
+          const buttons = cat.querySelectorAll('.customize-icon-btn');
+          let hasVisible = false;
+
+          buttons.forEach(btn => {
+            const name = btn.title.toLowerCase();
+            const matches = !query || name.includes(query);
+            btn.style.display = matches ? '' : 'none';
+            if (matches) hasVisible = true;
+          });
+
+          cat.style.display = hasVisible ? '' : 'none';
+        });
+      };
+    }
+  }
+
+  hide() {
+    if (!this._activePicker) return;
+
+    const { container, backdrop, escHandler, callbacks } = this._activePicker;
+
+    container.classList.remove('visible');
+    backdrop.classList.add('hiding');
+
+    setTimeout(() => {
+      container.remove();
+      backdrop.remove();
+    }, 200);
+
+    if (escHandler) {
+      document.removeEventListener('keydown', escHandler);
+    }
+
+    if (callbacks?.onClose) {
+      callbacks.onClose();
+    }
+
+    this._activePicker = null;
+  }
+
+  isVisible() {
+    return this._activePicker !== null;
+  }
+
+  destroy() {
+    this.hide();
+    super.destroy();
   }
 }
 
-/**
- * Hide the picker
- */
-function hide() {
-  if (!activePicker) return;
-
-  const { container, backdrop, escHandler, callbacks } = activePicker;
-
-  container.classList.remove('visible');
-  backdrop.classList.add('hiding');
-
-  setTimeout(() => {
-    container.remove();
-    backdrop.remove();
-  }, 200);
-
-  if (escHandler) {
-    document.removeEventListener('keydown', escHandler);
-  }
-
-  if (callbacks?.onClose) {
-    callbacks.onClose();
-  }
-
-  activePicker = null;
-}
-
-/**
- * Check if picker is currently visible
- */
-function isVisible() {
-  return activePicker !== null;
+// ── Singleton + legacy bridge ──
+let _instance = null;
+function _getInstance() {
+  if (!_instance) _instance = new CustomizePicker();
+  return _instance;
 }
 
 module.exports = {
-  show,
-  hide,
-  isVisible,
+  CustomizePicker,
+  show: (target, itemType, itemId, item, callbacks) => _getInstance().show(target, itemType, itemId, item, callbacks),
+  hide: () => _getInstance().hide(),
+  isVisible: () => _getInstance().isVisible(),
   COLOR_PALETTE,
   ICON_LIBRARY
 };

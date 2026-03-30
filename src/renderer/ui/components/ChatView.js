@@ -4,7 +4,7 @@
  * Handles streaming, permissions, questions, and tool calls.
  */
 
-const api = window.electron_api;
+const { BaseComponent } = require('../../core/BaseComponent');
 const { escapeHtml, highlight } = require('../../utils');
 const { sanitizeColor } = require('../../utils/color');
 const { t } = require('../../i18n');
@@ -39,7 +39,7 @@ function unescapeHtml(html) {
 
 // ── Context Suggestions ──
 
-function createContextSuggestions(project, inputEl, getDefaultPlaceholder) {
+function createContextSuggestions(api, project, inputEl, getDefaultPlaceholder) {
   const CACHE_TTL = 30_000;
   const ROTATION_INTERVAL = 4_000;
 
@@ -137,7 +137,7 @@ function createContextSuggestions(project, inputEl, getDefaultPlaceholder) {
 
 const SPARKLE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/><path d="M19 15l.75 2.25L22 18l-2.25.75L19 21l-.75-2.25L16 18l2.25-.75z"/></svg>`;
 
-function createFollowupChips(suggestionsContainerEl, inputEl, project) {
+function createFollowupChips(api, suggestionsContainerEl, inputEl, project) {
   let _generationTimer = null;
   let _pendingGeneration = false;
   let _lastAssistantText = '';
@@ -313,9 +313,16 @@ function getToolDisplayInfo(toolName, input) {
   return input.file_path || input.path || input.command || input.query || '';
 }
 
-// ── Create Chat View ──
+// ── ChatView Class ──
 
-function createChatView(wrapperEl, project, options = {}) {
+class ChatView extends BaseComponent {
+  constructor() {
+    super(null);
+    this._api = window.electron_api;
+  }
+
+  createChatView(wrapperEl, project, options = {}) {
+    const api = this._api;
   const { terminalId = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null, skipPermissions = false, onTabRename = null, onStatusChange = null, onSwitchTerminal = null, onSwitchProject = null, onForkSession = null, initialPrompt = null, initialModel = null, initialEffort = null, initialImages = null, onSessionStart = null, systemPrompt = null, builtinSystemPrompt = null } = options;
   let sessionId = null;
   let isStreaming = false;
@@ -661,12 +668,12 @@ function createChatView(wrapperEl, project, options = {}) {
   initEffortSelector();
 
   // ── Context suggestions (placeholder rotation before first message) ──
-  const contextSuggestions = createContextSuggestions(project, inputEl, () => t('chat.placeholder'));
+  const contextSuggestions = createContextSuggestions(api, project, inputEl, () => t('chat.placeholder'));
   // Defer initial scan to let the component finish mounting
   contextSuggestions.setInitTimer(setTimeout(() => { if (project?.path) contextSuggestions.refresh(); }, 500));
 
   // ── Follow-up suggestion chips (shown after Claude responds) ──
-  const followupChips = createFollowupChips(followupSuggestionsEl, inputEl, project);
+  const followupChips = createFollowupChips(api, followupSuggestionsEl, inputEl, project);
 
   attachBtn.addEventListener('click', () => fileInput.click());
 
@@ -4823,6 +4830,20 @@ function createChatView(wrapperEl, project, options = {}) {
       handleSend();
     }
   };
+  }
+
+  destroy() {
+    super.destroy();
+  }
 }
 
-module.exports = { createChatView };
+// ── Singleton legacy bridge ──
+
+let _instance = null;
+function _getInstance() { if (!_instance) _instance = new ChatView(); return _instance; }
+
+function createChatView(wrapperEl, project, options = {}) {
+  return _getInstance().createChatView(wrapperEl, project, options);
+}
+
+module.exports = { ChatView, createChatView };

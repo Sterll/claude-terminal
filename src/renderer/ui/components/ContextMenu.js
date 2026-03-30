@@ -3,166 +3,144 @@
  * Right-click context menu functionality
  */
 
+const { BaseComponent } = require('../../core/BaseComponent');
 const { escapeHtml } = require('../../utils/dom');
 const { t } = require('../../i18n');
 
-// Current context menu state
-let currentMenu = null;
+class ContextMenu extends BaseComponent {
+  constructor() {
+    super(null);
+    this._currentMenu = null;
+    this._handleClickOutside = this._handleClickOutside.bind(this);
+    this._handleEscape = this._handleEscape.bind(this);
+  }
 
-/**
- * Create and show a context menu
- * @param {Object} options
- * @param {number} options.x - X position
- * @param {number} options.y - Y position
- * @param {Array} options.items - Menu items
- * @param {Object} options.target - Target data
- */
-function showContextMenu({ x, y, items, target }) {
-  // Close existing menu
-  hideContextMenu();
+  showContextMenu({ x, y, items, target }) {
+    this.hideContextMenu();
 
-  const menu = document.createElement('div');
-  menu.className = 'context-menu';
+    const menu = document.createElement('div');
+    menu.className = 'context-menu';
 
-  const itemsHtml = items.map((item, index) => {
-    if (item.separator) {
-      return '<div class="context-menu-separator"></div>';
+    const itemsHtml = items.map((item, index) => {
+      if (item.separator) {
+        return '<div class="context-menu-separator"></div>';
+      }
+
+      const disabled = item.disabled ? 'disabled' : '';
+      const danger = item.danger ? 'danger' : '';
+
+      return `
+        <button class="context-menu-item ${disabled} ${danger}" data-index="${index}" ${disabled ? 'disabled' : ''}>
+          ${item.icon ? `<span class="context-menu-icon">${item.icon}</span>` : ''}
+          <span class="context-menu-label">${escapeHtml(item.label)}</span>
+          ${item.shortcut ? `<span class="context-menu-shortcut">${escapeHtml(item.shortcut)}</span>` : ''}
+        </button>
+      `;
+    }).join('');
+
+    menu.innerHTML = itemsHtml;
+
+    menu.style.display = 'block';
+    menu.style.opacity = '0';
+    menu.style.pointerEvents = 'none';
+    document.body.appendChild(menu);
+
+    const rect = menu.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    if (x + rect.width > viewportWidth) {
+      x = x - rect.width;
+      if (x < 4) x = 4;
+    }
+    if (y + rect.height > viewportHeight) {
+      y = y - rect.height;
+      if (y < 4) y = 4;
     }
 
-    const disabled = item.disabled ? 'disabled' : '';
-    const danger = item.danger ? 'danger' : '';
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
 
-    return `
-      <button class="context-menu-item ${disabled} ${danger}" data-index="${index}" ${disabled ? 'disabled' : ''}>
-        ${item.icon ? `<span class="context-menu-icon">${item.icon}</span>` : ''}
-        <span class="context-menu-label">${escapeHtml(item.label)}</span>
-        ${item.shortcut ? `<span class="context-menu-shortcut">${escapeHtml(item.shortcut)}</span>` : ''}
-      </button>
-    `;
-  }).join('');
+    menu.querySelectorAll('.context-menu-item:not([disabled])').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const index = parseInt(btn.dataset.index);
+        const item = items[index];
+        if (item && item.onClick) {
+          item.onClick(target);
+        }
+        this.hideContextMenu();
+      };
+    });
 
-  menu.innerHTML = itemsHtml;
+    menu.style.display = '';
+    menu.style.opacity = '';
+    menu.style.pointerEvents = '';
+    requestAnimationFrame(() => {
+      menu.classList.add('show');
+    });
 
-  // Append to DOM - temporarily visible but transparent for measuring
-  menu.style.display = 'block';
-  menu.style.opacity = '0';
-  menu.style.pointerEvents = 'none';
-  document.body.appendChild(menu);
+    this._currentMenu = menu;
 
-  // Adjust position if menu would go off screen
-  const rect = menu.getBoundingClientRect();
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-
-  if (x + rect.width > viewportWidth) {
-    x = x - rect.width;
-    if (x < 4) x = 4;
-  }
-  if (y + rect.height > viewportHeight) {
-    y = y - rect.height;
-    if (y < 4) y = 4;
+    document.addEventListener('click', this._handleClickOutside);
+    document.addEventListener('contextmenu', this._handleClickOutside);
+    document.addEventListener('keydown', this._handleEscape);
   }
 
-  menu.style.left = `${x}px`;
-  menu.style.top = `${y}px`;
+  hideContextMenu() {
+    if (this._currentMenu) {
+      const menuToRemove = this._currentMenu;
+      this._currentMenu = null;
+      menuToRemove.classList.remove('show');
+      setTimeout(() => {
+        if (menuToRemove.parentNode) {
+          menuToRemove.parentNode.removeChild(menuToRemove);
+        }
+      }, 150);
 
-  // Item click handlers
-  menu.querySelectorAll('.context-menu-item:not([disabled])').forEach(btn => {
-    btn.onclick = (e) => {
+      document.removeEventListener('click', this._handleClickOutside);
+      document.removeEventListener('contextmenu', this._handleClickOutside);
+      document.removeEventListener('keydown', this._handleEscape);
+    }
+  }
+
+  _handleClickOutside(e) {
+    if (this._currentMenu && !this._currentMenu.contains(e.target)) {
+      this.hideContextMenu();
+    }
+  }
+
+  _handleEscape(e) {
+    if (e.key === 'Escape') {
+      this.hideContextMenu();
+    }
+  }
+
+  setupContextMenu(element, getItems, getTarget) {
+    element.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
       e.stopPropagation();
-      const index = parseInt(btn.dataset.index);
-      const item = items[index];
-      if (item && item.onClick) {
-        item.onClick(target);
+
+      const target = getTarget ? getTarget(e) : null;
+      const items = getItems(target, e);
+
+      if (items && items.length > 0) {
+        this.showContextMenu({
+          x: e.clientX,
+          y: e.clientY,
+          items,
+          target
+        });
       }
-      hideContextMenu();
-    };
-  });
+    });
+  }
 
-  // Reset inline styles and animate in
-  menu.style.display = '';
-  menu.style.opacity = '';
-  menu.style.pointerEvents = '';
-  requestAnimationFrame(() => {
-    menu.classList.add('show');
-  });
-
-  currentMenu = menu;
-
-  // Close handlers
-  document.addEventListener('click', handleClickOutside);
-  document.addEventListener('contextmenu', handleClickOutside);
-  document.addEventListener('keydown', handleEscape);
-}
-
-/**
- * Hide context menu
- */
-function hideContextMenu() {
-  if (currentMenu) {
-    const menuToRemove = currentMenu;
-    currentMenu = null;
-    menuToRemove.classList.remove('show');
-    setTimeout(() => {
-      if (menuToRemove.parentNode) {
-        menuToRemove.parentNode.removeChild(menuToRemove);
-      }
-    }, 150);
-
-    document.removeEventListener('click', handleClickOutside);
-    document.removeEventListener('contextmenu', handleClickOutside);
-    document.removeEventListener('keydown', handleEscape);
+  destroy() {
+    this.hideContextMenu();
+    super.destroy();
   }
 }
 
-/**
- * Handle click outside menu
- * @param {Event} e
- */
-function handleClickOutside(e) {
-  if (currentMenu && !currentMenu.contains(e.target)) {
-    hideContextMenu();
-  }
-}
-
-/**
- * Handle escape key
- * @param {KeyboardEvent} e
- */
-function handleEscape(e) {
-  if (e.key === 'Escape') {
-    hideContextMenu();
-  }
-}
-
-/**
- * Setup context menu on element
- * @param {HTMLElement} element
- * @param {Function} getItems - Function that returns items array
- * @param {Function} getTarget - Function that returns target data
- */
-function setupContextMenu(element, getItems, getTarget) {
-  element.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const target = getTarget ? getTarget(e) : null;
-    const items = getItems(target, e);
-
-    if (items && items.length > 0) {
-      showContextMenu({
-        x: e.clientX,
-        y: e.clientY,
-        items,
-        target
-      });
-    }
-  });
-}
-
-/**
- * Create common menu item configurations
- */
 const MenuItems = {
   separator: () => ({ separator: true }),
 
@@ -192,9 +170,17 @@ const MenuItems = {
   })
 };
 
+// ── Singleton + legacy bridge ──
+let _instance = null;
+function _getInstance() {
+  if (!_instance) _instance = new ContextMenu();
+  return _instance;
+}
+
 module.exports = {
-  showContextMenu,
-  hideContextMenu,
-  setupContextMenu,
+  ContextMenu,
+  showContextMenu: (opts) => _getInstance().showContextMenu(opts),
+  hideContextMenu: () => _getInstance().hideContextMenu(),
+  setupContextMenu: (el, getItems, getTarget) => _getInstance().setupContextMenu(el, getItems, getTarget),
   MenuItems
 };
