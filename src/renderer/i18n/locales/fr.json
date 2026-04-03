@@ -1790,6 +1790,11 @@
     "addToWorkspace": "Ajouter au workspace...",
     "badge": "WS"
   },
+  "connectivity": {
+    "tabTitle": "Connectivite",
+    "localTab": "Local",
+    "cloudTab": "Cloud"
+  },
   "cloud": {
     "tabTitle": "Cloud",
     "pendingBadge": "{count} fichier(s) en attente de sync",

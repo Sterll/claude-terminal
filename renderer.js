@@ -101,7 +101,7 @@ const {
 const registry = require('./src/project-types/registry');
 const { mergeTranslations } = require('./src/renderer/i18n');
 const ModalComponent = require('./src/renderer/ui/components/Modal');
-const { MemoryEditor, GitChangesPanel, ShortcutsManager, SettingsPanel, SkillsAgentsPanel, PluginsPanel, MarketplacePanel, McpPanel, WorkflowPanel, DatabasePanel, CloudPanel, ControlTowerPanel, SessionReplayPanel, ParallelTaskPanel, WorkspacePanel } = require('./src/renderer/ui/panels');
+const { MemoryEditor, GitChangesPanel, ShortcutsManager, SettingsPanel, SkillsAgentsPanel, PluginsPanel, MarketplacePanel, McpPanel, WorkflowPanel, DatabasePanel, CloudPanel, ConnectivityPanel, ControlTowerPanel, SessionReplayPanel, ParallelTaskPanel, WorkspacePanel } = require('./src/renderer/ui/panels');
 
 // ========== LOCAL MODAL FUNCTIONS ==========
 // These work with the existing HTML modal elements in index.html
@@ -2001,7 +2001,7 @@ async function _checkNewCloudProjects() {
     if (toast) {
       toast.style.cursor = 'pointer';
       toast.querySelector('.toast-content')?.addEventListener('click', () => {
-        const cloudTab = document.querySelector('[data-tab="cloud-panel"]');
+        const cloudTab = document.querySelector('[data-tab="connectivity"]');
         if (cloudTab) cloudTab.click();
         toast.querySelector('.toast-close')?.click();
       });
@@ -2360,7 +2360,7 @@ function _updateProjectPendingChanges(changes) {
 }
 
 function _updateCloudTabBadge(count) {
-  const tab = document.querySelector('.nav-tab[data-tab="cloud-panel"]');
+  const tab = document.querySelector('.nav-tab[data-tab="connectivity"]');
   if (!tab) return;
   let badge = tab.querySelector('.nav-tab-badge');
   if (count > 0) {
@@ -2836,11 +2836,11 @@ document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
       }
     }
     if (tabId === 'memory') MemoryEditor.loadMemory();
-    if (tabId === 'cloud-panel') {
-      const container = document.getElementById('tab-cloud-panel');
+    if (tabId === 'connectivity') {
+      const container = document.getElementById('tab-connectivity');
       if (container && !container.dataset.initialized) {
-        container.innerHTML = CloudPanel.buildHtml(settingsState.get());
-        CloudPanel.setupHandlers({
+        container.innerHTML = ConnectivityPanel.buildHtml(settingsState.get());
+        ConnectivityPanel.setupHandlers({
           settingsState,
           projectsState,
           saveSettings,
@@ -2849,8 +2849,8 @@ document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
         container.dataset.initialized = 'true';
       }
     }
-    if (tabId !== 'cloud-panel') {
-      CloudPanel.cleanup();
+    if (tabId !== 'connectivity') {
+      ConnectivityPanel.cleanup();
     }
     // Cleanup TimeTrackingDashboard interval when leaving the tab
     if (tabId !== 'timetracking') {
@@ -2896,7 +2896,7 @@ document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
 });
 
 // ========== PINNED TABS SYSTEM ==========
-const _ALL_TABS_ORDER = ['claude', 'git', 'database', 'mcp', 'plugins', 'skills', 'agents', 'workflows', 'tasks', 'control-tower', 'dashboard', 'timetracking', 'session-replay', 'memory', 'workspace', 'cloud-panel'];
+const _ALL_TABS_ORDER = ['claude', 'git', 'database', 'mcp', 'plugins', 'skills', 'agents', 'workflows', 'tasks', 'control-tower', 'dashboard', 'timetracking', 'session-replay', 'memory', 'workspace', 'connectivity'];
 
 function applyPinnedTabs() {
   const pinned = settingsState.get().pinnedTabs || _ALL_TABS_ORDER;

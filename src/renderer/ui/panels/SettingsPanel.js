@@ -7,7 +7,7 @@
 const { BasePanel } = require('../../core/BasePanel');
 const { escapeHtml } = require('../../utils');
 const { t, setLanguage, getCurrentLanguage, getAvailableLanguages } = require('../../i18n');
-const RemotePanel = require('./RemotePanel');
+// RemotePanel is now part of ConnectivityPanel (top-level tab)
 
 // ── Module-level constants ──
 
@@ -594,7 +594,6 @@ class SettingsPanel extends BasePanel {
           <button class="settings-tab ${initialTab === 'shortcuts' ? 'active' : ''}" data-tab="shortcuts">${t('settings.tabShortcuts')}</button>
           <button class="settings-tab ${initialTab === 'library' ? 'active' : ''}" data-tab="library">${t('settings.tabLibrary')}</button>
           <button class="settings-tab ${initialTab === 'agents' ? 'active' : ''}" data-tab="agents">${t('settings.tabAgents')}</button>
-          <button class="settings-tab ${initialTab === 'remote' ? 'active' : ''}" data-tab="remote">${t('remote.tabTitle')}</button>
           ${(() => {
             const registry = require('../../../project-types/registry');
             const dynamicTabs = registry.collectAllSettingsFields();
@@ -1143,9 +1142,6 @@ class SettingsPanel extends BasePanel {
           <div class="settings-panel ${initialTab === 'agents' ? 'active' : ''}" data-panel="agents">
             <div id="agent-colors-content"><div class="settings-loading-hint">${t('common.loading')}</div></div>
           </div>
-          <div class="settings-panel ${initialTab === 'remote' ? 'active' : ''}" data-panel="remote">
-            ${RemotePanel.buildHtml(settings)}
-          </div>
           ${(() => {
             const registry = require('../../../project-types/registry');
             const dynamicTabs = registry.collectAllSettingsFields();
@@ -1227,7 +1223,6 @@ class SettingsPanel extends BasePanel {
     if (initialTab === 'agents') this.loadAgentsColorPanel();
 
     this._ctx.ShortcutsManager.setupShortcutsPanelHandlers();
-    RemotePanel.setupHandlers(this._ctx);
 
     // Custom presets management
     const addPresetBtn = document.getElementById('btn-add-preset');

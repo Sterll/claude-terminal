@@ -1,4 +1,83 @@
 /* ═══════════════════════════════════════════════════════════════
+   Connectivity Panel — wrapper for Local + Cloud sub-tabs
+   ═══════════════════════════════════════════════════════════════ */
+
+.cn-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.cn-tab-bar {
+  display: flex;
+  gap: 2px;
+  padding: 8px 20px 0;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+.cn-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+}
+
+.cn-tab:hover {
+  color: var(--text-primary);
+}
+
+.cn-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.cn-tab svg {
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.cn-tab.active svg {
+  opacity: 1;
+}
+
+.cn-content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.cn-sub-panel {
+  display: none;
+  height: 100%;
+  overflow: hidden;
+}
+
+.cn-sub-panel.active {
+  display: block;
+}
+
+.cn-sub-panel-inner {
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* Local sub-tab: wrap RemotePanel styles in connectivity context */
+.cn-local-content {
+  padding: 0 20px 20px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
    Cloud Panel — Dedicated Cloud tab styles
    ═══════════════════════════════════════════════════════════════ */
 

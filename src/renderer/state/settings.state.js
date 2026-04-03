@@ -66,7 +66,7 @@ const defaultSettings = {
   telemetryConsentShown: false, // Whether consent prompt was shown
   agentColors: {}, // Custom colors per tool/agent name: { 'Grep': '#ff0000', 'my-agent': '#00ff00' }
   enableFollowupSuggestions: true, // Show AI-generated follow-up suggestion chips after Claude responds (uses Haiku)
-  pinnedTabs: ['claude', 'git', 'database', 'mcp', 'plugins', 'skills', 'agents', 'workflows', 'tasks', 'control-tower', 'dashboard', 'timetracking', 'session-replay', 'memory', 'cloud-panel'], // Pinned sidebar tabs (rest go to More menu)
+  pinnedTabs: ['claude', 'git', 'database', 'mcp', 'plugins', 'skills', 'agents', 'workflows', 'tasks', 'control-tower', 'dashboard', 'timetracking', 'session-replay', 'memory', 'connectivity'], // Pinned sidebar tabs (rest go to More menu)
   activeTab: 'claude', // Last active sidebar tab (restored on restart)
   tabsOrder: null, // null = canonical order, otherwise array of all tabIds in custom order
   parallelMaxAgents: 3, // Default number of parallel agents for Parallel Task Manager (1-10)
@@ -118,6 +118,25 @@ function setSetting(key, value) {
 /**
  * Load settings from file, with backup restore on corruption
  */
+/**
+ * Migrate saved settings from older formats
+ * @param {Object} saved - parsed settings object (mutated in place)
+ */
+function _migrateSettings(saved) {
+  // v1.3.0: Rename 'cloud-panel' tab → 'connectivity'
+  if (Array.isArray(saved.pinnedTabs)) {
+    const idx = saved.pinnedTabs.indexOf('cloud-panel');
+    if (idx !== -1) saved.pinnedTabs[idx] = 'connectivity';
+  }
+  if (Array.isArray(saved.tabsOrder)) {
+    const idx = saved.tabsOrder.indexOf('cloud-panel');
+    if (idx !== -1) saved.tabsOrder[idx] = 'connectivity';
+  }
+  if (saved.activeTab === 'cloud-panel') {
+    saved.activeTab = 'connectivity';
+  }
+}
+
 async function loadSettings() {
   const backupFile = `${settingsFile}.bak`;
   try {
@@ -125,6 +144,7 @@ async function loadSettings() {
       const raw = await fsp.readFile(settingsFile, 'utf8');
       if (raw && raw.trim()) {
         const saved = JSON.parse(raw);
+        _migrateSettings(saved);
         settingsState.set({ ...defaultSettings, ...saved });
         return;
       }
@@ -137,6 +157,7 @@ async function loadSettings() {
         const backupRaw = await fsp.readFile(backupFile, 'utf8');
         if (backupRaw && backupRaw.trim()) {
           const saved = JSON.parse(backupRaw);
+          _migrateSettings(saved);
           settingsState.set({ ...defaultSettings, ...saved });
           console.warn('Settings restored from backup file');
           return;

@@ -14,6 +14,7 @@ const McpPanel = require('./McpPanel');
 const WorkflowPanel = require('./WorkflowPanel');
 const DatabasePanel = require('./DatabasePanel');
 const CloudPanel = require('./CloudPanel');
+const ConnectivityPanel = require('./ConnectivityPanel');
 const ControlTowerPanel = require('./ControlTowerPanel');
 const SessionReplayPanel = require('./SessionReplayPanel');
 const ParallelTaskPanel = require('./ParallelTaskPanel');
@@ -31,6 +32,7 @@ module.exports = {
   WorkflowPanel,
   DatabasePanel,
   CloudPanel,
+  ConnectivityPanel,
   ControlTowerPanel,
   SessionReplayPanel,
   ParallelTaskPanel,

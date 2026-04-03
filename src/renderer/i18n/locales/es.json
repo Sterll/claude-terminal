@@ -1657,6 +1657,11 @@
     "disconnectDevice": "Desconectar este dispositivo",
     "unknownDevice": "Dispositivo desconocido"
   },
+  "connectivity": {
+    "tabTitle": "Conectividad",
+    "localTab": "Local",
+    "cloudTab": "Nube"
+  },
   "cloud": {
     "tabTitle": "Nube",
     "pendingBadge": "{count} archivo(s) pendiente(s) de sincronizar",

@@ -43,7 +43,7 @@ function saveSettings(settings) {
 
 const ALL_TABS = [
   'claude', 'git', 'database', 'mcp', 'plugins', 'skills',
-  'agents', 'workflows', 'dashboard', 'timetracking', 'memory', 'cloud-panel',
+  'agents', 'workflows', 'dashboard', 'timetracking', 'memory', 'connectivity',
 ];
 
 const TAB_LABELS = {
@@ -58,7 +58,7 @@ const TAB_LABELS = {
   dashboard: 'Projects dashboard',
   timetracking: 'Time tracking',
   memory: 'Memory editor (MEMORY.md)',
-  'cloud-panel': 'Cloud remote control',
+  connectivity: 'Connectivity (local Wi-Fi + cloud relay)',
 };
 
 // -- Tool definitions ---------------------------------------------------------
