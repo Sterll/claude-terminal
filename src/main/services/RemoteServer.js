@@ -70,17 +70,18 @@ let _lockoutUntil = 0;
 // Live time data pushed from renderer
 let _timeData = { todayMs: 0 };
 
-// ─── Cloud Relay Bridge ──────────────────────────────────────────────────────
-// CloudRelayClient reference — injected via setCloudClient()
-let _cloudClient = null;
+// ─── External Transport Bridge ───────────────────────────────────────────────
+// External transport (e.g. cloud relay) — injected via setExternalTransport()
+// Duck-typed: { connected: boolean, send(data: string): void }
+let _externalTransport = null;
 
-// Virtual WS-like object that routes send() calls through the cloud relay
-const _cloudWsProxy = {
-  get readyState() { return _cloudClient?.connected ? 1 : 3; },
+// Virtual WS-like object that routes send() calls through the external transport
+const _externalWsProxy = {
+  get readyState() { return _externalTransport?.connected ? 1 : 3; },
   send(data) {
-    if (_cloudClient?.connected) {
-      try { _cloudClient.send(typeof data === 'string' ? data : JSON.stringify(data)); } catch (e) {
-        console.warn(`[Remote] Cloud proxy send failed: ${e.message}`);
+    if (_externalTransport?.connected) {
+      try { _externalTransport.send(typeof data === 'string' ? data : JSON.stringify(data)); } catch (e) {
+        console.warn(`[Remote] External transport send failed: ${e.message}`);
       }
     }
   },
@@ -845,9 +846,9 @@ function _broadcast(type, data) {
       try { ws.send(msg); } catch (e) {}
     }
   }
-  // Cloud relay — forward to remote mobiles connected via cloud
-  if (_cloudClient?.connected) {
-    try { _cloudClient.send(msg); } catch (e) {}
+  // External transport — forward to remote clients (e.g. cloud relay)
+  if (_externalTransport?.connected) {
+    try { _externalTransport.send(msg); } catch (e) {}
   }
 }
 
@@ -905,8 +906,8 @@ function _syncServerState() {
 
 // ─── ChatService Bridge ──────────────────────────────────────────────────────
 // The callback bridges ChatService events (chat-message, chat-idle, etc.)
-// to both local WS clients AND the cloud relay. It must be installed whenever
-// either the local remote server OR the cloud relay is active.
+// to both local WS clients AND the external transport. It must be installed
+// whenever either the local remote server OR an external transport is active.
 
 let _chatBridgeInstalled = false;
 
@@ -962,9 +963,8 @@ function _ensureChatBridge() {
 
 function _teardownChatBridge() {
   if (!_chatBridgeInstalled) return;
-  // Only remove if neither local server nor cloud client are registered
-  // (check _cloudClient existence, not .connected — connection may come later)
-  if (httpServer || _cloudClient) return;
+  // Only remove if neither local server nor external transport are registered
+  if (httpServer || _externalTransport) return;
   _chatBridgeInstalled = false;
   try {
     const chatService = require('./ChatService');
@@ -1046,7 +1046,7 @@ function start(win, port = 3712) {
     stop(); // Full cleanup including wss, callback, clients
   });
 
-  // Bridge ChatService events → connected WS clients + cloud
+  // Bridge ChatService events → connected WS clients + external transport
   _ensureChatBridge();
   _startCleanupTimer();
 }
@@ -1069,18 +1069,18 @@ async function stop() {
     await new Promise(resolve => { const s = httpServer; httpServer = null; s.close(resolve); });
   }
 
-  // Only clear shared caches if no cloud client is registered
-  if (!_cloudClient) {
+  // Only clear shared caches if no external transport is registered
+  if (!_externalTransport) {
     _sessionProjectMap.clear();
     _sessionMessageBuffer.clear();
     _sessionTabNames.clear();
   }
 
-  // Only remove chat bridge if cloud is also disconnected
+  // Only remove chat bridge if external transport is also disconnected
   _teardownChatBridge();
 
-  // Stop cleanup timer only if cloud is also disconnected
-  if (!_cloudClient) {
+  // Stop cleanup timer only if external transport is also disconnected
+  if (!_externalTransport) {
     _stopCleanupTimer();
   }
 
@@ -1092,47 +1092,50 @@ function setMainWindow(win) {
   // No auto-start — user must explicitly start the server or connect cloud
 }
 
-// ─── Cloud Relay Bridge API ──────────────────────────────────────────────────
+// ─── External Transport API ──────────────────────────────────────────────────
 
 /**
- * Inject the CloudRelayClient instance so RemoteServer can bridge messages.
- * @param {import('./CloudRelayClient').CloudRelayClient} client
+ * Inject an external transport for bridging messages beyond local Wi-Fi.
+ * The transport must implement: { connected: boolean, send(data: string): void }
+ * @param {{ connected: boolean, send: (data: string) => void } | null} transport
  */
-function setCloudClient(client) {
-  _cloudClient = client;
-  if (client) {
-    // Ensure chat bridge is active so events flow to cloud
+function setExternalTransport(transport) {
+  _externalTransport = transport;
+  if (transport) {
+    // Ensure chat bridge is active so events flow to external transport
     // even if the local WS remote server isn't started
     _ensureChatBridge();
     _startCleanupTimer();
   } else {
-    // Cloud released — teardown bridge and cleanup timer if local server also inactive
+    // Transport released - teardown bridge and cleanup timer if local server also inactive
     _teardownChatBridge();
     if (!httpServer) _stopCleanupTimer();
   }
 }
 
 /**
- * Handle a message arriving from the cloud relay (mobile → relay → desktop).
+ * Handle a message arriving from an external transport (e.g. cloud relay).
  * Routes it through the same handler as local WS messages.
- * @param {object|string} msg - Parsed JSON message from relay
+ * @param {object|string} msg - Parsed JSON message
  */
-function handleCloudMessage(msg) {
+function handleExternalMessage(msg) {
   const raw = typeof msg === 'string' ? msg : JSON.stringify(msg);
-  _handleClientMessage(_cloudWsProxy, '__cloud__', Buffer.from(raw));
+  _handleClientMessage(_externalWsProxy, '__external__', Buffer.from(raw));
 }
 
 /**
- * Send initial state to cloud-connected mobiles (hello, projects, sessions, time).
- * Called when CloudRelayClient connects to the relay server.
+ * Get initialization data for an external transport client.
+ * Returns an array of messages to send (hello, projects, sessions, time).
+ * The caller is responsible for sending them via the transport.
+ * @returns {{ sendInit: (sendFn: Function) => void, requestTimePush: () => void }}
  */
-function sendInitToCloud() {
-  if (!_cloudClient?.connected) return;
-  console.debug('[Remote] Sending init data to cloud relay');
+function sendInitToTransport() {
+  if (!_externalTransport?.connected) return;
+  console.debug('[Remote] Sending init data to external transport');
 
   // 1. hello
   const settings = _loadSettings();
-  _cloudClient.send(JSON.stringify({
+  _externalTransport.send(JSON.stringify({
     type: 'hello',
     data: {
       version: '1.0',
@@ -1145,10 +1148,10 @@ function sendInitToCloud() {
   }));
 
   // 2. projects + sessions
-  _sendProjectsAndSessions(_cloudWsProxy);
+  _sendProjectsAndSessions(_externalWsProxy);
 
   // 3. time tracking
-  _cloudClient.send(JSON.stringify({ type: 'time:update', data: _timeData }));
+  _externalTransport.send(JSON.stringify({ type: 'time:update', data: _timeData }));
 
   // 4. Request fresh time data from renderer
   if (_isMainWindowReady()) {
@@ -1215,8 +1218,8 @@ module.exports = {
   broadcastSessionStarted,
   broadcastTabRenamed,
   setTimeData,
-  setCloudClient,
-  handleCloudMessage,
-  sendInitToCloud,
+  setExternalTransport,
+  handleExternalMessage,
+  sendInitToTransport,
   _syncServerState,
 };

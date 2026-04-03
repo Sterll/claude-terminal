@@ -36,13 +36,13 @@ function registerRemoteHandlers() {
     }
   });
 
-  // Manually start the server — stop cloud first (mutual exclusion)
+  // Manually start the server — stop cloud relay first (mutual exclusion)
   ipcMain.handle('remote:start-server', () => {
     try {
       sendFeaturePing('remote:connect');
       if (cloudRelayClient.connected) {
         cloudRelayClient.disconnect();
-        remoteServer.setCloudClient(null);
+        remoteServer.setExternalTransport(null);
       }
       remoteServer._syncServerState();
       return { success: true, ...remoteServer.getServerInfo() };
