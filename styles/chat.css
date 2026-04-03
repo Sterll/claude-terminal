@@ -2626,18 +2626,19 @@
 .chat-mention-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding: 8px 12px 4px;
+  gap: 5px;
+  padding: 8px 4px 0 12px;
+  width: 100%;
 }
 
 .chat-mention-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 8px 4px 7px;
+  gap: 4px;
+  padding: 3px 6px 3px 6px;
   background: rgba(var(--accent-color-rgb, 99, 102, 241), 0.1);
   border: 1px solid rgba(var(--accent-color-rgb, 99, 102, 241), 0.2);
-  border-radius: 8px;
+  border-radius: 7px;
   font-size: 12px;
   color: var(--accent-color);
   font-weight: 500;
@@ -2777,6 +2778,7 @@
 
 .chat-input-wrapper {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
@@ -2802,6 +2804,10 @@
   max-height: 200px;
   line-height: 1.5;
   outline: none;
+}
+
+.chat-input-wrapper.has-chips .chat-input {
+  padding-top: 6px;
 }
 
 .chat-input::placeholder {

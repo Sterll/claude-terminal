@@ -384,13 +384,13 @@ class ChatView extends BaseComponent {
       <div class="chat-input-area">
         <div class="chat-mention-dropdown" style="display:none"></div>
         <div class="chat-slash-dropdown" style="display:none"></div>
-        <div class="chat-mention-chips" style="display:none"></div>
         <div class="chat-followup-suggestions" style="display:none"></div>
         <div class="chat-image-preview" style="display:none"></div>
         <div class="chat-input-wrapper">
           <button class="chat-attach-btn" title="${escapeHtml(t('chat.attachImage'))}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
           </button>
+          <div class="chat-mention-chips" style="display:none"></div>
           <textarea class="chat-input" placeholder="${escapeHtml(t('chat.placeholder'))}" rows="1"></textarea>
           <input type="file" class="chat-file-input" accept="image/png,image/jpeg,image/gif,image/webp" multiple style="display:none" />
           <div class="chat-input-actions">
@@ -1510,12 +1510,15 @@ class ChatView extends BaseComponent {
   }
 
   function renderMentionChips() {
+    const wrapper = mentionChipsEl.closest('.chat-input-wrapper');
     if (pendingMentions.length === 0) {
       mentionChipsEl.style.display = 'none';
       mentionChipsEl.innerHTML = '';
+      if (wrapper) wrapper.classList.remove('has-chips');
       return;
     }
     mentionChipsEl.style.display = 'flex';
+    if (wrapper) wrapper.classList.add('has-chips');
     mentionChipsEl.innerHTML = pendingMentions.map((chip, i) => {
       const chipColorRaw = (chip.type === 'project' && chip.data?.color) ? chip.data.color : '';
       const chipColor = sanitizeColor(chipColorRaw);
