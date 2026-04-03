@@ -24,7 +24,8 @@ const { registerMinecraftHandlers } = require('../../project-types/minecraft/mai
 const { registerDiscordHandlers } = require('../../project-types/discord/main/discord.ipc');
 const { registerRemoteHandlers } = require('./remote.ipc');
 const { registerWorkflowHandlers } = require('./workflow.ipc');
-const { registerCloudHandlers, setCloudMainWindow } = require('./cloud.ipc');
+const { registerCloudRelayHandlers, setCloudRelayMainWindow } = require('./cloud-relay.ipc');
+const { registerCloudProjectsHandlers, setCloudProjectsMainWindow } = require('./cloud-projects.ipc');
 const { registerDatabaseHandlers } = require('./database.ipc');
 const { registerTelemetryHandlers } = require('./telemetry.ipc');
 const { registerExplorerHandlers } = require('./explorer.ipc');
@@ -41,7 +42,8 @@ function registerAllHandlers(mainWindow) {
   // Set main window references where needed
   setDialogMainWindow(mainWindow);
   setUsageMainWindow(mainWindow);
-  setCloudMainWindow(mainWindow);
+  setCloudRelayMainWindow(mainWindow);
+  setCloudProjectsMainWindow(mainWindow);
   setSyncMainWindow(mainWindow);
 
   // Register all handlers
@@ -66,7 +68,8 @@ function registerAllHandlers(mainWindow) {
   registerDiscordHandlers();
   registerRemoteHandlers();
   registerWorkflowHandlers(mainWindow);
-  registerCloudHandlers();
+  registerCloudRelayHandlers();
+  registerCloudProjectsHandlers();
   registerDatabaseHandlers();
   registerTelemetryHandlers();
   registerExplorerHandlers(mainWindow);

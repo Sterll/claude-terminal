@@ -1,49 +1,27 @@
 /**
- * Cloud IPC Handlers
- * Bridge between renderer and CloudRelayClient for relay/cloud features.
- * Routes cloud relay messages through RemoteServer so cloud mobiles
- * get the same experience as local Wi-Fi clients.
+ * Cloud Projects IPC Handlers
+ * Manages cloud project upload/download, user profile, sessions,
+ * sync registration, file comparison, conflict resolution, and import.
  */
 
 const { ipcMain } = require('electron');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
-const { cloudRelayClient } = require('../services/CloudRelayClient');
-const remoteServer = require('../services/RemoteServer');
 const cloudSyncService = require('../services/CloudSyncService');
 const { syncEngine } = require('../services/SyncEngine');
-const { sendFeaturePing } = require('../services/TelemetryService');
 const { zipProject } = require('../utils/zipProject');
-const { settingsFile } = require('../utils/paths');
+const { projectsFile } = require('../utils/paths');
 const { execGit } = require('../utils/git');
 const { getTokenForGit } = require('../services/GitHubAuthService');
 const { hashFiles } = require('../utils/fileHash');
 const { getMachineId } = require('../utils/machineId');
+const { _getCloudConfig, _fetchCloud, FETCH_DOWNLOAD_TIMEOUT_MS } = require('./cloud-shared');
 
 let mainWindow = null;
 
-const { projectsFile } = require('../utils/paths');
-
 /** @type {Set<string>} Locks to prevent concurrent uploads for the same project */
 const _uploadLocks = new Set();
-
-function _loadSettings() {
-  try {
-    if (fs.existsSync(settingsFile)) {
-      return JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
-    }
-  } catch (e) {}
-  return {};
-}
-
-function _getCloudConfig() {
-  const settings = _loadSettings();
-  const url = settings.cloudServerUrl;
-  const key = settings.cloudApiKey;
-  if (!url || !key) throw new Error('Cloud not configured');
-  return { url: url.replace(/\/$/, ''), key };
-}
 
 // ── Cloud project key ──────────────────────────────────────────────────────
 
@@ -93,79 +71,7 @@ async function _migrateLegacyProject(url, key, projectId, projectName) {
   }
 }
 
-function registerCloudHandlers() {
-  // Wire callbacks once (they just register listeners, not start anything)
-  cloudRelayClient.onMessage((msg) => {
-    // Forward cloud events to renderer
-    if (msg?.type === 'cloud:project-updated' && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('cloud:project-updated', msg);
-    }
-    remoteServer.handleCloudMessage(msg);
-  });
-
-  cloudRelayClient.onStatusChange((status) => {
-    if (status.connected) {
-      remoteServer.sendInitToCloud();
-      cloudSyncService.start();
-      // Start entity sync engine
-      const settings = _loadSettings();
-      syncEngine.start(settings.cloudServerUrl, settings.cloudApiKey);
-      // Trigger full sync on connect
-      setImmediate(() => syncEngine.fullSync());
-      // Check for pending changes from headless sessions
-      setImmediate(() => _checkPendingChangesOnReconnect());
-      // Auto-sync skills if enabled
-      setImmediate(async () => {
-        try {
-          if (settings.cloudSyncSkills) {
-            const result = await _syncSkillsToCloud();
-            console.log(`[Cloud] Auto skills sync: ${result.skillCount} skill(s), ${result.agentCount} agent(s)`);
-          }
-        } catch (e) {
-          console.warn('[Cloud] Auto skills sync failed:', e.message);
-        }
-      });
-    } else {
-      syncEngine.stop();
-    }
-    // Note: we do NOT call setCloudClient(null) here on disconnect because
-    // CloudRelayClient auto-reconnects. Only explicit cloud:disconnect clears it.
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('cloud:status-changed', status);
-    }
-  });
-
-  // ── Relay connect/disconnect ──
-
-  ipcMain.handle('cloud:connect', async (_event, { serverUrl, apiKey }) => {
-    sendFeaturePing('cloud:connect');
-    if (remoteServer.getServerInfo().running) {
-      remoteServer.stop();
-    }
-    remoteServer.setCloudClient(cloudRelayClient);
-    cloudRelayClient.connect(serverUrl, apiKey);
-    return { ok: true };
-  });
-
-  ipcMain.handle('cloud:disconnect', async () => {
-    cloudRelayClient.disconnect();
-    remoteServer.setCloudClient(null);
-    cloudSyncService.stop();
-    syncEngine.stop();
-    return { ok: true };
-  });
-
-  ipcMain.handle('cloud:status', async () => {
-    return cloudRelayClient.getStatus();
-  });
-
-  ipcMain.handle('cloud:get-machine-id', async () => {
-    return getMachineId();
-  });
-
-  ipcMain.on('cloud:send', (_event, data) => {
-    cloudRelayClient.send(data);
-  });
+function registerCloudProjectsHandlers() {
 
   // ── Project upload ──
 
@@ -904,19 +810,54 @@ function registerCloudHandlers() {
 
     return { success: true };
   });
+
+  // ── Import cloud project to local machine ──
+
+  ipcMain.handle('cloud:import-project', async (event, { projectName, displayName }) => {
+    const { url, key } = _getCloudConfig();
+    const extractZip = require('extract-zip');
+    const { dialog } = require('electron');
+
+    const folderName = displayName || projectName;
+
+    // Ask user where to import the project
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: `Import "${folderName}"`,
+      buttonLabel: 'Import here',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (canceled || !filePaths.length) return { canceled: true };
+
+    const parentFolder = filePaths[0];
+    const destFolder = path.join(parentFolder, folderName);
+    const tmpZip = path.join(os.tmpdir(), `ct-import-${Date.now()}.zip`);
+
+    try {
+      // Download zip (5 min timeout for large projects)
+      const resp = await _fetchCloud(
+        `${url}/api/projects/${encodeURIComponent(projectName)}/download`,
+        { headers: { 'Authorization': `Bearer ${key}` } },
+        300_000
+      );
+      if (!resp.ok) throw new Error(await resp.text());
+
+      // Write to temp zip file
+      const buffer = Buffer.from(await resp.arrayBuffer());
+      await fs.promises.writeFile(tmpZip, buffer);
+
+      // Extract to destination
+      await fs.promises.mkdir(destFolder, { recursive: true });
+      await extractZip(tmpZip, { dir: destFolder });
+
+      return { projectPath: destFolder, projectName: folderName, cloudProjectId: projectName };
+    } finally {
+      await fs.promises.unlink(tmpZip).catch(() => {});
+    }
+  });
 }
 
 // ── Helpers ──
 
-const FETCH_TIMEOUT_MS = 10000;
-const FETCH_DOWNLOAD_TIMEOUT_MS = 60000;
-
-/**
- * Fetch with timeout via AbortController.
- * @param {string} url
- * @param {RequestInit} opts
- * @param {number} [timeoutMs]
- */
 async function _syncSkillsToCloud() {
   const { url, key } = _getCloudConfig();
   const claudeDir = path.join(os.homedir(), '.claude');
@@ -995,19 +936,6 @@ async function _syncSkillsToCloud() {
     return { ok: true, skillCount, agentCount };
   } finally {
     await fs.promises.unlink(zipPath).catch(() => {});
-  }
-}
-
-async function _fetchCloud(url, opts = {}, timeoutMs = FETCH_TIMEOUT_MS) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...opts, signal: controller.signal });
-  } catch (err) {
-    if (err.name === 'AbortError') throw new Error(`Request timed out after ${timeoutMs}ms`);
-    throw err;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -1151,74 +1079,8 @@ async function _handleDeletedMarkers(dir) {
   }
 }
 
-async function _checkPendingChangesOnReconnect() {
-  try {
-    const { url, key } = _getCloudConfig();
-    const headers = { 'Authorization': `Bearer ${key}` };
-
-    // Check for active headless sessions
-    const sessionsResp = await _fetchCloud(`${url}/api/sessions`, { headers });
-    if (sessionsResp.ok) {
-      const { sessions } = await sessionsResp.json();
-      const activeSessions = sessions.filter(s => s.status === 'running');
-      if (activeSessions.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('cloud:headless-active', { sessions: activeSessions });
-      }
-    }
-
-    // Pending file changes are now handled exclusively by CloudSyncService polling
-    // (avoids duplicate cloud:pending-changes events)
-  } catch (err) {
-    console.warn('[Cloud] Failed to check pending changes on reconnect:', err.message);
-  }
-}
-
-  // ── Import cloud project to local machine ──
-
-  ipcMain.handle('cloud:import-project', async (event, { projectName, displayName }) => {
-    const { url, key } = _getCloudConfig();
-    const extractZip = require('extract-zip');
-    const { dialog } = require('electron');
-
-    const folderName = displayName || projectName;
-
-    // Ask user where to import the project
-    const { canceled, filePaths } = await dialog.showOpenDialog({
-      title: `Import "${folderName}"`,
-      buttonLabel: 'Import here',
-      properties: ['openDirectory', 'createDirectory'],
-    });
-    if (canceled || !filePaths.length) return { canceled: true };
-
-    const parentFolder = filePaths[0];
-    const destFolder = path.join(parentFolder, folderName);
-    const tmpZip = path.join(os.tmpdir(), `ct-import-${Date.now()}.zip`);
-
-    try {
-      // Download zip (5 min timeout for large projects)
-      const resp = await _fetchCloud(
-        `${url}/api/projects/${encodeURIComponent(projectName)}/download`,
-        { headers: { 'Authorization': `Bearer ${key}` } },
-        300_000
-      );
-      if (!resp.ok) throw new Error(await resp.text());
-
-      // Write to temp zip file
-      const buffer = Buffer.from(await resp.arrayBuffer());
-      await fs.promises.writeFile(tmpZip, buffer);
-
-      // Extract to destination
-      await fs.promises.mkdir(destFolder, { recursive: true });
-      await extractZip(tmpZip, { dir: destFolder });
-
-      return { projectPath: destFolder, projectName: folderName, cloudProjectId: projectName };
-    } finally {
-      await fs.promises.unlink(tmpZip).catch(() => {});
-    }
-  });
-
-function setCloudMainWindow(win) {
+function setCloudProjectsMainWindow(win) {
   mainWindow = win;
 }
 
-module.exports = { registerCloudHandlers, setCloudMainWindow };
+module.exports = { registerCloudProjectsHandlers, setCloudProjectsMainWindow, _syncSkillsToCloud };
