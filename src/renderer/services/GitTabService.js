@@ -2535,7 +2535,15 @@ async function handlePull() {
       if (result.success) {
         api.telemetry?.sendFeature({ feature: 'git:pull', metadata: {} });
         const isUpToDate = result.output && result.output.includes('Already up to date');
-        showToast(isUpToDate ? t('git.pullUpToDate') : t('git.pullSuccess'), isUpToDate ? 'info' : 'success');
+        if (isUpToDate) {
+          showToast(t('git.pullUpToDate'), 'info');
+        } else {
+          const s = result.stats;
+          const details = s && s.filesChanged
+            ? ` (${s.filesChanged} file${s.filesChanged > 1 ? 's' : ''}, +${s.insertions || 0} -${s.deletions || 0})`
+            : '';
+          showToast(t('git.pullSuccess') + details, 'success');
+        }
       } else if (result.hasConflicts) {
         showToast(t('gitTab.mergeInProgress'), 'warning');
       } else {
@@ -3161,7 +3169,9 @@ async function handleBlame(filePath) {
 
 // ========== TOAST HELPER ==========
 function showToast(message, type = 'info') {
-  Toast.showToast({ message, type, duration: 4000 });
+  const prefix = selectedProject?.name ? `${selectedProject.name} — ` : '';
+  const hasPrefix = selectedProject?.name && message.startsWith(selectedProject.name + ' — ');
+  Toast.showToast({ message: hasPrefix ? message : prefix + message, type, duration: 4000 });
 }
 
 // ========== INIT & EXPORT ==========

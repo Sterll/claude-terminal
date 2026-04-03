@@ -441,7 +441,7 @@ async function getGitStatusQuick(projectPath) {
  * @returns {Promise<Object>} - Result object with success/error/conflicts
  */
 async function gitPull(projectPath) {
-  const result = await spawnGit(projectPath, ['pull', '--rebase']);
+  const result = await spawnGit(projectPath, ['pull', '--rebase', '--stat']);
   if (!result.success) {
     const conflicts = await getMergeConflicts(projectPath);
     if (conflicts.length > 0) {
@@ -449,7 +449,16 @@ async function gitPull(projectPath) {
     }
     return result;
   }
-  return { success: true, output: result.output || 'Already up to date.' };
+  const output = result.output || 'Already up to date.';
+  // Parse stat summary line: "3 files changed, 10 insertions(+), 2 deletions(-)"
+  const stats = {};
+  const statMatch = output.match(/(\d+)\s+files?\s+changed(?:,\s+(\d+)\s+insertions?\(\+\))?(?:,\s+(\d+)\s+deletions?\(-\))?/);
+  if (statMatch) {
+    stats.filesChanged = parseInt(statMatch[1]) || 0;
+    stats.insertions = parseInt(statMatch[2]) || 0;
+    stats.deletions = parseInt(statMatch[3]) || 0;
+  }
+  return { success: true, output, stats };
 }
 
 /**
