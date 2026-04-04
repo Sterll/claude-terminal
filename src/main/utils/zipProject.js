@@ -6,7 +6,36 @@
 const path = require('path');
 const fs = require('fs');
 const { execSync } = require('child_process');
-const { filterSensitiveFiles } = require('./sensitiveFiles');
+const { settingsFile } = require('./paths');
+
+// ── Sensitive file filter (inline) ──
+const SENSITIVE_NAMES = new Set([
+  '.env', '.env.local', '.env.production', '.env.development', '.env.staging',
+  '.env.test', '.env.prod', '.env.dev',
+  '.npmrc', '.pypirc', '.netrc', '.htpasswd',
+  'credentials.json', 'service-account.json', 'serviceAccountKey.json',
+  '.credentials.json', 'secrets.json', 'secrets.yaml', 'secrets.yml',
+]);
+const SENSITIVE_EXTENSIONS = new Set(['.pem', '.key', '.p12', '.pfx', '.jks', '.keystore', '.truststore']);
+
+function _isSensitiveFile(relativePath) {
+  const basename = relativePath.split('/').pop();
+  if (!basename) return false;
+  if (SENSITIVE_NAMES.has(basename) || SENSITIVE_NAMES.has(basename.toLowerCase())) return true;
+  if (SENSITIVE_EXTENSIONS.has(path.extname(basename).toLowerCase())) return true;
+  if (basename.toLowerCase().startsWith('.env.')) return true;
+  return false;
+}
+
+function filterSensitiveFiles(files) {
+  try {
+    if (fs.existsSync(settingsFile)) {
+      const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+      if (settings.cloudExcludeSensitiveFiles === false) return files;
+    }
+  } catch {}
+  return files.filter(f => !_isSensitiveFile(f));
+}
 
 // Directories always excluded from zip
 const EXCLUDE_DIRS = new Set([

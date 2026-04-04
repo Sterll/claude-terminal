@@ -14,7 +14,9 @@ function _loadSettings() {
     if (fs.existsSync(settingsFile)) {
       return JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn('[Cloud] Failed to parse settings:', e.message);
+  }
   return {};
 }
 
@@ -23,7 +25,9 @@ function _getCloudConfig() {
   const url = settings.cloudServerUrl;
   const key = settings.cloudApiKey;
   if (!url || !key) throw new Error('Cloud not configured');
-  return { url: url.replace(/\/$/, ''), key };
+  const trimmed = url.replace(/\/$/, '');
+  if (!/^https?:\/\//i.test(trimmed)) throw new Error('Cloud server URL must start with http:// or https://');
+  return { url: trimmed, key };
 }
 
 /**

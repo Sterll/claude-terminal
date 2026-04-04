@@ -8,8 +8,6 @@ import { store } from '../store/store';
 import { projectManager } from './ProjectManager';
 import { sessionManager } from './SessionManager';
 import { config } from '../config';
-import { RelayServer } from '../relay/RelayServer';
-import { syncManager } from './SyncManager';
 
 // Extend Request with user info
 interface AuthRequest extends Request {
@@ -50,7 +48,6 @@ const upload = multer({
 
 // ── Rate limiter (per user, sliding window) ──
 const RATE_WINDOW_MS = 60_000;
-const MAX_WEBHOOK_PAYLOAD = 256 * 1024; // 256 KB
 const _rates = new Map<string, { count: number; resetAt: number }>();
 
 function isRateLimited(key: string, limit: number): boolean {
@@ -72,66 +69,8 @@ setInterval(() => {
   }
 }, 5 * 60_000).unref();
 
-export function createCloudRouter(relay?: RelayServer): Router {
+export function createCloudRouter(): Router {
   const router = Router();
-
-  // ── Webhook endpoint (auth via Bearer token, before general authMiddleware) ──
-  // Placed before authMiddleware so we can return fast with appropriate status codes
-
-  router.post('/webhook/:workflowId', authMiddleware as any, async (req: AuthRequest, res: Response) => {
-    try {
-      const userName = req.userName!;
-      const workflowId = req.params.workflowId as string;
-
-      if (!workflowId || workflowId.length > 128) {
-        res.status(400).json({ error: 'Invalid workflowId' });
-        return;
-      }
-
-      // Payload size check (express.json() already parsed, check stringified size)
-      const payloadStr = JSON.stringify(req.body || {});
-      if (payloadStr.length > MAX_WEBHOOK_PAYLOAD) {
-        res.status(413).json({ error: 'Payload too large (max 256 KB)' });
-        return;
-      }
-
-      // Rate limit
-      if (isRateLimited(`webhook:${userName}`, 60)) {
-        res.status(429).json({ error: 'Rate limit exceeded (60 req/min)' });
-        return;
-      }
-
-      // Find user's room and forward to desktop
-      if (!relay) {
-        res.status(503).json({ error: 'Relay server not available' });
-        return;
-      }
-
-      const room = relay.getRoomForUser(userName);
-      if (!room || !room.hasDesktop) {
-        res.status(503).json({ error: 'Desktop not connected' });
-        return;
-      }
-
-      const sent = room.sendToDesktop({
-        type: 'webhook:trigger',
-        data: {
-          workflowId,
-          payload: req.body || {},
-          triggeredAt: new Date().toISOString(),
-        },
-      });
-
-      if (sent) {
-        console.log(`[Webhook] ${userName} → workflow ${workflowId} (forwarded to desktop)`);
-        res.json({ ok: true, workflowId });
-      } else {
-        res.status(503).json({ error: 'Failed to send to desktop' });
-      }
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
 
   router.use(authMiddleware as any);
 
@@ -222,6 +161,13 @@ export function createCloudRouter(relay?: RelayServer): Router {
         res.status(400).json({ error: 'Missing name or cloneUrl' });
         return;
       }
+
+      // Restrict to HTTPS URLs only — reject file://, ssh://, git://, etc.
+      if (!/^https?:\/\//i.test(cloneUrl)) {
+        res.status(400).json({ error: 'Only HTTPS clone URLs are allowed' });
+        return;
+      }
+
       projectManager.validateProjectName(name);
       await projectManager.checkProjectLimit(req.userName!);
 
@@ -255,54 +201,7 @@ export function createCloudRouter(relay?: RelayServer): Router {
         await store.saveUser(req.userName!, user);
       }
 
-      relay?.notifyRoom(req.userName!, { type: 'cloud:project-updated', projectId: name, displayName: displayName || name, timestamp: Date.now() });
       res.status(201).json({ name, displayName: displayName || name, path: projectPath });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
-    }
-  });
-
-  // Apply a git patch + untracked files sent as multipart form
-  const patchUpload = multer({
-    dest: path.join(os.tmpdir(), 'ct-cloud-patches'),
-    limits: { fileSize: 50 * 1024 * 1024 },
-  });
-  router.post('/projects/:name/patch', patchUpload.fields([
-    { name: 'patch', maxCount: 1 },
-    { name: 'untracked', maxCount: 500 },
-  ]), async (req: AuthRequest, res: Response) => {
-    try {
-      const name = req.params.name as string;
-      const projectPath = store.getProjectPath(req.userName!, name);
-      const files = req.files as Record<string, Express.Multer.File[]>;
-
-      // Apply git patch if present
-      if (files?.patch?.[0]) {
-        const patchFile = files.patch[0].path;
-        const { execFile } = require('child_process');
-        const { promisify } = require('util');
-        const execFileAsync = promisify(execFile);
-        try {
-          await execFileAsync('git', ['apply', '--whitespace=nowarn', patchFile], { cwd: projectPath, timeout: 30000 });
-        } catch (err: any) {
-          // Non-fatal: patch may fail if already applied or no changes
-          console.warn(`[Cloud] git apply warning for ${name}: ${err.message}`);
-        } finally {
-          await fs.promises.unlink(patchFile).catch(() => {});
-        }
-      }
-
-      // Write untracked files
-      if (files?.untracked) {
-        for (const file of files.untracked) {
-          const dest = path.join(projectPath, file.originalname);
-          await fs.promises.mkdir(path.dirname(dest), { recursive: true });
-          await fs.promises.copyFile(file.path, dest);
-          await fs.promises.unlink(file.path).catch(() => {});
-        }
-      }
-
-      res.json({ ok: true });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }
@@ -313,6 +212,8 @@ export function createCloudRouter(relay?: RelayServer): Router {
       const name = req.body?.name;
       const displayName = req.body?.displayName || name;
       if (!name) {
+        // Clean up multer temp file if present before returning error
+        if (req.file) await fs.promises.unlink(req.file.path).catch(() => {});
         res.status(400).json({ error: 'Missing project name' });
         return;
       }
@@ -322,50 +223,7 @@ export function createCloudRouter(relay?: RelayServer): Router {
       }
 
       const projectPath = await projectManager.createFromZip(req.userName!, name, req.file.path, displayName);
-      relay?.notifyRoom(req.userName!, { type: 'cloud:project-updated', projectId: name, displayName, timestamp: Date.now() });
       res.status(201).json({ name, displayName, path: projectPath });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
-    }
-  });
-
-  router.post('/projects/:name/sync', upload.single('zip'), async (req: AuthRequest, res: Response) => {
-    try {
-      if (!req.file) {
-        res.status(400).json({ error: 'Missing zip file' });
-        return;
-      }
-      const name = req.params.name as string;
-      await projectManager.syncProject(req.userName!, name, req.file.path);
-      relay?.notifyRoom(req.userName!, { type: 'cloud:project-updated', projectId: name, timestamp: Date.now() });
-      res.json({ ok: true });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
-    }
-  });
-
-  // Incremental sync (only changed files + .DELETED markers)
-  router.patch('/projects/:name/sync', upload.single('zip'), async (req: AuthRequest, res: Response) => {
-    try {
-      if (!req.file) {
-        res.status(400).json({ error: 'Missing zip file' });
-        return;
-      }
-      const name = req.params.name as string;
-      const result = await projectManager.patchProject(req.userName!, name, req.file.path);
-      relay?.notifyRoom(req.userName!, { type: 'cloud:project-updated', projectId: name, timestamp: Date.now() });
-      res.json({ ok: true, ...result });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
-    }
-  });
-
-  // List all files in a cloud project (for diff comparison)
-  router.get('/projects/:name/files', async (req: AuthRequest, res: Response) => {
-    try {
-      const name = req.params.name as string;
-      const files = await projectManager.listProjectFiles(req.userName!, name);
-      res.json({ files });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }
@@ -385,61 +243,6 @@ export function createCloudRouter(relay?: RelayServer): Router {
       });
     } catch (err: any) {
       res.status(404).json({ error: err.message });
-    }
-  });
-
-  // ── File hashes (for accurate diff comparison) ──
-
-  router.post('/projects/:name/files/hashes', async (req: AuthRequest, res: Response) => {
-    try {
-      const name = req.params.name as string;
-      const { filePaths } = req.body;
-      if (!Array.isArray(filePaths) || filePaths.length === 0) {
-        res.status(400).json({ error: 'Missing or empty filePaths array' });
-        return;
-      }
-      if (filePaths.length > 5000) {
-        res.status(400).json({ error: 'Too many files (max 5000)' });
-        return;
-      }
-      const hashes = await projectManager.hashProjectFiles(req.userName!, name, filePaths);
-      res.json({ hashes });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
-    }
-  });
-
-  // ── Project Changes (for sync) ──
-
-  router.get('/projects/:name/changes', async (req: AuthRequest, res: Response) => {
-    try {
-      const name = req.params.name as string;
-      const changes = await projectManager.getUnsyncedChanges(req.userName!, name);
-      res.json({ changes });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
-    }
-  });
-
-  router.get('/projects/:name/changes/download', async (req: AuthRequest, res: Response) => {
-    try {
-      const name = req.params.name as string;
-      const zipStream = await projectManager.downloadChangesZip(req.userName!, name);
-      res.setHeader('Content-Type', 'application/zip');
-      res.setHeader('Content-Disposition', `attachment; filename="${name}-changes.zip"`);
-      (zipStream as any).pipe(res);
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
-    }
-  });
-
-  router.post('/projects/:name/changes/ack', async (req: AuthRequest, res: Response) => {
-    try {
-      const name = req.params.name as string;
-      await projectManager.acknowledgeChanges(req.userName!, name);
-      res.json({ ok: true });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
     }
   });
 
@@ -471,72 +274,6 @@ export function createCloudRouter(relay?: RelayServer): Router {
     try {
       const name = req.params.name as string;
       await projectManager.deleteProject(req.userName!, name);
-      res.json({ ok: true });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
-    }
-  });
-
-  // ── Entity Sync ──
-
-  router.get('/sync/state', async (req: AuthRequest, res: Response) => {
-    try {
-      const state = await syncManager.getState(req.userName!);
-      res.json(state);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  router.post('/sync/push', async (req: AuthRequest, res: Response) => {
-    try {
-      const { entityType, entityId, data, hash, timestamp } = req.body;
-      if (!entityType || typeof entityType !== 'string') {
-        res.status(400).json({ error: 'Missing or invalid entityType' });
-        return;
-      }
-      await syncManager.pushEntity(
-        req.userName!,
-        entityType,
-        entityId || null,
-        data,
-        hash || '',
-        typeof timestamp === 'number' ? timestamp : Date.now(),
-      );
-      res.json({ ok: true });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
-    }
-  });
-
-  router.get('/sync/conversation/:id', async (req: AuthRequest, res: Response) => {
-    try {
-      const id = req.params.id as string;
-      const content = await syncManager.getConversation(req.userName!, id);
-      if (content === null) {
-        res.status(404).json({ error: 'Conversation not found' });
-        return;
-      }
-      res.json({ content });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  router.patch('/sync/conversation/:id', async (req: AuthRequest, res: Response) => {
-    try {
-      const id = req.params.id as string;
-      const { appendLines, totalLineCount } = req.body;
-      if (!appendLines || typeof appendLines !== 'string') {
-        res.status(400).json({ error: 'Missing or invalid appendLines' });
-        return;
-      }
-      await syncManager.appendConversation(
-        req.userName!,
-        id,
-        appendLines,
-        typeof totalLineCount === 'number' ? totalLineCount : 0,
-      );
       res.json({ ok: true });
     } catch (err: any) {
       res.status(400).json({ error: err.message });

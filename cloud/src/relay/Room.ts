@@ -81,6 +81,7 @@ export class Room {
   }
 
   handleMessage(senderWs: WebSocket, data: string): void {
+    if (data.length > 512 * 1024) return; // Reject messages > 512KB
     if (this.desktops.has(senderWs)) {
       // Desktop → all mobiles
       this.broadcastToMobiles(data);
@@ -97,8 +98,7 @@ export class Room {
     let sent = false;
     for (const [, client] of this.desktops) {
       if (client.ws.readyState === WebSocket.OPEN) {
-        client.ws.send(msg);
-        sent = true;
+        try { client.ws.send(msg); sent = true; } catch { /* client disconnected */ }
       }
     }
     return sent;
@@ -108,7 +108,7 @@ export class Room {
     const msg = typeof data === 'string' ? data : JSON.stringify(data);
     for (const [, client] of this.desktops) {
       if (client.ws.readyState === WebSocket.OPEN) {
-        client.ws.send(msg);
+        try { client.ws.send(msg); } catch { /* client disconnected */ }
       }
     }
   }
@@ -117,7 +117,7 @@ export class Room {
     const msg = typeof data === 'string' ? data : JSON.stringify(data);
     for (const [, client] of this.mobiles) {
       if (client.ws.readyState === WebSocket.OPEN) {
-        client.ws.send(msg);
+        try { client.ws.send(msg); } catch { /* client disconnected */ }
       }
     }
   }
@@ -126,19 +126,19 @@ export class Room {
     const msg = typeof data === 'string' ? data : JSON.stringify(data);
     for (const [, client] of this.desktops) {
       if (client.ws.readyState === WebSocket.OPEN) {
-        client.ws.send(msg);
+        try { client.ws.send(msg); } catch { /* client disconnected */ }
       }
     }
     for (const [, client] of this.mobiles) {
       if (client.ws.readyState === WebSocket.OPEN) {
-        client.ws.send(msg);
+        try { client.ws.send(msg); } catch { /* client disconnected */ }
       }
     }
   }
 
   private sendTo(ws: WebSocket, data: object): void {
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(data));
+      try { ws.send(JSON.stringify(data)); } catch { /* client disconnected */ }
     }
   }
 }

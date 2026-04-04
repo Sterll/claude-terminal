@@ -574,7 +574,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     getStatus: () => ipcRenderer.invoke('telemetry:get-status'),
   },
 
-  // ==================== CLOUD RELAY ====================
+  // ==================== CLOUD ====================
   cloud: {
     connect: (params) => ipcRenderer.invoke('cloud:connect', params),
     disconnect: () => ipcRenderer.invoke('cloud:disconnect'),
@@ -582,54 +582,22 @@ contextBridge.exposeInMainWorld('electron_api', {
     send: (data) => ipcRenderer.send('cloud:send', data),
     onMessage: createListener('cloud:message'),
     onStatusChanged: createListener('cloud:status-changed'),
+    onProjectUpdated: createListener('cloud:project-updated'),
+    onUploadProgress: createListener('cloud:upload-progress'),
+    // Projects
+    getProjects: () => ipcRenderer.invoke('cloud:get-projects'),
     uploadProject: (params) => ipcRenderer.invoke('cloud:upload-project', params),
     uploadProjectGit: (params) => ipcRenderer.invoke('cloud:upload-project-git', params),
     checkGitRemote: (params) => ipcRenderer.invoke('cloud:check-git-remote', params),
-    onUploadProgress: createListener('cloud:upload-progress'),
-    onProjectUpdated: createListener('cloud:project-updated'),
-    getProjects: () => ipcRenderer.invoke('cloud:get-projects'),
-    checkPendingChanges: () => ipcRenderer.invoke('cloud:check-pending-changes'),
-    downloadChanges: (params) => ipcRenderer.invoke('cloud:download-changes', params),
-    takeoverSession: (params) => ipcRenderer.invoke('cloud:takeover-session', params),
-    onHeadlessActive: createListener('cloud:headless-active'),
-    onPendingChanges: createListener('cloud:pending-changes'),
+    deleteProject: (params) => ipcRenderer.invoke('cloud:delete-project', params),
+    updateDisplayName: (params) => ipcRenderer.invoke('cloud:update-display-name', params),
+    importProject: (params) => ipcRenderer.invoke('cloud:import-project', params),
+    // User
     getUser: () => ipcRenderer.invoke('cloud:get-user'),
     updateUser: (params) => ipcRenderer.invoke('cloud:update-user', params),
+    // Sessions
     getSessions: () => ipcRenderer.invoke('cloud:get-sessions'),
     stopSession: (params) => ipcRenderer.invoke('cloud:stop-session', params),
-    getSyncStatus: (params) => ipcRenderer.invoke('cloud:get-sync-status', params || {}),
-    registerAutoSync: (params) => ipcRenderer.invoke('cloud:register-auto-sync', params),
-    unregisterAutoSync: (params) => ipcRenderer.invoke('cloud:unregister-auto-sync', params),
-    compareFiles: (params) => ipcRenderer.invoke('cloud:compare-files', params),
-    checkConflicts: (params) => ipcRenderer.invoke('cloud:check-conflicts', params),
-    downloadWithResolutions: (params) => ipcRenderer.invoke('cloud:download-with-resolutions', params),
-    onAutoSyncStatus: createListener('cloud:auto-sync-status'),
-    deleteProject: (params) => ipcRenderer.invoke('cloud:delete-project', params),
-    reset: () => ipcRenderer.invoke('cloud:reset'),
-    updateDisplayName: (params) => ipcRenderer.invoke('cloud:update-display-name', params),
-    syncSkills: () => ipcRenderer.invoke('cloud:sync-skills'),
-    importProject: (params) => ipcRenderer.invoke('cloud:import-project', params),
-    getMachineId: () => ipcRenderer.invoke('cloud:get-machine-id'),
-  },
-
-  // ==================== SYNC ====================
-  sync: {
-    fullSync: () => ipcRenderer.invoke('sync:full'),
-    pushEntity: (entityType, entityId) => ipcRenderer.invoke('sync:push-entity', { entityType, entityId }),
-    pullConversation: (sessionId, projectPath) => ipcRenderer.invoke('sync:pull-conversation', { sessionId, projectPath }),
-    resolveConflicts: (resolutions) => ipcRenderer.invoke('sync:resolve-conflicts', resolutions),
-    getManifest: () => ipcRenderer.invoke('sync:get-manifest'),
-    onStatus: createListener('sync:status'),
-    onConflicts: createListener('sync:conflicts'),
-    onSettingsUpdated: createListener('sync:settings-updated'),
-    onProjectsUpdated: createListener('sync:projects-updated'),
-    onMcpUpdated: createListener('sync:mcp-updated'),
-    onKeybindingsUpdated: createListener('sync:keybindings-updated'),
-    onMemoryUpdated: createListener('sync:memory-updated'),
-    onHooksConfigUpdated: createListener('sync:hooksConfig-updated'),
-    onPluginsUpdated: createListener('sync:plugins-updated'),
-    onSkillsUpdated: createListener('sync:skills-updated'),
-    onAgentsUpdated: createListener('sync:agents-updated'),
   },
 
   // ==================== USAGE ====================

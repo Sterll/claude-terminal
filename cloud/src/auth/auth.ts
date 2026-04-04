@@ -6,6 +6,7 @@ const API_KEY_LENGTH = 32;
 
 // In-memory index: SHA256(apiKey) -> userName for O(1) lookup
 let _keyIndex: Map<string, string> | null = null;
+let _building: Promise<void> | null = null;
 
 export function generateApiKey(): string {
   const random = crypto.randomBytes(API_KEY_LENGTH).toString('hex');
@@ -26,6 +27,12 @@ export function hashApiKey(key: string): string {
 
 /** Build the in-memory hash->userName index from all users. Also migrates plaintext keys to hashed. */
 export async function buildKeyIndex(): Promise<void> {
+  if (_building) return _building;
+  _building = _doBuildKeyIndex();
+  try { await _building; } finally { _building = null; }
+}
+
+async function _doBuildKeyIndex(): Promise<void> {
   const index = new Map<string, string>();
   const users = await store.listUsers();
   for (const userName of users) {

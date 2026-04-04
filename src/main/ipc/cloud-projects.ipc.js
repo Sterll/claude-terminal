@@ -1,21 +1,15 @@
 /**
  * Cloud Projects IPC Handlers
- * Manages cloud project upload/download, user profile, sessions,
- * sync registration, file comparison, conflict resolution, and import.
+ * Manages cloud project upload/download, user profile, sessions, and import.
  */
 
 const { ipcMain } = require('electron');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
-const cloudSyncService = require('../services/CloudSyncService');
-const { syncEngine } = require('../services/SyncEngine');
 const { zipProject } = require('../utils/zipProject');
-const { projectsFile } = require('../utils/paths');
 const { execGit } = require('../utils/git');
 const { getTokenForGit } = require('../services/GitHubAuthService');
-const { hashFiles } = require('../utils/fileHash');
-const { getMachineId } = require('../utils/machineId');
 const { _getCloudConfig, _fetchCloud, FETCH_DOWNLOAD_TIMEOUT_MS } = require('./cloud-shared');
 
 let mainWindow = null;
@@ -23,76 +17,32 @@ let mainWindow = null;
 /** @type {Set<string>} Locks to prevent concurrent uploads for the same project */
 const _uploadLocks = new Set();
 
-// ── Cloud project key ──────────────────────────────────────────────────────
-
-/** Cache to avoid re-running legacy migration per project per session */
-const _migratedLegacyProjects = new Set();
-
-/**
- * Migrate legacy cloud projects (old format: {machineId}-{projectName})
- * to UUID-based keys. Renames the cloud folder from old name to projectId.
- */
-async function _migrateLegacyProject(url, key, projectId, projectName) {
-  if (_migratedLegacyProjects.has(projectId)) return;
-  _migratedLegacyProjects.add(projectId);
-
-  try {
-    const resp = await _fetchCloud(`${url}/api/projects`, {
-      headers: { 'Authorization': `Bearer ${key}` },
-    });
-    if (!resp.ok) return;
-    const { projects } = await resp.json();
-    const names = (projects || []).map(p => p.name);
-
-    // Already exists with UUID → nothing to migrate
-    if (names.includes(projectId)) return;
-
-    // Find old-format project matching this project name
-    const machineId = getMachineId();
-    const oldKey = `${machineId}-${projectName}`;
-    const legacyMatch = names.find(n => n === oldKey || n === projectName);
-    if (!legacyMatch) return;
-
-    console.log(`[Cloud] Migrating legacy project "${legacyMatch}" → "${projectId}"`);
-    const renameResp = await _fetchCloud(`${url}/api/projects/${encodeURIComponent(legacyMatch)}`, {
-      method: 'PATCH',
-      headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ newName: projectId, displayName: projectName }),
-    });
-    if (renameResp.ok) {
-      console.log(`[Cloud] Legacy migration OK: "${legacyMatch}" → "${projectId}"`);
-    } else {
-      console.warn(`[Cloud] Legacy migration skipped: ${renameResp.status}`);
-      _migratedLegacyProjects.delete(projectId);
-    }
-  } catch (e) {
-    console.warn('[Cloud] Legacy migration failed:', e.message);
-    _migratedLegacyProjects.delete(projectId);
-  }
-}
-
 function registerCloudProjectsHandlers() {
 
-  // ── Project upload ──
+  // ── Project upload (ZIP) ──
 
   ipcMain.handle('cloud:upload-project', async (_event, { projectId, projectName, projectPath }) => {
     if (_uploadLocks.has(projectId)) {
       throw new Error(`Upload already in progress for "${projectName}"`);
     }
-    _uploadLocks.add(projectId);
 
     const { url, key } = _getCloudConfig();
     const cloudKey = projectId;
-    await _migrateLegacyProject(url, key, projectId, projectName);
     const zipPath = path.join(os.tmpdir(), `ct-upload-${Date.now()}.zip`);
 
     try {
+      _uploadLocks.add(projectId);
+
       // Zip the project (include .git so cloud sessions can push/pull)
       await zipProject(projectPath, zipPath, (progress) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('cloud:upload-progress', { ...progress, projectId });
         }
       }, { includeGit: true });
+
+      const zipSize = fs.statSync(zipPath).size;
+      if (zipSize === 0) throw new Error('Generated zip is empty');
+      const totalMB = Math.round(zipSize / 1024 / 1024);
 
       // Upload via multipart POST
       const FormData = require('form-data');
@@ -102,22 +52,18 @@ function registerCloudProjectsHandlers() {
       formData.append('displayName', projectName);
       formData.append('zip', fs.createReadStream(zipPath), { filename: `${cloudKey}.zip`, contentType: 'application/zip' });
 
-      const zipSize = fs.statSync(zipPath).size;
-      const totalMB = Math.round(zipSize / 1024 / 1024);
-
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('cloud:upload-progress', { phase: 'uploading', percent: 0, uploadedMB: 0, totalMB, projectId });
       }
 
       const http = url.startsWith('https') ? require('https') : require('http');
       const urlObj = new URL(`${url}/api/projects`);
-
-      // Get total form length (needed because PassThrough breaks form-data's auto Content-Length)
       const formLength = await new Promise((res, rej) => formData.getLength((err, len) => err ? rej(err) : res(len)));
 
-      // Dynamic timeout: 5 min minimum, or based on zip size at 1 MB/s (slow connection baseline)
+      // Dynamic timeout: 5 min minimum, or based on zip size at 1 MB/s
       const MIN_TIMEOUT_MS = 5 * 60 * 1000;
       const UPLOAD_TIMEOUT_MS = Math.max(MIN_TIMEOUT_MS, Math.round(zipSize / (1024 * 1024)) * 1000);
+
       const result = await new Promise((resolve, reject) => {
         let settled = false;
         const timeout = setTimeout(() => {
@@ -146,10 +92,9 @@ function registerCloudProjectsHandlers() {
             } else {
               let message;
               if (res.statusCode === 413) {
-                const sizeMB = Math.round(fs.statSync(zipPath).size / 1024 / 1024);
+                const sizeMB = Math.round(zipSize / 1024 / 1024);
                 message = `Project too large (${sizeMB} MB). Increase server upload limit (nginx client_max_body_size).`;
               } else {
-                // Try to extract text from HTML responses
                 const textMatch = body.match(/<title>(.+?)<\/title>/i) || body.match(/<h1>(.+?)<\/h1>/i);
                 message = textMatch ? `${res.statusCode} ${textMatch[1]}` : `HTTP ${res.statusCode}: ${body.substring(0, 200)}`;
               }
@@ -166,7 +111,6 @@ function registerCloudProjectsHandlers() {
         tracker.on('data', (chunk) => {
           uploadedBytes += chunk.length;
           const pct = Math.min(Math.round((uploadedBytes / zipSize) * 100), 99);
-          // Throttle: only send when percentage changes
           if (pct !== lastProgressPct) {
             lastProgressPct = pct;
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -206,12 +150,12 @@ function registerCloudProjectsHandlers() {
     if (_uploadLocks.has(projectId)) {
       throw new Error(`Upload already in progress for "${projectName}"`);
     }
-    _uploadLocks.add(projectId);
 
     try {
+      _uploadLocks.add(projectId);
+
       const { url, key } = _getCloudConfig();
       const cloudKey = projectId;
-      await _migrateLegacyProject(url, key, projectId, projectName);
 
       // Get GitHub token
       const token = await getTokenForGit();
@@ -223,7 +167,7 @@ function registerCloudProjectsHandlers() {
         throw new Error('Project does not have a GitHub remote configured.');
       }
 
-      // Build authenticated HTTPS clone URL (handle both HTTPS and SSH remotes)
+      // Build authenticated HTTPS clone URL
       let cloneUrl = remoteUrl.trim();
       if (cloneUrl.startsWith('git@github.com:')) {
         cloneUrl = 'https://github.com/' + cloneUrl.replace('git@github.com:', '');
@@ -248,67 +192,6 @@ function registerCloudProjectsHandlers() {
       }
 
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('cloud:upload-progress', { phase: 'patching', percent: 70, projectId });
-      }
-
-      // Generate diffs: unpushed commits + working tree changes + untracked files
-      const patchParts = [];
-
-      // Commits not yet pushed to remote
-      const unpushedPatch = await execGit(projectPath, 'format-patch @{u}..HEAD --stdout', 30000);
-      if (unpushedPatch) patchParts.push(unpushedPatch);
-
-      // Working tree diffs (staged + unstaged vs HEAD)
-      const workingDiff = await execGit(projectPath, 'diff HEAD', 15000);
-      if (workingDiff) patchParts.push(workingDiff);
-
-      // Untracked files
-      const untrackedOutput = await execGit(projectPath, 'ls-files --others --exclude-standard', 10000);
-      const untrackedFiles = untrackedOutput ? untrackedOutput.split('\n').filter(Boolean) : [];
-
-      // Send patch if there's anything to apply
-      if (patchParts.length > 0 || untrackedFiles.length > 0) {
-        const FormData = require('form-data');
-        const formData = new FormData();
-
-        if (patchParts.length > 0) {
-          const patchContent = Buffer.from(patchParts.join('\n'), 'utf8');
-          formData.append('patch', patchContent, { filename: 'changes.patch', contentType: 'text/plain' });
-        }
-
-        for (const file of untrackedFiles) {
-          const fullPath = path.join(projectPath, file);
-          try {
-            const content = fs.readFileSync(fullPath);
-            formData.append('untracked', content, { filename: file, contentType: 'application/octet-stream' });
-          } catch (_) {}
-        }
-
-        const http = url.startsWith('https') ? require('https') : require('http');
-        const urlObj = new URL(`${url}/api/projects/${encodeURIComponent(cloudKey)}/patch`);
-        const formLength = await new Promise((res, rej) => formData.getLength((err, len) => err ? rej(err) : res(len)));
-
-        await new Promise((resolve, reject) => {
-          const req = http.request({
-            hostname: urlObj.hostname,
-            port: urlObj.port,
-            path: urlObj.pathname,
-            method: 'POST',
-            headers: { ...formData.getHeaders(), 'Content-Length': formLength, 'Authorization': `Bearer ${key}` },
-          }, (res) => {
-            let body = '';
-            res.on('data', c => body += c);
-            res.on('end', () => {
-              if (res.statusCode >= 200 && res.statusCode < 300) resolve();
-              else reject(new Error(`Patch failed: HTTP ${res.statusCode}: ${body.substring(0, 200)}`));
-            });
-          });
-          req.on('error', reject);
-          formData.pipe(req);
-        });
-      }
-
-      if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('cloud:upload-progress', { phase: 'done', percent: 100, projectId });
       }
 
@@ -320,7 +203,7 @@ function registerCloudProjectsHandlers() {
 
   // ── Delete project from cloud ──
 
-  ipcMain.handle('cloud:delete-project', async (_event, { projectId, projectName }) => {
+  ipcMain.handle('cloud:delete-project', async (_event, { projectId }) => {
     const { url, key } = _getCloudConfig();
     const resp = await _fetchCloud(`${url}/api/projects/${encodeURIComponent(projectId)}`, {
       method: 'DELETE',
@@ -330,49 +213,7 @@ function registerCloudProjectsHandlers() {
       const data = await resp.json().catch(() => ({}));
       throw new Error(data.error || `HTTP ${resp.status}`);
     }
-    // Stop file watcher and unregister from auto-sync
-    if (projectId) {
-      cloudSyncService.unregisterProject(projectId);
-    }
     return { ok: true };
-  });
-
-  // ── Reset cloud (delete all projects + entities + local sync state) ──
-
-  ipcMain.handle('cloud:reset', async () => {
-    const { url, key } = _getCloudConfig();
-    const headers = { 'Authorization': `Bearer ${key}` };
-
-    // 1. Fetch all cloud projects
-    const projResp = await _fetchCloud(`${url}/api/projects`, { headers });
-    if (!projResp.ok) throw new Error(`Failed to list projects: HTTP ${projResp.status}`);
-    const { projects } = await projResp.json();
-
-    // 2. Delete each project on the server
-    for (const project of (projects || [])) {
-      const id = project.id || project.name;
-      const delResp = await _fetchCloud(`${url}/api/projects/${encodeURIComponent(id)}`, {
-        method: 'DELETE', headers,
-      });
-      if (!delResp.ok && delResp.status !== 404) {
-        console.warn(`[Cloud] Failed to delete project ${id}: HTTP ${delResp.status}`);
-      }
-      cloudSyncService.unregisterProject(id);
-    }
-
-    // 3. Delete cloud entities
-    try {
-      await _fetchCloud(`${url}/api/entities`, { method: 'DELETE', headers });
-    } catch (e) {
-      console.warn('[Cloud] Failed to delete entities:', e.message);
-    }
-
-    // 4. Reset local sync manifest
-    syncEngine.manifest = { lastFullSync: 0, entities: {} };
-    syncEngine._saveManifest();
-
-    console.log('[Cloud] Reset complete — all cloud data cleared');
-    return { ok: true, deleted: (projects || []).length };
   });
 
   // ── Update cloud project display name ──
@@ -443,377 +284,9 @@ function registerCloudProjectsHandlers() {
     return resp.json();
   });
 
-  // ── Check pending changes from headless sessions ──
-
-  ipcMain.handle('cloud:check-pending-changes', async () => {
-    try {
-      const { url, key } = _getCloudConfig();
-      const headers = { 'Authorization': `Bearer ${key}` };
-
-      const projectsResp = await _fetchCloud(`${url}/api/projects`, { headers });
-      if (!projectsResp.ok) return { changes: [] };
-      const { projects } = await projectsResp.json();
-
-      // Build set of local project IDs for matching
-      const localProjectIds = new Set();
-      try {
-        const data = JSON.parse(fs.readFileSync(projectsFile, 'utf8'));
-        (data.projects || []).forEach(p => localProjectIds.add(p.id));
-      } catch {}
-
-      const allChanges = [];
-      for (const project of projects) {
-        if (!localProjectIds.has(project.name)) continue; // only our projects
-        const changesResp = await _fetchCloud(`${url}/api/projects/${encodeURIComponent(project.name)}/changes`, { headers });
-        if (!changesResp.ok) continue;
-        const { changes } = await changesResp.json();
-        if (changes.length > 0) {
-          allChanges.push({ projectName: project.name, displayName: project.displayName || project.name, changes });
-        }
-      }
-
-      // Hash-filter: auto-dismiss changes where local files already match cloud
-      const filtered = await _hashFilterPendingChanges(allChanges, url, key);
-      return { changes: filtered };
-    } catch {
-      return { changes: [] };
-    }
-  });
-
-  // ── Download and apply changes ──
-
-  ipcMain.handle('cloud:download-changes', async (_event, { projectId, projectName, localProjectPath }) => {
-    const { url, key } = _getCloudConfig();
-    const cloudKey = projectId || projectName;
-    const headers = { 'Authorization': `Bearer ${key}` };
-
-    // Download changes zip (longer timeout for file transfer)
-    const resp = await _fetchCloud(`${url}/api/projects/${encodeURIComponent(cloudKey)}/changes/download`, { headers }, FETCH_DOWNLOAD_TIMEOUT_MS);
-    if (!resp.ok) throw new Error('Failed to download changes');
-
-    const zipPath = path.join(os.tmpdir(), `ct-sync-${Date.now()}.zip`);
-    const buffer = Buffer.from(await resp.arrayBuffer());
-    await fs.promises.writeFile(zipPath, buffer);
-
-    let extracted = false;
-    try {
-      // Extract to project dir (overwrite existing files)
-      const extractZip = require('extract-zip');
-      await extractZip(zipPath, { dir: localProjectPath });
-
-      // Handle .DELETED markers
-      await _handleDeletedMarkers(localProjectPath);
-      extracted = true;
-    } finally {
-      await fs.promises.unlink(zipPath).catch(() => {});
-    }
-
-    // Only acknowledge AFTER verified successful extraction
-    if (extracted) {
-      await _fetchCloud(`${url}/api/projects/${encodeURIComponent(cloudKey)}/changes/ack`, {
-        method: 'POST',
-        headers: { ...headers, 'Content-Type': 'application/json' },
-      });
-    }
-
-    return { success: extracted };
-  });
-
-  // ── Takeover a running cloud session ──
-
-  ipcMain.handle('cloud:takeover-session', async (_event, { sessionId, projectId, projectName, localProjectPath }) => {
-    const { url, key } = _getCloudConfig();
-    const cloudKey = projectId || projectName;
-    const headers = { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' };
-
-    // Interrupt the cloud session
-    await _fetchCloud(`${url}/api/sessions/${encodeURIComponent(sessionId)}/interrupt`, {
-      method: 'POST', headers,
-    });
-
-    // Download any file changes
-    try {
-      const changesResp = await _fetchCloud(`${url}/api/projects/${encodeURIComponent(cloudKey)}/changes`, {
-        headers: { 'Authorization': `Bearer ${key}` },
-      });
-      const { changes } = await changesResp.json();
-
-      if (changes && changes.length > 0 && localProjectPath) {
-        const resp = await _fetchCloud(`${url}/api/projects/${encodeURIComponent(cloudKey)}/changes/download`, {
-          headers: { 'Authorization': `Bearer ${key}` },
-        }, FETCH_DOWNLOAD_TIMEOUT_MS);
-        if (resp.ok) {
-          const zipPath = path.join(os.tmpdir(), `ct-takeover-${Date.now()}.zip`);
-          const buffer = Buffer.from(await resp.arrayBuffer());
-          await fs.promises.writeFile(zipPath, buffer);
-
-          let extracted = false;
-          try {
-            const extractZip = require('extract-zip');
-            await extractZip(zipPath, { dir: localProjectPath });
-            await _handleDeletedMarkers(localProjectPath);
-            extracted = true;
-          } finally {
-            await fs.promises.unlink(zipPath).catch(() => {});
-          }
-
-          // Only ack after verified successful extraction
-          if (extracted) {
-            await _fetchCloud(`${url}/api/projects/${encodeURIComponent(cloudKey)}/changes/ack`, {
-              method: 'POST', headers,
-            });
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('[Cloud] Failed to sync changes during takeover:', err.message);
-    }
-
-    // Close the cloud session
-    await _fetchCloud(`${url}/api/sessions/${encodeURIComponent(sessionId)}`, {
-      method: 'DELETE', headers,
-    });
-
-    return { success: true };
-  });
-
-  // ── Sync status ──
-
-  ipcMain.handle('cloud:get-sync-status', async (_event, { projectId }) => {
-    if (projectId) return cloudSyncService.getSyncStatus(projectId);
-    return cloudSyncService.getAllSyncStatuses();
-  });
-
-  // ── Auto-sync registration ──
-
-  ipcMain.handle('cloud:register-auto-sync', async (_event, { projectId, projectPath }) => {
-    cloudSyncService.registerProject(projectId, projectPath);
-    return { ok: true };
-  });
-
-  ipcMain.handle('cloud:unregister-auto-sync', async (_event, { projectId }) => {
-    cloudSyncService.unregisterProject(projectId);
-    return { ok: true };
-  });
-
-  // ── Skills & Agents sync ──
-
-  ipcMain.handle('cloud:sync-skills', async () => {
-    return _syncSkillsToCloud();
-  });
-
-  // ── File comparison (local vs cloud) ──
-
-  ipcMain.handle('cloud:compare-files', async (_event, { projectId, projectName, localProjectPath }) => {
-    const { url, key } = _getCloudConfig();
-    const cloudKey = projectId || projectName;
-
-    // Fetch cloud file list
-    const resp = await _fetchCloud(
-      `${url}/api/projects/${encodeURIComponent(cloudKey)}/files`,
-      { headers: { 'Authorization': `Bearer ${key}` } }
-    );
-    if (!resp.ok) {
-      // Project doesn't exist in cloud yet → everything is local-only
-      if (resp.status === 404) {
-        const localMap = new Map();
-        _scanLocalFiles(localProjectPath, localProjectPath, new Set([
-          'node_modules', '.git', 'build', 'dist', '.next', '__pycache__',
-          '.venv', 'venv', '.cache', 'coverage', '.tsbuildinfo', '.ct-cloud',
-          '.turbo', '.parcel-cache', '.svelte-kit', '.nuxt', '.output',
-        ]), localMap);
-        return { onlyLocal: [...localMap.keys()], onlyCloud: [], sizeDiff: [], hashVerified: false };
-      }
-      const body = await resp.text().catch(() => '');
-      throw new Error(`Failed to fetch cloud files (${resp.status}): ${body}`);
-    }
-    const { files: cloudFiles } = await resp.json();
-    const cloudMap = new Map(cloudFiles.map(f => [f.path, f.size]));
-
-    // Scan local files
-    const EXCLUDE = new Set([
-      'node_modules', '.git', 'build', 'dist', '.next', '__pycache__',
-      '.venv', 'venv', '.cache', 'coverage', '.tsbuildinfo', '.ct-cloud',
-      '.turbo', '.parcel-cache', '.svelte-kit', '.nuxt', '.output',
-    ]);
-    const localMap = new Map();
-    _scanLocalFiles(localProjectPath, localProjectPath, EXCLUDE, localMap);
-
-    const onlyLocal = [];   // files on PC but not in cloud
-    const onlyCloud = [];   // files in cloud but not on PC
-    const sizeDiff = [];    // files in both but different size
-
-    for (const [filePath, size] of localMap) {
-      if (!cloudMap.has(filePath)) {
-        onlyLocal.push(filePath);
-      } else if (cloudMap.get(filePath) !== size) {
-        sizeDiff.push(filePath);
-      }
-    }
-
-    for (const [filePath] of cloudMap) {
-      if (!localMap.has(filePath)) {
-        onlyCloud.push(filePath);
-      }
-    }
-
-    // Second pass: verify sizeDiff files with SHA256 hashes
-    let hashVerified = false;
-    if (sizeDiff.length > 0) {
-      try {
-        const hashResp = await _fetchCloud(
-          `${url}/api/projects/${encodeURIComponent(cloudKey)}/files/hashes`,
-          {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filePaths: sizeDiff }),
-          }
-        );
-        if (hashResp.ok) {
-          const { hashes: cloudHashes } = await hashResp.json();
-          const cloudHashMap = new Map(cloudHashes.map(h => [h.path, h.hash]));
-          const localHashes = await hashFiles(localProjectPath, sizeDiff);
-
-          // Keep only files where hashes actually differ
-          const trueDiff = sizeDiff.filter(fp => {
-            const localH = localHashes.get(fp);
-            const cloudH = cloudHashMap.get(fp);
-            return !localH || !cloudH || localH !== cloudH;
-          });
-          sizeDiff.length = 0;
-          sizeDiff.push(...trueDiff);
-          hashVerified = true;
-        }
-      } catch {
-        // Hash endpoint unavailable — keep size-based results
-      }
-    }
-
-    return { onlyLocal, onlyCloud, sizeDiff, totalLocal: localMap.size, totalCloud: cloudMap.size, hashVerified };
-  });
-
-  // ── Conflict detection ──
-
-  ipcMain.handle('cloud:check-conflicts', async (_event, { projectId, projectName, localProjectPath }) => {
-    const { url, key } = _getCloudConfig();
-    const cloudKey = projectId || projectName;
-    const headers = { 'Authorization': `Bearer ${key}` };
-
-    const changesResp = await _fetchCloud(
-      `${url}/api/projects/${encodeURIComponent(cloudKey)}/changes`,
-      { headers }
-    );
-    if (!changesResp.ok) throw new Error('Failed to check changes');
-    const { changes } = await changesResp.json();
-
-    const cloudFiles = changes.flatMap(c => c.changedFiles || []);
-    const conflicts = [];
-
-    for (const file of cloudFiles) {
-      const localPath = path.join(localProjectPath, file);
-      if (!fs.existsSync(localPath)) continue;
-
-      try {
-        const stat = fs.statSync(localPath);
-        // Find the matching project to get its sync timestamp
-        const projectsData = JSON.parse(fs.readFileSync(projectsFile, 'utf8'));
-        const project = (projectsData.projects || []).find(p => p.path === localProjectPath);
-        const lastSync = project ? cloudSyncService.getLastSyncTimestamp(project.id) : null;
-
-        if (lastSync && stat.mtimeMs > lastSync) {
-          conflicts.push({ file, localModified: new Date(stat.mtimeMs).toISOString() });
-        }
-      } catch {
-        // Can't stat, not a conflict
-      }
-    }
-
-    return { conflicts, totalFiles: cloudFiles.length };
-  });
-
-  // ── Download with conflict resolutions ──
-
-  ipcMain.handle('cloud:download-with-resolutions', async (_event, { projectId, projectName, localProjectPath, resolutions }) => {
-    const { url, key } = _getCloudConfig();
-    const cloudKey = projectId || projectName;
-    const headers = { 'Authorization': `Bearer ${key}` };
-
-    const resp = await _fetchCloud(
-      `${url}/api/projects/${encodeURIComponent(cloudKey)}/changes/download`,
-      { headers }, FETCH_DOWNLOAD_TIMEOUT_MS
-    );
-    if (!resp.ok) throw new Error('Failed to download changes');
-
-    const zipPath = path.join(os.tmpdir(), `ct-conflict-${Date.now()}.zip`);
-    const extractDir = path.join(os.tmpdir(), `ct-conflict-extract-${Date.now()}`);
-    const buffer = Buffer.from(await resp.arrayBuffer());
-    await fs.promises.writeFile(zipPath, buffer);
-
-    try {
-      const extractZip = require('extract-zip');
-      await extractZip(zipPath, { dir: extractDir });
-
-      // Apply per-file resolutions for conflicting files
-      for (const [file, resolution] of Object.entries(resolutions)) {
-        const cloudFile = path.join(extractDir, file);
-        const localFile = path.join(localProjectPath, file);
-
-        if (resolution === 'local') {
-          // Keep local version — skip
-          continue;
-        } else if (resolution === 'both') {
-          // Backup local version before overwriting
-          if (fs.existsSync(localFile)) {
-            const ext = path.extname(file);
-            const base = file.slice(0, -ext.length || undefined);
-            const backupPath = path.join(localProjectPath, `${base}.local-backup${ext}`);
-            await fs.promises.copyFile(localFile, backupPath);
-          }
-        }
-        // resolution === 'cloud' or 'both': apply cloud version
-        if (fs.existsSync(cloudFile)) {
-          const dir = path.dirname(localFile);
-          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-          await fs.promises.copyFile(cloudFile, localFile);
-        }
-      }
-
-      // Apply non-conflicting files by extracting directly
-      const allFiles = await _walkExtracted(extractDir);
-      for (const relPath of allFiles) {
-        if (resolutions[relPath]) continue; // Already handled
-        if (relPath.endsWith('.DELETED')) continue; // Handle below
-        const src = path.join(extractDir, relPath);
-        const dest = path.join(localProjectPath, relPath);
-        const dir = path.dirname(dest);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        await fs.promises.copyFile(src, dest);
-      }
-
-      // Handle .DELETED markers
-      await _handleDeletedMarkers(localProjectPath);
-
-      // Acknowledge
-      await _fetchCloud(
-        `${url}/api/projects/${encodeURIComponent(cloudKey)}/changes/ack`,
-        { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' } }
-      );
-
-      // Update sync timestamp
-      const projectsData = JSON.parse(fs.readFileSync(projectsFile, 'utf8'));
-      const project = (projectsData.projects || []).find(p => p.path === localProjectPath);
-      if (project) cloudSyncService.updateSyncTimestamp(project.id);
-    } finally {
-      await fs.promises.unlink(zipPath).catch(() => {});
-      await fs.promises.rm(extractDir, { recursive: true, force: true }).catch(() => {});
-    }
-
-    return { success: true };
-  });
-
   // ── Import cloud project to local machine ──
 
-  ipcMain.handle('cloud:import-project', async (event, { projectName, displayName }) => {
+  ipcMain.handle('cloud:import-project', async (_event, { projectName, displayName }) => {
     const { url, key } = _getCloudConfig();
     const extractZip = require('extract-zip');
     const { dialog } = require('electron');
@@ -841,7 +314,6 @@ function registerCloudProjectsHandlers() {
       );
       if (!resp.ok) throw new Error(await resp.text());
 
-      // Write to temp zip file
       const buffer = Buffer.from(await resp.arrayBuffer());
       await fs.promises.writeFile(tmpZip, buffer);
 
@@ -856,231 +328,8 @@ function registerCloudProjectsHandlers() {
   });
 }
 
-// ── Helpers ──
-
-async function _syncSkillsToCloud() {
-  const { url, key } = _getCloudConfig();
-  const claudeDir = path.join(os.homedir(), '.claude');
-  const skillsDir = path.join(claudeDir, 'skills');
-  const agentsDir = path.join(claudeDir, 'agents');
-  const zipPath = path.join(os.tmpdir(), `ct-skills-sync-${Date.now()}.zip`);
-
-  try {
-    const archiver = require('archiver');
-    let skillCount = 0;
-    let agentCount = 0;
-
-    await new Promise((resolve, reject) => {
-      const output = fs.createWriteStream(zipPath);
-      const archive = archiver('zip', { zlib: { level: 6 } });
-      output.on('close', resolve);
-      archive.on('error', reject);
-      archive.pipe(output);
-
-      // Add skills/ directory
-      if (fs.existsSync(skillsDir)) {
-        const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
-        for (const entry of entries) {
-          if (!entry.isDirectory()) continue;
-          const skillMd = path.join(skillsDir, entry.name, 'SKILL.md');
-          if (!fs.existsSync(skillMd)) continue;
-          archive.directory(path.join(skillsDir, entry.name), `skills/${entry.name}`);
-          skillCount++;
-        }
-      }
-
-      // Add agents/ directory
-      if (fs.existsSync(agentsDir)) {
-        const entries = fs.readdirSync(agentsDir, { withFileTypes: true });
-        for (const entry of entries) {
-          const fullPath = path.join(agentsDir, entry.name);
-          if (entry.isFile() && entry.name.endsWith('.md')) {
-            archive.file(fullPath, { name: `agents/${entry.name}` });
-            agentCount++;
-          } else if (entry.isDirectory()) {
-            const agentMd = path.join(fullPath, 'AGENT.md');
-            if (fs.existsSync(agentMd)) {
-              archive.directory(fullPath, `agents/${entry.name}`);
-              agentCount++;
-            }
-          }
-        }
-      }
-
-      archive.finalize();
-    });
-
-    if (skillCount === 0 && agentCount === 0) {
-      return { ok: true, skillCount: 0, agentCount: 0 };
-    }
-
-    // Upload via PUT /api/skills (multipart)
-    const FormData = require('form-data');
-    const formData = new FormData();
-    formData.append('zip', fs.createReadStream(zipPath), { filename: 'skills.zip', contentType: 'application/zip' });
-
-    const headers = { ...formData.getHeaders(), 'Authorization': `Bearer ${key}` };
-    const resp = await _fetchCloud(`${url}/api/skills`, {
-      method: 'PUT',
-      headers,
-      body: formData,
-      duplex: 'half',
-    }, 30000);
-
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      throw new Error(`Skills sync failed: HTTP ${resp.status} ${text.substring(0, 200)}`);
-    }
-
-    console.log(`[Cloud] Skills synced: ${skillCount} skill(s), ${agentCount} agent(s)`);
-    return { ok: true, skillCount, agentCount };
-  } finally {
-    await fs.promises.unlink(zipPath).catch(() => {});
-  }
-}
-
-/**
- * Find the local project path matching a cloud project name (UUID or legacy).
- * Matches by project ID first, then by name or folder basename as fallback.
- */
-function _findLocalProjectPath(cloudProjectName) {
-  try {
-    const data = JSON.parse(fs.readFileSync(projectsFile, 'utf8'));
-    const projects = data.projects || [];
-    // Primary: match by project ID (UUID-based cloud key)
-    const idMatch = projects.find(p => p.id === cloudProjectName);
-    if (idMatch) return idMatch.path;
-    // Fallback: match by name or basename (legacy compatibility)
-    const nameMatch = projects.find(p =>
-      p.name === cloudProjectName || path.basename(p.path) === cloudProjectName
-    );
-    return nameMatch?.path || null;
-  } catch { return null; }
-}
-
-/**
- * Hash-filter pending changes: compare cloud changed files against local.
- * Returns only files that truly differ. Auto-acknowledges if all match.
- */
-async function _hashFilterPendingChanges(allChanges, url, key) {
-  const headers = { 'Authorization': `Bearer ${key}` };
-  const filtered = [];
-
-  for (const entry of allChanges) {
-    const { projectName, changes } = entry;
-    const localPath = _findLocalProjectPath(projectName);
-    if (!localPath) {
-      // Can't compare — keep all changes
-      filtered.push(entry);
-      continue;
-    }
-
-    const allFiles = changes.flatMap(c => c.changedFiles || []);
-    if (allFiles.length === 0) continue;
-
-    try {
-      // Get cloud hashes for changed files
-      const hashResp = await _fetchCloud(
-        `${url}/api/projects/${encodeURIComponent(projectName)}/files/hashes`,
-        {
-          method: 'POST',
-          headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filePaths: allFiles }),
-        }
-      );
-      if (!hashResp.ok) { filtered.push(entry); continue; }
-      const { hashes: cloudHashes } = await hashResp.json();
-      const cloudHashMap = new Map(cloudHashes.map(h => [h.path, h.hash]));
-
-      // Hash local files
-      const localHashes = await hashFiles(localPath, allFiles);
-
-      // Find truly different files
-      const diffFiles = allFiles.filter(fp => {
-        const localH = localHashes.get(fp);
-        const cloudH = cloudHashMap.get(fp);
-        // If either hash is missing, consider it different
-        return !localH || !cloudH || localH !== cloudH;
-      });
-
-      if (diffFiles.length === 0) {
-        // All files match — auto-acknowledge
-        await _fetchCloud(
-          `${url}/api/projects/${encodeURIComponent(projectName)}/changes/ack`,
-          { method: 'POST', headers }
-        ).catch(() => {});
-      } else {
-        // Report only truly different files
-        const filteredChanges = changes.map(c => ({
-          ...c,
-          changedFiles: (c.changedFiles || []).filter(f => diffFiles.includes(f)),
-        })).filter(c => c.changedFiles.length > 0);
-        if (filteredChanges.length > 0) {
-          filtered.push({ projectName, changes: filteredChanges });
-        }
-      }
-    } catch {
-      // Hash comparison failed — keep original
-      filtered.push(entry);
-    }
-  }
-
-  return filtered;
-}
-
-function _scanLocalFiles(baseDir, currentDir, excludeSet, resultMap) {
-  let entries;
-  try { entries = fs.readdirSync(currentDir, { withFileTypes: true }); } catch { return; }
-  for (const entry of entries) {
-    if (excludeSet.has(entry.name) || entry.name.startsWith('.')) continue;
-    const fullPath = path.join(currentDir, entry.name);
-    if (entry.isDirectory()) {
-      _scanLocalFiles(baseDir, fullPath, excludeSet, resultMap);
-    } else {
-      try {
-        const stat = fs.statSync(fullPath);
-        const rel = path.relative(baseDir, fullPath).replace(/\\/g, '/');
-        resultMap.set(rel, stat.size);
-      } catch { /* skip */ }
-    }
-  }
-}
-
-async function _walkExtracted(dir, rootDir = null) {
-  if (!rootDir) rootDir = dir;
-  const files = [];
-  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...await _walkExtracted(fullPath, rootDir));
-    } else if (entry.isFile()) {
-      files.push(path.relative(rootDir, fullPath).replace(/\\/g, '/'));
-    }
-  }
-  return files;
-}
-
-async function _handleDeletedMarkers(dir) {
-  try {
-    const entries = await fs.promises.readdir(dir, { withFileTypes: true, recursive: true });
-    for (const entry of entries) {
-      if (entry.isFile() && entry.name.endsWith('.DELETED')) {
-        // Node >=20.12 uses parentPath, older uses path — both refer to the parent dir
-        const parentDir = entry.parentPath || entry.path;
-        const markerPath = path.join(parentDir, entry.name);
-        const originalPath = markerPath.replace(/\.DELETED$/, '');
-        await fs.promises.unlink(originalPath).catch(() => {});
-        await fs.promises.unlink(markerPath).catch(() => {});
-      }
-    }
-  } catch (e) {
-    console.warn('[Cloud] Error handling deleted markers:', e.message);
-  }
-}
-
 function setCloudProjectsMainWindow(win) {
   mainWindow = win;
 }
 
-module.exports = { registerCloudProjectsHandlers, setCloudProjectsMainWindow, _syncSkillsToCloud };
+module.exports = { registerCloudProjectsHandlers, setCloudProjectsMainWindow };

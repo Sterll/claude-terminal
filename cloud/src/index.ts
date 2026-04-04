@@ -94,7 +94,7 @@ export async function startServer(): Promise<void> {
   });
 
   app.get('/admin/rooms', (_req, res) => {
-    res.json(relayServer.listRooms());
+    res.json(relayServer ? relayServer.listRooms() : []);
   });
 
   app.get('/admin/logs', (_req, res) => {
@@ -106,8 +106,13 @@ export async function startServer(): Promise<void> {
   // Relay WS server (handles /relay upgrade) — must be created before CloudRouter
   relayServer = new RelayServer(server);
 
-  // Cloud API routes (relay passed for webhook forwarding)
-  app.use('/api', createCloudRouter(relayServer));
+  // Cloud API routes
+  app.use('/api', createCloudRouter());
+
+  // API 404 (before SPA fallback)
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ error: 'Not found' });
+  });
 
   // Remote UI (PWA static files)
   const remoteUiDir = path.join(__dirname, '..', 'remote-ui');
@@ -178,6 +183,13 @@ export async function startServer(): Promise<void> {
       console.log(`  Admin:  disabled (set ADMIN_TOKEN to enable /admin endpoints)`);
     }
     console.log('');
+  });
+
+  process.on('uncaughtException', (err) => {
+    console.error('[FATAL] Uncaught exception:', err.message);
+  });
+  process.on('unhandledRejection', (err: any) => {
+    console.error('[FATAL] Unhandled rejection:', err?.message || err);
   });
 }
 

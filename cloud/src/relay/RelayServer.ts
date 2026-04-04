@@ -10,7 +10,7 @@ export class RelayServer {
   private rooms: Map<string, Room> = new Map();
 
   constructor(server: Server) {
-    this.wss = new WebSocketServer({ noServer: true });
+    this.wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 });
 
     server.on('upgrade', (req, socket, head) => {
       const url = new URL(req.url || '/', `http://${req.headers.host}`);
@@ -69,6 +69,8 @@ export class RelayServer {
     });
 
     ws.on('error', () => {
+      room!.removeClient(ws);
+      if (room!.isEmpty) this.rooms.delete(userName);
       ws.close();
     });
   }

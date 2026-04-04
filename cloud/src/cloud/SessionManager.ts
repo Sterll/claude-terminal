@@ -18,6 +18,7 @@ interface ActiveSession {
   status: 'running' | 'idle' | 'error';
   changedFiles: Set<string>;
   fileWatcher: FileWatcher;
+  closing?: boolean;
 }
 
 function createMessageQueue(onIdle?: () => void) {
@@ -109,7 +110,11 @@ export class SessionManager {
   }
 
   private getSdkCliPath(): string {
-    return require.resolve('@anthropic-ai/claude-agent-sdk/cli.js');
+    try {
+      return require.resolve('@anthropic-ai/claude-agent-sdk/cli.js');
+    } catch {
+      throw new Error('Claude Agent SDK not found. Install @anthropic-ai/claude-agent-sdk');
+    }
   }
 
   async createSession(userName: string, projectName: string, prompt: string, model?: string, effort?: string, resumeSessionId?: string): Promise<string> {
@@ -203,7 +208,9 @@ export class SessionManager {
       throw err;
     }
 
-    this.processStream(sessionId, queryStream);
+    this.processStream(sessionId, queryStream).catch(err => {
+      console.error(`[Session ${sessionId}] Unhandled processStream error:`, err.message);
+    });
 
     // Touch project activity
     await projectManager.touchProject(userName, projectName);
@@ -234,6 +241,7 @@ export class SessionManager {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
+    session.closing = true;
     session.abortController.abort();
     session.messageQueue.close();
     session.fileWatcher.stop();
@@ -251,14 +259,14 @@ export class SessionManager {
       ws.close(1000, 'Session closed');
     }
 
-    this.sessions.delete(sessionId);
-
-    // Update user.json
+    // Update user.json before removing from map so session reference is still valid
     const user = await store.getUser(session.userName);
     if (user) {
       user.sessions = user.sessions.filter(s => s.id !== sessionId);
       await store.saveUser(session.userName, user);
     }
+
+    this.sessions.delete(sessionId);
   }
 
   addStreamClient(sessionId: string, ws: WebSocket): boolean {
@@ -407,7 +415,7 @@ export class SessionManager {
     try {
       let eventCount = 0;
       for await (const event of queryStream) {
-        if (!this.sessions.has(sessionId)) break;
+        if (!this.sessions.has(sessionId) || session.closing) break;
         eventCount++;
         if (eventCount <= 3 || eventCount % 50 === 0) {
           console.log(`[Session ${sessionId}] Event #${eventCount}: type=${event?.type}`);
@@ -486,7 +494,7 @@ export class SessionManager {
     // Send to direct WS stream clients
     for (const ws of session.streamClients) {
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(msg);
+        try { ws.send(msg); } catch { /* client disconnected */ }
       }
     }
 

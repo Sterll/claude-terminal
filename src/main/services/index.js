@@ -17,7 +17,6 @@ const minecraftService = require('../../project-types/minecraft/main/MinecraftSe
 const remoteServer = require('./RemoteServer');
 const workflowService = require('./WorkflowService');
 const databaseService = require('./DatabaseService');
-const cloudSyncService = require('./CloudSyncService');
 const parallelTaskService = require('./ParallelTaskService');
 
 /**
@@ -40,8 +39,6 @@ function initializeServices(mainWindow) {
   workflowService.setMainWindow(mainWindow);
   workflowService.setDeps({ chatService, databaseService });
   workflowService.init();
-
-  cloudSyncService.setMainWindow(mainWindow);
 
   // Provision unified MCP in global Claude settings
   databaseService.provisionGlobalMcp().catch(() => {});
@@ -179,7 +176,6 @@ function cleanupServices() {
   hookEventServer.stop();
   remoteServer.stop();
   workflowService.destroy();
-  cloudSyncService.stop();
   databaseService.disconnectAll().catch(() => {});
   if (_mcpPollTimer) clearInterval(_mcpPollTimer);
   // Kill any active git child processes (clone, pull, push, etc.)
@@ -200,7 +196,6 @@ module.exports = {
   minecraftService,
   remoteServer,
   workflowService,
-  cloudSyncService,
   initializeServices,
   cleanupServices
 };

@@ -84,18 +84,6 @@ function clearDropIndicators(list) {
   });
 }
 
-function _formatTimeAgo(ts) {
-  const diff = Date.now() - ts;
-  const sec = Math.floor(diff / 1000);
-  if (sec < 60) return t('cloud.timeJustNow');
-  const min = Math.floor(sec / 60);
-  if (min < 60) return t('cloud.timeMinAgo', { count: min });
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return t('cloud.timeHourAgo', { count: hr });
-  const days = Math.floor(hr / 24);
-  return t('cloud.timeDayAgo', { count: days });
-}
-
 class ProjectList extends BaseComponent {
   constructor() {
     super(null);
@@ -126,9 +114,6 @@ class ProjectList extends BaseComponent {
     this._fivemServers = new Map();
     this._gitOperations = new Map();
     this._gitRepoStatus = new Map();
-    this._cloudUploadStatus = new Map();
-    this._cloudConnected = false;
-
     // More-actions menu handlers
     this._moreActionsCloseHandler = null;
     this._moreActionsEscapeHandler = null;
@@ -183,8 +168,6 @@ class ProjectList extends BaseComponent {
     if (state.fivemServers) this._fivemServers = state.fivemServers;
     if (state.gitOperations) this._gitOperations = state.gitOperations;
     if (state.gitRepoStatus) this._gitRepoStatus = state.gitRepoStatus;
-    if (state.cloudUploadStatus) this._cloudUploadStatus = state.cloudUploadStatus;
-    if (state.cloudConnected !== undefined) this._cloudConnected = state.cloudConnected;
   }
 
   setCallbacks(cbs) {
@@ -308,32 +291,6 @@ class ProjectList extends BaseComponent {
     </div>`;
   }
 
-  _renderCloudBadge(projectId) {
-    const st = this._cloudUploadStatus.get(projectId);
-    if (!st) return '';
-
-    if (st.uploading || st.autoSyncing) {
-      const progress = st.uploadProgress;
-      const pct = progress?.percent || 0;
-      const tip = progress?.phase === 'uploading' && progress.uploadedMB != null
-        ? `${progress.uploadedMB}/${progress.totalMB} MB (${pct}%)`
-        : t('cloud.uploadProgress');
-      const r = 6, cx = 8, cy = 8, c = Math.round(2 * Math.PI * r * 100) / 100;
-      const offset = Math.round((c - (c * pct / 100)) * 100) / 100;
-      return `<span class="project-cloud-badge uploading" title="${escapeHtml(tip)}" aria-label="${escapeHtml(tip)}"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--bg-hover)" stroke-width="2"/><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="${c}" stroke-dashoffset="${offset}" transform="rotate(-90 ${cx} ${cy})" style="transition:stroke-dashoffset .3s"/>${pct > 0 ? `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" fill="var(--accent)" font-size="6" font-weight="600">${pct}</text>` : ''}</svg></span>`;
-    }
-    if (st.lastError) {
-      const ago = _formatTimeAgo(st.lastError.timestamp);
-      const tip = `${t('cloud.syncErrorTooltip', { ago, error: st.lastError.message })}`;
-      return `<span class="project-cloud-badge error" title="${escapeHtml(tip)}" aria-label="${escapeHtml(tip)}">&#9888;</span>`;
-    }
-    if (st.synced) {
-      const tip = st.lastSync ? `${t('cloud.syncedTooltip')} \u2022 ${_formatTimeAgo(st.lastSync)}` : t('cloud.syncedTooltip');
-      return `<span class="project-cloud-badge synced" title="${escapeHtml(tip)}" aria-label="${escapeHtml(tip)}">&#10003;</span>`;
-    }
-    return '';
-  }
-
   _renderProjectHtml(project, depth) {
     const projectIndex = getProjectIndex(project.id);
     const terminalStats = this._callbacks.getTerminalStatsForProject(projectIndex);
@@ -354,32 +311,9 @@ class ProjectList extends BaseComponent {
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10z"/></svg>
     </button>`;
 
-    // Cloud sync button (pending, syncing, or error)
-    const cloudStatus = this._cloudUploadStatus.get(project.id);
-    let cloudSyncBtn = '';
-    if (cloudStatus?.syncing) {
-      cloudSyncBtn = `<button class="btn-action-icon btn-cloud-sync syncing" data-project-id="${project.id}" title="${t('cloud.syncApply')}..." disabled>
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/><polyline points="21 3 21 9 15 9"/></svg>
-      </button>`;
-    } else if (cloudStatus?.pendingChanges) {
-      cloudSyncBtn = `<button class="btn-action-icon btn-cloud-sync pending" data-project-id="${project.id}" title="${t('cloud.pendingBadge', { count: cloudStatus?.pendingCount || 0 })}">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        </button>`;
-    } else if (cloudStatus?.lastError) {
-      const errAgo = _formatTimeAgo(cloudStatus.lastError.timestamp);
-      cloudSyncBtn = `<button class="btn-action-icon btn-cloud-sync error" data-project-id="${project.id}" title="${escapeHtml(t('cloud.syncErrorTooltip', { ago: errAgo, error: cloudStatus.lastError.message }))}">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        </button>`;
-    } else if (this._cloudConnected && !cloudStatus?.synced) {
-      // Direct upload button when project is not yet synced to cloud
-      cloudSyncBtn = `<button class="btn-action-icon btn-cloud-upload-direct" data-project-id="${project.id}" title="${t('cloud.uploadTitle')}">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        </button>`;
-    }
-
     // Get additional action buttons from type handler
     const typeSidebarButtons = typeHandler.getSidebarButtons(typeCtx) || '';
-    const primaryActionsHtml = cloudSyncBtn + typeSidebarButtons + claudeBtn;
+    const primaryActionsHtml = typeSidebarButtons + claudeBtn;
 
     // Customize button for menu (opens the CustomizePicker)
     const projectIcon = project.icon || null;
@@ -425,28 +359,6 @@ class ProjectList extends BaseComponent {
       ${menuIcons.code}
       ${t('projects.openInEditor', { editor: (EDITOR_OPTIONS.find(e => e.value === (getProjectEditor(project.id) || getSetting('editor'))) || EDITOR_OPTIONS[0]).label })}
     </button>`;
-
-    // Cloud section
-    if (this._cloudConnected) {
-      menuItemsHtml += `<div class="more-actions-section-label">${t('projects.sectionCloud')}</div>`;
-      if (this._cloudUploadStatus.get(project.id)?.synced) {
-        menuItemsHtml += `
-    <button class="more-actions-item btn-cloud-upload" data-project-id="${project.id}">
-      ${menuIcons.cloudUpload}
-      ${t('cloud.resyncBtn')}
-    </button>
-    <button class="more-actions-item danger btn-cloud-delete" data-project-id="${project.id}">
-      ${menuIcons.trash}
-      ${t('cloud.deleteTitle')}
-    </button>`;
-      } else {
-        menuItemsHtml += `
-    <button class="more-actions-item btn-cloud-upload" data-project-id="${project.id}">
-      ${menuIcons.cloudUpload}
-      ${t('cloud.uploadTitle')}
-    </button>`;
-      }
-    }
 
     // Project section
     menuItemsHtml += `
@@ -535,7 +447,6 @@ class ProjectList extends BaseComponent {
           <span>${escapeHtml(project.name)}</span>
           ${terminalStats.total > 0 ? `<span class="terminal-count"><span class="working-count">${terminalStats.working}</span><span class="count-separator">/</span><span class="total-count">${terminalStats.total}</span></span>` : ''}
           ${project.isWorktree && project.worktreeBranch ? `<span class="project-worktree-badge" title="Worktree: ${escapeHtml(project.worktreeBranch)}">${escapeHtml(project.worktreeBranch)}</span>` : project.isWorktree ? '<span class="project-worktree-badge" title="Worktree">WT</span>' : ''}
-          ${this._renderCloudBadge(project.id)}
           ${(() => { const pws = getWorkspacesForProject(project.id); return pws.length > 0 ? `<span class="project-workspace-badge" title="${escapeHtml(pws.map(w => w.name).join(', '))}" style="color: ${sanitizeColor(pws[0].color) || 'var(--accent)'}">${escapeHtml(pws[0].icon || t('workspace.badge'))}</span>` : ''; })()}
         </div>
         <div class="project-path">${escapeHtml(project.path)}</div>
@@ -971,14 +882,6 @@ class ProjectList extends BaseComponent {
           const project = getProject(projectId);
           self.closeAllMoreActionsMenus();
           if (project) self._showProjectSettings(project);
-        } else if (btn.classList.contains('btn-cloud-upload') || btn.classList.contains('btn-cloud-upload-direct')) {
-          self.closeAllMoreActionsMenus();
-          if (self._callbacks.onCloudUpload) self._callbacks.onCloudUpload(projectId);
-        } else if (btn.classList.contains('btn-cloud-delete')) {
-          self.closeAllMoreActionsMenus();
-          if (self._callbacks.onCloudDelete) self._callbacks.onCloudDelete(projectId);
-        } else if (btn.classList.contains('btn-cloud-sync')) {
-          if (self._callbacks.onCloudSync) self._callbacks.onCloudSync(projectId);
         } else if (btn.classList.contains('btn-add-to-workspace')) {
           self.closeAllMoreActionsMenus();
           self._showAddToWorkspaceMenu(btn, projectId);

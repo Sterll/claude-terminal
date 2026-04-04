@@ -154,6 +154,11 @@ class CloudRelayClient {
 
   _scheduleReconnect() {
     if (!this.shouldReconnect) return;
+    // Clear any existing timer before scheduling a new one
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
     const delay = RECONNECT_DELAYS[Math.min(this.reconnectAttempt, RECONNECT_DELAYS.length - 1)];
     this.reconnectAttempt++;
     this._reconnectTimer = setTimeout(() => this._doConnect(), delay);
