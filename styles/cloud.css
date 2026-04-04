@@ -562,3 +562,201 @@
 .cp-pick-item:last-child { border-bottom: none; }
 .cp-pick-item:hover { background: var(--bg-hover); }
 
+/* ── Sync Section ── */
+
+.cp-sync-section { padding: 0; }
+
+.cp-sync-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+}
+
+.cp-sync-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+}
+
+.cp-sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.cp-sync-dot.idle { background: var(--success); }
+.cp-sync-dot.syncing { background: var(--accent); animation: sync-pulse 1.2s ease-in-out infinite; }
+.cp-sync-dot.error { background: var(--danger); }
+.cp-sync-dot.offline { background: var(--text-muted); }
+.cp-sync-dot.conflict { background: var(--warning); }
+
+@keyframes sync-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.cp-sync-text {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.cp-sync-last {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+}
+
+.cp-sync-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cp-sync-conflicts-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--warning);
+  color: #000;
+  font-size: var(--font-2xs);
+  font-weight: 700;
+}
+
+/* Sync toggles (collapsible) */
+
+.cp-sync-details {
+  margin-top: 8px;
+}
+
+.cp-sync-settings-toggle {
+  padding: 10px 16px;
+  font-size: var(--font-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  user-select: none;
+  list-style: none;
+}
+
+.cp-sync-settings-toggle::-webkit-details-marker { display: none; }
+
+.cp-sync-settings-toggle::before {
+  content: '';
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  margin-right: 8px;
+  transition: transform 0.15s;
+}
+
+.cp-sync-details[open] > .cp-sync-settings-toggle::before {
+  transform: rotate(90deg);
+}
+
+.cp-sync-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+  border: 1px solid var(--border-color);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: var(--bg-secondary);
+}
+
+.cp-sync-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.cp-sync-toggle-row:hover { background: var(--bg-hover); }
+
+.cp-sync-toggle-row input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* Conflicts */
+
+.cp-conflicts {
+  margin-top: 10px;
+}
+
+.cp-conflict-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: var(--radius);
+  font-size: var(--font-sm);
+  color: var(--warning);
+  font-weight: 500;
+}
+
+.cp-conflict-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.cp-conflict-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.cp-conflict-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cp-conflict-type {
+  font-size: var(--font-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  text-transform: capitalize;
+}
+
+.cp-conflict-desc {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+}
+
+.cp-conflict-actions {
+  display: flex;
+  gap: 6px;
+}
+

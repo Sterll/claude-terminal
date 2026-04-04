@@ -117,6 +117,73 @@ function buildHtml(settings) {
             </div>
           </div>
 
+          <!-- Sync Status -->
+          <div class="cp-section cp-sync-section">
+            <div class="cp-sync-bar">
+              <div class="cp-sync-status">
+                <span class="cp-sync-dot" id="cp-sync-dot"></span>
+                <span class="cp-sync-text" id="cp-sync-text">${t('cloud.syncStatusIdle')}</span>
+                <span class="cp-sync-last" id="cp-sync-last"></span>
+              </div>
+              <div class="cp-sync-actions">
+                <span class="cp-sync-conflicts-badge" id="cp-sync-conflicts-badge" style="display:none">0</span>
+                <button class="cp-btn-sm" id="cp-sync-now-btn">${t('cloud.syncNow')}</button>
+              </div>
+            </div>
+
+            <!-- Sync Toggles (collapsible) -->
+            <details class="cp-sync-details">
+              <summary class="cp-sync-settings-toggle">${t('cloud.syncTitle')}</summary>
+              <div class="cp-sync-toggles">
+                <label class="cp-sync-toggle-row">
+                  <input type="checkbox" id="cp-sync-auto" ${settings.cloudAutoSync !== false ? 'checked' : ''}>
+                  <span>${t('cloud.syncAuto')}</span>
+                </label>
+                <label class="cp-sync-toggle-row">
+                  <input type="checkbox" data-sync-key="cloudSyncSettings" ${settings.cloudSyncSettings !== false ? 'checked' : ''}>
+                  <span>${t('cloud.syncSettings')}</span>
+                </label>
+                <label class="cp-sync-toggle-row">
+                  <input type="checkbox" data-sync-key="cloudSyncProjects" ${settings.cloudSyncProjects !== false ? 'checked' : ''}>
+                  <span>${t('cloud.syncProjects')}</span>
+                </label>
+                <label class="cp-sync-toggle-row">
+                  <input type="checkbox" data-sync-key="cloudSyncTimeTracking" ${settings.cloudSyncTimeTracking !== false ? 'checked' : ''}>
+                  <span>${t('cloud.syncTimeTracking')}</span>
+                </label>
+                <label class="cp-sync-toggle-row">
+                  <input type="checkbox" data-sync-key="cloudSyncMcpConfigs" ${settings.cloudSyncMcpConfigs !== false ? 'checked' : ''}>
+                  <span>${t('cloud.syncMcp')}</span>
+                </label>
+                <label class="cp-sync-toggle-row">
+                  <input type="checkbox" data-sync-key="cloudSyncSkills" ${settings.cloudSyncSkills !== false ? 'checked' : ''}>
+                  <span>${t('cloud.syncSkills')}</span>
+                </label>
+                <label class="cp-sync-toggle-row">
+                  <input type="checkbox" data-sync-key="cloudSyncMemory" ${settings.cloudSyncMemory !== false ? 'checked' : ''}>
+                  <span>${t('cloud.syncMemory')}</span>
+                </label>
+                <label class="cp-sync-toggle-row">
+                  <input type="checkbox" data-sync-key="cloudSyncHooksConfig" ${settings.cloudSyncHooksConfig !== false ? 'checked' : ''}>
+                  <span>${t('cloud.syncHooks')}</span>
+                </label>
+                <label class="cp-sync-toggle-row">
+                  <input type="checkbox" data-sync-key="cloudSyncPlugins" ${settings.cloudSyncPlugins !== false ? 'checked' : ''}>
+                  <span>${t('cloud.syncPlugins')}</span>
+                </label>
+              </div>
+            </details>
+
+            <!-- Conflicts -->
+            <div class="cp-conflicts" id="cp-conflicts" style="display:none">
+              <div class="cp-conflict-banner">
+                <span id="cp-conflict-count"></span>
+                <button class="cp-btn-sm" id="cp-resolve-all-btn">${t('cloud.conflictResolveAll')}</button>
+              </div>
+              <div id="cp-conflict-list" class="cp-conflict-list"></div>
+            </div>
+          </div>
+
           <!-- Projects -->
           <div class="cp-section">
             <div class="cp-section-header">
@@ -496,6 +563,144 @@ function setupHandlers(context) {
     }
   });
 
+  // ── Sync ──
+
+  const syncNowBtn = document.getElementById('cp-sync-now-btn');
+  const syncAutoToggle = document.getElementById('cp-sync-auto');
+  const resolveAllBtn = document.getElementById('cp-resolve-all-btn');
+
+  if (syncNowBtn) {
+    syncNowBtn.addEventListener('click', async () => {
+      syncNowBtn.disabled = true;
+      try {
+        await api.cloud.syncForce();
+      } catch {}
+      syncNowBtn.disabled = false;
+    });
+  }
+
+  // Auto-sync master toggle
+  if (syncAutoToggle) {
+    syncAutoToggle.addEventListener('change', () => {
+      settings.cloudAutoSync = syncAutoToggle.checked;
+      saveSettings(settings);
+      if (syncAutoToggle.checked) {
+        api.cloud.syncStart().catch(() => {});
+      } else {
+        api.cloud.syncStop().catch(() => {});
+      }
+    });
+  }
+
+  // Per-entity toggles
+  document.querySelectorAll('[data-sync-key]').forEach(toggle => {
+    toggle.addEventListener('change', () => {
+      settings[toggle.dataset.syncKey] = toggle.checked;
+      saveSettings(settings);
+    });
+  });
+
+  // Resolve all conflicts
+  if (resolveAllBtn) {
+    resolveAllBtn.addEventListener('click', async () => {
+      resolveAllBtn.disabled = true;
+      try {
+        await api.cloud.resolveAllConflicts('local');
+      } catch {}
+      resolveAllBtn.disabled = false;
+    });
+  }
+
+  // Sync status listener
+  const unsubSyncStatus = api.cloud.onSyncStatusChanged?.((status) => {
+    _updateSyncUI(status);
+  });
+
+  // Sync conflict listener
+  const unsubSyncConflict = api.cloud.onSyncConflict?.((conflicts) => {
+    _renderConflicts(conflicts);
+  });
+
+  function _updateSyncUI(status) {
+    const dot = document.getElementById('cp-sync-dot');
+    const text = document.getElementById('cp-sync-text');
+    const lastEl = document.getElementById('cp-sync-last');
+    const badge = document.getElementById('cp-sync-conflicts-badge');
+
+    const statusMap = {
+      idle: { key: 'cloud.syncStatusIdle', cls: 'idle' },
+      syncing: { key: 'cloud.syncStatusSyncing', cls: 'syncing' },
+      error: { key: 'cloud.syncStatusError', cls: 'error' },
+      offline: { key: 'cloud.syncStatusOffline', cls: 'offline' },
+      conflict: { key: 'cloud.syncStatusConflict', cls: 'conflict' },
+    };
+
+    const s = statusMap[status.status] || statusMap.idle;
+    if (dot) { dot.className = 'cp-sync-dot ' + s.cls; }
+    if (text) text.textContent = t(s.key);
+    if (lastEl && status.lastSync) {
+      lastEl.textContent = t('cloud.syncLastSync', { time: _timeAgo(status.lastSync) });
+    }
+    if (badge) {
+      if (status.conflicts > 0) {
+        badge.textContent = status.conflicts;
+        badge.style.display = '';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+  }
+
+  function _renderConflicts(conflicts) {
+    const container = document.getElementById('cp-conflicts');
+    const countEl = document.getElementById('cp-conflict-count');
+    const listEl = document.getElementById('cp-conflict-list');
+
+    if (!container) return;
+
+    if (!conflicts || conflicts.length === 0) {
+      container.style.display = 'none';
+      return;
+    }
+
+    container.style.display = '';
+    if (countEl) countEl.textContent = t('cloud.conflictsBanner', { count: conflicts.length });
+
+    if (listEl) {
+      listEl.innerHTML = conflicts.map(c => `
+        <div class="cp-conflict-card">
+          <div class="cp-conflict-info">
+            <span class="cp-conflict-type">${_escapeHtml(c.entityType)}</span>
+            <span class="cp-conflict-desc">${t('cloud.conflictDesc')}</span>
+          </div>
+          <div class="cp-conflict-actions">
+            <button class="cp-btn-sm" data-resolve="${_escapeHtml(c.entityType)}" data-resolution="local">${t('cloud.conflictKeepLocal')}</button>
+            <button class="cp-btn-sm cp-btn-ghost" data-resolve="${_escapeHtml(c.entityType)}" data-resolution="cloud">${t('cloud.conflictKeepCloud')}</button>
+          </div>
+        </div>
+      `).join('');
+
+      listEl.querySelectorAll('[data-resolve]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          try {
+            await api.cloud.resolveConflict({ entityType: btn.dataset.resolve, resolution: btn.dataset.resolution });
+          } catch {}
+          btn.disabled = false;
+        });
+      });
+    }
+  }
+
+  // Load initial sync status
+  api.cloud.syncStatus().then(status => {
+    if (status) _updateSyncUI(status);
+  }).catch(() => {});
+
+  api.cloud.getConflicts().then(conflicts => {
+    if (conflicts?.length > 0) _renderConflicts(conflicts);
+  }).catch(() => {});
+
   // ── Polling ──
 
   function _startPolling() {
@@ -524,6 +729,8 @@ function setupHandlers(context) {
   // Store cleanup refs
   _ctx._unsubStatus = unsubStatus;
   _ctx._unsubProgress = unsubProgress;
+  _ctx._unsubSyncStatus = unsubSyncStatus;
+  _ctx._unsubSyncConflict = unsubSyncConflict;
   _ctx._stopPolling = _stopPolling;
 }
 
@@ -540,6 +747,8 @@ function _timeAgo(timestamp) {
 function cleanup() {
   if (_ctx?._unsubStatus) _ctx._unsubStatus();
   if (_ctx?._unsubProgress) _ctx._unsubProgress();
+  if (_ctx?._unsubSyncStatus) _ctx._unsubSyncStatus();
+  if (_ctx?._unsubSyncConflict) _ctx._unsubSyncConflict();
   if (_ctx?._stopPolling) _ctx._stopPolling();
   _ctx = null;
 }
