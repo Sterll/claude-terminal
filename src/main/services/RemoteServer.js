@@ -74,6 +74,7 @@ let _timeData = { todayMs: 0 };
 // External transport (e.g. cloud relay) — injected via setExternalTransport()
 // Duck-typed: { connected: boolean, send(data: string): void }
 let _externalTransport = null;
+let _externalTransportConnectedAt = 0;
 
 // Virtual WS-like object that routes send() calls through the external transport
 const _externalWsProxy = {
@@ -333,23 +334,39 @@ function _handleWsUpgrade(request, socket, head) {
       console.warn(`[Remote] WS error: ${e.message}`);
     });
 
-    // 1. hello immédiat (avec settings pour sync model/effort)
-    const settings = _loadSettings();
-    _wsSend(ws, 'hello', {
-      version: '1.0',
-      serverName: 'Claude Terminal',
-      chatModel: settings.chatModel || null,
-      effortLevel: settings.effortLevel || null,
-      accentColor: settings.accentColor || '#d97706',
-      language: settings.language || 'fr',
-    });
-    // 2. projets + sessions actives en différé (lecture disque)
-    setImmediate(() => _sendProjectsAndSessions(ws));
-    // 3. Demander au renderer un push frais du time tracking → arrivera via time:update
-    if (_isMainWindowReady()) {
-      mainWindow.webContents.send('remote:request-time-push');
-    }
+    // Send full init (hello + projects + sessions + time)
+    _sendFullInit(ws);
   });
+}
+
+/**
+ * Send full init sequence to a client (local WS or external transport proxy).
+ * 1. hello (settings: model, effort, accent, language)
+ * 2. projects + active sessions + buffered replay (deferred to next tick)
+ * 3. time:update snapshot
+ * 4. Request fresh time data from renderer
+ */
+function _sendFullInit(ws) {
+  // 1. hello
+  const settings = _loadSettings();
+  _wsSend(ws, 'hello', {
+    version: '1.0',
+    serverName: 'Claude Terminal',
+    chatModel: settings.chatModel || null,
+    effortLevel: settings.effortLevel || null,
+    accentColor: settings.accentColor || '#d97706',
+    language: settings.language || 'fr',
+  });
+  // 2. projects + sessions (deferred — disk I/O)
+  setImmediate(() => _sendProjectsAndSessions(ws));
+  // 3. time tracking snapshot
+  if (_timeData.todayMs > 0) {
+    _wsSend(ws, 'time:update', { todayMs: _timeData.todayMs });
+  }
+  // 4. Request fresh time data from renderer
+  if (_isMainWindowReady()) {
+    mainWindow.webContents.send('remote:request-time-push');
+  }
 }
 
 async function _sendProjectsAndSessions(ws) {
@@ -1101,6 +1118,7 @@ function setMainWindow(win) {
  */
 function setExternalTransport(transport) {
   _externalTransport = transport;
+  _externalTransportConnectedAt = transport ? Date.now() : 0;
   if (transport) {
     // Ensure chat bridge is active so events flow to external transport
     // even if the local WS remote server isn't started
@@ -1132,31 +1150,7 @@ function handleExternalMessage(msg) {
 function sendInitToTransport() {
   if (!_externalTransport?.connected) return;
   console.debug('[Remote] Sending init data to external transport');
-
-  // 1. hello
-  const settings = _loadSettings();
-  _externalTransport.send(JSON.stringify({
-    type: 'hello',
-    data: {
-      version: '1.0',
-      serverName: 'Claude Terminal',
-      chatModel: settings.chatModel || null,
-      effortLevel: settings.effortLevel || null,
-      accentColor: settings.accentColor || '#d97706',
-      language: settings.language || 'fr',
-    },
-  }));
-
-  // 2. projects + sessions
-  _sendProjectsAndSessions(_externalWsProxy);
-
-  // 3. time tracking
-  _externalTransport.send(JSON.stringify({ type: 'time:update', data: _timeData }));
-
-  // 4. Request fresh time data from renderer
-  if (_isMainWindowReady()) {
-    mainWindow.webContents.send('remote:request-time-push');
-  }
+  _sendFullInit(_externalWsProxy);
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -1184,9 +1178,20 @@ function getConnectedClients() {
     const meta = _clientMeta.get(token) || {};
     clients.push({
       id: token.slice(0, 8),
+      type: 'local',
       connectedAt: meta.connectedAt || 0,
       ip: meta.ip || 'unknown',
       userAgent: meta.userAgent || 'unknown',
+    });
+  }
+  // Add cloud relay as a virtual client when connected
+  if (_externalTransport?.connected) {
+    clients.push({
+      id: 'cloud',
+      type: 'relay',
+      connectedAt: _externalTransportConnectedAt,
+      ip: 'relay',
+      userAgent: 'Cloud Relay',
     });
   }
   return clients;

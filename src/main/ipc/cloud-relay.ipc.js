@@ -63,9 +63,6 @@ function registerCloudRelayHandlers() {
 
   ipcMain.handle('cloud:connect', async (_event, { serverUrl, apiKey }) => {
     sendFeaturePing('cloud:connect');
-    if (remoteServer.getServerInfo().running) {
-      remoteServer.stop();
-    }
     remoteServer.setExternalTransport(cloudRelayClient);
     cloudRelayClient.connect(serverUrl, apiKey);
     return { ok: true };

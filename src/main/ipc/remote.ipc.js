@@ -4,7 +4,6 @@
 
 const { ipcMain } = require('electron');
 const remoteServer = require('../services/RemoteServer');
-const { cloudRelayClient } = require('../services/CloudRelayClient');
 const { sendFeaturePing } = require('../services/TelemetryService');
 
 function registerRemoteHandlers() {
@@ -36,14 +35,10 @@ function registerRemoteHandlers() {
     }
   });
 
-  // Manually start the server — stop cloud relay first (mutual exclusion)
+  // Manually start the server (coexists with cloud relay)
   ipcMain.handle('remote:start-server', () => {
     try {
       sendFeaturePing('remote:connect');
-      if (cloudRelayClient.connected) {
-        cloudRelayClient.disconnect();
-        remoteServer.setExternalTransport(null);
-      }
       remoteServer._syncServerState();
       return { success: true, ...remoteServer.getServerInfo() };
     } catch (err) {
