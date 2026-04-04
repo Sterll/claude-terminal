@@ -38,7 +38,7 @@ async function authMiddleware(req: AuthRequest, res: Response, next: Function): 
 // Multer for zip uploads
 const upload = multer({
   dest: path.join(os.tmpdir(), 'ct-cloud-uploads'),
-  limits: { fileSize: 5 * 1024 * 1024 * 1024 }, // 5GB
+  limits: { fileSize: config.maxUploadBytes },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype === 'application/zip' || file.originalname.endsWith('.zip')) {
       cb(null, true);
@@ -48,22 +48,29 @@ const upload = multer({
   }
 });
 
-// ── Webhook rate limiter (per user, 60 req/min) ──
-const WEBHOOK_RATE_LIMIT = 60;
-const WEBHOOK_RATE_WINDOW_MS = 60_000;
+// ── Rate limiter (per user, sliding window) ──
+const RATE_WINDOW_MS = 60_000;
 const MAX_WEBHOOK_PAYLOAD = 256 * 1024; // 256 KB
-const _webhookRates = new Map<string, { count: number; resetAt: number }>();
+const _rates = new Map<string, { count: number; resetAt: number }>();
 
-function isWebhookRateLimited(userName: string): boolean {
+function isRateLimited(key: string, limit: number): boolean {
   const now = Date.now();
-  let entry = _webhookRates.get(userName);
+  let entry = _rates.get(key);
   if (!entry || now >= entry.resetAt) {
-    entry = { count: 0, resetAt: now + WEBHOOK_RATE_WINDOW_MS };
-    _webhookRates.set(userName, entry);
+    entry = { count: 0, resetAt: now + RATE_WINDOW_MS };
+    _rates.set(key, entry);
   }
   entry.count++;
-  return entry.count > WEBHOOK_RATE_LIMIT;
+  return entry.count > limit;
 }
+
+// Cleanup stale rate entries every 5 min
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of _rates) {
+    if (now >= entry.resetAt) _rates.delete(key);
+  }
+}, 5 * 60_000).unref();
 
 export function createCloudRouter(relay?: RelayServer): Router {
   const router = Router();
@@ -89,7 +96,7 @@ export function createCloudRouter(relay?: RelayServer): Router {
       }
 
       // Rate limit
-      if (isWebhookRateLimited(userName)) {
+      if (isRateLimited(`webhook:${userName}`, 60)) {
         res.status(429).json({ error: 'Rate limit exceeded (60 req/min)' });
         return;
       }
@@ -127,6 +134,15 @@ export function createCloudRouter(relay?: RelayServer): Router {
   });
 
   router.use(authMiddleware as any);
+
+  // General rate limit (per user)
+  router.use((req: AuthRequest, res: Response, next: Function) => {
+    if (req.userName && isRateLimited(`api:${req.userName}`, config.rateLimitPerMinute)) {
+      res.status(429).json({ error: `Rate limit exceeded (${config.rateLimitPerMinute} req/min)` });
+      return;
+    }
+    next();
+  });
 
   // ── User Profile ──
 

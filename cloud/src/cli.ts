@@ -80,7 +80,7 @@ async function userList(): Promise<void> {
     const projectDirs = await store.listProjectDirs(name);
     const activeSessions = user.sessions.filter(s => s.status === 'running').length;
     const sessionStr = activeSessions > 0 ? `${activeSessions} active` : '0';
-    const keyPreview = hashApiKey(user.apiKey);
+    const keyPreview = user.apiKeyHash ? user.apiKeyHash.slice(0, 12) : '(legacy)';
     const credPath = path.join(store.userHomePath(name), '.claude', '.credentials.json');
     let claudeStr = '✗';
     try { fs.accessSync(credPath); claudeStr = '✓'; } catch { /* not authed */ }
@@ -250,11 +250,13 @@ async function userResetKey(name: string): Promise<void> {
   }
 
   const newKey = generateApiKey();
-  user.apiKey = newKey;
+  user.apiKeyHash = hashApiKey(newKey);
+  delete (user as any).apiKey; // Remove legacy plaintext if present
   await store.saveUser(name, user);
 
   console.log(`\n  API key for "${name}" regenerated`);
-  console.log(`  New API Key: ${newKey}\n`);
+  console.log(`  New API Key: ${newKey}`);
+  console.log(`  (this is shown only once)\n`);
 }
 
 async function status(): Promise<void> {

@@ -6,7 +6,7 @@
 import { Screen } from '../Screen';
 import { c, style, padR, trunc, fmtDate } from '../ansi';
 import { store, UserData } from '../../store/store';
-import { generateApiKey, hashApiKey } from '../../auth/auth';
+import { generateApiKey, hashApiKey, invalidateKeyIndex } from '../../auth/auth';
 import readline from 'readline';
 
 export class UsersTab {
@@ -91,7 +91,7 @@ export class UsersTab {
       const projects = this.projectCounts.get(name) || 0;
       const activeCount = user.sessions.filter(s => s.status === 'running').length;
       const sessStr = activeCount > 0 ? `${activeCount} active` : '0';
-      const keyHash = hashApiKey(user.apiKey).slice(0, 12) + '…';
+      const keyHash = user.apiKeyHash ? user.apiKeyHash.slice(0, 12) + '...' : '(legacy)';
       const created = fmtDate(user.createdAt);
 
       const prefix = isSelected ? style('▸ ', c.amber) : '  ';
@@ -248,8 +248,10 @@ export class UsersTab {
       const user = await store.getUser(name);
       if (!user) return;
       const newKey = generateApiKey();
-      user.apiKey = newKey;
+      user.apiKeyHash = hashApiKey(newKey);
+      delete (user as any).apiKey;
       await store.saveUser(name, user);
+      invalidateKeyIndex();
       this.modal = { type: 'show-key', data: { name, key: newKey } };
       await this.load();
       this.requestRender?.();

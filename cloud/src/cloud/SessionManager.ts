@@ -74,9 +74,31 @@ export class SessionManager {
   private sessions: Map<string, ActiveSession> = new Map();
   private sdk: any = null;
   private relayServer: RelayServer | null = null;
+  private _cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   setRelayServer(relay: RelayServer): void {
     this.relayServer = relay;
+
+    // Start periodic cleanup for stale sessions
+    if (!this._cleanupTimer) {
+      this._cleanupTimer = setInterval(() => this._cleanupStaleSessions(), 15 * 60_000);
+      this._cleanupTimer.unref();
+    }
+  }
+
+  private async _cleanupStaleSessions(): Promise<void> {
+    const maxAge = config.sessionTimeoutHours * 60 * 60 * 1000;
+    const now = Date.now();
+    for (const [id, session] of this.sessions) {
+      if (session.status !== 'running') {
+        const meta = this._getUserSessionMeta(session.userName, id);
+        const lastActivity = meta?.lastActivity || 0;
+        if (now - lastActivity > maxAge) {
+          console.log(`[Session ${id}] Closing stale session (idle ${Math.round((now - lastActivity) / 3600000)}h)`);
+          await this.closeSession(id);
+        }
+      }
+    }
   }
 
   private async loadSDK() {

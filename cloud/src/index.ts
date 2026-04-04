@@ -6,7 +6,7 @@ import { store } from './store/store';
 import { RelayServer } from './relay/RelayServer';
 import { createCloudRouter } from './cloud/CloudAPI';
 import { sessionManager } from './cloud/SessionManager';
-import { authenticateApiKey } from './auth/auth';
+import { authenticateApiKey, buildKeyIndex } from './auth/auth';
 import { WebSocket, WebSocketServer } from 'ws';
 
 let relayServer: RelayServer;
@@ -44,8 +44,27 @@ console.error = (...args: any[]) => { captureLog('ERROR', ...args); _origErr(...
 export async function startServer(): Promise<void> {
   await store.ensureDataDirs();
   await store.getServerData(); // Init server.json if needed
+  await buildKeyIndex(); // Build hash->user index + migrate plaintext keys
 
   const app = express();
+
+  // ── CORS ──
+  app.use((_req, res, next) => {
+    const allowed = config.corsOrigins;
+    if (allowed === '*') {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    } else {
+      const origin = _req.headers.origin;
+      if (origin && allowed.split(',').map(s => s.trim()).includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+      }
+    }
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (_req.method === 'OPTIONS') { res.status(204).end(); return; }
+    next();
+  });
+
   app.use(express.json({ limit: '10mb' }));
 
   // Health check
@@ -59,7 +78,20 @@ export async function startServer(): Promise<void> {
     });
   });
 
-  // ── Admin endpoints (local-only) ──
+  // ── Admin endpoints (protected by ADMIN_TOKEN) ──
+
+  app.use('/admin', (req, res, next) => {
+    if (!config.adminToken) {
+      res.status(403).json({ error: 'Admin endpoints disabled (ADMIN_TOKEN not set)' });
+      return;
+    }
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (token !== config.adminToken) {
+      res.status(401).json({ error: 'Invalid admin token' });
+      return;
+    }
+    next();
+  });
 
   app.get('/admin/rooms', (_req, res) => {
     res.json(relayServer.listRooms());
@@ -142,6 +174,9 @@ export async function startServer(): Promise<void> {
       console.log(`  API:    http://${config.host}:${config.port}/api`);
     }
     console.log(`  Health: http://${config.host}:${config.port}/health`);
+    if (!config.adminToken) {
+      console.log(`  Admin:  disabled (set ADMIN_TOKEN to enable /admin endpoints)`);
+    }
     console.log('');
   });
 }

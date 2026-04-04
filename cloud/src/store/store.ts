@@ -22,7 +22,8 @@ export interface UserSession {
 export interface UserData {
   id: string;
   name: string;
-  apiKey: string;
+  apiKey?: string;       // Legacy plaintext (migrated to apiKeyHash on first auth)
+  apiKeyHash: string;    // SHA256 of the API key
   createdAt: number;
   gitName?: string;
   gitEmail?: string;
@@ -179,7 +180,7 @@ class Store {
     const userData: UserData = {
       id: crypto.randomUUID(),
       name,
-      apiKey,
+      apiKeyHash: crypto.createHash('sha256').update(apiKey).digest('hex'),
       createdAt: Date.now(),
       projects: [],
       sessions: [],
