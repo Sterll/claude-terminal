@@ -2400,11 +2400,14 @@ class ChatView extends BaseComponent {
 
   // ── Plan handling ──
 
-  async function handlePlanClick(btn) {
+  function handlePlanClick(btn) {
     const card = btn.closest('.chat-plan-card');
     if (!card) return;
     const requestId = card.dataset.requestId;
     const action = btn.dataset.action;
+
+    // Clear permission reminder timers
+    _clearPermTimers(requestId);
 
     // Deny → show feedback input first
     if (action === 'deny') {
@@ -2430,14 +2433,6 @@ class ChatView extends BaseComponent {
       btn.classList.add('chosen');
       card.classList.add('resolved', 'approved');
       const inputData = JSON.parse(card.dataset.toolInput || '{}');
-      // If plan was edited inline, save back to file
-      const editedRaw = card.dataset.planEdited;
-      if (editedRaw && card.dataset.planFilePath) {
-        try {
-          const { fsp } = require('../../utils/fs-async');
-          await fsp.writeFile(card.dataset.planFilePath, editedRaw);
-        } catch (e) { console.warn('[ChatView] Failed to save edited plan:', e); }
-      }
       api.chat.respondPermission({
         requestId,
         result: { behavior: 'allow', updatedInput: inputData }
@@ -2454,22 +2449,24 @@ class ChatView extends BaseComponent {
       });
     }
 
-    // Reset status — SDK will continue processing
+    // Reset status - SDK will continue processing
     setStatus('thinking', t('chat.thinking'));
 
-    // Collapse: if ExitPlanMode with plan content, keep the plan visible and only hide buttons
+    // Collapse: if ExitPlanMode with plan content, keep plan visible, only hide buttons
     const isExitPlan = card.dataset.toolName === 'ExitPlanMode' && card.querySelector('.chat-plan-content');
     if (isExitPlan) {
       setTimeout(() => {
         const actions = card.querySelector('.chat-plan-actions');
-        if (actions) {
-          actions.style.maxHeight = actions.scrollHeight + 'px';
-          actions.style.overflow = 'hidden';
-          actions.style.transition = 'max-height 0.35s ease, opacity 0.3s, padding 0.35s';
+        const feedback = card.querySelector('.chat-plan-feedback');
+        for (const row of [actions, feedback]) {
+          if (!row) continue;
+          row.style.maxHeight = row.scrollHeight + 'px';
+          row.style.overflow = 'hidden';
+          row.style.transition = 'max-height 0.35s ease, opacity 0.3s, padding 0.35s';
           requestAnimationFrame(() => {
-            actions.style.maxHeight = '0';
-            actions.style.opacity = '0';
-            actions.style.padding = '0 16px';
+            row.style.maxHeight = '0';
+            row.style.opacity = '0';
+            row.style.padding = '0 16px';
           });
         }
       }, 600);
@@ -3388,7 +3385,7 @@ class ChatView extends BaseComponent {
 
     // Plan mode handling
     if (toolName === 'ExitPlanMode' || toolName === 'EnterPlanMode') {
-      await appendPlanCard(data);
+      appendPlanCard(data);
       return;
     }
 
@@ -3518,50 +3515,42 @@ class ChatView extends BaseComponent {
     });
   }
 
-  async function findPlanFilePath() {
-    const { fileExists, fsp } = require('../../utils/fs-async');
-    const { path, os } = window.electron_nodeModules;
-    const plansDir = path.join(os.homedir(), '.claude', 'plans');
+  /**
+   * Collect plan content from assistant messages streamed between
+   * the last EnterPlanMode card and now. No disk reads needed -
+   * the plan is already in the DOM as streamed messages.
+   */
+  function collectPlanFromDOM() {
+    // Find the EnterPlanMode card (marks the start of planning)
+    const planCards = messagesEl.querySelectorAll('.chat-plan-card');
+    let enterCard = null;
+    for (let i = planCards.length - 1; i >= 0; i--) {
+      if (planCards[i].dataset.toolName === 'EnterPlanMode') {
+        enterCard = planCards[i];
+        break;
+      }
+    }
 
-    // Strategy 1: Find Write tool card targeting ~/.claude/plans/
-    const allToolCards = messagesEl.querySelectorAll('.chat-tool-card');
-    for (let i = allToolCards.length - 1; i >= 0; i--) {
-      const card = allToolCards[i];
-      const nameEl = card.querySelector('.chat-tool-name');
-      if (!nameEl || nameEl.textContent !== 'Write') continue;
-      try {
-        const input = JSON.parse(card.dataset.toolInput || '{}');
-        if (input.file_path && input.file_path.replace(/\\/g, '/').includes('.claude/plans/')) {
-          return input.file_path;
+    // Collect all assistant messages after the enter card (or all if none)
+    const allMessages = messagesEl.querySelectorAll('.chat-msg-assistant, .chat-tool-card, .chat-tool-group, .chat-plan-card');
+    let collecting = !enterCard; // if no enter card, collect all
+    const planParts = [];
+
+    for (const node of allMessages) {
+      if (node === enterCard) { collecting = true; continue; }
+      if (!collecting) continue;
+      if (node.classList.contains('chat-msg-assistant')) {
+        const contentEl = node.querySelector('.chat-msg-content');
+        if (contentEl) {
+          const text = contentEl.textContent.trim();
+          if (text.length > 20) planParts.push({ html: contentEl.innerHTML, el: node });
         }
-      } catch (e) {
-        console.warn('[ChatView] Failed to parse tool card input:', e);
       }
     }
-
-    // Strategy 2: Most recent .md file in ~/.claude/plans/ (< 60s old)
-    try {
-      if (!await fileExists(plansDir)) return null;
-      const entries = await fsp.readdir(plansDir);
-      const files = [];
-      for (const f of entries) {
-        if (!f.endsWith('.md')) continue;
-        const fullPath = path.join(plansDir, f);
-        const stat = await fsp.stat(fullPath);
-        files.push({ path: fullPath, mtime: stat.mtime });
-      }
-      files.sort((a, b) => b.mtime - a.mtime);
-      if (files.length > 0 && Date.now() - files[0].mtime.getTime() < 60000) {
-        return files[0].path;
-      }
-    } catch (e) {
-      console.warn('[ChatView] Failed to scan plans directory:', e);
-    }
-
-    return null;
+    return planParts;
   }
 
-  async function appendPlanCard(data) {
+  function appendPlanCard(data) {
     const { requestId, toolName, input } = data;
     const isExit = toolName === 'ExitPlanMode';
     const el = document.createElement('div');
@@ -3573,44 +3562,12 @@ class ChatView extends BaseComponent {
     const icon = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13zM9 13h6v2H9v-2zm6 4H9v2h6v-2zm-2-8h2v2h-2V9z"/></svg>';
 
     if (isExit) {
-      let planContent = '';
-      let planFilePath = null;
-      let rawPlanText = '';
+      // Collect plan from streamed assistant messages (no disk reads)
+      const planParts = collectPlanFromDOM();
+      const planContent = planParts.map(p => p.html).join('<hr class="chat-plan-separator"/>');
 
-      // 1. Try reading plan from disk (~/.claude/plans/)
-      planFilePath = await findPlanFilePath();
-      if (planFilePath) {
-        try {
-          const raw = await window.electron_nodeModules.fs.promises.readFile(planFilePath, 'utf-8');
-          if (raw && raw.trim()) {
-            rawPlanText = raw.trim();
-            planContent = renderMarkdown(rawPlanText);
-          }
-        } catch (e) {
-          console.warn('[ChatView] Failed to read plan file:', planFilePath, e);
-        }
-      }
-
-      // 2. Fallback: last assistant message (only if long enough to be a plan)
-      if (!planContent) {
-        const allMessages = messagesEl.querySelectorAll('.chat-msg-assistant');
-        if (allMessages.length > 0) {
-          const lastMsg = allMessages[allMessages.length - 1];
-          const contentEl = lastMsg.querySelector('.chat-msg-content');
-          if (contentEl && contentEl.textContent.trim().length > 100) {
-            planContent = contentEl.innerHTML;
-            lastMsg.style.display = 'none';
-          }
-        }
-      }
-
-      // Hide the transitional assistant message when plan comes from file
-      if (planFilePath && planContent) {
-        const allMessages = messagesEl.querySelectorAll('.chat-msg-assistant');
-        if (allMessages.length > 0) {
-          allMessages[allMessages.length - 1].style.display = 'none';
-        }
-      }
+      // Hide the original messages - they'll be shown inside the plan card
+      for (const part of planParts) part.el.style.display = 'none';
 
       const planPreview = planContent
         ? `<div class="chat-plan-content"><div class="chat-plan-content-inner">${planContent}</div></div>`
@@ -3618,27 +3575,12 @@ class ChatView extends BaseComponent {
 
       if (planContent) el.classList.add('has-plan-content');
 
-      const fileInfo = planFilePath
-        ? `<span class="chat-plan-file-path" title="${escapeHtml(planFilePath)}">${escapeHtml(window.electron_nodeModules.path.basename(planFilePath))}</span>`
-        : '';
-
-      // Store raw content and file path for inline editing
-      if (planFilePath) el.dataset.planFilePath = planFilePath;
-      if (rawPlanText) el.dataset.planRaw = rawPlanText;
-
-      const editBtn = planContent
-        ? `<button class="chat-plan-edit-btn" title="${escapeHtml(t('chat.editPlan') || 'Edit plan')}""><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>`
-        : '';
-
       el.innerHTML = `
         <div class="chat-plan-header">
           <div class="chat-plan-icon">${icon}</div>
           <span>${escapeHtml(t('chat.planReady') || 'Plan ready for review')}</span>
-          ${fileInfo}
-          ${editBtn}
         </div>
         ${planPreview}
-        <textarea class="chat-plan-editor" style="display:none" spellcheck="false"></textarea>
         <div class="chat-plan-actions">
           <button class="chat-plan-btn approve" data-action="allow">${escapeHtml(t('chat.approvePlan') || 'Approve plan')}</button>
           <button class="chat-plan-btn reject" data-action="deny">${escapeHtml(t('chat.rejectPlan') || 'Reject plan')}</button>
@@ -3673,33 +3615,6 @@ class ChatView extends BaseComponent {
         handlePlanClick(el.querySelector('[data-action="deny-send"]'));
       }
     });
-    // Inline plan editor toggle
-    const editBtnEl = el.querySelector('.chat-plan-edit-btn');
-    if (editBtnEl) {
-      editBtnEl.addEventListener('click', () => {
-        const contentEl = el.querySelector('.chat-plan-content');
-        const editorEl = el.querySelector('.chat-plan-editor');
-        if (!contentEl || !editorEl) return;
-        const isEditing = editorEl.style.display !== 'none';
-        if (isEditing) {
-          // Save edited content and re-render
-          const edited = editorEl.value;
-          el.dataset.planEdited = edited;
-          contentEl.querySelector('.chat-plan-content-inner').innerHTML = renderMarkdown(edited);
-          contentEl.style.display = '';
-          editorEl.style.display = 'none';
-          editBtnEl.title = t('chat.editPlan') || 'Edit plan';
-        } else {
-          // Show editor with raw or previously-edited content
-          editorEl.value = el.dataset.planEdited || el.dataset.planRaw || '';
-          contentEl.style.display = 'none';
-          editorEl.style.display = '';
-          editorEl.style.height = Math.min(400, editorEl.scrollHeight) + 'px';
-          editorEl.focus();
-          editBtnEl.title = t('chat.doneEditing') || 'Done editing';
-        }
-      });
-    }
     requestAnimationFrame(() => {
       el.scrollIntoView({ behavior: 'smooth', block: 'end' });
     });
@@ -4308,6 +4223,7 @@ class ChatView extends BaseComponent {
     isAborting = false;
     removeThinkingIndicator();
     finalizeStreamBlock();
+    resolveAllPendingCards();
 
     // Fix #4: Show interrupted marker if stream was interrupted
     if (wasInterrupted) {
@@ -4405,15 +4321,19 @@ class ChatView extends BaseComponent {
     const startTime = Date.now();
 
     // Counter update interval
+    const _findPendingCard = (rid) =>
+      messagesEl.querySelector(`.chat-perm-card[data-request-id="${CSS.escape(rid)}"]:not(.resolved)`)
+      || messagesEl.querySelector(`.chat-plan-card[data-request-id="${CSS.escape(rid)}"]:not(.resolved)`);
+
     const counterId = setInterval(() => {
-      const card = messagesEl.querySelector(`.chat-perm-card[data-request-id="${CSS.escape(requestId)}"]:not(.resolved)`);
+      const card = _findPendingCard(requestId);
       if (!card) { _clearPermTimers(requestId); return; }
       const elapsed = Math.round((Date.now() - startTime) / 1000);
       let counter = card.querySelector('.chat-perm-timer');
       if (!counter) {
         counter = document.createElement('span');
         counter.className = 'chat-perm-timer';
-        const header = card.querySelector('.chat-perm-header');
+        const header = card.querySelector('.chat-perm-header, .chat-plan-header');
         if (header) header.appendChild(counter);
       }
       counter.textContent = t('chat.permissionWaitingSince', { seconds: elapsed });
@@ -4421,14 +4341,14 @@ class ChatView extends BaseComponent {
 
     // After 30s, pulse the action buttons
     const pulseTimer = setTimeout(() => {
-      const card = messagesEl.querySelector(`.chat-perm-card[data-request-id="${CSS.escape(requestId)}"]:not(.resolved)`);
+      const card = _findPendingCard(requestId);
       if (card) card.classList.add('perm-attention');
     }, 30000);
 
     // After 60s, send a system notification (respects user preference)
     const notifTimer = setTimeout(() => {
       if (!isNotificationsEnabled()) return;
-      const card = messagesEl.querySelector(`.chat-perm-card[data-request-id="${CSS.escape(requestId)}"]:not(.resolved)`);
+      const card = _findPendingCard(requestId);
       if (card) {
         api.notification?.show?.({
           title: t('chat.permissionRequired'),
