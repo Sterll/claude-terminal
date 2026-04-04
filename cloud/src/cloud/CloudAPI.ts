@@ -7,6 +7,7 @@ import { authenticateApiKey } from '../auth/auth';
 import { store } from '../store/store';
 import { projectManager } from './ProjectManager';
 import { sessionManager } from './SessionManager';
+import { entityStore } from './EntityStore';
 import { config } from '../config';
 
 // Extend Request with user info
@@ -277,6 +278,140 @@ export function createCloudRouter(): Router {
       res.json({ ok: true });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
+    }
+  });
+
+  // ── Entity Sync ──
+
+  const SYNC_RATE_LIMIT = 60; // sync requests per minute
+  const MAX_ENTITY_SIZE = 5 * 1024 * 1024; // 5MB
+
+  // Sync manifest: all entity hashes/timestamps
+  router.get('/sync/manifest', async (req: AuthRequest, res: Response) => {
+    try {
+      if (req.userName && isRateLimited(`sync:${req.userName}`, SYNC_RATE_LIMIT)) {
+        res.status(429).json({ error: 'Sync rate limit exceeded' });
+        return;
+      }
+      const manifest = await entityStore.getManifest(req.userName!);
+      res.json({ manifest });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Get one entity
+  router.get('/sync/entities/:type', async (req: AuthRequest, res: Response) => {
+    try {
+      const type = req.params.type as string;
+      if (!entityStore.isValidType(type)) {
+        res.status(400).json({ error: `Invalid entity type: ${type}` });
+        return;
+      }
+      const envelope = await entityStore.getEntity(req.userName!, type);
+      if (!envelope) {
+        res.status(404).json({ error: `Entity "${type}" not found` });
+        return;
+      }
+      res.json(envelope);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Upload one entity
+  router.put('/sync/entities/:type', async (req: AuthRequest, res: Response) => {
+    try {
+      if (req.userName && isRateLimited(`sync:${req.userName}`, SYNC_RATE_LIMIT)) {
+        res.status(429).json({ error: 'Sync rate limit exceeded' });
+        return;
+      }
+      const type = req.params.type as string;
+      if (!entityStore.isValidType(type)) {
+        res.status(400).json({ error: `Invalid entity type: ${type}` });
+        return;
+      }
+      const { data, clientHash } = req.body;
+      if (data === undefined) {
+        res.status(400).json({ error: 'Missing data field' });
+        return;
+      }
+
+      // Size check
+      const dataStr = JSON.stringify(data);
+      if (dataStr.length > MAX_ENTITY_SIZE) {
+        res.status(413).json({ error: `Entity too large (max ${MAX_ENTITY_SIZE / 1024 / 1024}MB)` });
+        return;
+      }
+
+      const result = await entityStore.putEntity(req.userName!, type, data, clientHash);
+
+      if (result.conflict) {
+        res.status(409).json({ conflict: true, serverData: result.serverData });
+        return;
+      }
+
+      res.json({ ok: true, updatedAt: result.updatedAt, hash: result.hash });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Delete one entity
+  router.delete('/sync/entities/:type', async (req: AuthRequest, res: Response) => {
+    try {
+      const type = req.params.type as string;
+      if (!entityStore.isValidType(type)) {
+        res.status(400).json({ error: `Invalid entity type: ${type}` });
+        return;
+      }
+      await entityStore.deleteEntity(req.userName!, type);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Bulk upload multiple entities
+  router.post('/sync/bulk', async (req: AuthRequest, res: Response) => {
+    try {
+      if (req.userName && isRateLimited(`sync:${req.userName}`, SYNC_RATE_LIMIT)) {
+        res.status(429).json({ error: 'Sync rate limit exceeded' });
+        return;
+      }
+      const { entities } = req.body;
+      if (!entities || typeof entities !== 'object') {
+        res.status(400).json({ error: 'Missing entities object' });
+        return;
+      }
+
+      const results: Record<string, any> = {};
+      for (const [type, payload] of Object.entries(entities)) {
+        if (!entityStore.isValidType(type)) {
+          results[type] = { ok: false, error: `Invalid entity type` };
+          continue;
+        }
+        const { data, clientHash } = payload as any;
+        if (data === undefined) {
+          results[type] = { ok: false, error: 'Missing data' };
+          continue;
+        }
+        const dataStr = JSON.stringify(data);
+        if (dataStr.length > MAX_ENTITY_SIZE) {
+          results[type] = { ok: false, error: 'Entity too large' };
+          continue;
+        }
+        const result = await entityStore.putEntity(req.userName!, type, data, clientHash);
+        if (result.conflict) {
+          results[type] = { ok: false, conflict: true, serverData: result.serverData };
+        } else {
+          results[type] = { ok: true, updatedAt: result.updatedAt, hash: result.hash };
+        }
+      }
+
+      res.json({ results });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
   });
 
