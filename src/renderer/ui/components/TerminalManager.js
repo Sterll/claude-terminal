@@ -428,6 +428,11 @@ class TerminalManager extends BaseComponent {
     this._path = window.electron_nodeModules.path;
     this._fs = window.electron_nodeModules.fs;
 
+    // Global callback for opening cloud chat from CloudPanel
+    window._openCloudChat = (cloudProject) => {
+      this._createChatTerminal(cloudProject, { skipPermissions: true, tabTag: { label: 'Cloud', color: '#3b82f6' } });
+    };
+
     // ── Mutable state ──
     this._scrapingEventCallback = null;
     this._fivemConsoleIds = new Map();
@@ -3486,7 +3491,8 @@ class TerminalManager extends BaseComponent {
 
     const id = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     let _chatSessionId = null;
-    const projectIndex = getProjectIndex(parentProjectId || project.id);
+    const isCloud = !!project.isCloud;
+    const projectIndex = isCloud ? -1 : getProjectIndex(parentProjectId || project.id);
     const tabName = customName || project.name;
 
     const termData = {
@@ -3505,7 +3511,7 @@ class TerminalManager extends BaseComponent {
     };
 
     addTerminal(id, termData);
-    heartbeat(parentProjectId || project.id, 'terminal');
+    if (!isCloud) heartbeat(parentProjectId || project.id, 'terminal');
 
     const tabsContainer = document.getElementById('terminals-tabs');
     const tab = document.createElement('div');
@@ -3522,9 +3528,9 @@ class TerminalManager extends BaseComponent {
     ${worktreeIconHtmlChat}
     <span class="tab-name">${escapeHtml(tabName)}</span>
     ${tabTagHtml}
-    <button class="tab-mode-toggle" title="${escapeHtml(t('chat.switchToTerminal'))}">
+    ${isCloud ? '' : `<button class="tab-mode-toggle" title="${escapeHtml(t('chat.switchToTerminal'))}">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v12zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"/></svg>
-    </button>
+    </button>`}
     <button class="tab-close"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>`;
     tabsContainer.appendChild(tab);
 
@@ -3536,8 +3542,8 @@ class TerminalManager extends BaseComponent {
 
     document.getElementById('empty-terminals').style.display = 'none';
 
-    const projSettings = getProjectSettingsState(parentProjectId || project.id);
-    const effectiveSkipPermissions = skipPermissions || (projSettings.skipPermissions === true);
+    const projSettings = isCloud ? {} : getProjectSettingsState(parentProjectId || project.id);
+    const effectiveSkipPermissions = isCloud || skipPermissions || (projSettings.skipPermissions === true);
     const effectiveModel = initialModel || projSettings.chatModel || null;
     const effectiveEffort = initialEffort || projSettings.effortLevel || null;
 

@@ -295,8 +295,13 @@ class ChatService {
    * @param {string} [params.resumeSessionId] - Session ID to resume
    * @returns {Promise<string>} Session ID
    */
-  async startSession({ cwd, prompt, permissionMode = 'default', resumeSessionId = null, sessionId = null, images = [], mentions = [], model = null, enable1MContext = false, forkSession = false, resumeSessionAt = null, effort = null, outputFormat = null, skills = null, systemPrompt = null, settingSources = null, maxTurns = null }) {
+  async startSession({ cwd, prompt, permissionMode = 'default', resumeSessionId = null, sessionId = null, images = [], mentions = [], model = null, enable1MContext = false, forkSession = false, resumeSessionAt = null, effort = null, outputFormat = null, skills = null, systemPrompt = null, settingSources = null, maxTurns = null, cloud = false, cloudProjectName = null }) {
     if (!sessionId) sessionId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    // Cloud session: delegate to cloud server instead of local SDK
+    if (cloud && cloudProjectName) {
+      return this._startCloudSession({ sessionId, prompt, cloudProjectName, model, effort });
+    }
 
     // Notify renderer that session is initializing (runtime resolution can take a few seconds)
     this._send('chat-initializing', { sessionId });
@@ -429,6 +434,11 @@ class ChatService {
   sendMessage(sessionId, text, images = [], mentions = []) {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Session ${sessionId} not found`);
+
+    if (session.isCloud) {
+      this._sendCloudMessage(session, text);
+      return;
+    }
 
     try {
       session.messageQueue.push({
@@ -571,11 +581,16 @@ class ChatService {
    */
   interrupt(sessionId) {
     const session = this.sessions.get(sessionId);
-    if (session) {
-      session.interrupting = true;
-      if (session.queryStream?.interrupt) {
-        session.queryStream.interrupt().catch(() => {});
-      }
+    if (!session) return;
+
+    if (session.isCloud) {
+      this._interruptCloudSession(session);
+      return;
+    }
+
+    session.interrupting = true;
+    if (session.queryStream?.interrupt) {
+      session.queryStream.interrupt().catch(() => {});
     }
   }
 
@@ -584,6 +599,7 @@ class ChatService {
    */
   async setModel(sessionId, model) {
     const session = this.sessions.get(sessionId);
+    if (session?.isCloud) throw new Error('Model changes not supported for cloud sessions');
     if (!session?.queryStream?.setModel) {
       throw new Error('Session not found or setModel not available');
     }
@@ -596,6 +612,7 @@ class ChatService {
    */
   async setEffort(sessionId, effort) {
     const session = this.sessions.get(sessionId);
+    if (session?.isCloud) throw new Error('Effort changes not supported for cloud sessions');
     if (!session?.queryStream?.setMaxThinkingTokens) {
       throw new Error('Session not found or setMaxThinkingTokens not available');
     }
@@ -1198,25 +1215,174 @@ class ChatService {
 
   closeSession(sessionId) {
     const session = this.sessions.get(sessionId);
-    if (session) {
-      if (session.abortController) session.abortController.abort();
-      if (session.queryStream?.close) session.queryStream.close();
-      if (session.messageQueue) session.messageQueue.close();
-      // Reject pending permissions for this session (wrap in try/catch
-      // to prevent unhandled rejections if the SDK transport is gone)
-      for (const [id, pending] of this.pendingPermissions) {
-        if (pending.sessionId === sessionId) {
-          this.pendingPermissions.delete(id);
-          try { pending.reject(new Error('Session closed')); } catch (_) {}
-        }
-      }
-      const alreadyNotified = session._streamEnded;
-      this.sessions.delete(sessionId);
-      // Notify remote clients (skip if _processStream already sent session:closed)
-      if (!alreadyNotified && this._remoteEventCallback) {
-        this._remoteEventCallback('session:closed', { sessionId });
+    if (!session) return;
+
+    if (session.isCloud) {
+      this._closeCloudSession(sessionId, session);
+      return;
+    }
+
+    if (session.abortController) session.abortController.abort();
+    if (session.queryStream?.close) session.queryStream.close();
+    if (session.messageQueue) session.messageQueue.close();
+    // Reject pending permissions for this session (wrap in try/catch
+    // to prevent unhandled rejections if the SDK transport is gone)
+    for (const [id, pending] of this.pendingPermissions) {
+      if (pending.sessionId === sessionId) {
+        this.pendingPermissions.delete(id);
+        try { pending.reject(new Error('Session closed')); } catch (_) {}
       }
     }
+    const alreadyNotified = session._streamEnded;
+    this.sessions.delete(sessionId);
+    // Notify remote clients (skip if _processStream already sent session:closed)
+    if (!alreadyNotified && this._remoteEventCallback) {
+      this._remoteEventCallback('session:closed', { sessionId });
+    }
+  }
+
+  // ── Cloud session methods ──
+
+  async _startCloudSession({ sessionId, prompt, cloudProjectName, model, effort }) {
+    const { _getCloudConfig, _fetchCloud } = require('../ipc/cloud-shared');
+    const WebSocket = require('ws');
+
+    this._send('chat-initializing', { sessionId });
+
+    const { url, key } = _getCloudConfig();
+
+    // Create cloud session via REST
+    const resp = await _fetchCloud(`${url}/api/sessions`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectName: cloudProjectName,
+        prompt,
+        model: model || undefined,
+        effort: effort || undefined,
+      }),
+    }, 30000);
+
+    if (!resp.ok) {
+      const body = await resp.text();
+      throw new Error(`Cloud session failed: ${resp.status} ${body.slice(0, 200)}`);
+    }
+
+    const { sessionId: cloudSessionId } = await resp.json();
+
+    // Connect WebSocket for streaming
+    const wsUrl = url.replace(/^http/, 'ws');
+    const ws = new WebSocket(`${wsUrl}/api/sessions/${cloudSessionId}/stream?token=${key}`);
+
+    const session = {
+      isCloud: true,
+      cloudSessionId,
+      cloudProjectName,
+      ws,
+      alwaysAllow: true,
+      cwd: null,
+      _streamEnded: false,
+    };
+    this.sessions.set(sessionId, session);
+
+    ws.on('open', () => {
+      console.log(`[ChatService] Cloud WS connected for session ${sessionId}`);
+    });
+
+    ws.on('message', (raw) => {
+      try {
+        const data = JSON.parse(raw.toString());
+        this._handleCloudMessage(sessionId, data);
+      } catch (e) {
+        console.error('[ChatService] Cloud WS parse error:', e.message);
+      }
+    });
+
+    ws.on('close', (code) => {
+      if (!session._streamEnded) {
+        session._streamEnded = true;
+        if (code === 1000) {
+          this._send('chat-done', { sessionId });
+        } else {
+          this._send('chat-error', { sessionId, error: `Cloud connection closed (code ${code})` });
+        }
+      }
+    });
+
+    ws.on('error', (err) => {
+      console.error('[ChatService] Cloud WS error:', err.message);
+      if (!session._streamEnded) {
+        session._streamEnded = true;
+        this._send('chat-error', { sessionId, error: `Cloud connection error: ${err.message}` });
+      }
+    });
+
+    return sessionId;
+  }
+
+  _handleCloudMessage(sessionId, data) {
+    const session = this.sessions.get(sessionId);
+    switch (data.type) {
+      case 'event':
+        this._send('chat-message', { sessionId, message: data.event });
+        break;
+      case 'idle':
+        this._send('chat-idle', { sessionId });
+        break;
+      case 'done':
+        if (session) session._streamEnded = true;
+        this._send('chat-done', { sessionId });
+        break;
+      case 'error':
+        if (session) session._streamEnded = true;
+        this._send('chat-error', { sessionId, error: data.error || 'Cloud session error' });
+        break;
+    }
+  }
+
+  async _sendCloudMessage(session, text) {
+    const { _getCloudConfig, _fetchCloud } = require('../ipc/cloud-shared');
+    const { url, key } = _getCloudConfig();
+    const resp = await _fetchCloud(`${url}/api/sessions/${session.cloudSessionId}/send`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text }),
+    });
+    if (!resp.ok) {
+      const body = await resp.text();
+      throw new Error(`Failed to send cloud message: ${body.slice(0, 200)}`);
+    }
+  }
+
+  async _interruptCloudSession(session) {
+    try {
+      const { _getCloudConfig, _fetchCloud } = require('../ipc/cloud-shared');
+      const { url, key } = _getCloudConfig();
+      await _fetchCloud(`${url}/api/sessions/${session.cloudSessionId}/interrupt`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+      });
+    } catch (err) {
+      console.error('[ChatService] Cloud interrupt error:', err.message);
+    }
+  }
+
+  _closeCloudSession(sessionId, session) {
+    // Close WebSocket
+    if (session.ws) {
+      session.ws.removeAllListeners();
+      session.ws.close(1000);
+    }
+    this.sessions.delete(sessionId);
+    // Delete cloud session in background
+    const { _getCloudConfig, _fetchCloud } = require('../ipc/cloud-shared');
+    try {
+      const { url, key } = _getCloudConfig();
+      _fetchCloud(`${url}/api/sessions/${session.cloudSessionId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${key}` },
+      }).catch(err => console.warn('[ChatService] Cloud session cleanup error:', err.message));
+    } catch (_) {}
   }
 
   getActiveSessions() {

@@ -3175,6 +3175,20 @@
   50% { opacity: 0.3; }
 }
 
+.chat-status-cloud-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-right: 4px;
+}
+
 .chat-status-text {
   font-size: 11px;
   color: var(--text-tertiary);

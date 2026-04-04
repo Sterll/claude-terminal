@@ -944,6 +944,7 @@ function setupHandlers(context) {
       listEl.innerHTML = cloudProjects.map(p => {
         const displayName = p.displayName || p.name;
         const isLocal = localProjectIds.has(p.name);
+        const chatBtn = `<button class="cp-btn-sm cp-cloud-project-chat" data-name="${_escapeHtml(p.name)}" data-display="${_escapeHtml(displayName)}" title="${_escapeHtml(t('cloud.chatWithProject') || 'Chat on cloud')}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> ${_escapeHtml(t('cloud.chat') || 'Chat')}</button>`;
         const badge = isLocal
           ? `<span class="cp-cloud-project-local">${t('cloud.cloudProjectLocal')}</span>`
           : `<button class="cp-btn-sm cp-cloud-project-import" data-name="${_escapeHtml(p.name)}" data-display="${_escapeHtml(displayName)}">${t('cloud.cloudProjectImport')}</button>`;
@@ -953,9 +954,30 @@ function setupHandlers(context) {
               <span class="cp-session-project">${_escapeHtml(displayName)}</span>
             </div>
           </div>
-          ${badge}
+          <div style="display:flex;gap:6px;align-items:center">
+            ${chatBtn}
+            ${badge}
+          </div>
         </div>`;
       }).join('');
+
+      // Chat button — opens cloud chat session
+      listEl.querySelectorAll('.cp-cloud-project-chat').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const projectName = btn.dataset.name;
+          const displayName = btn.dataset.display || projectName;
+          if (window._openCloudChat) {
+            window._openCloudChat({
+              id: `cloud-${projectName}`,
+              name: displayName,
+              path: null,
+              type: 'general',
+              isCloud: true,
+              cloudProjectName: projectName,
+            });
+          }
+        });
+      });
 
       listEl.querySelectorAll('.cp-cloud-project-import').forEach(btn => {
         btn.addEventListener('click', async () => {
