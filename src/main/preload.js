@@ -598,6 +598,17 @@ contextBridge.exposeInMainWorld('electron_api', {
     // Sessions
     getSessions: () => ipcRenderer.invoke('cloud:get-sessions'),
     stopSession: (params) => ipcRenderer.invoke('cloud:stop-session', params),
+    // Sync
+    syncStart: () => ipcRenderer.invoke('cloud:sync-start'),
+    syncStop: () => ipcRenderer.invoke('cloud:sync-stop'),
+    syncStatus: () => ipcRenderer.invoke('cloud:sync-status'),
+    syncForce: () => ipcRenderer.invoke('cloud:sync-force'),
+    syncPush: (type) => ipcRenderer.invoke('cloud:sync-push', type),
+    getConflicts: () => ipcRenderer.invoke('cloud:sync-get-conflicts'),
+    resolveConflict: (params) => ipcRenderer.invoke('cloud:sync-resolve', params),
+    resolveAllConflicts: (res) => ipcRenderer.invoke('cloud:sync-resolve-all', res),
+    onSyncStatusChanged: createListener('cloud:sync-status-changed'),
+    onSyncConflict: createListener('cloud:sync-conflict'),
   },
 
   // ==================== USAGE ====================

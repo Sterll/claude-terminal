@@ -9,6 +9,8 @@ const { ipcMain } = require('electron');
 const { cloudRelayClient } = require('../services/CloudRelayClient');
 const remoteServer = require('../services/RemoteServer');
 const { sendFeaturePing } = require('../services/TelemetryService');
+const { syncEngine } = require('../services/SyncEngine');
+const { _loadSettings } = require('./cloud-shared');
 
 let mainWindow = null;
 
@@ -18,6 +20,10 @@ function registerCloudRelayHandlers() {
     // Forward cloud events to renderer
     if (msg?.type === 'cloud:project-updated' && mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('cloud:project-updated', msg);
+    }
+    // Wire sync entity change notifications
+    if (msg?.type === 'sync:entity-changed' && msg.entityType) {
+      syncEngine.onRemoteChange(msg.entityType);
     }
     remoteServer.handleExternalMessage(msg);
   });
@@ -37,10 +43,20 @@ function registerCloudRelayHandlers() {
     sendFeaturePing('cloud:connect');
     remoteServer.setExternalTransport(cloudRelayClient);
     cloudRelayClient.connect(serverUrl, apiKey);
+
+    // Auto-start sync engine if enabled
+    const settings = _loadSettings();
+    if (settings.cloudAutoSync !== false) {
+      syncEngine.start(serverUrl, apiKey).catch(err => {
+        console.error('[CloudRelay] Auto-start sync failed:', err.message);
+      });
+    }
+
     return { ok: true };
   });
 
   ipcMain.handle('cloud:disconnect', async () => {
+    syncEngine.stop();
     cloudRelayClient.disconnect();
     remoteServer.setExternalTransport(null);
     return { ok: true };

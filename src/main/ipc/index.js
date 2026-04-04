@@ -26,6 +26,7 @@ const { registerRemoteHandlers } = require('./remote.ipc');
 const { registerWorkflowHandlers } = require('./workflow.ipc');
 const { registerCloudRelayHandlers, setCloudRelayMainWindow } = require('./cloud-relay.ipc');
 const { registerCloudProjectsHandlers, setCloudProjectsMainWindow } = require('./cloud-projects.ipc');
+const { registerCloudSyncHandlers, setCloudSyncMainWindow } = require('./cloud-sync.ipc');
 const { registerDatabaseHandlers } = require('./database.ipc');
 const { registerTelemetryHandlers } = require('./telemetry.ipc');
 const { registerExplorerHandlers } = require('./explorer.ipc');
@@ -43,6 +44,7 @@ function registerAllHandlers(mainWindow) {
   setUsageMainWindow(mainWindow);
   setCloudRelayMainWindow(mainWindow);
   setCloudProjectsMainWindow(mainWindow);
+  setCloudSyncMainWindow(mainWindow);
   // Register all handlers
   registerTerminalHandlers();
   registerGitHandlers();
@@ -67,6 +69,7 @@ function registerAllHandlers(mainWindow) {
   registerWorkflowHandlers(mainWindow);
   registerCloudRelayHandlers();
   registerCloudProjectsHandlers();
+  registerCloudSyncHandlers();
   registerDatabaseHandlers();
   registerTelemetryHandlers();
   registerExplorerHandlers(mainWindow);
