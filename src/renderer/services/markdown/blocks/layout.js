@@ -195,15 +195,58 @@ function renderCompareBlock(code) {
   let beforeCode = '';
   let afterCode = '';
   let section = 'none';
+  let beforeLabel = 'Before';
+  let afterLabel = 'After';
+
+  // Flexible separator patterns:
+  // "--- before", "--- before (old)", "--- Before:", "---before", "before:", "Before"
+  const beforeRe = /^-{2,}\s*before\b(.*)/i;
+  const afterRe = /^-{2,}\s*after\b(.*)/i;
+  // Fallback: standalone "before:" / "after:" labels (no dashes needed)
+  const beforeLabelRe = /^before\s*[:]\s*(.*)/i;
+  const afterLabelRe = /^after\s*[:]\s*(.*)/i;
 
   for (const line of lines) {
     const trimmed = line.trim();
+    if (!trimmed && section === 'none') continue;
     const titleMatch = trimmed.match(/^title:\s*(.+)/i);
     if (titleMatch && section === 'none') { title = titleMatch[1]; continue; }
-    if (/^---\s*before\s*$/i.test(trimmed)) { section = 'before'; continue; }
-    if (/^---\s*after\s*$/i.test(trimmed)) { section = 'after'; continue; }
+
+    // Check for separator lines
+    const bMatch = trimmed.match(beforeRe) || trimmed.match(beforeLabelRe);
+    const aMatch = trimmed.match(afterRe) || trimmed.match(afterLabelRe);
+    if (bMatch && section !== 'after') {
+      section = 'before';
+      // Capture custom label if provided (e.g. "--- before (old code)")
+      const extra = bMatch[1]?.replace(/^[\s:()-]+/, '').replace(/[\s)]+$/, '');
+      if (extra) beforeLabel = extra;
+      continue;
+    }
+    if (aMatch && section !== 'none') {
+      section = 'after';
+      const extra = aMatch[1]?.replace(/^[\s:()-]+/, '').replace(/[\s)]+$/, '');
+      if (extra) afterLabel = extra;
+      continue;
+    }
+
     if (section === 'before') beforeCode += line + '\n';
     if (section === 'after') afterCode += line + '\n';
+  }
+
+  // Fallback: if no separators found, try splitting on blank-line boundary
+  if (!beforeCode && !afterCode && section === 'none') {
+    const contentLines = lines.filter(l => !/^title:\s/i.test(l.trim()));
+    const content = contentLines.join('\n').trim();
+    // Try splitting on double newline
+    const halves = content.split(/\n\s*\n/);
+    if (halves.length >= 2) {
+      const mid = Math.ceil(halves.length / 2);
+      beforeCode = halves.slice(0, mid).join('\n\n');
+      afterCode = halves.slice(mid).join('\n\n');
+    } else {
+      // Single block of content - put it all in before
+      beforeCode = content;
+    }
   }
 
   beforeCode = beforeCode.trimEnd();
@@ -216,11 +259,20 @@ function renderCompareBlock(code) {
   const beforeIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
   const afterIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
 
+  // If only before has content and after is empty, show single-pane
+  if (beforeCode && !afterCode) {
+    return `<div class="chat-compare">`
+      + titleHtml
+      + `<div class="chat-compare-body">`
+      + `<div class="chat-compare-side before" style="border-right:none"><div class="chat-compare-side-header">${beforeIcon} ${escapeHtml(beforeLabel)}</div><div class="chat-compare-code"><pre><code>${escapeHtml(beforeCode)}</code></pre></div></div>`
+      + `</div></div>`;
+  }
+
   return `<div class="chat-compare">`
     + titleHtml
     + `<div class="chat-compare-body">`
-    + `<div class="chat-compare-side before"><div class="chat-compare-side-header">${beforeIcon} Before</div><div class="chat-compare-code"><pre><code>${escapeHtml(beforeCode)}</code></pre></div></div>`
-    + `<div class="chat-compare-side after"><div class="chat-compare-side-header">${afterIcon} After</div><div class="chat-compare-code"><pre><code>${escapeHtml(afterCode)}</code></pre></div></div>`
+    + `<div class="chat-compare-side before"><div class="chat-compare-side-header">${beforeIcon} ${escapeHtml(beforeLabel)}</div><div class="chat-compare-code"><pre><code>${escapeHtml(beforeCode)}</code></pre></div></div>`
+    + `<div class="chat-compare-side after"><div class="chat-compare-side-header">${afterIcon} ${escapeHtml(afterLabel)}</div><div class="chat-compare-code"><pre><code>${escapeHtml(afterCode)}</code></pre></div></div>`
     + `</div></div>`;
 }
 
