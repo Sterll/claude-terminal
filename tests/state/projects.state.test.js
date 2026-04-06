@@ -245,6 +245,15 @@ describe('isDescendantOf', () => {
     });
     expect(isDescendantOf('f2', 'f1')).toBe(false);
   });
+
+  test('does not infinite loop on circular parentId reference', () => {
+    resetState({
+      folders: [
+        { id: 'f1', name: 'A', parentId: 'f1', children: ['f1'] },
+      ],
+    });
+    expect(isDescendantOf('f1', 'f999')).toBe(false);
+  });
 });
 
 // ── Folder CRUD ──
@@ -478,6 +487,23 @@ describe('moveItemToFolder', () => {
     });
     moveItemToFolder('folder', 'f1', 'f1');
     expect(getFolder('f1').parentId).toBeNull();
+  });
+
+  test('sanitizes circular parentId if it somehow occurs', () => {
+    resetState({
+      folders: [
+        { id: 'f1', name: 'A', parentId: null, collapsed: false, children: ['p1'] },
+        { id: 'f2', name: 'B', parentId: 'f2', collapsed: false, children: ['f2'] },
+      ],
+      projects: [{ id: 'p1', name: 'P', path: '/p', folderId: 'f1' }],
+      rootOrder: ['f1', 'f2'],
+    });
+    // Moving a project triggers sanitization on all folders
+    moveItemToFolder('project', 'p1', 'f2');
+    const f2 = getFolder('f2');
+    expect(f2.parentId).toBeNull();
+    expect(f2.children).not.toContain('f2');
+    expect(f2.children).toContain('p1');
   });
 });
 

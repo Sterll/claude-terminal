@@ -672,6 +672,7 @@ function setupDragAndDrop(list) {
     }
     if (dragState.dropTarget.type === 'folder') {
       if (position === 'into') {
+        if (dragState.dragging.type === 'folder' && dragState.dragging.id === dragState.dropTarget.id) return;
         moveItemToFolder(dragState.dragging.type, dragState.dragging.id, dragState.dropTarget.id);
       } else {
         reorderItem(dragState.dragging.type, dragState.dragging.id, dragState.dropTarget.id, position);
