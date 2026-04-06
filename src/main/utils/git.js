@@ -51,6 +51,8 @@ function safeDirArgs(cwd) {
  */
 function execGit(cwd, args, timeout = 10000) {
   return new Promise((resolve) => {
+    // Early bail if directory doesn't exist (e.g. projects synced from another machine)
+    if (!fs.existsSync(cwd)) { resolve(null); return; }
     const argsArray = Array.isArray(args) ? args : args.split(' ');
     const fullArgs = [...safeDirArgs(cwd), ...argsArray];
     const child = execFile('git', fullArgs, { cwd, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout) => {
@@ -87,6 +89,8 @@ function execGit(cwd, args, timeout = 10000) {
 function spawnGit(cwd, args, opts = {}) {
   const { maxBuffer = 1024 * 1024, timeout = 15000 } = opts;
   return new Promise((resolve) => {
+    // Early bail if directory doesn't exist (e.g. projects synced from another machine)
+    if (!fs.existsSync(cwd)) { resolve({ success: false, error: 'Directory not found' }); return; }
     const fullArgs = [...safeDirArgs(cwd), ...args];
     const child = execFile('git', fullArgs, { cwd, encoding: 'utf8', maxBuffer, timeout }, (error, stdout, stderr) => {
       if (timer) clearTimeout(timer);

@@ -481,6 +481,11 @@ async function checkAllProjectsGitStatus() {
   for (let i = 0; i < projects.length; i += BATCH_SIZE) {
     const batch = projects.slice(i, i + BATCH_SIZE);
     await Promise.all(batch.map(async (project) => {
+      // Skip projects whose path doesn't exist (e.g. synced from another machine)
+      if (project.path && !fs.existsSync(project.path)) {
+        localState.gitRepoStatus.set(project.id, { isGitRepo: false });
+        return;
+      }
       try {
         const result = await api.git.statusQuick({ projectPath: project.path });
         const status = { isGitRepo: result.isGitRepo };
@@ -1676,6 +1681,9 @@ async function refreshCloudProjects() {
 async function cloudUploadProject(projectId) {
   const project = projectsState.get().projects.find(p => p.id === projectId);
   if (!project) return;
+
+  // Skip if project directory doesn't exist (e.g. synced from another machine)
+  if (project.path && !fs.existsSync(project.path)) return;
 
   // Check cloud connection
   try {

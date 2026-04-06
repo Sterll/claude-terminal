@@ -2021,6 +2021,10 @@ async function _preloadAllProjectsInner() {
       // Skip if already cached
       if (isCacheValid(project.id)) return;
 
+      // Skip projects whose path doesn't exist (e.g. synced from another machine)
+      const { fs: nodeFs } = window.electron_nodeModules;
+      if (project.path && !nodeFs.existsSync(project.path)) return;
+
       try {
         setCacheLoading(project.id, true);
         const data = await withTimeout(

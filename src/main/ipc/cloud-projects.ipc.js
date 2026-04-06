@@ -26,6 +26,11 @@ function registerCloudProjectsHandlers() {
       throw new Error(`Upload already in progress for "${projectName}"`);
     }
 
+    // Validate project path exists before attempting upload
+    if (!fs.existsSync(projectPath)) {
+      throw new Error(`Project directory not found: ${projectPath}`);
+    }
+
     const { url, key } = _getCloudConfig();
     const cloudKey = projectId;
     const zipPath = path.join(os.tmpdir(), `ct-upload-${Date.now()}.zip`);
@@ -149,6 +154,11 @@ function registerCloudProjectsHandlers() {
   ipcMain.handle('cloud:upload-project-git', async (_event, { projectId, projectName, projectPath }) => {
     if (_uploadLocks.has(projectId)) {
       throw new Error(`Upload already in progress for "${projectName}"`);
+    }
+
+    // Validate project path exists before attempting upload
+    if (!fs.existsSync(projectPath)) {
+      throw new Error(`Project directory not found: ${projectPath}`);
     }
 
     try {
