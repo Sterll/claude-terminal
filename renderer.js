@@ -412,7 +412,6 @@ async function _tryCloudAutoConnect() {
     const status = await api.cloud.status();
     if (status.connected) return;
 
-    // Connect (this will trigger onStatusChange → _checkPendingChangesOnReconnect)
     await api.cloud.connect({
       serverUrl: settings.cloudServerUrl,
       apiKey: settings.cloudApiKey,
@@ -1654,21 +1653,13 @@ async function refreshCloudProjects() {
     // Persist cloud project IDs for deletion detection
     await _saveCloudState({ lastKnownCloudProjectIds: [...cloudIds] });
 
-    // Fetch sync metadata from main process (lastSync, errors, watcher status)
-    let syncStatuses = {};
-    try {
-      syncStatuses = await api.cloud.getSyncStatus({}) || {};
-    } catch { /* ignore if not available */ }
-
     for (const p of localProjects) {
       const cur = cloudUploadStatus.get(p.id) || {};
       if (cloudIds.has(p.id)) {
-        const meta = syncStatuses[p.id];
         cloudUploadStatus.set(p.id, {
           ...cur,
           synced: true,
-          lastSync: meta?.lastSync || cur.lastSync || null,
-          lastError: meta?.lastError || null,
+          lastSync: cur.lastSync || null,
         });
       } else if (cur.synced) {
         cloudUploadStatus.delete(p.id);
@@ -1729,8 +1720,6 @@ async function cloudUploadProject(projectId) {
       await api.cloud.uploadProject({ projectId: project.id, projectName, projectPath: project.path });
     }
     cloudUploadStatus.set(projectId, { synced: true, lastSync: Date.now() });
-    // Register for auto-sync (file watcher)
-    api.cloud.registerAutoSync({ projectId, projectPath: project.path }).catch(() => {});
     ProjectList.render();
     clearTimeout(_uploadSafetyTimer);
     if (_activeUploadToast) { _activeUploadToast.querySelector('.toast-close')?.click(); _activeUploadToast = null; }
@@ -1768,133 +1757,6 @@ async function cloudDeleteProject(projectId) {
   } catch (err) {
     showToast({ type: 'error', title: t('cloud.deleteError'), message: err.message || projectName });
   }
-}
-
-async function cloudSyncProject(projectId) {
-  const project = projectsState.get().projects.find(p => p.id === projectId);
-  if (!project) return;
-
-  const projectName = project.name || path.basename(project.path);
-  const status = cloudUploadStatus.get(projectId);
-  if (!status?.pendingChanges) return;
-
-  // Set syncing state
-  cloudUploadStatus.set(projectId, { ...status, syncing: true });
-  ProjectList.render();
-
-  try {
-    // Check for conflicts before downloading
-    const { conflicts, totalFiles } = await api.cloud.checkConflicts({
-      projectId: project.id,
-      projectName,
-      localProjectPath: project.path,
-    });
-
-    if (conflicts.length > 0) {
-      // Show conflict resolution modal
-      const resolutions = await _showConflictModal(conflicts);
-      if (!resolutions) {
-        // User cancelled
-        cloudUploadStatus.set(projectId, { ...status, syncing: false });
-        ProjectList.render();
-        return;
-      }
-      await api.cloud.downloadWithResolutions({
-        projectId: project.id,
-        projectName,
-        localProjectPath: project.path,
-        resolutions,
-      });
-    } else {
-      // No conflicts — download directly
-      await api.cloud.downloadChanges({ projectId: project.id, projectName, localProjectPath: project.path });
-    }
-
-    cloudUploadStatus.set(projectId, { synced: true, lastSync: Date.now() });
-    ProjectList.render();
-    showToast({ type: 'success', title: t('cloud.syncApplied'), message: projectName });
-    // Refresh pending changes
-    api.cloud.checkPendingChanges().then(r => _updateProjectPendingChanges(r.changes)).catch(() => {});
-  } catch (err) {
-    cloudUploadStatus.set(projectId, { ...status, syncing: false });
-    ProjectList.render();
-    showToast({ type: 'error', title: t('cloud.syncError'), message: err.message || projectName });
-  }
-}
-
-function _showConflictModal(conflicts) {
-  return new Promise((resolve) => {
-    const fileListHtml = conflicts.map(c => `
-      <div class="conflict-file-row">
-        <div class="conflict-file-name">${c.file}</div>
-        <div class="conflict-file-actions">
-          <label class="conflict-radio">
-            <input type="radio" name="conflict-${c.file.replace(/[^a-zA-Z0-9]/g, '_')}" value="cloud" checked>
-            <span>${t('cloud.conflictUseCloud')}</span>
-          </label>
-          <label class="conflict-radio">
-            <input type="radio" name="conflict-${c.file.replace(/[^a-zA-Z0-9]/g, '_')}" value="local">
-            <span>${t('cloud.conflictKeepLocal')}</span>
-          </label>
-          <label class="conflict-radio">
-            <input type="radio" name="conflict-${c.file.replace(/[^a-zA-Z0-9]/g, '_')}" value="both">
-            <span>${t('cloud.conflictKeepBoth')}</span>
-          </label>
-        </div>
-      </div>
-    `).join('');
-
-    const modalHtml = `
-      <div class="modal-overlay" id="conflict-modal-overlay">
-        <div class="modal-container modal-large">
-          <div class="modal-header">
-            <h3>${t('cloud.conflictTitle', { count: conflicts.length })}</h3>
-            <button class="modal-close" id="conflict-modal-close">&times;</button>
-          </div>
-          <div class="modal-body">
-            <p class="conflict-description">${t('cloud.conflictDescription')}</p>
-            <div class="conflict-select-all" style="display:flex;gap:8px;margin-bottom:8px;">
-              <button class="btn-secondary btn-sm" id="conflict-all-cloud" style="font-size:var(--font-xs);padding:4px 10px;">${t('cloud.conflictAllCloud')}</button>
-              <button class="btn-secondary btn-sm" id="conflict-all-local" style="font-size:var(--font-xs);padding:4px 10px;">${t('cloud.conflictAllLocal')}</button>
-            </div>
-            <div class="conflict-file-list">${fileListHtml}</div>
-          </div>
-          <div class="modal-footer">
-            <button class="btn-secondary" id="conflict-cancel">${t('common.cancel')}</button>
-            <button class="btn-primary" id="conflict-apply">${t('cloud.conflictApply')}</button>
-          </div>
-        </div>
-      </div>
-    `;
-
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    const overlay = document.getElementById('conflict-modal-overlay');
-
-    const cleanup = () => overlay?.remove();
-
-    document.getElementById('conflict-modal-close')?.addEventListener('click', () => { cleanup(); resolve(null); });
-    document.getElementById('conflict-cancel')?.addEventListener('click', () => { cleanup(); resolve(null); });
-    overlay?.addEventListener('click', (e) => { if (e.target === overlay) { cleanup(); resolve(null); } });
-
-    // Select All buttons
-    document.getElementById('conflict-all-cloud')?.addEventListener('click', () => {
-      overlay.querySelectorAll('input[type="radio"][value="cloud"]').forEach(r => { r.checked = true; });
-    });
-    document.getElementById('conflict-all-local')?.addEventListener('click', () => {
-      overlay.querySelectorAll('input[type="radio"][value="local"]').forEach(r => { r.checked = true; });
-    });
-
-    document.getElementById('conflict-apply')?.addEventListener('click', () => {
-      const resolutions = {};
-      for (const c of conflicts) {
-        const safeName = c.file.replace(/[^a-zA-Z0-9]/g, '_');
-        const selected = overlay.querySelector(`input[name="conflict-${safeName}"]:checked`);
-        resolutions[c.file] = selected?.value || 'cloud';
-      }
-      cleanup();
-      resolve(resolutions);
-    });
-  });
 }
 
 let _uploadSpeedStart = null;
@@ -1953,9 +1815,9 @@ if (api.cloud?.onProjectUpdated) {
       duration: 8000,
     });
 
-    // Trigger diff check to sync changes
+    // Refresh cloud projects list
     if (project) {
-      _checkAllProjectsDiff();
+      refreshCloudProjects();
     }
   });
 }
@@ -2014,9 +1876,6 @@ if (api.cloud?.onStatusChanged) {
     _updateCloudConnected(status.connected);
     if (status.connected) {
       refreshCloudProjects();
-      api.cloud.checkPendingChanges().then(r => _updateProjectPendingChanges(r.changes)).catch(() => {});
-      _autoSyncLocalChangesToCloud();
-      _checkAllProjectsDiff();
       _checkNewCloudProjects();
       _checkCloudDeletedProjects();
     }
@@ -2028,9 +1887,6 @@ setTimeout(async () => {
     if (s.connected) {
       _updateCloudConnected(true);
       refreshCloudProjects();
-      api.cloud.checkPendingChanges().then(r => _updateProjectPendingChanges(r.changes)).catch(() => {});
-      _autoSyncLocalChangesToCloud();
-      _checkAllProjectsDiff();
       _checkNewCloudProjects();
       _checkCloudDeletedProjects();
     }
@@ -2059,50 +1915,6 @@ projectsState.subscribe((state) => {
   }
 });
 
-/**
- * Auto-push local changes to cloud for all synced projects on reconnect.
- * Silent — only logs to console. Skips projects with bidirectional changes.
- */
-async function _autoSyncLocalChangesToCloud() {
-  try {
-    if (settingsState.get().cloudAutoUploadProjects === false) return;
-
-    const statuses = await api.cloud.getSyncStatus({});
-    if (!statuses || typeof statuses !== 'object') return;
-
-    const localProjects = projectsState.get().projects || [];
-    const registeredIds = Object.entries(statuses)
-      .filter(([, meta]) => meta.registered)
-      .map(([id]) => id);
-
-    if (registeredIds.length === 0) return;
-
-    let updatedCount = 0;
-    for (const projectId of registeredIds) {
-      const project = localProjects.find(p => p.id === projectId);
-      if (!project) continue;
-      if (cloudUploadStatus.get(projectId)?.uploading) continue;
-
-      const projectName = project.name || path.basename(project.path);
-      try {
-        const diff = await api.cloud.compareFiles({ projectId, projectName, localProjectPath: project.path });
-        const hasLocalChanges = diff.onlyLocal.length > 0 || diff.sizeDiff.length > 0;
-        if (!hasLocalChanges) continue;
-        // Skip bidirectional — leave for interactive modal
-        if (diff.onlyCloud.length > 0) continue;
-
-        await cloudUploadProject(projectId);
-        updatedCount++;
-      } catch { /* skip */ }
-    }
-
-    if (updatedCount > 0) {
-      console.log(`[Cloud] Auto-sync: ${updatedCount}/${registeredIds.length} project(s) updated`);
-    }
-  } catch (err) {
-    console.warn('[Cloud] Auto-sync failed:', err.message);
-  }
-}
 
 /**
  * Detect projects deleted from cloud since last session.
@@ -2163,240 +1975,6 @@ async function _checkCloudDeletedProjects() {
   }
 }
 
-/**
- * Compare local vs cloud for all synced projects.
- * Shows a resolution modal per project if differences are found.
- */
-async function _checkAllProjectsDiff() {
-  try {
-    const statuses = await api.cloud.getSyncStatus({});
-    if (!statuses || typeof statuses !== 'object') return;
-    const localProjects = projectsState.get().projects || [];
-
-    // Collect all diffs first (no modals yet)
-    const projectDiffs = [];
-    for (const [projectId, meta] of Object.entries(statuses)) {
-      if (!meta.registered) continue;
-      const project = localProjects.find(p => p.id === projectId);
-      if (!project) continue;
-      const projectName = project.name || path.basename(project.path);
-
-      try {
-        const diff = await api.cloud.compareFiles({ projectId, projectName, localProjectPath: project.path });
-        if (diff.onlyLocal.length === 0 && diff.onlyCloud.length === 0 && diff.sizeDiff.length === 0) continue;
-        projectDiffs.push({ projectId, project, projectName, diff });
-      } catch { /* skip this project */ }
-    }
-
-    if (projectDiffs.length === 0) return;
-
-    // Show a single batched diff modal for all projects
-    const actions = await _showBatchDiffModal(projectDiffs);
-    if (!actions) return; // cancelled
-
-    for (const { projectId, projectName, action } of actions) {
-      const project = localProjects.find(p => p.id === projectId);
-      if (!project) continue;
-      try {
-        if (action === 'push') {
-          await cloudUploadProject(projectId);
-        } else if (action === 'pull') {
-          await api.cloud.downloadChanges({ projectId, projectName, localProjectPath: project.path });
-          cloudUploadStatus.set(projectId, { synced: true, lastSync: Date.now() });
-          ProjectList.render();
-          showToast({ type: 'success', title: t('cloud.syncApplied'), message: projectName });
-        }
-      } catch { /* skip this project */ }
-    }
-  } catch { /* ignore */ }
-}
-
-function _showDiffModal(projectName, diff) {
-  return new Promise((resolve) => {
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;';
-
-    const totalDiffs = diff.onlyLocal.length + diff.onlyCloud.length + diff.sizeDiff.length;
-
-    let filesHtml = '';
-    if (diff.onlyLocal.length > 0) {
-      filesHtml += `<div class="diff-section"><h4 style="color:var(--success);margin:8px 0 4px;">Local only (${diff.onlyLocal.length})</h4>`;
-      filesHtml += diff.onlyLocal.slice(0, 10).map(f => `<div class="diff-file">${f}</div>`).join('');
-      if (diff.onlyLocal.length > 10) filesHtml += `<div class="diff-file" style="color:var(--text-muted);">+${diff.onlyLocal.length - 10} more...</div>`;
-      filesHtml += '</div>';
-    }
-    if (diff.onlyCloud.length > 0) {
-      filesHtml += `<div class="diff-section"><h4 style="color:var(--info);margin:8px 0 4px;">Cloud only (${diff.onlyCloud.length})</h4>`;
-      filesHtml += diff.onlyCloud.slice(0, 10).map(f => `<div class="diff-file">${f}</div>`).join('');
-      if (diff.onlyCloud.length > 10) filesHtml += `<div class="diff-file" style="color:var(--text-muted);">+${diff.onlyCloud.length - 10} more...</div>`;
-      filesHtml += '</div>';
-    }
-    if (diff.sizeDiff.length > 0) {
-      filesHtml += `<div class="diff-section"><h4 style="color:var(--warning);margin:8px 0 4px;">Modified (${diff.sizeDiff.length})</h4>`;
-      filesHtml += diff.sizeDiff.slice(0, 10).map(f => `<div class="diff-file">${f}</div>`).join('');
-      if (diff.sizeDiff.length > 10) filesHtml += `<div class="diff-file" style="color:var(--text-muted);">+${diff.sizeDiff.length - 10} more...</div>`;
-      filesHtml += '</div>';
-    }
-
-    overlay.innerHTML = `
-      <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:var(--radius);padding:24px;max-width:500px;width:90%;">
-        <h3 style="margin:0 0 8px;color:var(--text-primary);">${projectName}</h3>
-        <p style="color:var(--text-secondary);font-size:var(--font-sm);margin:0 0 16px;">${totalDiffs} difference(s) between local and cloud</p>
-        <div style="max-height:300px;overflow-y:auto;border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:8px;background:var(--bg-primary);margin-bottom:16px;">
-          ${filesHtml}
-        </div>
-        <div style="display:flex;gap:8px;justify-content:flex-end;">
-          <button class="diff-btn-skip" style="padding:8px 16px;border-radius:var(--radius-sm);border:1px solid var(--border-color);background:var(--bg-tertiary);color:var(--text-secondary);cursor:pointer;">Skip</button>
-          <button class="diff-btn-pull" style="padding:8px 16px;border-radius:var(--radius-sm);border:none;background:var(--info);color:#fff;cursor:pointer;">Use Cloud</button>
-          <button class="diff-btn-push" style="padding:8px 16px;border-radius:var(--radius-sm);border:none;background:var(--success);color:#fff;cursor:pointer;">Use Local</button>
-        </div>
-      </div>`;
-
-    overlay.querySelector('.diff-btn-skip').onclick = () => { overlay.remove(); resolve('skip'); };
-    overlay.querySelector('.diff-btn-pull').onclick = () => { overlay.remove(); resolve('pull'); };
-    overlay.querySelector('.diff-btn-push').onclick = () => { overlay.remove(); resolve('push'); };
-
-    document.body.appendChild(overlay);
-  });
-}
-
-/**
- * Show a single batched diff modal for multiple projects at startup.
- * Each project gets a row with a Push/Pull/Skip action selector.
- */
-function _showBatchDiffModal(projectDiffs) {
-  return new Promise((resolve) => {
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-
-    const rowsHtml = projectDiffs.map((pd, i) => {
-      const total = pd.diff.onlyLocal.length + pd.diff.onlyCloud.length + pd.diff.sizeDiff.length;
-      const details = [];
-      if (pd.diff.onlyLocal.length) details.push(`<span style="color:var(--success);">${pd.diff.onlyLocal.length} ${t('cloud.diffLocalOnly')}</span>`);
-      if (pd.diff.onlyCloud.length) details.push(`<span style="color:var(--info);">${pd.diff.onlyCloud.length} ${t('cloud.diffCloudOnly')}</span>`);
-      if (pd.diff.sizeDiff.length) details.push(`<span style="color:var(--warning);">${pd.diff.sizeDiff.length} ${t('cloud.diffModified')}</span>`);
-      return `
-        <div class="batch-diff-row" style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--border-color);">
-          <div style="flex:1;min-width:0;">
-            <div style="font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${pd.projectName}</div>
-            <div style="font-size:var(--font-xs);color:var(--text-secondary);margin-top:2px;">${t('cloud.diffCount', { count: total })} — ${details.join(', ')}</div>
-          </div>
-          <div style="display:flex;gap:8px;flex-shrink:0;margin-left:12px;">
-            <label style="display:flex;align-items:center;gap:3px;font-size:var(--font-xs);cursor:pointer;color:var(--text-secondary);">
-              <input type="radio" name="batch-diff-${i}" value="skip" checked style="accent-color:var(--text-muted);"> ${t('cloud.diffSkip')}
-            </label>
-            <label style="display:flex;align-items:center;gap:3px;font-size:var(--font-xs);cursor:pointer;color:var(--info);">
-              <input type="radio" name="batch-diff-${i}" value="pull" style="accent-color:var(--info);"> ${t('cloud.diffUseCloud')}
-            </label>
-            <label style="display:flex;align-items:center;gap:3px;font-size:var(--font-xs);cursor:pointer;color:var(--success);">
-              <input type="radio" name="batch-diff-${i}" value="push" style="accent-color:var(--success);"> ${t('cloud.diffUseLocal')}
-            </label>
-          </div>
-        </div>`;
-    }).join('');
-
-    overlay.innerHTML = `
-      <div class="modal-container modal-large" style="max-width:650px;">
-        <div class="modal-header">
-          <h3>${t('cloud.diffBatchTitle', { count: projectDiffs.length })}</h3>
-          <button class="modal-close batch-diff-close">&times;</button>
-        </div>
-        <div class="modal-body" style="padding:0;">
-          <p style="padding:12px 16px;margin:0;color:var(--text-secondary);font-size:var(--font-sm);">${t('cloud.diffBatchDescription')}</p>
-          <div style="max-height:400px;overflow-y:auto;">
-            ${rowsHtml}
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary batch-diff-cancel">${t('common.cancel')}</button>
-          <button class="btn-primary batch-diff-apply">${t('cloud.conflictApply')}</button>
-        </div>
-      </div>`;
-
-    const cleanup = () => overlay.remove();
-
-    overlay.querySelector('.batch-diff-close').onclick = () => { cleanup(); resolve(null); };
-    overlay.querySelector('.batch-diff-cancel').onclick = () => { cleanup(); resolve(null); };
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) { cleanup(); resolve(null); } });
-
-    overlay.querySelector('.batch-diff-apply').onclick = () => {
-      const results = projectDiffs.map((pd, i) => {
-        const selected = overlay.querySelector(`input[name="batch-diff-${i}"]:checked`);
-        return { projectId: pd.projectId, projectName: pd.projectName, action: selected?.value || 'skip' };
-      }).filter(r => r.action !== 'skip');
-      cleanup();
-      resolve(results);
-    };
-
-    document.body.appendChild(overlay);
-  });
-}
-
-// ── Per-project pending changes tracking ──
-function _updateProjectPendingChanges(changes) {
-  const localProjects = projectsState.get().projects || [];
-  // Reset existing pending states
-  for (const [id, status] of cloudUploadStatus.entries()) {
-    if (status.pendingChanges) {
-      cloudUploadStatus.set(id, { ...status, pendingChanges: false, pendingCount: 0 });
-    }
-  }
-  let totalPending = 0;
-  for (const { projectName, changes: fileChanges } of (changes || [])) {
-    const files = fileChanges.flatMap(c => c.changedFiles || []);
-    if (files.length === 0) continue;
-    totalPending += files.length;
-    const localProject = localProjects.find(p =>
-      p.name === projectName || path.basename(p.path) === projectName
-    );
-    if (localProject) {
-      const existing = cloudUploadStatus.get(localProject.id) || {};
-      cloudUploadStatus.set(localProject.id, { ...existing, pendingChanges: true, pendingCount: files.length });
-    }
-  }
-  _updateCloudTabBadge(totalPending);
-  ProjectList.render();
-}
-
-function _updateCloudTabBadge(count) {
-  const tab = document.querySelector('.nav-tab[data-tab="connectivity"]');
-  if (!tab) return;
-  let badge = tab.querySelector('.nav-tab-badge');
-  if (count > 0) {
-    if (!badge) { badge = document.createElement('span'); badge.className = 'nav-tab-badge'; tab.appendChild(badge); }
-    badge.textContent = String(count);
-  } else if (badge) {
-    badge.remove();
-  }
-}
-
-// ── Background pending changes listener (from CloudSyncService main process) ──
-if (api.cloud?.onPendingChanges) {
-  api.cloud.onPendingChanges((data) => {
-    _updateProjectPendingChanges(data.changes);
-  });
-}
-
-// ── Auto-sync status listener ──
-if (api.cloud?.onAutoSyncStatus) {
-  api.cloud.onAutoSyncStatus(({ projectId, status, fileCount, error }) => {
-    const existing = cloudUploadStatus.get(projectId) || {};
-    if (status === 'uploading') {
-      cloudUploadStatus.set(projectId, { ...existing, autoSyncing: true, lastError: null });
-      const proj = projectsState.get().projects?.find(p => p.id === projectId);
-      showToast({ type: 'info', title: t('cloud.autoSyncUploading'), message: proj?.name || projectId, duration: 3000 });
-    } else if (status === 'synced') {
-      cloudUploadStatus.set(projectId, { ...existing, synced: true, autoSyncing: false, lastSync: Date.now(), lastError: null });
-      showToast({ type: 'success', title: t('cloud.autoSyncComplete'), message: t('cloud.autoSyncFiles', { count: fileCount }) });
-    } else if (status === 'error') {
-      cloudUploadStatus.set(projectId, { ...existing, autoSyncing: false, lastError: { message: error, timestamp: Date.now() } });
-      showToast({ type: 'error', title: t('cloud.autoSyncError'), message: error });
-    }
-    ProjectList.render();
-  });
-}
-
 // ========== SETUP COMPONENTS ==========
 // Setup ProjectList
 ProjectList.setExternalState({
@@ -2428,7 +2006,6 @@ ProjectList.setCallbacks({
   onGitPush: gitPush,
   onNewWorktree: openNewWorktreeModal,
   onCloudUpload: cloudUploadProject,
-  onCloudSync: cloudSyncProject,
   onCloudDelete: cloudDeleteProject,
   onDeleteProject: deleteProjectUI,
   onRenameProject: renameProjectUI,
@@ -2570,6 +2147,14 @@ FileExplorer.setCallbacks({
     const projects = projectsState.get().projects;
     const project = selectedFilter !== null ? projects[selectedFilter] : null;
     TerminalManager.openFileTab(filePath, project);
+  },
+  onAddToChat: (relativePath, fullPath) => {
+    const activeId = terminalsState.get().activeTerminal;
+    if (activeId == null) return;
+    const termData = terminalsState.get().terminals.get(activeId);
+    if (termData?.chatView?.addMentionChip) {
+      termData.chatView.addMentionChip('file', { path: relativePath, fullPath });
+    }
   }
 });
 FileExplorer.init();
@@ -2844,7 +2429,6 @@ document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
           settingsState,
           projectsState,
           saveSettings,
-          updateProjectPendingChanges: _updateProjectPendingChanges,
         });
         container.dataset.initialized = 'true';
       }

@@ -173,6 +173,7 @@
     "sortBySize": "Taille",
     "sortByDate": "Date",
     "sortByType": "Type",
+    "addToChat": "Référencer dans le chat",
     "watchLimitWarning": "Projet volumineux : {count} chemins surveillés. L'actualisation automatique de l'explorateur peut être plus lente."
   },
   "quickActions": {

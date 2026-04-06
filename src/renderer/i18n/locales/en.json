@@ -1133,6 +1133,7 @@
     "sortBySize": "Size",
     "sortByDate": "Date",
     "sortByType": "Type",
+    "addToChat": "Reference in chat",
     "watchLimitWarning": "Large project: watching {count} paths. Explorer auto-refresh may be slower."
   },
   "quickActions": {

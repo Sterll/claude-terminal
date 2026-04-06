@@ -4756,6 +4756,10 @@ class ChatView extends BaseComponent {
       }
       inputEl.value = text;
       handleSend();
+    },
+    addMentionChip(type, data) {
+      addMentionChip(type, data);
+      inputEl?.focus();
     }
   };
   }

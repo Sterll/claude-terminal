@@ -1080,6 +1080,7 @@
     "noResults": "Sin resultados",
     "deleteMultipleConfirm": "¿Eliminar {count} elementos?",
     "selectedItems": "elementos seleccionados",
+    "addToChat": "Referenciar en el chat",
     "watchLimitWarning": "Proyecto grande: monitorizando {count} rutas. La actualización automática del explorador puede ser más lenta.",
     "cut": "Cortar",
     "copy": "Copiar",
