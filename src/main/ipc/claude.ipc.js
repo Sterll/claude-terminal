@@ -237,14 +237,25 @@ async function loadSessionHistory(projectPath, sessionId) {
         // User message
         if (obj.type === 'user' && obj.message) {
           let text = '';
+          const images = [];
           const content = obj.message.content;
           if (typeof content === 'string') {
             text = content;
           } else if (Array.isArray(content)) {
             text = content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+            for (const block of content) {
+              if (block.type === 'image' && block.source?.type === 'base64') {
+                images.push({
+                  base64: block.source.data,
+                  mediaType: block.source.media_type || 'image/png'
+                });
+              }
+            }
           }
-          if (text) {
-            messages.push({ role: 'user', text });
+          if (text || images.length > 0) {
+            const msg = { role: 'user', text: text || '' };
+            if (images.length > 0) msg.images = images;
+            messages.push(msg);
           }
         }
 

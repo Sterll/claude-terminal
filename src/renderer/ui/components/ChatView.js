@@ -4510,7 +4510,17 @@ class ChatView extends BaseComponent {
         if (msg.role === 'user') {
           const el = document.createElement('div');
           el.className = 'chat-msg chat-msg-user history';
-          el.innerHTML = `<div class="chat-msg-content">${renderMarkdown(msg.text)}</div>`;
+          let userHtml = '';
+          if (msg.images && msg.images.length > 0) {
+            userHtml += `<div class="chat-msg-images">${msg.images.map(img => {
+              const dataUrl = `data:${img.mediaType || 'image/png'};base64,${img.base64}`;
+              return `<img src="${dataUrl}" alt="image" class="chat-msg-image" />`;
+            }).join('')}</div>`;
+          }
+          if (msg.text) {
+            userHtml += `<div class="chat-msg-content">${renderMarkdown(msg.text)}</div>`;
+          }
+          el.innerHTML = userHtml;
           fragment.appendChild(el);
 
         } else if (msg.role === 'assistant' && msg.type === 'text') {
