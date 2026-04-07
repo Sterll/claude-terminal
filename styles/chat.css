@@ -167,6 +167,49 @@
   margin-bottom: 4px;
 }
 
+/* Enhanced prompt badge */
+.chat-msg-enhanced-badge {
+  display: inline-block;
+  font-size: 0.5625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-bottom: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.chat-msg-enhanced-badge:hover {
+  background: rgba(217, 119, 6, 0.25);
+}
+
+/* Original prompt (collapsed by default, toggled via badge click) */
+.chat-msg-original {
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 2px solid var(--accent-dim);
+}
+
+.chat-msg-original-label {
+  font-size: 0.5625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.chat-msg-original .chat-msg-content {
+  opacity: 0.6;
+  font-size: 0.8125rem;
+}
+
 /* Assistant message */
 .chat-msg-assistant {
   padding: 8px 0;

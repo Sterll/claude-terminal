@@ -137,6 +137,17 @@ function registerChatHandlers() {
     chatService.cancelGeneration(genId);
   });
 
+  // Enhance a user prompt via Haiku before sending
+  ipcMain.handle('chat-enhance-prompt', async (_event, { text }) => {
+    try {
+      const enhanced = await chatService.enhancePrompt(text);
+      return { success: true, enhanced, original: text };
+    } catch (err) {
+      console.error('[chat-enhance-prompt] Error:', err.message);
+      return { success: false, enhanced: text, original: text };
+    }
+  });
+
   // Generate follow-up suggestions after a Claude response
   ipcMain.handle('chat-generate-suggestions', async (_event, { lastAssistantText, lastUserText, projectContext }) => {
     try {

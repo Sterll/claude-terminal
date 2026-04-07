@@ -1005,6 +1005,16 @@ class SettingsPanel extends BasePanel {
                   </label>
                 </div>
                 <div class="settings-toggle-row">
+                  <div class="settings-toggle-label">
+                    <div>${t('settings.enhancePrompts')}</div>
+                    <div class="settings-toggle-desc">${t('settings.enhancePromptsDesc')}</div>
+                  </div>
+                  <label class="settings-toggle">
+                    <input type="checkbox" id="enhance-prompts-toggle" ${settings.enhancePrompts ? 'checked' : ''}>
+                    <span class="settings-toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="settings-toggle-row">
                   <div class="settings-toggle-info">
                     <div>${t('settings.autoClaudeMdUpdate')}</div>
                     <div class="settings-toggle-desc">${t('settings.autoClaudeMdUpdateDesc')}</div>
@@ -1599,6 +1609,8 @@ class SettingsPanel extends BasePanel {
       const newAiTabNaming = aiTabNamingToggle ? aiTabNamingToggle.checked : true;
       const followupSuggestionsToggle = document.getElementById('followup-suggestions-toggle');
       const newEnableFollowupSuggestions = followupSuggestionsToggle ? followupSuggestionsToggle.checked : true;
+      const enhancePromptsToggle = document.getElementById('enhance-prompts-toggle');
+      const newEnhancePrompts = enhancePromptsToggle ? enhancePromptsToggle.checked : false;
       const autoClaudeMdToggle = document.getElementById('auto-claude-md-toggle');
       const newAutoClaudeMd = autoClaudeMdToggle ? autoClaudeMdToggle.checked : true;
       const hooksToggle = document.getElementById('hooks-enabled-toggle');
@@ -1647,6 +1659,7 @@ class SettingsPanel extends BasePanel {
         tabRenameOnSlashCommand: newTabRenameOnSlashCommand,
         aiTabNaming: newAiTabNaming,
         enableFollowupSuggestions: newEnableFollowupSuggestions,
+        enhancePrompts: newEnhancePrompts,
         autoClaudeMdUpdate: newAutoClaudeMd,
         telemetryEnabled: newTelemetryEnabled,
         telemetryCategories: newTelemetryCategories

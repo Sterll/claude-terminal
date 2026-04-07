@@ -66,6 +66,7 @@ const defaultSettings = {
   telemetryConsentShown: false, // Whether consent prompt was shown
   agentColors: {}, // Custom colors per tool/agent name: { 'Grep': '#ff0000', 'my-agent': '#00ff00' }
   enableFollowupSuggestions: true, // Show AI-generated follow-up suggestion chips after Claude responds (uses Haiku)
+  enhancePrompts: false, // Opt-in: reformulate prompts via Haiku for better prompt engineering before sending
   pinnedTabs: ['claude', 'git', 'database', 'mcp', 'plugins', 'skills', 'agents', 'workflows', 'tasks', 'control-tower', 'dashboard', 'timetracking', 'session-replay', 'memory', 'connectivity'], // Pinned sidebar tabs (rest go to More menu)
   activeTab: 'claude', // Last active sidebar tab (restored on restart)
   tabsOrder: null, // null = canonical order, otherwise array of all tabIds in custom order

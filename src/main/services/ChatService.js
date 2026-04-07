@@ -874,6 +874,136 @@ class ChatService {
     }
   }
 
+  // ── Prompt enhancement via Haiku ──
+
+  /**
+   * Ensure the persistent haiku prompt-enhancement session is running.
+   * Same warm-session pattern as naming/suggestions.
+   */
+  async _ensureEnhanceSession() {
+    if (this._enhanceReady) return;
+    if (this._enhanceStarting) return this._enhanceStarting;
+
+    this._enhanceStarting = (async () => {
+      const sdk = await loadSDK();
+      this._enhanceQueue = createMessageQueue();
+
+      const runtime = resolveRuntime();
+      const stream = sdk.query({
+        prompt: this._enhanceQueue.iterable,
+        options: {
+          maxTurns: 1,
+          allowedTools: [],
+          model: 'haiku',
+          executable: runtime.executable,
+          env: runtime.env,
+          pathToClaudeCodeExecutable: getSdkCliPath(),
+          systemPrompt: [
+            'You are a prompt engineering expert. Your job is to reformulate user prompts to be clearer, more specific, and better structured for an AI coding assistant (Claude Code).',
+            '',
+            'Rules:',
+            '- Keep the EXACT same intent and requirements',
+            '- Add structure (steps, constraints, expected output) when helpful',
+            '- Clarify ambiguous parts',
+            '- Reply in the SAME language as the input',
+            '- Output ONLY the enhanced prompt, nothing else (no preamble, no explanation)',
+            '- If the prompt is already well-structured, return it as-is with minimal changes',
+            '- Do NOT add requirements the user did not ask for',
+            '- Keep it concise - do not bloat simple requests',
+          ].join('\n')
+        }
+      });
+
+      (async () => {
+        try {
+          for await (const msg of stream) {
+            if (msg.type === 'assistant' && msg.message?.content) {
+              let text = '';
+              for (const block of msg.message.content) {
+                if (block.type === 'text') text += block.text;
+              }
+              if (text && this._enhanceResolve) {
+                const resolve = this._enhanceResolve;
+                this._enhanceResolve = null;
+                resolve(text);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('[ChatService] Enhance session error:', err.message);
+        } finally {
+          this._enhanceReady = false;
+          this._enhanceStarting = null;
+        }
+      })();
+
+      this._enhanceReady = true;
+      this._enhanceStarting = null;
+    })();
+
+    return this._enhanceStarting;
+  }
+
+  /**
+   * Enhance a user prompt via the persistent haiku session.
+   * Returns the enhanced text, or the original on failure/timeout.
+   */
+  async enhancePrompt(text) {
+    if (!text || text.trim().length < 5) return text; // Too short to enhance
+
+    if (this._enhanceInFlight) {
+      await this._enhanceInFlight.catch(() => {});
+    }
+
+    const task = (async () => {
+      try {
+        await this._ensureEnhanceSession();
+        if (!this._enhanceQueue) return text;
+
+        return await new Promise((resolve) => {
+          const timeout = setTimeout(() => {
+            this._enhanceResolve = null;
+            resolve(text); // Fallback to original
+          }, 5000);
+
+          this._enhanceResolve = (rawText) => {
+            clearTimeout(timeout);
+            const enhanced = (rawText || '').trim();
+            resolve(enhanced || text);
+          };
+
+          try {
+            this._enhanceQueue.push({
+              type: 'user',
+              message: { role: 'user', content: text }
+            });
+          } catch (pushErr) {
+            console.error('[ChatService] Enhance transport dead, resetting:', pushErr.message);
+            this._enhanceReady = false;
+            this._enhanceStarting = null;
+            this._enhanceQueue = null;
+            clearTimeout(timeout);
+            resolve(text);
+          }
+        });
+      } catch (err) {
+        console.error('[ChatService] enhancePrompt error:', err.message);
+        this._enhanceReady = false;
+        this._enhanceStarting = null;
+        return text;
+      }
+    })();
+
+    this._enhanceInFlight = task;
+    try {
+      return await task;
+    } finally {
+      if (this._enhanceInFlight === task) {
+        this._enhanceInFlight = null;
+      }
+    }
+  }
+
   // ── Follow-up suggestion generation ──
 
   /**

@@ -2217,9 +2217,26 @@ class ChatView extends BaseComponent {
     if (text) lastUserText = text;
     followupChips.clear();
 
+    // Prompt enhancement via Haiku (opt-in)
+    let enhancedText = text;
+    let wasEnhanced = false;
+    if (text && getSetting('enhancePrompts') && !text.startsWith('/')) {
+      try {
+        const enhanceNotice = appendSystemNotice(t('settings.enhancingPrompt') || 'Enhancing prompt...', 'command');
+        const res = await api.chat.enhancePrompt({ text });
+        // Remove the notice
+        const noticeEl = messagesEl.querySelector('.chat-system-notice:last-of-type');
+        if (noticeEl) noticeEl.remove();
+        if (res?.success && res.enhanced && res.enhanced !== text) {
+          enhancedText = res.enhanced;
+          wasEnhanced = true;
+        }
+      } catch (_) { /* fallback to original */ }
+    }
+
     const isQueued = isStreaming && sessionId;
-    appendUserMessage(text, images, mentions, isQueued);
-    if (text) conversationHistory.push({ role: 'user', content: text });
+    appendUserMessage(enhancedText, images, mentions, isQueued, wasEnhanced ? text : null);
+    if (enhancedText) conversationHistory.push({ role: 'user', content: enhancedText });
     inputEl.value = '';
     inputEl.style.height = 'auto';
 
@@ -2245,7 +2262,7 @@ class ChatView extends BaseComponent {
         // Changes are applied mid-session via SDK setModel/setMaxThinkingTokens
         const startOpts = {
           cwd: project.path,
-          prompt: text || '',
+          prompt: enhancedText || '',
           permissionMode: skipPermissions ? 'bypassPermissions' : 'default',
           sessionId,
           images: imagesPayload,
@@ -2294,7 +2311,7 @@ class ChatView extends BaseComponent {
           setStreaming(false);
         }
       } else {
-        const result = await api.chat.send({ sessionId, text, images: imagesPayload, mentions: resolvedMentions });
+        const result = await api.chat.send({ sessionId, text: enhancedText, images: imagesPayload, mentions: resolvedMentions });
         if (!result.success) {
           appendError(result.error || t('chat.errorOccurred'));
           if (!isStreaming) setStreaming(false);
@@ -2753,7 +2770,7 @@ class ChatView extends BaseComponent {
 
   // ── DOM helpers ──
 
-  function appendUserMessage(text, images = [], mentions = [], queued = false) {
+  function appendUserMessage(text, images = [], mentions = [], queued = false, originalText = null) {
     const welcome = messagesEl.querySelector('.chat-welcome');
     if (welcome) welcome.remove();
     const el = document.createElement('div');
@@ -2762,6 +2779,9 @@ class ChatView extends BaseComponent {
     let html = '';
     if (queued) {
       html += `<span class="chat-msg-queued-badge">${escapeHtml(t('chat.queued') || 'Queued')}</span>`;
+    }
+    if (originalText) {
+      html += `<span class="chat-msg-enhanced-badge" title="${escapeHtml(originalText)}">${escapeHtml(t('settings.promptEnhanced') || 'Enhanced')}</span>`;
     }
     if (mentions.length > 0) {
       html += `<div class="chat-msg-mentions">${mentions.map(m => {
@@ -2776,10 +2796,22 @@ class ChatView extends BaseComponent {
         `<img src="${img.dataUrl}" alt="${escapeHtml(img.name || 'image')}" class="chat-msg-image" />`
       ).join('')}</div>`;
     }
+    if (originalText) {
+      html += `<div class="chat-msg-original" style="display:none"><div class="chat-msg-original-label">${escapeHtml(t('settings.originalPrompt') || 'Original prompt')}</div><div class="chat-msg-content">${renderMarkdown(originalText)}</div></div>`;
+    }
     if (text) {
       html += `<div class="chat-msg-content">${renderMarkdown(text)}</div>`;
     }
     el.innerHTML = html;
+    // Toggle original prompt visibility on badge click
+    const badge = el.querySelector('.chat-msg-enhanced-badge');
+    const originalBlock = el.querySelector('.chat-msg-original');
+    if (badge && originalBlock) {
+      badge.style.cursor = 'pointer';
+      badge.addEventListener('click', () => {
+        originalBlock.style.display = originalBlock.style.display === 'none' ? '' : 'none';
+      });
+    }
     messagesEl.appendChild(el);
     scrollToBottom();
   }
