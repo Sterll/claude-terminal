@@ -57,15 +57,65 @@ function validateWindowState(state) {
 }
 
 /**
- * Save window state to settings.json using atomic write
+ * Save window state to settings.json using async atomic write
  * @param {BrowserWindow} win
  */
-function saveWindowState(win) {
+async function saveWindowStateAsync(win) {
   if (!win || win.isDestroyed()) return;
 
   let bounds;
   if (win.isMaximized()) {
-    if (!normalBounds) return; // No pre-maximized bounds captured yet, skip
+    if (!normalBounds) return;
+    bounds = normalBounds;
+  } else {
+    bounds = win.getBounds();
+  }
+
+  const state = {
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    isMaximized: win.isMaximized()
+  };
+
+  try {
+    let current = {};
+    try {
+      current = JSON.parse(await fs.promises.readFile(settingsFile, 'utf8'));
+    } catch (e) {
+      // File doesn't exist or is corrupt - start fresh
+    }
+    current.windowState = state;
+    const data = JSON.stringify(current, null, 2);
+    const tmpFile = settingsFile + '.tmp';
+    await fs.promises.writeFile(tmpFile, data, 'utf8');
+    try {
+      await fs.promises.rename(tmpFile, settingsFile);
+    } catch (renameErr) {
+      if (renameErr.code === 'EPERM') {
+        // Fallback: write directly (less atomic but avoids data loss)
+        await fs.promises.writeFile(settingsFile, data, 'utf8');
+        try { await fs.promises.unlink(tmpFile); } catch (_) {}
+      } else {
+        throw renameErr;
+      }
+    }
+  } catch (e) {
+    console.error('[MainWindow] Failed to save window state:', e);
+  }
+}
+
+/**
+ * Save window state synchronously (used only at close for crash-resilient checkpoint)
+ * @param {BrowserWindow} win
+ */
+function saveWindowStateSync(win) {
+  if (!win || win.isDestroyed()) return;
+
+  let bounds;
+  if (win.isMaximized()) {
+    if (!normalBounds) return;
     bounds = normalBounds;
   } else {
     bounds = win.getBounds();
@@ -83,49 +133,26 @@ function saveWindowState(win) {
     let current = {};
     try {
       current = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
-    } catch (e) {
-      // File doesn't exist or is corrupt — start fresh
-    }
+    } catch (e) {}
     current.windowState = state;
     const data = JSON.stringify(current, null, 2);
-    const tmpFile = settingsFile + '.tmp';
-    fs.writeFileSync(tmpFile, data, 'utf8');
-    // On Windows, rename can fail with EPERM if antivirus/indexer locks the file — retry then fallback
-    let renamed = false;
-    for (let i = 0; i < 3 && !renamed; i++) {
-      try {
-        fs.renameSync(tmpFile, settingsFile);
-        renamed = true;
-      } catch (renameErr) {
-        if (i < 2 && renameErr.code === 'EPERM') {
-          // Synchronous 50ms delay — works cross-platform without spawning a process
-          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
-        } else if (renameErr.code === 'EPERM') {
-          // Final fallback: write directly (less atomic but avoids data loss)
-          fs.writeFileSync(settingsFile, data, 'utf8');
-          try { fs.unlinkSync(tmpFile); } catch (_) {}
-          renamed = true;
-        } else {
-          throw renameErr;
-        }
-      }
-    }
+    fs.writeFileSync(settingsFile, data, 'utf8');
   } catch (e) {
     console.error('[MainWindow] Failed to save window state:', e);
   }
 }
 
 /**
- * Debounced save — used on resize/move events (500ms matches settings debounce convention)
+ * Debounced save - used on resize/move events (500ms)
  * @param {BrowserWindow} win
  */
 function debouncedSaveWindowState(win) {
   if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => saveWindowState(win), 500);
+  saveTimer = setTimeout(() => saveWindowStateAsync(win), 500);
 }
 
 /**
- * Immediate save — used on close event for crash-resilient final checkpoint
+ * Immediate save - used on close event for crash-resilient final checkpoint
  * @param {BrowserWindow} win
  */
 function saveWindowStateImmediate(win) {
@@ -133,7 +160,7 @@ function saveWindowStateImmediate(win) {
     clearTimeout(saveTimer);
     saveTimer = null;
   }
-  saveWindowState(win);
+  saveWindowStateSync(win);
 }
 
 /**

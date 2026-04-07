@@ -10,6 +10,10 @@ const path = require('path');
 // Track all active git child processes for cleanup on app quit
 const _activeProcesses = new Set();
 
+// Cache safeDirArgs results per cwd (avoids statSync/readFileSync on every git call)
+const _safeDirCache = new Map();
+const SAFE_DIR_CACHE_TTL = 30000;
+
 /**
  * Build safe.directory args array for git
  * Includes worktree parent repo when a .git file (not dir) points to a parent.
@@ -17,6 +21,9 @@ const _activeProcesses = new Set();
  * @returns {string[]} - Args array ['-c', 'safe.directory=...', ...]
  */
 function safeDirArgs(cwd) {
+  const cached = _safeDirCache.get(cwd);
+  if (cached && Date.now() - cached.time < SAFE_DIR_CACHE_TTL) return cached.args;
+
   const cwdNorm = cwd.replace(/\\/g, '/');
   const args = ['-c', `safe.directory=${cwdNorm}`];
   try {
@@ -37,8 +44,12 @@ function safeDirArgs(cwd) {
       }
     }
   } catch (_) {
-    // Not a worktree or .git doesn't exist — ignore
+    // Not a worktree or .git doesn't exist - ignore
   }
+
+  // Evict old entries to prevent unbounded growth
+  if (_safeDirCache.size > 100) _safeDirCache.clear();
+  _safeDirCache.set(cwd, { args, time: Date.now() });
   return args;
 }
 

@@ -52,28 +52,33 @@ function initializeServices(mainWindow) {
 // write JSON trigger files. This poller picks them up and executes them.
 
 let _mcpPollTimer = null;
+let _projectsCache = null;
+let _projectsCacheTime = 0;
+const PROJECTS_CACHE_TTL = 10000;
 
 function _resolveProjectIndex(projectId) {
-  const projFile = path.join(require('os').homedir(), '.claude-terminal', 'projects.json');
-  try {
-    if (!fs.existsSync(projFile)) return -1;
-    const data = JSON.parse(fs.readFileSync(projFile, 'utf8'));
-    return (data.projects || []).findIndex(p => p.id === projectId);
-  } catch (_) { return -1; }
+  const now = Date.now();
+  if (!_projectsCache || now - _projectsCacheTime > PROJECTS_CACHE_TTL) {
+    const projFile = path.join(require('os').homedir(), '.claude-terminal', 'projects.json');
+    try {
+      _projectsCache = JSON.parse(fs.readFileSync(projFile, 'utf8')).projects || [];
+      _projectsCacheTime = now;
+    } catch (_) { return -1; }
+  }
+  return _projectsCache.findIndex(p => p.id === projectId);
 }
 
-function _pollTriggerDir(dir, handler) {
+async function _pollTriggerDirAsync(dir, handler) {
   try {
-    if (!fs.existsSync(dir)) return;
-    const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
+    const files = (await fs.promises.readdir(dir)).filter(f => f.endsWith('.json'));
     for (const file of files) {
       const filePath = path.join(dir, file);
       try {
-        const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-        fs.unlinkSync(filePath);
+        const data = JSON.parse(await fs.promises.readFile(filePath, 'utf8'));
+        await fs.promises.unlink(filePath);
         handler(data);
       } catch (e) {
-        try { fs.unlinkSync(filePath); } catch (_) {}
+        try { await fs.promises.unlink(filePath); } catch (_) {}
       }
     }
   } catch (_) {}
@@ -82,9 +87,9 @@ function _pollTriggerDir(dir, handler) {
 function _startMcpTriggerPolling(mainWindow) {
   const dataDir = path.join(require('os').homedir(), '.claude-terminal');
 
-  _mcpPollTimer = setInterval(() => {
+  _mcpPollTimer = setInterval(async () => {
     // Quick actions
-    _pollTriggerDir(path.join(dataDir, 'quickactions', 'triggers'), (data) => {
+    await _pollTriggerDirAsync(path.join(dataDir, 'quickactions', 'triggers'), (data) => {
       if (data.projectId && data.command && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('quickaction:run', data);
         console.log(`[Services] MCP quick action: ${data.actionName} on ${data.projectId}`);
@@ -92,7 +97,7 @@ function _startMcpTriggerPolling(mainWindow) {
     });
 
     // FiveM
-    _pollTriggerDir(path.join(dataDir, 'fivem', 'triggers'), (data) => {
+    await _pollTriggerDirAsync(path.join(dataDir, 'fivem', 'triggers'), (data) => {
       if (!data.projectId) return;
       const projectIndex = _resolveProjectIndex(data.projectId);
       if (projectIndex < 0) return;
@@ -110,7 +115,7 @@ function _startMcpTriggerPolling(mainWindow) {
     });
 
     // WebApp
-    _pollTriggerDir(path.join(dataDir, 'webapp', 'triggers'), (data) => {
+    await _pollTriggerDirAsync(path.join(dataDir, 'webapp', 'triggers'), (data) => {
       if (!data.projectId) return;
       const projectIndex = _resolveProjectIndex(data.projectId);
       if (projectIndex < 0) return;
@@ -125,7 +130,7 @@ function _startMcpTriggerPolling(mainWindow) {
     });
 
     // Parallel tasks
-    _pollTriggerDir(path.join(dataDir, 'parallel', 'triggers'), (data) => {
+    await _pollTriggerDirAsync(path.join(dataDir, 'parallel', 'triggers'), (data) => {
       if (data.action === 'start' && data.projectPath && data.goal) {
         console.log(`[Services] MCP parallel start: "${data.goal}"`);
         parallelTaskService.startRun({
@@ -149,9 +154,9 @@ function _startMcpTriggerPolling(mainWindow) {
       }
     });
 
-    // Control Tower — terminal interrupt
-    // The renderer holds the project→terminal mapping, so we forward there.
-    _pollTriggerDir(path.join(dataDir, 'terminal', 'triggers'), (data) => {
+    // Control Tower - terminal interrupt
+    // The renderer holds the project->terminal mapping, so we forward there.
+    await _pollTriggerDirAsync(path.join(dataDir, 'terminal', 'triggers'), (data) => {
       if (data.type !== 'interrupt' || !data.projectId) return;
       console.log(`[Services] MCP interrupt: ${data.projectId}`);
       if (mainWindow && !mainWindow.isDestroyed()) {
