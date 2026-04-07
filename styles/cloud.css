@@ -777,3 +777,28 @@
   color: var(--text-muted);
 }
 
+/* ── Version Bar ── */
+.cp-version-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.cp-version-label {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+}
+
+.cp-version-label strong {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.cp-update-available {
+  color: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+

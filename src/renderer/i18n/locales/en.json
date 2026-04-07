@@ -1888,7 +1888,11 @@
     "resetTitle": "Reset cloud state",
     "resetMessage": "This will clear all sync metadata and upload tracking. Projects and files are not affected. You may need to re-upload projects afterward.",
     "resetConfirm": "Reset",
-    "resetSuccess": "Cloud state reset"
+    "resetSuccess": "Cloud state reset",
+    "version": "Version",
+    "serverVersion": "Server",
+    "checkUpdates": "Check for updates",
+    "updateAvailable": "v{version} available"
   },
   "database": {
     "title": "Database",

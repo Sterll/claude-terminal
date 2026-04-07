@@ -582,6 +582,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     connect: (params) => ipcRenderer.invoke('cloud:connect', params),
     disconnect: () => ipcRenderer.invoke('cloud:disconnect'),
     status: () => ipcRenderer.invoke('cloud:status'),
+    serverHealth: () => ipcRenderer.invoke('cloud:server-health'),
     send: (data) => ipcRenderer.send('cloud:send', data),
     onMessage: createListener('cloud:message'),
     onStatusChanged: createListener('cloud:status-changed'),

@@ -1888,7 +1888,11 @@
     "resetTitle": "Reinitialiser l'etat cloud",
     "resetMessage": "Cela va effacer toutes les metadonnees de sync et le suivi d'envoi. Les projets et fichiers ne sont pas affectes. Vous devrez peut-etre re-envoyer vos projets ensuite.",
     "resetConfirm": "Reinitialiser",
-    "resetSuccess": "Etat cloud reinitialise"
+    "resetSuccess": "Etat cloud reinitialise",
+    "version": "Version",
+    "serverVersion": "Serveur",
+    "checkUpdates": "Verifier les mises a jour",
+    "updateAvailable": "v{version} disponible"
   },
   "database": {
     "title": "Base de données",

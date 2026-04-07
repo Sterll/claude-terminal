@@ -66,6 +66,17 @@ function registerCloudRelayHandlers() {
     return cloudRelayClient.getStatus();
   });
 
+  // Fetch cloud server health (version, relay stats)
+  ipcMain.handle('cloud:server-health', async () => {
+    const { _getCloudConfig, _fetchCloud } = require('./cloud-shared');
+    const { url, key } = _getCloudConfig();
+    const res = await _fetchCloud(`${url}/health`, {
+      headers: { Authorization: `Bearer ${key}` },
+    });
+    if (!res.ok) throw new Error(`Health check failed: ${res.status}`);
+    return res.json();
+  });
+
   ipcMain.on('cloud:send', (_event, data) => {
     cloudRelayClient.send(data);
   });

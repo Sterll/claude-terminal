@@ -216,6 +216,12 @@ function buildHtml(settings) {
           </div>
         </div>
       </div>
+
+      <!-- Version footer (always visible) -->
+      <div class="cp-version-bar">
+        <span class="cp-version-label">${t('cloud.serverVersion')} <strong id="cp-app-version">...</strong></span>
+        <button class="cp-btn-sm cp-btn-ghost" id="cp-check-updates-btn">${t('cloud.checkUpdates')}</button>
+      </div>
     </div>
   `;
 }
@@ -703,6 +709,60 @@ function setupHandlers(context) {
   if (resetCloudBtn) {
     resetCloudBtn.addEventListener('click', () => {
       if (window._cloudReset) window._cloudReset();
+    });
+  }
+
+  // ── Server Version & Updates ──
+
+  const versionEl = document.getElementById('cp-app-version');
+  const checkUpdatesBtn = document.getElementById('cp-check-updates-btn');
+  let _serverVersion = null;
+
+  async function _loadServerVersion() {
+    if (!versionEl) return;
+    try {
+      const health = await api.cloud.serverHealth();
+      _serverVersion = health.version;
+      versionEl.textContent = 'v' + _serverVersion;
+    } catch {
+      versionEl.textContent = '-';
+    }
+  }
+
+  // Load version when connected
+  api.cloud.status().then(s => { if (s?.connected) _loadServerVersion(); }).catch(() => {});
+
+  if (checkUpdatesBtn) {
+    checkUpdatesBtn.addEventListener('click', async () => {
+      checkUpdatesBtn.disabled = true;
+      checkUpdatesBtn.textContent = t('settings.checking');
+      try {
+        // Fetch current server version if not loaded yet
+        if (!_serverVersion) await _loadServerVersion();
+        if (!_serverVersion) throw new Error('No server version');
+
+        // Check latest release on GitHub
+        const res = await fetch('https://api.github.com/repos/Sterll/claude-terminal/releases/latest', {
+          headers: { Accept: 'application/vnd.github.v3+json' },
+        });
+        if (!res.ok) throw new Error('GitHub API error');
+        const release = await res.json();
+        const latest = (release.tag_name || '').replace(/^v/, '');
+
+        if (latest && latest !== _serverVersion) {
+          checkUpdatesBtn.textContent = t('cloud.updateAvailable', { version: latest });
+          checkUpdatesBtn.classList.add('cp-update-available');
+        } else {
+          checkUpdatesBtn.textContent = t('settings.upToDate');
+          setTimeout(() => {
+            checkUpdatesBtn.textContent = t('cloud.checkUpdates');
+            checkUpdatesBtn.disabled = false;
+          }, 3000);
+        }
+      } catch {
+        checkUpdatesBtn.textContent = t('cloud.checkUpdates');
+        checkUpdatesBtn.disabled = false;
+      }
     });
   }
 

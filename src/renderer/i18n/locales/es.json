@@ -1754,7 +1754,11 @@
     "resetTitle": "Reiniciar estado cloud",
     "resetMessage": "Esto borrara todos los metadatos de sync y seguimiento de subidas. Los proyectos y archivos no se veran afectados. Puede que necesites volver a subir proyectos despues.",
     "resetConfirm": "Reiniciar",
-    "resetSuccess": "Estado cloud reiniciado"
+    "resetSuccess": "Estado cloud reiniciado",
+    "version": "Version",
+    "serverVersion": "Servidor",
+    "checkUpdates": "Buscar actualizaciones",
+    "updateAvailable": "v{version} disponible"
   },
   "database": {
     "title": "Base de datos",
