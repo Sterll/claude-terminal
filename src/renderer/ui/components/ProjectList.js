@@ -617,6 +617,7 @@ class ProjectList extends BaseComponent {
       }
       if (self._dragState.dropTarget.type === 'folder') {
         if (position === 'into') {
+          if (self._dragState.dragging.type === 'folder' && self._dragState.dragging.id === self._dragState.dropTarget.id) return;
           moveItemToFolder(self._dragState.dragging.type, self._dragState.dragging.id, self._dragState.dropTarget.id);
         } else {
           reorderItem(self._dragState.dragging.type, self._dragState.dragging.id, self._dragState.dropTarget.id, position);
