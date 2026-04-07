@@ -115,7 +115,7 @@ function renderHtmlPreviewBlock(code, filename) {
     + `<span class="chat-preview-filename">${filenameHtml}</span>`
     + `</div>`
     + `<div class="chat-preview-content">`
-    + `<div class="chat-preview-iframe-wrap"><iframe class="chat-preview-iframe" sandbox="allow-scripts" srcdoc=""></iframe></div>`
+    + `<div class="chat-preview-iframe-wrap"><iframe class="chat-preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe></div>`
     + `<div class="chat-preview-code-wrap" style="display:none"><pre><code>${highlight(code, 'html')}</code></pre></div>`
     + `</div>`
     + `<div class="chat-preview-source" style="display:none">${escapeHtml(code)}</div>`

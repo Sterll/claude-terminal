@@ -283,6 +283,7 @@ function handlePreviewAction(btn) {
 
 /**
  * Initialize iframe preview with sandboxed content.
+ * Uses blob: URLs instead of srcdoc to comply with CSP frame-src policy.
  */
 function initializePreviewIframe(container) {
   const iframe = container.querySelector('.chat-preview-iframe');
@@ -300,7 +301,15 @@ function initializePreviewIframe(container) {
     html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{margin:0;padding:16px;background:#1a1a1a;color:#e0e0e0;font-family:system-ui,sans-serif;}</style></head><body>${code}</body></html>`;
   }
 
-  iframe.srcdoc = html;
+  // Revoke previous blob URL if any
+  if (iframe.dataset.blobUrl) {
+    URL.revokeObjectURL(iframe.dataset.blobUrl);
+  }
+
+  const blob = new Blob([html], { type: 'text/html' });
+  const blobUrl = URL.createObjectURL(blob);
+  iframe.dataset.blobUrl = blobUrl;
+  iframe.src = blobUrl;
 }
 
 module.exports = {
