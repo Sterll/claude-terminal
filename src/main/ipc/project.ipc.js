@@ -8,6 +8,11 @@ const fs = require('fs');
 const path = require('path');
 const { projectsFile } = require('../utils/paths');
 
+// Pre-compiled regex patterns for TODO scanning (avoid re-allocation per line)
+const TODO_REGEX_SLASH = /\/\/\s*(TODO|FIXME|HACK|XXX)[:\s]*(.*)/i;
+const TODO_REGEX_HASH  = /#\s*(TODO|FIXME|HACK|XXX)[:\s]*(.*)/i;
+const TODO_REGEX_LUA   = /--\s*(TODO|FIXME|HACK|XXX)[:\s]*(.*)/i;
+
 /**
  * Register project IPC handlers
  */
@@ -55,9 +60,9 @@ function registerProjectHandlers() {
         const relativePath = path.relative(basePath, filePath);
 
         lines.forEach((line, i) => {
-          const todoMatch = line.match(/\/\/\s*(TODO|FIXME|HACK|XXX)[:\s]*(.*)/i) ||
-                            line.match(/#\s*(TODO|FIXME|HACK|XXX)[:\s]*(.*)/i) ||
-                            line.match(/--\s*(TODO|FIXME|HACK|XXX)[:\s]*(.*)/i);
+          const todoMatch = TODO_REGEX_SLASH.exec(line) ||
+                            TODO_REGEX_HASH.exec(line) ||
+                            TODO_REGEX_LUA.exec(line);
           if (todoMatch && todos.length < 50) {
             todos.push({
               type: todoMatch[1].toUpperCase(),

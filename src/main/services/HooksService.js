@@ -72,7 +72,16 @@ function writeClaudeSettings(settings) {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  fs.writeFileSync(CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2));
+  // Atomic write: write to temp file then rename to prevent corruption
+  const tmpFile = CLAUDE_SETTINGS_PATH + '.tmp';
+  fs.writeFileSync(tmpFile, JSON.stringify(settings, null, 2));
+  try {
+    fs.renameSync(tmpFile, CLAUDE_SETTINGS_PATH);
+  } catch (renameErr) {
+    // Fallback: direct write if rename fails (Windows antivirus lock)
+    fs.writeFileSync(CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2));
+    try { fs.unlinkSync(tmpFile); } catch (_) {}
+  }
 }
 
 /**

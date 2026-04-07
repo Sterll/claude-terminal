@@ -338,23 +338,23 @@ function registerGitHandlers() {
         if (diff) diffParts.push(diff);
       }
 
-      // Untracked files: read first lines of each to give context
-      for (const f of untrackedFiles) {
+      // Untracked files: read first lines of each to give context (async I/O)
+      await Promise.all(untrackedFiles.map(async (f) => {
         try {
           const fullPath = path.join(projectPath, f.path);
-          const stat = fs.statSync(fullPath);
+          const stat = await fs.promises.stat(fullPath);
           if (stat.isDirectory()) {
             diffParts.push(`--- New directory: ${f.path}/`);
           } else if (stat.size > 500000) {
             diffParts.push(`--- New file: ${f.path} (${(stat.size / 1024).toFixed(0)}KB, binary or large)`);
           } else {
-            const content = fs.readFileSync(fullPath, 'utf8').slice(0, 3000);
+            const content = (await fs.promises.readFile(fullPath, 'utf8')).slice(0, 3000);
             diffParts.push(`--- New file: ${f.path}\n+++ ${f.path}\n${content.split('\n').map(l => '+' + l).join('\n')}`);
           }
         } catch (_) {
           diffParts.push(`--- New file: ${f.path}`);
         }
-      }
+      }));
 
       const diffContent = diffParts.join('\n\n');
       const githubToken = useAi !== false ? await GitHubAuthService.getToken() : null;
@@ -384,22 +384,22 @@ function registerGitHandlers() {
           if (diff) diffParts.push(diff);
         }
 
-        for (const f of untracked) {
+        await Promise.all(untracked.map(async (f) => {
           try {
             const fullPath = path.join(projectPath, f.path);
-            const stat = fs.statSync(fullPath);
+            const stat = await fs.promises.stat(fullPath);
             if (stat.isDirectory()) {
               diffParts.push(`--- New directory: ${f.path}/`);
             } else if (stat.size > 500000) {
               diffParts.push(`--- New file: ${f.path} (${(stat.size / 1024).toFixed(0)}KB)`);
             } else {
-              const content = fs.readFileSync(fullPath, 'utf8').slice(0, 3000);
+              const content = (await fs.promises.readFile(fullPath, 'utf8')).slice(0, 3000);
               diffParts.push(`--- New file: ${f.path}\n${content.split('\n').map(l => '+' + l).join('\n')}`);
             }
           } catch (_) {
             diffParts.push(`--- New file: ${f.path}`);
           }
-        }
+        }));
 
         diffs[g.name] = diffParts.join('\n\n');
       }

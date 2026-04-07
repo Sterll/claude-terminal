@@ -141,17 +141,18 @@ async function getSkillReadme(source, skillId) {
     `SKILL.md`
   ];
 
-  // First try direct paths on both branches
+  // Try all direct branch+path combinations in parallel (6 requests instead of sequential)
+  const candidates = [];
   for (const branch of branches) {
     for (const filePath of directPaths) {
-      try {
-        const url = `https://raw.githubusercontent.com/${source}/${branch}/${filePath}`;
-        const result = await httpsGetText(url);
-        if (result.status === 200 && result.data) {
-          setCache(cacheKey, result.data, CACHE_TTL.readme);
-          return result.data;
-        }
-      } catch { /* try next */ }
+      candidates.push(`https://raw.githubusercontent.com/${source}/${branch}/${filePath}`);
+    }
+  }
+  const results = await Promise.allSettled(candidates.map(url => httpsGetText(url)));
+  for (const r of results) {
+    if (r.status === 'fulfilled' && r.value?.status === 200 && r.value.data) {
+      setCache(cacheKey, r.value.data, CACHE_TTL.readme);
+      return r.value.data;
     }
   }
 
