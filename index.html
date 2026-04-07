@@ -577,6 +577,7 @@
           <div class="list-header">
             <div class="skills-header-left">
               <h2 data-i18n="ui.tabSkills">Skills</h2>
+              <p class="panel-description" data-i18n="skillsAgents.panelDescription">Skills customize how Claude responds. Agents are autonomous workers with their own tools.</p>
               <div class="skills-sub-tabs">
                 <button class="skills-sub-tab active" data-subtab="local" data-i18n="marketplace.mySkills">My Skills</button>
                 <button class="skills-sub-tab" data-subtab="marketplace" data-i18n="ui.skillsMarketplace">Marketplace</button>
@@ -601,7 +602,10 @@
       <div class="tab-content" id="tab-agents">
         <div class="list-layout">
           <div class="list-header">
-            <h2 data-i18n="ui.tabAgents">Agents</h2>
+            <div>
+              <h2 data-i18n="ui.tabAgents">Agents</h2>
+              <p class="panel-description" data-i18n="skillsAgents.panelDescription">Skills customize how Claude responds. Agents are autonomous workers with their own tools.</p>
+            </div>
             <button class="btn-primary" id="btn-new-agent">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
               <span data-i18n="ui.newAgent">Nouvel Agent</span>
@@ -747,6 +751,7 @@
             <div class="list-header">
               <div class="mcp-header-left">
                 <h2 data-i18n="ui.mcpServers">Serveurs MCP</h2>
+                <p class="panel-description" data-i18n="mcpLocal.panelDescription">MCP servers extend Claude with custom tools like databases, APIs, and file systems.</p>
                 <div class="mcp-sub-tabs">
                   <button class="mcp-sub-tab active" data-subtab="local" data-i18n="mcpRegistry.myServers">My Servers</button>
                   <button class="mcp-sub-tab" data-subtab="registry" data-i18n="mcpRegistry.registry">Registry</button>
@@ -816,6 +821,7 @@
           <div class="memory-sidebar">
             <div class="memory-sidebar-header">
               <h3 data-i18n="ui.sources">Sources</h3>
+              <p class="panel-description" data-i18n="memory.panelDescription" style="padding: 0 12px; margin-bottom: 4px">Configure how Claude behaves. Global settings apply everywhere, project settings override them.</p>
               <div class="memory-search">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
                 <input type="text" id="memory-search-input" data-i18n-placeholder="common.search">

@@ -131,28 +131,17 @@ const localState = {
 // ========== I18N STATIC TEXT UPDATES ==========
 // Update all elements with data-i18n attribute
 function updateStaticTranslations() {
-  // Text content: data-i18n="key"
-  document.querySelectorAll('[data-i18n]').forEach(el => {
+  // Single DOM scan with union selector instead of 4 separate scans
+  const elements = document.querySelectorAll('[data-i18n],[data-i18n-title],[data-i18n-placeholder],[data-i18n-aria-label]');
+  elements.forEach(el => {
     const key = el.getAttribute('data-i18n');
     if (key) el.textContent = t(key);
-  });
-
-  // Title attribute: data-i18n-title="key"
-  document.querySelectorAll('[data-i18n-title]').forEach(el => {
-    const key = el.getAttribute('data-i18n-title');
-    if (key) el.title = t(key);
-  });
-
-  // Placeholder attribute: data-i18n-placeholder="key"
-  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-    const key = el.getAttribute('data-i18n-placeholder');
-    if (key) el.placeholder = t(key);
-  });
-
-  // Aria-label attribute: data-i18n-aria-label="key"
-  document.querySelectorAll('[data-i18n-aria-label]').forEach(el => {
-    const key = el.getAttribute('data-i18n-aria-label');
-    if (key) el.setAttribute('aria-label', t(key));
+    const titleKey = el.getAttribute('data-i18n-title');
+    if (titleKey) el.title = t(titleKey);
+    const phKey = el.getAttribute('data-i18n-placeholder');
+    if (phKey) el.placeholder = t(phKey);
+    const ariaKey = el.getAttribute('data-i18n-aria-label');
+    if (ariaKey) el.setAttribute('aria-label', t(ariaKey));
   });
 }
 
@@ -487,32 +476,25 @@ async function checkAllProjectsGitStatus() {
         return;
       }
       try {
-        const result = await api.git.statusQuick({ projectPath: project.path });
+        // Run statusQuick and currentBranch in parallel instead of sequentially
+        const [result, branch] = await Promise.all([
+          api.git.statusQuick({ projectPath: project.path }),
+          api.git.currentBranch({ projectPath: project.path }).catch(() => null)
+        ]);
         const status = { isGitRepo: result.isGitRepo };
-        if (result.isGitRepo) {
-          try {
-            status.branch = await api.git.currentBranch({ projectPath: project.path });
-          } catch (_) {}
+        if (result.isGitRepo && branch) {
+          status.branch = branch;
         }
         localState.gitRepoStatus.set(project.id, status);
       } catch (e) {
         localState.gitRepoStatus.set(project.id, { isGitRepo: false });
       }
     }));
-
-    // After each batch, update git buttons if the currently selected project was just checked
-    const selectedFilter = projectsState.get().selectedProjectFilter;
-    if (selectedFilter !== null && projects[selectedFilter]) {
-      const selectedId = projects[selectedFilter].id;
-      if (batch.some(p => p.id === selectedId)) {
-        showFilterGitActions(selectedId);
-      }
-    }
   }
   localState.gitStatusInitialized = true;
   ProjectList.render();
 
-  // Final update for the currently selected project
+  // Update for the currently selected project after all batches
   const selectedFilter = projectsState.get().selectedProjectFilter;
   if (selectedFilter !== null && projects[selectedFilter]) {
     showFilterGitActions(projects[selectedFilter].id);
