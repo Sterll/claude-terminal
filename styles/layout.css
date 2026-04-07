@@ -46,7 +46,7 @@ body.platform-darwin .titlebar-drag {
 }
 
 .titlebar-title {
-  font-size: 13px;
+  font-size: var(--font-sm);
   font-weight: 500;
   color: var(--text-secondary);
 }
@@ -574,7 +574,7 @@ body.platform-darwin .titlebar-drag {
   color: var(--text-secondary);
   cursor: pointer;
   border-radius: var(--radius);
-  font-size: 13px;
+  font-size: var(--font-sm);
   font-weight: 500;
   transition: all 0.15s;
   text-align: left;
@@ -884,7 +884,7 @@ body.platform-darwin .titlebar-drag {
   color: var(--text-muted);
   cursor: pointer;
   border-radius: var(--radius-sm);
-  font-size: 13px;
+  font-size: var(--font-sm);
   transition: all 0.15s;
   width: 100%;
 }
@@ -919,7 +919,7 @@ body.platform-darwin .titlebar-drag {
   color: var(--text-muted);
   cursor: pointer;
   border-radius: var(--radius-sm);
-  font-size: 13px;
+  font-size: var(--font-sm);
   transition: all 0.15s;
   width: 100%;
 }
@@ -941,7 +941,7 @@ body.platform-darwin .titlebar-drag {
 }
 
 .version {
-  font-size: 11px;
+  font-size: var(--font-xs);
   color: var(--text-muted);
   text-align: center;
 }
@@ -1043,8 +1043,30 @@ body.platform-darwin .titlebar-drag {
   }
 }
 
-/* Standard window (1024px - 1366px) */
-@media (min-width: 1024px) and (max-width: 1366px) {
+/* Tight window (1000px - 1100px) — near Electron minimum */
+@media (max-width: 1100px) {
+  :root {
+    --sidebar-width: 160px;
+    --projects-panel-width: 280px;
+  }
+
+  .titlebar-usage {
+    gap: 0;
+  }
+
+  .usage-item {
+    min-width: 70px;
+    padding: 3px 8px;
+  }
+
+  .titlebar-time {
+    gap: 8px;
+    padding: 4px 8px;
+  }
+}
+
+/* Standard window (1100px - 1366px) */
+@media (min-width: 1101px) and (max-width: 1366px) {
   :root {
     --sidebar-width: 180px;
     --projects-panel-width: 320px;

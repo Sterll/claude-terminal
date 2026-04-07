@@ -23,6 +23,14 @@
   font-weight: 600;
 }
 
+.panel-description {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  line-height: 1.4;
+  margin: 2px 0 0 0;
+  max-width: 480px;
+}
+
 .btn-primary {
   display: flex;
   align-items: center;

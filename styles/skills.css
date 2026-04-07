@@ -10,6 +10,12 @@
   display: flex;
   align-items: center;
   gap: 16px;
+  flex-wrap: wrap;
+}
+
+.skills-header-left .panel-description {
+  flex-basis: 100%;
+  margin-top: -8px;
 }
 
 .skills-header-right {

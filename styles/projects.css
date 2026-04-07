@@ -3048,11 +3048,10 @@ body.compact-projects .project-item:not(.active):hover {
   }
 }
 
-/* Responsive adjustments */
-@media (max-width: 400px) {
+/* Responsive: customize picker adapts to narrow content zones */
+@media (max-width: 1100px) {
   .customize-picker {
-    width: calc(100vw - 24px);
-    max-width: 340px;
+    max-width: calc(100vw - 48px);
   }
 }
 

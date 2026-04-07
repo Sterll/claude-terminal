@@ -35,14 +35,15 @@
 .tt-ambient-orb {
   position: absolute;
   border-radius: 50%;
-  filter: blur(120px);
-  opacity: 0.15;
+  filter: blur(80px);
+  opacity: 0.12;
+  will-change: transform;
   animation: tt-float 20s ease-in-out infinite;
 }
 
 .tt-orb-1 {
-  width: 600px;
-  height: 600px;
+  width: min(600px, 60vw);
+  height: min(600px, 60vw);
   background: var(--accent);
   top: -200px;
   right: -100px;
@@ -50,8 +51,8 @@
 }
 
 .tt-orb-2 {
-  width: 400px;
-  height: 400px;
+  width: min(400px, 45vw);
+  height: min(400px, 45vw);
   background: color-mix(in srgb, var(--accent) 60%, #1a1a2e);
   bottom: -150px;
   left: -100px;
@@ -59,8 +60,8 @@
 }
 
 .tt-orb-3 {
-  width: 300px;
-  height: 300px;
+  width: min(300px, 35vw);
+  height: min(300px, 35vw);
   background: color-mix(in srgb, var(--accent) 40%, #0a0a0f);
   top: 50%;
   left: 50%;
@@ -69,10 +70,10 @@
 }
 
 @keyframes tt-float {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  25% { transform: translate(30px, -30px) scale(1.05); }
-  50% { transform: translate(-20px, 20px) scale(0.95); }
-  75% { transform: translate(20px, 10px) scale(1.02); }
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(30px, -30px); }
+  50% { transform: translate(-20px, 20px); }
+  75% { transform: translate(20px, 10px); }
 }
 
 /* Header */
@@ -1135,7 +1136,7 @@
 
 .tt-project-item {
   display: grid;
-  grid-template-columns: 4px 1fr 100px auto auto;
+  grid-template-columns: 4px 1fr minmax(80px, 100px) auto auto;
   align-items: center;
   gap: 12px;
   padding: 12px;
@@ -1422,5 +1423,22 @@
 
   .tt-hero-minutes {
     font-size: 2rem;
+  }
+}
+
+/* Near Electron minimum */
+@media (max-width: 900px) {
+  .tt-dashboard {
+    padding: 12px;
+  }
+
+  .tt-card-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .tt-project-item {
+    grid-template-columns: 4px 1fr auto;
+    gap: 8px;
+    padding: 10px;
   }
 }

@@ -294,7 +294,7 @@
 
 .mcp-tool-row {
   display: grid;
-  grid-template-columns: 200px 1fr;
+  grid-template-columns: minmax(120px, 200px) 1fr;
   gap: 12px;
   align-items: baseline;
   padding: 5px 0;
@@ -377,6 +377,12 @@
   display: flex;
   align-items: center;
   gap: 16px;
+  flex-wrap: wrap;
+}
+
+.mcp-header-left .panel-description {
+  flex-basis: 100%;
+  margin-top: -8px;
 }
 
 .mcp-header-right {

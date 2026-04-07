@@ -14,11 +14,20 @@
 
 .dashboard-sidebar {
   width: 280px;
+  min-width: 200px;
+  flex-shrink: 0;
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+@media (max-width: 1100px) {
+  .dashboard-sidebar {
+    width: 220px;
+    min-width: 180px;
+  }
 }
 
 .dashboard-sidebar-header {
@@ -27,7 +36,7 @@
 }
 
 .dashboard-sidebar-header h3 {
-  font-size: 14px;
+  font-size: var(--font-base);
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
@@ -677,7 +686,7 @@
 /* Stats Card */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 16px;
 }
 
@@ -689,7 +698,7 @@
 }
 
 .stat-value {
-  font-size: 28px;
+  font-size: clamp(20px, 2.5vw, 28px);
   font-weight: 700;
   color: var(--accent);
   margin-bottom: 4px;
@@ -1987,7 +1996,7 @@
 /* -- Time vs Commits -- */
 .insights-time-commits {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
   margin-bottom: 20px;
 }
