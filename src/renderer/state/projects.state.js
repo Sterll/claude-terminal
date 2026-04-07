@@ -23,12 +23,14 @@ const initialState = {
 const projectsState = new State(initialState);
 
 // Index Maps for O(1) lookups (invalidated on state changes)
-let _projectIndex = null; // Map<id, project>
-let _folderIndex = null;  // Map<id, folder>
-let _countCache = null;   // Map<folderId, count>
+let _projectIndex = null;    // Map<id, project>
+let _projectPosIndex = null; // Map<id, arrayIndex> for O(1) getProjectIndex
+let _folderIndex = null;     // Map<id, folder>
+let _countCache = null;      // Map<folderId, count>
 
 function _invalidateIndexes() {
   _projectIndex = null;
+  _projectPosIndex = null;
   _folderIndex = null;
   _countCache = null;
 }
@@ -129,10 +131,15 @@ function getProject(projectId) {
  * @returns {number}
  */
 function getProjectIndex(projectId) {
-  const projects = projectsState.get().projects;
-  // Use index map for quick existence check, then find position
-  if (!_getProjectIndex().has(projectId)) return -1;
-  return projects.findIndex(p => p.id === projectId);
+  if (!_projectPosIndex) {
+    _projectPosIndex = new Map();
+    const projects = projectsState.get().projects;
+    for (let i = 0; i < projects.length; i++) {
+      _projectPosIndex.set(projects[i].id, i);
+    }
+  }
+  const idx = _projectPosIndex.get(projectId);
+  return idx !== undefined ? idx : -1;
 }
 
 /**

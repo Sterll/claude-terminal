@@ -22,6 +22,10 @@ const i18nState = new State({
   translations: locales[DEFAULT_LANGUAGE]
 });
 
+// Flat translation cache for O(1) lookups (invalidated on language change)
+let _tCache = new Map();
+let _tCacheLang = null;
+
 /**
  * Detect system language from navigator or Electron
  * @returns {string} Language code (fr or en)
@@ -97,6 +101,21 @@ function getCurrentLanguage() {
  * @returns {string}
  */
 function t(keyPath, params = {}) {
+  const currentLang = i18nState.get().currentLanguage;
+
+  // Invalidate cache on language change
+  if (currentLang !== _tCacheLang) {
+    _tCache.clear();
+    _tCacheLang = currentLang;
+  }
+
+  const hasParams = typeof params === 'object' && Object.keys(params).length > 0;
+
+  // Fast path: cached param-free lookups (the vast majority)
+  if (!hasParams && _tCache.has(keyPath)) {
+    return _tCache.get(keyPath);
+  }
+
   const translations = i18nState.get().translations;
   const keys = keyPath.split('.');
 
@@ -105,25 +124,24 @@ function t(keyPath, params = {}) {
     if (value && typeof value === 'object' && key in value) {
       value = value[key];
     } else {
-      // Key not found, return the key path as fallback
-      console.warn(`[i18n] Missing translation: ${keyPath}`);
       return keyPath;
     }
   }
 
   if (typeof value !== 'string') {
-    console.warn(`[i18n] Translation is not a string: ${keyPath}`);
     return keyPath;
   }
 
-  // Interpolate parameters
-  if (Object.keys(params).length > 0) {
-    return value.replace(/\{(\w+)\}/g, (match, key) => {
-      return params[key] !== undefined ? params[key] : match;
-    });
+  // Cache param-free results
+  if (!hasParams) {
+    _tCache.set(keyPath, value);
+    return value;
   }
 
-  return value;
+  // Interpolate parameters
+  return value.replace(/\{(\w+)\}/g, (match, key) => {
+    return params[key] !== undefined ? params[key] : match;
+  });
 }
 
 /**
@@ -177,6 +195,9 @@ function mergeTranslations(langCode, newTranslations) {
   }
 
   deepMerge(locales[langCode], newTranslations);
+
+  // Invalidate translation cache
+  _tCache.clear();
 
   // Refresh current translations if this is the active language
   const currentLang = i18nState.get().currentLanguage;

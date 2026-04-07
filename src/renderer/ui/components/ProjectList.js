@@ -1275,6 +1275,11 @@ class ProjectList extends BaseComponent {
     }
 
     html += `<div class="drop-zone-root" data-target="root"></div>`;
+
+    // Skip DOM rebuild if HTML is unchanged (avoids destroying 300+ nodes for no-op renders)
+    if (list._lastRenderedHtml === html) return;
+    list._lastRenderedHtml = html;
+
     list.innerHTML = html;
     this._attachListeners(list);
   }

@@ -980,6 +980,7 @@
     "skillsMarketplace": "Marketplace"
   },
   "memory": {
+    "panelDescription": "Configure how Claude behaves in your projects. Global settings apply everywhere, project settings override them.",
     "noProjects": "No projects",
     "noResults": "No results for \"{query}\"",
     "globalMemory": "Global Memory",
@@ -1032,6 +1033,7 @@
     "commitError": "Commit error",
     "loading": "Loading changes...",
     "noChanges": "No changes detected",
+    "noChangesHint": "Your working tree is clean. Edit files to see changes here.",
     "errorStatus": "Error: {message}",
     "showDiff": "Show diff",
     "hideDiff": "Hide diff",
@@ -1063,9 +1065,12 @@
     "resetError": "Failed to undo commit"
   },
   "skillsAgents": {
-    "noSkills": "No skills",
+    "panelDescription": "Skills customize how Claude responds. Agents are autonomous workers with their own tools.",
+    "noSkills": "No skills installed",
+    "noSkillsHint": "Skills are custom instructions that shape how Claude behaves in your projects (coding standards, commit style, review rules...).",
     "createFirstSkill": "Create your first skill",
-    "noAgents": "No agents",
+    "noAgents": "No agents configured",
+    "noAgentsHint": "Agents are autonomous Claude instances with restricted tools, designed to handle specific tasks independently.",
     "createFirstAgent": "Create your first agent",
     "local": "Local",
     "skill": "Skill",
@@ -1082,7 +1087,9 @@
     "openExternal": "Open in editor"
   },
   "mcpLocal": {
-    "noServers": "No MCP servers",
+    "panelDescription": "MCP (Model Context Protocol) servers extend Claude with custom tools like databases, APIs, and file systems.",
+    "noServers": "No MCP servers configured",
+    "noServersHint": "MCP servers give Claude access to external tools and data sources. Browse the Registry to discover and install servers.",
     "configureHint": "Configure MCPs in ~/.claude/settings.json",
     "global": "Global"
   },

@@ -392,6 +392,7 @@ class GitChangesPanel extends BasePanel {
         <div class="git-changes-empty">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
           <p>${t('gitChanges.noChanges')}</p>
+          <p style="color: var(--text-muted); font-size: var(--font-xs); margin-top: 4px">${t('gitChanges.noChangesHint')}</p>
         </div>
       `;
       this._gitChangesStats.innerHTML = '';

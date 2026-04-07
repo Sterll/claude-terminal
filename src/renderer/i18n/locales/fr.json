@@ -1070,6 +1070,7 @@
     "skillsMarketplace": "Marketplace"
   },
   "memory": {
+    "panelDescription": "Configurez le comportement de Claude dans vos projets. Les reglages globaux s'appliquent partout, les reglages projet les remplacent.",
     "noProjects": "Aucun projet",
     "noResults": "Aucun résultat pour \"{query}\"",
     "globalMemory": "Mémoire Globale",
@@ -1121,7 +1122,8 @@
     "commitFiles": "{count} fichier(s) commités",
     "commitError": "Erreur de commit",
     "loading": "Chargement des changements...",
-    "noChanges": "Aucun changement détecté",
+    "noChanges": "Aucun changement detecte",
+    "noChangesHint": "Votre arbre de travail est propre. Modifiez des fichiers pour voir les changements ici.",
     "errorStatus": "Erreur : {message}",
     "showDiff": "Voir le diff",
     "hideDiff": "Masquer le diff",
@@ -1153,10 +1155,13 @@
     "resetError": "Impossible d'annuler le commit"
   },
   "skillsAgents": {
-    "noSkills": "Aucun skill",
-    "createFirstSkill": "Créez votre premier skill",
-    "noAgents": "Aucun agent",
-    "createFirstAgent": "Créez votre premier agent",
+    "panelDescription": "Les skills personnalisent les reponses de Claude. Les agents sont des workers autonomes avec leurs propres outils.",
+    "noSkills": "Aucun skill installe",
+    "noSkillsHint": "Les skills sont des instructions qui definissent comment Claude se comporte dans vos projets (standards de code, style de commit, regles de review...).",
+    "createFirstSkill": "Creez votre premier skill",
+    "noAgents": "Aucun agent configure",
+    "noAgentsHint": "Les agents sont des instances autonomes de Claude avec des outils restreints, concus pour gerer des taches specifiques.",
+    "createFirstAgent": "Creez votre premier agent",
     "local": "Local",
     "skill": "Skill",
     "agent": "Agent",
@@ -1172,7 +1177,9 @@
     "openExternal": "Ouvrir dans l'editeur"
   },
   "mcpLocal": {
-    "noServers": "Aucun serveur MCP",
+    "panelDescription": "Les serveurs MCP (Model Context Protocol) etendent Claude avec des outils externes : bases de donnees, APIs, systemes de fichiers.",
+    "noServers": "Aucun serveur MCP configure",
+    "noServersHint": "Les serveurs MCP donnent a Claude l'acces a des outils et sources de donnees externes. Parcourez le Registry pour decouvrir et installer des serveurs.",
     "configureHint": "Configurez des MCPs dans ~/.claude/settings.json",
     "global": "Global"
   },

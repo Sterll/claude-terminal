@@ -957,6 +957,7 @@
     "skillsMarketplace": "Marketplace"
   },
   "memory": {
+    "panelDescription": "Configura como Claude se comporta en tus proyectos. Los ajustes globales aplican en todos lados, los de proyecto los reemplazan.",
     "noProjects": "Sin proyectos",
     "noResults": "Sin resultados para \"{query}\"",
     "globalMemory": "Memoria Global",
@@ -1009,6 +1010,7 @@
     "commitError": "Error de commit",
     "loading": "Cargando cambios...",
     "noChanges": "Sin cambios detectados",
+    "noChangesHint": "Tu arbol de trabajo esta limpio. Modifica archivos para ver cambios aqui.",
     "errorStatus": "Error: {message}",
     "showDiff": "Mostrar diff",
     "hideDiff": "Ocultar diff",
@@ -1024,9 +1026,12 @@
     "generating": "Generando..."
   },
   "skillsAgents": {
-    "noSkills": "Sin skills",
+    "panelDescription": "Los skills personalizan las respuestas de Claude. Los agentes son workers autonomos con sus propias herramientas.",
+    "noSkills": "Sin skills instalados",
+    "noSkillsHint": "Los skills son instrucciones que definen como Claude se comporta en tus proyectos (estandares de codigo, estilo de commit, reglas de review...).",
     "createFirstSkill": "Crea tu primer skill",
-    "noAgents": "Sin agentes",
+    "noAgents": "Sin agentes configurados",
+    "noAgentsHint": "Los agentes son instancias autonomas de Claude con herramientas restringidas, disenados para manejar tareas especificas.",
     "createFirstAgent": "Crea tu primer agente",
     "local": "Local",
     "skill": "Skill",
@@ -1043,7 +1048,9 @@
     "openExternal": "Abrir en editor"
   },
   "mcpLocal": {
-    "noServers": "Sin servidores MCP",
+    "panelDescription": "Los servidores MCP (Model Context Protocol) extienden Claude con herramientas externas: bases de datos, APIs y sistemas de archivos.",
+    "noServers": "Sin servidores MCP configurados",
+    "noServersHint": "Los servidores MCP dan a Claude acceso a herramientas y fuentes de datos externas. Explora el Registry para descubrir e instalar servidores.",
     "configureHint": "Configura los MCP en ~/.claude/settings.json",
     "global": "Global"
   },
