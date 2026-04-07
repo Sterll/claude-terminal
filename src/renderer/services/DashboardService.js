@@ -40,13 +40,10 @@ function evictCache() {
       dashboardCache.delete(key);
     }
   }
-  // Second pass: if still over limit, remove oldest entries (LRU)
-  if (dashboardCache.size > MAX_CACHE_SIZE) {
-    const sorted = [...dashboardCache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp);
-    const toRemove = sorted.slice(0, dashboardCache.size - MAX_CACHE_SIZE);
-    for (const [key] of toRemove) {
-      dashboardCache.delete(key);
-    }
+  // Second pass: if still over limit, remove oldest by insertion order (Map preserves order)
+  while (dashboardCache.size > MAX_CACHE_SIZE) {
+    const firstKey = dashboardCache.keys().next().value;
+    dashboardCache.delete(firstKey);
   }
 }
 

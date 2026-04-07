@@ -110,24 +110,21 @@ function setMcpProcessStatus(id, status) {
  * @param {string} message
  */
 function addMcpLog(id, type, message) {
-  const mcpProcesses = { ...mcpState.get().mcpProcesses };
+  const mcpProcesses = mcpState.get().mcpProcesses;
   if (!mcpProcesses[id]) {
     mcpProcesses[id] = { status: 'stopped', logs: [] };
   }
 
-  const logs = [...mcpProcesses[id].logs, {
-    type,
-    message,
-    timestamp: Date.now()
-  }];
+  const proc = mcpProcesses[id];
+  proc.logs.push({ type, message, timestamp: Date.now() });
 
   // Keep last 1000 log entries
-  if (logs.length > 1000) {
-    logs.splice(0, logs.length - 1000);
+  if (proc.logs.length > 1000) {
+    proc.logs.splice(0, proc.logs.length - 1000);
   }
 
-  mcpProcesses[id] = { ...mcpProcesses[id], logs };
-  mcpState.setProp('mcpProcesses', mcpProcesses);
+  // Notify subscribers (uses rAF batching from State base class)
+  mcpState._notify();
 }
 
 /**
