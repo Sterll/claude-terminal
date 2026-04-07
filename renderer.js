@@ -1906,6 +1906,7 @@ let _knownProjectIds = new Set(projectsState.get().projects.map(p => p.id));
 let _skipAutoUploadIds = new Set(); // IDs imported from cloud — skip re-upload
 /** Mark a project ID to skip auto-upload (called from CloudPanel on import) */
 window._cloudSkipAutoUpload = (id) => _skipAutoUploadIds.add(id);
+window._cloudReset = resetCloudState;
 projectsState.subscribe((state) => {
   const currentIds = new Set(state.projects.map(p => p.id));
   const newIds = [...currentIds].filter(id => !_knownProjectIds.has(id));
@@ -1926,53 +1927,68 @@ projectsState.subscribe((state) => {
 
 /**
  * Detect projects deleted from cloud since last session.
- * Prompts user to delete locally or keep.
+ * Shows a single grouped notification instead of one modal per project.
+ * Skips detection if cloud appears empty (likely server issue).
  */
 async function _checkCloudDeletedProjects() {
   try {
     const cloudState = await _loadCloudState();
     const previousIds = new Set(cloudState.lastKnownCloudProjectIds || []);
-    if (previousIds.size === 0) return; // No previous data — first connection
+    if (previousIds.size === 0) return; // No previous data - first connection
 
     const { projects: currentCloudProjects } = await api.cloud.getProjects();
     if (!currentCloudProjects || !Array.isArray(currentCloudProjects)) return;
     const currentIds = new Set(currentCloudProjects.map(p => p.name));
 
+    // If cloud is completely empty but we had many projects before, likely a server
+    // reset or connectivity issue - silently update state instead of spamming modals
+    if (currentIds.size === 0 && previousIds.size > 1) {
+      console.warn('[Cloud] Cloud is empty but had', previousIds.size, 'projects - skipping deletion check (likely server reset)');
+      await _saveCloudState({ lastKnownCloudProjectIds: [] });
+      // Clear synced status for all projects
+      for (const id of previousIds) cloudUploadStatus.delete(id);
+      ProjectList.render();
+      return;
+    }
+
     const localProjects = projectsState.get().projects || [];
+    const removedProjects = localProjects.filter(p => previousIds.has(p.id) && !currentIds.has(p.id));
 
-    for (const project of localProjects) {
-      const wasOnCloud = previousIds.has(project.id);
-      const stillOnCloud = currentIds.has(project.id);
+    if (removedProjects.length === 0) {
+      await _saveCloudState({ lastKnownCloudProjectIds: [...currentIds] });
+      return;
+    }
 
-      if (wasOnCloud && !stillOnCloud) {
-        const confirmed = await ModalComponent.showConfirm({
-          title: t('cloud.projectRemovedFromCloudTitle'),
-          message: t('cloud.projectRemovedFromCloudMessage', { name: project.name }),
-          confirmLabel: t('cloud.projectRemovedDelete'),
-          cancelLabel: t('cloud.projectRemovedKeep'),
-          danger: true,
-        });
-        if (confirmed) {
-          const projectIndex = getProjectIndex(project.id);
-          // Close associated terminals
-          const terminals = terminalsState.get().terminals;
-          terminals.forEach((term, id) => {
-            if (term.projectIndex === projectIndex) {
-              TerminalManager.closeTerminal(id);
-            }
-          });
+    // Show a single grouped confirmation for all removed projects
+    const names = removedProjects.map(p => p.name).join(', ');
+    const confirmed = await ModalComponent.showConfirm({
+      title: t('cloud.projectRemovedFromCloudTitle'),
+      message: t('cloud.projectRemovedFromCloudMessage', { name: names, count: removedProjects.length }),
+      confirmLabel: t('cloud.projectRemovedDelete'),
+      cancelLabel: t('cloud.projectRemovedKeep'),
+      danger: true,
+    });
 
-          const projects = projectsState.get().projects.filter(p => p.id !== project.id);
-          let rootOrder = projectsState.get().rootOrder;
-          if (project.folderId === null) {
-            rootOrder = rootOrder.filter(id => id !== project.id);
-          }
-          projectsState.set({ projects, rootOrder });
-          saveProjects();
-          clearProjectSessions(project.id);
-          cloudUploadStatus.delete(project.id);
-        }
+    if (confirmed) {
+      const removedIds = new Set(removedProjects.map(p => p.id));
+      // Close associated terminals
+      const terminals = terminalsState.get().terminals;
+      terminals.forEach((term, id) => {
+        const proj = localProjects.find(p => getProjectIndex(p.id) === term.projectIndex);
+        if (proj && removedIds.has(proj.id)) TerminalManager.closeTerminal(id);
+      });
+
+      const projects = projectsState.get().projects.filter(p => !removedIds.has(p.id));
+      let rootOrder = projectsState.get().rootOrder.filter(id => !removedIds.has(id));
+      projectsState.set({ projects, rootOrder });
+      saveProjects();
+      for (const p of removedProjects) {
+        clearProjectSessions(p.id);
+        cloudUploadStatus.delete(p.id);
       }
+    } else {
+      // User chose to keep - clear cloud state so we don't ask again
+      for (const p of removedProjects) cloudUploadStatus.delete(p.id);
     }
 
     // Update stored state with current data
@@ -1981,6 +1997,33 @@ async function _checkCloudDeletedProjects() {
   } catch (err) {
     console.warn('[Cloud] Check cloud-deleted projects failed:', err.message);
   }
+}
+
+/** Reset cloud state - clears sync metadata, upload status, and cloud-state.json */
+async function resetCloudState() {
+  const confirmed = await ModalComponent.showConfirm({
+    title: t('cloud.resetTitle'),
+    message: t('cloud.resetMessage'),
+    confirmLabel: t('cloud.resetConfirm'),
+    danger: true,
+  });
+  if (!confirmed) return;
+
+  // Clear cloud-state.json
+  try { await fsp.unlink(_cloudStateFile); } catch {}
+
+  // Clear all upload statuses
+  cloudUploadStatus.clear();
+
+  // Stop sync engine
+  try { await api.cloud.syncStop(); } catch {}
+
+  // Clear sync metadata
+  const syncMetaFile = path.join(window.electron_nodeModules.os.homedir(), '.claude-terminal', 'sync-meta.json');
+  try { await fsp.unlink(syncMetaFile); } catch {}
+
+  ProjectList.render();
+  showToast({ type: 'success', title: t('cloud.resetSuccess') });
 }
 
 // ========== SETUP COMPONENTS ==========
@@ -2015,6 +2058,7 @@ ProjectList.setCallbacks({
   onNewWorktree: openNewWorktreeModal,
   onCloudUpload: cloudUploadProject,
   onCloudDelete: cloudDeleteProject,
+  onCloudReset: resetCloudState,
   onDeleteProject: deleteProjectUI,
   onRenameProject: renameProjectUI,
   onRenderProjects: () => ProjectList.render(),
@@ -3406,8 +3450,12 @@ document.getElementById('btn-new-project').onclick = () => {
         <div class="wizard-fields-group">
           <div class="wizard-field clone-config" style="display: none;">
             <label class="wizard-label">${t('newProject.repoUrl')}</label>
-            <input type="text" class="wizard-input" id="inp-repo-url" placeholder="https://github.com/user/repo.git">
+            <div class="clone-input-wrapper">
+              <svg class="clone-input-icon" viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+              <input type="text" class="wizard-input clone-url-input" id="inp-repo-url" placeholder="${t('newProject.repoSearchPlaceholder')}">
+            </div>
             <div class="github-status-hint" id="github-status-hint"></div>
+            <div class="github-repo-list" id="github-repo-list" style="display: none;"></div>
           </div>
           ${(() => { try { return registry.get('webapp').getTemplateGridHtml ? registry.get('webapp').getTemplateGridHtml(t) : ''; } catch(_) { return ''; } })()}
           <div class="wizard-field">
@@ -3516,9 +3564,13 @@ document.getElementById('btn-new-project').onclick = () => {
     };
   });
 
-  // Check GitHub auth status (simple hint)
+  // Check GitHub auth status and load repos
+  let repoSearchTimeout = null;
+  let reposLoaded = false;
+
   async function updateGitHubHint() {
     const hintEl = document.getElementById('github-status-hint');
+    const repoListEl = document.getElementById('github-repo-list');
     if (!hintEl) return;
 
     try {
@@ -3526,8 +3578,13 @@ document.getElementById('btn-new-project').onclick = () => {
       githubConnected = result.authenticated;
       if (result.authenticated) {
         hintEl.innerHTML = `<span class="hint-success"><svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> ${t('newProject.githubConnected', { login: result.login })}</span>`;
+        // Auto-load repos
+        if (repoListEl && !reposLoaded) {
+          loadGitHubRepos();
+        }
       } else {
         hintEl.innerHTML = `<span class="hint-warning"><svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg> ${t('newProject.githubPrivateUnavailable')} - <a href="#" id="link-github-settings">${t('settings.githubConnect')}</a></span>`;
+        if (repoListEl) repoListEl.style.display = 'none';
         document.getElementById('link-github-settings')?.addEventListener('click', (e) => {
           e.preventDefault();
           closeModal();
@@ -3536,6 +3593,82 @@ document.getElementById('btn-new-project').onclick = () => {
       }
     } catch (e) {
       hintEl.innerHTML = '';
+    }
+  }
+
+  function isUrl(text) {
+    return /^(https?:\/\/|git@)/.test(text.trim());
+  }
+
+  function formatRepoDate(dateStr) {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now - d;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return t('common.today') || 'Today';
+    if (diffDays === 1) return t('common.yesterday') || 'Yesterday';
+    if (diffDays < 30) return `${diffDays}d`;
+    if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo`;
+    return `${Math.floor(diffDays / 365)}y`;
+  }
+
+  function renderRepoList(repos) {
+    const repoListEl = document.getElementById('github-repo-list');
+    if (!repoListEl) return;
+
+    if (!repos || repos.length === 0) {
+      repoListEl.innerHTML = `<div class="github-repo-empty">${t('newProject.noReposFound')}</div>`;
+      repoListEl.style.display = 'block';
+      return;
+    }
+
+    repoListEl.innerHTML = repos.map(repo => `
+      <div class="github-repo-item" data-clone-url="${repo.cloneUrl}" data-name="${repo.name}">
+        <div class="github-repo-item-top">
+          <span class="repo-name">${repo.name}</span>
+          <span class="repo-visibility ${repo.private ? 'private' : 'public'}">${repo.private ? t('newProject.repoPrivate') : t('newProject.repoPublic')}</span>
+        </div>
+        <div class="repo-meta">
+          <span class="repo-owner">${repo.owner}</span>
+          ${repo.language ? `<span class="repo-lang">${repo.language}</span>` : ''}
+          <span class="repo-date">${formatRepoDate(repo.updatedAt)}</span>
+        </div>
+      </div>
+    `).join('');
+    repoListEl.style.display = 'block';
+
+    // Bind click handlers
+    repoListEl.querySelectorAll('.github-repo-item').forEach(item => {
+      item.onclick = () => {
+        const cloneUrl = item.dataset.cloneUrl;
+        const repoName = item.dataset.name;
+        const urlInput = document.getElementById('inp-repo-url');
+        const nameInput = document.getElementById('inp-name');
+        if (urlInput) urlInput.value = cloneUrl;
+        if (nameInput && !nameInput.value) nameInput.value = repoName;
+        repoListEl.style.display = 'none';
+      };
+    });
+  }
+
+  async function loadGitHubRepos(query) {
+    const repoListEl = document.getElementById('github-repo-list');
+    if (!repoListEl || !githubConnected) return;
+
+    repoListEl.innerHTML = `<div class="github-repo-loading"><span class="btn-spinner"></span> ${t('newProject.loadingRepos')}</div>`;
+    repoListEl.style.display = 'block';
+
+    try {
+      const result = await api.github.listRepos({ query, perPage: 20 });
+      if (result.success && result.repos) {
+        reposLoaded = true;
+        renderRepoList(result.repos);
+      } else {
+        repoListEl.innerHTML = `<div class="github-repo-empty">${result.error || t('newProject.noReposFound')}</div>`;
+      }
+    } catch (e) {
+      repoListEl.innerHTML = `<div class="github-repo-empty">${e.message}</div>`;
     }
   }
 
@@ -3580,13 +3713,37 @@ document.getElementById('btn-new-project').onclick = () => {
     };
   });
 
-  // Auto-fill name from repo URL
+  // Auto-fill name from repo URL + search repos
   document.getElementById('inp-repo-url')?.addEventListener('input', (e) => {
-    const url = e.target.value.trim();
-    if (url && !document.getElementById('inp-name').value) {
-      // Extract repo name from URL
-      const match = url.match(/\/([^\/]+?)(\.git)?$/);
-      if (match) document.getElementById('inp-name').value = match[1];
+    const value = e.target.value.trim();
+
+    if (isUrl(value)) {
+      // It's a URL - extract repo name and hide repo list
+      if (!document.getElementById('inp-name').value) {
+        const match = value.match(/\/([^\/]+?)(\.git)?$/);
+        if (match) document.getElementById('inp-name').value = match[1];
+      }
+      const repoListEl = document.getElementById('github-repo-list');
+      if (repoListEl) repoListEl.style.display = 'none';
+    } else if (githubConnected) {
+      // It's a search query - debounce and search repos
+      clearTimeout(repoSearchTimeout);
+      repoSearchTimeout = setTimeout(() => {
+        loadGitHubRepos(value || undefined);
+      }, 300);
+    }
+  });
+
+  // Show repo list on focus when input is empty
+  document.getElementById('inp-repo-url')?.addEventListener('focus', () => {
+    const value = document.getElementById('inp-repo-url').value.trim();
+    if (!isUrl(value) && githubConnected) {
+      const repoListEl = document.getElementById('github-repo-list');
+      if (repoListEl && repoListEl.children.length > 0) {
+        repoListEl.style.display = 'block';
+      } else if (!reposLoaded) {
+        loadGitHubRepos();
+      }
     }
   });
 

@@ -455,6 +455,8 @@ contextBridge.exposeInMainWorld('electron_api', {
     // Workflow dispatch
     workflows: (params) => ipcRenderer.invoke('github-workflows', params),
     dispatchWorkflow: (params) => ipcRenderer.invoke('github-dispatch-workflow', params),
+    // Repo browser
+    listRepos: (params) => ipcRenderer.invoke('github-list-repos', params),
   },
 
   // ==================== MCP REGISTRY ====================
@@ -535,6 +537,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     cancelGeneration: (params) => ipcRenderer.send('chat-cancel-generation', params),
     onGenerationProgress: createListener('chat-generation-progress'),
     onGenerationComplete: createListener('chat-generation-complete'),
+    enhancePrompt: (params) => ipcRenderer.invoke('chat-enhance-prompt', params),
     generateSuggestions: (params) => ipcRenderer.invoke('chat-generate-suggestions', params),
     analyzeSession: (params) => ipcRenderer.invoke('chat-analyze-session', params),
     applyClaudeMd: (params) => ipcRenderer.invoke('claude-md-apply', params),

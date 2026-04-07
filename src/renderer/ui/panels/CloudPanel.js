@@ -208,6 +208,12 @@ function buildHtml(settings) {
               <div class="cp-empty">${t('cloud.sessionsEmpty')}</div>
             </div>
           </div>
+
+          <!-- Reset -->
+          <div class="cp-section cp-reset-section">
+            <button class="cp-btn-sm cp-btn-danger" id="cp-reset-cloud-btn">${t('cloud.resetBtn')}</button>
+            <span class="cp-reset-hint">${t('cloud.resetHint')}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -690,6 +696,14 @@ function setupHandlers(context) {
         });
       });
     }
+  }
+
+  // Reset cloud button
+  const resetCloudBtn = document.getElementById('cp-reset-cloud-btn');
+  if (resetCloudBtn) {
+    resetCloudBtn.addEventListener('click', () => {
+      if (window._cloudReset) window._cloudReset();
+    });
   }
 
   // Load initial sync status
