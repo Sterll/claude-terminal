@@ -2720,7 +2720,7 @@ function _openCustomizeModal() {
     <div class="sc-list" id="sc-tab-list">
       ${ordered.map(tab => `
         <div class="sc-item" data-sc-id="${tab.id}" draggable="true">
-          <span class="sc-drag-handle" title="Glisser pour réordonner">⠿</span>
+          <span class="sc-drag-handle" title="${t('ui.sidebarDragHandle')}">⠿</span>
           <span class="sc-icon">${tab.svg}</span>
           <span class="sc-label">${tab.label}</span>
           <label class="settings-toggle${tab.locked ? ' sc-locked' : ''}">
@@ -2730,16 +2730,16 @@ function _openCustomizeModal() {
         </div>
       `).join('')}
     </div>
-    <p class="sc-hint">Glisse pour réordonner · Clic droit sur un onglet pour le masquer rapidement</p>
+    <p class="sc-hint">${t('ui.sidebarDragHint')}</p>
   `;
 
   const footer = `
-    <button class="btn btn-ghost" id="sc-reset-btn">Réinitialiser</button>
-    <button class="btn btn-primary" id="sc-close-btn">Fermer</button>
+    <button class="btn btn-ghost" id="sc-reset-btn">${t('ui.sidebarReset')}</button>
+    <button class="btn btn-primary" id="sc-close-btn">${t('common.close')}</button>
   `;
 
-  document.getElementById('modal-title').textContent = 'Personnaliser la barre latérale';
-  showModal('Personnaliser la barre latérale', content, footer);
+  document.getElementById('modal-title').textContent = t('ui.sidebarCustomize');
+  showModal(t('ui.sidebarCustomize'), content, footer);
 
   document.getElementById('sc-close-btn').onclick = () => closeModal();
   document.getElementById('sc-reset-btn').onclick = () => {
@@ -2830,7 +2830,7 @@ function _buildMoreDropdown() {
       <button class="nav-tab" data-more-tab="${tabId}" role="menuitem">
         ${svg}
         <span>${label}</span>
-        <span class="more-pin-btn" title="Épingler dans la barre">
+        <span class="more-pin-btn" title="${t('ui.sidebarPinToBar')}">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
         </span>
       </button>`;
@@ -2858,7 +2858,7 @@ function _buildMoreDropdown() {
   customizeBtn.role = 'menuitem';
   customizeBtn.innerHTML = `
     <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
-    <span>Personnaliser...</span>
+    <span>${t('ui.sidebarCustomizeEllipsis')}</span>
   `;
   customizeBtn.onclick = () => _openCustomizeModal();
   dropdown.appendChild(customizeBtn);
@@ -2901,11 +2901,11 @@ function _showTabCtxMenu(x, y, tabId) {
   menu.innerHTML = `
     <button class="tab-ctx-menu-item" id="_tab-ctx-unpin">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
-      Masquer de la barre
+      ${t('ui.sidebarHideFromBar')}
     </button>
     <button class="tab-ctx-menu-item" id="_tab-ctx-customize">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
-      Personnaliser la barre
+      ${t('ui.sidebarCustomizeBar')}
     </button>`;
   document.body.appendChild(menu);
   document.getElementById('_tab-ctx-unpin').onclick = () => { _unpinTab(tabId); menu.remove(); };

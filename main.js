@@ -272,14 +272,17 @@ function bootstrapApp() {
   /**
    * Cleanup before quit
    */
+  let _cleanedUp = false;
   function cleanup() {
+    if (_cleanedUp) return;
+    _cleanedUp = true;
     globalShortcut.unregisterAll();
     cleanupServices();
   }
 
   // App lifecycle
   app.whenReady().then(() => {
-    // Content Security Policy — allow only local file:// resources
+    // Content Security Policy - allow only local file:// resources
     // Prevents XSS attacks from loading remote scripts/styles/iframes
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
       callback({
@@ -308,7 +311,7 @@ function bootstrapApp() {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('app-will-quit');
     }
-    cleanupServices();
+    cleanup();
   });
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
