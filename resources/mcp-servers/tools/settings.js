@@ -22,19 +22,109 @@ function getDataDir() {
   return process.env.CT_DATA_DIR || '';
 }
 
+// All settings from settings.state.js - kept in sync
 const KNOWN_SETTINGS = new Set([
+  // Editor & UI
+  'editor',
+  'customEditorCommand',
   'accentColor',
   'language',
-  'editor',
+  'compactProjects',
+  'showDotfiles',
+  'showTabModeToggle',
+  'pinnedTabs',
+  'activeTab',
+  'tabsOrder',
+
+  // Terminal & Chat
   'defaultTerminalMode',
   'chatModel',
-  'chatEffort',
-  'pinnedTabs',
-  'startMinimized',
-  'startWithWindows',
-  'autoUpdates',
-  'enableNotifications',
+  'effortLevel',
+  'enable1MContext',
+  'maxTurns',
+  'restoreTerminalSessions',
+  'tabRenameOnSlashCommand',
+  'aiTabNaming',
+  'enableFollowupSuggestions',
+  'enhancePrompts',
+  'autoClaudeMdUpdate',
+
+  // Shortcuts
+  'shortcut',
+  'shortcuts',
   'globalShortcuts',
+  'globalShortcutsEnabled',
+  'terminalShortcuts',
+
+  // Notifications
+  'notificationsEnabled',
+  'closeAction',
+
+  // Quick actions
+  'customPresets',
+
+  // AI features
+  'aiCommitMessages',
+
+  // Hooks
+  'hooksEnabled',
+  'hooksConsentShown',
+
+  // Remote control
+  'remoteEnabled',
+  'remotePort',
+  'remoteSelectedIp',
+  'remotePersistentPin',
+
+  // File explorer
+  'explorerIgnorePatterns',
+
+  // Time tracking
+  'dailyGoal',
+
+  // Parallel tasks
+  'parallelMaxAgents',
+
+  // Agent colors
+  'agentColors',
+
+  // Cloud sync
+  'cloudServerUrl',
+  'cloudAutoConnect',
+  'cloudAutoSync',
+  'cloudSyncSettings',
+  'cloudSyncProjects',
+  'cloudSyncTimeTracking',
+  'cloudSyncConversations',
+  'cloudSyncSkills',
+  'cloudSyncMcpConfigs',
+  'cloudSyncKeybindings',
+  'cloudSyncMemory',
+  'cloudSyncHooksConfig',
+  'cloudSyncPlugins',
+  'cloudAutoUploadProjects',
+  'cloudExcludeSensitiveFiles',
+
+  // GitHub Enterprise
+  'githubApiUrl',
+  'githubHostname',
+
+  // Telemetry (read-only via MCP)
+  'telemetryEnabled',
+  'telemetryCategories',
+  'telemetryConsentShown',
+]);
+
+// Sensitive settings - readable but NOT writable via MCP
+const READONLY_SETTINGS = new Set([
+  'skipPermissions',        // Security: bypasses Claude permissions
+  'cloudApiKey',            // Credentials
+  'remotePersistentPinValue', // Auth PIN
+  'telemetryEnabled',       // Privacy: user must opt-in via UI
+  'telemetryUuid',          // Privacy: tracking ID
+  'telemetryCategories',    // Privacy
+  'telemetryConsentShown',  // Privacy
+  'hooksConsentShown',      // Consent state
 ]);
 
 function loadSettings() {
@@ -145,22 +235,31 @@ async function handle(name, args) {
   try {
     if (name === 'settings_get') {
       const settings = loadSettings();
+      const allKeys = new Set([...KNOWN_SETTINGS, ...READONLY_SETTINGS]);
 
       if (args.key) {
         const key = args.key;
-        if (!KNOWN_SETTINGS.has(key)) {
-          const available = Array.from(KNOWN_SETTINGS).join(', ');
-          return fail(`Unknown setting key "${key}". Known keys: ${available}`);
+        if (!allKeys.has(key)) {
+          return fail(`Unknown setting key "${key}". Use settings_get without a key to see all available settings.`);
         }
         const value = settings[key];
-        return ok(`${key}: ${formatSettingValue(key, value)}`);
+        const ro = READONLY_SETTINGS.has(key) ? ' (read-only)' : '';
+        return ok(`${key}: ${formatSettingValue(key, value)}${ro}`);
       }
 
-      // Return all settings
+      // Return all settings grouped by category
       const lines = [];
       for (const key of KNOWN_SETTINGS) {
         const value = settings[key];
         lines.push(`  ${key}: ${formatSettingValue(key, value)}`);
+      }
+      if (READONLY_SETTINGS.size > 0) {
+        lines.push('');
+        lines.push('Read-only settings:');
+        for (const key of READONLY_SETTINGS) {
+          const value = settings[key];
+          lines.push(`  ${key}: ${formatSettingValue(key, value)}`);
+        }
       }
 
       return ok(`Claude Terminal Settings:\n${'─'.repeat(40)}\n${lines.join('\n')}`);
@@ -171,9 +270,11 @@ async function handle(name, args) {
       if (args.value === undefined) return fail('Missing required parameter: value');
 
       const key = args.key;
+      if (READONLY_SETTINGS.has(key)) {
+        return fail(`Setting "${key}" is read-only and cannot be modified via MCP. Change it in the Claude Terminal settings UI.`);
+      }
       if (!KNOWN_SETTINGS.has(key)) {
-        const available = Array.from(KNOWN_SETTINGS).join(', ');
-        return fail(`Unknown setting key "${key}". Known keys: ${available}`);
+        return fail(`Unknown setting key "${key}". Use settings_get without a key to see all available settings.`);
       }
 
       const settings = loadSettings();
