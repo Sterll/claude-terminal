@@ -999,6 +999,64 @@ async function dispatchWorkflow(owner, repo, workflowId, ref, inputs = {}) {
   }
 }
 
+/**
+ * List repositories for the authenticated user
+ * @param {string} query - Optional search query
+ * @param {number} page - Page number (default: 1)
+ * @param {number} perPage - Results per page (default: 30)
+ * @returns {Promise<Object>} - { authenticated, repos[] }
+ */
+async function listUserRepos(query, page = 1, perPage = 30) {
+  const token = await getToken();
+  if (!token) return { authenticated: false, repos: [] };
+
+  try {
+    let apiPath;
+    if (query && query.trim()) {
+      // Search repos accessible to the user
+      const q = encodeURIComponent(query.trim());
+      apiPath = `/search/repositories?q=${q}+in:name&sort=updated&order=desc&per_page=${perPage}&page=${page}`;
+    } else {
+      // List user's repos sorted by recently updated
+      apiPath = `/user/repos?sort=updated&direction=desc&per_page=${perPage}&page=${page}&affiliation=owner,collaborator,organization_member`;
+    }
+
+    const response = await httpsRequest({
+      hostname: config.apiHostname,
+      path: apiPath,
+      method: 'GET',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'Claude-Terminal'
+      }
+    });
+
+    if (response.status === 200) {
+      const rawRepos = query && query.trim() ? (response.data.items || []) : (response.data || []);
+      const repos = rawRepos.map(repo => ({
+        id: repo.id,
+        name: repo.name,
+        fullName: repo.full_name,
+        owner: repo.owner?.login,
+        private: repo.private,
+        description: repo.description,
+        language: repo.language,
+        updatedAt: repo.updated_at,
+        cloneUrl: repo.clone_url,
+        sshUrl: repo.ssh_url,
+        stargazersCount: repo.stargazers_count
+      }));
+      return { authenticated: true, repos };
+    }
+
+    return { authenticated: true, repos: [], error: `API error: ${response.status}` };
+  } catch (e) {
+    console.error('Error listing user repos:', e);
+    return { authenticated: true, repos: [], error: e.message };
+  }
+}
+
 module.exports = {
   startDeviceFlow,
   pollForToken,
@@ -1028,5 +1086,7 @@ module.exports = {
   getPullRequestComments,
   // New: Workflow dispatch
   getWorkflows,
-  dispatchWorkflow
+  dispatchWorkflow,
+  // New: Repo browser
+  listUserRepos
 };

@@ -270,6 +270,16 @@ function registerGitHubHandlers() {
     }
   });
 
+  // List user repositories (for clone wizard)
+  ipcMain.handle('github-list-repos', async (event, { query, page, perPage }) => {
+    try {
+      const result = await GitHubAuthService.listUserRepos(query, page, perPage);
+      return { success: true, ...result };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
   // Create PR review (approve, request changes, comment)
   ipcMain.handle('github-create-pr-review', async (event, { remoteUrl, pullNumber, reviewEvent, body }) => {
     try {

@@ -695,6 +695,111 @@
   text-decoration: underline;
 }
 
+/* Clone input wrapper */
+.clone-input-wrapper {
+  position: relative;
+}
+
+.clone-input-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.clone-url-input {
+  padding-left: 32px !important;
+}
+
+/* GitHub repo browser */
+.github-repo-list {
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  margin-top: 8px;
+}
+
+.github-repo-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-color);
+  transition: background 0.15s;
+}
+
+.github-repo-item:last-child {
+  border-bottom: none;
+}
+
+.github-repo-item:hover {
+  background: var(--bg-hover);
+}
+
+.github-repo-item-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.github-repo-item .repo-name {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.github-repo-item .repo-visibility {
+  font-size: var(--font-2xs);
+  padding: 1px 6px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.github-repo-item .repo-visibility.private {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 30%, transparent);
+}
+
+.github-repo-item .repo-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+}
+
+.github-repo-item .repo-meta .repo-lang::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-right: 3px;
+  vertical-align: middle;
+}
+
+.github-repo-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+}
+
+.github-repo-empty {
+  padding: 16px;
+  text-align: center;
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+}
+
 .github-account-card {
   padding: 16px;
 }
