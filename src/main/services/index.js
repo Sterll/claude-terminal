@@ -163,6 +163,21 @@ function _startMcpTriggerPolling(mainWindow) {
         mainWindow.webContents.send('control-tower:interrupt', { projectId: data.projectId });
       }
     });
+
+    // Terminal MCP tools (create, send, close)
+    await _pollTriggerDirAsync(path.join(dataDir, 'terminals', 'triggers'), (data) => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (data.action === 'create') {
+        console.log(`[Services] MCP terminal create: ${data.projectName} (${data.mode || 'terminal'})`);
+        mainWindow.webContents.send('mcp-terminal:create', data);
+      } else if (data.action === 'send') {
+        console.log(`[Services] MCP terminal send: "${data.command}" to ${data.projectName}`);
+        mainWindow.webContents.send('mcp-terminal:send', data);
+      } else if (data.action === 'close') {
+        console.log(`[Services] MCP terminal close: ${data.projectName}`);
+        mainWindow.webContents.send('mcp-terminal:close', data);
+      }
+    });
   }, 2000);
 }
 

@@ -1001,6 +1001,97 @@ api.webapp.onPortDetected(({ projectIndex, port }) => {
   refreshWebAppInfoPanel(projectIndex);
 });
 
+// ========== MCP Terminal (create/send/close from MCP tools) ==========
+
+if (api.mcpTerminal) {
+  api.mcpTerminal.onCreate(async (data) => {
+    try {
+      const project = getProject(data.projectId);
+      if (!project) {
+        console.warn(`[MCP Terminal] Project not found: ${data.projectId}`);
+        return;
+      }
+      console.log(`[MCP Terminal] Creating terminal for "${project.name}" (${data.mode || 'terminal'})`);
+      await TerminalManager.createTerminal(project, {
+        mode: data.mode || null,
+        runClaude: data.mode === 'chat',
+      });
+    } catch (e) {
+      console.error('[MCP Terminal] Create error:', e);
+    }
+  });
+
+  api.mcpTerminal.onSend((data) => {
+    try {
+      // Find the active terminal for this project
+      const terminals = terminalsState.get().terminals;
+      let targetId = null;
+      for (const [id, td] of terminals) {
+        if (td.project?.id === data.projectId) {
+          targetId = id;
+          break;
+        }
+      }
+      if (targetId === null) {
+        console.warn(`[MCP Terminal] No terminal found for project: ${data.projectId}`);
+        return;
+      }
+      console.log(`[MCP Terminal] Sending command to terminal ${targetId}: ${data.command}`);
+      api.terminal.input({ id: targetId, data: data.command + '\r' });
+    } catch (e) {
+      console.error('[MCP Terminal] Send error:', e);
+    }
+  });
+
+  api.mcpTerminal.onClose((data) => {
+    try {
+      const terminals = terminalsState.get().terminals;
+      let targetId = null;
+      if (data.terminalId) {
+        targetId = parseInt(data.terminalId, 10);
+      } else {
+        for (const [id, td] of terminals) {
+          if (td.project?.id === data.projectId) {
+            targetId = id;
+            break;
+          }
+        }
+      }
+      if (targetId === null) {
+        console.warn(`[MCP Terminal] No terminal found to close for project: ${data.projectId}`);
+        return;
+      }
+      console.log(`[MCP Terminal] Closing terminal ${targetId}`);
+      TerminalManager.closeTerminal(targetId);
+    } catch (e) {
+      console.error('[MCP Terminal] Close error:', e);
+    }
+  });
+}
+
+// Sync terminals.json so MCP terminal_list can read active terminals
+let _termSyncTimer = null;
+terminalsState.subscribe(() => {
+  if (_termSyncTimer) clearTimeout(_termSyncTimer);
+  _termSyncTimer = setTimeout(() => {
+    try {
+      const terminals = terminalsState.get().terminals;
+      const list = [];
+      for (const [id, td] of terminals) {
+        list.push({
+          id,
+          projectId: td.project?.id || null,
+          projectName: td.project?.name || td.name || '?',
+          mode: td.mode || 'terminal',
+          started: td.createdAt || null,
+        });
+      }
+      const filePath = path.join(dataDir, 'terminals.json');
+      fsp.writeFile(filePath, JSON.stringify(list, null, 2)).catch(() => {});
+    } catch (_) {}
+  }, 500);
+});
+
 // ========== API ==========
 async function startApiServer(projectIndex) {
   const projects = projectsState.get().projects;

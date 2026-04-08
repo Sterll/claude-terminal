@@ -736,5 +736,12 @@ contextBridge.exposeInMainWorld('electron_api', {
   controlTower: {
     // Fired by main process when an MCP interrupt trigger is received
     onInterrupt: createListener('control-tower:interrupt'),
+  },
+
+  // ==================== MCP TERMINAL ====================
+  mcpTerminal: {
+    onCreate: createListener('mcp-terminal:create'),
+    onSend: createListener('mcp-terminal:send'),
+    onClose: createListener('mcp-terminal:close'),
   }
 });
