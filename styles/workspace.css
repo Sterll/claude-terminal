@@ -743,3 +743,45 @@
 .workspace-search-input::placeholder {
   color: var(--text-muted);
 }
+
+/* ── Advisor Chat View ─────────────────── */
+
+.workspace-advisor-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.workspace-advisor-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+.workspace-advisor-title {
+  font-weight: 600;
+  font-size: var(--font-base);
+  color: var(--text-primary);
+}
+
+.workspace-advisor-badge {
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--ws-color, var(--accent)) 15%, transparent);
+  color: var(--ws-color, var(--accent));
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.workspace-advisor-chat {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}

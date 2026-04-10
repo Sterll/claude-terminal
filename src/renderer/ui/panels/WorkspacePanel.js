@@ -1,17 +1,19 @@
 /**
  * WorkspacePanel
  * Manages workspaces: project grouping, knowledge base docs, concept links.
- * Three views: list, detail, editor.
+ * Four views: list, detail, editor, advisor.
  */
 
 const { t } = require('../../i18n');
 
 let _ctx = null;
-let _view = 'list';         // 'list' | 'detail' | 'editor'
+let _view = 'list';         // 'list' | 'detail' | 'editor' | 'advisor'
 let _container = null;
 let _saveTimer = null;
 let _saveIndicatorTimer = null;
 let _stateUnsubscribe = null;
+let _advisorChatInstance = null;
+let _advisorWorkspaceId = null;
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -90,16 +92,29 @@ function cleanup() {
   if (_saveTimer) clearTimeout(_saveTimer);
   if (_saveIndicatorTimer) clearTimeout(_saveIndicatorTimer);
   if (_stateUnsubscribe) { _stateUnsubscribe(); _stateUnsubscribe = null; }
+  destroyAdvisorChat();
+  _view = 'list';
+}
+
+function destroyAdvisorChat() {
+  if (_advisorChatInstance) {
+    _advisorChatInstance.destroy();
+    _advisorChatInstance = null;
+  }
+  _advisorWorkspaceId = null;
 }
 
 // ========== RENDER DISPATCHER ==========
 
 function render() {
   if (!_container) return;
+  // Don't re-render advisor view on state changes - it would destroy the active chat
+  if (_view === 'advisor' && _advisorChatInstance) return;
   switch (_view) {
     case 'list': renderList(); break;
     case 'detail': renderDetail(); break;
     case 'editor': renderEditor(); break;
+    case 'advisor': renderAdvisor(); break;
   }
 }
 
@@ -325,7 +340,7 @@ function renderDetail() {
   });
 
   // Chat workspace
-  document.getElementById('ws-chat-btn')?.addEventListener('click', () => openWorkspaceChat(ws, wsProjects, docs, links));
+  document.getElementById('ws-chat-btn')?.addEventListener('click', () => openWorkspaceChat(ws));
 
   // Add project
   document.getElementById('ws-add-project')?.addEventListener('click', () => showAddProjectDropdown(ws));
@@ -806,12 +821,16 @@ function bindCreate(btnId) {
 
 // ========== WORKSPACE CHAT ==========
 
-async function openWorkspaceChat(ws, projects, docs, links) {
+function openWorkspaceChat(ws) {
+  _advisorWorkspaceId = ws.id;
+  _view = 'advisor';
+  renderAdvisor();
+}
+
+function buildAdvisorSystemPrompt(ws, projects, docs) {
   const { path: pathModule, fs: fsModule } = window.electron_nodeModules;
-  const TerminalManager = require('../components/TerminalManager');
   const paths = require('../../utils/paths');
 
-  // Read all doc contents for context
   const docsContent = [];
   const wsDocsDir = pathModule.join(paths.workspacesDir, ws.id, 'docs');
   for (const doc of docs) {
@@ -821,7 +840,6 @@ async function openWorkspaceChat(ws, projects, docs, links) {
     } catch { /* skip unreadable */ }
   }
 
-  // Build the system prompt
   const projectsList = projects.map(p =>
     `- **${p.name}** (\`${p.path}\`)${p.type ? ` [${p.type}]` : ''}`
   ).join('\n');
@@ -830,30 +848,32 @@ async function openWorkspaceChat(ws, projects, docs, links) {
     ? docsContent.map(d => `### ${d.title}\n${d.content}`).join('\n\n---\n\n')
     : '(No documents yet)';
 
+  const wsState = require('../../state/workspace.state');
+  const links = wsState.workspaceState.get().links || [];
   const linksSection = links.length > 0
-    ? links.map(l => `- ${l.sourceId} **${l.label}** ${l.targetId}${l.description ? ` — ${l.description}` : ''}`).join('\n')
+    ? links.map(l => `- ${l.sourceId} **${l.label}** ${l.targetId}${l.description ? ` - ${l.description}` : ''}`).join('\n')
     : '';
 
-  const systemPrompt = `You are a **Product Advisor & Knowledge Manager** for the workspace "${ws.name}".
+  return `You are a **Product Advisor & Knowledge Manager** for the workspace "${ws.name}".
 ${ws.description ? `\nWorkspace purpose: ${ws.description}` : ''}
 
 ## Your Role
 
-You are a strategic partner who deeply understands all the projects in this workspace. You help the user think about their product as a whole — architecture, decisions, priorities, and cross-project concerns.
+You are a strategic partner who deeply understands all the projects in this workspace. You help the user think about their product as a whole - architecture, decisions, priorities, and cross-project concerns.
 
 ## Your Responsibilities
 
-1. **Strategic Thinking** — Help reason about architecture, tradeoffs, roadmap priorities, and cross-project impacts. When the user discusses a change in one project, proactively consider how it affects the others.
+1. **Strategic Thinking** - Help reason about architecture, tradeoffs, roadmap priorities, and cross-project impacts. When the user discusses a change in one project, proactively consider how it affects the others.
 
-2. **Knowledge Management** — You are the guardian of this workspace's knowledge base. During conversations:
+2. **Knowledge Management** - You are the guardian of this workspace's knowledge base. During conversations:
    - When important decisions are made, note them for documentation
    - When architecture patterns are discussed, suggest documenting them
    - When you notice gaps in the KB, mention what should be documented
    - At the end of significant discussions, summarize what should be added to the KB
 
-3. **Cross-Project Awareness** — You know all the projects, their relationships, and their tech stacks. Connect the dots between projects when relevant. If the user asks about one project, consider the implications for related ones.
+3. **Cross-Project Awareness** - You know all the projects, their relationships, and their tech stacks. Connect the dots between projects when relevant. If the user asks about one project, consider the implications for related ones.
 
-4. **Advisory Mode** — This is a discussion chat, not a coding session. You advise, analyze, suggest, and document. You don't write code directly but you can discuss code architecture, review approaches, and suggest implementations.
+4. **Advisory Mode** - This is a discussion chat, not a coding session. You advise, analyze, suggest, and document. You don't write code directly but you can discuss code architecture, review approaches, and suggest implementations.
 
 ## Projects in this Workspace
 
@@ -898,27 +918,54 @@ workspace_add_link({ workspace: "${ws.id}", source: "A", target: "B", label: "de
 - Reference specific docs from the KB when relevant
 - When giving advice, consider the full workspace context
 - Proactively save important decisions, architecture notes, and meeting summaries to the workspace KB using \`workspace_write_doc\`
-- Be concise but thorough — you're talking to a developer, not writing documentation
-- ALWAYS use the workspace MCP tools above for persistence — never use Write/Edit on MEMORY.md or project files for knowledge`;
+- Be concise but thorough - you're talking to a developer, not writing documentation
+- ALWAYS use the workspace MCP tools above for persistence - never use Write/Edit on MEMORY.md or project files for knowledge`;
+}
 
-  // Use the first project as the "anchor" for the chat terminal, or a fallback
+function renderAdvisor() {
+  const wsState = require('../../state/workspace.state');
+  const state = wsState.workspaceState.get();
+  const ws = wsState.getWorkspace(_advisorWorkspaceId || state.activeWorkspaceId);
+  if (!ws) { _view = 'detail'; render(); return; }
+
+  const projectsState = require('../../state/projects.state');
+  const allProjects = projectsState.projectsState.get().projects;
+  const wsProjects = (ws.projectIds || []).map(id => allProjects.find(p => p.id === id)).filter(Boolean);
+  const docs = state.docs || [];
+
+  const systemPrompt = buildAdvisorSystemPrompt(ws, wsProjects, docs);
+
   const homedir = window.electron_nodeModules.os.homedir();
-  const anchorProject = projects[0] || { id: 'workspace', name: ws.name, path: homedir, type: 'general' };
+  const anchorProject = wsProjects[0] || { id: 'workspace', name: ws.name, path: homedir, type: 'general' };
 
-  // Switch to the Claude tab (terminal/chat view)
-  const termTab = document.querySelector('[data-tab="claude"]');
-  if (termTab) termTab.click();
+  destroyAdvisorChat();
 
-  // Small delay to let tab switch complete
-  await new Promise(r => setTimeout(r, 100));
+  _container.innerHTML = `
+    <div class="workspace-advisor-layout">
+      <div class="workspace-advisor-header">
+        <button class="workspace-back-btn" id="ws-advisor-back" title="${escapeHtml(t('workspace.backToDetail'))}">${ICONS.back}</button>
+        <span class="workspace-card-icon" style="font-size:1.1rem">${ws.icon || '\u{1F4E6}'}</span>
+        <span class="workspace-advisor-title">${escapeHtml(ws.name)}</span>
+        <span class="workspace-advisor-badge" style="--ws-color: ${escapeHtml(ws.color || 'var(--accent)')}">Advisor</span>
+      </div>
+      <div class="workspace-advisor-chat" id="ws-advisor-chat-wrapper"></div>
+    </div>
+  `;
 
-  await TerminalManager.createTerminal(anchorProject, {
-    mode: 'chat',
-    name: `${ws.icon || '📦'} ${ws.name}`,
-    systemPrompt,
-    skipPermissions: true,
-    tabTag: { label: 'Advisor', color: ws.color || '#d97706' },
+  document.getElementById('ws-advisor-back')?.addEventListener('click', () => {
+    destroyAdvisorChat();
+    _view = 'detail';
+    render();
   });
+
+  const chatWrapper = document.getElementById('ws-advisor-chat-wrapper');
+  if (chatWrapper) {
+    const { createChatView } = require('../components/ChatView');
+    _advisorChatInstance = createChatView(chatWrapper, anchorProject, {
+      systemPrompt,
+      skipPermissions: true,
+    });
+  }
 }
 
 module.exports = { init, loadPanel, cleanup };
