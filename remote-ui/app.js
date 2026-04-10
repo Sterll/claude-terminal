@@ -173,19 +173,20 @@ function init() {
   }
 
   // Auto-detect cloud hosting: if served from a cloud server (has /health endpoint),
-  // default to cloud mode and use current origin as relay URL
-  _detectCloudHosting();
-
-  if (conn.mode === 'relay' && conn.cloudUrl && conn.cloudApiKey) {
-    // Relay mode: skip PIN, connect directly
-    _showMain();
-    _openWS();
-  } else if (conn.token) {
-    _showMain();
-    _openWS();
-  } else {
-    _showAuth();
-  }
+  // default to cloud mode and use current origin as relay URL.
+  // Must await detection before deciding which screen to show.
+  _detectCloudHosting().then(() => {
+    if (conn.mode === 'relay' && conn.cloudUrl && conn.cloudApiKey) {
+      // Relay mode: skip PIN, connect directly
+      _showMain();
+      _openWS();
+    } else if (conn.token) {
+      _showMain();
+      _openWS();
+    } else {
+      _showAuth();
+    }
+  });
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').then((reg) => {
@@ -230,6 +231,14 @@ function _showAuth(showCloudError) {
   if (cloudSubmitBtn) cloudSubmitBtn.disabled = false;
   const cloudErrEl = $('cloud-key-error');
   if (cloudErrEl) cloudErrEl.classList.toggle('hidden', !showCloudError);
+  // Show the correct auth section based on mode
+  const isCloud = conn.mode === 'relay';
+  const pinSection = $('auth-pin-section');
+  const cloudSection = $('auth-cloud-section');
+  if (pinSection && cloudSection) {
+    pinSection.classList.toggle('hidden', isCloud);
+    cloudSection.classList.toggle('hidden', !isCloud);
+  }
   connSetState('auth');
 }
 
@@ -354,10 +363,15 @@ function submitCloudKey(apiKey) {
 
 function _detectCloudHosting() {
   // If we're on a cloud server, auto-show cloud auth mode
-  // Detection: try /health endpoint — if it returns cloud:true, we're on a cloud server
-  fetch('/health').then(r => r.json()).then(data => {
+  // Detection: try /health endpoint - if it returns cloud:true, we're on a cloud server
+  return fetch('/health').then(r => r.json()).then(data => {
     if (data && data.cloud === true && conn.mode !== 'relay') {
-      // We're hosted on a cloud server — show cloud auth by default
+      // We're hosted on a cloud server - set relay mode with current origin
+      conn.mode = 'relay';
+      conn.cloudUrl = window.location.origin;
+      localStorage.setItem('remote_conn_mode', 'relay');
+      localStorage.setItem('remote_cloud_url', conn.cloudUrl);
+      // Show cloud auth section (API key input) instead of PIN
       const pinSection = $('auth-pin-section');
       const cloudSection = $('auth-cloud-section');
       if (pinSection && cloudSection) {
