@@ -20,6 +20,7 @@ class UpdaterService {
     this.lastKnownVersion = null;
     this.isDownloading = false;
     this.installAfterDownload = false;
+    this.isVerifying = false;
   }
 
   /**
@@ -86,6 +87,8 @@ class UpdaterService {
     autoUpdater.on('update-available', (info) => {
       this.lastKnownVersion = info.version;
       this.isDownloading = true;
+      // Skip UI update if this event was triggered by verifyLatestBeforeNotify
+      if (this.isVerifying) return;
       // Pre-fetch changelog while downloading
       this.pendingChangelog = this.fetchReleaseNotes(info.version);
       this.safeSend('update-status', { status: 'available', version: info.version });
@@ -102,6 +105,9 @@ class UpdaterService {
         this.quitAndInstall();
         return;
       }
+
+      // Skip if triggered during verification (will be handled by verifyLatestBeforeNotify)
+      if (this.isVerifying) return;
 
       // Re-check if an even newer version exists before showing banner
       this.verifyLatestBeforeNotify(info.version);
@@ -190,21 +196,24 @@ class UpdaterService {
    * @param {string} downloadedVersion
    */
   async verifyLatestBeforeNotify(downloadedVersion) {
+    this.isVerifying = true;
     try {
       const result = await autoUpdater.checkForUpdates();
       if (result && result.updateInfo) {
         const serverVersion = result.updateInfo.version;
         if (serverVersion !== downloadedVersion) {
           console.debug(`Downloaded ${downloadedVersion} but ${serverVersion} is available, re-downloading...`);
+          this.isVerifying = false;
           // autoDownload will handle downloading the newer version
           // Don't show the banner yet - wait for the new download
-          this.safeSend('update-status', { status: 'downloading', progress: 0 });
+          this.safeSend('update-status', { status: 'available', version: serverVersion });
           return;
         }
       }
     } catch (err) {
       console.error('Verify latest failed:', err);
     }
+    this.isVerifying = false;
 
     // Use pre-fetched changelog or fetch now
     const changelog = await (this.pendingChangelog || this.fetchReleaseNotes(downloadedVersion));
