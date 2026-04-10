@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/downloads/Sterll/claude-terminal/total?color=d97706&label=downloads" alt="Downloads" />
-  <img src="https://img.shields.io/badge/version-1.2.2-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.2.3-orange" alt="Version" />
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-blue" alt="Platform" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="License" />
   <img src="https://img.shields.io/badge/electron-28-purple" alt="Electron" />
@@ -163,6 +163,7 @@ npm install
 - Type @project to attach README.md and file tree from any project as context
 - Type **@tab** to share your current terminal session or **@conversation** to reference another chat thread
 - Type **@context** to inject a context pack or **@prompt** to insert a saved prompt template directly into your message
+- **Prompt enhancement**: one-click AI rewrite of your message using Haiku for clearer instructions before sending
 - Interrupt streaming mid-turn, auto-generated tab names via haiku model
 - Compacting indicator shown during conversation compaction so you know when context is being compressed
 
@@ -178,7 +179,7 @@ npm install
 - Organize projects in nested folders with drag-and-drop
 - Customize each project with colors and emoji icons
 - Quick Actions toolbar: configurable one-click commands per project (build, test, deploy, custom scripts...)
-- Built-in file explorer with tree view, multi-select, search, git status indicators, and inline rename
+- Built-in file explorer with tree view, multi-select, search, git status indicators, and inline rename; right-click any file to attach it as context in the current chat
 - Modular project type system (standard, FiveM, webapp, Python, API, Minecraft)
 - Per-project settings modal
 
@@ -199,6 +200,7 @@ npm install
 ### GitHub Integration
 - OAuth Device Flow authentication (secure, no token copy-paste)
 - **GitHub Enterprise support**: connect to self-hosted GitHub Enterprise instances
+- **Repository search in clone wizard**: search GitHub repos by name without leaving the app
 - **CI/CD status pill**: live inline status of the latest workflow run shown directly in the terminal header bar, with a Fix-it button to jump straight to a failing step
 - View CI/CD workflow runs per repository
 - View, create, and review pull requests from the app; multi-forge support (GitHub, GitLab)
@@ -308,7 +310,8 @@ npm install
 - Cron, hook, and webhook triggers
 - MCP tools for full workflow control from Claude Code
 
-### Cloud Sync
+### Connectivity (Remote & Cloud)
+- Unified **Connectivity tab** combining local remote access and cloud sync in one place
 - Self-hosted Docker relay server for remote project access
 - Project upload and auto-sync with file watcher and conflict resolution
 - **Per-entity sync toggles**: choose exactly which data syncs (projects, settings, skills, agents, MCP configs, keybindings, memory, hooks, archives)
