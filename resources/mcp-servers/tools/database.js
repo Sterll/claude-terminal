@@ -104,13 +104,49 @@ function findConnection(nameOrId) {
   );
 }
 
+async function closeClient(id) {
+  if (!connections.has(id)) return;
+  const { client, type } = connections.get(id);
+  try {
+    if (type === 'sqlite') client.close();
+    else if (type === 'mysql' || type === 'mariadb') await client.end();
+    else if (type === 'postgresql') await client.end();
+    else if (type === 'mongodb') await client.mongoClient.close();
+    else if (type === 'redis') client.disconnect();
+  } catch (e) {
+    log(`Error closing ${id}: ${e.message}`);
+  }
+  connections.delete(id);
+}
+
+async function pingClient(client, type) {
+  if (type === 'sqlite') {
+    client.prepare('SELECT 1').get();
+  } else if (type === 'mysql' || type === 'mariadb') {
+    await client.ping();
+  } else if (type === 'postgresql') {
+    await client.query('SELECT 1');
+  } else if (type === 'mongodb') {
+    await client.db.admin().ping();
+  } else if (type === 'redis') {
+    await client.ping();
+  }
+}
+
 async function getClient(nameOrId) {
   const config = findConnection(nameOrId);
   if (!config) throw new Error(`Connection "${nameOrId}" not found. Use db_list_connections to see available connections.`);
 
-  // Return cached connection if available
+  // Return cached connection if available and alive
   if (connections.has(config.id)) {
-    return { client: connections.get(config.id).client, type: config.type, config };
+    const cached = connections.get(config.id);
+    try {
+      await pingClient(cached.client, config.type);
+      return { client: cached.client, type: config.type, config };
+    } catch (e) {
+      log(`Stale connection detected for ${config.name}: ${e.message}. Reconnecting...`);
+      await closeClient(config.id);
+    }
   }
 
   // Create new connection
@@ -926,6 +962,28 @@ const tools = [
       required: ['connection'],
     },
   },
+  {
+    name: 'db_disconnect',
+    description: 'Disconnect from a database. Closes the active connection and clears it from cache. The next query will automatically reconnect. Useful when a connection is in a bad state.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        connection: { type: 'string', description: 'Connection name or ID to disconnect (from db_list_connections)' },
+      },
+      required: ['connection'],
+    },
+  },
+  {
+    name: 'db_reconnect',
+    description: 'Force reconnect to a database. Closes the current connection (if any) and opens a fresh one, then pings to verify it works. Use this to recover from connection errors.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        connection: { type: 'string', description: 'Connection name or ID to reconnect (from db_list_connections)' },
+      },
+      required: ['connection'],
+    },
+  },
 ];
 
 // -- Tool handler -------------------------------------------------------------
@@ -1051,25 +1109,48 @@ async function handle(name, args) {
       const removed = configs[idx];
 
       // Close cached connection if active
-      if (connections.has(removed.id)) {
-        try {
-          const { client, type } = connections.get(removed.id);
-          if (type === 'sqlite') client.close();
-          else if (type === 'mysql' || type === 'mariadb') await client.end();
-          else if (type === 'postgresql') await client.end();
-          else if (type === 'mongodb') await client.mongoClient.close();
-          else if (type === 'redis') client.disconnect();
-        } catch (e) {
-          log(`Error closing connection ${removed.id}: ${e.message}`);
-        }
-        connections.delete(removed.id);
-      }
+      await closeClient(removed.id);
 
       configs.splice(idx, 1);
       saveConnectionConfigs(configs);
       log(`Removed connection: ${removed.name} (${removed.type})`);
 
       return ok(`Connection "${removed.name}" (${removed.type}) removed successfully.`);
+    }
+
+    if (name === 'db_disconnect') {
+      if (!args.connection) return fail('Missing required parameter: connection');
+
+      const config = findConnection(args.connection);
+      if (!config) return fail(`Connection "${args.connection}" not found. Use db_list_connections to see available connections.`);
+
+      if (!connections.has(config.id)) {
+        return ok(`Connection "${config.name}" is not currently active. Nothing to disconnect.`);
+      }
+
+      await closeClient(config.id);
+      log(`Disconnected: ${config.name} (${config.type})`);
+      return ok(`Disconnected from "${config.name}" (${config.type}). Next query will auto-reconnect.`);
+    }
+
+    if (name === 'db_reconnect') {
+      if (!args.connection) return fail('Missing required parameter: connection');
+
+      const config = findConnection(args.connection);
+      if (!config) return fail(`Connection "${args.connection}" not found. Use db_list_connections to see available connections.`);
+
+      // Close existing connection if any
+      await closeClient(config.id);
+
+      // Open fresh connection
+      const password = getPassword(config.id);
+      const client = await createClient(config, password);
+      connections.set(config.id, { client, type: config.type });
+
+      // Ping to verify
+      await pingClient(client, config.type);
+      log(`Reconnected: ${config.name} (${config.type})`);
+      return ok(`Reconnected to "${config.name}" (${config.type}) successfully. Connection is alive.`);
     }
 
     return fail(`Unknown database tool: ${name}`);
@@ -1082,19 +1163,10 @@ async function handle(name, args) {
 // -- Cleanup ------------------------------------------------------------------
 
 async function cleanup() {
-  for (const [id, { client, type }] of connections) {
-    try {
-      if (type === 'sqlite') client.close();
-      else if (type === 'mysql' || type === 'mariadb') await client.end();
-      else if (type === 'postgresql') await client.end();
-      else if (type === 'mongodb') await client.mongoClient.close();
-      else if (type === 'redis') client.disconnect();
-      log(`Closed connection: ${id}`);
-    } catch (e) {
-      log(`Error closing ${id}: ${e.message}`);
-    }
+  for (const id of connections.keys()) {
+    await closeClient(id);
+    log(`Closed connection: ${id}`);
   }
-  connections.clear();
 }
 
 // -- Exports ------------------------------------------------------------------
