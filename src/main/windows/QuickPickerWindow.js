@@ -3,7 +3,7 @@
  * Manages the quick project picker overlay window
  */
 
-const { BrowserWindow, ipcMain } = require('electron');
+const { BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('path');
 const { getMainWindow, showMainWindow } = require('./MainWindow');
 
@@ -14,6 +14,17 @@ let quickPickerWindow = null;
  */
 function createQuickPickerWindow() {
   if (quickPickerWindow) {
+    // Reposition to the same display as the main window
+    const mw = getMainWindow();
+    const disp = mw && !mw.isDestroyed()
+      ? screen.getDisplayNearestPoint(mw.getBounds())
+      : screen.getPrimaryDisplay();
+    const wa = disp.workArea;
+    const bounds = quickPickerWindow.getBounds();
+    quickPickerWindow.setPosition(
+      Math.round(wa.x + (wa.width - bounds.width) / 2),
+      Math.round(wa.y + (wa.height - bounds.height) / 2)
+    );
     quickPickerWindow.show();
     quickPickerWindow.focus();
     // Force reload projects
@@ -21,15 +32,25 @@ function createQuickPickerWindow() {
     return quickPickerWindow;
   }
 
+  // Center on the same display as the main window
+  const mainWin = getMainWindow();
+  const display = mainWin && !mainWin.isDestroyed()
+    ? screen.getDisplayNearestPoint(mainWin.getBounds())
+    : screen.getPrimaryDisplay();
+  const { workArea } = display;
+  const pickerWidth = 600;
+  const pickerHeight = 460;
+
   quickPickerWindow = new BrowserWindow({
-    width: 600,
-    height: 460,
+    width: pickerWidth,
+    height: pickerHeight,
+    x: Math.round(workArea.x + (workArea.width - pickerWidth) / 2),
+    y: Math.round(workArea.y + (workArea.height - pickerHeight) / 2),
     frame: false,
     transparent: true,
     resizable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    center: true,
     show: false,
     backgroundColor: '#00000000',
     webPreferences: {

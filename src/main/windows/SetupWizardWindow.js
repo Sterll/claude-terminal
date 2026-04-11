@@ -3,7 +3,7 @@
  * Manages the first-launch setup wizard window
  */
 
-const { BrowserWindow, ipcMain } = require('electron');
+const { BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { settingsFile, ensureDataDir } = require('../utils/paths');
@@ -24,12 +24,19 @@ function createSetupWizardWindow({ onComplete, onSkip }) {
     return setupWizardWindow;
   }
 
+  // Center on the active display (cursor position since there's no main window yet)
+  const cursorDisplay = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const { workArea: wizardArea } = cursorDisplay;
+  const wizardWidth = 900;
+  const wizardHeight = 650;
+
   setupWizardWindow = new BrowserWindow({
-    width: 900,
-    height: 650,
+    width: wizardWidth,
+    height: wizardHeight,
+    x: Math.round(wizardArea.x + (wizardArea.width - wizardWidth) / 2),
+    y: Math.round(wizardArea.y + (wizardArea.height - wizardHeight) / 2),
     frame: false,
     resizable: false,
-    center: true,
     show: false,
     backgroundColor: '#0d0d0d',
     webPreferences: {
