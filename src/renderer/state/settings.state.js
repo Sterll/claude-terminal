@@ -76,6 +76,8 @@ const defaultSettings = {
   dailyGoal: 0, // Daily time goal in minutes (0 = disabled)
   githubApiUrl: 'https://api.github.com', // GitHub API base URL (for GitHub Enterprise)
   githubHostname: 'github.com', // GitHub hostname for remote URL detection
+  personaName: '', // User's name for persona (optional, injected into chat system prompt)
+  personaInstructions: '', // Custom instructions for Claude persona (optional, appended to system prompt)
 };
 
 const settingsState = new State({ ...defaultSettings });

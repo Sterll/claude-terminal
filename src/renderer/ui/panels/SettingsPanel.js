@@ -1031,6 +1031,20 @@ class SettingsPanel extends BasePanel {
               </div>
             </div>
             <div class="settings-group">
+              <div class="settings-group-title">${t('settings.personaGroup')}</div>
+              <div class="settings-card">
+                <div class="form-field" style="margin-bottom: 12px;">
+                  <label style="font-size: var(--font-sm); color: var(--text-secondary); margin-bottom: 4px; display: block;">${t('settings.personaName')}</label>
+                  <input type="text" id="persona-name-input" class="form-input" value="${escapeHtml(settings.personaName || '')}" placeholder="${t('settings.personaNamePlaceholder')}" style="width: 100%; padding: 8px 12px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); font-size: var(--font-sm);" />
+                </div>
+                <div class="form-field">
+                  <label style="font-size: var(--font-sm); color: var(--text-secondary); margin-bottom: 4px; display: block;">${t('settings.personaInstructions')}</label>
+                  <textarea id="persona-instructions-input" class="form-input" rows="3" placeholder="${t('settings.personaInstructionsPlaceholder')}" style="width: 100%; padding: 8px 12px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); font-size: var(--font-sm); resize: vertical; font-family: inherit;">${escapeHtml(settings.personaInstructions || '')}</textarea>
+                </div>
+                <div class="form-help" style="margin-top: 8px; font-size: var(--font-2xs); color: var(--text-muted);">${t('settings.personaHelp')}</div>
+              </div>
+            </div>
+            <div class="settings-group">
               <div class="settings-group-title">${t('settings.hooks.title')}</div>
               <div class="settings-card">
               <div class="settings-toggle-row">
@@ -1640,6 +1654,9 @@ class SettingsPanel extends BasePanel {
         errors: telemetryCatErrors ? telemetryCatErrors.checked : true
       };
 
+      const personaNameInput = document.getElementById('persona-name-input');
+      const personaInstructionsInput = document.getElementById('persona-instructions-input');
+
       const editorDropdown = document.getElementById('editor-dropdown');
       const customEditorInput = document.getElementById('custom-editor-input');
       const newSettings = {
@@ -1666,7 +1683,9 @@ class SettingsPanel extends BasePanel {
         enhancePrompts: newEnhancePrompts,
         autoClaudeMdUpdate: newAutoClaudeMd,
         telemetryEnabled: newTelemetryEnabled,
-        telemetryCategories: newTelemetryCategories
+        telemetryCategories: newTelemetryCategories,
+        personaName: personaNameInput ? personaNameInput.value.trim() : (settings.personaName || ''),
+        personaInstructions: personaInstructionsInput ? personaInstructionsInput.value : (settings.personaInstructions || '')
       };
 
       container.querySelectorAll('.dynamic-setting-toggle').forEach(toggle => {
@@ -1726,6 +1745,11 @@ class SettingsPanel extends BasePanel {
     container.querySelectorAll('.execution-mode-card, .terminal-mode-card, .theme-card, .color-swatch').forEach(el => {
       el.addEventListener('click', () => setTimeout(autoSave, 50));
     });
+    // Persona fields: save on blur (not every keystroke)
+    const personaNameEl = document.getElementById('persona-name-input');
+    const personaInstructionsEl = document.getElementById('persona-instructions-input');
+    if (personaNameEl) personaNameEl.addEventListener('blur', autoSave);
+    if (personaInstructionsEl) personaInstructionsEl.addEventListener('blur', autoSave);
 
     // Re-render settings when telemetry master toggle changes (to show/hide sub-toggles)
     const telemetryMasterToggle = document.getElementById('telemetry-enabled-toggle');
