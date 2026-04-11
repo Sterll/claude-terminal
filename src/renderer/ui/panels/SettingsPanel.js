@@ -758,10 +758,14 @@ class SettingsPanel extends BasePanel {
                     <span class="settings-toggle-slider"></span>
                   </label>
                 </div>
-                <div class="settings-field" style="margin-top: 12px;">
-                  <label>${t('settings.explorerIgnorePatterns')}</label>
-                  <div class="settings-toggle-desc" style="margin-bottom: 6px;">${t('settings.explorerIgnorePatternsDesc')}</div>
-                  <input type="text" id="explorer-ignore-patterns" class="settings-input"
+                <div class="settings-row" style="margin-top: 8px;">
+                  <div class="settings-label">
+                    <div>${t('settings.explorerIgnorePatterns')}</div>
+                    <div class="settings-desc">${t('settings.explorerIgnorePatternsDesc')}</div>
+                  </div>
+                </div>
+                <div style="padding: 0 16px 12px;">
+                  <input type="text" id="explorer-ignore-patterns" class="settings-input-sm" style="width: 100%;"
                     value="${escapeHtml((settings.explorerIgnorePatterns || []).join(', '))}"
                     placeholder="e.g. .env, logs, tmp">
                 </div>
