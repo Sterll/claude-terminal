@@ -924,6 +924,12 @@
     "githubApiUrlDesc": "Pour GitHub Enterprise Server (ex : https://github.mycompany.com/api/v3)",
     "githubHostname": "Nom d'hote",
     "githubHostnameDesc": "Nom d'hote GitHub utilise pour la detection des URLs distantes",
+    "personaGroup": "Persona",
+    "personaName": "Votre nom",
+    "personaNamePlaceholder": "ex. Yanis",
+    "personaInstructions": "Instructions personnalisees",
+    "personaInstructionsPlaceholder": "ex. Reponds toujours en francais, sois concis, tutoie-moi...",
+    "personaHelp": "Facultatif. Ajoute a chaque nouvelle session de chat pour que Claude sache qui vous etes et comment repondre.",
     "themesTitle": "Thème du terminal",
     "themesDesc": "Choisissez un thème pour personnaliser les couleurs de vos terminaux",
     "terminalGroup": "Terminal",
@@ -2970,6 +2976,21 @@
     "cleanup": {
       "success": "Worktrees supprimés avec succès.",
       "error": "Échec de la suppression des worktrees."
+    },
+    "chatWidget": {
+      "starting": "Lancement de l'exécution parallèle...",
+      "viewInPanel": "Voir dans Tâches",
+      "cancelRun": "Annuler",
+      "mergeRun": "Merger",
+      "phaseDecomposing": "Analyse en cours...",
+      "phaseReviewing": "En attente de validation",
+      "phaseCreating": "Création des worktrees...",
+      "phaseRunning": "En cours",
+      "phaseDone": "Terminé",
+      "phaseMerged": "Mergé",
+      "phaseFailed": "Échoué",
+      "phaseCancelled": "Annulé",
+      "phaseMerging": "Merge en cours..."
     }
   },
   "claudeMdUpdate": {

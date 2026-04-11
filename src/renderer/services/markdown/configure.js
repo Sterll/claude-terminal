@@ -15,6 +15,7 @@ const { renderFileTree, renderTerminalBlock, renderTimelineBlock, renderCompareB
 const { renderDiscordEmbedBlock, renderDiscordComponentBlock, renderDiscordMessageBlock } = require('./blocks/discord');
 const { renderWorkspaceDocBlock, renderWorkspaceLinksBlock } = require('./blocks/workspace');
 const { renderGitCommitBlock, renderGitStatusBlock, renderChangelogBlock, renderDependencyBlock } = require('./blocks/git');
+const { renderParallelRunBlock, renderParallelRunsBlock } = require('./blocks/parallel');
 
 // ── Special language identifiers for custom blocks ──
 const SPECIAL_LANGS = new Set([
@@ -26,6 +27,7 @@ const SPECIAL_LANGS = new Set([
   'embed', 'discord-embed', 'discord-component', 'discord-components', 'discord-message',
   'workspace-doc', 'workspace-links',
   'git-commit', 'git-status', 'changelog', 'dependency', 'dep',
+  'parallel-run', 'parallel-runs',
 ]);
 
 // Callout types: > [!TYPE]
@@ -127,6 +129,8 @@ function configure() {
         if (langLower === 'git-status') return renderGitStatusBlock(raw);
         if (langLower === 'changelog') return renderChangelogBlock(raw);
         if (langLower === 'dependency' || langLower === 'dep') return renderDependencyBlock(raw);
+        if (langLower === 'parallel-run') return renderParallelRunBlock(raw);
+        if (langLower === 'parallel-runs') return renderParallelRunsBlock(raw);
 
         // ── Standard code block ──
         const highlighted = language ? highlight(raw, language) : escapeHtml(raw);

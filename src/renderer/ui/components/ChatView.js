@@ -347,6 +347,8 @@ class ChatView extends BaseComponent {
   const toolInputBuffers = new Map(); // content_block index -> accumulated JSON string
   const todoToolIndices = new Set(); // block indices that are TodoWrite tools
   const taskToolIndices = new Map(); // block index -> { card, toolUseId } for Task (subagent) tools
+  const parallelToolIndices = new Map(); // block index -> { toolUseId } for parallel_start_run
+  const parallelRunWidgets = new Map(); // runId -> { el, cleanup, toolUseId }
   let blockIndex = 0;
   let currentMsgHasToolUse = false;
   let turnHadAssistantContent = false; // tracks if current turn displayed any streamed/assistant content
@@ -2273,9 +2275,22 @@ class ChatView extends BaseComponent {
           maxTurns: getSetting('maxTurns') || null,
           ...(project.isCloud ? { cloud: true, cloudProjectName: project.cloudProjectName } : {}),
         };
+        // Persona: optional name + custom instructions appended to claude_code preset
+        const personaName = getSetting('personaName');
+        const personaInstructions = getSetting('personaInstructions');
+        if (personaName || personaInstructions) {
+          const parts = [];
+          if (personaName) parts.push(`The user's name is ${personaName}.`);
+          if (personaInstructions) parts.push(personaInstructions);
+          startOpts.systemPrompt = { type: 'preset', preset: 'claude_code', append: parts.join('\n\n') };
+        }
         // Built-in prompt (global/project-type): appends to claude_code preset, keeps CLAUDE.md
         if (builtinSystemPrompt) {
-          startOpts.systemPrompt = builtinSystemPrompt;
+          const existingAppend = startOpts.systemPrompt?.append || '';
+          startOpts.systemPrompt = {
+            ...builtinSystemPrompt,
+            append: existingAppend ? existingAppend + '\n\n' + (builtinSystemPrompt.append || '') : (builtinSystemPrompt.append || '')
+          };
         }
         // User-defined system prompt: merged into append, skips project/local CLAUDE.md
         if (systemPrompt) {
@@ -3142,6 +3157,244 @@ class ChatView extends BaseComponent {
     return null;
   }
 
+  // ── Parallel Run Widget (inline live status) ──────────────────────────────
+
+  function _createParallelWidget(goal, toolUseId) {
+    const { parallelTaskState, getRunById, initParallelListeners } = require('../../state/parallelTask.state');
+    initParallelListeners();
+
+    const el = document.createElement('div');
+    el.className = 'chat-parallel-widget';
+    el.dataset.phase = 'waiting';
+
+    let _runId = null;
+    let _unsubscribe = null;
+    let _destroyed = false;
+
+    // SVG icons
+    const PHASE_ICONS = {
+      decomposing: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>',
+      reviewing: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
+      'creating-worktrees': '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>',
+      running: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>',
+      done: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>',
+      merged: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 009 9"/></svg>',
+      failed: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+      cancelled: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>',
+    };
+
+    const TASK_STATUS_ICONS = {
+      pending: '<span class="cpw-task-dot pending"></span>',
+      creating: '<span class="cpw-task-dot creating"></span>',
+      running: '<div class="chat-tool-spinner" style="width:12px;height:12px"></div>',
+      done: '<svg width="12" height="12" viewBox="0 0 24 24" fill="var(--success)" stroke="none"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>',
+      failed: '<svg width="12" height="12" viewBox="0 0 24 24" fill="var(--danger)" stroke="none"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>',
+      cancelled: '<svg width="12" height="12" viewBox="0 0 24 24" fill="var(--text-muted)" stroke="none"><path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"/></svg>',
+    };
+
+    function _phaseLabel(phase) {
+      const labels = {
+        decomposing: t('parallel.chatWidget.phaseDecomposing') || 'Analyzing...',
+        reviewing: t('parallel.chatWidget.phaseReviewing') || 'Waiting for review',
+        'creating-worktrees': t('parallel.chatWidget.phaseCreating') || 'Setting up...',
+        running: t('parallel.chatWidget.phaseRunning') || 'Running',
+        done: t('parallel.chatWidget.phaseDone') || 'Completed',
+        merged: t('parallel.chatWidget.phaseMerged') || 'Merged',
+        failed: t('parallel.chatWidget.phaseFailed') || 'Failed',
+        cancelled: t('parallel.chatWidget.phaseCancelled') || 'Cancelled',
+        merging: t('parallel.chatWidget.phaseMerging') || 'Merging...',
+      };
+      return labels[phase] || phase;
+    }
+
+    // Initial waiting state
+    el.innerHTML = `
+      <div class="cpw-header">
+        <div class="cpw-icon">${PHASE_ICONS.decomposing}</div>
+        <div class="cpw-title">
+          <span class="cpw-goal">${escapeHtml(goal)}</span>
+          <span class="cpw-phase">${escapeHtml(t('parallel.chatWidget.starting') || 'Starting parallel run...')}</span>
+        </div>
+        <div class="cpw-status"><div class="chat-tool-spinner"></div></div>
+      </div>
+      <div class="cpw-progress-wrap" style="display:none"><div class="cpw-progress-bar"></div></div>
+      <div class="cpw-body"></div>
+      <div class="cpw-actions"></div>
+    `;
+
+    function _bindToRun() {
+      _unsubscribe = parallelTaskState.subscribe(() => {
+        if (_destroyed) return;
+        if (!_runId) {
+          const runs = parallelTaskState.get().runs;
+          const match = runs.find(r => r.goal === goal && !parallelRunWidgets.has(r.id));
+          if (match) {
+            _runId = match.id;
+            el.dataset.runId = match.id;
+            parallelRunWidgets.set(match.id, { el, cleanup: _destroy, toolUseId });
+            _updateFromRun(match);
+          }
+        } else {
+          const run = getRunById(_runId);
+          if (run) _updateFromRun(run);
+        }
+      });
+
+      // Check existing runs immediately (handles race: IPC before widget)
+      const runs = parallelTaskState.get().runs;
+      const existing = runs.find(r => r.goal === goal && !parallelRunWidgets.has(r.id));
+      if (existing) {
+        _runId = existing.id;
+        el.dataset.runId = existing.id;
+        parallelRunWidgets.set(existing.id, { el, cleanup: _destroy, toolUseId });
+        _updateFromRun(existing);
+      }
+    }
+
+    function _updateFromRun(run) {
+      el.dataset.phase = run.phase || 'waiting';
+
+      const iconEl = el.querySelector('.cpw-icon');
+      const phaseEl = el.querySelector('.cpw-phase');
+      const statusEl = el.querySelector('.cpw-status');
+      if (iconEl) iconEl.innerHTML = PHASE_ICONS[run.phase] || PHASE_ICONS.decomposing;
+      if (phaseEl) phaseEl.textContent = _phaseLabel(run.phase);
+
+      const isActive = ['decomposing', 'reviewing', 'creating-worktrees', 'running', 'merging'].includes(run.phase);
+      if (statusEl) {
+        if (isActive) {
+          statusEl.innerHTML = '<div class="chat-tool-spinner"></div>';
+        } else if (run.phase === 'done' || run.phase === 'merged') {
+          statusEl.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="var(--success)"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
+        } else {
+          statusEl.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="var(--danger)"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
+        }
+      }
+
+      if (run.featureName) {
+        const goalEl = el.querySelector('.cpw-goal');
+        if (goalEl && !goalEl.dataset.updated) {
+          goalEl.dataset.updated = '1';
+          goalEl.textContent = run.featureName + ' - ' + goal;
+        }
+      }
+
+      _updateProgress(run);
+      _updateTaskList(run);
+      _updateActions(run);
+    }
+
+    function _updateProgress(run) {
+      const wrap = el.querySelector('.cpw-progress-wrap');
+      const bar = el.querySelector('.cpw-progress-bar');
+      if (!wrap || !bar) return;
+
+      const tasks = run.tasks || [];
+      if (tasks.length === 0 || ['decomposing', 'reviewing'].includes(run.phase)) {
+        wrap.style.display = 'none';
+        return;
+      }
+      wrap.style.display = '';
+      const done = tasks.filter(tk => tk.status === 'done').length;
+      const failed = tasks.filter(tk => tk.status === 'failed').length;
+      const pct = tasks.length > 0 ? ((done + failed) / tasks.length) * 100 : 0;
+      bar.style.width = pct + '%';
+      bar.className = 'cpw-progress-bar' + (failed > 0 ? ' has-failures' : '');
+    }
+
+    function _updateTaskList(run) {
+      const body = el.querySelector('.cpw-body');
+      if (!body) return;
+
+      const tasks = run.tasks || [];
+      if (tasks.length === 0) { body.innerHTML = ''; return; }
+
+      for (const task of tasks) {
+        let taskEl = body.querySelector(`[data-task-id="${task.id}"]`);
+        if (!taskEl) {
+          taskEl = document.createElement('div');
+          taskEl.className = 'cpw-task';
+          taskEl.dataset.taskId = task.id;
+          taskEl.innerHTML = '<span class="cpw-task-status"></span><span class="cpw-task-title"></span><span class="cpw-task-branch"></span><pre class="cpw-task-output"></pre>';
+          body.appendChild(taskEl);
+        }
+
+        const statusSpan = taskEl.querySelector('.cpw-task-status');
+        if (statusSpan) statusSpan.innerHTML = TASK_STATUS_ICONS[task.status] || TASK_STATUS_ICONS.pending;
+
+        const titleSpan = taskEl.querySelector('.cpw-task-title');
+        if (titleSpan && titleSpan.textContent !== (task.title || task.id)) titleSpan.textContent = task.title || task.id;
+
+        const branchSpan = taskEl.querySelector('.cpw-task-branch');
+        if (branchSpan) {
+          if (task.branch) {
+            branchSpan.textContent = task.branch.replace(/^parallel\/[^/]+\//, '');
+            branchSpan.style.display = '';
+          } else {
+            branchSpan.style.display = 'none';
+          }
+        }
+
+        const outputPre = taskEl.querySelector('.cpw-task-output');
+        if (outputPre) {
+          if (task.status === 'running' && task.output) {
+            const lines = task.output.trim().split('\n');
+            outputPre.textContent = lines.slice(-3).join('\n');
+            outputPre.style.display = '';
+          } else {
+            outputPre.style.display = 'none';
+          }
+        }
+
+        taskEl.className = 'cpw-task' + (task.status ? ` status-${task.status}` : '');
+      }
+    }
+
+    function _updateActions(run) {
+      const actionsEl = el.querySelector('.cpw-actions');
+      if (!actionsEl) return;
+
+      const btns = [];
+      btns.push(`<button class="cpw-btn cpw-btn-view" data-action="view">${escapeHtml(t('parallel.chatWidget.viewInPanel') || 'View in Tasks')}</button>`);
+
+      if (['decomposing', 'reviewing', 'creating-worktrees', 'running'].includes(run.phase)) {
+        btns.push(`<button class="cpw-btn cpw-btn-cancel" data-action="cancel">${escapeHtml(t('parallel.chatWidget.cancelRun') || 'Cancel')}</button>`);
+      }
+      if (run.phase === 'done') {
+        const doneTasks = (run.tasks || []).filter(tk => tk.status === 'done');
+        if (doneTasks.length > 0) {
+          btns.push(`<button class="cpw-btn cpw-btn-merge" data-action="merge">${escapeHtml(t('parallel.chatWidget.mergeRun') || 'Merge')}</button>`);
+        }
+      }
+
+      const newHtml = btns.join('');
+      if (actionsEl.innerHTML !== newHtml) actionsEl.innerHTML = newHtml;
+    }
+
+    el.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn || !_runId) return;
+      const action = btn.dataset.action;
+      if (action === 'view') {
+        const tab = document.querySelector('.nav-tab[data-tab="tasks"]');
+        if (tab) tab.click();
+      } else if (action === 'cancel') {
+        window.electron_api?.parallel?.cancelRun({ runId: _runId });
+      } else if (action === 'merge') {
+        window.electron_api?.parallel?.mergeRun({ runId: _runId });
+      }
+    });
+
+    function _destroy() {
+      _destroyed = true;
+      if (_unsubscribe) { _unsubscribe(); _unsubscribe = null; }
+      if (_runId) parallelRunWidgets.delete(_runId);
+    }
+
+    _bindToRun();
+    return { el, cleanup: _destroy, toolUseId };
+  }
+
   /**
    * Route a message from a subagent to the appropriate handler
    */
@@ -3928,7 +4181,7 @@ class ChatView extends BaseComponent {
           recapToolCount++;
           recapToolCounts[block.name] = (recapToolCounts[block.name] || 0) + 1;
           const blockIdx = event.index ?? blockIndex;
-          // TodoWrite, Task & AskUserQuestion get special UI — no generic tool card
+          // TodoWrite, Task, parallel_start_run & AskUserQuestion get special UI — no generic tool card
           if (block.name === 'TodoWrite') {
             todoToolIndices.add(blockIdx);
           } else if (block.name === 'Task') {
@@ -3940,6 +4193,9 @@ class ChatView extends BaseComponent {
               subTools: new Map(), subBuffers: new Map(), subBlockIndex: 0
             });
             setStatus('working', t('chat.subagentRunning') || 'Agent running...');
+          } else if (block.name === 'mcp__claude-terminal__parallel_start_run') {
+            parallelToolIndices.set(blockIdx, { toolUseId: block.id });
+            setStatus('working', t('parallel.chatWidget.starting') || 'Starting parallel run...');
           } else if (block.name !== 'AskUserQuestion') {
             const card = appendToolCard(block.name, '');
             card.dataset.toolUseId = block.id || `fallback-${blockIdx}`;
@@ -4006,6 +4262,19 @@ class ChatView extends BaseComponent {
             if (taskInfo) {
               updateSubagentCard(taskInfo.card, toolInput);
               setStatus('working', `${toolInput.name || toolInput.subagent_type || 'Agent'}...`);
+              break;
+            }
+
+            // parallel_start_run → render live widget inline
+            const parallelInfo = parallelToolIndices.get(stopIdx);
+            if (parallelInfo) {
+              parallelToolIndices.delete(stopIdx);
+              const goal = toolInput.goal || '';
+              const { initParallelListeners } = require('../../state/parallelTask.state');
+              initParallelListeners();
+              const widget = _createParallelWidget(goal, parallelInfo.toolUseId);
+              messagesEl.appendChild(widget.el);
+              scrollToBottom();
               break;
             }
 
@@ -4147,6 +4416,13 @@ class ChatView extends BaseComponent {
       }
       // tool_result → store output on matching tool card, or mark subagent complete
       if (block.type === 'tool_result') {
+        // Parallel run widget — skip tool_result (widget handles display via state)
+        let isParallelResult = false;
+        for (const [, w] of parallelRunWidgets) {
+          if (w.toolUseId === block.tool_use_id) { isParallelResult = true; break; }
+        }
+        if (isParallelResult) continue;
+
         // Subagent cards — mark completed but keep for late message routing
         for (const [, info] of taskToolIndices) {
           if (info.toolUseId === block.tool_use_id) {
@@ -4772,6 +5048,12 @@ class ChatView extends BaseComponent {
       toolInputBuffers.clear();
       todoToolIndices.clear();
       taskToolIndices.clear();
+      // Clean up parallel run widgets
+      for (const [, w] of parallelRunWidgets) {
+        if (typeof w.cleanup === 'function') w.cleanup();
+      }
+      parallelRunWidgets.clear();
+      parallelToolIndices.clear();
       // Clean up image data
       pendingImages.length = 0;
       lightboxImages.length = 0;

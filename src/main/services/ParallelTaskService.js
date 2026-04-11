@@ -202,7 +202,7 @@ class ParallelTaskService {
 
     // ── Phase 1 (+1b loop): Decompose → Review → Refine ─────────────────────
     while (true) {
-      this._send('parallel-run-status', { runId, phase: 'decomposing' });
+      this._send('parallel-run-status', { runId, phase: 'decomposing', goal, projectPath, mainBranch, model, effort });
 
       try {
         const decomposed = await this._decomposeTasks({ projectPath, goal, maxTasks, autoTasks, model, effort, feedback });

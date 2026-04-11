@@ -107,8 +107,18 @@ function initParallelListeners() {
   const api = window.electron_api?.parallel;
   if (!api) return;
 
-  api.onRunStatus(({ runId, phase, error, endedAt, proposedTasks, featureName, mergeBranch, mergeProgress, mergeResult, resolving }) => {
-    const run = getRunById(runId);
+  api.onRunStatus(({ runId, phase, error, endedAt, proposedTasks, featureName, mergeBranch, mergeProgress, mergeResult, resolving, goal, projectPath, mainBranch, model, effort }) => {
+    let run = getRunById(runId);
+    // Auto-create run from IPC event if unknown (e.g. MCP-triggered runs)
+    if (!run) {
+      addRun({
+        id: runId, goal: goal || '', projectPath: projectPath || '',
+        mainBranch: mainBranch || '', model: model || '', effort: effort || '',
+        phase, tasks: [], startedAt: Date.now(), endedAt: null, error: null,
+        _source: 'ipc',
+      });
+      run = getRunById(runId);
+    }
     if (run) {
       setRunPhase(runId, phase, {
         error: error || null,

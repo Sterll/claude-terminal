@@ -187,31 +187,41 @@ async function handle(name, args) {
             ? 'in progress'
             : 'N/A';
 
-        const phaseIcon = {
-          done: '[DONE]', merged: '[MERGED]', failed: '[FAILED]',
-          cancelled: '[CANCELLED]', running: '[RUNNING]',
-          decomposing: '[DECOMPOSING]', reviewing: '[REVIEWING]',
-          merging: '[MERGING]', 'creating-worktrees': '[SETUP]',
-        }[r.phase] || `[${(r.phase || '?').toUpperCase()}]`;
+        const phaseTag = `[${(r.phase || '?').toUpperCase()}]`;
 
         let taskSummary = `${done}/${taskCount} done`;
         if (failed > 0) taskSummary += `, ${failed} failed`;
 
-        const branches = (r.tasks || [])
-          .filter(t => t.branch && t.status === 'done')
-          .map(t => t.branch);
-
-        let line = `${phaseIcon} #${r.id.split('-')[1] || r.id}\n`;
+        let line = `${phaseTag} #${r.id.split('-')[1] || r.id}\n`;
         line += `  Goal: ${r.goal || 'N/A'}\n`;
         line += `  Tasks: ${taskSummary} | Duration: ${duration}\n`;
         line += `  Started: ${formatDate(r.startedAt)}`;
         if (r.mergeBranch) line += `\n  Merge branch: ${r.mergeBranch}`;
-        if (branches.length > 0) line += `\n  Branches: ${branches.join(', ')}`;
         if (r.error) line += `\n  Error: ${r.error}`;
         return line;
       });
 
-      return ok(`Parallel runs (${runs.length}/${filtered.length}):\n\n${lines.join('\n\n')}`);
+      let output = `Parallel runs (${runs.length}/${filtered.length}):\n\n${lines.join('\n\n')}`;
+
+      // Include rich markdown block for display
+      output += '\n\nDisplay this result using the following markdown block:\n\n```parallel-runs\n';
+      for (const r of runs) {
+        const taskCount = (r.tasks || []).length;
+        const done = (r.tasks || []).filter(t => t.status === 'done').length;
+        const failed = (r.tasks || []).filter(t => t.status === 'failed').length;
+        const duration = r.startedAt && r.endedAt ? formatDuration(r.endedAt - r.startedAt) : 'in progress';
+        let taskSummary = `${done}/${taskCount} done`;
+        if (failed > 0) taskSummary += `, ${failed} failed`;
+        output += `[${(r.phase || '?').toUpperCase()}] ${r.id.split('-')[1] || r.id}\n`;
+        output += `  Goal: ${r.goal || 'N/A'}\n`;
+        output += `  Tasks: ${taskSummary}\n`;
+        output += `  Duration: ${duration}\n`;
+        if (r.error) output += `  Error: ${r.error}\n`;
+        output += '\n';
+      }
+      output += '```';
+
+      return ok(output);
     }
 
     // ── parallel_run_detail ─────────────────────────────────────────────
@@ -224,39 +234,50 @@ async function handle(name, args) {
         ? formatDuration(run.endedAt - run.startedAt)
         : 'N/A';
 
+      const tasks = run.tasks || [];
+      const statusIcons = { done: '+', failed: 'X', running: '>', cancelled: '-', pending: '.', creating: '~' };
+
+      // Plain text summary for Claude's context
       let output = `Parallel Run: ${run.id}\n`;
-      output += `${'─'.repeat(60)}\n`;
-      output += `Goal: ${run.goal || 'N/A'}\n`;
-      output += `Phase: ${run.phase || 'unknown'}\n`;
-      output += `Feature: ${run.featureName || 'N/A'}\n`;
-      output += `Main branch: ${run.mainBranch || 'N/A'}\n`;
+      output += `Goal: ${run.goal || 'N/A'} | Phase: ${run.phase || 'unknown'}\n`;
+      output += `Feature: ${run.featureName || 'N/A'} | Duration: ${duration}\n`;
       output += `Model: ${run.model || 'N/A'} | Effort: ${run.effort || 'N/A'}\n`;
-      output += `Started: ${formatDate(run.startedAt)} | Duration: ${duration}\n`;
-      output += `Project: ${run.projectPath || 'N/A'}\n`;
       if (run.mergeBranch) output += `Merge branch: ${run.mergeBranch}\n`;
       if (run.error) output += `Error: ${run.error}\n`;
-
-      const tasks = run.tasks || [];
       if (tasks.length > 0) {
         output += `\nTasks (${tasks.length}):\n`;
         for (const task of tasks) {
-          const statusIcon = {
-            done: '+', failed: 'X', running: '>', cancelled: '-', pending: '.',
-            creating: '~',
-          }[task.status] || '?';
-
-          output += `\n  [${statusIcon}] ${task.title || task.id}\n`;
-          output += `      Status: ${task.status}`;
-          if (task.branch) output += ` | Branch: ${task.branch}`;
-          if (task.worktreePath) output += `\n      Worktree: ${task.worktreePath}`;
-          if (task.error) output += `\n      Error: ${task.error}`;
+          output += `  [${statusIcons[task.status] || '?'}] ${task.title || task.id} (${task.status})`;
+          if (task.branch) output += ` | ${task.branch}`;
+          output += '\n';
         }
       }
 
-      // Check if worktrees still exist on disk
       const worktreeBase = path.join(getDataDir(), 'worktrees', run.id);
       const worktreesExist = fs.existsSync(worktreeBase);
-      output += `\n\nWorktrees on disk: ${worktreesExist ? 'yes (' + worktreeBase + ')' : 'cleaned up'}`;
+      output += `\nWorktrees on disk: ${worktreesExist ? 'yes' : 'cleaned up'}`;
+
+      // Include rich markdown block for display
+      output += '\n\nDisplay this result using the following markdown block:\n\n```parallel-run\n';
+      output += `id: ${run.id}\n`;
+      output += `goal: ${run.goal || 'N/A'}\n`;
+      output += `phase: ${run.phase || 'unknown'}\n`;
+      if (run.featureName) output += `feature: ${run.featureName}\n`;
+      output += `model: ${run.model || 'N/A'}\n`;
+      output += `effort: ${run.effort || 'N/A'}\n`;
+      output += `duration: ${duration}\n`;
+      output += `started: ${formatDate(run.startedAt)}\n`;
+      if (run.mergeBranch) output += `merge-branch: ${run.mergeBranch}\n`;
+      if (run.error) output += `error: ${run.error}\n`;
+      if (tasks.length > 0) {
+        output += `---\n`;
+        for (const task of tasks) {
+          output += `[${statusIcons[task.status] || '?'}] ${task.title || task.id}`;
+          if (task.branch) output += ` | ${task.branch}`;
+          output += '\n';
+        }
+      }
+      output += '```';
 
       return ok(output);
     }

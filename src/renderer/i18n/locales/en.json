@@ -834,6 +834,12 @@
     "githubApiUrlDesc": "For GitHub Enterprise Server (e.g. https://github.mycompany.com/api/v3)",
     "githubHostname": "Hostname",
     "githubHostnameDesc": "GitHub hostname used for remote URL detection",
+    "personaGroup": "Persona",
+    "personaName": "Your name",
+    "personaNamePlaceholder": "e.g. Yanis",
+    "personaInstructions": "Custom instructions",
+    "personaInstructionsPlaceholder": "e.g. Always reply in French, be concise, use informal tone...",
+    "personaHelp": "Optional. Appended to every new chat session so Claude knows who you are and how to respond.",
     "themesTitle": "Terminal theme",
     "themesDesc": "Choose a theme to customize your terminal colors",
     "terminalGroup": "Terminal",
@@ -2970,6 +2976,21 @@
     "cleanup": {
       "success": "Worktrees removed successfully.",
       "error": "Failed to remove worktrees."
+    },
+    "chatWidget": {
+      "starting": "Starting parallel run...",
+      "viewInPanel": "View in Tasks",
+      "cancelRun": "Cancel",
+      "mergeRun": "Merge",
+      "phaseDecomposing": "Analyzing...",
+      "phaseReviewing": "Waiting for review",
+      "phaseCreating": "Setting up worktrees...",
+      "phaseRunning": "Running",
+      "phaseDone": "Completed",
+      "phaseMerged": "Merged",
+      "phaseFailed": "Failed",
+      "phaseCancelled": "Cancelled",
+      "phaseMerging": "Merging..."
     }
   },
   "claudeMdUpdate": {
