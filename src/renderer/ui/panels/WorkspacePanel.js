@@ -14,6 +14,7 @@ let _saveIndicatorTimer = null;
 let _stateUnsubscribe = null;
 let _advisorChatInstance = null;
 let _advisorWorkspaceId = null;
+let _collapsedSections = {}; // { projects: false, docs: false, links: false }
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -66,6 +67,7 @@ const ICONS = {
   chat: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>',
   close: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>',
   arrow: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>',
+  chevron: '<svg class="workspace-section-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
 };
 
 // ========== INIT / LOAD / CLEANUP ==========
@@ -287,34 +289,44 @@ function renderDetail() {
     ${ws.description ? `<div class="workspace-detail-desc">${escapeHtml(ws.description)}</div>` : ''}
     <div class="workspace-content">
       <div class="workspace-sections">
-        <div class="workspace-section">
-          <div class="workspace-section-header">
-            <div class="workspace-section-title">${escapeHtml(t('workspace.projects'))} <span class="workspace-section-count">${wsProjects.length}</span></div>
+        <div class="workspace-section${_collapsedSections.projects ? ' collapsed' : ''}">
+          <div class="workspace-section-header" data-section="projects">
+            <div class="workspace-section-title">${ICONS.chevron} ${escapeHtml(t('workspace.projects'))} <span class="workspace-section-count">${wsProjects.length}</span></div>
             <button class="workspace-btn workspace-btn-secondary workspace-btn-sm" id="ws-add-project">${ICONS.plus} ${escapeHtml(t('workspace.addProject'))}</button>
           </div>
-          <div id="ws-projects-list">${projectsHtml}</div>
+          <div class="workspace-section-body" id="ws-projects-list">${projectsHtml}</div>
         </div>
 
-        <div class="workspace-section">
-          <div class="workspace-section-header">
-            <div class="workspace-section-title">${escapeHtml(t('workspace.knowledgeBase'))} <span class="workspace-section-count">${docs.length}</span></div>
+        <div class="workspace-section${_collapsedSections.docs ? ' collapsed' : ''}">
+          <div class="workspace-section-header" data-section="docs">
+            <div class="workspace-section-title">${ICONS.chevron} ${escapeHtml(t('workspace.knowledgeBase'))} <span class="workspace-section-count">${docs.length}</span></div>
             <button class="workspace-btn workspace-btn-secondary workspace-btn-sm" id="ws-new-doc">${ICONS.plus} ${escapeHtml(t('workspace.newDoc'))}</button>
           </div>
-          <div id="ws-docs-list">${docsHtml}</div>
+          <div class="workspace-section-body" id="ws-docs-list">${docsHtml}</div>
         </div>
 
-        <div class="workspace-section">
-          <div class="workspace-section-header">
-            <div class="workspace-section-title">${escapeHtml(t('workspace.conceptLinks'))} <span class="workspace-section-count">${links.length}</span></div>
+        <div class="workspace-section${_collapsedSections.links ? ' collapsed' : ''}">
+          <div class="workspace-section-header" data-section="links">
+            <div class="workspace-section-title">${ICONS.chevron} ${escapeHtml(t('workspace.conceptLinks'))} <span class="workspace-section-count">${links.length}</span></div>
             <button class="workspace-btn workspace-btn-secondary workspace-btn-sm" id="ws-add-link">${ICONS.link} ${escapeHtml(t('workspace.addLink'))}</button>
           </div>
-          <div id="ws-links-list">${linksHtml}</div>
+          <div class="workspace-section-body" id="ws-links-list">${linksHtml}</div>
         </div>
       </div>
     </div>
   `;
 
   // === Event bindings ===
+
+  // Section collapse toggles
+  _container.querySelectorAll('.workspace-section-header[data-section]').forEach(header => {
+    header.addEventListener('click', (e) => {
+      if (e.target.closest('.workspace-btn')) return; // don't toggle when clicking action buttons
+      const section = header.dataset.section;
+      _collapsedSections[section] = !_collapsedSections[section];
+      header.closest('.workspace-section').classList.toggle('collapsed', _collapsedSections[section]);
+    });
+  });
 
   // Back to list
   document.getElementById('ws-back-list')?.addEventListener('click', () => {

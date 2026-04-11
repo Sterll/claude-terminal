@@ -278,13 +278,21 @@
   background: var(--bg-hover);
 }
 
-/* ── Detail View ────────────────────────── */
+/* ── Detail Layout ─────────────────────── */
+
+.workspace-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
 
 .workspace-detail-desc {
   padding: 0 20px 12px;
   color: var(--text-secondary);
   font-size: var(--font-sm);
   line-height: 1.5;
+  flex-shrink: 0;
 }
 
 .workspace-sections {
@@ -307,6 +315,12 @@
   padding: 10px 0 6px;
   border-bottom: 1px solid var(--border-color);
   margin-bottom: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.workspace-section-header:hover .workspace-section-title {
+  color: var(--text-secondary);
 }
 
 .workspace-section-title {
@@ -318,6 +332,29 @@
   gap: 6px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  transition: color 0.15s;
+}
+
+.workspace-section-chevron {
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.workspace-section.collapsed .workspace-section-chevron {
+  transform: rotate(-90deg);
+}
+
+.workspace-section-body {
+  overflow: hidden;
+  transition: opacity 0.15s ease;
+}
+
+.workspace-section.collapsed .workspace-section-body {
+  display: none;
+}
+
+.workspace-section.collapsed .workspace-section-header {
+  margin-bottom: 0;
 }
 
 .workspace-section-count {
