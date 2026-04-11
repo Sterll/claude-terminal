@@ -467,13 +467,17 @@ async function checkAllProjectsGitStatus() {
   const projects = projectsState.get().projects;
   // Check all projects in parallel (batches of 5 to avoid overwhelming IPC)
   const BATCH_SIZE = 5;
+  let selectedProjectHandled = false;
   for (let i = 0; i < projects.length; i += BATCH_SIZE) {
     const batch = projects.slice(i, i + BATCH_SIZE);
     await Promise.all(batch.map(async (project) => {
       // Skip projects whose path doesn't exist (e.g. synced from another machine)
-      if (project.path && !fs.existsSync(project.path)) {
-        localState.gitRepoStatus.set(project.id, { isGitRepo: false });
-        return;
+      // Use async access() to avoid blocking the renderer thread on slow/network paths
+      if (project.path) {
+        try { await fsp.access(project.path); } catch {
+          localState.gitRepoStatus.set(project.id, { isGitRepo: false });
+          return;
+        }
       }
       try {
         // Run statusQuick and currentBranch in parallel instead of sequentially
@@ -490,14 +494,29 @@ async function checkAllProjectsGitStatus() {
         localState.gitRepoStatus.set(project.id, { isGitRepo: false });
       }
     }));
+
+    // Progressive render: if the currently selected project was in this batch,
+    // update buttons immediately instead of waiting for all batches to complete
+    if (!selectedProjectHandled) {
+      const currentState = projectsState.get();
+      const selIdx = currentState.selectedProjectFilter;
+      if (selIdx !== null && currentState.projects[selIdx]) {
+        const selId = currentState.projects[selIdx].id;
+        if (localState.gitRepoStatus.has(selId)) {
+          showFilterGitActions(selId);
+          selectedProjectHandled = true;
+        }
+      }
+    }
   }
   localState.gitStatusInitialized = true;
   ProjectList.render();
 
-  // Update for the currently selected project after all batches
-  const selectedFilter = projectsState.get().selectedProjectFilter;
-  if (selectedFilter !== null && projects[selectedFilter]) {
-    showFilterGitActions(projects[selectedFilter].id);
+  // Final update: use fresh state to avoid stale projects reference
+  const currentState = projectsState.get();
+  const selectedFilter = currentState.selectedProjectFilter;
+  if (selectedFilter !== null && currentState.projects[selectedFilter]) {
+    showFilterGitActions(currentState.projects[selectedFilter].id);
   }
 }
 
