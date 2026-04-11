@@ -183,8 +183,11 @@ function countProjectsRecursive(folderId) {
  * @returns {boolean}
  */
 function isDescendantOf(folderId, ancestorId) {
+  const visited = new Set();
   let current = getFolder(folderId);
   while (current) {
+    if (visited.has(current.id)) return false;
+    visited.add(current.id);
     if (current.parentId === ancestorId) return true;
     current = getFolder(current.parentId);
   }
@@ -745,6 +748,19 @@ function moveItemToFolder(itemType, itemId, targetFolderId) {
       }
     }
   }
+
+  // Sanitize: prevent direct self-referencing folders (A.parentId === A.id).
+  // Note: multi-hop cycles (A → B → A) are prevented upstream by isDescendantOf().
+  folders = folders.map(f => {
+    const needsParentFix = f.parentId === f.id;
+    const needsChildrenFix = f.children && f.children.includes(f.id);
+    if (!needsParentFix && !needsChildrenFix) return f;
+    return {
+      ...f,
+      parentId: needsParentFix ? null : f.parentId,
+      children: needsChildrenFix ? f.children.filter(c => c !== f.id) : f.children,
+    };
+  });
 
   projectsState.set({ folders, projects, rootOrder });
   saveProjects();
