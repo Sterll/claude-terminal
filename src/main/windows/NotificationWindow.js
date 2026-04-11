@@ -90,7 +90,10 @@ function showNotification({ title, body, terminalId, autoDismiss = 8000, labels,
  * Reposition all active notifications (stack from bottom-right)
  */
 function repositionAll() {
-  const display = screen.getPrimaryDisplay();
+  const mainWindow = getMainWindow();
+  const display = mainWindow && !mainWindow.isDestroyed()
+    ? screen.getDisplayNearestPoint(mainWindow.getBounds())
+    : screen.getPrimaryDisplay();
   const workArea = display.workArea;
   const rightEdge = workArea.x + workArea.width - MARGIN;
   let currentY = workArea.y + workArea.height - MARGIN;
