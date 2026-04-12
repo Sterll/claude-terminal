@@ -1584,6 +1584,7 @@
     "slashReloadPlugins": "Recargar plugins de Claude Code",
     "slashSimplify": "Simplificar la última respuesta",
     "slashBatch": "Ejecutar múltiples operaciones en lote",
+    "slashParallelTask": "Forzar ejecución en tareas paralelas",
     "attachImage": "Adjuntar imagen",
     "mentionFile": "Adjuntar un archivo de tu proyecto",
     "mentionGit": "Adjuntar diff git actual",
@@ -2987,7 +2988,8 @@
       "phaseMerged": "Fusionado",
       "phaseFailed": "Fallido",
       "phaseCancelled": "Cancelado",
-      "phaseMerging": "Fusionando..."
+      "phaseMerging": "Fusionando...",
+      "noTaskDescription": "Proporcione una descripcion: /parallel-task <descripcion>"
     }
   },
   "claudeMdUpdate": {

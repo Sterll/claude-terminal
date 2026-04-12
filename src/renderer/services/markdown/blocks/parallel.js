@@ -1,9 +1,10 @@
 /**
- * Parallel task block renderers: run detail card and run list.
+ * Parallel task block renderers: run detail card, run list, suggestion card.
  *
  * Syntax:
  *   ```parallel-run        → single run detail card
  *   ```parallel-runs       → list of run summaries
+ *   ```parallel-suggest    → interactive suggestion card (accept/decline)
  */
 
 const { escapeHtml } = require('../../../utils');
@@ -215,7 +216,59 @@ function renderParallelRunsBlock(code) {
   return html;
 }
 
+// ── Parallel Suggest Card ──
+
+function renderParallelSuggestBlock(code) {
+  let goal = '';
+  const tasks = [];
+
+  for (const line of code.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    const kvMatch = trimmed.match(/^(\w[\w\s-]*):\s*(.+)/i);
+    if (kvMatch) {
+      const key = kvMatch[1].toLowerCase().replace(/\s+/g, '');
+      if (key === 'goal') goal = kvMatch[2].trim();
+      continue;
+    }
+
+    // Task lines: - Task description
+    if (trimmed.startsWith('-')) {
+      const taskText = trimmed.slice(1).trim();
+      if (taskText) tasks.push(taskText);
+    }
+  }
+
+  if (!goal) return `<pre><code>${escapeHtml(code)}</code></pre>`;
+
+  let html = `<div class="cps-card">`;
+  html += `<div class="cps-header">`;
+  html += `<svg class="cps-icon" viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354Z"/></svg>`;
+  html += `<span class="cps-title">Parallel execution suggested</span>`;
+  html += `</div>`;
+
+  html += `<div class="cps-goal">${escapeHtml(goal)}</div>`;
+
+  if (tasks.length > 0) {
+    html += `<div class="cps-tasks">`;
+    for (const task of tasks) {
+      html += `<div class="cps-task-item">${escapeHtml(task)}</div>`;
+    }
+    html += `</div>`;
+  }
+
+  html += `<div class="cps-actions">`;
+  html += `<button class="cps-btn cps-btn-parallel" data-parallel-action="accept" data-parallel-goal="${escapeHtml(goal)}">Use Parallel Mode</button>`;
+  html += `<button class="cps-btn cps-btn-normal" data-parallel-action="decline" data-parallel-goal="${escapeHtml(goal)}">Continue Normally</button>`;
+  html += `</div>`;
+
+  html += `</div>`;
+  return html;
+}
+
 module.exports = {
   renderParallelRunBlock,
   renderParallelRunsBlock,
+  renderParallelSuggestBlock,
 };

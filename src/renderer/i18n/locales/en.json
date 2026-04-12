@@ -1592,6 +1592,7 @@
     "slashReloadPlugins": "Reload Claude Code plugins",
     "slashSimplify": "Simplify the last response",
     "slashBatch": "Run multiple operations in batch",
+    "slashParallelTask": "Force parallel task execution",
     "attachImage": "Attach image",
     "mentionFile": "Attach a file from your project",
     "mentionGit": "Attach current git diff",
@@ -2990,7 +2991,8 @@
       "phaseMerged": "Merged",
       "phaseFailed": "Failed",
       "phaseCancelled": "Cancelled",
-      "phaseMerging": "Merging..."
+      "phaseMerging": "Merging...",
+      "noTaskDescription": "Please provide a task description: /parallel-task <description>"
     }
   },
   "claudeMdUpdate": {

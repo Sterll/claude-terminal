@@ -886,7 +886,7 @@ class ChatView extends BaseComponent {
     }
     const query = text.slice(1).toLowerCase();
     // Default commands available even before session init
-    const builtinDefaults = ['/compact', '/clear', '/help', '/reload-plugins', '/simplify', '/batch'];
+    const builtinDefaults = ['/compact', '/clear', '/help', '/reload-plugins', '/simplify', '/batch', '/parallel-task'];
     const available = slashCommands.length > 0 ? slashCommands : builtinDefaults;
     const filtered = available.filter(cmd => {
       const name = cmd.replace(/^\//, '').toLowerCase();
@@ -932,6 +932,7 @@ class ChatView extends BaseComponent {
       '/reload-plugins': t('chat.slashReloadPlugins'),
       '/simplify': t('chat.slashSimplify'),
       '/batch': t('chat.slashBatch'),
+      '/parallel-task': t('chat.slashParallelTask'),
     };
     return descriptions[cmd] || '';
   }
@@ -2123,6 +2124,23 @@ class ChatView extends BaseComponent {
       return;
     }
 
+    // Parallel suggest card: accept / decline buttons
+    const parallelActionBtn = e.target.closest('[data-parallel-action]');
+    if (parallelActionBtn) {
+      const action = parallelActionBtn.dataset.parallelAction;
+      const goal = parallelActionBtn.dataset.parallelGoal || '';
+      const card = parallelActionBtn.closest('.cps-card');
+      if (card) card.classList.add('cps-acted');
+      if (action === 'accept' && goal) {
+        inputEl.value = '/parallel-task ' + goal;
+        handleSend();
+      } else if (action === 'decline' && goal) {
+        inputEl.value = goal;
+        handleSend();
+      }
+      return;
+    }
+
     const planBtn = e.target.closest('.chat-plan-btn');
     if (planBtn) {
       handlePlanClick(planBtn);
@@ -2184,11 +2202,25 @@ class ChatView extends BaseComponent {
 
   let sendLock = false;
 
+  let _forceParallelTask = false;
+
   async function handleSend() {
     const text = inputEl.value.trim();
     const hasImages = pendingImages.length > 0;
     const hasMentions = pendingMentions.length > 0;
     if ((!text && !hasImages && !hasMentions) || sendLock) return;
+
+    // /parallel-task interception: strip prefix, set force flag
+    if (text === '/parallel-task' || text.startsWith('/parallel-task ')) {
+      const taskDesc = text.replace(/^\/parallel-task\s*/, '').trim();
+      if (!taskDesc) {
+        appendSystemNotice(t('parallel.chatWidget.noTaskDescription') || 'Please provide a task description: /parallel-task <description>');
+        inputEl.value = '';
+        return;
+      }
+      inputEl.value = taskDesc;
+      _forceParallelTask = true;
+    }
 
     sendLock = true;
     // Track user prompt for session recap (first 5 prompts)
@@ -2319,6 +2351,12 @@ class ChatView extends BaseComponent {
           pendingForkSession = false;
           pendingResumeAt = null;
         }
+        // Force parallel task: prepend instruction to prompt
+        if (_forceParallelTask) {
+          const forceInstr = 'IMPORTANT: You MUST use the parallel_start_run MCP tool to decompose and execute the following task in parallel sub-tasks. Do NOT execute it sequentially. Analyze the task, identify independent sub-tasks, and start a parallel run immediately.\n\n';
+          startOpts.prompt = forceInstr + (startOpts.prompt || '');
+          _forceParallelTask = false;
+        }
         const result = await api.chat.start(startOpts);
         if (!result.success) {
           sessionId = null;
@@ -2326,7 +2364,14 @@ class ChatView extends BaseComponent {
           setStreaming(false);
         }
       } else {
-        const result = await api.chat.send({ sessionId, text: enhancedText, images: imagesPayload, mentions: resolvedMentions });
+        // Force parallel task: prepend instruction to message in existing session
+        let sendText = enhancedText;
+        if (_forceParallelTask) {
+          const forceInstr = 'IMPORTANT: You MUST use the parallel_start_run MCP tool to decompose and execute the following task in parallel sub-tasks. Do NOT execute it sequentially.\n\n';
+          sendText = forceInstr + sendText;
+          _forceParallelTask = false;
+        }
+        const result = await api.chat.send({ sessionId, text: sendText, images: imagesPayload, mentions: resolvedMentions });
         if (!result.success) {
           appendError(result.error || t('chat.errorOccurred'));
           if (!isStreaming) setStreaming(false);

@@ -2181,3 +2181,108 @@
   margin-top: 3px;
   padding-left: 52px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Parallel Suggest Card (cps- prefix)
+   Rendered from ```parallel-suggest``` markdown block
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.cps-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin: 8px 0;
+  transition: opacity 0.3s ease;
+}
+
+.cps-card.cps-acted {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.cps-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.cps-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.cps-title {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.cps-goal {
+  font-size: var(--font-base);
+  color: var(--text-primary);
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.cps-tasks {
+  margin-bottom: 12px;
+  padding-left: 4px;
+}
+
+.cps-task-item {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  padding: 2px 0 2px 12px;
+  position: relative;
+}
+
+.cps-task-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transform: translateY(-50%);
+}
+
+.cps-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.cps-btn {
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.cps-btn-parallel {
+  background: var(--accent);
+  color: #fff;
+}
+
+.cps-btn-parallel:hover {
+  background: var(--accent-hover);
+}
+
+.cps-btn-normal {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.cps-btn-normal:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
