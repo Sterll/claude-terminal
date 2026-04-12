@@ -42,6 +42,7 @@ module.exports = {
     "node_modules/long/**/*",
     "node_modules/lru.min/**/*",
     "node_modules/named-placeholders/**/*",
+    "node_modules/safer-buffer/**/*",
     "node_modules/sql-escaper/**/*",
     // pg + all transitive deps
     "node_modules/pg/**/*",
