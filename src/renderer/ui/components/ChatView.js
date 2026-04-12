@@ -3845,55 +3845,6 @@ class ChatView extends BaseComponent {
     });
   }
 
-  /**
-   * Collect plan content from assistant messages streamed between
-   * the last EnterPlanMode card and now. No disk reads needed -
-   * the plan is already in the DOM as streamed messages.
-   */
-  function collectPlanFromDOM() {
-    // Find the EnterPlanMode card (marks the start of planning)
-    const planCards = messagesEl.querySelectorAll('.chat-plan-card');
-    let enterCard = null;
-    for (let i = planCards.length - 1; i >= 0; i--) {
-      if (planCards[i].dataset.toolName === 'EnterPlanMode') {
-        enterCard = planCards[i];
-        break;
-      }
-    }
-
-    // Collect assistant messages between EnterPlanMode and now,
-    // but ONLY the ones after the last tool call (the actual plan, not research text).
-    const allMessages = messagesEl.querySelectorAll('.chat-msg-assistant, .chat-tool-card, .chat-tool-group, .chat-plan-card');
-    let inPlanZone = !enterCard; // if no enter card, consider entire conversation
-    const candidates = []; // all assistant messages in plan zone
-    let lastToolIndex = -1; // track where the last tool call is
-
-    for (const node of allMessages) {
-      if (node === enterCard) { inPlanZone = true; continue; }
-      if (!inPlanZone) continue;
-
-      if (node.classList.contains('chat-msg-assistant')) {
-        const contentEl = node.querySelector('.chat-msg-content');
-        if (contentEl) {
-          const text = contentEl.textContent.trim();
-          if (text.length > 20) {
-            candidates.push({ html: contentEl.innerHTML, el: node });
-          }
-        }
-      } else if (node.classList.contains('chat-tool-card') || node.classList.contains('chat-tool-group')) {
-        // Mark where the last tool call is, so we only keep messages after it
-        lastToolIndex = candidates.length;
-      }
-    }
-
-    // Only return messages after the last tool call (the final plan text)
-    // If no tool calls were found, return all candidates
-    if (lastToolIndex >= 0) {
-      return candidates.slice(lastToolIndex);
-    }
-    return candidates;
-  }
-
   function appendPlanCard(data) {
     const { requestId, toolName, input } = data;
     const isExit = toolName === 'ExitPlanMode';
@@ -3906,12 +3857,9 @@ class ChatView extends BaseComponent {
     const icon = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13zM9 13h6v2H9v-2zm6 4H9v2h6v-2zm-2-8h2v2h-2V9z"/></svg>';
 
     if (isExit) {
-      // Collect plan from streamed assistant messages (no disk reads)
-      const planParts = collectPlanFromDOM();
-      const planContent = planParts.map(p => p.html).join('<hr class="chat-plan-separator"/>');
-
-      // Hide the original messages - they'll be shown inside the plan card
-      for (const part of planParts) part.el.style.display = 'none';
+      // The SDK injects plan content into input.plan (read from ~/.claude/plans/<slug>.md)
+      const planMarkdown = input?.plan || '';
+      const planContent = planMarkdown ? renderMarkdown(planMarkdown) : '';
 
       const planPreview = planContent
         ? `<div class="chat-plan-content"><div class="chat-plan-content-inner">${planContent}</div></div>`
