@@ -3861,23 +3861,37 @@ class ChatView extends BaseComponent {
       }
     }
 
-    // Collect all assistant messages after the enter card (or all if none)
+    // Collect assistant messages between EnterPlanMode and now,
+    // but ONLY the ones after the last tool call (the actual plan, not research text).
     const allMessages = messagesEl.querySelectorAll('.chat-msg-assistant, .chat-tool-card, .chat-tool-group, .chat-plan-card');
-    let collecting = !enterCard; // if no enter card, collect all
-    const planParts = [];
+    let inPlanZone = !enterCard; // if no enter card, consider entire conversation
+    const candidates = []; // all assistant messages in plan zone
+    let lastToolIndex = -1; // track where the last tool call is
 
     for (const node of allMessages) {
-      if (node === enterCard) { collecting = true; continue; }
-      if (!collecting) continue;
+      if (node === enterCard) { inPlanZone = true; continue; }
+      if (!inPlanZone) continue;
+
       if (node.classList.contains('chat-msg-assistant')) {
         const contentEl = node.querySelector('.chat-msg-content');
         if (contentEl) {
           const text = contentEl.textContent.trim();
-          if (text.length > 20) planParts.push({ html: contentEl.innerHTML, el: node });
+          if (text.length > 20) {
+            candidates.push({ html: contentEl.innerHTML, el: node });
+          }
         }
+      } else if (node.classList.contains('chat-tool-card') || node.classList.contains('chat-tool-group')) {
+        // Mark where the last tool call is, so we only keep messages after it
+        lastToolIndex = candidates.length;
       }
     }
-    return planParts;
+
+    // Only return messages after the last tool call (the final plan text)
+    // If no tool calls were found, return all candidates
+    if (lastToolIndex >= 0) {
+      return candidates.slice(lastToolIndex);
+    }
+    return candidates;
   }
 
   function appendPlanCard(data) {
