@@ -1930,7 +1930,9 @@
     "version": "Version",
     "serverVersion": "Server",
     "checkUpdates": "Check for updates",
-    "updateAvailable": "v{version} available"
+    "updateAvailable": "v{version} available",
+    "newCloudProjectsTitle": "New cloud projects",
+    "newCloudProjectsMessage": "{list} available on the cloud"
   },
   "database": {
     "title": "Database",

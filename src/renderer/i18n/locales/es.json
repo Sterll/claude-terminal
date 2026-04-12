@@ -1927,7 +1927,9 @@
     "version": "Version",
     "serverVersion": "Servidor",
     "checkUpdates": "Buscar actualizaciones",
-    "updateAvailable": "v{version} disponible"
+    "updateAvailable": "v{version} disponible",
+    "newCloudProjectsTitle": "Nuevos proyectos en la nube",
+    "newCloudProjectsMessage": "{list} disponibles en la nube"
   },
   "database": {
     "title": "Base de datos",
