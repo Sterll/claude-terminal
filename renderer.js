@@ -56,6 +56,8 @@ const {
   renameProject,
   setSelectedProjectFilter,
   generateProjectId,
+  updateProject,
+  checkMissingPaths,
   initializeState,
 
   // Core
@@ -2153,6 +2155,16 @@ ProjectList.setCallbacks({
   onCloudReset: resetCloudState,
   onDeleteProject: deleteProjectUI,
   onRenameProject: renameProjectUI,
+  onLocateProject: async (projectId) => {
+    const project = getProject(projectId);
+    if (!project) return;
+    const newPath = await api.dialog.selectFolder();
+    if (!newPath) return;
+    updateProject(projectId, { path: newPath });
+    await checkMissingPaths();
+    ProjectList.render();
+    showToast({ type: 'success', title: t('projects.pathUpdated', { name: project.name }), duration: 3000 });
+  },
   onRenderProjects: () => ProjectList.render(),
   onCreateFolder: () => promptCreateFolder(null),
   onFilterTerminals: (idx) => { TerminalManager.filterByProject(idx); saveTerminalSessions(); },

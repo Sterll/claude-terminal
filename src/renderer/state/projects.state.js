@@ -329,6 +329,9 @@ async function loadProjects() {
       if (needsSave) {
         saveProjects();
       }
+
+      // Check which projects have missing paths (async, non-blocking)
+      checkMissingPaths();
     }
   } catch (e) {
     console.error('Error loading projects:', e);
@@ -1379,6 +1382,39 @@ function getVisualProjectOrder() {
   return result;
 }
 
+// ── Missing Path Detection (for cloud-synced projects) ──
+
+let _missingPathIds = new Set();
+
+/**
+ * Check which projects have paths that don't exist on this machine.
+ * Called after loadProjects() and after cloud sync merges.
+ */
+async function checkMissingPaths() {
+  const { projects } = projectsState.get();
+  const checks = projects.map(async (p) => {
+    if (!p.path) return null;
+    try { await fsp.access(p.path); return null; } catch { return p.id; }
+  });
+  const results = await Promise.all(checks);
+  const newMissing = new Set(results.filter(Boolean));
+
+  // Only trigger re-render if the set actually changed
+  if (newMissing.size !== _missingPathIds.size || [...newMissing].some(id => !_missingPathIds.has(id))) {
+    _missingPathIds = newMissing;
+    projectsState.set({ ...projectsState.get() });
+  } else {
+    _missingPathIds = newMissing;
+  }
+}
+
+/**
+ * Check if a project's path is missing on this machine.
+ */
+function isPathMissing(projectId) {
+  return _missingPathIds.has(projectId);
+}
+
 module.exports = {
   projectsState,
   generateFolderId,
@@ -1455,5 +1491,8 @@ module.exports = {
   migrateTasksToKanban,
   normalizeKanbanTaskFields,
   // Visual order
-  getVisualProjectOrder
+  getVisualProjectOrder,
+  // Missing path detection (cloud sync)
+  checkMissingPaths,
+  isPathMissing,
 };

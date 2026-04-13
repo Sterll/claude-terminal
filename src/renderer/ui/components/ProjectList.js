@@ -40,6 +40,8 @@ const {
   // Project settings
   getProjectSettings,
   setProjectSettings,
+  // Missing path detection
+  isPathMissing,
 } = require('../../state');
 const { escapeHtml } = require('../../utils');
 const { sanitizeColor } = require('../../utils/color');
@@ -299,6 +301,7 @@ class ProjectList extends BaseComponent {
     const fivemStatus = this._fivemServers.get(projectIndex)?.status || 'stopped';
     const gitOps = this._gitOperations.get(project.id) || { pulling: false, pushing: false };
     const isGitRepo = this._gitRepoStatus.get(project.id)?.isGitRepo || false;
+    const pathMissing = isPathMissing(project.id);
     const isRunning = fivemStatus === 'running';
     const isStarting = fivemStatus === 'starting';
     const projectColor = project.color || null;
@@ -322,6 +325,15 @@ class ProjectList extends BaseComponent {
     const customizeColorDot = safeProjectColor ? `<span class="customize-preview-dot" style="background: ${safeProjectColor}"></span>` : '';
 
     let menuItemsHtml = '';
+    // Missing path section (cloud-synced project with invalid path)
+    if (pathMissing) {
+      menuItemsHtml += `
+      <div class="more-actions-section-label">${t('projects.sectionPath')}</div>
+      <button class="more-actions-item accent btn-locate-project" data-project-id="${project.id}">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 10v-4H8v-2h6V6l4 5-4 5z"/></svg>
+        ${t('projects.locatePath')}
+      </button>`;
+    }
     const typeMenuItems = typeHandler.getMenuItems ? typeHandler.getMenuItems(typeCtx) : '';
     if (typeMenuItems) {
       menuItemsHtml += typeMenuItems;
@@ -436,7 +448,7 @@ class ProjectList extends BaseComponent {
     const tooltipHtml = `<div class="project-tooltip">${tooltipLines.join('')}</div>`;
 
     return `
-    <div class="project-item ${isSelected ? 'active' : ''} ${project.archived ? 'archived' : ''} ${typeHandler.getProjectItemClass(typeCtx)}"
+    <div class="project-item ${isSelected ? 'active' : ''} ${project.archived ? 'archived' : ''} ${pathMissing ? 'path-missing' : ''} ${typeHandler.getProjectItemClass(typeCtx)}"
          data-project-id="${project.id}" data-depth="${depth}" draggable="true" tabindex="0"
          style="margin-left: ${depth * 16}px;">
       ${tooltipHtml}
@@ -448,6 +460,7 @@ class ProjectList extends BaseComponent {
           ${terminalStats.total > 0 ? `<span class="terminal-count"><span class="working-count">${terminalStats.working}</span><span class="count-separator">/</span><span class="total-count">${terminalStats.total}</span></span>` : ''}
           ${project.isWorktree && project.worktreeBranch ? `<span class="project-worktree-badge" title="Worktree: ${escapeHtml(project.worktreeBranch)}">${escapeHtml(project.worktreeBranch)}</span>` : project.isWorktree ? '<span class="project-worktree-badge" title="Worktree">WT</span>' : ''}
           ${(() => { const pws = getWorkspacesForProject(project.id); return pws.length > 0 ? `<span class="project-workspace-badge" title="${escapeHtml(pws.map(w => w.name).join(', '))}" style="color: ${sanitizeColor(pws[0].color) || 'var(--accent)'}">${escapeHtml(pws[0].icon || t('workspace.badge'))}</span>` : ''; })()}
+          ${pathMissing ? `<span class="path-missing-badge" title="${t('projects.pathMissingTitle')}"><svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg></span>` : ''}
         </div>
         <div class="project-path">${escapeHtml(project.path)}</div>
         ${hasTime ? `<div class="project-time">
@@ -827,6 +840,9 @@ class ProjectList extends BaseComponent {
           self.closeAllMoreActionsMenus();
           if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects();
           if (self._callbacks.onCreateBasicTerminal) self._callbacks.onCreateBasicTerminal(project);
+        } else if (btn.classList.contains('btn-locate-project')) {
+          self.closeAllMoreActionsMenus();
+          if (self._callbacks.onLocateProject) self._callbacks.onLocateProject(projectId);
         } else if (btn.classList.contains('btn-open-folder')) {
           const project = getProject(projectId);
           if (project) self._api.dialog.openInExplorer(project.path);
