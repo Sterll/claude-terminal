@@ -86,7 +86,7 @@ function wireNotificationConsumer() {
     // Log tool errors
     eventBus.on(EVENT_TYPES.TOOL_ERROR, (e) => {
       if (e.source !== 'hooks' || !e.projectId) return;
-      console.warn(`[Events] Tool error: ${e.data?.toolName || 'unknown'}`, e.data?.error || '');
+      console.debug(`[Events] Tool error: ${e.data?.toolName || 'unknown'}`, e.data?.error || '');
     }),
 
     // Session end = definitive "Claude is done" → show notification
