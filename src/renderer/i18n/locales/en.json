@@ -90,7 +90,11 @@
     "orCreateFolder": "or create a folder",
     "sectionGit": "Git",
     "sectionOpen": "Open",
-    "sectionProject": "Project"
+    "sectionProject": "Project",
+    "sectionPath": "Path",
+    "pathMissingTitle": "Path not found on this machine",
+    "locatePath": "Locate folder...",
+    "pathUpdated": "Path updated for \"{name}\""
   },
   "terminals": {
     "noTerminals": "No terminal for this project",

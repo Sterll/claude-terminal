@@ -90,7 +90,11 @@
     "orCreateFolder": "ou créer un dossier",
     "sectionGit": "Git",
     "sectionOpen": "Ouvrir",
-    "sectionProject": "Projet"
+    "sectionProject": "Projet",
+    "sectionPath": "Chemin",
+    "pathMissingTitle": "Chemin introuvable sur cette machine",
+    "locatePath": "Localiser le dossier...",
+    "pathUpdated": "Chemin mis à jour pour \"{name}\""
   },
   "terminals": {
     "noTerminals": "Aucun terminal pour ce projet",
