@@ -23,6 +23,11 @@ function registerCloudSyncHandlers() {
         mainWindow.webContents.send('cloud:sync-conflict', conflicts);
       }
     },
+    onProjectsMerged: () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('cloud:projects-reloaded');
+      }
+    },
     getSettings: () => _loadSettings(),
   });
 

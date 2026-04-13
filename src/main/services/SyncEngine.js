@@ -42,13 +42,72 @@ class SyncEngine {
     this._started = false;
     this._onStatusChange = null;
     this._onConflict = null;
+    this._onProjectsMerged = null;
     this._settingsGetter = null;
   }
 
-  setCallbacks({ onStatusChange, onConflict, getSettings }) {
+  setCallbacks({ onStatusChange, onConflict, onProjectsMerged, getSettings }) {
     this._onStatusChange = onStatusChange;
     this._onConflict = onConflict;
+    this._onProjectsMerged = onProjectsMerged || null;
     this._settingsGetter = getSettings;
+  }
+
+  /**
+   * Merge cloud projects data with local data, preserving local paths.
+   * Paths are machine-specific and must not be overwritten by cloud sync.
+   */
+  _mergeProjectsData(localData, cloudData) {
+    const localProjects = localData.projects || [];
+    const cloudProjects = cloudData.projects || [];
+    const localFolders = localData.folders || [];
+    const cloudFolders = cloudData.folders || [];
+    const localRootOrder = localData.rootOrder || [];
+    const cloudRootOrder = cloudData.rootOrder || [];
+
+    const localById = new Map(localProjects.map(p => [p.id, p]));
+    const cloudById = new Map(cloudProjects.map(p => [p.id, p]));
+
+    // Merge projects: cloud metadata wins, local path wins
+    const mergedProjects = [];
+    const mergedIds = new Set();
+
+    for (const cp of cloudProjects) {
+      const lp = localById.get(cp.id);
+      if (lp) {
+        // Project exists on both: keep local path, take cloud metadata
+        mergedProjects.push({ ...cp, path: lp.path });
+      } else {
+        // New from cloud: add as-is (path will likely be missing on this machine)
+        mergedProjects.push(cp);
+      }
+      mergedIds.add(cp.id);
+    }
+
+    // Keep local-only projects (not in cloud)
+    for (const lp of localProjects) {
+      if (!mergedIds.has(lp.id)) {
+        mergedProjects.push(lp);
+      }
+    }
+
+    // Merge folders: cloud wins for shared, keep local-only
+    const cloudFolderIds = new Set(cloudFolders.map(f => f.id));
+    const mergedFolders = [
+      ...cloudFolders,
+      ...localFolders.filter(f => !cloudFolderIds.has(f.id)),
+    ];
+
+    // Merge rootOrder: cloud order first, then local-only items
+    const cloudOrderSet = new Set(cloudRootOrder);
+    const localOnlyRootItems = localRootOrder.filter(id => !cloudOrderSet.has(id));
+    const mergedRootOrder = [...cloudRootOrder, ...localOnlyRootItems];
+
+    return {
+      projects: mergedProjects,
+      folders: mergedFolders,
+      rootOrder: mergedRootOrder,
+    };
   }
 
   _emitStatus() {
@@ -112,7 +171,17 @@ class SyncEngine {
           } catch { return null; }
         },
         write: async (data) => {
-          await this._atomicWrite(projectsFile, JSON.stringify(data, null, 2));
+          // Smart merge: preserve local paths (they are machine-specific)
+          let localData = null;
+          try {
+            const raw = await fs.promises.readFile(projectsFile, 'utf8');
+            localData = JSON.parse(raw);
+          } catch { /* no local file yet */ }
+
+          const merged = localData ? this._mergeProjectsData(localData, data) : data;
+          await this._atomicWrite(projectsFile, JSON.stringify(merged, null, 2));
+
+          if (this._onProjectsMerged) this._onProjectsMerged();
         },
         sanitize: (data) => data,
       },

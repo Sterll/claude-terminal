@@ -613,6 +613,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     resolveAllConflicts: (res) => ipcRenderer.invoke('cloud:sync-resolve-all', res),
     onSyncStatusChanged: createListener('cloud:sync-status-changed'),
     onSyncConflict: createListener('cloud:sync-conflict'),
+    onProjectsReloaded: createListener('cloud:projects-reloaded'),
   },
 
   // ==================== USAGE ====================

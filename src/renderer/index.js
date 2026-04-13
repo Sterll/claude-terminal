@@ -58,6 +58,15 @@ function _registerCloudListeners(api) {
       }
     });
   }
+
+  // Reload projects from disk after cloud sync merges new data
+  if (api.cloud.onProjectsReloaded) {
+    api.cloud.onProjectsReloaded(async () => {
+      const { loadProjects, checkMissingPaths } = require('./state/projects.state');
+      await loadProjects();
+      await checkMissingPaths();
+    });
+  }
 }
 
 // Telemetry consent modal is handled in renderer.js (main entry point)
