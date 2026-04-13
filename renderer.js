@@ -4994,7 +4994,6 @@ api.remote.onOpenChatTab(({ cwd, prompt, images, model, effort, resumeSessionId 
   function pushTime() {
     try {
       const { today } = getGlobalTimes();
-      console.log('[Remote] pushTime → todayMs:', today);
       api.remote.pushTimeData({ todayMs: today });
     } catch (e) { console.error('[Remote] pushTime error:', e); }
   }
