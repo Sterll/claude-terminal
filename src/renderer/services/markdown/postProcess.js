@@ -183,6 +183,7 @@ function initMathBlocks(blocks) {
         render.innerHTML = katex.renderToString(source, {
           displayMode: true,
           throwOnError: true,
+          strict: false,
         });
         if (loading) loading.style.display = 'none';
       } catch (err) {
@@ -221,6 +222,7 @@ function initInlineMath(elements) {
         el.innerHTML = katex.renderToString(source, {
           displayMode: false,
           throwOnError: true,
+          strict: false,
         });
       } catch (err) {
         el.innerHTML = `<span class="chat-math-error-inline" title="${escapeHtml(err.message)}"><code>${escapeHtml(source)}</code></span>`;
