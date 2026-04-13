@@ -1032,16 +1032,16 @@ class SettingsPanel extends BasePanel {
             </div>
             <div class="settings-group">
               <div class="settings-group-title">${t('settings.personaGroup')}</div>
-              <div class="settings-card">
-                <div class="form-field" style="margin-bottom: 12px;">
-                  <label style="font-size: var(--font-sm); color: var(--text-secondary); margin-bottom: 4px; display: block;">${t('settings.personaName')}</label>
-                  <input type="text" id="persona-name-input" class="form-input" value="${escapeHtml(settings.personaName || '')}" placeholder="${t('settings.personaNamePlaceholder')}" style="width: 100%; padding: 8px 12px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); font-size: var(--font-sm);" />
+              <div class="settings-card persona-card">
+                <div class="persona-field">
+                  <label for="persona-name-input">${t('settings.personaName')}</label>
+                  <input type="text" id="persona-name-input" class="persona-input" value="${escapeHtml(settings.personaName || '')}" placeholder="${t('settings.personaNamePlaceholder')}" />
                 </div>
-                <div class="form-field">
-                  <label style="font-size: var(--font-sm); color: var(--text-secondary); margin-bottom: 4px; display: block;">${t('settings.personaInstructions')}</label>
-                  <textarea id="persona-instructions-input" class="form-input" rows="3" placeholder="${t('settings.personaInstructionsPlaceholder')}" style="width: 100%; padding: 8px 12px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); font-size: var(--font-sm); resize: vertical; font-family: inherit;">${escapeHtml(settings.personaInstructions || '')}</textarea>
+                <div class="persona-field">
+                  <label for="persona-instructions-input">${t('settings.personaInstructions')}</label>
+                  <textarea id="persona-instructions-input" class="persona-input" rows="3" placeholder="${t('settings.personaInstructionsPlaceholder')}">${escapeHtml(settings.personaInstructions || '')}</textarea>
                 </div>
-                <div class="form-help" style="margin-top: 8px; font-size: var(--font-2xs); color: var(--text-muted);">${t('settings.personaHelp')}</div>
+                <div class="persona-help">${t('settings.personaHelp')}</div>
               </div>
             </div>
             <div class="settings-group">
