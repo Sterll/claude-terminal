@@ -2509,7 +2509,8 @@ class ChatView extends BaseComponent {
     }
 
     const isQueued = isStreaming && sessionId;
-    appendUserMessage(enhancedText, images, mentions, isQueued, wasEnhanced ? text : null);
+    const userMsgUuid = crypto.randomUUID();
+    appendUserMessage(enhancedText, images, mentions, isQueued, wasEnhanced ? text : null, userMsgUuid);
     if (enhancedText) conversationHistory.push({ role: 'user', content: enhancedText });
     inputEl.innerHTML = '';
     updatePlaceholderVisibility();
@@ -2546,6 +2547,7 @@ class ChatView extends BaseComponent {
           effort: selectedEffort,
           enable1MContext: getSetting('enable1MContext') || false,
           maxTurns: getSetting('maxTurns') || null,
+          userMessageUuid: userMsgUuid,
           ...(project.isCloud ? { cloud: true, cloudProjectName: project.cloudProjectName } : {}),
         };
         // Persona: optional name + custom instructions appended to claude_code preset
@@ -2612,7 +2614,7 @@ class ChatView extends BaseComponent {
           sendText = forceInstr + sendText;
           _forceParallelTask = false;
         }
-        const result = await api.chat.send({ sessionId, text: sendText, images: imagesPayload, mentions: resolvedMentions });
+        const result = await api.chat.send({ sessionId, text: sendText, images: imagesPayload, mentions: resolvedMentions, userMessageUuid: userMsgUuid });
         if (!result.success) {
           appendError(result.error || t('chat.errorOccurred'));
           if (!isStreaming) setStreaming(false);
@@ -3077,12 +3079,13 @@ class ChatView extends BaseComponent {
 
   // ── DOM helpers ──
 
-  function appendUserMessage(text, images = [], mentions = [], queued = false, originalText = null) {
+  function appendUserMessage(text, images = [], mentions = [], queued = false, originalText = null, uuid = null) {
     const welcome = messagesEl.querySelector('.chat-welcome');
     if (welcome) welcome.remove();
     const el = document.createElement('div');
     el.className = 'chat-msg chat-msg-user';
     if (queued) el.classList.add('queued');
+    if (uuid) el.dataset.userMessageUuid = uuid;
     let html = '';
     if (queued) {
       html += `<span class="chat-msg-queued-badge">${escapeHtml(t('chat.queued') || 'Queued')}</span>`;
@@ -3118,6 +3121,18 @@ class ChatView extends BaseComponent {
       badge.addEventListener('click', () => {
         originalBlock.style.display = originalBlock.style.display === 'none' ? '' : 'none';
       });
+    }
+    // Add rewind button for live sessions (undo file changes from this point)
+    if (uuid && sessionId && !queued) {
+      const rewindBtn = document.createElement('button');
+      rewindBtn.className = 'chat-msg-rewind-btn';
+      rewindBtn.title = t('chat.rewindFiles') || 'Rewind files to here';
+      rewindBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
+      rewindBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        handleRewindFiles(uuid, rewindBtn);
+      });
+      el.appendChild(rewindBtn);
     }
     messagesEl.appendChild(el);
     scrollToBottom();
@@ -4603,6 +4618,54 @@ class ChatView extends BaseComponent {
       effort: selectedEffort,
       skipPermissions,
     });
+  }
+
+  async function handleRewindFiles(userMessageUuid, btnEl) {
+    if (!sessionId) return;
+    btnEl.disabled = true;
+    btnEl.classList.add('loading');
+    try {
+      const result = await api.chat.rewindFiles({ sessionId, userMessageId: userMessageUuid });
+      if (result.success && result.canRewind) {
+        const filesCount = result.filesChanged?.length || 0;
+        const details = [];
+        if (filesCount > 0) details.push(t('chat.rewindFilesCount', { count: filesCount }) || `${filesCount} file(s)`);
+        if (result.insertions) details.push(`+${result.insertions}`);
+        if (result.deletions) details.push(`-${result.deletions}`);
+        const detailText = details.length > 0 ? ` (${details.join(', ')})` : '';
+        const Toast = require('./Toast');
+        Toast.showToast({
+          message: (t('chat.rewindSuccess') || 'Files rewound successfully') + detailText,
+          type: 'success',
+          duration: 5000
+        });
+        appendSystemNotice(
+          (t('chat.rewindNotice') || 'Files rewound to this point') + detailText,
+          'command'
+        );
+      } else if (result.success && !result.canRewind) {
+        const Toast = require('./Toast');
+        Toast.showToast({
+          message: result.error || t('chat.rewindNotAvailable') || 'Cannot rewind to this point',
+          type: 'warning'
+        });
+      } else {
+        const Toast = require('./Toast');
+        Toast.showToast({
+          message: result.error || t('chat.rewindError') || 'Failed to rewind files',
+          type: 'error'
+        });
+      }
+    } catch (err) {
+      const Toast = require('./Toast');
+      Toast.showToast({
+        message: err.message || t('chat.rewindError') || 'Failed to rewind files',
+        type: 'error'
+      });
+    } finally {
+      btnEl.disabled = false;
+      btnEl.classList.remove('loading');
+    }
   }
 
   function handleAssistantMessage(msg) {

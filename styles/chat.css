@@ -132,6 +132,7 @@
 /* User message - compact pill */
 .chat-msg-user {
   padding: 6px 0;
+  position: relative;
 }
 
 .chat-msg-user .chat-msg-content {
@@ -243,6 +244,43 @@
   opacity: 1 !important;
   color: var(--accent);
   border-color: var(--accent-dim);
+}
+
+/* Rewind files button — hidden by default, shown on hover (user messages) */
+.chat-msg-rewind-btn {
+  position: absolute;
+  top: 6px;
+  left: -32px;
+  opacity: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  padding: 4px 6px;
+  cursor: pointer;
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+  display: flex;
+  align-items: center;
+  font-size: var(--font-2xs);
+}
+
+.chat-msg-user:hover .chat-msg-rewind-btn {
+  opacity: 0.6;
+}
+
+.chat-msg-rewind-btn:hover {
+  opacity: 1 !important;
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+
+.chat-msg-rewind-btn:disabled {
+  pointer-events: none;
+  opacity: 0.3 !important;
+}
+
+.chat-msg-rewind-btn.loading {
+  animation: pulse 1s ease-in-out infinite;
 }
 
 .chat-msg-content {

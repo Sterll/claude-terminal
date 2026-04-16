@@ -295,7 +295,7 @@ class ChatService {
    * @param {string} [params.resumeSessionId] - Session ID to resume
    * @returns {Promise<string>} Session ID
    */
-  async startSession({ cwd, prompt, permissionMode = 'default', resumeSessionId = null, sessionId = null, images = [], mentions = [], model = null, enable1MContext = false, forkSession = false, resumeSessionAt = null, effort = null, outputFormat = null, skills = null, systemPrompt = null, settingSources = null, maxTurns = null, cloud = false, cloudProjectName = null }) {
+  async startSession({ cwd, prompt, permissionMode = 'default', resumeSessionId = null, sessionId = null, images = [], mentions = [], model = null, enable1MContext = false, forkSession = false, resumeSessionAt = null, effort = null, outputFormat = null, skills = null, systemPrompt = null, settingSources = null, maxTurns = null, cloud = false, cloudProjectName = null, userMessageUuid = null }) {
     if (!sessionId) sessionId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     // Cloud session: delegate to cloud server instead of local SDK
@@ -320,7 +320,8 @@ class ChatService {
         type: 'user',
         message: { role: 'user', content: this._buildContent(prompt, images, mentions) },
         parent_tool_use_id: null,
-        session_id: sessionId
+        session_id: sessionId,
+        ...(userMessageUuid ? { uuid: userMessageUuid } : {})
       });
       // Relay initial user message to remote clients
       if (this._remoteEventCallback) {
@@ -392,6 +393,9 @@ class ChatService {
       // Enable native SDK follow-up prompt suggestions
       options.promptSuggestions = true;
 
+      // Enable file checkpointing for rewind support
+      options.enableFileCheckpointing = true;
+
       // Resume existing session if requested
       if (resumeSessionId) {
         options.resume = resumeSessionId;
@@ -434,7 +438,7 @@ class ChatService {
   /**
    * Send a follow-up message (push to async iterable queue)
    */
-  sendMessage(sessionId, text, images = [], mentions = []) {
+  sendMessage(sessionId, text, images = [], mentions = [], userMessageUuid = null) {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Session ${sessionId} not found`);
 
@@ -448,7 +452,8 @@ class ChatService {
         type: 'user',
         message: { role: 'user', content: this._buildContent(text, images, mentions) },
         parent_tool_use_id: null,
-        session_id: sessionId
+        session_id: sessionId,
+        ...(userMessageUuid ? { uuid: userMessageUuid } : {})
       });
       // Relay user message to remote clients so mobile sees it
       if (this._remoteEventCallback) {
@@ -632,7 +637,21 @@ class ChatService {
     await session.queryStream.setMaxThinkingTokens(tokens);
   }
 
-
+  /**
+   * Rewind files to the state they were in at a specific user message.
+   * @param {string} sessionId
+   * @param {string} userMessageId - UUID of the user message to rewind to
+   * @returns {Promise<Object>} { canRewind, error?, filesChanged?, insertions?, deletions? }
+   */
+  async rewindFiles(sessionId, userMessageId) {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
+    if (session.isCloud) throw new Error('File rewind not supported for cloud sessions');
+    if (!session.queryStream?.rewindFiles) {
+      throw new Error('File rewind not available');
+    }
+    return session.queryStream.rewindFiles(userMessageId);
+  }
 
   /**
    * Reject all pending permission requests for a session.

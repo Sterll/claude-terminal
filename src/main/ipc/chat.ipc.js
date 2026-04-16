@@ -20,10 +20,10 @@ function registerChatHandlers() {
   });
 
   // Send a follow-up message to existing session
-  ipcMain.handle('chat-send', async (_event, { sessionId, text, images, mentions }) => {
+  ipcMain.handle('chat-send', async (_event, { sessionId, text, images, mentions, userMessageUuid }) => {
     try {
       sendFeaturePing('chat:message');
-      chatService.sendMessage(sessionId, text, images, mentions);
+      chatService.sendMessage(sessionId, text, images, mentions, userMessageUuid);
       return { success: true };
     } catch (err) {
       console.error('[chat-send] Error:', err.message);
@@ -135,6 +135,18 @@ function registerChatHandlers() {
   // Cancel a background generation
   ipcMain.on('chat-cancel-generation', (_event, { genId }) => {
     chatService.cancelGeneration(genId);
+  });
+
+  // Rewind file changes to a specific user message checkpoint
+  ipcMain.handle('chat-rewind-files', async (_event, { sessionId, userMessageId }) => {
+    try {
+      sendFeaturePing('chat:rewind');
+      const result = await chatService.rewindFiles(sessionId, userMessageId);
+      return { success: true, ...result };
+    } catch (err) {
+      console.error('[chat-rewind-files] Error:', err.message);
+      return { success: false, error: err.message };
+    }
   });
 
   // Enhance a user prompt via Haiku before sending
