@@ -4234,6 +4234,10 @@ filterBtnBranch.onclick = async (e) => {
   if (actionsBtn) actionsBtn.classList.remove('open');
   const gitChangesEl = document.getElementById('git-changes-panel');
   if (gitChangesEl) gitChangesEl.classList.remove('active');
+  const promptsDropdown = document.getElementById('prompts-dropdown');
+  const promptsBtn = document.getElementById('filter-btn-prompts');
+  if (promptsDropdown) promptsDropdown.classList.remove('active');
+  if (promptsBtn) promptsBtn.classList.remove('open');
 
   if (isOpen) {
     branchDropdown.classList.remove('active');
@@ -4516,7 +4520,8 @@ GitChangesPanel.init({
   getProject,
   refreshDashboardAsync,
   closeBranchDropdown: () => { branchDropdown.classList.remove('active'); filterBtnBranch.classList.remove('open'); },
-  closeActionsDropdown: () => { const d = document.getElementById('actions-dropdown'); const b = document.getElementById('filter-btn-actions'); if (d) d.classList.remove('active'); if (b) b.classList.remove('open'); }
+  closeActionsDropdown: () => { const d = document.getElementById('actions-dropdown'); const b = document.getElementById('filter-btn-actions'); if (d) d.classList.remove('active'); if (b) b.classList.remove('open'); },
+  closePromptsDropdown: () => { const d = document.getElementById('prompts-dropdown'); const b = document.getElementById('filter-btn-prompts'); if (d) d.classList.remove('active'); if (b) b.classList.remove('open'); }
 });
 
 

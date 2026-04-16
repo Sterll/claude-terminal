@@ -38,6 +38,7 @@ class GitChangesPanel extends BasePanel {
     this._refreshDashboardAsync = options.refreshDashboardAsync;
     this._closeBranchDropdown = options.closeBranchDropdown;
     this._closeActionsDropdown = options.closeActionsDropdown;
+    this._closePromptsDropdown = options.closePromptsDropdown;
     this._openGitTab = options.openGitTab || null;
 
     // DOM element refs (acquired lazily)
@@ -91,6 +92,7 @@ class GitChangesPanel extends BasePanel {
 
       if (this._closeBranchDropdown) this._closeBranchDropdown();
       if (this._closeActionsDropdown) this._closeActionsDropdown();
+      if (this._closePromptsDropdown) this._closePromptsDropdown();
 
       if (isOpen) {
         this._gitChangesPanel.classList.remove('active');
@@ -1020,6 +1022,7 @@ function init(context) {
     refreshDashboardAsync: context.refreshDashboardAsync,
     closeBranchDropdown: context.closeBranchDropdown,
     closeActionsDropdown: context.closeActionsDropdown,
+    closePromptsDropdown: context.closePromptsDropdown,
     openGitTab: context.openGitTab
   });
 }

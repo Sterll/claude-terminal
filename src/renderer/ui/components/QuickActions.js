@@ -231,9 +231,13 @@ class QuickActions extends BaseComponent {
       const branchDropdown = document.getElementById('branch-dropdown');
       const filterBtnBranch = document.getElementById('filter-btn-branch');
       const gitChangesPanel = document.getElementById('git-changes-panel');
+      const promptsDropdown = document.getElementById('prompts-dropdown');
+      const promptsBtn = document.getElementById('filter-btn-prompts');
       if (branchDropdown) branchDropdown.classList.remove('active');
       if (filterBtnBranch) filterBtnBranch.classList.remove('open');
       if (gitChangesPanel) gitChangesPanel.classList.remove('active');
+      if (promptsDropdown) promptsDropdown.classList.remove('active');
+      if (promptsBtn) promptsBtn.classList.remove('open');
 
       dropdown.classList.toggle('active', !isOpen);
       actionsBtn.classList.toggle('open', !isOpen);
