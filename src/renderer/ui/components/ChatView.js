@@ -24,6 +24,8 @@ const EFFORT_OPTIONS = [
   { id: 'low', label: 'Low', desc: t('chat.effortLow') },
   { id: 'medium', label: 'Medium', desc: t('chat.effortMedium') },
   { id: 'high', label: 'High', desc: t('chat.effortHigh') },
+  { id: 'xhigh', label: 'XHigh', desc: t('chat.effortXhigh') },
+  { id: 'max', label: 'Max', desc: t('chat.effortMax') },
 ];
 
 // ── Markdown Renderer (delegated to MarkdownRenderer service) ──
@@ -667,23 +669,13 @@ class ChatView extends BaseComponent {
       span.style.setProperty('--chip-color', chipColor);
     }
 
+    // Clean display: @name for all types
     const isProject = chip.type === 'project';
-    const displayName = isProject && chip.data?.name ? chip.data.name : chip.label;
+    const displayName = isProject && chip.data?.name ? chip.data.name : (chip.label || `@${chip.type}`);
+    // Strip leading @ if present in label - we add our own
+    const cleanName = displayName.replace(/^@(project:|context:|file:|tab:|diff:|symbol:|conversation:)?/, '');
 
-    let inner = `<span class="chat-inline-chip-icon">${chip.icon}</span>`;
-    if (isProject) {
-      inner += `<span class="chat-inline-chip-type">project</span>`;
-    }
-    inner += `<span class="chat-inline-chip-label">${escapeHtml(displayName)}</span>`;
-    inner += `<span class="chat-inline-chip-remove" data-index="${index}">\u00d7</span>`;
-
-    span.innerHTML = inner;
-
-    span.querySelector('.chat-inline-chip-remove').addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      removeMentionInline(index);
-    });
+    span.innerHTML = `<span class="chat-inline-chip-at">@</span><span class="chat-inline-chip-label">${escapeHtml(cleanName)}</span>`;
 
     return span;
   }
@@ -721,6 +713,26 @@ class ChatView extends BaseComponent {
     const hasText = getInputText().trim() !== '';
     const hasChips = inputEl.querySelectorAll('.chat-inline-chip').length > 0;
     inputEl.classList.toggle('has-content', hasText || hasChips);
+  }
+
+  function syncMentionsWithDOM() {
+    const domChips = inputEl.querySelectorAll('.chat-inline-chip');
+    const domIndices = new Set();
+    domChips.forEach(c => domIndices.add(parseInt(c.dataset.mentionIndex)));
+    // Remove pendingMentions entries whose chip was deleted from DOM
+    if (domChips.length < pendingMentions.length) {
+      // Rebuild: keep only mentions whose index still exists in DOM
+      const kept = [];
+      for (let i = 0; i < pendingMentions.length; i++) {
+        if (domIndices.has(i)) kept.push(pendingMentions[i]);
+      }
+      pendingMentions.length = 0;
+      kept.forEach(m => pendingMentions.push(m));
+      // Re-index remaining chips
+      domChips.forEach((c, i) => {
+        c.dataset.mentionIndex = i;
+      });
+    }
   }
 
   // ── Input adapter for module-level helpers ──
@@ -962,6 +974,8 @@ class ChatView extends BaseComponent {
     if (inputEl.innerHTML === '<br>' || (inputEl.textContent.trim() === '' && !inputEl.querySelector('.chat-inline-chip'))) {
       inputEl.innerHTML = '';
     }
+    // Sync pendingMentions with DOM - if user deleted a chip via selection+delete, remove from array
+    syncMentionsWithDOM();
     updatePlaceholderVisibility();
     autoResize();
     const text = getInputText();
@@ -1132,15 +1146,31 @@ class ChatView extends BaseComponent {
       return;
     }
     const query = text.slice(1).toLowerCase();
-    // Default commands available even before session init
-    const builtinDefaults = ['/compact', '/clear', '/help', '/reload-plugins', '/simplify', '/batch', '/parallel-task'];
+    // All Claude Code built-in commands
+    const builtinDefaults = [
+      '/compact', '/clear', '/help', '/model', '/plan', '/cost', '/diff', '/status',
+      '/config', '/memory', '/permissions', '/effort', '/fast', '/review', '/resume',
+      '/rename', '/export', '/rewind', '/copy', '/context', '/tasks', '/hooks',
+      '/mcp', '/plugin', '/reload-plugins', '/skills', '/agents', '/doctor', '/init',
+      '/login', '/logout', '/usage', '/feedback', '/release-notes', '/theme',
+      '/desktop', '/ide', '/keybindings', '/sandbox', '/voice', '/stats',
+      '/insights', '/schedule', '/stickers', '/exit',
+      // Bundled skills
+      '/batch', '/simplify', '/debug', '/loop', '/claude-api', '/autofix-pr',
+      '/security-review', '/ultraplan', '/ultrareview', '/btw', '/branch',
+      '/add-dir', '/color', '/chrome', '/install-github-app', '/install-slack-app',
+      '/mobile', '/passes', '/powerup', '/privacy-settings', '/remote-control',
+      '/remote-env', '/team-onboarding', '/teleport', '/terminal-setup',
+      '/web-setup', '/extra-usage',
+    ];
     // Add user-invocable skills as slash commands
     const skills = (skillsAgentsState.get().skills || []).filter(s => s.userInvocable !== false);
     const skillCommands = skills.map(s => '/' + s.name.replace(/\s+/g, '-').toLowerCase());
-    const mergedDefaults = [...builtinDefaults, ...skillCommands.filter(c => !builtinDefaults.includes(c))];
+    const allDefaults = [...builtinDefaults, ...skillCommands.filter(c => !builtinDefaults.includes(c))];
+    // When session provides slash_commands, merge with skills; otherwise use full defaults
     const available = slashCommands.length > 0
       ? [...slashCommands, ...skillCommands.filter(c => !slashCommands.includes(c))]
-      : mergedDefaults;
+      : allDefaults;
     const filtered = available.filter(cmd => {
       const name = cmd.replace(/^\//, '').toLowerCase();
       return name.includes(query);
@@ -1186,6 +1216,72 @@ class ChatView extends BaseComponent {
       '/simplify': t('chat.slashSimplify'),
       '/batch': t('chat.slashBatch'),
       '/parallel-task': t('chat.slashParallelTask'),
+      '/model': t('chat.slashModel'),
+      '/plan': t('chat.slashPlan'),
+      '/cost': t('chat.slashCost'),
+      '/diff': t('chat.slashDiff'),
+      '/status': t('chat.slashStatus'),
+      '/config': t('chat.slashConfig'),
+      '/memory': t('chat.slashMemory'),
+      '/permissions': t('chat.slashPermissions'),
+      '/effort': t('chat.slashEffort'),
+      '/fast': t('chat.slashFast'),
+      '/review': t('chat.slashReview'),
+      '/resume': t('chat.slashResume'),
+      '/rename': t('chat.slashRename'),
+      '/export': t('chat.slashExport'),
+      '/rewind': t('chat.slashRewind'),
+      '/copy': t('chat.slashCopy'),
+      '/context': t('chat.slashContext'),
+      '/tasks': t('chat.slashTasks'),
+      '/hooks': t('chat.slashHooks'),
+      '/mcp': t('chat.slashMcp'),
+      '/plugin': t('chat.slashPlugin'),
+      '/skills': t('chat.slashSkills'),
+      '/agents': t('chat.slashAgents'),
+      '/doctor': t('chat.slashDoctor'),
+      '/init': t('chat.slashInit'),
+      '/login': t('chat.slashLogin'),
+      '/logout': t('chat.slashLogout'),
+      '/usage': t('chat.slashUsage'),
+      '/feedback': t('chat.slashFeedback'),
+      '/release-notes': t('chat.slashReleaseNotes'),
+      '/theme': t('chat.slashTheme'),
+      '/desktop': t('chat.slashDesktop'),
+      '/ide': t('chat.slashIde'),
+      '/keybindings': t('chat.slashKeybindings'),
+      '/sandbox': t('chat.slashSandbox'),
+      '/voice': t('chat.slashVoice'),
+      '/stats': t('chat.slashStats'),
+      '/insights': t('chat.slashInsights'),
+      '/schedule': t('chat.slashSchedule'),
+      '/stickers': t('chat.slashStickers'),
+      '/exit': t('chat.slashExit'),
+      '/debug': t('chat.slashDebug'),
+      '/loop': t('chat.slashLoop'),
+      '/claude-api': t('chat.slashClaudeApi'),
+      '/autofix-pr': t('chat.slashAutofixPr'),
+      '/security-review': t('chat.slashSecurityReview'),
+      '/ultraplan': t('chat.slashUltraplan'),
+      '/ultrareview': t('chat.slashUltrareview'),
+      '/btw': t('chat.slashBtw'),
+      '/branch': t('chat.slashBranch'),
+      '/add-dir': t('chat.slashAddDir'),
+      '/color': t('chat.slashColor'),
+      '/chrome': t('chat.slashChrome'),
+      '/install-github-app': t('chat.slashInstallGithubApp'),
+      '/install-slack-app': t('chat.slashInstallSlackApp'),
+      '/mobile': t('chat.slashMobile'),
+      '/passes': t('chat.slashPasses'),
+      '/powerup': t('chat.slashPowerup'),
+      '/privacy-settings': t('chat.slashPrivacySettings'),
+      '/remote-control': t('chat.slashRemoteControl'),
+      '/remote-env': t('chat.slashRemoteEnv'),
+      '/team-onboarding': t('chat.slashTeamOnboarding'),
+      '/teleport': t('chat.slashTeleport'),
+      '/terminal-setup': t('chat.slashTerminalSetup'),
+      '/web-setup': t('chat.slashWebSetup'),
+      '/extra-usage': t('chat.slashExtraUsage'),
     };
     if (descriptions[cmd]) return descriptions[cmd];
     // Check skills for description
