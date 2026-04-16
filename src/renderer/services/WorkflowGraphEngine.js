@@ -128,7 +128,7 @@ const NODE_TYPES = {
     widgets: [
       { type: 'combo', name: 'Mode', key: 'mode', values: ['prompt', 'agent', 'skill'] },
       { type: 'text', name: 'Prompt', key: 'prompt' },
-      { type: 'combo', name: 'Model', key: 'model', values: ['sonnet', 'haiku', 'opus'] },
+      { type: 'combo', name: 'Model', key: 'model', values: ['sonnet', 'haiku', 'opus', 'claude-opus-4-6'] },
       { type: 'combo', name: 'Effort', key: 'effort', values: ['low', 'medium', 'high', 'max'] },
     ],
     width: 220,

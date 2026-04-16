@@ -2904,7 +2904,8 @@
     "model": {
       "haiku": "Haiku 4.5 — Más rápido",
       "sonnet": "Sonnet 4.6 — Equilibrado",
-      "opus": "Opus 4.6 — Más capaz"
+      "opus": "Opus 4.6",
+      "opus47": "Opus 4.7 — Más capaz"
     },
     "empty": {
       "title": "Sin ejecuciones paralelas aún",

@@ -2907,7 +2907,8 @@
     "model": {
       "haiku": "Haiku 4.5 — Le plus rapide",
       "sonnet": "Sonnet 4.6 — Équilibré",
-      "opus": "Opus 4.6 — Le plus performant"
+      "opus": "Opus 4.6",
+      "opus47": "Opus 4.7 — Le plus performant"
     },
     "empty": {
       "title": "Aucune exécution parallèle",

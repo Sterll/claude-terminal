@@ -2200,7 +2200,7 @@ workflow/trigger — Entry point (always first, always required)
 
 workflow/claude — AI task (prefer haiku for simple summaries, sonnet for reasoning, opus for complex)
   mode: prompt | agent | skill
-  prompt (supports $vars), model: "haiku" | "sonnet" | "opus"
+  prompt (supports $vars), model: "haiku" | "sonnet" | "opus" | "claude-opus-4-6"
   effort: low | medium | high | max (controls extended thinking)
   maxTurns (default 30), cwd (working directory)
   skillId (skill name when mode=skill)

@@ -1083,6 +1083,7 @@ class ProjectList extends BaseComponent {
     const models = [
       { value: '', label: t('projects.useGlobal') },
       { value: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
+      { value: 'claude-opus-4-7', label: 'Opus 4.7' },
       { value: 'claude-opus-4-6', label: 'Opus 4.6' },
       { value: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' },
     ];

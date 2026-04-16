@@ -234,6 +234,7 @@ function _buildNewRunModal() {
                 <div class="pt-select-dropdown">
                   <div class="pt-select-option" data-value="claude-haiku-4-5-20251001">${t('parallel.model.haiku')}</div>
                   <div class="pt-select-option is-selected" data-value="claude-sonnet-4-6">${t('parallel.model.sonnet')}</div>
+                  <div class="pt-select-option" data-value="claude-opus-4-7">${t('parallel.model.opus47')}</div>
                   <div class="pt-select-option" data-value="claude-opus-4-6">${t('parallel.model.opus')}</div>
                 </div>
               </div>

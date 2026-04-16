@@ -14,7 +14,8 @@ const { updateTerminal } = require('../../state/terminals.state');
 const { saveTerminalSessions } = require('../../services/TerminalSessionService');
 
 const MODEL_OPTIONS = [
-  { id: 'claude-opus-4-6', label: 'Opus 4.6', desc: 'Most capable for complex work' },
+  { id: 'claude-opus-4-7', label: 'Opus 4.7', desc: 'Most capable for complex work' },
+  { id: 'claude-opus-4-6', label: 'Opus 4.6', desc: 'Previous generation Opus' },
   { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6', desc: 'Best for everyday tasks' },
   { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', desc: 'Fastest for quick answers' },
 ];
