@@ -1024,6 +1024,11 @@ api.webapp.onPortDetected(({ projectIndex, port }) => {
 
 // ========== MCP Terminal (create/send/close from MCP tools) ==========
 
+// Pending send commands queued while a terminal is still being created
+const _mcpPendingSends = new Map(); // projectId -> [{ command, timestamp }]
+// Track the last terminal created by MCP per project
+const _mcpLastCreatedTerminal = new Map(); // projectId -> terminalId
+
 if (api.mcpTerminal) {
   api.mcpTerminal.onCreate(async (data) => {
     try {
@@ -1032,11 +1037,43 @@ if (api.mcpTerminal) {
         console.warn(`[MCP Terminal] Project not found: ${data.projectId}`);
         return;
       }
-      console.log(`[MCP Terminal] Creating terminal for "${project.name}" (${data.mode || 'terminal'})`);
+      const mode = data.mode || 'terminal';
+      console.log(`[MCP Terminal] Creating terminal for "${project.name}" (${mode})`);
+
+      // For chat mode, pass initialPrompt from pending sends if any
+      let initialPrompt = null;
+      if (mode === 'chat') {
+        const pending = _mcpPendingSends.get(data.projectId);
+        if (pending && pending.length > 0) {
+          initialPrompt = pending.shift().command;
+          if (!pending.length) _mcpPendingSends.delete(data.projectId);
+        }
+      }
+
       await TerminalManager.createTerminal(project, {
-        mode: data.mode || null,
-        runClaude: data.mode === 'chat',
+        mode,
+        runClaude: mode === 'chat',
+        initialPrompt,
       });
+
+      // Track the last created terminal for this project
+      const terminals = terminalsState.get().terminals;
+      let lastId = null;
+      for (const [id, td] of terminals) {
+        if (td.project?.id === data.projectId) lastId = id;
+      }
+      if (lastId !== null) _mcpLastCreatedTerminal.set(data.projectId, lastId);
+
+      // Flush remaining pending sends for PTY terminals
+      if (mode !== 'chat' && lastId !== null) {
+        const pending = _mcpPendingSends.get(data.projectId);
+        if (pending && pending.length > 0) {
+          for (const p of pending) {
+            api.terminal.input({ id: lastId, data: p.command + '\r' });
+          }
+          _mcpPendingSends.delete(data.projectId);
+        }
+      }
     } catch (e) {
       console.error('[MCP Terminal] Create error:', e);
     }
@@ -1044,21 +1081,49 @@ if (api.mcpTerminal) {
 
   api.mcpTerminal.onSend((data) => {
     try {
-      // Find the active terminal for this project
       const terminals = terminalsState.get().terminals;
-      let targetId = null;
-      for (const [id, td] of terminals) {
-        if (td.project?.id === data.projectId) {
-          targetId = id;
-          break;
-        }
+
+      // Find the best target: prefer last MCP-created terminal, then last terminal for project
+      let targetId = _mcpLastCreatedTerminal.get(data.projectId) || null;
+      if (targetId && !terminals.has(targetId)) {
+        _mcpLastCreatedTerminal.delete(data.projectId);
+        targetId = null;
       }
       if (targetId === null) {
-        console.warn(`[MCP Terminal] No terminal found for project: ${data.projectId}`);
+        // Fallback: find the LAST (most recent) terminal for this project
+        for (const [id, td] of terminals) {
+          if (td.project?.id === data.projectId) targetId = id;
+        }
+      }
+
+      if (targetId === null) {
+        // No terminal yet - queue the command for when one is created
+        console.log(`[MCP Terminal] No terminal yet for ${data.projectId}, queuing command`);
+        if (!_mcpPendingSends.has(data.projectId)) _mcpPendingSends.set(data.projectId, []);
+        _mcpPendingSends.get(data.projectId).push({ command: data.command, timestamp: Date.now() });
+        // Auto-expire queued commands after 30s
+        setTimeout(() => {
+          const pending = _mcpPendingSends.get(data.projectId);
+          if (pending) {
+            const now = Date.now();
+            const filtered = pending.filter(p => now - p.timestamp < 30000);
+            if (filtered.length) _mcpPendingSends.set(data.projectId, filtered);
+            else _mcpPendingSends.delete(data.projectId);
+          }
+        }, 30000);
         return;
       }
-      console.log(`[MCP Terminal] Sending command to terminal ${targetId}: ${data.command}`);
-      api.terminal.input({ id: targetId, data: data.command + '\r' });
+
+      const termData = terminals.get(targetId);
+      console.log(`[MCP Terminal] Sending to terminal ${targetId} (mode=${termData?.mode || '?'}): ${data.command}`);
+
+      if (termData?.mode === 'chat' && termData?.chatView) {
+        // Chat tab: use ChatView.sendMessage() instead of PTY input
+        termData.chatView.sendMessage(data.command);
+      } else {
+        // PTY terminal: write to node-pty
+        api.terminal.input({ id: targetId, data: data.command + '\r' });
+      }
     } catch (e) {
       console.error('[MCP Terminal] Send error:', e);
     }
@@ -1069,16 +1134,15 @@ if (api.mcpTerminal) {
       const terminals = terminalsState.get().terminals;
       let targetId = null;
       if (data.terminalId) {
-        targetId = parseInt(data.terminalId, 10);
+        // Support both string (chat-xxx) and numeric IDs
+        targetId = terminals.has(data.terminalId) ? data.terminalId : parseInt(data.terminalId, 10);
       } else {
+        // Find the LAST terminal for this project (most likely the one user wants to close)
         for (const [id, td] of terminals) {
-          if (td.project?.id === data.projectId) {
-            targetId = id;
-            break;
-          }
+          if (td.project?.id === data.projectId) targetId = id;
         }
       }
-      if (targetId === null) {
+      if (targetId === null || !terminals.has(targetId)) {
         console.warn(`[MCP Terminal] No terminal found to close for project: ${data.projectId}`);
         return;
       }
