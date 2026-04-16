@@ -14,35 +14,94 @@
 /* ── Header ─────────────────────────────────────────────────── */
 .sr-header {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 20px 12px;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
-  flex-wrap: wrap;
+  background: var(--bg-secondary);
+}
+
+.sr-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px 0;
+}
+
+.sr-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .sr-title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: var(--font-md);
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
 }
 
-.sr-title svg {
+.sr-title-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius);
+  background: var(--accent-dim);
   color: var(--accent);
   flex-shrink: 0;
 }
 
+.sr-title-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
 .sr-controls {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 12px 20px 14px;
+}
+
+.sr-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.sr-control-group--project {
+  flex: 2;
+}
+
+.sr-control-group--branch {
   flex: 1;
-  flex-wrap: wrap;
+}
+
+.sr-control-group--session {
+  flex: 3;
+}
+
+.sr-control-label {
+  font-size: var(--font-2xs);
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding-left: 2px;
+}
+
+.sr-control-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 /* ── Custom Select ─────────────────────────────────────────────── */
@@ -61,18 +120,20 @@
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: var(--bg-tertiary);
+  gap: 8px;
+  background: var(--bg-primary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   color: var(--text-primary);
   font-size: var(--font-sm);
   font-family: inherit;
-  padding: 6px 10px;
+  padding: 7px 12px;
   cursor: pointer;
   outline: none;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
   text-align: left;
+  height: 34px;
+  box-sizing: border-box;
 }
 
 .sr-cs-trigger:hover:not(:disabled) {
@@ -88,6 +149,7 @@
 .sr-cs--open .sr-cs-trigger {
   border-color: var(--accent);
   background: var(--bg-hover);
+  box-shadow: 0 0 0 2px var(--accent-dim);
 }
 
 .sr-cs--disabled .sr-cs-trigger {
@@ -128,7 +190,7 @@
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-  max-height: 220px;
+  max-height: 260px;
   overflow-y: auto;
   padding: 4px;
 }
@@ -137,7 +199,7 @@
 .sr-cs-menu::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
 
 .sr-cs-option {
-  padding: 7px 10px;
+  padding: 8px 12px;
   border-radius: var(--radius-sm);
   font-size: var(--font-sm);
   color: var(--text-secondary);
@@ -166,46 +228,64 @@
 }
 
 .sr-cs-empty {
-  padding: 8px 10px;
+  padding: 8px 12px;
   font-size: var(--font-sm);
   color: var(--text-muted);
   font-style: italic;
 }
 
+/* ── Load button ─────────────────────────────────────────────── */
 .sr-load-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   background: var(--accent);
   color: #fff;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   font-size: var(--font-sm);
   font-weight: 600;
-  padding: 6px 16px;
+  padding: 0 16px;
+  height: 34px;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s, opacity 0.15s;
+  transition: background 0.15s, opacity 0.15s, transform 0.1s;
   flex-shrink: 0;
+}
+
+.sr-load-btn svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  opacity: 0.9;
 }
 
 .sr-load-btn:hover:not(:disabled) {
   background: var(--accent-hover);
 }
 
+.sr-load-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
 .sr-load-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: default;
 }
 
-/* ── Action buttons (delete, pin) ────────────────────────────── */
+/* ── Action buttons (delete, export) ─────────────────────────── */
 .sr-action-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
-  background: var(--bg-tertiary);
+  background: transparent;
   color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: 0;
+  width: 34px;
+  height: 34px;
   cursor: pointer;
   font-size: var(--font-xs);
   transition: background 0.15s, color 0.15s, border-color 0.15s;
@@ -216,34 +296,37 @@
 .sr-action-btn:hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--text-primary);
-  border-color: var(--text-muted);
+  border-color: var(--border-color);
 }
 
 .sr-action-btn:disabled {
-  opacity: 0.35;
+  opacity: 0.25;
   cursor: default;
 }
 
 .sr-delete-btn:hover:not(:disabled) {
   color: var(--danger);
-  border-color: var(--danger);
-  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.08);
 }
 
 /* ── Export button ────────────────────────────────────────────── */
 .sr-export-btn {
   display: flex;
   align-items: center;
-  gap: 5px;
-  background: var(--bg-tertiary);
+  gap: 6px;
+  background: transparent;
   color: var(--text-secondary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  padding: 5px 10px;
+  border-radius: var(--radius);
+  padding: 6px 12px;
   cursor: pointer;
   font-size: var(--font-xs);
+  font-weight: 500;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
   white-space: nowrap;
+  width: auto;
+  height: auto;
 }
 
 .sr-export-btn:hover {
@@ -254,14 +337,6 @@
 
 .sr-export-btn svg {
   flex-shrink: 0;
-}
-
-.sr-meta-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-  padding-left: 12px;
 }
 
 /* ── Summary bar ─────────────────────────────────────────────── */
@@ -275,8 +350,13 @@
   min-height: 0;
 }
 
+.sr-meta:empty,
+.sr-meta:not(:has(.sr-summary-items)) {
+  display: none;
+}
+
 .sr-summary {
-  padding: 8px 0;
+  padding: 10px 0;
   flex: 1;
   min-width: 0;
 }

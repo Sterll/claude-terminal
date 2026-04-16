@@ -2638,114 +2638,115 @@ hr.chat-plan-separator {
   text-overflow: ellipsis;
 }
 
-/* ── Mention chips (input area) ── */
+/* ── Inline mention chips (inside contenteditable) ── */
 
-.chat-mention-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  padding: 8px 4px 0 12px;
-  width: 100%;
-}
-
-.chat-mention-chip {
+.chat-inline-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 6px 3px 6px;
+  gap: 3px;
+  padding: 1px 5px 1px 4px;
+  margin: 0 1px;
   background: rgba(var(--accent-color-rgb, 99, 102, 241), 0.1);
   border: 1px solid rgba(var(--accent-color-rgb, 99, 102, 241), 0.2);
-  border-radius: 7px;
-  font-size: 12px;
+  border-radius: 5px;
+  font-size: 11.5px;
   color: var(--accent-color);
   font-weight: 500;
+  vertical-align: baseline;
+  line-height: 1.4;
+  cursor: default;
+  user-select: none;
   animation: chat-mention-appear 0.15s ease-out;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-.chat-mention-chip:hover {
+.chat-inline-chip:hover {
   background: rgba(var(--accent-color-rgb, 99, 102, 241), 0.16);
   border-color: rgba(var(--accent-color-rgb, 99, 102, 241), 0.35);
 }
 
-.chat-mention-chip.has-project-color {
+.chat-inline-chip.has-project-color {
   background: color-mix(in srgb, var(--chip-color) 12%, transparent);
   border-color: color-mix(in srgb, var(--chip-color) 25%, transparent);
   color: var(--chip-color);
 }
 
-.chat-mention-chip.has-project-color:hover {
+.chat-inline-chip.has-project-color:hover {
   background: color-mix(in srgb, var(--chip-color) 18%, transparent);
   border-color: color-mix(in srgb, var(--chip-color) 40%, transparent);
 }
 
-.chat-mention-chip.has-project-color .chat-mention-chip-remove {
+.chat-inline-chip.has-project-color .chat-inline-chip-remove {
   color: var(--chip-color);
 }
 
-.chat-mention-chip.has-project-color .chat-mention-chip-icon svg {
+.chat-inline-chip.has-project-color .chat-inline-chip-icon svg {
   stroke: var(--chip-color);
 }
 
-.chat-mention-chip.has-project-color .chat-mention-chip-type {
+.chat-inline-chip.has-project-color .chat-inline-chip-type {
   background: color-mix(in srgb, var(--chip-color) 15%, transparent);
   color: var(--chip-color);
 }
 
-.chat-mention-chip-icon {
-  font-size: 14px;
+.chat-inline-chip-icon {
+  font-size: 12px;
   flex-shrink: 0;
   line-height: 1;
-  display: flex;
+  display: inline-flex;
   align-items: center;
 }
 
-.chat-mention-chip-icon svg {
-  width: 13px;
-  height: 13px;
+.chat-inline-chip-icon svg {
+  width: 11px;
+  height: 11px;
   stroke: var(--accent-color);
   fill: none;
   stroke-width: 2;
 }
 
-.chat-mention-chip-type {
-  font-size: 9.5px;
+.chat-inline-chip-type {
+  font-size: 9px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 1px 5px;
-  border-radius: 4px;
+  letter-spacing: 0.4px;
+  padding: 0 4px;
+  border-radius: 3px;
   background: rgba(var(--accent-color-rgb, 99, 102, 241), 0.12);
   color: var(--accent-color);
   opacity: 0.7;
 }
 
-.chat-mention-chip-label {
-  max-width: 200px;
+.chat-inline-chip-label {
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: 'Cascadia Code', 'Fira Code', monospace;
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 600;
 }
 
-.chat-mention-chip-remove {
+.chat-inline-chip-remove {
   background: none;
   border: none;
   color: var(--accent-color);
-  font-size: 15px;
+  font-size: 13px;
   line-height: 1;
   cursor: pointer;
-  padding: 0 1px;
-  opacity: 0.4;
+  padding: 0;
+  opacity: 0;
   transition: opacity 0.15s ease;
-  display: flex;
+  display: inline-flex;
   align-items: center;
 }
 
-.chat-mention-chip-remove:hover {
-  opacity: 1;
+.chat-inline-chip:hover .chat-inline-chip-remove {
+  opacity: 0.6;
+}
+
+.chat-inline-chip-remove:hover {
+  opacity: 1 !important;
 }
 
 /* ── Mention chips in user messages ── */
@@ -2816,19 +2817,21 @@ hr.chat-plan-separator {
   color: var(--text-primary);
   font-size: 13px;
   font-family: inherit;
-  resize: none;
   min-height: 22px;
   max-height: 200px;
   line-height: 1.5;
   outline: none;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  position: relative;
 }
 
-.chat-input-wrapper.has-chips .chat-input {
-  padding-top: 6px;
-}
-
-.chat-input::placeholder {
+/* Placeholder via data-placeholder attribute */
+.chat-input:not(.has-content)::before {
+  content: attr(data-placeholder);
   color: var(--text-tertiary);
+  pointer-events: none;
 }
 
 .chat-input:disabled,
