@@ -1618,6 +1618,7 @@
     "effortLow": "Más rápido, razonamiento mínimo",
     "effortMedium": "Velocidad y calidad equilibradas",
     "effortHigh": "Razonamiento profundo (por defecto)",
+    "effortXhigh": "Extra alto - ideal para código",
     "effortMax": "Esfuerzo máximo (solo Opus)",
     "initializing": "Inicializando Claude...",
     "initializingRuntime": "Buscando el runtime...",
@@ -2867,7 +2868,8 @@
     "effort": {
       "low": "Bajo",
       "medium": "Medio",
-      "high": "Alto"
+      "high": "Alto",
+      "xhigh": "XHigh"
     },
     "phase": {
       "decomposing": "Descomponiendo objetivo con Claude...",

@@ -29,7 +29,7 @@ const defaultSettings = {
   hooksConsentShown: false, // User has seen the hooks consent prompt
   chatModel: null, // null = CLI default, or model ID string (e.g. 'claude-sonnet-4-6')
   enable1MContext: false, // Enable 1M token context window via betas flag
-  effortLevel: 'high', // Effort level for chat sessions: low, medium, high, max
+  effortLevel: 'high', // Effort level for chat sessions: low, medium, high, xhigh, max
   remoteEnabled: false, // Enable remote control via mobile PWA
   remotePort: 3712, // Port for the remote control WebSocket/HTTP server
   restoreTerminalSessions: true, // Restore terminal tabs from previous session on startup

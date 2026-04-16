@@ -112,7 +112,7 @@ const tools = [
         auto_tasks: { type: 'boolean', description: 'Let Claude decide the optimal number of tasks (overrides max_tasks)' },
         main_branch: { type: 'string', description: 'Base branch for worktrees (default: current branch)' },
         model: { type: 'string', description: 'Claude model to use (default: claude-sonnet-4-6)' },
-        effort: { type: 'string', description: 'Effort level: low, medium, high (default: high)' },
+        effort: { type: 'string', description: 'Effort level: low, medium, high, xhigh, max (default: high)' },
       },
       required: ['goal'],
     },

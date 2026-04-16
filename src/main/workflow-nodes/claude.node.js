@@ -58,7 +58,7 @@ module.exports = {
       cwd = home;
     }
 
-    const VALID_EFFORTS = ['low', 'medium', 'high', 'max'];
+    const VALID_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
     const rawEffort     = config.effort || null;
     const effort        = rawEffort && VALID_EFFORTS.includes(rawEffort) ? rawEffort : null;
     const model         = config.model  || null;

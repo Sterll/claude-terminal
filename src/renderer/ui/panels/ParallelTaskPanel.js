@@ -251,6 +251,7 @@ function _buildNewRunModal() {
                   <div class="pt-select-option" data-value="low">${t('parallel.effort.low')}</div>
                   <div class="pt-select-option" data-value="medium">${t('parallel.effort.medium')}</div>
                   <div class="pt-select-option is-selected" data-value="high">${t('parallel.effort.high')}</div>
+                  <div class="pt-select-option" data-value="xhigh">${t('parallel.effort.xhigh')}</div>
                 </div>
               </div>
             </div>

@@ -137,6 +137,7 @@ function renderModelEffort(props) {
     <option value="low"${props.effort === 'low' ? ' selected' : ''}>Low</option>
     <option value="medium"${props.effort === 'medium' ? ' selected' : ''}>Medium</option>
     <option value="high"${props.effort === 'high' ? ' selected' : ''}>High</option>
+    <option value="xhigh"${props.effort === 'xhigh' ? ' selected' : ''}>XHigh</option>
     <option value="max"${props.effort === 'max' ? ' selected' : ''}>Max</option>
   </select>
 </div>

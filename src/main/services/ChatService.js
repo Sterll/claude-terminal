@@ -607,16 +607,24 @@ class ChatService {
   }
 
   /**
-   * Change effort (thinking budget) mid-session via SDK queryStream.setMaxThinkingTokens()
-   * Maps effort levels to token budgets.
+   * Change effort level mid-session.
+   * Prefers SDK setEffort() (newer SDK versions), falls back to setMaxThinkingTokens().
    */
   async setEffort(sessionId, effort) {
     const session = this.sessions.get(sessionId);
     if (session?.isCloud) throw new Error('Effort changes not supported for cloud sessions');
-    if (!session?.queryStream?.setMaxThinkingTokens) {
-      throw new Error('Session not found or setMaxThinkingTokens not available');
+
+    // Prefer setEffort if available (newer SDK versions with Opus 4.7+ support)
+    if (session?.queryStream?.setEffort) {
+      await session.queryStream.setEffort(effort);
+      return;
     }
-    const effortMap = { low: 1024, medium: 8192, high: null };
+
+    // Fallback to setMaxThinkingTokens for older SDK versions
+    if (!session?.queryStream?.setMaxThinkingTokens) {
+      throw new Error('Session not found or effort control not available');
+    }
+    const effortMap = { low: 1024, medium: 8192, high: null, xhigh: null, max: null };
     const tokens = effort in effortMap ? effortMap[effort] : null;
     await session.queryStream.setMaxThinkingTokens(tokens);
   }
