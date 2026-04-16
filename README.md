@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/downloads/Sterll/claude-terminal/total?color=d97706&label=downloads" alt="Downloads" />
-  <img src="https://img.shields.io/badge/version-1.2.5-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.2.6-orange" alt="Version" />
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-blue" alt="Platform" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="License" />
   <img src="https://img.shields.io/badge/electron-28-purple" alt="Electron" />
@@ -153,9 +153,11 @@ npm install
 - **Todo widget**: persistent task list above the input, auto-dismisses on completion
 - **Image attachments**: paste, drag-drop, or pick PNG/JPEG/GIF/WebP images (up to 20MB)
 - **Slash commands**: auto-completing commands (/compact, /clear, /help, custom skills)
+- **Inline @mentions**: rich contenteditable input field lets you type @mentions inline without leaving the message composition area
+- **File rewind**: revert chat context to an earlier file state via SDK checkpointing — useful for undoing unwanted edits mid-session
 - **Cost tracking**: model name, token count, and USD cost in the status bar
 - **1M context window**: extended context for larger codebases (API mode only)
-- **Dynamic model and effort switching**: change model (Sonnet, Opus, Haiku) and effort level (low, medium, high) mid-conversation without starting a new session
+- **Dynamic model and effort switching**: change model (Sonnet, Opus 4.7, Haiku) and effort level (low, medium, high, xhigh) mid-conversation without starting a new session
 - **Pin conversations**: keep important sessions at the top of the list
 - **Fork sessions**: branch from any message to explore alternative paths
 - **Follow-up suggestions**: context-aware suggestion chips appear after Claude responds to help guide the conversation
