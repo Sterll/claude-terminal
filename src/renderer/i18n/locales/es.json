@@ -849,7 +849,7 @@
     "aiTabNaming": "Nombres de pestaña con IA",
     "aiTabNamingDesc": "Usar IA para generar nombres cortos de pestaña a partir de mensajes",
     "enableFollowupSuggestions": "Sugerencias de seguimiento",
-    "enableFollowupSuggestionsDesc": "Mostrar chips de sugerencias generados por IA después de la respuesta de Claude (usa Haiku)",
+    "enableFollowupSuggestionsDesc": "Mostrar chips de sugerencias generados por IA después de la respuesta de Claude",
     "enhancePrompts": "Mejora de prompts",
     "enhancePromptsDesc": "Reformular tus prompts con IA para mejores resultados antes de enviar (usa Haiku)",
     "enhancingPrompt": "Mejorando prompt...",
