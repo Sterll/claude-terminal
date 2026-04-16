@@ -9,7 +9,7 @@ const { escapeHtml, highlight } = require('../../utils');
 const { sanitizeColor } = require('../../utils/color');
 const { t } = require('../../i18n');
 const { heartbeat } = require('../../state');
-const { getSetting, setSetting, isNotificationsEnabled } = require('../../state/settings.state');
+const { getSetting, setSetting, isNotificationsEnabled, getEditorCommand } = require('../../state/settings.state');
 const { updateTerminal } = require('../../state/terminals.state');
 const { saveTerminalSessions } = require('../../services/TerminalSessionService');
 
@@ -2154,6 +2154,20 @@ class ChatView extends BaseComponent {
       return;
     }
 
+    // Open file in editor button
+    const openFileBtn = e.target.closest('.chat-open-file-btn');
+    if (openFileBtn) {
+      e.stopPropagation();
+      const filePath = openFileBtn.dataset.filePath;
+      const line = openFileBtn.dataset.line;
+      const editor = getEditorCommand(getSetting('editor') || 'code');
+      if (filePath && editor) {
+        const target = line ? `${filePath}:${line}` : filePath;
+        window.electron_api.dialog.openInEditor({ editor, path: target });
+      }
+      return;
+    }
+
     // Tool group toggle
     const groupHeader = e.target.closest('.chat-tool-group-header');
     if (groupHeader && !e.target.closest('.chat-tool-card')) {
@@ -2622,6 +2636,12 @@ class ChatView extends BaseComponent {
     ).join('');
   }
 
+  function _openFileBtn(filePath, line) {
+    if (!filePath) return '';
+    const escaped = escapeHtml(filePath).replace(/"/g, '&quot;');
+    return `<button class="chat-open-file-btn" data-file-path="${escaped}"${line ? ` data-line="${line}"` : ''} title="${t('chat.openInEditor') || 'Open in editor'}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>`;
+  }
+
   async function formatToolContent(toolName, input, output) {
     const name = (toolName || '').toLowerCase();
 
@@ -2664,12 +2684,12 @@ class ChatView extends BaseComponent {
 
       if (IMAGE_EXTS.has(ext) && path) {
         const fileUrl = 'file:///' + path.replace(/\\/g, '/');
-        return `<div class="chat-tool-content-path">${escapeHtml(path)}</div>
+        return `<div class="chat-tool-content-path">${escapeHtml(path)} ${_openFileBtn(path)}</div>
           <div class="chat-inline-images"><div class="chat-inline-img-wrap"><img src="${fileUrl}" class="chat-inline-img" alt="${escapeHtml(path)}" loading="lazy"></div></div>`;
       }
 
       if (BINARY_EXTS.has(ext)) {
-        return `<div class="chat-tool-content-path">${escapeHtml(path)} <span class="chat-tool-content-meta">(fichier binaire)</span></div>`;
+        return `<div class="chat-tool-content-path">${escapeHtml(path)} <span class="chat-tool-content-meta">(fichier binaire)</span> ${_openFileBtn(path)}</div>`;
       }
 
       let effectiveOutput = output;
@@ -2702,10 +2722,10 @@ class ChatView extends BaseComponent {
         const linesHtml = display.map((l, i) =>
           `<div class="diff-line"><span class="diff-ln">${l.num}</span><span class="diff-sign"> </span><span class="diff-text">${highlightedLines[i] ?? ''}</span></div>`
         ).join('');
-        return `<div class="chat-tool-content-path">${escapeHtml(path)}${rangeInfo ? ` <span class="chat-tool-content-meta">(${rangeInfo})</span>` : ''} <span class="chat-tool-content-meta">${parsed.length} lines</span></div>
+        return `<div class="chat-tool-content-path">${escapeHtml(path)}${rangeInfo ? ` <span class="chat-tool-content-meta">(${rangeInfo})</span>` : ''} <span class="chat-tool-content-meta">${parsed.length} lines</span> ${_openFileBtn(path, display[0]?.num)}</div>
           <div class="chat-diff-viewer">${linesHtml}${truncated ? `<div class="diff-line diff-truncated"><span class="diff-ln"></span><span class="diff-sign"> </span><span class="diff-text">… (${parsed.length - maxLines} more lines)</span></div>` : ''}</div>`;
       }
-      return `<div class="chat-tool-content-path">${escapeHtml(path)}${rangeInfo ? ` <span class="chat-tool-content-meta">(${rangeInfo})</span>` : ''}</div>`;
+      return `<div class="chat-tool-content-path">${escapeHtml(path)}${rangeInfo ? ` <span class="chat-tool-content-meta">(${rangeInfo})</span>` : ''} ${_openFileBtn(path, offset)}</div>`;
     }
 
     if (name === 'glob' || name === 'grep') {

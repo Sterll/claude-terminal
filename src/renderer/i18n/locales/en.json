@@ -1556,6 +1556,7 @@
     "streaming": "Writing...",
     "stopped": "Stopped",
     "ready": "Ready",
+    "openInEditor": "Open in editor",
     "cloudBadge": "Cloud",
     "allow": "Allow",
     "alwaysAllow": "Always Allow",

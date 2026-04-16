@@ -1556,6 +1556,7 @@
     "streaming": "En cours d'écriture...",
     "stopped": "Arrêté",
     "ready": "Prêt",
+    "openInEditor": "Ouvrir dans l'éditeur",
     "cloudBadge": "Cloud",
     "allow": "Autoriser",
     "alwaysAllow": "Toujours autoriser",
