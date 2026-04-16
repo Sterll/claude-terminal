@@ -140,10 +140,7 @@ function createContextSuggestions(api, project, inputAdapter, getDefaultPlacehol
 const SPARKLE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/><path d="M19 15l.75 2.25L22 18l-2.25.75L19 21l-.75-2.25L16 18l2.25-.75z"/></svg>`;
 
 function createFollowupChips(api, suggestionsContainerEl, inputAdapter, project) {
-  let _generationTimer = null;
-  let _pendingGeneration = false;
-  let _lastAssistantText = '';
-  let _lastUserText = '';
+  let _pending = []; // SDK suggestions accumulated during a turn
 
   function _render(chips) {
     if (!chips || chips.length === 0) {
@@ -170,7 +167,6 @@ function createFollowupChips(api, suggestionsContainerEl, inputAdapter, project)
       chip.innerHTML = `<span class="chat-followup-chip-icon">${SPARKLE_ICON}</span><span class="chat-followup-chip-text">${escapeHtml(text)}</span>`;
       chip.title = text;
       chip.addEventListener('click', () => {
-        // If input has text, append the suggestion; otherwise replace
         const existing = inputAdapter.getText().trim();
         if (existing) {
           inputAdapter.setText(existing + ' ' + text);
@@ -179,10 +175,8 @@ function createFollowupChips(api, suggestionsContainerEl, inputAdapter, project)
         }
         inputAdapter.resize();
         inputAdapter.focus();
-        // Hide chips after selection
         clear();
       });
-      // Keyboard navigation within chips
       chip.addEventListener('keydown', (e) => {
         const allChips = Array.from(chipsWrapper.querySelectorAll('.chat-followup-chip'));
         const idx = allChips.indexOf(chip);
@@ -208,63 +202,39 @@ function createFollowupChips(api, suggestionsContainerEl, inputAdapter, project)
     suggestionsContainerEl.style.display = 'flex';
   }
 
+  /** Push a suggestion from the SDK stream (accumulated, rendered on flush) */
+  function addSuggestion(text) {
+    if (typeof text === 'string' && text.trim() && _pending.length < 5) {
+      _pending.push(text.trim());
+    }
+  }
+
+  /** Render accumulated suggestions + context chips (called when streaming ends) */
+  async function flush() {
+    const sdkChips = _pending.slice(0, 3);
+    _pending = [];
+    // Fetch context chips (TODOs) in parallel
+    const contextChips = await _fetchContextChips();
+    const allChips = [...sdkChips, ...contextChips];
+    if (allChips.length > 0) {
+      _render(allChips);
+    }
+  }
+
   async function _fetchContextChips() {
     if (!project?.path) return [];
-    const extra = [];
     try {
       const todos = await api.project.scanTodos(project.path).catch(() => []);
       const todoCount = Array.isArray(todos) ? todos.length : 0;
       if (todoCount > 0) {
-        extra.push(t('chat.suggestTodos', { count: todoCount }).replace(/\s*\[Tab\]\s*$/, ''));
+        return [t('chat.suggestTodos', { count: todoCount }).replace(/\s*\[Tab\]\s*$/, '')];
       }
     } catch { /* ignore */ }
-    return extra;
-  }
-
-  async function generate(assistantText, userText) {
-    _lastAssistantText = assistantText || '';
-    _lastUserText = userText || '';
-
-    if (!_lastAssistantText || _pendingGeneration) return;
-
-    // Clear previous chips while generating
-    suggestionsContainerEl.style.display = 'none';
-    suggestionsContainerEl.innerHTML = '';
-    _pendingGeneration = true;
-
-    try {
-      const [result, contextChips] = await Promise.all([
-        api.chat.generateSuggestions({
-          lastAssistantText: _lastAssistantText.slice(0, 800),
-          lastUserText: _lastUserText.slice(0, 300),
-          projectContext: project ? { name: project.name, type: project.type, path: project.path } : null,
-        }).catch(() => null),
-        _fetchContextChips(),
-      ]);
-      const aiChips = (result && result.success && Array.isArray(result.suggestions)) ? result.suggestions : [];
-      const allChips = [...aiChips, ...contextChips];
-      if (allChips.length > 0) {
-        _render(allChips);
-      }
-    } catch (err) {
-      // Silently ignore errors — suggestions are non-critical
-      console.warn('[ChatView] generateSuggestions failed:', err.message);
-    } finally {
-      _pendingGeneration = false;
-    }
-  }
-
-  function scheduleGeneration(assistantText, userText, delay = 400) {
-    if (_generationTimer) { clearTimeout(_generationTimer); _generationTimer = null; }
-    _generationTimer = setTimeout(() => {
-      _generationTimer = null;
-      generate(assistantText, userText);
-    }, delay);
+    return [];
   }
 
   function clear() {
-    if (_generationTimer) { clearTimeout(_generationTimer); _generationTimer = null; }
-    _pendingGeneration = false;
+    _pending = [];
     suggestionsContainerEl.style.display = 'none';
     suggestionsContainerEl.innerHTML = '';
   }
@@ -276,7 +246,7 @@ function createFollowupChips(api, suggestionsContainerEl, inputAdapter, project)
     }
   });
 
-  return { scheduleGeneration, clear };
+  return { addSuggestion, flush, clear };
 }
 
 // ── Tool Icons ──
@@ -351,8 +321,6 @@ class ChatView extends BaseComponent {
   let todoAllDone = false; // tracks if all todos are completed
   let slashCommands = []; // populated from system/init message
   let slashSelectedIndex = -1; // currently highlighted item in slash dropdown
-  let lastUserText = ''; // last user message text, used for follow-up suggestions
-  let lastAssistantText = ''; // last finalized assistant response text, used for follow-up suggestions
   // Accumulates messages for CLAUDE.md analysis (role: 'user'|'assistant', content: string)
   const conversationHistory = [];
   const unsubscribers = [];
@@ -1146,22 +1114,15 @@ class ChatView extends BaseComponent {
       return;
     }
     const query = text.slice(1).toLowerCase();
-    // All Claude Code built-in commands
+    // Commands that work in Agent SDK environment
     const builtinDefaults = [
-      '/compact', '/clear', '/help', '/model', '/plan', '/cost', '/diff', '/status',
-      '/config', '/memory', '/permissions', '/effort', '/fast', '/review', '/resume',
-      '/rename', '/export', '/rewind', '/copy', '/context', '/tasks', '/hooks',
-      '/mcp', '/plugin', '/reload-plugins', '/skills', '/agents', '/doctor', '/init',
-      '/login', '/logout', '/usage', '/feedback', '/release-notes', '/theme',
-      '/desktop', '/ide', '/keybindings', '/sandbox', '/voice', '/stats',
-      '/insights', '/schedule', '/stickers', '/exit',
-      // Bundled skills
-      '/batch', '/simplify', '/debug', '/loop', '/claude-api', '/autofix-pr',
-      '/security-review', '/ultraplan', '/ultrareview', '/btw', '/branch',
-      '/add-dir', '/color', '/chrome', '/install-github-app', '/install-slack-app',
-      '/mobile', '/passes', '/powerup', '/privacy-settings', '/remote-control',
-      '/remote-env', '/team-onboarding', '/teleport', '/terminal-setup',
-      '/web-setup', '/extra-usage',
+      // SDK built-in commands
+      '/compact', '/clear', '/help', '/plan',
+      // Bundled skills (sent as prompts to Claude)
+      '/batch', '/simplify', '/debug', '/loop', '/claude-api',
+      '/security-review', '/btw', '/review',
+      // Claude Terminal own commands
+      '/parallel-task', '/reload-plugins',
     ];
     // Add user-invocable skills as slash commands
     const skills = (skillsAgentsState.get().skills || []).filter(s => s.userInvocable !== false);
@@ -1209,79 +1170,23 @@ class ChatView extends BaseComponent {
 
   function getSlashCommandDescription(cmd) {
     const descriptions = {
+      // SDK built-in commands
       '/compact': t('chat.slashCompact'),
       '/clear': t('chat.slashClear'),
       '/help': t('chat.slashHelp'),
-      '/reload-plugins': t('chat.slashReloadPlugins'),
-      '/simplify': t('chat.slashSimplify'),
-      '/batch': t('chat.slashBatch'),
-      '/parallel-task': t('chat.slashParallelTask'),
-      '/model': t('chat.slashModel'),
       '/plan': t('chat.slashPlan'),
-      '/cost': t('chat.slashCost'),
-      '/diff': t('chat.slashDiff'),
-      '/status': t('chat.slashStatus'),
-      '/config': t('chat.slashConfig'),
-      '/memory': t('chat.slashMemory'),
-      '/permissions': t('chat.slashPermissions'),
-      '/effort': t('chat.slashEffort'),
-      '/fast': t('chat.slashFast'),
-      '/review': t('chat.slashReview'),
-      '/resume': t('chat.slashResume'),
-      '/rename': t('chat.slashRename'),
-      '/export': t('chat.slashExport'),
-      '/rewind': t('chat.slashRewind'),
-      '/copy': t('chat.slashCopy'),
-      '/context': t('chat.slashContext'),
-      '/tasks': t('chat.slashTasks'),
-      '/hooks': t('chat.slashHooks'),
-      '/mcp': t('chat.slashMcp'),
-      '/plugin': t('chat.slashPlugin'),
-      '/skills': t('chat.slashSkills'),
-      '/agents': t('chat.slashAgents'),
-      '/doctor': t('chat.slashDoctor'),
-      '/init': t('chat.slashInit'),
-      '/login': t('chat.slashLogin'),
-      '/logout': t('chat.slashLogout'),
-      '/usage': t('chat.slashUsage'),
-      '/feedback': t('chat.slashFeedback'),
-      '/release-notes': t('chat.slashReleaseNotes'),
-      '/theme': t('chat.slashTheme'),
-      '/desktop': t('chat.slashDesktop'),
-      '/ide': t('chat.slashIde'),
-      '/keybindings': t('chat.slashKeybindings'),
-      '/sandbox': t('chat.slashSandbox'),
-      '/voice': t('chat.slashVoice'),
-      '/stats': t('chat.slashStats'),
-      '/insights': t('chat.slashInsights'),
-      '/schedule': t('chat.slashSchedule'),
-      '/stickers': t('chat.slashStickers'),
-      '/exit': t('chat.slashExit'),
+      // Bundled skills (prompts sent to Claude)
+      '/batch': t('chat.slashBatch'),
+      '/simplify': t('chat.slashSimplify'),
       '/debug': t('chat.slashDebug'),
       '/loop': t('chat.slashLoop'),
       '/claude-api': t('chat.slashClaudeApi'),
-      '/autofix-pr': t('chat.slashAutofixPr'),
       '/security-review': t('chat.slashSecurityReview'),
-      '/ultraplan': t('chat.slashUltraplan'),
-      '/ultrareview': t('chat.slashUltrareview'),
       '/btw': t('chat.slashBtw'),
-      '/branch': t('chat.slashBranch'),
-      '/add-dir': t('chat.slashAddDir'),
-      '/color': t('chat.slashColor'),
-      '/chrome': t('chat.slashChrome'),
-      '/install-github-app': t('chat.slashInstallGithubApp'),
-      '/install-slack-app': t('chat.slashInstallSlackApp'),
-      '/mobile': t('chat.slashMobile'),
-      '/passes': t('chat.slashPasses'),
-      '/powerup': t('chat.slashPowerup'),
-      '/privacy-settings': t('chat.slashPrivacySettings'),
-      '/remote-control': t('chat.slashRemoteControl'),
-      '/remote-env': t('chat.slashRemoteEnv'),
-      '/team-onboarding': t('chat.slashTeamOnboarding'),
-      '/teleport': t('chat.slashTeleport'),
-      '/terminal-setup': t('chat.slashTerminalSetup'),
-      '/web-setup': t('chat.slashWebSetup'),
-      '/extra-usage': t('chat.slashExtraUsage'),
+      '/review': t('chat.slashReview'),
+      // Claude Terminal commands
+      '/parallel-task': t('chat.slashParallelTask'),
+      '/reload-plugins': t('chat.slashReloadPlugins'),
     };
     if (descriptions[cmd]) return descriptions[cmd];
     // Check skills for description
@@ -2583,8 +2488,7 @@ class ChatView extends BaseComponent {
       setTimeout(() => el.remove(), 300);
     }
 
-    // Track last user text for follow-up suggestion context, clear chips
-    if (text) lastUserText = text;
+    // Clear follow-up chips when user sends a new message
     followupChips.clear();
 
     // Prompt enhancement via Haiku (opt-in)
@@ -3281,6 +3185,8 @@ class ChatView extends BaseComponent {
 
   function startStreamBlock() {
     removeThinkingIndicator();
+    // Cancel any pending RAF from a previous block to avoid stale renders
+    if (_streamRafId) { cancelAnimationFrame(_streamRafId); _streamRafId = null; }
     const el = document.createElement('div');
     el.className = 'chat-msg chat-msg-assistant';
     el.innerHTML = `<div class="chat-msg-content"><span class="chat-cursor"></span></div>`;
@@ -3339,13 +3245,19 @@ class ChatView extends BaseComponent {
   }
 
   function finalizeStreamBlock() {
+    // Cancel any pending incremental render RAF
+    if (_streamRafId) { cancelAnimationFrame(_streamRafId); _streamRafId = null; }
     if (currentStreamEl && currentStreamText) {
       // Full re-render on finalization for consistency (no stable/active split)
-      currentStreamEl.innerHTML = renderMarkdown(currentStreamText);
+      try {
+        const rendered = renderMarkdown(currentStreamText);
+        currentStreamEl.innerHTML = rendered;
+      } catch (err) {
+        console.error('[ChatView] Markdown render failed on finalize:', err.message);
+        currentStreamEl.innerHTML = `<pre style="white-space:pre-wrap;word-break:break-word">${escapeHtml(currentStreamText)}</pre>`;
+      }
       injectInlineImages(currentStreamEl);
       MarkdownRenderer.postProcess(currentStreamEl);
-      // Capture for follow-up suggestions (plain text, truncated to avoid large memory)
-      lastAssistantText = currentStreamText.slice(0, 1200);
     }
     if (currentStreamText) conversationHistory.push({ role: 'assistant', content: currentStreamText });
     currentStreamEl = null;
@@ -4278,9 +4190,9 @@ class ChatView extends BaseComponent {
     } else {
       // Refresh contextual suggestions (placeholder rotation) after streaming ends
       contextSuggestions.setPostStreamTimer(setTimeout(() => contextSuggestions.refresh(), 300));
-      // Generate follow-up suggestion chips based on last assistant response
-      if (lastAssistantText && getSetting('enableFollowupSuggestions') !== false) {
-        followupChips.scheduleGeneration(lastAssistantText, lastUserText, 500);
+      // Flush SDK prompt suggestions accumulated during the turn
+      if (getSetting('enableFollowupSuggestions') !== false) {
+        followupChips.flush();
       }
       setStatus('idle', t('chat.ready') || 'Ready');
       inputEl.focus();
@@ -4490,6 +4402,13 @@ class ChatView extends BaseComponent {
     }
   });
   unsubscribers.push(unsubMessage);
+
+  // IPC: Native SDK prompt suggestions (piggybacked on the stream, nearly free)
+  const unsubPromptSuggestion = api.chat.onPromptSuggestion(({ sessionId: sid, suggestion }) => {
+    if (sid !== sessionId) return;
+    followupChips.addSuggestion(suggestion);
+  });
+  unsubscribers.push(unsubPromptSuggestion);
 
   // Throttled output activity tracker (max 1 call/sec)
   function trackOutputActivity() {
@@ -4741,6 +4660,29 @@ class ChatView extends BaseComponent {
     // If assistant sends text, collapse any question cards answered externally (e.g. from CT)
     if (content.some(b => b.type === 'text')) {
       collapseExternallyAnsweredQuestionCards();
+    }
+
+    // Fallback: render text blocks that weren't displayed by streaming.
+    // Normally text is rendered via stream events, but if streaming missed them
+    // (e.g., timing issues, non-streaming SDK mode), render here as safety net.
+    for (const block of content) {
+      if (block.type === 'text' && block.text && !currentStreamEl) {
+        // Check if this text was already rendered (by checking last assistant msg content)
+        const lastAssistant = messagesEl.querySelector('.chat-msg-assistant:last-child .chat-msg-content');
+        const lastText = lastAssistant?.textContent?.trim() || '';
+        const blockText = block.text.trim().slice(0, 100);
+        if (!lastText || !lastText.startsWith(blockText.slice(0, 50))) {
+          const el = document.createElement('div');
+          el.className = 'chat-msg chat-msg-assistant';
+          el.innerHTML = `<div class="chat-msg-content">${renderMarkdown(block.text)}</div>`;
+          injectInlineImages(el.querySelector('.chat-msg-content'));
+          MarkdownRenderer.postProcess(el.querySelector('.chat-msg-content'));
+          messagesEl.appendChild(el);
+          conversationHistory.push({ role: 'assistant', content: block.text });
+          turnHadAssistantContent = true;
+          scrollToBottom();
+        }
+      }
     }
 
     let hasToolUse = false;

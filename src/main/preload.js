@@ -538,7 +538,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     onGenerationProgress: createListener('chat-generation-progress'),
     onGenerationComplete: createListener('chat-generation-complete'),
     enhancePrompt: (params) => ipcRenderer.invoke('chat-enhance-prompt', params),
-    generateSuggestions: (params) => ipcRenderer.invoke('chat-generate-suggestions', params),
+    onPromptSuggestion: createListener('chat-prompt-suggestion'),
     analyzeSession: (params) => ipcRenderer.invoke('chat-analyze-session', params),
     applyClaudeMd: (params) => ipcRenderer.invoke('claude-md-apply', params),
     analyzeSessionForWorkspace: (params) => ipcRenderer.invoke('workspace-analyze-session', params),

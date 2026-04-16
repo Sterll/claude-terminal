@@ -48,18 +48,21 @@ function renderIncremental(text, container, cache) {
     cache.stableText = stableText;
     try {
       cache.stableEl.innerHTML = DOMPurify.sanitize(marked.parse(stableText), PURIFY_CONFIG);
-    } catch {
+    } catch (err) {
+      console.warn('[StreamRenderer] Stable block parse failed:', err.message);
       cache.stableEl.innerHTML = `<pre>${escapeHtml(stableText)}</pre>`;
     }
   }
 
   // Always re-render the active (last) block + cursor
   try {
+    const parsedActive = activeText ? marked.parse(activeText) : '';
     cache.activeEl.innerHTML = DOMPurify.sanitize(
-      (activeText ? marked.parse(activeText) : '') + '<span class="chat-cursor"></span>',
+      parsedActive + '<span class="chat-cursor"></span>',
       PURIFY_CONFIG
     );
-  } catch {
+  } catch (err) {
+    console.warn('[StreamRenderer] Active block parse failed:', err.message);
     cache.activeEl.innerHTML = `<pre>${escapeHtml(activeText)}</pre><span class="chat-cursor"></span>`;
   }
 }

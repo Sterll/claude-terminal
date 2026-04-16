@@ -148,16 +148,6 @@ function registerChatHandlers() {
     }
   });
 
-  // Generate follow-up suggestions after a Claude response
-  ipcMain.handle('chat-generate-suggestions', async (_event, { lastAssistantText, lastUserText, projectContext }) => {
-    try {
-      const suggestions = await chatService.generateSuggestions(lastAssistantText || '', lastUserText || '', projectContext || null);
-      return { success: true, suggestions };
-    } catch (err) {
-      console.error('[chat-generate-suggestions] Error:', err.message);
-      return { success: false, suggestions: [] };
-    }
-  });
 }
 
 module.exports = { registerChatHandlers };
