@@ -1259,7 +1259,9 @@
     "paramDescription": "Tâche",
     "paramOffset": "Décalage",
     "paramLimit": "Limite",
-    "paramTimeout": "Délai"
+    "paramTimeout": "Délai",
+    "labelProject": "Projet",
+    "labelSession": "Session"
   },
   "timetracking": {
     "title": "Suivi du temps",
@@ -1556,7 +1558,7 @@
     "streaming": "En cours d'écriture...",
     "stopped": "Arrêté",
     "ready": "Prêt",
-    "openInEditor": "Ouvrir dans l'éditeur",
+    "openFile": "Ouvrir le fichier",
     "cloudBadge": "Cloud",
     "allow": "Autoriser",
     "alwaysAllow": "Toujours autoriser",

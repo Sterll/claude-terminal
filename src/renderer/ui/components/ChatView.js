@@ -8,8 +8,8 @@ const { BaseComponent } = require('../../core/BaseComponent');
 const { escapeHtml, highlight } = require('../../utils');
 const { sanitizeColor } = require('../../utils/color');
 const { t } = require('../../i18n');
-const { heartbeat } = require('../../state');
-const { getSetting, setSetting, isNotificationsEnabled, getEditorCommand } = require('../../state/settings.state');
+const { heartbeat, skillsAgentsState } = require('../../state');
+const { getSetting, setSetting, isNotificationsEnabled } = require('../../state/settings.state');
 const { updateTerminal } = require('../../state/terminals.state');
 const { saveTerminalSessions } = require('../../services/TerminalSessionService');
 
@@ -40,7 +40,7 @@ function unescapeHtml(html) {
 
 // ── Context Suggestions ──
 
-function createContextSuggestions(api, project, inputEl, getDefaultPlaceholder) {
+function createContextSuggestions(api, project, inputAdapter, getDefaultPlaceholder) {
   const CACHE_TTL = 30_000;
   const ROTATION_INTERVAL = 4_000;
 
@@ -93,7 +93,7 @@ function createContextSuggestions(api, project, inputEl, getDefaultPlaceholder) 
     _apply();
     if (suggestions.length > 1) {
       rotationTimer = setInterval(() => {
-        if (inputEl.value !== '') { stop(); return; }
+        if (!inputAdapter.isEmpty()) { stop(); return; }
         currentIndex = (currentIndex + 1) % suggestions.length;
         _apply();
       }, ROTATION_INTERVAL);
@@ -102,8 +102,8 @@ function createContextSuggestions(api, project, inputEl, getDefaultPlaceholder) 
 
   function _apply() {
     // Don't overwrite if user has typed something
-    if (inputEl.value !== '') return;
-    inputEl.placeholder = suggestions[currentIndex] || getDefaultPlaceholder();
+    if (!inputAdapter.isEmpty()) return;
+    inputAdapter.setPlaceholder(suggestions[currentIndex] || getDefaultPlaceholder());
   }
 
   function stop() {
@@ -116,17 +116,16 @@ function createContextSuggestions(api, project, inputEl, getDefaultPlaceholder) 
     if (_postStreamTimer) { clearTimeout(_postStreamTimer); _postStreamTimer = null; }
     _refreshing = false;
     suggestions = [];
-    inputEl.placeholder = getDefaultPlaceholder();
+    inputAdapter.setPlaceholder(getDefaultPlaceholder());
   }
 
   function handleTab(event) {
-    if (inputEl.value !== '' || !suggestions.length) return false;
+    if (!inputAdapter.isEmpty() || !suggestions.length) return false;
     event.preventDefault();
     // Strip the " [Tab]" hint from the raw i18n string and insert clean text
     const raw = suggestions[currentIndex] || '';
     const clean = raw.replace(/\s*\[Tab\]\s*$/, '');
-    inputEl.value = clean;
-    inputEl.selectionStart = inputEl.selectionEnd = clean.length;
+    inputAdapter.setText(clean);
     reset();
     return true;
   }
@@ -138,7 +137,7 @@ function createContextSuggestions(api, project, inputEl, getDefaultPlaceholder) 
 
 const SPARKLE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/><path d="M19 15l.75 2.25L22 18l-2.25.75L19 21l-.75-2.25L16 18l2.25-.75z"/></svg>`;
 
-function createFollowupChips(api, suggestionsContainerEl, inputEl, project) {
+function createFollowupChips(api, suggestionsContainerEl, inputAdapter, project) {
   let _generationTimer = null;
   let _pendingGeneration = false;
   let _lastAssistantText = '';
@@ -170,21 +169,14 @@ function createFollowupChips(api, suggestionsContainerEl, inputEl, project) {
       chip.title = text;
       chip.addEventListener('click', () => {
         // If input has text, append the suggestion; otherwise replace
-        const existing = inputEl.value.trim();
+        const existing = inputAdapter.getText().trim();
         if (existing) {
-          const combined = existing + ' ' + text;
-          inputEl.value = combined;
-          inputEl.style.height = 'auto';
-          inputEl.style.height = Math.min(inputEl.scrollHeight, 200) + 'px';
-          inputEl.focus();
-          inputEl.selectionStart = inputEl.selectionEnd = combined.length;
+          inputAdapter.setText(existing + ' ' + text);
         } else {
-          inputEl.value = text;
-          inputEl.style.height = 'auto';
-          inputEl.style.height = Math.min(inputEl.scrollHeight, 200) + 'px';
-          inputEl.focus();
-          inputEl.selectionStart = inputEl.selectionEnd = text.length;
+          inputAdapter.setText(text);
         }
+        inputAdapter.resize();
+        inputAdapter.focus();
         // Hide chips after selection
         clear();
       });
@@ -202,7 +194,7 @@ function createFollowupChips(api, suggestionsContainerEl, inputEl, project) {
           if (prev) { chip.setAttribute('tabindex', '-1'); prev.setAttribute('tabindex', '0'); prev.focus(); }
         } else if (e.key === 'Escape') {
           e.preventDefault();
-          inputEl.focus();
+          inputAdapter.focus();
         }
       });
       chipsWrapper.appendChild(chip);
@@ -276,8 +268,8 @@ function createFollowupChips(api, suggestionsContainerEl, inputEl, project) {
   }
 
   // Hide chips when user starts typing
-  inputEl.addEventListener('input', () => {
-    if (inputEl.value !== '' && suggestionsContainerEl.style.display !== 'none') {
+  inputAdapter.onInput(() => {
+    if (!inputAdapter.isEmpty() && suggestionsContainerEl.style.display !== 'none') {
       clear();
     }
   });
@@ -393,8 +385,7 @@ class ChatView extends BaseComponent {
           <button class="chat-attach-btn" title="${escapeHtml(t('chat.attachImage'))}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
           </button>
-          <div class="chat-mention-chips" style="display:none"></div>
-          <textarea class="chat-input" placeholder="${escapeHtml(t('chat.placeholder'))}" rows="1"></textarea>
+          <div class="chat-input" contenteditable="true" role="textbox" data-placeholder="${escapeHtml(t('chat.placeholder'))}" spellcheck="false"></div>
           <input type="file" class="chat-file-input" accept="image/png,image/jpeg,image/gif,image/webp" multiple style="display:none" />
           <div class="chat-input-actions">
             <button class="chat-stop-btn" title="${t('common.stop')}" style="display:none">
@@ -451,7 +442,6 @@ class ChatView extends BaseComponent {
   const fileInput = chatView.querySelector('.chat-file-input');
   const imagePreview = chatView.querySelector('.chat-image-preview');
   const mentionDropdown = chatView.querySelector('.chat-mention-dropdown');
-  const mentionChipsEl = chatView.querySelector('.chat-mention-chips');
   const followupSuggestionsEl = chatView.querySelector('.chat-followup-suggestions');
   const exportBtn = chatView.querySelector('.chat-export-btn');
 
@@ -542,6 +532,208 @@ class ChatView extends BaseComponent {
   const SUPPORTED_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
   const MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20MB
   const MAX_PENDING_IMAGES = 5;
+
+  // ── Contenteditable helpers ──
+
+  function getInputText() {
+    let text = '';
+    const walk = (nodes) => {
+      for (const node of nodes) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          // Skip zero-width spaces used for cursor positioning
+          const t = node.textContent.replace(/\u200B/g, '');
+          text += t;
+        } else if (node.nodeName === 'BR') {
+          text += '\n';
+        } else if (node.classList && node.classList.contains('chat-inline-chip')) {
+          // Skip chip nodes - they're tracked in pendingMentions
+        } else if (node.nodeName === 'DIV') {
+          // Contenteditable wraps lines in <div> on Enter
+          if (text.length > 0 && !text.endsWith('\n')) text += '\n';
+          walk(node.childNodes);
+        }
+      }
+    };
+    walk(inputEl.childNodes);
+    return text;
+  }
+
+  function setInputText(text) {
+    inputEl.innerHTML = '';
+    if (text) {
+      inputEl.appendChild(document.createTextNode(text));
+    }
+    updatePlaceholderVisibility();
+    placeCaretAtEnd();
+    autoResize();
+  }
+
+  function autoResize() {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 200) + 'px';
+  }
+
+  function placeCaretAtEnd() {
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(inputEl);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  function placeCaretAfterNode(node) {
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.setStartAfter(node);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  function getTextBeforeCaret() {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return '';
+    const range = sel.getRangeAt(0);
+    if (!inputEl.contains(range.startContainer)) return '';
+
+    let text = '';
+    const node = range.startContainer;
+
+    if (node.nodeType === Node.TEXT_NODE) {
+      // Collect text from this node up to cursor
+      text = node.textContent.substring(0, range.startOffset);
+      // Walk backwards through preceding siblings
+      let prev = node.previousSibling;
+      while (prev) {
+        if (prev.nodeType === Node.TEXT_NODE) {
+          text = prev.textContent + text;
+        } else if (prev.nodeName === 'BR') {
+          text = '\n' + text;
+        }
+        // Skip chip spans
+        prev = prev.previousSibling;
+      }
+    } else if (node === inputEl) {
+      for (let i = 0; i < range.startOffset; i++) {
+        const child = inputEl.childNodes[i];
+        if (child.nodeType === Node.TEXT_NODE) text += child.textContent;
+        else if (child.nodeName === 'BR') text += '\n';
+      }
+    }
+
+    return text;
+  }
+
+  function insertChipAtCaret(chipEl) {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) {
+      inputEl.appendChild(chipEl);
+      const zwsp = document.createTextNode('\u200B');
+      inputEl.appendChild(zwsp);
+      placeCaretAfterNode(zwsp);
+      return;
+    }
+
+    const range = sel.getRangeAt(0);
+    range.collapse(true);
+
+    // Insert chip then a zero-width space for cursor
+    const zwsp = document.createTextNode('\u200B');
+    range.insertNode(zwsp);
+    range.insertNode(chipEl);
+
+    // Place caret after the zero-width space
+    const newRange = document.createRange();
+    newRange.setStartAfter(zwsp);
+    newRange.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(newRange);
+    autoResize();
+    updatePlaceholderVisibility();
+  }
+
+  function createInlineChipElement(chip, index) {
+    const span = document.createElement('span');
+    span.className = 'chat-inline-chip';
+    span.contentEditable = 'false';
+    span.dataset.mentionIndex = index;
+    span.dataset.mentionType = chip.type;
+
+    const chipColorRaw = (chip.type === 'project' && chip.data?.color) ? chip.data.color : '';
+    const chipColor = sanitizeColor(chipColorRaw);
+    if (chipColor) {
+      span.classList.add('has-project-color');
+      span.style.setProperty('--chip-color', chipColor);
+    }
+
+    const isProject = chip.type === 'project';
+    const displayName = isProject && chip.data?.name ? chip.data.name : chip.label;
+
+    let inner = `<span class="chat-inline-chip-icon">${chip.icon}</span>`;
+    if (isProject) {
+      inner += `<span class="chat-inline-chip-type">project</span>`;
+    }
+    inner += `<span class="chat-inline-chip-label">${escapeHtml(displayName)}</span>`;
+    inner += `<span class="chat-inline-chip-remove" data-index="${index}">\u00d7</span>`;
+
+    span.innerHTML = inner;
+
+    span.querySelector('.chat-inline-chip-remove').addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      removeMentionInline(index);
+    });
+
+    return span;
+  }
+
+  function removeMentionInline(index) {
+    pendingMentions.splice(index, 1);
+    const chip = inputEl.querySelector(`.chat-inline-chip[data-mention-index="${index}"]`);
+    if (chip) {
+      const next = chip.nextSibling;
+      if (next && next.nodeType === Node.TEXT_NODE && next.textContent === '\u200B') {
+        next.remove();
+      }
+      chip.remove();
+    }
+    // Re-index remaining chips
+    const chips = inputEl.querySelectorAll('.chat-inline-chip');
+    chips.forEach((c, i) => {
+      c.dataset.mentionIndex = i;
+      const removeBtn = c.querySelector('.chat-inline-chip-remove');
+      if (removeBtn) removeBtn.dataset.index = i;
+    });
+    autoResize();
+    updatePlaceholderVisibility();
+  }
+
+  function clearInlineChips() {
+    inputEl.querySelectorAll('.chat-inline-chip').forEach(chip => {
+      const next = chip.nextSibling;
+      if (next && next.nodeType === Node.TEXT_NODE && next.textContent === '\u200B') next.remove();
+      chip.remove();
+    });
+  }
+
+  function updatePlaceholderVisibility() {
+    const hasText = getInputText().trim() !== '';
+    const hasChips = inputEl.querySelectorAll('.chat-inline-chip').length > 0;
+    inputEl.classList.toggle('has-content', hasText || hasChips);
+  }
+
+  // ── Input adapter for module-level helpers ──
+
+  const inputAdapter = {
+    getText: () => getInputText(),
+    setText: (t) => setInputText(t),
+    setPlaceholder: (p) => { inputEl.dataset.placeholder = p; },
+    isEmpty: () => getInputText().trim() === '' && !inputEl.querySelector('.chat-inline-chip'),
+    focus: () => inputEl.focus(),
+    resize: () => autoResize(),
+    onInput: (fn) => inputEl.addEventListener('input', fn),
+  };
 
   // ── Model selector ──
 
@@ -672,12 +864,12 @@ class ChatView extends BaseComponent {
   initEffortSelector();
 
   // ── Context suggestions (placeholder rotation before first message) ──
-  const contextSuggestions = createContextSuggestions(api, project, inputEl, () => t('chat.placeholder'));
+  const contextSuggestions = createContextSuggestions(api, project, inputAdapter, () => t('chat.placeholder'));
   // Defer initial scan to let the component finish mounting
   contextSuggestions.setInitTimer(setTimeout(() => { if (project?.path) contextSuggestions.refresh(); }, 500));
 
   // ── Follow-up suggestion chips (shown after Claude responds) ──
-  const followupChips = createFollowupChips(api, followupSuggestionsEl, inputEl, project);
+  const followupChips = createFollowupChips(api, followupSuggestionsEl, inputAdapter, project);
 
   attachBtn.addEventListener('click', () => fileInput.click());
 
@@ -748,23 +940,34 @@ class ChatView extends BaseComponent {
     if (files.length) addImageFiles(files);
   });
 
-  // Paste images from clipboard
+  // Paste: images from clipboard + strip HTML for text
   inputEl.addEventListener('paste', (e) => {
-    const items = Array.from(e.clipboardData.items).filter(i => i.type.startsWith('image/'));
-    if (items.length === 0) return;
+    const imageItems = Array.from(e.clipboardData.items).filter(i => i.type.startsWith('image/'));
+    if (imageItems.length > 0) {
+      e.preventDefault();
+      const files = imageItems.map(i => i.getAsFile()).filter(Boolean);
+      if (files.length) addImageFiles(files);
+      return;
+    }
+    // Strip HTML formatting, insert as plain text
     e.preventDefault();
-    const files = items.map(i => i.getAsFile()).filter(Boolean);
-    if (files.length) addImageFiles(files);
+    const text = e.clipboardData.getData('text/plain');
+    if (text) document.execCommand('insertText', false, text);
   });
 
   // ── Input handling ──
 
   inputEl.addEventListener('input', () => {
-    inputEl.style.height = 'auto';
-    inputEl.style.height = Math.min(inputEl.scrollHeight, 200) + 'px';
-    if (inputEl.value !== '') contextSuggestions.stop();
+    // Normalize empty state (browsers insert <br> when clearing contenteditable)
+    if (inputEl.innerHTML === '<br>' || (inputEl.textContent.trim() === '' && !inputEl.querySelector('.chat-inline-chip'))) {
+      inputEl.innerHTML = '';
+    }
+    updatePlaceholderVisibility();
+    autoResize();
+    const text = getInputText();
+    if (text !== '') contextSuggestions.stop();
     // Slash commands take precedence (/ at start of line)
-    if (inputEl.value.startsWith('/')) {
+    if (text.startsWith('/')) {
       hideMentionDropdown();
       updateSlashDropdown();
     } else {
@@ -870,6 +1073,49 @@ class ChatView extends BaseComponent {
       }
     }
 
+    // Backspace: delete inline chip if cursor is right after one
+    if (e.key === 'Backspace') {
+      const sel = window.getSelection();
+      if (sel.rangeCount) {
+        const range = sel.getRangeAt(0);
+        if (range.collapsed) {
+          const node = range.startContainer;
+          const offset = range.startOffset;
+          // Cursor at start of text node, previous sibling is a chip
+          if (node.nodeType === Node.TEXT_NODE && offset === 0) {
+            const prev = node.previousSibling;
+            if (prev && prev.classList && prev.classList.contains('chat-inline-chip')) {
+              e.preventDefault();
+              removeMentionInline(parseInt(prev.dataset.mentionIndex));
+              return;
+            }
+          }
+          // Cursor is in inputEl (between children)
+          if (node === inputEl && offset > 0) {
+            let prev = inputEl.childNodes[offset - 1];
+            // Skip zero-width space
+            if (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent === '\u200B') {
+              prev.remove();
+              prev = inputEl.childNodes[offset - 2];
+            }
+            if (prev && prev.classList && prev.classList.contains('chat-inline-chip')) {
+              e.preventDefault();
+              removeMentionInline(parseInt(prev.dataset.mentionIndex));
+              return;
+            }
+          }
+        }
+      }
+    }
+
+    // Shift+Enter: insert line break
+    if (e.key === 'Enter' && (shiftHeld || e.shiftKey || e.getModifierState('Shift'))) {
+      e.preventDefault();
+      document.execCommand('insertLineBreak');
+      autoResize();
+      return;
+    }
+
     if (e.key === 'Enter' && !shiftHeld && !e.shiftKey && !e.getModifierState('Shift')) {
       e.preventDefault();
       handleSend();
@@ -879,7 +1125,7 @@ class ChatView extends BaseComponent {
   // ── Slash command autocomplete ──
 
   function updateSlashDropdown() {
-    const text = inputEl.value;
+    const text = getInputText();
     // Show only when text starts with / and cursor is still in the command part
     if (!text.startsWith('/') || text.includes(' ') || text.includes('\n')) {
       hideSlashDropdown();
@@ -888,7 +1134,13 @@ class ChatView extends BaseComponent {
     const query = text.slice(1).toLowerCase();
     // Default commands available even before session init
     const builtinDefaults = ['/compact', '/clear', '/help', '/reload-plugins', '/simplify', '/batch', '/parallel-task'];
-    const available = slashCommands.length > 0 ? slashCommands : builtinDefaults;
+    // Add user-invocable skills as slash commands
+    const skills = (skillsAgentsState.get().skills || []).filter(s => s.userInvocable !== false);
+    const skillCommands = skills.map(s => '/' + s.name.replace(/\s+/g, '-').toLowerCase());
+    const mergedDefaults = [...builtinDefaults, ...skillCommands.filter(c => !builtinDefaults.includes(c))];
+    const available = slashCommands.length > 0
+      ? [...slashCommands, ...skillCommands.filter(c => !slashCommands.includes(c))]
+      : mergedDefaults;
     const filtered = available.filter(cmd => {
       const name = cmd.replace(/^\//, '').toLowerCase();
       return name.includes(query);
@@ -935,7 +1187,13 @@ class ChatView extends BaseComponent {
       '/batch': t('chat.slashBatch'),
       '/parallel-task': t('chat.slashParallelTask'),
     };
-    return descriptions[cmd] || '';
+    if (descriptions[cmd]) return descriptions[cmd];
+    // Check skills for description
+    const cmdName = cmd.replace(/^\//, '').toLowerCase();
+    const skills = skillsAgentsState.get().skills || [];
+    const skill = skills.find(s => s.name.replace(/\s+/g, '-').toLowerCase() === cmdName);
+    if (skill && skill.description) return skill.description;
+    return '';
   }
 
   function highlightSlashItem(items) {
@@ -949,7 +1207,7 @@ class ChatView extends BaseComponent {
   }
 
   function selectSlashCommand(command) {
-    inputEl.value = command;
+    setInputText(command);
     inputEl.focus();
     hideSlashDropdown();
   }
@@ -1046,9 +1304,7 @@ class ChatView extends BaseComponent {
         if (el.dataset.path) {
           removeAtTrigger();
           // Check if user typed a line range after the file path (e.g. @file src/app.ts:100-200)
-          const text = inputEl.value;
-          const cursorPos = inputEl.selectionStart;
-          const beforeCursor = text.substring(0, cursorPos);
+          const beforeCursor = getTextBeforeCaret();
           const rangeMatch = beforeCursor.match(/:(\d+)(?:-(\d+))?\s*$/);
           const lineRange = rangeMatch ? { start: parseInt(rangeMatch[1]), end: rangeMatch[2] ? parseInt(rangeMatch[2]) : null } : null;
           addMentionChip('file', { path: el.dataset.path, fullPath: el.dataset.fullpath, lineRange });
@@ -1144,14 +1400,9 @@ class ChatView extends BaseComponent {
           removeAtTrigger();
           hideMentionDropdown();
           const resolvedText = await ContextPromptService.resolvePromptTemplate(el.dataset.promptid, project);
-          const text = inputEl.value;
-          const cursorPos = inputEl.selectionStart;
-          const beforeCursor = text.substring(0, cursorPos);
-          const afterCursor = text.substring(cursorPos);
-          inputEl.value = beforeCursor + resolvedText + afterCursor;
-          inputEl.selectionStart = inputEl.selectionEnd = cursorPos + resolvedText.length;
-          inputEl.style.height = 'auto';
-          inputEl.style.height = inputEl.scrollHeight + 'px';
+          // Insert resolved text at cursor position
+          document.execCommand('insertText', false, resolvedText);
+          autoResize();
           inputEl.focus();
         }
       },
@@ -1322,9 +1573,8 @@ class ChatView extends BaseComponent {
   // ── Mention dropdown logic ──
 
   function updateMentionDropdown() {
-    const text = inputEl.value;
-    const cursorPos = inputEl.selectionStart;
-    const beforeCursor = text.substring(0, cursorPos);
+    const beforeCursor = getTextBeforeCaret();
+    const text = getInputText();
 
     // Check if we're in a picker mode
     for (const cfg of Object.values(PICKER_CONFIGS)) {
@@ -1396,13 +1646,24 @@ class ChatView extends BaseComponent {
   }
 
   function removeAtTrigger() {
-    const text = inputEl.value;
-    const cursorPos = inputEl.selectionStart;
-    const beforeCursor = text.substring(0, cursorPos);
-    const afterCursor = text.substring(cursorPos);
-    const cleaned = beforeCursor.replace(/@\w*\s*$/, '');
-    inputEl.value = cleaned + afterCursor;
-    inputEl.selectionStart = inputEl.selectionEnd = cleaned.length;
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    const range = sel.getRangeAt(0);
+    const node = range.startContainer;
+    if (node.nodeType !== Node.TEXT_NODE) return;
+
+    const offset = range.startOffset;
+    const text = node.textContent;
+    const before = text.substring(0, offset);
+    const after = text.substring(offset);
+    const cleaned = before.replace(/@\w*\s*$/, '');
+    node.textContent = cleaned + after;
+
+    const newRange = document.createRange();
+    newRange.setStart(node, cleaned.length);
+    newRange.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(newRange);
   }
 
   function selectMentionType(type) {
@@ -1420,13 +1681,8 @@ class ChatView extends BaseComponent {
     const pickerKey = PICKER_TYPE_MAP[type];
     if (pickerKey) {
       const cfg = PICKER_CONFIGS[pickerKey];
-      const text = inputEl.value;
-      const cursorPos = inputEl.selectionStart;
-      const beforeCursor = text.substring(0, cursorPos);
-      const afterCursor = text.substring(cursorPos);
-      const cleaned = beforeCursor.replace(/@\w*$/, cfg.keyword + ' ');
-      inputEl.value = cleaned + afterCursor;
-      inputEl.selectionStart = inputEl.selectionEnd = cleaned.length;
+      removeAtTrigger();
+      document.execCommand('insertText', false, cfg.keyword + ' ');
       mentionMode = cfg.mode;
       renderPickerDropdown(cfg, '');
       inputEl.focus();
@@ -1507,46 +1763,17 @@ class ChatView extends BaseComponent {
     if (type === 'project' && data?.icon) {
       icon = data.icon;
     }
+    const index = pendingMentions.length;
     pendingMentions.push({ type, label, icon, data });
-    renderMentionChips();
-  }
-
-  function removeMention(index) {
-    pendingMentions.splice(index, 1);
-    renderMentionChips();
+    // Insert inline chip at cursor position
+    const chipEl = createInlineChipElement(pendingMentions[index], index);
+    insertChipAtCaret(chipEl);
   }
 
   function renderMentionChips() {
-    const wrapper = mentionChipsEl.closest('.chat-input-wrapper');
-    if (pendingMentions.length === 0) {
-      mentionChipsEl.style.display = 'none';
-      mentionChipsEl.innerHTML = '';
-      if (wrapper) wrapper.classList.remove('has-chips');
-      return;
-    }
-    mentionChipsEl.style.display = 'flex';
-    if (wrapper) wrapper.classList.add('has-chips');
-    mentionChipsEl.innerHTML = pendingMentions.map((chip, i) => {
-      const chipColorRaw = (chip.type === 'project' && chip.data?.color) ? chip.data.color : '';
-      const chipColor = sanitizeColor(chipColorRaw);
-      const colorStyle = chipColor ? ` style="--chip-color: ${chipColor}"` : '';
-      const isProject = chip.type === 'project';
-      const displayName = isProject && chip.data?.name ? chip.data.name : chip.label;
-      const typePrefix = isProject ? `<span class="chat-mention-chip-type">project</span>` : '';
-      return `
-      <div class="chat-mention-chip${chipColor ? ' has-project-color' : ''}${isProject ? ' chip-project' : ''}" data-index="${i}"${colorStyle}>
-        <span class="chat-mention-chip-icon">${chip.icon}</span>
-        ${typePrefix}
-        <span class="chat-mention-chip-label">${escapeHtml(displayName)}</span>
-        <button class="chat-mention-chip-remove" data-index="${i}" title="${t('common.remove')}">&times;</button>
-      </div>`;
-    }).join('');
-    mentionChipsEl.querySelectorAll('.chat-mention-chip-remove').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        removeMention(parseInt(btn.dataset.index));
-      });
-    });
+    // Legacy: clear all inline chips (used during send)
+    clearInlineChips();
+    updatePlaceholderVisibility();
   }
 
   // ── Resolve mentions to text content ──
@@ -2133,10 +2360,10 @@ class ChatView extends BaseComponent {
       const card = parallelActionBtn.closest('.cps-card');
       if (card) card.classList.add('cps-acted');
       if (action === 'accept' && goal) {
-        inputEl.value = '/parallel-task ' + goal;
+        setInputText('/parallel-task ' + goal);
         handleSend();
       } else if (action === 'decline' && goal) {
-        inputEl.value = goal;
+        setInputText(goal);
         handleSend();
       }
       return;
@@ -2154,16 +2381,14 @@ class ChatView extends BaseComponent {
       return;
     }
 
-    // Open file in editor button
+    // Open file in built-in viewer
     const openFileBtn = e.target.closest('.chat-open-file-btn');
     if (openFileBtn) {
       e.stopPropagation();
       const filePath = openFileBtn.dataset.filePath;
-      const line = openFileBtn.dataset.line;
-      const editor = getEditorCommand(getSetting('editor') || 'code');
-      if (filePath && editor) {
-        const target = line ? `${filePath}:${line}` : filePath;
-        window.electron_api.dialog.openInEditor({ editor, path: target });
+      if (filePath) {
+        const { openFileTab } = require('./TerminalManager');
+        openFileTab(filePath);
       }
       return;
     }
@@ -2220,7 +2445,7 @@ class ChatView extends BaseComponent {
   let _forceParallelTask = false;
 
   async function handleSend() {
-    const text = inputEl.value.trim();
+    const text = getInputText().trim();
     const hasImages = pendingImages.length > 0;
     const hasMentions = pendingMentions.length > 0;
     if ((!text && !hasImages && !hasMentions) || sendLock) return;
@@ -2230,10 +2455,10 @@ class ChatView extends BaseComponent {
       const taskDesc = text.replace(/^\/parallel-task\s*/, '').trim();
       if (!taskDesc) {
         appendSystemNotice(t('parallel.chatWidget.noTaskDescription') || 'Please provide a task description: /parallel-task <description>');
-        inputEl.value = '';
+        setInputText('');
         return;
       }
-      inputEl.value = taskDesc;
+      setInputText(taskDesc);
       _forceParallelTask = true;
     }
 
@@ -2286,7 +2511,8 @@ class ChatView extends BaseComponent {
     const isQueued = isStreaming && sessionId;
     appendUserMessage(enhancedText, images, mentions, isQueued, wasEnhanced ? text : null);
     if (enhancedText) conversationHistory.push({ role: 'user', content: enhancedText });
-    inputEl.value = '';
+    inputEl.innerHTML = '';
+    updatePlaceholderVisibility();
     inputEl.style.height = 'auto';
 
     if (!isStreaming) {
@@ -2636,10 +2862,10 @@ class ChatView extends BaseComponent {
     ).join('');
   }
 
-  function _openFileBtn(filePath, line) {
+  function _openFileBtn(filePath) {
     if (!filePath) return '';
     const escaped = escapeHtml(filePath).replace(/"/g, '&quot;');
-    return `<button class="chat-open-file-btn" data-file-path="${escaped}"${line ? ` data-line="${line}"` : ''} title="${t('chat.openInEditor') || 'Open in editor'}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>`;
+    return `<button class="chat-open-file-btn" data-file-path="${escaped}" title="${t('chat.openFile') || 'Open file'}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>`;
   }
 
   async function formatToolContent(toolName, input, output) {
@@ -2722,10 +2948,10 @@ class ChatView extends BaseComponent {
         const linesHtml = display.map((l, i) =>
           `<div class="diff-line"><span class="diff-ln">${l.num}</span><span class="diff-sign"> </span><span class="diff-text">${highlightedLines[i] ?? ''}</span></div>`
         ).join('');
-        return `<div class="chat-tool-content-path">${escapeHtml(path)}${rangeInfo ? ` <span class="chat-tool-content-meta">(${rangeInfo})</span>` : ''} <span class="chat-tool-content-meta">${parsed.length} lines</span> ${_openFileBtn(path, display[0]?.num)}</div>
+        return `<div class="chat-tool-content-path">${escapeHtml(path)}${rangeInfo ? ` <span class="chat-tool-content-meta">(${rangeInfo})</span>` : ''} <span class="chat-tool-content-meta">${parsed.length} lines</span> ${_openFileBtn(path)}</div>
           <div class="chat-diff-viewer">${linesHtml}${truncated ? `<div class="diff-line diff-truncated"><span class="diff-ln"></span><span class="diff-sign"> </span><span class="diff-text">… (${parsed.length - maxLines} more lines)</span></div>` : ''}</div>`;
       }
-      return `<div class="chat-tool-content-path">${escapeHtml(path)}${rangeInfo ? ` <span class="chat-tool-content-meta">(${rangeInfo})</span>` : ''} ${_openFileBtn(path, offset)}</div>`;
+      return `<div class="chat-tool-content-path">${escapeHtml(path)}${rangeInfo ? ` <span class="chat-tool-content-meta">(${rangeInfo})</span>` : ''} ${_openFileBtn(path)}</div>`;
     }
 
     if (name === 'glob' || name === 'grep') {
@@ -3951,7 +4177,7 @@ class ChatView extends BaseComponent {
     }
 
     if (streaming) {
-      inputEl.placeholder = t('chat.queuePlaceholder') || 'Queue a follow-up message...';
+      inputEl.dataset.placeholder = t('chat.queuePlaceholder') || 'Queue a follow-up message...';
       setStatus('thinking', t('chat.thinking'));
     } else {
       // Refresh contextual suggestions (placeholder rotation) after streaming ends
@@ -4970,7 +5196,7 @@ class ChatView extends BaseComponent {
           pendingImages.push({ base64: img.base64, mediaType: img.mediaType, name: 'remote-image', dataUrl: '' });
         }
       }
-      inputEl.value = initialPrompt;
+      setInputText(initialPrompt);
       handleSend();
     }
   }, 100);
@@ -5106,7 +5332,7 @@ class ChatView extends BaseComponent {
       for (const m of mentions) {
         pendingMentions.push(m);
       }
-      inputEl.value = text;
+      setInputText(text);
       handleSend();
     },
     addMentionChip(type, data) {

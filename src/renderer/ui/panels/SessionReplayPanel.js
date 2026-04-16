@@ -667,11 +667,12 @@ async function loadSessions(projectPath) {
 
 function _updateBranchFilter(branches) {
   if (!branchSelect) return;
+  const branchGroup = container.querySelector('#sr-branch-select-wrap');
   if (branches.length === 0) {
-    branchSelect.el.style.display = 'none';
+    if (branchGroup) branchGroup.style.display = 'none';
     return;
   }
-  branchSelect.el.style.display = '';
+  if (branchGroup) branchGroup.style.display = '';
   branchSelect.setOptions(
     `<option value="">${t('sessions.allBranches')}</option>` +
     branches.map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('')
@@ -737,7 +738,7 @@ async function loadReplay() {
   if (!projectPath || !sessionId) return;
 
   loadBtn.disabled = true;
-  loadBtn.textContent = t('sessionReplay.loading');
+  _setLoadBtnLabel(t('sessionReplay.loading'));
   timeline.innerHTML = `<div class="sr-loading"><div class="sr-spinner"></div>${t('sessionReplay.parsing')}</div>`;
   summaryBar.innerHTML = '';
 
@@ -760,7 +761,7 @@ async function loadReplay() {
     timeline.innerHTML = `<div class="sr-empty sr-empty--error">${t('sessionReplay.errorLoading')}: ${escapeHtml(e.message)}</div>`;
   } finally {
     loadBtn.disabled = false;
-    loadBtn.textContent = t('sessionReplay.load');
+    _setLoadBtnLabel(t('sessionReplay.load'));
   }
 }
 
@@ -1019,6 +1020,20 @@ function _startTimer() {
   }, delay);
 }
 
+function _setLoadBtnLabel(text) {
+  if (!loadBtn) return;
+  const svg = loadBtn.querySelector('svg');
+  if (svg) {
+    // Keep SVG, update text after it
+    const span = loadBtn.querySelector('.sr-load-label') || document.createElement('span');
+    span.className = 'sr-load-label';
+    span.textContent = text;
+    if (!loadBtn.querySelector('.sr-load-label')) loadBtn.appendChild(span);
+  } else {
+    loadBtn.textContent = text;
+  }
+}
+
 function _playerPause() {
   if (!playerIsPlaying) return;
   playerIsPlaying = false;
@@ -1256,29 +1271,47 @@ function buildHtml() {
   return `
     <div class="sr-panel">
       <div class="sr-header">
-        <div class="sr-title">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
-          <span>${t('sessionReplay.title')}</span>
+        <div class="sr-header-top">
+          <div class="sr-title">
+            <div class="sr-title-icon">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+            </div>
+            <span>${t('sessionReplay.title')}</span>
+          </div>
+          <div class="sr-header-actions">
+            <button class="sr-action-btn sr-export-btn" id="sr-export-btn" title="${t('sessions.export')}" hidden>
+              <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+              <span>${t('sessions.export')}</span>
+            </button>
+            <div id="sr-view-toggle" class="sr-view-toggle" hidden></div>
+          </div>
         </div>
         <div class="sr-controls">
-          <div class="sr-cs-container" id="sr-project-select-wrap"></div>
-          <div class="sr-cs-container" id="sr-branch-select-wrap" style="display:none"></div>
-          <div class="sr-cs-container sr-session-select-row" id="sr-session-select-wrap"></div>
-          <button class="sr-action-btn sr-delete-btn" id="sr-delete-btn" title="${t('sessions.delete')}" disabled>
-            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-          </button>
-          <button class="sr-load-btn" id="sr-load-btn" disabled>${t('sessionReplay.load')}</button>
+          <div class="sr-control-group sr-control-group--project">
+            <label class="sr-control-label">${t('sessionReplay.labelProject')}</label>
+            <div class="sr-cs-container" id="sr-project-select-wrap"></div>
+          </div>
+          <div class="sr-control-group sr-control-group--branch" id="sr-branch-select-wrap" style="display:none">
+            <label class="sr-control-label">${t('sessions.filterBranch')}</label>
+            <div class="sr-cs-container"></div>
+          </div>
+          <div class="sr-control-group sr-control-group--session">
+            <label class="sr-control-label">${t('sessionReplay.labelSession')}</label>
+            <div class="sr-cs-container sr-session-select-row" id="sr-session-select-wrap"></div>
+          </div>
+          <div class="sr-control-actions">
+            <button class="sr-action-btn sr-delete-btn" id="sr-delete-btn" title="${t('sessions.delete')}" disabled>
+              <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+            </button>
+            <button class="sr-load-btn" id="sr-load-btn" disabled>
+              <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+              <span class="sr-load-label">${t('sessionReplay.load')}</span>
+            </button>
+          </div>
         </div>
       </div>
       <div class="sr-meta">
         <div class="sr-summary" id="sr-summary"></div>
-        <div class="sr-meta-actions">
-          <button class="sr-action-btn sr-export-btn" id="sr-export-btn" title="${t('sessions.export')}" hidden>
-            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-            <span>${t('sessions.export')}</span>
-          </button>
-          <div id="sr-view-toggle" class="sr-view-toggle" hidden></div>
-        </div>
       </div>
       <div class="sr-timeline" id="sr-timeline">
         ${buildEmptyStateHtml()}
@@ -1312,7 +1345,7 @@ function init(containerEl, opts = {}) {
   branchWidget.disabled = true;
   sessWidget.disabled = true;
   container.querySelector('#sr-project-select-wrap').appendChild(projWidget.el);
-  container.querySelector('#sr-branch-select-wrap').appendChild(branchWidget.el);
+  container.querySelector('#sr-branch-select-wrap .sr-cs-container').appendChild(branchWidget.el);
   container.querySelector('#sr-session-select-wrap').appendChild(sessWidget.el);
   projectSelect = projWidget;
   branchSelect = branchWidget;

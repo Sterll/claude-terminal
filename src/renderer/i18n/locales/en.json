@@ -1259,7 +1259,9 @@
     "paramDescription": "Task",
     "paramOffset": "Offset",
     "paramLimit": "Limit",
-    "paramTimeout": "Timeout"
+    "paramTimeout": "Timeout",
+    "labelProject": "Project",
+    "labelSession": "Session"
   },
   "timetracking": {
     "title": "Time Tracking",
@@ -1556,7 +1558,7 @@
     "streaming": "Writing...",
     "stopped": "Stopped",
     "ready": "Ready",
-    "openInEditor": "Open in editor",
+    "openFile": "Open file",
     "cloudBadge": "Cloud",
     "allow": "Allow",
     "alwaysAllow": "Always Allow",
