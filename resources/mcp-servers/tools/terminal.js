@@ -66,12 +66,45 @@ function writeTrigger(action, payload) {
   return triggerFile;
 }
 
+// Writes a trigger on the new `tabs/triggers/` pipeline (supports request/response).
+function writeTabTrigger(action, payload) {
+  const triggerDir = path.join(getDataDir(), 'tabs', 'triggers');
+  if (!fs.existsSync(triggerDir)) fs.mkdirSync(triggerDir, { recursive: true });
+  const requestId = payload.requestId || `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  const triggerFile = path.join(triggerDir, `${action}_${requestId}.json`);
+  fs.writeFileSync(triggerFile, JSON.stringify({
+    action,
+    requestId,
+    ...payload,
+    source: 'mcp',
+    timestamp: new Date().toISOString(),
+  }), 'utf8');
+  return requestId;
+}
+
+async function awaitTabResponse(requestId, { timeoutMs = 10000, intervalMs = 150 } = {}) {
+  const responseDir = path.join(getDataDir(), 'tabs', 'responses');
+  if (!fs.existsSync(responseDir)) fs.mkdirSync(responseDir, { recursive: true });
+  const responseFile = path.join(responseDir, `${requestId}.json`);
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(responseFile)) {
+      let data = null;
+      try { data = JSON.parse(fs.readFileSync(responseFile, 'utf8')); } catch (_) {}
+      try { fs.unlinkSync(responseFile); } catch (_) {}
+      return data || { ok: true };
+    }
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  return { ok: false, error: 'Timed out waiting for renderer response' };
+}
+
 // -- Tool definitions ---------------------------------------------------------
 
 const tools = [
   {
     name: 'terminal_list',
-    description: 'List active terminals in Claude Terminal. Shows terminal ID, project, mode (terminal/chat), and status.',
+    description: '[Legacy — prefer tab_list] List active terminals in Claude Terminal. Shows terminal ID, project, mode (terminal/chat), and status.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -81,7 +114,7 @@ const tools = [
   },
   {
     name: 'terminal_create',
-    description: 'Open a new terminal tab in Claude Terminal for a project.',
+    description: 'Open a new terminal tab in Claude Terminal for a project. Returns the newly created tab\'s stable `tabId` that can be passed to tab_send / tab_status / tab_close.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -93,7 +126,7 @@ const tools = [
   },
   {
     name: 'terminal_send_command',
-    description: 'Send a command to a running terminal in Claude Terminal. The command is typed into the active terminal of the specified project.',
+    description: '[Legacy — prefer tab_send with a stable tabId] Send a command to a running terminal in Claude Terminal. The command is typed into the first terminal of the specified project, which is ambiguous when multiple tabs exist.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -105,7 +138,7 @@ const tools = [
   },
   {
     name: 'terminal_read_output',
-    description: 'Read recent output from a terminal in Claude Terminal. Returns the last N lines of terminal output.',
+    description: '[Legacy] Read recent output from a terminal in Claude Terminal. Returns the last N lines of terminal output.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -117,7 +150,7 @@ const tools = [
   },
   {
     name: 'terminal_close',
-    description: 'Close a terminal tab in Claude Terminal.',
+    description: '[Legacy — prefer tab_close with a stable tabId] Close a terminal tab in Claude Terminal.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -177,14 +210,22 @@ async function handle(name, args) {
         return fail(`Invalid mode "${mode}". Must be "terminal" or "chat".`);
       }
 
-      writeTrigger('create', {
+      const requestId = writeTabTrigger('create', {
         projectId: p.id,
         projectName: p.name || path.basename(p.path || ''),
         projectPath: p.path,
         mode,
       });
-
-      return ok(`Terminal creation triggered for "${p.name || path.basename(p.path || '?')}" in ${mode} mode.`);
+      const resp = await awaitTabResponse(requestId, { timeoutMs: 15000 });
+      if (resp.ok && resp.tabId) {
+        return ok(JSON.stringify({
+          tabId: resp.tabId,
+          projectId: p.id,
+          mode,
+          projectName: p.name || path.basename(p.path || ''),
+        }, null, 2));
+      }
+      return fail(`Failed to create terminal: ${resp.error || 'unknown error'}`);
     }
 
     if (name === 'terminal_send_command') {

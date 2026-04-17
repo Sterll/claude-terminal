@@ -178,6 +178,16 @@ function _startMcpTriggerPolling(mainWindow) {
         mainWindow.webContents.send('mcp-terminal:close', data);
       }
     });
+
+    // Tabs MCP tools (orchestration with stable tabIds + request/response).
+    // Actions: create, send, close, status, permission. The renderer handles
+    // them and writes back to `tabs/responses/<requestId>.json`.
+    await _pollTriggerDirAsync(path.join(dataDir, 'tabs', 'triggers'), (data) => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (!data.action || !data.requestId) return;
+      console.log(`[Services] MCP tab ${data.action}: req=${data.requestId} tabId=${data.tabId || '-'}`);
+      mainWindow.webContents.send(`mcp-tab:${data.action}`, data);
+    });
   }, 2000);
 }
 

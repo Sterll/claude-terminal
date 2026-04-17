@@ -746,5 +746,15 @@ contextBridge.exposeInMainWorld('electron_api', {
     onCreate: createListener('mcp-terminal:create'),
     onSend: createListener('mcp-terminal:send'),
     onClose: createListener('mcp-terminal:close'),
+  },
+
+  // ==================== MCP TABS (orchestration layer) ====================
+  // The renderer receives `mcp-tab:<action>` events from main and must write
+  // a response JSON to `<dataDir>/tabs/responses/<requestId>.json` to complete
+  // the request. Phase 1 actions: create, send, close.
+  mcpTab: {
+    onCreate: createListener('mcp-tab:create'),
+    onSend: createListener('mcp-tab:send'),
+    onClose: createListener('mcp-tab:close'),
   }
 });

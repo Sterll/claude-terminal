@@ -13,7 +13,15 @@ const {
   getTerminalStatsForProject,
   getTerminalsForProject,
   killTerminalsForProject,
-  clearAllTerminals
+  clearAllTerminals,
+  generateTabId,
+  stripAnsi,
+  getTerminalByTabId,
+  updateTerminalByTabId,
+  touchTerminalActivity,
+  deriveTabStatus,
+  appendTerminalOutput,
+  appendChatMessage,
 } = require('../../src/renderer/state/terminals.state');
 
 function resetState() {
@@ -385,6 +393,185 @@ describe('batch updates', () => {
     addTerminal(3, { projectIndex: 1 });
     await new Promise(r => setTimeout(r, 0));
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── MCP tab orchestration helpers ──
+
+describe('generateTabId', () => {
+  test('produces a prefixed, stable-looking id', () => {
+    const a = generateTabId('proj_abc');
+    expect(a).toMatch(/^tab_proj_abc_\d+_[a-z0-9]+$/);
+  });
+
+  test('sanitizes unsafe project ids', () => {
+    const id = generateTabId('p/r@j id!');
+    expect(id.startsWith('tab_')).toBe(true);
+    expect(id).not.toMatch(/[@/! ]/);
+  });
+
+  test('falls back to "unknown" for missing project id', () => {
+    expect(generateTabId('')).toMatch(/^tab_unknown_/);
+    expect(generateTabId(null)).toMatch(/^tab_unknown_/);
+  });
+
+  test('produces unique ids on consecutive calls', () => {
+    const ids = new Set();
+    for (let i = 0; i < 50; i++) ids.add(generateTabId('proj'));
+    expect(ids.size).toBe(50);
+  });
+});
+
+describe('stripAnsi', () => {
+  test('removes common CSI color codes', () => {
+    expect(stripAnsi('\x1B[31mhello\x1B[0m')).toBe('hello');
+    expect(stripAnsi('\x1B[1;32mgreen\x1B[0m world')).toBe('green world');
+  });
+
+  test('removes OSC sequences (title changes etc.)', () => {
+    expect(stripAnsi('\x1B]0;my title\x07ok')).toBe('ok');
+  });
+
+  test('is a no-op for clean text', () => {
+    expect(stripAnsi('plain text')).toBe('plain text');
+  });
+
+  test('handles empty / nullish input', () => {
+    expect(stripAnsi('')).toBe('');
+    expect(stripAnsi(null)).toBe('');
+    expect(stripAnsi(undefined)).toBe('');
+  });
+});
+
+describe('getTerminalByTabId / updateTerminalByTabId', () => {
+  test('finds entry by tabId', () => {
+    addTerminal(1, { projectIndex: 0, tabId: 'tab_a_1_xx', mode: 'terminal' });
+    const found = getTerminalByTabId('tab_a_1_xx');
+    expect(found).not.toBeNull();
+    expect(found.id).toBe(1);
+    expect(found.data.mode).toBe('terminal');
+  });
+
+  test('returns null for missing tabId', () => {
+    expect(getTerminalByTabId('nope')).toBeNull();
+    expect(getTerminalByTabId('')).toBeNull();
+    expect(getTerminalByTabId(null)).toBeNull();
+  });
+
+  test('updateTerminalByTabId merges fields', () => {
+    addTerminal(1, { projectIndex: 0, tabId: 'tab_a_1_xx', status: 'ready' });
+    expect(updateTerminalByTabId('tab_a_1_xx', { status: 'working', lastCommand: 'ls' })).toBe(true);
+    const td = getTerminalByTabId('tab_a_1_xx').data;
+    expect(td.status).toBe('working');
+    expect(td.lastCommand).toBe('ls');
+  });
+
+  test('updateTerminalByTabId returns false for missing tab', () => {
+    expect(updateTerminalByTabId('nope', { x: 1 })).toBe(false);
+  });
+});
+
+describe('touchTerminalActivity', () => {
+  test('sets lastActivityAt on matching entry by internal id', () => {
+    addTerminal(1, { projectIndex: 0, tabId: 'tab_a_1_xx' });
+    touchTerminalActivity(1);
+    expect(getTerminal(1).lastActivityAt).toBeDefined();
+  });
+
+  test('sets lastActivityAt by tabId', () => {
+    addTerminal(2, { projectIndex: 0, tabId: 'tab_a_2_xx' });
+    touchTerminalActivity('tab_a_2_xx');
+    expect(getTerminal(2).lastActivityAt).toBeDefined();
+  });
+
+  test('is safe when tab is not found', () => {
+    expect(() => touchTerminalActivity('nope')).not.toThrow();
+  });
+});
+
+describe('deriveTabStatus', () => {
+  test('returns "done" for missing data', () => {
+    expect(deriveTabStatus(undefined)).toBe('done');
+    expect(deriveTabStatus(null)).toBe('done');
+  });
+
+  test('awaiting_permission wins over everything else', () => {
+    expect(deriveTabStatus({ mode: 'chat', pendingPermission: { tool: 'x' }, status: 'ready' })).toBe('awaiting_permission');
+  });
+
+  test('error status maps through', () => {
+    expect(deriveTabStatus({ mode: 'terminal', status: 'error' })).toBe('error');
+  });
+
+  test('loading maps to running', () => {
+    expect(deriveTabStatus({ mode: 'terminal', status: 'loading' })).toBe('running');
+  });
+
+  test('chat working → running, otherwise idle', () => {
+    expect(deriveTabStatus({ mode: 'chat', status: 'working' })).toBe('running');
+    expect(deriveTabStatus({ mode: 'chat', status: 'ready' })).toBe('idle');
+  });
+
+  test('terminal working → running, otherwise idle', () => {
+    expect(deriveTabStatus({ mode: 'terminal', status: 'working' })).toBe('running');
+    expect(deriveTabStatus({ mode: 'terminal', status: 'ready' })).toBe('idle');
+  });
+});
+
+describe('appendTerminalOutput', () => {
+  test('strips ANSI and appends with a cursor', () => {
+    const td = {};
+    appendTerminalOutput(td, '\x1B[31mhi\x1B[0m');
+    expect(td.outputBuffer).toHaveLength(1);
+    expect(td.outputBuffer[0].text).toBe('hi');
+    expect(td.outputBuffer[0].cursor).toBe(1);
+  });
+
+  test('cursor increases monotonically', () => {
+    const td = {};
+    appendTerminalOutput(td, 'a');
+    appendTerminalOutput(td, 'b');
+    appendTerminalOutput(td, 'c');
+    expect(td.outputBuffer.map(e => e.cursor)).toEqual([1, 2, 3]);
+  });
+
+  test('caps to maxBytes by dropping oldest', () => {
+    const td = {};
+    const chunk = 'x'.repeat(200);
+    appendTerminalOutput(td, chunk, 500);
+    appendTerminalOutput(td, chunk, 500);
+    appendTerminalOutput(td, chunk, 500);
+    // After 600 bytes total with cap 500, oldest entry should be dropped.
+    expect(td.outputBuffer.length).toBeLessThan(3);
+    expect(td.outputBufferSize).toBeLessThanOrEqual(500);
+  });
+
+  test('ignores empty chunks', () => {
+    const td = {};
+    appendTerminalOutput(td, '');
+    appendTerminalOutput(td, null);
+    expect(td.outputBuffer).toBeUndefined();
+  });
+});
+
+describe('appendChatMessage', () => {
+  test('stores role/content/cursor/timestamp', () => {
+    const td = {};
+    appendChatMessage(td, { role: 'user', content: 'hello', tokensUsed: 42 });
+    expect(td.chatMessages).toHaveLength(1);
+    expect(td.chatMessages[0].role).toBe('user');
+    expect(td.chatMessages[0].content).toBe('hello');
+    expect(td.chatMessages[0].tokensUsed).toBe(42);
+    expect(td.chatMessages[0].cursor).toBe(1);
+    expect(typeof td.chatMessages[0].ts).toBe('number');
+  });
+
+  test('shares cursor space with appendTerminalOutput', () => {
+    const td = {};
+    appendTerminalOutput(td, 'a');
+    appendChatMessage(td, { role: 'assistant', content: 'b' });
+    expect(td.outputBuffer[0].cursor).toBe(1);
+    expect(td.chatMessages[0].cursor).toBe(2);
   });
 });
 

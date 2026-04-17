@@ -1154,28 +1154,159 @@ if (api.mcpTerminal) {
   });
 }
 
-// Sync terminals.json so MCP terminal_list can read active terminals
+// ========== MCP Tab orchestration (phase 1: create/send/close) ==========
+// Response pattern: main forwards mcp-tab:<action> with { requestId, ... };
+// we apply the action, then write the result to
+// `<dataDir>/tabs/responses/<requestId>.json`. The MCP tool polls for it.
+
+function _writeTabResponse(requestId, payload) {
+  if (!requestId) return;
+  try {
+    const respDir = path.join(dataDir, 'tabs', 'responses');
+    if (!fs.existsSync(respDir)) fs.mkdirSync(respDir, { recursive: true });
+    const file = path.join(respDir, `${requestId}.json`);
+    fsp.writeFile(file, JSON.stringify(payload)).catch(() => {});
+  } catch (_) {}
+}
+
+if (api.mcpTab) {
+  api.mcpTab.onCreate(async (data) => {
+    const requestId = data.requestId;
+    try {
+      const project = getProject(data.projectId);
+      if (!project) {
+        _writeTabResponse(requestId, { ok: false, error: `Project not found: ${data.projectId}` });
+        return;
+      }
+      const mode = data.mode === 'chat' ? 'chat' : 'terminal';
+      const existingTabIds = new Set(
+        Array.from(terminalsState.get().terminals.values())
+          .map(t => t.tabId)
+          .filter(Boolean)
+      );
+
+      await TerminalManager.createTerminal(project, {
+        mode,
+        runClaude: mode === 'chat',
+      });
+
+      // Find the tabId that was just created (the new one for this project).
+      const terminals = terminalsState.get().terminals;
+      let newTabId = null;
+      for (const td of terminals.values()) {
+        if (td.tabId && !existingTabIds.has(td.tabId) && td.project?.id === project.id) {
+          newTabId = td.tabId;
+          break;
+        }
+      }
+      if (!newTabId) {
+        _writeTabResponse(requestId, { ok: false, error: 'Tab was created but tabId could not be resolved' });
+        return;
+      }
+      _writeTabResponse(requestId, { ok: true, tabId: newTabId, mode, projectId: project.id });
+    } catch (e) {
+      console.error('[MCP Tab] create error:', e);
+      _writeTabResponse(requestId, { ok: false, error: e.message });
+    }
+  });
+
+  api.mcpTab.onSend((data) => {
+    const requestId = data.requestId;
+    try {
+      const result = TerminalManager.sendToTab(data.tabId, data.content);
+      _writeTabResponse(requestId, result);
+    } catch (e) {
+      console.error('[MCP Tab] send error:', e);
+      _writeTabResponse(requestId, { ok: false, error: e.message });
+    }
+  });
+
+  api.mcpTab.onClose((data) => {
+    const requestId = data.requestId;
+    try {
+      const result = TerminalManager.closeTabByTabId(data.tabId);
+      _writeTabResponse(requestId, result);
+    } catch (e) {
+      console.error('[MCP Tab] close error:', e);
+      _writeTabResponse(requestId, { ok: false, error: e.message });
+    }
+  });
+}
+
+// Sync terminals.json + tabs.json so MCP tools can read tab state
+// `terminals.json` is kept for the legacy `terminal_*` tools (backward compat).
+// `tabs.json` is the rich state consumed by the `tab_*` orchestration tools.
 let _termSyncTimer = null;
+const { deriveTabStatus } = require('./src/renderer/state/terminals.state');
+
+function _buildTabsSnapshot() {
+  const terminals = terminalsState.get().terminals;
+  const legacy = [];
+  const rich = [];
+  for (const [id, td] of terminals) {
+    // File viewers and type consoles (fivem/webapp/api) are not MCP tabs.
+    if (td.type === 'file' || td.type === 'fivem' || td.type === 'webapp' || td.type === 'api') continue;
+
+    legacy.push({
+      id,
+      projectId: td.project?.id || null,
+      projectName: td.project?.name || td.name || '?',
+      mode: td.mode || 'terminal',
+      started: td.createdAt || null,
+      tabId: td.tabId || null,
+    });
+
+    if (!td.tabId) continue;
+    const status = deriveTabStatus(td);
+    const details = td.mode === 'chat'
+      ? {
+          claudeSessionId: td.claudeSessionId || null,
+          lastMessageRole: td.lastMessageRole || null,
+          tokensUsed: typeof td.tokensUsed === 'number' ? td.tokensUsed : null,
+          contextWindow: typeof td.contextWindow === 'number' ? td.contextWindow : null,
+          pendingPermission: td.pendingPermission
+            ? { requestId: td.pendingPermission.requestId || null, tool: td.pendingPermission.tool || null, summary: td.pendingPermission.summary || null }
+            : null,
+        }
+      : {
+          lastCommand: td.lastCommand || null,
+          isPromptReady: td.status === 'ready',
+          exitCode: typeof td.exitCode === 'number' ? td.exitCode : null,
+          claudeSessionId: td.claudeSessionId || null,
+        };
+
+    rich.push({
+      tabId: td.tabId,
+      ptyId: typeof id === 'number' ? id : null,
+      projectId: td.project?.id || null,
+      projectName: td.project?.name || td.name || null,
+      mode: td.mode || 'terminal',
+      title: td.name || null,
+      status,
+      createdAt: td.createdAt || null,
+      lastActivityAt: td.lastActivityAt || null,
+      details,
+    });
+  }
+  return { legacy, rich };
+}
+
+function _writeTabsSnapshot() {
+  try {
+    const { legacy, rich } = _buildTabsSnapshot();
+    const legacyPath = path.join(dataDir, 'terminals.json');
+    const richPath = path.join(dataDir, 'tabs.json');
+    fsp.writeFile(legacyPath, JSON.stringify(legacy, null, 2)).catch(() => {});
+    fsp.writeFile(richPath, JSON.stringify({ updatedAt: Date.now(), tabs: rich }, null, 2)).catch(() => {});
+  } catch (_) {}
+}
+
 terminalsState.subscribe(() => {
   if (_termSyncTimer) clearTimeout(_termSyncTimer);
-  _termSyncTimer = setTimeout(() => {
-    try {
-      const terminals = terminalsState.get().terminals;
-      const list = [];
-      for (const [id, td] of terminals) {
-        list.push({
-          id,
-          projectId: td.project?.id || null,
-          projectName: td.project?.name || td.name || '?',
-          mode: td.mode || 'terminal',
-          started: td.createdAt || null,
-        });
-      }
-      const filePath = path.join(dataDir, 'terminals.json');
-      fsp.writeFile(filePath, JSON.stringify(list, null, 2)).catch(() => {});
-    } catch (_) {}
-  }, 500);
+  _termSyncTimer = setTimeout(_writeTabsSnapshot, 500);
 });
+// Periodic refresh so lastActivityAt stays fresh even without state events
+setInterval(_writeTabsSnapshot, 3000);
 
 // ========== API ==========
 async function startApiServer(projectIndex) {

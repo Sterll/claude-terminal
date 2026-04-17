@@ -32,6 +32,12 @@ const {
   heartbeat,
   stopProject,
   getProjectSettings: getProjectSettingsState,
+  generateTabId,
+  getTerminalByTabId,
+  updateTerminalByTabId,
+  touchTerminalActivity,
+  appendTerminalOutput,
+  appendChatMessage,
 } = require('../../state');
 const { Marked } = require('marked');
 const { escapeHtml, getFileIcon, highlight } = require('../../utils');
@@ -501,7 +507,16 @@ class TerminalManager extends BaseComponent {
 
   _registerTerminalHandler(id, onData, onExit) {
     this._initIpcDispatcher();
-    this._terminalDataHandlers.set(id, onData);
+    const wrappedOnData = (data) => {
+      const td = getTerminal(id);
+      if (td) {
+        const chunk = (data && typeof data.data === 'string') ? data.data : '';
+        if (chunk) appendTerminalOutput(td, chunk);
+        td.lastActivityAt = new Date().toISOString();
+      }
+      if (onData) onData(data);
+    };
+    this._terminalDataHandlers.set(id, wrappedOnData);
     this._terminalExitHandlers.set(id, onExit);
   }
 
@@ -1474,6 +1489,8 @@ class TerminalManager extends BaseComponent {
     const isBasicTerminal = !runClaude;
     const tabName = customName || project.name;
     const initialStatus = isBasicTerminal ? 'ready' : 'loading';
+    const nowIso = new Date().toISOString();
+    const tabId = generateTabId(project.id);
     const termData = {
       terminal,
       fitAddon,
@@ -1485,6 +1502,9 @@ class TerminalManager extends BaseComponent {
       isBasic: isBasicTerminal,
       mode: 'terminal',
       cwd: overrideCwd || project.path,
+      tabId,
+      createdAt: nowIso,
+      lastActivityAt: nowIso,
       ...(resumeSessionId ? { claudeSessionId: resumeSessionId } : {}),
       ...(initialPrompt ? { pendingPrompt: initialPrompt } : {}),
       ...(overrideCwd ? { parentProjectId: project.id } : {})
@@ -2692,6 +2712,7 @@ class TerminalManager extends BaseComponent {
     terminal.loadAddon(fitAddon);
 
     const projectIndex = getProjectIndex(project.id);
+    const nowIsoResume = new Date().toISOString();
     const termData = {
       terminal,
       fitAddon,
@@ -2701,7 +2722,11 @@ class TerminalManager extends BaseComponent {
       status: 'working',
       inputBuffer: '',
       isBasic: false,
-      claudeSessionId: sessionId
+      mode: 'terminal',
+      claudeSessionId: sessionId,
+      tabId: generateTabId(project.id),
+      createdAt: nowIsoResume,
+      lastActivityAt: nowIsoResume,
     };
 
     addTerminal(id, termData);
@@ -2847,6 +2872,7 @@ class TerminalManager extends BaseComponent {
     terminal.loadAddon(fitAddon);
 
     const projectIndex = getProjectIndex(project.id);
+    const nowIsoDebug = new Date().toISOString();
     const termData = {
       terminal,
       fitAddon,
@@ -2856,7 +2882,11 @@ class TerminalManager extends BaseComponent {
       status: 'working',
       inputBuffer: '',
       isBasic: false,
-      pendingPrompt: prompt
+      mode: 'terminal',
+      pendingPrompt: prompt,
+      tabId: generateTabId(project.id),
+      createdAt: nowIsoDebug,
+      lastActivityAt: nowIsoDebug,
     };
 
     addTerminal(id, termData);
@@ -3494,6 +3524,7 @@ class TerminalManager extends BaseComponent {
     const isCloud = !!project.isCloud;
     const projectIndex = isCloud ? -1 : getProjectIndex(parentProjectId || project.id);
     const tabName = customName || project.name;
+    const nowIsoChat = new Date().toISOString();
 
     const termData = {
       terminal: null,
@@ -3506,6 +3537,9 @@ class TerminalManager extends BaseComponent {
       isBasic: false,
       mode: 'chat',
       chatView: null,
+      tabId: generateTabId(parentProjectId || project.id || 'cloud'),
+      createdAt: nowIsoChat,
+      lastActivityAt: nowIsoChat,
       ...(parentProjectId ? { parentProjectId } : {}),
       ...(resumeSessionId ? { claudeSessionId: resumeSessionId } : {})
     };
@@ -3836,6 +3870,127 @@ class TerminalManager extends BaseComponent {
     }, POLL_MS);
   }
 
+  // ── MCP orchestration helpers ──
+  // Consumed by the `tabs.js` MCP tool module via IPC triggers.
+
+  getTabByTabId(tabId) {
+    return getTerminalByTabId(tabId);
+  }
+
+  sendToTab(tabId, content) {
+    const found = getTerminalByTabId(tabId);
+    if (!found) return { ok: false, error: `Tab not found: ${tabId}` };
+    const { id, data } = found;
+    const text = String(content ?? '');
+
+    if (data.mode === 'chat') {
+      if (!data.chatView) return { ok: false, error: 'Chat view not ready yet' };
+      try {
+        if (typeof data.chatView.sendMessage === 'function') {
+          data.chatView.sendMessage(text);
+        } else if (typeof data.chatView.submit === 'function') {
+          data.chatView.submit(text);
+        } else if (typeof data.chatView.send === 'function') {
+          data.chatView.send(text);
+        } else if (typeof data.chatView.setInputValue === 'function' && typeof data.chatView.submitCurrent === 'function') {
+          data.chatView.setInputValue(text);
+          data.chatView.submitCurrent();
+        } else {
+          return { ok: false, error: 'Chat view exposes no send API' };
+        }
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+      data.lastActivityAt = new Date().toISOString();
+      return { ok: true, tabId, mode: 'chat' };
+    }
+
+    if (data.isBasic || data.mode === 'terminal') {
+      try {
+        this._api.terminal.input({ id, data: text + (text.endsWith('\r') || text.endsWith('\n') ? '' : '\r') });
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+      data.lastCommand = text;
+      data.lastActivityAt = new Date().toISOString();
+      return { ok: true, tabId, mode: 'terminal' };
+    }
+
+    return { ok: false, error: `Unsupported tab mode: ${data.mode}` };
+  }
+
+  getStatusForTab(tabId) {
+    const { deriveTabStatus } = require('../../state/terminals.state');
+    const found = getTerminalByTabId(tabId);
+    if (!found) return null;
+    const { id, data } = found;
+    const status = deriveTabStatus(data);
+    const base = {
+      tabId,
+      ptyId: typeof id === 'number' ? id : null,
+      projectId: data.project?.id || null,
+      projectName: data.project?.name || data.name || null,
+      mode: data.mode || 'terminal',
+      title: data.name || null,
+      status,
+      createdAt: data.createdAt || null,
+      lastActivityAt: data.lastActivityAt || null,
+    };
+
+    if (data.mode === 'chat') {
+      base.details = {
+        claudeSessionId: data.claudeSessionId || null,
+        lastMessageRole: data.lastMessageRole || null,
+        tokensUsed: typeof data.tokensUsed === 'number' ? data.tokensUsed : null,
+        contextWindow: typeof data.contextWindow === 'number' ? data.contextWindow : null,
+        pendingPermission: data.pendingPermission
+          ? { requestId: data.pendingPermission.requestId || null, tool: data.pendingPermission.tool || null, summary: data.pendingPermission.summary || null }
+          : null,
+      };
+    } else {
+      base.details = {
+        lastCommand: data.lastCommand || null,
+        isPromptReady: data.status === 'ready',
+        exitCode: typeof data.exitCode === 'number' ? data.exitCode : null,
+        claudeSessionId: data.claudeSessionId || null,
+      };
+    }
+    return base;
+  }
+
+  closeTabByTabId(tabId) {
+    const found = getTerminalByTabId(tabId);
+    if (!found) return { ok: false, error: `Tab not found: ${tabId}` };
+    try {
+      this.closeTerminal(found.id);
+      return { ok: true, tabId };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  }
+
+  listTabsSummary() {
+    const { deriveTabStatus } = require('../../state/terminals.state');
+    const terminals = terminalsState.get().terminals;
+    const out = [];
+    terminals.forEach((data, id) => {
+      if (data.type === 'file' || data.type === 'fivem' || data.type === 'webapp' || data.type === 'api') return;
+      if (!data.tabId) return;
+      out.push({
+        tabId: data.tabId,
+        ptyId: typeof id === 'number' ? id : null,
+        projectId: data.project?.id || null,
+        projectName: data.project?.name || data.name || null,
+        mode: data.mode || 'terminal',
+        title: data.name || null,
+        status: deriveTabStatus(data),
+        createdAt: data.createdAt || null,
+        lastActivityAt: data.lastActivityAt || null,
+      });
+    });
+    return out;
+  }
+
   // ── Destroy ──
 
   destroy() {
@@ -3907,5 +4062,11 @@ module.exports = {
   setScrapingCallback: (cb) => _getInstance().setScrapingCallback(cb),
   updateTerminalTabName: (id, name) => _getInstance().updateTerminalTabName(id, name),
   cleanupProjectMaps: (projectIndex) => _getInstance().cleanupProjectMaps(projectIndex),
-  scheduleScrollAfterRestore: (id) => _getInstance().scheduleScrollAfterRestore(id)
+  scheduleScrollAfterRestore: (id) => _getInstance().scheduleScrollAfterRestore(id),
+  // MCP orchestration
+  getTabByTabId: (tabId) => _getInstance().getTabByTabId(tabId),
+  sendToTab: (tabId, content) => _getInstance().sendToTab(tabId, content),
+  getStatusForTab: (tabId) => _getInstance().getStatusForTab(tabId),
+  closeTabByTabId: (tabId) => _getInstance().closeTabByTabId(tabId),
+  listTabsSummary: () => _getInstance().listTabsSummary(),
 };
