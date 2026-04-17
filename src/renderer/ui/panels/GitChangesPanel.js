@@ -74,6 +74,7 @@ class GitChangesPanel extends BasePanel {
     this._btnCommitSelected = document.getElementById('btn-commit-selected');
     this._btnGenerateCommit = document.getElementById('btn-generate-commit');
     this._btnSmartCommit = document.getElementById('btn-smart-commit');
+    this._btnGeneratePr = document.getElementById('btn-generate-pr');
     this._commitCountSpan = document.getElementById('commit-count');
     this._changesCountBadge = document.getElementById('changes-count');
     this._filterBtnChanges = document.getElementById('filter-btn-changes');
@@ -241,6 +242,11 @@ class GitChangesPanel extends BasePanel {
         btnSpan.textContent = origText;
       }
     };
+
+    // Generate PR description
+    if (this._btnGeneratePr) {
+      this._btnGeneratePr.onclick = () => this._handleGeneratePr();
+    }
 
     // Commit selected files (supports amend)
     this._btnCommitSelected.onclick = async () => {
@@ -880,6 +886,128 @@ class GitChangesPanel extends BasePanel {
       modalBody.innerHTML = `<div class="git-diff-view"><pre class="git-diff-content">${lines}</pre></div>`;
     } catch (e) {
       if (modalBody) modalBody.innerHTML = `<p style="color:var(--danger);padding:16px">${escapeHtml(e.message)}</p>`;
+    }
+  }
+
+  async _handleGeneratePr() {
+    if (!this._btnGeneratePr) return;
+    if (!this._state.projectPath) {
+      this._showToast({ type: 'warning', message: t('git.generatePr.error'), duration: 3000 });
+      return;
+    }
+
+    const btn = this._btnGeneratePr;
+    const span = btn.querySelector('span');
+    const originalText = span ? span.textContent : '';
+    btn.disabled = true;
+    if (span) span.textContent = t('git.generatePr.generating');
+
+    try {
+      // Collect the latest session recaps for this project (if any)
+      let sessionSummary = '';
+      try {
+        const { getRecaps } = require('../../services/SessionRecapService');
+        const recaps = await getRecaps(this._state.projectId);
+        if (recaps && recaps.length > 0) {
+          sessionSummary = recaps.slice(0, 3)
+            .map(r => `- ${r.summary}`)
+            .join('\n');
+        }
+      } catch (_) {
+        // Recaps are optional — ignore failures
+      }
+
+      const result = await this.api.git.generatePrDescription({
+        projectPath: this._state.projectPath,
+        baseBranch: 'main',
+        sessionSummary
+      });
+
+      if (!result || !result.success) {
+        this._showToast({
+          type: 'error',
+          title: t('git.generatePr.error'),
+          message: (result && result.error) || t('common.errorOccurred'),
+          duration: 4000
+        });
+        return;
+      }
+
+      this._showPrModal(result);
+    } catch (e) {
+      this._showToast({ type: 'error', title: t('git.generatePr.error'), message: e.message, duration: 4000 });
+    } finally {
+      btn.disabled = false;
+      if (span) span.textContent = originalText;
+    }
+  }
+
+  _showPrModal({ title, body, compareUrl, branch, baseBranch }) {
+    const titleId = 'pr-desc-title-' + Date.now();
+    const bodyId = 'pr-desc-body-' + Date.now();
+
+    const branchInfo = (branch && baseBranch)
+      ? `<div class="pr-modal-branch-info"><code>${escapeHtml(baseBranch)}</code> ← <code>${escapeHtml(branch)}</code></div>`
+      : '';
+
+    const modal = createModal({
+      id: 'pr-description-modal',
+      title: t('git.generatePr.title'),
+      size: 'large',
+      content: `
+        <div class="pr-modal-content">
+          ${branchInfo}
+          <label class="pr-modal-label" for="${titleId}">${t('git.generatePr.title')}</label>
+          <input type="text" id="${titleId}" class="input pr-modal-title-input" value="${escapeHtml(title || '')}">
+          <label class="pr-modal-label" for="${bodyId}">${t('git.generatePr.body')}</label>
+          <textarea id="${bodyId}" class="pr-modal-body-input" rows="16">${escapeHtml(body || '')}</textarea>
+        </div>
+      `,
+      buttons: [
+        { label: t('common.cancel'), action: 'cancel' },
+        { label: t('git.generatePr.copy'), action: 'copy' },
+        { label: t('git.generatePr.openOnGithub'), action: 'open', primary: true }
+      ]
+    });
+
+    showModal(modal);
+
+    const titleInput = modal.querySelector(`#${titleId}`);
+    const bodyInput = modal.querySelector(`#${bodyId}`);
+
+    const getValues = () => ({
+      title: titleInput ? titleInput.value.trim() : '',
+      body: bodyInput ? bodyInput.value : ''
+    });
+
+    modal.querySelector('[data-action="cancel"]').onclick = () => closeModal(modal);
+
+    modal.querySelector('[data-action="copy"]').onclick = async () => {
+      const { title: t1, body: b1 } = getValues();
+      const text = t1 ? `${t1}\n\n${b1}` : b1;
+      try {
+        if (this.api.app && this.api.app.clipboardWrite) {
+          await this.api.app.clipboardWrite(text);
+        } else {
+          await navigator.clipboard.writeText(text);
+        }
+        this._showToast({ type: 'success', message: t('git.generatePr.copy'), duration: 2000 });
+      } catch (e) {
+        this._showToast({ type: 'error', message: e.message, duration: 3000 });
+      }
+    };
+
+    const openBtn = modal.querySelector('[data-action="open"]');
+    if (compareUrl) {
+      openBtn.onclick = () => {
+        const { title: t1, body: b1 } = getValues();
+        const url = `${compareUrl}?title=${encodeURIComponent(t1)}&body=${encodeURIComponent(b1)}`;
+        this.api.dialog.openExternal(url);
+        closeModal(modal);
+      };
+    } else {
+      openBtn.disabled = true;
+      openBtn.title = t('git.generatePr.error');
     }
   }
 

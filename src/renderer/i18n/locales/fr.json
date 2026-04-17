@@ -274,7 +274,16 @@
     "checkoutError": "Changement de branche échoué",
     "unableToSwitchBranch": "Impossible de changer de branche",
     "loadingError": "Erreur de chargement",
-    "noBranchesFound": "Aucune branche trouvée"
+    "noBranchesFound": "Aucune branche trouvée",
+    "generatePr": {
+      "button": "Générer PR",
+      "generating": "Génération...",
+      "title": "Description de la Pull Request",
+      "body": "Corps (markdown)",
+      "copy": "Copier dans le presse-papiers",
+      "openOnGithub": "Ouvrir la PR sur GitHub",
+      "error": "Échec de la génération de la description PR"
+    }
   },
   "gitTab": {
     "selectProject": "Sélectionnez un projet pour voir les informations git",

@@ -6,6 +6,7 @@
 const { ipcMain } = require('electron');
 const { execGit, getGitInfo, getGitInfoFull, getGitStatusQuick, getGitStatusDetailed, gitPull, gitPush, gitPushBranch, gitMerge, gitMergeAbort, gitMergeContinue, getMergeConflicts, isMergeInProgress, gitClone, gitStageFiles, gitCommit, getProjectStats, getBranches, getCurrentBranch, checkoutBranch, createBranch, deleteBranch, getCommitHistory, getFileDiff, getCommitDetail, cherryPick, revertCommit, gitUnstageFiles, stashApply, stashDrop, gitStashSave, getWorktrees, createWorktree, removeWorktree, lockWorktree, unlockWorktree, pruneWorktrees, detectWorktree, diffWorktreeBranches, diffWorktreeBranchesWithStats, deleteRemoteBranch, gitFetch, renameBranch, gitRebase, gitRebaseAbort, gitRebaseContinue, getFileHistory, getCommitFileDiffs, getCommitFileDiff, gitBlame, getTags, createTag, deleteTag, pushTag, pushAllTags, getRemotes, resolveConflict, getBranchOrphanCommitCount, gitDiscardFiles, stashPop, stashShow, gitAmendCommit, isRebaseInProgress, gitReset, searchCommitHistory, addRemote, removeRemote } = require('../utils/git');
 const { generateCommitMessage, generateMultiCommitMessages, generateSessionRecap, groupFiles } = require('../utils/commitMessageGenerator');
+const { generatePrDescription } = require('../utils/prDescriptionGenerator');
 const GitHubAuthService = require('../services/GitHubAuthService');
 const { sendFeaturePing } = require('../services/TelemetryService');
 
@@ -407,6 +408,91 @@ function registerGitHandlers() {
       const githubToken = useAi !== false ? await GitHubAuthService.getToken() : null;
       const results = await generateMultiCommitMessages(files, diffs, githubToken);
       return { success: true, commits: results };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  // Generate PR description (title + body) from branch diff, commits and session recap
+  ipcMain.handle('git-generate-pr-description', async (_event, { projectPath, baseBranch, sessionSummary }) => {
+    try {
+      sendFeaturePing('git:generate-pr');
+      const base = (baseBranch && typeof baseBranch === 'string' && isValidBranchName(baseBranch)) ? baseBranch : 'main';
+
+      const branch = await getCurrentBranch(projectPath);
+      if (!branch) return { success: false, error: 'Not on a git branch' };
+
+      // Determine merge base / comparable base reference
+      let baseRef = base;
+      let mergeBase = null;
+      try {
+        mergeBase = await execGit(projectPath, ['merge-base', base, 'HEAD'], 10000);
+      } catch (_) {
+        // Base branch may not exist locally — fall back to origin/<base>
+        try {
+          mergeBase = await execGit(projectPath, ['merge-base', `origin/${base}`, 'HEAD'], 10000);
+          baseRef = `origin/${base}`;
+        } catch (_) {
+          mergeBase = null;
+        }
+      }
+
+      // Get commit subjects on the branch since merge base
+      let commits = [];
+      if (mergeBase) {
+        const logRaw = await execGit(projectPath, ['log', `${mergeBase}..HEAD`, '--format=%s'], 15000);
+        commits = (logRaw || '').split('\n').map(l => l.trim()).filter(Boolean);
+      }
+
+      // Get the full branch diff vs base
+      let diffContent = '';
+      try {
+        if (mergeBase) {
+          diffContent = await execGit(projectPath, ['diff', `${mergeBase}...HEAD`], 20000) || '';
+        }
+      } catch (_) {
+        diffContent = '';
+      }
+
+      // Include uncommitted changes too (staged + unstaged) so the PR preview
+      // reflects the current working state, not only committed work.
+      try {
+        const uncommitted = await execGit(projectPath, ['diff', 'HEAD'], 15000);
+        if (uncommitted) {
+          diffContent += `\n\n=== Uncommitted changes (not yet in a commit) ===\n${uncommitted}`;
+        }
+      } catch (_) {}
+
+      const githubToken = await GitHubAuthService.getToken();
+      const result = await generatePrDescription({
+        branch,
+        baseBranch: base,
+        commits,
+        diffContent,
+        sessionSummary: sessionSummary || ''
+      }, githubToken);
+
+      // Build the compare URL if we can detect the owner/repo
+      let compareUrl = null;
+      try {
+        const remoteUrl = await execGit(projectPath, 'remote get-url origin');
+        if (remoteUrl) {
+          const m = remoteUrl.match(/github\.com[:/]+([^/]+)\/([^/.\s]+?)(?:\.git)?$/i);
+          if (m) {
+            compareUrl = `https://github.com/${m[1]}/${m[2]}/compare/${encodeURIComponent(base)}...${encodeURIComponent(branch)}`;
+          }
+        }
+      } catch (_) {}
+
+      return {
+        success: true,
+        title: result.title,
+        body: result.body,
+        source: result.source,
+        branch,
+        baseBranch: base,
+        compareUrl
+      };
     } catch (e) {
       return { success: false, error: e.message };
     }

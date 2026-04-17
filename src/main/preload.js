@@ -261,6 +261,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     worktreeDiff: (params) => ipcRenderer.invoke('git-worktree-diff', params),
     worktreeDiffStats: (params) => ipcRenderer.invoke('git-worktree-diff-stats', params),
     generateSessionRecap: (context) => ipcRenderer.invoke('git-generate-session-recap', context),
+    generatePrDescription: (params) => ipcRenderer.invoke('git-generate-pr-description', params),
     // New git operations
     deleteRemoteBranch: (params) => ipcRenderer.invoke('git-delete-remote-branch', params),
     fetch: (params) => ipcRenderer.invoke('git-fetch', params),

@@ -3490,6 +3490,81 @@
 .btn-smart-commit:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn-smart-commit svg { width: 12px; height: 12px; }
 
+/* ── Generate PR ────────────────────────────────────────────────────────────── */
+
+.btn-generate-pr {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  background: transparent;
+  border: 1px solid rgba(var(--accent-rgb, 217,119,6), 0.3);
+  border-radius: 6px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-generate-pr:hover {
+  background: rgba(var(--accent-rgb, 217,119,6), 0.1);
+  border-color: var(--accent);
+}
+.btn-generate-pr:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-generate-pr svg { width: 12px; height: 12px; }
+
+.pr-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px;
+}
+.pr-modal-branch-info {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+}
+.pr-modal-branch-info code {
+  font-family: 'Cascadia Code', monospace;
+  color: var(--accent);
+  background: rgba(var(--accent-rgb, 217,119,6), 0.1);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.pr-modal-label {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+}
+.pr-modal-title-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: var(--font-base);
+  font-family: inherit;
+}
+.pr-modal-title-input:focus { border-color: var(--accent); outline: none; }
+.pr-modal-body-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: 'Cascadia Code', monospace;
+  resize: vertical;
+  min-height: 260px;
+}
+.pr-modal-body-input:focus { border-color: var(--accent); outline: none; }
+
 .sc-container {
   display: flex;
   flex-direction: column;

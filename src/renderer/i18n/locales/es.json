@@ -184,7 +184,16 @@
     "checkoutError": "Error al cambiar de rama",
     "unableToSwitchBranch": "No se pudo cambiar de rama",
     "loadingError": "Error al cargar",
-    "noBranchesFound": "No se encontraron ramas"
+    "noBranchesFound": "No se encontraron ramas",
+    "generatePr": {
+      "button": "Generar PR",
+      "generating": "Generando...",
+      "title": "Descripción del Pull Request",
+      "body": "Cuerpo (markdown)",
+      "copy": "Copiar al portapapeles",
+      "openOnGithub": "Abrir PR en GitHub",
+      "error": "Error al generar la descripción del PR"
+    }
   },
   "gitTab": {
     "selectProject": "Selecciona un proyecto para ver la información de git",

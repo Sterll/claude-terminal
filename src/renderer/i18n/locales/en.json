@@ -184,7 +184,16 @@
     "checkoutError": "Checkout failed",
     "unableToSwitchBranch": "Unable to switch branch",
     "loadingError": "Loading error",
-    "noBranchesFound": "No branches found"
+    "noBranchesFound": "No branches found",
+    "generatePr": {
+      "button": "Generate PR",
+      "generating": "Generating...",
+      "title": "Pull Request description",
+      "body": "Body (markdown)",
+      "copy": "Copy to clipboard",
+      "openOnGithub": "Open PR on GitHub",
+      "error": "Failed to generate PR description"
+    }
   },
   "gitTab": {
     "selectProject": "Select a project to view git information",
