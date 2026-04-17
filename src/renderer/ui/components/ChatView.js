@@ -266,6 +266,24 @@ function getToolIcon(toolName) {
   return '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>';
 }
 
+// ── Tool name formatting (pretty MCP tool names) ──
+
+function formatToolName(toolName) {
+  if (!toolName) return '';
+  if (toolName.startsWith('mcp__')) {
+    const parts = toolName.split('__');
+    const server = parts[1] || 'mcp';
+    const rawTool = parts.slice(2).join('_');
+    const prettyTool = rawTool
+      .split('_')
+      .filter(Boolean)
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+    return `<span class="chat-tool-mcp-badge" title="MCP · ${escapeHtml(server)}">${escapeHtml(server)}</span><span class="chat-tool-name-text">${escapeHtml(prettyTool || rawTool)}</span>`;
+  }
+  return `<span class="chat-tool-name-text">${escapeHtml(toolName)}</span>`;
+}
+
 // ── Extract display info from tool input ──
 
 function getToolDisplayInfo(toolName, input) {
@@ -1127,10 +1145,24 @@ class ChatView extends BaseComponent {
     // Add user-invocable skills as slash commands
     const skills = (skillsAgentsState.get().skills || []).filter(s => s.userInvocable !== false);
     const skillCommands = skills.map(s => '/' + s.name.replace(/\s+/g, '-').toLowerCase());
-    const allDefaults = [...builtinDefaults, ...skillCommands.filter(c => !builtinDefaults.includes(c))];
+    // Normalize to '/name' lowercase so SDK-provided commands (sometimes without leading '/')
+    // match our '/name' skill/builtin entries and don't show up twice.
+    const normKey = (c) => ('/' + String(c).replace(/^\//, '')).toLowerCase();
+    const dedupe = (list) => {
+      const seen = new Set();
+      const out = [];
+      for (const c of list) {
+        const k = normKey(c);
+        if (seen.has(k)) continue;
+        seen.add(k);
+        out.push(c);
+      }
+      return out;
+    };
+    const allDefaults = dedupe([...builtinDefaults, ...skillCommands]);
     // When session provides slash_commands, merge with skills; otherwise use full defaults
     const available = slashCommands.length > 0
-      ? [...slashCommands, ...skillCommands.filter(c => !slashCommands.includes(c))]
+      ? dedupe([...slashCommands, ...skillCommands])
       : allDefaults;
     const filtered = available.filter(cmd => {
       const name = cmd.replace(/^\//, '').toLowerCase();
@@ -2815,7 +2847,7 @@ class ChatView extends BaseComponent {
 
     try {
       const toolInput = JSON.parse(inputStr);
-      const toolName = card.querySelector('.chat-tool-name')?.textContent || '';
+      const toolName = card.dataset.toolName || card.querySelector('.chat-tool-name')?.textContent || '';
       const output = card.dataset.toolOutput || '';
       const contentEl = document.createElement('div');
       contentEl.className = 'chat-tool-content';
@@ -3302,10 +3334,12 @@ class ChatView extends BaseComponent {
   function _makeToolCard(toolName, truncated) {
     const el = document.createElement('div');
     el.className = 'chat-tool-card';
+    el.dataset.toolName = toolName;
+    el.title = toolName;
     el.innerHTML = `
       <div class="chat-tool-icon">${getToolIcon(toolName)}</div>
       <div class="chat-tool-info">
-        <span class="chat-tool-name">${escapeHtml(toolName)}</span>
+        <span class="chat-tool-name">${formatToolName(toolName)}</span>
         <span class="chat-tool-detail">${truncated ? escapeHtml(truncated) : ''}</span>
       </div>
       <div class="chat-tool-status running"><div class="chat-tool-spinner"></div></div>
@@ -3318,11 +3352,12 @@ class ChatView extends BaseComponent {
     const group = document.createElement('div');
     group.className = 'chat-tool-group';
     group.dataset.toolName = toolName;
+    group.title = toolName;
     group.innerHTML = `
       <div class="chat-tool-group-header">
         <div class="chat-tool-icon">${getToolIcon(toolName)}</div>
         <div class="chat-tool-info">
-          <span class="chat-tool-name">${escapeHtml(toolName)}</span>
+          <span class="chat-tool-name">${formatToolName(toolName)}</span>
           <span class="chat-tool-group-badge">×2</span>
         </div>
         <div class="chat-tool-group-status running"><div class="chat-tool-spinner"></div></div>
@@ -3356,7 +3391,7 @@ class ChatView extends BaseComponent {
     // Convert previous lone card + new card into a group
     if (last?.classList.contains('chat-tool-card') &&
         !last.classList.contains('history') &&
-        last.querySelector('.chat-tool-name')?.textContent === toolName) {
+        last.dataset.toolName === toolName) {
       const group = _makeToolGroup(toolName);
       const items = group.querySelector('.chat-tool-group-items');
       last.replaceWith(group);
@@ -3755,10 +3790,12 @@ class ChatView extends BaseComponent {
           // Add mini tool entry in the subagent body
           const mini = document.createElement('div');
           mini.className = 'sa-tool';
+          mini.dataset.toolName = block.name;
+          mini.title = block.name;
           if (block.id) mini.dataset.toolUseId = block.id;
           mini.innerHTML = `
             <div class="sa-tool-icon">${getToolIcon(block.name)}</div>
-            <span class="sa-tool-name">${escapeHtml(block.name)}</span>
+            <span class="sa-tool-name">${formatToolName(block.name)}</span>
             <span class="sa-tool-detail"></span>
             <div class="sa-tool-status"><div class="chat-tool-spinner"></div></div>
           `;
@@ -3802,7 +3839,7 @@ class ChatView extends BaseComponent {
             info.subBuffers.delete(stopIdx);
             try {
               const toolInput = JSON.parse(jsonStr);
-              const name = mini.querySelector('.sa-tool-name')?.textContent || '';
+              const name = mini.dataset.toolName || mini.querySelector('.sa-tool-name')?.textContent || '';
               const detail = getToolDisplayInfo(name, toolInput);
               const detailEl = mini.querySelector('.sa-tool-detail');
               if (detailEl && detail) {
@@ -3850,11 +3887,13 @@ class ChatView extends BaseComponent {
         if (!found) {
           const mini = document.createElement('div');
           mini.className = 'sa-tool has-detail';
+          mini.dataset.toolName = block.name;
+          mini.title = block.name;
           if (block.id) mini.dataset.toolUseId = block.id;
           const truncated = detail && detail.length > 60 ? '...' + detail.slice(-57) : (detail || '');
           mini.innerHTML = `
             <div class="sa-tool-icon">${getToolIcon(block.name)}</div>
-            <span class="sa-tool-name">${escapeHtml(block.name)}</span>
+            <span class="sa-tool-name">${formatToolName(block.name)}</span>
             <span class="sa-tool-detail">${escapeHtml(truncated)}</span>
             <div class="sa-tool-status"><div class="chat-tool-spinner"></div></div>
           `;
@@ -4007,7 +4046,7 @@ class ChatView extends BaseComponent {
       </div>
       <div class="chat-perm-body">
         <div class="chat-perm-tool-row">
-          <span class="chat-perm-tool-name">${escapeHtml(toolName)}</span>
+          <span class="chat-perm-tool-name" title="${escapeHtml(toolName)}">${formatToolName(toolName)}</span>
           ${detail ? `<code class="chat-perm-tool-detail">${escapeHtml(detail.length > 100 ? '...' + detail.slice(-97) : detail)}</code>` : ''}
         </div>
         ${decisionReason ? `<p class="chat-perm-reason">${escapeHtml(decisionReason)}</p>` : ''}
@@ -4567,7 +4606,7 @@ class ChatView extends BaseComponent {
               card.dataset.toolInput = JSON.stringify(toolInput);
               card.classList.add('expandable');
               // Update detail text with parsed info
-              const name = card.querySelector('.chat-tool-name')?.textContent || '';
+              const name = card.dataset.toolName || card.querySelector('.chat-tool-name')?.textContent || '';
               const info = getToolDisplayInfo(name, toolInput);
               const detailEl = card.querySelector('.chat-tool-detail');
               if (detailEl && info) {
@@ -5224,11 +5263,13 @@ class ChatView extends BaseComponent {
           const detail = getToolDisplayInfo(msg.toolName, msg.toolInput || {});
           const el = document.createElement('div');
           el.className = 'chat-tool-card history';
+          el.dataset.toolName = msg.toolName;
+          el.title = msg.toolName;
           const truncated = detail && detail.length > 80 ? '...' + detail.slice(-77) : (detail || '');
           el.innerHTML = `
             <div class="chat-tool-icon">${getToolIcon(msg.toolName)}</div>
             <div class="chat-tool-info">
-              <span class="chat-tool-name">${escapeHtml(msg.toolName)}</span>
+              <span class="chat-tool-name">${formatToolName(msg.toolName)}</span>
               <span class="chat-tool-detail">${truncated ? escapeHtml(truncated) : ''}</span>
             </div>
             <div class="chat-tool-status complete">
@@ -5252,7 +5293,7 @@ class ChatView extends BaseComponent {
             fragLast.querySelector('.chat-tool-group-items').appendChild(el);
             _updateGroupBadge(fragLast);
           } else if (fragLast?.classList.contains('chat-tool-card') &&
-              fragLast.querySelector('.chat-tool-name')?.textContent === msg.toolName) {
+              fragLast.dataset.toolName === msg.toolName) {
             const group = _makeToolGroup(msg.toolName);
             const gs = group.querySelector('.chat-tool-group-status');
             gs.classList.remove('running'); gs.classList.add('complete');
