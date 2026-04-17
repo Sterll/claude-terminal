@@ -1599,6 +1599,8 @@
     "slashBatch": "Ejecutar múltiples operaciones en lote",
     "slashParallelTask": "Forzar ejecución en tareas paralelas",
     "attachImage": "Adjuntar imagen",
+    "fileNotFound": "Archivo no encontrado",
+    "dropFolderNotSupported": "No se pueden adjuntar carpetas, suelta archivos en su lugar",
     "mentionFile": "Adjuntar un archivo de tu proyecto",
     "mentionGit": "Adjuntar diff git actual",
     "mentionTerminal": "Adjuntar salida de terminal",

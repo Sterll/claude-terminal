@@ -1617,6 +1617,8 @@
     "slashBtw": "Poser une question rapide a part",
     "slashReview": "Revoir une pull request",
     "attachImage": "Joindre une image",
+    "fileNotFound": "Fichier introuvable",
+    "dropFolderNotSupported": "Les dossiers ne peuvent pas etre attaches, deposez des fichiers a la place",
     "mentionFile": "Joindre un fichier du projet",
     "mentionGit": "Joindre le diff git actuel",
     "mentionTerminal": "Joindre la sortie du terminal",

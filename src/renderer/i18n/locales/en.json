@@ -1617,6 +1617,8 @@
     "slashBtw": "Ask a quick side question",
     "slashReview": "Review a pull request",
     "attachImage": "Attach image",
+    "fileNotFound": "File not found",
+    "dropFolderNotSupported": "Folders cannot be attached, drop files instead",
     "mentionFile": "Attach a file from your project",
     "mentionGit": "Attach current git diff",
     "mentionTerminal": "Attach terminal output",

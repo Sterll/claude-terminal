@@ -40,6 +40,8 @@ function unescapeHtml(html) {
   return html.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#039;/g, "'");
 }
 
+const { parseDroppedPathsPayload } = require('../../utils/dropPaths');
+
 // ── Context Suggestions ──
 
 function createContextSuggestions(api, project, inputAdapter, getDefaultPlaceholder) {
@@ -934,9 +936,48 @@ class ChatView extends BaseComponent {
   chatView.addEventListener('drop', (e) => {
     e.preventDefault();
     chatView.classList.remove('chat-dragover');
-    const files = Array.from(e.dataTransfer.files).filter(f => SUPPORTED_TYPES.includes(f.type));
-    if (files.length) addImageFiles(files);
+    handleChatDrop(e);
   });
+
+  function handleChatDrop(e) {
+    // Priority: image files dropped from OS/explorer
+    const imageFiles = Array.from(e.dataTransfer.files || []).filter(f => SUPPORTED_TYPES.includes(f.type));
+    if (imageFiles.length) {
+      addImageFiles(imageFiles);
+      inputEl.focus();
+      return;
+    }
+
+    // Fallback: text/plain with file paths (from internal FileExplorer)
+    const textData = e.dataTransfer.getData('text/plain') || '';
+    const { fs, path } = window.electron_nodeModules;
+    const parsed = parseDroppedPathsPayload(textData, { fs, path, projectRoot: project?.path || '' });
+    if (!parsed) return;
+
+    for (const missing of parsed.missing) {
+      const Toast = require('./Toast');
+      Toast.showToast({
+        message: (t('chat.fileNotFound') || 'File not found') + ': ' + missing,
+        type: 'error',
+      });
+    }
+
+    for (const file of parsed.files) {
+      addMentionChip('file', { path: file.path, fullPath: file.fullPath });
+    }
+
+    if (parsed.directories.length > 0) {
+      const Toast = require('./Toast');
+      Toast.showToast({
+        message: t('chat.dropFolderNotSupported') || 'Folders cannot be attached, drop files instead',
+        type: 'warning',
+      });
+    }
+
+    if (parsed.files.length > 0) {
+      inputEl.focus();
+    }
+  }
 
   // Paste: images from clipboard + strip HTML for text
   inputEl.addEventListener('paste', (e) => {
