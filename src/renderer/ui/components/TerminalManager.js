@@ -3991,6 +3991,174 @@ class TerminalManager extends BaseComponent {
     return out;
   }
 
+  // Wait for a tab to reach any of the target statuses (subscribe-based, no polling).
+  // Resolves with the final status snapshot (or { ok: false } on timeout / missing tab).
+  waitForTab(tabId, { targetStatuses = ['idle', 'awaiting_permission', 'error'], timeoutMs = 60000 } = {}) {
+    const { deriveTabStatus } = require('../../state/terminals.state');
+    return new Promise((resolve) => {
+      const found = getTerminalByTabId(tabId);
+      if (!found) return resolve({ ok: false, error: `Tab not found: ${tabId}`, tabId });
+
+      const matches = (data) => {
+        const s = deriveTabStatus(data);
+        return Array.isArray(targetStatuses) && targetStatuses.includes(s);
+      };
+
+      // Fast path: already matches
+      if (matches(found.data)) {
+        return resolve({ ok: true, tabId, status: deriveTabStatus(found.data), timedOut: false });
+      }
+
+      let done = false;
+      let timer = null;
+      const unsubscribe = terminalsState.subscribe(() => {
+        if (done) return;
+        const current = getTerminalByTabId(tabId);
+        if (!current) {
+          done = true; clearTimeout(timer); unsubscribe();
+          return resolve({ ok: false, error: `Tab closed while waiting: ${tabId}`, tabId });
+        }
+        if (matches(current.data)) {
+          done = true; clearTimeout(timer); unsubscribe();
+          resolve({ ok: true, tabId, status: deriveTabStatus(current.data), timedOut: false });
+        }
+      });
+
+      timer = setTimeout(() => {
+        if (done) return;
+        done = true; unsubscribe();
+        const current = getTerminalByTabId(tabId);
+        resolve({
+          ok: true,
+          tabId,
+          status: current ? deriveTabStatus(current.data) : 'done',
+          timedOut: true,
+        });
+      }, Math.max(500, Math.min(Number(timeoutMs) || 60000, 10 * 60 * 1000)));
+    });
+  }
+
+  // Wait for any of the given tabs to reach a target status.
+  // Resolves with { ok, tabId, status, timedOut }.
+  waitForAny(tabIds, { targetStatuses = ['idle', 'awaiting_permission', 'error'], timeoutMs = 60000 } = {}) {
+    const { deriveTabStatus } = require('../../state/terminals.state');
+    const ids = Array.isArray(tabIds) ? tabIds.filter(Boolean) : [];
+    return new Promise((resolve) => {
+      if (!ids.length) return resolve({ ok: false, error: 'No tabIds provided' });
+
+      const matches = (data) => Array.isArray(targetStatuses) && targetStatuses.includes(deriveTabStatus(data));
+
+      // Fast path
+      for (const tid of ids) {
+        const f = getTerminalByTabId(tid);
+        if (f && matches(f.data)) {
+          return resolve({ ok: true, tabId: tid, status: deriveTabStatus(f.data), timedOut: false });
+        }
+      }
+
+      let done = false;
+      let timer = null;
+      const unsubscribe = terminalsState.subscribe(() => {
+        if (done) return;
+        for (const tid of ids) {
+          const f = getTerminalByTabId(tid);
+          if (f && matches(f.data)) {
+            done = true; clearTimeout(timer); unsubscribe();
+            return resolve({ ok: true, tabId: tid, status: deriveTabStatus(f.data), timedOut: false });
+          }
+        }
+      });
+
+      timer = setTimeout(() => {
+        if (done) return;
+        done = true; unsubscribe();
+        resolve({ ok: true, timedOut: true, status: null, tabId: null });
+      }, Math.max(500, Math.min(Number(timeoutMs) || 60000, 10 * 60 * 1000)));
+    });
+  }
+
+  // Read the buffered output (or chat message log) for a tab.
+  // `afterCursor` returns only entries strictly greater; `maxEntries` caps size.
+  readOutputForTab(tabId, { afterCursor = 0, maxEntries = 200 } = {}) {
+    const found = getTerminalByTabId(tabId);
+    if (!found) return { ok: false, error: `Tab not found: ${tabId}` };
+    const { data } = found;
+    const cap = Math.max(1, Math.min(Number(maxEntries) || 200, 1000));
+    const after = Number(afterCursor) || 0;
+
+    if (data.mode === 'chat') {
+      const all = Array.isArray(data.chatMessages) ? data.chatMessages : [];
+      const filtered = all.filter(m => (m.cursor || 0) > after);
+      const tail = filtered.slice(-cap);
+      const lastCursor = tail.length ? tail[tail.length - 1].cursor : (all.length ? all[all.length - 1].cursor : after);
+      return {
+        ok: true, tabId, mode: 'chat',
+        messages: tail,
+        lastCursor,
+        truncated: filtered.length > tail.length,
+      };
+    }
+
+    const all = Array.isArray(data.outputBuffer) ? data.outputBuffer : [];
+    const filtered = all.filter(e => (e.cursor || 0) > after);
+    const tail = filtered.slice(-cap);
+    const lastCursor = tail.length ? tail[tail.length - 1].cursor : (all.length ? all[all.length - 1].cursor : after);
+    return {
+      ok: true, tabId, mode: 'terminal',
+      entries: tail,
+      lastCursor,
+      truncated: filtered.length > tail.length,
+    };
+  }
+
+  // Respond to a pending permission on a chat tab programmatically.
+  // action: 'allow' | 'deny' | 'always-allow'; message optional (used for deny).
+  respondPermissionForTab(tabId, { action = 'allow', message = '', requestId = null } = {}) {
+    const found = getTerminalByTabId(tabId);
+    if (!found) return { ok: false, error: `Tab not found: ${tabId}` };
+    const { data } = found;
+    if (data.mode !== 'chat') return { ok: false, error: 'Permission response only applies to chat tabs' };
+
+    const pending = data.pendingPermission;
+    if (!pending) return { ok: false, error: 'No pending permission on this tab' };
+    const targetRequestId = requestId || pending.requestId;
+    if (!targetRequestId) return { ok: false, error: 'Pending permission has no requestId' };
+
+    // Find the matching DOM card and click the right button so the existing
+    // ChatView flow runs (collapses the card, clears timers, updates status).
+    const containerEl = data.chatView?.containerEl || data.element || document;
+    const selector = `.chat-perm-card[data-request-id="${(window.CSS && CSS.escape) ? CSS.escape(targetRequestId) : targetRequestId}"]:not(.resolved), `
+                   + `.chat-plan-card[data-request-id="${(window.CSS && CSS.escape) ? CSS.escape(targetRequestId) : targetRequestId}"]:not(.resolved)`;
+    let card = null;
+    try { card = containerEl.querySelector(selector); } catch (_) {}
+    if (!card) {
+      try { card = document.querySelector(selector); } catch (_) {}
+    }
+    if (!card) return { ok: false, error: 'Permission card not found in DOM' };
+
+    const btnSelector = (() => {
+      if (action === 'allow') return '.chat-perm-btn[data-action="allow"], .chat-plan-btn[data-action="allow"]';
+      if (action === 'always-allow') return '.chat-perm-btn[data-action="always-allow"]';
+      if (action === 'deny') return '.chat-perm-btn[data-action="deny"], .chat-plan-btn[data-action="deny"]';
+      return null;
+    })();
+    if (!btnSelector) return { ok: false, error: `Unsupported action: ${action}` };
+    const btn = card.querySelector(btnSelector);
+    if (!btn) return { ok: false, error: `Button for action "${action}" not found` };
+
+    // For deny: prefill the feedback input then click twice (first shows input, second sends).
+    if (action === 'deny' && message) {
+      try { btn.click(); } catch (_) {}
+      const feedbackInput = card.querySelector('.chat-perm-feedback-input, .chat-plan-feedback-input');
+      if (feedbackInput) feedbackInput.value = String(message);
+      try { btn.click(); } catch (_) {}
+    } else {
+      try { btn.click(); } catch (e) { return { ok: false, error: e.message }; }
+    }
+
+    return { ok: true, tabId, requestId: targetRequestId, action };
+  }
+
   // ── Destroy ──
 
   destroy() {
@@ -4069,4 +4237,8 @@ module.exports = {
   getStatusForTab: (tabId) => _getInstance().getStatusForTab(tabId),
   closeTabByTabId: (tabId) => _getInstance().closeTabByTabId(tabId),
   listTabsSummary: () => _getInstance().listTabsSummary(),
+  waitForTab: (tabId, opts) => _getInstance().waitForTab(tabId, opts),
+  waitForAny: (tabIds, opts) => _getInstance().waitForAny(tabIds, opts),
+  readOutputForTab: (tabId, opts) => _getInstance().readOutputForTab(tabId, opts),
+  respondPermissionForTab: (tabId, opts) => _getInstance().respondPermissionForTab(tabId, opts),
 };

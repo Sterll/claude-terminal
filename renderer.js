@@ -1231,6 +1231,71 @@ if (api.mcpTab) {
       _writeTabResponse(requestId, { ok: false, error: e.message });
     }
   });
+
+  // Phase 2: wait for a single tab to reach a terminal status.
+  api.mcpTab.onWait(async (data) => {
+    const requestId = data.requestId;
+    try {
+      const result = await TerminalManager.waitForTab(data.tabId, {
+        targetStatuses: Array.isArray(data.targetStatuses) && data.targetStatuses.length
+          ? data.targetStatuses
+          : ['idle', 'awaiting_permission', 'error'],
+        timeoutMs: data.timeoutMs,
+      });
+      _writeTabResponse(requestId, result);
+    } catch (e) {
+      console.error('[MCP Tab] wait error:', e);
+      _writeTabResponse(requestId, { ok: false, error: e.message });
+    }
+  });
+
+  // Phase 2: wait for any of a list of tabs.
+  api.mcpTab.onWaitAny(async (data) => {
+    const requestId = data.requestId;
+    try {
+      const result = await TerminalManager.waitForAny(data.tabIds || [], {
+        targetStatuses: Array.isArray(data.targetStatuses) && data.targetStatuses.length
+          ? data.targetStatuses
+          : ['idle', 'awaiting_permission', 'error'],
+        timeoutMs: data.timeoutMs,
+      });
+      _writeTabResponse(requestId, result);
+    } catch (e) {
+      console.error('[MCP Tab] wait_any error:', e);
+      _writeTabResponse(requestId, { ok: false, error: e.message });
+    }
+  });
+
+  // Phase 2: read buffered output / chat messages.
+  api.mcpTab.onRead((data) => {
+    const requestId = data.requestId;
+    try {
+      const result = TerminalManager.readOutputForTab(data.tabId, {
+        afterCursor: data.afterCursor || 0,
+        maxEntries: data.maxEntries || 200,
+      });
+      _writeTabResponse(requestId, result);
+    } catch (e) {
+      console.error('[MCP Tab] read error:', e);
+      _writeTabResponse(requestId, { ok: false, error: e.message });
+    }
+  });
+
+  // Phase 2: respond to a pending permission on a chat tab.
+  api.mcpTab.onPermission((data) => {
+    const requestId = data.requestId;
+    try {
+      const result = TerminalManager.respondPermissionForTab(data.tabId, {
+        action: data.action,
+        message: data.message || '',
+        requestId: data.permissionRequestId || null,
+      });
+      _writeTabResponse(requestId, result);
+    } catch (e) {
+      console.error('[MCP Tab] permission error:', e);
+      _writeTabResponse(requestId, { ok: false, error: e.message });
+    }
+  });
 }
 
 // Sync terminals.json + tabs.json so MCP tools can read tab state

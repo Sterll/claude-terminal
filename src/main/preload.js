@@ -751,10 +751,16 @@ contextBridge.exposeInMainWorld('electron_api', {
   // ==================== MCP TABS (orchestration layer) ====================
   // The renderer receives `mcp-tab:<action>` events from main and must write
   // a response JSON to `<dataDir>/tabs/responses/<requestId>.json` to complete
-  // the request. Phase 1 actions: create, send, close.
+  // the request. Actions:
+  //   Phase 1: create, send, close
+  //   Phase 2: wait, wait_any, read, permission
   mcpTab: {
     onCreate: createListener('mcp-tab:create'),
     onSend: createListener('mcp-tab:send'),
     onClose: createListener('mcp-tab:close'),
+    onWait: createListener('mcp-tab:wait'),
+    onWaitAny: createListener('mcp-tab:wait_any'),
+    onRead: createListener('mcp-tab:read'),
+    onPermission: createListener('mcp-tab:permission'),
   }
 });

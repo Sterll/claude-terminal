@@ -575,6 +575,190 @@ describe('appendChatMessage', () => {
   });
 });
 
+// ── Phase 2 patterns: wait + read_output cursor semantics ──
+// These tests exercise the exact primitives used by TerminalManager's
+// waitForTab / waitForAny / readOutputForTab methods (without pulling in
+// xterm and the full component tree).
+
+describe('phase 2 — subscribe-based wait (single tab)', () => {
+  function waitForTab(tabId, { targetStatuses = ['idle', 'awaiting_permission', 'error'], timeoutMs = 500 } = {}) {
+    return new Promise((resolve) => {
+      const found = getTerminalByTabId(tabId);
+      if (!found) return resolve({ ok: false, error: 'not found' });
+      const matches = (d) => targetStatuses.includes(deriveTabStatus(d));
+      if (matches(found.data)) {
+        return resolve({ ok: true, tabId, status: deriveTabStatus(found.data), timedOut: false });
+      }
+      let done = false;
+      const unsub = terminalsState.subscribe(() => {
+        if (done) return;
+        const cur = getTerminalByTabId(tabId);
+        if (cur && matches(cur.data)) {
+          done = true; clearTimeout(timer); unsub();
+          resolve({ ok: true, tabId, status: deriveTabStatus(cur.data), timedOut: false });
+        }
+      });
+      const timer = setTimeout(() => {
+        if (done) return;
+        done = true; unsub();
+        const cur = getTerminalByTabId(tabId);
+        resolve({ ok: true, tabId, status: cur ? deriveTabStatus(cur.data) : 'done', timedOut: true });
+      }, timeoutMs);
+    });
+  }
+
+  test('resolves immediately when tab already idle', async () => {
+    addTerminal(1, { tabId: 'tab_x', status: 'ready', mode: 'terminal' });
+    const r = await waitForTab('tab_x', { timeoutMs: 200 });
+    expect(r.ok).toBe(true);
+    expect(r.status).toBe('idle');
+    expect(r.timedOut).toBe(false);
+  });
+
+  test('resolves when tab transitions to awaiting_permission', async () => {
+    addTerminal(1, { tabId: 'tab_x', status: 'working', mode: 'chat' });
+    const p = waitForTab('tab_x', { timeoutMs: 500 });
+    setTimeout(() => updateTerminal(1, { pendingPermission: { requestId: 'r1', tool: 'Bash' } }), 20);
+    const r = await p;
+    expect(r.status).toBe('awaiting_permission');
+    expect(r.timedOut).toBe(false);
+  });
+
+  test('resolves with timedOut=true when target never reached', async () => {
+    addTerminal(1, { tabId: 'tab_x', status: 'working', mode: 'chat' });
+    const r = await waitForTab('tab_x', { timeoutMs: 60 });
+    expect(r.timedOut).toBe(true);
+    expect(r.status).toBe('running');
+  });
+
+  test('returns error when tab does not exist', async () => {
+    const r = await waitForTab('tab_missing', { timeoutMs: 60 });
+    expect(r.ok).toBe(false);
+  });
+});
+
+describe('phase 2 — subscribe-based wait (any)', () => {
+  function waitForAny(tabIds, { targetStatuses = ['idle', 'awaiting_permission', 'error'], timeoutMs = 500 } = {}) {
+    return new Promise((resolve) => {
+      if (!tabIds.length) return resolve({ ok: false, error: 'empty' });
+      const matches = (d) => targetStatuses.includes(deriveTabStatus(d));
+      for (const tid of tabIds) {
+        const f = getTerminalByTabId(tid);
+        if (f && matches(f.data)) return resolve({ ok: true, tabId: tid, status: deriveTabStatus(f.data), timedOut: false });
+      }
+      let done = false;
+      const unsub = terminalsState.subscribe(() => {
+        if (done) return;
+        for (const tid of tabIds) {
+          const f = getTerminalByTabId(tid);
+          if (f && matches(f.data)) {
+            done = true; clearTimeout(timer); unsub();
+            return resolve({ ok: true, tabId: tid, status: deriveTabStatus(f.data), timedOut: false });
+          }
+        }
+      });
+      const timer = setTimeout(() => {
+        if (done) return;
+        done = true; unsub();
+        resolve({ ok: true, timedOut: true, tabId: null });
+      }, timeoutMs);
+    });
+  }
+
+  test('resolves with first matching tab', async () => {
+    addTerminal(1, { tabId: 'tab_a', status: 'working', mode: 'chat' });
+    addTerminal(2, { tabId: 'tab_b', status: 'working', mode: 'chat' });
+    addTerminal(3, { tabId: 'tab_c', status: 'working', mode: 'chat' });
+    const p = waitForAny(['tab_a', 'tab_b', 'tab_c'], { timeoutMs: 500 });
+    setTimeout(() => updateTerminal(2, { status: 'ready' }), 20);
+    const r = await p;
+    expect(r.timedOut).toBe(false);
+    expect(r.tabId).toBe('tab_b');
+    expect(r.status).toBe('idle');
+  });
+
+  test('times out if none transition', async () => {
+    addTerminal(1, { tabId: 'tab_a', status: 'working', mode: 'chat' });
+    addTerminal(2, { tabId: 'tab_b', status: 'working', mode: 'chat' });
+    const r = await waitForAny(['tab_a', 'tab_b'], { timeoutMs: 60 });
+    expect(r.timedOut).toBe(true);
+  });
+});
+
+describe('phase 2 — readOutputForTab cursor pagination', () => {
+  function readOutput(tabId, { afterCursor = 0, maxEntries = 200 } = {}) {
+    const found = getTerminalByTabId(tabId);
+    if (!found) return { ok: false, error: 'not found' };
+    const { data } = found;
+    const cap = Math.max(1, Math.min(Number(maxEntries) || 200, 1000));
+    const after = Number(afterCursor) || 0;
+    if (data.mode === 'chat') {
+      const all = Array.isArray(data.chatMessages) ? data.chatMessages : [];
+      const filtered = all.filter(m => (m.cursor || 0) > after);
+      const tail = filtered.slice(-cap);
+      const lastCursor = tail.length ? tail[tail.length - 1].cursor : (all.length ? all[all.length - 1].cursor : after);
+      return { ok: true, mode: 'chat', messages: tail, lastCursor, truncated: filtered.length > tail.length };
+    }
+    const all = Array.isArray(data.outputBuffer) ? data.outputBuffer : [];
+    const filtered = all.filter(e => (e.cursor || 0) > after);
+    const tail = filtered.slice(-cap);
+    const lastCursor = tail.length ? tail[tail.length - 1].cursor : (all.length ? all[all.length - 1].cursor : after);
+    return { ok: true, mode: 'terminal', entries: tail, lastCursor, truncated: filtered.length > tail.length };
+  }
+
+  test('returns terminal entries after cursor', () => {
+    const td = { tabId: 'tab_x', mode: 'terminal' };
+    addTerminal(1, td);
+    appendTerminalOutput(td, 'a');
+    appendTerminalOutput(td, 'b');
+    appendTerminalOutput(td, 'c');
+
+    const r1 = readOutput('tab_x', { afterCursor: 0 });
+    expect(r1.entries).toHaveLength(3);
+    expect(r1.lastCursor).toBe(3);
+
+    const r2 = readOutput('tab_x', { afterCursor: 2 });
+    expect(r2.entries).toHaveLength(1);
+    expect(r2.entries[0].text).toBe('c');
+    expect(r2.lastCursor).toBe(3);
+  });
+
+  test('honors maxEntries with truncated flag', () => {
+    const td = { tabId: 'tab_x', mode: 'terminal' };
+    addTerminal(1, td);
+    for (let i = 0; i < 10; i++) appendTerminalOutput(td, `line-${i}`);
+
+    const r = readOutput('tab_x', { afterCursor: 0, maxEntries: 3 });
+    expect(r.entries).toHaveLength(3);
+    expect(r.truncated).toBe(true);
+    // Last 3 kept:
+    expect(r.entries[0].text).toBe('line-7');
+    expect(r.entries[2].text).toBe('line-9');
+  });
+
+  test('returns chat messages with shared cursor space', () => {
+    const td = { tabId: 'tab_x', mode: 'chat' };
+    addTerminal(1, td);
+    appendChatMessage(td, { role: 'user', content: 'hi' });
+    appendChatMessage(td, { role: 'assistant', content: 'hello' });
+
+    const r = readOutput('tab_x', { afterCursor: 1 });
+    expect(r.mode).toBe('chat');
+    expect(r.messages).toHaveLength(1);
+    expect(r.messages[0].content).toBe('hello');
+    expect(r.lastCursor).toBe(2);
+  });
+
+  test('returns empty when no new entries after cursor', () => {
+    const td = { tabId: 'tab_x', mode: 'terminal' };
+    addTerminal(1, td);
+    appendTerminalOutput(td, 'a');
+    const r = readOutput('tab_x', { afterCursor: 10 });
+    expect(r.entries).toHaveLength(0);
+    expect(r.lastCursor).toBe(1);
+  });
+});
+
 // ── Reset ──
 
 describe('reset', () => {

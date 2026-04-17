@@ -2676,6 +2676,16 @@ class ChatView extends BaseComponent {
 
   // ── Permission handling ──
 
+  // Centralized respond helper: forwards to the SDK and clears the
+  // `pendingPermission` marker on the terminal entry so MCP `tab_status`
+  // and `tab_wait` reflect the resolution.
+  function _respondPermission(payload) {
+    try { api.chat.respondPermission(payload); } catch (_) {}
+    if (terminalId) {
+      try { updateTerminal(terminalId, { pendingPermission: null }); } catch (_) {}
+    }
+  }
+
   function handlePermissionClick(btn) {
     const card = btn.closest('.chat-perm-card');
     if (!card) return;
@@ -2724,14 +2734,14 @@ class ChatView extends BaseComponent {
           }];
         }
       }
-      api.chat.respondPermission({ requestId, result });
+      _respondPermission({ requestId, result });
     } else {
       // deny or deny-send: include feedback message if provided
       const feedbackInput = card.querySelector('.chat-perm-feedback-input');
       const message = feedbackInput?.value?.trim() || 'User denied this action';
       card.querySelector('.chat-perm-btn.deny')?.classList.add('chosen');
       card.classList.add('resolved', 'denied');
-      api.chat.respondPermission({
+      _respondPermission({
         requestId,
         result: { behavior: 'deny', message }
       });
@@ -2785,7 +2795,7 @@ class ChatView extends BaseComponent {
       btn.classList.add('chosen');
       card.classList.add('resolved', 'approved');
       const inputData = JSON.parse(card.dataset.toolInput || '{}');
-      api.chat.respondPermission({
+      _respondPermission({
         requestId,
         result: { behavior: 'allow', updatedInput: inputData }
       });
@@ -2795,7 +2805,7 @@ class ChatView extends BaseComponent {
       const message = feedbackInput?.value?.trim() || 'User rejected the plan';
       card.querySelector('.chat-plan-btn.reject')?.classList.add('chosen');
       card.classList.add('resolved', 'rejected');
-      api.chat.respondPermission({
+      _respondPermission({
         requestId,
         result: { behavior: 'deny', message }
       });
@@ -3097,7 +3107,7 @@ class ChatView extends BaseComponent {
       <div class="chat-qa-summary">${pairsHtml}</div>
     `;
 
-    api.chat.respondPermission({
+    _respondPermission({
       requestId,
       result: {
         behavior: 'allow',
@@ -5017,6 +5027,26 @@ class ChatView extends BaseComponent {
     removeThinkingIndicator();
     appendPermissionCard(data);
     setStatus('waiting', t('chat.waitingForInput') || 'Waiting for input...');
+
+    // Track pending permission on the terminal entry so MCP `tab_status`
+    // exposes it and `tab_wait` can resolve on `awaiting_permission`.
+    if (terminalId) {
+      try {
+        let summary = '';
+        try {
+          const snippet = JSON.stringify(data.input || {});
+          summary = snippet.length > 120 ? snippet.slice(0, 117) + '...' : snippet;
+        } catch (_) {}
+        updateTerminal(terminalId, {
+          pendingPermission: {
+            requestId: data.requestId,
+            tool: data.toolName,
+            summary,
+            since: Date.now(),
+          },
+        });
+      } catch (_) {}
+    }
 
     // Fix #2: Permission timeout reminders
     const requestId = data.requestId;

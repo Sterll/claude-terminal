@@ -15,8 +15,10 @@
  *   `tabs/triggers/`. The Electron main process polls that dir every 2s
  *   and forwards the action to the renderer, which applies it and writes
  *   a response file in `tabs/responses/<requestId>.json`.
- * - Phase 1 ships `list`, `send`, `status`, `close`. Wait primitives and
- *   permission control come in phase 2.
+ * - Phase 1 ships `list`, `send`, `status`, `close`.
+ * - Phase 2 ships `wait`, `wait_any`, `read_output`, `chat_respond_permission`
+ *   for full orchestration (subscribe-based waits, buffered output reads,
+ *   programmatic permission responses).
  *
  * Example orchestration
  * ---------------------
@@ -170,6 +172,71 @@ const tools = [
       required: ['tabId'],
     },
   },
+  {
+    name: 'tab_wait',
+    description: 'Block until a tab reaches any of the target statuses (default: idle, awaiting_permission, error). Subscribe-based on the renderer side, no polling. Returns the final status snapshot. Useful for fan-out orchestration: kick work with tab_send, then tab_wait until each tab goes idle or stops on a permission prompt.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tabId: { type: 'string', description: 'Stable tab identifier' },
+        targetStatuses: {
+          type: 'array',
+          items: { type: 'string', enum: ['idle', 'running', 'awaiting_permission', 'awaiting_input', 'error', 'done'] },
+          description: 'Statuses that resolve the wait (default: idle, awaiting_permission, error).',
+        },
+        timeoutMs: { type: 'number', description: 'Max wait in ms (default 60000, max 600000).' },
+      },
+      required: ['tabId'],
+    },
+  },
+  {
+    name: 'tab_wait_any',
+    description: 'Block until ANY of the given tabs reaches a target status. Returns the first tab that matched. Ideal for parallel orchestration: start N tabs, then tab_wait_any to grab the first that completes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tabIds: { type: 'array', items: { type: 'string' }, description: 'Stable tab IDs to watch' },
+        targetStatuses: {
+          type: 'array',
+          items: { type: 'string', enum: ['idle', 'running', 'awaiting_permission', 'awaiting_input', 'error', 'done'] },
+          description: 'Statuses that resolve the wait (default: idle, awaiting_permission, error).',
+        },
+        timeoutMs: { type: 'number', description: 'Max wait in ms (default 60000, max 600000).' },
+      },
+      required: ['tabIds'],
+    },
+  },
+  {
+    name: 'tab_read_output',
+    description: 'Read buffered output for a tab. For terminal tabs, returns recent chunks (ANSI-stripped) from a ring buffer (up to ~500KB). For chat tabs, returns structured message entries. Use `afterCursor` to stream incrementally.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tabId: { type: 'string', description: 'Stable tab identifier' },
+        afterCursor: { type: 'number', description: 'Return only entries with cursor > this value (default 0 = from beginning).' },
+        maxEntries: { type: 'number', description: 'Maximum number of entries to return (default 200, max 1000).' },
+      },
+      required: ['tabId'],
+    },
+  },
+  {
+    name: 'chat_respond_permission',
+    description: 'Respond to a pending permission request on a chat tab programmatically (allow / deny / always-allow). Only works when the tab status is `awaiting_permission`. For deny, `message` is sent back to the agent as feedback.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tabId: { type: 'string', description: 'Stable tab identifier of the chat tab' },
+        action: {
+          type: 'string',
+          enum: ['allow', 'deny', 'always-allow'],
+          description: 'Decision to send back to the agent',
+        },
+        message: { type: 'string', description: 'Optional feedback message (used when action=deny).' },
+        requestId: { type: 'string', description: 'Optional explicit permission requestId (defaults to the current pending one).' },
+      },
+      required: ['tabId', 'action'],
+    },
+  },
 ];
 
 // -- Tool handler -------------------------------------------------------------
@@ -230,6 +297,67 @@ async function handle(name, args) {
       const resp = await awaitResponse(requestId);
       if (resp.ok) return ok(`Tab ${args.tabId} closed.`);
       return fail(`Failed to close: ${resp.error || 'unknown error'}`);
+    }
+
+    if (name === 'tab_wait') {
+      if (!args.tabId) return fail('Missing required parameter: tabId');
+      if (!findTab(loadTabs(), args.tabId)) {
+        return fail(`Tab not found: ${args.tabId}. Use tab_list to see available tabs.`);
+      }
+      const timeoutMs = Math.max(500, Math.min(Number(args.timeoutMs) || 60000, 10 * 60 * 1000));
+      const requestId = writeTrigger('wait', {
+        tabId: args.tabId,
+        targetStatuses: args.targetStatuses,
+        timeoutMs,
+      });
+      // Give the renderer a few seconds of headroom beyond the wait window.
+      const resp = await awaitResponse(requestId, { timeoutMs: timeoutMs + 5000 });
+      if (!resp.ok) return fail(`tab_wait failed: ${resp.error || 'unknown error'}`);
+      return ok(JSON.stringify(resp, null, 2));
+    }
+
+    if (name === 'tab_wait_any') {
+      if (!Array.isArray(args.tabIds) || !args.tabIds.length) {
+        return fail('Missing required parameter: tabIds (non-empty array)');
+      }
+      const timeoutMs = Math.max(500, Math.min(Number(args.timeoutMs) || 60000, 10 * 60 * 1000));
+      const requestId = writeTrigger('wait_any', {
+        tabIds: args.tabIds,
+        targetStatuses: args.targetStatuses,
+        timeoutMs,
+      });
+      const resp = await awaitResponse(requestId, { timeoutMs: timeoutMs + 5000 });
+      if (!resp.ok) return fail(`tab_wait_any failed: ${resp.error || 'unknown error'}`);
+      return ok(JSON.stringify(resp, null, 2));
+    }
+
+    if (name === 'tab_read_output') {
+      if (!args.tabId) return fail('Missing required parameter: tabId');
+      const requestId = writeTrigger('read', {
+        tabId: args.tabId,
+        afterCursor: args.afterCursor,
+        maxEntries: args.maxEntries,
+      });
+      const resp = await awaitResponse(requestId);
+      if (!resp.ok) return fail(`tab_read_output failed: ${resp.error || 'unknown error'}`);
+      return ok(JSON.stringify(resp, null, 2));
+    }
+
+    if (name === 'chat_respond_permission') {
+      if (!args.tabId) return fail('Missing required parameter: tabId');
+      if (!args.action) return fail('Missing required parameter: action');
+      if (!['allow', 'deny', 'always-allow'].includes(args.action)) {
+        return fail(`Invalid action "${args.action}". Must be allow | deny | always-allow.`);
+      }
+      const requestId = writeTrigger('permission', {
+        tabId: args.tabId,
+        action: args.action,
+        message: args.message || '',
+        permissionRequestId: args.requestId || null,
+      });
+      const resp = await awaitResponse(requestId);
+      if (!resp.ok) return fail(`chat_respond_permission failed: ${resp.error || 'unknown error'}`);
+      return ok(`Permission ${args.action} sent to tab ${args.tabId}.`);
     }
 
     return fail(`Unknown tabs tool: ${name}`);
