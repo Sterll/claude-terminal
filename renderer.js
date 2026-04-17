@@ -1185,9 +1185,17 @@ if (api.mcpTab) {
           .filter(Boolean)
       );
 
+      // Honor bypass-permissions: prefer the explicit MCP flag, fall back
+      // to the user's global setting (same default as creating a tab from
+      // the UI). `_createChatTerminal` applies per-project overrides on top.
+      const skipPermissions = typeof data.skipPermissions === 'boolean'
+        ? data.skipPermissions
+        : !!settingsState.get().skipPermissions;
+
       await TerminalManager.createTerminal(project, {
         mode,
         runClaude: mode === 'chat',
+        skipPermissions,
       });
 
       // Find the tabId that was just created (the new one for this project).
@@ -1203,7 +1211,7 @@ if (api.mcpTab) {
         _writeTabResponse(requestId, { ok: false, error: 'Tab was created but tabId could not be resolved' });
         return;
       }
-      _writeTabResponse(requestId, { ok: true, tabId: newTabId, mode, projectId: project.id });
+      _writeTabResponse(requestId, { ok: true, tabId: newTabId, mode, projectId: project.id, skipPermissions });
     } catch (e) {
       console.error('[MCP Tab] create error:', e);
       _writeTabResponse(requestId, { ok: false, error: e.message });

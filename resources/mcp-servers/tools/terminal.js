@@ -114,12 +114,16 @@ const tools = [
   },
   {
     name: 'terminal_create',
-    description: 'Open a new terminal tab in Claude Terminal for a project. Returns the newly created tab\'s stable `tabId` that can be passed to tab_send / tab_status / tab_close.',
+    description: 'Open a new terminal tab in Claude Terminal for a project. Returns the newly created tab\'s stable `tabId` that can be passed to tab_send / tab_status / tab_close. When `skipPermissions` is omitted, the user\'s global setting is used (same behavior as creating a tab from the UI).',
     inputSchema: {
       type: 'object',
       properties: {
         project: { type: 'string', description: 'Project name or ID' },
         mode: { type: 'string', enum: ['terminal', 'chat'], description: 'Terminal mode (default: terminal)' },
+        skipPermissions: {
+          type: 'boolean',
+          description: 'Bypass Claude permission prompts for this tab (chat mode only). If omitted, the global user setting is applied.',
+        },
       },
       required: ['project'],
     },
@@ -210,12 +214,18 @@ async function handle(name, args) {
         return fail(`Invalid mode "${mode}". Must be "terminal" or "chat".`);
       }
 
-      const requestId = writeTabTrigger('create', {
+      const triggerPayload = {
         projectId: p.id,
         projectName: p.name || path.basename(p.path || ''),
         projectPath: p.path,
         mode,
-      });
+      };
+      // Forward skipPermissions only when explicitly set; the renderer falls
+      // back to the user's global setting when this field is undefined.
+      if (typeof args.skipPermissions === 'boolean') {
+        triggerPayload.skipPermissions = args.skipPermissions;
+      }
+      const requestId = writeTabTrigger('create', triggerPayload);
       const resp = await awaitTabResponse(requestId, { timeoutMs: 15000 });
       if (resp.ok && resp.tabId) {
         return ok(JSON.stringify({
@@ -223,6 +233,7 @@ async function handle(name, args) {
           projectId: p.id,
           mode,
           projectName: p.name || path.basename(p.path || ''),
+          ...(typeof resp.skipPermissions === 'boolean' ? { skipPermissions: resp.skipPermissions } : {}),
         }, null, 2));
       }
       return fail(`Failed to create terminal: ${resp.error || 'unknown error'}`);
