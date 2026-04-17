@@ -793,22 +793,25 @@ class ChatService {
 
   /**
    * Ensure the persistent haiku naming session is running.
-   * One session for ALL tab rename requests — stays warm, near-instant after init.
+   * One long-lived session serves ALL tab rename requests. Pending requests are
+   * tracked in a FIFO queue so concurrent calls always receive THEIR response.
    */
   async _ensureNamingSession() {
-    if (this._namingReady) return;
+    if (this._namingReady && this._namingQueue) return;
     if (this._namingStarting) return this._namingStarting;
 
     this._namingStarting = (async () => {
       const sdk = await loadSDK();
-      // No onIdle callback — we resolve directly from the stream
-      this._namingQueue = createMessageQueue();
+      const queue = createMessageQueue();
+      const pending = []; // FIFO of resolver slots — ordered to match user-message order
+      this._namingQueue = queue;
+      this._namingPending = pending;
 
       const runtime = resolveRuntime();
       const stream = sdk.query({
-        prompt: this._namingQueue.iterable,
+        prompt: queue.iterable,
         options: {
-          maxTurns: 1,
+          // No maxTurns: the session must stay alive across many rename requests
           allowedTools: [],
           model: 'haiku',
           executable: runtime.executable,
@@ -818,7 +821,7 @@ class ChatService {
         }
       });
 
-      // Process stream — resolve tab name directly when assistant responds
+      // Process stream — route each assistant response to the next pending slot (FIFO)
       (async () => {
         try {
           for await (const msg of stream) {
@@ -827,18 +830,24 @@ class ChatService {
               for (const block of msg.message.content) {
                 if (block.type === 'text') text += block.text;
               }
-              if (text && this._namingResolve) {
-                const resolve = this._namingResolve;
-                this._namingResolve = null;
-                resolve(text);
+              if (text) {
+                const next = pending.shift();
+                if (next) next.resolve(text);
               }
             }
           }
         } catch (err) {
           console.error('[ChatService] Naming session error:', err.message);
         } finally {
-          this._namingReady = false;
-          this._namingStarting = null;
+          // Session is dead: flush any waiter and clear state so next call recreates
+          while (pending.length) {
+            try { pending.shift().resolve(null); } catch (_) {}
+          }
+          if (this._namingQueue === queue) {
+            this._namingReady = false;
+            this._namingQueue = null;
+            this._namingPending = null;
+          }
         }
       })();
 
@@ -851,62 +860,73 @@ class ChatService {
 
   /**
    * Generate a short tab name via the persistent haiku session.
+   * Safe under concurrent calls from multiple tabs: each call tracks its own
+   * resolver slot in a FIFO queue, so responses always land on the right request.
    */
   async generateTabName(userMessage) {
-    // Queue: wait for any in-flight naming request to finish before starting ours
-    if (this._namingInFlight) {
-      await this._namingInFlight.catch(() => {});
-    }
-
-    const task = (async () => {
+    for (let attempt = 0; attempt < 2; attempt++) {
       try {
         await this._ensureNamingSession();
-        if (!this._namingQueue) return null;
+        const queue = this._namingQueue;
+        const pending = this._namingPending;
+        if (!queue || !pending) continue; // Session died during init — retry once
 
-        return await new Promise((resolve) => {
-          // Timeout: if haiku doesn't respond in 4s, give up
+        const result = await new Promise((resolve) => {
+          const slot = { resolve: null };
+
           const timeout = setTimeout(() => {
-            this._namingResolve = null;
-            resolve(null);
+            const idx = pending.indexOf(slot);
+            if (idx >= 0) pending.splice(idx, 1);
+            resolve({ name: null });
           }, 4000);
 
-          this._namingResolve = (rawText) => {
+          slot.resolve = (rawText) => {
             clearTimeout(timeout);
-            const name = (rawText || '').trim().replace(/^["'`]+|["'`]+$/g, '').split('\n')[0].slice(0, 40);
-            resolve(name || null);
+            if (rawText === null) {
+              // Session died before our turn — bubble up retry signal
+              resolve({ retry: true });
+              return;
+            }
+            const name = (rawText || '').trim()
+              .replace(/^["'`]+|["'`]+$/g, '')
+              .split('\n')[0]
+              .slice(0, 40);
+            resolve({ name: name || null });
           };
 
+          pending.push(slot);
+
           try {
-            this._namingQueue.push({
+            queue.push({
               type: 'user',
               message: { role: 'user', content: `Title for: "${userMessage.slice(0, 200)}"` }
             });
           } catch (pushErr) {
-            // Transport died — reset naming session so next call recreates it
             console.error('[ChatService] Naming transport dead, resetting:', pushErr.message);
-            this._namingReady = false;
-            this._namingStarting = null;
-            this._namingQueue = null;
+            const idx = pending.indexOf(slot);
+            if (idx >= 0) pending.splice(idx, 1);
             clearTimeout(timeout);
-            resolve(null);
+            if (this._namingQueue === queue) {
+              this._namingReady = false;
+              this._namingQueue = null;
+              this._namingPending = null;
+            }
+            resolve({ retry: true });
           }
         });
+
+        if (result.retry && attempt === 0) continue;
+        return result.name || null;
       } catch (err) {
         console.error('[ChatService] generateTabName error:', err.message);
         this._namingReady = false;
-        this._namingStarting = null;
+        this._namingQueue = null;
+        this._namingPending = null;
+        if (attempt === 0) continue;
         return null;
       }
-    })();
-
-    this._namingInFlight = task;
-    try {
-      return await task;
-    } finally {
-      if (this._namingInFlight === task) {
-        this._namingInFlight = null;
-      }
     }
+    return null;
   }
 
   // ── Prompt enhancement via Haiku ──
@@ -916,18 +936,21 @@ class ChatService {
    * Same warm-session pattern as naming.
    */
   async _ensureEnhanceSession() {
-    if (this._enhanceReady) return;
+    if (this._enhanceReady && this._enhanceQueue) return;
     if (this._enhanceStarting) return this._enhanceStarting;
 
     this._enhanceStarting = (async () => {
       const sdk = await loadSDK();
-      this._enhanceQueue = createMessageQueue();
+      const queue = createMessageQueue();
+      const pending = [];
+      this._enhanceQueue = queue;
+      this._enhancePending = pending;
 
       const runtime = resolveRuntime();
       const stream = sdk.query({
-        prompt: this._enhanceQueue.iterable,
+        prompt: queue.iterable,
         options: {
-          maxTurns: 1,
+          // No maxTurns: session must stay alive across many enhance requests
           allowedTools: [],
           model: 'haiku',
           executable: runtime.executable,
@@ -957,18 +980,23 @@ class ChatService {
               for (const block of msg.message.content) {
                 if (block.type === 'text') text += block.text;
               }
-              if (text && this._enhanceResolve) {
-                const resolve = this._enhanceResolve;
-                this._enhanceResolve = null;
-                resolve(text);
+              if (text) {
+                const next = pending.shift();
+                if (next) next.resolve(text);
               }
             }
           }
         } catch (err) {
           console.error('[ChatService] Enhance session error:', err.message);
         } finally {
-          this._enhanceReady = false;
-          this._enhanceStarting = null;
+          while (pending.length) {
+            try { pending.shift().resolve(null); } catch (_) {}
+          }
+          if (this._enhanceQueue === queue) {
+            this._enhanceReady = false;
+            this._enhanceQueue = null;
+            this._enhancePending = null;
+          }
         }
       })();
 
@@ -982,61 +1010,70 @@ class ChatService {
   /**
    * Enhance a user prompt via the persistent haiku session.
    * Returns the enhanced text, or the original on failure/timeout.
+   * Safe under concurrent calls: responses are matched FIFO to pending requests.
    */
   async enhancePrompt(text) {
     if (!text || text.trim().length < 5) return text; // Too short to enhance
 
-    if (this._enhanceInFlight) {
-      await this._enhanceInFlight.catch(() => {});
-    }
-
-    const task = (async () => {
+    for (let attempt = 0; attempt < 2; attempt++) {
       try {
         await this._ensureEnhanceSession();
-        if (!this._enhanceQueue) return text;
+        const queue = this._enhanceQueue;
+        const pending = this._enhancePending;
+        if (!queue || !pending) continue;
 
-        return await new Promise((resolve) => {
+        const result = await new Promise((resolve) => {
+          const slot = { resolve: null };
+
           const timeout = setTimeout(() => {
-            this._enhanceResolve = null;
-            resolve(text); // Fallback to original
+            const idx = pending.indexOf(slot);
+            if (idx >= 0) pending.splice(idx, 1);
+            resolve({ text });
           }, 5000);
 
-          this._enhanceResolve = (rawText) => {
+          slot.resolve = (rawText) => {
             clearTimeout(timeout);
+            if (rawText === null) {
+              resolve({ retry: true });
+              return;
+            }
             const enhanced = (rawText || '').trim();
-            resolve(enhanced || text);
+            resolve({ text: enhanced || text });
           };
 
+          pending.push(slot);
+
           try {
-            this._enhanceQueue.push({
+            queue.push({
               type: 'user',
               message: { role: 'user', content: text }
             });
           } catch (pushErr) {
             console.error('[ChatService] Enhance transport dead, resetting:', pushErr.message);
-            this._enhanceReady = false;
-            this._enhanceStarting = null;
-            this._enhanceQueue = null;
+            const idx = pending.indexOf(slot);
+            if (idx >= 0) pending.splice(idx, 1);
             clearTimeout(timeout);
-            resolve(text);
+            if (this._enhanceQueue === queue) {
+              this._enhanceReady = false;
+              this._enhanceQueue = null;
+              this._enhancePending = null;
+            }
+            resolve({ retry: true });
           }
         });
+
+        if (result.retry && attempt === 0) continue;
+        return result.text || text;
       } catch (err) {
         console.error('[ChatService] enhancePrompt error:', err.message);
         this._enhanceReady = false;
-        this._enhanceStarting = null;
+        this._enhanceQueue = null;
+        this._enhancePending = null;
+        if (attempt === 0) continue;
         return text;
       }
-    })();
-
-    this._enhanceInFlight = task;
-    try {
-      return await task;
-    } finally {
-      if (this._enhanceInFlight === task) {
-        this._enhanceInFlight = null;
-      }
     }
+    return text;
   }
 
   // ── Background skill/agent generation ──
@@ -1438,9 +1475,22 @@ class ChatService {
       this._namingQueue.close();
       this._namingReady = false;
     }
-    if (this._namingResolve) {
-      this._namingResolve(null);
-      this._namingResolve = null;
+    if (this._namingPending) {
+      while (this._namingPending.length) {
+        try { this._namingPending.shift().resolve(null); } catch (_) {}
+      }
+      this._namingPending = null;
+    }
+    // Close enhance session
+    if (this._enhanceQueue) {
+      this._enhanceQueue.close();
+      this._enhanceReady = false;
+    }
+    if (this._enhancePending) {
+      while (this._enhancePending.length) {
+        try { this._enhancePending.shift().resolve(null); } catch (_) {}
+      }
+      this._enhancePending = null;
     }
     // Cancel all background generations
     for (const [, gen] of this.backgroundGenerations) {
