@@ -3418,9 +3418,31 @@ body.compact-projects .project-item:not(.active):hover {
   color: #ef4444;
 }
 
+.quick-action-item-actions button.btn-pin.active {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.quick-action-item:has(.btn-pin.active) .quick-action-item-actions {
+  opacity: 1;
+}
+
+.quick-action-item-actions button.btn-pin.active:hover {
+  background: var(--accent-dim);
+}
+
 .quick-action-item-actions button svg {
   width: 14px;
   height: 14px;
+}
+
+.btn-action-icon.btn-quick-action {
+  color: var(--text-secondary);
+}
+
+.btn-action-icon.btn-quick-action:hover {
+  color: var(--accent);
+  background: var(--accent-dim);
 }
 
 .quick-actions-empty-config {

@@ -42,6 +42,8 @@ const {
   setProjectSettings,
   // Missing path detection
   isPathMissing,
+  // Quick actions
+  getQuickActions,
 } = require('../../state');
 const { escapeHtml } = require('../../utils');
 const { sanitizeColor } = require('../../utils/color');
@@ -50,6 +52,7 @@ const { t } = require('../../i18n');
 const CustomizePicker = require('./CustomizePicker');
 const { createModal, showModal, closeModal } = require('./Modal');
 const Toast = require('./Toast');
+const { QUICK_ACTION_ICONS } = require('./QuickActions');
 const registry = require('../../../project-types/registry');
 const menuIcons = require('../icons/menuIcons');
 const { getWorkspacesForProject } = require('../../state/workspace.state');
@@ -164,6 +167,17 @@ class ProjectList extends BaseComponent {
         }
       });
     }
+
+    // Re-render when card button settings change
+    const { settingsState } = require('../../state/settings.state');
+    this._lastCardButtonsKey = JSON.stringify(settingsState.get().cardButtons || {});
+    this._settingsUnsub = settingsState.subscribe(() => {
+      const key = JSON.stringify(settingsState.get().cardButtons || {});
+      if (key !== self._lastCardButtonsKey) {
+        self._lastCardButtonsKey = key;
+        self.render();
+      }
+    });
   }
 
   setExternalState(state) {
@@ -308,15 +322,31 @@ class ProjectList extends BaseComponent {
 
     const typeCtx = { project, projectIndex, fivemStatus, isRunning, isStarting, projectColor, escapeHtml, t };
 
-    // Claude terminal button (always present)
-    const claudeBtn = `
+    // User settings: which built-in buttons to show on the card
+    const cardButtons = getSetting('cardButtons') || { claude: true, terminal: true };
+
+    // Claude terminal button (opt-in via settings)
+    const claudeBtn = cardButtons.claude !== false ? `
     <button class="btn-action-icon btn-claude" data-project-id="${project.id}" title="${t('projects.openClaude')}">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10z"/></svg>
-    </button>`;
+    </button>` : '';
+
+    // Basic terminal button (opt-in via settings)
+    const terminalBtn = cardButtons.terminal !== false ? `
+    <button class="btn-action-icon btn-basic-terminal" data-project-id="${project.id}" title="${t('projects.basicTerminal')}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+    </button>` : '';
+
+    // Pinned quick actions (up to 3)
+    const pinnedActions = getQuickActions(project.id).filter(a => a.pinned).slice(0, 3);
+    const pinnedActionsHtml = pinnedActions.map(action => {
+      const iconSvg = QUICK_ACTION_ICONS[action.icon] || QUICK_ACTION_ICONS.play;
+      return `<button class="btn-action-icon btn-quick-action" data-project-id="${project.id}" data-action-id="${action.id}" title="${escapeHtml(action.name)}">${iconSvg}</button>`;
+    }).join('');
 
     // Get additional action buttons from type handler
     const typeSidebarButtons = typeHandler.getSidebarButtons(typeCtx) || '';
-    const primaryActionsHtml = typeSidebarButtons + claudeBtn;
+    const primaryActionsHtml = typeSidebarButtons + pinnedActionsHtml + terminalBtn + claudeBtn;
 
     // Customize button for menu (opens the CustomizePicker)
     const projectIcon = project.icon || null;
@@ -825,6 +855,14 @@ class ProjectList extends BaseComponent {
           setSelectedProjectFilter(projectIndex);
           if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects();
           if (self._callbacks.onCreateTerminal) self._callbacks.onCreateTerminal(project);
+        } else if (btn.classList.contains('btn-quick-action')) {
+          const project = getProject(projectId);
+          const projectIndex = getProjectIndex(projectId);
+          const actionId = btn.dataset.actionId;
+          setSelectedProjectFilter(projectIndex);
+          if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects();
+          const { executeQuickAction } = require('./QuickActions');
+          executeQuickAction(project, actionId);
         } else if (btn.classList.contains('btn-git-pull')) {
           if (self._callbacks.onGitPull) self._callbacks.onGitPull(projectId);
         } else if (btn.classList.contains('btn-git-push')) {
@@ -1374,6 +1412,10 @@ class ProjectList extends BaseComponent {
     }
     this._removeActiveTooltip();
     clearTimeout(this._searchDebounce);
+    if (this._settingsUnsub) {
+      this._settingsUnsub();
+      this._settingsUnsub = null;
+    }
     super.destroy();
   }
 }

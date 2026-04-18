@@ -581,6 +581,15 @@ class SettingsPanel extends BasePanel {
       console.error('Error getting GitHub status:', e);
     }
 
+    let workspacesList = [];
+    try {
+      const res = await this.api.workspace.list();
+      if (res?.success && Array.isArray(res.workspaces)) workspacesList = res.workspaces;
+      else if (Array.isArray(res)) workspacesList = res;
+    } catch (e) {
+      console.warn('Error getting workspaces list:', e.message);
+    }
+
     const availableLanguages = getAvailableLanguages();
     const currentLang = getCurrentLanguage();
 
@@ -676,6 +685,26 @@ class SettingsPanel extends BasePanel {
                 </div>
                 <label class="settings-toggle">
                   <input type="checkbox" id="compact-projects-toggle" ${settings.compactProjects !== false ? 'checked' : ''}>
+                  <span class="settings-toggle-slider"></span>
+                </label>
+              </div>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-label">
+                  <div>${t('settings.cardButtonClaude')}</div>
+                  <div class="settings-toggle-desc">${t('settings.cardButtonClaudeDesc')}</div>
+                </div>
+                <label class="settings-toggle">
+                  <input type="checkbox" id="card-button-claude-toggle" ${(settings.cardButtons?.claude !== false) ? 'checked' : ''}>
+                  <span class="settings-toggle-slider"></span>
+                </label>
+              </div>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-label">
+                  <div>${t('settings.cardButtonTerminal')}</div>
+                  <div class="settings-toggle-desc">${t('settings.cardButtonTerminalDesc')}</div>
+                </div>
+                <label class="settings-toggle">
+                  <input type="checkbox" id="card-button-terminal-toggle" ${(settings.cardButtons?.terminal !== false) ? 'checked' : ''}>
                   <span class="settings-toggle-slider"></span>
                 </label>
               </div>
@@ -818,6 +847,64 @@ class SettingsPanel extends BasePanel {
                   </div>
                 </div>
                 ` : ''}
+              </div>
+            </div>
+            <div class="settings-group" data-section="automation">
+              <div class="settings-group-title">${t('settings.automationGroup')}</div>
+              <div class="settings-card">
+                <div class="settings-toggle-row">
+                  <div class="settings-toggle-label">
+                    <div>${t('settings.parallelAutoKanban')}</div>
+                    <div class="settings-toggle-desc">${t('settings.parallelAutoKanbanDesc')}</div>
+                  </div>
+                  <label class="settings-toggle">
+                    <input type="checkbox" id="parallel-auto-kanban-toggle" ${settings.parallelAutoKanban ? 'checked' : ''}>
+                    <span class="settings-toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="settings-row" style="display: ${settings.parallelAutoKanban ? 'flex' : 'none'};" id="parallel-kanban-col-row">
+                  <div class="settings-label">
+                    <div>${t('settings.parallelAutoKanbanColumn')}</div>
+                    <div class="settings-desc">${t('settings.parallelAutoKanbanColumnDesc')}</div>
+                  </div>
+                  <input type="text" class="settings-input-sm" id="parallel-auto-kanban-column"
+                    value="${escapeHtml(settings.parallelAutoKanbanColumn || 'Done')}"
+                    placeholder="Done" style="width: 140px;">
+                </div>
+                <div class="settings-toggle-row">
+                  <div class="settings-toggle-label">
+                    <div>${t('settings.parallelAutoWorkspaceDoc')}</div>
+                    <div class="settings-toggle-desc">${t('settings.parallelAutoWorkspaceDocDesc')}</div>
+                  </div>
+                  <label class="settings-toggle">
+                    <input type="checkbox" id="parallel-auto-workspace-toggle" ${settings.parallelAutoWorkspaceDoc ? 'checked' : ''}>
+                    <span class="settings-toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="settings-row" style="display: ${settings.parallelAutoWorkspaceDoc ? 'flex' : 'none'};" id="parallel-workspace-row">
+                  <div class="settings-label">
+                    <div>${t('settings.parallelWorkspaceId')}</div>
+                    <div class="settings-desc">${t('settings.parallelWorkspaceIdDesc')}</div>
+                  </div>
+                  <div class="settings-dropdown" id="parallel-workspace-dropdown" data-value="${escapeHtml(settings.parallelWorkspaceId || '')}">
+                    <div class="settings-dropdown-trigger">
+                      <span>${escapeHtml((workspacesList.find(w => w.id === settings.parallelWorkspaceId)?.name) || t('settings.parallelWorkspaceNone'))}</span>
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+                    </div>
+                    <div class="settings-dropdown-menu">
+                      <div class="settings-dropdown-option ${!settings.parallelWorkspaceId ? 'selected' : ''}" data-value="">
+                        <span class="dropdown-check"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></span>
+                        ${t('settings.parallelWorkspaceNone')}
+                      </div>
+                      ${workspacesList.map(w => `
+                        <div class="settings-dropdown-option ${settings.parallelWorkspaceId === w.id ? 'selected' : ''}" data-value="${escapeHtml(w.id)}">
+                          <span class="dropdown-check"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></span>
+                          ${escapeHtml(w.icon || '')} ${escapeHtml(w.name || w.id)}
+                        </div>
+                      `).join('')}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
             <div class="settings-group">
@@ -1615,6 +1702,12 @@ class SettingsPanel extends BasePanel {
 
       const compactProjectsToggle = document.getElementById('compact-projects-toggle');
       const newCompactProjects = compactProjectsToggle ? compactProjectsToggle.checked : true;
+      const cardClaudeToggle = document.getElementById('card-button-claude-toggle');
+      const cardTerminalToggle = document.getElementById('card-button-terminal-toggle');
+      const newCardButtons = {
+        claude: cardClaudeToggle ? cardClaudeToggle.checked : true,
+        terminal: cardTerminalToggle ? cardTerminalToggle.checked : true,
+      };
       const restoreSessionsToggle = document.getElementById('restore-sessions-toggle');
       const newRestoreTerminalSessions = restoreSessionsToggle ? restoreSessionsToggle.checked : true;
       const reduceMotionToggle = document.getElementById('reduce-motion-toggle');
@@ -1654,6 +1747,17 @@ class SettingsPanel extends BasePanel {
         errors: telemetryCatErrors ? telemetryCatErrors.checked : true
       };
 
+      const parallelAutoKanbanToggle = document.getElementById('parallel-auto-kanban-toggle');
+      const newParallelAutoKanban = parallelAutoKanbanToggle ? parallelAutoKanbanToggle.checked : false;
+      const parallelAutoKanbanColumnInput = document.getElementById('parallel-auto-kanban-column');
+      const newParallelAutoKanbanColumn = parallelAutoKanbanColumnInput
+        ? parallelAutoKanbanColumnInput.value.trim() || 'Done'
+        : (settings.parallelAutoKanbanColumn || 'Done');
+      const parallelAutoWorkspaceToggle = document.getElementById('parallel-auto-workspace-toggle');
+      const newParallelAutoWorkspaceDoc = parallelAutoWorkspaceToggle ? parallelAutoWorkspaceToggle.checked : false;
+      const parallelWorkspaceDropdown = document.getElementById('parallel-workspace-dropdown');
+      const newParallelWorkspaceId = parallelWorkspaceDropdown?.dataset.value || settings.parallelWorkspaceId || '';
+
       const personaNameInput = document.getElementById('persona-name-input');
       const personaInstructionsInput = document.getElementById('persona-instructions-input');
 
@@ -1668,6 +1772,7 @@ class SettingsPanel extends BasePanel {
         terminalTheme: newTerminalTheme,
         language: newLanguage,
         compactProjects: newCompactProjects,
+        cardButtons: newCardButtons,
         restoreTerminalSessions: newRestoreTerminalSessions,
         reduceMotion: newReduceMotion,
         aiCommitMessages: newAiCommitMessages,
@@ -1684,6 +1789,10 @@ class SettingsPanel extends BasePanel {
         autoClaudeMdUpdate: newAutoClaudeMd,
         telemetryEnabled: newTelemetryEnabled,
         telemetryCategories: newTelemetryCategories,
+        parallelAutoKanban: newParallelAutoKanban,
+        parallelAutoKanbanColumn: newParallelAutoKanbanColumn,
+        parallelAutoWorkspaceDoc: newParallelAutoWorkspaceDoc,
+        parallelWorkspaceId: newParallelWorkspaceId,
         personaName: personaNameInput ? personaNameInput.value.trim() : (settings.personaName || ''),
         personaInstructions: personaInstructionsInput ? personaInstructionsInput.value : (settings.personaInstructions || '')
       };
@@ -1758,6 +1867,25 @@ class SettingsPanel extends BasePanel {
         setTimeout(() => self.renderSettingsTab('general'), 100);
       });
     }
+
+    // Show/hide conditional rows when automation toggles change (no full re-render)
+    const parallelKanbanToggle = document.getElementById('parallel-auto-kanban-toggle');
+    if (parallelKanbanToggle) {
+      parallelKanbanToggle.addEventListener('change', () => {
+        const row = document.getElementById('parallel-kanban-col-row');
+        if (row) row.style.display = parallelKanbanToggle.checked ? 'flex' : 'none';
+      });
+    }
+    const parallelWorkspaceToggle = document.getElementById('parallel-auto-workspace-toggle');
+    if (parallelWorkspaceToggle) {
+      parallelWorkspaceToggle.addEventListener('change', () => {
+        const row = document.getElementById('parallel-workspace-row');
+        if (row) row.style.display = parallelWorkspaceToggle.checked ? 'flex' : 'none';
+      });
+    }
+    // Save on blur for the column text input
+    const parallelColumnInput = document.getElementById('parallel-auto-kanban-column');
+    if (parallelColumnInput) parallelColumnInput.addEventListener('blur', autoSave);
 
     // Issue 4: Re-run setup wizard
     const btnRerunSetup = document.getElementById('btn-rerun-setup');

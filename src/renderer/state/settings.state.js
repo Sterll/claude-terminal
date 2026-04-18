@@ -78,6 +78,7 @@ const defaultSettings = {
   githubHostname: 'github.com', // GitHub hostname for remote URL detection
   personaName: '', // User's name for persona (optional, injected into chat system prompt)
   personaInstructions: '', // Custom instructions for Claude persona (optional, appended to system prompt)
+  cardButtons: { claude: true, terminal: true }, // Which built-in action buttons to show on project cards
 };
 
 const settingsState = new State({ ...defaultSettings });

@@ -64,6 +64,9 @@ function renderActionsList(actions) {
           <div class="quick-action-item-command">${escapeHtml(action.command)}</div>
         </div>
         <div class="quick-action-item-actions">
+          <button class="btn-pin${action.pinned ? ' active' : ''}" data-action-id="${action.id}" title="${action.pinned ? t('quickActions.unpinFromCard') : t('quickActions.pinToCard')}">
+            <svg viewBox="0 0 24 24" fill="${action.pinned ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M12 2l2 6h6l-5 4 2 7-5-4-5 4 2-7-5-4h6z"/></svg>
+          </button>
           <button class="btn-edit" data-action-id="${action.id}" title="${t('quickActions.editAction')}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           </button>
@@ -413,6 +416,34 @@ class QuickActions extends BaseComponent {
   }
 
   _setupListButtonHandlers(project, listContainer) {
+    listContainer.querySelectorAll('.btn-pin').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const actionId = btn.dataset.actionId;
+        const actions = getQuickActions(project.id);
+        const action = actions.find(a => a.id === actionId);
+        if (!action) return;
+        const willPin = !action.pinned;
+        if (willPin) {
+          const pinnedCount = actions.filter(a => a.pinned && a.id !== actionId).length;
+          if (pinnedCount >= 3) {
+            const toastMsg = t('quickActions.pinLimitReached') || 'Max 3 pinned actions';
+            // Keep it simple: alert-like inline note via title shake
+            btn.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-4px)' }, { transform: 'translateX(4px)' }, { transform: 'translateX(0)' }], { duration: 200 });
+            btn.title = toastMsg;
+            return;
+          }
+        }
+        updateQuickAction(project.id, actionId, { pinned: willPin });
+        this._refreshModalList(project);
+        // Re-render project list so the pinned icon appears/disappears on the card
+        try {
+          const ProjectList = require('./ProjectList');
+          if (ProjectList && typeof ProjectList.render === 'function') ProjectList.render();
+        } catch (_) {}
+      };
+    });
+
     listContainer.querySelectorAll('.btn-edit').forEach(btn => {
       btn.onclick = (e) => {
         e.stopPropagation();
