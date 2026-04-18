@@ -1587,6 +1587,75 @@ class ChatView extends BaseComponent {
   // Map mention type names to their picker config key
   const PICKER_TYPE_MAP = { file: 'file', project: 'projects', context: 'context', prompt: 'prompt', tab: 'tabs', conversation: 'conversations', workspace: 'workspace' };
 
+  // ── Pluggable sources via MentionSourceRegistry ──
+  // Sources registered elsewhere (kanban, workflow, parallel, session, skill, workspaceDoc, ...)
+  // are injected into MENTION_TYPES and PICKER_CONFIGS so the rest of the dropdown
+  // logic treats them exactly like the built-in ones.
+  (() => {
+    try {
+      const registry = require('../../services/MentionSourceRegistry');
+      const _sourceItemCache = new Map(); // source.id -> last getData() array, keyed for onSelect lookup
+
+      for (const source of registry.forSurface('mention')) {
+        // Skip if already hardcoded (prevents double-injection for pre-existing mentions)
+        if (MENTION_TYPES.some(m => m.type === source.id)) continue;
+
+        MENTION_TYPES.push({
+          type: source.id,
+          label: source.keyword,
+          desc: source.label(),
+          icon: source.icon,
+        });
+
+        PICKER_CONFIGS[source.id] = {
+          mode: source.id,
+          keyword: source.keyword,
+          maxItems: 40,
+          emptyText: () => t('chat.mentionNoResults') || 'No results',
+          getData: async () => {
+            const data = await Promise.resolve(source.getData({ project, query: '' })).catch(() => []);
+            _sourceItemCache.set(source.id, data);
+            return data;
+          },
+          filter: (items, q) => {
+            const decorated = items.map(i => ({ ...i, render: () => source.render(i) }));
+            return registry.defaultFilter(decorated, q);
+          },
+          renderItem: (item) => {
+            const v = source.render(item);
+            const iconHtml = v.emoji
+              ? `<span class="chat-mention-item-emoji"${v.color ? ` style="color:${v.color}"` : ''}>${escapeHtml(v.emoji)}</span>`
+              : `<span class="chat-mention-item-icon"${v.color ? ` style="color:${v.color}"` : ''}>${v.icon || source.icon}</span>`;
+            const badge = v.badge ? ` <span class="chat-mention-badge">${escapeHtml(v.badge)}</span>` : '';
+            return `${iconHtml}
+              <div class="chat-mention-item-info">
+                <span class="chat-mention-item-name">${escapeHtml(v.label)}${badge}</span>
+                <span class="chat-mention-item-desc">${escapeHtml(v.sublabel || '')}</span>
+              </div>`;
+          },
+          itemAttrs: (item) => `data-sourceid="${escapeHtml(source.id)}" data-itemid="${escapeHtml(String(item.id))}"`,
+          onSelect: (el) => {
+            const cache = _sourceItemCache.get(source.id) || [];
+            const item = cache.find(i => String(i.id) === el.dataset.itemid);
+            if (!item) return;
+            removeAtTrigger();
+            source.onSelect(item, 'mention', {
+              addMentionChip,
+              closeDropdown: hideMentionDropdown,
+              insertText: (text) => document.execCommand('insertText', false, text),
+            });
+            inputEl.focus();
+          },
+        };
+
+        // Mention type -> picker config key (self-mapping for source-based entries)
+        PICKER_TYPE_MAP[source.id] = source.id;
+      }
+    } catch (err) {
+      console.warn('[ChatView] MentionSourceRegistry injection failed:', err);
+    }
+  })();
+
   /**
    * Generic picker dropdown renderer — used by all picker modes
    */

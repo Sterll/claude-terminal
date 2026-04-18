@@ -369,6 +369,42 @@ function buildSections(query, mode, currentProject) {
     if (items.length > 0) sections.push({ key: 'mcp', label: t('quickPicker.section.mcp'), items });
   }
 
+  // — Pluggable sources (MentionSourceRegistry, surface 'palette') —
+  // Kanban cards, workflows, parallel runs, sessions, skills, workspace docs, ...
+  try {
+    const registry = require('../services/MentionSourceRegistry');
+    for (const source of registry.forSurface('palette')) {
+      if (mode !== 'all' && mode !== source.id) continue;
+      if (source.scope === 'project' && !currentProject) continue;
+
+      const raw = source.getData({ project: currentProject, query });
+      const rawPromise = Promise.resolve(raw);
+      // If async and not yet cached, skip this render pass — the source is expected
+      // to populate its own state which triggers a re-render on its own. For the
+      // initial simple case (kanban reads projectsState synchronously), raw is an array.
+      if (!Array.isArray(raw)) continue;
+
+      const decorated = raw.map(r => ({ ...r, render: () => source.render(r) }));
+      const filtered = registry.defaultFilter(decorated, q).slice(0, 40);
+      const items = filtered.map(item => {
+        const v = source.render(item);
+        const { match, score, labelHtml } = scoreItem(q, v.label, v.sublabel);
+        if (!match) return null;
+        return {
+          type: source.id, id: `${source.id}-${item.id}`,
+          label: v.label, labelHtml,
+          sublabel: v.sublabel || '',
+          badge: v.badge || null,
+          icon: v.icon || source.icon, score,
+          data: { _source: source, _item: item },
+        };
+      }).filter(Boolean);
+      if (items.length > 0) sections.push({ key: source.id, label: source.label(), items });
+    }
+  } catch (err) {
+    console.warn('[QuickPicker] registry merge failed:', err);
+  }
+
   return sections;
 }
 
@@ -508,6 +544,16 @@ function activateItem(item, handlers, picker) {
     case 'action':
       if (item.data.action?.command && item.data.projectPath) {
         window.electron_api?.terminal?.input?.({ command: item.data.action.command, projectPath: item.data.projectPath });
+      }
+      break;
+    default:
+      // Pluggable sources from MentionSourceRegistry
+      if (item.data?._source && item.data?._item) {
+        try {
+          item.data._source.onSelect(item.data._item, 'palette', {});
+        } catch (err) {
+          console.warn('[QuickPicker] source onSelect failed:', err);
+        }
       }
       break;
   }
