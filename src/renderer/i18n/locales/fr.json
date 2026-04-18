@@ -187,6 +187,9 @@
     "addAction": "Ajouter une action",
     "editAction": "Modifier l'action",
     "deleteAction": "Supprimer",
+    "pinToCard": "Épingler sur la carte projet",
+    "unpinFromCard": "Retirer de la carte projet",
+    "pinLimitReached": "Maximum 3 actions épinglées",
     "name": "Nom",
     "command": "Commande",
     "icon": "Icône",
@@ -908,10 +911,24 @@
     "telemetryCategoryFeaturesDesc": "Terminal, chat, git et autres fonctionnalités",
     "telemetryCategoryErrors": "Rapports d'erreurs",
     "telemetryCategoryErrorsDesc": "Erreurs non capturées et plantages",
+    "automationGroup": "Automatisation",
+    "parallelAutoKanban": "Créer auto les cartes Kanban après un run Parallel",
+    "parallelAutoKanbanDesc": "Une carte par sous-tâche à la fin d'un run parallèle",
+    "parallelAutoKanbanColumn": "Colonne cible",
+    "parallelAutoKanbanColumnDesc": "Titre de la colonne où créer les cartes (Done, Review…)",
+    "parallelAutoWorkspaceDoc": "Créer un doc Workspace après un run Parallel",
+    "parallelAutoWorkspaceDocDesc": "Enregistre un résumé dans la KB du workspace sélectionné",
+    "parallelWorkspaceId": "Workspace cible",
+    "parallelWorkspaceIdDesc": "Workspace où enregistrer le résumé",
+    "parallelWorkspaceNone": "Aucun",
     "launchAtStartup": "Lancer au démarrage",
     "launchAtStartupDesc": "Démarrer automatiquement avec Windows",
     "compactProjects": "Vue compacte des projets",
     "compactProjectsDesc": "Afficher uniquement le nom des projets non sélectionnés",
+    "cardButtonClaude": "Bouton Claude sur les cartes projet",
+    "cardButtonClaudeDesc": "Afficher le raccourci Claude Code sur chaque carte projet",
+    "cardButtonTerminal": "Bouton Terminal sur les cartes projet",
+    "cardButtonTerminalDesc": "Afficher un raccourci pour ouvrir un terminal classique sur chaque carte projet",
     "editor": "Éditeur de code",
     "editorDesc": "Éditeur utilisé pour ouvrir les fichiers",
     "closeWindow": "Fermeture de la fenêtre",
@@ -1636,6 +1653,13 @@
     "mentionNoConversations": "Aucune conversation trouvée",
     "mentionConversationsLoading": "Chargement des conversations...",
     "mentionParallelTask": "Ouvrir le gestionnaire de tâches parallèles",
+    "mentionNoResults": "Aucun résultat",
+    "mentionKanban": "Cartes Kanban",
+    "mentionWorkflow": "Workflows",
+    "mentionParallel": "Tâches parallèles",
+    "mentionSession": "Sessions",
+    "mentionSkill": "Skills",
+    "mentionDoc": "Docs du workspace",
     "mentionNoContextPacks": "Aucun pack trouvé. Créez-en un dans Paramètres > Bibliothèque.",
     "mentionNoPrompts": "Aucun template trouvé. Créez-en un dans Paramètres > Bibliothèque.",
     "mentionDiff": "Joindre un diff git (commits, branches)",
@@ -2758,6 +2782,67 @@
         "label": "Message",
         "hint": "Variables : $ctx.project, $ctx.branch, $node_X.output"
       }
+    },
+    "kanban": {
+      "project": {
+        "label": "Projet cible",
+        "hint": "Tableau Kanban où ajouter la carte (vide = $ctx.activeProjectId)"
+      },
+      "title": {
+        "label": "Titre de la carte",
+        "hint": "Variables supportées : $ctx.project, $node_X.output"
+      },
+      "description": {
+        "label": "Description"
+      },
+      "column": {
+        "label": "Colonne",
+        "hint": "Id ou titre de colonne (vide = première colonne)"
+      },
+      "priority": {
+        "label": "Priorité"
+      },
+      "dueDate": {
+        "label": "Date d'échéance"
+      }
+    },
+    "parallel": {
+      "project": {
+        "label": "Projet",
+        "hint": "Chemin du projet (vide = $ctx.activeProjectId)"
+      },
+      "goal": {
+        "label": "Objectif",
+        "hint": "Fonctionnalité à découper en sous-tâches parallèles"
+      },
+      "mainBranch": { "label": "Branche principale" },
+      "maxTasks":   { "label": "Nb max de tâches" },
+      "autoTasks":  { "label": "Valider auto (sans revue)" },
+      "model":      { "label": "Modèle" },
+      "effort":     { "label": "Effort de réflexion" }
+    },
+    "workspace": {
+      "id": {
+        "label": "Workspace",
+        "hint": "Id ou nom du workspace"
+      },
+      "title":   { "label": "Titre du document" },
+      "content": { "label": "Contenu (markdown)" },
+      "tags": {
+        "label": "Tags",
+        "hint": "Tags séparés par des virgules"
+      }
+    },
+    "recap": {
+      "project": {
+        "label": "Projet",
+        "hint": "Projet propriétaire de la session"
+      },
+      "sessionId": {
+        "label": "ID de session",
+        "hint": "Vide = $ctx.sessionId"
+      },
+      "useAi": { "label": "Résumé IA (GitHub Models)" }
     },
     "wait": {
       "mode": {

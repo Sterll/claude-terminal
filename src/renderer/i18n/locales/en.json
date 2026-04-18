@@ -818,10 +818,24 @@
     "telemetryCategoryFeaturesDesc": "Terminal, chat, git and other feature usage",
     "telemetryCategoryErrors": "Error reports",
     "telemetryCategoryErrorsDesc": "Uncaught errors and crashes",
+    "automationGroup": "Automation",
+    "parallelAutoKanban": "Auto-create Kanban cards after Parallel run",
+    "parallelAutoKanbanDesc": "Create one card per sub-task when a parallel run finishes",
+    "parallelAutoKanbanColumn": "Target column",
+    "parallelAutoKanbanColumnDesc": "Column title where cards are created (e.g. Done, Review)",
+    "parallelAutoWorkspaceDoc": "Write Workspace doc after Parallel run",
+    "parallelAutoWorkspaceDocDesc": "Save a summary document in the selected workspace KB",
+    "parallelWorkspaceId": "Target workspace",
+    "parallelWorkspaceIdDesc": "Workspace where the summary doc is saved",
+    "parallelWorkspaceNone": "None",
     "launchAtStartup": "Launch at startup",
     "launchAtStartupDesc": "Start automatically with Windows",
     "compactProjects": "Compact projects view",
     "compactProjectsDesc": "Show only the name of unselected projects",
+    "cardButtonClaude": "Claude button on project cards",
+    "cardButtonClaudeDesc": "Show the Claude Code shortcut on each project card",
+    "cardButtonTerminal": "Terminal button on project cards",
+    "cardButtonTerminalDesc": "Show a shortcut to open a basic terminal on each project card",
     "editor": "Code editor",
     "editorDesc": "Editor used to open files",
     "closeWindow": "Window close",
@@ -1198,6 +1212,9 @@
     "addAction": "Add an action",
     "editAction": "Edit action",
     "deleteAction": "Delete",
+    "pinToCard": "Pin to project card",
+    "unpinFromCard": "Unpin from project card",
+    "pinLimitReached": "Max 3 pinned actions",
     "name": "Name",
     "command": "Command",
     "icon": "Icon",
@@ -1636,6 +1653,13 @@
     "mentionNoConversations": "No past conversations found",
     "mentionConversationsLoading": "Loading conversations...",
     "mentionParallelTask": "Open Parallel Task Manager",
+    "mentionNoResults": "No results",
+    "mentionKanban": "Kanban cards",
+    "mentionWorkflow": "Workflows",
+    "mentionParallel": "Parallel runs",
+    "mentionSession": "Sessions",
+    "mentionSkill": "Skills",
+    "mentionDoc": "Workspace docs",
     "mentionNoContextPacks": "No context packs found. Create one in Settings > Library.",
     "mentionNoPrompts": "No prompt templates found. Create one in Settings > Library.",
     "mentionDiff": "Attach a git diff (commits, branches)",
@@ -2758,6 +2782,67 @@
         "label": "Message",
         "hint": "Variables: $ctx.project, $ctx.branch, $node_X.output"
       }
+    },
+    "kanban": {
+      "project": {
+        "label": "Target project",
+        "hint": "Kanban board to add the card to (leave empty to use $ctx.activeProjectId)"
+      },
+      "title": {
+        "label": "Card title",
+        "hint": "Supports variables: $ctx.project, $node_X.output"
+      },
+      "description": {
+        "label": "Description"
+      },
+      "column": {
+        "label": "Column",
+        "hint": "Column id or title (empty = first column)"
+      },
+      "priority": {
+        "label": "Priority"
+      },
+      "dueDate": {
+        "label": "Due date"
+      }
+    },
+    "parallel": {
+      "project": {
+        "label": "Project",
+        "hint": "Project path (leave empty to use $ctx.activeProjectId)"
+      },
+      "goal": {
+        "label": "Goal",
+        "hint": "Feature to split into parallel sub-tasks"
+      },
+      "mainBranch": { "label": "Main branch" },
+      "maxTasks":   { "label": "Max tasks" },
+      "autoTasks":  { "label": "Auto-confirm tasks (skip review)" },
+      "model":      { "label": "Model" },
+      "effort":     { "label": "Thinking effort" }
+    },
+    "workspace": {
+      "id": {
+        "label": "Workspace",
+        "hint": "Workspace id or name"
+      },
+      "title":   { "label": "Doc title" },
+      "content": { "label": "Content (markdown)" },
+      "tags": {
+        "label": "Tags",
+        "hint": "Comma-separated tags"
+      }
+    },
+    "recap": {
+      "project": {
+        "label": "Project",
+        "hint": "Project owning the session"
+      },
+      "sessionId": {
+        "label": "Session ID",
+        "hint": "Leave empty to use $ctx.sessionId"
+      },
+      "useAi": { "label": "Use AI summary (GitHub Models)" }
     },
     "wait": {
       "mode": {

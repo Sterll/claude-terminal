@@ -815,10 +815,24 @@
     "telemetryCategoryFeaturesDesc": "Uso de terminal, chat, git y otras funciones",
     "telemetryCategoryErrors": "Informes de errores",
     "telemetryCategoryErrorsDesc": "Errores no capturados y crashes",
+    "automationGroup": "Automatización",
+    "parallelAutoKanban": "Crear tarjetas Kanban auto tras un run Parallel",
+    "parallelAutoKanbanDesc": "Una tarjeta por sub-tarea al finalizar un run paralelo",
+    "parallelAutoKanbanColumn": "Columna destino",
+    "parallelAutoKanbanColumnDesc": "Título de columna donde crear las tarjetas (Done, Review...)",
+    "parallelAutoWorkspaceDoc": "Crear doc de Workspace tras un run Parallel",
+    "parallelAutoWorkspaceDocDesc": "Guarda un resumen en la KB del workspace seleccionado",
+    "parallelWorkspaceId": "Workspace destino",
+    "parallelWorkspaceIdDesc": "Workspace donde se guarda el resumen",
+    "parallelWorkspaceNone": "Ninguno",
     "launchAtStartup": "Iniciar con el sistema",
     "launchAtStartupDesc": "Iniciar automáticamente con Windows",
     "compactProjects": "Vista compacta de proyectos",
     "compactProjectsDesc": "Mostrar solo el nombre de los proyectos no seleccionados",
+    "cardButtonClaude": "Botón Claude en las tarjetas de proyecto",
+    "cardButtonClaudeDesc": "Mostrar el acceso directo a Claude Code en cada tarjeta de proyecto",
+    "cardButtonTerminal": "Botón Terminal en las tarjetas de proyecto",
+    "cardButtonTerminalDesc": "Mostrar un acceso directo para abrir un terminal clásico en cada tarjeta de proyecto",
     "editor": "Editor de código",
     "editorDesc": "Editor usado para abrir archivos",
     "closeWindow": "Cierre de ventana",
@@ -1195,6 +1209,9 @@
     "addAction": "Añadir una acción",
     "editAction": "Editar acción",
     "deleteAction": "Eliminar",
+    "pinToCard": "Fijar en la tarjeta del proyecto",
+    "unpinFromCard": "Quitar de la tarjeta del proyecto",
+    "pinLimitReached": "Máximo 3 acciones fijadas",
     "name": "Nombre",
     "command": "Comando",
     "icon": "Icono",
@@ -1618,6 +1635,13 @@
     "mentionNoConversations": "No se encontraron conversaciones",
     "mentionConversationsLoading": "Cargando conversaciones...",
     "mentionParallelTask": "Abrir gestor de tareas paralelas",
+    "mentionNoResults": "Sin resultados",
+    "mentionKanban": "Tarjetas Kanban",
+    "mentionWorkflow": "Workflows",
+    "mentionParallel": "Ejecuciones paralelas",
+    "mentionSession": "Sesiones",
+    "mentionSkill": "Skills",
+    "mentionDoc": "Docs del workspace",
     "mentionNoContextPacks": "No se encontraron packs de contexto. Crea uno en Ajustes > Biblioteca.",
     "mentionNoPrompts": "No se encontraron plantillas de prompt. Crea una en Ajustes > Biblioteca.",
     "queued": "En cola",
@@ -2745,6 +2769,67 @@
         "label": "Mensaje",
         "hint": "Variables: $ctx.project, $ctx.branch, $node_X.output"
       }
+    },
+    "kanban": {
+      "project": {
+        "label": "Proyecto destino",
+        "hint": "Tablero Kanban donde añadir la tarjeta (vacío = $ctx.activeProjectId)"
+      },
+      "title": {
+        "label": "Título de la tarjeta",
+        "hint": "Variables soportadas: $ctx.project, $node_X.output"
+      },
+      "description": {
+        "label": "Descripción"
+      },
+      "column": {
+        "label": "Columna",
+        "hint": "Id o título de columna (vacío = primera columna)"
+      },
+      "priority": {
+        "label": "Prioridad"
+      },
+      "dueDate": {
+        "label": "Fecha de vencimiento"
+      }
+    },
+    "parallel": {
+      "project": {
+        "label": "Proyecto",
+        "hint": "Ruta del proyecto (vacío = $ctx.activeProjectId)"
+      },
+      "goal": {
+        "label": "Objetivo",
+        "hint": "Funcionalidad a dividir en sub-tareas paralelas"
+      },
+      "mainBranch": { "label": "Rama principal" },
+      "maxTasks":   { "label": "Máx. tareas" },
+      "autoTasks":  { "label": "Confirmar auto (sin revisión)" },
+      "model":      { "label": "Modelo" },
+      "effort":     { "label": "Esfuerzo de razonamiento" }
+    },
+    "workspace": {
+      "id": {
+        "label": "Workspace",
+        "hint": "Id o nombre del workspace"
+      },
+      "title":   { "label": "Título del documento" },
+      "content": { "label": "Contenido (markdown)" },
+      "tags": {
+        "label": "Etiquetas",
+        "hint": "Etiquetas separadas por comas"
+      }
+    },
+    "recap": {
+      "project": {
+        "label": "Proyecto",
+        "hint": "Proyecto propietario de la sesión"
+      },
+      "sessionId": {
+        "label": "ID de sesión",
+        "hint": "Vacío = $ctx.sessionId"
+      },
+      "useAi": { "label": "Resumen IA (GitHub Models)" }
     },
     "wait": {
       "mode": {
