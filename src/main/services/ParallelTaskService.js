@@ -317,6 +317,13 @@ class ParallelTaskService {
     this._send('parallel-run-status', { runId, phase: 'done', endedAt });
     this._active.delete(runId);
 
+    // Cross-feature glue: auto-create Kanban cards + Workspace doc
+    try {
+      await this._autoGlue({ runId, projectPath, goal, mainBranch, enrichedTasks: runnable, endedAt });
+    } catch (err) {
+      console.warn('[ParallelTaskService] autoGlue failed:', err.message);
+    }
+
     this._appendHistory({
       id: runId,
       projectPath,
@@ -326,6 +333,132 @@ class ParallelTaskService {
       startedAt: parseInt(runId.split('-')[1], 10),
       endedAt,
     });
+  }
+
+  /**
+   * Cross-feature glue: after a run finishes, optionally create a Kanban card
+   * per sub-task and write a Workspace doc summarizing the run.
+   * Controlled by ~/.claude-terminal/settings.json:
+   *   parallelAutoKanban: boolean
+   *   parallelAutoKanbanColumn: string (default "Done")
+   *   parallelAutoWorkspaceDoc: boolean
+   *   parallelWorkspaceId: string
+   */
+  async _autoGlue({ runId, projectPath, goal, mainBranch, enrichedTasks, endedAt }) {
+    const settings = this._loadSettings();
+    if (!settings.parallelAutoKanban && !settings.parallelAutoWorkspaceDoc) return;
+
+    const state = this._runStates.get(runId);
+    const featureName = state?.featureName || goal.slice(0, 60);
+    const startedAt = parseInt(runId.split('-')[1], 10);
+    const tasksOut = [...(state?.tasks.values() || [])];
+
+    // ── Kanban cards ────────────────────────────────────────────────────────
+    if (settings.parallelAutoKanban) {
+      try {
+        const data = this._loadProjects();
+        const project = (data.projects || []).find(p => p.path === projectPath);
+        if (project) {
+          if (!project.kanbanColumns || project.kanbanColumns.length === 0) {
+            project.kanbanColumns = [
+              { id: 'col-todo',       title: 'To Do',       color: '#3b82f6', order: 0 },
+              { id: 'col-inprogress', title: 'In Progress', color: '#f59e0b', order: 1 },
+              { id: 'col-done',       title: 'Done',        color: '#22c55e', order: 2 },
+            ];
+          }
+          const colRef = (settings.parallelAutoKanbanColumn || 'Done').toLowerCase();
+          const cols   = [...project.kanbanColumns].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+          const col    = cols.find(c => c.id === colRef || c.title.toLowerCase().includes(colRef)) || cols[cols.length - 1];
+          if (!project.tasks) project.tasks = [];
+
+          const now = Date.now();
+          for (const t of (enrichedTasks || [])) {
+            const kTask = {
+              id:           `task-${now}-${Math.random().toString(36).slice(2, 7)}`,
+              title:        `[${featureName}] ${t.title || 'Sub-task'}`,
+              description:  `${t.description || ''}\n\nBranch: \`${t.branch || '?'}\`\nRun: ${runId}`.trim(),
+              labels:       [{ name: 'parallel-run', color: '#a78bfa' }],
+              columnId:     col.id,
+              worktreePath: t.worktreePath || null,
+              sessionIds:   [],
+              priority:     null,
+              dueDate:      null,
+              order:        project.tasks.filter(x => x.columnId === col.id).length,
+              createdAt:    now,
+              updatedAt:    now,
+            };
+            project.tasks.push(kTask);
+          }
+          this._saveProjects(data);
+        }
+      } catch (err) {
+        console.warn('[ParallelTaskService] autoKanban failed:', err.message);
+      }
+    }
+
+    // ── Workspace doc ───────────────────────────────────────────────────────
+    if (settings.parallelAutoWorkspaceDoc && settings.parallelWorkspaceId) {
+      try {
+        const WorkspaceService = require('./WorkspaceService');
+        const ws = WorkspaceService.getWorkspace(settings.parallelWorkspaceId);
+        if (ws) {
+          const durationMin = Math.round((endedAt - startedAt) / 60000);
+          const lines = [
+            `# Parallel run — ${featureName}`,
+            '',
+            `- **Run ID:** \`${runId}\``,
+            `- **Project:** \`${projectPath}\``,
+            `- **Main branch:** \`${mainBranch}\``,
+            `- **Duration:** ${durationMin} min`,
+            `- **Tasks:** ${tasksOut.length}`,
+            '',
+            `## Goal`,
+            '',
+            goal,
+            '',
+            `## Sub-tasks`,
+            '',
+          ];
+          for (const t of tasksOut) {
+            const status = t.failed ? 'failed' : (t.status || 'done');
+            lines.push(`### ${t.title || '(untitled)'}`);
+            lines.push('');
+            lines.push(`- **Status:** ${status}`);
+            if (t.branch)       lines.push(`- **Branch:** \`${t.branch}\``);
+            if (t.worktreePath) lines.push(`- **Worktree:** \`${t.worktreePath}\``);
+            if (t.description)  lines.push(`- **Description:** ${t.description}`);
+            lines.push('');
+          }
+          const title = `Parallel run: ${featureName} (${new Date(startedAt).toISOString().slice(0, 10)})`;
+          WorkspaceService.writeDoc(ws.id, title, lines.join('\n'));
+        }
+      } catch (err) {
+        console.warn('[ParallelTaskService] autoWorkspaceDoc failed:', err.message);
+      }
+    }
+  }
+
+  _loadSettings() {
+    try {
+      const file = path.join(os.homedir(), '.claude-terminal', 'settings.json');
+      if (!fs.existsSync(file)) return {};
+      return JSON.parse(fs.readFileSync(file, 'utf8')) || {};
+    } catch {
+      return {};
+    }
+  }
+
+  _loadProjects() {
+    const file = path.join(os.homedir(), '.claude-terminal', 'projects.json');
+    if (!fs.existsSync(file)) return { projects: [], folders: [], rootOrder: [] };
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  }
+
+  _saveProjects(data) {
+    const file = path.join(os.homedir(), '.claude-terminal', 'projects.json');
+    const tmp  = file + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+    fs.renameSync(tmp, file);
   }
 
   async _decomposeTasks({ projectPath, goal, maxTasks, autoTasks, model, effort, feedback }) {
