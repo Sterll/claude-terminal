@@ -3638,3 +3638,140 @@ hr.chat-plan-separator {
   border-radius: var(--radius-sm);
   margin: 4px 0;
 }
+
+/* ── Specialized tool cards ───────────────────────────────────────────── */
+.chat-tool-card.chat-tool-card--custom {
+  padding: 0;
+  overflow: hidden;
+  border-left-width: 3px;
+}
+
+.chat-special-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 14px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.chat-special-icon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(var(--accent-color-rgb, 99, 102, 241), 0.12);
+  color: var(--accent-color);
+  margin-top: 1px;
+}
+
+.chat-special-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.chat-special-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.chat-special-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chat-special-desc {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+/* ScheduleWakeup */
+.chat-wakeup-card {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.06), transparent);
+  border-left: 3px solid rgba(236, 72, 153, 0.6);
+}
+.chat-wakeup-label {
+  color: var(--text-primary);
+}
+.chat-wakeup-countdown {
+  font-size: var(--font-xs);
+  font-weight: 500;
+  color: rgb(236, 72, 153);
+  background: rgba(236, 72, 153, 0.12);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.chat-wakeup-countdown.is-fired {
+  color: var(--success);
+  background: rgba(34, 197, 94, 0.15);
+}
+
+/* CronCreate */
+.chat-cron-card {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.05), transparent);
+  border-left: 3px solid rgba(236, 72, 153, 0.5);
+}
+.chat-cron-name {
+  color: var(--text-primary);
+}
+.chat-cron-schedule {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: var(--font-xs);
+  font-weight: 500;
+  color: rgb(236, 72, 153);
+  background: rgba(236, 72, 153, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+/* Worktree */
+.chat-worktree-card {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), transparent);
+  border-left: 3px solid rgba(139, 92, 246, 0.6);
+}
+.chat-worktree--exit {
+  opacity: 0.85;
+}
+.chat-worktree-label {
+  color: var(--text-primary);
+}
+.chat-worktree-branch {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: var(--font-xs);
+  font-weight: 500;
+  color: rgb(167, 139, 250);
+  background: rgba(139, 92, 246, 0.15);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+/* PushNotification */
+.chat-notification-card {
+  background: linear-gradient(135deg, rgba(250, 204, 21, 0.05), transparent);
+  border-left: 3px solid rgba(250, 204, 21, 0.6);
+}
+.chat-notification-title {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.chat-notification-message {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  line-height: 1.45;
+  word-break: break-word;
+}

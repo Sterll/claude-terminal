@@ -49,9 +49,115 @@ const detailFns = {
   generic:        (i) => i.file_path || i.path || i.command || i.query || '',
 };
 
+// ── Specialized card renderers ───────────────────────────────────────────
+// Return a full HTML string to replace the generic tool card, or null to
+// fall back to the generic card. Called on content_block_stop once the
+// tool input JSON has fully arrived.
+
+function escHtml(s) {
+  return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+function formatDuration(secs) {
+  if (secs == null || !isFinite(secs)) return '';
+  const s = Math.max(0, Math.round(secs));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  if (m < 60) return r ? `${m}m ${r}s` : `${m}m`;
+  const h = Math.floor(m / 60);
+  const mr = m % 60;
+  return mr ? `${h}h ${mr}m` : `${h}h`;
+}
+
+const renderers = {
+  ScheduleWakeup(input) {
+    const delay = Number(input.delaySeconds) || 0;
+    const wakeAt = Date.now() + delay * 1000;
+    const reason = input.reason || '';
+    return `
+      <div class="chat-special-card chat-wakeup-card" data-wakeup-at="${wakeAt}">
+        <div class="chat-special-icon">${ICONS.clock}</div>
+        <div class="chat-special-body">
+          <div class="chat-special-title">
+            <span class="chat-wakeup-label">Wakeup scheduled</span>
+            <span class="chat-wakeup-countdown" data-countdown>in ${escHtml(formatDuration(delay))}</span>
+          </div>
+          ${reason ? `<div class="chat-special-desc">${escHtml(reason)}</div>` : ''}
+        </div>
+      </div>
+    `;
+  },
+
+  CronCreate(input) {
+    const schedule = input.schedule || input.cron || '';
+    const name = input.name || '';
+    const promptPreview = (input.prompt || '').slice(0, 160);
+    return `
+      <div class="chat-special-card chat-cron-card">
+        <div class="chat-special-icon">${ICONS.clock}</div>
+        <div class="chat-special-body">
+          <div class="chat-special-title">
+            <span class="chat-cron-name">${escHtml(name || 'New cron')}</span>
+            ${schedule ? `<code class="chat-cron-schedule">${escHtml(schedule)}</code>` : ''}
+          </div>
+          ${promptPreview ? `<div class="chat-special-desc">${escHtml(promptPreview)}${input.prompt && input.prompt.length > 160 ? '…' : ''}</div>` : ''}
+        </div>
+      </div>
+    `;
+  },
+
+  EnterWorktree(input) {
+    const branch = input.branch || '';
+    const path = input.path || '';
+    return `
+      <div class="chat-special-card chat-worktree-card chat-worktree--enter">
+        <div class="chat-special-icon">${ICONS.branch}</div>
+        <div class="chat-special-body">
+          <div class="chat-special-title">
+            <span class="chat-worktree-label">Entered worktree</span>
+            ${branch ? `<span class="chat-worktree-branch">${escHtml(branch)}</span>` : ''}
+          </div>
+          ${path ? `<div class="chat-special-desc" title="${escHtml(path)}">${escHtml(path)}</div>` : ''}
+        </div>
+      </div>
+    `;
+  },
+
+  ExitWorktree(input) {
+    const branch = input.branch || '';
+    return `
+      <div class="chat-special-card chat-worktree-card chat-worktree--exit">
+        <div class="chat-special-icon">${ICONS.branch}</div>
+        <div class="chat-special-body">
+          <div class="chat-special-title">
+            <span class="chat-worktree-label">Exited worktree</span>
+            ${branch ? `<span class="chat-worktree-branch">${escHtml(branch)}</span>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  PushNotification(input) {
+    const title = input.title || 'Notification';
+    const message = input.message || input.body || '';
+    return `
+      <div class="chat-special-card chat-notification-card">
+        <div class="chat-special-icon">${ICONS.bell}</div>
+        <div class="chat-special-body">
+          <div class="chat-notification-title">${escHtml(title)}</div>
+          ${message ? `<div class="chat-notification-message">${escHtml(message)}</div>` : ''}
+        </div>
+      </div>
+    `;
+  },
+};
+
 // ── Tool definitions ─────────────────────────────────────────────────────
-// { category, icon, detail, friendly? }
+// { category, icon, detail, friendly?, render? }
 // friendly = tool has a nicely-structured session-replay card
+// render  = custom HTML renderer for the chat card (replaces generic card)
 const TOOL_DEFS = {
   // File
   Read:              { category: 'file',     icon: ICONS.file,     detail: detailFns.filePath, friendly: true },
@@ -82,14 +188,14 @@ const TOOL_DEFS = {
   TodoWrite:         { category: 'plan',     icon: ICONS.plan,     detail: () => '', friendly: true },
 
   // Schedule
-  ScheduleWakeup:    { category: 'schedule', icon: ICONS.clock,    detail: detailFns.wakeup },
-  CronCreate:        { category: 'schedule', icon: ICONS.clock,    detail: detailFns.cronCreate },
+  ScheduleWakeup:    { category: 'schedule', icon: ICONS.clock,    detail: detailFns.wakeup,     render: renderers.ScheduleWakeup },
+  CronCreate:        { category: 'schedule', icon: ICONS.clock,    detail: detailFns.cronCreate, render: renderers.CronCreate },
   CronDelete:        { category: 'schedule', icon: ICONS.clock,    detail: detailFns.cronId },
   CronList:          { category: 'schedule', icon: ICONS.clock,    detail: () => '' },
 
   // Worktree
-  EnterWorktree:     { category: 'worktree', icon: ICONS.branch,   detail: detailFns.worktree },
-  ExitWorktree:      { category: 'worktree', icon: ICONS.branch,   detail: detailFns.worktree },
+  EnterWorktree:     { category: 'worktree', icon: ICONS.branch,   detail: detailFns.worktree,   render: renderers.EnterWorktree },
+  ExitWorktree:      { category: 'worktree', icon: ICONS.branch,   detail: detailFns.worktree,   render: renderers.ExitWorktree },
 
   // Background tasks
   Monitor:           { category: 'bgtask',   icon: ICONS.activity, detail: detailFns.bgTask },
@@ -97,7 +203,7 @@ const TOOL_DEFS = {
   TaskStop:          { category: 'bgtask',   icon: ICONS.activity, detail: detailFns.bgTask },
 
   // Notifications
-  PushNotification:  { category: 'notify',   icon: ICONS.bell,     detail: detailFns.notification },
+  PushNotification:  { category: 'notify',   icon: ICONS.bell,     detail: detailFns.notification, render: renderers.PushNotification },
 
   // Skills / discovery
   Skill:             { category: 'skill',    icon: ICONS.skill,    detail: detailFns.skill },
@@ -162,6 +268,17 @@ function isFriendlyTool(toolName) {
   return !!(def && def.friendly);
 }
 
+function hasCustomRenderer(toolName) {
+  const def = TOOL_DEFS[toolName];
+  return !!(def && typeof def.render === 'function');
+}
+
+function renderToolCardHtml(toolName, input) {
+  const def = TOOL_DEFS[toolName];
+  if (!def || typeof def.render !== 'function') return null;
+  try { return def.render(input || {}); } catch (_) { return null; }
+}
+
 function escapeHtmlMinimal(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
@@ -199,5 +316,8 @@ module.exports = {
   getToolIcon,
   getToolDisplayInfo,
   isFriendlyTool,
+  hasCustomRenderer,
+  renderToolCardHtml,
   formatToolName,
+  formatDuration,
 };

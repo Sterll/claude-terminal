@@ -11,9 +11,35 @@ const {
   getToolIcon,
   getToolDisplayInfo,
   formatToolName,
+  renderToolCardHtml,
 } = require('../../utils/toolRegistry');
 const { t } = require('../../i18n');
+const { formatDuration: fmtDur } = require('../../utils/toolRegistry');
 const { heartbeat, skillsAgentsState } = require('../../state');
+
+// ── Wakeup countdown ticker (module-level, single global interval) ──
+let _wakeupTickerStarted = false;
+function ensureWakeupTicker() {
+  if (_wakeupTickerStarted) return;
+  _wakeupTickerStarted = true;
+  setInterval(() => {
+    const nodes = document.querySelectorAll('[data-wakeup-at]');
+    if (!nodes.length) return;
+    const now = Date.now();
+    nodes.forEach((el) => {
+      const at = Number(el.dataset.wakeupAt) || 0;
+      const cd = el.querySelector('[data-countdown]');
+      if (!cd) return;
+      const remaining = Math.max(0, Math.round((at - now) / 1000));
+      if (remaining === 0) {
+        cd.textContent = 'fired';
+        cd.classList.add('is-fired');
+      } else {
+        cd.textContent = 'in ' + fmtDur(remaining);
+      }
+    });
+  }, 1000);
+}
 const { getSetting, setSetting, isNotificationsEnabled } = require('../../state/settings.state');
 const { updateTerminal } = require('../../state/terminals.state');
 const { saveTerminalSessions } = require('../../services/TerminalSessionService');
@@ -4684,13 +4710,21 @@ class ChatView extends BaseComponent {
             const card = toolCards.get(stopIdx);
             if (card) {
               card.dataset.toolInput = JSON.stringify(toolInput);
-              card.classList.add('expandable');
-              // Update detail text with parsed info
               const name = card.dataset.toolName || card.querySelector('.chat-tool-name')?.textContent || '';
-              const info = getToolDisplayInfo(name, toolInput);
-              const detailEl = card.querySelector('.chat-tool-detail');
-              if (detailEl && info) {
-                detailEl.textContent = info.length > 80 ? '...' + info.slice(-77) : info;
+              // Custom card renderer (ScheduleWakeup, CronCreate, Worktree, Notification)
+              const customHtml = renderToolCardHtml(name, toolInput);
+              if (customHtml) {
+                card.classList.add('chat-tool-card--custom');
+                card.classList.remove('expandable');
+                card.innerHTML = customHtml;
+                if (name === 'ScheduleWakeup') ensureWakeupTicker();
+              } else {
+                card.classList.add('expandable');
+                const info = getToolDisplayInfo(name, toolInput);
+                const detailEl = card.querySelector('.chat-tool-detail');
+                if (detailEl && info) {
+                  detailEl.textContent = info.length > 80 ? '...' + info.slice(-77) : info;
+                }
               }
             }
           } catch (e) { /* partial JSON, ignore */ }
