@@ -260,8 +260,9 @@ const renderers = {
   PushNotification(input) {
     const title = input.title || 'Notification';
     const message = input.message || input.body || '';
+    const type = input.type && ['info', 'success', 'warning', 'error'].includes(input.type) ? input.type : 'info';
     return `
-      <div class="chat-special-card chat-notification-card">
+      <div class="chat-special-card chat-notification-card chat-notification-card--${escHtml(type)}">
         <div class="chat-special-icon">${ICONS.bell}</div>
         <div class="chat-special-body">
           <div class="chat-notification-title">${escHtml(title)}</div>
@@ -283,24 +284,36 @@ const resultRenderers = {
   CronList(output, input) {
     let crons = [];
     if (Array.isArray(output)) crons = output;
+    else if (output && Array.isArray(output.jobs)) crons = output.jobs;
     else if (output && Array.isArray(output.crons)) crons = output.crons;
     else if (output && Array.isArray(output.items)) crons = output.items;
     if (!crons.length) return null;
     const rows = crons.slice(0, 20).map((c) => {
-      const name = c.name || c.id || '';
-      const schedule = c.schedule || c.cron || '';
-      const enabled = c.enabled === false ? 'disabled' : 'enabled';
+      const id = c.id || c.name || '';
+      const schedule = c.humanSchedule || c.schedule || c.cron || '';
+      const cronRaw = c.cron || c.schedule || '';
+      const prompt = c.prompt || '';
+      const recurring = c.recurring === false ? 'one-shot' : 'recurring';
+      const durable = c.durable === false ? ' · session' : (c.durable === true ? ' · durable' : '');
+      const promptPreview = prompt ? (prompt.length > 80 ? prompt.slice(0, 80) + '…' : prompt) : '';
+      const flagsEnabled = c.enabled === false ? 'disabled' : 'enabled';
+      const stateClass = c.enabled === false ? 'chat-cronlist-state--disabled' : 'chat-cronlist-state--enabled';
       return `
         <div class="chat-cronlist-row">
-          <span class="chat-cronlist-name">${escHtml(name)}</span>
-          ${schedule ? `<code class="chat-cron-schedule">${escHtml(schedule)}</code>` : ''}
-          <span class="chat-cronlist-state chat-cronlist-state--${enabled}">${enabled}</span>
+          <div class="chat-cronlist-row-main">
+            <code class="chat-cronlist-id" title="${escHtml(id)}">${escHtml(id)}</code>
+            ${schedule ? `<span class="chat-cronlist-schedule" title="${escHtml(cronRaw)}">${escHtml(schedule)}</span>` : ''}
+            <span class="chat-cronlist-flags">${escHtml(recurring)}${escHtml(durable)}</span>
+            <span class="chat-cronlist-state ${stateClass}">${escHtml(flagsEnabled)}</span>
+            ${id ? copyBtn(id, 'Copy cron id') : ''}
+          </div>
+          ${promptPreview ? `<div class="chat-cronlist-prompt" title="${escHtml(prompt)}">${escHtml(promptPreview)}</div>` : ''}
         </div>
       `;
     }).join('');
     const more = crons.length > 20 ? `<div class="chat-cronlist-more">+ ${crons.length - 20} more</div>` : '';
     return `
-      <div class="chat-special-card chat-cron-card">
+      <div class="chat-special-card chat-cron-card chat-cronlist-card">
         <div class="chat-special-icon">${ICONS.clock}</div>
         <div class="chat-special-body">
           <div class="chat-special-title">
@@ -364,6 +377,10 @@ const TOOL_DEFS = {
 
   // Notifications
   PushNotification:  { category: 'notify',   icon: ICONS.bell,     detail: detailFns.notification, render: renderers.PushNotification },
+  // MCP notification tool shipped by Claude Terminal — reuse the same card.
+  'mcp__claude-terminal__notification_send': {
+    category: 'notify', icon: ICONS.bell, detail: detailFns.notification, render: renderers.PushNotification,
+  },
 
   // Skills / discovery
   Skill:             { category: 'skill',    icon: ICONS.skill,    detail: detailFns.skill },

@@ -110,6 +110,19 @@ describe('toolRegistry / custom renderers', () => {
     expect(html).toContain('&lt;script&gt;');
   });
 
+  test('PushNotification applies type variant class', () => {
+    const html = renderToolCardHtml('PushNotification', { title: 'Ok', message: 'done', type: 'success' });
+    expect(html).toContain('chat-notification-card--success');
+  });
+
+  test('mcp__claude-terminal__notification_send reuses PushNotification renderer', () => {
+    const html = renderToolCardHtml('mcp__claude-terminal__notification_send', { title: 'Hello', body: 'world', type: 'warning' });
+    expect(html).toContain('chat-notification-card');
+    expect(html).toContain('chat-notification-card--warning');
+    expect(html).toContain('Hello');
+    expect(html).toContain('world');
+  });
+
   test('CronCreate shows schedule + truncates long prompt', () => {
     const long = 'a'.repeat(500);
     const html = renderToolCardHtml('CronCreate', { name: 'nightly', schedule: '0 0 * * *', prompt: long });
@@ -211,7 +224,21 @@ describe('toolRegistry / result renderers', () => {
     expect(hasResultRenderer('Read')).toBe(false);
   });
 
-  test('CronList renders items from {crons:[...]}', () => {
+  test('CronList renders items from {jobs:[...]} (SDK format)', () => {
+    const out = { jobs: [
+      { id: 'job-abc', cron: '0 0 * * *', humanSchedule: 'every day at midnight', prompt: 'do the thing', recurring: true, durable: true },
+      { id: 'job-def', cron: '*/5 * * * *', humanSchedule: 'every 5 minutes', prompt: 'ping', recurring: false },
+    ] };
+    const html = renderToolResultHtml('CronList', out, {});
+    expect(html).toContain('job-abc');
+    expect(html).toContain('every day at midnight');
+    expect(html).toContain('recurring');
+    expect(html).toContain('one-shot');
+    expect(html).toContain('chat-cronlist-state--enabled');
+    expect(html).toContain('2 crons');
+  });
+
+  test('CronList renders legacy items from {crons:[...]}', () => {
     const out = { crons: [{ name: 'nightly', schedule: '0 0 * * *', enabled: true }, { name: 'old', schedule: '*/5 * * * *', enabled: false }] };
     const html = renderToolResultHtml('CronList', out, {});
     expect(html).toContain('nightly');
@@ -224,11 +251,13 @@ describe('toolRegistry / result renderers', () => {
   test('CronList returns null on empty input', () => {
     expect(renderToolResultHtml('CronList', {}, {})).toBeNull();
     expect(renderToolResultHtml('CronList', { crons: [] }, {})).toBeNull();
+    expect(renderToolResultHtml('CronList', { jobs: [] }, {})).toBeNull();
   });
 
   test('CronList tolerates plain array', () => {
-    const html = renderToolResultHtml('CronList', [{ name: 'x', schedule: '* * * * *' }], {});
+    const html = renderToolResultHtml('CronList', [{ id: 'x', cron: '* * * * *', humanSchedule: 'every minute' }], {});
     expect(html).toContain('1 cron');
+    expect(html).toContain('every minute');
   });
 });
 

@@ -3764,6 +3764,22 @@ hr.chat-plan-separator {
   background: linear-gradient(135deg, rgba(250, 204, 21, 0.05), transparent);
   border-left: 3px solid rgba(250, 204, 21, 0.6);
 }
+.chat-notification-card--info {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), transparent);
+  border-left-color: rgba(59, 130, 246, 0.6);
+}
+.chat-notification-card--success {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.05), transparent);
+  border-left-color: rgba(34, 197, 94, 0.6);
+}
+.chat-notification-card--warning {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.05), transparent);
+  border-left-color: rgba(245, 158, 11, 0.6);
+}
+.chat-notification-card--error {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.05), transparent);
+  border-left-color: rgba(239, 68, 68, 0.6);
+}
 .chat-notification-title {
   font-size: var(--font-sm);
   font-weight: 600;
@@ -3921,15 +3937,59 @@ hr.chat-plan-separator {
 .chat-cronlist-rows {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-top: 4px;
+  gap: 6px;
+  margin-top: 6px;
 }
 .chat-cronlist-row {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 0;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
   font-size: var(--font-xs);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+}
+.chat-cronlist-row-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.chat-cronlist-id {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: var(--font-2xs);
+  color: var(--text-primary);
+  background: rgba(236, 72, 153, 0.1);
+  padding: 2px 7px;
+  border-radius: 4px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-cronlist-schedule {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: var(--font-2xs);
+  color: rgb(236, 72, 153);
+  font-weight: 500;
+}
+.chat-cronlist-flags {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+.chat-cronlist-prompt {
+  font-size: var(--font-2xs);
+  color: var(--text-secondary);
+  line-height: 1.45;
+  padding-left: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 .chat-cronlist-name {
   color: var(--text-primary);
@@ -3946,6 +4006,7 @@ hr.chat-plan-separator {
   letter-spacing: 0.04em;
   padding: 2px 7px;
   border-radius: 10px;
+  margin-left: auto;
 }
 .chat-cronlist-state--enabled {
   color: var(--success);
