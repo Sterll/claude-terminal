@@ -1,7 +1,30 @@
 /**
  * Electron Builder Configuration
  * Utilise les variables d'environnement pour les données sensibles
+ *
+ * asarUnpack: the list of packages that must live outside the asar archive is
+ * computed at build time from package.json deps (see scripts/resolve-unpack-deps.js).
+ * The MCP server runs as an external `node` process and cannot read asar, so every
+ * runtime-required module in its dependency tree must be unpacked. Auto-resolving
+ * avoids the recurring breakage where a new transitive dep would silently be left
+ * inside asar (e.g. the `is-property` incident).
  */
+
+const { resolveUnpackGlobs } = require('./scripts/resolve-unpack-deps');
+
+const UNPACK_ROOTS = [
+  // Agent SDK (spawned as child process)
+  '@anthropic-ai/claude-agent-sdk',
+  // Native modules (require .node binaries)
+  'node-pty',
+  'keytar',
+  'better-sqlite3',
+  'bindings',
+  // DB drivers used by the MCP server
+  'mysql2',
+  'pg',
+  'mongodb',
+];
 
 module.exports = {
   appId: "com.yanis.claude-terminal",
@@ -25,53 +48,7 @@ module.exports = {
     "resources/bundled-skills/**/*",
     "package.json"
   ],
-  asarUnpack: [
-    // Agent SDK (spawned as child process)
-    "node_modules/@anthropic-ai/claude-agent-sdk/**/*",
-    // Native modules (require .node binaries)
-    "node_modules/node-pty/**/*",
-    "node_modules/keytar/**/*",
-    "node_modules/better-sqlite3/**/*",
-    "node_modules/bindings/**/*",
-    // mysql2 + all transitive deps (used by MCP server — external node process can't read asar)
-    "node_modules/mysql2/**/*",
-    "node_modules/aws-ssl-profiles/**/*",
-    "node_modules/denque/**/*",
-    "node_modules/generate-function/**/*",
-    "node_modules/iconv-lite/**/*",
-    "node_modules/long/**/*",
-    "node_modules/lru.min/**/*",
-    "node_modules/named-placeholders/**/*",
-    "node_modules/safer-buffer/**/*",
-    "node_modules/sql-escaper/**/*",
-    // pg + all transitive deps
-    "node_modules/pg/**/*",
-    "node_modules/pg-cloudflare/**/*",
-    "node_modules/pg-connection-string/**/*",
-    "node_modules/pg-int8/**/*",
-    "node_modules/pg-pool/**/*",
-    "node_modules/pg-protocol/**/*",
-    "node_modules/pg-types/**/*",
-    "node_modules/postgres-array/**/*",
-    "node_modules/postgres-bytea/**/*",
-    "node_modules/postgres-date/**/*",
-    "node_modules/postgres-interval/**/*",
-    "node_modules/pgpass/**/*",
-    "node_modules/split2/**/*",
-    // mongodb + all transitive deps
-    "node_modules/mongodb/**/*",
-    "node_modules/@mongodb-js/saslprep/**/*",
-    "node_modules/sparse-bitfield/**/*",
-    "node_modules/memory-pager/**/*",
-    "node_modules/bson/**/*",
-    "node_modules/mongodb-connection-string-url/**/*",
-    "node_modules/@types/whatwg-url/**/*",
-    "node_modules/@types/webidl-conversions/**/*",
-    "node_modules/whatwg-url/**/*",
-    "node_modules/tr46/**/*",
-    "node_modules/webidl-conversions/**/*",
-    "node_modules/punycode/**/*"
-  ],
+  asarUnpack: resolveUnpackGlobs(UNPACK_ROOTS),
   extraResources: [
     {
       from: "resources/hooks",
