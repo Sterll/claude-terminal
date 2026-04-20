@@ -2264,26 +2264,86 @@ setTimeout(async () => {
 }, 3000);
 
 // ── Auto-upload new projects to cloud ──
-let _knownProjectIds = new Set(projectsState.get().projects.map(p => p.id));
+// Initial snapshot is populated lazily: `null` means "not captured yet".
+// This prevents the startup-load from being interpreted as N brand new
+// projects, which used to fire N parallel uploads and spam the UI.
+let _knownProjectIds = null;
 let _skipAutoUploadIds = new Set(); // IDs imported from cloud — skip re-upload
+let _pendingAutoUploadIds = new Set();
+let _autoUploadPromptTimer = null;
+let _autoUploadPromptOpen = false;
 /** Mark a project ID to skip auto-upload (called from CloudPanel on import) */
 window._cloudSkipAutoUpload = (id) => _skipAutoUploadIds.add(id);
 window._cloudReset = resetCloudState;
+
+async function _promptAutoUploadPending() {
+  if (_autoUploadPromptOpen) return;
+  if (_pendingAutoUploadIds.size === 0) return;
+
+  const ids = [..._pendingAutoUploadIds];
+  _pendingAutoUploadIds.clear();
+
+  const projects = projectsState.get().projects;
+  const targets = ids
+    .map(id => projects.find(p => p.id === id))
+    .filter(p => p && !cloudUploadStatus.get(p.id)?.synced);
+  if (targets.length === 0) return;
+
+  _autoUploadPromptOpen = true;
+  try {
+    const name = targets[0].name || (targets[0].path || '').split(/[\\/]/).pop() || '?';
+    const message = targets.length === 1
+      ? t('cloud.autoUploadConfirmOne', { name })
+      : t('cloud.autoUploadConfirmMany', { count: targets.length });
+
+    const confirmed = await ModalComponent.showConfirm({
+      title: t('cloud.autoUploadConfirmTitle'),
+      message,
+      confirmLabel: t('cloud.autoUploadConfirmYes'),
+      cancelLabel: t('cloud.autoUploadConfirmNo'),
+    });
+    if (!confirmed) return;
+
+    for (const project of targets) {
+      try { await cloudUploadProject(project.id); } catch { /* ignore individual failures */ }
+    }
+  } finally {
+    _autoUploadPromptOpen = false;
+    if (_pendingAutoUploadIds.size > 0) _scheduleAutoUploadPrompt();
+  }
+}
+
+function _scheduleAutoUploadPrompt() {
+  if (_autoUploadPromptTimer) clearTimeout(_autoUploadPromptTimer);
+  _autoUploadPromptTimer = setTimeout(() => {
+    _autoUploadPromptTimer = null;
+    _promptAutoUploadPending();
+  }, 400); // coalesce bursts (bulk loads, rapid project additions)
+}
+
 projectsState.subscribe((state) => {
   const currentIds = new Set(state.projects.map(p => p.id));
+
+  // First emission after startup: treat everything as already known so we
+  // don't prompt for every project that was already on disk.
+  if (_knownProjectIds === null) {
+    _knownProjectIds = currentIds;
+    return;
+  }
+
   const newIds = [...currentIds].filter(id => !_knownProjectIds.has(id));
   _knownProjectIds = currentIds;
 
   if (newIds.length === 0) return;
   if (!cloudConnected) return;
-  if (settingsState.get().cloudAutoUploadProjects === false) return;
+  if (settingsState.get().cloudAutoUploadProjects !== true) return;
 
   for (const id of newIds) {
     if (_skipAutoUploadIds.has(id)) { _skipAutoUploadIds.delete(id); continue; }
-    // Check if already synced (e.g. imported from cloud)
     if (cloudUploadStatus.get(id)?.synced) continue;
-    cloudUploadProject(id).catch(() => {});
+    _pendingAutoUploadIds.add(id);
   }
+  if (_pendingAutoUploadIds.size > 0) _scheduleAutoUploadPrompt();
 });
 
 
