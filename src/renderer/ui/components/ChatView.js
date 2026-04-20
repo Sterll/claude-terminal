@@ -3950,6 +3950,12 @@ class ChatView extends BaseComponent {
       handleSubagentAssistant(info, message);
       return;
     }
+    // User messages inside a subagent carry tool_result blocks for the
+    // subagent's own sub-tools — mark the matching mini-tool complete.
+    if (message.type === 'user') {
+      handleSubagentAssistant(info, message);
+      return;
+    }
     // Subagent finished — mark card as done individually
     if (message.type === 'result') {
       completeSubagentCard(info.card);
@@ -4600,6 +4606,13 @@ class ChatView extends BaseComponent {
       return;
     }
 
+    // User messages carry tool_result blocks after a tool runs — reuse the
+    // same block walker (handleAssistantMessage inspects msg.message.content).
+    if (message.type === 'user') {
+      handleAssistantMessage(message);
+      return;
+    }
+
     // Result — update stats. Also detect SDK errors.
     if (message.type === 'result') {
       if (message.total_cost_usd != null) totalCost = message.total_cost_usd;
@@ -4911,7 +4924,137 @@ class ChatView extends BaseComponent {
     }
   }
 
+  // Walk a content array and process each tool_result block. Shared between
+  // assistant messages (rare) and user messages (standard — SDK emits tool
+  // results as user messages with content containing tool_result blocks).
+  function handleToolResultBlocks(content) {
+    for (const block of content) {
+      if (block && block.type === 'tool_result') {
+        processToolResultBlock(block);
+      }
+    }
+  }
+
+  function processToolResultBlock(block) {
+    // Parallel run widget — skip tool_result (widget handles display via state)
+    for (const [, w] of parallelRunWidgets) {
+      if (w.toolUseId === block.tool_use_id) return;
+    }
+
+    // Subagent cards — mark completed but keep for late message routing
+    for (const [, info] of taskToolIndices) {
+      if (info.toolUseId === block.tool_use_id) {
+        const raw = typeof block.content === 'string' ? block.content
+          : Array.isArray(block.content) ? block.content.map(b => b.text || '').join('\n') : '';
+        const stats = parseResultJson(raw);
+        completeSubagentCard(info.card, stats);
+        info.completed = true;
+        break;
+      }
+    }
+
+    // Regular tool cards — find via in-memory map or DOM query
+    let matchedCard = null;
+    let matchedIdx = null;
+    for (const [idx, card] of toolCards) {
+      if (card.dataset.toolUseId === block.tool_use_id) { matchedCard = card; matchedIdx = idx; break; }
+    }
+    if (!matchedCard && block.tool_use_id) {
+      try {
+        matchedCard = messagesEl.querySelector(`.chat-tool-card[data-tool-use-id="${CSS.escape(block.tool_use_id)}"]`);
+      } catch (e) {
+        console.warn('[ChatView] CSS.escape selector failed:', e);
+      }
+    }
+    if (!matchedCard) {
+      console.warn('[ChatView] tool_result unmatched, tool_use_id:', block.tool_use_id, 'toolCards size:', toolCards.size);
+      return;
+    }
+
+    const output = typeof block.content === 'string' ? block.content
+      : Array.isArray(block.content) ? block.content.map(b => b.text || '').join('\n') : '';
+    if (output) matchedCard.dataset.toolOutput = output;
+
+    const bgName = matchedCard.dataset.toolName;
+
+    // Bash with run_in_background: seed bgTaskStore with command + backgroundTaskId
+    if (bgName === 'Bash') {
+      let bashInput = {};
+      try { bashInput = JSON.parse(matchedCard.dataset.toolInput || '{}'); } catch (_) { /* ignore */ }
+      if (bashInput.run_in_background) {
+        const parsed = parseResultJson(output);
+        const bgTaskId = parsed && (parsed.backgroundTaskId || parsed.background_task_id || parsed.taskId);
+        if (bgTaskId) {
+          bgTaskStore.update(bgTaskId, {
+            command: bashInput.command || '',
+            status: 'running',
+          });
+          ensureBgTaskSubscription();
+        }
+      }
+    }
+
+    // Result-enriched renderers (CronList etc.)
+    if (bgName) {
+      let inputForResult = {};
+      try { inputForResult = JSON.parse(matchedCard.dataset.toolInput || '{}'); } catch (_) { /* ignore */ }
+      const parsedForResult = parseResultJson(output);
+      const resultHtml = renderToolResultHtml(bgName, parsedForResult || output, inputForResult);
+      if (resultHtml) {
+        matchedCard.classList.add('chat-tool-card--custom');
+        matchedCard.classList.remove('expandable');
+        matchedCard.innerHTML = resultHtml;
+      }
+    }
+
+    if (bgName === 'Monitor' || bgName === 'TaskOutput' || bgName === 'TaskStop') {
+      let toolInput = {};
+      try { toolInput = JSON.parse(matchedCard.dataset.toolInput || '{}'); } catch (_) { /* ignore */ }
+      const taskId = toolInput.task_id || toolInput.shell_id;
+      if (taskId) {
+        const parsed = parseResultJson(output);
+        const patch = {};
+        if (bgName === 'TaskStop') {
+          patch.status = 'stopped';
+          patch.stoppedAt = Date.now();
+          if (parsed && parsed.command) patch.command = parsed.command;
+          if (parsed && parsed.task_type) patch.taskType = parsed.task_type;
+        } else if (parsed && !Array.isArray(parsed) && typeof parsed === 'object') {
+          // Monitor / TaskOutput — structured object, pull known fields
+          if (typeof parsed.stdout === 'string' && parsed.stdout) patch.output = parsed.stdout;
+          else if (typeof parsed.output === 'string' && parsed.output) patch.output = parsed.output;
+          else if (typeof parsed.text === 'string' && parsed.text) patch.output = parsed.text;
+          else if (typeof parsed.stderr === 'string' && parsed.stderr) patch.output = parsed.stderr;
+          else if (output) patch.output = output; // fallback: raw text
+          if (parsed.command && !bgTaskStore.get(taskId)?.command) patch.command = parsed.command;
+          if (parsed.completed === true || parsed.done === true || parsed.status === 'completed') {
+            patch.status = 'done';
+          }
+          if (parsed.status === 'stopped' || parsed.stopped === true) {
+            patch.status = 'stopped';
+            patch.stoppedAt = patch.stoppedAt || Date.now();
+          }
+        } else if (output) {
+          patch.output = output;
+        }
+        bgTaskStore.update(taskId, patch);
+      }
+    }
+
+    completeToolCard(matchedCard);
+    if (matchedIdx !== null) toolCards.delete(matchedIdx);
+  }
+
   function handleAssistantMessage(msg) {
+    // User messages carry tool_result blocks only — skip assistant-specific
+    // logic (fork button, text fallback) and jump straight to the block walker.
+    if (msg.type === 'user') {
+      const content = msg.message?.content;
+      if (!Array.isArray(content)) return;
+      handleToolResultBlocks(content);
+      return;
+    }
+
     // SDK-level errors on the assistant message (rate_limit, billing_error, etc.)
     if (msg.error) {
       const errorMessages = {
@@ -5012,111 +5155,9 @@ class ChatView extends BaseComponent {
         }
         hasToolUse = true;
       }
-      // tool_result → store output on matching tool card, or mark subagent complete
+      // tool_result → delegate to shared helper (also used for msg.type === 'user')
       if (block.type === 'tool_result') {
-        // Parallel run widget — skip tool_result (widget handles display via state)
-        let isParallelResult = false;
-        for (const [, w] of parallelRunWidgets) {
-          if (w.toolUseId === block.tool_use_id) { isParallelResult = true; break; }
-        }
-        if (isParallelResult) continue;
-
-        // Subagent cards — mark completed but keep for late message routing
-        for (const [, info] of taskToolIndices) {
-          if (info.toolUseId === block.tool_use_id) {
-            const raw = typeof block.content === 'string' ? block.content
-              : Array.isArray(block.content) ? block.content.map(b => b.text || '').join('\n') : '';
-            const stats = parseResultJson(raw);
-            completeSubagentCard(info.card, stats);
-            info.completed = true;
-            break;
-          }
-        }
-        // Regular tool cards — store output and mark complete
-        // First try in-memory map (fast path), then fallback to DOM query
-        let matchedCard = null;
-        let matchedIdx = null;
-        for (const [idx, card] of toolCards) {
-          if (card.dataset.toolUseId === block.tool_use_id) { matchedCard = card; matchedIdx = idx; break; }
-        }
-        if (!matchedCard && block.tool_use_id) {
-          try {
-            matchedCard = messagesEl.querySelector(`.chat-tool-card[data-tool-use-id="${CSS.escape(block.tool_use_id)}"]`);
-          } catch (e) {
-            console.warn('[ChatView] CSS.escape selector failed:', e);
-          }
-        }
-        if (matchedCard) {
-          const output = typeof block.content === 'string' ? block.content
-            : Array.isArray(block.content) ? block.content.map(b => b.text || '').join('\n') : '';
-          if (output) matchedCard.dataset.toolOutput = output;
-
-          // Background-task cards → feed bgTaskStore with result data
-          const bgName = matchedCard.dataset.toolName;
-
-          // Bash with run_in_background: seed bgTaskStore with command + backgroundTaskId
-          if (bgName === 'Bash') {
-            let bashInput = {};
-            try { bashInput = JSON.parse(matchedCard.dataset.toolInput || '{}'); } catch (_) { /* ignore */ }
-            if (bashInput.run_in_background) {
-              const parsed = parseResultJson(output);
-              const bgTaskId = parsed && (parsed.backgroundTaskId || parsed.background_task_id || parsed.taskId);
-              if (bgTaskId) {
-                bgTaskStore.update(bgTaskId, {
-                  command: bashInput.command || '',
-                  status: 'running',
-                });
-                ensureBgTaskSubscription();
-              }
-            }
-          }
-
-          // Result-enriched renderers (CronList etc.)
-          if (bgName) {
-            let inputForResult = {};
-            try { inputForResult = JSON.parse(matchedCard.dataset.toolInput || '{}'); } catch (_) { /* ignore */ }
-            const parsedForResult = parseResultJson(output);
-            const resultHtml = renderToolResultHtml(bgName, parsedForResult || output, inputForResult);
-            if (resultHtml) {
-              matchedCard.classList.add('chat-tool-card--custom');
-              matchedCard.classList.remove('expandable');
-              matchedCard.innerHTML = resultHtml;
-            }
-          }
-
-          if (bgName === 'Monitor' || bgName === 'TaskOutput' || bgName === 'TaskStop') {
-            let toolInput = {};
-            try { toolInput = JSON.parse(matchedCard.dataset.toolInput || '{}'); } catch (_) { /* ignore */ }
-            const taskId = toolInput.task_id || toolInput.shell_id;
-            if (taskId) {
-              const parsed = parseResultJson(output);
-              const patch = {};
-              if (bgName === 'TaskStop') {
-                patch.status = 'stopped';
-                patch.stoppedAt = Date.now();
-                if (parsed && parsed.command) patch.command = parsed.command;
-                if (parsed && parsed.task_type) patch.taskType = parsed.task_type;
-              } else {
-                // Monitor / TaskOutput → append stdout
-                if (parsed) {
-                  if (typeof parsed.stdout === 'string') patch.output = parsed.stdout;
-                  else if (typeof parsed.output === 'string') patch.output = parsed.output;
-                  else if (typeof parsed.text === 'string') patch.output = parsed.text;
-                  if (parsed.command && !bgTaskStore.get(taskId)?.command) patch.command = parsed.command;
-                  if (parsed.completed === true || parsed.done === true) patch.status = 'done';
-                } else if (output) {
-                  patch.output = output;
-                }
-              }
-              bgTaskStore.update(taskId, patch);
-            }
-          }
-
-          completeToolCard(matchedCard);
-          if (matchedIdx !== null) toolCards.delete(matchedIdx);
-        } else {
-          console.warn('[ChatView] tool_result unmatched, tool_use_id:', block.tool_use_id, 'toolCards size:', toolCards.size);
-        }
+        processToolResultBlock(block);
       }
     }
 
