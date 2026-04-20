@@ -1181,6 +1181,20 @@ function openEditor(workflowId = null) {
         </div>
         <div class="wf-editor-canvas-wrap" id="wf-ed-canvas-wrap">
           <canvas id="wf-litegraph-canvas"></canvas>
+          <div class="wf-search-overlay" id="wf-search-overlay" style="display:none">
+            <svg class="wf-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" class="wf-search-input" id="wf-search-input" placeholder="${t('workflow.editor.searchPlaceholder')}" />
+            <span class="wf-search-count" id="wf-search-count"></span>
+            <button class="wf-search-btn" id="wf-search-prev" title="${t('workflow.editor.searchPrev')}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+            </button>
+            <button class="wf-search-btn" id="wf-search-next" title="${t('workflow.editor.searchNext')}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <button class="wf-search-btn wf-search-close" id="wf-search-close" title="${t('common.close')}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
         </div>
         <div class="wf-editor-properties" id="wf-ed-properties">
           <div class="wf-props-empty">
@@ -1284,6 +1298,74 @@ function openEditor(workflowId = null) {
     }
   });
   resizeObs.observe(canvasWrap);
+
+  // ── Node search overlay (Ctrl+F) ──
+  const searchOverlay = panel.querySelector('#wf-search-overlay');
+  const searchInput = panel.querySelector('#wf-search-input');
+  const searchCount = panel.querySelector('#wf-search-count');
+  const searchPrev = panel.querySelector('#wf-search-prev');
+  const searchNext = panel.querySelector('#wf-search-next');
+  const searchClose = panel.querySelector('#wf-search-close');
+  let searchMatches = [];
+  let searchIndex = 0;
+
+  function updateSearchResults(q) {
+    searchMatches = graphService.findNodes(q);
+    searchIndex = 0;
+    if (searchMatches.length === 0) {
+      searchCount.textContent = q ? t('workflow.editor.searchNoMatch') : '';
+      graphService.clearSearchHighlight();
+    } else {
+      searchCount.textContent = `${searchIndex + 1}/${searchMatches.length}`;
+      graphService.setSearchHighlight(searchMatches, searchMatches[searchIndex]);
+      graphService.focusNode(searchMatches[searchIndex], false);
+    }
+  }
+  function stepSearch(delta) {
+    if (!searchMatches.length) return;
+    searchIndex = (searchIndex + delta + searchMatches.length) % searchMatches.length;
+    searchCount.textContent = `${searchIndex + 1}/${searchMatches.length}`;
+    graphService.setSearchHighlight(searchMatches, searchMatches[searchIndex]);
+    graphService.focusNode(searchMatches[searchIndex], false);
+  }
+  function openSearch() {
+    searchOverlay.style.display = '';
+    searchInput.focus();
+    searchInput.select();
+    if (searchInput.value.trim()) updateSearchResults(searchInput.value);
+  }
+  function closeSearch() {
+    searchOverlay.style.display = 'none';
+    searchMatches = [];
+    searchCount.textContent = '';
+    graphService.clearSearchHighlight();
+    canvasEl.focus();
+  }
+  searchInput.addEventListener('input', () => updateSearchResults(searchInput.value));
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); stepSearch(e.shiftKey ? -1 : 1); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeSearch(); }
+  });
+  searchPrev.addEventListener('click', () => stepSearch(-1));
+  searchNext.addEventListener('click', () => stepSearch(1));
+  searchClose.addEventListener('click', closeSearch);
+
+  const searchKeyHandler = (e) => {
+    if (!canvasWrap.offsetParent) return;
+    if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+      const active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.contentEditable === 'true')) {
+        if (active !== searchInput) return;
+      }
+      e.preventDefault();
+      openSearch();
+    } else if (e.key === 'Escape' && searchOverlay.style.display !== 'none') {
+      e.preventDefault();
+      closeSearch();
+    }
+  };
+  window.addEventListener('keydown', searchKeyHandler);
+  panel._cleanupSearch = () => window.removeEventListener('keydown', searchKeyHandler);
 
   // ── Generic field renderer (registry-driven) ──────────────────────────────
   /**
@@ -1996,6 +2078,7 @@ function openEditor(workflowId = null) {
   // Back
   panel.querySelector('#wf-ed-back').addEventListener('click', () => {
     resizeObs.disconnect();
+    panel._cleanupSearch?.();
     resetGraphService();
     renderPanel();
     renderContent();

@@ -6977,3 +6977,76 @@ select.wf-step-edit-input {
   display: block;
   margin-top: 4px;
 }
+
+/* ── Node search overlay ────────────────────────────────────────────── */
+.wf-editor-canvas-wrap { position: relative; }
+
+.wf-search-overlay {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: rgba(20, 20, 22, 0.96);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  z-index: 20;
+  min-width: 280px;
+  backdrop-filter: blur(6px);
+}
+
+.wf-search-icon {
+  color: var(--text-secondary);
+  flex: 0 0 auto;
+}
+
+.wf-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: var(--font-base);
+  font-family: inherit;
+  padding: 2px 0;
+  min-width: 120px;
+}
+
+.wf-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.wf-search-count {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  min-width: 40px;
+  text-align: right;
+  flex: 0 0 auto;
+}
+
+.wf-search-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.wf-search-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.wf-search-close {
+  margin-left: 2px;
+}

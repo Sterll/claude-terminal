@@ -2497,6 +2497,10 @@
       "selectNode": "Select a node to configure its settings",
       "insertVariableNode": "Click to insert a Variable node",
       "nodeIdHint": "Node ID for variables",
+      "searchPlaceholder": "Search nodes...",
+      "searchNoMatch": "No match",
+      "searchPrev": "Previous match (Shift+Enter)",
+      "searchNext": "Next match (Enter)",
       "palette": {
         "actions": "Actions",
         "data": "Data",

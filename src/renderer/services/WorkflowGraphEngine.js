@@ -428,6 +428,11 @@ class WorkflowGraphEngine {
 
     // ── Minimap ──
     this._showMinimap = true;
+    this._minimapLayout = null;  // cached: { mapX, mapY, mapW, mapH, ox, oy, s, minX, minY }
+
+    // ── Search ──
+    this._searchMatchIds = new Set();
+    this._searchActiveId = null;
 
     // ── History ──
     this._undoStack = [];
@@ -1399,6 +1404,7 @@ class WorkflowGraphEngine {
     this._drawComments(ctx);
     this._drawLinks(ctx);
     for (const node of this._nodes) this._drawNode(ctx, node);
+    this._drawSearchHighlights(ctx);
 
     // Draw rubber-band link during drag
     if (this._dragging?.type === 'link') {
@@ -2244,6 +2250,14 @@ class WorkflowGraphEngine {
 
     if (e.button !== 0) return;
 
+    // Minimap click/drag → center viewport
+    if (this._hitTestMinimap(sx, sy)) {
+      this._panFromMinimap(sx, sy);
+      this._dragging = { type: 'minimap-pan' };
+      e.preventDefault();
+      return;
+    }
+
     // Check test button
     const testNode = this._hitTestTestButton(cx, cy);
     if (testNode) {
@@ -2367,7 +2381,8 @@ class WorkflowGraphEngine {
       if (oldHover !== this._hoveredPin || oldLinkHover !== this._hoveredLink) this._markDirty();
       // Cursor hint
       if (this.canvasElement) {
-        if (this._hoveredPin) this.canvasElement.style.cursor = 'crosshair';
+        if (this._hitTestMinimap(sx, sy)) this.canvasElement.style.cursor = 'pointer';
+        else if (this._hoveredPin) this.canvasElement.style.cursor = 'crosshair';
         else if (this._hoveredLink) this.canvasElement.style.cursor = 'pointer';
         else if (this._hitTestNode(cx, cy)) this.canvasElement.style.cursor = 'grab';
         else if (this._hitTestCommentEdge(cx, cy)) this.canvasElement.style.cursor = 'nwse-resize';
@@ -2378,7 +2393,9 @@ class WorkflowGraphEngine {
     }
     const d = this._dragging;
 
-    if (d.type === 'pan') {
+    if (d.type === 'minimap-pan') {
+      this._panFromMinimap(sx, sy);
+    } else if (d.type === 'pan') {
       this._offsetX = d.startOX + (sx - d.startSX);
       this._offsetY = d.startOY + (sy - d.startSY);
       this._markDirty();
@@ -3053,16 +3070,77 @@ class WorkflowGraphEngine {
     }
   }
 
+  // ═══ SEARCH ═════════════════════════════════════════════════════════════
+
+  findNodes(query) {
+    const q = (query || '').trim().toLowerCase();
+    if (!q) return [];
+    const matches = [];
+    for (const n of this._nodes) {
+      const title = (n._customTitle || n.title || '').toLowerCase();
+      const type = (n.type || '').replace('workflow/', '').toLowerCase();
+      if (title.includes(q) || type.includes(q)) matches.push(n);
+    }
+    matches.sort((a, b) => (a.pos[1] - b.pos[1]) || (a.pos[0] - b.pos[0]));
+    return matches.map(n => n.id);
+  }
+
+  setSearchHighlight(ids, activeId = null) {
+    this._searchMatchIds = new Set(ids || []);
+    this._searchActiveId = activeId;
+    this._markDirty();
+  }
+
+  clearSearchHighlight() {
+    this._searchMatchIds.clear();
+    this._searchActiveId = null;
+    this._markDirty();
+  }
+
+  focusNode(nodeId, select = true) {
+    const node = this._getNodeById(nodeId);
+    if (!node) return false;
+    const W = this.canvasElement?.width || 0;
+    const H = this.canvasElement?.height || 0;
+    const cx = node.pos[0] + node.size[0] / 2;
+    const cy = node.pos[1] + (TITLE_H + node.size[1]) / 2;
+    this._offsetX = W / 2 - cx * this._scale;
+    this._offsetY = H / 2 - cy * this._scale;
+    if (select) this._selectNode(node, false);
+    this._markDirty();
+    return true;
+  }
+
+  _drawSearchHighlights(ctx) {
+    if (!this._searchMatchIds.size) return;
+    ctx.save();
+    for (const id of this._searchMatchIds) {
+      const n = this._getNodeById(id);
+      if (!n) continue;
+      const active = id === this._searchActiveId;
+      const pad = active ? 7 : 4;
+      const x = n.pos[0] - pad;
+      const y = n.pos[1] - pad;
+      const w = n.size[0] + pad * 2;
+      const h = n.size[1] + TITLE_H + pad * 2;
+      ctx.strokeStyle = active ? '#f59e0b' : 'rgba(245,158,11,0.55)';
+      ctx.lineWidth = active ? 2.5 : 1.5;
+      ctx.setLineDash(active ? [] : [4, 3]);
+      roundRect(ctx, x, y, w, h, 10);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   // ═══ MINIMAP ════════════════════════════════════════════════════════════
 
   toggleMinimap() { this._showMinimap = !this._showMinimap; this._markDirty(); }
 
-  _drawMinimap(ctx, vpW, vpH) {
+  _computeMinimapLayout(vpW, vpH) {
+    if (!this._nodes.length) return null;
     const mapW = 160, mapH = 100, padding = 12;
     const mapX = vpW - mapW - padding;
     const mapY = vpH - mapH - padding;
-
-    // Compute bounds
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const n of this._nodes) {
       if (n.pos[0] < minX) minX = n.pos[0];
@@ -3072,9 +3150,37 @@ class WorkflowGraphEngine {
     }
     const graphW = maxX - minX + 80;
     const graphH = maxY - minY + 80;
-    const sx = mapW / graphW;
-    const sy = mapH / graphH;
-    const s = Math.min(sx, sy);
+    const s = Math.min(mapW / graphW, mapH / graphH);
+    const ox = mapX + (mapW - graphW * s) / 2 - (minX - 40) * s;
+    const oy = mapY + (mapH - graphH * s) / 2 - (minY - 40) * s;
+    return { mapX, mapY, mapW, mapH, ox, oy, s };
+  }
+
+  _hitTestMinimap(screenX, screenY) {
+    if (!this._showMinimap || !this._minimapLayout) return null;
+    const { mapX, mapY, mapW, mapH } = this._minimapLayout;
+    if (screenX < mapX || screenX > mapX + mapW) return null;
+    if (screenY < mapY || screenY > mapY + mapH) return null;
+    return this._minimapLayout;
+  }
+
+  _panFromMinimap(screenX, screenY) {
+    const layout = this._minimapLayout;
+    if (!layout) return;
+    const gx = (screenX - layout.ox) / layout.s;
+    const gy = (screenY - layout.oy) / layout.s;
+    const W = this.canvasElement.width;
+    const H = this.canvasElement.height;
+    this._offsetX = W / 2 - gx * this._scale;
+    this._offsetY = H / 2 - gy * this._scale;
+    this._markDirty();
+  }
+
+  _drawMinimap(ctx, vpW, vpH) {
+    const layout = this._computeMinimapLayout(vpW, vpH);
+    if (!layout) return;
+    this._minimapLayout = layout;
+    const { mapX, mapY, mapW, mapH, ox, oy, s } = layout;
 
     // Background
     ctx.save();
@@ -3091,9 +3197,6 @@ class WorkflowGraphEngine {
     ctx.beginPath();
     ctx.rect(mapX, mapY, mapW, mapH);
     ctx.clip();
-
-    const ox = mapX + (mapW - graphW * s) / 2 - (minX - 40) * s;
-    const oy = mapY + (mapH - graphH * s) / 2 - (minY - 40) * s;
 
     // Draw links — single batched stroke
     ctx.strokeStyle = 'rgba(255,255,255,.1)';
