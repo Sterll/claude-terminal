@@ -11,15 +11,7 @@ const { t, setLanguage, getCurrentLanguage, getAvailableLanguages } = require('.
 
 // ── Module-level constants ──
 
-const BUILTIN_TOOLS = [
-  'Bash', 'Read', 'Edit', 'Write', 'Glob', 'Grep',
-  'WebSearch', 'WebFetch', 'Task', 'Agent', 'TodoWrite', 'NotebookEdit',
-  'MultiEdit', 'ListMcpResourcesTool', 'ReadMcpResourceTool',
-  'AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode',
-  'ScheduleWakeup', 'CronCreate', 'CronDelete', 'CronList',
-  'EnterWorktree', 'ExitWorktree', 'PushNotification',
-  'Monitor', 'TaskOutput', 'TaskStop', 'ToolSearch', 'Skill',
-];
+const { BUILTIN_TOOLS } = require('../../utils/toolRegistry');
 
 // ── Module-level pure helpers ──
 

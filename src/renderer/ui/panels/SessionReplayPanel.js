@@ -6,6 +6,12 @@
 
 const { escapeHtml } = require('../../utils/dom');
 const { t } = require('../../i18n');
+const {
+  getToolCategory,
+  getCategoryColor,
+  getToolIcon: registryGetToolIcon,
+  isFriendlyTool,
+} = require('../../utils/toolRegistry');
 
 let container = null;
 let projectsState = null;
@@ -39,66 +45,13 @@ let timeline = null;
 let playerChatEl = null;
 let playerBarEl = null;
 
-// ── Tool category helpers ─────────────────────────────────────────────────────
-const TOOL_CATEGORIES = {
-  file:    ['Read', 'Write', 'Edit', 'NotebookEdit'],
-  terminal:['Bash'],
-  search:  ['Glob', 'Grep'],
-  web:     ['WebFetch', 'WebSearch'],
-  agent:   ['Task', 'Agent'],
-  plan:    ['ExitPlanMode', 'AskUserQuestion', 'EnterPlanMode', 'TodoWrite'],
-  schedule:['ScheduleWakeup', 'CronCreate', 'CronDelete', 'CronList'],
-  worktree:['EnterWorktree', 'ExitWorktree'],
-  bgtask:  ['Monitor', 'TaskOutput', 'TaskStop'],
-  notify:  ['PushNotification'],
-};
-
 // Player speed → ms/step
 const PLAYER_SPEED_DELAYS = { 0.5: 2000, 1: 1000, 2: 500, 4: 250 };
 
-// Tool category → RGB for chat-style border-left
-const CAT_COLORS = {
-  file:     '34,197,94',
-  terminal: '245,158,11',
-  search:   '167,139,250',
-  web:      '6,182,212',
-  agent:    '249,115,22',
-  plan:     '217,119,6',
-  schedule: '236,72,153',
-  worktree: '139,92,246',
-  bgtask:   '14,165,233',
-  notify:   '250,204,21',
-  other:    '100,100,110',
-};
-
-// Tools that have a friendly card renderer (Fix 4)
-const FRIENDLY_TOOLS = new Set([
-  'Bash', 'Read', 'Write', 'Edit', 'NotebookEdit',
-  'Glob', 'Grep', 'WebFetch', 'WebSearch',
-  'AskUserQuestion', 'Task', 'Agent', 'TodoWrite',
-  'ScheduleWakeup', 'CronCreate', 'CronDelete', 'CronList',
-  'EnterWorktree', 'ExitWorktree', 'PushNotification',
-  'Monitor', 'TaskOutput', 'TaskStop',
-]);
-
-function getToolCategory(toolName) {
-  for (const [cat, tools] of Object.entries(TOOL_CATEGORIES)) {
-    if (tools.includes(toolName)) return cat;
-  }
-  return 'other';
-}
-
+// Tool category/icon/friendliness come from ../../utils/toolRegistry
+// Wrapper to keep local call sites readable and fall back to generic icon.
 function getToolIcon(toolName) {
-  const cat = getToolCategory(toolName);
-  switch (cat) {
-    case 'file': return `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>`;
-    case 'terminal': return `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zM6 10h2v2H6zm0 4h8v2H6zm10 0h2v2h-2zm-6-4h8v2h-8z"/></svg>`;
-    case 'search': return `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>`;
-    case 'web': return `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>`;
-    case 'agent': return `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2.05v2.02c3.95.49 7 3.85 7 7.93s-3.05 7.44-7 7.93v2.02c5.05-.5 9-4.76 9-9.95S18.05 2.55 13 2.05zM11 2.05C5.95 2.55 2 6.81 2 12s3.95 9.45 9 9.95v-2.02C7.05 19.44 4 16.08 4 12s3.05-7.44 7-7.93V2.05zM12 6l-5 5h3v6h4v-6h3z"/></svg>`;
-    case 'plan': return `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>`;
-    default: return `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93V18c0-.55-.45-1-1-1s-1 .45-1 1v1.93C7.06 19.44 4.56 16.94 4.07 14H6c.55 0 1-.45 1-1s-.45-1-1-1H4.07C4.56 8.06 7.06 5.56 11 5.07V7c0 .55.45 1 1 1s1-.45 1-1V5.07C16.94 5.56 19.44 8.06 19.93 11H18c-.55 0-1 .45-1 1s.45 1 1 1h1.93c-.49 3.94-2.99 6.44-6.93 6.93z"/></svg>`;
-  }
+  return registryGetToolIcon(toolName);
 }
 
 function getStepIcon(step) {
@@ -622,7 +575,7 @@ function buildStepBody(step) {
     return `<div class="sr-body-text sr-body-text--thinking">${escapeHtml(step.text || '')}</div>`;
   }
   // Tool step
-  if (FRIENDLY_TOOLS.has(step.toolName)) {
+  if (isFriendlyTool(step.toolName)) {
     return buildFriendlyToolBody(step);
   }
   return buildGenericToolBody(step);
@@ -984,7 +937,7 @@ function buildPlayerStepEl(step) {
 
   } else if (step.type === 'tool' || step.type === 'group') {
     const cat = getToolCategory(step.toolName);
-    const rgb = CAT_COLORS[cat] || CAT_COLORS.other;
+    const rgb = getCategoryColor(cat);
     el.classList.add('sr-pstep--tool');
     const sub = step.type === 'group' ? `${step.count} appels` : buildStepSubtitle(step);
     const badge = step.type === 'group'

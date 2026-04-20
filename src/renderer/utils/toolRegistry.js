@@ -1,0 +1,203 @@
+/**
+ * Central tool registry — single source of truth for Claude Agent SDK tools.
+ *
+ * Every tool is described by its category, icon, display-info extractor
+ * (what to show in a compact card header), and friendliness flag.
+ *
+ * Consumers: ChatView (chat cards, perm cards, subagent mini-tools),
+ * SessionReplayPanel (timeline icons, param rows), TerminalManager
+ * (autocomplete), SettingsPanel (permission lists).
+ */
+
+// ── Shared SVG icons ──────────────────────────────────────────────────────
+const ICONS = {
+  file:     '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>',
+  edit:     '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>',
+  terminal: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v12zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"/></svg>',
+  search:   '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>',
+  web:      '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>',
+  agent:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>',
+  question: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/></svg>',
+  plan:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>',
+  clock:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+  bell:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>',
+  branch:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 01-9 9"/></svg>',
+  activity: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+  skill:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+  generic:  '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>',
+};
+
+// ── Detail extractors ─────────────────────────────────────────────────────
+const detailFns = {
+  filePath:       (i) => i.file_path || i.path || '',
+  bash:           (i) => i.command || '',
+  pattern:        (i) => i.pattern || '',
+  agent:          (i) => i.description || i.subagent_type || '',
+  wakeup:         (i) => {
+    const s = i.delaySeconds;
+    const pretty = s != null ? (s >= 60 ? `${Math.round(s / 60)}m` : `${s}s`) : '';
+    return [pretty, i.reason].filter(Boolean).join(' — ');
+  },
+  cronCreate:     (i) => i.schedule || i.name || '',
+  cronId:         (i) => i.name || i.id || '',
+  worktree:       (i) => i.branch || i.path || '',
+  notification:   (i) => i.title || i.message || '',
+  bgTask:         (i) => i.taskId || i.command || '',
+  query:          (i) => i.query || '',
+  skill:          (i) => i.skill || i.name || '',
+  url:            (i) => i.url || '',
+  generic:        (i) => i.file_path || i.path || i.command || i.query || '',
+};
+
+// ── Tool definitions ─────────────────────────────────────────────────────
+// { category, icon, detail, friendly? }
+// friendly = tool has a nicely-structured session-replay card
+const TOOL_DEFS = {
+  // File
+  Read:              { category: 'file',     icon: ICONS.file,     detail: detailFns.filePath, friendly: true },
+  Write:             { category: 'file',     icon: ICONS.edit,     detail: detailFns.filePath, friendly: true },
+  Edit:              { category: 'file',     icon: ICONS.edit,     detail: detailFns.filePath, friendly: true },
+  MultiEdit:         { category: 'file',     icon: ICONS.edit,     detail: detailFns.filePath, friendly: true },
+  NotebookEdit:      { category: 'file',     icon: ICONS.edit,     detail: detailFns.filePath, friendly: true },
+
+  // Terminal
+  Bash:              { category: 'terminal', icon: ICONS.terminal, detail: detailFns.bash,     friendly: true },
+
+  // Search
+  Glob:              { category: 'search',   icon: ICONS.search,   detail: detailFns.pattern,  friendly: true },
+  Grep:              { category: 'search',   icon: ICONS.search,   detail: detailFns.pattern,  friendly: true },
+
+  // Web
+  WebFetch:          { category: 'web',      icon: ICONS.web,      detail: detailFns.url,      friendly: true },
+  WebSearch:         { category: 'web',      icon: ICONS.web,      detail: detailFns.query,    friendly: true },
+
+  // Agent / subagent
+  Task:              { category: 'agent',    icon: ICONS.agent,    detail: detailFns.agent,    friendly: true },
+  Agent:             { category: 'agent',    icon: ICONS.agent,    detail: detailFns.agent,    friendly: true },
+
+  // Plan / interaction
+  AskUserQuestion:   { category: 'plan',     icon: ICONS.question, detail: (i) => i.question || '', friendly: true },
+  EnterPlanMode:     { category: 'plan',     icon: ICONS.plan,     detail: () => '' },
+  ExitPlanMode:      { category: 'plan',     icon: ICONS.plan,     detail: () => '' },
+  TodoWrite:         { category: 'plan',     icon: ICONS.plan,     detail: () => '', friendly: true },
+
+  // Schedule
+  ScheduleWakeup:    { category: 'schedule', icon: ICONS.clock,    detail: detailFns.wakeup },
+  CronCreate:        { category: 'schedule', icon: ICONS.clock,    detail: detailFns.cronCreate },
+  CronDelete:        { category: 'schedule', icon: ICONS.clock,    detail: detailFns.cronId },
+  CronList:          { category: 'schedule', icon: ICONS.clock,    detail: () => '' },
+
+  // Worktree
+  EnterWorktree:     { category: 'worktree', icon: ICONS.branch,   detail: detailFns.worktree },
+  ExitWorktree:      { category: 'worktree', icon: ICONS.branch,   detail: detailFns.worktree },
+
+  // Background tasks
+  Monitor:           { category: 'bgtask',   icon: ICONS.activity, detail: detailFns.bgTask },
+  TaskOutput:        { category: 'bgtask',   icon: ICONS.activity, detail: detailFns.bgTask },
+  TaskStop:          { category: 'bgtask',   icon: ICONS.activity, detail: detailFns.bgTask },
+
+  // Notifications
+  PushNotification:  { category: 'notify',   icon: ICONS.bell,     detail: detailFns.notification },
+
+  // Skills / discovery
+  Skill:             { category: 'skill',    icon: ICONS.skill,    detail: detailFns.skill },
+  ToolSearch:        { category: 'skill',    icon: ICONS.skill,    detail: detailFns.query },
+
+  // MCP discovery
+  ListMcpResourcesTool: { category: 'other', icon: ICONS.generic,  detail: () => '' },
+  ReadMcpResourceTool:  { category: 'other', icon: ICONS.generic,  detail: detailFns.url },
+};
+
+// ── Category → RGB (for border-left / chips) ─────────────────────────────
+const CATEGORY_COLORS = {
+  file:     '34,197,94',
+  terminal: '245,158,11',
+  search:   '167,139,250',
+  web:      '6,182,212',
+  agent:    '249,115,22',
+  plan:     '217,119,6',
+  schedule: '236,72,153',
+  worktree: '139,92,246',
+  bgtask:   '14,165,233',
+  notify:   '250,204,21',
+  skill:    '251,191,36',
+  other:    '100,100,110',
+};
+
+// ── Public API ───────────────────────────────────────────────────────────
+
+function getToolDef(toolName) {
+  return TOOL_DEFS[toolName] || null;
+}
+
+function getToolCategory(toolName) {
+  const def = TOOL_DEFS[toolName];
+  if (def) return def.category;
+  if (typeof toolName === 'string' && toolName.startsWith('mcp__')) return 'mcp';
+  return 'other';
+}
+
+function getCategoryColor(cat) {
+  return CATEGORY_COLORS[cat] || CATEGORY_COLORS.other;
+}
+
+function getToolIcon(toolName) {
+  const def = TOOL_DEFS[toolName];
+  if (def) return def.icon;
+  return ICONS.generic;
+}
+
+function getToolDisplayInfo(toolName, input) {
+  if (!input) return '';
+  const def = TOOL_DEFS[toolName];
+  if (def && typeof def.detail === 'function') {
+    try { return def.detail(input) || ''; } catch (_) { return ''; }
+  }
+  // MCP or unknown tool → best-effort generic fallback
+  return detailFns.generic(input) || '';
+}
+
+function isFriendlyTool(toolName) {
+  const def = TOOL_DEFS[toolName];
+  return !!(def && def.friendly);
+}
+
+function escapeHtmlMinimal(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+/**
+ * Pretty tool-name for display (handles MCP namespace: `mcp__server__tool`).
+ * Returns HTML (caller should NOT re-escape).
+ */
+function formatToolName(toolName) {
+  if (!toolName) return '';
+  if (toolName.startsWith('mcp__')) {
+    const parts = toolName.split('__');
+    const server = parts[1] || 'mcp';
+    const rawTool = parts.slice(2).join('_');
+    const prettyTool = rawTool
+      .split('_')
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+    return `<span class="chat-tool-mcp-badge" title="MCP · ${escapeHtmlMinimal(server)}">${escapeHtmlMinimal(server)}</span><span class="chat-tool-name-text">${escapeHtmlMinimal(prettyTool || rawTool)}</span>`;
+  }
+  return `<span class="chat-tool-name-text">${escapeHtmlMinimal(toolName)}</span>`;
+}
+
+// Built-in tools list for settings/autocomplete (stable, ordered)
+const BUILTIN_TOOLS = Object.keys(TOOL_DEFS);
+
+module.exports = {
+  TOOL_DEFS,
+  CATEGORY_COLORS,
+  BUILTIN_TOOLS,
+  getToolDef,
+  getToolCategory,
+  getCategoryColor,
+  getToolIcon,
+  getToolDisplayInfo,
+  isFriendlyTool,
+  formatToolName,
+};
