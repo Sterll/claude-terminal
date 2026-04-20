@@ -2728,6 +2728,7 @@ class ChatView extends BaseComponent {
         // Changes are applied mid-session via SDK setModel/setMaxThinkingTokens
         const startOpts = {
           cwd: project.path,
+          projectId: project.id,
           prompt: enhancedText || '',
           permissionMode: skipPermissions ? 'bypassPermissions' : 'default',
           sessionId,

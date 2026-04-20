@@ -2372,7 +2372,17 @@
       "terminalExitProjectLabel": "Project",
       "terminalExitProjectHint": "Limit to terminals opened from this project.",
       "projectOpenedLabel": "Project",
-      "projectOpenedHint": "Fire when this project is opened. Leave on \"Any project\" to match all."
+      "projectOpenedHint": "Fire when this project is opened. Leave on \"Any project\" to match all.",
+      "typeClaudeSessionStart": "Claude session start",
+      "typeClaudeSessionEnd": "Claude session end",
+      "claudeSessionProjectLabel": "Project",
+      "claudeSessionStartHint": "Fire when a Claude chat session starts in this project.",
+      "claudeSessionEndHint": "Fire when a Claude chat session ends in this project.",
+      "claudeSessionStatusLabel": "End status",
+      "claudeSessionStatusHint": "Filter by how the session terminated.",
+      "claudeSessionStatusAny": "Any (success / interrupted / error)",
+      "claudeSessionStatusSuccess": "Success only",
+      "claudeSessionStatusError": "Error only"
     },
     "loop": {
       "sourceLabel": "Iteration source",

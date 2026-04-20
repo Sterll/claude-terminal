@@ -230,6 +230,38 @@ class WorkflowScheduler {
   }
 
   /**
+   * Call this when a Claude chat session starts or ends.
+   * @param {Object} event  { event: 'start'|'end', sessionId, projectId?, cwd?, status?, error? }
+   */
+  onChatSessionEvent(event) {
+    if (!event || !event.event) return;
+    const targetType = event.event === 'start'
+      ? 'claude_session_start'
+      : 'claude_session_end';
+
+    for (const wf of this._workflows) {
+      if (!wf.enabled) continue;
+      const trigger = wf.trigger || {};
+      if (trigger.type !== targetType) continue;
+      if (trigger.projectId && trigger.projectId !== event.projectId) continue;
+
+      if (targetType === 'claude_session_end') {
+        const wanted = trigger.statusFilter || 'any';
+        if (wanted !== 'any' && wanted !== event.status) continue;
+      }
+
+      this.dispatch?.(wf.id, {
+        source:    targetType,
+        sessionId: event.sessionId || null,
+        projectId: event.projectId || null,
+        cwd:       event.cwd || null,
+        status:    event.status || null,
+        error:     event.error || null,
+      });
+    }
+  }
+
+  /**
    * Stop all timers / teardown.
    */
   destroy() {

@@ -85,6 +85,14 @@ function registerAllHandlers(mainWindow) {
       console.warn('[IPC] workflow.onTerminalExit failed:', e.message);
     }
   };
+
+  // Wire chat session lifecycle → workflow triggers
+  const chatService = require('../services/ChatService');
+  chatService.setLifecycleCallback((event) => {
+    try { workflowService.onChatSessionEvent(event); } catch (e) {
+      console.warn('[IPC] workflow.onChatSessionEvent failed:', e.message);
+    }
+  });
 }
 
 module.exports = {

@@ -2372,7 +2372,17 @@
       "terminalExitProjectLabel": "Projet",
       "terminalExitProjectHint": "Limiter aux terminaux ouverts depuis ce projet.",
       "projectOpenedLabel": "Projet",
-      "projectOpenedHint": "Déclencher quand ce projet est ouvert. Laisser sur « Tous les projets » pour tout matcher."
+      "projectOpenedHint": "Déclencher quand ce projet est ouvert. Laisser sur « Tous les projets » pour tout matcher.",
+      "typeClaudeSessionStart": "Début de session Claude",
+      "typeClaudeSessionEnd": "Fin de session Claude",
+      "claudeSessionProjectLabel": "Projet",
+      "claudeSessionStartHint": "Déclencher quand une session Claude démarre dans ce projet.",
+      "claudeSessionEndHint": "Déclencher quand une session Claude se termine dans ce projet.",
+      "claudeSessionStatusLabel": "Statut de fin",
+      "claudeSessionStatusHint": "Filtrer selon la façon dont la session s'est terminée.",
+      "claudeSessionStatusAny": "Tous (succès / interrompu / erreur)",
+      "claudeSessionStatusSuccess": "Succès uniquement",
+      "claudeSessionStatusError": "Erreur uniquement"
     },
     "loop": {
       "sourceLabel": "Source d'itération",

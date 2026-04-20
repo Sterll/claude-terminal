@@ -117,6 +117,36 @@ function renderProjectOpenedSection(props, esc) {
 </div>`;
 }
 
+function renderClaudeSessionStartSection(props, esc) {
+  return `<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.claudeSessionProjectLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.trigger.claudeSessionStartHint')}</span>
+  ${renderProjectSelect('projectId', props.projectId || '', esc, true)}
+</div>`;
+}
+
+function renderClaudeSessionEndSection(props, esc) {
+  const statusFilter = props.statusFilter || 'any';
+  const statuses = [
+    { value: 'any',     label: t('workflow.trigger.claudeSessionStatusAny') },
+    { value: 'success', label: t('workflow.trigger.claudeSessionStatusSuccess') },
+    { value: 'error',   label: t('workflow.trigger.claudeSessionStatusError') },
+  ];
+  const statusOpts = statuses.map(s =>
+    `<option value="${esc(s.value)}"${statusFilter === s.value ? ' selected' : ''}>${esc(s.label)}</option>`
+  ).join('');
+  return `<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.claudeSessionStatusLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.trigger.claudeSessionStatusHint')}</span>
+  <select class="wf-step-edit-input wf-node-prop" data-key="statusFilter">${statusOpts}</select>
+</div>
+<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.claudeSessionProjectLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.trigger.claudeSessionEndHint')}</span>
+  ${renderProjectSelect('projectId', props.projectId || '', esc, true)}
+</div>`;
+}
+
 async function _getCloudSettings() {
   try {
     const os = window.electron_nodeModules?.os;
@@ -224,6 +254,8 @@ module.exports = {
     const fileChangeSection   = triggerType === 'file_change'        ? renderFileChangeSection(props, escapeAttr)   : '';
     const terminalExitSection = triggerType === 'terminal_exit_code' ? renderTerminalExitSection(props, escapeAttr) : '';
     const projectOpenedSection= triggerType === 'project_opened'     ? renderProjectOpenedSection(props, escapeAttr): '';
+    const claudeStartSection  = triggerType === 'claude_session_start'? renderClaudeSessionStartSection(props, escapeAttr): '';
+    const claudeEndSection    = triggerType === 'claude_session_end' ? renderClaudeSessionEndSection(props, escapeAttr)  : '';
 
     return `<div class="wf-field-group" data-key="triggerType">
 <div class="wf-step-edit-field">
@@ -238,10 +270,12 @@ module.exports = {
     <option value="file_change"${triggerType === 'file_change' ? ' selected' : ''}>${t('workflow.trigger.typeFileChange')}</option>
     <option value="terminal_exit_code"${triggerType === 'terminal_exit_code' ? ' selected' : ''}>${t('workflow.trigger.typeTerminalExit')}</option>
     <option value="project_opened"${triggerType === 'project_opened' ? ' selected' : ''}>${t('workflow.trigger.typeProjectOpened')}</option>
+    <option value="claude_session_start"${triggerType === 'claude_session_start' ? ' selected' : ''}>${t('workflow.trigger.typeClaudeSessionStart')}</option>
+    <option value="claude_session_end"${triggerType === 'claude_session_end' ? ' selected' : ''}>${t('workflow.trigger.typeClaudeSessionEnd')}</option>
   </select>
 </div>
 <div class="wf-trigger-conditional">
-  ${cronSection}${hookSection}${onWorkflowSection}${webhookSection}${fileChangeSection}${terminalExitSection}${projectOpenedSection}
+  ${cronSection}${hookSection}${onWorkflowSection}${webhookSection}${fileChangeSection}${terminalExitSection}${projectOpenedSection}${claudeStartSection}${claudeEndSection}
 </div>
 </div>`;
   },
@@ -322,6 +356,10 @@ module.exports = {
         html = renderTerminalExitSection(props, esc);
       } else if (tType === 'project_opened') {
         html = renderProjectOpenedSection(props, esc);
+      } else if (tType === 'claude_session_start') {
+        html = renderClaudeSessionStartSection(props, esc);
+      } else if (tType === 'claude_session_end') {
+        html = renderClaudeSessionEndSection(props, esc);
       }
 
       condDiv.innerHTML = html;

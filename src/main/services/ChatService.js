@@ -256,6 +256,34 @@ class ChatService {
   }
 
   /**
+   * Register a callback for session lifecycle events (start / end).
+   * Called with ({ event, sessionId, projectId, cwd, status, error? })
+   *  - event:  'start' | 'end'
+   *  - status: for 'end' — 'success' | 'error' | 'interrupted'
+   */
+  setLifecycleCallback(fn) {
+    this._lifecycleCallback = fn || null;
+  }
+
+  _emitLifecycle(event, sessionId, extra = {}) {
+    if (!this._lifecycleCallback) return;
+    // Skip internal sessions (workflow agent steps register interceptors)
+    if (this._sessionInterceptors && this._sessionInterceptors.has(sessionId)) return;
+    const session = this.sessions.get(sessionId) || {};
+    try {
+      this._lifecycleCallback({
+        event,
+        sessionId,
+        projectId: session.projectId || extra.projectId || null,
+        cwd: session.cwd || extra.cwd || null,
+        ...extra,
+      });
+    } catch (err) {
+      console.warn(`[ChatService] lifecycle callback error:`, err?.message);
+    }
+  }
+
+  /**
    * Register a per-session message interceptor.
    * When set, messages for that sessionId are routed to the interceptor
    * instead of the main window. Used by WorkflowRunner agent steps.
@@ -295,7 +323,7 @@ class ChatService {
    * @param {string} [params.resumeSessionId] - Session ID to resume
    * @returns {Promise<string>} Session ID
    */
-  async startSession({ cwd, prompt, permissionMode = 'default', resumeSessionId = null, sessionId = null, images = [], mentions = [], model = null, enable1MContext = false, forkSession = false, resumeSessionAt = null, effort = null, outputFormat = null, skills = null, systemPrompt = null, settingSources = null, maxTurns = null, cloud = false, cloudProjectName = null, userMessageUuid = null }) {
+  async startSession({ cwd, projectId = null, prompt, permissionMode = 'default', resumeSessionId = null, sessionId = null, images = [], mentions = [], model = null, enable1MContext = false, forkSession = false, resumeSessionAt = null, effort = null, outputFormat = null, skills = null, systemPrompt = null, settingSources = null, maxTurns = null, cloud = false, cloudProjectName = null, userMessageUuid = null }) {
     if (!sessionId) sessionId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     // Cloud session: delegate to cloud server instead of local SDK
@@ -418,9 +446,11 @@ class ChatService {
         queryStream,
         alwaysAllow: permissionMode === 'bypassPermissions',
         cwd,
+        projectId,
         _stderr: '',
       });
 
+      this._emitLifecycle('start', sessionId, { projectId, cwd });
       this._processStream(sessionId, queryStream);
       return sessionId;
     } catch (err) {
@@ -690,6 +720,7 @@ class ChatService {
         this._send('chat-message', { sessionId, message });
       }
       this._send('chat-done', { sessionId });
+      this._emitLifecycle('end', sessionId, { status: 'success' });
     } catch (err) {
       const wasInterrupted = session?.interrupting
         || err.name === 'AbortError'
@@ -697,6 +728,7 @@ class ChatService {
         || err.message?.includes('Request was aborted');
       if (wasInterrupted) {
         this._send('chat-done', { sessionId, interrupted: true });
+        this._emitLifecycle('end', sessionId, { status: 'interrupted' });
       } else {
         const stderrLog = session?._stderr || '';
         console.error(`[ChatService] Stream error after ${msgCount} msgs:`, err.message, stderrLog ? `\nstderr: ${stderrLog}` : '');
@@ -706,6 +738,7 @@ class ChatService {
           errorMsg += `\n\nDetails: ${stderrLog.trim().slice(0, 500)}`;
         }
         this._send('chat-error', { sessionId, error: errorMsg });
+        this._emitLifecycle('end', sessionId, { status: 'error', error: errorMsg });
       }
     } finally {
       if (session) session.interrupting = false;

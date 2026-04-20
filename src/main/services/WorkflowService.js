@@ -195,6 +195,14 @@ class WorkflowService {
     this._scheduler.onProjectOpened(event);
   }
 
+  /**
+   * Forward chat session lifecycle events to the scheduler.
+   * @param {Object} event { event: 'start'|'end', sessionId, projectId?, cwd?, status?, error? }
+   */
+  onChatSessionEvent(event) {
+    this._scheduler.onChatSessionEvent(event);
+  }
+
   // ─── Workflow CRUD ───────────────────────────────────────────────────────────
 
   listWorkflows() {

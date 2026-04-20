@@ -2359,7 +2359,17 @@
       "terminalExitProjectLabel": "Proyecto",
       "terminalExitProjectHint": "Limitar a terminales abiertos desde este proyecto.",
       "projectOpenedLabel": "Proyecto",
-      "projectOpenedHint": "Disparar cuando se abra este proyecto. Deja en «Cualquier proyecto» para coincidir con todos."
+      "projectOpenedHint": "Disparar cuando se abra este proyecto. Deja en «Cualquier proyecto» para coincidir con todos.",
+      "typeClaudeSessionStart": "Inicio de sesión Claude",
+      "typeClaudeSessionEnd": "Fin de sesión Claude",
+      "claudeSessionProjectLabel": "Proyecto",
+      "claudeSessionStartHint": "Disparar cuando se inicie una sesión Claude en este proyecto.",
+      "claudeSessionEndHint": "Disparar cuando termine una sesión Claude en este proyecto.",
+      "claudeSessionStatusLabel": "Estado final",
+      "claudeSessionStatusHint": "Filtrar por cómo terminó la sesión.",
+      "claudeSessionStatusAny": "Cualquiera (éxito / interrumpido / error)",
+      "claudeSessionStatusSuccess": "Solo éxito",
+      "claudeSessionStatusError": "Solo error"
     },
     "loop": {
       "sourceLabel": "Fuente de iteración",

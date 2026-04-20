@@ -1083,6 +1083,13 @@ class WorkflowGraphEngine {
       if (out.type === 'project_opened') {
         if (p.projectId) out.projectId = p.projectId;
       }
+      if (out.type === 'claude_session_start') {
+        if (p.projectId) out.projectId = p.projectId;
+      }
+      if (out.type === 'claude_session_end') {
+        if (p.projectId) out.projectId = p.projectId;
+        if (p.statusFilter) out.statusFilter = p.statusFilter;
+      }
       return out;
     })() : { type: 'manual', value: '' };
     const hookType = triggerNode ? triggerNode.properties.hookType : 'PostToolUse';
@@ -1159,6 +1166,7 @@ class WorkflowGraphEngine {
       if (wt.debounceMs != null) trigger.properties.debounceMs  = wt.debounceMs;
       if (wt.codeFilter)         trigger.properties.codeFilter  = wt.codeFilter;
       if (wt.customCodes)        trigger.properties.customCodes = wt.customCodes;
+      if (wt.statusFilter)       trigger.properties.statusFilter = wt.statusFilter;
     }
 
     let prevNode = trigger;

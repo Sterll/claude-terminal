@@ -16,6 +16,8 @@ function loadAll() {
     require('./file_change.trigger'),
     require('./terminal_exit_code.trigger'),
     require('./project_opened.trigger'),
+    require('./claude_session_start.trigger'),
+    require('./claude_session_end.trigger'),
   ];
   for (const def of defs) {
     if (def.type) _triggers.set(def.type, def);
