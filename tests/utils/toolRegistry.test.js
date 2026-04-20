@@ -98,10 +98,23 @@ describe('toolRegistry / custom renderers', () => {
     expect(html).toMatch(/data-wakeup-at="\d+"/);
   });
 
-  test('EnterWorktree renderer shows branch', () => {
-    const html = renderToolCardHtml('EnterWorktree', { branch: 'feat/foo', path: '/tmp/wt' });
-    expect(html).toContain('feat/foo');
+  test('EnterWorktree renderer shows name + path (SDK input)', () => {
+    const html = renderToolCardHtml('EnterWorktree', { name: 'feat-foo', path: '/tmp/wt' });
+    expect(html).toContain('feat-foo');
     expect(html).toContain('/tmp/wt');
+    expect(html).toContain('Enter worktree');
+  });
+
+  test('EnterWorktree renderer uses Create label when no path', () => {
+    const html = renderToolCardHtml('EnterWorktree', { name: 'fresh-wt' });
+    expect(html).toContain('Create worktree');
+    expect(html).toContain('fresh-wt');
+  });
+
+  test('ExitWorktree renderer shows action (SDK input)', () => {
+    const html = renderToolCardHtml('ExitWorktree', { action: 'remove' });
+    expect(html).toContain('Exit worktree');
+    expect(html).toContain('remove');
   });
 
   test('PushNotification escapes html in message', () => {
@@ -123,12 +136,19 @@ describe('toolRegistry / custom renderers', () => {
     expect(html).toContain('world');
   });
 
-  test('CronCreate shows schedule + truncates long prompt', () => {
+  test('CronCreate shows cron expression + flags + truncates long prompt', () => {
     const long = 'a'.repeat(500);
-    const html = renderToolCardHtml('CronCreate', { name: 'nightly', schedule: '0 0 * * *', prompt: long });
-    expect(html).toContain('nightly');
+    const html = renderToolCardHtml('CronCreate', { cron: '0 0 * * *', prompt: long, recurring: true, durable: true });
+    expect(html).toContain('Schedule cron');
     expect(html).toContain('0 0 * * *');
+    expect(html).toContain('recurring');
+    expect(html).toContain('durable');
     expect(html).toContain('…');
+  });
+
+  test('CronCreate shows one-shot flag when recurring=false', () => {
+    const html = renderToolCardHtml('CronCreate', { cron: '*/5 * * * *', prompt: 'ping', recurring: false });
+    expect(html).toContain('one-shot');
   });
 
   test('returns null for tools without a renderer', () => {

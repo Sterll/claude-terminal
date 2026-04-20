@@ -38,9 +38,9 @@ const detailFns = {
     const pretty = s != null ? (s >= 60 ? `${Math.round(s / 60)}m` : `${s}s`) : '';
     return [pretty, i.reason].filter(Boolean).join(' — ');
   },
-  cronCreate:     (i) => i.schedule || i.name || '',
-  cronId:         (i) => i.name || i.id || '',
-  worktree:       (i) => i.branch || i.path || '',
+  cronCreate:     (i) => i.cron || i.schedule || '',
+  cronId:         (i) => i.id || i.name || '',
+  worktree:       (i) => i.path || i.name || i.action || i.branch || '',
   notification:   (i) => i.title || i.message || '',
   bgTask:         (i) => i.task_id || i.shell_id || i.taskId || i.command || '',
   query:          (i) => i.query || '',
@@ -206,8 +206,9 @@ const renderers = {
   },
 
   CronCreate(input) {
-    const schedule = input.schedule || input.cron || '';
-    const name = input.name || '';
+    const cron = input.cron || input.schedule || '';
+    const recurring = input.recurring === false ? 'one-shot' : 'recurring';
+    const durable = input.durable === true ? ' · durable' : (input.durable === false ? ' · session' : '');
     const fullPrompt = input.prompt || '';
     const promptPreview = fullPrompt.slice(0, 160);
     return `
@@ -215,8 +216,9 @@ const renderers = {
         <div class="chat-special-icon">${ICONS.clock}</div>
         <div class="chat-special-body">
           <div class="chat-special-title">
-            <span class="chat-cron-name">${escHtml(name || 'New cron')}</span>
-            ${schedule ? `<code class="chat-cron-schedule">${escHtml(schedule)}</code>` : ''}
+            <span class="chat-cron-name">Schedule cron</span>
+            ${cron ? `<code class="chat-cron-schedule">${escHtml(cron)}</code>` : ''}
+            <span class="chat-cronlist-flags">${escHtml(recurring)}${escHtml(durable)}</span>
             ${fullPrompt ? copyBtn(fullPrompt, 'Copy prompt') : ''}
           </div>
           ${promptPreview ? `<div class="chat-special-desc">${escHtml(promptPreview)}${fullPrompt.length > 160 ? '…' : ''}</div>` : ''}
@@ -226,15 +228,16 @@ const renderers = {
   },
 
   EnterWorktree(input) {
-    const branch = input.branch || '';
     const path = input.path || '';
+    const name = input.name || '';
+    const label = path ? 'Enter worktree' : 'Create worktree';
     return `
       <div class="chat-special-card chat-worktree-card chat-worktree--enter">
         <div class="chat-special-icon">${ICONS.branch}</div>
         <div class="chat-special-body">
           <div class="chat-special-title">
-            <span class="chat-worktree-label">Entered worktree</span>
-            ${branch ? `<span class="chat-worktree-branch">${escHtml(branch)}</span>` : ''}
+            <span class="chat-worktree-label">${escHtml(label)}</span>
+            ${name ? `<span class="chat-worktree-branch">${escHtml(name)}</span>` : ''}
           </div>
           ${path ? `<div class="chat-special-desc" title="${escHtml(path)}">${escHtml(path)}</div>` : ''}
         </div>
@@ -243,14 +246,15 @@ const renderers = {
   },
 
   ExitWorktree(input) {
-    const branch = input.branch || '';
+    const action = input.action || '';
+    const actionLabel = action === 'remove' ? 'remove' : action === 'keep' ? 'keep' : '';
     return `
       <div class="chat-special-card chat-worktree-card chat-worktree--exit">
         <div class="chat-special-icon">${ICONS.branch}</div>
         <div class="chat-special-body">
           <div class="chat-special-title">
-            <span class="chat-worktree-label">Exited worktree</span>
-            ${branch ? `<span class="chat-worktree-branch">${escHtml(branch)}</span>` : ''}
+            <span class="chat-worktree-label">Exit worktree</span>
+            ${actionLabel ? `<span class="chat-worktree-branch">${escHtml(actionLabel)}</span>` : ''}
           </div>
         </div>
       </div>
