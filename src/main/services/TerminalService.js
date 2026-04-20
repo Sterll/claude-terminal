@@ -13,6 +13,13 @@ class TerminalService {
     this.terminals = new Map();
     this.terminalId = 0;
     this.mainWindow = null;
+    /**
+     * Optional callback fired when a PTY exits.
+     * Signature: ({ terminalId, exitCode, signal, projectId?, projectPath? }) => void
+     * Wired by main.js so workflow triggers can subscribe without creating a
+     * circular dep between TerminalService and WorkflowService.
+     */
+    this.onExitCallback = null;
   }
 
   /**
@@ -43,7 +50,7 @@ class TerminalService {
    * @param {string} options.resumeSessionId - Session ID to resume
    * @returns {Object} - { success: boolean, id?: number, error?: string }
    */
-  create({ cwd, runClaude, skipPermissions, resumeSessionId }) {
+  create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath }) {
     const id = ++this.terminalId;
     let shellPath = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash');
     let shellArgs = process.platform === 'win32' ? ['-NoLogo', '-NoProfile'] : [];
@@ -97,6 +104,12 @@ class TerminalService {
       return { success: false, error: error.message };
     }
 
+    // Tag the PTY with project metadata so onExit can reference it
+    ptyProcess._meta = {
+      projectId:   projectId || null,
+      projectPath: projectPath || cwd || null,
+    };
+
     this.terminals.set(id, ptyProcess);
 
     // Handle data output - adaptive batching to reduce IPC flooding
@@ -121,12 +134,28 @@ class TerminalService {
     });
 
     // Handle exit
-    const exitDisposable = ptyProcess.onExit(() => {
+    const exitDisposable = ptyProcess.onExit((evt) => {
       if (ptyProcess._exited) return;
       ptyProcess._exited = true;
+      const exitCode = (evt && Number.isFinite(evt.exitCode)) ? evt.exitCode : null;
+      const signal   = (evt && evt.signal != null) ? evt.signal : null;
       try { ptyProcess.kill(); } catch (e) {}
       this.terminals.delete(id);
-      this.sendToRenderer('terminal-exit', { id });
+      this.sendToRenderer('terminal-exit', { id, exitCode, signal });
+      // Fire workflow trigger callback (non-blocking)
+      if (typeof this.onExitCallback === 'function') {
+        try {
+          this.onExitCallback({
+            terminalId:  id,
+            exitCode,
+            signal,
+            projectId:   ptyProcess._meta?.projectId || null,
+            projectPath: ptyProcess._meta?.projectPath || null,
+          });
+        } catch (cbErr) {
+          console.warn('[TerminalService] onExitCallback error:', cbErr.message);
+        }
+      }
     });
 
     // Store disposables for cleanup on kill()

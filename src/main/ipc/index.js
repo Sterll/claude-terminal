@@ -76,6 +76,15 @@ function registerAllHandlers(mainWindow) {
   registerTimeHandlers();
   registerParallelHandlers(mainWindow);
   registerWorkspaceHandlers();
+
+  // Wire terminal PTY exits → workflow triggers (no circular dep)
+  const terminalService = require('../services/TerminalService');
+  const workflowService  = require('../services/WorkflowService');
+  terminalService.onExitCallback = (event) => {
+    try { workflowService.onTerminalExit(event); } catch (e) {
+      console.warn('[IPC] workflow.onTerminalExit failed:', e.message);
+    }
+  };
 }
 
 module.exports = {

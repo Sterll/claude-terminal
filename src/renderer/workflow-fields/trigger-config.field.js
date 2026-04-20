@@ -20,6 +20,103 @@ function getHookTypes() {
   ];
 }
 
+function getProjectsList() {
+  return (typeof window !== 'undefined' && window._projectsState?.get?.()?.projects) || [];
+}
+
+function renderProjectSelect(key, selected, esc, withAny = true) {
+  const projects = getProjectsList();
+  const options = projects
+    .map(p => `<option value="${esc(p.id)}"${selected === p.id ? ' selected' : ''}>${esc(p.name)}</option>`)
+    .join('');
+  const anyOpt = withAny
+    ? `<option value=""${!selected ? ' selected' : ''}>${t('workflow.trigger.anyProject')}</option>`
+    : '';
+  return `<select class="wf-step-edit-input wf-node-prop" data-key="${esc(key)}">
+    ${anyOpt}${options}
+  </select>`;
+}
+
+function renderFileChangeSection(props, esc) {
+  const eventsValue = props.events || 'all';
+  const eventsOptions = [
+    ['all',    t('workflow.trigger.fileChangeEventAll')],
+    ['add',    t('workflow.trigger.fileChangeEventAdd')],
+    ['change', t('workflow.trigger.fileChangeEventChange')],
+    ['unlink', t('workflow.trigger.fileChangeEventUnlink')],
+  ]
+    .map(([v, lbl]) => `<option value="${esc(v)}"${eventsValue === v ? ' selected' : ''}>${esc(lbl)}</option>`)
+    .join('');
+
+  return `<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.fileChangeProjectLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.trigger.fileChangeProjectHint')}</span>
+  ${renderProjectSelect('projectId', props.projectId || '', esc, true)}
+</div>
+<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.fileChangePathLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.trigger.fileChangePathHint')}</span>
+  <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="watchPath"
+    value="${esc(props.watchPath || '')}" placeholder="/abs/path/to/folder" />
+</div>
+<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.fileChangePatternsLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.trigger.fileChangePatternsHint')}</span>
+  <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="patterns"
+    value="${esc(props.patterns || '')}" placeholder="**/*.js" />
+</div>
+<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.fileChangeEventsLabel')}</label>
+  <select class="wf-step-edit-input wf-node-prop" data-key="events">${eventsOptions}</select>
+</div>
+<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.fileChangeDebounceLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.trigger.fileChangeDebounceHint')}</span>
+  <input type="number" min="0" class="wf-step-edit-input wf-node-prop" data-key="debounceMs"
+    value="${esc(props.debounceMs != null ? props.debounceMs : 500)}" placeholder="500" />
+</div>`;
+}
+
+function renderTerminalExitSection(props, esc) {
+  const filter = props.codeFilter || 'any';
+  const opts = [
+    ['any',     t('workflow.trigger.terminalExitAny')],
+    ['success', t('workflow.trigger.terminalExitSuccess')],
+    ['error',   t('workflow.trigger.terminalExitError')],
+    ['custom',  t('workflow.trigger.terminalExitCustom')],
+  ]
+    .map(([v, lbl]) => `<option value="${esc(v)}"${filter === v ? ' selected' : ''}>${esc(lbl)}</option>`)
+    .join('');
+
+  const customSection = filter === 'custom' ? `
+<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.terminalExitCustomLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.trigger.terminalExitCustomHint')}</span>
+  <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="customCodes"
+    value="${esc(props.customCodes || '')}" placeholder="1,2,127" />
+</div>` : '';
+
+  return `<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.terminalExitFilterLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.trigger.terminalExitFilterHint')}</span>
+  <select class="wf-step-edit-input wf-trigger-exit-filter wf-node-prop" data-key="codeFilter">${opts}</select>
+</div>
+${customSection}
+<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.terminalExitProjectLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.trigger.terminalExitProjectHint')}</span>
+  ${renderProjectSelect('projectId', props.projectId || '', esc, true)}
+</div>`;
+}
+
+function renderProjectOpenedSection(props, esc) {
+  return `<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.projectOpenedLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.trigger.projectOpenedHint')}</span>
+  ${renderProjectSelect('projectId', props.projectId || '', esc, true)}
+</div>`;
+}
+
 async function _getCloudSettings() {
   try {
     const os = window.electron_nodeModules?.os;
@@ -124,6 +221,10 @@ module.exports = {
       ? await _renderWebhookSection(node.properties._workflowId || '', escapeAttr)
       : '';
 
+    const fileChangeSection   = triggerType === 'file_change'        ? renderFileChangeSection(props, escapeAttr)   : '';
+    const terminalExitSection = triggerType === 'terminal_exit_code' ? renderTerminalExitSection(props, escapeAttr) : '';
+    const projectOpenedSection= triggerType === 'project_opened'     ? renderProjectOpenedSection(props, escapeAttr): '';
+
     return `<div class="wf-field-group" data-key="triggerType">
 <div class="wf-step-edit-field">
   <label class="wf-step-edit-label">${t('workflow.trigger.typeLabel')}</label>
@@ -134,10 +235,13 @@ module.exports = {
     <option value="hook"${triggerType === 'hook' ? ' selected' : ''}>${t('workflow.trigger.typeHook')}</option>
     <option value="on_workflow"${triggerType === 'on_workflow' ? ' selected' : ''}>${t('workflow.trigger.typeOnWorkflow')}</option>
     <option value="webhook"${triggerType === 'webhook' ? ' selected' : ''}>${t('workflow.trigger.typeWebhook')}</option>
+    <option value="file_change"${triggerType === 'file_change' ? ' selected' : ''}>${t('workflow.trigger.typeFileChange')}</option>
+    <option value="terminal_exit_code"${triggerType === 'terminal_exit_code' ? ' selected' : ''}>${t('workflow.trigger.typeTerminalExit')}</option>
+    <option value="project_opened"${triggerType === 'project_opened' ? ' selected' : ''}>${t('workflow.trigger.typeProjectOpened')}</option>
   </select>
 </div>
 <div class="wf-trigger-conditional">
-  ${cronSection}${hookSection}${onWorkflowSection}${webhookSection}
+  ${cronSection}${hookSection}${onWorkflowSection}${webhookSection}${fileChangeSection}${terminalExitSection}${projectOpenedSection}
 </div>
 </div>`;
   },
@@ -148,6 +252,25 @@ module.exports = {
 
     // Bind copy button for initial render (if webhook is already selected)
     _bindWebhookCopyBtn(container);
+
+    // Re-render terminal_exit_code section when filter toggles to/from 'custom'
+    // (handles the case where the editor opens with this type already selected).
+    const exitFilterInit = container.querySelector('.wf-trigger-exit-filter');
+    if (exitFilterInit) {
+      exitFilterInit.addEventListener('change', () => {
+        const condDiv = container.querySelector('.wf-trigger-conditional');
+        if (!condDiv) return;
+        node.properties.codeFilter = exitFilterInit.value;
+        function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+        condDiv.innerHTML = renderTerminalExitSection(node.properties || {}, esc);
+        condDiv.querySelectorAll('.wf-node-prop').forEach(el => {
+          const key = el.dataset.key;
+          if (!key) return;
+          el.addEventListener('change', () => { node.properties[key] = el.value; });
+          el.addEventListener('input',  () => { node.properties[key] = el.value; });
+        });
+      });
+    }
 
     typeSelect.addEventListener('change', async () => {
       node.properties.triggerType = typeSelect.value;
@@ -193,6 +316,12 @@ module.exports = {
 </div>`;
       } else if (tType === 'webhook') {
         html = await _renderWebhookSection(node.properties._workflowId || '', esc);
+      } else if (tType === 'file_change') {
+        html = renderFileChangeSection(props, esc);
+      } else if (tType === 'terminal_exit_code') {
+        html = renderTerminalExitSection(props, esc);
+      } else if (tType === 'project_opened') {
+        html = renderProjectOpenedSection(props, esc);
       }
 
       condDiv.innerHTML = html;
@@ -201,9 +330,35 @@ module.exports = {
       condDiv.querySelectorAll('.wf-node-prop').forEach(el => {
         const key = el.dataset.key;
         if (!key) return;
-        el.addEventListener('change', () => { node.properties[key] = el.value; });
-        el.addEventListener('input', () => { node.properties[key] = el.value; });
+        const updateProp = () => {
+          // coerce numeric fields so debounceMs is stored as number
+          const v = el.value;
+          if (el.type === 'number') {
+            const n = Number(v);
+            node.properties[key] = Number.isFinite(n) ? n : v;
+          } else {
+            node.properties[key] = v;
+          }
+        };
+        el.addEventListener('change', updateProp);
+        el.addEventListener('input',  updateProp);
       });
+
+      // Re-render conditional when terminal_exit_code filter toggles to/from 'custom'
+      const exitFilter = condDiv.querySelector('.wf-trigger-exit-filter');
+      if (exitFilter) {
+        exitFilter.addEventListener('change', () => {
+          node.properties.codeFilter = exitFilter.value;
+          condDiv.innerHTML = renderTerminalExitSection(node.properties || {}, esc);
+          // re-wire after inner render
+          condDiv.querySelectorAll('.wf-node-prop').forEach(el => {
+            const key = el.dataset.key;
+            if (!key) return;
+            el.addEventListener('change', () => { node.properties[key] = el.value; });
+            el.addEventListener('input',  () => { node.properties[key] = el.value; });
+          });
+        });
+      }
 
       // Bind copy button for webhook
       _bindWebhookCopyBtn(condDiv);

@@ -1059,10 +1059,32 @@ class WorkflowGraphEngine {
   serializeToWorkflow() {
     const data = this._serialize();
     const triggerNode = this._nodes.find(n => n.type === 'workflow/trigger');
-    const trigger = triggerNode ? {
-      type: triggerNode.properties.triggerType || 'manual',
-      value: triggerNode.properties.triggerValue || '',
-    } : { type: 'manual', value: '' };
+    const trigger = triggerNode ? (() => {
+      const p = triggerNode.properties || {};
+      const out = {
+        type:  p.triggerType || 'manual',
+        value: p.triggerValue || '',
+      };
+      // Trigger-type-specific fields — only include when relevant so the
+      // saved payload stays tidy and matches what WorkflowScheduler inspects.
+      if (out.type === 'hook' && p.hookType) out.hookType = p.hookType;
+      if (out.type === 'file_change') {
+        if (p.projectId)           out.projectId   = p.projectId;
+        if (p.watchPath)           out.watchPath   = p.watchPath;
+        if (p.patterns)            out.patterns    = p.patterns;
+        if (p.events)              out.events      = p.events;
+        if (p.debounceMs != null)  out.debounceMs  = Number(p.debounceMs) || 500;
+      }
+      if (out.type === 'terminal_exit_code') {
+        out.codeFilter = p.codeFilter || 'any';
+        if (out.codeFilter === 'custom' && p.customCodes) out.customCodes = p.customCodes;
+        if (p.projectId) out.projectId = p.projectId;
+      }
+      if (out.type === 'project_opened') {
+        if (p.projectId) out.projectId = p.projectId;
+      }
+      return out;
+    })() : { type: 'manual', value: '' };
     const hookType = triggerNode ? triggerNode.properties.hookType : 'PostToolUse';
 
     const steps = [];
@@ -1127,7 +1149,16 @@ class WorkflowGraphEngine {
       trigger.removable = false;
       trigger.properties.triggerType = workflow.trigger?.type || 'manual';
       trigger.properties.triggerValue = workflow.trigger?.value || '';
-      trigger.properties.hookType = workflow.hookType || 'PostToolUse';
+      trigger.properties.hookType = workflow.hookType || workflow.trigger?.hookType || 'PostToolUse';
+      // Restore trigger-specific fields for new trigger types
+      const wt = workflow.trigger || {};
+      if (wt.projectId)          trigger.properties.projectId   = wt.projectId;
+      if (wt.watchPath)          trigger.properties.watchPath   = wt.watchPath;
+      if (wt.patterns)           trigger.properties.patterns    = wt.patterns;
+      if (wt.events)             trigger.properties.events      = wt.events;
+      if (wt.debounceMs != null) trigger.properties.debounceMs  = wt.debounceMs;
+      if (wt.codeFilter)         trigger.properties.codeFilter  = wt.codeFilter;
+      if (wt.customCodes)        trigger.properties.customCodes = wt.customCodes;
     }
 
     let prevNode = trigger;

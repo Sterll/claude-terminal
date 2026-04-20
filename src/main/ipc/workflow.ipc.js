@@ -237,6 +237,18 @@ function registerWorkflowHandlers(mainWindow) {
     }
   });
 
+  // ── Project opened event (forwarded to scheduler for project_opened trigger) ──
+
+  ipcMain.on('workflow-notify-project-opened', (_e, payload = {}) => {
+    try {
+      if (payload && payload.projectId) {
+        workflowService.onProjectOpened(payload);
+      }
+    } catch (err) {
+      console.warn('[workflow-notify-project-opened]', err.message);
+    }
+  });
+
   // ── Node Registry ─────────────────────────────────────────────────────────
 
   ipcMain.handle('workflow:get-node-registry', () => {

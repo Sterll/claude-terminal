@@ -13,6 +13,9 @@ function loadAll() {
     require('./hook.trigger'),
     require('./on_workflow.trigger'),
     require('./webhook.trigger'),
+    require('./file_change.trigger'),
+    require('./terminal_exit_code.trigger'),
+    require('./project_opened.trigger'),
   ];
   for (const def of defs) {
     if (def.type) _triggers.set(def.type, def);

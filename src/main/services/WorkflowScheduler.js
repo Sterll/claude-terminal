@@ -12,6 +12,8 @@
 
 'use strict';
 
+const path = require('path');
+
 // ─── Cron parsing ─────────────────────────────────────────────────────────────
 
 /**
@@ -102,6 +104,8 @@ class WorkflowScheduler {
     this._lastTickMin  = -1;
     /** Map<workflowId, cronMatcher> */
     this._cronJobs     = new Map();
+    /** Map<workflowId, { watcher, debounceTimer }> — chokidar watchers for file_change triggers */
+    this._fileWatchers = new Map();
     /** Loaded workflow definitions — refreshed on every reload() call */
     this._workflows    = [];
     /**
@@ -109,6 +113,12 @@ class WorkflowScheduler {
      * Signature: (workflowId, triggerData) => void
      */
     this.dispatch      = null;
+    /**
+     * Resolver used to translate a workflow-config projectId into an absolute path.
+     * Injected by WorkflowService so Scheduler stays decoupled from storage.
+     * Signature: (projectId) => string|null
+     */
+    this.resolveProjectPath = null;
   }
 
   // ─── Public API ─────────────────────────────────────────────────────────────
@@ -121,6 +131,7 @@ class WorkflowScheduler {
     this._workflows = workflows || [];
     this._rebuildCronJobs();
     this._ensureCronTimer();
+    this._rebuildFileWatchers();
   }
 
   /**
@@ -168,6 +179,57 @@ class WorkflowScheduler {
   }
 
   /**
+   * Call this when a terminal PTY exits.
+   * @param {Object} event  { exitCode: number, signal?: number, projectId?: string, projectPath?: string, terminalId?: number|string }
+   */
+  onTerminalExit(event) {
+    if (!event) return;
+    const exitCode = Number.isFinite(event.exitCode) ? event.exitCode : null;
+    for (const wf of this._workflows) {
+      if (!wf.enabled) continue;
+      const trigger = wf.trigger || {};
+      if (trigger.type !== 'terminal_exit_code') continue;
+      // When the user picked "custom", the codeFilter stays "custom" and the
+      // actual list lives in customCodes — hand that off to the matcher.
+      const filter = trigger.codeFilter === 'custom'
+        ? (trigger.customCodes || '')
+        : trigger.codeFilter;
+      if (!matchesExitCode(filter, exitCode)) continue;
+      if (trigger.projectId && trigger.projectId !== event.projectId) continue;
+
+      this.dispatch?.(wf.id, {
+        source:      'terminal_exit_code',
+        exitCode,
+        signal:      event.signal ?? null,
+        projectId:   event.projectId || null,
+        projectPath: event.projectPath || null,
+        terminalId:  event.terminalId ?? null,
+      });
+    }
+  }
+
+  /**
+   * Call this when a user opens a project in the app.
+   * @param {Object} event  { projectId: string, projectPath?: string, projectName?: string }
+   */
+  onProjectOpened(event) {
+    if (!event || !event.projectId) return;
+    for (const wf of this._workflows) {
+      if (!wf.enabled) continue;
+      const trigger = wf.trigger || {};
+      if (trigger.type !== 'project_opened') continue;
+      if (trigger.projectId && trigger.projectId !== event.projectId) continue;
+
+      this.dispatch?.(wf.id, {
+        source:      'project_opened',
+        projectId:   event.projectId,
+        projectPath: event.projectPath || null,
+        projectName: event.projectName || null,
+      });
+    }
+  }
+
+  /**
    * Stop all timers / teardown.
    */
   destroy() {
@@ -177,6 +239,7 @@ class WorkflowScheduler {
       this._cronTimer = null;
     }
     this._cronJobs.clear();
+    this._teardownAllFileWatchers();
     this._workflows = [];
   }
 
@@ -229,6 +292,160 @@ class WorkflowScheduler {
       }
     }
   }
+
+  // ─── File watchers (file_change trigger) ────────────────────────────────────
+
+  _rebuildFileWatchers() {
+    // Snapshot current trigger configs — key them by a stable fingerprint so
+    // we reuse existing watchers when nothing changed (avoids storm of
+    // file-system teardown/re-setup on every workflow reload).
+    const desired = new Map();
+    for (const wf of this._workflows) {
+      if (!wf.enabled) continue;
+      const trigger = wf.trigger || {};
+      if (trigger.type !== 'file_change') continue;
+
+      const watchPath = this._resolveWatchPath(trigger);
+      if (!watchPath) continue;
+
+      desired.set(wf.id, {
+        watchPath,
+        patterns: (trigger.patterns || '').trim(),
+        events:   trigger.events || 'all',
+        debounceMs: Number(trigger.debounceMs) || 500,
+      });
+    }
+
+    // Tear down watchers no longer needed / whose config changed
+    for (const [wfId, entry] of this._fileWatchers) {
+      const target = desired.get(wfId);
+      const changed = !target || JSON.stringify(target) !== entry.fingerprint;
+      if (changed) {
+        this._teardownFileWatcher(wfId);
+      }
+    }
+
+    // Set up new/updated watchers
+    for (const [wfId, cfg] of desired) {
+      if (this._fileWatchers.has(wfId)) continue; // still alive with same config
+      this._setupFileWatcher(wfId, cfg);
+    }
+  }
+
+  _setupFileWatcher(wfId, cfg) {
+    let chokidar;
+    try {
+      chokidar = require('chokidar');
+    } catch (err) {
+      console.warn(`[WorkflowScheduler] chokidar unavailable — file_change disabled: ${err.message}`);
+      return;
+    }
+
+    const targetPattern = cfg.patterns
+      ? path.join(cfg.watchPath, cfg.patterns).replace(/\\/g, '/')
+      : cfg.watchPath;
+
+    const watcher = chokidar.watch(targetPattern, {
+      ignoreInitial: true,
+      ignored: /(^|[\/\\])(\.git|node_modules|dist|build|\.next|\.nuxt|target|\.DS_Store)/,
+      awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
+    });
+
+    const acceptedEvents = new Set(
+      cfg.events === 'all'
+        ? ['add', 'change', 'unlink']
+        : cfg.events.split(',').map(s => s.trim()).filter(Boolean)
+    );
+
+    let debounceTimer = null;
+    const pendingPaths = new Set();
+    let lastEventType = null;
+
+    const fireDebounced = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const paths = [...pendingPaths];
+        pendingPaths.clear();
+        this.dispatch?.(wfId, {
+          source:    'file_change',
+          eventType: lastEventType,
+          path:      paths[0] || null,
+          paths,
+          watchPath: cfg.watchPath,
+        });
+      }, cfg.debounceMs);
+    };
+
+    const onEvent = (eventType) => (filePath) => {
+      if (!acceptedEvents.has(eventType)) return;
+      lastEventType = eventType;
+      pendingPaths.add(filePath);
+      fireDebounced();
+    };
+
+    watcher.on('add',    onEvent('add'));
+    watcher.on('change', onEvent('change'));
+    watcher.on('unlink', onEvent('unlink'));
+    watcher.on('error',  (err) => {
+      console.warn(`[WorkflowScheduler] file watcher error (${wfId}):`, err.message);
+    });
+
+    this._fileWatchers.set(wfId, {
+      watcher,
+      fingerprint: JSON.stringify(cfg),
+      clearDebounce: () => { if (debounceTimer) clearTimeout(debounceTimer); },
+    });
+  }
+
+  _teardownFileWatcher(wfId) {
+    const entry = this._fileWatchers.get(wfId);
+    if (!entry) return;
+    try { entry.clearDebounce?.(); } catch (_) {}
+    try { entry.watcher.close(); } catch (_) {}
+    this._fileWatchers.delete(wfId);
+  }
+
+  _teardownAllFileWatchers() {
+    for (const wfId of [...this._fileWatchers.keys()]) {
+      this._teardownFileWatcher(wfId);
+    }
+  }
+
+  _resolveWatchPath(trigger) {
+    // Priority: explicit path > project path > none.
+    if (trigger.watchPath && trigger.watchPath.trim()) {
+      return trigger.watchPath.trim();
+    }
+    if (trigger.projectId && typeof this.resolveProjectPath === 'function') {
+      return this.resolveProjectPath(trigger.projectId) || null;
+    }
+    return null;
+  }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Returns true when `exitCode` matches the filter expression.
+ * Filter grammar:
+ *   ""  | "any"       → always match
+ *   "success" | "0"   → match exit 0
+ *   "error" | "non-zero" → match any non-zero code
+ *   "1,2,127"         → comma-separated list of exact codes
+ */
+function matchesExitCode(filter, exitCode) {
+  if (exitCode == null) return false;
+  const raw = (filter == null ? '' : String(filter)).trim().toLowerCase();
+  if (!raw || raw === 'any' || raw === '*') return true;
+  if (raw === 'success' || raw === '0') return exitCode === 0;
+  if (raw === 'error' || raw === 'non-zero' || raw === 'nonzero') return exitCode !== 0;
+  // list of exact codes
+  const parts = raw.split(',').map(s => s.trim()).filter(Boolean);
+  for (const p of parts) {
+    const n = parseInt(p, 10);
+    if (!Number.isNaN(n) && n === exitCode) return true;
+  }
+  return false;
 }
 
 module.exports = WorkflowScheduler;

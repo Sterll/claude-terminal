@@ -73,6 +73,18 @@ class WorkflowService {
         console.error(`[WorkflowService] Auto-trigger ${workflowId} failed:`, err.message)
       );
     };
+    // Scheduler needs to resolve projectId → absolute path for file_change watchers
+    this._scheduler.resolveProjectPath = (projectId) => {
+      if (!projectId) return null;
+      try {
+        const projectsFile = path.join(require('os').homedir(), '.claude-terminal', 'projects.json');
+        if (!fs.existsSync(projectsFile)) return null;
+        const data = JSON.parse(fs.readFileSync(projectsFile, 'utf8'));
+        const projects = Array.isArray(data) ? data : (data.projects || []);
+        const p = projects.find(x => x && x.id === projectId);
+        return p?.path || null;
+      } catch { return null; }
+    };
 
     this._chatService = null; // set via setDeps()
     this._projectTypeRegistry = {};
@@ -165,6 +177,22 @@ class WorkflowService {
 
   onHookEvent(hookEvent) {
     this._scheduler.onHookEvent(hookEvent);
+  }
+
+  /**
+   * Forward terminal exit events to the scheduler.
+   * @param {Object} event { exitCode, signal?, projectId?, projectPath?, terminalId? }
+   */
+  onTerminalExit(event) {
+    this._scheduler.onTerminalExit(event);
+  }
+
+  /**
+   * Forward project-open events to the scheduler.
+   * @param {Object} event { projectId, projectPath?, projectName? }
+   */
+  onProjectOpened(event) {
+    this._scheduler.onProjectOpened(event);
   }
 
   // ─── Workflow CRUD ───────────────────────────────────────────────────────────

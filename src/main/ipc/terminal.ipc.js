@@ -12,10 +12,10 @@ const { sendFeaturePing } = require('../services/TelemetryService');
  */
 function registerTerminalHandlers() {
   // Create terminal
-  ipcMain.handle('terminal-create', (event, { cwd, runClaude, skipPermissions, resumeSessionId }) => {
+  ipcMain.handle('terminal-create', (event, { cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath }) => {
     try {
       sendFeaturePing('terminal:create');
-      return terminalService.create({ cwd, runClaude, skipPermissions, resumeSessionId });
+      return terminalService.create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath });
     } catch (error) {
       console.error('[Terminal IPC] Create error:', error);
       return { success: false, error: error.message };

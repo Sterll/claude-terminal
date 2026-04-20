@@ -862,7 +862,20 @@ function setSelectedProjectFilter(projectIndex) {
  * @param {string|null} projectId
  */
 function setOpenedProjectId(projectId) {
+  const prev = projectsState.get().openedProjectId;
   projectsState.setProp('openedProjectId', projectId);
+
+  // Notify workflow triggers only on a real transition to a project (not null→null or unchanged).
+  if (projectId && projectId !== prev) {
+    try {
+      const project = projectsState.get().projects?.find(p => p.id === projectId);
+      window.electron_api?.workflow?.notifyProjectOpened?.({
+        projectId,
+        projectPath: project?.path || null,
+        projectName: project?.name || null,
+      });
+    } catch (_) { /* non-critical */ }
+  }
 }
 
 /**
