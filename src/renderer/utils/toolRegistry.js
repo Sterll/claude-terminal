@@ -104,6 +104,22 @@ const bgTaskStore = {
   },
 };
 
+// Tiny copy button (delegated click handler lives in ChatView).
+// Uses data-copy attribute carrying base64-encoded payload to avoid
+// HTML escaping issues in multi-line outputs.
+function copyBtn(text, label) {
+  if (!text) return '';
+  let b64 = '';
+  try {
+    b64 = (typeof window !== 'undefined' && window.btoa)
+      ? window.btoa(unescape(encodeURIComponent(String(text))))
+      : '';
+  } catch (_) { b64 = ''; }
+  return `<button type="button" class="chat-copy-btn" data-copy-b64="${b64}" title="${escHtml(label || 'Copy')}" aria-label="${escHtml(label || 'Copy')}">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+  </button>`;
+}
+
 function formatTaskIdShort(taskId) {
   if (!taskId) return '';
   const s = String(taskId);
@@ -142,7 +158,14 @@ function renderBgTaskCard(toolName, input, overrideState) {
       : '';
 
   const cmdHtml = command
-    ? `<div class="chat-bgtask-cmd" title="${escHtml(command)}"><code>${escHtml(command.slice(0, 140))}${command.length > 140 ? '…' : ''}</code></div>`
+    ? `<div class="chat-bgtask-cmd" title="${escHtml(command)}"><code>${escHtml(command.slice(0, 140))}${command.length > 140 ? '…' : ''}</code>${copyBtn(command, 'Copy command')}</div>`
+    : '';
+
+  const outputHeader = accumulated
+    ? `<div class="chat-bgtask-output-header">
+        <span>output (tail)</span>
+        ${copyBtn(accumulated, 'Copy full output')}
+      </div>`
     : '';
 
   return `
@@ -156,6 +179,7 @@ function renderBgTaskCard(toolName, input, overrideState) {
           ${stoppedInfo}
         </div>
         ${cmdHtml}
+        ${outputHeader}
         ${outputHtml}
       </div>
     </div>
@@ -184,7 +208,8 @@ const renderers = {
   CronCreate(input) {
     const schedule = input.schedule || input.cron || '';
     const name = input.name || '';
-    const promptPreview = (input.prompt || '').slice(0, 160);
+    const fullPrompt = input.prompt || '';
+    const promptPreview = fullPrompt.slice(0, 160);
     return `
       <div class="chat-special-card chat-cron-card">
         <div class="chat-special-icon">${ICONS.clock}</div>
@@ -192,8 +217,9 @@ const renderers = {
           <div class="chat-special-title">
             <span class="chat-cron-name">${escHtml(name || 'New cron')}</span>
             ${schedule ? `<code class="chat-cron-schedule">${escHtml(schedule)}</code>` : ''}
+            ${fullPrompt ? copyBtn(fullPrompt, 'Copy prompt') : ''}
           </div>
-          ${promptPreview ? `<div class="chat-special-desc">${escHtml(promptPreview)}${input.prompt && input.prompt.length > 160 ? '…' : ''}</div>` : ''}
+          ${promptPreview ? `<div class="chat-special-desc">${escHtml(promptPreview)}${fullPrompt.length > 160 ? '…' : ''}</div>` : ''}
         </div>
       </div>
     `;
@@ -250,6 +276,44 @@ const renderers = {
   TaskStop(input)    { return renderBgTaskCard('TaskStop', input || {}); },
 };
 
+// ── Result-enriched renderers (replace card after tool_result) ──────────
+// Called with the parsed tool_result output + original input. Return HTML
+// or null to keep the existing card untouched.
+const resultRenderers = {
+  CronList(output, input) {
+    let crons = [];
+    if (Array.isArray(output)) crons = output;
+    else if (output && Array.isArray(output.crons)) crons = output.crons;
+    else if (output && Array.isArray(output.items)) crons = output.items;
+    if (!crons.length) return null;
+    const rows = crons.slice(0, 20).map((c) => {
+      const name = c.name || c.id || '';
+      const schedule = c.schedule || c.cron || '';
+      const enabled = c.enabled === false ? 'disabled' : 'enabled';
+      return `
+        <div class="chat-cronlist-row">
+          <span class="chat-cronlist-name">${escHtml(name)}</span>
+          ${schedule ? `<code class="chat-cron-schedule">${escHtml(schedule)}</code>` : ''}
+          <span class="chat-cronlist-state chat-cronlist-state--${enabled}">${enabled}</span>
+        </div>
+      `;
+    }).join('');
+    const more = crons.length > 20 ? `<div class="chat-cronlist-more">+ ${crons.length - 20} more</div>` : '';
+    return `
+      <div class="chat-special-card chat-cron-card">
+        <div class="chat-special-icon">${ICONS.clock}</div>
+        <div class="chat-special-body">
+          <div class="chat-special-title">
+            <span>Cron list</span>
+            <span class="chat-bgtask-meta">${crons.length} cron${crons.length === 1 ? '' : 's'}</span>
+          </div>
+          <div class="chat-cronlist-rows">${rows}${more}</div>
+        </div>
+      </div>
+    `;
+  },
+};
+
 // ── Tool definitions ─────────────────────────────────────────────────────
 // { category, icon, detail, friendly?, render? }
 // friendly = tool has a nicely-structured session-replay card
@@ -287,7 +351,7 @@ const TOOL_DEFS = {
   ScheduleWakeup:    { category: 'schedule', icon: ICONS.clock,    detail: detailFns.wakeup,     render: renderers.ScheduleWakeup },
   CronCreate:        { category: 'schedule', icon: ICONS.clock,    detail: detailFns.cronCreate, render: renderers.CronCreate },
   CronDelete:        { category: 'schedule', icon: ICONS.clock,    detail: detailFns.cronId },
-  CronList:          { category: 'schedule', icon: ICONS.clock,    detail: () => '' },
+  CronList:          { category: 'schedule', icon: ICONS.clock,    detail: () => '', renderResult: resultRenderers.CronList },
 
   // Worktree
   EnterWorktree:     { category: 'worktree', icon: ICONS.branch,   detail: detailFns.worktree,   render: renderers.EnterWorktree },
@@ -375,6 +439,17 @@ function renderToolCardHtml(toolName, input) {
   try { return def.render(input || {}); } catch (_) { return null; }
 }
 
+function hasResultRenderer(toolName) {
+  const def = TOOL_DEFS[toolName];
+  return !!(def && typeof def.renderResult === 'function');
+}
+
+function renderToolResultHtml(toolName, output, input) {
+  const def = TOOL_DEFS[toolName];
+  if (!def || typeof def.renderResult !== 'function') return null;
+  try { return def.renderResult(output, input || {}); } catch (_) { return null; }
+}
+
 function escapeHtmlMinimal(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
@@ -414,6 +489,8 @@ module.exports = {
   isFriendlyTool,
   hasCustomRenderer,
   renderToolCardHtml,
+  hasResultRenderer,
+  renderToolResultHtml,
   renderBgTaskCard,
   bgTaskStore,
   formatToolName,

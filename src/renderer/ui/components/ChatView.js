@@ -12,6 +12,7 @@ const {
   getToolDisplayInfo,
   formatToolName,
   renderToolCardHtml,
+  renderToolResultHtml,
   renderBgTaskCard,
   bgTaskStore,
 } = require('../../utils/toolRegistry');
@@ -2489,6 +2490,22 @@ class ChatView extends BaseComponent {
   messagesEl.addEventListener('click', (e) => {
     // Note: copy, collapse, line-toggle, sort, preview buttons are handled by MarkdownRenderer.attachInteractivity()
 
+    // Copy buttons inside specialized tool cards
+    const copyBtn = e.target.closest('.chat-copy-btn');
+    if (copyBtn) {
+      e.stopPropagation();
+      const b64 = copyBtn.dataset.copyB64 || '';
+      let text = '';
+      try { text = b64 ? decodeURIComponent(escape(window.atob(b64))) : ''; } catch (_) { text = ''; }
+      if (text) {
+        navigator.clipboard.writeText(text).then(() => {
+          copyBtn.classList.add('copied');
+          setTimeout(() => copyBtn.classList.remove('copied'), 1200);
+        }).catch(() => {});
+      }
+      return;
+    }
+
     const thinkingHeader = e.target.closest('.chat-thinking-header');
     if (thinkingHeader) {
       thinkingHeader.parentElement.classList.toggle('expanded');
@@ -3629,7 +3646,7 @@ class ChatView extends BaseComponent {
     if (descEl && desc) descEl.textContent = desc;
   }
 
-  function completeSubagentCard(el) {
+  function completeSubagentCard(el, stats = null) {
     if (!el) return;
     const status = el.querySelector('.chat-subagent-status');
     if (status) {
@@ -3646,6 +3663,27 @@ class ChatView extends BaseComponent {
     // Clear live activity text
     const activityEl = el.querySelector('.chat-subagent-activity');
     if (activityEl) activityEl.textContent = '';
+    // Render stats footer (Agent tool result: totalToolUseCount, totalDurationMs, totalTokens)
+    if (stats && !el.querySelector('.chat-subagent-stats')) {
+      const parts = [];
+      if (typeof stats.totalToolUseCount === 'number') {
+        parts.push(`<span class="sa-stat"><span class="sa-stat-num">${stats.totalToolUseCount}</span> tool${stats.totalToolUseCount === 1 ? '' : 's'}</span>`);
+      }
+      if (typeof stats.totalDurationMs === 'number') {
+        const secs = Math.round(stats.totalDurationMs / 1000);
+        parts.push(`<span class="sa-stat"><span class="sa-stat-num">${escapeHtml(fmtDur(secs))}</span></span>`);
+      }
+      if (typeof stats.totalTokens === 'number') {
+        const k = stats.totalTokens >= 1000 ? (stats.totalTokens / 1000).toFixed(1) + 'k' : String(stats.totalTokens);
+        parts.push(`<span class="sa-stat"><span class="sa-stat-num">${escapeHtml(k)}</span> tokens</span>`);
+      }
+      if (parts.length) {
+        const footer = document.createElement('div');
+        footer.className = 'chat-subagent-stats';
+        footer.innerHTML = parts.join('');
+        el.appendChild(footer);
+      }
+    }
   }
 
   /**
@@ -4985,7 +5023,10 @@ class ChatView extends BaseComponent {
         // Subagent cards — mark completed but keep for late message routing
         for (const [, info] of taskToolIndices) {
           if (info.toolUseId === block.tool_use_id) {
-            completeSubagentCard(info.card);
+            const raw = typeof block.content === 'string' ? block.content
+              : Array.isArray(block.content) ? block.content.map(b => b.text || '').join('\n') : '';
+            const stats = parseResultJson(raw);
+            completeSubagentCard(info.card, stats);
             info.completed = true;
             break;
           }
@@ -5011,6 +5052,37 @@ class ChatView extends BaseComponent {
 
           // Background-task cards → feed bgTaskStore with result data
           const bgName = matchedCard.dataset.toolName;
+
+          // Bash with run_in_background: seed bgTaskStore with command + backgroundTaskId
+          if (bgName === 'Bash') {
+            let bashInput = {};
+            try { bashInput = JSON.parse(matchedCard.dataset.toolInput || '{}'); } catch (_) { /* ignore */ }
+            if (bashInput.run_in_background) {
+              const parsed = parseResultJson(output);
+              const bgTaskId = parsed && (parsed.backgroundTaskId || parsed.background_task_id || parsed.taskId);
+              if (bgTaskId) {
+                bgTaskStore.update(bgTaskId, {
+                  command: bashInput.command || '',
+                  status: 'running',
+                });
+                ensureBgTaskSubscription();
+              }
+            }
+          }
+
+          // Result-enriched renderers (CronList etc.)
+          if (bgName) {
+            let inputForResult = {};
+            try { inputForResult = JSON.parse(matchedCard.dataset.toolInput || '{}'); } catch (_) { /* ignore */ }
+            const parsedForResult = parseResultJson(output);
+            const resultHtml = renderToolResultHtml(bgName, parsedForResult || output, inputForResult);
+            if (resultHtml) {
+              matchedCard.classList.add('chat-tool-card--custom');
+              matchedCard.classList.remove('expandable');
+              matchedCard.innerHTML = resultHtml;
+            }
+          }
+
           if (bgName === 'Monitor' || bgName === 'TaskOutput' || bgName === 'TaskStop') {
             let toolInput = {};
             try { toolInput = JSON.parse(matchedCard.dataset.toolInput || '{}'); } catch (_) { /* ignore */ }
