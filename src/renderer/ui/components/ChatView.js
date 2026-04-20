@@ -12,10 +12,55 @@ const {
   getToolDisplayInfo,
   formatToolName,
   renderToolCardHtml,
+  renderBgTaskCard,
+  bgTaskStore,
 } = require('../../utils/toolRegistry');
 const { t } = require('../../i18n');
 const { formatDuration: fmtDur } = require('../../utils/toolRegistry');
 const { heartbeat, skillsAgentsState } = require('../../state');
+
+// ── Background task cards re-render on store update ─────────────────
+// Cards for Monitor/TaskOutput/TaskStop read state from bgTaskStore.
+// Any mutation refreshes every card currently showing that taskId.
+let _bgTaskSubStarted = false;
+function ensureBgTaskSubscription() {
+  if (_bgTaskSubStarted) return;
+  _bgTaskSubStarted = true;
+  bgTaskStore.subscribe((taskId) => {
+    if (!taskId) return;
+    let nodes;
+    try {
+      nodes = document.querySelectorAll(`[data-bg-task-id="${CSS.escape(taskId)}"]`);
+    } catch (_) { return; }
+    nodes.forEach((el) => {
+      const tool = el.dataset.bgTool || 'TaskOutput';
+      const card = el.closest('.chat-tool-card');
+      let input = {};
+      try {
+        input = card && card.dataset.toolInput ? JSON.parse(card.dataset.toolInput) : { task_id: taskId };
+      } catch (_) { input = { task_id: taskId }; }
+      el.outerHTML = renderBgTaskCard(tool, input);
+    });
+  });
+}
+
+// Parse a tool_result content block into plain text.
+function extractResultText(block) {
+  if (!block) return '';
+  if (typeof block.content === 'string') return block.content;
+  if (Array.isArray(block.content)) {
+    return block.content.map((b) => (b && (b.text || '')) || '').join('\n');
+  }
+  return '';
+}
+
+// Try to extract structured data from a tool_result text (best-effort).
+function parseResultJson(text) {
+  if (!text) return null;
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return null;
+  try { return JSON.parse(trimmed); } catch (_) { return null; }
+}
 
 // ── Wakeup countdown ticker (module-level, single global interval) ──
 let _wakeupTickerStarted = false;
@@ -4718,6 +4763,12 @@ class ChatView extends BaseComponent {
                 card.classList.remove('expandable');
                 card.innerHTML = customHtml;
                 if (name === 'ScheduleWakeup') ensureWakeupTicker();
+                if (name === 'Monitor' || name === 'TaskOutput' || name === 'TaskStop') {
+                  ensureBgTaskSubscription();
+                  // Seed the store so the card shows "running" even before first result.
+                  const taskId = toolInput && (toolInput.task_id || toolInput.shell_id);
+                  if (taskId && !bgTaskStore.get(taskId)) bgTaskStore.update(taskId, {});
+                }
               } else {
                 card.classList.add('expandable');
                 const info = getToolDisplayInfo(name, toolInput);
@@ -4957,6 +5008,37 @@ class ChatView extends BaseComponent {
           const output = typeof block.content === 'string' ? block.content
             : Array.isArray(block.content) ? block.content.map(b => b.text || '').join('\n') : '';
           if (output) matchedCard.dataset.toolOutput = output;
+
+          // Background-task cards → feed bgTaskStore with result data
+          const bgName = matchedCard.dataset.toolName;
+          if (bgName === 'Monitor' || bgName === 'TaskOutput' || bgName === 'TaskStop') {
+            let toolInput = {};
+            try { toolInput = JSON.parse(matchedCard.dataset.toolInput || '{}'); } catch (_) { /* ignore */ }
+            const taskId = toolInput.task_id || toolInput.shell_id;
+            if (taskId) {
+              const parsed = parseResultJson(output);
+              const patch = {};
+              if (bgName === 'TaskStop') {
+                patch.status = 'stopped';
+                patch.stoppedAt = Date.now();
+                if (parsed && parsed.command) patch.command = parsed.command;
+                if (parsed && parsed.task_type) patch.taskType = parsed.task_type;
+              } else {
+                // Monitor / TaskOutput → append stdout
+                if (parsed) {
+                  if (typeof parsed.stdout === 'string') patch.output = parsed.stdout;
+                  else if (typeof parsed.output === 'string') patch.output = parsed.output;
+                  else if (typeof parsed.text === 'string') patch.output = parsed.text;
+                  if (parsed.command && !bgTaskStore.get(taskId)?.command) patch.command = parsed.command;
+                  if (parsed.completed === true || parsed.done === true) patch.status = 'done';
+                } else if (output) {
+                  patch.output = output;
+                }
+              }
+              bgTaskStore.update(taskId, patch);
+            }
+          }
+
           completeToolCard(matchedCard);
           if (matchedIdx !== null) toolCards.delete(matchedIdx);
         } else {

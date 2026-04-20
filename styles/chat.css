@@ -3775,3 +3775,77 @@ hr.chat-plan-separator {
   line-height: 1.45;
   word-break: break-word;
 }
+
+/* Background task (Monitor / TaskOutput / TaskStop) */
+.chat-bgtask-card {
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.05), transparent);
+  border-left: 3px solid rgba(14, 165, 233, 0.6);
+}
+.chat-bgtask-card--stopped {
+  border-left-color: rgba(239, 68, 68, 0.6);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.04), transparent);
+  opacity: 0.92;
+}
+.chat-bgtask-card--done {
+  border-left-color: rgba(34, 197, 94, 0.6);
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.04), transparent);
+}
+.chat-bgtask-action {
+  color: var(--text-primary);
+}
+.chat-bgtask-id {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: var(--font-xs);
+  color: rgb(14, 165, 233);
+  background: rgba(14, 165, 233, 0.12);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.chat-bgtask-status {
+  font-size: var(--font-2xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 10px;
+  color: rgb(14, 165, 233);
+  background: rgba(14, 165, 233, 0.12);
+}
+.chat-bgtask-status--stopped {
+  color: rgb(239, 68, 68);
+  background: rgba(239, 68, 68, 0.12);
+}
+.chat-bgtask-status--done {
+  color: var(--success);
+  background: rgba(34, 197, 94, 0.15);
+}
+.chat-bgtask-meta {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+}
+.chat-bgtask-cmd {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  line-height: 1.4;
+  word-break: break-all;
+}
+.chat-bgtask-cmd code {
+  background: transparent;
+  padding: 0;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+.chat-bgtask-output {
+  margin: 4px 0 0 0;
+  padding: 8px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: var(--font-2xs);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  max-height: 180px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

@@ -42,7 +42,7 @@ const detailFns = {
   cronId:         (i) => i.name || i.id || '',
   worktree:       (i) => i.branch || i.path || '',
   notification:   (i) => i.title || i.message || '',
-  bgTask:         (i) => i.taskId || i.command || '',
+  bgTask:         (i) => i.task_id || i.shell_id || i.taskId || i.command || '',
   query:          (i) => i.query || '',
   skill:          (i) => i.skill || i.name || '',
   url:            (i) => i.url || '',
@@ -68,6 +68,98 @@ function formatDuration(secs) {
   const h = Math.floor(m / 60);
   const mr = m % 60;
   return mr ? `${h}h ${mr}m` : `${h}h`;
+}
+
+// ── Background task store (Monitor / TaskOutput / TaskStop / bg Bash) ───
+// Shared across tool calls so cards for the same taskId stay in sync.
+const bgTaskStore = {
+  _map: new Map(),
+  _subs: new Set(),
+  get(taskId) {
+    return this._map.get(taskId) || null;
+  },
+  all() {
+    return Array.from(this._map.values());
+  },
+  update(taskId, patch) {
+    if (!taskId) return null;
+    const current = this._map.get(taskId) || {
+      taskId,
+      outputs: [],
+      status: 'running',
+      startedAt: Date.now(),
+    };
+    const next = { ...current, ...patch };
+    if (patch && typeof patch.output === 'string' && patch.output.length) {
+      next.outputs = [...(current.outputs || []), patch.output];
+      delete next.output;
+    }
+    this._map.set(taskId, next);
+    this._subs.forEach((fn) => { try { fn(taskId, next); } catch (_) { /* ignore */ } });
+    return next;
+  },
+  subscribe(fn) {
+    this._subs.add(fn);
+    return () => this._subs.delete(fn);
+  },
+};
+
+function formatTaskIdShort(taskId) {
+  if (!taskId) return '';
+  const s = String(taskId);
+  return s.length > 12 ? s.slice(0, 8) + '…' : s;
+}
+
+function tailLines(text, max) {
+  if (!text) return '';
+  const lines = String(text).split('\n');
+  return lines.slice(-max).join('\n');
+}
+
+const BG_ACTION_LABELS = {
+  TaskOutput: 'Fetch output',
+  TaskStop: 'Stop task',
+  Monitor: 'Monitor',
+};
+
+function renderBgTaskCard(toolName, input, overrideState) {
+  const taskId = (input && (input.task_id || input.shell_id)) || '';
+  const state = overrideState || bgTaskStore.get(taskId) || {};
+  const command = state.command || '';
+  const status = state.status || 'running';
+  const action = BG_ACTION_LABELS[toolName] || toolName || 'Background task';
+
+  const accumulated = (state.outputs || []).join('\n');
+  const tail = accumulated ? tailLines(accumulated, 10) : '';
+  const outputHtml = tail
+    ? `<pre class="chat-bgtask-output">${escHtml(tail)}</pre>`
+    : '';
+
+  const stoppedInfo = state.stoppedAt
+    ? `<span class="chat-bgtask-meta">stopped</span>`
+    : state.status === 'done'
+      ? `<span class="chat-bgtask-meta">done</span>`
+      : '';
+
+  const cmdHtml = command
+    ? `<div class="chat-bgtask-cmd" title="${escHtml(command)}"><code>${escHtml(command.slice(0, 140))}${command.length > 140 ? '…' : ''}</code></div>`
+    : '';
+
+  return `
+    <div class="chat-special-card chat-bgtask-card chat-bgtask-card--${escHtml(status)}" data-bg-task-id="${escHtml(taskId)}" data-bg-tool="${escHtml(toolName)}">
+      <div class="chat-special-icon">${ICONS.activity}</div>
+      <div class="chat-special-body">
+        <div class="chat-special-title">
+          <span class="chat-bgtask-action">${escHtml(action)}</span>
+          ${taskId ? `<code class="chat-bgtask-id" title="${escHtml(taskId)}">${escHtml(formatTaskIdShort(taskId))}</code>` : ''}
+          <span class="chat-bgtask-status chat-bgtask-status--${escHtml(status)}">${escHtml(status)}</span>
+          ${stoppedInfo}
+        </div>
+        ${cmdHtml}
+        ${outputHtml}
+      </div>
+    </div>
+  `;
 }
 
 const renderers = {
@@ -152,6 +244,10 @@ const renderers = {
       </div>
     `;
   },
+
+  Monitor(input)     { return renderBgTaskCard('Monitor', input || {}); },
+  TaskOutput(input)  { return renderBgTaskCard('TaskOutput', input || {}); },
+  TaskStop(input)    { return renderBgTaskCard('TaskStop', input || {}); },
 };
 
 // ── Tool definitions ─────────────────────────────────────────────────────
@@ -198,9 +294,9 @@ const TOOL_DEFS = {
   ExitWorktree:      { category: 'worktree', icon: ICONS.branch,   detail: detailFns.worktree,   render: renderers.ExitWorktree },
 
   // Background tasks
-  Monitor:           { category: 'bgtask',   icon: ICONS.activity, detail: detailFns.bgTask },
-  TaskOutput:        { category: 'bgtask',   icon: ICONS.activity, detail: detailFns.bgTask },
-  TaskStop:          { category: 'bgtask',   icon: ICONS.activity, detail: detailFns.bgTask },
+  Monitor:           { category: 'bgtask',   icon: ICONS.activity, detail: detailFns.bgTask, render: renderers.Monitor },
+  TaskOutput:        { category: 'bgtask',   icon: ICONS.activity, detail: detailFns.bgTask, render: renderers.TaskOutput },
+  TaskStop:          { category: 'bgtask',   icon: ICONS.activity, detail: detailFns.bgTask, render: renderers.TaskStop },
 
   // Notifications
   PushNotification:  { category: 'notify',   icon: ICONS.bell,     detail: detailFns.notification, render: renderers.PushNotification },
@@ -318,6 +414,8 @@ module.exports = {
   isFriendlyTool,
   hasCustomRenderer,
   renderToolCardHtml,
+  renderBgTaskCard,
+  bgTaskStore,
   formatToolName,
   formatDuration,
 };
