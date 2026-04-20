@@ -1345,6 +1345,38 @@ class WorkflowRunner {
         const switchOut = stepOutputs[step.id];
         const matchedSlot = switchOut?.matchedSlot ?? 0;
         queue.push(...this._getNextNodes(nodeId, matchedSlot, outgoing));
+      } else if (stepType === 'error_handler') {
+        // Try/catch subgraph
+        const tryTargets   = this._getNextNodes(nodeId, 0, outgoing);
+        const catchTargets = this._getNextNodes(nodeId, 1, outgoing);
+        this._emitStep(runId, step, 'running', null);
+        if (tryTargets.length === 0) {
+          stepOutputs[step.id] = { caught: false, error: null };
+          vars.set(step.id, { caught: false, error: null });
+          this._emitStep(runId, step, 'success', { caught: false });
+        } else {
+          try {
+            const { visitedNodes } = await this._executeSubGraph(
+              tryTargets, nodeById, outgoing, incoming, vars, runId, signal, stepOutputs, workflow
+            );
+            for (const nid of visitedNodes) visited.add(nid);
+            stepOutputs[step.id] = { caught: false, error: null };
+            vars.set(step.id, { caught: false, error: null });
+            this._emitStep(runId, step, 'success', { caught: false });
+          } catch (err) {
+            if (signal.aborted) throw err;
+            const errorInfo = { caught: true, error: err.message, message: err.message };
+            stepOutputs[step.id] = errorInfo;
+            vars.set(step.id, errorInfo);
+            this._emitStep(runId, step, 'success', { caught: true, error: err.message });
+            if (catchTargets.length > 0) {
+              const { visitedNodes: catchVisited } = await this._executeSubGraph(
+                catchTargets, nodeById, outgoing, incoming, vars, runId, signal, stepOutputs, workflow
+              );
+              for (const nid of catchVisited) visited.add(nid);
+            }
+          }
+        }
       } else {
         // Normal step: try to execute
         try {
@@ -1628,6 +1660,38 @@ class WorkflowRunner {
 
         for (const tid of doneTargets) {
           if (!subVisited.has(tid)) subQueue.push(tid);
+        }
+      } else if (stepType === 'error_handler') {
+        // Nested try/catch inside a subgraph
+        const tryTargets   = this._getNextNodes(nodeId, 0, outgoing);
+        const catchTargets = this._getNextNodes(nodeId, 1, outgoing);
+        this._emitStep(runId, step, 'running', null);
+        if (tryTargets.length === 0) {
+          stepOutputs[step.id] = { caught: false, error: null };
+          vars.set(step.id, { caught: false, error: null });
+          this._emitStep(runId, step, 'success', { caught: false });
+        } else {
+          try {
+            const { visitedNodes } = await this._executeSubGraph(
+              tryTargets, nodeById, outgoing, incoming, vars, runId, signal, stepOutputs, workflow
+            );
+            for (const nid of visitedNodes) subVisited.add(nid);
+            stepOutputs[step.id] = { caught: false, error: null };
+            vars.set(step.id, { caught: false, error: null });
+            this._emitStep(runId, step, 'success', { caught: false });
+          } catch (err) {
+            if (signal.aborted) throw err;
+            const errorInfo = { caught: true, error: err.message, message: err.message };
+            stepOutputs[step.id] = errorInfo;
+            vars.set(step.id, errorInfo);
+            this._emitStep(runId, step, 'success', { caught: true, error: err.message });
+            if (catchTargets.length > 0) {
+              const { visitedNodes: catchVisited } = await this._executeSubGraph(
+                catchTargets, nodeById, outgoing, incoming, vars, runId, signal, stepOutputs, workflow
+              );
+              for (const nid of catchVisited) subVisited.add(nid);
+            }
+          }
         }
       } else {
         // Normal step
