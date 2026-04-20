@@ -13,8 +13,12 @@ const { t, setLanguage, getCurrentLanguage, getAvailableLanguages } = require('.
 
 const BUILTIN_TOOLS = [
   'Bash', 'Read', 'Edit', 'Write', 'Glob', 'Grep',
-  'WebSearch', 'WebFetch', 'Task', 'TodoWrite', 'NotebookEdit',
+  'WebSearch', 'WebFetch', 'Task', 'Agent', 'TodoWrite', 'NotebookEdit',
   'MultiEdit', 'ListMcpResourcesTool', 'ReadMcpResourceTool',
+  'AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode',
+  'ScheduleWakeup', 'CronCreate', 'CronDelete', 'CronList',
+  'EnterWorktree', 'ExitWorktree', 'PushNotification',
+  'Monitor', 'TaskOutput', 'TaskStop', 'ToolSearch', 'Skill',
 ];
 
 // ── Module-level pure helpers ──

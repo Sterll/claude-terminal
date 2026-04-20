@@ -74,8 +74,12 @@ const RECHECK_DELAY_MS = 1000;
 const BRAILLE_SPINNER_RE = /[\u2801-\u28FF]/;
 
 const CLAUDE_TOOLS = new Set([
-  'Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'Task',
-  'WebFetch', 'WebSearch', 'TodoRead', 'TodoWrite', 'Notebook', 'MultiEdit'
+  'Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'Task', 'Agent',
+  'WebFetch', 'WebSearch', 'TodoRead', 'TodoWrite', 'Notebook', 'MultiEdit',
+  'ScheduleWakeup', 'CronCreate', 'CronDelete', 'CronList',
+  'EnterWorktree', 'ExitWorktree', 'EnterPlanMode', 'ExitPlanMode',
+  'AskUserQuestion', 'PushNotification', 'Monitor', 'TaskOutput', 'TaskStop',
+  'ToolSearch', 'Skill',
 ]);
 
 const TITLE_STOP_WORDS = new Set([

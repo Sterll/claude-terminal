@@ -45,8 +45,12 @@ const TOOL_CATEGORIES = {
   terminal:['Bash'],
   search:  ['Glob', 'Grep'],
   web:     ['WebFetch', 'WebSearch'],
-  agent:   ['Task'],
+  agent:   ['Task', 'Agent'],
   plan:    ['ExitPlanMode', 'AskUserQuestion', 'EnterPlanMode', 'TodoWrite'],
+  schedule:['ScheduleWakeup', 'CronCreate', 'CronDelete', 'CronList'],
+  worktree:['EnterWorktree', 'ExitWorktree'],
+  bgtask:  ['Monitor', 'TaskOutput', 'TaskStop'],
+  notify:  ['PushNotification'],
 };
 
 // Player speed → ms/step
@@ -60,6 +64,10 @@ const CAT_COLORS = {
   web:      '6,182,212',
   agent:    '249,115,22',
   plan:     '217,119,6',
+  schedule: '236,72,153',
+  worktree: '139,92,246',
+  bgtask:   '14,165,233',
+  notify:   '250,204,21',
   other:    '100,100,110',
 };
 
@@ -67,7 +75,10 @@ const CAT_COLORS = {
 const FRIENDLY_TOOLS = new Set([
   'Bash', 'Read', 'Write', 'Edit', 'NotebookEdit',
   'Glob', 'Grep', 'WebFetch', 'WebSearch',
-  'AskUserQuestion', 'Task', 'TodoWrite',
+  'AskUserQuestion', 'Task', 'Agent', 'TodoWrite',
+  'ScheduleWakeup', 'CronCreate', 'CronDelete', 'CronList',
+  'EnterWorktree', 'ExitWorktree', 'PushNotification',
+  'Monitor', 'TaskOutput', 'TaskStop',
 ]);
 
 function getToolCategory(toolName) {
@@ -483,9 +494,26 @@ function buildFriendlyToolBody(step) {
     if (toolInput?.query) parts.push(buildParamRow(t('sessionReplay.paramQuery') || 'Query', toolInput.query));
   } else if (toolName === 'AskUserQuestion') {
     return buildAskUserQuestionBody(step);
-  } else if (toolName === 'Task') {
+  } else if (toolName === 'Task' || toolName === 'Agent') {
+    if (toolInput?.subagent_type) parts.push(buildParamRow(t('sessionReplay.paramAgent') || 'Agent', toolInput.subagent_type));
     if (toolInput?.description) parts.push(buildParamRow(t('sessionReplay.paramDescription') || 'Task', truncate(toolInput.description, 200)));
     if (toolInput?.prompt) parts.push(buildParamRow(t('sessionReplay.paramPrompt') || 'Prompt', truncate(toolInput.prompt, 200)));
+  } else if (toolName === 'ScheduleWakeup') {
+    if (toolInput?.delaySeconds != null) parts.push(buildParamRow(t('sessionReplay.paramDelay') || 'Delay', `${toolInput.delaySeconds}s`));
+    if (toolInput?.reason) parts.push(buildParamRow(t('sessionReplay.paramReason') || 'Reason', truncate(toolInput.reason, 200)));
+    if (toolInput?.prompt) parts.push(buildParamRow(t('sessionReplay.paramPrompt') || 'Prompt', truncate(toolInput.prompt, 200)));
+  } else if (toolName === 'CronCreate') {
+    if (toolInput?.schedule) parts.push(buildParamRow(t('sessionReplay.paramSchedule') || 'Schedule', toolInput.schedule));
+    if (toolInput?.prompt) parts.push(buildParamRow(t('sessionReplay.paramPrompt') || 'Prompt', truncate(toolInput.prompt, 200)));
+  } else if (toolName === 'EnterWorktree' || toolName === 'ExitWorktree') {
+    if (toolInput?.branch) parts.push(buildParamRow(t('sessionReplay.paramBranch') || 'Branch', toolInput.branch));
+    if (toolInput?.path) parts.push(buildParamRow(t('sessionReplay.paramPath') || 'Path', toolInput.path));
+  } else if (toolName === 'PushNotification') {
+    if (toolInput?.title) parts.push(buildParamRow(t('sessionReplay.paramTitle') || 'Title', toolInput.title));
+    if (toolInput?.message) parts.push(buildParamRow(t('sessionReplay.paramMessage') || 'Message', truncate(toolInput.message, 200)));
+  } else if (toolName === 'Monitor' || toolName === 'TaskOutput' || toolName === 'TaskStop') {
+    if (toolInput?.taskId) parts.push(buildParamRow(t('sessionReplay.paramTaskId') || 'Task ID', toolInput.taskId));
+    if (toolInput?.command) parts.push(buildParamRow(t('sessionReplay.paramCommand') || 'Command', truncate(toolInput.command, 200), true));
   } else {
     // Fallback for other friendly tools — show all input params
     if (toolInput && !toolInput._truncated) {

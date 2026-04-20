@@ -253,8 +253,34 @@ function createFollowupChips(api, suggestionsContainerEl, inputAdapter, project)
 
 // ── Tool Icons ──
 
+const TOOL_ICONS = {
+  clock:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+  bell:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>',
+  branch:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 01-9 9"/></svg>',
+  activity: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+  agent:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>',
+  skill:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+  plan:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>',
+};
+
 function getToolIcon(toolName) {
   const name = (toolName || '').toLowerCase();
+  // Exact matches first (new SDK tools)
+  if (name === 'schedulewakeup' || name === 'croncreate' || name === 'crondelete' || name === 'cronlist')
+    return TOOL_ICONS.clock;
+  if (name === 'pushnotification')
+    return TOOL_ICONS.bell;
+  if (name === 'enterworktree' || name === 'exitworktree')
+    return TOOL_ICONS.branch;
+  if (name === 'monitor' || name === 'taskoutput' || name === 'taskstop')
+    return TOOL_ICONS.activity;
+  if (name === 'task' || name === 'agent')
+    return TOOL_ICONS.agent;
+  if (name === 'skill' || name === 'toolsearch')
+    return TOOL_ICONS.skill;
+  if (name === 'enterplanmode' || name === 'exitplanmode')
+    return TOOL_ICONS.plan;
+  // Substring matches
   if (name.includes('read') || name.includes('file'))
     return '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>';
   if (name.includes('write') || name.includes('edit'))
@@ -296,6 +322,20 @@ function getToolDisplayInfo(toolName, input) {
   if (name === 'grep') return input.pattern || '';
   if (name === 'glob') return input.pattern || '';
   if (name === 'task' || name === 'agent') return input.description || input.subagent_type || '';
+  if (name === 'schedulewakeup') {
+    const secs = input.delaySeconds;
+    const pretty = secs != null
+      ? (secs >= 60 ? `${Math.round(secs / 60)}m` : `${secs}s`)
+      : '';
+    return [pretty, input.reason].filter(Boolean).join(' — ');
+  }
+  if (name === 'croncreate') return input.schedule || input.name || '';
+  if (name === 'crondelete') return input.name || input.id || '';
+  if (name === 'enterworktree' || name === 'exitworktree') return input.branch || input.path || '';
+  if (name === 'pushnotification') return input.title || input.message || '';
+  if (name === 'monitor' || name === 'taskoutput' || name === 'taskstop') return input.taskId || input.command || '';
+  if (name === 'toolsearch') return input.query || '';
+  if (name === 'skill') return input.skill || input.name || '';
   return input.file_path || input.path || input.command || input.query || '';
 }
 
