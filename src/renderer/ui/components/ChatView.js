@@ -295,6 +295,7 @@ function getToolDisplayInfo(toolName, input) {
   if (name === 'read' || name === 'write' || name === 'edit') return input.file_path || '';
   if (name === 'grep') return input.pattern || '';
   if (name === 'glob') return input.pattern || '';
+  if (name === 'task' || name === 'agent') return input.description || input.subagent_type || '';
   return input.file_path || input.path || input.command || input.query || '';
 }
 
@@ -4627,7 +4628,7 @@ class ChatView extends BaseComponent {
           // TodoWrite, Task, parallel_start_run & AskUserQuestion get special UI — no generic tool card
           if (block.name === 'TodoWrite') {
             todoToolIndices.add(blockIdx);
-          } else if (block.name === 'Task') {
+          } else if (block.name === 'Task' || block.name === 'Agent') {
             const card = appendSubagentCard();
             const bodyEl = card.querySelector('.chat-subagent-body');
             const activityEl = card.querySelector('.chat-subagent-activity');
@@ -4645,7 +4646,7 @@ class ChatView extends BaseComponent {
             toolCards.set(blockIdx, card);
           }
           toolInputBuffers.set(blockIdx, '');
-          if (block.name !== 'Task') setStatus('working', `${block.name}...`);
+          if (block.name !== 'Task' && block.name !== 'Agent') setStatus('working', `${block.name}...`);
         } else if (block.type === 'thinking') {
           currentThinkingText = '';
           currentThinkingEl = null;
@@ -4916,7 +4917,7 @@ class ChatView extends BaseComponent {
           continue;
         }
         // Task (subagent) — update subagent card from assistant message
-        if (block.name === 'Task' && block.input) {
+        if ((block.name === 'Task' || block.name === 'Agent') && block.input) {
           for (const [, info] of taskToolIndices) {
             if (info.toolUseId === block.id) {
               updateSubagentCard(info.card, block.input);
@@ -5368,7 +5369,7 @@ class ChatView extends BaseComponent {
         } else if (msg.role === 'assistant' && msg.type === 'tool_use') {
           if (msg.toolName === 'TodoWrite') continue;
 
-          if (msg.toolName === 'Task') {
+          if (msg.toolName === 'Task' || msg.toolName === 'Agent') {
             const input = msg.toolInput || {};
             const name = input.name || input.subagent_type || 'agent';
             const desc = input.description || '';
