@@ -151,11 +151,34 @@ function renderBgTaskCard(toolName, input, overrideState) {
     ? `<pre class="chat-bgtask-output">${escHtml(tail)}</pre>`
     : '';
 
+  const terminalStatuses = new Set(['stopped', 'done', 'completed', 'failed', 'killed']);
   const stoppedInfo = state.stoppedAt
     ? `<span class="chat-bgtask-meta">stopped</span>`
-    : state.status === 'done'
-      ? `<span class="chat-bgtask-meta">done</span>`
+    : terminalStatuses.has(state.status)
+      ? `<span class="chat-bgtask-meta">${escHtml(state.status)}</span>`
       : '';
+
+  // Live meta row: elapsed + last tool name + usage tokens
+  const elapsed = Number(state.elapsedSeconds);
+  const metaParts = [];
+  if (Number.isFinite(elapsed) && elapsed > 0) metaParts.push(`⏱ ${formatDuration(elapsed)}`);
+  if (state.lastToolName) metaParts.push(`· ${state.lastToolName}`);
+  if (state.usage && state.usage.total_tokens) metaParts.push(`· ${state.usage.total_tokens} tok`);
+  const metaHtml = metaParts.length
+    ? `<div class="chat-bgtask-live-meta">${metaParts.map(escHtml).join(' ')}</div>`
+    : '';
+
+  const descHtml = state.description
+    ? `<div class="chat-bgtask-desc">${escHtml(state.description)}</div>`
+    : '';
+
+  const summaryHtml = state.summary
+    ? `<div class="chat-bgtask-summary">${escHtml(state.summary)}</div>`
+    : '';
+
+  const errorHtml = state.error
+    ? `<div class="chat-bgtask-error">${escHtml(state.error)}</div>`
+    : '';
 
   const cmdHtml = command
     ? `<div class="chat-bgtask-cmd" title="${escHtml(command)}"><code>${escHtml(command.slice(0, 140))}${command.length > 140 ? '…' : ''}</code>${copyBtn(command, 'Copy command')}</div>`
@@ -178,6 +201,10 @@ function renderBgTaskCard(toolName, input, overrideState) {
           <span class="chat-bgtask-status chat-bgtask-status--${escHtml(status)}">${escHtml(status)}</span>
           ${stoppedInfo}
         </div>
+        ${descHtml}
+        ${metaHtml}
+        ${summaryHtml}
+        ${errorHtml}
         ${cmdHtml}
         ${outputHeader}
         ${outputHtml}

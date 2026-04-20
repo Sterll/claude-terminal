@@ -233,6 +233,37 @@ describe('toolRegistry / renderBgTaskCard', () => {
     const html = renderBgTaskCard('TaskStop', { task_id: 'x' });
     expect(html).toContain('chat-bgtask-card--stopped');
   });
+
+  test('renders description, elapsed time, summary and lastToolName', () => {
+    bgTaskStore.update('x', {
+      description: 'Running migration',
+      elapsedSeconds: 125,
+      lastToolName: 'Bash',
+      summary: 'applied 3 migrations',
+      usage: { total_tokens: 4200 },
+    });
+    const html = renderBgTaskCard('Monitor', { task_id: 'x' });
+    expect(html).toContain('Running migration');
+    expect(html).toContain('2m 5s');
+    expect(html).toContain('Bash');
+    expect(html).toContain('applied 3 migrations');
+    expect(html).toContain('4200 tok');
+  });
+
+  test('renders error block on failed tasks', () => {
+    bgTaskStore.update('x', { status: 'failed', error: 'exit code 1' });
+    const html = renderBgTaskCard('Monitor', { task_id: 'x' });
+    expect(html).toContain('chat-bgtask-card--failed');
+    expect(html).toContain('chat-bgtask-error');
+    expect(html).toContain('exit code 1');
+  });
+
+  test('renders completed status badge in meta', () => {
+    bgTaskStore.update('x', { status: 'completed' });
+    const html = renderBgTaskCard('Monitor', { task_id: 'x' });
+    expect(html).toContain('chat-bgtask-status--completed');
+    expect(html).toContain('chat-bgtask-card--completed');
+  });
 });
 
 describe('toolRegistry / result renderers', () => {

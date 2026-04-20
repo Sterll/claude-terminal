@@ -4596,6 +4596,65 @@ class ChatView extends BaseComponent {
           : t('chat.compactedSimple') || 'Conversation compacted';
         appendSystemNotice(notice, 'compact');
         setStreaming(false);
+      } else if (message.subtype === 'task_started') {
+        const taskId = message.task_id;
+        if (taskId) {
+          bgTaskStore.update(taskId, {
+            status: 'running',
+            description: message.description || '',
+            taskType: message.task_type || '',
+            workflowName: message.workflow_name || '',
+            prompt: message.prompt || '',
+            toolUseId: message.tool_use_id || '',
+            startedAt: Date.now(),
+          });
+        }
+      } else if (message.subtype === 'task_progress') {
+        const taskId = message.task_id;
+        if (taskId) {
+          const patch = { status: 'running' };
+          if (message.description) patch.description = message.description;
+          if (message.last_tool_name) patch.lastToolName = message.last_tool_name;
+          if (message.summary) patch.summary = message.summary;
+          if (message.usage) patch.usage = message.usage;
+          if (message.tool_use_id) patch.toolUseId = message.tool_use_id;
+          bgTaskStore.update(taskId, patch);
+        }
+      } else if (message.subtype === 'task_notification') {
+        const taskId = message.task_id;
+        if (taskId) {
+          bgTaskStore.update(taskId, {
+            status: message.status || 'completed',
+            summary: message.summary || '',
+            outputFile: message.output_file || '',
+            usage: message.usage || undefined,
+            toolUseId: message.tool_use_id || undefined,
+            endedAt: Date.now(),
+          });
+        }
+      } else if (message.subtype === 'task_updated') {
+        const taskId = message.task_id;
+        const patch = message.patch || {};
+        if (taskId) {
+          const mapped = {};
+          if (patch.status) mapped.status = patch.status;
+          if (patch.description) mapped.description = patch.description;
+          if (patch.end_time) mapped.endedAt = patch.end_time;
+          if (patch.error) mapped.error = patch.error;
+          if (typeof patch.is_backgrounded === 'boolean') mapped.isBackgrounded = patch.is_backgrounded;
+          if (Object.keys(mapped).length) bgTaskStore.update(taskId, mapped);
+        }
+      }
+      return;
+    }
+
+    // Tool progress ticks — update elapsed time for background tasks.
+    if (message.type === 'tool_progress') {
+      const taskId = message.task_id;
+      if (taskId) {
+        const patch = { elapsedSeconds: message.elapsed_time_seconds };
+        if (message.tool_name) patch.lastToolName = message.tool_name;
+        bgTaskStore.update(taskId, patch);
       }
       return;
     }
