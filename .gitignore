@@ -70,3 +70,33 @@ remotion-apple/
 # yarn.lock
 
 docs/plans/
+
+# Root-level marketing / screenshot captures (only banner-readme.png is tracked)
+/banner-old.png
+/banner-original.png
+/changelog-preview.png
+/cta-section.png
+/current-state*.png
+/features-section.png
+/hero-*.png
+/promo-*.png
+/remote-ui-*.png
+/showcase-section.png
+/tip-prompt-templates-preview.png
+/tweet-*.png
+/website-*.png
+
+# Local development / research / debug artifacts
+.playwright-mcp/
+research-output/
+promo-video/
+scripts/research/
+scripts/hooks-test/
+scripts/*-temp*.js
+scripts/test-plan-output.log
+
+# One-off junk files
+/discord-post.md
+/test.txt
+/test-audit-prompt.md
+/proofwebhook.txt
