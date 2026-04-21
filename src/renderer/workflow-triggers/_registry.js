@@ -18,6 +18,8 @@ function loadAll() {
     require('./project_opened.trigger'),
     require('./claude_session_start.trigger'),
     require('./claude_session_end.trigger'),
+    require('./git_event.trigger'),
+    require('./chat_message.trigger'),
   ];
   for (const def of defs) {
     if (def.type) _triggers.set(def.type, def);

@@ -147,6 +147,68 @@ function renderClaudeSessionEndSection(props, esc) {
 </div>`;
 }
 
+function renderGitEventSection(props, esc) {
+  const eventFilter = props.eventFilter || 'any';
+  const events = [
+    { value: 'any',           label: t('workflow.trigger.gitEventAny') },
+    { value: 'commit',        label: t('workflow.trigger.gitEventCommit') },
+    { value: 'push',          label: t('workflow.trigger.gitEventPush') },
+    { value: 'branch_switch', label: t('workflow.trigger.gitEventBranchSwitch') },
+  ];
+  const opts = events.map(e =>
+    `<option value="${esc(e.value)}"${eventFilter === e.value ? ' selected' : ''}>${esc(e.label)}</option>`
+  ).join('');
+  return `<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.gitEventTypeLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.trigger.gitEventTypeHint')}</span>
+  <select class="wf-step-edit-input wf-node-prop" data-key="eventFilter">${opts}</select>
+</div>
+<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.gitEventProjectLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.trigger.gitEventProjectHint')}</span>
+  ${renderProjectSelect('projectId', props.projectId || '', esc, true)}
+</div>`;
+}
+
+function renderChatMessageSection(props, esc) {
+  const role = props.role || 'user';
+  const matchMode = props.matchMode || 'regex';
+  const roles = [
+    { value: 'user',      label: t('workflow.trigger.chatMessageRoleUser') },
+    { value: 'assistant', label: t('workflow.trigger.chatMessageRoleAssistant') },
+    { value: 'any',       label: t('workflow.trigger.chatMessageRoleAny') },
+  ];
+  const modes = [
+    { value: 'contains', label: t('workflow.trigger.chatMessageModeContains') },
+    { value: 'regex',    label: t('workflow.trigger.chatMessageModeRegex') },
+  ];
+  const roleOpts = roles.map(r =>
+    `<option value="${esc(r.value)}"${role === r.value ? ' selected' : ''}>${esc(r.label)}</option>`
+  ).join('');
+  const modeOpts = modes.map(m =>
+    `<option value="${esc(m.value)}"${matchMode === m.value ? ' selected' : ''}>${esc(m.label)}</option>`
+  ).join('');
+  return `<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.chatMessageRoleLabel')}</label>
+  <select class="wf-step-edit-input wf-node-prop" data-key="role">${roleOpts}</select>
+</div>
+<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.chatMessagePatternLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.trigger.chatMessagePatternHint')}</span>
+  <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="pattern"
+    value="${esc(props.pattern || '')}" placeholder="deploy|release|fix:.*" />
+</div>
+<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.chatMessageModeLabel')}</label>
+  <select class="wf-step-edit-input wf-node-prop" data-key="matchMode">${modeOpts}</select>
+</div>
+<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.chatMessageProjectLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.trigger.chatMessageProjectHint')}</span>
+  ${renderProjectSelect('projectId', props.projectId || '', esc, true)}
+</div>`;
+}
+
 async function _getCloudSettings() {
   try {
     const os = window.electron_nodeModules?.os;
@@ -256,6 +318,8 @@ module.exports = {
     const projectOpenedSection= triggerType === 'project_opened'     ? renderProjectOpenedSection(props, escapeAttr): '';
     const claudeStartSection  = triggerType === 'claude_session_start'? renderClaudeSessionStartSection(props, escapeAttr): '';
     const claudeEndSection    = triggerType === 'claude_session_end' ? renderClaudeSessionEndSection(props, escapeAttr)  : '';
+    const gitEventSection     = triggerType === 'git_event'          ? renderGitEventSection(props, escapeAttr)          : '';
+    const chatMessageSection  = triggerType === 'chat_message'       ? renderChatMessageSection(props, escapeAttr)       : '';
 
     return `<div class="wf-field-group" data-key="triggerType">
 <div class="wf-step-edit-field">
@@ -272,10 +336,12 @@ module.exports = {
     <option value="project_opened"${triggerType === 'project_opened' ? ' selected' : ''}>${t('workflow.trigger.typeProjectOpened')}</option>
     <option value="claude_session_start"${triggerType === 'claude_session_start' ? ' selected' : ''}>${t('workflow.trigger.typeClaudeSessionStart')}</option>
     <option value="claude_session_end"${triggerType === 'claude_session_end' ? ' selected' : ''}>${t('workflow.trigger.typeClaudeSessionEnd')}</option>
+    <option value="git_event"${triggerType === 'git_event' ? ' selected' : ''}>${t('workflow.trigger.typeGitEvent')}</option>
+    <option value="chat_message"${triggerType === 'chat_message' ? ' selected' : ''}>${t('workflow.trigger.typeChatMessage')}</option>
   </select>
 </div>
 <div class="wf-trigger-conditional">
-  ${cronSection}${hookSection}${onWorkflowSection}${webhookSection}${fileChangeSection}${terminalExitSection}${projectOpenedSection}${claudeStartSection}${claudeEndSection}
+  ${cronSection}${hookSection}${onWorkflowSection}${webhookSection}${fileChangeSection}${terminalExitSection}${projectOpenedSection}${claudeStartSection}${claudeEndSection}${gitEventSection}${chatMessageSection}
 </div>
 </div>`;
   },
@@ -360,6 +426,10 @@ module.exports = {
         html = renderClaudeSessionStartSection(props, esc);
       } else if (tType === 'claude_session_end') {
         html = renderClaudeSessionEndSection(props, esc);
+      } else if (tType === 'git_event') {
+        html = renderGitEventSection(props, esc);
+      } else if (tType === 'chat_message') {
+        html = renderChatMessageSection(props, esc);
       }
 
       condDiv.innerHTML = html;

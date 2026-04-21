@@ -93,6 +93,13 @@ function registerAllHandlers(mainWindow) {
       console.warn('[IPC] workflow.onChatSessionEvent failed:', e.message);
     }
   });
+
+  // Wire chat messages (user/assistant) → workflow triggers
+  chatService.setMessageCallback((event) => {
+    try { workflowService.onChatMessage(event); } catch (e) {
+      console.warn('[IPC] workflow.onChatMessage failed:', e.message);
+    }
+  });
 }
 
 module.exports = {

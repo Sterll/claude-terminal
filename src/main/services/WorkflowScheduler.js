@@ -13,6 +13,7 @@
 'use strict';
 
 const path = require('path');
+const fs   = require('fs');
 
 // ─── Cron parsing ─────────────────────────────────────────────────────────────
 
@@ -106,6 +107,8 @@ class WorkflowScheduler {
     this._cronJobs     = new Map();
     /** Map<workflowId, { watcher, debounceTimer }> — chokidar watchers for file_change triggers */
     this._fileWatchers = new Map();
+    /** Map<workflowId, { watcher, lastOffset, fingerprint }> — git_event watchers */
+    this._gitWatchers  = new Map();
     /** Loaded workflow definitions — refreshed on every reload() call */
     this._workflows    = [];
     /**
@@ -132,6 +135,7 @@ class WorkflowScheduler {
     this._rebuildCronJobs();
     this._ensureCronTimer();
     this._rebuildFileWatchers();
+    this._rebuildGitWatchers();
   }
 
   /**
@@ -272,7 +276,49 @@ class WorkflowScheduler {
     }
     this._cronJobs.clear();
     this._teardownAllFileWatchers();
+    this._teardownAllGitWatchers();
     this._workflows = [];
+  }
+
+  /**
+   * Call this when a chat message (user prompt or assistant reply) is emitted.
+   * @param {Object} event  { role: 'user'|'assistant', text: string, projectId?, sessionId? }
+   */
+  onChatMessage(event) {
+    if (!event || !event.text) return;
+    const text = String(event.text);
+    const role = event.role || 'assistant';
+
+    for (const wf of this._workflows) {
+      if (!wf.enabled) continue;
+      const trigger = wf.trigger || {};
+      if (trigger.type !== 'chat_message') continue;
+      if (trigger.projectId && trigger.projectId !== event.projectId) continue;
+
+      const wantedRole = trigger.role || 'any';
+      if (wantedRole !== 'any' && wantedRole !== role) continue;
+
+      const pattern = (trigger.pattern || '').trim();
+      if (pattern) {
+        const mode = trigger.matchMode || 'contains';
+        let ok = false;
+        if (mode === 'regex') {
+          try { ok = new RegExp(pattern).test(text); }
+          catch (_) { ok = false; }
+        } else {
+          ok = text.toLowerCase().includes(pattern.toLowerCase());
+        }
+        if (!ok) continue;
+      }
+
+      this.dispatch?.(wf.id, {
+        source:    'chat_message',
+        role,
+        text,
+        projectId: event.projectId || null,
+        sessionId: event.sessionId || null,
+      });
+    }
   }
 
   // ─── Private ─────────────────────────────────────────────────────────────────
@@ -440,6 +486,159 @@ class WorkflowScheduler {
   _teardownAllFileWatchers() {
     for (const wfId of [...this._fileWatchers.keys()]) {
       this._teardownFileWatcher(wfId);
+    }
+  }
+
+  // ─── Git watchers (git_event trigger) ───────────────────────────────────────
+
+  _rebuildGitWatchers() {
+    const desired = new Map();
+    for (const wf of this._workflows) {
+      if (!wf.enabled) continue;
+      const trigger = wf.trigger || {};
+      if (trigger.type !== 'git_event') continue;
+
+      const repoPath = trigger.projectId && typeof this.resolveProjectPath === 'function'
+        ? this.resolveProjectPath(trigger.projectId)
+        : null;
+      if (!repoPath) continue;
+
+      desired.set(wf.id, {
+        repoPath,
+        eventFilter: trigger.eventFilter || 'any',
+        projectId:   trigger.projectId,
+      });
+    }
+
+    // Tear down obsolete watchers
+    for (const [wfId, entry] of this._gitWatchers) {
+      const target = desired.get(wfId);
+      const changed = !target || JSON.stringify({
+        repoPath: target.repoPath,
+        eventFilter: target.eventFilter,
+      }) !== entry.fingerprint;
+      if (changed) this._teardownGitWatcher(wfId);
+    }
+
+    // Set up new watchers
+    for (const [wfId, cfg] of desired) {
+      if (this._gitWatchers.has(wfId)) continue;
+      this._setupGitWatcher(wfId, cfg);
+    }
+  }
+
+  _setupGitWatcher(wfId, cfg) {
+    let chokidar;
+    try {
+      chokidar = require('chokidar');
+    } catch (err) {
+      console.warn(`[WorkflowScheduler] chokidar unavailable — git_event disabled: ${err.message}`);
+      return;
+    }
+
+    const headLog = path.join(cfg.repoPath, '.git', 'logs', 'HEAD');
+    const remotesDir = path.join(cfg.repoPath, '.git', 'logs', 'refs', 'remotes');
+
+    let lastOffset = 0;
+    try { lastOffset = fs.statSync(headLog).size; } catch (_) { /* repo without log yet */ }
+
+    const parseLine = (line) => {
+      // format: "<oldSha> <newSha> <name> <email> <ts> <tz>\t<type>[: ...]"
+      const tabIdx = line.indexOf('\t');
+      if (tabIdx < 0) return null;
+      const descr = line.slice(tabIdx + 1);
+      const colon = descr.indexOf(':');
+      const kind  = (colon >= 0 ? descr.slice(0, colon) : descr).trim().toLowerCase();
+      const rest  = colon >= 0 ? descr.slice(colon + 1).trim() : '';
+      return { kind, rest };
+    };
+
+    const handleHeadChange = () => {
+      let size;
+      try { size = fs.statSync(headLog).size; } catch (_) { return; }
+      if (size <= lastOffset) { lastOffset = size; return; }
+
+      let buf;
+      try {
+        const fd = fs.openSync(headLog, 'r');
+        const len = size - lastOffset;
+        buf = Buffer.alloc(len);
+        fs.readSync(fd, buf, 0, len, lastOffset);
+        fs.closeSync(fd);
+      } catch (_) {
+        return;
+      }
+      lastOffset = size;
+
+      const lines = buf.toString('utf8').split('\n').filter(Boolean);
+      for (const line of lines) {
+        const parsed = parseLine(line);
+        if (!parsed) continue;
+        let eventType = null;
+        if (parsed.kind === 'commit' || parsed.kind === 'commit (initial)' || parsed.kind === 'commit (amend)') {
+          eventType = 'commit';
+        } else if (parsed.kind === 'checkout') {
+          eventType = 'branch_switch';
+        } else if (parsed.kind === 'merge' || parsed.kind === 'pull') {
+          eventType = 'commit';
+        }
+        if (!eventType) continue;
+        if (cfg.eventFilter !== 'any' && cfg.eventFilter !== eventType) continue;
+
+        this.dispatch?.(wfId, {
+          source:    'git_event',
+          eventType,
+          message:   parsed.rest,
+          projectId: cfg.projectId,
+          repoPath:  cfg.repoPath,
+        });
+      }
+    };
+
+    const handlePush = (filePath) => {
+      if (cfg.eventFilter !== 'any' && cfg.eventFilter !== 'push') return;
+      this.dispatch?.(wfId, {
+        source:    'git_event',
+        eventType: 'push',
+        message:   path.basename(filePath),
+        projectId: cfg.projectId,
+        repoPath:  cfg.repoPath,
+      });
+    };
+
+    const watcher = chokidar.watch([headLog, remotesDir], {
+      ignoreInitial: true,
+      depth: 3,
+      awaitWriteFinish: { stabilityThreshold: 150, pollInterval: 50 },
+    });
+
+    watcher.on('change', (p) => {
+      if (p === headLog || p.endsWith('HEAD')) handleHeadChange();
+      else if (p.includes(`${path.sep}remotes${path.sep}`)) handlePush(p);
+    });
+    watcher.on('add', (p) => {
+      if (p.includes(`${path.sep}remotes${path.sep}`)) handlePush(p);
+    });
+    watcher.on('error', (err) => {
+      console.warn(`[WorkflowScheduler] git watcher error (${wfId}):`, err.message);
+    });
+
+    this._gitWatchers.set(wfId, {
+      watcher,
+      fingerprint: JSON.stringify({ repoPath: cfg.repoPath, eventFilter: cfg.eventFilter }),
+    });
+  }
+
+  _teardownGitWatcher(wfId) {
+    const entry = this._gitWatchers.get(wfId);
+    if (!entry) return;
+    try { entry.watcher.close(); } catch (_) {}
+    this._gitWatchers.delete(wfId);
+  }
+
+  _teardownAllGitWatchers() {
+    for (const wfId of [...this._gitWatchers.keys()]) {
+      this._teardownGitWatcher(wfId);
     }
   }
 

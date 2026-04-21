@@ -1377,6 +1377,58 @@ class WorkflowRunner {
             }
           }
         }
+      } else if (stepType === 'retry') {
+        // Retry TRY subgraph up to maxAttempts with backoff
+        const tryTargets  = this._getNextNodes(nodeId, 0, outgoing);
+        const failTargets = this._getNextNodes(nodeId, 1, outgoing);
+        const maxAttempts = Math.max(1, Number(step.maxAttempts) || 3);
+        const baseDelay   = Math.max(0, Number(step.delayMs) || 0);
+        const backoff     = step.backoff || 'linear';
+        this._emitStep(runId, step, 'running', null);
+        if (tryTargets.length === 0) {
+          stepOutputs[step.id] = { attempts: 0, error: null };
+          vars.set(step.id, { attempts: 0, error: null });
+          this._emitStep(runId, step, 'success', { attempts: 0 });
+        } else {
+          let attempts = 0;
+          let lastErr  = null;
+          while (attempts < maxAttempts) {
+            attempts++;
+            try {
+              const { visitedNodes } = await this._executeSubGraph(
+                tryTargets, nodeById, outgoing, incoming, vars, runId, signal, stepOutputs, workflow
+              );
+              for (const nid of visitedNodes) visited.add(nid);
+              lastErr = null;
+              break;
+            } catch (err) {
+              if (signal.aborted) throw err;
+              lastErr = err;
+              if (attempts >= maxAttempts) break;
+              const delay = backoff === 'exponential'
+                ? baseDelay * Math.pow(2, attempts - 1)
+                : backoff === 'linear' ? baseDelay * attempts : baseDelay;
+              if (delay > 0) await new Promise(r => setTimeout(r, delay));
+            }
+          }
+          if (lastErr) {
+            const info = { attempts, error: lastErr.message, success: false };
+            stepOutputs[step.id] = info;
+            vars.set(step.id, info);
+            this._emitStep(runId, step, 'success', { attempts, error: lastErr.message });
+            if (failTargets.length > 0) {
+              const { visitedNodes: failVisited } = await this._executeSubGraph(
+                failTargets, nodeById, outgoing, incoming, vars, runId, signal, stepOutputs, workflow
+              );
+              for (const nid of failVisited) visited.add(nid);
+            }
+          } else {
+            const info = { attempts, error: null, success: true };
+            stepOutputs[step.id] = info;
+            vars.set(step.id, info);
+            this._emitStep(runId, step, 'success', { attempts });
+          }
+        }
       } else {
         // Normal step: try to execute
         try {
@@ -1691,6 +1743,57 @@ class WorkflowRunner {
               );
               for (const nid of catchVisited) subVisited.add(nid);
             }
+          }
+        }
+      } else if (stepType === 'retry') {
+        const tryTargets  = this._getNextNodes(nodeId, 0, outgoing);
+        const failTargets = this._getNextNodes(nodeId, 1, outgoing);
+        const maxAttempts = Math.max(1, Number(step.maxAttempts) || 3);
+        const baseDelay   = Math.max(0, Number(step.delayMs) || 0);
+        const backoff     = step.backoff || 'linear';
+        this._emitStep(runId, step, 'running', null);
+        if (tryTargets.length === 0) {
+          stepOutputs[step.id] = { attempts: 0, error: null };
+          vars.set(step.id, { attempts: 0, error: null });
+          this._emitStep(runId, step, 'success', { attempts: 0 });
+        } else {
+          let attempts = 0;
+          let lastErr  = null;
+          while (attempts < maxAttempts) {
+            attempts++;
+            try {
+              const { visitedNodes } = await this._executeSubGraph(
+                tryTargets, nodeById, outgoing, incoming, vars, runId, signal, stepOutputs, workflow
+              );
+              for (const nid of visitedNodes) subVisited.add(nid);
+              lastErr = null;
+              break;
+            } catch (err) {
+              if (signal.aborted) throw err;
+              lastErr = err;
+              if (attempts >= maxAttempts) break;
+              const delay = backoff === 'exponential'
+                ? baseDelay * Math.pow(2, attempts - 1)
+                : backoff === 'linear' ? baseDelay * attempts : baseDelay;
+              if (delay > 0) await new Promise(r => setTimeout(r, delay));
+            }
+          }
+          if (lastErr) {
+            const info = { attempts, error: lastErr.message, success: false };
+            stepOutputs[step.id] = info;
+            vars.set(step.id, info);
+            this._emitStep(runId, step, 'success', { attempts, error: lastErr.message });
+            if (failTargets.length > 0) {
+              const { visitedNodes: failVisited } = await this._executeSubGraph(
+                failTargets, nodeById, outgoing, incoming, vars, runId, signal, stepOutputs, workflow
+              );
+              for (const nid of failVisited) subVisited.add(nid);
+            }
+          } else {
+            const info = { attempts, error: null, success: true };
+            stepOutputs[step.id] = info;
+            vars.set(step.id, info);
+            this._emitStep(runId, step, 'success', { attempts });
           }
         }
       } else {

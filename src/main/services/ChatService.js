@@ -265,6 +265,32 @@ class ChatService {
     this._lifecycleCallback = fn || null;
   }
 
+  /**
+   * Register a callback invoked for each user prompt and assistant text reply.
+   * Used by WorkflowService for the chat_message trigger.
+   * Called with ({ role, text, sessionId, projectId?, cwd? })
+   */
+  setMessageCallback(fn) {
+    this._messageCallback = fn || null;
+  }
+
+  _emitMessage(role, text, sessionId) {
+    if (!this._messageCallback || !text) return;
+    if (this._sessionInterceptors && this._sessionInterceptors.has(sessionId)) return;
+    const session = this.sessions.get(sessionId) || {};
+    try {
+      this._messageCallback({
+        role,
+        text,
+        sessionId,
+        projectId: session.projectId || null,
+        cwd: session.cwd || null,
+      });
+    } catch (err) {
+      console.warn(`[ChatService] message callback error:`, err?.message);
+    }
+  }
+
   _emitLifecycle(event, sessionId, extra = {}) {
     if (!this._lifecycleCallback) return;
     // Skip internal sessions (workflow agent steps register interceptors)
@@ -488,6 +514,10 @@ class ChatService {
       // Relay user message to remote clients so mobile sees it
       if (this._remoteEventCallback) {
         this._remoteEventCallback('chat-user-message', { sessionId, text, images: images.length });
+      }
+      // Fire chat_message trigger for user prompts
+      if (typeof text === 'string' && text.trim()) {
+        this._emitMessage('user', text, sessionId);
       }
     } catch (err) {
       console.error(`[ChatService] sendMessage error (transport not ready):`, err.message);
@@ -718,6 +748,15 @@ class ChatService {
           continue;
         }
         this._send('chat-message', { sessionId, message });
+
+        // Extract assistant text for chat_message trigger dispatch
+        if (message.type === 'assistant' && Array.isArray(message.message?.content)) {
+          let text = '';
+          for (const block of message.message.content) {
+            if (block.type === 'text' && block.text) text += block.text;
+          }
+          if (text) this._emitMessage('assistant', text, sessionId);
+        }
       }
       this._send('chat-done', { sessionId });
       this._emitLifecycle('end', sessionId, { status: 'success' });

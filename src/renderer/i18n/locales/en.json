@@ -2382,7 +2382,28 @@
       "claudeSessionStatusHint": "Filter by how the session terminated.",
       "claudeSessionStatusAny": "Any (success / interrupted / error)",
       "claudeSessionStatusSuccess": "Success only",
-      "claudeSessionStatusError": "Error only"
+      "claudeSessionStatusError": "Error only",
+      "typeGitEvent": "Git event",
+      "gitEventProjectLabel": "Project",
+      "gitEventProjectHint": "Watch this project's local repository (.git folder).",
+      "gitEventTypeLabel": "Event type",
+      "gitEventTypeHint": "Which git operation should fire the workflow?",
+      "gitEventAny": "Any (commit / push / branch switch)",
+      "gitEventCommit": "Commit",
+      "gitEventPush": "Push",
+      "gitEventBranchSwitch": "Branch switch",
+      "typeChatMessage": "Chat message",
+      "chatMessageProjectLabel": "Project",
+      "chatMessageProjectHint": "Fire only for Claude sessions in this project.",
+      "chatMessageRoleLabel": "Role",
+      "chatMessageRoleUser": "User message",
+      "chatMessageRoleAssistant": "Assistant reply",
+      "chatMessageRoleAny": "Any role",
+      "chatMessagePatternLabel": "Pattern",
+      "chatMessagePatternHint": "Optional text / regex to match. Leave empty to match every message.",
+      "chatMessageModeLabel": "Match mode",
+      "chatMessageModeContains": "Contains text",
+      "chatMessageModeRegex": "Regular expression"
     },
     "loop": {
       "sourceLabel": "Iteration source",
@@ -2944,6 +2965,45 @@
     },
     "trigger": {
       "label": "Trigger"
+    },
+    "retry": {
+      "attempts": {
+        "label": "Max attempts",
+        "hint": "Total number of tries before giving up (first attempt included)."
+      },
+      "delay": {
+        "label": "Base delay (ms)",
+        "hint": "Wait this long between attempts (used as a base for the backoff)."
+      },
+      "backoff": {
+        "label": "Backoff",
+        "hint": "How the delay grows between retries.",
+        "none": "None (constant)",
+        "linear": "Linear (delay × attempt)",
+        "exponential": "Exponential (delay × 2^attempt)"
+      }
+    },
+    "discord": {
+      "webhook": {
+        "label": "Webhook URL",
+        "hint": "Paste the full Discord webhook URL."
+      },
+      "username": {
+        "label": "Display name (optional)"
+      },
+      "content": {
+        "label": "Message",
+        "hint": "Plain text content. Supports variables like $project.name."
+      },
+      "title": {
+        "label": "Embed title"
+      },
+      "description": {
+        "label": "Embed description"
+      },
+      "color": {
+        "label": "Embed color (hex)"
+      }
     }
   },
   "tasks": {

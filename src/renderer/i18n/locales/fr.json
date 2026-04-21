@@ -2382,7 +2382,28 @@
       "claudeSessionStatusHint": "Filtrer selon la façon dont la session s'est terminée.",
       "claudeSessionStatusAny": "Tous (succès / interrompu / erreur)",
       "claudeSessionStatusSuccess": "Succès uniquement",
-      "claudeSessionStatusError": "Erreur uniquement"
+      "claudeSessionStatusError": "Erreur uniquement",
+      "typeGitEvent": "Événement Git",
+      "gitEventProjectLabel": "Projet",
+      "gitEventProjectHint": "Surveille le dépôt local de ce projet (dossier .git).",
+      "gitEventTypeLabel": "Type d'événement",
+      "gitEventTypeHint": "Quelle opération git doit déclencher le workflow ?",
+      "gitEventAny": "Tous (commit / push / changement de branche)",
+      "gitEventCommit": "Commit",
+      "gitEventPush": "Push",
+      "gitEventBranchSwitch": "Changement de branche",
+      "typeChatMessage": "Message du chat",
+      "chatMessageProjectLabel": "Projet",
+      "chatMessageProjectHint": "Se déclenche uniquement pour les sessions Claude de ce projet.",
+      "chatMessageRoleLabel": "Rôle",
+      "chatMessageRoleUser": "Message utilisateur",
+      "chatMessageRoleAssistant": "Réponse de l'assistant",
+      "chatMessageRoleAny": "Tous les rôles",
+      "chatMessagePatternLabel": "Motif",
+      "chatMessagePatternHint": "Texte ou regex à faire correspondre (optionnel).",
+      "chatMessageModeLabel": "Mode de correspondance",
+      "chatMessageModeContains": "Contient le texte",
+      "chatMessageModeRegex": "Expression régulière"
     },
     "loop": {
       "sourceLabel": "Source d'itération",
@@ -2944,6 +2965,45 @@
     },
     "trigger": {
       "label": "Déclencheur"
+    },
+    "retry": {
+      "attempts": {
+        "label": "Tentatives max",
+        "hint": "Nombre total d'essais avant abandon (première tentative incluse)."
+      },
+      "delay": {
+        "label": "Délai de base (ms)",
+        "hint": "Attente entre les tentatives (sert de base pour le backoff)."
+      },
+      "backoff": {
+        "label": "Backoff",
+        "hint": "Progression du délai entre les tentatives.",
+        "none": "Aucun (constant)",
+        "linear": "Linéaire (délai × tentative)",
+        "exponential": "Exponentiel (délai × 2^tentative)"
+      }
+    },
+    "discord": {
+      "webhook": {
+        "label": "URL du webhook",
+        "hint": "Collez l'URL complète du webhook Discord."
+      },
+      "username": {
+        "label": "Nom affiché (optionnel)"
+      },
+      "content": {
+        "label": "Message",
+        "hint": "Texte brut. Supporte les variables comme $project.name."
+      },
+      "title": {
+        "label": "Titre de l'embed"
+      },
+      "description": {
+        "label": "Description de l'embed"
+      },
+      "color": {
+        "label": "Couleur de l'embed (hex)"
+      }
     }
   },
   "tasks": {

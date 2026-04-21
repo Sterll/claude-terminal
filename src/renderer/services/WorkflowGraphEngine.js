@@ -1095,6 +1095,16 @@ class WorkflowGraphEngine {
         if (p.projectId) out.projectId = p.projectId;
         if (p.statusFilter) out.statusFilter = p.statusFilter;
       }
+      if (out.type === 'git_event') {
+        if (p.projectId)   out.projectId   = p.projectId;
+        if (p.eventFilter) out.eventFilter = p.eventFilter;
+      }
+      if (out.type === 'chat_message') {
+        if (p.projectId) out.projectId = p.projectId;
+        if (p.role)      out.role      = p.role;
+        if (p.pattern)   out.pattern   = p.pattern;
+        if (p.matchMode) out.matchMode = p.matchMode;
+      }
       return out;
     })() : { type: 'manual', value: '' };
     const hookType = triggerNode ? triggerNode.properties.hookType : 'PostToolUse';
@@ -1172,6 +1182,10 @@ class WorkflowGraphEngine {
       if (wt.codeFilter)         trigger.properties.codeFilter  = wt.codeFilter;
       if (wt.customCodes)        trigger.properties.customCodes = wt.customCodes;
       if (wt.statusFilter)       trigger.properties.statusFilter = wt.statusFilter;
+      if (wt.eventFilter)        trigger.properties.eventFilter = wt.eventFilter;
+      if (wt.role)               trigger.properties.role        = wt.role;
+      if (wt.pattern)            trigger.properties.pattern     = wt.pattern;
+      if (wt.matchMode)          trigger.properties.matchMode   = wt.matchMode;
     }
 
     let prevNode = trigger;

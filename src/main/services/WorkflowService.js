@@ -203,6 +203,14 @@ class WorkflowService {
     this._scheduler.onChatSessionEvent(event);
   }
 
+  /**
+   * Forward chat message events (user prompt / assistant reply) to the scheduler.
+   * @param {Object} event { role, text, projectId?, sessionId? }
+   */
+  onChatMessage(event) {
+    this._scheduler.onChatMessage(event);
+  }
+
   // ─── Workflow CRUD ───────────────────────────────────────────────────────────
 
   listWorkflows() {
