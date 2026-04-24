@@ -506,6 +506,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     scanTodos: (projectPath) => ipcRenderer.invoke('scan-todos', projectPath),
     stats: (projectPath) => ipcRenderer.invoke('project-stats', projectPath),
     onQuickActionRun: createListener('quickaction:run'),
+    onQuickActionChanged: createListener('quickaction:changed'),
   },
 
   // ==================== CLAUDE ====================

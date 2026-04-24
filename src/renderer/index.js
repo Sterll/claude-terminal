@@ -42,6 +42,7 @@ state.skillsAgentsState.subscribe(() => {
 // Must run once when the module is first required.
 const _api = window.electron_api;
 _registerCloudListeners(_api);
+_registerMcpProjectListeners(_api);
 
 // ── Cloud event handlers ──────────────────────────────────────────────────
 
@@ -67,6 +68,16 @@ function _registerCloudListeners(api) {
       await checkMissingPaths();
     });
   }
+}
+
+// ── MCP project event handlers ───────────────────────────────────────────────
+
+function _registerMcpProjectListeners(api) {
+  if (!api?.project?.onQuickActionChanged) return;
+  api.project.onQuickActionChanged(async () => {
+    const { loadProjects } = require('./state/projects.state');
+    await loadProjects();
+  });
 }
 
 // Telemetry consent modal is handled in renderer.js (main entry point)

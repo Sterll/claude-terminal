@@ -32,6 +32,9 @@ You are running inside **Claude Terminal**, a desktop application for managing C
 ### Quick Actions
 - \`quickaction_list\` — List quick actions configured for a project (build, test, dev…)
 - \`quickaction_run\` — Run a quick action in a terminal (async)
+- \`quickaction_add\` — Add a new quick action to a project (name, command, icon, pinned)
+- \`quickaction_update\` — Update an existing quick action (name, command, icon, pinned)
+- \`quickaction_delete\` — Remove a quick action from a project
 
 ### Workflows
 - \`workflow_list\` — List all workflows with trigger type and last run status

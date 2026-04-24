@@ -43,6 +43,19 @@ function generateId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+function notifyQuickActionChanged(projectId, mutation, actionName) {
+  const triggerDir = path.join(getDataDir(), 'quickactions', 'triggers');
+  if (!fs.existsSync(triggerDir)) fs.mkdirSync(triggerDir, { recursive: true });
+  const triggerFile = path.join(triggerDir, `changed_${Date.now()}.json`);
+  fs.writeFileSync(triggerFile, JSON.stringify({
+    type: 'changed',
+    projectId,
+    mutation,
+    actionName,
+    timestamp: new Date().toISOString(),
+  }), 'utf8');
+}
+
 function findProject(nameOrId) {
   const data = loadProjects();
   return data.projects.find(p =>
@@ -115,6 +128,49 @@ const tools = [
       properties: {
         project: { type: 'string', description: 'Project name or ID' },
         action: { type: 'string', description: 'Quick action name or ID' },
+      },
+      required: ['project', 'action'],
+    },
+  },
+  {
+    name: 'quickaction_add',
+    description: 'Add a new quick action to a project. Quick actions are shell commands that can be triggered from the UI or via MCP.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project: { type: 'string', description: 'Project name or ID' },
+        name:    { type: 'string', description: 'Display name for the action (e.g. "Build", "Dev Server")' },
+        command: { type: 'string', description: 'Shell command to execute (e.g. "npm run build"). Supports variables: $PROJECT_PATH, $PROJECT_NAME, $BRANCH, $HOME' },
+        icon:    { type: 'string', enum: ['play', 'build', 'test', 'code', 'refresh', 'download', 'upload', 'package', 'terminal', 'server', 'database', 'zap', 'settings', 'git', 'clean'], description: 'Icon for the action (default: play)' },
+        pinned:  { type: 'boolean', description: 'Pin this action to the project card for quick access (max 3 pinned)' },
+      },
+      required: ['project', 'name', 'command'],
+    },
+  },
+  {
+    name: 'quickaction_update',
+    description: 'Update an existing quick action on a project. Change its name, command, icon, or pinned state.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project: { type: 'string', description: 'Project name or ID' },
+        action:  { type: 'string', description: 'Quick action name or ID to update' },
+        name:    { type: 'string', description: 'New display name' },
+        command: { type: 'string', description: 'New shell command' },
+        icon:    { type: 'string', enum: ['play', 'build', 'test', 'code', 'refresh', 'download', 'upload', 'package', 'terminal', 'server', 'database', 'zap', 'settings', 'git', 'clean'], description: 'New icon' },
+        pinned:  { type: 'boolean', description: 'Pin or unpin the action' },
+      },
+      required: ['project', 'action'],
+    },
+  },
+  {
+    name: 'quickaction_delete',
+    description: 'Remove a quick action from a project.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project: { type: 'string', description: 'Project name or ID' },
+        action:  { type: 'string', description: 'Quick action name or ID to delete' },
       },
       required: ['project', 'action'],
     },
@@ -472,6 +528,128 @@ async function handle(name, args) {
       }), 'utf8');
 
       return ok(`Quick action "${action.name}" triggered on ${p.name || path.basename(p.path || '?')}. Command: ${action.command}`);
+    }
+
+    // ── quickaction_add ──────────────────────────────────────────────────
+    if (name === 'quickaction_add') {
+      if (!args.project) return fail('Missing required parameter: project');
+      if (!args.name) return fail('Missing required parameter: name');
+      if (!args.command) return fail('Missing required parameter: command');
+
+      const data = loadProjects();
+      const p = findProjectInData(data, args.project);
+      if (!p) return fail(`Project "${args.project}" not found. Use project_list to see available projects.`);
+
+      if (!p.quickActions) p.quickActions = [];
+
+      const duplicate = p.quickActions.find(a => a.name.toLowerCase() === args.name.toLowerCase());
+      if (duplicate) return fail(`Quick action "${args.name}" already exists on this project.`);
+
+      const validIcons = ['play', 'build', 'test', 'code', 'refresh', 'download', 'upload', 'package', 'terminal', 'server', 'database', 'zap', 'settings', 'git', 'clean'];
+      const icon = args.icon && validIcons.includes(args.icon) ? args.icon : 'play';
+
+      const newAction = {
+        id: generateId('qa'),
+        name: args.name.trim(),
+        command: args.command.trim(),
+        icon,
+      };
+
+      if (args.pinned) {
+        const pinnedCount = p.quickActions.filter(a => a.pinned).length;
+        if (pinnedCount >= 3) return fail('Maximum 3 pinned actions allowed. Unpin another action first.');
+        newAction.pinned = true;
+      }
+
+      p.quickActions.push(newAction);
+      saveProjects(data);
+      notifyQuickActionChanged(p.id, 'add', newAction.name);
+
+      const projectName = p.name || path.basename(p.path || '?');
+      return ok(`Quick action added to "${projectName}":\n  Name: ${newAction.name}\n  Command: ${newAction.command}\n  Icon: ${newAction.icon}${newAction.pinned ? '\n  Pinned: yes' : ''}\n  ID: ${newAction.id}`);
+    }
+
+    // ── quickaction_update ───────────────────────────────────────────────
+    if (name === 'quickaction_update') {
+      if (!args.project) return fail('Missing required parameter: project');
+      if (!args.action) return fail('Missing required parameter: action');
+
+      const data = loadProjects();
+      const p = findProjectInData(data, args.project);
+      if (!p) return fail(`Project "${args.project}" not found. Use project_list to see available projects.`);
+
+      const actions = p.quickActions || [];
+      const action = actions.find(a =>
+        a.id === args.action ||
+        a.name.toLowerCase() === args.action.toLowerCase()
+      );
+      if (!action) {
+        const available = actions.map(a => a.name).join(', ');
+        return fail(`Action "${args.action}" not found. Available: ${available || 'none'}`);
+      }
+
+      const updates = [];
+
+      if (args.name !== undefined) {
+        const dup = actions.find(a => a.id !== action.id && a.name.toLowerCase() === args.name.toLowerCase());
+        if (dup) return fail(`Another action named "${args.name}" already exists.`);
+        action.name = args.name.trim();
+        updates.push(`name → "${action.name}"`);
+      }
+      if (args.command !== undefined) {
+        action.command = args.command.trim();
+        updates.push(`command → "${action.command}"`);
+      }
+      if (args.icon !== undefined) {
+        const validIcons = ['play', 'build', 'test', 'code', 'refresh', 'download', 'upload', 'package', 'terminal', 'server', 'database', 'zap', 'settings', 'git', 'clean'];
+        if (!validIcons.includes(args.icon)) return fail(`Invalid icon "${args.icon}". Valid: ${validIcons.join(', ')}`);
+        action.icon = args.icon;
+        updates.push(`icon → ${action.icon}`);
+      }
+      if (args.pinned !== undefined) {
+        if (args.pinned && !action.pinned) {
+          const pinnedCount = actions.filter(a => a.pinned).length;
+          if (pinnedCount >= 3) return fail('Maximum 3 pinned actions. Unpin another action first.');
+        }
+        action.pinned = args.pinned;
+        updates.push(`pinned → ${action.pinned}`);
+      }
+
+      if (!updates.length) return fail('No updates provided. Specify name, command, icon, or pinned.');
+
+      saveProjects(data);
+      notifyQuickActionChanged(p.id, 'update', action.name);
+
+      const projectName = p.name || path.basename(p.path || '?');
+      return ok(`Quick action "${action.name}" updated on "${projectName}":\n  ${updates.join('\n  ')}`);
+    }
+
+    // ── quickaction_delete ───────────────────────────────────────────────
+    if (name === 'quickaction_delete') {
+      if (!args.project) return fail('Missing required parameter: project');
+      if (!args.action) return fail('Missing required parameter: action');
+
+      const data = loadProjects();
+      const p = findProjectInData(data, args.project);
+      if (!p) return fail(`Project "${args.project}" not found. Use project_list to see available projects.`);
+
+      const actions = p.quickActions || [];
+      const action = actions.find(a =>
+        a.id === args.action ||
+        a.name.toLowerCase() === args.action.toLowerCase()
+      );
+      if (!action) {
+        const available = actions.map(a => a.name).join(', ');
+        return fail(`Action "${args.action}" not found. Available: ${available || 'none'}`);
+      }
+
+      const actionName = action.name;
+      p.quickActions = actions.filter(a => a.id !== action.id);
+      saveProjects(data);
+      notifyQuickActionChanged(p.id, 'delete', actionName);
+
+      const projectName = p.name || path.basename(p.path || '?');
+      return ok(`Quick action "${actionName}" removed from "${projectName}".`);
     }
 
     // ── project_create ────────────────────────────────────────────────────

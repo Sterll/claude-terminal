@@ -90,7 +90,11 @@ function _startMcpTriggerPolling(mainWindow) {
   _mcpPollTimer = setInterval(async () => {
     // Quick actions
     await _pollTriggerDirAsync(path.join(dataDir, 'quickactions', 'triggers'), (data) => {
-      if (data.projectId && data.command && mainWindow && !mainWindow.isDestroyed()) {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (data.type === 'changed' && data.projectId) {
+        mainWindow.webContents.send('quickaction:changed', data);
+        console.log(`[Services] MCP quick action ${data.mutation}: ${data.actionName || '?'} on ${data.projectId}`);
+      } else if (data.projectId && data.command) {
         mainWindow.webContents.send('quickaction:run', data);
         console.log(`[Services] MCP quick action: ${data.actionName} on ${data.projectId}`);
       }
