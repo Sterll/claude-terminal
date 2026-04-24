@@ -282,6 +282,17 @@ function bootstrapApp() {
 
   // App lifecycle
   app.whenReady().then(() => {
+    // Linux AppImage: register/refresh the .desktop entry so the app appears
+    // in the application menu (and survives version bumps that change the
+    // AppImage filename). Best-effort, never throws.
+    if (process.platform === 'linux') {
+      try {
+        require('./src/main/services/LinuxDesktopIntegration').run();
+      } catch (e) {
+        console.warn('[LinuxDesktopIntegration] skipped:', e && e.message);
+      }
+    }
+
     // Content Security Policy - allow only local file:// resources
     // Prevents XSS attacks from loading remote scripts/styles/iframes
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
