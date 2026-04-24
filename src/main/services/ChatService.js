@@ -820,9 +820,14 @@ class ChatService {
       return 'Claude Code process was terminated unexpectedly. This may be caused by an antivirus or insufficient memory.';
     }
 
-    // Executable not found
+    // Executable not found — either no JS runtime (node/bun) or cli.js missing from install
     if (raw.includes('executable not found') || raw.includes('not found at')) {
-      return 'Claude Code SDK executable not found. Try reinstalling Claude Terminal.';
+      const cliPath = getSdkCliPath();
+      const cliExists = fs.existsSync(cliPath);
+      if (!cliExists) {
+        return 'Claude Code SDK files are missing or corrupted. Please reinstall Claude Terminal.';
+      }
+      return 'Node.js is not installed on this machine. The chat requires Node.js to run.\n\nInstall it from https://nodejs.org (LTS) then restart Claude Terminal.';
     }
 
     // Non-JSON output (usually startup crash with error printed to stdout)
