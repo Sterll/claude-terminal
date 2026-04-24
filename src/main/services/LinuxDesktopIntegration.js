@@ -50,13 +50,15 @@ function buildDesktopFileContent({ appImagePath, iconPath, version }) {
     '[Desktop Entry]',
     `Name=${APP_NAME}`,
     'Comment=Terminal for Claude Code projects',
+    // --no-sandbox: required for AppImages — Chromium's SUID sandbox needs
+    // permissions that AppImage environments cannot provide.
     `Exec=${quotedExec} --no-sandbox %U`,
     `TryExec=${appImagePath}`,
     `Icon=${iconPath}`,
     'Terminal=false',
     'Type=Application',
     'Categories=Development;Utility;',
-    `StartupWMClass=${APP_NAME}`,
+    'StartupWMClass=claude-terminal',
   ];
   if (version) {
     lines.push(`X-AppImage-Version=${version}`);
