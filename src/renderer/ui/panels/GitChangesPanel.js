@@ -439,7 +439,7 @@ class GitChangesPanel extends BasePanel {
       const filePath = file.path.split('/').slice(0, -1).join('/');
       const isSelected = self._state.selectedFiles.has(index);
 
-      return `<div class="git-file-item ${isSelected ? 'selected' : ''}" data-index="${index}">
+      return `<div class="git-file-item ${isSelected ? 'selected' : ''}" data-index="${index}" data-path="${escapeHtml(file.path)}">
           <div class="git-file-item-row">
             <input type="checkbox" ${isSelected ? 'checked' : ''}>
             <span class="git-file-status ${file.status}">${file.status}</span>
@@ -458,6 +458,7 @@ class GitChangesPanel extends BasePanel {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
             </button>
           </div>
+          <div class="git-inline-diff" data-index="${index}"></div>
         </div>`;
     }
 
@@ -522,7 +523,7 @@ class GitChangesPanel extends BasePanel {
       if (diffToggle) {
         diffToggle.onclick = (e) => {
           e.stopPropagation();
-          this._openDiffModal(index);
+          this._toggleInlineDiff(item, index);
         };
       }
 
@@ -566,42 +567,200 @@ class GitChangesPanel extends BasePanel {
     this._updateSelectAllState();
   }
 
-  async _openDiffModal(index) {
+  async _toggleInlineDiff(itemEl, index) {
     const file = this._state.files[index];
     if (!file) return;
 
-    const modalOverlay = document.getElementById('modal-overlay');
-    const modalTitle = document.getElementById('modal-title');
-    const modalBody = document.getElementById('modal-body');
-    const modalFooter = document.getElementById('modal-footer');
+    const diffPanel = itemEl.querySelector('.git-inline-diff');
+    const toggle = itemEl.querySelector('.git-diff-toggle');
+    if (!diffPanel) return;
 
-    if (!modalOverlay) return;
+    if (diffPanel.classList.contains('open')) {
+      diffPanel.classList.remove('open');
+      itemEl.classList.remove('diff-open');
+      toggle?.querySelector('svg')?.classList.remove('rotated');
+      return;
+    }
 
-    if (modalTitle) modalTitle.textContent = file.path;
-    if (modalBody) modalBody.innerHTML = '<div class="git-diff-view"><div style="padding:24px;text-align:center;color:var(--text-muted)"><span class="loading-spinner"></span></div></div>';
-    if (modalFooter) modalFooter.style.display = 'none';
-    modalOverlay.classList.add('active');
+    diffPanel.classList.add('open');
+    itemEl.classList.add('diff-open');
+    toggle?.querySelector('svg')?.classList.add('rotated');
+
+    if (diffPanel.dataset.loaded) return;
+    diffPanel.dataset.loaded = 'true';
+
+    diffPanel.innerHTML = '<div class="git-inline-diff-loading"><span class="loading-spinner"></span></div>';
 
     try {
-      const diff = await this.api.git.fileDiff({
-        projectPath: this._state.projectPath,
-        filePath: file.path,
-        staged: file.staged || false
-      });
+      const [diff, blameResult] = await Promise.all([
+        this.api.git.fileDiff({
+          projectPath: this._state.projectPath,
+          filePath: file.path,
+          staged: file.staged || false
+        }),
+        file.status !== '?' ? this.api.git.blame({
+          projectPath: this._state.projectPath,
+          filePath: file.path
+        }).catch(() => null) : Promise.resolve(null)
+      ]);
 
-      if (!modalBody) return;
       if (!diff || diff.trim() === '') {
-        modalBody.innerHTML = '<p style="color:var(--text-secondary);padding:16px">' + t('gitChanges.noDiff') + '</p>';
+        diffPanel.innerHTML = `<div class="git-inline-diff-empty">${t('gitChanges.noDiff')}</div>`;
         return;
       }
 
-      const lines = diff.split('\n').map(line => {
-        const cls = line.startsWith('+') ? 'diff-add' : line.startsWith('-') ? 'diff-del' : line.startsWith('@@') ? 'diff-hunk' : '';
-        return `<div class="diff-line ${cls}">${escapeHtml(line)}</div>`;
-      }).join('');
-      modalBody.innerHTML = `<div class="git-diff-view"><pre class="git-diff-content">${lines}</pre></div>`;
+      const blameMap = this._buildBlameMap(blameResult);
+      diffPanel.innerHTML = `<div class="git-inline-diff-content">${this._renderDiffWithBlame(diff, blameMap)}</div>`;
+      this._bindBlameClicks(diffPanel);
     } catch (e) {
-      if (modalBody) modalBody.innerHTML = `<p style="color:var(--danger);padding:16px">${escapeHtml(e.message)}</p>`;
+      diffPanel.innerHTML = `<div class="git-inline-diff-empty" style="color:var(--danger)">${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  _buildBlameMap(blameResult) {
+    const map = new Map();
+    if (!blameResult?.success || !blameResult.lines) return map;
+    for (const entry of blameResult.lines) {
+      map.set(entry.line, entry);
+    }
+    return map;
+  }
+
+  _renderDiffWithBlame(diff, blameMap) {
+    const lines = diff.split('\n');
+    let oldLine = 0;
+    let html = '';
+
+    for (const line of lines) {
+      const hunkMatch = line.match(/^@@\s+-(\d+)/);
+      if (hunkMatch) {
+        oldLine = parseInt(hunkMatch[1]);
+        html += `<div class="git-diff-line hunk"><span class="git-blame-gutter"></span><span>@@</span><span class="line-text">${escapeHtml(line.slice(2))}</span></div>`;
+        continue;
+      }
+
+      if (line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++') || line.startsWith('\\')) {
+        continue;
+      }
+
+      const isAdd = line.startsWith('+');
+      const isDel = line.startsWith('-');
+      const cls = isAdd ? 'add' : isDel ? 'del' : 'ctx';
+      const marker = isAdd ? '+' : isDel ? '-' : ' ';
+      const content = line.slice(1);
+
+      let gutterHtml = '<span class="git-blame-gutter"></span>';
+      if (!isAdd && blameMap.size > 0) {
+        const blame = blameMap.get(oldLine);
+        if (blame && blame.hash && !blame.hash.startsWith('0000000')) {
+          const shortHash = blame.hash.substring(0, 7);
+          const ago = this._formatBlameDate(blame.timestamp);
+          const author = blame.author.length > 12 ? blame.author.substring(0, 12) + '\u2026' : blame.author;
+          gutterHtml = `<span class="git-blame-gutter has-blame" data-hash="${blame.hash}" title="${escapeHtml(blame.author)} \u00b7 ${ago}\n${escapeHtml(blame.summary)}"><span class="git-blame-gutter-hash">${shortHash}</span> <span class="git-blame-gutter-author">${escapeHtml(author)}</span> <span class="git-blame-gutter-date">${ago}</span></span>`;
+        }
+      }
+
+      if (!isAdd) oldLine++;
+
+      html += `<div class="git-diff-line ${cls}">${gutterHtml}<span>${marker}</span><span class="line-text">${escapeHtml(content)}</span></div>`;
+    }
+
+    return html;
+  }
+
+  _formatBlameDate(timestamp) {
+    if (!timestamp) return '';
+    const now = Date.now() / 1000;
+    const diff = now - timestamp;
+    if (diff < 60) return t('gitChanges.blameJustNow') || 'just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+    if (diff < 2592000) return `${Math.floor(diff / 86400)}d`;
+    if (diff < 31536000) return `${Math.floor(diff / 2592000)}mo`;
+    return `${Math.floor(diff / 31536000)}y`;
+  }
+
+  _bindBlameClicks(diffPanel) {
+    diffPanel.querySelectorAll('.git-blame-gutter.has-blame').forEach(el => {
+      el.style.cursor = 'pointer';
+      el.onclick = (e) => {
+        e.stopPropagation();
+        const hash = el.dataset.hash;
+        if (!hash) return;
+        this._openCommitDetail(hash);
+      };
+    });
+  }
+
+  async _openCommitDetail(hash) {
+    const shortHash = hash.substring(0, 7);
+    try {
+      const [detail, fileDiffs] = await Promise.all([
+        this.api.git.commitDetail({ projectPath: this._state.projectPath, commitHash: hash }),
+        this.api.git.commitFileDiffs({ projectPath: this._state.projectPath, commitHash: hash })
+      ]);
+
+      let filesHtml = '';
+      if (fileDiffs?.success && fileDiffs.files?.length > 0) {
+        filesHtml = `<div class="git-commit-files-header">${t('gitTab.changedFiles') || 'Changed files'} (${fileDiffs.files.length})</div>`;
+        filesHtml += '<div class="git-commit-files-list">';
+        for (const f of fileDiffs.files) {
+          const safeId = f.path.replace(/[^a-zA-Z0-9]/g, '_');
+          filesHtml += `<div class="git-commit-file-item" data-file="${escapeHtml(f.path)}" data-hash="${escapeHtml(hash)}">
+            <span class="git-commit-file-name">${escapeHtml(f.path)}</span>
+            <span class="git-commit-file-stats">
+              ${f.additions > 0 ? `<span class="diff-stat-add">+${f.additions}</span>` : ''}
+              ${f.deletions > 0 ? `<span class="diff-stat-del">-${f.deletions}</span>` : ''}
+            </span>
+            <svg class="git-commit-file-expand" viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M7 10l5 5 5-5z"/></svg>
+          </div>
+          <div class="git-commit-file-diff" id="git-file-diff-${safeId}" style="display:none"></div>`;
+        }
+        filesHtml += '</div>';
+      }
+
+      const fullContent = `${filesHtml}<div class="git-diff-view"><pre class="git-diff-content">${escapeHtml(detail || '')}</pre></div>`;
+
+      const modal = createModal({
+        id: 'git-blame-commit-modal',
+        title: `${t('ui.commit') || 'Commit'} ${shortHash}`,
+        content: fullContent,
+        size: 'large'
+      });
+      showModal(modal);
+
+      modal.querySelectorAll('.git-commit-file-item').forEach(item => {
+        item.onclick = async () => {
+          const filePath = item.dataset.file;
+          const commitHash = item.dataset.hash;
+          const diffContainer = item.nextElementSibling;
+          if (!diffContainer) return;
+
+          if (diffContainer.style.display === 'none') {
+            diffContainer.style.display = 'block';
+            item.querySelector('.git-commit-file-expand')?.classList.add('expanded');
+            if (!diffContainer.dataset.loaded) {
+              diffContainer.innerHTML = '<div class="spinner-small" style="margin:8px auto"></div>';
+              const diffRes = await this.api.git.commitFileDiff({ projectPath: this._state.projectPath, commitHash, filePath });
+              if (diffRes?.success && diffRes.diff) {
+                const diffLines = diffRes.diff.split('\n').map(l => {
+                  const cls = l.startsWith('+') ? 'diff-add' : l.startsWith('-') ? 'diff-del' : l.startsWith('@@') ? 'diff-hunk' : '';
+                  return `<div class="diff-line ${cls}">${escapeHtml(l)}</div>`;
+                }).join('');
+                diffContainer.innerHTML = `<pre class="git-diff-content">${diffLines}</pre>`;
+              } else {
+                diffContainer.innerHTML = `<p style="color:var(--text-secondary);padding:8px">${t('gitTab.noDiffAvailable') || 'No diff available'}</p>`;
+              }
+              diffContainer.dataset.loaded = 'true';
+            }
+          } else {
+            diffContainer.style.display = 'none';
+            item.querySelector('.git-commit-file-expand')?.classList.remove('expanded');
+          }
+        };
+      });
+    } catch (e) {
+      this._showToast({ type: 'error', title: 'Blame', message: e.message, duration: 4000 });
     }
   }
 

@@ -101,6 +101,10 @@ function bootstrapApp() {
     const isDev = process.argv.includes('--dev');
     const mainWindow = createMainWindow({ isDev });
 
+    const errorLogService = require('./src/main/services/ErrorLogService');
+    errorLogService.setMainWindow(mainWindow);
+    errorLogService.installGlobalHandlers();
+
     initializeServices(mainWindow);
     registerAllHandlers(mainWindow);
     registerQuickPickerHandlers();

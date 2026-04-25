@@ -718,7 +718,9 @@ function renderBrowserDataPanel(tableName, tableMeta, isMongo, columnLabel) {
                   const val = row[col];
                   const isNull = val === null || val === undefined;
                   const displayVal = isNull ? 'NULL' : escapeHtml(String(val));
-                  const cellClass = isNull ? 'db-grid-cell null' : 'db-grid-cell';
+                  const pendingRow = panelState.browserPendingEdits.get(ri);
+                  const isPending = pendingRow && col in pendingRow.changes;
+                  const cellClass = `db-grid-cell${isNull ? ' null' : ''}${isPending ? ' pending-edit' : ''}`;
                   const isEditing = panelState.browserEditingCell && panelState.browserEditingCell.row === ri && panelState.browserEditingCell.col === col;
                   if (isEditing) {
                     return `<td class="db-grid-cell editing"><input class="db-grid-edit-input" data-row="${ri}" data-col="${escapeHtml(col)}" value="${isNull ? '' : escapeHtml(String(val))}" autofocus></td>`;
@@ -787,6 +789,20 @@ function renderBrowserDataPanel(tableName, tableMeta, isMongo, columnLabel) {
           </div>
         </div>
       </div>
+      ${panelState.browserPendingEdits.size > 0 ? (() => {
+        const editCount = countPendingEdits();
+        const rowCount = panelState.browserPendingEdits.size;
+        return `<div class="db-browser-pending-bar">
+          <div class="db-browser-pending-left">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z"/></svg>
+            <span class="db-browser-pending-count">${t('database.pendingEdits', { cells: editCount, rows: rowCount })}</span>
+          </div>
+          <div class="db-browser-pending-right">
+            <button class="db-browser-pending-discard" id="db-browser-discard-edits">${t('database.pendingDiscard')}</button>
+            <button class="db-browser-pending-commit" id="db-browser-commit-edits">${t('database.pendingCommit', { count: editCount })}</button>
+          </div>
+        </div>`;
+      })() : ''}
       <div class="db-browser-columns-strip">${colsHtml}</div>
       <div class="db-browser-grid-container">${gridHtml}</div>
     </div>`;
@@ -880,13 +896,34 @@ function bindBrowserEvents(container) {
 
   // Refresh
   const refreshBtn = container.querySelector('#db-browser-refresh');
-  if (refreshBtn) refreshBtn.onclick = () => loadTableData(panelState.browserSelectedTable);
+  if (refreshBtn) refreshBtn.onclick = async () => {
+    if (panelState.browserPendingEdits.size > 0) {
+      const ok = await showConfirm({ title: t('database.pendingDiscardConfirm'), message: t('database.pendingDiscardMessage'), confirmLabel: t('database.pendingDiscard'), danger: true });
+      if (!ok) return;
+      panelState.browserPendingEdits.clear();
+    }
+    loadTableData(panelState.browserSelectedTable);
+  };
 
   // Pagination
   const prevBtn = container.querySelector('#db-browser-prev');
-  if (prevBtn) prevBtn.onclick = () => { panelState.browserPage--; panelState.browserSelectedRows = new Set(); panelState.browserLastSelectedRow = null; loadTableData(panelState.browserSelectedTable); };
+  if (prevBtn) prevBtn.onclick = async () => {
+    if (panelState.browserPendingEdits.size > 0) {
+      const ok = await showConfirm({ title: t('database.pendingDiscardConfirm'), message: t('database.pendingDiscardMessage'), confirmLabel: t('database.pendingDiscard'), danger: true });
+      if (!ok) return;
+      panelState.browserPendingEdits.clear();
+    }
+    panelState.browserPage--; panelState.browserSelectedRows = new Set(); panelState.browserLastSelectedRow = null; loadTableData(panelState.browserSelectedTable);
+  };
   const nextBtn = container.querySelector('#db-browser-next');
-  if (nextBtn) nextBtn.onclick = () => { panelState.browserPage++; panelState.browserSelectedRows = new Set(); panelState.browserLastSelectedRow = null; loadTableData(panelState.browserSelectedTable); };
+  if (nextBtn) nextBtn.onclick = async () => {
+    if (panelState.browserPendingEdits.size > 0) {
+      const ok = await showConfirm({ title: t('database.pendingDiscardConfirm'), message: t('database.pendingDiscardMessage'), confirmLabel: t('database.pendingDiscard'), danger: true });
+      if (!ok) return;
+      panelState.browserPendingEdits.clear();
+    }
+    panelState.browserPage++; panelState.browserSelectedRows = new Set(); panelState.browserLastSelectedRow = null; loadTableData(panelState.browserSelectedTable);
+  };
 
   // Column sort
   container.querySelectorAll('.db-grid-th').forEach(th => {
@@ -966,6 +1003,12 @@ function bindBrowserEvents(container) {
       deleteRow(rowIdx);
     };
   });
+
+  // Pending edits: commit / discard
+  const commitBtn = container.querySelector('#db-browser-commit-edits');
+  if (commitBtn) commitBtn.onclick = () => commitPendingEdits();
+  const discardBtn = container.querySelector('#db-browser-discard-edits');
+  if (discardBtn) discardBtn.onclick = () => discardPendingEdits();
 
   // Export button (browser)
   const exportBtn = container.querySelector('#db-browser-export');
@@ -1072,7 +1115,7 @@ function bindBrowserEvents(container) {
   });
 }
 
-async function commitCellEdit(input) {
+function commitCellEdit(input) {
   const row = parseInt(input.dataset.row);
   const col = input.dataset.col;
   const newVal = input.value;
@@ -1090,20 +1133,11 @@ async function commitCellEdit(input) {
     return;
   }
 
-  // Build UPDATE query
   const state = require('../../state');
   const activeId = state.getActiveConnection();
   const conn = state.getDatabaseConnection(activeId);
-  const schema = state.getDatabaseSchema(activeId);
-  const tableMeta = schema?.tables?.find(t => t.name === panelState.browserSelectedTable);
-
-  if (!tableMeta || !activeId) return;
-
-  // Find primary key for WHERE clause
-  const pkCol = tableMeta.columns.find(c => c.primaryKey);
   const isMongo = conn && conn.type === 'mongodb';
   const isRedis = conn && conn.type === 'redis';
-  const dbType = conn ? conn.type : 'sqlite';
 
   if (isMongo || isRedis) {
     ctx.showToast({ type: 'warning', title: t('database.browserEditNotSupported') });
@@ -1111,38 +1145,179 @@ async function commitCellEdit(input) {
     return;
   }
 
-  let whereClause = '';
-  if (pkCol) {
-    const pkVal = data.rows[row][pkCol.name];
-    whereClause = `WHERE ${escapeIdentifier(pkCol.name, dbType)} = ${escapeSqlValue(pkVal)}`;
-  } else {
-    // No PK — use all columns for WHERE
-    const conditions = data.columns.map(c => {
-      const v = data.rows[row][c];
-      if (v === null || v === undefined) return `${escapeIdentifier(c, dbType)} IS NULL`;
-      return `${escapeIdentifier(c, dbType)} = ${escapeSqlValue(v)}`;
-    });
-    whereClause = (dbType === 'mysql' || dbType === 'mariadb')
-      ? `WHERE ${conditions.join(' AND ')} LIMIT 1`
-      : `WHERE ${conditions.join(' AND ')}`;
+  // Store edit locally instead of executing SQL immediately
+  let pending = panelState.browserPendingEdits.get(row);
+  if (!pending) {
+    // Snapshot the original row on first edit
+    pending = { originalRow: { ...data.rows[row] }, changes: {} };
+    panelState.browserPendingEdits.set(row, pending);
   }
 
-  const setVal = newVal === '' ? 'NULL' : escapeSqlValue(newVal);
-  const sql = `UPDATE ${escapeIdentifier(panelState.browserSelectedTable, dbType)} SET ${escapeIdentifier(col, dbType)} = ${setVal} ${whereClause}`;
+  const parsedVal = newVal === '' ? null : newVal;
 
-  try {
-    const result = await ctx.api.database.executeQuery({ id: activeId, sql, allowDestructive: true });
-    if (result.error) {
-      ctx.showToast({ type: 'error', title: t('database.browserQueryError'), message: result.error });
-    } else {
-      // Update local data
-      data.rows[row][col] = newVal === '' ? null : newVal;
-      ctx.showToast({ type: 'success', title: t('database.browserRowUpdated', { table: panelState.browserSelectedTable }) });
+  // If value is back to original, remove this column's change
+  const origVal = pending.originalRow[col];
+  const origStr = origVal === null || origVal === undefined ? '' : String(origVal);
+  if (newVal === origStr) {
+    delete pending.changes[col];
+    if (Object.keys(pending.changes).length === 0) {
+      panelState.browserPendingEdits.delete(row);
     }
-  } catch (e) {
-    ctx.showToast({ type: 'error', title: t('database.browserQueryError'), message: e.message });
+    data.rows[row][col] = origVal;
+  } else {
+    pending.changes[col] = parsedVal;
+    data.rows[row][col] = parsedVal;
   }
 
+  renderContent();
+}
+
+function countPendingEdits() {
+  let count = 0;
+  for (const [, edit] of panelState.browserPendingEdits) {
+    count += Object.keys(edit.changes).length;
+  }
+  return count;
+}
+
+function generatePendingSQL() {
+  const state = require('../../state');
+  const activeId = state.getActiveConnection();
+  const conn = state.getDatabaseConnection(activeId);
+  const schema = state.getDatabaseSchema(activeId);
+  const tableMeta = schema?.tables?.find(t => t.name === panelState.browserSelectedTable);
+  if (!tableMeta || !activeId || !conn) return [];
+
+  const dbType = conn.type || 'sqlite';
+  const pkCol = tableMeta.columns.find(c => c.primaryKey);
+  const statements = [];
+
+  for (const [rowIdx, edit] of panelState.browserPendingEdits) {
+    const setClauses = Object.entries(edit.changes).map(([col, val]) => {
+      const setVal = val === null ? 'NULL' : escapeSqlValue(val);
+      return `${escapeIdentifier(col, dbType)} = ${setVal}`;
+    });
+
+    let whereClause = '';
+    if (pkCol) {
+      const pkVal = edit.originalRow[pkCol.name];
+      whereClause = `WHERE ${escapeIdentifier(pkCol.name, dbType)} = ${escapeSqlValue(pkVal)}`;
+    } else {
+      const conditions = Object.keys(edit.originalRow).map(c => {
+        const v = edit.originalRow[c];
+        if (v === null || v === undefined) return `${escapeIdentifier(c, dbType)} IS NULL`;
+        return `${escapeIdentifier(c, dbType)} = ${escapeSqlValue(v)}`;
+      });
+      whereClause = (dbType === 'mysql' || dbType === 'mariadb')
+        ? `WHERE ${conditions.join(' AND ')} LIMIT 1`
+        : `WHERE ${conditions.join(' AND ')}`;
+    }
+
+    const sql = `UPDATE ${escapeIdentifier(panelState.browserSelectedTable, dbType)} SET ${setClauses.join(', ')} ${whereClause}`;
+    statements.push({ rowIdx, sql, changes: edit.changes });
+  }
+
+  return statements;
+}
+
+async function showCommitPreviewModal() {
+  const statements = generatePendingSQL();
+  if (statements.length === 0) return;
+
+  const editCount = countPendingEdits();
+  const sqlPreview = statements.map(s => s.sql + ';').join('\n\n');
+  const highlighted = highlight(sqlPreview, 'sql');
+
+  const { id } = createModal({
+    title: t('database.commitPreviewTitle', { count: editCount }),
+    body: `
+      <div class="db-commit-preview">
+        <div class="db-commit-preview-info">
+          <span class="db-commit-preview-badge">${statements.length} ${statements.length === 1 ? 'UPDATE' : 'UPDATEs'}</span>
+          <span class="db-commit-preview-cells">${editCount} ${t('database.commitPreviewCells')}</span>
+        </div>
+        <div class="db-commit-preview-sql"><pre><code>${highlighted}</code></pre></div>
+      </div>`,
+    buttons: [
+      { label: t('common.cancel') || 'Cancel', action: 'cancel' },
+      { label: t('database.commitExecute', { count: editCount }), action: 'commit', class: 'accent' }
+    ]
+  });
+
+  showModal(id);
+
+  return new Promise(resolve => {
+    const modal = document.getElementById(id);
+    if (!modal) return resolve(false);
+    modal.querySelectorAll('[data-action]').forEach(btn => {
+      btn.onclick = () => {
+        const action = btn.dataset.action;
+        closeModal(id);
+        resolve(action === 'commit');
+      };
+    });
+    modal.querySelector('.modal-overlay')?.addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) { closeModal(id); resolve(false); }
+    });
+  });
+}
+
+async function commitPendingEdits() {
+  const statements = generatePendingSQL();
+  if (statements.length === 0) return;
+
+  const confirmed = await showCommitPreviewModal();
+  if (!confirmed) return;
+
+  const state = require('../../state');
+  const activeId = state.getActiveConnection();
+  if (!activeId) return;
+
+  let successCount = 0;
+  let errors = [];
+
+  for (const stmt of statements) {
+    try {
+      const result = await ctx.api.database.executeQuery({ id: activeId, sql: stmt.sql, allowDestructive: true });
+      if (result.error) {
+        errors.push({ rowIdx: stmt.rowIdx, error: result.error });
+      } else {
+        successCount++;
+        panelState.browserPendingEdits.delete(stmt.rowIdx);
+      }
+    } catch (e) {
+      errors.push({ rowIdx: stmt.rowIdx, error: e.message });
+    }
+  }
+
+  if (errors.length === 0) {
+    ctx.showToast({ type: 'success', title: t('database.commitSuccess', { count: successCount }) });
+    panelState.browserPendingEdits.clear();
+  } else if (successCount > 0) {
+    ctx.showToast({ type: 'warning', title: t('database.commitPartial', { success: successCount, errors: errors.length }), message: errors[0].error });
+  } else {
+    ctx.showToast({ type: 'error', title: t('database.commitFailed'), message: errors[0].error });
+  }
+
+  renderContent();
+}
+
+function discardPendingEdits() {
+  const data = panelState.browserData;
+  if (!data) return;
+
+  // Restore original values
+  for (const [rowIdx, edit] of panelState.browserPendingEdits) {
+    if (data.rows[rowIdx]) {
+      for (const [col, origVal] of Object.entries(edit.originalRow)) {
+        if (col in edit.changes) {
+          data.rows[rowIdx][col] = origVal;
+        }
+      }
+    }
+  }
+
+  panelState.browserPendingEdits.clear();
   renderContent();
 }
 

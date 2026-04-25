@@ -1127,7 +1127,9 @@
     "tooltipSessionReplay": "Rejouer les sessions passées de Claude",
     "tooltipMemory": "Configurer la mémoire et les paramètres de Claude",
     "tooltipWorkspace": "Hubs de connaissances multi-projets",
-    "tooltipConnectivity": "GitHub, accès distant et paramètres cloud"
+    "tooltipConnectivity": "GitHub, accès distant et paramètres cloud",
+    "tooltipErrorLog": "Journal d'erreurs centralisé avec triage IA",
+    "tabErrorLog": "Erreurs"
   },
   "memory": {
     "panelDescription": "Configurez le comportement de Claude dans vos projets. Les reglages globaux s'appliquent partout, les reglages projet les remplacent.",
@@ -1205,6 +1207,7 @@
     "confirmDiscardAll": "Annuler les modifications de {count} fichier(s) ?",
     "discardedFiles": "{count} fichier(s) annulé(s)",
     "stashPreview": "Aperçu du stash",
+    "blameJustNow": "maintenant",
     "amendCommit": "Amend",
     "commitAmended": "Commit amendé",
     "amendSuccess": "Dernier commit amendé avec succès",
@@ -1895,6 +1898,33 @@
     "addToWorkspace": "Ajouter au workspace...",
     "badge": "WS"
   },
+  "errorLog": {
+    "title": "Journal d'erreurs",
+    "tabTitle": "Erreurs",
+    "export": "Exporter",
+    "clearAll": "Tout effacer",
+    "noErrors": "Aucune erreur enregistrée - tout fonctionne correctement.",
+    "diagnoseWithClaude": "Diagnostiquer avec Claude",
+    "copyStack": "Copier la trace",
+    "toggleStack": "Afficher/masquer la trace",
+    "patternAlerts": "Erreurs récurrentes détectées",
+    "inLastHour": "dans la dernière heure",
+    "level": {
+      "critical": "Critique",
+      "warning": "Avertissement",
+      "info": "Info"
+    },
+    "filters": {
+      "allLevels": "Tous les niveaux",
+      "allDomains": "Tous les domaines",
+      "search": "Rechercher des erreurs..."
+    },
+    "stats": {
+      "total": "Total",
+      "lastHour": "Dernière heure",
+      "patterns": "Patterns"
+    }
+  },
   "connectivity": {
     "tabTitle": "Connectivite",
     "localTab": "Local",
@@ -2075,6 +2105,17 @@
     "browserEditNotSupported": "L'édition en ligne n'est pas supportée pour MongoDB",
     "browserSearchPlaceholder": "Rechercher dans les données...",
     "browserSearchClear": "Effacer la recherche",
+    "pendingEdits": "{cells} cellule(s) modifiée(s) dans {rows} ligne(s)",
+    "pendingDiscard": "Annuler",
+    "pendingCommit": "Valider {count} modification(s)",
+    "pendingDiscardConfirm": "Modifications non enregistrées",
+    "pendingDiscardMessage": "Vous avez des modifications en attente qui seront perdues. Les annuler ?",
+    "commitPreviewTitle": "Valider {count} modification(s)",
+    "commitPreviewCells": "cellule(s) modifiee(s)",
+    "commitExecute": "Exécuter {count} modification(s)",
+    "commitSuccess": "{count} modification(s) validée(s) avec succès",
+    "commitPartial": "{success} validée(s), {errors} échouée(s)",
+    "commitFailed": "Toutes les modifications ont échoué",
     "statementsRun": "({count} instructions)",
     "statementError": "Instruction {current}/{total} : {error}",
     "history": "Historique",

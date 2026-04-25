@@ -1034,7 +1034,9 @@
     "tooltipSessionReplay": "Replay past Claude sessions",
     "tooltipMemory": "Configure Claude's memory and settings",
     "tooltipWorkspace": "Cross-project knowledge hubs",
-    "tooltipConnectivity": "GitHub, remote access and cloud settings"
+    "tooltipConnectivity": "GitHub, remote access and cloud settings",
+    "tooltipErrorLog": "Centralized error log with AI triage",
+    "tabErrorLog": "Error Log"
   },
   "memory": {
     "panelDescription": "Configure how Claude behaves in your projects. Global settings apply everywhere, project settings override them.",
@@ -1112,6 +1114,7 @@
     "confirmDiscardAll": "Discard changes to {count} file(s)?",
     "discardedFiles": "{count} file(s) discarded",
     "stashPreview": "Preview stash",
+    "blameJustNow": "just now",
     "amendCommit": "Amend",
     "commitAmended": "Commit amended",
     "amendSuccess": "Last commit amended successfully",
@@ -1895,6 +1898,33 @@
     "addToWorkspace": "Add to Workspace...",
     "badge": "WS"
   },
+  "errorLog": {
+    "title": "Error Log",
+    "tabTitle": "Error Log",
+    "export": "Export",
+    "clearAll": "Clear all",
+    "noErrors": "No errors recorded - everything is running smoothly.",
+    "diagnoseWithClaude": "Diagnose with Claude",
+    "copyStack": "Copy stack",
+    "toggleStack": "Toggle stack trace",
+    "patternAlerts": "Recurring error patterns detected",
+    "inLastHour": "in the last hour",
+    "level": {
+      "critical": "Critical",
+      "warning": "Warning",
+      "info": "Info"
+    },
+    "filters": {
+      "allLevels": "All levels",
+      "allDomains": "All domains",
+      "search": "Search errors..."
+    },
+    "stats": {
+      "total": "Total",
+      "lastHour": "Last hour",
+      "patterns": "Patterns"
+    }
+  },
   "connectivity": {
     "tabTitle": "Connectivity",
     "localTab": "Local",
@@ -2075,6 +2105,17 @@
     "browserEditNotSupported": "Inline editing is not supported for MongoDB",
     "browserSearchPlaceholder": "Search in data...",
     "browserSearchClear": "Clear search",
+    "pendingEdits": "{cells} cell(s) modified in {rows} row(s)",
+    "pendingDiscard": "Discard",
+    "pendingCommit": "Commit {count} change(s)",
+    "pendingDiscardConfirm": "Unsaved changes",
+    "pendingDiscardMessage": "You have pending cell edits that will be lost. Discard them?",
+    "commitPreviewTitle": "Commit {count} change(s)",
+    "commitPreviewCells": "cell(s) modified",
+    "commitExecute": "Execute {count} change(s)",
+    "commitSuccess": "{count} change(s) committed successfully",
+    "commitPartial": "{success} committed, {errors} failed",
+    "commitFailed": "All changes failed",
     "statementsRun": "({count} statements)",
     "statementError": "Statement {current}/{total}: {error}",
     "history": "History",

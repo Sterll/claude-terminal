@@ -575,6 +575,19 @@ contextBridge.exposeInMainWorld('electron_api', {
     onUserMessage: createListener('remote:user-message'),
   },
 
+  // ==================== ERROR LOG ====================
+  errorLog: {
+    getEntries: (filters) => ipcRenderer.invoke('errorlog-get-entries', filters),
+    getStats: () => ipcRenderer.invoke('errorlog-get-stats'),
+    getPatterns: () => ipcRenderer.invoke('errorlog-get-patterns'),
+    clear: () => ipcRenderer.invoke('errorlog-clear'),
+    export: () => ipcRenderer.invoke('errorlog-export'),
+    log: (data) => ipcRenderer.send('errorlog-log', data),
+    onEntry: createListener('errorlog:entry'),
+    onPatternAlert: createListener('errorlog:pattern-alert'),
+    onCleared: createListener('errorlog:cleared'),
+  },
+
   // ==================== TELEMETRY ====================
   telemetry: {
     getStatus: () => ipcRenderer.invoke('telemetry:get-status'),

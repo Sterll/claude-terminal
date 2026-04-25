@@ -19,6 +19,7 @@ const ControlTowerPanel = require('./ControlTowerPanel');
 const SessionReplayPanel = require('./SessionReplayPanel');
 const ParallelTaskPanel = require('./ParallelTaskPanel');
 const WorkspacePanel = require('./WorkspacePanel');
+const ErrorLogPanel = require('./ErrorLogPanel');
 
 module.exports = {
   MemoryEditor,
@@ -37,4 +38,5 @@ module.exports = {
   SessionReplayPanel,
   ParallelTaskPanel,
   WorkspacePanel,
+  ErrorLogPanel,
 };

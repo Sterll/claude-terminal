@@ -33,6 +33,7 @@ const { registerExplorerHandlers } = require('./explorer.ipc');
 const { registerTimeHandlers } = require('./time.ipc');
 const { registerParallelHandlers } = require('./parallel.ipc');
 const { registerWorkspaceHandlers } = require('./workspace.ipc');
+const { registerErrorLogHandlers } = require('./errorLog.ipc');
 
 /**
  * Register all IPC handlers
@@ -76,6 +77,7 @@ function registerAllHandlers(mainWindow) {
   registerTimeHandlers();
   registerParallelHandlers(mainWindow);
   registerWorkspaceHandlers();
+  registerErrorLogHandlers();
 
   // Wire terminal PTY exits → workflow triggers (no circular dep)
   const terminalService = require('../services/TerminalService');

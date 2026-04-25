@@ -97,13 +97,16 @@ const {
   TERMINAL_THEMES,
 
   // Quick Actions
-  QuickActions
+  QuickActions,
+
+  // Error Log
+  initErrorLogListeners
 } = require('./src/renderer');
 
 const registry = require('./src/project-types/registry');
 const { mergeTranslations } = require('./src/renderer/i18n');
 const ModalComponent = require('./src/renderer/ui/components/Modal');
-const { MemoryEditor, GitChangesPanel, ShortcutsManager, SettingsPanel, SkillsAgentsPanel, PluginsPanel, MarketplacePanel, McpPanel, WorkflowPanel, DatabasePanel, CloudPanel, ConnectivityPanel, ControlTowerPanel, SessionReplayPanel, ParallelTaskPanel, WorkspacePanel } = require('./src/renderer/ui/panels');
+const { MemoryEditor, GitChangesPanel, ShortcutsManager, SettingsPanel, SkillsAgentsPanel, PluginsPanel, MarketplacePanel, McpPanel, WorkflowPanel, DatabasePanel, CloudPanel, ConnectivityPanel, ControlTowerPanel, SessionReplayPanel, ParallelTaskPanel, WorkspacePanel, ErrorLogPanel } = require('./src/renderer/ui/panels');
 
 // ========== LOCAL MODAL FUNCTIONS ==========
 // These work with the existing HTML modal elements in index.html
@@ -164,6 +167,7 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
   core.initCore(window.electron_api, window.electron_nodeModules);
 
   await initializeState(); // Loads settings, projects AND initializes time tracking
+  initErrorLogListeners();
 
   // Restore saved panel widths (must be after settings are loaded)
   const savedPanelWidth = settingsState.get().projectsPanelWidth;
@@ -2949,6 +2953,13 @@ document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
     if (tabId !== 'workspace') {
       WorkspacePanel.cleanup();
     }
+    if (tabId === 'errorlog') {
+      const root = document.getElementById('errorlog-panel-root');
+      if (root) ErrorLogPanel.loadPanel(root);
+    }
+    if (tabId !== 'errorlog') {
+      ErrorLogPanel.cleanup();
+    }
     if (tabId === 'claude') {
       const activeId = terminalsState.get().activeTerminal;
       if (activeId) {
@@ -2964,7 +2975,7 @@ document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
 });
 
 // ========== PINNED TABS SYSTEM ==========
-const _ALL_TABS_ORDER = ['claude', 'git', 'database', 'mcp', 'plugins', 'skills', 'agents', 'workflows', 'tasks', 'control-tower', 'dashboard', 'timetracking', 'session-replay', 'memory', 'workspace', 'connectivity'];
+const _ALL_TABS_ORDER = ['claude', 'git', 'database', 'mcp', 'plugins', 'skills', 'agents', 'workflows', 'tasks', 'control-tower', 'dashboard', 'timetracking', 'session-replay', 'memory', 'workspace', 'errorlog', 'connectivity'];
 
 function applyPinnedTabs() {
   const pinned = settingsState.get().pinnedTabs || _ALL_TABS_ORDER;

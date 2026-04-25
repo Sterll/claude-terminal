@@ -1,0 +1,430 @@
+/* ── Error Log Panel ────────────────────────────────────────────────────── */
+
+.errorlog-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  padding: 16px 20px;
+  gap: 12px;
+}
+
+/* Header */
+.errorlog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.errorlog-header h2 {
+  font-size: var(--font-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.errorlog-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.errorlog-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.errorlog-btn svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.errorlog-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.errorlog-btn--clear:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.errorlog-btn--diagnose {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.errorlog-btn--diagnose:hover {
+  background: var(--accent);
+  color: #000;
+}
+
+.errorlog-btn--copy-stack {
+  font-size: var(--font-2xs);
+}
+
+/* Stats bar */
+.errorlog-stats {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.errorlog-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  min-width: 72px;
+}
+
+.errorlog-stat-value {
+  font-size: var(--font-md);
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.errorlog-stat-label {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+.errorlog-stat--critical .errorlog-stat-value { color: var(--danger); }
+.errorlog-stat--warning .errorlog-stat-value { color: var(--warning); }
+.errorlog-stat--info .errorlog-stat-value { color: var(--info); }
+
+/* Pattern alerts */
+.errorlog-pattern-alerts {
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  flex-shrink: 0;
+}
+
+.errorlog-pattern-alerts-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--danger);
+  margin-bottom: 8px;
+}
+
+.errorlog-pattern-icon {
+  width: 16px;
+  height: 16px;
+  fill: var(--danger);
+}
+
+.errorlog-pattern-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+}
+
+.errorlog-pattern-count {
+  font-weight: 700;
+  color: var(--danger);
+  min-width: 32px;
+  font-variant-numeric: tabular-nums;
+}
+
+.errorlog-pattern-domain {
+  color: var(--text-muted);
+  font-family: monospace;
+  font-size: var(--font-2xs);
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.errorlog-pattern-msg {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.errorlog-pattern-window {
+  color: var(--text-muted);
+  font-size: var(--font-2xs);
+  white-space: nowrap;
+}
+
+/* Filters */
+.errorlog-filters {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.errorlog-filter-group {
+  display: flex;
+  gap: 6px;
+}
+
+.errorlog-select {
+  padding: 6px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: var(--font-xs);
+  cursor: pointer;
+  outline: none;
+}
+
+.errorlog-select:focus {
+  border-color: var(--accent);
+}
+
+.errorlog-search-wrapper {
+  flex: 1;
+  position: relative;
+}
+
+.errorlog-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  fill: var(--text-muted);
+  pointer-events: none;
+}
+
+.errorlog-search {
+  width: 100%;
+  padding: 6px 10px 6px 30px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: var(--font-xs);
+  outline: none;
+}
+
+.errorlog-search:focus {
+  border-color: var(--accent);
+}
+
+/* Entries list */
+.errorlog-entries {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Empty state */
+.errorlog-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+  gap: 12px;
+}
+
+.errorlog-empty-icon {
+  width: 40px;
+  height: 40px;
+  fill: var(--success);
+  opacity: 0.5;
+}
+
+.errorlog-empty p {
+  font-size: var(--font-sm);
+  margin: 0;
+}
+
+/* Entry */
+.errorlog-entry {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  transition: background 0.15s ease;
+}
+
+.errorlog-entry:hover {
+  background: var(--bg-hover);
+}
+
+.errorlog-entry--critical {
+  border-left: 3px solid var(--danger);
+}
+
+.errorlog-entry--warning {
+  border-left: 3px solid var(--warning);
+}
+
+.errorlog-entry--info {
+  border-left: 3px solid var(--info);
+}
+
+.errorlog-entry-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.errorlog-level-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.errorlog-level-critical { fill: var(--danger); }
+.errorlog-level-warning { fill: var(--warning); }
+.errorlog-level-info { fill: var(--info); }
+
+.errorlog-entry-level {
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  min-width: 52px;
+}
+
+.errorlog-entry--critical .errorlog-entry-level { color: var(--danger); }
+.errorlog-entry--warning .errorlog-entry-level { color: var(--warning); }
+.errorlog-entry--info .errorlog-entry-level { color: var(--info); }
+
+.errorlog-entry-domain {
+  font-family: monospace;
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.errorlog-entry-msg {
+  flex: 1;
+  font-size: var(--font-xs);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.errorlog-entry-time {
+  font-family: monospace;
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.errorlog-entry-ago {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  min-width: 28px;
+  text-align: right;
+}
+
+.errorlog-expand-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: var(--font-xs);
+  line-height: 1;
+}
+
+.errorlog-expand-btn:hover {
+  color: var(--text-primary);
+}
+
+/* Stack trace */
+.errorlog-entry-stack {
+  padding: 0 12px 10px;
+  border-top: 1px solid var(--border-color);
+}
+
+.errorlog-entry-stack pre {
+  margin: 8px 0;
+  padding: 10px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-2xs);
+  color: var(--text-secondary);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+  line-height: 1.5;
+}
+
+.errorlog-entry-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* Context */
+.errorlog-entry-context {
+  padding: 0 12px 10px;
+}
+
+.errorlog-entry-context pre {
+  margin: 0;
+  padding: 8px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  max-height: 120px;
+  overflow: auto;
+}
+
+/* Scrollbar */
+.errorlog-entries::-webkit-scrollbar { width: 6px; }
+.errorlog-entries::-webkit-scrollbar-track { background: transparent; }
+.errorlog-entries::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+.errorlog-entries::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+.errorlog-entry-stack pre::-webkit-scrollbar { width: 4px; height: 4px; }
+.errorlog-entry-stack pre::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 2px;
+}

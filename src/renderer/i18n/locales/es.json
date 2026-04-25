@@ -1031,7 +1031,9 @@
     "tooltipSessionReplay": "Reproducir sesiones pasadas de Claude",
     "tooltipMemory": "Configurar la memoria y ajustes de Claude",
     "tooltipWorkspace": "Hubs de conocimiento multi-proyecto",
-    "tooltipConnectivity": "GitHub, acceso remoto y ajustes de nube"
+    "tooltipConnectivity": "GitHub, acceso remoto y ajustes de nube",
+    "tooltipErrorLog": "Registro de errores centralizado con triaje IA",
+    "tabErrorLog": "Errores"
   },
   "memory": {
     "panelDescription": "Configura como Claude se comporta en tus proyectos. Los ajustes globales aplican en todos lados, los de proyecto los reemplazan.",
@@ -1109,6 +1111,7 @@
     "confirmDiscardAll": "¿Descartar los cambios de {count} archivo(s)?",
     "discardedFiles": "{count} archivo(s) descartado(s)",
     "stashPreview": "Previsualizar stash",
+    "blameJustNow": "ahora",
     "amendCommit": "Enmendar",
     "commitAmended": "Commit enmendado",
     "amendSuccess": "Último commit enmendado correctamente",
@@ -1882,6 +1885,33 @@
     "addToWorkspace": "Añadir a un espacio de trabajo...",
     "badge": "ET"
   },
+  "errorLog": {
+    "title": "Registro de errores",
+    "tabTitle": "Errores",
+    "export": "Exportar",
+    "clearAll": "Borrar todo",
+    "noErrors": "Sin errores registrados - todo funciona correctamente.",
+    "diagnoseWithClaude": "Diagnosticar con Claude",
+    "copyStack": "Copiar traza",
+    "toggleStack": "Mostrar/ocultar traza",
+    "patternAlerts": "Patrones de errores recurrentes detectados",
+    "inLastHour": "en la última hora",
+    "level": {
+      "critical": "Crítico",
+      "warning": "Advertencia",
+      "info": "Info"
+    },
+    "filters": {
+      "allLevels": "Todos los niveles",
+      "allDomains": "Todos los dominios",
+      "search": "Buscar errores..."
+    },
+    "stats": {
+      "total": "Total",
+      "lastHour": "Última hora",
+      "patterns": "Patrones"
+    }
+  },
   "connectivity": {
     "tabTitle": "Conectividad",
     "localTab": "Local",
@@ -2062,6 +2092,17 @@
     "browserEditNotSupported": "La edición en línea no es compatible con MongoDB",
     "browserSearchPlaceholder": "Buscar en los datos...",
     "browserSearchClear": "Limpiar búsqueda",
+    "pendingEdits": "{cells} celda(s) modificada(s) en {rows} fila(s)",
+    "pendingDiscard": "Descartar",
+    "pendingCommit": "Confirmar {count} cambio(s)",
+    "pendingDiscardConfirm": "Cambios sin guardar",
+    "pendingDiscardMessage": "Tienes ediciones pendientes que se perderán. ¿Descartarlas?",
+    "commitPreviewTitle": "Confirmar {count} cambio(s)",
+    "commitPreviewCells": "celda(s) modificada(s)",
+    "commitExecute": "Ejecutar {count} cambio(s)",
+    "commitSuccess": "{count} cambio(s) confirmado(s) con éxito",
+    "commitPartial": "{success} confirmado(s), {errors} fallido(s)",
+    "commitFailed": "Todos los cambios fallaron",
     "statementsRun": "({count} sentencias)",
     "statementError": "Sentencia {current}/{total}: {error}",
     "history": "Historial",

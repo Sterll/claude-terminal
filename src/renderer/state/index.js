@@ -13,6 +13,7 @@ const settingsState = require('./settings.state');
 const timeTrackingState = require('./timeTracking.state');
 const databaseState = require('./database.state');
 const workspaceState = require('./workspace.state');
+const errorLogState = require('./errorLog.state');
 
 // Quick picker state (simple, doesn't need a module)
 const quickPickerState = new State({
@@ -93,6 +94,9 @@ module.exports = {
 
   // Workspaces
   ...workspaceState,
+
+  // Error Log
+  ...errorLogState,
 
   // Simple states
   quickPickerState,
