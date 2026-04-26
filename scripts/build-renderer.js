@@ -62,11 +62,22 @@ const threeViewerBuildOptions = {
   minify: true,
 };
 
+// CSS bundle (all 27 stylesheets into one minified file)
+const cssBuildOptions = {
+  entryPoints: [path.join(__dirname, '..', 'styles', 'index.css')],
+  bundle: true,
+  outfile: path.join(__dirname, '..', 'dist', 'styles.bundle.css'),
+  minify: true,
+};
+
 async function build() {
   try {
     if (isWatch) {
-      const ctx = await esbuild.context(buildOptions);
-      await ctx.watch();
+      const [jsCtx, cssCtx] = await Promise.all([
+        esbuild.context(buildOptions),
+        esbuild.context(cssBuildOptions),
+      ]);
+      await Promise.all([jsCtx.watch(), cssCtx.watch()]);
       console.log('Watching for changes...');
     } else {
       await Promise.all([
@@ -74,13 +85,14 @@ async function build() {
         esbuild.build(mermaidBuildOptions),
         esbuild.build(pdfViewerBuildOptions),
         esbuild.build(threeViewerBuildOptions),
+        esbuild.build(cssBuildOptions),
       ]);
       // Copy pdf.js worker to dist/ for runtime loading
       const workerSrc = path.join(__dirname, '..', 'node_modules', 'pdfjs-dist', 'build', 'pdf.worker.min.mjs');
       const workerDest = path.join(__dirname, '..', 'dist', 'pdf.worker.min.mjs');
       fs.copyFileSync(workerSrc, workerDest);
 
-      console.log('Build complete: dist/renderer.bundle.js + dist/mermaid.bundle.js + dist/pdf-viewer.bundle.js + dist/three-viewer.bundle.js + dist/pdf.worker.min.mjs');
+      console.log('Build complete: dist/renderer.bundle.js + dist/mermaid.bundle.js + dist/pdf-viewer.bundle.js + dist/three-viewer.bundle.js + dist/styles.bundle.css + dist/pdf.worker.min.mjs');
     }
   } catch (error) {
     console.error('Build failed:', error);
