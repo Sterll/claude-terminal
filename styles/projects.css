@@ -3580,28 +3580,30 @@ body.compact-projects .project-item:not(.active):hover {
 
 /* Icon selector for quick actions */
 .quick-action-icon-selector {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-  padding: 6px;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  padding: 8px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-  max-width: 220px;
+  max-width: 320px;
+  max-height: 220px;
+  overflow-y: auto;
 }
 
 .quick-action-icon-option {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  color: var(--text-muted);
+  color: var(--text-secondary);
   cursor: pointer;
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
 }
 
 .quick-action-icon-option:hover {
@@ -3610,14 +3612,14 @@ body.compact-projects .project-item:not(.active):hover {
 }
 
 .quick-action-icon-option.selected {
-  background: var(--accent-dim);
-  border-color: var(--accent);
-  color: var(--accent);
+  background: var(--bg-active);
+  border-color: var(--border-color);
+  color: var(--text-primary);
 }
 
 .quick-action-icon-option svg {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
 }
 
 /* ── Archive ─────────────────────────────────────── */
