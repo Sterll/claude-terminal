@@ -61,10 +61,10 @@ module.exports = {
     if (!title) throw new Error('Doc title is required');
 
     const WorkspaceService = require('../services/WorkspaceService');
-    const workspace = WorkspaceService.getWorkspace(wsRef);
+    const workspace = await WorkspaceService.getWorkspace(wsRef);
     if (!workspace) throw new Error(`Workspace "${wsRef}" not found`);
 
-    const doc = WorkspaceService.writeDoc(workspace.id, title, content || '');
+    const doc = await WorkspaceService.writeDoc(workspace.id, title, content || '');
     if (!doc) throw new Error('Failed to write doc');
 
     // Attach tags if provided (writeDoc does not support tags directly — patch index)

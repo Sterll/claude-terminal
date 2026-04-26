@@ -50,19 +50,26 @@ function clampDuration(start, end, periodStart, periodEnd) {
 
 // ─── Data loading ─────────────────────────────────────────────────────────────
 
-function loadCurrentData() {
+let _timeCache = null;
+let _timeCacheAt = 0;
+
+async function loadCurrentData() {
+  const now = Date.now();
+  if (_timeCache && now - _timeCacheAt < 2000) return _timeCache;
   try {
-    const raw = fs.readFileSync(TIME_FILE, 'utf8');
-    return JSON.parse(raw);
+    const raw = await fs.promises.readFile(TIME_FILE, 'utf8');
+    _timeCache = JSON.parse(raw);
+    _timeCacheAt = now;
+    return _timeCache;
   } catch {
     return { version: 3, month: null, global: { sessions: [] }, projects: {} };
   }
 }
 
-function loadArchive(year, month) {
+async function loadArchive(year, month) {
   const file = path.join(ARCHIVES_DIR, String(year), String(month).padStart(2, '0'), 'archive-data.json');
   try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
+    return JSON.parse(await fs.promises.readFile(file, 'utf8'));
   } catch {
     return null;
   }
@@ -254,8 +261,8 @@ function handleGetSessions(data, config) {
  * Query time stats — callable directly from main process without IPC round-trip.
  * @param {Object} config  { action, projectId?, startDate?, endDate? }
  */
-function getTimeStats(config = {}) {
-  const data   = loadCurrentData();
+async function getTimeStats(config = {}) {
+  const data   = await loadCurrentData();
   const action = config.action || 'get_today';
 
   switch (action) {
@@ -277,9 +284,9 @@ function registerTimeHandlers() {
    * Unified entry point for all time tracking queries.
    * @param {Object} config  { action, projectId?, startDate?, endDate? }
    */
-  ipcMain.handle('time:get-stats', (_event, config = {}) => {
+  ipcMain.handle('time:get-stats', async (_event, config = {}) => {
     try {
-      return getTimeStats(config);
+      return await getTimeStats(config);
     } catch (err) {
       return { error: err.message };
     }

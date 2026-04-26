@@ -12,41 +12,47 @@ const dataDir = path.join(os.homedir(), '.claude-terminal');
 const workspacesFile = path.join(dataDir, 'workspaces.json');
 const workspacesDir = path.join(dataDir, 'workspaces');
 
-function ensureDir(dir) {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-}
-
-function loadWorkspaces() {
+async function ensureDir(dir) {
   try {
-    if (fs.existsSync(workspacesFile)) {
-      const data = JSON.parse(fs.readFileSync(workspacesFile, 'utf8'));
-      return data.workspaces || [];
-    }
+    await fs.promises.mkdir(dir, { recursive: true });
   } catch (e) {
-    console.error('[WorkspaceService] Error loading workspaces:', e.message);
+    // ignore if already exists
   }
-  return [];
 }
 
-function getWorkspace(id) {
-  const workspaces = loadWorkspaces();
+async function loadWorkspaces() {
+  try {
+    const raw = await fs.promises.readFile(workspacesFile, 'utf8');
+    const data = JSON.parse(raw);
+    return data.workspaces || [];
+  } catch (e) {
+    if (e.code !== 'ENOENT') {
+      console.error('[WorkspaceService] Error loading workspaces:', e.message);
+    }
+    return [];
+  }
+}
+
+async function getWorkspace(id) {
+  const workspaces = await loadWorkspaces();
   return workspaces.find(w => w.id === id) || workspaces.find(w => w.name.toLowerCase() === id.toLowerCase());
 }
 
-function getWorkspaceDocsIndex(workspaceId) {
+async function getWorkspaceDocsIndex(workspaceId) {
   const indexPath = path.join(workspacesDir, workspaceId, 'docs-index.json');
   try {
-    if (fs.existsSync(indexPath)) {
-      return JSON.parse(fs.readFileSync(indexPath, 'utf8')).docs || [];
-    }
+    const raw = await fs.promises.readFile(indexPath, 'utf8');
+    return JSON.parse(raw).docs || [];
   } catch (e) {
-    console.error('[WorkspaceService] Error reading docs index:', e.message);
+    if (e.code !== 'ENOENT') {
+      console.error('[WorkspaceService] Error reading docs index:', e.message);
+    }
+    return [];
   }
-  return [];
 }
 
-function readDoc(workspaceId, docIdOrName) {
-  const docs = getWorkspaceDocsIndex(workspaceId);
+async function readDoc(workspaceId, docIdOrName) {
+  const docs = await getWorkspaceDocsIndex(workspaceId);
   const doc = docs.find(d =>
     d.id === docIdOrName ||
     d.title.toLowerCase() === docIdOrName.toLowerCase() ||
@@ -56,16 +62,16 @@ function readDoc(workspaceId, docIdOrName) {
 
   const docPath = path.join(workspacesDir, workspaceId, 'docs', doc.filename);
   try {
-    return { doc, content: fs.readFileSync(docPath, 'utf8') };
+    return { doc, content: await fs.promises.readFile(docPath, 'utf8') };
   } catch {
     return { doc, content: null };
   }
 }
 
-function writeDoc(workspaceId, title, content) {
-  ensureDir(path.join(workspacesDir, workspaceId, 'docs'));
+async function writeDoc(workspaceId, title, content) {
+  await ensureDir(path.join(workspacesDir, workspaceId, 'docs'));
 
-  const docs = getWorkspaceDocsIndex(workspaceId);
+  const docs = await getWorkspaceDocsIndex(workspaceId);
   let doc = docs.find(d =>
     d.title.toLowerCase() === title.toLowerCase() ||
     d.filename.toLowerCase() === (title.toLowerCase().replace(/[^a-z0-9-]/g, '-') + '.md')
@@ -94,20 +100,20 @@ function writeDoc(workspaceId, title, content) {
   // Write content
   const docPath = path.join(workspacesDir, workspaceId, 'docs', doc.filename);
   const tmpPath = docPath + '.tmp';
-  fs.writeFileSync(tmpPath, content, 'utf8');
-  fs.renameSync(tmpPath, docPath);
+  await fs.promises.writeFile(tmpPath, content, 'utf8');
+  await fs.promises.rename(tmpPath, docPath);
 
   // Save index
   const indexPath = path.join(workspacesDir, workspaceId, 'docs-index.json');
   const tmpIndex = indexPath + '.tmp';
-  fs.writeFileSync(tmpIndex, JSON.stringify({ docs }, null, 2), 'utf8');
-  fs.renameSync(tmpIndex, indexPath);
+  await fs.promises.writeFile(tmpIndex, JSON.stringify({ docs }, null, 2), 'utf8');
+  await fs.promises.rename(tmpIndex, indexPath);
 
   return doc;
 }
 
-function deleteDoc(workspaceId, docIdOrName) {
-  const docs = getWorkspaceDocsIndex(workspaceId);
+async function deleteDoc(workspaceId, docIdOrName) {
+  const docs = await getWorkspaceDocsIndex(workspaceId);
   const docIdx = docs.findIndex(d =>
     d.id === docIdOrName ||
     d.title.toLowerCase() === docIdOrName.toLowerCase() ||
@@ -120,30 +126,42 @@ function deleteDoc(workspaceId, docIdOrName) {
 
   // Remove file
   const docPath = path.join(workspacesDir, workspaceId, 'docs', doc.filename);
-  try { fs.unlinkSync(docPath); } catch {}
+  try { await fs.promises.unlink(docPath); } catch {}
 
   // Save index
   const indexPath = path.join(workspacesDir, workspaceId, 'docs-index.json');
   const tmpIndex = indexPath + '.tmp';
-  fs.writeFileSync(tmpIndex, JSON.stringify({ docs }, null, 2), 'utf8');
-  fs.renameSync(tmpIndex, indexPath);
+  await fs.promises.writeFile(tmpIndex, JSON.stringify({ docs }, null, 2), 'utf8');
+  await fs.promises.rename(tmpIndex, indexPath);
 
   return true;
 }
 
-function searchDocs(workspaceId, query) {
-  const docs = getWorkspaceDocsIndex(workspaceId);
+async function searchDocs(workspaceId, query) {
+  const docs = await getWorkspaceDocsIndex(workspaceId);
   const q = query.toLowerCase();
   const results = [];
 
-  for (const doc of docs) {
-    const titleMatch = doc.title.toLowerCase().includes(q);
+  // Read all doc contents in parallel
+  const readPromises = docs.map(async (doc) => {
     const docPath = path.join(workspacesDir, workspaceId, 'docs', doc.filename);
+    try {
+      return await fs.promises.readFile(docPath, 'utf8');
+    } catch {
+      return null;
+    }
+  });
+
+  const contents = await Promise.all(readPromises);
+
+  for (let i = 0; i < docs.length; i++) {
+    const doc = docs[i];
+    const titleMatch = doc.title.toLowerCase().includes(q);
     let contentMatch = false;
     let snippet = '';
 
-    try {
-      const content = fs.readFileSync(docPath, 'utf8');
+    const content = contents[i];
+    if (content) {
       const idx = content.toLowerCase().indexOf(q);
       if (idx !== -1) {
         contentMatch = true;
@@ -151,7 +169,7 @@ function searchDocs(workspaceId, query) {
         const end = Math.min(content.length, idx + query.length + 50);
         snippet = (start > 0 ? '...' : '') + content.substring(start, end) + (end < content.length ? '...' : '');
       }
-    } catch {}
+    }
 
     if (titleMatch || contentMatch) {
       results.push({ doc, titleMatch, contentMatch, snippet });
@@ -161,18 +179,18 @@ function searchDocs(workspaceId, query) {
   return results;
 }
 
-function getWorkspaceLinks(workspaceId) {
+async function getWorkspaceLinks(workspaceId) {
   const linksPath = path.join(workspacesDir, workspaceId, 'links.json');
   try {
-    if (fs.existsSync(linksPath)) {
-      return JSON.parse(fs.readFileSync(linksPath, 'utf8')).links || [];
-    }
-  } catch {}
-  return [];
+    const raw = await fs.promises.readFile(linksPath, 'utf8');
+    return JSON.parse(raw).links || [];
+  } catch {
+    return [];
+  }
 }
 
-function addLink(workspaceId, { sourceType, sourceId, targetType, targetId, label, description = '' }) {
-  const links = getWorkspaceLinks(workspaceId);
+async function addLink(workspaceId, { sourceType, sourceId, targetType, targetId, label, description = '' }) {
+  const links = await getWorkspaceLinks(workspaceId);
   const link = {
     id: `link-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     sourceType, sourceId, targetType, targetId, label, description,
@@ -182,18 +200,20 @@ function addLink(workspaceId, { sourceType, sourceId, targetType, targetId, labe
 
   const linksPath = path.join(workspacesDir, workspaceId, 'links.json');
   const tmp = linksPath + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify({ links }, null, 2), 'utf8');
-  fs.renameSync(tmp, linksPath);
+  await fs.promises.writeFile(tmp, JSON.stringify({ links }, null, 2), 'utf8');
+  await fs.promises.rename(tmp, linksPath);
 
   return link;
 }
 
-function getWorkspaceOverview(workspaceId) {
-  const workspace = getWorkspace(workspaceId);
+async function getWorkspaceOverview(workspaceId) {
+  const workspace = await getWorkspace(workspaceId);
   if (!workspace) return null;
 
-  const docs = getWorkspaceDocsIndex(workspaceId);
-  const links = getWorkspaceLinks(workspaceId);
+  const [docs, links] = await Promise.all([
+    getWorkspaceDocsIndex(workspaceId),
+    getWorkspaceLinks(workspaceId),
+  ]);
 
   return { workspace, docs, links };
 }

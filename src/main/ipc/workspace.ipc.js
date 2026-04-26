@@ -10,7 +10,7 @@ function registerWorkspaceHandlers() {
   // List all workspaces
   ipcMain.handle('workspace-list', async () => {
     try {
-      const workspaces = WorkspaceService.loadWorkspaces();
+      const workspaces = await WorkspaceService.loadWorkspaces();
       return { success: true, workspaces };
     } catch (e) {
       console.error('[Workspace IPC] List error:', e);
@@ -21,7 +21,7 @@ function registerWorkspaceHandlers() {
   // Get workspace overview (workspace + docs + links)
   ipcMain.handle('workspace-overview', async (_event, { workspaceId }) => {
     try {
-      const overview = WorkspaceService.getWorkspaceOverview(workspaceId);
+      const overview = await WorkspaceService.getWorkspaceOverview(workspaceId);
       if (!overview) return { success: false, error: 'Workspace not found' };
       return { success: true, ...overview };
     } catch (e) {
@@ -33,7 +33,7 @@ function registerWorkspaceHandlers() {
   // Search across workspace docs
   ipcMain.handle('workspace-search-docs', async (_event, { workspaceId, query }) => {
     try {
-      const results = WorkspaceService.searchDocs(workspaceId, query);
+      const results = await WorkspaceService.searchDocs(workspaceId, query);
       return { success: true, results };
     } catch (e) {
       console.error('[Workspace IPC] Search error:', e);
@@ -44,7 +44,7 @@ function registerWorkspaceHandlers() {
   // Read a specific doc
   ipcMain.handle('workspace-read-doc', async (_event, { workspaceId, docId }) => {
     try {
-      const result = WorkspaceService.readDoc(workspaceId, docId);
+      const result = await WorkspaceService.readDoc(workspaceId, docId);
       if (!result) return { success: false, error: 'Document not found' };
       return { success: true, ...result };
     } catch (e) {
@@ -56,7 +56,7 @@ function registerWorkspaceHandlers() {
   // Write/update a doc
   ipcMain.handle('workspace-write-doc', async (_event, { workspaceId, title, content }) => {
     try {
-      const doc = WorkspaceService.writeDoc(workspaceId, title, content);
+      const doc = await WorkspaceService.writeDoc(workspaceId, title, content);
       return { success: true, doc };
     } catch (e) {
       console.error('[Workspace IPC] Write doc error:', e);
@@ -67,7 +67,7 @@ function registerWorkspaceHandlers() {
   // Create a new doc
   ipcMain.handle('workspace-create-doc', async (_event, { workspaceId, title, content = '' }) => {
     try {
-      const doc = WorkspaceService.writeDoc(workspaceId, title, content || `# ${title}\n`);
+      const doc = await WorkspaceService.writeDoc(workspaceId, title, content || `# ${title}\n`);
       return { success: true, doc };
     } catch (e) {
       console.error('[Workspace IPC] Create doc error:', e);
@@ -78,7 +78,7 @@ function registerWorkspaceHandlers() {
   // Delete a doc
   ipcMain.handle('workspace-delete-doc', async (_event, { workspaceId, docId }) => {
     try {
-      const deleted = WorkspaceService.deleteDoc(workspaceId, docId);
+      const deleted = await WorkspaceService.deleteDoc(workspaceId, docId);
       return { success: true, deleted };
     } catch (e) {
       console.error('[Workspace IPC] Delete doc error:', e);

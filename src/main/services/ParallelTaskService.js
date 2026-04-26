@@ -400,7 +400,7 @@ class ParallelTaskService {
     if (settings.parallelAutoWorkspaceDoc && settings.parallelWorkspaceId) {
       try {
         const WorkspaceService = require('./WorkspaceService');
-        const ws = WorkspaceService.getWorkspace(settings.parallelWorkspaceId);
+        const ws = await WorkspaceService.getWorkspace(settings.parallelWorkspaceId);
         if (ws) {
           const durationMin = Math.round((endedAt - startedAt) / 60000);
           const lines = [
@@ -430,7 +430,7 @@ class ParallelTaskService {
             lines.push('');
           }
           const title = `Parallel run: ${featureName} (${new Date(startedAt).toISOString().slice(0, 10)})`;
-          WorkspaceService.writeDoc(ws.id, title, lines.join('\n'));
+          await WorkspaceService.writeDoc(ws.id, title, lines.join('\n'));
         }
       } catch (err) {
         console.warn('[ParallelTaskService] autoWorkspaceDoc failed:', err.message);

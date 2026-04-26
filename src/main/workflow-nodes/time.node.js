@@ -63,7 +63,7 @@ module.exports = {
     }
   },
 
-  run(config, vars) {
+  async run(config, vars) {
     const { getTimeStats } = require('../ipc/time.ipc');
 
     const resolveVars = (value, vars) => {
@@ -76,7 +76,7 @@ module.exports = {
       });
     };
 
-    const result = getTimeStats({
+    const result = await getTimeStats({
       action:    config.action    || 'get_today',
       projectId: resolveVars(config.projectId || '', vars) || undefined,
       startDate: resolveVars(config.startDate || '', vars) || undefined,

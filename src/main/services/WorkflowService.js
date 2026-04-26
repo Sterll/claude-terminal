@@ -112,8 +112,8 @@ class WorkflowService {
    * Bootstrap: load workflows, start scheduler.
    * Call once after main window is ready.
    */
-  init() {
-    const workflows = storage.loadWorkflows();
+  async init() {
+    const workflows = await storage.loadWorkflows();
     this._scheduler.reload(workflows);
     this._startMcpTriggerPoll();
     console.log(`[WorkflowService] Initialized with ${workflows.length} workflow(s)`);
@@ -135,7 +135,7 @@ class WorkflowService {
    */
   _startMcpTriggerPoll() {
     const triggersDir = path.join(require('os').homedir(), '.claude-terminal', 'workflows', 'triggers');
-    this._mcpPollTimer = setInterval(() => {
+    this._mcpPollTimer = setInterval(async () => {
       try {
         if (!fs.existsSync(triggersDir)) return;
         const files = fs.readdirSync(triggersDir).filter(f => f.endsWith('.json'));
@@ -150,8 +150,9 @@ class WorkflowService {
               console.log(`[WorkflowService] MCP cancel: ${data.runId}`);
             } else if (data.action === 'reload') {
               // MCP graph edit tools signal a reload after modifying definitions.json directly
-              this._scheduler.reload(storage.loadWorkflows());
-              this._send('workflow-list-updated', { workflows: storage.loadWorkflows() });
+              const reloadedWorkflows = await storage.loadWorkflows();
+              this._scheduler.reload(reloadedWorkflows);
+              this._send('workflow-list-updated', { workflows: reloadedWorkflows });
               console.log(`[WorkflowService] MCP reload: definitions refreshed`);
             } else if (data.workflowId) {
               this.trigger(data.workflowId, { trigger: 'mcp' });
@@ -213,8 +214,8 @@ class WorkflowService {
 
   // ─── Workflow CRUD ───────────────────────────────────────────────────────────
 
-  listWorkflows() {
-    const workflows = storage.loadWorkflows();
+  async listWorkflows() {
+    const workflows = await storage.loadWorkflows();
     // Auto-migrate legacy workflows (steps[] → graph)
     let dirty = false;
     for (let i = 0; i < workflows.length; i++) {
@@ -223,15 +224,15 @@ class WorkflowService {
         dirty = true;
       }
     }
-    if (dirty) storage.saveWorkflows(workflows);
+    if (dirty) await storage.saveWorkflows(workflows);
     return workflows;
   }
 
-  getWorkflow(id) {
-    const wf = storage.getWorkflow(id);
+  async getWorkflow(id) {
+    const wf = await storage.getWorkflow(id);
     if (wf && wf.steps && !wf.graph) {
       const migrated = migrateStepsToGraph(wf);
-      storage.upsertWorkflow(migrated);
+      await storage.upsertWorkflow(migrated);
       return migrated;
     }
     return wf;
@@ -243,8 +244,8 @@ class WorkflowService {
    * @param {Object} workflow
    * @returns {{ success: boolean, workflow?: Object, error?: string }}
    */
-  saveWorkflow(workflow) {
-    const all = storage.loadWorkflows();
+  async saveWorkflow(workflow) {
+    const all = await storage.loadWorkflows();
     const dependsOn = (workflow.dependsOn || []).map(d => d.workflow || d);
 
     // Cycle detection
@@ -256,9 +257,9 @@ class WorkflowService {
       };
     }
 
-    const saved = storage.upsertWorkflow(workflow);
+    const saved = await storage.upsertWorkflow(workflow);
     // Reload scheduler
-    this._scheduler.reload(storage.loadWorkflows());
+    this._scheduler.reload(await storage.loadWorkflows());
     return { success: true, workflow: saved };
   }
 
@@ -266,11 +267,11 @@ class WorkflowService {
    * @param {string} id
    * @returns {{ success: boolean, error?: string }}
    */
-  deleteWorkflow(id) {
-    const deleted = storage.deleteWorkflow(id);
+  async deleteWorkflow(id) {
+    const deleted = await storage.deleteWorkflow(id);
     if (!deleted) return { success: false, error: 'Workflow not found' };
-    storage.deleteRunsForWorkflow(id);
-    this._scheduler.reload(storage.loadWorkflows());
+    await storage.deleteRunsForWorkflow(id);
+    this._scheduler.reload(await storage.loadWorkflows());
     this._resultsCache.delete(id);
     return { success: true };
   }
@@ -280,35 +281,35 @@ class WorkflowService {
    * @param {string} id
    * @param {boolean} enabled
    */
-  setEnabled(id, enabled) {
-    const wf = storage.getWorkflow(id);
+  async setEnabled(id, enabled) {
+    const wf = await storage.getWorkflow(id);
     if (!wf) return { success: false, error: 'Workflow not found' };
     const updated = { ...wf, enabled };
-    storage.upsertWorkflow(updated);
-    this._scheduler.reload(storage.loadWorkflows());
+    await storage.upsertWorkflow(updated);
+    this._scheduler.reload(await storage.loadWorkflows());
     return { success: true, workflow: updated };
   }
 
   // ─── Run history ─────────────────────────────────────────────────────────────
 
-  getRunsForWorkflow(workflowId, limit) {
-    return storage.getRunsForWorkflow(workflowId, limit);
+  async getRunsForWorkflow(workflowId, limit) {
+    return await storage.getRunsForWorkflow(workflowId, limit);
   }
 
-  getRecentRuns(limit) {
-    return storage.getRecentRuns(limit);
+  async getRecentRuns(limit) {
+    return await storage.getRecentRuns(limit);
   }
 
-  clearAllRuns() {
-    storage.clearAllRuns();
+  async clearAllRuns() {
+    await storage.clearAllRuns();
   }
 
-  getRun(runId) {
-    return storage.getRun(runId);
+  async getRun(runId) {
+    return await storage.getRun(runId);
   }
 
-  getRunResult(runId) {
-    return storage.loadResultPayload(runId);
+  async getRunResult(runId) {
+    return await storage.loadResultPayload(runId);
   }
 
   getActiveRuns() {
@@ -328,7 +329,7 @@ class WorkflowService {
    * @returns {Promise<{ success: boolean, runId?: string, queued?: boolean, error?: string }>}
    */
   async trigger(workflowId, opts = {}) {
-    const workflow = storage.getWorkflow(workflowId);
+    const workflow = await storage.getWorkflow(workflowId);
     if (!workflow) return { success: false, error: 'Workflow not found' };
     if (!workflow.enabled) return { success: false, error: 'Workflow is disabled' };
 
@@ -417,7 +418,7 @@ class WorkflowService {
 
       // Not running, not cached — trigger it and wait
       inProgress.add(depId);
-      const depWorkflow = storage.getWorkflow(depId);
+      const depWorkflow = await storage.getWorkflow(depId);
       if (!depWorkflow) {
         console.warn(`[WorkflowService] depends_on workflow not found: ${depId}`);
         continue;
@@ -483,7 +484,7 @@ class WorkflowService {
     };
 
     // Persist initial record
-    storage.appendRun(run);
+    await storage.appendRun(run);
 
     // Emit to renderer
     this._send('workflow-run-start', { run });
@@ -554,7 +555,7 @@ class WorkflowService {
     return runner.execute(workflow, run, abortController, extraVars);
   }
 
-  _finalizeRun(run, result, workflow) {
+  async _finalizeRun(run, result, workflow) {
     const now      = Date.now();
     const duration = Math.round((now - new Date(run.startedAt).getTime()) / 1000);
     const status   = result.cancelled
@@ -580,11 +581,11 @@ class WorkflowService {
       finishedAt: new Date().toISOString(),
       steps: finalSteps,
     };
-    storage.updateRun(run.id, patch);
+    await storage.updateRun(run.id, patch);
 
     // Persist large output payload separately
     if (result.outputs && Object.keys(result.outputs).length) {
-      storage.saveResultPayload(run.id, { outputs: result.outputs });
+      await storage.saveResultPayload(run.id, { outputs: result.outputs });
     }
 
     // Update results cache (only on success), keyed by workflowId for depends_on lookup
@@ -661,12 +662,12 @@ class WorkflowService {
     });
   }
 
-  _drainQueue(workflowId) {
+  async _drainQueue(workflowId) {
     const queue = this._queues.get(workflowId);
     if (!queue || !queue.length) return;
     const { opts, resolve } = queue.shift();
     if (!queue.length) this._queues.delete(workflowId);
-    const workflow = storage.getWorkflow(workflowId);
+    const workflow = await storage.getWorkflow(workflowId);
     if (!workflow || !workflow.enabled) { resolve({ success: false, error: 'Workflow disabled' }); return; }
     this._startRun(workflow, opts)
       .then(resolve)
@@ -797,8 +798,8 @@ class WorkflowService {
    * Return a simple adjacency list for the UI dependency graph panel.
    * @returns {{ nodes: Object[], edges: Object[] }}
    */
-  getDependencyGraph() {
-    const workflows = storage.loadWorkflows();
+  async getDependencyGraph() {
+    const workflows = await storage.loadWorkflows();
     const nodes = workflows.map(wf => ({
       id:      wf.id,
       name:    wf.name,

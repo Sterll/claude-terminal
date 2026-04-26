@@ -808,9 +808,9 @@ async function runNotifyStep(config, vars, sendFn) {
  * @param {Object} config  { action, projectId?, startDate?, endDate? }
  * @param {Map}    vars
  */
-function runTimeStep(config, vars) {
+async function runTimeStep(config, vars) {
   const { getTimeStats } = require('../ipc/time.ipc');
-  const result = getTimeStats({
+  const result = await getTimeStats({
     action:    config.action    || 'get_today',
     projectId: resolveVars(config.projectId || '', vars) || undefined,
     startDate: resolveVars(config.startDate || '', vars) || undefined,

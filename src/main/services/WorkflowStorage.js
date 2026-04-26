@@ -28,26 +28,29 @@ const MAX_RUNS_TOTAL    = 500;  // global cap to avoid unbounded growth
 
 // ─── Init ────────────────────────────────────────────────────────────────────
 
-function ensureDirs() {
+async function ensureDirs() {
   for (const dir of [WORKFLOWS_DIR, RESULTS_DIR]) {
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    try {
+      await fs.promises.mkdir(dir, { recursive: true });
+    } catch (e) {
+      // ignore if already exists
+    }
   }
 }
 
 // ─── Atomic write helper ─────────────────────────────────────────────────────
 
-function atomicWrite(filePath, data) {
+async function atomicWrite(filePath, data) {
   const tmp = filePath + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
-  fs.renameSync(tmp, filePath);
+  await fs.promises.writeFile(tmp, JSON.stringify(data, null, 2), 'utf8');
+  await fs.promises.rename(tmp, filePath);
 }
 
 // ─── Safe JSON read ───────────────────────────────────────────────────────────
 
-function safeRead(filePath, fallback) {
+async function safeRead(filePath, fallback) {
   try {
-    if (!fs.existsSync(filePath)) return fallback;
-    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return JSON.parse(await fs.promises.readFile(filePath, 'utf8'));
   } catch {
     return fallback;
   }
@@ -56,29 +59,29 @@ function safeRead(filePath, fallback) {
 // ─── Workflow definitions ─────────────────────────────────────────────────────
 
 /**
- * @returns {Object[]} All saved workflow definitions
+ * @returns {Promise<Object[]>} All saved workflow definitions
  */
-function loadWorkflows() {
-  ensureDirs();
-  return safeRead(DEFINITIONS_FILE, []);
+async function loadWorkflows() {
+  await ensureDirs();
+  return await safeRead(DEFINITIONS_FILE, []);
 }
 
 /**
  * @param {Object[]} workflows
  */
-function saveWorkflows(workflows) {
-  ensureDirs();
-  atomicWrite(DEFINITIONS_FILE, workflows);
+async function saveWorkflows(workflows) {
+  await ensureDirs();
+  await atomicWrite(DEFINITIONS_FILE, workflows);
 }
 
 /**
  * Create or replace a workflow definition.
  * Assigns a stable `id` if not present.
  * @param {Object} workflow
- * @returns {Object} Saved workflow with id
+ * @returns {Promise<Object>} Saved workflow with id
  */
-function upsertWorkflow(workflow) {
-  const all = loadWorkflows();
+async function upsertWorkflow(workflow) {
+  const all = await loadWorkflows();
   if (!workflow.id) {
     workflow = { ...workflow, id: `wf_${crypto.randomUUID().slice(0, 8)}` };
   }
@@ -88,46 +91,46 @@ function upsertWorkflow(workflow) {
   } else {
     all.push(workflow);
   }
-  saveWorkflows(all);
+  await saveWorkflows(all);
   return workflow;
 }
 
 /**
  * @param {string} id
- * @returns {boolean} true if deleted
+ * @returns {Promise<boolean>} true if deleted
  */
-function deleteWorkflow(id) {
-  const all = loadWorkflows();
+async function deleteWorkflow(id) {
+  const all = await loadWorkflows();
   const next = all.filter(w => w.id !== id);
   if (next.length === all.length) return false;
-  saveWorkflows(next);
+  await saveWorkflows(next);
   return true;
 }
 
 /**
  * @param {string} id
- * @returns {Object|null}
+ * @returns {Promise<Object|null>}
  */
-function getWorkflow(id) {
-  return loadWorkflows().find(w => w.id === id) || null;
+async function getWorkflow(id) {
+  return (await loadWorkflows()).find(w => w.id === id) || null;
 }
 
 // ─── Run history ──────────────────────────────────────────────────────────────
 
 /**
- * @returns {Object[]} All run records (without large payloads)
+ * @returns {Promise<Object[]>} All run records (without large payloads)
  */
-function loadHistory() {
-  ensureDirs();
-  return safeRead(HISTORY_FILE, []);
+async function loadHistory() {
+  await ensureDirs();
+  return await safeRead(HISTORY_FILE, []);
 }
 
 /**
  * Append a run record, enforcing per-workflow and global caps.
  * @param {Object} run
  */
-function appendRun(run) {
-  let all = loadHistory();
+async function appendRun(run) {
+  let all = await loadHistory();
 
   // Prepend newest first
   all.unshift(run);
@@ -147,49 +150,49 @@ function appendRun(run) {
     for (const r of excess) cleanResultFile(r.id);
   }
 
-  atomicWrite(HISTORY_FILE, all);
+  await atomicWrite(HISTORY_FILE, all);
 }
 
 /**
  * Update a run record in place (e.g. to finalize status/duration).
  * @param {string} runId
  * @param {Partial<Object>} patch
- * @returns {Object|null} Updated run or null
+ * @returns {Promise<Object|null>} Updated run or null
  */
-function updateRun(runId, patch) {
-  const all = loadHistory();
+async function updateRun(runId, patch) {
+  const all = await loadHistory();
   const idx = all.findIndex(r => r.id === runId);
   if (idx < 0) return null;
   all[idx] = { ...all[idx], ...patch };
-  atomicWrite(HISTORY_FILE, all);
+  await atomicWrite(HISTORY_FILE, all);
   return all[idx];
 }
 
 /**
  * @param {string} workflowId
  * @param {number} [limit]
- * @returns {Object[]}
+ * @returns {Promise<Object[]>}
  */
-function getRunsForWorkflow(workflowId, limit = MAX_RUNS_PER_WF) {
-  return loadHistory()
+async function getRunsForWorkflow(workflowId, limit = MAX_RUNS_PER_WF) {
+  return (await loadHistory())
     .filter(r => r.workflowId === workflowId)
     .slice(0, limit);
 }
 
 /**
  * @param {number} [limit]
- * @returns {Object[]}
+ * @returns {Promise<Object[]>}
  */
-function getRecentRuns(limit = 20) {
-  return loadHistory().slice(0, limit);
+async function getRecentRuns(limit = 20) {
+  return (await loadHistory()).slice(0, limit);
 }
 
 /**
  * @param {string} runId
- * @returns {Object|null}
+ * @returns {Promise<Object|null>}
  */
-function getRun(runId) {
-  return loadHistory().find(r => r.id === runId) || null;
+async function getRun(runId) {
+  return (await loadHistory()).find(r => r.id === runId) || null;
 }
 
 // ─── Result files (large payloads) ───────────────────────────────────────────
@@ -199,17 +202,17 @@ function getRun(runId) {
  * @param {string} runId
  * @param {Object} payload
  */
-function saveResultPayload(runId, payload) {
-  ensureDirs();
-  atomicWrite(path.join(RESULTS_DIR, `${runId}.json`), payload);
+async function saveResultPayload(runId, payload) {
+  await ensureDirs();
+  await atomicWrite(path.join(RESULTS_DIR, `${runId}.json`), payload);
 }
 
 /**
  * @param {string} runId
- * @returns {Object|null}
+ * @returns {Promise<Object|null>}
  */
-function loadResultPayload(runId) {
-  return safeRead(path.join(RESULTS_DIR, `${runId}.json`), null);
+async function loadResultPayload(runId) {
+  return await safeRead(path.join(RESULTS_DIR, `${runId}.json`), null);
 }
 
 function cleanResultFile(runId) {
@@ -223,17 +226,17 @@ function cleanResultFile(runId) {
  * Delete run history for a specific workflow (and result files).
  * @param {string} workflowId
  */
-function deleteRunsForWorkflow(workflowId) {
-  const all = loadHistory();
+async function deleteRunsForWorkflow(workflowId) {
+  const all = await loadHistory();
   const toRemove = all.filter(r => r.workflowId === workflowId);
   const next = all.filter(r => r.workflowId !== workflowId);
-  atomicWrite(HISTORY_FILE, next);
+  await atomicWrite(HISTORY_FILE, next);
   for (const r of toRemove) cleanResultFile(r.id);
 }
 
-function clearAllRuns() {
-  const all = loadHistory();
-  atomicWrite(HISTORY_FILE, []);
+async function clearAllRuns() {
+  const all = await loadHistory();
+  await atomicWrite(HISTORY_FILE, []);
   for (const r of all) cleanResultFile(r.id);
 }
 
