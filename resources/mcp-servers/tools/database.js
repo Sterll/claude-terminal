@@ -290,7 +290,8 @@ async function executeRedisCommand(client, command) {
     const header = 'key | type | ttl | value';
     const separator = '─'.repeat(60);
     const lines = rows.map(r => `${r.key} | ${r.type} | ${r.ttl ?? '-'} | ${(r.value || '').slice(0, 100)}`);
-    return `${allKeys.length} keys found\n${header}\n${separator}\n${lines.join('\n')}`;
+    const truncatedNote = allKeys.length >= 10000 ? '\n(Key scan capped at 10,000 keys — more may exist)' : '';
+    return `${allKeys.length} keys found${truncatedNote}\n${header}\n${separator}\n${lines.join('\n')}`;
   }
 
   // Native Redis command
@@ -310,13 +311,17 @@ async function executeRedisCommand(client, command) {
   return String(result);
 }
 
-async function redisGetAllKeys(client, pattern = '*') {
+async function redisGetAllKeys(client, pattern = '*', maxKeys = 10000) {
   const keys = [];
   let cursor = '0';
   do {
     const [nextCursor, batch] = await client.scan(cursor, 'MATCH', pattern, 'COUNT', 500);
     cursor = nextCursor;
     keys.push(...batch);
+    if (keys.length >= maxKeys) {
+      keys.length = maxKeys; // truncate
+      break;
+    }
   } while (cursor !== '0');
   return keys.sort();
 }
@@ -474,7 +479,8 @@ async function describeTable(client, type, tableName) {
     const dbIndex = parseInt(dbMatch[1]);
     await client.select(dbIndex);
     const dbSize = await client.dbsize();
-    const keys = await redisGetAllKeys(client, '*');
+    // Only fetch up to 20 sample keys for describe — no need for full scan
+    const keys = await redisGetAllKeys(client, '*', 20);
     const sampleKeys = keys.slice(0, 20);
 
     const lines = [];
@@ -786,7 +792,8 @@ async function getFullSchema(client, type) {
       s += '\n  Schema: key (string PK) | type (string) | ttl (number) | value (any)';
       if (keys > 0) {
         await client.select(dbIndex);
-        const sampleKeys = await redisGetAllKeys(client, '*');
+        // Only fetch up to 10 sample keys for schema — no need for full scan
+        const sampleKeys = await redisGetAllKeys(client, '*', 10);
         const sample = sampleKeys.slice(0, 10);
         const typeCounts = {};
         for (const key of sample) {

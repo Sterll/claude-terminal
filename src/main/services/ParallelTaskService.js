@@ -14,7 +14,7 @@ const { createWorktree, removeWorktree, gitMerge, gitMergeAbort, gitMergeContinu
 const chatService = require('./ChatService');
 
 const HISTORY_FILE = path.join(os.homedir(), '.claude-terminal', 'parallel-runs.json');
-const MAX_HISTORY = 20;
+const MAX_HISTORY = 100;
 
 class ParallelTaskService {
   constructor() {

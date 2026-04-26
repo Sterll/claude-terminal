@@ -150,6 +150,7 @@ async function appendRun(run) {
     for (const r of excess) cleanResultFile(r.id);
   }
 
+  _historyCache = all;
   await atomicWrite(HISTORY_FILE, all);
 }
 
@@ -164,6 +165,7 @@ async function updateRun(runId, patch) {
   const idx = all.findIndex(r => r.id === runId);
   if (idx < 0) return null;
   all[idx] = { ...all[idx], ...patch };
+  _historyCache = all;
   await atomicWrite(HISTORY_FILE, all);
   return all[idx];
 }
@@ -230,12 +232,14 @@ async function deleteRunsForWorkflow(workflowId) {
   const all = await loadHistory();
   const toRemove = all.filter(r => r.workflowId === workflowId);
   const next = all.filter(r => r.workflowId !== workflowId);
+  _historyCache = next;
   await atomicWrite(HISTORY_FILE, next);
   for (const r of toRemove) cleanResultFile(r.id);
 }
 
 async function clearAllRuns() {
   const all = await loadHistory();
+  _historyCache = [];
   await atomicWrite(HISTORY_FILE, []);
   for (const r of all) cleanResultFile(r.id);
 }
