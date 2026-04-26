@@ -199,6 +199,13 @@ function initMathBlocks(blocks) {
 
 async function loadKatex() {
   try {
+    if (!document.getElementById('katex-css')) {
+      const link = document.createElement('link');
+      link.id = 'katex-css';
+      link.rel = 'stylesheet';
+      link.href = 'node_modules/katex/dist/katex.min.css';
+      document.head.appendChild(link);
+    }
     return require('katex');
   } catch {
     console.warn('[MarkdownRenderer] KaTeX not available');

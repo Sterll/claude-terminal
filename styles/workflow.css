@@ -1139,7 +1139,8 @@
   width: 24px; height: 24px;
   display: flex; align-items: center; justify-content: center;
   background: transparent; border: none; border-radius: 6px;
-  color: var(--text-muted); cursor: pointer; transition: color 0.15s; flex-shrink: 0, background-color 0.15s; flex-shrink: 0, border-color 0.15s; flex-shrink: 0, opacity 0.15s; flex-shrink: 0, transform 0.15s; flex-shrink: 0
+  color: var(--text-muted); cursor: pointer; flex-shrink: 0;
+  transition: color 0.15s, background-color 0.15s, border-color 0.15s, opacity 0.15s, transform 0.15s;
   opacity: 0;
 }
 .wf-step-node:hover .wf-step-node-del { opacity: 1; }
@@ -1307,7 +1308,8 @@ select.wf-step-edit-input {
 .wf-cond-op-btn {
   padding: 3px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: transparent;
   color: var(--text-secondary); cursor: pointer; font-size: 11px; font-family: 'SF Mono', 'Fira Code', monospace;
-  transition: color 0.15s; min-width: 28px; text-align: center, background-color 0.15s; min-width: 28px; text-align: center, border-color 0.15s; min-width: 28px; text-align: center, opacity 0.15s; min-width: 28px; text-align: center, transform 0.15s; min-width: 28px; text-align: center
+  min-width: 28px; text-align: center;
+  transition: color 0.15s, background-color 0.15s, border-color 0.15s, opacity 0.15s, transform 0.15s;
 }
 .wf-cond-op-btn:hover { border-color: var(--accent); color: var(--text-primary); }
 .wf-cond-op-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
@@ -1693,7 +1695,8 @@ select.wf-step-edit-input {
   background: rgba(255,255,255,.02);
   border: 1.5px solid var(--wf-border);
   border-radius: 10px;
-  cursor: pointer; transition: color .2s var(--wf-ease); text-align: center, background-color .2s var(--wf-ease); text-align: center, border-color .2s var(--wf-ease); text-align: center, opacity .2s var(--wf-ease); text-align: center, transform .2s var(--wf-ease); text-align: center
+  cursor: pointer; text-align: center;
+  transition: color .2s var(--wf-ease), background-color .2s var(--wf-ease), border-color .2s var(--wf-ease), opacity .2s var(--wf-ease), transform .2s var(--wf-ease);
 }
 .wf-conc-btn:hover { background: rgba(255,255,255,.04); border-color: rgba(255,255,255,.1); }
 .wf-conc-btn.active { background: rgba(217,119,6,.06); border-color: rgba(217,119,6,.35); }

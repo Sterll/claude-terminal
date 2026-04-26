@@ -17,7 +17,7 @@ const buildOptions = {
   target: 'chrome120', // Electron uses Chromium
   format: 'iife',
   sourcemap: true,
-  minify: process.env.NODE_ENV === 'production',
+  minify: true,
   // Don't bundle electron - it's provided by the runtime
   external: ['electron'],
   // Define to replace process.env references
