@@ -185,7 +185,7 @@
   border-radius: 0 3px 3px 0;
   background: var(--text-muted);
   opacity: 0.3;
-  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+  transition: background-color 0.2s ease, opacity 0.2s ease;
 }
 .database-card:hover {
   border-color: rgba(255, 255, 255, 0.1);
@@ -1187,6 +1187,12 @@
 }
 .db-grid tbody tr:nth-child(even):hover td {
   background: rgba(255, 255, 255, 0.025);
+}
+
+/* Content-visibility for off-screen rows */
+.db-grid tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 32px;
 }
 
 /* ===== ROW DELETE BUTTON ===== */

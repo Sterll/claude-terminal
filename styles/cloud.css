@@ -112,7 +112,7 @@
   border-radius: 50%;
   background: var(--text-muted);
   flex-shrink: 0;
-  transition: background-color 0.25s, color 0.25s, border-color 0.25s, opacity 0.25s;
+  transition: background-color 0.25s;
 }
 
 .cp-status-pill.connected .cp-status-dot {

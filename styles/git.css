@@ -364,6 +364,8 @@
   cursor: default;
   transition: background 0.1s ease;
   border-left: 2px solid transparent;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 36px;
 }
 
 .git-file-item-row {

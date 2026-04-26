@@ -2334,9 +2334,7 @@ select.wf-step-edit-input {
 .hub-detail-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,.65);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(0,0,0,.88);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2523,9 +2521,7 @@ select.wf-step-edit-input {
 .hub-pub-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,.65);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(0,0,0,.88);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3125,15 +3121,13 @@ select.wf-step-edit-input {
 .wfm-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,.6);
+  background: rgba(0,0,0,.88);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 9000;
   padding: 24px;
   animation: wfFadeIn .2s var(--wf-ease);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
 }
 
 .wfm-detail-modal {
@@ -3467,8 +3461,6 @@ select.wf-step-edit-input {
   transform: translateY(8px);
   transition: opacity .3s var(--wf-ease), transform .3s var(--wf-ease);
   max-width: 320px;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
 }
 .wfm-toast--in { opacity: 1; transform: translateY(0); }
 .wfm-toast--success { background: rgba(74,222,128,.1); color: var(--wf-success); border: 1px solid rgba(74,222,128,.2); }
@@ -5217,7 +5209,6 @@ select.wf-step-edit-input {
   font-family: inherit !important;
   font-size: 11px !important;
   padding: 3px !important;
-  backdrop-filter: blur(16px);
 }
 .litegraph .litecontextmenu .litemenu-entry {
   color: var(--text-secondary) !important;
@@ -5259,7 +5250,6 @@ select.wf-step-edit-input {
   border-radius: 8px;
   box-shadow: 0 8px 32px rgba(0,0,0,.5);
   padding: 4px 0;
-  backdrop-filter: blur(12px);
 }
 .wf-ac-category {
   padding: 4px 10px 2px;
@@ -5346,12 +5336,11 @@ select.wf-step-edit-input {
   z-index: 999;
   max-height: 200px;
   overflow-y: auto;
-  background: rgba(18,18,22,.97);
+  background: #121216;
   border: 1px solid rgba(255,255,255,.08);
   border-radius: 8px;
   box-shadow: 0 8px 32px rgba(0,0,0,.5);
   padding: 4px 0;
-  backdrop-filter: blur(12px);
 }
 .wf-sql-ac-item {
   display: flex;
@@ -5409,11 +5398,10 @@ select.wf-step-edit-input {
 .wf-var-picker {
   position: absolute;
   z-index: 1000;
-  background: rgba(18,18,22,.97);
+  background: #121216;
   border: 1px solid rgba(255,255,255,.08);
   border-radius: 10px;
   box-shadow: 0 8px 32px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.03);
-  backdrop-filter: blur(16px);
   max-height: 300px;
   width: 280px;
   display: flex;
@@ -5497,7 +5485,6 @@ select.wf-step-edit-input {
   border-radius: 10px;
   padding: 10px 14px;
   box-shadow: 0 8px 32px rgba(0,0,0,.6), 0 0 0 1px rgba(56,189,248,.08);
-  backdrop-filter: blur(16px);
   animation: wf-loop-suggest-in .2s ease-out;
   transform: translateX(-50%);
   white-space: nowrap;
@@ -6564,6 +6551,8 @@ select.wf-step-edit-input {
   border: 1px solid transparent;
   transition: background 0.12s, border-color 0.12s;
   overflow: hidden;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 52px;
 }
 
 .wf-run-card:hover {
@@ -6999,7 +6988,6 @@ select.wf-step-edit-input {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   z-index: 20;
   min-width: 280px;
-  backdrop-filter: blur(6px);
 }
 
 .wf-search-icon {
