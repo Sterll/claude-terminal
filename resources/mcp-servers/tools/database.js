@@ -341,32 +341,43 @@ async function listTables(client, type, filter) {
   }
 
   if (type === 'mysql' || type === 'mariadb') {
-    const [tables] = await client.execute('SHOW TABLES');
-    const key = Object.keys(tables[0] || {})[0];
+    const [allCols] = await client.execute(
+      `SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT
+       FROM information_schema.columns
+       WHERE table_schema = DATABASE()
+       ORDER BY TABLE_NAME, ORDINAL_POSITION`
+    );
+    const grouped = new Map();
+    for (const row of allCols) {
+      const tn = row.TABLE_NAME;
+      if (!match(tn)) continue;
+      if (!grouped.has(tn)) grouped.set(tn, []);
+      grouped.get(tn).push(row.COLUMN_NAME);
+    }
     const result = [];
-    for (const row of tables) {
-      const tableName = row[key];
-      if (!match(tableName)) continue;
-      const [columns] = await client.execute(`SHOW COLUMNS FROM ${mysqlId(tableName)}`);
-      const colStr = columns.map(c => c.Field).join(', ');
-      result.push(`${tableName}: ${colStr}`);
+    for (const [tn, cols] of grouped) {
+      result.push(`${tn}: ${cols.join(', ')}`);
     }
     return result.join('\n') || (filter ? `No tables matching "${filter}"` : 'No tables found');
   }
 
   if (type === 'postgresql') {
-    const tablesRes = await client.query(
-      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name"
+    const colRes = await client.query(
+      `SELECT table_name, column_name, data_type, is_nullable, column_default
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+       ORDER BY table_name, ordinal_position`
     );
-    const result = [];
-    for (const { table_name: tn } of tablesRes.rows) {
+    const grouped = new Map();
+    for (const row of colRes.rows) {
+      const tn = row.table_name;
       if (!match(tn)) continue;
-      const colRes = await client.query(
-        'SELECT column_name FROM information_schema.columns WHERE table_name = $1 ORDER BY ordinal_position',
-        [tn]
-      );
-      const colStr = colRes.rows.map(c => c.column_name).join(', ');
-      result.push(`${tn}: ${colStr}`);
+      if (!grouped.has(tn)) grouped.set(tn, []);
+      grouped.get(tn).push(row.column_name);
+    }
+    const result = [];
+    for (const [tn, cols] of grouped) {
+      result.push(`${tn}: ${cols.join(', ')}`);
     }
     return result.join('\n') || (filter ? `No tables matching "${filter}"` : 'No tables found');
   }
@@ -588,27 +599,56 @@ async function getFullSchema(client, type) {
   }
 
   if (type === 'mysql' || type === 'mariadb') {
-    const [tables] = await client.execute('SHOW TABLES');
-    const key = Object.keys(tables[0] || {})[0];
-    const sections = [];
-    for (const row of tables) {
-      const tn = row[key];
-      const [cols] = await client.execute(`SHOW FULL COLUMNS FROM ${mysqlId(tn)}`);
-      const [fksRaw] = await client.execute(
-        `SELECT COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
-         FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
-         WHERE TABLE_NAME = ? AND TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME IS NOT NULL`, [tn]);
-      const [idxsRaw] = await client.execute(`SHOW INDEX FROM ${mysqlId(tn)}`);
+    // Batch all columns across all tables in one query
+    const [allCols] = await client.execute(
+      `SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, COLUMN_KEY, IS_NULLABLE, COLUMN_DEFAULT
+       FROM information_schema.columns
+       WHERE TABLE_SCHEMA = DATABASE()
+       ORDER BY TABLE_NAME, ORDINAL_POSITION`
+    );
+    // Batch all foreign keys across all tables
+    const [allFks] = await client.execute(
+      `SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+       FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+       WHERE TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME IS NOT NULL`
+    );
+    // Batch all indexes across all tables
+    const [allIdxs] = await client.execute(
+      `SELECT TABLE_NAME, INDEX_NAME AS Key_name, NON_UNIQUE AS Non_unique, COLUMN_NAME AS Column_name
+       FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE()
+       ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX`
+    );
 
+    // Group by table
+    const colsByTable = new Map();
+    for (const c of allCols) {
+      if (!colsByTable.has(c.TABLE_NAME)) colsByTable.set(c.TABLE_NAME, []);
+      colsByTable.get(c.TABLE_NAME).push(c);
+    }
+    const fksByTable = new Map();
+    for (const fk of allFks) {
+      if (!fksByTable.has(fk.TABLE_NAME)) fksByTable.set(fk.TABLE_NAME, []);
+      fksByTable.get(fk.TABLE_NAME).push(fk);
+    }
+    const idxsByTable = new Map();
+    for (const idx of allIdxs) {
+      if (!idxsByTable.has(idx.TABLE_NAME)) idxsByTable.set(idx.TABLE_NAME, []);
+      idxsByTable.get(idx.TABLE_NAME).push(idx);
+    }
+
+    const sections = [];
+    for (const [tn, cols] of colsByTable) {
       let s = `## ${tn}\n`;
       s += cols.map(c => {
-        const p = [`  ${c.Field} ${c.Type}`];
-        if (c.Key === 'PRI') p.push('PK');
-        if (c.Null === 'NO') p.push('NOT NULL');
-        if (c.Default !== null) p.push(`DEFAULT ${c.Default}`);
+        const p = [`  ${c.COLUMN_NAME} ${c.COLUMN_TYPE}`];
+        if (c.COLUMN_KEY === 'PRI') p.push('PK');
+        if (c.IS_NULLABLE === 'NO') p.push('NOT NULL');
+        if (c.COLUMN_DEFAULT !== null) p.push(`DEFAULT ${c.COLUMN_DEFAULT}`);
         return p.join(' | ');
       }).join('\n');
 
+      const fksRaw = fksByTable.get(tn) || [];
       if (fksRaw.length) {
         s += '\n  Foreign Keys:';
         for (const fk of fksRaw) s += `\n    ${fk.COLUMN_NAME} → ${fk.REFERENCED_TABLE_NAME}(${fk.REFERENCED_COLUMN_NAME})`;
@@ -616,7 +656,7 @@ async function getFullSchema(client, type) {
 
       // Group indexes by name
       const idxMap = new Map();
-      for (const idx of idxsRaw) {
+      for (const idx of (idxsByTable.get(tn) || [])) {
         if (!idxMap.has(idx.Key_name)) idxMap.set(idx.Key_name, { unique: !idx.Non_unique, cols: [] });
         idxMap.get(idx.Key_name).cols.push(idx.Column_name);
       }
@@ -633,35 +673,58 @@ async function getFullSchema(client, type) {
   }
 
   if (type === 'postgresql') {
-    const tablesRes = await client.query(
-      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name"
+    // Batch all columns with PK info across all tables
+    const allColRes = await client.query(
+      `SELECT c.table_name, c.column_name, c.data_type, c.is_nullable, c.column_default,
+              EXISTS(
+                SELECT 1 FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
+                  AND tc.table_schema = kcu.table_schema
+                WHERE tc.table_name = c.table_name AND kcu.column_name = c.column_name
+                AND tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = 'public'
+              ) as is_pk
+       FROM information_schema.columns c
+       WHERE c.table_schema = 'public'
+       ORDER BY c.table_name, c.ordinal_position`
     );
+    // Batch all foreign keys across all tables
+    const allFkRes = await client.query(
+      `SELECT tc.table_name, kcu.column_name, ccu.table_name AS ref_table, ccu.column_name AS ref_column
+       FROM information_schema.table_constraints tc
+       JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
+         AND tc.table_schema = kcu.table_schema
+       JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name = ccu.constraint_name
+         AND tc.table_schema = ccu.table_schema
+       WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public'`
+    );
+    // Batch all indexes across all tables
+    const allIdxRes = await client.query(
+      `SELECT tablename, indexname, indexdef FROM pg_indexes WHERE schemaname = 'public'`
+    );
+
+    // Group by table
+    const colsByTable = new Map();
+    for (const c of allColRes.rows) {
+      if (!colsByTable.has(c.table_name)) colsByTable.set(c.table_name, []);
+      colsByTable.get(c.table_name).push(c);
+    }
+    const fksByTable = new Map();
+    for (const fk of allFkRes.rows) {
+      if (!fksByTable.has(fk.table_name)) fksByTable.set(fk.table_name, []);
+      fksByTable.get(fk.table_name).push(fk);
+    }
+    const idxsByTable = new Map();
+    for (const idx of allIdxRes.rows) {
+      if (!idxsByTable.has(idx.tablename)) idxsByTable.set(idx.tablename, []);
+      idxsByTable.get(idx.tablename).push(idx);
+    }
+
     const sections = [];
-    for (const { table_name: tn } of tablesRes.rows) {
-      const colRes = await client.query(
-        `SELECT column_name, data_type, is_nullable, column_default,
-                (SELECT EXISTS(
-                  SELECT 1 FROM information_schema.table_constraints tc
-                  JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
-                  WHERE tc.table_name = c.table_name AND kcu.column_name = c.column_name
-                  AND tc.constraint_type = 'PRIMARY KEY'
-                )) as is_pk
-         FROM information_schema.columns c
-         WHERE table_name = $1 AND table_schema = 'public'
-         ORDER BY ordinal_position`, [tn]);
-
-      const fkRes = await client.query(
-        `SELECT kcu.column_name, ccu.table_name AS ref_table, ccu.column_name AS ref_column
-         FROM information_schema.table_constraints tc
-         JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
-         JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name = ccu.constraint_name
-         WHERE tc.table_name = $1 AND tc.constraint_type = 'FOREIGN KEY'`, [tn]);
-
-      const idxRes = await client.query(
-        `SELECT indexname, indexdef FROM pg_indexes WHERE tablename = $1 AND schemaname = 'public'`, [tn]);
-
+    const tableNames = [...colsByTable.keys()].sort();
+    for (const tn of tableNames) {
+      const cols = colsByTable.get(tn);
       let s = `## ${tn}\n`;
-      s += colRes.rows.map(c => {
+      s += cols.map(c => {
         const p = [`  ${c.column_name} ${c.data_type}`];
         if (c.is_pk) p.push('PK');
         if (c.is_nullable === 'NO') p.push('NOT NULL');
@@ -669,12 +732,13 @@ async function getFullSchema(client, type) {
         return p.join(' | ');
       }).join('\n');
 
-      if (fkRes.rows.length) {
+      const fks = fksByTable.get(tn) || [];
+      if (fks.length) {
         s += '\n  Foreign Keys:';
-        for (const fk of fkRes.rows) s += `\n    ${fk.column_name} → ${fk.ref_table}(${fk.ref_column})`;
+        for (const fk of fks) s += `\n    ${fk.column_name} → ${fk.ref_table}(${fk.ref_column})`;
       }
 
-      const nonPkIdx = idxRes.rows.filter(i => !i.indexname.endsWith('_pkey'));
+      const nonPkIdx = (idxsByTable.get(tn) || []).filter(i => !i.indexname.endsWith('_pkey'));
       if (nonPkIdx.length) {
         s += '\n  Indexes:';
         for (const idx of nonPkIdx) {
@@ -759,22 +823,21 @@ async function getStats(client, type) {
   }
 
   if (type === 'mysql' || type === 'mariadb') {
-    const [tables] = await client.execute('SHOW TABLES');
-    const key = Object.keys(tables[0] || {})[0];
+    const [tableStats] = await client.execute(
+      `SELECT TABLE_NAME, TABLE_ROWS FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME`
+    );
     const lines = [];
     let totalRows = 0;
-    for (const row of tables) {
-      const tn = row[key];
-      const [cnt] = await client.execute(`SELECT COUNT(*) as cnt FROM ${mysqlId(tn)}`);
-      const count = Number(cnt[0].cnt);
-      lines.push(`${tn}: ${count.toLocaleString()} rows`);
+    for (const row of tableStats) {
+      const count = Number(row.TABLE_ROWS) || 0;
+      lines.push(`${row.TABLE_NAME}: ${count.toLocaleString()} rows (est.)`);
       totalRows += count;
     }
     // DB size
     const [sizeRes] = await client.execute(
       `SELECT SUM(data_length + index_length) as size FROM information_schema.tables WHERE table_schema = DATABASE()`);
     const sizeMB = ((Number(sizeRes[0].size) || 0) / 1024 / 1024).toFixed(2);
-    return `Database size: ${sizeMB} MB\nTotal rows: ${totalRows.toLocaleString()}\nTables: ${tables.length}\n${'─'.repeat(40)}\n${lines.join('\n')}`;
+    return `Database size: ${sizeMB} MB\nTotal rows: ~${totalRows.toLocaleString()}\nTables: ${tableStats.length}\n${'─'.repeat(40)}\n${lines.join('\n')}`;
   }
 
   if (type === 'postgresql') {

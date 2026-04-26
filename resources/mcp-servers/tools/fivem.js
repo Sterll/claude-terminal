@@ -11,6 +11,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { loadProjects } = require('./_projectsCache');
 
 // -- Logging ------------------------------------------------------------------
 
@@ -22,16 +23,6 @@ function log(...args) {
 
 function getDataDir() {
   return process.env.CT_DATA_DIR || '';
-}
-
-function loadProjects() {
-  const file = path.join(getDataDir(), 'projects.json');
-  try {
-    if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch (e) {
-    log('Error reading projects.json:', e.message);
-  }
-  return { projects: [], folders: [], rootOrder: [] };
 }
 
 function findFivemProject(nameOrId) {

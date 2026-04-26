@@ -10,6 +10,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { loadProjects } = require('./_projectsCache');
 
 // -- Logging ------------------------------------------------------------------
 
@@ -88,10 +89,6 @@ function loadLinks(workspaceId) {
 
 function saveLinks(workspaceId, data) {
   atomicWrite(path.join(workspaceDir(workspaceId), 'links.json'), data);
-}
-
-function loadProjects() {
-  return loadJson(path.join(getDataDir(), 'projects.json'), { projects: [], folders: [], rootOrder: [] });
 }
 
 function findDoc(docsIndex, docRef) {

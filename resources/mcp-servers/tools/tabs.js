@@ -36,6 +36,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { loadProjects } = require('./_projectsCache');
 
 // -- Constants ----------------------------------------------------------------
 
@@ -66,10 +67,6 @@ function readJson(file, fallback) {
 function loadTabs() {
   const snap = readJson(path.join(getDataDir(), 'tabs.json'), { tabs: [] });
   return Array.isArray(snap.tabs) ? snap.tabs : [];
-}
-
-function loadProjects() {
-  return readJson(path.join(getDataDir(), 'projects.json'), { projects: [] });
 }
 
 function findProjectById(projectId) {

@@ -9,6 +9,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { loadProjects } = require('./_projectsCache');
 
 // -- Logging ------------------------------------------------------------------
 
@@ -145,16 +146,6 @@ function saveSettings(data) {
   const tmpFile = file + '.tmp';
   fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2), 'utf8');
   fs.renameSync(tmpFile, file);
-}
-
-function loadProjects() {
-  const file = path.join(getDataDir(), 'projects.json');
-  try {
-    if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch (e) {
-    log('Error reading projects.json:', e.message);
-  }
-  return { projects: [], folders: [], rootOrder: [] };
 }
 
 function formatUptime(seconds) {

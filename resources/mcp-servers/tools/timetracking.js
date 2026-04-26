@@ -9,6 +9,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { loadProjects } = require('./_projectsCache');
 
 // -- Logging ------------------------------------------------------------------
 
@@ -30,14 +31,6 @@ function loadTimeTracking() {
     log('Error reading timetracking.json:', e.message);
   }
   return { version: 3, month: '', global: { sessions: [] }, projects: {} };
-}
-
-function loadProjects() {
-  const file = path.join(getDataDir(), 'projects.json');
-  try {
-    if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch (e) {}
-  return { projects: [] };
 }
 
 // -- Helpers ------------------------------------------------------------------

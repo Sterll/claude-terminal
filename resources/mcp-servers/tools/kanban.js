@@ -9,6 +9,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { loadProjects, invalidate, PROJECTS_FILE } = require('./_projectsCache');
 
 // -- Logging ------------------------------------------------------------------
 
@@ -26,25 +27,11 @@ const DEFAULT_COLUMNS = [
 
 // -- Data access --------------------------------------------------------------
 
-function getDataDir() {
-  return process.env.CT_DATA_DIR || '';
-}
-
-function loadProjects() {
-  const file = path.join(getDataDir(), 'projects.json');
-  try {
-    if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch (e) {
-    log('Error reading projects.json:', e.message);
-  }
-  return { projects: [], folders: [], rootOrder: [] };
-}
-
 function saveProjects(data) {
-  const file = path.join(getDataDir(), 'projects.json');
-  const tmp = file + '.tmp';
+  const tmp = PROJECTS_FILE + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
-  fs.renameSync(tmp, file);
+  fs.renameSync(tmp, PROJECTS_FILE);
+  invalidate();
 }
 
 function findProjectInData(data, nameOrId) {
