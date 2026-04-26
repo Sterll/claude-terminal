@@ -207,10 +207,10 @@ async function getInstallCounts() {
 /**
  * Get full marketplace catalog (all available plugins from all marketplaces)
  */
-function getCatalog() {
+async function getCatalog() {
   try {
     const marketplaces = getMarketplaces();
-    const counts = getInstallCounts();
+    const counts = await getInstallCounts();
     const installed = getInstalledPluginKeys();
     const allPlugins = [];
 

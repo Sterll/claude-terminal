@@ -500,17 +500,17 @@ class WorkflowService {
 
     // Execute asynchronously
     this._executeRun(workflow, run, abortController, inProgress, opts)
-      .then(result => {
-        this._finalizeRun(run, result, workflow);
+      .then(async result => {
+        await this._finalizeRun(run, result, workflow);
         resolveExec(result);
       })
-      .catch(err => {
-        this._finalizeRun(run, { success: false, error: err.message, outputs: {} }, workflow);
+      .catch(async err => {
+        await this._finalizeRun(run, { success: false, error: err.message, outputs: {} }, workflow);
         rejectExec(err);
       })
-      .finally(() => {
+      .finally(async () => {
         this._active.delete(runId);
-        this._drainQueue(workflow.id);
+        await this._drainQueue(workflow.id);
       });
 
     return { success: true, runId };

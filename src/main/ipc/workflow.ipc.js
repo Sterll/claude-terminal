@@ -121,7 +121,7 @@ function registerWorkflowHandlers(mainWindow) {
 
   ipcMain.handle('workflow-test-node', async (_e, { step, ctx }) => {
     try {
-      return workflowService.testNode(step, ctx || {});
+      return await workflowService.testNode(step, ctx || {});
     } catch (err) {
       console.error('[workflow-test-node]', err.message);
       return { success: false, error: err.message, duration: 0 };

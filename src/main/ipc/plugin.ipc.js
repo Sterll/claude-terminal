@@ -20,7 +20,7 @@ function registerPluginHandlers() {
 
   ipcMain.handle('plugin-catalog', async () => {
     try {
-      const catalog = PluginService.getCatalog();
+      const catalog = await PluginService.getCatalog();
       return { success: true, catalog };
     } catch (e) {
       console.error('[Plugin IPC] Catalog error:', e);
