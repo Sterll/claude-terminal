@@ -1831,7 +1831,7 @@ class ChatView extends BaseComponent {
     const text = node.textContent;
     const before = text.substring(0, offset);
     const after = text.substring(offset);
-    const cleaned = before.replace(/@\w*\s*$/, '');
+    const cleaned = before.replace(/@\w*(?:\s+\S*)?$/, '');
     node.textContent = cleaned + after;
 
     const newRange = document.createRange();
