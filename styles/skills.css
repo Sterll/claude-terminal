@@ -42,7 +42,7 @@
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), color 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
 }
 
@@ -384,7 +384,7 @@
   font-weight: 600;
   cursor: pointer;
   border-radius: 6px;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
   letter-spacing: 0.01em;
 }
 
@@ -449,7 +449,7 @@
   font-weight: 500;
   cursor: pointer;
   border-radius: 20px;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
   white-space: nowrap;
 }
 
@@ -528,7 +528,7 @@
   border-radius: 12px;
   padding: 14px 16px;
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background-color 0.25s cubic-bezier(0.16, 1, 0.3, 1), color 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -709,7 +709,7 @@
   border: 1px solid var(--border-color);
   border-radius: 10px;
   gap: 16px;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
   animation: pluginCardIn 0.3s ease-out both;
 }
 
@@ -1071,7 +1071,7 @@
   background: var(--accent);
   color: #fff;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
   white-space: nowrap;
 }
 
@@ -1094,7 +1094,7 @@
   background: var(--accent);
   color: #fff;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .btn-plugin-install-detail:hover {
@@ -1116,7 +1116,7 @@
   color: #e74c3c;
   border: 1px solid rgba(231, 76, 60, 0.3);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .btn-plugin-uninstall-detail:hover {
@@ -1134,7 +1134,7 @@
   color: #e74c3c;
   border: 1px solid rgba(231, 76, 60, 0.2);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .btn-danger.btn-plugin-uninstall:hover {
@@ -1205,7 +1205,7 @@
   background: var(--accent);
   color: #fff;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
   white-space: nowrap;
 }
 
@@ -1315,7 +1315,7 @@
   border: 1px solid rgba(251, 191, 36, 0.25);
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .btn-sm.btn-update:hover {

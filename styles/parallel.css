@@ -903,7 +903,7 @@
   border: none;
   color: #555;
   cursor: pointer;
-  transition: all 0.12s;
+  transition: background-color 0.12s, color 0.12s, border-color 0.12s, opacity 0.12s;
 }
 
 .parallel-btn-icon:hover { background: rgba(255,255,255,0.06); }
@@ -1283,7 +1283,7 @@
   font-size: var(--font-xs);
   font-family: var(--pt-sys);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
 }
 .parallel-merge-btn:hover:not(:disabled) {
   border-color: var(--pt-green);
@@ -1983,7 +1983,7 @@
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
   font-family: inherit;
 }
 

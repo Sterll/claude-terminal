@@ -85,7 +85,7 @@
   padding: 8px 10px;
   border-radius: 6px;
   cursor: pointer;
-  transition: all 0.12s;
+  transition: background-color 0.12s, color 0.12s, border-color 0.12s, opacity 0.12s;
   margin-bottom: 2px;
   color: var(--text-secondary);
   font-size: 13px;
@@ -576,7 +576,7 @@
   border: 1px solid var(--border-color);
   border-radius: 10px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
 }
 
 .template-card:hover {
@@ -611,7 +611,7 @@
   border: 1px solid var(--border-color);
   border-radius: 8px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
 }
 
 .template-option:hover {
@@ -670,7 +670,7 @@
   color: var(--text-secondary);
   font-size: 13px;
   font-weight: 500;
-  transition: all 0.12s;
+  transition: background-color 0.12s, color 0.12s, border-color 0.12s, opacity 0.12s;
 }
 
 .memory-project-header:hover {
@@ -743,7 +743,7 @@
   border: 1px solid var(--border-color);
   border-radius: 8px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
 }
 
 .memory-file-card:hover {
@@ -817,7 +817,7 @@
   color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
-  transition: all 0.12s;
+  transition: background-color 0.12s, color 0.12s, border-color 0.12s, opacity 0.12s;
 }
 
 .memory-back-btn:hover {

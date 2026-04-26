@@ -40,7 +40,7 @@
   border-left: 3px solid transparent;
   border-radius: var(--radius);
   padding: 11px 14px;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
   cursor: default;
 }
 
@@ -190,7 +190,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
 }
 
 .btn-mcp svg {
@@ -409,7 +409,7 @@
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
   white-space: nowrap;
   position: relative;
 }
@@ -488,7 +488,7 @@
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
   line-height: 1;
 }
 
@@ -525,7 +525,7 @@
   padding: 14px 16px;
   border: 1px solid var(--border-color);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
   display: flex;
   flex-direction: column;
   gap: 8px;

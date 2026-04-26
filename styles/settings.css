@@ -81,7 +81,7 @@
   background: var(--bg-tertiary);
   border-radius: var(--radius);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
 }
 
 .toggle-option:hover {
@@ -98,7 +98,7 @@
   background: var(--border-color);
   border-radius: 12px;
   position: relative;
-  transition: all 0.2s;
+  transition: background-color 0.2s;
   flex-shrink: 0;
 }
 
@@ -111,7 +111,7 @@
   height: 18px;
   background: var(--text-secondary);
   border-radius: 50%;
-  transition: all 0.2s;
+  transition: left 0.2s, background-color 0.2s;
 }
 
 .toggle-option input:checked + .toggle-slider {
@@ -231,7 +231,7 @@
   background-repeat: no-repeat;
   background-position: right 12px center;
   min-width: 160px;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .settings-select:hover {
@@ -269,7 +269,7 @@
   color: var(--text-primary);
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
   white-space: nowrap;
   user-select: none;
 }
@@ -323,7 +323,7 @@
   color: var(--text-secondary);
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.1s ease;
+  transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease, opacity 0.1s ease;
   white-space: nowrap;
 }
 
@@ -383,7 +383,7 @@
   background: var(--bg-hover);
   border: 1px solid var(--border-color);
   border-radius: 11px;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .settings-toggle-slider::before {
@@ -395,7 +395,7 @@
   bottom: 2px;
   background: var(--text-muted);
   border-radius: 50%;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .settings-toggle input:checked + .settings-toggle-slider {
@@ -468,7 +468,7 @@
   color: var(--text-muted);
   cursor: pointer;
   opacity: 0;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
 }
 
 .custom-preset-item:hover .custom-preset-delete {
@@ -884,7 +884,7 @@
   font-size: var(--font-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
   white-space: nowrap;
 }
 
@@ -956,7 +956,7 @@
   font-size: var(--font-sm);
   font-weight: 500;
   text-decoration: none;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .device-flow-link:hover {
@@ -1007,7 +1007,7 @@
   font-size: var(--font-xs);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .btn-outline-danger {
@@ -1040,7 +1040,7 @@
   color: var(--text-primary);
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   font-size: var(--font-sm);
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .github-token-input:focus {
@@ -1126,7 +1126,7 @@
   font-size: var(--font-xs);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
   min-width: 100px;
   justify-content: center;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -1170,7 +1170,7 @@
   border-radius: 6px;
   color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .shortcut-reset-btn:hover {
@@ -1198,7 +1198,7 @@
   font-size: var(--font-xs);
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .btn-reset-shortcuts:hover {
@@ -1349,7 +1349,7 @@
   font-size: var(--font-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
   white-space: nowrap;
 }
 
@@ -1745,7 +1745,7 @@
   font-size: 18px;
   line-height: 1;
   flex-shrink: 0;
-  transition: all 0.12s;
+  transition: background-color 0.12s, color 0.12s, border-color 0.12s, opacity 0.12s;
 }
 
 .ctx-item-remove:hover {
@@ -1767,7 +1767,7 @@
   font-size: var(--font-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.12s;
+  transition: background-color 0.12s, color 0.12s, border-color 0.12s, opacity 0.12s;
   width: 100%;
   margin-top: 2px;
 }
@@ -1889,7 +1889,7 @@
   font-size: var(--font-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .rp-mode-tab:hover {
@@ -1961,7 +1961,7 @@
   border-radius: 8px;
   color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
   flex-shrink: 0;
 }
 
@@ -2023,7 +2023,7 @@
   border-radius: 6px;
   color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
 }
 
 .rp-help-close:hover {
@@ -2318,7 +2318,7 @@
   font-size: var(--font-xs);
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
   white-space: nowrap;
 }
 
@@ -2512,7 +2512,7 @@
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .rp-pin-refresh:hover {
@@ -2893,7 +2893,7 @@
   color: var(--text-primary);
   font-size: 13px;
   font-family: inherit;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .persona-field .persona-input::placeholder {

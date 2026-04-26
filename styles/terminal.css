@@ -90,7 +90,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
   margin-left: 4px;
 }
 
@@ -116,7 +116,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
   flex-shrink: 0;
 }
 
@@ -142,7 +142,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
   flex-shrink: 0;
 }
 
@@ -195,7 +195,7 @@
   font-weight: 500;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
 }
 
 .filter-git-btn svg {
@@ -353,7 +353,7 @@
   font-weight: 500;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
 }
 
 .filter-branch-btn svg:first-child {
@@ -401,7 +401,7 @@
   font-weight: 500;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
 }
 
 .filter-actions-btn svg:first-child {
@@ -455,7 +455,7 @@
   color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
   border: none;
   background: none;
   width: 100%;
@@ -507,7 +507,7 @@
   color: var(--text-muted);
   font-size: 11px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
 }
 
 .actions-dropdown-footer:hover {
@@ -554,7 +554,7 @@
   color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
   border: none;
   background: none;
   width: 100%;
@@ -592,7 +592,7 @@
   color: var(--text-muted);
   font-size: 11px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
 }
 
 .prompts-dropdown-footer:hover {
@@ -723,7 +723,7 @@
   padding: 3px 5px;
   display: flex;
   align-items: center;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
 }
 
 .branch-create-btn:hover {
@@ -825,7 +825,7 @@
   padding: 3px;
   display: flex;
   align-items: center;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
 }
 
 .branch-action-btn:hover {
@@ -885,7 +885,7 @@
   padding: 3px 10px;
   font-size: 11px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
 }
 
 .branch-confirm-no:hover {
@@ -925,7 +925,7 @@
   font-size: 13px;
   white-space: nowrap;
   border-bottom: 2px solid transparent;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
   user-select: none;
 }
 
@@ -1196,7 +1196,7 @@
   font-weight: 500;
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
   margin-top: 4px;
 }
 

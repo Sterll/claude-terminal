@@ -144,7 +144,7 @@
   background: transparent;
   cursor: pointer;
   position: relative;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
   flex-shrink: 0;
 }
 
@@ -293,7 +293,7 @@
   background: transparent;
   cursor: pointer;
   position: relative;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
   flex-shrink: 0;
 }
 
@@ -396,7 +396,7 @@
   cursor: pointer;
   flex-shrink: 0;
   position: relative;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .git-file-item input[type="checkbox"]:checked {
@@ -683,7 +683,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
   flex-shrink: 0;
 }
 
@@ -796,7 +796,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .git-changes-stash-btn.apply:hover:not(:disabled) {
@@ -853,7 +853,7 @@
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .btn-generate:hover {
@@ -911,7 +911,7 @@
   font-size: 12px;
   border-radius: 6px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1067,7 +1067,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
   opacity: 0.6;
 }
 
@@ -1201,7 +1201,7 @@
   padding: 7px 10px;
   color: var(--text-primary);
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
   border-radius: 6px;
   margin-bottom: 1px;
   position: relative;
@@ -1317,7 +1317,7 @@
   background: rgba(255, 255, 255, 0.03);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
   white-space: nowrap;
 }
 
@@ -1486,7 +1486,7 @@
   font-size: var(--font-xs);
   color: var(--text-primary);
   cursor: default;
-  transition: all 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
 }
 
 .git-branch-item:hover {
@@ -1539,7 +1539,7 @@
   cursor: pointer;
   display: flex;
   align-items: center;
-  transition: all 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
 }
 
 .git-branch-action-btn:hover {
@@ -1558,7 +1558,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 5px 10px 5px 14px;
-  transition: all 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
 }
 
 .git-stash-item:hover {
@@ -1615,7 +1615,7 @@
   cursor: pointer;
   display: flex;
   align-items: center;
-  transition: all 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
 }
 
 .git-stash-btn:hover {
@@ -1639,7 +1639,7 @@
   display: flex;
   align-items: center;
   margin-left: auto;
-  transition: all 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
   opacity: 0.6;
 }
 .git-sidebar-section:hover .git-stash-save-btn {
@@ -1673,7 +1673,7 @@
   justify-content: space-between;
   padding: 6px 12px 6px 16px;
   border-radius: var(--radius-sm);
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
   gap: 6px;
   cursor: pointer;
 }
@@ -1743,7 +1743,7 @@
   cursor: pointer;
   display: flex;
   align-items: center;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .git-wt-btn:hover {
@@ -1819,7 +1819,7 @@
   cursor: pointer;
   font-size: var(--font-xs);
   white-space: nowrap;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .git-wt-browse-btn:hover {
@@ -1879,7 +1879,7 @@
   font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 .git-merge-btn.abort {
   background: rgba(239, 68, 68, 0.15);
@@ -1943,7 +1943,7 @@
   border: none;
   border-bottom: 2px solid transparent;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
   position: relative;
   margin-bottom: -1px;
   letter-spacing: 0.01em;
@@ -2096,7 +2096,7 @@
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
 }
 
 .git-section-btn:hover {
@@ -2126,7 +2126,7 @@
   justify-content: space-between;
   padding: 5px 12px;
   font-size: var(--font-xs);
-  transition: all 0.1s ease;
+  transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease, opacity 0.1s ease;
   border-bottom: 1px solid rgba(255, 255, 255, 0.02);
 }
 
@@ -2218,7 +2218,7 @@
   cursor: pointer;
   display: flex;
   align-items: center;
-  transition: all 0.1s ease;
+  transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease, opacity 0.1s ease;
 }
 
 .git-file-btn:hover {
@@ -2283,7 +2283,7 @@
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
 }
 
 .git-generate-btn:hover {
@@ -2340,7 +2340,7 @@
   background: var(--accent);
   color: white;
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
 }
 
 .git-commit-btn:hover:not(:disabled) {
@@ -2402,7 +2402,7 @@
   color: var(--text-primary);
   cursor: pointer;
   outline: none;
-  transition: all 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
   max-width: 200px;
   appearance: none;
   -webkit-appearance: none;
@@ -2558,7 +2558,7 @@
   border-radius: 2px;
   flex-shrink: 0;
   cursor: pointer;
-  transition: all 0.1s ease;
+  transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease, opacity 0.1s ease;
   font-weight: 500;
   background: rgba(255, 255, 255, 0.03);
 }
@@ -2622,7 +2622,7 @@
   cursor: pointer;
   display: flex;
   align-items: center;
-  transition: all 0.1s ease;
+  transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease, opacity 0.1s ease;
 }
 
 .git-commit-action-btn:hover {
@@ -2652,7 +2652,7 @@
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
 }
 
 .git-load-more:hover {
@@ -2819,7 +2819,7 @@
   background: var(--info);
   color: white;
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
   margin-top: 4px;
 }
 
@@ -3070,7 +3070,7 @@
   padding: 2px 5px;
   border-radius: 3px;
   font-size: 10px;
-  transition: all 0.12s;
+  transition: background-color 0.12s, color 0.12s, border-color 0.12s, opacity 0.12s;
 }
 .git-pr-open-btn:hover {
   color: var(--text-secondary);
@@ -3207,7 +3207,7 @@
   color: var(--text-secondary);
   font-size: var(--font-xs);
   cursor: pointer;
-  transition: all 0.12s;
+  transition: background-color 0.12s, color 0.12s, border-color 0.12s, opacity 0.12s;
 }
 .git-review-btn:hover {
   background: var(--bg-hover);
@@ -3240,7 +3240,7 @@
   font-size: var(--font-xs);
   cursor: pointer;
   text-align: center;
-  transition: all 0.12s;
+  transition: background-color 0.12s, color 0.12s, border-color 0.12s, opacity 0.12s;
 }
 .git-load-more-btn:hover {
   background: rgba(255, 255, 255, 0.03);
@@ -3531,7 +3531,7 @@
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 .btn-smart-commit:hover {
   background: rgba(var(--accent-rgb, 217,119,6), 0.1);
@@ -3554,7 +3554,7 @@
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 .btn-generate-pr:hover {
   background: rgba(var(--accent-rgb, 217,119,6), 0.1);
@@ -3848,7 +3848,7 @@
   font-weight: 600;
   cursor: pointer;
   border: 1px solid transparent;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
 }
 
 .git-file-btn.resolve-ours-btn {
@@ -3896,7 +3896,7 @@
   display: flex;
   align-items: center;
   opacity: 0;
-  transition: all 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
 }
 
 .git-file-item-row:hover .git-discard-btn {
@@ -3948,7 +3948,7 @@
   background: transparent;
   cursor: pointer;
   position: relative;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .git-amend-label input[type="checkbox"]:checked {
@@ -3980,7 +3980,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  transition: all 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
 }
 
 .git-discard-selected-btn:hover {
@@ -4071,7 +4071,7 @@
   color: var(--text-muted);
   font-size: var(--font-2xs);
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
 }
 
 .diff-mode-btn:not(:last-child) {
@@ -4198,7 +4198,7 @@
   cursor: pointer;
   display: flex;
   align-items: center;
-  transition: all 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
 }
 
 .git-remote-btn:hover {
@@ -4221,7 +4221,7 @@
   display: flex;
   align-items: center;
   margin-left: auto;
-  transition: all 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
   opacity: 0.6;
 }
 
