@@ -104,13 +104,19 @@ let _cleanupTimer = null;
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
-function _loadSettings() {
+let _settingsCache = null;
+let _settingsCacheAt = 0;
+
+async function _loadSettings() {
+  const now = Date.now();
+  if (_settingsCache && now - _settingsCacheAt < 5000) return _settingsCache;
   try {
-    if (fs.existsSync(settingsFile)) {
-      return JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
-    }
-  } catch (e) {}
-  return {};
+    _settingsCache = JSON.parse(await fs.promises.readFile(settingsFile, 'utf8'));
+    _settingsCacheAt = now;
+    return _settingsCache;
+  } catch (e) {
+    return {};
+  }
 }
 
 // ─── Network Interfaces ───────────────────────────────────────────────────────
@@ -141,8 +147,8 @@ function _getNetworkInterfaces() {
 
 // ─── PIN Management ───────────────────────────────────────────────────────────
 
-function generatePin() {
-  const settings = _loadSettings();
+async function generatePin() {
+  const settings = await _loadSettings();
   if (settings.remotePersistentPin && settings.remotePersistentPinValue) {
     const ppin = String(settings.remotePersistentPinValue).padStart(6, '0');
     if (/^\d{6}$/.test(ppin)) {
@@ -160,9 +166,9 @@ function generatePin() {
   return _pin;
 }
 
-function _isPinValid(pin) {
+async function _isPinValid(pin) {
   if (Date.now() < _lockoutUntil) return false;
-  const settings = _loadSettings();
+  const settings = await _loadSettings();
   const isPersistent = settings.remotePersistentPin && !!settings.remotePersistentPinValue;
   if (_pin !== null && pin === _pin && (isPersistent || (!_pinUsed && Date.now() < _pinExpiry))) {
     _failedAttempts = 0;
@@ -188,8 +194,8 @@ function _isTokenValid(token) {
   return true;
 }
 
-function getPin() {
-  const settings = _loadSettings();
+async function getPin() {
+  const settings = await _loadSettings();
   const isPersistent = settings.remotePersistentPin && !!settings.remotePersistentPinValue;
   return { pin: _pin, expiresAt: isPersistent ? Infinity : _pinExpiry, used: _pinUsed, persistent: isPersistent };
 }
@@ -218,10 +224,10 @@ function _handleHttpRequest(req, res) {
       if (bodySize > MAX_POST_BODY) { req.destroy(); res.writeHead(413); res.end('Payload too large'); return; }
       body += chunk;
     });
-    req.on('end', () => {
+    req.on('end', async () => {
       try {
         const { pin } = JSON.parse(body);
-        if (!_isPinValid(pin)) {
+        if (!await _isPinValid(pin)) {
           console.warn(`[Remote] Auth failed — wrong or expired PIN`);
           res.writeHead(401, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Invalid or expired PIN' }));
@@ -230,7 +236,7 @@ function _handleHttpRequest(req, res) {
         // Generate a session token
         const token = crypto.randomBytes(24).toString('hex');
         _sessionTokens.set(token, { issuedAt: Date.now() });
-        const authSettings = _loadSettings();
+        const authSettings = await _loadSettings();
         const isPersistentPin = authSettings.remotePersistentPin && !!authSettings.remotePersistentPinValue;
         if (!isPersistentPin) {
           _pinUsed = true;
@@ -346,9 +352,9 @@ function _handleWsUpgrade(request, socket, head) {
  * 3. time:update snapshot
  * 4. Request fresh time data from renderer
  */
-function _sendFullInit(ws) {
+async function _sendFullInit(ws) {
   // 1. hello
-  const settings = _loadSettings();
+  const settings = await _loadSettings();
   _wsSend(ws, 'hello', {
     version: '1.0',
     serverName: 'Claude Terminal',
@@ -446,16 +452,16 @@ async function _sendProjectsAndSessions(ws) {
   }
 }
 
-function _isRegisteredProjectPath(cwd) {
+async function _isRegisteredProjectPath(cwd) {
   try {
-    if (!fs.existsSync(projectsFile)) return false;
-    const data = JSON.parse(fs.readFileSync(projectsFile, 'utf8'));
+    const raw = await fs.promises.readFile(projectsFile, 'utf8');
+    const data = JSON.parse(raw);
     const normalized = path.resolve(cwd);
     return (data.projects || []).some(p => path.resolve(p.path) === normalized);
   } catch (e) { return false; }
 }
 
-function _handleClientMessage(ws, token, raw) {
+async function _handleClientMessage(ws, token, raw) {
   let msg;
   try { msg = JSON.parse(raw); } catch (e) { return; }
 
@@ -505,7 +511,7 @@ function _handleClientMessage(ws, token, raw) {
           const mentions = Array.isArray(data?.mentions) ? data.mentions : [];
           const cwd = data?.cwd;
           // Validate cwd against registered projects to prevent path traversal
-          if (cwd && !_isRegisteredProjectPath(cwd)) {
+          if (cwd && !await _isRegisteredProjectPath(cwd)) {
             _wsSend(ws, 'chat-error', { sessionId: data?.sessionId, error: 'Invalid project path' });
             break;
           }
@@ -563,7 +569,7 @@ function _handleClientMessage(ws, token, raw) {
       case 'git:status': {
         const git = require('../utils/git');
         const cwd = data?.cwd;
-        if (!cwd || !_isRegisteredProjectPath(cwd)) { _wsSend(ws, 'git:status', { error: 'Invalid project path' }); break; }
+        if (!cwd || !await _isRegisteredProjectPath(cwd)) { _wsSend(ws, 'git:status', { error: 'Invalid project path' }); break; }
         git.getGitInfoFull(cwd, { skipFetch: true }).then(info => {
           _wsSend(ws, 'git:status', info);
         }).catch(err => {
@@ -575,7 +581,7 @@ function _handleClientMessage(ws, token, raw) {
       case 'git:pull': {
         const git = require('../utils/git');
         const cwd = data?.cwd;
-        if (!cwd || !_isRegisteredProjectPath(cwd)) { _wsSend(ws, 'git:pull', { success: false, error: 'Invalid project path' }); break; }
+        if (!cwd || !await _isRegisteredProjectPath(cwd)) { _wsSend(ws, 'git:pull', { success: false, error: 'Invalid project path' }); break; }
         git.gitPull(cwd).then(result => {
           _wsSend(ws, 'git:pull', result);
           git.getGitInfoFull(cwd, { skipFetch: true }).then(info => _wsSend(ws, 'git:status', info)).catch(() => {});
@@ -588,7 +594,7 @@ function _handleClientMessage(ws, token, raw) {
       case 'git:push': {
         const git = require('../utils/git');
         const cwd = data?.cwd;
-        if (!cwd || !_isRegisteredProjectPath(cwd)) { _wsSend(ws, 'git:push', { success: false, error: 'Invalid project path' }); break; }
+        if (!cwd || !await _isRegisteredProjectPath(cwd)) { _wsSend(ws, 'git:push', { success: false, error: 'Invalid project path' }); break; }
         git.gitPush(cwd).then(result => {
           _wsSend(ws, 'git:push', result);
           git.getGitInfoFull(cwd, { skipFetch: true }).then(info => _wsSend(ws, 'git:status', info)).catch(() => {});
@@ -599,7 +605,7 @@ function _handleClientMessage(ws, token, raw) {
       }
 
       case 'mention:file-list': {
-        const cwd = _resolveProjectPath(data?.projectId);
+        const cwd = await _resolveProjectPath(data?.projectId);
         if (!cwd) { _wsSend(ws, 'mention:file-list', { files: [] }); break; }
         _getProjectFiles(cwd).then(files => {
           _wsSend(ws, 'mention:file-list', { files });
@@ -635,7 +641,7 @@ function _handleClientMessage(ws, token, raw) {
       case 'request:init': {
         // Mobile (cloud or local) is requesting initial state
         console.debug('[Remote] ← request:init — sending hello + projects + sessions');
-        const settings = _loadSettings();
+        const settings = await _loadSettings();
         _wsSend(ws, 'hello', {
           version: '1.0',
           serverName: 'Claude Terminal',
@@ -680,7 +686,7 @@ function _handleClientMessage(ws, token, raw) {
       }
 
       case 'sessions:list-past': {
-        const cwd = _resolveProjectPath(data?.projectId);
+        const cwd = await _resolveProjectPath(data?.projectId);
         if (!cwd) { _wsSend(ws, 'sessions:past', { projectId: data?.projectId, sessions: [] }); break; }
         const { getClaudeSessions } = require('../ipc/claude.ipc');
         getClaudeSessions(cwd).then(sessions => {
@@ -798,14 +804,13 @@ async function _resolveMentions(mentions, cwd) {
 
 // ─── File Listing Helpers ─────────────────────────────────────────────────────
 
-function _resolveProjectPath(projectId) {
+async function _resolveProjectPath(projectId) {
   if (!projectId) return null;
   try {
-    if (fs.existsSync(projectsFile)) {
-      const data = JSON.parse(fs.readFileSync(projectsFile, 'utf8'));
-      const proj = (data.projects || []).find(p => p.id === projectId);
-      return proj?.path || null;
-    }
+    const raw = await fs.promises.readFile(projectsFile, 'utf8');
+    const data = JSON.parse(raw);
+    const proj = (data.projects || []).find(p => p.id === projectId);
+    return proj?.path || null;
   } catch (e) {}
   return null;
 }
@@ -869,7 +874,7 @@ function _broadcast(type, data) {
   }
 }
 
-function broadcastProjectsUpdate(projects) {
+async function broadcastProjectsUpdate(projects) {
   const light = (projects || []).map(p => ({
     id: p.id, name: p.name, path: p.path, color: p.color, icon: p.icon,
     folderId: p.folderId || null,
@@ -878,14 +883,13 @@ function broadcastProjectsUpdate(projects) {
   let folders = [];
   let rootOrder = [];
   try {
-    if (fs.existsSync(projectsFile)) {
-      const data = JSON.parse(fs.readFileSync(projectsFile, 'utf8'));
-      folders = (data.folders || []).map(f => ({
-        id: f.id, name: f.name, parentId: f.parentId || null,
-        children: f.children || [], color: f.color, icon: f.icon,
-      }));
-      rootOrder = data.rootOrder || [];
-    }
+    const raw = await fs.promises.readFile(projectsFile, 'utf8');
+    const data = JSON.parse(raw);
+    folders = (data.folders || []).map(f => ({
+      id: f.id, name: f.name, parentId: f.parentId || null,
+      children: f.children || [], color: f.color, icon: f.icon,
+    }));
+    rootOrder = data.rootOrder || [];
   } catch (e) {}
   _broadcast('projects:updated', { projects: light, folders, rootOrder });
 }
@@ -909,8 +913,8 @@ function setTimeData({ todayMs }) {
 
 // ─── Auto-Start / Stop Logic ──────────────────────────────────────────────────
 
-function _syncServerState() {
-  const settings = _loadSettings();
+async function _syncServerState() {
+  const settings = await _loadSettings();
   const shouldRun = !!settings.remoteEnabled;
 
   if (shouldRun && !httpServer) {
@@ -1155,8 +1159,8 @@ function sendInitToTransport() {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-function getServerInfo() {
-  const settings = _loadSettings();
+async function getServerInfo() {
+  const settings = await _loadSettings();
   const port = settings.remotePort || 3712;
   const ifaces = _getNetworkInterfaces();
   const ips = ifaces.map(i => i.address);

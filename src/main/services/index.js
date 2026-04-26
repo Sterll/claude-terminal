@@ -38,7 +38,7 @@ function initializeServices(mainWindow) {
   // Workflow service: inject deps + init scheduler
   workflowService.setMainWindow(mainWindow);
   workflowService.setDeps({ chatService, databaseService });
-  workflowService.init();
+  workflowService.init().catch(err => console.error('[WorkflowService] Init failed:', err.message));
 
   // Provision unified MCP in global Claude settings
   databaseService.provisionGlobalMcp().catch(() => {});

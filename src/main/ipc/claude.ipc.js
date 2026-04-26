@@ -194,35 +194,9 @@ async function getClaudeSessions(projectPath) {
 async function loadSessionHistory(projectPath, sessionId) {
   const sessionsDir = getProjectSessionsDir(projectPath);
 
-  // Find the JSONL file — could be sessionId.jsonl or another file containing this sessionId
-  let filePath = path.join(sessionsDir, `${sessionId}.jsonl`);
-  try {
-    await fs.promises.access(filePath);
-  } catch {
-    // Session file not found — scan directory for matching sessionId
-    try {
-      const files = await fs.promises.readdir(sessionsDir);
-      const jsonlFiles = files.filter(f => f.endsWith('.jsonl'));
-      for (const f of jsonlFiles) {
-        const candidate = path.join(sessionsDir, f);
-        const head = await readFirstLines(candidate, 5);
-        for (const line of head) {
-          try {
-            const obj = JSON.parse(line);
-            if (obj.sessionId === sessionId) {
-              filePath = candidate;
-              break;
-            }
-          } catch (_) {
-            // Malformed JSON line — skip
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[claude.ipc] Failed to scan sessions directory:', e);
-      return [];
-    }
-  }
+  // Find the JSONL file — uses indexed lookup
+  const filePath = await resolveSessionFile(sessionsDir, sessionId);
+  if (!filePath) return [];
 
   // Read all lines from the JSONL file
   return new Promise((resolve) => {
@@ -364,30 +338,10 @@ function sanitizeToolInput(input) {
  */
 async function parseSessionReplay(projectPath, sessionId) {
   const sessionsDir = getProjectSessionsDir(projectPath);
-  let filePath = path.join(sessionsDir, `${sessionId}.jsonl`);
 
-  // Try to find the JSONL file (filename may differ from sessionId)
-  try {
-    await fs.promises.access(filePath);
-  } catch {
-    try {
-      const files = await fs.promises.readdir(sessionsDir);
-      for (const f of files.filter(f => f.endsWith('.jsonl'))) {
-        const candidate = path.join(sessionsDir, f);
-        const head = await readFirstLines(candidate, 5);
-        let found = false;
-        for (const line of head) {
-          try {
-            const obj = JSON.parse(line);
-            if (obj.sessionId === sessionId) { filePath = candidate; found = true; break; }
-          } catch (_) { /* skip */ }
-        }
-        if (found) break;
-      }
-    } catch (e) {
-      console.warn('[claude-session-replay] Failed to scan sessions dir:', e);
-    }
-  }
+  // Find the JSONL file — uses indexed lookup
+  const filePath = await resolveSessionFile(sessionsDir, sessionId);
+  if (!filePath) return { steps: [], summary: { totalSteps: 0, totalEstimatedTokens: 0, uniqueFileCount: 0, toolBreakdown: {} } };
 
   // Read all lines from the JSONL file
   const rawLines = await new Promise((resolve) => {
@@ -518,35 +472,61 @@ async function parseSessionReplay(projectPath, sessionId) {
   };
 }
 
+// ─── Session index cache ────────────────────────────────────────────────────
+// Maps sessionId -> filePath, built per sessions directory on first scan.
+// Avoids O(N) sequential file reads on every session lookup.
+const _sessionIndex = new Map(); // sessionId -> filePath
+const _indexedDirs = new Set();  // directories already indexed
+
+async function buildSessionIndex(sessionsDir) {
+  if (_indexedDirs.has(sessionsDir)) return;
+  try {
+    const files = await fs.promises.readdir(sessionsDir);
+    const jsonlFiles = files.filter(f => f.endsWith('.jsonl'));
+    await Promise.all(jsonlFiles.map(async f => {
+      const filePath = path.join(sessionsDir, f);
+      try {
+        const head = await readFirstLines(filePath, 5);
+        for (const line of head) {
+          try {
+            const obj = JSON.parse(line);
+            if (obj.sessionId) {
+              _sessionIndex.set(obj.sessionId, filePath);
+              break;
+            }
+          } catch { /* skip malformed */ }
+        }
+      } catch { /* skip unreadable */ }
+    }));
+    _indexedDirs.add(sessionsDir);
+  } catch { /* dir not found */ }
+}
+
 /**
  * Resolve the .jsonl file path for a given sessionId.
- * Tries sessionId.jsonl first, then scans the directory.
+ * Tries sessionId.jsonl first, then uses an in-memory index (built on first scan).
+ * If not found in the index, rebuilds it once (handles newly created sessions).
  * @param {string} sessionsDir
  * @param {string} sessionId
  * @returns {Promise<string|null>}
  */
 async function resolveSessionFile(sessionsDir, sessionId) {
+  // Try direct path first
   const direct = path.join(sessionsDir, `${sessionId}.jsonl`);
   try {
     await fs.promises.access(direct);
     return direct;
   } catch { /* not found by name */ }
 
-  // Scan directory for matching sessionId in first 5 lines
-  try {
-    const files = await fs.promises.readdir(sessionsDir);
-    for (const f of files.filter(f => f.endsWith('.jsonl'))) {
-      const candidate = path.join(sessionsDir, f);
-      const head = await readFirstLines(candidate, 5);
-      for (const line of head) {
-        try {
-          const obj = JSON.parse(line);
-          if (obj.sessionId === sessionId) return candidate;
-        } catch { /* skip */ }
-      }
-    }
-  } catch { /* dir not found */ }
-  return null;
+  // Try index
+  await buildSessionIndex(sessionsDir);
+  const cached = _sessionIndex.get(sessionId);
+  if (cached) return cached;
+
+  // Not found — invalidate and rebuild once (session may be new)
+  _indexedDirs.delete(sessionsDir);
+  await buildSessionIndex(sessionsDir);
+  return _sessionIndex.get(sessionId) || null;
 }
 
 /**

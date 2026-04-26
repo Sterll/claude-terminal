@@ -63,7 +63,7 @@ function registerWorkflowHandlers(mainWindow) {
 
   ipcMain.handle('workflow-list', async () => {
     try {
-      return { success: true, workflows: workflowService.listWorkflows() };
+      return { success: true, workflows: await workflowService.listWorkflows() };
     } catch (err) {
       console.error('[workflow-list]', err.message);
       return { success: false, error: err.message };
@@ -72,7 +72,7 @@ function registerWorkflowHandlers(mainWindow) {
 
   ipcMain.handle('workflow-get', async (_e, { id }) => {
     try {
-      const workflow = workflowService.getWorkflow(id);
+      const workflow = await workflowService.getWorkflow(id);
       if (!workflow) return { success: false, error: 'Not found' };
       return { success: true, workflow };
     } catch (err) {
@@ -83,7 +83,7 @@ function registerWorkflowHandlers(mainWindow) {
 
   ipcMain.handle('workflow-save', async (_e, { workflow }) => {
     try {
-      return workflowService.saveWorkflow(workflow);
+      return await workflowService.saveWorkflow(workflow);
     } catch (err) {
       console.error('[workflow-save]', err.message);
       return { success: false, error: err.message };
@@ -92,7 +92,7 @@ function registerWorkflowHandlers(mainWindow) {
 
   ipcMain.handle('workflow-delete', async (_e, { id }) => {
     try {
-      return workflowService.deleteWorkflow(id);
+      return await workflowService.deleteWorkflow(id);
     } catch (err) {
       console.error('[workflow-delete]', err.message);
       return { success: false, error: err.message };
@@ -101,7 +101,7 @@ function registerWorkflowHandlers(mainWindow) {
 
   ipcMain.handle('workflow-enable', async (_e, { id, enabled }) => {
     try {
-      return workflowService.setEnabled(id, enabled);
+      return await workflowService.setEnabled(id, enabled);
     } catch (err) {
       console.error('[workflow-enable]', err.message);
       return { success: false, error: err.message };
@@ -112,7 +112,7 @@ function registerWorkflowHandlers(mainWindow) {
 
   ipcMain.handle('workflow-trigger', async (_e, { id, opts }) => {
     try {
-      return workflowService.trigger(id, { ...opts, source: 'manual' });
+      return await workflowService.trigger(id, { ...opts, source: 'manual' });
     } catch (err) {
       console.error('[workflow-trigger]', err.message);
       return { success: false, error: err.message };
@@ -150,7 +150,7 @@ function registerWorkflowHandlers(mainWindow) {
 
   ipcMain.handle('workflow-runs', async (_e, { workflowId, limit }) => {
     try {
-      return { success: true, runs: workflowService.getRunsForWorkflow(workflowId, limit) };
+      return { success: true, runs: await workflowService.getRunsForWorkflow(workflowId, limit) };
     } catch (err) {
       console.error('[workflow-runs]', err.message);
       return { success: false, error: err.message };
@@ -159,7 +159,7 @@ function registerWorkflowHandlers(mainWindow) {
 
   ipcMain.handle('workflow-recent-runs', async (_e, { limit } = {}) => {
     try {
-      return { success: true, runs: workflowService.getRecentRuns(limit) };
+      return { success: true, runs: await workflowService.getRecentRuns(limit) };
     } catch (err) {
       console.error('[workflow-recent-runs]', err.message);
       return { success: false, error: err.message };
@@ -168,7 +168,7 @@ function registerWorkflowHandlers(mainWindow) {
 
   ipcMain.handle('workflow-clear-runs', async () => {
     try {
-      workflowService.clearAllRuns();
+      await workflowService.clearAllRuns();
       return { success: true };
     } catch (err) {
       console.error('[workflow-clear-runs]', err.message);
@@ -178,7 +178,7 @@ function registerWorkflowHandlers(mainWindow) {
 
   ipcMain.handle('workflow-run-get', async (_e, { runId }) => {
     try {
-      const run = workflowService.getRun(runId);
+      const run = await workflowService.getRun(runId);
       if (!run) return { success: false, error: 'Run not found' };
       return { success: true, run };
     } catch (err) {
@@ -189,7 +189,7 @@ function registerWorkflowHandlers(mainWindow) {
 
   ipcMain.handle('workflow-run-result', async (_e, { runId }) => {
     try {
-      const result = workflowService.getRunResult(runId);
+      const result = await workflowService.getRunResult(runId);
       return { success: true, result };
     } catch (err) {
       console.error('[workflow-run-result]', err.message);
@@ -210,7 +210,7 @@ function registerWorkflowHandlers(mainWindow) {
 
   ipcMain.handle('workflow-dependency-graph', async () => {
     try {
-      return { success: true, graph: workflowService.getDependencyGraph() };
+      return { success: true, graph: await workflowService.getDependencyGraph() };
     } catch (err) {
       console.error('[workflow-dependency-graph]', err.message);
       return { success: false, error: err.message };

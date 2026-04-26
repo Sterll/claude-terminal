@@ -32,44 +32,50 @@ const cacheDir = path.join(pluginsDir, 'cache');
 /**
  * Get all installed plugins with enriched metadata
  */
-function getInstalledPlugins() {
+async function getInstalledPlugins() {
   try {
-    if (!fs.existsSync(installedFile)) return [];
+    let rawData;
+    try {
+      rawData = await fs.promises.readFile(installedFile, 'utf8');
+    } catch (e) {
+      if (e.code === 'ENOENT') return [];
+      throw e;
+    }
 
-    const data = JSON.parse(fs.readFileSync(installedFile, 'utf8'));
+    const data = JSON.parse(rawData);
     if (!data.plugins) return [];
 
-    const counts = getInstallCounts();
-    const installed = [];
+    const counts = await getInstallCounts();
 
+    // Collect plugin entries for parallel reads
+    const pluginEntries = [];
     for (const [key, entries] of Object.entries(data.plugins)) {
       if (!entries || entries.length === 0) continue;
-
       const entry = entries[0]; // Take first (active) entry
       const [pluginName, marketplace] = key.split('@');
+      pluginEntries.push({ key, pluginName, marketplace, entry });
+    }
 
+    // Read all plugin metadata and READMEs in parallel
+    const results = await Promise.allSettled(pluginEntries.map(async ({ key, pluginName, marketplace, entry }) => {
       // Try to read plugin.json for richer metadata
       let metadata = { name: pluginName, description: '' };
       try {
         const pluginJsonPath = path.join(entry.installPath, '.claude-plugin', 'plugin.json');
-        if (fs.existsSync(pluginJsonPath)) {
-          metadata = { ...metadata, ...JSON.parse(fs.readFileSync(pluginJsonPath, 'utf8')) };
-        }
+        const raw = await fs.promises.readFile(pluginJsonPath, 'utf8');
+        metadata = { ...metadata, ...JSON.parse(raw) };
       } catch { /* ignore */ }
 
       // Try to read README
       let readme = null;
       try {
-        const readmePath = path.join(entry.installPath, 'README.md');
-        if (fs.existsSync(readmePath)) {
-          readme = fs.readFileSync(readmePath, 'utf8');
-        }
+        readme = await fs.promises.readFile(path.join(entry.installPath, 'README.md'), 'utf8');
       } catch { /* ignore */ }
 
       // Count skills, agents, commands
       const contents = countPluginContents(entry.installPath);
 
-      installed.push({
+      return {
         key,
         pluginName,
         marketplace,
@@ -88,8 +94,12 @@ function getInstalledPlugins() {
         installs: counts[key] || 0,
         hasReadme: !!readme,
         contents
-      });
-    }
+      };
+    }));
+
+    const installed = results
+      .filter(r => r.status === 'fulfilled')
+      .map(r => r.value);
 
     // Sort by name
     installed.sort((a, b) => a.name.localeCompare(b.name));
@@ -177,18 +187,19 @@ function getMarketplaces() {
 /**
  * Get install counts map
  */
-function getInstallCounts() {
+async function getInstallCounts() {
   try {
-    if (!fs.existsSync(installCountsFile)) return {};
-
-    const data = JSON.parse(fs.readFileSync(installCountsFile, 'utf8'));
+    const raw = await fs.promises.readFile(installCountsFile, 'utf8');
+    const data = JSON.parse(raw);
     const map = {};
     for (const entry of (data.counts || [])) {
       map[entry.plugin] = entry.unique_installs || 0;
     }
     return map;
   } catch (e) {
-    console.error('[PluginService] Error reading install counts:', e);
+    if (e.code !== 'ENOENT') {
+      console.error('[PluginService] Error reading install counts:', e);
+    }
     return {};
   }
 }
@@ -254,10 +265,9 @@ function getInstalledPluginKeys() {
 /**
  * Get plugin README from marketplace source
  */
-function getPluginReadme(marketplaceName, pluginName) {
+async function getPluginReadme(marketplaceName, pluginName) {
   try {
     const mpDir = path.join(marketplacesDir, marketplaceName);
-    if (!fs.existsSync(mpDir)) return null;
 
     // Check multiple locations
     const candidates = [
@@ -267,19 +277,18 @@ function getPluginReadme(marketplaceName, pluginName) {
     ];
 
     for (const candidate of candidates) {
-      if (fs.existsSync(candidate)) {
-        return fs.readFileSync(candidate, 'utf8');
-      }
+      try {
+        return await fs.promises.readFile(candidate, 'utf8');
+      } catch { /* try next */ }
     }
 
     // Also check if plugin is installed in cache and has README
-    const installed = getInstalledPlugins();
+    const installed = await getInstalledPlugins();
     const plugin = installed.find(p => p.pluginName === pluginName && p.marketplace === marketplaceName);
     if (plugin) {
-      const readmePath = path.join(plugin.installPath, 'README.md');
-      if (fs.existsSync(readmePath)) {
-        return fs.readFileSync(readmePath, 'utf8');
-      }
+      try {
+        return await fs.promises.readFile(path.join(plugin.installPath, 'README.md'), 'utf8');
+      } catch { /* ignore */ }
     }
 
     return null;
@@ -679,11 +688,11 @@ async function uninstallPlugin(pluginKey) {
 /**
  * Check for updates on all installed plugins
  * Compares installed version with catalog version
- * @returns {Object} Map of pluginKey -> { hasUpdate, installedVersion, catalogVersion }
+ * @returns {Promise<Object>} Map of pluginKey -> { hasUpdate, installedVersion, catalogVersion }
  */
-function checkPluginUpdates() {
+async function checkPluginUpdates() {
   try {
-    const installed = getInstalledPlugins();
+    const installed = await getInstalledPlugins();
     const catalog = getCatalog();
     const results = {};
 

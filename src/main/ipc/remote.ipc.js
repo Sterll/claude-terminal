@@ -8,39 +8,39 @@ const { sendFeaturePing } = require('../services/TelemetryService');
 
 function registerRemoteHandlers() {
   // Get current PIN (auto-generates if expired)
-  ipcMain.handle('remote:get-pin', () => {
+  ipcMain.handle('remote:get-pin', async () => {
     try {
-      return { success: true, ...remoteServer.getPin() };
+      return { success: true, ...await remoteServer.getPin() };
     } catch (err) {
       return { success: false, error: err.message };
     }
   });
 
   // Force-generate a new PIN
-  ipcMain.handle('remote:generate-pin', () => {
+  ipcMain.handle('remote:generate-pin', async () => {
     try {
-      const pin = remoteServer.generatePin();
-      return { success: true, ...remoteServer.getPin(), pin };
+      const pin = await remoteServer.generatePin();
+      return { success: true, ...await remoteServer.getPin(), pin };
     } catch (err) {
       return { success: false, error: err.message };
     }
   });
 
   // Get server info (running status, port, local IPs)
-  ipcMain.handle('remote:get-server-info', () => {
+  ipcMain.handle('remote:get-server-info', async () => {
     try {
-      return { success: true, ...remoteServer.getServerInfo() };
+      return { success: true, ...await remoteServer.getServerInfo() };
     } catch (err) {
       return { success: false, error: err.message, running: false };
     }
   });
 
   // Manually start the server (coexists with cloud relay)
-  ipcMain.handle('remote:start-server', () => {
+  ipcMain.handle('remote:start-server', async () => {
     try {
       sendFeaturePing('remote:connect');
-      remoteServer._syncServerState();
-      return { success: true, ...remoteServer.getServerInfo() };
+      await remoteServer._syncServerState();
+      return { success: true, ...await remoteServer.getServerInfo() };
     } catch (err) {
       return { success: false, error: err.message };
     }

@@ -10,7 +10,7 @@ const { sendFeaturePing } = require('../services/TelemetryService');
 function registerPluginHandlers() {
   ipcMain.handle('plugin-installed', async () => {
     try {
-      const installed = PluginService.getInstalledPlugins();
+      const installed = await PluginService.getInstalledPlugins();
       return { success: true, installed };
     } catch (e) {
       console.error('[Plugin IPC] Installed error:', e);
@@ -40,7 +40,7 @@ function registerPluginHandlers() {
 
   ipcMain.handle('plugin-readme', async (event, { marketplace, pluginName }) => {
     try {
-      const readme = PluginService.getPluginReadme(marketplace, pluginName);
+      const readme = await PluginService.getPluginReadme(marketplace, pluginName);
       return { success: true, readme };
     } catch (e) {
       console.error('[Plugin IPC] Readme error:', e);
@@ -79,7 +79,7 @@ ipcMain.handle('plugin-uninstall', async (event, { pluginKey }) => {
 
   ipcMain.handle('plugin-check-updates', async () => {
     try {
-      const updates = PluginService.checkPluginUpdates();
+      const updates = await PluginService.checkPluginUpdates();
       return { success: true, updates };
     } catch (e) {
       console.error('[Plugin IPC] Check updates error:', e);
