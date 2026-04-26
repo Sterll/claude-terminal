@@ -1873,10 +1873,10 @@ async function transitionDashboard(container, project, data, options, isRefreshi
     incoming.classList.add('fade-in');
   });
 
-  // After fade completes, replace with final rendered content (with event listeners)
-  setTimeout(async () => {
+  // After fade completes, move the already-rendered nodes into the container
+  setTimeout(() => {
     container.innerHTML = '';
-    await renderDashboardHtml(container, project, data, options, isRefreshing);
+    while (incoming.firstChild) container.appendChild(incoming.firstChild);
     animateDashboardIn(container);
   }, 220);
 }

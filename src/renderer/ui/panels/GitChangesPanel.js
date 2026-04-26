@@ -352,6 +352,87 @@ class GitChangesPanel extends BasePanel {
         }
       };
     }
+
+    // --- Event delegation on git changes list (set up once) ---
+    this._gitChangesList.addEventListener('click', (e) => {
+      // Section header click (collapse/expand)
+      const sectionHeader = e.target.closest('.git-changes-section-header');
+      if (sectionHeader && !e.target.closest('.git-section-checkbox')) {
+        const filesDiv = sectionHeader.nextElementSibling;
+        if (filesDiv) {
+          sectionHeader.classList.toggle('collapsed');
+          filesDiv.classList.toggle('collapsed');
+        }
+        return;
+      }
+
+      // Discard button click
+      const discardBtn = e.target.closest('.git-discard-btn');
+      if (discardBtn) {
+        e.stopPropagation();
+        const index = parseInt(discardBtn.dataset.index);
+        if (!isNaN(index)) this._discardFile(index);
+        return;
+      }
+
+      // Diff toggle click
+      const diffToggle = e.target.closest('.git-diff-toggle');
+      if (diffToggle) {
+        e.stopPropagation();
+        const item = diffToggle.closest('.git-file-item');
+        const index = parseInt(item?.dataset.index);
+        if (item && !isNaN(index)) this._toggleInlineDiff(item, index);
+        return;
+      }
+
+      // File item row click (toggle checkbox)
+      const row = e.target.closest('.git-file-item-row');
+      if (row) {
+        const item = row.closest('.git-file-item');
+        if (!item) return;
+        const checkbox = item.querySelector('input[type="checkbox"]');
+        if (e.target === checkbox) return; // handled by change event
+        const index = parseInt(item.dataset.index);
+        if (!isNaN(index) && checkbox) {
+          checkbox.checked = !checkbox.checked;
+          this._toggleFileSelection(index, checkbox.checked);
+        }
+      }
+    });
+
+    this._gitChangesList.addEventListener('change', (e) => {
+      // Section checkbox change
+      const sectionCheckbox = e.target.closest('.git-section-checkbox');
+      if (sectionCheckbox) {
+        const section = sectionCheckbox.dataset.section;
+        const files = this._state.files;
+        const items = [];
+        files.forEach((file, index) => {
+          if (section === 'tracked' && file.status !== '?') items.push(index);
+          else if (section === 'untracked' && file.status === '?') items.push(index);
+        });
+        items.forEach(index => {
+          if (sectionCheckbox.checked) {
+            this._state.selectedFiles.add(index);
+          } else {
+            this._state.selectedFiles.delete(index);
+          }
+        });
+        this._renderGitChanges();
+        this._updateCommitButton();
+        this._updateSelectAllState();
+        return;
+      }
+
+      // File item checkbox change
+      const item = e.target.closest('.git-file-item');
+      if (item && e.target.matches('input[type="checkbox"]')) {
+        const index = parseInt(item.dataset.index);
+        if (!isNaN(index)) {
+          this._toggleFileSelection(index, e.target.checked);
+        }
+      }
+    });
   }
 
   async loadGitChanges() {
@@ -505,64 +586,7 @@ class GitChangesPanel extends BasePanel {
       cb.removeAttribute('data-indeterminate');
     });
 
-    this._gitChangesList.querySelectorAll('.git-file-item').forEach(item => {
-      const checkbox = item.querySelector('input[type="checkbox"]');
-      const diffToggle = item.querySelector('.git-diff-toggle');
-      const index = parseInt(item.dataset.index);
-
-      item.querySelector('.git-file-item-row').onclick = (e) => {
-        if (e.target === checkbox || e.target.closest('.git-diff-toggle')) return;
-        checkbox.checked = !checkbox.checked;
-        this._toggleFileSelection(index, checkbox.checked);
-      };
-
-      checkbox.onchange = () => {
-        this._toggleFileSelection(index, checkbox.checked);
-      };
-
-      if (diffToggle) {
-        diffToggle.onclick = (e) => {
-          e.stopPropagation();
-          this._toggleInlineDiff(item, index);
-        };
-      }
-
-      const discardBtn = item.querySelector('.git-discard-btn');
-      if (discardBtn) {
-        discardBtn.onclick = (e) => {
-          e.stopPropagation();
-          this._discardFile(index);
-        };
-      }
-    });
-
-    this._gitChangesList.querySelectorAll('.git-section-checkbox').forEach(cb => {
-      cb.onchange = () => {
-        const section = cb.dataset.section;
-        const items = section === 'tracked' ? tracked : untracked;
-        items.forEach(({ index }) => {
-          if (cb.checked) {
-            this._state.selectedFiles.add(index);
-          } else {
-            this._state.selectedFiles.delete(index);
-          }
-        });
-        this._renderGitChanges();
-        this._updateCommitButton();
-        this._updateSelectAllState();
-      };
-    });
-
-    this._gitChangesList.querySelectorAll('.git-changes-section-header').forEach(header => {
-      header.onclick = (e) => {
-        if (e.target.closest('.git-section-checkbox')) return;
-        const filesDiv = header.nextElementSibling;
-        if (filesDiv) {
-          header.classList.toggle('collapsed');
-          filesDiv.classList.toggle('collapsed');
-        }
-      };
-    });
+    // Event handlers are delegated on this._gitChangesList (set up once in _setupEventListeners)
 
     this._updateSelectAllState();
   }

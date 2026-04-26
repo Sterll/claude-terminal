@@ -52,6 +52,16 @@ let _activeEditorWorkflowId = null; // tracks current open editor's workflowId
 
 let _panelInitialized = false;
 
+let _renderScheduled = false;
+function scheduleRender() {
+  if (_renderScheduled) return;
+  _renderScheduled = true;
+  requestAnimationFrame(() => {
+    _renderScheduled = false;
+    renderContent();
+  });
+}
+
 function init(context) {
   ctx = context;
   WorkflowMarketplace.init(context);
@@ -118,7 +128,7 @@ function registerLiveListeners() {
     state.runs.unshift(run);
     // Clear previous run outputs for fresh tooltip data
     try { getGraphService().clearRunOutputs(); } catch (_) {}
-    renderContent();
+    scheduleRender();
   });
 
   api.onRunEnd(({ runId, status, duration }) => {
@@ -133,7 +143,7 @@ function registerLiveListeners() {
     if (state.viewingRunId === runId) {
       renderRunDetail(document.getElementById('wf-content'), run);
     } else {
-      renderContent();
+      scheduleRender();
     }
   });
 
@@ -193,7 +203,7 @@ function registerLiveListeners() {
     if (state.viewingRunId === runId) {
       _updateStepInDetail(runId, stepId, status, output);
     } else {
-      renderContent();
+      scheduleRender();
     }
 
     // Clean up agent logs when step finishes
@@ -205,7 +215,7 @@ function registerLiveListeners() {
   // MCP graph edit tools signal a reload after modifying definitions.json directly
   api.onListUpdated(({ workflows }) => {
     if (workflows) state.workflows = workflows;
-    renderContent();
+    scheduleRender();
 
     // If the editor is open, reload the live graph from the updated definition
     const graphService = getGraphService();
