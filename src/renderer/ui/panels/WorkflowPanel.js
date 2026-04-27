@@ -489,7 +489,7 @@ function renderPanel() {
     </div>
   `;
 
-  el.querySelector('#wf-btn-new').addEventListener('click', () => openEditor());
+  el.querySelector('#wf-btn-new').addEventListener('click', () => openCreateChoiceModal());
 
   // Hub tab opens modal instead of switching content
   el.querySelector('#wf-tab-hub').addEventListener('click', () => {
@@ -537,7 +537,7 @@ function renderWorkflowList(el) {
         </button>
       </div>
     `;
-    el.querySelector('#wf-empty-new').addEventListener('click', () => openEditor());
+    el.querySelector('#wf-empty-new').addEventListener('click', () => openCreateChoiceModal());
     return;
   }
 
@@ -1060,11 +1060,175 @@ function _renderWfDiagramBlock(block, text) {
   block.innerHTML = `<div class="wf-diag-card">${rows}</div>`;
 }
 
-function openEditor(workflowId = null) {
+/* ─── Create-choice modal ─────────────────────────────────────────────────── */
+
+function openCreateChoiceModal() {
+  // Remove any pre-existing instance
+  const existing = document.querySelector('.wf-overlay.wf-create-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'wf-overlay wf-create-overlay';
+  overlay.innerHTML = `
+    <div class="wf-modal wf-create-modal" role="dialog" aria-modal="true">
+      <div class="wf-modal-hd">
+        <div class="wf-modal-hd-left">
+          <span class="wf-modal-title" data-step-title>${escapeHtml(t('workflow.create.title'))}</span>
+        </div>
+        <button class="wf-modal-x" data-action="close" title="${t('common.close')}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="wf-modal-bd">
+        <div class="wf-create-step" data-step="choice">
+          <div class="wf-create-cards">
+            <button class="wf-create-card" data-mode="blank">
+              <div class="wf-create-card-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="4" y="4" width="16" height="16" rx="2"/>
+                  <line x1="12" y1="9" x2="12" y2="15"/>
+                  <line x1="9" y1="12" x2="15" y2="12"/>
+                </svg>
+              </div>
+              <div class="wf-create-card-body">
+                <div class="wf-create-card-title">${escapeHtml(t('workflow.create.blankTitle'))}</div>
+                <div class="wf-create-card-sub">${escapeHtml(t('workflow.create.blankSub'))}</div>
+              </div>
+            </button>
+            <button class="wf-create-card wf-create-card--ai" data-mode="ai">
+              <div class="wf-create-card-icon wf-create-card-icon--ai">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2l2.39 4.84L20 8l-4 3.9.94 5.5L12 14.77 7.06 17.4 8 11.9 4 8l5.61-1.16L12 2z"/>
+                </svg>
+              </div>
+              <div class="wf-create-card-body">
+                <div class="wf-create-card-title">${escapeHtml(t('workflow.create.aiTitle'))}</div>
+                <div class="wf-create-card-sub">${escapeHtml(t('workflow.create.aiSub'))}</div>
+              </div>
+              <span class="wf-create-card-badge">AI</span>
+            </button>
+          </div>
+        </div>
+        <div class="wf-create-step" data-step="ai" style="display:none">
+          <div class="wf-field">
+            <label class="wf-field-lbl" for="wf-create-name">${escapeHtml(t('workflow.create.nameLabel'))}</label>
+            <input id="wf-create-name" class="wf-input" type="text" placeholder="${escapeHtml(t('workflow.create.namePlaceholder'))}" />
+          </div>
+          <div class="wf-field" style="margin-top:14px">
+            <label class="wf-field-lbl" for="wf-create-prompt">${escapeHtml(t('workflow.create.promptLabel'))}</label>
+            <textarea id="wf-create-prompt" class="wf-input wf-create-textarea" rows="5" placeholder="${escapeHtml(t('workflow.create.promptPlaceholder'))}"></textarea>
+            <div class="wf-create-hint">${escapeHtml(t('workflow.create.promptHint'))}</div>
+          </div>
+        </div>
+      </div>
+      <div class="wf-modal-ft" data-footer="choice">
+        <span class="wf-step-counter"></span>
+        <button class="wf-btn-ghost" data-action="close">${escapeHtml(t('common.cancel'))}</button>
+      </div>
+      <div class="wf-modal-ft" data-footer="ai" style="display:none">
+        <button class="wf-btn-ghost" data-action="back">${escapeHtml(t('workflow.back'))}</button>
+        <span class="wf-step-counter"></span>
+        <button class="wf-btn-primary" data-action="ai-submit" disabled>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.39 4.84L20 8l-4 3.9.94 5.5L12 14.77 7.06 17.4 8 11.9 4 8l5.61-1.16L12 2z"/></svg>
+          ${escapeHtml(t('workflow.create.aiBuild'))}
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) close();
+  });
+  overlay.querySelectorAll('[data-action="close"]').forEach(b => b.addEventListener('click', close));
+
+  const titleEl = overlay.querySelector('[data-step-title]');
+  const stepChoice = overlay.querySelector('[data-step="choice"]');
+  const stepAi = overlay.querySelector('[data-step="ai"]');
+  const footChoice = overlay.querySelector('[data-footer="choice"]');
+  const footAi = overlay.querySelector('[data-footer="ai"]');
+  const nameInput = overlay.querySelector('#wf-create-name');
+  const promptInput = overlay.querySelector('#wf-create-prompt');
+  const submitBtn = overlay.querySelector('[data-action="ai-submit"]');
+
+  const showStep = (step) => {
+    if (step === 'ai') {
+      stepChoice.style.display = 'none';
+      stepAi.style.display = '';
+      footChoice.style.display = 'none';
+      footAi.style.display = '';
+      titleEl.textContent = t('workflow.create.aiStepTitle');
+      setTimeout(() => promptInput.focus(), 50);
+    } else {
+      stepChoice.style.display = '';
+      stepAi.style.display = 'none';
+      footChoice.style.display = '';
+      footAi.style.display = 'none';
+      titleEl.textContent = t('workflow.create.title');
+    }
+  };
+
+  // Choice cards
+  overlay.querySelectorAll('.wf-create-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const mode = card.dataset.mode;
+      if (mode === 'blank') {
+        close();
+        openEditor();
+      } else if (mode === 'ai') {
+        showStep('ai');
+      }
+    });
+  });
+
+  overlay.querySelector('[data-action="back"]').addEventListener('click', () => showStep('choice'));
+
+  const updateSubmit = () => {
+    submitBtn.disabled = promptInput.value.trim().length < 5;
+  };
+  promptInput.addEventListener('input', updateSubmit);
+
+  const submit = () => {
+    const prompt = promptInput.value.trim();
+    if (prompt.length < 5) return;
+    const name = nameInput.value.trim() || _deriveWorkflowName(prompt);
+    close();
+    openEditor(null, { defaultName: name, aiPrompt: prompt });
+  };
+  submitBtn.addEventListener('click', submit);
+  promptInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      submit();
+    }
+  });
+
+  // Escape to close
+  const escHandler = (e) => {
+    if (e.key === 'Escape') {
+      close();
+      document.removeEventListener('keydown', escHandler);
+    }
+  };
+  document.addEventListener('keydown', escHandler);
+}
+
+/** Derive a short workflow name from a free-text description (fallback when user leaves the name empty). */
+function _deriveWorkflowName(prompt) {
+  const cleaned = prompt.replace(/\s+/g, ' ').trim();
+  if (!cleaned) return t('workflow.untitled');
+  // Take first 6 words, cap at 48 chars
+  const words = cleaned.split(' ').slice(0, 6).join(' ');
+  return words.length > 48 ? words.slice(0, 45) + '…' : words;
+}
+
+function openEditor(workflowId = null, options = {}) {
   _activeEditorWorkflowId = workflowId;
   const wf = workflowId ? state.workflows.find(w => w.id === workflowId) : null;
   const editorDraft = {
-    name: wf?.name || '',
+    name: wf?.name || options.defaultName || '',
     scope: wf?.scope || 'current',
     concurrency: wf?.concurrency || 'skip',
     dirty: false,
@@ -2249,6 +2413,7 @@ function openEditor(workflowId = null) {
   const aiPanel = panel.querySelector('#wf-ai-panel');
   const aiPanelChat = panel.querySelector('#wf-ai-panel-chat');
   let aiChatInitialized = false;
+  let pendingAiPrompt = options.aiPrompt || null;
 
   const WORKFLOW_SYSTEM_PROMPT = `You are an expert workflow architect built into the Workflow Builder of Claude Terminal. You build production-quality, robust automation workflows — not just functional ones.
 
@@ -2519,10 +2684,12 @@ Rules:
       const promptWithContext = wfName
         ? `${WORKFLOW_SYSTEM_PROMPT}\n\nCURRENT WORKFLOW: "${wfName}" — this is the workflow open in the editor right now. Always use this name as the "workflow" parameter in your tool calls.${varsContext}`
         : WORKFLOW_SYSTEM_PROMPT;
+      const seedPrompt = pendingAiPrompt;
+      pendingAiPrompt = null;
       createChatView(aiPanelChat, aiProject, {
         systemPrompt: promptWithContext,
         skipPermissions: true,
-        initialPrompt: null,
+        initialPrompt: seedPrompt,
       });
 
       // MutationObserver: transform workflow diagram code blocks into visual cards
@@ -2649,6 +2816,24 @@ Rules:
     origBack.addEventListener('click', () => {
       document.removeEventListener('keydown', editorKeyHandler);
     }, { once: true });
+  }
+
+  // ── AI auto-build: persist workflow then open AI panel with the seed prompt ──
+  if (options.aiPrompt) {
+    (async () => {
+      try {
+        const ok = await saveWorkflow();
+        if (!ok) {
+          console.warn('[Workflow] AI auto-build: initial save failed');
+          return;
+        }
+      } catch (e) {
+        console.warn('[Workflow] AI auto-build save error:', e);
+        return;
+      }
+      const aiBtn = panel.querySelector('#wf-ed-ai');
+      if (aiBtn) aiBtn.click();
+    })();
   }
 
 } // end openEditor

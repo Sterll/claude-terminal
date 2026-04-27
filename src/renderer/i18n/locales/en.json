@@ -2525,6 +2525,20 @@
       "emptySub": "Automate your repetitive tasks with Claude",
       "createBtn": "Create workflow"
     },
+    "create": {
+      "title": "New workflow",
+      "aiStepTitle": "Describe your workflow",
+      "blankTitle": "Blank workflow",
+      "blankSub": "Start from an empty canvas and build it yourself",
+      "aiTitle": "Build with AI",
+      "aiSub": "Describe what you want — AI builds the workflow for you",
+      "nameLabel": "Workflow name (optional)",
+      "namePlaceholder": "My new workflow",
+      "promptLabel": "What should this workflow do?",
+      "promptPlaceholder": "e.g. Every morning at 9am, pull the latest changes on all my projects, run tests and notify me if any fail.",
+      "promptHint": "Be specific: trigger, steps, error handling, notifications…",
+      "aiBuild": "Build with AI"
+    },
     "contextMenu": {
       "edit": "Edit",
       "runNow": "Run now",

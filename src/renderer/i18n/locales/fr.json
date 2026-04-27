@@ -2525,6 +2525,20 @@
       "emptySub": "Automatisez vos tâches répétitives avec Claude",
       "createBtn": "Créer un workflow"
     },
+    "create": {
+      "title": "Nouveau workflow",
+      "aiStepTitle": "Décrivez votre workflow",
+      "blankTitle": "Workflow vierge",
+      "blankSub": "Partez d'un canvas vide et construisez-le vous-même",
+      "aiTitle": "Construire avec l'IA",
+      "aiSub": "Décrivez ce que vous voulez — l'IA construit le workflow",
+      "nameLabel": "Nom du workflow (optionnel)",
+      "namePlaceholder": "Mon nouveau workflow",
+      "promptLabel": "Que doit faire ce workflow ?",
+      "promptPlaceholder": "ex : Tous les matins à 9h, récupère les derniers changements de tous mes projets, lance les tests et notifie-moi en cas d'échec.",
+      "promptHint": "Soyez précis : trigger, étapes, gestion des erreurs, notifications…",
+      "aiBuild": "Construire avec l'IA"
+    },
     "contextMenu": {
       "edit": "Modifier",
       "runNow": "Lancer maintenant",

@@ -7041,3 +7041,83 @@ select.wf-step-edit-input {
 .wf-search-close {
   margin-left: 2px;
 }
+
+/* ─── Create-choice modal ─────────────────────────────────────────────────── */
+
+.wf-create-modal { width: 540px; }
+
+.wf-create-cards {
+  display: flex; flex-direction: column; gap: 10px;
+}
+
+.wf-create-card {
+  display: flex; align-items: center; gap: 14px;
+  padding: 16px;
+  background: rgba(255,255,255,.02);
+  border: 1px solid var(--wf-border);
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  position: relative;
+  transition: background-color .18s var(--wf-ease), border-color .18s var(--wf-ease), transform .18s var(--wf-ease);
+  color: inherit;
+  font: inherit;
+}
+.wf-create-card:hover {
+  background: rgba(255,255,255,.04);
+  border-color: rgba(255,255,255,.16);
+  transform: translateY(-1px);
+}
+.wf-create-card--ai:hover {
+  border-color: rgba(217,119,6,.55);
+  box-shadow: 0 6px 24px rgba(217,119,6,.18);
+}
+
+.wf-create-card-icon {
+  width: 42px; height: 42px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 10px;
+  background: rgba(255,255,255,.04);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.wf-create-card-icon--ai {
+  background: linear-gradient(135deg, rgba(217,119,6,.22), rgba(217,119,6,.06));
+  color: var(--accent);
+}
+
+.wf-create-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.wf-create-card-title {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -.01em;
+}
+.wf-create-card-sub {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.wf-create-card-badge {
+  position: absolute; top: 10px; right: 10px;
+  font-size: 9px; font-weight: 700; letter-spacing: .08em;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: rgba(217,119,6,.18);
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.wf-create-textarea {
+  resize: vertical;
+  min-height: 110px;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.wf-create-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
