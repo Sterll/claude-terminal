@@ -1873,6 +1873,19 @@
   background: linear-gradient(90deg, #22c55e, #f59e0b);
 }
 
+.cpw-error {
+  padding: 8px 12px;
+  margin: 8px 12px;
+  font-size: var(--font-xs);
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono, monospace);
+}
+
 /* Task list */
 .cpw-body {
   max-height: 280px;

@@ -366,6 +366,7 @@ class ChatView extends BaseComponent {
   const taskToolIndices = new Map(); // block index -> { card, toolUseId } for Task (subagent) tools
   const parallelToolIndices = new Map(); // block index -> { toolUseId } for parallel_start_run
   const parallelRunWidgets = new Map(); // runId -> { el, cleanup, toolUseId }
+  const parallelPendingWidgets = new Map(); // toolUseId -> widget (before runId is bound)
   let blockIndex = 0;
   let currentMsgHasToolUse = false;
   let turnHadAssistantContent = false; // tracks if current turn displayed any streamed/assistant content
@@ -3772,6 +3773,7 @@ class ChatView extends BaseComponent {
             _runId = match.id;
             el.dataset.runId = match.id;
             parallelRunWidgets.set(match.id, { el, cleanup: _destroy, toolUseId });
+            parallelPendingWidgets.delete(toolUseId);
             _updateFromRun(match);
           }
         } else {
@@ -3787,8 +3789,28 @@ class ChatView extends BaseComponent {
         _runId = existing.id;
         el.dataset.runId = existing.id;
         parallelRunWidgets.set(existing.id, { el, cleanup: _destroy, toolUseId });
+        parallelPendingWidgets.delete(toolUseId);
         _updateFromRun(existing);
       }
+    }
+
+    function _setError(message) {
+      if (_destroyed) return;
+      el.dataset.phase = 'failed';
+      const iconEl = el.querySelector('.cpw-icon');
+      const phaseEl = el.querySelector('.cpw-phase');
+      const statusEl = el.querySelector('.cpw-status');
+      const bodyEl = el.querySelector('.cpw-body');
+      const actionsEl = el.querySelector('.cpw-actions');
+      if (iconEl) iconEl.innerHTML = PHASE_ICONS.failed;
+      if (phaseEl) phaseEl.textContent = t('parallel.chatWidget.phaseFailed') || 'Failed';
+      if (statusEl) statusEl.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="var(--danger)"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
+      if (bodyEl && message) {
+        bodyEl.innerHTML = `<div class="cpw-error">${escapeHtml(message)}</div>`;
+      }
+      if (actionsEl) actionsEl.innerHTML = '';
+      if (_unsubscribe) { _unsubscribe(); _unsubscribe = null; }
+      parallelPendingWidgets.delete(toolUseId);
     }
 
     function _updateFromRun(run) {
@@ -3929,10 +3951,11 @@ class ChatView extends BaseComponent {
       _destroyed = true;
       if (_unsubscribe) { _unsubscribe(); _unsubscribe = null; }
       if (_runId) parallelRunWidgets.delete(_runId);
+      parallelPendingWidgets.delete(toolUseId);
     }
 
     _bindToRun();
-    return { el, cleanup: _destroy, toolUseId };
+    return { el, cleanup: _destroy, toolUseId, setError: _setError };
   }
 
   /**
@@ -4858,6 +4881,7 @@ class ChatView extends BaseComponent {
               const { initParallelListeners } = require('../../state/parallelTask.state');
               initParallelListeners();
               const widget = _createParallelWidget(goal, parallelInfo.toolUseId);
+              parallelPendingWidgets.set(parallelInfo.toolUseId, widget);
               messagesEl.appendChild(widget.el);
               scrollToBottom();
               break;
@@ -4998,6 +5022,23 @@ class ChatView extends BaseComponent {
     // Parallel run widget — skip tool_result (widget handles display via state)
     for (const [, w] of parallelRunWidgets) {
       if (w.toolUseId === block.tool_use_id) return;
+    }
+
+    // Pending parallel widget (no run bound yet) — surface MCP errors so
+    // the widget doesn't stay stuck on "Starting parallel run..."
+    const pending = block.tool_use_id ? parallelPendingWidgets.get(block.tool_use_id) : null;
+    if (pending) {
+      const rawText = typeof block.content === 'string' ? block.content
+        : Array.isArray(block.content) ? block.content.map(b => b.text || '').join('\n') : '';
+      const isError = block.is_error === true
+        || (Array.isArray(block.content) && block.content.some(b => b && b.is_error))
+        || /^(error|missing required|no project path)/i.test(rawText.trim());
+      if (isError) {
+        pending.setError?.(rawText.trim() || 'Failed to start parallel run');
+        return;
+      }
+      // Successful result without a state update yet — let state subscription handle it
+      return;
     }
 
     // Subagent cards — mark completed but keep for late message routing
@@ -5838,6 +5879,10 @@ class ChatView extends BaseComponent {
         if (typeof w.cleanup === 'function') w.cleanup();
       }
       parallelRunWidgets.clear();
+      for (const [, w] of parallelPendingWidgets) {
+        if (typeof w.cleanup === 'function') w.cleanup();
+      }
+      parallelPendingWidgets.clear();
       parallelToolIndices.clear();
       // Clean up image data
       pendingImages.length = 0;
