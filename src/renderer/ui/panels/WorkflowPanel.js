@@ -2657,15 +2657,40 @@ Rules:
 - NEVER use bullet points or prose to describe node structure
 - Always show this diagram when asked "what does this do", "show the graph", or after any modification`;
 
-  panel.querySelector('#wf-ed-ai').addEventListener('click', () => {
+  panel.querySelector('#wf-ed-ai').addEventListener('click', async () => {
+    const aiBtn = panel.querySelector('#wf-ed-ai');
     const isOpen = aiPanel.style.display !== 'none';
     if (isOpen) {
       aiPanel.style.display = 'none';
-      panel.querySelector('#wf-ed-ai').classList.remove('active');
+      aiBtn.classList.remove('active');
       return;
     }
+
+    // Ensure the workflow is persisted with a name BEFORE the AI starts —
+    // otherwise the agent has no anchor and creates a brand new workflow.
+    if (!aiChatInitialized) {
+      if (!editorDraft.name.trim()) {
+        const ts = new Date().toLocaleString(undefined, { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+        editorDraft.name = `${t('workflow.untitled')} ${ts}`;
+        const nameInput = panel.querySelector('#wf-ed-name');
+        if (nameInput) nameInput.value = editorDraft.name;
+        const sbName = panel.querySelector('#wf-ed-sb-name');
+        if (sbName) sbName.textContent = editorDraft.name;
+      }
+      if (!workflowId) {
+        aiBtn.disabled = true;
+        try {
+          await saveWorkflow();
+        } catch (e) {
+          console.warn('[Workflow] AI: pre-open save failed', e);
+        } finally {
+          aiBtn.disabled = false;
+        }
+      }
+    }
+
     aiPanel.style.display = 'flex';
-    panel.querySelector('#wf-ed-ai').classList.add('active');
+    aiBtn.classList.add('active');
 
     if (!aiChatInitialized) {
       aiChatInitialized = true;
@@ -2682,8 +2707,12 @@ Rules:
       }
 
       const promptWithContext = wfName
-        ? `${WORKFLOW_SYSTEM_PROMPT}\n\nCURRENT WORKFLOW: "${wfName}" — this is the workflow open in the editor right now. Always use this name as the "workflow" parameter in your tool calls.${varsContext}`
-        : WORKFLOW_SYSTEM_PROMPT;
+        ? `${WORKFLOW_SYSTEM_PROMPT}
+
+CURRENT WORKFLOW: "${wfName}" — this is the workflow already open in the editor. ALWAYS pass workflow="${wfName}" to every workflow_* tool call. NEVER call workflow_create — the workflow already exists. NEVER create a workflow under a different name. If you think the workflow needs to be renamed, call workflow_rename instead of creating a new one.${varsContext}`
+        : `${WORKFLOW_SYSTEM_PROMPT}
+
+CURRENT WORKFLOW: an empty workflow is open in the editor but its name has not been set yet. Call workflow_get_graph with no name argument first to discover the open workflow's name, then use that name for all subsequent calls. NEVER call workflow_create.`;
       const seedPrompt = pendingAiPrompt;
       pendingAiPrompt = null;
       createChatView(aiPanelChat, aiProject, {
