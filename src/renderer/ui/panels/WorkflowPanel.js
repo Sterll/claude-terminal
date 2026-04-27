@@ -2573,6 +2573,63 @@ workflow/time — Read time tracking data
   TIP: get_all_projects → Loop → get_project per-project is the standard reporting pattern
   TIP: divide ms by 3600000 for hours
 
+NODE SELECTION GUIDE — read this BEFORE picking any node:
+
+GOLDEN RULE: shell is the LAST resort. There is almost always a dedicated node that does the job better (typed I/O, observability, cross-platform, error handling). Pick shell only when nothing else fits.
+
+INTENT → CORRECT NODE (shell alternatives in parentheses):
+- Send a desktop notification           → notify                  (NOT shell + osascript/notify-send/powershell)
+- Pause / sleep N seconds or minutes    → wait                    (NOT shell + sleep/timeout)
+- Read a file's content                 → file action=read        (NOT shell + cat/type)
+- Write or append to a file             → file action=write/append (NOT shell + echo >)
+- Check if a file exists                → file action=exists      (NOT shell + test -f / Test-Path)
+- List files matching a pattern         → file action=list pattern="**/*.ts" → loop (NOT shell + find/ls)
+- Copy / move / delete a file           → file action=copy/move/delete (NOT shell + cp/mv/rm)
+- Run a SQL query                       → db                      (NOT shell + sqlite3/mysql/psql)
+- Call a REST API / fetch JSON          → http                    (NOT shell + curl/wget)
+- Parse a JSON string                   → transform op=json_parse (NOT shell + jq)
+- Stringify an object to JSON           → transform op=json_stringify
+- Filter an array                       → transform op=filter expression="item.x === 'y'"  (NOT shell + grep/awk)
+- Map / pluck a field from an array     → transform op=pluck expression="name"             (NOT shell + jq)
+- Sort / unique / count / flatten array → transform op=sort/unique/count/flatten           (NOT shell + sort/uniq/wc)
+- Reduce array to a single value        → transform op=reduce expression="acc + item.bytes"
+- Iterate over a list                   → loop                    (NOT shell + for loop)
+- Branch on true/false                  → condition               (NOT shell + if)
+- Multi-way branch (>2 cases)           → switch                  (NOT chained conditions)
+- Git pull/push/commit/checkout/etc.    → git                     (NOT shell + git CLI)
+- List all projects                     → project action=list     (NOT shell + ls)
+- Open / build / test / install project → project action=open/build/test/install
+- Get time tracking data                → time                    (NOT custom log parsing)
+- Generate text / summarize / extract   → claude                  (haiku for simple, sonnet for reasoning)
+- Extract structured data with AI       → claude with outputSchema (NOT claude + manual JSON parse)
+- Trigger another workflow              → subworkflow             (NOT duplicating logic)
+- Schedule periodic execution           → trigger triggerType=cron
+- React to a Claude Code hook event     → trigger triggerType=hook
+- Receive external webhook              → trigger triggerType=webhook
+
+LEGITIMATE shell USES (no dedicated node exists):
+- Run a project's build/test/lint script (npm test, cargo build, pytest, etc.)
+- Invoke a custom CLI tool not covered above
+- One-off git commands beyond pull/push/commit/checkout/merge/stash/reset
+- System commands (uptime, df, ps) for monitoring workflows
+
+NODE-CHOICE PRE-FLIGHT (run this mental check BEFORE every workflow_add_node call):
+1. What is the user's intent for this step?
+2. Is there a row in the INTENT → CORRECT NODE table that matches? If yes → use that node.
+3. If no match, is there ANY non-shell node that could do it? If yes → use it.
+4. Only if both 2 and 3 are no → use shell, and add a Log node before it explaining why.
+
+COMMON MISTAKES (do NOT repeat):
+- ❌ shell command="curl https://api.example.com/users" → ✅ http method=GET url="..."
+- ❌ shell command="sleep 5" → ✅ wait duration="5s"
+- ❌ shell command="echo 'hi' > /tmp/x" → ✅ file action=write path="/tmp/x" content="hi"
+- ❌ shell command="cat config.json | jq .version" → ✅ file action=read → transform op=json_parse → transform op=pluck expression="version"
+- ❌ shell command="sqlite3 db.sqlite 'SELECT * FROM users'" → ✅ db connection="..." query="SELECT * FROM users"
+- ❌ shell command="notify-send 'Done'" → ✅ notify title="Done" message="..."
+- ❌ Two condition nodes chained for 3-way branching → ✅ one switch node
+- ❌ shell command="for f in *.log; do ... done" → ✅ file action=list pattern="*.log" → loop
+- ❌ Using sonnet to reformat a string → ✅ haiku (or transform if pure JS)
+
 DATA PIN SLOT REFERENCE (for workflow_connect_nodes):
 Data pin slots start AFTER exec slots (exec input=slot0, exec outputs=slot0/slot1):
   shell: stdout=slot2, stderr=slot3, exitCode=slot4
