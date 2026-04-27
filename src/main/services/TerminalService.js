@@ -104,10 +104,13 @@ class TerminalService {
       return { success: false, error: error.message };
     }
 
-    // Tag the PTY with project metadata so onExit can reference it
+    // Tag the PTY with project metadata so onExit can reference it.
+    // `command` records what was actually launched (shell or Claude CLI), used
+    // by terminal_exit_code workflow triggers for commandPattern filtering.
     ptyProcess._meta = {
       projectId:   projectId || null,
       projectPath: projectPath || cwd || null,
+      command:     [shellPath, ...(shellArgs || [])].join(' ').trim(),
     };
 
     this.terminals.set(id, ptyProcess);
@@ -151,6 +154,7 @@ class TerminalService {
             signal,
             projectId:   ptyProcess._meta?.projectId || null,
             projectPath: ptyProcess._meta?.projectPath || null,
+            command:     ptyProcess._meta?.command || null,
           });
         } catch (cbErr) {
           console.warn('[TerminalService] onExitCallback error:', cbErr.message);

@@ -21,5 +21,18 @@ module.exports = {
       hint: t('workflow.trigger.hookTypeHint'),
       options: HOOK_TYPES.map(h => ({ value: h.value, label: h.label })),
     },
+    {
+      type: 'project-select',
+      key: 'projectId',
+      label: t('workflow.trigger.hookProjectLabel'),
+      hint: t('workflow.trigger.hookProjectHint'),
+    },
+    {
+      type: 'text',
+      key: 'toolName',
+      label: t('workflow.trigger.hookToolNameLabel'),
+      hint: t('workflow.trigger.hookToolNameHint'),
+      placeholder: 'Bash, Edit, Write',
+    },
   ],
 };

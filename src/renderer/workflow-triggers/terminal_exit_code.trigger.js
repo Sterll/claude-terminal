@@ -31,5 +31,12 @@ module.exports = {
       label: t('workflow.trigger.terminalExitProjectLabel'),
       hint: t('workflow.trigger.terminalExitProjectHint'),
     },
+    {
+      type: 'text',
+      key: 'commandPattern',
+      label: t('workflow.trigger.terminalExitCommandLabel'),
+      hint: t('workflow.trigger.terminalExitCommandHint'),
+      placeholder: 'claude',
+    },
   ],
 };

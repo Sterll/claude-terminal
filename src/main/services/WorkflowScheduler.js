@@ -141,20 +141,40 @@ class WorkflowScheduler {
   /**
    * Call this when a Claude hook event arrives.
    * Checks all hook-triggered workflows and fires matching ones.
-   * @param {Object} hookEvent  { type: string, data: Object, ... }
+   * @param {Object} hookEvent  { hook: string, stdin?: Object, cwd?: string, timestamp?: string }
    */
   onHookEvent(hookEvent) {
-    const { type: hookType } = hookEvent;
+    if (!hookEvent) return;
+    // HookEventServer payload uses `hook`; legacy callers may pass `type`.
+    const hookType = hookEvent.hook || hookEvent.type;
+    const toolName = hookEvent.stdin?.tool_name || null;
+    const cwd      = hookEvent.cwd || null;
+
     for (const wf of this._workflows) {
       if (!wf.enabled) continue;
       const trigger = wf.trigger || {};
       if (trigger.type !== 'hook') continue;
       if (trigger.hookType && trigger.hookType !== hookType) continue;
+
+      // Project filter — match the hook's cwd against the configured project path.
+      if (trigger.projectId && typeof this.resolveProjectPath === 'function') {
+        const projectPath = this.resolveProjectPath(trigger.projectId);
+        if (!projectPath || !cwd || !pathsEqual(projectPath, cwd)) continue;
+      }
+
+      // Tool name filter (PreToolUse/PostToolUse) — supports comma list + globs.
+      if (trigger.toolName && trigger.toolName.trim()) {
+        if (!toolName) continue;
+        if (!matchesToolName(trigger.toolName, toolName)) continue;
+      }
+
       if (!evalHookCondition(trigger.condition, hookEvent)) continue;
 
       this.dispatch?.(wf.id, {
         source:    'hook',
         hookType,
+        toolName,
+        cwd,
         hookEvent,
       });
     }
@@ -201,6 +221,12 @@ class WorkflowScheduler {
       if (!matchesExitCode(filter, exitCode)) continue;
       if (trigger.projectId && trigger.projectId !== event.projectId) continue;
 
+      // Optional command pattern — matches against the spawned shell command.
+      if (trigger.commandPattern && trigger.commandPattern.trim()) {
+        const command = event.command || '';
+        if (!matchesCommandPattern(trigger.commandPattern, command)) continue;
+      }
+
       this.dispatch?.(wf.id, {
         source:      'terminal_exit_code',
         exitCode,
@@ -208,6 +234,7 @@ class WorkflowScheduler {
         projectId:   event.projectId || null,
         projectPath: event.projectPath || null,
         terminalId:  event.terminalId ?? null,
+        command:     event.command || null,
       });
     }
   }
@@ -506,6 +533,7 @@ class WorkflowScheduler {
       desired.set(wf.id, {
         repoPath,
         eventFilter: trigger.eventFilter || 'any',
+        branch:      (trigger.branch || '').trim(),
         projectId:   trigger.projectId,
       });
     }
@@ -514,8 +542,9 @@ class WorkflowScheduler {
     for (const [wfId, entry] of this._gitWatchers) {
       const target = desired.get(wfId);
       const changed = !target || JSON.stringify({
-        repoPath: target.repoPath,
+        repoPath:    target.repoPath,
         eventFilter: target.eventFilter,
+        branch:      target.branch,
       }) !== entry.fingerprint;
       if (changed) this._teardownGitWatcher(wfId);
     }
@@ -585,10 +614,14 @@ class WorkflowScheduler {
         if (!eventType) continue;
         if (cfg.eventFilter !== 'any' && cfg.eventFilter !== eventType) continue;
 
+        const branch = readCurrentBranch(cfg.repoPath);
+        if (cfg.branch && !matchesBranch(cfg.branch, branch)) continue;
+
         this.dispatch?.(wfId, {
           source:    'git_event',
           eventType,
           message:   parsed.rest,
+          branch,
           projectId: cfg.projectId,
           repoPath:  cfg.repoPath,
         });
@@ -597,10 +630,13 @@ class WorkflowScheduler {
 
     const handlePush = (filePath) => {
       if (cfg.eventFilter !== 'any' && cfg.eventFilter !== 'push') return;
+      const branch = readCurrentBranch(cfg.repoPath);
+      if (cfg.branch && !matchesBranch(cfg.branch, branch)) return;
       this.dispatch?.(wfId, {
         source:    'git_event',
         eventType: 'push',
         message:   path.basename(filePath),
+        branch,
         projectId: cfg.projectId,
         repoPath:  cfg.repoPath,
       });
@@ -625,7 +661,11 @@ class WorkflowScheduler {
 
     this._gitWatchers.set(wfId, {
       watcher,
-      fingerprint: JSON.stringify({ repoPath: cfg.repoPath, eventFilter: cfg.eventFilter }),
+      fingerprint: JSON.stringify({
+        repoPath:    cfg.repoPath,
+        eventFilter: cfg.eventFilter,
+        branch:      cfg.branch,
+      }),
     });
   }
 
@@ -677,6 +717,88 @@ function matchesExitCode(filter, exitCode) {
     if (!Number.isNaN(n) && n === exitCode) return true;
   }
   return false;
+}
+
+/**
+ * Compare two filesystem paths for equality (case-insensitive on Windows).
+ */
+function pathsEqual(a, b) {
+  if (!a || !b) return false;
+  const norm = (p) => path.resolve(p).replace(/[\\/]+$/, '');
+  const A = norm(a);
+  const B = norm(b);
+  if (process.platform === 'win32') {
+    return A.toLowerCase() === B.toLowerCase();
+  }
+  return A === B;
+}
+
+/**
+ * Match a tool name against a comma-separated pattern list.
+ * Supports `*` wildcards (e.g. "Bash, Edit, Write" or "mcp__*").
+ */
+function matchesToolName(pattern, toolName) {
+  if (!pattern) return true;
+  if (!toolName) return false;
+  const parts = pattern.split(',').map(s => s.trim()).filter(Boolean);
+  if (parts.length === 0) return true;
+  for (const p of parts) {
+    if (p === '*') return true;
+    if (p === toolName) return true;
+    if (p.includes('*')) {
+      const re = new RegExp('^' + p.split('*').map(escapeRe).join('.*') + '$');
+      if (re.test(toolName)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Match a command string against a regex (preferred) or substring pattern.
+ * Pattern starting with `/.../` is treated as a regex.
+ */
+function matchesCommandPattern(pattern, command) {
+  if (!pattern) return true;
+  const trimmed = pattern.trim();
+  const reMatch = trimmed.match(/^\/(.+)\/([gimsuy]*)$/);
+  if (reMatch) {
+    try { return new RegExp(reMatch[1], reMatch[2]).test(command || ''); }
+    catch (_) { return false; }
+  }
+  return (command || '').toLowerCase().includes(trimmed.toLowerCase());
+}
+
+/**
+ * Match a git branch against an exact name or `/regex/` pattern.
+ */
+function matchesBranch(pattern, branch) {
+  if (!pattern) return true;
+  if (!branch) return false;
+  const trimmed = pattern.trim();
+  const reMatch = trimmed.match(/^\/(.+)\/([gimsuy]*)$/);
+  if (reMatch) {
+    try { return new RegExp(reMatch[1], reMatch[2]).test(branch); }
+    catch (_) { return false; }
+  }
+  return branch === trimmed;
+}
+
+function escapeRe(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Read the current branch of a git repo (best-effort, sync).
+ * Returns null if the HEAD file is missing or unreadable.
+ */
+function readCurrentBranch(repoPath) {
+  try {
+    const head = fs.readFileSync(path.join(repoPath, '.git', 'HEAD'), 'utf8').trim();
+    const m = head.match(/^ref:\s+refs\/heads\/(.+)$/);
+    return m ? m[1] : head.slice(0, 12); // detached HEAD → short SHA
+  } catch (_) {
+    return null;
+  }
 }
 
 module.exports = WorkflowScheduler;

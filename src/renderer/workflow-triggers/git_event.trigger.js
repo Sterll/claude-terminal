@@ -25,5 +25,12 @@ module.exports = {
         { value: 'branch_switch',label: t('workflow.trigger.gitEventBranchSwitch') },
       ],
     },
+    {
+      type: 'text',
+      key: 'branch',
+      label: t('workflow.trigger.gitEventBranchLabel'),
+      hint: t('workflow.trigger.gitEventBranchHint'),
+      placeholder: 'main',
+    },
   ],
 };

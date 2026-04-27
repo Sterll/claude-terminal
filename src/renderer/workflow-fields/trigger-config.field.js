@@ -37,6 +37,32 @@ function renderProjectSelect(key, selected, esc, withAny = true) {
   </select>`;
 }
 
+function renderHookSection(props, esc) {
+  const hookType = props.hookType || '';
+  const hookOpts = getHookTypes()
+    .map(h => `<option value="${esc(h.value)}"${hookType === h.value ? ' selected' : ''}>${esc(h.label)}</option>`)
+    .join('');
+  const showToolName = hookType === 'PreToolUse' || hookType === 'PostToolUse';
+  const toolNameSection = showToolName ? `
+<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.hookToolNameLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.trigger.hookToolNameHint')}</span>
+  <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="toolName"
+    value="${esc(props.toolName || '')}" placeholder="Bash, Edit, Write" />
+</div>` : '';
+  return `<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.hookTypeLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.trigger.hookTypeHint')}</span>
+  <select class="wf-step-edit-input wf-trigger-hook-type wf-node-prop" data-key="hookType">${hookOpts}</select>
+</div>
+<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.hookProjectLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.trigger.hookProjectHint')}</span>
+  ${renderProjectSelect('projectId', props.projectId || '', esc, true)}
+</div>
+${toolNameSection}`;
+}
+
 function renderFileChangeSection(props, esc) {
   const eventsValue = props.events || 'all';
   const eventsOptions = [
@@ -106,6 +132,12 @@ ${customSection}
   <label class="wf-step-edit-label">${t('workflow.trigger.terminalExitProjectLabel')}</label>
   <span class="wf-field-hint">${t('workflow.trigger.terminalExitProjectHint')}</span>
   ${renderProjectSelect('projectId', props.projectId || '', esc, true)}
+</div>
+<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.terminalExitCommandLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.trigger.terminalExitCommandHint')}</span>
+  <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="commandPattern"
+    value="${esc(props.commandPattern || '')}" placeholder="claude" />
 </div>`;
 }
 
@@ -167,6 +199,12 @@ function renderGitEventSection(props, esc) {
   <label class="wf-step-edit-label">${t('workflow.trigger.gitEventProjectLabel')}</label>
   <span class="wf-field-hint">${t('workflow.trigger.gitEventProjectHint')}</span>
   ${renderProjectSelect('projectId', props.projectId || '', esc, true)}
+</div>
+<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.trigger.gitEventBranchLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.trigger.gitEventBranchHint')}</span>
+  <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="branch"
+    value="${esc(props.branch || '')}" placeholder="main" />
 </div>`;
 }
 
@@ -285,16 +323,7 @@ module.exports = {
     placeholder="*/5 * * * *" />
 </div>` : '';
 
-    const hookSection = triggerType === 'hook' ? `
-<div class="wf-step-edit-field">
-  <label class="wf-step-edit-label">${t('workflow.trigger.hookTypeLabel')}</label>
-  <span class="wf-field-hint">${t('workflow.trigger.hookTypeHint')}</span>
-  <select class="wf-step-edit-input wf-node-prop" data-key="hookType">
-    ${getHookTypes().map(h =>
-      `<option value="${escapeAttr(h.value)}"${props.hookType === h.value ? ' selected' : ''}>${escapeHtml(h.label)}</option>`
-    ).join('')}
-  </select>
-</div>` : '';
+    const hookSection = triggerType === 'hook' ? renderHookSection(props, escapeAttr) : '';
 
     const onWorkflowSection = triggerType === 'on_workflow' ? `
 <div class="wf-step-edit-field">
@@ -353,6 +382,24 @@ module.exports = {
     // Bind copy button for initial render (if webhook is already selected)
     _bindWebhookCopyBtn(container);
 
+    // Re-render hook section on initial load when hookType is changed
+    const hookTypeInit = container.querySelector('.wf-trigger-hook-type');
+    if (hookTypeInit) {
+      hookTypeInit.addEventListener('change', () => {
+        const condDiv = container.querySelector('.wf-trigger-conditional');
+        if (!condDiv) return;
+        node.properties.hookType = hookTypeInit.value;
+        function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+        condDiv.innerHTML = renderHookSection(node.properties || {}, esc);
+        condDiv.querySelectorAll('.wf-node-prop').forEach(el => {
+          const key = el.dataset.key;
+          if (!key) return;
+          el.addEventListener('change', () => { node.properties[key] = el.value; });
+          el.addEventListener('input',  () => { node.properties[key] = el.value; });
+        });
+      });
+    }
+
     // Re-render terminal_exit_code section when filter toggles to/from 'custom'
     // (handles the case where the editor opens with this type already selected).
     const exitFilterInit = container.querySelector('.wf-trigger-exit-filter');
@@ -396,15 +443,7 @@ module.exports = {
     value="${esc(props.triggerValue || '')}" placeholder="*/5 * * * *" />
 </div>`;
       } else if (tType === 'hook') {
-        html = `<div class="wf-step-edit-field">
-  <label class="wf-step-edit-label">${t('workflow.trigger.hookTypeLabel')}</label>
-  <span class="wf-field-hint">${t('workflow.trigger.hookTypeHint')}</span>
-  <select class="wf-step-edit-input wf-node-prop" data-key="hookType">
-    ${getHookTypes().map(h =>
-      `<option value="${esc(h.value)}"${props.hookType === h.value ? ' selected' : ''}>${esc(h.label)}</option>`
-    ).join('')}
-  </select>
-</div>`;
+        html = renderHookSection(props, esc);
       } else if (tType === 'on_workflow') {
         html = `<div class="wf-step-edit-field">
   <label class="wf-step-edit-label">${t('workflow.trigger.workflowSourceLabel')}</label>
@@ -451,6 +490,21 @@ module.exports = {
         el.addEventListener('change', updateProp);
         el.addEventListener('input',  updateProp);
       });
+
+      // Re-render hook section when hookType toggles between tool / non-tool kinds
+      const hookTypeSel = condDiv.querySelector('.wf-trigger-hook-type');
+      if (hookTypeSel) {
+        hookTypeSel.addEventListener('change', () => {
+          node.properties.hookType = hookTypeSel.value;
+          condDiv.innerHTML = renderHookSection(node.properties || {}, esc);
+          condDiv.querySelectorAll('.wf-node-prop').forEach(el => {
+            const key = el.dataset.key;
+            if (!key) return;
+            el.addEventListener('change', () => { node.properties[key] = el.value; });
+            el.addEventListener('input',  () => { node.properties[key] = el.value; });
+          });
+        });
+      }
 
       // Re-render conditional when terminal_exit_code filter toggles to/from 'custom'
       const exitFilter = condDiv.querySelector('.wf-trigger-exit-filter');
