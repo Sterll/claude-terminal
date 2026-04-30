@@ -8,6 +8,7 @@ const {
   buildDesktopFileContent,
   shouldWriteDesktopFile,
   resolveBundledIconPath,
+  looksLikeLegacyClaudeTerminalDesktop,
   _internals,
 } = require('../../src/main/services/LinuxDesktopIntegration');
 
@@ -90,6 +91,86 @@ describe('shouldWriteDesktopFile', () => {
 
   test('leaves user-maintained files alone (no marker)', () => {
     expect(shouldWriteDesktopFile(userOwned, ours)).toBe(false);
+  });
+
+  test('adopts a pre-v1.2.8 legacy entry that clearly targets this app (no marker)', () => {
+    // Pre-v1.2.8 users created `.desktop` entries by hand or via workaround
+    // scripts. They never carry the marker, but they unmistakably point at
+    // our AppImage — overwrite once so future updates flow through the
+    // managed path.
+    const legacy = [
+      '[Desktop Entry]',
+      'Name=Claude Terminal',
+      'Exec=/home/user/Applications/Claude-Terminal.AppImage --no-sandbox %U',
+      'Type=Application',
+      '',
+    ].join('\n');
+    expect(shouldWriteDesktopFile(legacy, ours)).toBe(true);
+  });
+
+  test('still leaves a user-maintained entry alone when Exec points elsewhere', () => {
+    const wrapped = [
+      '[Desktop Entry]',
+      'Name=Claude Terminal',
+      'Exec=/usr/local/bin/my-claude-wrapper.sh %U',
+      'Type=Application',
+      '',
+    ].join('\n');
+    expect(shouldWriteDesktopFile(wrapped, ours)).toBe(false);
+  });
+});
+
+// ── looksLikeLegacyClaudeTerminalDesktop ──────────────────────────────────
+
+describe('looksLikeLegacyClaudeTerminalDesktop', () => {
+  test('matches an entry pointing at the stable symlink', () => {
+    const content = [
+      '[Desktop Entry]',
+      'Name=Claude Terminal',
+      'Exec=/home/user/Applications/Claude-Terminal.AppImage --no-sandbox %U',
+      'Type=Application',
+    ].join('\n');
+    expect(looksLikeLegacyClaudeTerminalDesktop(content)).toBe(true);
+  });
+
+  test('matches an entry pointing at a versioned AppImage', () => {
+    const content = [
+      '[Desktop Entry]',
+      'Name=Claude Terminal',
+      'Exec=/home/user/Applications/Claude-Terminal-1.2.7.AppImage --no-sandbox %U',
+      'Type=Application',
+    ].join('\n');
+    expect(looksLikeLegacyClaudeTerminalDesktop(content)).toBe(true);
+  });
+
+  test('matches an entry whose Exec is quoted', () => {
+    const content = [
+      '[Desktop Entry]',
+      'Name=Claude Terminal',
+      'Exec="/home/user/Applications/Claude-Terminal-1.2.7.AppImage" --no-sandbox %U',
+      'Type=Application',
+    ].join('\n');
+    expect(looksLikeLegacyClaudeTerminalDesktop(content)).toBe(true);
+  });
+
+  test('rejects entries with a different Name', () => {
+    const content = [
+      '[Desktop Entry]',
+      'Name=My Custom Claude',
+      'Exec=/home/user/Applications/Claude-Terminal.AppImage --no-sandbox %U',
+      'Type=Application',
+    ].join('\n');
+    expect(looksLikeLegacyClaudeTerminalDesktop(content)).toBe(false);
+  });
+
+  test('rejects entries whose Exec targets a wrapper instead of the AppImage', () => {
+    const content = [
+      '[Desktop Entry]',
+      'Name=Claude Terminal',
+      'Exec=/usr/local/bin/my-claude-wrapper.sh %U',
+      'Type=Application',
+    ].join('\n');
+    expect(looksLikeLegacyClaudeTerminalDesktop(content)).toBe(false);
   });
 });
 
@@ -225,6 +306,34 @@ describe('install', () => {
     expect(result.iconPath).toBeNull();
     const written = fakeFs._files.get(desktopPath).content;
     expect(written).toContain('Icon=claude-terminal');
+  });
+
+  test('adopts and rewrites a pre-v1.2.8 legacy .desktop on first run', () => {
+    // Reproduces the real-world scenario: a user installed before v1.2.8 and
+    // had a hand-maintained `.desktop` pointing at the AppImage, but without
+    // our marker. After upgrading, the first launch should adopt it — not
+    // skip silently — so subsequent updates flow through the managed path.
+    const fakeFs = makeFakeFs();
+    fakeFs._seed(iconSourcePath, 'PNGDATA');
+    const legacyContent = [
+      '[Desktop Entry]',
+      'Name=Claude Terminal',
+      'Exec=/home/user/Applications/Claude-Terminal.AppImage --no-sandbox %U',
+      'Type=Application',
+      '',
+    ].join('\n');
+    fakeFs._seed(desktopPath, legacyContent);
+
+    const result = install({
+      home, appImagePath, iconSourcePath, version,
+      fsImpl: fakeFs, refreshFn: () => {},
+    });
+
+    expect(result.written).toBe(true);
+    const written = fakeFs._files.get(desktopPath).content;
+    expect(written).toContain(MANAGED_MARKER);
+    expect(written).toContain(`Exec="${appImagePath}" --no-sandbox %U`);
+    expect(written).not.toBe(legacyContent);
   });
 });
 
