@@ -69,13 +69,35 @@ function buildDesktopFileContent({ appImagePath, iconPath, version }) {
 }
 
 /**
+ * Detect a pre-v1.2.8 `.desktop` entry that this app should adopt.
+ *
+ * Pre-v1.2.8 users — and the workaround scripts that circulated before this
+ * service existed — created `.desktop` files by hand. They never carry the
+ * managed marker, but they unmistakably target this AppImage. Without
+ * adopting them, the integration treats them as user-maintained forever and
+ * the icon silently breaks on every update. The heuristic is intentionally
+ * narrow: same Name, and Exec pointing at a `Claude-Terminal*.AppImage`.
+ * Anything else (custom Name, wrapper script, different binary) is left
+ * alone — false negatives are safe, false positives are not.
+ *
+ * @param {string} content
+ * @returns {boolean}
+ */
+function looksLikeLegacyClaudeTerminalDesktop(content) {
+  if (!content || !content.includes('[Desktop Entry]')) return false;
+  if (!/^Name=Claude Terminal\s*$/m.test(content)) return false;
+  return /^Exec=["']?\S*\bClaude-Terminal(-[\w.]+)?\.AppImage\b/m.test(content);
+}
+
+/**
  * Decide whether the existing `.desktop` should be rewritten.
  * Pure function — easy to unit test.
  *
  * Rules:
- *   - No existing file      -> write.
- *   - Managed by us & stale -> write.
- *   - User-maintained       -> leave it alone.
+ *   - No existing file               -> write.
+ *   - Managed by us & stale          -> write.
+ *   - Pre-v1.2.8 legacy (no marker)  -> adopt once.
+ *   - Otherwise user-maintained      -> leave it alone.
  *
  * @param {string|null} existingContent
  * @param {string}      newContent
@@ -83,8 +105,10 @@ function buildDesktopFileContent({ appImagePath, iconPath, version }) {
  */
 function shouldWriteDesktopFile(existingContent, newContent) {
   if (!existingContent) return true;
-  if (!existingContent.includes(MANAGED_MARKER)) return false;
-  return existingContent !== newContent;
+  if (existingContent.includes(MANAGED_MARKER)) {
+    return existingContent !== newContent;
+  }
+  return looksLikeLegacyClaudeTerminalDesktop(existingContent);
 }
 
 /**
@@ -232,6 +256,7 @@ module.exports = {
   install,
   buildDesktopFileContent,
   shouldWriteDesktopFile,
+  looksLikeLegacyClaudeTerminalDesktop,
   resolveBundledIconPath,
   // Exported constants for tests.
   _internals: { APP_NAME, DESKTOP_FILE_NAME, ICON_FILE_NAME, MANAGED_MARKER },
