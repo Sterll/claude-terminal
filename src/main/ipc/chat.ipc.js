@@ -46,6 +46,17 @@ function registerChatHandlers() {
     chatService.interrupt(sessionId);
   });
 
+  // Close the active SDK session before swapping the OAuth account on disk,
+  // so the next chat-start picks up the new credentials cleanly.
+  ipcMain.handle('chat-prepare-switch-account', async (_event, { sessionId }) => {
+    try {
+      const ctx = chatService.prepareSwitchAccount(sessionId);
+      return { success: true, context: ctx };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
   // Enable always-allow mode for a session
   ipcMain.on('chat-always-allow', (_event, { sessionId }) => {
     chatService.setAlwaysAllow(sessionId);
@@ -119,6 +130,16 @@ function registerChatHandlers() {
     } catch (err) {
       console.error('[claude-md-apply] Error:', err.message);
       return { success: false, error: err.message };
+    }
+  });
+
+  // Analyze a project freshly added to a workspace (auto-documentation + concept links)
+  ipcMain.handle('workspace-analyze-project', async (_event, params) => {
+    try {
+      return await chatService.analyzeProjectForWorkspace(params || {});
+    } catch (err) {
+      console.error('[workspace-analyze-project] Error:', err.message);
+      return { error: err.message };
     }
   });
 

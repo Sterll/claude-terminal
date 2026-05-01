@@ -52,6 +52,15 @@ function registerUsageHandlers() {
       mainWindow.webContents.send('usage-data-updated', { data, lastFetch: new Date().toISOString() });
     }
   });
+
+  // Proactive notification when a usage bucket crosses the threshold,
+  // so the renderer can offer to switch accounts before a 429 occurs.
+  usageService.onLimit((alert) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    let activeAccountId = null;
+    try { activeAccountId = require('../services/AccountManager').listAccounts().activeId; } catch (_) {}
+    mainWindow.webContents.send('usage-limit-reached', { ...alert, activeAccountId });
+  });
 }
 
 module.exports = { registerUsageHandlers, setMainWindow };

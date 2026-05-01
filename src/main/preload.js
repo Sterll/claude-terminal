@@ -517,6 +517,17 @@ contextBridge.exposeInMainWorld('electron_api', {
     exportSession: (params) => ipcRenderer.invoke('claude-export-session', params)
   },
 
+  // ==================== ACCOUNTS (multi Claude OAuth) ====================
+  accounts: {
+    list: () => ipcRenderer.invoke('accounts-list'),
+    capture: (name) => ipcRenderer.invoke('accounts-capture', { name }),
+    switch: (id) => ipcRenderer.invoke('accounts-switch', { id }),
+    rename: (id, name) => ipcRenderer.invoke('accounts-rename', { id, name }),
+    remove: (id) => ipcRenderer.invoke('accounts-remove', { id }),
+    syncActive: () => ipcRenderer.invoke('accounts-sync-active'),
+    onChanged: createListener('accounts-changed')
+  },
+
   // ==================== CHAT (Agent SDK) ====================
   chat: {
     start: (params) => ipcRenderer.invoke('chat-start', params),
@@ -529,6 +540,8 @@ contextBridge.exposeInMainWorld('electron_api', {
     setEffort: (params) => ipcRenderer.invoke('chat-set-effort', params),
     onMessage: createListener('chat-message'),
     onError: createListener('chat-error'),
+    onAccountLimit: createListener('chat-account-limit'),
+    prepareSwitchAccount: (params) => ipcRenderer.invoke('chat-prepare-switch-account', params),
     onDone: createListener('chat-done'),
     onIdle: createListener('chat-idle'),
     onInitializing: createListener('chat-initializing'),
@@ -545,6 +558,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     analyzeSession: (params) => ipcRenderer.invoke('chat-analyze-session', params),
     applyClaudeMd: (params) => ipcRenderer.invoke('claude-md-apply', params),
     analyzeSessionForWorkspace: (params) => ipcRenderer.invoke('workspace-analyze-session', params),
+    analyzeProjectForWorkspace: (params) => ipcRenderer.invoke('workspace-analyze-project', params),
   },
 
   // ==================== HOOKS ====================
@@ -638,7 +652,8 @@ contextBridge.exposeInMainWorld('electron_api', {
     refresh: () => ipcRenderer.invoke('refresh-usage'),
     startMonitor: (intervalMs) => ipcRenderer.invoke('start-usage-monitor', intervalMs),
     stopMonitor: () => ipcRenderer.invoke('stop-usage-monitor'),
-    onDataUpdated: (callback) => ipcRenderer.on('usage-data-updated', (event, data) => callback(data))
+    onDataUpdated: (callback) => ipcRenderer.on('usage-data-updated', (event, data) => callback(data)),
+    onLimitReached: createListener('usage-limit-reached')
   },
 
   // ==================== QUICK PICKER ====================

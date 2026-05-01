@@ -14,6 +14,9 @@ let lastFetch = null;
 let fetchInterval = null;
 let isFetching = false;
 let _onUpdateCallback = null;
+let _onLimitCallback = null;
+// De-dupe limit notifications until the next reset window
+let _lastLimitNotifiedReset = null;
 
 const USAGE_API_URL = 'https://api.anthropic.com/api/oauth/usage';
 const OAUTH_BETA_HEADER = 'oauth-2025-04-20';
@@ -123,6 +126,7 @@ async function fetchUsage() {
         lastFetch = new Date();
         console.log('[Usage] Fetched via API');
         if (_onUpdateCallback) _onUpdateCallback(data);
+        _maybeNotifyLimit(data);
         return data;
       } catch (apiErr) {
         console.log('[Usage] API failed, falling back to PTY:', apiErr.message);
@@ -213,6 +217,36 @@ function onUpdate(cb) {
   _onUpdateCallback = cb;
 }
 
+/**
+ * Register a callback fired when a usage threshold is crossed.
+ * Invoked at most once per reset window per scope (session / weekly).
+ * @param {Function} cb - cb({ scope, utilization, resetsAt })
+ */
+function onLimit(cb) {
+  _onLimitCallback = cb;
+}
+
+const LIMIT_THRESHOLD = 0.95; // 95%
+
+function _maybeNotifyLimit(data) {
+  if (!_onLimitCallback || !data) return;
+  // Pick the most-pressured bucket
+  const candidates = [
+    { scope: 'session', utilization: data.session, resetsAt: data.sessionReset },
+    { scope: 'weekly',  utilization: data.weekly,  resetsAt: data.weeklyReset  },
+    { scope: 'sonnet',  utilization: data.sonnet,  resetsAt: data.sonnetReset  },
+  ].filter(c => typeof c.utilization === 'number' && c.utilization >= LIMIT_THRESHOLD);
+  if (!candidates.length) return;
+  // Most utilized first
+  candidates.sort((a, b) => b.utilization - a.utilization);
+  const top = candidates[0];
+  // De-dupe per reset window
+  const key = `${top.scope}:${top.resetsAt || ''}`;
+  if (key === _lastLimitNotifiedReset) return;
+  _lastLimitNotifiedReset = key;
+  try { _onLimitCallback(top); } catch (e) { console.error('[Usage] onLimit cb threw:', e.message); }
+}
+
 module.exports = {
   startPeriodicFetch,
   stopPeriodicFetch,
@@ -220,5 +254,6 @@ module.exports = {
   refreshUsage,
   fetchUsage,
   onWindowShow,
-  onUpdate
+  onUpdate,
+  onLimit
 };

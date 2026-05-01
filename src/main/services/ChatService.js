@@ -776,7 +776,15 @@ class ChatService {
         if (stderrLog && err.message?.includes('exited with code')) {
           errorMsg += `\n\nDetails: ${stderrLog.trim().slice(0, 500)}`;
         }
-        this._send('chat-error', { sessionId, error: errorMsg });
+        const errorType = this._isUsageLimitError(err.message, stderrLog) ? 'usage_limit' : 'generic';
+        if (errorType === 'usage_limit') {
+          let activeAccountId = null;
+          try {
+            activeAccountId = require('./AccountManager').listAccounts().activeId;
+          } catch (_) { /* AccountManager not initialized yet */ }
+          this._send('chat-account-limit', { sessionId, error: errorMsg, activeAccountId });
+        }
+        this._send('chat-error', { sessionId, error: errorMsg, errorType });
         this._emitLifecycle('end', sessionId, { status: 'error', error: errorMsg });
       }
     } finally {
@@ -789,6 +797,37 @@ class ChatService {
         this._remoteEventCallback('session:closed', { sessionId });
       }
     }
+  }
+
+  /**
+   * Detect Claude usage / rate-limit errors so the UI can offer an account switch.
+   * Combines SDK error message and accumulated stderr (the SDK often surfaces
+   * the API error there before exiting with a non-zero code).
+   */
+  _isUsageLimitError(rawError, stderrLog = '') {
+    const haystack = `${rawError || ''}\n${stderrLog || ''}`.toLowerCase();
+    return haystack.includes('429')
+      || haystack.includes('rate limit')
+      || haystack.includes('rate_limit')
+      || haystack.includes('too many requests')
+      || haystack.includes('usage limit')
+      || haystack.includes('weekly limit')
+      || haystack.includes('quota');
+  }
+
+  /**
+   * Close the active SDK session for `sessionId` so the renderer can re-open
+   * it (with `resumeSessionId`) under freshly swapped credentials. Returns the
+   * cwd / projectId / model context the caller should reuse.
+   */
+  prepareSwitchAccount(sessionId) {
+    const session = this.sessions.get(sessionId);
+    const ctx = session ? {
+      cwd: session.cwd || null,
+      projectId: session.projectId || null,
+    } : null;
+    this.closeSession(sessionId);
+    return ctx;
   }
 
   /**
@@ -1749,6 +1788,159 @@ If there are no new useful discoveries, return exactly: []`;
    * @param {Array} existingDocs - [{ title, summary }]
    * @returns {{ suggestions: Array<{ title, content, isUpdate }> }}
    */
+  async analyzeProjectForWorkspace({ projectPath, projectName, projectType, workspace, workspaceProjects = [], existingDocs = [] }) {
+    if (!projectPath) return { error: 'No project path provided' };
+
+    const fs = require('fs');
+    const path = require('path');
+
+    const readSnippet = (p, max) => {
+      try {
+        const raw = fs.readFileSync(p, 'utf8');
+        return raw.length > max ? raw.slice(0, max) + '\n...[truncated]' : raw;
+      } catch { return null; }
+    };
+
+    const pkgJson = readSnippet(path.join(projectPath, 'package.json'), 2000);
+    const readme = readSnippet(path.join(projectPath, 'README.md'), 2500)
+      || readSnippet(path.join(projectPath, 'readme.md'), 2500);
+    const claudeMd = readSnippet(path.join(projectPath, 'CLAUDE.md'), 1500);
+
+    let topLevel = [];
+    try {
+      topLevel = fs.readdirSync(projectPath, { withFileTypes: true })
+        .filter(d => !d.name.startsWith('.') && d.name !== 'node_modules')
+        .slice(0, 40)
+        .map(d => `${d.isDirectory() ? 'D' : 'F'} ${d.name}`);
+    } catch {}
+
+    const projectsContext = workspaceProjects.length > 0
+      ? workspaceProjects.map(p => `- id="${p.id}" name="${p.name}"${p.type ? ` type=${p.type}` : ''}`).join('\n')
+      : '(none)';
+
+    const docsContext = existingDocs.length > 0
+      ? existingDocs.map(d => `- id="${d.id}" title="${d.title}" summary="${(d.summary || '').slice(0, 120)}"`).join('\n')
+      : '(none)';
+
+    const prompt = `You are analyzing a project that was just added to the workspace "${workspace.name}"${workspace.description ? ` (${workspace.description})` : ''}.
+
+PROJECT METADATA
+- name: ${projectName || 'unknown'}
+- type: ${projectType || 'unknown'}
+- path: ${projectPath}
+
+TOP-LEVEL STRUCTURE
+${topLevel.length > 0 ? topLevel.join('\n') : '(unavailable)'}
+
+${pkgJson ? `package.json:\n<file>\n${pkgJson}\n</file>\n\n` : ''}${readme ? `README.md:\n<file>\n${readme}\n</file>\n\n` : ''}${claudeMd ? `CLAUDE.md:\n<file>\n${claudeMd}\n</file>\n\n` : ''}OTHER PROJECTS IN WORKSPACE
+${projectsContext}
+
+EXISTING WORKSPACE DOCS
+${docsContext}
+
+INSTRUCTIONS
+- Produce a concise documentation entry for this project (markdown, 8-25 lines).
+- Cover: stack, role/purpose, key integrations, notable conventions.
+- Suggest 0-3 concept links to OTHER projects in this workspace if you detect a clear relationship (shared deps, API consumption, type reuse). Use only IDs from the OTHER PROJECTS list above. Skip if no clear link.
+- Reasonable labels: "depends-on", "consumes-api", "shares-types", "extends", "deploys-with".
+
+Return ONLY valid JSON in this exact shape:
+{
+  "title": "Project Name - Overview",
+  "content": "## Stack\\n...\\n## Role\\n...",
+  "tags": ["tag1", "tag2"],
+  "links": [
+    { "targetProjectId": "proj-xxx", "label": "depends-on", "description": "short reason" }
+  ]
+}
+
+If the project is too unclear to document, return: { "title": "", "content": "", "tags": [], "links": [] }`;
+
+    try {
+      const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(require('os').homedir(), '.claude');
+      const credPath = path.join(claudeDir, '.credentials.json');
+      let apiKey = null;
+      try {
+        const creds = JSON.parse(fs.readFileSync(credPath, 'utf8'));
+        const oauthCreds = creds.claudeAiOauth;
+        if (oauthCreds?.accessToken) {
+          if (!oauthCreds.expiresAt || oauthCreds.expiresAt > Date.now() + 60000) {
+            apiKey = oauthCreds.accessToken;
+          }
+        } else {
+          apiKey = creds.accessToken || null;
+        }
+      } catch {}
+
+      if (!apiKey) {
+        return { error: 'No Claude credentials available' };
+      }
+
+      const abortController = new AbortController();
+      const timeoutId = setTimeout(() => abortController.abort(), 30000);
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        signal: abortController.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'oauth-2025-04-20',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 1500,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        return { error: `API error: ${response.status}` };
+      }
+
+      const data = await response.json();
+      const text = data.content?.[0]?.text || '';
+
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return { error: 'No JSON in response' };
+
+      let result;
+      try {
+        result = JSON.parse(jsonMatch[0]);
+      } catch {
+        return { error: 'Invalid JSON in response' };
+      }
+
+      if (!result || typeof result.content !== 'string' || !result.content.trim()) {
+        return { error: 'Empty content' };
+      }
+
+      const validProjectIds = new Set(workspaceProjects.map(p => p.id));
+      const links = Array.isArray(result.links)
+        ? result.links
+            .filter(l => l && validProjectIds.has(l.targetProjectId) && typeof l.label === 'string')
+            .slice(0, 3)
+        : [];
+
+      return {
+        suggestion: {
+          title: (result.title || `${projectName} - Overview`).slice(0, 100),
+          content: result.content.trim(),
+          tags: Array.isArray(result.tags) ? result.tags.filter(t => typeof t === 'string').slice(0, 6) : [],
+          links: links.map(l => ({
+            targetProjectId: l.targetProjectId,
+            label: l.label.slice(0, 32),
+            description: typeof l.description === 'string' ? l.description.slice(0, 200) : ''
+          }))
+        }
+      };
+    } catch (err) {
+      console.warn('[ChatService] Project analysis failed:', err.message);
+      return { error: err.message };
+    }
+  }
+
   async analyzeSessionForWorkspace(messages, workspace, existingDocs) {
     const truncated = messages.slice(-50);
     const conversationText = truncated.map(m => {
