@@ -347,6 +347,8 @@ class ChatView extends BaseComponent {
   let pendingResumeId = resumeSessionId || null;
   let pendingForkSession = forkSession || false;
   let pendingResumeAt = resumeSessionAt || null;
+  let lastStartOpts = null; // cached so we can re-launch the SDK after an account switch
+  let switchingAccount = false; // suppress error UI while we hot-swap credentials
   let tabNamePending = false; // avoid concurrent tab name requests
   let currentStreamEl = null;
   let currentStreamText = '';
@@ -2792,6 +2794,8 @@ class ChatView extends BaseComponent {
           startOpts.prompt = forceInstr + (startOpts.prompt || '');
           _forceParallelTask = false;
         }
+        // Stash for potential account-switch restart (preserve cwd/model/effort/etc.)
+        lastStartOpts = { ...startOpts };
         const result = await api.chat.start(startOpts);
         if (!result.success) {
           sessionId = null;
@@ -5307,7 +5311,7 @@ class ChatView extends BaseComponent {
 
   // ── IPC: Error ──
 
-  const unsubError = api.chat.onError(({ sessionId: sid, error }) => {
+  const unsubError = api.chat.onError(({ sessionId: sid, error, errorType }) => {
     if (sid !== sessionId) return;
     removeThinkingIndicator();
     finalizeStreamBlock();
@@ -5319,13 +5323,58 @@ class ChatView extends BaseComponent {
       completeSubagentCard(info.card);
       taskToolIndices.delete(idx);
     }
-    if (!isAborting) {
+    // The dedicated chat-account-limit handler will surface the switch modal
+    // and replay the turn — suppress the generic error banner in that case.
+    if (!isAborting && !switchingAccount && errorType !== 'usage_limit') {
       appendError(error);
     }
     isAborting = false;
     setStreaming(false);
   });
   unsubscribers.push(unsubError);
+
+  // ── IPC: Usage / rate limit reached → propose account switch ──
+
+  const unsubAccountLimit = api.chat.onAccountLimit(async ({ sessionId: sid, error, activeAccountId }) => {
+    if (sid !== sessionId) return;
+    if (switchingAccount) return;
+    switchingAccount = true;
+    try {
+      const { showAccountSwitchModal } = require('./AccountSwitchModal');
+      const newId = await showAccountSwitchModal({
+        reason: error || t('accounts.limitReached') || 'Usage limit reached on the active account.',
+        activeAccountId
+      });
+      if (!newId) {
+        appendError(error || t('chat.errorOccurred'));
+        return;
+      }
+      // Tell main to close the SDK process so the new credentials take effect
+      const prep = await api.chat.prepareSwitchAccount({ sessionId });
+      if (!prep.success) {
+        appendError(prep.error || 'Failed to prepare session for account switch.');
+        return;
+      }
+      // Re-launch the same session with the new account
+      if (!lastStartOpts) {
+        appendSystemNotice(t('accounts.switched') || 'Account switched. Send a new message to continue.', 'info');
+        sessionId = null;
+        return;
+      }
+      const restartOpts = { ...lastStartOpts, prompt: '', resumeSessionId: sessionId };
+      appendSystemNotice(t('accounts.switched') || 'Account switched. Resuming…', 'info');
+      setStreaming(true);
+      appendThinkingIndicator();
+      const res = await api.chat.start(restartOpts);
+      if (!res.success) {
+        appendError(res.error || t('chat.errorOccurred'));
+        setStreaming(false);
+      }
+    } finally {
+      switchingAccount = false;
+    }
+  });
+  unsubscribers.push(unsubAccountLimit);
 
   // ── IPC: Done ──
 

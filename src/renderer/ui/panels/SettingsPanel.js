@@ -979,6 +979,18 @@ class SettingsPanel extends BasePanel {
           </div>
           <!-- Claude Tab -->
           <div class="settings-panel ${initialTab === 'claude' ? 'active' : ''}" data-panel="claude">
+            <div class="settings-group" data-section="accounts">
+              <div class="settings-group-title">${t('settings.accountsGroup') || 'Claude accounts'}</div>
+              <div class="settings-card">
+                <div class="settings-desc" style="padding: 8px 16px;">${t('settings.accountsDesc') || 'Save the credentials currently active in ~/.claude/.credentials.json so you can switch between them when one hits its usage limit. Run "claude /login" in a terminal to add a new account.'}</div>
+                <div class="accounts-list" id="claude-accounts-list">
+                  <div class="settings-desc" style="padding: 12px 16px;">${t('common.loading') || 'Loading…'}</div>
+                </div>
+                <div style="display: flex; gap: 8px; padding: 8px 16px 16px;">
+                  <button class="btn btn-secondary" id="btn-account-capture">${t('accounts.captureCurrent') || 'Save current account'}</button>
+                </div>
+              </div>
+            </div>
             <div class="settings-group">
               <div class="settings-group-title">${t('settings.executionMode')}</div>
               <div class="settings-card">
@@ -1389,6 +1401,9 @@ class SettingsPanel extends BasePanel {
         document.getElementById('dangerous-warning').style.display = card.dataset.mode === 'dangerous' ? 'flex' : 'none';
       };
     });
+
+    // Claude accounts section — wire async list + actions
+    this._wireAccountsSection(container);
 
     container.querySelectorAll('.terminal-mode-card').forEach(card => {
       card.onclick = () => {
@@ -1967,6 +1982,101 @@ class SettingsPanel extends BasePanel {
         }
       };
     }
+  }
+
+  // ── Claude accounts section ──
+
+  async _wireAccountsSection(container) {
+    const listEl = container.querySelector('#claude-accounts-list');
+    if (!listEl) return;
+    const captureBtn = container.querySelector('#btn-account-capture');
+
+    const renderList = async () => {
+      const res = await this.api.accounts.list();
+      if (!res.success) {
+        listEl.innerHTML = `<div class="settings-desc" style="padding: 12px 16px; color: var(--danger);">${escapeHtml(res.error || 'Failed to load accounts')}</div>`;
+        return;
+      }
+      const { accounts, activeId, hasCredentials } = res.data;
+      if (!accounts.length) {
+        listEl.innerHTML = `
+          <div class="settings-desc" style="padding: 12px 16px;">
+            ${escapeHtml(t('accounts.emptyHint') || 'No saved accounts yet. Open a terminal, run "claude /login", then click "Save current account".')}
+          </div>`;
+        if (captureBtn) captureBtn.disabled = !hasCredentials;
+        return;
+      }
+      listEl.innerHTML = accounts.map(a => `
+        <div class="account-row${a.id === activeId ? ' active' : ''}" data-id="${a.id}">
+          <div class="account-row-main">
+            <div class="account-row-name">${escapeHtml(a.name)}</div>
+            <div class="account-row-meta">${escapeHtml((a.fingerprint || '').slice(0, 8))}${a.lastUsedAt ? ` &middot; ${escapeHtml(new Date(a.lastUsedAt).toLocaleString())}` : ''}</div>
+          </div>
+          <div class="account-row-buttons">
+            ${a.id === activeId
+              ? `<span class="account-row-status">${escapeHtml(t('accounts.active') || 'Active')}</span>`
+              : `<button class="btn btn-secondary btn-sm" data-action="switch" data-id="${a.id}">${escapeHtml(t('accounts.switch') || 'Switch')}</button>`}
+            <button class="btn btn-secondary btn-sm" data-action="rename" data-id="${a.id}">${escapeHtml(t('common.rename') || 'Rename')}</button>
+            <button class="btn btn-secondary btn-sm" data-action="remove" data-id="${a.id}">${escapeHtml(t('common.delete') || 'Delete')}</button>
+          </div>
+        </div>
+      `).join('');
+      if (captureBtn) captureBtn.disabled = !hasCredentials;
+    };
+
+    listEl.onclick = async (e) => {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      const id = btn.dataset.id;
+      if (action === 'switch') {
+        btn.disabled = true;
+        const r = await this.api.accounts.switch(id);
+        if (!r.success) { alert(r.error || 'Switch failed'); btn.disabled = false; return; }
+        await renderList();
+      } else if (action === 'rename') {
+        const { showPrompt } = require('../components/Modal');
+        const newName = await showPrompt({
+          title: t('common.rename') || 'Rename',
+          defaultValue: btn.closest('.account-row')?.querySelector('.account-row-name')?.textContent || ''
+        });
+        if (!newName) return;
+        const r = await this.api.accounts.rename(id, newName);
+        if (!r.success) { alert(r.error || 'Rename failed'); return; }
+        await renderList();
+      } else if (action === 'remove') {
+        const { showConfirm } = require('../components/Modal');
+        const ok = await showConfirm({
+          title: t('common.delete') || 'Delete',
+          message: t('accounts.removeConfirm') || 'Remove this saved account? The credentials will be deleted from local storage.'
+        });
+        if (!ok) return;
+        const r = await this.api.accounts.remove(id);
+        if (!r.success) { alert(r.error || 'Remove failed'); return; }
+        await renderList();
+      }
+    };
+
+    if (captureBtn) {
+      captureBtn.onclick = async () => {
+        const { showPrompt } = require('../components/Modal');
+        const name = await showPrompt({
+          title: t('accounts.captureTitle') || 'Save current account',
+          message: t('accounts.captureMessage') || 'Give this account a name. The credentials currently active in ~/.claude/.credentials.json will be saved under this name.',
+          placeholder: 'e.g. Personal, Work…'
+        });
+        if (!name) return;
+        const r = await this.api.accounts.capture(name);
+        if (!r.success) { alert(r.error || 'Capture failed'); return; }
+        await renderList();
+      };
+    }
+
+    // Live refresh when accounts change elsewhere (e.g. via switch modal)
+    const unsub = this.api.accounts.onChanged(() => renderList());
+    this._cleanups.push(unsub);
+
+    await renderList();
   }
 
   // ── BasePanel lifecycle ──

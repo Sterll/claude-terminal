@@ -846,6 +846,8 @@
     "modeAutonomous": "Modo autónomo",
     "modeAutonomousDesc": "Claude ejecuta sin confirmación",
     "modeAutonomousWarning": "Este modo permite a Claude ejecutar comandos sin aprobación.",
+    "accountsGroup": "Cuentas Claude",
+    "accountsDesc": "Guarda las credenciales actualmente activas en ~/.claude/.credentials.json para poder cambiar entre ellas cuando una alcance su límite de uso. Ejecuta \"claude /login\" en un terminal para añadir una nueva cuenta.",
     "githubAccount": "Cuenta GitHub",
     "githubDisconnect": "Desconectar",
     "githubConnect": "Conectar",
@@ -1883,6 +1885,11 @@
     "enrichView": "Ver",
     "enrichError": "Error al analizar la conversación para enriquecer el espacio de trabajo.",
     "addToWorkspace": "Añadir a un espacio de trabajo...",
+    "addedToWorkspace": "Añadido al espacio \"{name}\"",
+    "analyzeProjectAction": "Documentar",
+    "analyzingProject": "Analizando \"{name}\"...",
+    "analyzeProjectDone": "Doc generada: {title} ({links} enlace(s))",
+    "analyzeProjectError": "Error al analizar el proyecto",
     "badge": "ET"
   },
   "errorLog": {
@@ -3291,6 +3298,18 @@
   },
   "toast": {
     "undo": "Deshacer"
+  },
+  "accounts": {
+    "switchTitle": "Cambiar de cuenta Claude",
+    "active": "Activa",
+    "switch": "Cambiar",
+    "captureCurrent": "Guardar la cuenta actual",
+    "captureTitle": "Guardar la cuenta actual",
+    "captureMessage": "Da un nombre a esta cuenta. Las credenciales actualmente activas en ~/.claude/.credentials.json se guardarán con este nombre.",
+    "emptyHint": "Aún no hay cuentas guardadas. Abre un terminal, ejecuta \"claude /login\", luego haz clic en \"Guardar la cuenta actual\".",
+    "limitReached": "Límite de uso alcanzado en la cuenta activa.",
+    "switched": "Cuenta cambiada. Reanudando…",
+    "removeConfirm": "¿Eliminar esta cuenta guardada? Las credenciales se borrarán del almacenamiento local."
   },
   "github": {
     "runWorkflow": "Ejecutar workflow",

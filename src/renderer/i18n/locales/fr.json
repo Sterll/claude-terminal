@@ -942,6 +942,8 @@
     "modeAutonomous": "Mode autonome",
     "modeAutonomousDesc": "Claude exécute sans confirmation",
     "modeAutonomousWarning": "Ce mode permet à Claude d'exécuter des commandes sans validation.",
+    "accountsGroup": "Comptes Claude",
+    "accountsDesc": "Sauvegardez les identifiants actuellement actifs dans ~/.claude/.credentials.json pour pouvoir basculer entre eux quand l'un atteint sa limite d'usage. Lancez \"claude /login\" dans un terminal pour ajouter un nouveau compte.",
     "githubAccount": "Compte GitHub",
     "githubDisconnect": "Déconnecter",
     "githubConnect": "Connecter",
@@ -1896,6 +1898,11 @@
     "enrichView": "Voir",
     "enrichError": "Erreur lors de l'analyse de la conversation pour l'enrichissement.",
     "addToWorkspace": "Ajouter au workspace...",
+    "addedToWorkspace": "Ajoute au workspace \"{name}\"",
+    "analyzeProjectAction": "Documenter",
+    "analyzingProject": "Analyse de \"{name}\" en cours...",
+    "analyzeProjectDone": "Doc generee : {title} ({links} lien(s))",
+    "analyzeProjectError": "Echec de l'analyse du projet",
     "badge": "WS"
   },
   "errorLog": {
@@ -3301,6 +3308,18 @@
     "create": "Créer le CLAUDE.md",
     "willCreate": "Le fichier CLAUDE.md sera créé dans le projet.",
     "noSuggestions": "Aucune nouvelle découverte détectée."
+  },
+  "accounts": {
+    "switchTitle": "Changer de compte Claude",
+    "active": "Actif",
+    "switch": "Basculer",
+    "captureCurrent": "Sauvegarder le compte actuel",
+    "captureTitle": "Sauvegarder le compte actuel",
+    "captureMessage": "Donnez un nom à ce compte. Les identifiants actuellement actifs dans ~/.claude/.credentials.json seront sauvegardés sous ce nom.",
+    "emptyHint": "Aucun compte enregistré. Ouvrez un terminal, lancez \"claude /login\", puis cliquez sur \"Sauvegarder le compte actuel\".",
+    "limitReached": "Limite d'usage atteinte sur le compte actif.",
+    "switched": "Compte changé. Reprise…",
+    "removeConfirm": "Supprimer ce compte enregistré ? Les identifiants seront effacés du stockage local."
   },
   "github": {
     "runWorkflow": "Lancer un workflow",

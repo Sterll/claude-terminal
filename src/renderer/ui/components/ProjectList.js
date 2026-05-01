@@ -938,8 +938,9 @@ class ProjectList extends BaseComponent {
           self.closeAllMoreActionsMenus();
           if (project) self._showProjectSettings(project);
         } else if (btn.classList.contains('btn-add-to-workspace')) {
+          const anchorRect = btn.getBoundingClientRect();
           self.closeAllMoreActionsMenus();
-          self._showAddToWorkspaceMenu(btn, projectId);
+          self._showAddToWorkspaceMenu(anchorRect, projectId);
         } else if (btn.classList.contains('btn-archive-project')) {
           const project = getProject(projectId);
           self.closeAllMoreActionsMenus();
@@ -1341,7 +1342,7 @@ class ProjectList extends BaseComponent {
     this._attachListeners(list);
   }
 
-  _showAddToWorkspaceMenu(anchorEl, projectId) {
+  _showAddToWorkspaceMenu(anchorRect, projectId) {
     const { workspaceState, addProjectToWorkspace } = require('../../state/workspace.state');
     const workspaces = workspaceState.get().workspaces || [];
     const alreadyIn = getWorkspacesForProject(projectId).map(w => w.id);
@@ -1367,7 +1368,6 @@ class ProjectList extends BaseComponent {
 
     document.body.appendChild(menu);
 
-    const anchorRect = anchorEl.getBoundingClientRect();
     menu.style.left = `${anchorRect.right + 4}px`;
     menu.style.top = `${anchorRect.top}px`;
 
@@ -1375,13 +1375,21 @@ class ProjectList extends BaseComponent {
     if (menuRect.right > window.innerWidth) menu.style.left = `${anchorRect.left - menuRect.width - 4}px`;
     if (menuRect.bottom > window.innerHeight) menu.style.top = `${window.innerHeight - menuRect.height - 4}px`;
 
+    const self = this;
     menu.onclick = (ev) => {
       const item = ev.target.closest('.editor-ctx-item');
       if (item && !item.disabled) {
         const wsId = item.dataset.wsId;
         addProjectToWorkspace(wsId, projectId);
         menu.remove();
-        Toast.showToast({ message: t('workspace.projectsCount', { count: '1' }) + ' +', type: 'success' });
+        const ws = workspaces.find(w => w.id === wsId);
+        Toast.showToast({
+          message: t('workspace.addedToWorkspace', { name: ws ? ws.name : '' }),
+          type: 'success',
+          duration: 9000,
+          action: t('workspace.analyzeProjectAction'),
+          onAction: () => self._runProjectAnalysis(wsId, projectId)
+        });
         if (this._callbacks.onRenderProjects) this._callbacks.onRenderProjects();
       }
     };
@@ -1401,6 +1409,77 @@ class ProjectList extends BaseComponent {
       }
     };
     setTimeout(() => document.addEventListener('click', closeMenu, true), 0);
+  }
+
+  async _runProjectAnalysis(workspaceId, projectId) {
+    const api = window.electron_api;
+    const { workspaceState, addDoc, addLink } = require('../../state/workspace.state');
+    const project = getProject(projectId);
+    const ws = (workspaceState.get().workspaces || []).find(w => w.id === workspaceId);
+    if (!project || !ws) return;
+
+    const otherProjectIds = (ws.projectIds || []).filter(id => id !== projectId);
+    const workspaceProjects = otherProjectIds
+      .map(id => getProject(id))
+      .filter(Boolean)
+      .map(p => ({ id: p.id, name: p.name, type: p.type }));
+
+    const progressToast = Toast.showToast({
+      message: t('workspace.analyzingProject', { name: project.name }),
+      type: 'info',
+      duration: 0
+    });
+
+    try {
+      const overview = await api.workspace.overview(ws.id);
+      const existingDocs = (overview.docs || []).map(d => ({ id: d.id, title: d.title, summary: d.summary || '' }));
+
+      const result = await api.chat.analyzeProjectForWorkspace({
+        projectPath: project.path,
+        projectName: project.name,
+        projectType: project.type,
+        workspace: { id: ws.id, name: ws.name, description: ws.description || '' },
+        workspaceProjects,
+        existingDocs
+      });
+
+      Toast.hideToast(progressToast);
+
+      if (result.error || !result.suggestion) {
+        Toast.showToast({ message: t('workspace.analyzeProjectError'), type: 'error' });
+        return;
+      }
+
+      const { title, content, tags, links } = result.suggestion;
+
+      const doc = await addDoc(ws.id, { title, content, tags });
+
+      for (const link of links) {
+        await addLink(ws.id, {
+          sourceType: 'doc',
+          sourceId: doc.id,
+          targetType: 'project',
+          targetId: link.targetProjectId,
+          label: link.label,
+          description: link.description
+        });
+      }
+
+      Toast.showToast({
+        message: t('workspace.analyzeProjectDone', { title, links: links.length }),
+        type: 'success',
+        duration: 8000,
+        action: t('workspace.enrichView'),
+        onAction: () => {
+          const wsTab = document.querySelector('[data-tab="workspaces"]');
+          if (wsTab) wsTab.click();
+        }
+      });
+    } catch (err) {
+      Toast.hideToast(progressToast);
+      console.warn('[ProjectList] Project analysis error:', err.message);
+      Toast.showToast({ message: t('workspace.analyzeProjectError'), type: 'error' });
+    }
   }
 
   destroy() {

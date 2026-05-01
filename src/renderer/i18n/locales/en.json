@@ -849,6 +849,8 @@
     "modeAutonomous": "Autonomous mode",
     "modeAutonomousDesc": "Claude executes without confirmation",
     "modeAutonomousWarning": "This mode allows Claude to run commands without approval.",
+    "accountsGroup": "Claude accounts",
+    "accountsDesc": "Save the credentials currently active in ~/.claude/.credentials.json so you can switch between them when one hits its usage limit. Run \"claude /login\" in a terminal to add a new account.",
     "githubAccount": "GitHub Account",
     "githubDisconnect": "Disconnect",
     "githubConnect": "Connect",
@@ -1896,6 +1898,11 @@
     "enrichView": "View",
     "enrichError": "Failed to analyze conversation for workspace enrichment.",
     "addToWorkspace": "Add to Workspace...",
+    "addedToWorkspace": "Added to workspace \"{name}\"",
+    "analyzeProjectAction": "Document",
+    "analyzingProject": "Analyzing \"{name}\"...",
+    "analyzeProjectDone": "Doc generated: {title} ({links} link(s))",
+    "analyzeProjectError": "Failed to analyze project",
     "badge": "WS"
   },
   "errorLog": {
@@ -3301,6 +3308,18 @@
     "create": "Create CLAUDE.md",
     "willCreate": "The CLAUDE.md file will be created in this project.",
     "noSuggestions": "No new discoveries detected."
+  },
+  "accounts": {
+    "switchTitle": "Switch Claude account",
+    "active": "Active",
+    "switch": "Switch",
+    "captureCurrent": "Save current account",
+    "captureTitle": "Save current account",
+    "captureMessage": "Give this account a name. The credentials currently active in ~/.claude/.credentials.json will be saved under this name.",
+    "emptyHint": "No saved accounts yet. Open a terminal, run \"claude /login\", then click \"Save current account\".",
+    "limitReached": "Usage limit reached on the active account.",
+    "switched": "Account switched. Resuming…",
+    "removeConfirm": "Remove this saved account? The credentials will be deleted from local storage."
   },
   "github": {
     "runWorkflow": "Run workflow",
