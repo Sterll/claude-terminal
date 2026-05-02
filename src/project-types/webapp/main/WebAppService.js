@@ -54,23 +54,32 @@ class WebAppService {
 
     this.processes.set(projectIndex, ptyProcess);
 
-    ptyProcess.onData(data => {
-      // Detect port from output
+    // Keep disposables so stop() can detach forwarding immediately and prevent
+    // the dying process from streaming into the next run during the 3s
+    // graceful-shutdown window.
+    const dataDisposable = ptyProcess.onData(data => {
       this._detectPort(projectIndex, data);
-
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
         this.mainWindow.webContents.send('webapp-data', { projectIndex, data });
       }
     });
 
-    ptyProcess.onExit(({ exitCode }) => {
+    const exitDisposable = ptyProcess.onExit(({ exitCode }) => {
+      try { dataDisposable && dataDisposable.dispose && dataDisposable.dispose(); } catch (e) {}
+      try { exitDisposable && exitDisposable.dispose && exitDisposable.dispose(); } catch (e) {}
       ptyProcess.kill();
-      this.processes.delete(projectIndex);
-      this.detectedPorts.delete(projectIndex);
+      // Only delete if this PTY is still the registered one — a restart may
+      // have already replaced it.
+      if (this.processes.get(projectIndex) === ptyProcess) {
+        this.processes.delete(projectIndex);
+        this.detectedPorts.delete(projectIndex);
+      }
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
         this.mainWindow.webContents.send('webapp-exit', { projectIndex, code: exitCode });
       }
     });
+
+    ptyProcess._disposables = [dataDisposable, exitDisposable];
 
     return { success: true, command };
   }
@@ -84,6 +93,14 @@ class WebAppService {
       const pid = proc.pid;
       this.processes.delete(projectIndex);
       this.detectedPorts.delete(projectIndex);
+      // Detach forwarding immediately so the dying process can't bleed output
+      // into the next run after a restart.
+      if (Array.isArray(proc._disposables)) {
+        for (const d of proc._disposables) {
+          try { d && d.dispose && d.dispose(); } catch (e) {}
+        }
+        proc._disposables = [];
+      }
       try {
         proc.write('\x03');
         setTimeout(() => {

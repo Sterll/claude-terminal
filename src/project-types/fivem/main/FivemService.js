@@ -96,21 +96,32 @@ class FivemService {
 
     this.processes.set(projectIndex, ptyProcess);
 
-    // Forward all data directly — no echo filtering needed (no shell wrapper)
-    ptyProcess.onData(data => {
+    // Forward all data directly — no echo filtering needed (no shell wrapper).
+    // Keep the disposable so we can detach when stopping, otherwise the old
+    // PTY would keep streaming data during the 3s graceful-shutdown window
+    // and mix into the next run after a restart.
+    const dataDisposable = ptyProcess.onData(data => {
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
         this.mainWindow.webContents.send('fivem-data', { projectIndex, data });
       }
     });
 
     // Handle exit
-    ptyProcess.onExit(({ exitCode }) => {
+    const exitDisposable = ptyProcess.onExit(({ exitCode }) => {
+      try { dataDisposable && dataDisposable.dispose && dataDisposable.dispose(); } catch (e) {}
+      try { exitDisposable && exitDisposable.dispose && exitDisposable.dispose(); } catch (e) {}
       ptyProcess.kill();
-      this.processes.delete(projectIndex);
+      // Only emit exit if this PTY is still the registered one — a restart
+      // may have already replaced it.
+      if (this.processes.get(projectIndex) === ptyProcess) {
+        this.processes.delete(projectIndex);
+      }
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
         this.mainWindow.webContents.send('fivem-exit', { projectIndex, code: exitCode });
       }
     });
+
+    ptyProcess._disposables = [dataDisposable, exitDisposable];
 
     return { success: true };
   }
@@ -126,6 +137,14 @@ class FivemService {
     if (proc) {
       const pid = proc.pid;
       this.processes.delete(projectIndex);
+      // Detach data forwarding immediately so the dying process can't bleed
+      // output into the next run after a restart.
+      if (Array.isArray(proc._disposables)) {
+        for (const d of proc._disposables) {
+          try { d && d.dispose && d.dispose(); } catch (e) {}
+        }
+        proc._disposables = [];
+      }
       try {
         // Send quit command first for graceful shutdown
         proc.write('quit\r');
