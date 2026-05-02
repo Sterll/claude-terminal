@@ -307,12 +307,15 @@ class QuickActions extends BaseComponent {
     const existing = this._actionTerminals.get(actionId);
     const resolvedCommand = this._substituteVariables(action.command, project);
 
+    // Restart: tear the existing terminal down completely (kills the PTY tree
+    // via taskkill /T /F on Windows / SIGKILL on POSIX), then re-spawn a fresh
+    // one. Sending Ctrl+C to a running .bat under cmd.exe triggers the
+    // "Terminer le programme de commandes (O/N) ?" prompt and the next command
+    // ends up swallowed by it; closing the tab avoids that and prevents stale
+    // output from mixing into the new run.
     if (existing && existing.projectId === project.id) {
-      this._api.terminal.input({ id: existing.terminalId, data: '\x03' });
-      setTimeout(() => {
-        this._api.terminal.input({ id: existing.terminalId, data: resolvedCommand + '\r' });
-      }, 200);
-      return;
+      this._actionTerminals.delete(actionId);
+      await this._closeAndWait(existing.terminalId);
     }
 
     try {
@@ -345,6 +348,36 @@ class QuickActions extends BaseComponent {
     } catch (error) {
       console.error('Error executing quick action:', error);
     }
+  }
+
+  _closeAndWait(terminalId, timeoutMs = 1500) {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        try { unsubscribe && unsubscribe(); } catch (_) {}
+        clearTimeout(safety);
+        resolve();
+      };
+
+      const unsubscribe = this._api.terminal.onExit((data) => {
+        if (data && data.id === terminalId) finish();
+      });
+
+      const safety = setTimeout(finish, timeoutMs);
+
+      try {
+        const TerminalManager = require('./TerminalManager');
+        if (TerminalManager && typeof TerminalManager.closeTerminal === 'function') {
+          TerminalManager.closeTerminal(terminalId);
+        } else {
+          this._api.terminal.kill({ id: terminalId });
+        }
+      } catch (_) {
+        try { this._api.terminal.kill({ id: terminalId }); } catch (__) {}
+      }
+    });
   }
 
   _openConfigModal(project) {
