@@ -6066,6 +6066,17 @@ if (ciIndicator.pill) {
     }
   });
 
+  // Refresh indicator when the selected project changes so the pill
+  // never shows the previous project's CI run.
+  let lastCIProjectFilter = projectsState.get().selectedProjectFilter;
+  projectsState.subscribe((state) => {
+    if (state.selectedProjectFilter !== lastCIProjectFilter) {
+      lastCIProjectFilter = state.selectedProjectFilter;
+      hideCIIndicator();
+      checkCIStatus();
+    }
+  });
+
   // Slow baseline poll (30s)
   setInterval(checkCIStatus, 30000);
 
