@@ -13,18 +13,22 @@ const {
   setSelectedProjectFilter, setOpenedProjectId
 } = require('../state');
 
+function deriveProjectName(folderPath) {
+  const cleaned = folderPath.replace(/[\\/]+$/, '');
+  const segments = cleaned.split(/[\\/]/);
+  return segments[segments.length - 1] || cleaned;
+}
+
 class ProjectService extends BaseService {
   async addProjectFromDialog(type = 'standalone') {
     const folderPath = await this.api.dialog.selectFolder();
     if (!folderPath) return null;
-    const name = folderPath.split(/[/\\]/).pop();
-    return addProject({ name, path: folderPath, type });
+    return addProject({ name: deriveProjectName(folderPath), path: folderPath, type });
   }
 
   async addFivemProject() {
     const folderPath = await this.api.dialog.selectFolder();
     if (!folderPath) return null;
-    const name = folderPath.split(/[/\\]/).pop();
     const runCommand = await this.api.dialog.selectFile({
       filters: [
         { name: t('projects.filterBatch'), extensions: ['bat', 'cmd'] },
@@ -32,7 +36,12 @@ class ProjectService extends BaseService {
         { name: t('projects.filterAll'), extensions: ['*'] }
       ]
     });
-    return addProject({ name, path: folderPath, type: 'fivem', runCommand: runCommand || null });
+    return addProject({
+      name: deriveProjectName(folderPath),
+      path: folderPath,
+      type: 'fivem',
+      runCommand: runCommand || null
+    });
   }
 
   async deleteProjectWithConfirm(projectId, onConfirm) {

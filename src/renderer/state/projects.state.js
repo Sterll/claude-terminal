@@ -621,21 +621,61 @@ function toggleFolderCollapse(folderId) {
 /**
  * Add a new project
  * @param {Object} projectData
- * @returns {Object}
+ * @returns {Object|null} The created project, the existing project if path duplicates,
+ *                        or null if input is invalid.
  */
 function addProject(projectData) {
+  if (!projectData || typeof projectData.path !== 'string') return null;
+
+  const rawPath = projectData.path.trim();
+  if (!rawPath) return null;
+
+  const normalize = (p) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  const normalizedNew = normalize(rawPath);
+
   const state = projectsState.get();
+
+  // Idempotent: return the existing project if the path is already registered.
+  const existing = state.projects.find(p => p.path && normalize(p.path) === normalizedNew);
+  if (existing) return existing;
+
+  // Derive a non-empty name from the path basename if missing or blank.
+  let name = (projectData.name || '').trim();
+  if (!name) {
+    const cleaned = rawPath.replace(/[\\/]+$/, '');
+    const segments = cleaned.split(/[\\/]/);
+    name = segments[segments.length - 1] || cleaned;
+  }
+
   const project = {
     id: generateProjectId(),
     type: 'standalone',
     folderId: null,
-    ...projectData
+    ...projectData,
+    name,
+    path: rawPath
   };
 
   const projects = [...state.projects, project];
-  const rootOrder = [...state.rootOrder, project.id];
+  let folders = state.folders;
+  let rootOrder = state.rootOrder;
 
-  projectsState.set({ projects, rootOrder });
+  // Respect folderId: place the project inside the folder's children, not at root.
+  const targetFolder = project.folderId
+    ? state.folders.find(f => f.id === project.folderId)
+    : null;
+  if (targetFolder) {
+    folders = state.folders.map(f =>
+      f.id === targetFolder.id
+        ? { ...f, children: [...(f.children || []), project.id] }
+        : f
+    );
+  } else {
+    project.folderId = null;
+    rootOrder = [...state.rootOrder, project.id];
+  }
+
+  projectsState.set({ projects, folders, rootOrder });
   saveProjects();
   return project;
 }

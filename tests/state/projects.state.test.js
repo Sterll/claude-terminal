@@ -348,6 +348,46 @@ describe('addProject', () => {
     const project = addProject({ name: 'Test', path: '/test', type: 'webapp', folderId: null });
     expect(project.type).toBe('webapp');
   });
+
+  test('returns null when path is missing or blank', () => {
+    expect(addProject({ name: 'X' })).toBeNull();
+    expect(addProject({ name: 'X', path: '   ' })).toBeNull();
+    expect(addProject(null)).toBeNull();
+  });
+
+  test('derives name from path basename when name is blank', () => {
+    const project = addProject({ name: '   ', path: '/home/user/MyProj' });
+    expect(project.name).toBe('MyProj');
+  });
+
+  test('strips trailing separators when deriving name', () => {
+    const project = addProject({ path: 'C:\\Users\\test\\' });
+    expect(project.name).toBe('test');
+  });
+
+  test('returns existing project when path duplicates (case + separator insensitive)', () => {
+    const first = addProject({ name: 'A', path: '/home/user/proj' });
+    const dup = addProject({ name: 'B', path: '/HOME/User/Proj/' });
+    expect(dup).toBe(first);
+    expect(projectsState.get().projects).toHaveLength(1);
+  });
+
+  test('places project inside folder when folderId is provided', () => {
+    const folder = projectsState.get().folders;
+    resetState({
+      folders: [{ id: 'f1', name: 'Work', parentId: null, children: [], collapsed: false }],
+    });
+    const project = addProject({ name: 'P', path: '/p', folderId: 'f1' });
+    const state = projectsState.get();
+    expect(state.folders[0].children).toContain(project.id);
+    expect(state.rootOrder).not.toContain(project.id);
+  });
+
+  test('falls back to root when folderId points to a missing folder', () => {
+    const project = addProject({ name: 'P', path: '/p', folderId: 'ghost' });
+    expect(project.folderId).toBeNull();
+    expect(projectsState.get().rootOrder).toContain(project.id);
+  });
 });
 
 describe('updateProject', () => {
