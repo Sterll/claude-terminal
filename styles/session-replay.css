@@ -947,7 +947,7 @@
   font-weight: 600;
 }
 
-/* ── TodoWrite mini list ──────────────────────────────────────── */
+/* ── Tasks mini list (Task* / legacy TodoWrite) ───────────────── */
 .sr-todo-list {
   display: flex;
   flex-direction: column;

@@ -682,7 +682,7 @@ class ChatService {
     const session = this.sessions.get(sessionId);
     if (session?.isCloud) throw new Error('Effort changes not supported for cloud sessions');
 
-    // Prefer setEffort if available (newer SDK versions with Opus 4.7+ support)
+    // Prefer setEffort if available (newer SDK versions with Opus 4.7+ adaptive thinking)
     if (session?.queryStream?.setEffort) {
       await session.queryStream.setEffort(effort);
       return;

@@ -390,6 +390,10 @@ const TOOL_DEFS = {
   EnterPlanMode:     { category: 'plan',     icon: ICONS.plan,     detail: () => '' },
   ExitPlanMode:      { category: 'plan',     icon: ICONS.plan,     detail: () => '' },
   TodoWrite:         { category: 'plan',     icon: ICONS.plan,     detail: () => '', friendly: true },
+  TaskCreate:        { category: 'plan',     icon: ICONS.plan,     detail: (i) => i.subject || i.description || '', friendly: true },
+  TaskUpdate:        { category: 'plan',     icon: ICONS.plan,     detail: (i) => i.subject || i.activeForm || i.status || '', friendly: true },
+  TaskGet:           { category: 'plan',     icon: ICONS.plan,     detail: (i) => i.taskId || '', friendly: true },
+  TaskList:          { category: 'plan',     icon: ICONS.plan,     detail: () => '', friendly: true },
 
   // Schedule
   ScheduleWakeup:    { category: 'schedule', icon: ICONS.clock,    detail: detailFns.wakeup,     render: renderers.ScheduleWakeup },

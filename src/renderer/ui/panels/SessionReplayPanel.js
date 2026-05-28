@@ -412,8 +412,12 @@ function buildFriendlyToolBody(step) {
   const parts = [];
 
   if (toolName === 'TodoWrite') {
-    // Fix 5: special TodoWrite renderer
+    // Fix 5: special TodoWrite renderer (legacy)
     return buildTodoWriteBody(step);
+  }
+
+  if (toolName === 'TaskCreate' || toolName === 'TaskUpdate' || toolName === 'TaskList' || toolName === 'TaskGet') {
+    return buildTaskToolBody(step);
   }
 
   if (toolName === 'Bash') {
@@ -534,6 +538,28 @@ function buildTodoWriteBody(step) {
     <div class="sr-todo-list">${todoItems}</div>
     ${buildOutputSection(step)}
   </div>`;
+}
+
+// ── Task tools renderer (SDK 0.3+ — TaskCreate / TaskUpdate / TaskList / TaskGet) ─
+function buildTaskToolBody(step) {
+  const { toolName, toolInput } = step;
+  const parts = [];
+
+  if (toolName === 'TaskCreate') {
+    if (toolInput?.subject) parts.push(buildParamRow(t('sessionReplay.paramSubject') || 'Subject', toolInput.subject));
+    if (toolInput?.description) parts.push(buildParamRow(t('sessionReplay.paramDescription') || 'Description', truncate(toolInput.description, 300), true));
+    if (toolInput?.activeForm) parts.push(buildParamRow(t('sessionReplay.paramActiveForm') || 'Active form', toolInput.activeForm));
+  } else if (toolName === 'TaskUpdate') {
+    if (toolInput?.taskId) parts.push(buildParamRow(t('sessionReplay.paramTaskId') || 'Task ID', toolInput.taskId));
+    if (toolInput?.status) parts.push(buildParamRow(t('sessionReplay.paramStatus') || 'Status', toolInput.status));
+    if (toolInput?.subject) parts.push(buildParamRow(t('sessionReplay.paramSubject') || 'Subject', toolInput.subject));
+    if (toolInput?.activeForm) parts.push(buildParamRow(t('sessionReplay.paramActiveForm') || 'Active form', toolInput.activeForm));
+  } else if (toolName === 'TaskGet') {
+    if (toolInput?.taskId) parts.push(buildParamRow(t('sessionReplay.paramTaskId') || 'Task ID', toolInput.taskId));
+  }
+  // TaskList: no input fields
+
+  return `<div class="sr-tool-friendly">${parts.join('')}${buildOutputSection(step)}</div>`;
 }
 
 function buildGenericToolBody(step) {

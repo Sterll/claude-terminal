@@ -91,8 +91,8 @@ const { updateTerminal } = require('../../state/terminals.state');
 const { saveTerminalSessions } = require('../../services/TerminalSessionService');
 
 const MODEL_OPTIONS = [
-  { id: 'claude-opus-4-7', label: 'Opus 4.7', desc: 'Most capable for complex work' },
-  { id: 'claude-opus-4-6', label: 'Opus 4.6', desc: 'Previous generation Opus' },
+  { id: 'claude-opus-4-8', label: 'Opus 4.8', desc: 'Most capable for complex work' },
+  { id: 'claude-opus-4-7', label: 'Opus 4.7', desc: 'Previous generation Opus' },
   { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6', desc: 'Best for everyday tasks' },
   { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', desc: 'Fastest for quick answers' },
 ];
@@ -364,7 +364,7 @@ class ChatView extends BaseComponent {
   let inputTokens = 0; // tracks context window usage
   const toolCards = new Map(); // content_block index -> element
   const toolInputBuffers = new Map(); // content_block index -> accumulated JSON string
-  const todoToolIndices = new Set(); // block indices that are TodoWrite tools
+  const todoToolIndices = new Map(); // block index -> { kind: 'TaskCreate'|'TaskUpdate'|'TaskList'|'TaskGet'|'TodoWrite', toolUseId }
   const taskToolIndices = new Map(); // block index -> { card, toolUseId } for Task (subagent) tools
   const parallelToolIndices = new Map(); // block index -> { toolUseId } for parallel_start_run
   const parallelRunWidgets = new Map(); // runId -> { el, cleanup, toolUseId }
@@ -372,8 +372,12 @@ class ChatView extends BaseComponent {
   let blockIndex = 0;
   let currentMsgHasToolUse = false;
   let turnHadAssistantContent = false; // tracks if current turn displayed any streamed/assistant content
-  let todoWidgetEl = null; // persistent todo list widget
-  let todoAllDone = false; // tracks if all todos are completed
+  let todoWidgetEl = null; // persistent task list widget
+  let todoAllDone = false; // tracks if all tasks are completed
+  // ── Task tool accumulator (SDK 0.3+ TaskCreate / TaskUpdate / TaskList) ──
+  const tasksMap = new Map(); // taskId -> { id, subject, description, activeForm, status, order }
+  const pendingCreateByUseId = new Map(); // tool_use_id -> { subject, description, activeForm, order }
+  let taskOrderCounter = 0;
   let slashCommands = []; // populated from system/init message
   let slashSelectedIndex = -1; // currently highlighted item in slash dropdown
   // Accumulates messages for CLAUDE.md analysis (role: 'user'|'assistant', content: string)
@@ -4009,7 +4013,7 @@ class ChatView extends BaseComponent {
         if (!block) break;
         const blockIdx = event.index ?? info.subBlockIndex;
 
-        if (block.type === 'tool_use' && block.name !== 'TodoWrite') {
+        if (block.type === 'tool_use' && block.name !== 'TodoWrite' && block.name !== 'TaskCreate' && block.name !== 'TaskUpdate' && block.name !== 'TaskList' && block.name !== 'TaskGet') {
           // Add mini tool entry in the subagent body
           const mini = document.createElement('div');
           mini.className = 'sa-tool';
@@ -4092,7 +4096,7 @@ class ChatView extends BaseComponent {
     if (!content) return;
 
     for (const block of content) {
-      if (block.type === 'tool_use' && block.name !== 'TodoWrite') {
+      if (block.type === 'tool_use' && block.name !== 'TodoWrite' && block.name !== 'TaskCreate' && block.name !== 'TaskUpdate' && block.name !== 'TaskList' && block.name !== 'TaskGet') {
         const detail = getToolDisplayInfo(block.name, block.input);
         info.activityEl.textContent = `${block.name}...`;
 
@@ -4160,21 +4164,85 @@ class ChatView extends BaseComponent {
     return todo.content || todo.subject || todo.text || todo.title || todo.description || todo.activeForm || '';
   }
 
-  function updateTodoWidget(todos) {
-    if (!todos || !todos.length) return;
+  // ── Task tool helpers (SDK 0.3+) ───────────────────────────────────────
+  function getOrderedTasks() {
+    return Array.from(tasksMap.values()).sort((a, b) => (a.order || 0) - (b.order || 0));
+  }
 
-    const completed = todos.filter(td => td.status === 'completed').length;
-    const active = todos.find(td => td.status === 'in_progress');
-    const total = todos.length;
+  function applyTaskCreate(input, toolUseId) {
+    if (!input || !input.subject) return;
+    pendingCreateByUseId.set(toolUseId, {
+      subject: input.subject,
+      description: input.description || '',
+      activeForm: input.activeForm || '',
+      order: ++taskOrderCounter,
+    });
+    // Optimistic render with temp id (tool_use_id) so the widget updates immediately;
+    // it'll be replaced with the real task id when the tool_result arrives.
+    tasksMap.set(toolUseId, {
+      id: toolUseId,
+      subject: input.subject,
+      description: input.description || '',
+      activeForm: input.activeForm || '',
+      status: 'pending',
+      order: taskOrderCounter,
+      _temp: true,
+    });
+    renderTasksWidget();
+  }
+
+  function applyTaskUpdate(input) {
+    if (!input || !input.taskId) return;
+    const task = tasksMap.get(input.taskId);
+    if (!task) return;
+    if (input.subject != null) task.subject = input.subject;
+    if (input.description != null) task.description = input.description;
+    if (input.activeForm != null) task.activeForm = input.activeForm;
+    if (input.status != null) {
+      if (input.status === 'deleted') {
+        tasksMap.delete(input.taskId);
+      } else {
+        task.status = input.status;
+      }
+    }
+    renderTasksWidget();
+  }
+
+  function promoteTaskCreateResult(toolUseId, taskId) {
+    if (!toolUseId || !taskId) return;
+    const pending = pendingCreateByUseId.get(toolUseId);
+    pendingCreateByUseId.delete(toolUseId);
+    // Move from temp tool_use_id key to real task id key
+    const existing = tasksMap.get(toolUseId);
+    if (existing) {
+      tasksMap.delete(toolUseId);
+      tasksMap.set(taskId, { ...existing, id: taskId, _temp: false });
+    } else if (pending) {
+      tasksMap.set(taskId, {
+        id: taskId,
+        subject: pending.subject,
+        description: pending.description,
+        activeForm: pending.activeForm,
+        status: 'pending',
+        order: pending.order,
+      });
+    }
+    renderTasksWidget();
+  }
+
+  function renderTasksWidget() {
+    const tasks = getOrderedTasks();
+    if (!tasks.length) return;
+
+    const completed = tasks.filter(td => td.status === 'completed').length;
+    const active = tasks.find(td => td.status === 'in_progress');
+    const total = tasks.length;
     const pct = Math.round((completed / total) * 100);
     const allDone = completed === total;
     todoAllDone = allDone;
 
-    // Debug log pour vérifier les valeurs
-    console.log(`Todo progress: ${completed}/${total} = ${pct}%`);
-
     // Build items HTML
-    const itemsHtml = todos.map((todo, i) => {
+    const itemsHtml = tasks.map((todo, i) => {
       const s = todo.status;
       const checkIcon = s === 'completed'
         ? `<svg class="td-icon td-done" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
@@ -4219,6 +4287,27 @@ class ChatView extends BaseComponent {
     todoWidgetEl.innerHTML = html;
     // Preserve expanded state
     if (todoExpanded) todoWidgetEl.classList.add('open');
+  }
+
+  // Back-compat: TodoWrite (deprecated) ships a full snapshot of todos on every call.
+  // Convert into the new tasksMap by clearing and re-inserting with synthetic ids.
+  function updateTodoWidget(todos) {
+    if (!Array.isArray(todos) || !todos.length) return;
+    tasksMap.clear();
+    pendingCreateByUseId.clear();
+    todos.forEach((todo, i) => {
+      const id = `todo-${i}`;
+      tasksMap.set(id, {
+        id,
+        subject: todoText(todo),
+        description: '',
+        activeForm: todo.activeForm || '',
+        status: todo.status || 'pending',
+        order: i + 1,
+      });
+    });
+    taskOrderCounter = Math.max(taskOrderCounter, todos.length);
+    renderTasksWidget();
   }
 
   function appendThinkingBlock(text) {
@@ -4793,9 +4882,9 @@ class ChatView extends BaseComponent {
           recapToolCount++;
           recapToolCounts[block.name] = (recapToolCounts[block.name] || 0) + 1;
           const blockIdx = event.index ?? blockIndex;
-          // TodoWrite, Task, parallel_start_run & AskUserQuestion get special UI — no generic tool card
-          if (block.name === 'TodoWrite') {
-            todoToolIndices.add(blockIdx);
+          // TodoWrite/Task*, Task (subagent), parallel_start_run & AskUserQuestion get special UI — no generic tool card
+          if (block.name === 'TodoWrite' || block.name === 'TaskCreate' || block.name === 'TaskUpdate' || block.name === 'TaskList' || block.name === 'TaskGet') {
+            todoToolIndices.set(blockIdx, { kind: block.name, toolUseId: block.id });
           } else if (block.name === 'Task' || block.name === 'Agent') {
             const card = appendSubagentCard();
             const bodyEl = card.querySelector('.chat-subagent-body');
@@ -4862,10 +4951,18 @@ class ChatView extends BaseComponent {
           try {
             const toolInput = JSON.parse(jsonStr);
 
-            // TodoWrite → update the persistent todo widget
-            if (todoToolIndices.has(stopIdx)) {
+            // TodoWrite / Task* → update the persistent task widget (accumulate by id)
+            const taskMeta = todoToolIndices.get(stopIdx);
+            if (taskMeta) {
               todoToolIndices.delete(stopIdx);
-              if (toolInput.todos) updateTodoWidget(toolInput.todos);
+              if (taskMeta.kind === 'TodoWrite' && toolInput.todos) {
+                updateTodoWidget(toolInput.todos);
+              } else if (taskMeta.kind === 'TaskCreate') {
+                applyTaskCreate(toolInput, taskMeta.toolUseId);
+              } else if (taskMeta.kind === 'TaskUpdate') {
+                applyTaskUpdate(toolInput);
+              }
+              // TaskList / TaskGet are read-only — no widget change here
               break;
             }
 
@@ -5023,6 +5120,16 @@ class ChatView extends BaseComponent {
   }
 
   function processToolResultBlock(block) {
+    // TaskCreate result — promote pending temp id to real task id
+    if (block.tool_use_id && pendingCreateByUseId.has(block.tool_use_id)) {
+      const raw = typeof block.content === 'string' ? block.content
+        : Array.isArray(block.content) ? block.content.map(b => b.text || '').join('\n') : '';
+      const parsed = parseResultJson(raw);
+      const taskId = parsed?.task?.id;
+      if (taskId) promoteTaskCreateResult(block.tool_use_id, taskId);
+      return;
+    }
+
     // Parallel run widget — skip tool_result (widget handles display via state)
     for (const [, w] of parallelRunWidgets) {
       if (w.toolUseId === block.tool_use_id) return;
@@ -5241,9 +5348,20 @@ class ChatView extends BaseComponent {
     let hasToolUse = false;
     for (const block of content) {
       if (block.type === 'tool_use') {
-        // TodoWrite — update widget instead of tool card
+        // TodoWrite / Task* — update widget instead of tool card
         if (block.name === 'TodoWrite' && block.input?.todos) {
           updateTodoWidget(block.input.todos);
+          continue;
+        }
+        if (block.name === 'TaskCreate' && block.input) {
+          applyTaskCreate(block.input, block.id);
+          continue;
+        }
+        if (block.name === 'TaskUpdate' && block.input) {
+          applyTaskUpdate(block.input);
+          continue;
+        }
+        if (block.name === 'TaskList' || block.name === 'TaskGet') {
           continue;
         }
         // Task (subagent) — update subagent card from assistant message
@@ -5705,7 +5823,7 @@ class ChatView extends BaseComponent {
           fragment.appendChild(el);
 
         } else if (msg.role === 'assistant' && msg.type === 'tool_use') {
-          if (msg.toolName === 'TodoWrite') continue;
+          if (msg.toolName === 'TodoWrite' || msg.toolName === 'TaskCreate' || msg.toolName === 'TaskUpdate' || msg.toolName === 'TaskList' || msg.toolName === 'TaskGet') continue;
 
           if (msg.toolName === 'Task' || msg.toolName === 'Agent') {
             const input = msg.toolInput || {};

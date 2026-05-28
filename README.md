@@ -157,7 +157,7 @@ npm install
 - **File rewind**: revert chat context to an earlier file state via SDK checkpointing — useful for undoing unwanted edits mid-session
 - **Cost tracking**: model name, token count, and USD cost in the status bar
 - **1M context window**: extended context for larger codebases (API mode only)
-- **Dynamic model and effort switching**: change model (Sonnet, Opus 4.7, Haiku) and effort level (low, medium, high, xhigh) mid-conversation without starting a new session
+- **Dynamic model and effort switching**: change model (Sonnet, Opus 4.8, Haiku) and effort level (low, medium, high, xhigh) mid-conversation without starting a new session
 - **Pin conversations**: keep important sessions at the top of the list
 - **Fork sessions**: branch from any message to explore alternative paths
 - **Follow-up suggestions**: context-aware suggestion chips appear after Claude responds to help guide the conversation
