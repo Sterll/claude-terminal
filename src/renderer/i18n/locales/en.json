@@ -893,6 +893,8 @@
     "restoreTerminalSessionsDesc": "Restore terminal tabs and Claude sessions from the previous session on startup",
     "enable1MContext": "1M Token Context",
     "enable1MContextDesc": "Enable 1 million token context window for Opus and Sonnet (API only, beta)",
+    "ephemeralChats": "Ephemeral chats",
+    "ephemeralChatsDesc": "Don't save conversation transcripts to disk. Sessions cannot be resumed later.",
     "projectBadge": "project",
     "itemCount": "{count} item",
     "itemCountPlural": "{count} items",

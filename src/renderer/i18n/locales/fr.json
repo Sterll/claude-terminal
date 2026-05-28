@@ -986,6 +986,8 @@
     "restoreTerminalSessionsDesc": "Restaurer les onglets de terminal et les sessions Claude de la session précédente au démarrage",
     "enable1MContext": "Contexte 1M tokens",
     "enable1MContextDesc": "Activer la fenêtre de contexte de 1 million de tokens pour Opus et Sonnet (API uniquement, beta)",
+    "ephemeralChats": "Chats éphémères",
+    "ephemeralChatsDesc": "Ne pas sauvegarder les transcriptions sur le disque. Les sessions ne peuvent pas être reprises.",
     "projectBadge": "projet",
     "itemCount": "{count} élément",
     "itemCountPlural": "{count} éléments",

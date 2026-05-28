@@ -556,6 +556,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     onPromptSuggestion: createListener('chat-prompt-suggestion'),
     rewindFiles: (params) => ipcRenderer.invoke('chat-rewind-files', params),
     getContextUsage: (params) => ipcRenderer.invoke('chat-get-context-usage', params),
+    stopTask: (params) => ipcRenderer.invoke('chat-stop-task', params),
     analyzeSession: (params) => ipcRenderer.invoke('chat-analyze-session', params),
     applyClaudeMd: (params) => ipcRenderer.invoke('claude-md-apply', params),
     analyzeSessionForWorkspace: (params) => ipcRenderer.invoke('workspace-analyze-session', params),

@@ -3993,6 +3993,30 @@ hr.chat-plan-separator {
   color: rgb(239, 68, 68);
   background: rgba(239, 68, 68, 0.12);
 }
+.chat-bgtask-stop-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 2px 8px;
+  font-size: var(--font-2xs);
+  font-weight: 500;
+  color: rgb(239, 68, 68);
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.chat-bgtask-stop-btn:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.2);
+  color: rgb(252, 165, 165);
+}
+.chat-bgtask-stop-btn:disabled,
+.chat-bgtask-stop-btn.pending {
+  opacity: 0.55;
+  cursor: wait;
+}
 .chat-bgtask-desc {
   font-size: var(--font-xs);
   color: var(--text-primary);

@@ -349,7 +349,7 @@ class ChatService {
    * @param {string} [params.resumeSessionId] - Session ID to resume
    * @returns {Promise<string>} Session ID
    */
-  async startSession({ cwd, projectId = null, prompt, permissionMode = 'default', resumeSessionId = null, sessionId = null, images = [], mentions = [], model = null, enable1MContext = false, forkSession = false, resumeSessionAt = null, effort = null, outputFormat = null, skills = null, systemPrompt = null, settingSources = null, maxTurns = null, cloud = false, cloudProjectName = null, userMessageUuid = null }) {
+  async startSession({ cwd, projectId = null, prompt, permissionMode = 'default', resumeSessionId = null, sessionId = null, images = [], mentions = [], model = null, enable1MContext = false, forkSession = false, resumeSessionAt = null, effort = null, outputFormat = null, skills = null, systemPrompt = null, settingSources = null, maxTurns = null, cloud = false, cloudProjectName = null, userMessageUuid = null, persistSession = true }) {
     if (!sessionId) sessionId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     // Cloud session: delegate to cloud server instead of local SDK
@@ -457,6 +457,12 @@ class ChatService {
       // Periodic AI-generated progress summaries for running subagents (SDK 0.2.72+)
       // Arrives via task_progress system messages with a `summary` field.
       options.agentProgressSummaries = true;
+
+      // Ephemeral session: skip writing transcript to ~/.claude/projects/
+      // The session cannot be resumed later but leaves no trace on disk.
+      if (persistSession === false) {
+        options.persistSession = false;
+      }
 
       // Resume existing session if requested
       if (resumeSessionId) {
@@ -703,6 +709,21 @@ class ChatService {
     const effortMap = { low: 1024, medium: 8192, high: null, xhigh: null, max: null };
     const tokens = effort in effortMap ? effortMap[effort] : null;
     await session.queryStream.setMaxThinkingTokens(tokens);
+  }
+
+  /**
+   * Stop a running background task by id (SDK 0.2.45+).
+   * A task_notification with status 'stopped' will be emitted.
+   */
+  async stopTask(sessionId, taskId) {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.isCloud) {
+      throw new Error('Session not found or cloud session');
+    }
+    if (!session.queryStream?.stopTask) {
+      throw new Error('stopTask not available');
+    }
+    await session.queryStream.stopTask(taskId);
   }
 
   /**

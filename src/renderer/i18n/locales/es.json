@@ -890,6 +890,8 @@
     "restoreTerminalSessionsDesc": "Restaurar las pestañas de terminal y sesiones de Claude de la sesión anterior al iniciar",
     "enable1MContext": "Contexto de 1M Tokens",
     "enable1MContextDesc": "Activar ventana de contexto de 1 millón de tokens para Opus y Sonnet (solo API, beta)",
+    "ephemeralChats": "Chats efímeros",
+    "ephemeralChatsDesc": "No guardar las transcripciones en disco. Las sesiones no pueden reanudarse.",
     "projectBadge": "proyecto",
     "itemCount": "{count} elemento",
     "itemCountPlural": "{count} elementos",

@@ -152,11 +152,19 @@ function renderBgTaskCard(toolName, input, overrideState) {
     : '';
 
   const terminalStatuses = new Set(['stopped', 'done', 'completed', 'failed', 'killed']);
+  const isTerminal = terminalStatuses.has(state.status);
   const stoppedInfo = state.stoppedAt
     ? `<span class="chat-bgtask-meta">stopped</span>`
-    : terminalStatuses.has(state.status)
+    : isTerminal
       ? `<span class="chat-bgtask-meta">${escHtml(state.status)}</span>`
       : '';
+
+  const stopBtn = (taskId && !isTerminal)
+    ? `<button type="button" class="chat-bgtask-stop-btn" data-stop-task-id="${escHtml(taskId)}" title="Stop task" aria-label="Stop task">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="11" height="11"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+        <span>Stop</span>
+      </button>`
+    : '';
 
   // Live meta row: elapsed + last tool name + usage tokens
   const elapsed = Number(state.elapsedSeconds);
@@ -200,6 +208,7 @@ function renderBgTaskCard(toolName, input, overrideState) {
           ${taskId ? `<code class="chat-bgtask-id" title="${escHtml(taskId)}">${escHtml(formatTaskIdShort(taskId))}</code>` : ''}
           <span class="chat-bgtask-status chat-bgtask-status--${escHtml(status)}">${escHtml(status)}</span>
           ${stoppedInfo}
+          ${stopBtn}
         </div>
         ${descHtml}
         ${metaHtml}

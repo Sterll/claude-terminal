@@ -1167,6 +1167,16 @@ class SettingsPanel extends BasePanel {
                   <span class="settings-toggle-slider"></span>
                 </label>
               </div>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-label">
+                  <div>${t('settings.ephemeralChats') || 'Ephemeral chats'}</div>
+                  <div class="settings-toggle-desc">${t('settings.ephemeralChatsDesc') || 'Don\'t write conversation transcripts to disk. Sessions cannot be resumed.'}</div>
+                </div>
+                <label class="settings-toggle">
+                  <input type="checkbox" id="ephemeral-chats-toggle" ${settings.ephemeralChats ? 'checked' : ''}>
+                  <span class="settings-toggle-slider"></span>
+                </label>
+              </div>
               </div>
             </div>
           </div>
@@ -1739,6 +1749,8 @@ class SettingsPanel extends BasePanel {
       const newHooksEnabled = hooksToggle ? hooksToggle.checked : settings.hooksEnabled;
       const context1MToggle = document.getElementById('enable-1m-context-toggle');
       const newEnable1MContext = context1MToggle ? context1MToggle.checked : settings.enable1MContext || false;
+      const ephemeralChatsToggle = document.getElementById('ephemeral-chats-toggle');
+      const newEphemeralChats = ephemeralChatsToggle ? ephemeralChatsToggle.checked : settings.ephemeralChats || false;
       const showDotfilesToggle = document.getElementById('show-dotfiles-toggle');
       const newShowDotfiles = showDotfilesToggle ? showDotfilesToggle.checked : true;
       const ignorePatternsInput = document.getElementById('explorer-ignore-patterns');
@@ -1790,6 +1802,7 @@ class SettingsPanel extends BasePanel {
         defaultTerminalMode: selectedTerminalMode?.dataset.terminalMode || 'terminal',
         hooksEnabled: newHooksEnabled,
         enable1MContext: newEnable1MContext,
+        ephemeralChats: newEphemeralChats,
         showDotfiles: newShowDotfiles,
         explorerIgnorePatterns: newIgnorePatterns,
         showTabModeToggle: newShowTabModeToggle,

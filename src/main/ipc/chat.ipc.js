@@ -170,6 +170,17 @@ function registerChatHandlers() {
     }
   });
 
+  // Stop a running background task (SDK 0.2.45+)
+  ipcMain.handle('chat-stop-task', async (_event, { sessionId, taskId }) => {
+    try {
+      await chatService.stopTask(sessionId, taskId);
+      return { success: true };
+    } catch (err) {
+      console.error('[chat-stop-task] Error:', err.message);
+      return { success: false, error: err.message };
+    }
+  });
+
   // Get detailed context window usage breakdown (SDK 0.2.86+)
   ipcMain.handle('chat-get-context-usage', async (_event, { sessionId }) => {
     try {

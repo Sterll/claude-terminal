@@ -2502,6 +2502,29 @@ class ChatView extends BaseComponent {
   messagesEl.addEventListener('click', (e) => {
     // Note: copy, collapse, line-toggle, sort, preview buttons are handled by MarkdownRenderer.attachInteractivity()
 
+    // Stop button on background task cards (SDK 0.2.45+ stopTask)
+    const stopTaskBtn = e.target.closest('.chat-bgtask-stop-btn');
+    if (stopTaskBtn && !stopTaskBtn.disabled) {
+      e.stopPropagation();
+      const taskId = stopTaskBtn.dataset.stopTaskId;
+      if (taskId && sessionId) {
+        stopTaskBtn.disabled = true;
+        stopTaskBtn.classList.add('pending');
+        window.electron_api.chat.stopTask({ sessionId, taskId })
+          .then((res) => {
+            if (!res?.success) {
+              stopTaskBtn.disabled = false;
+              stopTaskBtn.classList.remove('pending');
+            }
+          })
+          .catch(() => {
+            stopTaskBtn.disabled = false;
+            stopTaskBtn.classList.remove('pending');
+          });
+      }
+      return;
+    }
+
     // Copy buttons inside specialized tool cards
     const copyBtn = e.target.closest('.chat-copy-btn');
     if (copyBtn) {
@@ -2750,6 +2773,7 @@ class ChatView extends BaseComponent {
           effort: selectedEffort,
           enable1MContext: getSetting('enable1MContext') || false,
           maxTurns: getSetting('maxTurns') || null,
+          persistSession: !getSetting('ephemeralChats'),
           userMessageUuid: userMsgUuid,
           ...(project.isCloud ? { cloud: true, cloudProjectName: project.cloudProjectName } : {}),
         };
