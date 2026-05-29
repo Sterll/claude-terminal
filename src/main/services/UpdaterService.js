@@ -21,6 +21,7 @@ class UpdaterService {
     this.isDownloading = false;
     this.installAfterDownload = false;
     this.isVerifying = false;
+    this.lastNotifiedVersion = null;
   }
 
   /**
@@ -89,6 +90,8 @@ class UpdaterService {
       this.isDownloading = true;
       // Skip UI update if this event was triggered by verifyLatestBeforeNotify
       if (this.isVerifying) return;
+      // Already notified for this version (periodic re-check on cached download) — don't reset the banner
+      if (this.lastNotifiedVersion === info.version) return;
       // Pre-fetch changelog while downloading
       this.pendingChangelog = this.fetchReleaseNotes(info.version);
       this.safeSend('update-status', { status: 'available', version: info.version });
@@ -214,6 +217,13 @@ class UpdaterService {
       console.error('Verify latest failed:', err);
     }
     this.isVerifying = false;
+
+    // Already notified for this version — avoid spamming banner + native notif on each periodic check
+    if (this.lastNotifiedVersion === downloadedVersion) {
+      this.pendingChangelog = null;
+      return;
+    }
+    this.lastNotifiedVersion = downloadedVersion;
 
     // Use pre-fetched changelog or fetch now
     const changelog = await (this.pendingChangelog || this.fetchReleaseNotes(downloadedVersion));
