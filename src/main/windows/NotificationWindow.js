@@ -74,8 +74,17 @@ function showNotification({ title, body, terminalId, autoDismiss = 8000, labels,
     if (!win.isDestroyed()) win.showInactive();
   });
 
+  // Safety net: force-close even if the renderer never sends 'notification-dismiss'
+  // (e.g. its script threw before arming the auto-dismiss timer). Only for auto-dismissing
+  // notifications — autoDismiss:0 means "persistent" and must stay until the user acts.
+  let safetyTimer = null;
+  if (autoDismiss && autoDismiss > 0) {
+    safetyTimer = setTimeout(() => dismissNotification(notifId), autoDismiss + 2000);
+  }
+
   // Single cleanup point: the 'closed' event handles all map/reposition work
   win.on('closed', () => {
+    if (safetyTimer) clearTimeout(safetyTimer);
     activeNotifications.delete(notifId);
     repositionAll();
   });
@@ -102,9 +111,11 @@ function repositionAll() {
   for (const [, notif] of entries) {
     if (notif.window.isDestroyed()) continue;
     currentY -= notif.height;
+    // Clamp to the top of the work area so a tall stack never spills off-screen (unclickable).
+    const y = Math.max(workArea.y, currentY);
     notif.window.setBounds({
       x: rightEdge - WIDTH,
-      y: currentY,
+      y,
       width: WIDTH,
       height: notif.height
     });

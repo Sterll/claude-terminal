@@ -178,20 +178,30 @@
     // notifAPI est exposé par preload-notification.js via contextBridge
 
     const params = new URLSearchParams(window.location.search);
-    const data = JSON.parse(decodeURIComponent(params.get('data')));
+    let data = {};
+    try {
+      data = JSON.parse(decodeURIComponent(params.get('data') || '{}')) || {};
+    } catch (e) {
+      // Malformed payload — keep an empty object so the window can still self-dismiss
+      data = {};
+    }
     const { title, body, terminalId, notifId, autoDismiss, buttons, meta } = data;
 
-    // Load accent color and language
-    const accentColor = notifAPI.readSettingsAccentColor();
+    // Load accent color and language (notifAPI may be absent if the preload failed)
+    const accentColor = (window.notifAPI && notifAPI.readSettingsAccentColor)
+      ? notifAPI.readSettingsAccentColor()
+      : null;
     if (accentColor) {
       document.documentElement.style.setProperty('--accent', accentColor);
     }
-    const lang = notifAPI.readSettingsLanguage?.() || 'en';
+    const lang = (window.notifAPI && notifAPI.readSettingsLanguage)
+      ? (notifAPI.readSettingsLanguage() || 'en')
+      : 'en';
     document.documentElement.lang = lang;
 
     // Fill content
-    document.getElementById('title').textContent = title;
-    document.getElementById('body').textContent = body;
+    document.getElementById('title').textContent = title || '';
+    document.getElementById('body').textContent = body || '';
 
     // Set icon based on notification type (passed via meta.type or inferred from buttons)
     const notifType = (meta && meta.notifType) || 'done';
@@ -219,12 +229,14 @@
       el.className = 'btn btn-' + (btn.style || 'primary');
       el.textContent = btn.label;
       el.addEventListener('click', function() {
-        notifAPI.send('notification-action', {
-          action: btn.action,
-          terminalId: terminalId,
-          value: btn.value || null,
-          requestId: (meta && meta.requestId) || null
-        });
+        if (window.notifAPI && notifAPI.send) {
+          notifAPI.send('notification-action', {
+            action: btn.action,
+            terminalId: terminalId,
+            value: btn.value || null,
+            requestId: (meta && meta.requestId) || null
+          });
+        }
         dismiss();
       });
       actionsDiv.appendChild(el);
@@ -255,7 +267,7 @@
       if (dismissed) return;
       dismissed = true;
       if (autoDismissTimer) clearTimeout(autoDismissTimer);
-      notifAPI.send('notification-dismiss', { notifId: notifId });
+      if (window.notifAPI && notifAPI.send) notifAPI.send('notification-dismiss', { notifId: notifId });
     }
   </script>
 </body>
