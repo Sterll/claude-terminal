@@ -47,7 +47,9 @@ class Toast extends BaseComponent {
 
   _enforceStackLimit() {
     if (!this._container) return;
-    const toasts = this._container.querySelectorAll('.toast');
+    // Ignore toasts already in their hide animation — counting them would evict
+    // more live toasts than necessary during a rapid burst.
+    const toasts = Array.from(this._container.querySelectorAll('.toast')).filter(t => !t._hiding);
     const overflow = toasts.length - MAX_VISIBLE_TOASTS;
     if (overflow > 0) {
       for (let i = 0; i < overflow; i++) {
