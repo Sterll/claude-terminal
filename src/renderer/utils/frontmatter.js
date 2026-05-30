@@ -57,7 +57,7 @@ function parseFrontmatter(content) {
     description,
     tools,
     sections,
-    userInvocable: metadata['user-invocable'] === 'true',
+    userInvocable: (metadata['user-invocable'] || metadata.userInvocable) !== 'false',
     model: metadata.model || null
   };
 

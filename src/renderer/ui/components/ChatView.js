@@ -1217,6 +1217,9 @@ class ChatView extends BaseComponent {
       return;
     }
     const query = text.slice(1).toLowerCase();
+    // Add user-invocable skills as slash commands
+    const skills = (skillsAgentsState.get().skills || []).filter(s => s.userInvocable !== false);
+    const skillCommands = skills.map(s => '/' + s.name.replace(/\s+/g, '-').toLowerCase());
     // Commands that work in Agent SDK environment
     const builtinDefaults = [
       // SDK built-in commands
@@ -1227,9 +1230,6 @@ class ChatView extends BaseComponent {
       // Claude Terminal own commands
       '/parallel-task', '/reload-plugins',
     ];
-    // Add user-invocable skills as slash commands
-    const skills = (skillsAgentsState.get().skills || []).filter(s => s.userInvocable !== false);
-    const skillCommands = skills.map(s => '/' + s.name.replace(/\s+/g, '-').toLowerCase());
     // Normalize to '/name' lowercase so SDK-provided commands (sometimes without leading '/')
     // match our '/name' skill/builtin entries and don't show up twice.
     const normKey = (c) => ('/' + String(c).replace(/^\//, '')).toLowerCase();
@@ -1259,7 +1259,7 @@ class ChatView extends BaseComponent {
       return;
     }
 
-    slashDropdown.innerHTML = filtered.map((cmd, i) => {
+    const html = filtered.map((cmd, i) => {
       const name = cmd.startsWith('/') ? cmd : '/' + cmd;
       const desc = getSlashCommandDescription(name);
       return `<div class="chat-slash-item${i === slashSelectedIndex ? ' active' : ''}" data-command="${escapeHtml(name)}">
@@ -1267,6 +1267,7 @@ class ChatView extends BaseComponent {
         <span class="chat-slash-desc">${escapeHtml(desc)}</span>
       </div>`;
     }).join('');
+    slashDropdown.innerHTML = html;
 
     slashDropdown.style.display = '';
     // Clamp selected index
@@ -4997,6 +4998,14 @@ class ChatView extends BaseComponent {
     }
   });
   unsubscribers.push(unsubMessage);
+
+  // Subscribe to skills state changes to refresh slash dropdown when skills load
+  const unsubSkills = skillsAgentsState.subscribe((state) => {
+    if (state.skills && getInputText().startsWith('/')) {
+      updateSlashDropdown();
+    }
+  });
+  unsubscribers.push(unsubSkills);
 
   // IPC: Native SDK prompt suggestions (piggybacked on the stream, nearly free)
   const unsubPromptSuggestion = api.chat.onPromptSuggestion(({ sessionId: sid, suggestion }) => {
