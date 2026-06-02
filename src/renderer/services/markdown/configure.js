@@ -75,6 +75,46 @@ const PURIFY_CONFIG = {
   FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover'],
 };
 
+// Sentinel for pipes temporarily protected inside inline code spans. The GFM
+// table tokenizer in marked v17 splits cells on every raw `|` — even inside a
+// code span — so `` `cmd | grep` `` in a table cell gets shredded. We swap those
+// pipes for a private-use sentinel before parsing and restore them after sanitize
+// (the sentinel survives DOMPurify; `|` needs no HTML escaping).
+const PIPE_SENTINEL = String.fromCharCode(0xE000);
+
+/**
+ * Protect `|` characters that live inside inline code spans so the GFM table
+ * tokenizer doesn't treat them as column delimiters. Scans line by line and
+ * never touches fenced code blocks — custom blocks (```config, ```metrics, …)
+ * rely on their real `|` separators, and fenced code is never a table. The
+ * sentinel is restored to `|` after parse+sanitize in render().
+ */
+function escapePipesInInlineCode(text) {
+  if (text.indexOf('|') === -1 || text.indexOf('`') === -1) return text;
+
+  const lines = text.split('\n');
+  let inFence = false;
+  let fenceChar = '';
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const fenceMatch = line.match(/^\s*(`{3,}|~{3,})/);
+    if (fenceMatch) {
+      const ch = fenceMatch[1][0];
+      if (!inFence) { inFence = true; fenceChar = ch; }
+      else if (ch === fenceChar) { inFence = false; }
+      continue; // never alter fence delimiter lines
+    }
+    if (inFence) continue; // leave fenced content untouched
+    if (line.indexOf('`') === -1 || line.indexOf('|') === -1) continue;
+    lines[i] = line.replace(/(`+)(.+?)\1/g, (m, ticks, body) =>
+      body.indexOf('|') === -1 ? m : ticks + body.replace(/\|/g, PIPE_SENTINEL) + ticks
+    );
+  }
+
+  return lines.join('\n');
+}
+
 let _configured = false;
 
 /**
@@ -366,7 +406,8 @@ function render(text) {
   if (!text) return '';
   configure();
   try {
-    return DOMPurify.sanitize(marked.parse(text), PURIFY_CONFIG);
+    const html = DOMPurify.sanitize(marked.parse(escapePipesInInlineCode(text)), PURIFY_CONFIG);
+    return html.indexOf(PIPE_SENTINEL) === -1 ? html : html.split(PIPE_SENTINEL).join('|');
   } catch (err) {
     console.error('[MarkdownRenderer] Render failed:', err.message);
     return `<pre class="chat-markdown-fallback">${escapeHtml(text)}</pre>`;

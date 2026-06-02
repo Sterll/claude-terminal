@@ -575,4 +575,26 @@ describe('MarkdownRenderer', () => {
       expect(html).not.toContain('javascript:');
     });
   });
+
+  // ── Pipe protection inside code spans (GFM table safety) ──
+
+  describe('pipe protection in code spans', () => {
+    test('keeps a piped command in one table cell instead of splitting on |', () => {
+      const md = '| Champ | Valeur |\n|---|---|\n| cmd | `gradlew build 2>&1 | grep x` |\n';
+      const html = MR.render(md);
+      // The internal pipe must survive next to "grep x" (not become a new column)
+      expect(html).toMatch(/\|\s*grep x/);
+    });
+
+    test('does not leak the protection sentinel into the output', () => {
+      const md = '| a | b |\n|---|---|\n| x | `foo | bar` |\n';
+      const html = MR.render(md);
+      expect(html).not.toContain(String.fromCharCode(0xE000));
+    });
+
+    test('leaves pipes inside fenced code blocks untouched', () => {
+      const html = MR.render('```config\nport | 3000 | number | Server port\n```');
+      expect(html).toContain('3000');
+    });
+  });
 });
