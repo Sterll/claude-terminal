@@ -27,6 +27,11 @@ function attachInteractivity(container) {
       }
     }
 
+    // ── Close any open Discord select when clicking outside it ──
+    if (!e.target.closest('.dc-select')) {
+      container.querySelectorAll('.dc-select.open').forEach(s => s.classList.remove('open'));
+    }
+
     const target = e.target.closest('[class]');
     if (!target) return;
 
@@ -123,6 +128,45 @@ function attachInteractivity(container) {
       return;
     }
 
+    // ── Discord select: open/close dropdown ──
+    if (target.classList.contains('dc-select-trigger')) {
+      const select = target.closest('.dc-select');
+      if (select && !select.classList.contains('disabled')) {
+        const wasOpen = select.classList.contains('open');
+        container.querySelectorAll('.dc-select.open').forEach(s => s.classList.remove('open'));
+        if (!wasOpen) select.classList.add('open');
+      }
+      return;
+    }
+
+    // ── Discord select: pick an option ──
+    if (target.closest('.dc-select-option')) {
+      const option = target.closest('.dc-select-option');
+      const select = option.closest('.dc-select');
+      if (select) {
+        select.querySelectorAll('.dc-select-option').forEach(o => o.classList.remove('selected'));
+        option.classList.add('selected');
+        const trigger = select.querySelector('.dc-select-trigger');
+        if (trigger) {
+          const label = option.querySelector('.dc-select-option-label')?.textContent
+            || option.textContent.trim();
+          const arrow = trigger.querySelector('.dc-select-arrow');
+          trigger.textContent = label;
+          if (arrow) trigger.appendChild(arrow);
+          trigger.classList.add('has-value');
+        }
+        select.classList.remove('open');
+      }
+      return;
+    }
+
+    // ── Discord button: brief pressed feedback (non-link, enabled) ──
+    if (target.classList.contains('dc-btn') && target.tagName === 'BUTTON' && !target.disabled) {
+      target.classList.add('dc-btn-pressed');
+      setTimeout(() => target.classList.remove('dc-btn-pressed'), 200);
+      return;
+    }
+
     // ── File tree folder toggle ──
     if (target.closest('.ft-toggle')) {
       const item = target.closest('.ft-item');
@@ -171,6 +215,46 @@ function attachInteractivity(container) {
     document.addEventListener('mouseup', onUp);
     e.preventDefault();
   });
+
+  // ── Discord Rich Presence live timers ──
+  startPresenceTicker(container);
+}
+
+/**
+ * Format a duration in ms as H:MM:SS or MM:SS (mirrors PresenceRenderer).
+ */
+function formatPresenceElapsed(ms) {
+  if (!isFinite(ms) || ms < 0) ms = 0;
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const pad = (x) => String(x).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
+/**
+ * Start a 1s interval (once per container) that refreshes any
+ * .dc-presence-time elements with elapsed/remaining durations.
+ */
+function startPresenceTicker(container) {
+  if (container._dcPresenceTicker) return;
+  const tick = () => {
+    const els = container.querySelectorAll('.dc-presence-time[data-start], .dc-presence-time[data-end]');
+    if (!els.length) return;
+    const now = Date.now();
+    els.forEach((el) => {
+      const end = el.getAttribute('data-end');
+      const start = el.getAttribute('data-start');
+      if (end) {
+        el.textContent = `${formatPresenceElapsed(Number(end) - now)} left`;
+      } else if (start) {
+        el.textContent = `${formatPresenceElapsed(now - Number(start))} elapsed`;
+      }
+    });
+  };
+  container._dcPresenceTicker = setInterval(tick, 1000);
+  tick();
 }
 
 function handleCopyClick(btn) {

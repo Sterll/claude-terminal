@@ -6,6 +6,7 @@
 const EmbedRenderer = require('./EmbedRenderer');
 const ComponentRenderer = require('./ComponentRenderer');
 const MessageRenderer = require('./MessageRenderer');
+const PresenceRenderer = require('./PresenceRenderer');
 
 /**
  * Render a Discord embed from data or code
@@ -100,6 +101,28 @@ function renderModal(input) {
 }
 
 /**
+ * Render a Discord Rich Presence card from data or JSON string
+ * @param {Object|string} input - Presence object or JSON string
+ * @returns {string} HTML string
+ */
+function renderPresence(input) {
+  if (!input) return '';
+
+  if (typeof input === 'string') {
+    try {
+      const parsed = JSON.parse(input);
+      if (parsed && typeof parsed === 'object') return PresenceRenderer.render(parsed);
+    } catch {
+      return '';
+    }
+    return '';
+  }
+
+  if (typeof input === 'object') return PresenceRenderer.render(input);
+  return '';
+}
+
+/**
  * Try to auto-detect and render any Discord structure
  * @param {string} raw - Raw JSON or code string
  * @returns {{ type: string, html: string } | null}
@@ -147,9 +170,11 @@ module.exports = {
   renderComponents,
   renderMessage,
   renderModal,
+  renderPresence,
   autoRender,
   // Re-export sub-renderers for direct access
   EmbedRenderer,
   ComponentRenderer,
-  MessageRenderer
+  MessageRenderer,
+  PresenceRenderer
 };

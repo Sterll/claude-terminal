@@ -12,7 +12,7 @@ const { t } = require('../../i18n');
 const { renderDiffBlock, renderMermaidBlock, renderSvgBlock, renderMathBlock, renderHtmlPreviewBlock } = require('./blocks/code');
 const { renderLinksBlock, renderMetricsBlock, renderApiBlock, renderResourceBlock, renderConfigBlock, renderCommandBlock } = require('./blocks/data');
 const { renderFileTree, renderTerminalBlock, renderTimelineBlock, renderCompareBlock, renderTabsBlock, renderEventFlowBlock } = require('./blocks/layout');
-const { renderDiscordEmbedBlock, renderDiscordComponentBlock, renderDiscordMessageBlock } = require('./blocks/discord');
+const { renderDiscordEmbedBlock, renderDiscordComponentBlock, renderDiscordMessageBlock, renderDiscordPresenceBlock } = require('./blocks/discord');
 const { renderWorkspaceDocBlock, renderWorkspaceLinksBlock } = require('./blocks/workspace');
 const { renderGitCommitBlock, renderGitStatusBlock, renderChangelogBlock, renderDependencyBlock } = require('./blocks/git');
 const { renderParallelRunBlock, renderParallelRunsBlock, renderParallelSuggestBlock } = require('./blocks/parallel');
@@ -24,7 +24,7 @@ const SPECIAL_LANGS = new Set([
   'timeline', 'steps', 'compare', 'links', 'tabs',
   'metrics', 'api', 'endpoint', 'resource', 'eventflow',
   'config', 'convars', 'command', 'cmd',
-  'embed', 'discord-embed', 'discord-component', 'discord-components', 'discord-message',
+  'embed', 'discord-embed', 'discord-component', 'discord-components', 'discord-message', 'discord-presence',
   'workspace-doc', 'workspace-links',
   'git-commit', 'git-status', 'changelog', 'dependency', 'dep',
   'parallel-run', 'parallel-runs', 'parallel-suggest',
@@ -163,6 +163,7 @@ function configure() {
         if (langLower === 'embed' || langLower === 'discord-embed') return renderDiscordEmbedBlock(raw);
         if (langLower === 'discord-component' || langLower === 'discord-components') return renderDiscordComponentBlock(raw);
         if (langLower === 'discord-message') return renderDiscordMessageBlock(raw);
+        if (langLower === 'discord-presence') return renderDiscordPresenceBlock(raw);
         if (langLower === 'workspace-doc') return renderWorkspaceDocBlock(raw);
         if (langLower === 'workspace-links') return renderWorkspaceLinksBlock(raw);
         if (langLower === 'git-commit') return renderGitCommitBlock(raw);

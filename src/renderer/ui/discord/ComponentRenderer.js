@@ -66,7 +66,8 @@ function renderSelectMenu(select) {
     for (const option of select.options) {
       const emoji = option.emoji ? `<span class="dc-btn-emoji">${renderEmoji(option.emoji)}</span>` : '';
       const desc = option.description ? `<div class="dc-select-option-desc">${escapeHtml(option.description)}</div>` : '';
-      html += `<div class="dc-select-option" data-value="${escapeAttr(option.value || '')}">${emoji}<div><div>${escapeHtml(option.label || '')}</div>${desc}</div></div>`;
+      const isDefault = option.default ? ' selected' : '';
+      html += `<div class="dc-select-option${isDefault}" data-value="${escapeAttr(option.value || '')}">${emoji}<div class="dc-select-option-content"><div class="dc-select-option-label">${escapeHtml(option.label || '')}</div>${desc}</div></div>`;
     }
     html += '</div>';
   }
