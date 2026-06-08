@@ -96,6 +96,48 @@ function registerAllHandlers(mainWindow) {
   const chatService = require('../services/ChatService');
   const discordRpcService = require('../services/DiscordRpcService');
   const pathModule = require('path');
+
+  // Pretty labels for the project-type fallback shown on the Discord presence.
+  const PROJECT_TYPE_LABELS = {
+    general: 'General', api: 'API', fivem: 'FiveM', minecraft: 'Minecraft',
+    python: 'Python', webapp: 'Web app', discord: 'Discord bot',
+  };
+
+  // Resolve the Claude Terminal project entry for a session.
+  // The folder on disk (basename of cwd) can differ from the name the user gave
+  // the project (e.g. folder "base" → project "SpaceNew"), so prefer the
+  // projects.json entry matched by id, then by path, and only fall back to the
+  // cwd basename.
+  const resolveProject = (projectId, cwd) => {
+    try {
+      const fsModule = require('fs');
+      const { projectsFile } = require('../utils/paths');
+      const raw = JSON.parse(fsModule.readFileSync(projectsFile, 'utf8'));
+      const projects = Array.isArray(raw) ? raw : (raw.projects || []);
+      let match = projectId ? projects.find((p) => p.id === projectId) : null;
+      if (!match && cwd) {
+        const norm = (s) => pathModule.resolve(String(s)).toLowerCase();
+        const target = norm(cwd);
+        match = projects.find((p) => p.path && norm(p.path) === target);
+      }
+      if (match && match.name) return { name: match.name, type: match.type || null };
+    } catch { /* projects.json missing/corrupt → fall back */ }
+    return { name: cwd ? pathModule.basename(cwd) : null, type: null };
+  };
+
+  // Second presence line: current git branch, else the project type.
+  const resolveSubtitle = async (cwd, type) => {
+    if (cwd) {
+      try {
+        const { getCurrentBranch } = require('../utils/git');
+        const branch = await getCurrentBranch(cwd);
+        if (branch) return `on ${branch}`;
+      } catch { /* not a git repo → fall back to type */ }
+    }
+    if (type) return `${PROJECT_TYPE_LABELS[type] || type} project`;
+    return undefined;
+  };
+
   chatService.setLifecycleCallback((event) => {
     try { workflowService.onChatSessionEvent(event); } catch (e) {
       console.warn('[IPC] workflow.onChatSessionEvent failed:', e.message);
@@ -103,8 +145,12 @@ function registerAllHandlers(mainWindow) {
     // Discord presence: "Coding in {project}" while a session runs, idle otherwise
     try {
       if (event.event === 'start') {
-        const name = event.cwd ? pathModule.basename(event.cwd) : null;
+        const { name, type } = resolveProject(event.projectId, event.cwd);
+        // Show the project immediately, then refine the subtitle once git resolves.
         discordRpcService.setProject(name, { coding: true });
+        resolveSubtitle(event.cwd, type)
+          .then((subtitle) => discordRpcService.setProject(name, { coding: true, subtitle }))
+          .catch(() => { /* keep the initial presence */ });
       } else if (event.event === 'end') {
         discordRpcService.setIdle();
       }

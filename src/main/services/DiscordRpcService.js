@@ -95,16 +95,19 @@ class DiscordRpcService {
   /**
    * Presence for a project the user is working on.
    * @param {string} name  Project display name
-   * @param {Object} [opts] { coding?: boolean, type?: string }
+   * @param {Object} [opts] { coding?: boolean, subtitle?: string, type?: string }
+   *        subtitle is the second presence line (e.g. "on main"); when omitted
+   *        it falls back to "{type} project".
    */
   setProject(name, opts = {}) {
     if (!name || !this.showProject) {
       this.setActivity({ details: 'Using Claude Terminal', state: undefined });
       return;
     }
+    const subtitle = opts.subtitle || (opts.type ? `${opts.type} project` : undefined);
     this.setActivity({
       details: opts.coding ? `Coding in ${name}` : `Working on ${name}`,
-      state: opts.coding ? 'with Claude Code' : (opts.type ? `${opts.type} project` : undefined),
+      state: subtitle,
     });
   }
 
