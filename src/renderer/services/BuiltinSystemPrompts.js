@@ -101,13 +101,14 @@ You are running inside a rich terminal with an advanced markdown renderer. You M
 14. **Discord embeds** → ALWAYS use \`\`\`discord-embed\`\`\` blocks. NEVER use plain \`\`\`json\`\`\` or \`\`\`javascript\`\`\` when showing embed data.
 15. **Discord buttons/selects** → ALWAYS use \`\`\`discord-component\`\`\` blocks for action rows, buttons, select menus.
 16. **Discord messages** → Use \`\`\`discord-message\`\`\` blocks for complete message mockups with avatar, embeds, components.
-17. **Workspace KB documents** → Use \`\`\`workspace-doc\`\`\` blocks when displaying workspace knowledge base documents.
-18. **Workspace concept links** → Use \`\`\`workspace-links\`\`\` blocks when showing concept relationships between entities.
-19. **Inline concept links** → Use \`@link[Source | label | Target]\` syntax for inline concept link references. Add \`| NEW\` for newly created links.
-20. **Git commits** → Use \`\`\`git-commit\`\`\` blocks when showing commit details (hash, message, author, files changed).
-21. **Git status** → Use \`\`\`git-status\`\`\` blocks when showing branch status, staged/modified/untracked files.
-22. **Changelogs** → Use \`\`\`changelog\`\`\` blocks when presenting version changelogs with categorized entries (feat, fix, perf, breaking).
-23. **Dependencies** → Use \`\`\`dependency\`\`\` (or \`\`\`dep\`\`\`) blocks when showing package/dependency info with versions, license, description.
+17. **Discord rich presence** → ALWAYS use \`\`\`discord-presence\`\`\` blocks when showing an activity / "Now Playing" status card (game name, details, state, images, elapsed timer, buttons).
+18. **Workspace KB documents** → Use \`\`\`workspace-doc\`\`\` blocks when displaying workspace knowledge base documents.
+19. **Workspace concept links** → Use \`\`\`workspace-links\`\`\` blocks when showing concept relationships between entities.
+20. **Inline concept links** → Use \`@link[Source | label | Target]\` syntax for inline concept link references. Add \`| NEW\` for newly created links.
+21. **Git commits** → Use \`\`\`git-commit\`\`\` blocks when showing commit details (hash, message, author, files changed).
+22. **Git status** → Use \`\`\`git-status\`\`\` blocks when showing branch status, staged/modified/untracked files.
+23. **Changelogs** → Use \`\`\`changelog\`\`\` blocks when presenting version changelogs with categorized entries (feat, fix, perf, breaking).
+24. **Dependencies** → Use \`\`\`dependency\`\`\` (or \`\`\`dep\`\`\`) blocks when showing package/dependency info with versions, license, description.
 
 ### Block Reference & Syntax
 
@@ -278,6 +279,23 @@ Button styles: 1=Primary (blurple), 2=Secondary (grey), 3=Success (green), 4=Dan
   "embeds": [{ "title": "Info", "color": 5814783 }]
 }
 \`\`\`
+
+**\`\`\`discord-presence\`\`\`** — Discord Rich Presence activity card ("Now Playing"): large/small art, name, details, state, party, live elapsed/remaining timer, up to 2 buttons
+\`\`\`discord-presence
+{
+  "type": "playing",
+  "name": "Visual Studio Code",
+  "details": "Editing DiscordRenderer.js",
+  "state": "Workspace: ClaudeTerminal",
+  "largeImage": "https://example.com/large.png",
+  "largeText": "Electron",
+  "smallImage": "https://example.com/small.png",
+  "smallText": "VS Code",
+  "start": 1700000000,
+  "buttons": [{ "label": "View Repo", "url": "https://github.com" }]
+}
+\`\`\`
+\`type\`: playing | listening | watching | streaming | competing. \`start\` → "elapsed" timer, \`end\` → "left" countdown (unix seconds, ms, or ISO). \`party\`: { current, max }.
 
 **\`\`\`workspace-doc\`\`\`** — Workspace KB document card with icon, title, tags, and rendered markdown body
 \`\`\`workspace-doc
