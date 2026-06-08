@@ -22,6 +22,38 @@ async function fileExists(filePath) {
 }
 
 /**
+ * Sleep helper (no Date.now / timers leak).
+ * @param {number} ms
+ */
+function _delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Rename with retry for transient Windows locks.
+ * On Windows, fsp.rename over an existing file intermittently fails with
+ * EPERM/EACCES/EBUSY when the destination is briefly locked by antivirus,
+ * the Search indexer, a cloud-sync agent, or a file watcher. These errors are
+ * transient, so we retry a few times with a small backoff before giving up.
+ * @param {string} from
+ * @param {string} to
+ * @param {number} attempts
+ */
+async function _renameWithRetry(from, to, attempts = 5) {
+  const transient = new Set(['EPERM', 'EACCES', 'EBUSY']);
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await fsp.rename(from, to);
+      return;
+    } catch (err) {
+      const isLast = i === attempts - 1;
+      if (isLast || !transient.has(err.code)) throw err;
+      await _delay(40 * (i + 1)); // 40ms, 80ms, 120ms, 160ms
+    }
+  }
+}
+
+/**
  * Atomic write with backup and recovery.
  * Pattern: ensure dir -> backup existing -> write tmp -> rename -> cleanup backup
  * @param {string} filePath
@@ -41,7 +73,7 @@ async function atomicWrite(filePath, content, { backup = true } = {}) {
     }
 
     await fsp.writeFile(tmpFile, content, 'utf8');
-    await fsp.rename(tmpFile, filePath);
+    await _renameWithRetry(tmpFile, filePath);
 
     if (backup) {
       try { await fsp.unlink(bakFile); } catch {}
