@@ -1228,37 +1228,29 @@ async function showCommitPreviewModal() {
   const sqlPreview = statements.map(s => s.sql + ';').join('\n\n');
   const highlighted = highlight(sqlPreview, 'sql');
 
-  const { id } = createModal({
-    title: t('database.commitPreviewTitle', { count: editCount }),
-    body: `
-      <div class="db-commit-preview">
-        <div class="db-commit-preview-info">
-          <span class="db-commit-preview-badge">${statements.length} ${statements.length === 1 ? 'UPDATE' : 'UPDATEs'}</span>
-          <span class="db-commit-preview-cells">${editCount} ${t('database.commitPreviewCells')}</span>
-        </div>
-        <div class="db-commit-preview-sql"><pre><code>${highlighted}</code></pre></div>
-      </div>`,
-    buttons: [
-      { label: t('common.cancel') || 'Cancel', action: 'cancel' },
-      { label: t('database.commitExecute', { count: editCount }), action: 'commit', class: 'accent' }
-    ]
-  });
-
-  showModal(id);
-
   return new Promise(resolve => {
-    const modal = document.getElementById(id);
-    if (!modal) return resolve(false);
-    modal.querySelectorAll('[data-action]').forEach(btn => {
-      btn.onclick = () => {
-        const action = btn.dataset.action;
-        closeModal(id);
-        resolve(action === 'commit');
-      };
+    let settled = false;
+    const done = (val) => { if (!settled) { settled = true; resolve(val); } };
+
+    const modal = createModal({
+      id: 'db-commit-preview-modal',
+      title: t('database.commitPreviewTitle', { count: editCount }),
+      content: `
+        <div class="db-commit-preview">
+          <div class="db-commit-preview-info">
+            <span class="db-commit-preview-badge">${statements.length} ${statements.length === 1 ? 'UPDATE' : 'UPDATEs'}</span>
+            <span class="db-commit-preview-cells">${editCount} ${t('database.commitPreviewCells')}</span>
+          </div>
+          <div class="db-commit-preview-sql"><pre><code>${highlighted}</code></pre></div>
+        </div>`,
+      buttons: [
+        { label: t('common.cancel') || 'Cancel', action: 'cancel', onClick: (m) => { closeModal(m); done(false); } },
+        { label: t('database.commitExecute', { count: editCount }), action: 'commit', primary: true, onClick: (m) => { closeModal(m); done(true); } }
+      ],
+      onClose: () => done(false)
     });
-    modal.querySelector('.modal-overlay')?.addEventListener('click', (e) => {
-      if (e.target === e.currentTarget) { closeModal(id); resolve(false); }
-    });
+
+    showModal(modal);
   });
 }
 
