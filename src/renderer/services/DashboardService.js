@@ -427,11 +427,16 @@ async function getPullRequests(remoteUrl) {
  * @param {string} projectPath
  * @returns {Promise<Object>}
  */
-async function loadDashboardData(projectPath) {
+async function loadDashboardData(projectPath, { lightweight = false } = {}) {
+  // The 500-commit history is only consumed by the detailed project view
+  // (contribution graph, heatmaps, health). Skip it during the bulk preload
+  // to avoid saturating the main process with 8 heavy `git log` in parallel.
   const [gitInfo, stats, commitHistory30d] = await Promise.all([
     getGitInfoFull(projectPath),
     getProjectStats(projectPath),
-    api.git.commitHistory({ projectPath, skip: 0, limit: 500 }).catch(() => [])
+    lightweight
+      ? Promise.resolve(null)
+      : api.git.commitHistory({ projectPath, skip: 0, limit: 500 }).catch(() => [])
   ]);
 
   // Detect project type
@@ -449,7 +454,38 @@ async function loadDashboardData(projectPath) {
     // No git remote, skip GitHub data
   }
 
+  // commitHistory30d === null marks "not loaded yet" (lightweight preload);
+  // ensureCommitHistory() fills it lazily when the detail view is opened.
   return { gitInfo, stats, workflowRuns, pullRequests, projectType, commitHistory30d };
+}
+
+/**
+ * Lazily load the 500-commit history for the detailed view if it was skipped
+ * during the lightweight preload. Patches and persists the cache in place.
+ * @param {Object} project - { id, path }
+ * @param {Object} data - Cached dashboard data
+ * @returns {Promise<Object>} data enriched with commitHistory30d (always an array)
+ */
+async function ensureCommitHistory(project, data) {
+  if (!data) return data;
+  if (Array.isArray(data.commitHistory30d)) return data; // already loaded
+
+  if (!data.gitInfo?.isGitRepo) {
+    data.commitHistory30d = [];
+    return data;
+  }
+
+  try {
+    const history = await api.git.commitHistory({ projectPath: project.path, skip: 0, limit: 500 });
+    data.commitHistory30d = Array.isArray(history) ? history : [];
+  } catch (e) {
+    console.error('[Dashboard] Failed to load commit history:', e);
+    data.commitHistory30d = [];
+  }
+
+  // `data` is the live cache reference (getCachedData returns it directly), so
+  // mutating in place enriches the in-memory cache without resetting its TTL.
+  return data;
 }
 
 /**
@@ -1896,6 +1932,10 @@ async function renderDashboard(container, project, options = {}) {
 
   // Case 1: We have cached data - show it immediately
   if (cachedData) {
+    // The bulk preload skips the 500-commit history (lightweight); load it now
+    // so the insights section (graph/heatmaps) has its data for this project.
+    await ensureCommitHistory(project, cachedData);
+
     // Use cross-fade transition when switching projects (existing content visible)
     await transitionDashboard(container, project, cachedData, options, !cacheValid && !alreadyRefreshing);
 
@@ -2010,8 +2050,10 @@ async function _preloadAllProjectsInner() {
     return new Promise(resolve => setTimeout(resolve, 0));
   }
 
-  // Load projects in parallel batches (increased from 4 to 8)
-  const BATCH_SIZE = 8;
+  // Load projects in parallel batches. Kept at 4 to avoid saturating the main
+  // process with too many concurrent git/scan operations (which caused every
+  // project to hit the 15s timeout).
+  const BATCH_SIZE = 4;
   for (let i = 0; i < projects.length; i += BATCH_SIZE) {
     const batch = projects.slice(i, i + BATCH_SIZE);
     await Promise.all(batch.map(async (project) => {
@@ -2025,7 +2067,7 @@ async function _preloadAllProjectsInner() {
       try {
         setCacheLoading(project.id, true);
         const data = await withTimeout(
-          loadDashboardData(project.path),
+          loadDashboardData(project.path, { lightweight: true }),
           PROJECT_TIMEOUT,
           project.name
         );
