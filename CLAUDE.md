@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Claude Terminal is a cross-platform Electron desktop application (**v1.2.10**) for managing Claude Code projects. It bundles an integrated terminal, a Claude Agent SDK chat UI, full Git workflow, a visual workflow automation editor (LiteGraph), parallel task orchestration, a Control Tower for multi-agent supervision, a workspace knowledge base, cloud sync, a PWA remote control, and a plugin/skill ecosystem. Primary target: Windows 10/11 with NSIS installer. Also builds for macOS (DMG) and Linux (AppImage / Snap / Flatpak).
+Claude Terminal is a cross-platform Electron desktop application (**v1.2.13**) for managing Claude Code projects. It bundles an integrated terminal, a Claude Agent SDK chat UI, full Git workflow, a visual workflow automation editor (LiteGraph), parallel task orchestration, a Control Tower for multi-agent supervision, a workspace knowledge base, cloud sync, a PWA remote control, and a plugin/skill ecosystem. Primary target: Windows 10/11 with NSIS installer. Also builds for macOS (DMG) and Linux (AppImage / Snap / Flatpak).
 
 **Repository:** `github.com/Sterll/claude-terminal` | **License:** GPL-3.0 | **Author:** Yanis
 
