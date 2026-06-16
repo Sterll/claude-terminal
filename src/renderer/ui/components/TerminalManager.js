@@ -692,6 +692,23 @@ class TerminalManager extends BaseComponent {
     const api = this._api;
     const sendPaste = (text) => {
       if (!text) return;
+      // For real PTY terminals, route the paste through xterm's own paste path
+      // so bracketed paste mode (\e[200~ ... \e[201~) is honored when the
+      // running app (e.g. the `claude` CLI) enabled it via \e[?2004h. xterm
+      // tracks that mode from the PTY output it renders, wraps the payload as a
+      // single block, and forwards it through onData -> api.terminal.input.
+      // This keeps multi-line pastes intact instead of turning each newline
+      // into a carriage return (Enter), which submitted only the first line.
+      if (inputChannel === 'terminal-input') {
+        const xterm = getTerminal(terminalId)?.terminal;
+        if (xterm) {
+          xterm.paste(text);
+          return;
+        }
+      }
+      // Fallback for non-PTY consoles (fivem/webapp), which are not bracketed
+      // paste apps, or when the xterm instance can't be resolved: normalize
+      // newlines to carriage returns and forward the raw payload.
       text = text.replace(/\r\n/g, '\r').replace(/\n/g, '\r');
       if (inputChannel === 'fivem-input') {
         api.fivem.input({ projectIndex: terminalId, data: text });
