@@ -2767,7 +2767,14 @@ class ChatView extends BaseComponent {
           cwd: project.path,
           projectId: project.id,
           prompt: enhancedText || '',
-          permissionMode: skipPermissions ? 'bypassPermissions' : 'default',
+          // skipPermissions (cloud tabs, quick actions, per-project override) forces full bypass.
+          // Otherwise honor the global execution mode: 'auto' uses SDK classifier checks,
+          // 'dangerous' bypasses everything, anything else asks before each action.
+          permissionMode: skipPermissions
+            ? 'bypassPermissions'
+            : (getSetting('executionMode') === 'auto'
+                ? 'auto'
+                : (getSetting('executionMode') === 'dangerous' ? 'bypassPermissions' : 'default')),
           sessionId,
           images: imagesPayload,
           mentions: resolvedMentions,

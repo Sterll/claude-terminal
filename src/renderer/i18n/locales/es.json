@@ -843,6 +843,8 @@
     "executionMode": "Modo de ejecución",
     "modeSafe": "Modo seguro",
     "modeSafeDesc": "Claude pide confirmación antes de cada acción",
+    "modeAuto": "Modo automático",
+    "modeAutoDesc": "Claude se ejecuta sin confirmaciones mientras un clasificador de seguridad revisa cada acción",
     "modeAutonomous": "Modo autónomo",
     "modeAutonomousDesc": "Claude ejecuta sin confirmación",
     "modeAutonomousWarning": "Este modo permite a Claude ejecutar comandos sin aprobación.",

@@ -2334,6 +2334,11 @@ body.compact-projects .project-item:not(.active):hover {
   color: var(--accent);
 }
 
+.execution-mode-icon.auto {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--info);
+}
+
 .execution-mode-icon.dangerous {
   background: rgba(245, 158, 11, 0.1);
   color: #f59e0b;
