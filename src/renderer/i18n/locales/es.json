@@ -1151,7 +1151,8 @@
     "preview": "Vista previa",
     "editSkill": "Editar Skill",
     "editAgent": "Editar Agente",
-    "openExternal": "Abrir en editor"
+    "openExternal": "Abrir en editor",
+    "hotReloaded": "Recargado en {count} sesión(es) activa(s)"
   },
   "mcpLocal": {
     "panelDescription": "Los servidores MCP (Model Context Protocol) extienden Claude con herramientas externas: bases de datos, APIs y sistemas de archivos.",
@@ -1728,7 +1729,14 @@
     "math": {
       "loading": "Renderizando fórmula...",
       "error": "Error al renderizar la fórmula"
-    }
+    },
+    "backgroundTask": "Tarea en segundo plano",
+    "stopTask": "Detener tarea",
+    "elicitationTitle": "Entrada solicitada",
+    "elicitationSubmit": "Enviar",
+    "elicitationDecline": "Rechazar",
+    "elicitationOpen": "Continuar",
+    "cancel": "Cancelar"
   },
   "hooks": {
     "consent": {

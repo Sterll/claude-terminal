@@ -4364,3 +4364,154 @@ hr.chat-plan-separator {
   color: var(--text-muted);
   padding: 4px 0;
 }
+
+/* ── MCP elicitation card ── */
+.chat-elicit-card {
+  margin: 8px 0;
+  border: 1px solid var(--border-primary);
+  border-left: 3px solid var(--info);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  overflow: hidden;
+  animation: chat-msg-in 0.15s ease-out;
+}
+.chat-elicit-card.resolved {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.chat-elicit-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 6px;
+}
+.chat-elicit-title {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.chat-elicit-server {
+  font-size: var(--font-2xs);
+  color: var(--info);
+  background: rgba(59, 130, 246, 0.12);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.chat-elicit-body {
+  padding: 0 12px 8px;
+}
+.chat-elicit-message {
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+  margin: 4px 0 8px;
+}
+.chat-elicit-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chat-elicit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.chat-elicit-field-label {
+  font-size: var(--font-xs);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.chat-elicit-field-desc {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+}
+.chat-elicit-input {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 6px 8px;
+  font-size: var(--font-sm);
+}
+.chat-elicit-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+input.chat-elicit-input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  align-self: flex-start;
+}
+.chat-elicit-link {
+  font-size: var(--font-sm);
+  color: var(--info);
+  word-break: break-all;
+}
+.chat-elicit-actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px 12px;
+}
+
+/* ── Background task card ── */
+.chat-task-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  font-size: var(--font-sm);
+  animation: chat-msg-in 0.15s ease-out;
+}
+.chat-task-card.done { opacity: 0.7; }
+.chat-task-card.failed { border-left: 3px solid var(--danger); }
+.chat-task-card.stopped { border-left: 3px solid var(--warning); }
+.chat-task-card.completed { border-left: 3px solid var(--success); }
+.chat-task-label {
+  flex: 1;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-task-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+.chat-task-status-icon {
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+  font-size: var(--font-xs);
+}
+.chat-task-status-icon.completed { color: var(--success); }
+.chat-task-status-icon.failed { color: var(--danger); }
+.chat-task-status-icon.stopped { color: var(--warning); }
+.chat-task-stop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 5px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.chat-task-stop:hover {
+  background: var(--danger);
+  color: #fff;
+}
+.chat-task-card.stopping .chat-task-stop {
+  opacity: 0.5;
+  pointer-events: none;
+}

@@ -43,6 +43,15 @@ class PluginsPanel extends BasePanel {
     this._closeModal = options.closeModal;
   }
 
+  /**
+   * Hot-reload plugins into any live chat session after install/uninstall/update
+   * (SDK 0.3+), so changes apply without restarting the conversation. No-op when
+   * no session is active.
+   */
+  async _hotReloadPlugins() {
+    try { await this.api.chat.reloadPlugins(); } catch (_) { /* best effort */ }
+  }
+
   async loadPlugins() {
     if (!this._state.initialized) {
       this._state.initialized = true;
@@ -115,6 +124,7 @@ class PluginsPanel extends BasePanel {
                 delete this._state.updateStatuses[pluginName];
                 this._showToast({ type: 'success', title: t('plugins.updateSuccess', { name: pluginName }) });
                 await this.loadPlugins();
+                this._hotReloadPlugins();
               } else {
                 throw new Error(result.error);
               }
@@ -495,6 +505,7 @@ class PluginsPanel extends BasePanel {
             if (result.success) {
               this._showToast({ type: 'success', title: t('plugins.uninstallSuccess', { name: pluginKey }) });
               await this.loadPlugins();
+              this._hotReloadPlugins();
             } else {
               this._showToast({ type: 'error', title: t('plugins.uninstallError'), message: result.error || '' });
               uninstallBtn.disabled = false;
@@ -519,6 +530,7 @@ class PluginsPanel extends BasePanel {
       if (result.success) {
         this._showToast({ type: 'success', title: t('plugins.installSuccess', { name: pluginName }) });
         await this.loadPlugins();
+        this._hotReloadPlugins();
       } else {
         this._showToast({ type: 'error', title: t('plugins.installError'), message: result.error || '' });
         btn.disabled = false;

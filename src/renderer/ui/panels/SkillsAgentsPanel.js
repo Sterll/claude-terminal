@@ -25,6 +25,7 @@ class SkillsAgentsPanel extends BasePanel {
     this._skillsDir = options.skillsDir;
     this._agentsDir = options.agentsDir;
     this._getSetting = options.getSetting;
+    this._showToast = options.showToast;
     this._loadMarketplaceContent = options.loadMarketplaceContent;
     this._searchMarketplace = options.searchMarketplace;
     this._loadMarketplaceFeatured = options.loadMarketplaceFeatured;
@@ -345,6 +346,7 @@ class SkillsAgentsPanel extends BasePanel {
               closeModal(m);
               if (type === 'skill') this.loadSkills();
               else this.loadAgents();
+              this._hotReloadSessions(type);
             }
           }
         }
@@ -409,6 +411,27 @@ class SkillsAgentsPanel extends BasePanel {
       }
     });
   }
+
+  /**
+   * Hot-reload skills/agents into any live chat session so edits take effect
+   * without restarting the conversation (SDK 0.3+). No-op when no session is
+   * active — the next chat will read the fresh files from disk anyway.
+   */
+  async _hotReloadSessions(type) {
+    try {
+      // Skills reload via reloadSkills; agents are refreshed via reloadPlugins.
+      const res = type === 'skill'
+        ? await this.api.chat.reloadSkills()
+        : await this.api.chat.reloadPlugins();
+      if (res?.success && res.reloaded > 0 && this._showToast) {
+        this._showToast({
+          type: 'success',
+          title: t('skillsAgents.hotReloaded', { count: res.reloaded })
+            || `Reloaded in ${res.reloaded} active session(s)`,
+        });
+      }
+    } catch (_) { /* best effort */ }
+  }
 }
 
 // ── Lazy singleton + legacy exports ──
@@ -423,6 +446,7 @@ function init(context) {
     skillsDir: context.skillsDir,
     agentsDir: context.agentsDir,
     getSetting: context.getSetting,
+    showToast: context.showToast,
     loadMarketplaceContent: context.loadMarketplaceContent,
     searchMarketplace: context.searchMarketplace,
     loadMarketplaceFeatured: context.loadMarketplaceFeatured,

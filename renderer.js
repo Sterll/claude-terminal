@@ -324,7 +324,7 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
   });
 
   SkillsAgentsPanel.init({
-    api, fs, path, skillsDir, agentsDir, getSetting,
+    api, fs, path, skillsDir, agentsDir, getSetting, showToast,
     loadMarketplaceContent: () => MarketplacePanel.loadMarketplaceContent(),
     searchMarketplace: (q) => MarketplacePanel.searchMarketplace(q),
     loadMarketplaceFeatured: () => MarketplacePanel.loadMarketplaceFeatured(),

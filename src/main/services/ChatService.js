@@ -223,6 +223,8 @@ class ChatService {
     this.sessions = new Map();
     /** @type {Map<string, { resolve: Function, reject: Function }>} */
     this.pendingPermissions = new Map();
+    /** @type {Map<string, { resolve: Function, reject: Function, sessionId: string, timeoutId: any }>} */
+    this.pendingElicitations = new Map();
     /** @type {Map<string, { abortController: AbortController, type: string }>} */
     this.backgroundGenerations = new Map();
     /** @type {BrowserWindow|null} */
@@ -419,6 +421,11 @@ class ChatService {
         settingSources: settingSources !== null ? settingSources : ['user', 'project', 'local'],
         canUseTool: async (toolName, input, opts) => {
           return this._handlePermission(sessionId, toolName, input, opts);
+        },
+        // MCP elicitation: a server requests structured input (form) or browser auth (url).
+        // Forwarded to the renderer, which renders a form from the JSON schema.
+        onElicitation: async (request, opts) => {
+          return this._handleElicitation(sessionId, request, opts);
         },
         stderr: (data) => {
           console.error(`[ChatService][stderr] ${data}`);
@@ -662,6 +669,68 @@ class ChatService {
   }
 
   /**
+   * Handle an MCP elicitation request from the SDK's onElicitation callback.
+   * Forwards the request to the renderer (form schema or auth URL) and waits
+   * for the user's response. Returns an ElicitResult: { action, content? }.
+   */
+  async _handleElicitation(sessionId, request, options) {
+    const requestId = `elicit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const ELICIT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        if (this.pendingElicitations.has(requestId)) {
+          this.pendingElicitations.delete(requestId);
+          console.warn(`[ChatService] Elicitation ${requestId} timed out after 5 minutes, cancelling`);
+          resolve({ action: 'cancel' });
+        }
+      }, ELICIT_TIMEOUT_MS);
+
+      this.pendingElicitations.set(requestId, { resolve, reject, sessionId, timeoutId });
+
+      this._send('chat-elicitation-request', {
+        sessionId,
+        requestId,
+        serverName: request.serverName,
+        message: request.message,
+        mode: request.mode || 'form',
+        url: request.url,
+        requestedSchema: this._safeSerialize(request.requestedSchema),
+        title: request.title,
+        displayName: request.displayName,
+        description: request.description,
+      });
+
+      if (options?.signal) {
+        options.signal.addEventListener('abort', () => {
+          clearTimeout(timeoutId);
+          this.pendingElicitations.delete(requestId);
+          reject(new Error('Aborted'));
+        }, { once: true });
+      }
+    });
+  }
+
+  /**
+   * Resolve a pending elicitation request (called from IPC).
+   * @param {string} requestId
+   * @param {Object} result - ElicitResult: { action: 'accept'|'decline'|'cancel', content? }
+   */
+  resolveElicitation(requestId, result) {
+    const pending = this.pendingElicitations.get(requestId);
+    if (pending) {
+      this.pendingElicitations.delete(requestId);
+      clearTimeout(pending.timeoutId);
+      const session = this.sessions.get(pending.sessionId);
+      if (!session) {
+        console.warn(`[ChatService] Elicitation ${requestId} resolved but session ${pending.sessionId} already closed, ignoring`);
+        return;
+      }
+      pending.resolve(result || { action: 'cancel' });
+    }
+  }
+
+  /**
    * Enable always-allow mode for a session (auto-approve all permissions)
    */
   setAlwaysAllow(sessionId) {
@@ -773,6 +842,68 @@ class ChatService {
   }
 
   /**
+   * Return the active, local (non-cloud) sessions whose queryStream is alive.
+   * @returns {Array<[string, Object]>}
+   */
+  _activeLocalSessions() {
+    return [...this.sessions.entries()].filter(([, s]) => s.queryStream && !s.isCloud);
+  }
+
+  /**
+   * Hot-reload skills from disk for live chat sessions (SDK 0.3+).
+   * Picks up edits made in the Skills panel without restarting the session.
+   * @param {string|null} sessionId - specific session, or null for all active sessions
+   * @returns {Promise<{ reloaded: number, skills: string[] }>}
+   */
+  async reloadSkills(sessionId = null) {
+    const targets = sessionId
+      ? [[sessionId, this.sessions.get(sessionId)]].filter(([, s]) => s)
+      : this._activeLocalSessions();
+
+    let reloaded = 0;
+    let skills = [];
+    for (const [, session] of targets) {
+      if (!session.queryStream?.reloadSkills || session.isCloud) continue;
+      try {
+        const res = await session.queryStream.reloadSkills();
+        reloaded++;
+        if (Array.isArray(res?.skills)) {
+          skills = res.skills.map(s => s?.name || s).filter(Boolean);
+        }
+      } catch (err) {
+        console.error('[ChatService] reloadSkills failed:', err.message);
+      }
+    }
+    return { reloaded, skills };
+  }
+
+  /**
+   * Hot-reload plugins from disk for live chat sessions (SDK 0.3+).
+   * Refreshes commands, agents, plugins and MCP server status.
+   * @param {string|null} sessionId - specific session, or null for all active sessions
+   * @returns {Promise<{ reloaded: number, plugins: number }>}
+   */
+  async reloadPlugins(sessionId = null) {
+    const targets = sessionId
+      ? [[sessionId, this.sessions.get(sessionId)]].filter(([, s]) => s)
+      : this._activeLocalSessions();
+
+    let reloaded = 0;
+    let plugins = 0;
+    for (const [, session] of targets) {
+      if (!session.queryStream?.reloadPlugins || session.isCloud) continue;
+      try {
+        const res = await session.queryStream.reloadPlugins();
+        reloaded++;
+        if (Array.isArray(res?.plugins)) plugins = res.plugins.length;
+      } catch (err) {
+        console.error('[ChatService] reloadPlugins failed:', err.message);
+      }
+    }
+    return { reloaded, plugins };
+  }
+
+  /**
    * Reject all pending permission requests for a session.
    * Called when the stream ends or errors to unblock the UI.
    */
@@ -785,6 +916,18 @@ class ChatService {
         pending.promise?.catch?.(() => {});
         try {
           pending.reject(new Error(reason));
+        } catch (e) {
+          // Already settled, ignore
+        }
+      }
+    }
+    // Resolve any pending elicitations as cancelled so the SDK doesn't hang.
+    for (const [id, pending] of this.pendingElicitations) {
+      if (pending.sessionId === sessionId) {
+        this.pendingElicitations.delete(id);
+        clearTimeout(pending.timeoutId);
+        try {
+          pending.resolve({ action: 'cancel' });
         } catch (e) {
           // Already settled, ignore
         }
@@ -805,6 +948,26 @@ class ChatService {
         if (message.type === 'prompt_suggestion') {
           this._send('chat-prompt-suggestion', { sessionId, suggestion: message.suggestion });
           continue;
+        }
+        // Background task lifecycle (Task tool / subagents / local workflows).
+        // Surfaced as a dedicated event so the UI can maintain a live task list
+        // with a stop button (queryStream.stopTask). Still forwarded below for
+        // the transcript unless flagged skip_transcript.
+        if (message.type === 'system'
+          && (message.subtype === 'task_started' || message.subtype === 'task_notification')) {
+          this._send('chat-task-update', {
+            sessionId,
+            phase: message.subtype === 'task_started' ? 'started' : 'ended',
+            taskId: message.task_id,
+            toolUseId: message.tool_use_id || null,
+            description: message.description || message.summary || '',
+            status: message.status || null,
+            subagentType: message.subagent_type || null,
+            taskType: message.task_type || null,
+            workflowName: message.workflow_name || null,
+            usage: message.usage || null,
+            skipTranscript: message.skip_transcript === true,
+          });
         }
         this._send('chat-message', { sessionId, message });
 

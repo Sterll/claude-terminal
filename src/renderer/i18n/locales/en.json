@@ -1154,7 +1154,8 @@
     "preview": "Preview",
     "editSkill": "Edit Skill",
     "editAgent": "Edit Agent",
-    "openExternal": "Open in editor"
+    "openExternal": "Open in editor",
+    "hotReloaded": "Reloaded in {count} active session(s)"
   },
   "mcpLocal": {
     "panelDescription": "MCP (Model Context Protocol) servers extend Claude with custom tools like databases, APIs, and file systems.",
@@ -1741,7 +1742,14 @@
     "math": {
       "loading": "Rendering math...",
       "error": "Math render failed"
-    }
+    },
+    "backgroundTask": "Background task",
+    "stopTask": "Stop task",
+    "elicitationTitle": "Input requested",
+    "elicitationSubmit": "Submit",
+    "elicitationDecline": "Decline",
+    "elicitationOpen": "Continue",
+    "cancel": "Cancel"
   },
   "hooks": {
     "consent": {

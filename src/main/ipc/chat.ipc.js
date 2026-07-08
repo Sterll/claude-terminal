@@ -46,6 +46,33 @@ function registerChatHandlers() {
     chatService.interrupt(sessionId);
   });
 
+  // Elicitation response from renderer (MCP form / auth)
+  ipcMain.on('chat-elicitation-response', (_event, { requestId, result }) => {
+    chatService.resolveElicitation(requestId, result);
+  });
+
+  // Hot-reload skills from disk for live session(s) (SDK 0.3+)
+  ipcMain.handle('chat-reload-skills', async (_event, { sessionId } = {}) => {
+    try {
+      const result = await chatService.reloadSkills(sessionId || null);
+      return { success: true, ...result };
+    } catch (err) {
+      console.error('[chat-reload-skills] Error:', err.message);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Hot-reload plugins from disk for live session(s) (SDK 0.3+)
+  ipcMain.handle('chat-reload-plugins', async (_event, { sessionId } = {}) => {
+    try {
+      const result = await chatService.reloadPlugins(sessionId || null);
+      return { success: true, ...result };
+    } catch (err) {
+      console.error('[chat-reload-plugins] Error:', err.message);
+      return { success: false, error: err.message };
+    }
+  });
+
   // Close the active SDK session before swapping the OAuth account on disk,
   // so the next chat-start picks up the new credentials cleanly.
   ipcMain.handle('chat-prepare-switch-account', async (_event, { sessionId }) => {

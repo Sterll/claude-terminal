@@ -4616,6 +4616,97 @@ class ChatView extends BaseComponent {
     });
   }
 
+  // ── MCP elicitation card (form / auth URL) ──
+  // An MCP server can request structured input. We render a form from the
+  // provided JSON schema and return an ElicitResult { action, content }.
+  function appendElicitationCard(data) {
+    const { requestId, serverName, message, mode, url, requestedSchema, title } = data;
+    const el = document.createElement('div');
+    el.className = 'chat-elicit-card';
+    el.dataset.requestId = requestId;
+
+    const respond = (result) => {
+      if (el.classList.contains('resolved')) return;
+      el.classList.add('resolved');
+      el.querySelectorAll('input, textarea, select, button').forEach(n => { n.disabled = true; });
+      try { api.chat.respondElicitation({ requestId, result }); } catch (_) {}
+      setStatus('thinking', t('chat.thinking') || 'Thinking...');
+    };
+
+    const headerTitle = escapeHtml(title || t('chat.elicitationTitle') || 'Input requested');
+    const serverLabel = serverName ? `<span class="chat-elicit-server">${escapeHtml(serverName)}</span>` : '';
+
+    if (mode === 'url') {
+      el.innerHTML = `
+        <div class="chat-elicit-header">
+          <span class="chat-elicit-title">${headerTitle}</span>${serverLabel}
+        </div>
+        <div class="chat-elicit-body">
+          ${message ? `<p class="chat-elicit-message">${escapeHtml(message)}</p>` : ''}
+          ${url ? `<a href="#" class="chat-elicit-link" data-url="${escapeHtml(url)}">${escapeHtml(url)}</a>` : ''}
+        </div>
+        <div class="chat-elicit-actions">
+          <button class="chat-perm-btn allow" data-action="accept">${escapeHtml(t('chat.elicitationOpen') || 'Continue')}</button>
+          <button class="chat-perm-btn deny" data-action="cancel">${escapeHtml(t('chat.cancel') || 'Cancel')}</button>
+        </div>`;
+      el.querySelector('.chat-elicit-link')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        try { api.dialog?.openExternal?.(url); } catch (_) {}
+      });
+    } else {
+      const props = (requestedSchema && requestedSchema.properties) || {};
+      const required = Array.isArray(requestedSchema?.required) ? requestedSchema.required : [];
+      const fieldsHtml = Object.entries(props).map(([key, spec]) => {
+        const label = escapeHtml(spec?.title || key);
+        const desc = spec?.description ? `<span class="chat-elicit-field-desc">${escapeHtml(spec.description)}</span>` : '';
+        const req = required.includes(key) ? ' required' : '';
+        const type = spec?.type;
+        let field;
+        if (type === 'boolean') {
+          field = `<input type="checkbox" class="chat-elicit-input" data-key="${escapeHtml(key)}" data-type="boolean" />`;
+        } else if (Array.isArray(spec?.enum)) {
+          const opts = spec.enum.map(v => `<option value="${escapeHtml(String(v))}">${escapeHtml(String(v))}</option>`).join('');
+          field = `<select class="chat-elicit-input" data-key="${escapeHtml(key)}" data-type="string"${req}>${opts}</select>`;
+        } else if (type === 'number' || type === 'integer') {
+          field = `<input type="number" class="chat-elicit-input" data-key="${escapeHtml(key)}" data-type="number"${req} />`;
+        } else {
+          field = `<input type="text" class="chat-elicit-input" data-key="${escapeHtml(key)}" data-type="string"${req} />`;
+        }
+        return `<label class="chat-elicit-field"><span class="chat-elicit-field-label">${label}</span>${desc}${field}</label>`;
+      }).join('');
+
+      el.innerHTML = `
+        <div class="chat-elicit-header">
+          <span class="chat-elicit-title">${headerTitle}</span>${serverLabel}
+        </div>
+        <div class="chat-elicit-body">
+          ${message ? `<p class="chat-elicit-message">${escapeHtml(message)}</p>` : ''}
+          <div class="chat-elicit-fields">${fieldsHtml}</div>
+        </div>
+        <div class="chat-elicit-actions">
+          <button class="chat-perm-btn allow" data-action="accept">${escapeHtml(t('chat.elicitationSubmit') || 'Submit')}</button>
+          <button class="chat-perm-btn deny" data-action="decline">${escapeHtml(t('chat.elicitationDecline') || 'Decline')}</button>
+        </div>`;
+
+      el.querySelector('[data-action="accept"]')?.addEventListener('click', () => {
+        const content = {};
+        el.querySelectorAll('.chat-elicit-input').forEach(inp => {
+          const key = inp.dataset.key;
+          const dtype = inp.dataset.type;
+          if (dtype === 'boolean') content[key] = inp.checked;
+          else if (dtype === 'number') { const n = parseFloat(inp.value); if (!isNaN(n)) content[key] = n; }
+          else if (inp.value !== '') content[key] = inp.value;
+        });
+        respond({ action: 'accept', content });
+      });
+      el.querySelector('[data-action="decline"]')?.addEventListener('click', () => respond({ action: 'decline' }));
+    }
+
+    el.querySelector('[data-action="cancel"]')?.addEventListener('click', () => respond({ action: 'cancel' }));
+    messagesEl.appendChild(el);
+    requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'end' }));
+  }
+
   function appendQuestionCard(data) {
     const { requestId, input } = data;
     const questions = input?.questions || [];
@@ -6041,6 +6132,62 @@ class ChatView extends BaseComponent {
   }
   document.addEventListener('ct-question-answered', _onCtQuestionAnswered);
   unsubscribers.push(() => document.removeEventListener('ct-question-answered', _onCtQuestionAnswered));
+
+  // ── MCP elicitation requests ──
+  const unsubElicit = api.chat.onElicitationRequest((data) => {
+    if (data.sessionId !== sessionId) return;
+    if (project.isCloud) return;
+    removeThinkingIndicator();
+    appendElicitationCard(data);
+    setStatus('waiting', t('chat.waitingForInput') || 'Waiting for input...');
+  });
+  unsubscribers.push(unsubElicit);
+
+  // ── Background task lifecycle (live task list with stop button) ──
+  const unsubTask = api.chat.onTaskUpdate((data) => {
+    if (data.sessionId !== sessionId) return;
+    if (data.skipTranscript) return; // ambient/housekeeping tasks stay hidden
+    const taskId = data.taskId;
+    if (!taskId) return;
+    let card;
+    try {
+      card = messagesEl.querySelector(`.chat-task-card[data-task-id="${CSS.escape(taskId)}"]`);
+    } catch (_) {
+      card = Array.from(messagesEl.querySelectorAll('.chat-task-card')).find(c => c.dataset.taskId === taskId);
+    }
+
+    if (data.phase === 'started') {
+      if (card) return;
+      card = document.createElement('div');
+      card.className = 'chat-task-card running';
+      card.dataset.taskId = taskId;
+      const label = escapeHtml(data.description || data.subagentType || data.workflowName || t('chat.backgroundTask') || 'Background task');
+      card.innerHTML = `
+        <div class="chat-task-spinner"></div>
+        <span class="chat-task-label">${label}</span>
+        <button class="chat-task-stop" title="${escapeHtml(t('chat.stopTask') || 'Stop task')}">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+        </button>`;
+      card.querySelector('.chat-task-stop')?.addEventListener('click', () => {
+        try { api.chat.stopTask({ sessionId, taskId }); } catch (_) {}
+        card.classList.add('stopping');
+      });
+      messagesEl.appendChild(card);
+      requestAnimationFrame(() => card.scrollIntoView({ behavior: 'smooth', block: 'end' }));
+    } else if (data.phase === 'ended' && card) {
+      const status = data.status || 'completed';
+      card.classList.remove('running', 'stopping');
+      card.classList.add('done', status);
+      const stopBtn = card.querySelector('.chat-task-stop');
+      if (stopBtn) stopBtn.remove();
+      const spinner = card.querySelector('.chat-task-spinner');
+      if (spinner) {
+        const ok = status === 'completed';
+        spinner.outerHTML = `<span class="chat-task-status-icon ${status}">${ok ? '✓' : (status === 'stopped' ? '■' : '✕')}</span>`;
+      }
+    }
+  });
+  unsubscribers.push(unsubTask);
 
   // If resuming, load and display conversation history
   if (pendingResumeId) {

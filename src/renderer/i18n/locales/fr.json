@@ -1247,7 +1247,8 @@
     "preview": "Apercu",
     "editSkill": "Modifier le Skill",
     "editAgent": "Modifier l'Agent",
-    "openExternal": "Ouvrir dans l'editeur"
+    "openExternal": "Ouvrir dans l'editeur",
+    "hotReloaded": "Rechargé dans {count} session(s) active(s)"
   },
   "mcpLocal": {
     "panelDescription": "Les serveurs MCP (Model Context Protocol) etendent Claude avec des outils externes : bases de donnees, APIs, systemes de fichiers.",
@@ -1741,7 +1742,14 @@
     "math": {
       "loading": "Rendu de la formule...",
       "error": "Échec du rendu de la formule"
-    }
+    },
+    "backgroundTask": "Tâche en arrière-plan",
+    "stopTask": "Arrêter la tâche",
+    "elicitationTitle": "Saisie demandée",
+    "elicitationSubmit": "Envoyer",
+    "elicitationDecline": "Refuser",
+    "elicitationOpen": "Continuer",
+    "cancel": "Annuler"
   },
   "hooks": {
     "consent": {
