@@ -562,6 +562,9 @@ class SettingsPanel extends BasePanel {
     const self = this;
     const container = document.getElementById('tab-settings');
     const settings = this._ctx.settingsState.get();
+    // Execution mode is a tri-state ('safe' | 'auto' | 'dangerous'). Derive it from
+    // the legacy boolean `skipPermissions` when the new field is absent (back-compat).
+    const execMode = settings.executionMode || (settings.skipPermissions ? 'dangerous' : 'safe');
 
     let launchAtStartup = false;
     try {
@@ -995,7 +998,7 @@ class SettingsPanel extends BasePanel {
               <div class="settings-group-title">${t('settings.executionMode')}</div>
               <div class="settings-card">
               <div class="execution-mode-selector">
-                <div class="execution-mode-card ${!settings.skipPermissions ? 'selected' : ''}" data-mode="safe">
+                <div class="execution-mode-card ${execMode === 'safe' ? 'selected' : ''}" data-mode="safe">
                   <div class="execution-mode-icon safe">
                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
                   </div>
@@ -1005,7 +1008,18 @@ class SettingsPanel extends BasePanel {
                   </div>
                   <div class="execution-mode-check"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>
                 </div>
-                <div class="execution-mode-card ${settings.skipPermissions ? 'selected' : ''}" data-mode="dangerous">
+                <div class="execution-mode-card ${execMode === 'auto' ? 'selected' : ''}" data-mode="auto">
+                  <div class="execution-mode-icon auto">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2.05v3.03c3.39.49 6 3.39 6 6.92 0 .9-.18 1.75-.48 2.54l2.6 1.53c.56-1.24.88-2.62.88-4.07 0-5.18-3.95-9.45-9-9.95zM12 19c-3.87 0-7-3.13-7-7 0-3.53 2.61-6.43 6-6.92V2.05c-5.06.5-9 4.76-9 9.95 0 5.52 4.47 10 9.99 10 3.31 0 6.24-1.61 8.06-4.09l-2.6-1.53C16.17 17.98 14.21 19 12 19z"/></svg>
+                  </div>
+                  <div class="execution-mode-content">
+                    <div class="execution-mode-title">${t('settings.modeAuto')}</div>
+                    <div class="execution-mode-desc">${t('settings.modeAutoDesc')}</div>
+                    <div class="execution-mode-flag">--permission-mode auto</div>
+                  </div>
+                  <div class="execution-mode-check"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>
+                </div>
+                <div class="execution-mode-card ${execMode === 'dangerous' ? 'selected' : ''}" data-mode="dangerous">
                   <div class="execution-mode-icon dangerous">
                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L1 21h22L12 2zm0 3.99L19.53 19H4.47L12 5.99zM11 10v4h2v-4h-2zm0 6v2h2v-2h-2z"/></svg>
                   </div>
@@ -1813,6 +1827,10 @@ class SettingsPanel extends BasePanel {
       const newSettings = {
         editor: editorDropdown?.dataset.value || settings.editor || 'code',
         customEditorCommand: customEditorInput ? customEditorInput.value.trim() : (settings.customEditorCommand || ''),
+        executionMode: selectedMode?.dataset.mode || 'safe',
+        // Legacy boolean kept in sync so the terminal CLI launch path (which only
+        // understands --dangerously-skip-permissions) still works. Only the
+        // "dangerous" mode skips all permissions; "auto" relies on SDK classifier checks.
         skipPermissions: selectedMode?.dataset.mode === 'dangerous',
         accentColor,
         closeAction: closeActionDropdown?.dataset.value || 'ask',

@@ -16,6 +16,7 @@ const defaultSettings = {
   customEditorCommand: '', // Custom editor command when editor is 'custom'
   shortcut: typeof navigator !== 'undefined' && navigator.platform?.includes('Mac') ? 'Cmd+Shift+P' : 'Ctrl+Shift+P',
   skipPermissions: false,
+  executionMode: 'safe', // 'safe' (default), 'auto' (SDK classifier), 'dangerous' (bypassPermissions)
   accentColor: '#d97706',
   notificationsEnabled: true,
   closeAction: 'ask', // 'ask', 'minimize', 'quit'
