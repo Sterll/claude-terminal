@@ -94,6 +94,7 @@ const MODEL_OPTIONS = [
   { id: 'claude-fable-5', label: 'Fable 5', desc: 'Most capable model' },
   { id: 'claude-opus-4-8', label: 'Opus 4.8', desc: 'Most capable for complex work' },
   { id: 'claude-opus-4-7', label: 'Opus 4.7', desc: 'Previous generation Opus' },
+  { id: 'claude-sonnet-5', label: 'Sonnet 5', desc: 'Best combination of speed and intelligence' },
   { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6', desc: 'Best for everyday tasks' },
   { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', desc: 'Fastest for quick answers' },
 ];

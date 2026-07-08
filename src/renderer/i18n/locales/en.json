@@ -3212,7 +3212,8 @@
       "opus": "Opus 4.7",
       "opus47": "Opus 4.7 — Previous generation",
       "opus48": "Opus 4.8 — Most capable",
-      "fable5": "Fable 5 — Most capable model"
+      "fable5": "Fable 5 — Most capable model",
+      "sonnet5": "Sonnet 5 — Speed and intelligence"
     },
     "empty": {
       "title": "No parallel runs yet",

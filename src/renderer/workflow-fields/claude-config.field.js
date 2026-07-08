@@ -125,6 +125,7 @@ function renderModelEffort(props) {
   <select class="wf-step-edit-input wf-node-prop" data-key="model">
     <option value=""${!props.model ? ' selected' : ''}>Auto</option>
     <option value="claude-fable-5"${props.model === 'claude-fable-5' ? ' selected' : ''}>Fable 5</option>
+    <option value="claude-sonnet-5"${props.model === 'claude-sonnet-5' ? ' selected' : ''}>Sonnet 5</option>
     <option value="sonnet"${props.model === 'sonnet' ? ' selected' : ''}>Sonnet</option>
     <option value="opus"${props.model === 'opus' ? ' selected' : ''}>Opus 4.8</option>
     <option value="claude-opus-4-7"${props.model === 'claude-opus-4-7' ? ' selected' : ''}>Opus 4.7</option>

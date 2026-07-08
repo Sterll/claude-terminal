@@ -3199,7 +3199,8 @@
       "opus": "Opus 4.7",
       "opus47": "Opus 4.7 — Generación anterior",
       "opus48": "Opus 4.8 — Más capaz",
-      "fable5": "Fable 5 — El modelo más capaz"
+      "fable5": "Fable 5 — El modelo más capaz",
+      "sonnet5": "Sonnet 5 — Velocidad e inteligencia"
     },
     "empty": {
       "title": "Sin ejecuciones paralelas aún",
