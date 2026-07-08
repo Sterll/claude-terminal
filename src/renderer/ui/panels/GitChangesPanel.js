@@ -173,6 +173,7 @@ class GitChangesPanel extends BasePanel {
 
         if (result.success && result.message) {
           this._gitCommitMessage.value = result.message;
+          this._updateCommitButton();
 
           const sourceLabel = result.source === 'ai' ? t('gitChanges.sourceAi') : t('gitChanges.sourceHeuristic');
           this._showToast({
@@ -229,6 +230,7 @@ class GitChangesPanel extends BasePanel {
           // Only one group — use normal flow
           if (result.commits && result.commits.length === 1) {
             this._gitCommitMessage.value = result.commits[0].message;
+            this._updateCommitButton();
             this._showToast({ type: 'info', message: t('gitChanges.generated', { source: result.commits[0].source === 'ai' ? t('gitChanges.sourceAi') : t('gitChanges.sourceHeuristic') }), duration: 3000 });
           }
           return;
