@@ -401,12 +401,20 @@ class ChatView extends BaseComponent {
 
   wrapperEl.innerHTML = `
     <div class="chat-view">
+      <div class="chat-tabbar" hidden>
+        <button class="chat-tab active" data-tab="conversation">${escapeHtml(t('chat.tabConversation') || 'Conversation')}</button>
+        <button class="chat-tab" data-tab="changes">
+          <span class="chat-tab-label">${escapeHtml(t('chat.tabChanges') || 'Changes')}</span>
+          <span class="chat-tab-badge" hidden>0</span>
+        </button>
+      </div>
       <div class="chat-messages">
         <div class="chat-welcome">
           <img class="chat-welcome-logo" src="assets/claude-mascot.svg" alt="" draggable="false" />
           <div class="chat-welcome-text">${escapeHtml(t('chat.welcomeMessage'))}</div>
         </div>
       </div>
+      <div class="chat-changes-panel" hidden></div>
       <div class="chat-input-area">
         <div class="chat-mention-dropdown" style="display:none"></div>
         <div class="chat-slash-dropdown" style="display:none"></div>
@@ -458,6 +466,9 @@ class ChatView extends BaseComponent {
 
   const chatView = wrapperEl.querySelector('.chat-view');
   const messagesEl = chatView.querySelector('.chat-messages');
+  const tabbarEl = chatView.querySelector('.chat-tabbar');
+  const changesPanelEl = chatView.querySelector('.chat-changes-panel');
+  const changesBadgeEl = chatView.querySelector('.chat-tab-badge');
   const inputEl = chatView.querySelector('.chat-input');
   const sendBtn = chatView.querySelector('.chat-send-btn');
   const stopBtn = chatView.querySelector('.chat-stop-btn');
@@ -3644,6 +3655,140 @@ class ChatView extends BaseComponent {
     }
   }
 
+  // ── Session changes tab (files modified during this session) ──
+  // Accumulates per-file added/removed line counts from every file-editing tool
+  // (Write / Edit / MultiEdit / NotebookEdit), including subagents and resumed
+  // history. The map lives in this component instance, so it is session-scoped.
+  const sessionFileChanges = new Map(); // filePath -> { additions, deletions, edits }
+
+  // Count changed lines between two text blocks by stripping the common prefix
+  // and suffix — mirrors how `git diff` reports +/- on the changed hunk only.
+  function _diffLineCounts(oldStr, newStr) {
+    const oldLines = oldStr ? String(oldStr).split('\n') : [];
+    const newLines = newStr ? String(newStr).split('\n') : [];
+    let start = 0;
+    while (start < oldLines.length && start < newLines.length && oldLines[start] === newLines[start]) start++;
+    let oldEnd = oldLines.length;
+    let newEnd = newLines.length;
+    while (oldEnd > start && newEnd > start && oldLines[oldEnd - 1] === newLines[newEnd - 1]) { oldEnd--; newEnd--; }
+    return { additions: Math.max(0, newEnd - start), deletions: Math.max(0, oldEnd - start) };
+  }
+
+  function recordFileChange(toolName, input) {
+    if (!input || !toolName) return;
+    const hits = []; // { path, additions, deletions }
+    switch (toolName) {
+      case 'Write':
+        if (input.file_path) hits.push({ path: input.file_path, additions: String(input.content || '').split('\n').length, deletions: 0 });
+        break;
+      case 'Edit': {
+        if (!input.file_path) break;
+        const c = _diffLineCounts(input.old_string, input.new_string);
+        hits.push({ path: input.file_path, additions: c.additions, deletions: c.deletions });
+        break;
+      }
+      case 'MultiEdit': {
+        if (!input.file_path) break;
+        let additions = 0, deletions = 0;
+        for (const e of (input.edits || [])) {
+          const c = _diffLineCounts(e.old_string, e.new_string);
+          additions += c.additions; deletions += c.deletions;
+        }
+        hits.push({ path: input.file_path, additions, deletions });
+        break;
+      }
+      case 'NotebookEdit': {
+        const path = input.notebook_path || input.file_path;
+        if (path) hits.push({ path, additions: String(input.new_source || '').split('\n').length, deletions: 0 });
+        break;
+      }
+      default:
+        return;
+    }
+    if (!hits.length) return;
+    for (const h of hits) {
+      const cur = sessionFileChanges.get(h.path) || { additions: 0, deletions: 0, edits: 0 };
+      cur.additions += h.additions;
+      cur.deletions += h.deletions;
+      cur.edits += 1;
+      sessionFileChanges.set(h.path, cur);
+    }
+    updateChangesTab();
+  }
+
+  function updateChangesTab() {
+    const count = sessionFileChanges.size;
+    if (count > 0 && tabbarEl.hidden) tabbarEl.hidden = false;
+    if (changesBadgeEl) {
+      changesBadgeEl.textContent = String(count);
+      changesBadgeEl.hidden = count === 0;
+    }
+    // Re-render live if the panel is currently visible
+    if (!changesPanelEl.hidden) renderChangesPanel();
+  }
+
+  function switchChatTab(tab) {
+    const isChanges = tab === 'changes';
+    tabbarEl.querySelectorAll('.chat-tab').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.tab === tab);
+    });
+    messagesEl.hidden = isChanges;
+    changesPanelEl.hidden = !isChanges;
+    if (isChanges) renderChangesPanel();
+  }
+
+  function renderChangesPanel() {
+    const files = [...sessionFileChanges.entries()];
+    if (!files.length) {
+      changesPanelEl.innerHTML = `<div class="chat-changes-empty">${escapeHtml(t('chat.noChangesYet') || 'No files modified yet.')}</div>`;
+      return;
+    }
+    files.sort((a, b) => (b[1].additions + b[1].deletions) - (a[1].additions + a[1].deletions));
+    let totalAdd = 0, totalDel = 0;
+    const rows = files.map(([path, s]) => {
+      totalAdd += s.additions; totalDel += s.deletions;
+      const base = path.split(/[\\/]/).pop();
+      const dir = path.slice(0, path.length - base.length);
+      return `
+        <div class="chat-change-item" data-path="${escapeHtml(path)}" title="${escapeHtml(path)}">
+          <div class="chat-change-file">
+            <span class="chat-change-base">${escapeHtml(base)}</span>
+            <span class="chat-change-dir">${escapeHtml(dir)}</span>
+          </div>
+          <div class="chat-change-stats">
+            ${s.edits > 1 ? `<span class="chat-change-edits">${s.edits}×</span>` : ''}
+            <span class="chat-change-add">+${s.additions}</span>
+            <span class="chat-change-del">-${s.deletions}</span>
+          </div>
+        </div>`;
+    }).join('');
+    const fileLabel = files.length > 1
+      ? (t('chat.filesChanged') || 'files changed')
+      : (t('chat.fileChanged') || 'file changed');
+    changesPanelEl.innerHTML = `
+      <div class="chat-changes-summary">
+        <span class="chat-changes-count">${files.length} ${escapeHtml(fileLabel)}</span>
+        <span class="chat-changes-totals">
+          <span class="chat-change-add">+${totalAdd}</span>
+          <span class="chat-change-del">-${totalDel}</span>
+        </span>
+      </div>
+      <div class="chat-changes-list">${rows}</div>
+    `;
+  }
+
+  tabbarEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.chat-tab');
+    if (btn) switchChatTab(btn.dataset.tab);
+  });
+
+  changesPanelEl.addEventListener('click', (e) => {
+    const item = e.target.closest('.chat-change-item');
+    if (!item || !item.dataset.path) return;
+    const editor = getSetting('editor') || 'code';
+    api.dialog.openInEditor({ editor, path: item.dataset.path });
+  });
+
   // ── Subagent (Task tool) card ──
 
   function appendSubagentCard() {
@@ -4144,6 +4289,7 @@ class ChatView extends BaseComponent {
             try {
               const toolInput = JSON.parse(jsonStr);
               const name = mini.dataset.toolName || mini.querySelector('.sa-tool-name')?.textContent || '';
+              recordFileChange(name, toolInput);
               const detail = getToolDisplayInfo(name, toolInput);
               const detailEl = mini.querySelector('.sa-tool-detail');
               if (detailEl && detail) {
@@ -4174,6 +4320,7 @@ class ChatView extends BaseComponent {
 
     for (const block of content) {
       if (block.type === 'tool_use' && block.name !== 'TodoWrite' && block.name !== 'TaskCreate' && block.name !== 'TaskUpdate' && block.name !== 'TaskList' && block.name !== 'TaskGet') {
+        recordFileChange(block.name, block.input);
         const detail = getToolDisplayInfo(block.name, block.input);
         info.activityEl.textContent = `${block.name}...`;
 
@@ -5168,6 +5315,7 @@ class ChatView extends BaseComponent {
             if (card) {
               card.dataset.toolInput = JSON.stringify(toolInput);
               const name = card.dataset.toolName || card.querySelector('.chat-tool-name')?.textContent || '';
+              recordFileChange(name, toolInput);
               // Custom card renderer (ScheduleWakeup, CronCreate, Worktree, Notification)
               const customHtml = renderToolCardHtml(name, toolInput);
               if (customHtml) {
@@ -6033,6 +6181,7 @@ class ChatView extends BaseComponent {
             continue;
           }
 
+          recordFileChange(msg.toolName, msg.toolInput || {});
           const detail = getToolDisplayInfo(msg.toolName, msg.toolInput || {});
           const el = document.createElement('div');
           el.className = 'chat-tool-card history';
