@@ -493,14 +493,28 @@ async function _importWorkflow(item, btn) {
       if (detailRes.ok) fullItem = await detailRes.json();
     }
 
+    // Security: never auto-arm an imported workflow. Force it disabled and
+    // reset the trigger to manual so nothing runs before the user reviews it.
+    const originalTrigger = fullItem.workflowJson?.trigger || null;
     const workflow = fullItem.workflowJson
-      ? { ...fullItem.workflowJson, id: `wf_${Date.now()}`, name: fullItem.workflowJson.name || item.name, enabled: true, _importedFrom: item.id }
-      : { id: `wf_${Date.now()}`, name: item.name, enabled: true, trigger: { type: 'manual' }, scope: 'current', concurrency: 'skip', steps: [], _importedFrom: item.id };
+      ? {
+          ...fullItem.workflowJson,
+          id: `wf_${Date.now()}`,
+          name: fullItem.workflowJson.name || item.name,
+          enabled: false,
+          trigger: { type: 'manual', value: '' },
+          _importedFrom: item.id,
+        }
+      : { id: `wf_${Date.now()}`, name: item.name, enabled: false, trigger: { type: 'manual', value: '' }, scope: 'current', concurrency: 'skip', steps: [], _importedFrom: item.id };
 
     // Preload wraps this as { workflow } for the IPC layer — pass the object
     // directly (matches WorkflowPanel.saveWorkflow), don't double-wrap.
     const result = await _ctx.api.workflow.save(workflow);
     if (!result?.success) throw new Error(result?.error || t('workflow.marketplace.failedDefault'));
+
+    // Warn the user about anything sensitive so they review before enabling.
+    const warning = _importWarning(fullItem.workflowJson, originalTrigger);
+    if (warning) _toast(warning, 'warning');
 
     btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg> ${t('workflow.marketplace.importedBtn')}`;
     btn.classList.add('hub-card-import--done');
@@ -513,6 +527,43 @@ async function _importWorkflow(item, btn) {
     btn.innerHTML = orig;
     _toast(t('workflow.marketplace.errorMessage', { message: e.message }), 'error');
   }
+}
+
+// Node step types considered sensitive enough to warrant a review warning.
+const SENSITIVE_STEP_TYPES = new Set(['shell', 'transform', 'http', 'file', 'git']);
+
+/**
+ * Build a review warning for an imported workflow, or null when nothing needs
+ * flagging. Flags sensitive step types and a non-manual original trigger.
+ */
+function _importWarning(workflowJson, originalTrigger) {
+  if (!workflowJson) return null;
+  const steps = Array.isArray(workflowJson.steps) ? workflowJson.steps : [];
+  const graphNodes = workflowJson.graph?.nodes || [];
+  const typeOf = (v) => String(v || '').replace('workflow/', '');
+  const sensitive = new Set();
+  for (const s of steps) {
+    const tp = typeOf(s.type);
+    if (SENSITIVE_STEP_TYPES.has(tp)) sensitive.add(tp);
+  }
+  for (const n of graphNodes) {
+    const tp = typeOf(n.type);
+    if (SENSITIVE_STEP_TYPES.has(tp)) sensitive.add(tp);
+  }
+
+  const triggerType = originalTrigger?.type || 'manual';
+  const hadNonManualTrigger = triggerType && triggerType !== 'manual';
+
+  if (!sensitive.size && !hadNonManualTrigger) return null;
+
+  const parts = [];
+  if (sensitive.size) {
+    parts.push(t('workflow.marketplace.importWarnSensitive', { nodes: [...sensitive].join(', ') }));
+  }
+  if (hadNonManualTrigger) {
+    parts.push(t('workflow.marketplace.importWarnTrigger', { trigger: triggerType }));
+  }
+  return t('workflow.marketplace.importWarnPrefix') + ' ' + parts.join(' ');
 }
 
 // ─── Mine tab ─────────────────────────────────────────────────────────────────

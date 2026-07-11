@@ -15,6 +15,7 @@ const {
   NODE_DATA_OUTPUTS, NODE_DATA_OUT_OFFSET,
   getNodeColors, isValidConnection,
 } = require('../../shared/workflow-schema');
+const { CLAUDE_MODEL_VALUES, EFFORT_VALUES } = require('../../shared/model-options');
 const nodeRegistry = require('./NodeRegistry');
 const { t } = require('../i18n');
 
@@ -92,6 +93,26 @@ function drawBadge(ctx, text, x, y, color) {
   ctx.textAlign = 'left';
 }
 
+// Maps a widget's raw English label to its i18n key. Translated live at draw
+// time (instead of at node creation) so switching language re-labels widgets.
+const WIDGET_LABEL_KEYS = {
+  'Mode': 'mode', 'Prompt': 'prompt', 'Model': 'model', 'Effort': 'effort',
+  'Command': 'command', 'Action': 'action', 'Method': 'method', 'URL': 'url',
+  'Headers': 'headers', 'Body': 'body', 'Title': 'title', 'Message': 'message',
+  'Duration': 'duration', 'Timeout': 'timeout', 'Variable': 'variable',
+  'Operator': 'operator', 'Value': 'value', 'Expression': 'expression',
+  'Project': 'project', 'Path': 'path', 'Query': 'query', 'Source': 'source',
+  'Items': 'items', 'Max items': 'maxItems', 'Name': 'name', 'Level': 'level',
+  'Operation': 'operation', 'Input': 'input', 'Output var': 'outputVar',
+  'Workflow': 'workflow', 'Input vars': 'inputVars', 'Wait': 'wait',
+  'Project ID': 'projectId', 'Cases': 'cases',
+};
+
+function widgetLabel(name) {
+  const key = WIDGET_LABEL_KEYS[name];
+  return key ? t('workflow.widget.' + key) : name;
+}
+
 function computeNodeHeight(node) {
   const inputSlots = node.inputs ? node.inputs.length : 0;
   const outputSlots = node.outputs ? node.outputs.length : 0;
@@ -112,7 +133,7 @@ function addDataOutputDefs(defs, nodeType) {
 
 const NODE_TYPES = {
   'workflow/trigger': {
-    title: 'Trigger', get desc() { return t('workflow.nodeDesc.trigger'); },
+    get title() { return t('workflow.nodeTitle.trigger'); }, get desc() { return t('workflow.nodeDesc.trigger'); },
     inputs: [],
     outputs: addDataOutputDefs([{ name: 'Start', type: 'exec' }], 'trigger'),
     props: { triggerType: 'manual', triggerValue: '', hookType: 'PostToolUse' },
@@ -121,21 +142,21 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.triggerType || 'manual').toUpperCase(),
   },
   'workflow/claude': {
-    title: 'Claude', get desc() { return t('workflow.nodeDesc.claude'); },
+    get title() { return t('workflow.nodeTitle.claude'); }, get desc() { return t('workflow.nodeDesc.claude'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'claude'),
     props: { mode: 'prompt', prompt: '', agentId: '', skillId: '', model: 'sonnet', effort: 'medium', outputSchema: null },
     widgets: [
       { type: 'combo', name: 'Mode', key: 'mode', values: ['prompt', 'agent', 'skill'] },
       { type: 'text', name: 'Prompt', key: 'prompt' },
-      { type: 'combo', name: 'Model', key: 'model', values: ['sonnet', 'haiku', 'opus', 'claude-opus-4-7'] },
-      { type: 'combo', name: 'Effort', key: 'effort', values: ['low', 'medium', 'high', 'max'] },
+      { type: 'combo', name: 'Model', key: 'model', values: CLAUDE_MODEL_VALUES },
+      { type: 'combo', name: 'Effort', key: 'effort', values: EFFORT_VALUES },
     ],
     width: 220,
     badge: (n) => ({ prompt: 'PROMPT', agent: 'AGENT', skill: 'SKILL' }[n.properties.mode] || 'PROMPT'),
   },
   'workflow/shell': {
-    title: 'Shell', get desc() { return t('workflow.nodeDesc.shell'); },
+    get title() { return t('workflow.nodeTitle.shell'); }, get desc() { return t('workflow.nodeDesc.shell'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'shell'),
     props: { command: '' },
@@ -152,7 +173,7 @@ const NODE_TYPES = {
     },
   },
   'workflow/git': {
-    title: 'Git', get desc() { return t('workflow.nodeDesc.git'); },
+    get title() { return t('workflow.nodeTitle.git'); }, get desc() { return t('workflow.nodeDesc.git'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'git'),
     props: { action: 'pull', branch: '', message: '' },
@@ -161,7 +182,7 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.action || 'pull').toUpperCase(),
   },
   'workflow/http': {
-    title: 'HTTP', get desc() { return t('workflow.nodeDesc.http'); },
+    get title() { return t('workflow.nodeTitle.http'); }, get desc() { return t('workflow.nodeDesc.http'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'http'),
     props: { method: 'GET', url: '', headers: '', body: '' },
@@ -176,7 +197,7 @@ const NODE_TYPES = {
     badgeColor: (n) => ({ GET: '#22c55e', POST: '#3b82f6', PUT: '#f59e0b', PATCH: '#a78bfa', DELETE: '#ef4444' }[n.properties.method] || '#22d3ee'),
   },
   'workflow/notify': {
-    title: 'Notify', get desc() { return t('workflow.nodeDesc.notify'); },
+    get title() { return t('workflow.nodeTitle.notify'); }, get desc() { return t('workflow.nodeDesc.notify'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: [{ name: 'Done', type: 'exec' }],
     props: { title: '', message: '' },
@@ -184,7 +205,7 @@ const NODE_TYPES = {
     width: 200,
   },
   'workflow/wait': {
-    title: 'Wait', get desc() { return t('workflow.nodeDesc.wait'); },
+    get title() { return t('workflow.nodeTitle.wait'); }, get desc() { return t('workflow.nodeDesc.wait'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: [{ name: 'Done', type: 'exec' }],
     props: { mode: 'duration', duration: '5s', timeout: '' },
@@ -197,7 +218,7 @@ const NODE_TYPES = {
     badge: (n) => n.properties.mode === 'approval' ? 'APPROVAL' : (n.properties.duration || '5s').toUpperCase(),
   },
   'workflow/condition': {
-    title: 'Condition', get desc() { return t('workflow.nodeDesc.condition'); },
+    get title() { return t('workflow.nodeTitle.condition'); }, get desc() { return t('workflow.nodeDesc.condition'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: [{ name: 'TRUE', type: 'exec' }, { name: 'FALSE', type: 'exec' }],
     props: { conditionMode: 'builder', variable: '', operator: '==', value: '', expression: '' },
@@ -225,7 +246,7 @@ const NODE_TYPES = {
     },
   },
   'workflow/project': {
-    title: 'Project', get desc() { return t('workflow.nodeDesc.project'); },
+    get title() { return t('workflow.nodeTitle.project'); }, get desc() { return t('workflow.nodeDesc.project'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: [{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }, { name: 'Projects', type: 'array' }],
     props: { projectId: '', projectName: '', action: 'set_context' },
@@ -237,10 +258,10 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.action || 'set_context').toUpperCase().replace('_', ' '),
   },
   'workflow/file': {
-    title: 'File', get desc() { return t('workflow.nodeDesc.file'); },
+    get title() { return t('workflow.nodeTitle.file'); }, get desc() { return t('workflow.nodeDesc.file'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'file'),
-    props: { action: 'read', path: '', destination: '', content: '', pattern: '*', recursive: false },
+    props: { action: 'read', path: '', destination: '', content: '', pattern: '*', type: 'files', recursive: false },
     widgets: [
       { type: 'combo', name: 'Action', key: 'action', values: ['read', 'write', 'append', 'copy', 'delete', 'exists', 'move', 'list'] },
       { type: 'text', name: 'Path', key: 'path' },
@@ -249,10 +270,10 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.action || 'read').toUpperCase(),
   },
   'workflow/db': {
-    title: 'Database', get desc() { return t('workflow.nodeDesc.db'); },
+    get title() { return t('workflow.nodeTitle.db'); }, get desc() { return t('workflow.nodeDesc.db'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'db'),
-    props: { connection: '', query: '', action: 'query' },
+    props: { connection: '', query: '', action: 'query', limit: 100 },
     widgets: [
       { type: 'combo', name: 'Action', key: 'action', values: ['query', 'schema', 'tables'] },
       { type: 'text', name: 'Query', key: 'query' },
@@ -261,7 +282,7 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.action || 'query').toUpperCase(),
   },
   'workflow/loop': {
-    title: 'Loop', get desc() { return t('workflow.nodeDesc.loop'); },
+    get title() { return t('workflow.nodeTitle.loop'); }, get desc() { return t('workflow.nodeDesc.loop'); },
     inputs: [{ name: 'In', type: 'exec' }, { name: 'items', type: 'array' }],
     outputs: addDataOutputDefs([{ name: 'Each', type: 'exec' }, { name: 'Done', type: 'exec' }], 'loop'),
     props: { source: 'auto', items: '', mode: 'sequential', maxIterations: '', _itemSchema: [] },
@@ -276,7 +297,7 @@ const NODE_TYPES = {
     badgeColor: (n) => n.properties.mode === 'parallel' ? '#f59e0b' : null,
   },
   'workflow/variable': {
-    title: 'Set Variable', get desc() { return t('workflow.nodeDesc.variable'); },
+    get title() { return t('workflow.nodeTitle.variable'); }, get desc() { return t('workflow.nodeDesc.variable'); },
     inputs: [{ name: 'In', type: 'exec' }, { name: 'value', type: 'any' }],
     outputs: [{ name: 'Done', type: 'exec' }, { name: 'value', type: 'any' }],
     props: { action: 'set', name: '', value: '' },
@@ -290,11 +311,11 @@ const NODE_TYPES = {
     getTitle: (n) => {
       const a = n.properties.action || 'set';
       const nm = n.properties.name;
-      if (a === 'get') return nm ? `Get ${nm}` : 'Get Variable';
-      if (a === 'set') return nm ? `Set ${nm}` : 'Set Variable';
-      if (a === 'increment') return nm ? `++ ${nm}` : 'Increment';
-      if (a === 'append') return nm ? `Append ${nm}` : 'Append';
-      return 'Variable';
+      if (a === 'get') return nm ? t('workflow.nodeTitle.varGetName', { name: nm }) : t('workflow.nodeTitle.varGet');
+      if (a === 'set') return nm ? t('workflow.nodeTitle.varSetName', { name: nm }) : t('workflow.nodeTitle.varSet');
+      if (a === 'increment') return nm ? t('workflow.nodeTitle.varIncName', { name: nm }) : t('workflow.nodeTitle.varInc');
+      if (a === 'append') return nm ? t('workflow.nodeTitle.varAppendName', { name: nm }) : t('workflow.nodeTitle.varAppend');
+      return t('workflow.nodeTitle.variable');
     },
     drawExtra: (ctx, n) => {
       if (n.properties.name) {
@@ -306,7 +327,7 @@ const NODE_TYPES = {
     },
   },
   'workflow/log': {
-    title: 'Log', get desc() { return t('workflow.nodeDesc.log'); },
+    get title() { return t('workflow.nodeTitle.log'); }, get desc() { return t('workflow.nodeDesc.log'); },
     inputs: [{ name: 'In', type: 'exec' }, { name: 'message', type: 'string' }],
     outputs: [{ name: 'Done', type: 'exec' }],
     props: { level: 'info', message: '' },
@@ -319,7 +340,7 @@ const NODE_TYPES = {
     badgeColor: (n) => ({ debug: '#94a3b8', info: '#60a5fa', warn: '#fbbf24', error: '#ef4444' }[n.properties.level]),
   },
   'workflow/transform': {
-    title: 'Transform', get desc() { return t('workflow.nodeDesc.transform'); },
+    get title() { return t('workflow.nodeTitle.transform'); }, get desc() { return t('workflow.nodeDesc.transform'); },
     inputs: [{ name: 'In', type: 'exec' }, { name: 'input', type: 'any' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'transform'),
     props: { operation: 'map', input: '', expression: '', outputVar: '' },
@@ -333,20 +354,20 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.operation || 'map').toUpperCase(),
   },
   'workflow/subworkflow': {
-    title: 'Sub-workflow', get desc() { return t('workflow.nodeDesc.subworkflow'); },
+    get title() { return t('workflow.nodeTitle.subworkflow'); }, get desc() { return t('workflow.nodeDesc.subworkflow'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'subworkflow'),
     props: { workflow: '', inputVars: '', waitForCompletion: true },
     widgets: [
       { type: 'text', name: 'Workflow', key: 'workflow' },
       { type: 'text', name: 'Input vars', key: 'inputVars' },
-      { type: 'combo', name: 'Wait', key: 'waitForCompletion', values: ['yes', 'no'] },
+      { type: 'combo', name: 'Wait', key: 'waitForCompletion', values: ['true', 'false'] },
     ],
     width: 220,
     badge: (n) => n.properties.workflow ? n.properties.workflow.slice(0, 12).toUpperCase() : 'WORKFLOW',
   },
   'workflow/time': {
-    title: 'Time', get desc() { return t('workflow.nodeDesc.time'); },
+    get title() { return t('workflow.nodeTitle.time'); }, get desc() { return t('workflow.nodeDesc.time'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: [{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], // rebuilt dynamically
     props: { action: 'get_today', projectId: '' },
@@ -358,7 +379,7 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.action || 'get_today').replace('get_', '').toUpperCase(),
   },
   'workflow/switch': {
-    title: 'Switch', get desc() { return t('workflow.nodeDesc.switch'); },
+    get title() { return t('workflow.nodeTitle.switch'); }, get desc() { return t('workflow.nodeDesc.switch'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: [{ name: 'default', type: 'exec' }], // rebuilt dynamically
     props: { variable: '', cases: 'case1,case2,case3' },
@@ -370,13 +391,13 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.variable || '$var').slice(0, 14),
   },
   'workflow/get_variable': {
-    title: 'Get Variable', get desc() { return t('workflow.nodeDesc.getVariable'); },
+    get title() { return t('workflow.nodeTitle.getVariable'); }, get desc() { return t('workflow.nodeDesc.getVariable'); },
     inputs: [],
     outputs: [{ name: 'value', type: 'any' }],
     props: { name: '', varType: 'any' },
     widgets: [],
     width: 150, resizable: false,
-    getTitle: (n) => n.properties.name || 'Get Variable',
+    getTitle: (n) => n.properties.name || t('workflow.nodeTitle.getVariable'),
     drawExtra: (ctx, n) => {
       const t = n.properties.varType || 'any';
       const pc = (PIN_TYPES[t] || PIN_TYPES.any).color;
@@ -1888,7 +1909,12 @@ class WorkflowGraphEngine {
 
     // Title text
     const def = NODE_TYPES[node.type];
-    const titleText = (def?.getTitle ? def.getTitle(node) : null) || node.title;
+    // Prefer a live-translated def.title (getter) over the value captured on the
+    // node at creation, so switching language re-labels existing nodes.
+    const titleText = node._customTitle
+      || (def?.getTitle ? def.getTitle(node) : null)
+      || (def ? def.title : null)
+      || node.title;
     ctx.font = `600 12px ${FONT}`;
     ctx.fillStyle = node.is_selected ? '#fff' : '#bbb';
     ctx.textAlign = 'left';
@@ -2196,7 +2222,7 @@ class WorkflowGraphEngine {
       ctx.fillStyle = '#555';
       ctx.font = `500 9.5px ${FONT}`;
       ctx.textAlign = 'left';
-      ctx.fillText(widget.name, x + margin + 8, posY + WIDGET_H * 0.65);
+      ctx.fillText(widgetLabel(widget.name), x + margin + 8, posY + WIDGET_H * 0.65);
 
       if (widget.type === 'combo') {
         // Value pill
@@ -2728,7 +2754,7 @@ class WorkflowGraphEngine {
         this._markDirty();
         this._notifyChanged();
         this.pushSnapshot();
-      }, widget.name);
+      }, widgetLabel(widget.name));
     } else if (widget.type === 'toggle') {
       widget.value = !widget.value;
       if (widget.key) node.properties[widget.key] = widget.value;
@@ -2873,19 +2899,19 @@ class WorkflowGraphEngine {
 
     if (node) {
       // ── Node context menu ──
-      items.push({ label: 'Duplicate', icon: '⧉', action: () => {
+      items.push({ label: t('workflow.graphMenu.duplicate'), icon: '⧉', action: () => {
         this._deselectAll();
         this._selectNode(node, false);
         this.duplicateSelected();
       }});
-      items.push({ label: 'Disconnect All', icon: '⊘', action: () => {
+      items.push({ label: t('workflow.graphMenu.disconnectAll'), icon: '⊘', action: () => {
         for (const inp of node.inputs) { if (inp.link != null) this._removeLink(inp.link); }
         for (const out of node.outputs) { for (const lid of [...out.links]) this._removeLink(lid); }
         this._markDirty(); this._notifyChanged(); this.pushSnapshot();
       }});
       if (node.removable !== false) {
         items.push({ type: 'sep' });
-        items.push({ label: 'Delete', icon: '✕', danger: true, action: () => {
+        items.push({ label: t('workflow.graphMenu.delete'), icon: '✕', danger: true, action: () => {
           this._removeNode(node);
           this._selectedNodes.delete(node.id);
           if (this.onNodeDeselected) this.onNodeDeselected();
@@ -2894,47 +2920,47 @@ class WorkflowGraphEngine {
       }
     } else if (comment) {
       // ── Comment context menu ──
-      items.push({ label: 'Rename', icon: '✎', action: () => {
+      items.push({ label: t('workflow.graphMenu.rename'), icon: '✎', action: () => {
         this._showInlineInput(comment.title || '', (val) => {
           comment.title = val;
           this._markDirty(); this._notifyChanged(); this.pushSnapshot();
         });
       }});
-      items.push({ label: 'Change Color', icon: '●', submenu: [
-        { label: 'Orange',  color: '#f59e0b' },
-        { label: 'Blue',    color: '#3b82f6' },
-        { label: 'Green',   color: '#22c55e' },
-        { label: 'Red',     color: '#ef4444' },
-        { label: 'Purple',  color: '#a78bfa' },
-        { label: 'Cyan',    color: '#22d3ee' },
-        { label: 'Pink',    color: '#f472b6' },
-        { label: 'Gray',    color: '#6b7280' },
+      items.push({ label: t('workflow.graphMenu.changeColor'), icon: '●', submenu: [
+        { label: t('workflow.graphMenu.colorOrange'), color: '#f59e0b' },
+        { label: t('workflow.graphMenu.colorBlue'),   color: '#3b82f6' },
+        { label: t('workflow.graphMenu.colorGreen'),  color: '#22c55e' },
+        { label: t('workflow.graphMenu.colorRed'),    color: '#ef4444' },
+        { label: t('workflow.graphMenu.colorPurple'), color: '#a78bfa' },
+        { label: t('workflow.graphMenu.colorCyan'),   color: '#22d3ee' },
+        { label: t('workflow.graphMenu.colorPink'),   color: '#f472b6' },
+        { label: t('workflow.graphMenu.colorGray'),   color: '#6b7280' },
       ].map(c => ({ label: c.label, swatch: c.color, action: () => {
         comment.color = c.color;
         this._markDirty(); this._notifyChanged(); this.pushSnapshot();
       }}))});
       items.push({ type: 'sep' });
-      items.push({ label: 'Delete Comment', icon: '✕', danger: true, action: () => {
+      items.push({ label: t('workflow.graphMenu.deleteComment'), icon: '✕', danger: true, action: () => {
         this.deleteComment(comment.id);
       }});
     } else {
       // ── Canvas context menu (empty space) ──
       const categories = [
-        { label: 'Actions', types: ['claude', 'shell', 'git', 'http', 'notify'] },
-        { label: 'Data',    types: ['file', 'db', 'variable', 'transform'] },
-        { label: 'Flow',    types: ['condition', 'loop', 'switch', 'wait', 'log', 'subworkflow'] },
+        { label: t('workflow.editor.palette.actions'), types: ['claude', 'shell', 'git', 'http', 'notify'] },
+        { label: t('workflow.editor.palette.data'),    types: ['file', 'db', 'variable', 'transform'] },
+        { label: t('workflow.editor.palette.flow'),    types: ['condition', 'loop', 'switch', 'wait', 'log', 'subworkflow'] },
       ];
       for (const cat of categories) {
-        items.push({ label: cat.label, submenu: cat.types.map(t => {
-          const def = NODE_TYPES['workflow/' + t];
+        items.push({ label: cat.label, submenu: cat.types.map(tp => {
+          const def = NODE_TYPES['workflow/' + tp];
           if (!def) return null;
           return { label: def.title, desc: def.desc, action: () => {
-            this.addNode('workflow/' + t, [cx, cy]);
+            this.addNode('workflow/' + tp, [cx, cy]);
           }};
         }).filter(Boolean)});
       }
       items.push({ type: 'sep' });
-      items.push({ label: 'Add Comment', icon: '▬', action: () => {
+      items.push({ label: t('workflow.graphMenu.addComment'), icon: '▬', action: () => {
         this.addComment([cx, cy], [300, 200]);
       }});
     }

@@ -85,6 +85,30 @@ const NODE_DATA_OUTPUTS = {
                  { name: 'week',     type: 'number',  key: 'week' },
                  { name: 'month',    type: 'number',  key: 'month' },
                  { name: 'projects', type: 'array',   key: 'projects' }],
+  parallel_spawn:     [{ name: 'runId',       type: 'string',  key: 'runId' }],
+  session_recap:      [{ name: 'summary',     type: 'string',  key: 'summary' },
+                       { name: 'source',      type: 'string',  key: 'source' },
+                       { name: 'toolCount',   type: 'number',  key: 'toolCount' },
+                       { name: 'durationMs',  type: 'number',  key: 'durationMs' },
+                       { name: 'prompts',     type: 'array',   key: 'prompts' }],
+  kanban_create_card: [{ name: 'taskId',      type: 'string',  key: 'taskId' },
+                       { name: 'columnId',    type: 'string',  key: 'columnId' },
+                       { name: 'projectId',   type: 'string',  key: 'projectId' },
+                       { name: 'projectName', type: 'string',  key: 'projectName' },
+                       { name: 'title',       type: 'string',  key: 'title' }],
+  workspace_write_doc:[{ name: 'docId',       type: 'string',  key: 'docId' },
+                       { name: 'filename',    type: 'string',  key: 'filename' },
+                       { name: 'workspaceId', type: 'string',  key: 'workspaceId' },
+                       { name: 'title',       type: 'string',  key: 'title' }],
+  notify_discord:     [{ name: 'status',      type: 'number',  key: 'status' },
+                       { name: 'ok',          type: 'boolean', key: 'ok' }],
+  webhook:            [{ name: 'statusCode',  type: 'number',  key: 'statusCode' },
+                       { name: 'body',        type: 'string',  key: 'body' },
+                       { name: 'truncated',   type: 'boolean', key: 'truncated' }],
+  error_handler:      [{ name: 'error',       type: 'string',  key: 'error' },
+                       { name: 'caught',      type: 'boolean', key: 'caught' }],
+  retry:              [{ name: 'attempts',    type: 'number',  key: 'attempts' },
+                       { name: 'error',       type: 'string',  key: 'error' }],
 };
 
 // node type → slot index of first data output (after exec slots)
@@ -96,6 +120,11 @@ const NODE_DATA_OUT_OFFSET = {
   // so its data-output slot index cannot be a fixed offset. It is intentionally
   // omitted here; getOutputKeyForSlot() returns null for switch (no data mapping).
   get_variable: 0, time: 2,
+  // All of the following have exactly two exec outputs (Done/Error or TRY/CATCH,
+  // TRY/FAIL) before their data slots, so the data-output offset is 2.
+  parallel_spawn: 2, session_recap: 2, kanban_create_card: 2,
+  workspace_write_doc: 2, notify_discord: 2, webhook: 2,
+  error_handler: 2, retry: 2,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

@@ -56,6 +56,13 @@ let teardownEditorRef = null;       // current editor's teardown fn (MAJ-5)
 
 let _panelInitialized = false;
 
+// Plural-aware node counter — t() has no ICU plural selection, so pick the
+// singular/plural key ourselves (same approach as the marketplace step counter).
+function _nodeCountText(count) {
+  const key = count === 1 ? 'workflow.nodeCountSingular' : 'workflow.nodeCountPlural';
+  return t(key, { count });
+}
+
 let _renderScheduled = false;
 function scheduleRender() {
   if (_renderScheduled) return;
@@ -1288,19 +1295,19 @@ function openEditor(workflowId = null, options = {}) {
         <!-- Center: history + zoom -->
         <div class="wf-editor-toolbar-center">
           <div class="wf-editor-history">
-            <button class="wf-ed-hist-btn" id="wf-ed-undo" title="Undo (Ctrl+Z)" disabled>
+            <button class="wf-ed-hist-btn" id="wf-ed-undo" title="${t('workflow.toolbar.undo')}" disabled>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
             </button>
-            <button class="wf-ed-hist-btn" id="wf-ed-redo" title="Redo (Ctrl+Y)" disabled>
+            <button class="wf-ed-hist-btn" id="wf-ed-redo" title="${t('workflow.toolbar.redo')}" disabled>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg>
             </button>
           </div>
           <div class="wf-editor-toolbar-sep"></div>
           <div class="wf-editor-zoom">
-            <button id="wf-ed-zoom-out" title="Zoom out (−)">−</button>
+            <button id="wf-ed-zoom-out" title="${t('workflow.toolbar.zoomOut')}">−</button>
             <span id="wf-ed-zoom-label">100%</span>
-            <button id="wf-ed-zoom-in" title="Zoom in (+)">+</button>
-            <button id="wf-ed-zoom-reset" title="Reset zoom (1:1)">1:1</button>
+            <button id="wf-ed-zoom-in" title="${t('workflow.toolbar.zoomIn')}">+</button>
+            <button id="wf-ed-zoom-reset" title="${t('workflow.toolbar.zoomReset')}">1:1</button>
             <button id="wf-ed-zoom-fit" title="${t('workflow.fitView')} (F)">${t('workflow.fitView')}</button>
           </div>
           <div class="wf-editor-toolbar-sep"></div>
@@ -1397,7 +1404,7 @@ function openEditor(workflowId = null, options = {}) {
         </div>
       </div>
       <div class="wf-editor-statusbar">
-        <span class="wf-sb-section" id="wf-ed-nodecount"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg> 0 ${t('workflow.nodeLabel')}s</span>
+        <span class="wf-sb-section" id="wf-ed-nodecount"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg> ${_nodeCountText(0)}</span>
         <span class="wf-sb-section wf-sb-selection" id="wf-ed-selection" style="display:none"></span>
         <span class="wf-sb-sep"></span>
         <span class="wf-sb-section wf-sb-name" id="wf-ed-sb-name">${escapeHtml(editorDraft.name) || t('workflow.untitled')}</span>
@@ -1457,7 +1464,7 @@ function openEditor(workflowId = null, options = {}) {
     const toolbarDirty = panel.querySelector('#wf-ed-dirty');
     const undoBtn = panel.querySelector('#wf-ed-undo');
     const redoBtn = panel.querySelector('#wf-ed-redo');
-    if (countEl) countEl.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg> ${count} ${t('workflow.nodeLabel')}${count !== 1 ? 's' : ''}`;
+    if (countEl) countEl.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg> ${_nodeCountText(count)}`;
     if (selEl) {
       if (selCount > 0) {
         selEl.textContent = t('workflow.selectedCount', { n: selCount });

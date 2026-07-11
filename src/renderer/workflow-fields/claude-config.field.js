@@ -12,6 +12,7 @@
  */
 const { escapeHtml, escapeAttr } = require('./_registry');
 const { t } = require('../i18n');
+const { MODEL_OPTIONS, EFFORT_OPTIONS } = require('../../shared/model-options');
 
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -118,29 +119,24 @@ ${promptSection}${agentSection}${skillSection}
 </div>`;
 }
 
+function renderOptions(options, selected) {
+  return options.map(o =>
+    `<option value="${esc(o.value)}"${(selected || '') === o.value ? ' selected' : ''}>${esc(o.label)}</option>`
+  ).join('');
+}
+
 function renderModelEffort(props) {
   return `<div class="wf-field-row">
 <div class="wf-step-edit-field wf-field-half">
   <label class="wf-step-edit-label">${t('workflow.claude.modelLabel')}</label>
   <select class="wf-step-edit-input wf-node-prop" data-key="model">
-    <option value=""${!props.model ? ' selected' : ''}>Auto</option>
-    <option value="claude-fable-5"${props.model === 'claude-fable-5' ? ' selected' : ''}>Fable 5</option>
-    <option value="claude-sonnet-5"${props.model === 'claude-sonnet-5' ? ' selected' : ''}>Sonnet 5</option>
-    <option value="sonnet"${props.model === 'sonnet' ? ' selected' : ''}>Sonnet</option>
-    <option value="opus"${props.model === 'opus' ? ' selected' : ''}>Opus 4.8</option>
-    <option value="claude-opus-4-7"${props.model === 'claude-opus-4-7' ? ' selected' : ''}>Opus 4.7</option>
-    <option value="haiku"${props.model === 'haiku' ? ' selected' : ''}>Haiku</option>
+    ${renderOptions(MODEL_OPTIONS, props.model)}
   </select>
 </div>
 <div class="wf-step-edit-field wf-field-half">
   <label class="wf-step-edit-label">${t('workflow.claude.effortLabel')}</label>
   <select class="wf-step-edit-input wf-node-prop" data-key="effort">
-    <option value=""${!props.effort ? ' selected' : ''}>Auto</option>
-    <option value="low"${props.effort === 'low' ? ' selected' : ''}>Low</option>
-    <option value="medium"${props.effort === 'medium' ? ' selected' : ''}>Medium</option>
-    <option value="high"${props.effort === 'high' ? ' selected' : ''}>High</option>
-    <option value="xhigh"${props.effort === 'xhigh' ? ' selected' : ''}>XHigh</option>
-    <option value="max"${props.effort === 'max' ? ' selected' : ''}>Max</option>
+    ${renderOptions(EFFORT_OPTIONS, props.effort)}
   </select>
 </div>
 </div>`;
