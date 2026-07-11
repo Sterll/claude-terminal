@@ -17,8 +17,9 @@ module.exports = {
     { name: 'firstRow', type: 'object' },
     { name: 'rowCount', type: 'number' },
     { name: 'columns',  type: 'array'  },
-    { name: 'duration', type: 'number' },
-    { name: 'tables',   type: 'array'  },
+    { name: 'duration',   type: 'number' },
+    { name: 'tables',     type: 'array'  },
+    { name: 'tableCount', type: 'number' },
   ],
 
   props: { connection: '', query: '', action: 'query', limit: 100 },

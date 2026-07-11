@@ -1,5 +1,17 @@
 'use strict';
 
+// Shared canonical model / effort option lists (see src/shared/model-options.js).
+// Fall back to an identical hard-coded copy if the shared module is unavailable
+// (e.g. a load-order timing issue), so validation never silently breaks.
+let CLAUDE_MODEL_VALUES;
+let EFFORT_VALUES;
+try {
+  ({ CLAUDE_MODEL_VALUES, EFFORT_VALUES } = require('../../shared/model-options'));
+} catch {
+  CLAUDE_MODEL_VALUES = ['', 'claude-fable-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-haiku-4-5', 'sonnet', 'opus', 'haiku'];
+  EFFORT_VALUES = ['', 'low', 'medium', 'high', 'xhigh', 'max'];
+}
+
 module.exports = {
   type:     'workflow/claude',
   title:    'Claude',
@@ -62,10 +74,13 @@ module.exports = {
       cwd = home;
     }
 
-    const VALID_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+    // Non-empty subset of the shared canonical effort/model lists for validation.
+    const VALID_EFFORTS = EFFORT_VALUES.filter(Boolean);
+    const VALID_MODELS  = CLAUDE_MODEL_VALUES.filter(Boolean);
     const rawEffort     = config.effort || null;
     const effort        = rawEffort && VALID_EFFORTS.includes(rawEffort) ? rawEffort : null;
-    const model         = config.model  || null;
+    const rawModel      = config.model  || null;
+    const model         = rawModel && VALID_MODELS.includes(rawModel) ? rawModel : null;
     const parsedTurns   = parseInt(config.maxTurns, 10);
     const maxTurns      = Number.isFinite(parsedTurns) && parsedTurns > 0 ? parsedTurns : 30;
 
@@ -75,6 +90,16 @@ module.exports = {
 
     if (mode === 'skill' && config.skillId) {
       opts.skills = [config.skillId];
+    }
+
+    // Agent mode: the claude-config field exposes an Agent tab (config.agentId),
+    // but ChatService.runSinglePrompt does not currently accept an agent option,
+    // so there is no supported way to invoke a named subagent from a workflow
+    // step. Rather than crash, fall back to a plain prompt run and warn. If a
+    // future runSinglePrompt gains an `agent`/`agentId` parameter, forward it
+    // here instead of this fallback.
+    if (mode === 'agent' && config.agentId) {
+      console.warn(`[claude.node] Agent mode requested (agentId="${config.agentId}") but ChatService.runSinglePrompt does not support agents — running as a plain prompt.`);
     }
 
     if (Array.isArray(config.outputSchema) && config.outputSchema.length > 0) {

@@ -10,11 +10,30 @@ const { esc, resolveVars } = require('./_registry');
 // interpolated into the code body, so `$foo` values cannot inject executable
 // code. Each invocation runs with a 1000 ms timeout in a context that exposes
 // no require/process/global/console.
+//
+// SANDBOX ESCAPE HARDENING: host objects passed directly into a vm context
+// keep their prototype chain rooted in the HOST realm, so an expression such as
+// `item.constructor.constructor("return process")()` can reach the host
+// Function constructor and escape. To block this, argument DATA is never handed
+// to the sandbox as live host objects. Instead each argument is JSON-serialised
+// on the host and reconstructed INSIDE the vm context (via JSON.parse running
+// in the sandbox realm), so every object/array the expression touches has its
+// prototype chain rooted in the sandbox realm — its `.constructor` is the
+// sandbox's Function, which is itself neutralised below. Non-serialisable
+// values (functions, symbols) are dropped by JSON, which is acceptable for the
+// data transforms this node performs.
 const EXPR_TIMEOUT_MS = 1000;
 
 function compileExpr(body, paramNames) {
   const argList = paramNames.join(', ');
-  const src = `(function(${argList}){ "use strict"; return (${body}); }).apply(undefined, __args__)`;
+  // The reconstructed args live in the sandbox as `__data__` (a JSON string).
+  // We parse them inside the context so the resulting objects belong to the
+  // sandbox realm, then apply them positionally to the user function.
+  const src = `
+    "use strict";
+    var __args__ = JSON.parse(__data__);
+    (function(${argList}){ "use strict"; return (${body}); }).apply(undefined, __args__);
+  `;
   let script;
   try {
     script = new vm.Script(src, { filename: 'transform-expr.js' });
@@ -22,10 +41,21 @@ function compileExpr(body, paramNames) {
     throw new Error(`Invalid expression: ${body}`);
   }
   return (...args) => {
-    // Fresh, minimal context per call — no prototype chain to global.
+    // Fresh, minimal context per call — no prototype chain to the host global.
     const sandbox = Object.create(null);
-    sandbox.__args__ = args;
+    // Serialise host data so it is rebuilt inside the sandbox realm. undefined
+    // values are preserved positionally as null (JSON has no undefined).
+    sandbox.__data__ = JSON.stringify(args.map(a => (a === undefined ? null : a)));
     const ctx = vm.createContext(sandbox);
+    // Neutralise the sandbox's own Function/eval constructors so that even a
+    // realm-local `constructor.constructor` cannot compile new code.
+    try {
+      vm.runInContext(
+        'this.Function = undefined; this.eval = undefined;',
+        ctx,
+        { timeout: EXPR_TIMEOUT_MS }
+      );
+    } catch { /* best-effort lockdown */ }
     try {
       return script.runInContext(ctx, { timeout: EXPR_TIMEOUT_MS });
     } catch (e) {

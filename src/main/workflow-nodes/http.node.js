@@ -15,12 +15,12 @@ module.exports = {
   outputs: [
     { name: 'Done',   type: 'exec'    },
     { name: 'Error',  type: 'exec'    },
-    { name: 'body',   type: 'object'  },
+    { name: 'body',   type: 'any'     },
     { name: 'status', type: 'number'  },
     { name: 'ok',     type: 'boolean' },
   ],
 
-  props: { method: 'GET', url: '', headers: '', body: '' },
+  props: { method: 'GET', url: '', headers: '', body: '', timeout: 30000 },
 
   fields: [
     { type: 'select', key: 'method', label: 'wfn.http.method.label',

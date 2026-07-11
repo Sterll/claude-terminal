@@ -17,10 +17,10 @@ module.exports = {
   outputs: [
     { name: 'Done',     type: 'exec'  },
     { name: 'Error',    type: 'exec'  },
-    { name: 'Projects', type: 'array' },
+    { name: 'projects', type: 'array' },
   ],
 
-  props: { projectId: '', projectName: '', action: 'set_context' },
+  props: { projectId: '', action: 'set_context' },
 
   fields: [
     { type: 'project-config', key: 'action', label: 'wfn.project.label' },

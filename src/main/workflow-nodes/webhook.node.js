@@ -81,8 +81,10 @@ module.exports = {
     const payload = {
       text: resolve(config.text) || 'Claude Terminal notification',
     };
-    if (config.username) payload.username = config.username;
-    if (config.icon)     payload.icon_emoji = config.icon;
+    const username = resolve(config.username);
+    const icon     = resolve(config.icon);
+    if (username) payload.username = username;
+    if (icon)     payload.icon_emoji = icon;
 
     const body = JSON.stringify(payload);
     // SSRF guard — reject non-http(s) / private / loopback hosts.

@@ -93,10 +93,16 @@ module.exports = {
     const TIMEOUT = 10 * 60 * 1000;
     const POLL    = 1000;
 
+    // If the parent is cancelled while we wait, cancel the child run too so it
+    // (and its child processes / Claude sessions) don't keep running orphaned.
+    const cancelChild = () => {
+      try { workflowService.cancel?.(runId); } catch (_) { /* ignore */ }
+    };
+
     while (Date.now() - start < TIMEOUT) {
-      if (signal?.aborted) throw new Error('Aborted');
+      if (signal?.aborted) { cancelChild(); throw new Error('Aborted'); }
       await new Promise(r => setTimeout(r, POLL));
-      if (signal?.aborted) throw new Error('Aborted');
+      if (signal?.aborted) { cancelChild(); throw new Error('Aborted'); }
 
       const run = await workflowService.getRun(runId);
       if (!run) break;
@@ -108,6 +114,7 @@ module.exports = {
       }
     }
 
+    cancelChild();
     throw new Error(`Sub-workflow "${workflowRef}" timed out after 10 minutes`);
   },
 };

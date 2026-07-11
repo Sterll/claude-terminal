@@ -20,9 +20,10 @@ module.exports = {
     { name: 'exitCode',  type: 'number'  },
     { name: 'timedOut',  type: 'boolean' },
     { name: 'truncated', type: 'boolean' },
+    { name: 'killed',    type: 'boolean' },
   ],
 
-  props: { command: '' },
+  props: { command: '', projectId: '' },
 
   fields: [
     { type: 'cwd-picker', key: 'projectId', label: 'wfn.shell.projectId.label',

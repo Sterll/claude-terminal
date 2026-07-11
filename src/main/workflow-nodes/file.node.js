@@ -31,7 +31,7 @@ module.exports = {
     { name: 'dir',     type: 'string' },
   ],
 
-  props: { action: 'read', path: '', destination: '', content: '', pattern: '*', recursive: false },
+  props: { action: 'read', path: '', destination: '', content: '', pattern: '*', type: 'files', recursive: false },
 
   fields: [
     { type: 'select', key: 'action', label: 'wfn.file.action.label',
@@ -135,7 +135,7 @@ module.exports = {
 
     const action  = config.action || 'read';
     const p       = resolveVars(config.path        || '', vars);
-    const dest    = resolveVars(config.destination || config.dest || '', vars);
+    const dest    = resolveVars(config.destination || '', vars);
     const content = resolveVars(config.content     || '', vars);
 
     if (p && action !== 'list') assertPathWithinProject(p, vars);

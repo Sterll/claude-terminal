@@ -18,7 +18,7 @@ module.exports = {
     { name: 'output', type: 'string' },
   ],
 
-  props: { action: 'pull', branch: '', message: '', files: '' },
+  props: { action: 'pull', branch: '', message: '', files: '', projectId: '' },
 
   fields: [
     { type: 'cwd-picker', key: 'projectId', label: 'wfn.git.projectId.label',
