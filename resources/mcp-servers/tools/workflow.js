@@ -16,6 +16,57 @@
 const fs = require('fs');
 const path = require('path');
 
+// -- Cross-process lock (definitions.json) ------------------------------------
+// The Electron main process mutates the same definitions.json under its own
+// cross-process lock (src/main/utils/fileLock.js). This synchronous variant MUST
+// stay protocol-compatible with it: same lock path, same staleness rules.
+const LOCK_STALE_MS = 15000;
+const LOCK_GIVE_UP_MS = 30000;
+const LOCK_STEP_MS = 25;
+
+function _sleepSync(ms) {
+  // Real synchronous sleep without a busy CPU spin.
+  try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); }
+  catch { const end = Date.now() + ms; while (Date.now() < end) { /* spin fallback */ } }
+}
+
+function _defsLockPath() {
+  return path.join(getDataDir(), 'workflows', 'definitions.json.lock');
+}
+
+// Run `fn` while holding the shared definitions.json lock. Best-effort: never
+// hangs — breaks a stale/abandoned lock and proceeds as a last resort.
+function withDefsLock(fn) {
+  const lockPath = _defsLockPath();
+  const start = Date.now();
+  let fd = null;
+  for (;;) {
+    try {
+      fd = fs.openSync(lockPath, 'wx');
+      try { fs.writeSync(fd, `${process.pid} ${Date.now()}`); } catch (_) {}
+      break;
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+      let ageMs = 0;
+      try { ageMs = Date.now() - fs.statSync(lockPath).mtimeMs; }
+      catch (_) { continue; } // vanished — retry
+      if (ageMs > LOCK_STALE_MS) { try { fs.unlinkSync(lockPath); } catch (_) {} continue; }
+      if (Date.now() - start > LOCK_GIVE_UP_MS) {
+        try { fs.unlinkSync(lockPath); } catch (_) {}
+        try { fd = fs.openSync(lockPath, 'wx'); } catch (_) { fd = null; }
+        break;
+      }
+      _sleepSync(LOCK_STEP_MS);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    if (fd != null) { try { fs.closeSync(fd); } catch (_) {} }
+    try { fs.unlinkSync(lockPath); } catch (_) {}
+  }
+}
+
 // Resolve node registry: packaged app (extraResources) → dev fallback → graceful skip
 let nodeRegistry = null;
 try {
@@ -219,37 +270,42 @@ function saveWorkflowDef(workflow) {
   // Always repair slot refs before saving so the graph renders correctly in LiteGraph
   if (workflow.graph) repairSlotRefs(workflow.graph);
   const file = path.join(getDataDir(), 'workflows', 'definitions.json');
-  let defs = [];
-  // C2: NEVER start from [] when the file exists but is unreadable — that would
-  // erase every other workflow. If the file exists but fails to parse, abort.
-  if (fs.existsSync(file)) {
-    let raw;
-    try {
-      raw = fs.readFileSync(file, 'utf8');
-    } catch (e) {
-      throw new Error(`Cannot read definitions.json (${e.message}). Aborting to avoid data loss.`);
+  // Read-modify-write under the shared cross-process lock so a concurrent write
+  // from the Electron main process (WorkflowStorage) cannot clobber this change,
+  // and vice-versa.
+  withDefsLock(() => {
+    let defs = [];
+    // C2: NEVER start from [] when the file exists but is unreadable — that would
+    // erase every other workflow. If the file exists but fails to parse, abort.
+    if (fs.existsSync(file)) {
+      let raw;
+      try {
+        raw = fs.readFileSync(file, 'utf8');
+      } catch (e) {
+        throw new Error(`Cannot read definitions.json (${e.message}). Aborting to avoid data loss.`);
+      }
+      try {
+        defs = JSON.parse(raw);
+      } catch (e) {
+        throw new Error(`definitions.json is unparseable (${e.message}). Aborting to avoid destroying other workflows.`);
+      }
+      if (!Array.isArray(defs)) {
+        throw new Error('definitions.json is not an array. Aborting to avoid data loss.');
+      }
     }
-    try {
-      defs = JSON.parse(raw);
-    } catch (e) {
-      throw new Error(`definitions.json is unparseable (${e.message}). Aborting to avoid destroying other workflows.`);
+    // loadDefinitions() unwraps entry.workflow, so entries on disk may be either
+    // { workflow: {...} } wrappers or bare workflow objects. Match on both and
+    // preserve the on-disk wrapper shape to avoid duplicating an entry.
+    const idx = defs.findIndex(entry => (entry.workflow || entry).id === workflow.id);
+    if (idx >= 0) {
+      defs[idx] = defs[idx] && defs[idx].workflow ? { ...defs[idx], workflow } : workflow;
+    } else {
+      defs.push(workflow);
     }
-    if (!Array.isArray(defs)) {
-      throw new Error('definitions.json is not an array. Aborting to avoid data loss.');
-    }
-  }
-  // loadDefinitions() unwraps entry.workflow, so entries on disk may be either
-  // { workflow: {...} } wrappers or bare workflow objects. Match on both and
-  // preserve the on-disk wrapper shape to avoid duplicating an entry.
-  const idx = defs.findIndex(entry => (entry.workflow || entry).id === workflow.id);
-  if (idx >= 0) {
-    defs[idx] = defs[idx] && defs[idx].workflow ? { ...defs[idx], workflow } : workflow;
-  } else {
-    defs.push(workflow);
-  }
-  const tmp = file + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(defs, null, 2), 'utf8');
-  fs.renameSync(tmp, file);
+    const tmp = file + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(defs, null, 2), 'utf8');
+    fs.renameSync(tmp, file);
+  });
 }
 
 // Rebuilds inputs[].link and outputs[].links from the graph.links[] array.
@@ -1728,66 +1784,63 @@ async function handle(name, args) {
       const wf = findWorkflow(args.workflow);
       if (!wf) return fail(`Workflow "${args.workflow}" not found. Use workflow_list to see available workflows.`);
 
-      // Remove from definitions
+      // Count runs for the confirmation message (read-only — the actual history
+      // and result-file cleanup is delegated to the main process below).
+      const runCount = loadHistory().filter(r => r.workflowId === wf.id).length;
+
+      // Remove from definitions under the shared cross-process lock so a
+      // concurrent write from the main process cannot resurrect the entry or be
+      // clobbered. Abort (never start from []) if the file is unreadable.
       const file = path.join(getDataDir(), 'workflows', 'definitions.json');
-      let defs = [];
-      // C2: if the file exists but is unreadable/unparseable, ABORT — otherwise
-      // we would rewrite an empty array and destroy every other workflow.
-      if (fs.existsSync(file)) {
-        let raw;
-        try {
-          raw = fs.readFileSync(file, 'utf8');
-        } catch (e) {
-          return fail(`Cannot read definitions.json (${e.message}). Aborting delete to avoid data loss.`);
-        }
-        try {
-          defs = JSON.parse(raw);
-        } catch (e) {
-          return fail(`definitions.json is unparseable (${e.message}). Aborting delete to avoid destroying other workflows.`);
-        }
-        if (!Array.isArray(defs)) {
-          return fail('definitions.json is not an array. Aborting delete to avoid data loss.');
-        }
-      } else {
-        return fail('definitions.json does not exist — nothing to delete.');
+      let lockError = null;
+      try {
+        withDefsLock(() => {
+          if (!fs.existsSync(file)) {
+            throw new Error('definitions.json does not exist — nothing to delete.');
+          }
+          let raw;
+          try {
+            raw = fs.readFileSync(file, 'utf8');
+          } catch (e) {
+            throw new Error(`Cannot read definitions.json (${e.message}). Aborting delete to avoid data loss.`);
+          }
+          let defs;
+          try {
+            defs = JSON.parse(raw);
+          } catch (e) {
+            throw new Error(`definitions.json is unparseable (${e.message}). Aborting delete to avoid destroying other workflows.`);
+          }
+          if (!Array.isArray(defs)) {
+            throw new Error('definitions.json is not an array. Aborting delete to avoid data loss.');
+          }
+          defs = defs.filter(entry => (entry.workflow || entry).id !== wf.id);
+          const tmp = file + '.tmp';
+          fs.writeFileSync(tmp, JSON.stringify(defs, null, 2), 'utf8');
+          fs.renameSync(tmp, file);
+        });
+      } catch (e) {
+        lockError = e;
+      }
+      if (lockError) return fail(lockError.message);
+
+      // Delegate run-history + result-file cleanup to the main process so
+      // history.json stays single-writer. The main poll handles this action:
+      // it calls storage.deleteRunsForWorkflow(), reloads and refreshes the UI.
+      try {
+        const triggerDir = path.join(getDataDir(), 'workflows', 'triggers');
+        if (!fs.existsSync(triggerDir)) fs.mkdirSync(triggerDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(triggerDir, `deleted_${Date.now()}.json`),
+          JSON.stringify({ action: 'workflow_deleted', workflowId: wf.id, source: 'mcp' }),
+          'utf8'
+        );
+      } catch (_) {
+        // Fall back to a plain reload signal so the UI at least refreshes.
+        signalReload();
       }
 
-      defs = defs.filter(entry => {
-        const w = entry.workflow || entry;
-        return w.id !== wf.id;
-      });
-
-      const tmp = file + '.tmp';
-      fs.writeFileSync(tmp, JSON.stringify(defs, null, 2), 'utf8');
-      fs.renameSync(tmp, file);
-
-      // Delete run result files for this workflow
-      const history = loadHistory();
-      const runIds = history.filter(r => r.workflowId === wf.id).map(r => r.id);
-      const resultsDir = path.join(getDataDir(), 'workflows', 'results');
-      for (const runId of runIds) {
-        const resultFile = path.join(resultsDir, `${runId}.json`);
-        try {
-          if (fs.existsSync(resultFile)) fs.unlinkSync(resultFile);
-        } catch (_) {}
-      }
-
-      // Remove runs from history
-      if (runIds.length) {
-        const historyFile = path.join(getDataDir(), 'workflows', 'history.json');
-        try {
-          const allHistory = JSON.parse(fs.readFileSync(historyFile, 'utf8'));
-          const filtered = allHistory.filter(r => r.workflowId !== wf.id);
-          const htmp = historyFile + '.tmp';
-          fs.writeFileSync(htmp, JSON.stringify(filtered, null, 2), 'utf8');
-          fs.renameSync(htmp, historyFile);
-        } catch (_) {}
-      }
-
-      signalReload();
-
-      log(`Deleted workflow "${wf.name}" (${wf.id}) and ${runIds.length} run result(s)`);
-      return ok(`Workflow "${wf.name}" (${wf.id}) deleted permanently.\nRemoved ${runIds.length} run result(s).`);
+      log(`Deleted workflow "${wf.name}" (${wf.id}); delegated cleanup of ${runCount} run(s)`);
+      return ok(`Workflow "${wf.name}" (${wf.id}) deleted permanently.\n${runCount} run record(s) will be cleaned up.`);
     }
 
     // ── workflow_enable ──────────────────────────────────────────────────────

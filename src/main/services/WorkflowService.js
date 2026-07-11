@@ -214,6 +214,15 @@ class WorkflowService {
               this._scheduler.reload(reloadedWorkflows);
               this._send('workflow-list-updated', { workflows: reloadedWorkflows });
               console.log(`[WorkflowService] MCP reload: definitions refreshed`);
+            } else if (data.action === 'workflow_deleted' && data.workflowId) {
+              // The MCP server deleted a workflow's definition (under the shared
+              // cross-process lock) and delegates history/result cleanup to us so
+              // history.json stays single-writer (main only). Then refresh the UI.
+              await storage.deleteRunsForWorkflow(data.workflowId);
+              const reloaded = await storage.loadWorkflows();
+              this._scheduler.reload(reloaded);
+              this._send('workflow-list-updated', { workflows: reloaded });
+              console.log(`[WorkflowService] MCP workflow_deleted: ${data.workflowId}`);
             } else if (data.action === 'test_node' && data.workflowId) {
               // Isolated single-node test requested by an MCP tool. Load the
               // workflow, find the node, and run ONLY that node — never the whole

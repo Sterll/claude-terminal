@@ -17,10 +17,15 @@ const path = require('path');
 const os   = require('os');
 const crypto = require('crypto');
 
+const { withCrossProcessLock } = require('../utils/fileLock');
+
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const WORKFLOWS_DIR     = path.join(os.homedir(), '.claude-terminal', 'workflows');
 const DEFINITIONS_FILE  = path.join(WORKFLOWS_DIR, 'definitions.json');
+// Cross-process lock guarding definitions.json (the MCP server mutates the same
+// file from another process). The path MUST match the one used by the MCP tool.
+const DEFINITIONS_LOCK  = DEFINITIONS_FILE + '.lock';
 const HISTORY_FILE      = path.join(WORKFLOWS_DIR, 'history.json');
 const RESULTS_DIR       = path.join(WORKFLOWS_DIR, 'results');
 const MAX_RUNS_PER_WF   = 50;   // kept per workflow in history
@@ -92,11 +97,59 @@ async function loadWorkflows() {
 }
 
 /**
+ * Read definitions.json for a mutation. Unlike loadWorkflows() this REFUSES to
+ * fall back to [] when the file exists but is unreadable/unparseable — starting
+ * from [] there would overwrite every other workflow (the same data-loss trap
+ * fixed on the MCP side). A missing file (ENOENT) is legitimately empty.
+ * @returns {Promise<Object[]>}
+ */
+async function readDefinitionsStrict() {
+  let raw;
+  try {
+    raw = await fs.promises.readFile(DEFINITIONS_FILE, 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT') return [];
+    throw new Error(`Refusing to mutate definitions.json — cannot read it (${e.message})`);
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    throw new Error(`Refusing to mutate definitions.json — it is unparseable (${e.message})`);
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error('Refusing to mutate definitions.json — it is not an array');
+  }
+  return parsed;
+}
+
+/**
+ * Read-modify-write definitions.json under BOTH the in-process mutex and the
+ * cross-process file lock, so neither concurrent main-process writers nor the
+ * MCP server can clobber each other's changes.
+ * @param {(all: Object[]) => { list: Object[], ret: T }} mutator
+ * @returns {Promise<T>}
+ */
+async function mutateDefinitions(mutator) {
+  await ensureDirs();
+  return withFileLock(DEFINITIONS_FILE, () =>
+    withCrossProcessLock(DEFINITIONS_LOCK, async () => {
+      const all = await readDefinitionsStrict();
+      const { list, ret } = mutator(all);
+      await atomicWrite(DEFINITIONS_FILE, list);
+      return ret;
+    })
+  );
+}
+
+/**
  * @param {Object[]} workflows
  */
 async function saveWorkflows(workflows) {
   await ensureDirs();
-  await withFileLock(DEFINITIONS_FILE, () => atomicWrite(DEFINITIONS_FILE, workflows));
+  await withFileLock(DEFINITIONS_FILE, () =>
+    withCrossProcessLock(DEFINITIONS_LOCK, () => atomicWrite(DEFINITIONS_FILE, workflows))
+  );
 }
 
 /**
@@ -106,18 +159,15 @@ async function saveWorkflows(workflows) {
  * @returns {Promise<Object>} Saved workflow with id
  */
 async function upsertWorkflow(workflow) {
-  const all = await loadWorkflows();
   if (!workflow.id) {
     workflow = { ...workflow, id: `wf_${crypto.randomUUID().slice(0, 8)}` };
   }
-  const idx = all.findIndex(w => w.id === workflow.id);
-  if (idx >= 0) {
-    all[idx] = workflow;
-  } else {
-    all.push(workflow);
-  }
-  await saveWorkflows(all);
-  return workflow;
+  return mutateDefinitions(all => {
+    const idx = all.findIndex(w => w.id === workflow.id);
+    if (idx >= 0) all[idx] = workflow;
+    else all.push(workflow);
+    return { list: all, ret: workflow };
+  });
 }
 
 /**
@@ -125,11 +175,10 @@ async function upsertWorkflow(workflow) {
  * @returns {Promise<boolean>} true if deleted
  */
 async function deleteWorkflow(id) {
-  const all = await loadWorkflows();
-  const next = all.filter(w => w.id !== id);
-  if (next.length === all.length) return false;
-  await saveWorkflows(next);
-  return true;
+  return mutateDefinitions(all => {
+    const next = all.filter(w => w.id !== id);
+    return { list: next, ret: next.length !== all.length };
+  });
 }
 
 /**
