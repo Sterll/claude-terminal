@@ -35,6 +35,7 @@ const RUN_STATUS = Object.freeze({
   CANCELLED: 'cancelled',
   SKIPPED:   'skipped',
   TIMEOUT:   'timeout',
+  INTERRUPTED: 'interrupted', // ghost run reconciled at boot (crash/quit mid-run)
 });
 
 const MAX_CACHE_ENTRIES = 200;
@@ -57,8 +58,14 @@ class WorkflowService {
 
     /**
      * Cache of recent successful run results for depends_on lazy resolution.
-     * Keyed by workflowId only. Capped at MAX_CACHE_ENTRIES to prevent unbounded growth.
+     * Keyed by workflowId only, LRU-ordered (delete+set on hit/write moves the entry
+     * to the tail; the head is the least-recently-used). Capped at MAX_CACHE_ENTRIES.
      * Map<workflowId, { completedAt: number, outputs: Object }>
+     *
+     * CAVEAT: depends_on assumes the dependency target is NOT a `parallel`-concurrency
+     * workflow. Because the cache is keyed by workflowId alone, two concurrent runs of
+     * the same workflow both write here and the last SUCCESS wins — a dependent reading
+     * the cache may see either run's outputs. Only the most recent success is retained.
      */
     this._resultsCache = new Map();
 
@@ -115,18 +122,58 @@ class WorkflowService {
    */
   async init() {
     const workflows = await storage.loadWorkflows();
+
+    // Reconcile ghost runs left as 'running' by a previous crash/quit. At boot no
+    // run is actually active (_active is empty), so any history record still marked
+    // 'running' is stale → mark it 'interrupted'. This is the safety net for a
+    // destroy() that could not finalize its writes before the process exited.
+    try {
+      const { reconciled } = await storage.reconcileRunningRuns();
+      if (reconciled > 0) {
+        console.log(`[WorkflowService] Reconciled ${reconciled} interrupted run(s) from a previous session`);
+      }
+    } catch (err) {
+      console.warn('[WorkflowService] Run reconciliation failed:', err.message);
+    }
+
     this._scheduler.reload(workflows);
     this._startMcpTriggerPoll();
     console.log(`[WorkflowService] Initialized with ${workflows.length} workflow(s)`);
   }
 
-  destroy() {
+  /**
+   * Shutdown. Aborts every active run and — best-effort within a short timeout —
+   * persists a terminal 'cancelled' status so history isn't left showing 'running'.
+   *
+   * NOTE: the current caller (services/index.js cleanupServices) is synchronous and
+   * does NOT await this. The bounded writes below are best-effort; the guaranteed
+   * safety net is init()'s reconcileRunningRuns() on the next boot, which flips any
+   * still-'running' record to 'interrupted'. Kept async so a future awaiting caller
+   * gets clean finalization.
+   *
+   * @returns {Promise<void>}
+   */
+  async destroy() {
     this._scheduler.destroy();
     if (this._mcpPollTimer) clearInterval(this._mcpPollTimer);
-    for (const [, exec] of this._active) {
-      exec.abortController.abort();
+
+    const runIds = [];
+    for (const [runId, exec] of this._active) {
+      try { exec.abortController.abort(); } catch { /* ignore */ }
+      runIds.push(runId);
     }
     this._active.clear();
+
+    if (runIds.length === 0) return;
+
+    const finishedAt = new Date().toISOString();
+    const writes = runIds.map(runId =>
+      storage.updateRun(runId, { status: RUN_STATUS.CANCELLED, finishedAt }).catch(() => {})
+    );
+
+    // Bound the wait so shutdown never hangs on slow disk I/O (2s cap).
+    const timeout = new Promise(resolve => setTimeout(resolve, 2000));
+    await Promise.race([Promise.allSettled(writes), timeout]);
   }
 
   /**
@@ -139,12 +186,24 @@ class WorkflowService {
     this._mcpPollTimer = setInterval(async () => {
       try {
         if (!fs.existsSync(triggersDir)) return;
+        // Only pick up freshly-written request files; '.processing' files are ones a
+        // previous tick claimed but hasn't finished (or crashed mid-handling).
         const files = fs.readdirSync(triggersDir).filter(f => f.endsWith('.json'));
         for (const file of files) {
           const filePath = path.join(triggersDir, file);
+          // Claim the request atomically by renaming to '.processing' BEFORE handling.
+          // This prevents the next poll tick from picking up the same file, and — unlike
+          // the previous "unlink-then-handle" — the request is not lost if we crash: it
+          // survives as a '.processing' file for post-mortem/inspection.
+          const procPath = filePath + '.processing';
           try {
-            const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-            fs.unlinkSync(filePath);
+            fs.renameSync(filePath, procPath);
+          } catch (_) {
+            // Someone else claimed it (or it vanished) — skip.
+            continue;
+          }
+          try {
+            const data = JSON.parse(fs.readFileSync(procPath, 'utf8'));
 
             if (data.action === 'cancel' && data.runId) {
               this.cancel(data.runId);
@@ -155,12 +214,39 @@ class WorkflowService {
               this._scheduler.reload(reloadedWorkflows);
               this._send('workflow-list-updated', { workflows: reloadedWorkflows });
               console.log(`[WorkflowService] MCP reload: definitions refreshed`);
+            } else if (data.action === 'test_node' && data.workflowId) {
+              // Isolated single-node test requested by an MCP tool. Load the
+              // workflow, find the node, and run ONLY that node — never the whole
+              // graph (the previous behaviour fell through to trigger() below).
+              try {
+                const wfs = await storage.loadWorkflows();
+                const wf = wfs.find(w => w.id === data.workflowId);
+                const node = wf?.graph?.nodes?.find(n => String(n.id) === String(data.nodeId));
+                if (node) {
+                  const step = {
+                    id:   node.id,
+                    type: String(node.type || '').replace(/^workflow\//, ''),
+                    ...(node.properties || {}),
+                  };
+                  const result = await this.testNode(step, {});
+                  console.log(`[WorkflowService] MCP test_node ${data.workflowId}/${data.nodeId}: ${result?.success ? 'ok' : 'fail'}`);
+                } else {
+                  console.warn(`[WorkflowService] MCP test_node: node ${data.nodeId} not found in ${data.workflowId}`);
+                }
+              } catch (err) {
+                console.warn('[WorkflowService] MCP test_node failed:', err.message);
+              }
             } else if (data.workflowId) {
               this.trigger(data.workflowId, { source: 'mcp' });
               console.log(`[WorkflowService] MCP trigger: ${data.workflowId}`);
             }
+            // Handled successfully → remove the claimed request.
+            try { fs.unlinkSync(procPath); } catch (_) {}
           } catch (e) {
-            try { fs.unlinkSync(filePath); } catch (_) {}
+            // Malformed/unreadable request — drop the claimed file so it doesn't
+            // linger and re-trigger. (A genuine crash mid-handling still leaves the
+            // '.processing' file, which is never re-picked-up by the poll.)
+            try { fs.unlinkSync(procPath); } catch (_) {}
           }
         }
       } catch (_) {}
@@ -249,6 +335,13 @@ class WorkflowService {
     const all = await storage.loadWorkflows();
     const dependsOn = (workflow.dependsOn || []).map(d => d.workflow || d);
 
+    // Structural graph validation (nodes/links arrays, trigger present, link
+    // origin/target integrity). Legacy steps[]-only workflows are tolerated.
+    const structure = storage.validateWorkflowGraph(workflow);
+    if (!structure.valid) {
+      return { success: false, error: structure.error };
+    }
+
     // Cycle detection
     const { hasCycle, cycle } = storage.detectCycle(workflow.id || '__new__', dependsOn, all);
     if (hasCycle) {
@@ -259,6 +352,8 @@ class WorkflowService {
     }
 
     const saved = await storage.upsertWorkflow(workflow);
+    // The definition changed → its cached outputs are stale for depends_on. Drop them.
+    if (saved.id) this._resultsCache.delete(saved.id);
     // Reload scheduler
     this._scheduler.reload(await storage.loadWorkflows());
     return { success: true, workflow: saved };
@@ -405,6 +500,9 @@ class WorkflowService {
       const isValid = cached && (!maxAge || Date.now() - cached.completedAt < maxAge);
 
       if (isValid) {
+        // LRU touch: re-insert so this entry moves to the tail (most-recently-used).
+        this._resultsCache.delete(depId);
+        this._resultsCache.set(depId, cached);
         extraVars.set(depId, cached.outputs);
         continue;
       }
@@ -413,8 +511,21 @@ class WorkflowService {
       const running = this._findRunningByWorkflowId(depId);
       if (running) {
         console.log(`[WorkflowService] Waiting for in-flight dependency: ${depId}`);
-        const result = await running.promise.catch(() => ({}));
-        extraVars.set(depId, result.outputs || {});
+        let failed = false;
+        const result = await running.promise.catch(err => {
+          failed = true;
+          console.warn(`[WorkflowService] depends_on "${depId}" (in-flight) failed: ${err?.message || err}`);
+          return {};
+        });
+        // Distinguish a failed dependency from a genuinely-empty success: attach a
+        // _depFailed flag so a downstream step/condition can react to it, and mark
+        // this run degraded so a silent bad-data run isn't reported as clean.
+        if (failed) {
+          extraVars.set(depId, { _depFailed: true, outputs: {} });
+          this._depsDegraded = true;
+        } else {
+          extraVars.set(depId, result.outputs || {});
+        }
         continue;
       }
 
@@ -422,7 +533,12 @@ class WorkflowService {
       inProgress.add(depId);
       const depWorkflow = await storage.getWorkflow(depId);
       if (!depWorkflow) {
-        console.warn(`[WorkflowService] depends_on workflow not found: ${depId}`);
+        // Missing dependency: warn loudly and expose a failure flag rather than
+        // silently injecting nothing (which looked like a successful empty run).
+        console.warn(`[WorkflowService] depends_on workflow not found: ${depId} — injecting _depFailed flag`);
+        extraVars.set(depId, { _depFailed: true, _reason: 'not_found', outputs: {} });
+        this._depsDegraded = true;
+        inProgress.delete(depId);
         continue;
       }
 
@@ -430,8 +546,18 @@ class WorkflowService {
       // Wait for it to finish
       const exec = this._active.get(runId);
       if (exec) {
-        const result = await exec.promise.catch(() => ({}));
-        extraVars.set(depId, result.outputs || {});
+        let failed = false;
+        const result = await exec.promise.catch(err => {
+          failed = true;
+          console.warn(`[WorkflowService] depends_on "${depId}" run failed: ${err?.message || err}`);
+          return {};
+        });
+        if (failed || result?.success === false) {
+          extraVars.set(depId, { _depFailed: true, outputs: result?.outputs || {} });
+          this._depsDegraded = true;
+        } else {
+          extraVars.set(depId, result.outputs || {});
+        }
       }
 
       inProgress.delete(depId);
@@ -542,10 +668,16 @@ class WorkflowService {
     //    back to it (A→B→A) is detected at runtime even if it slipped past the
     //    save-time detectCycle() check.
     let extraVars = new Map();
+    let depsDegraded = false;
     if (workflow.dependsOn?.length) {
       const guard = new Set(inProgress);
       guard.add(workflow.id);
+      // _depsDegraded is set inside _resolveDependencies when a dependency failed or
+      // was not found. Snapshot + reset it around this call so parallel runs don't
+      // clobber each other's flag.
+      this._depsDegraded = false;
       extraVars = await this._resolveDependencies(workflow, guard);
+      depsDegraded = this._depsDegraded === true;
     }
 
     // 1b. Inject caller-supplied initial variables (e.g. from a subworkflow node).
@@ -572,7 +704,14 @@ class WorkflowService {
     });
 
     // 3. Execute
-    return runner.execute(workflow, run, abortController, extraVars);
+    const result = await runner.execute(workflow, run, abortController, extraVars);
+
+    // If a dependency failed / was missing, the run ran on incomplete inputs — mark
+    // it degraded so _finalizeRun records FAILED instead of a misleading SUCCESS.
+    if (depsDegraded && result && result.success && !result.cancelled && !result.timedOut) {
+      return { ...result, success: false, degraded: true, error: result.error || 'A dependency failed or was not found' };
+    }
+    return result;
   }
 
   async _finalizeRun(run, result, workflow) {
@@ -612,22 +751,18 @@ class WorkflowService {
       await storage.saveResultPayload(run.id, { outputs: result.outputs });
     }
 
-    // Update results cache (only on success), keyed by workflowId for depends_on lookup
+    // Update results cache (only on the LAST success), keyed by workflowId for
+    // depends_on lookup. delete+set keeps LRU insertion order (entry moves to tail).
     if (status === RUN_STATUS.SUCCESS) {
+      this._resultsCache.delete(workflow.id);
       this._resultsCache.set(workflow.id, {
         completedAt: now,
         outputs:     result.outputs || {},
       });
-      // Evict oldest entries if cache exceeds limit
+      // Evict the least-recently-used entry (Map head) when over the cap.
       if (this._resultsCache.size > MAX_CACHE_ENTRIES) {
-        let oldest = null, oldestKey = null;
-        for (const [key, val] of this._resultsCache) {
-          if (!oldest || val.completedAt < oldest) {
-            oldest = val.completedAt;
-            oldestKey = key;
-          }
-        }
-        if (oldestKey) this._resultsCache.delete(oldestKey);
+        const lruKey = this._resultsCache.keys().next().value;
+        if (lruKey !== undefined) this._resultsCache.delete(lruKey);
       }
     }
 

@@ -948,7 +948,8 @@ function runTransformStep(config, vars) {
  * Run another workflow by name or ID and optionally wait for completion.
  * Injects inputVars into the triggered workflow's context.
  */
-async function runSubworkflowStep(config, vars, workflowService) {
+async function runSubworkflowStep(config, vars, workflowService, signal) {
+  if (signal?.aborted) throw new Error('Cancelled');
   const workflowRef = resolveVars(config.workflow || '', vars);
   if (!workflowRef) throw new Error('Sub-workflow: missing workflow name or ID');
 
@@ -984,13 +985,22 @@ async function runSubworkflowStep(config, vars, workflowService) {
     return { triggered: true, runId, waited: false };
   }
 
-  // Poll for completion (max 10 min)
+  // Poll for completion (max 10 min).
+  // If the PARENT run is cancelled while we wait, propagate the cancellation to the
+  // child (workflowService.cancel) so it — and its child processes / sub-agents —
+  // don't keep running orphaned, then reject with 'Cancelled'.
   const start = Date.now();
   const TIMEOUT = 10 * 60 * 1000;
   const POLL = 1000;
 
+  const cancelChild = () => {
+    try { workflowService.cancel(runId); } catch { /* already finished */ }
+  };
+
   while (Date.now() - start < TIMEOUT) {
+    if (signal?.aborted) { cancelChild(); throw new Error('Cancelled'); }
     await new Promise(r => setTimeout(r, POLL));
+    if (signal?.aborted) { cancelChild(); throw new Error('Cancelled'); }
     const run = await workflowService.getRun(runId);
     if (!run) break;
     if (run.status === 'success') {
@@ -1002,6 +1012,7 @@ async function runSubworkflowStep(config, vars, workflowService) {
     }
   }
 
+  cancelChild();
   throw new Error(`Sub-workflow "${workflowRef}" timed out after 10 minutes`);
 }
 
@@ -1309,7 +1320,7 @@ class WorkflowRunner {
       if (queue.length === 0) {
         // Queue drained — release any join stalled on an unreachable predecessor,
         // otherwise we're genuinely done.
-        const stalled = this._pickStalledJoin(execPreds, arrived, visited);
+        const stalled = this._pickStalledJoin(execPreds, arrived, deadPreds, visited);
         if (stalled == null) break;
         forced.add(stalled);
         queue.push(stalled);
@@ -1517,8 +1528,11 @@ class WorkflowRunner {
             const errorInfo = { caught: true, error: err.message, message: err.message };
             stepOutputs[step.id] = errorInfo;
             vars.set(step.id, errorInfo);
-            // An error was caught — the run recovered but is NOT clean success.
-            this._runDegraded = true;
+            // An error_handler node is an EXPLICIT try/catch wired by the user, so a
+            // caught error is handled BY DESIGN → the run is a success at the run
+            // level (step shown as 'caught'). We deliberately do NOT mark the run
+            // degraded here (that would emit a spurious "Workflow failed" notif for
+            // an intentionally-handled error). Only retry-exhaustion marks degraded.
             this._emitStep(runId, step, 'caught', { caught: true, error: err.message });
             if (catchTargets.length > 0) {
               const { visitedNodes: catchVisited } = await this._executeSubGraph(
@@ -1597,14 +1611,18 @@ class WorkflowRunner {
           // Check if error slot (slot 1) is connected
           const errorTargets = this._getNextNodes(nodeId, 1, outgoing);
           if (errorTargets.length > 0) {
-            // Error is handled — follow the error path (seal the Done slot),
-            // but the run is degraded (a step failed even though it was routed).
-            vars.set(step.id, { error: err.message, success: false });
-            stepOutputs[step.id] = { error: err.message, success: false };
-            this._runDegraded = true;
+            // The Error slot is CONNECTED to a handler branch — the failure is
+            // handled BY DESIGN. We route down the error path and keep a 'caught'
+            // step status for display, but we DO NOT mark the run degraded: an
+            // intentionally-wired error branch is a normal success at the run level
+            // (mirrors error_handler catch semantics). Marking degraded here would
+            // emit a spurious "Workflow failed" notification for a handled error.
+            vars.set(step.id, { error: err.message, success: false, caught: true });
+            stepOutputs[step.id] = { error: err.message, success: false, caught: true };
+            this._emitStep(runId, step, 'caught', { caught: true, error: err.message });
             route(nodeId, errorTargets);
           } else {
-            // No error handler — propagate failure
+            // No error handler wired — propagate failure (fatal).
             throw err;
           }
         }
@@ -1623,17 +1641,60 @@ class WorkflowRunner {
    * but their barrier never completed. To avoid silently dropping them, this
    * releases the "most upstream" stalled node so traversal can resume.
    *
+   * When several joins are stalled at once we must release the MOST UPSTREAM one
+   * first — force-running a downstream join before its upstream sibling would feed
+   * it incomplete data. We rank candidates by topological depth (shortest exec-pred
+   * distance from the trigger) ascending, breaking ties by how many of a node's
+   * static exec predecessors are already accounted for (arrived+dead) descending,
+   * then by smallest id for determinism.
+   *
    * @returns {number|null} a node id to force-run, or null if none is stalled.
    * @private
    */
-  _pickStalledJoin(execPreds, arrived, visited) {
+  _pickStalledJoin(execPreds, arrived, deadPreds, visited) {
+    // Compute topological depth of every node from the exec-pred graph via a
+    // longest-path-free BFS relaxation. Roots (no preds) have depth 0; a node's
+    // depth is 1 + the max depth of its predecessors. Bounded iterations guard
+    // against pathological/cyclic input.
+    const depth = new Map();
+    const nodesWithPreds = [...execPreds.keys()];
+    // Seed: any node that is a predecessor but has no preds of its own = depth 0.
+    const allPredIds = new Set();
+    for (const preds of execPreds.values()) for (const p of preds) allPredIds.add(p);
+    for (const id of allPredIds) if (!execPreds.has(id)) depth.set(id, 0);
+
+    const maxIters = nodesWithPreds.length + 1;
+    for (let iter = 0; iter < maxIters; iter++) {
+      let changed = false;
+      for (const nodeId of nodesWithPreds) {
+        let maxPred = -1;
+        for (const p of execPreds.get(nodeId)) {
+          const d = depth.has(p) ? depth.get(p) : 0;
+          if (d > maxPred) maxPred = d;
+        }
+        const newDepth = maxPred + 1;
+        if (depth.get(nodeId) !== newDepth) { depth.set(nodeId, newDepth); changed = true; }
+      }
+      if (!changed) break;
+    }
+
     let best = null;
-    for (const [nodeId] of execPreds) {
+    let bestDepth = Infinity;
+    let bestResolved = -1;
+    for (const [nodeId, preds] of execPreds) {
       if (visited.has(nodeId)) continue;
       const arr = arrived.get(nodeId)?.size || 0;
-      if (arr >= 1) {
-        // Prefer the smallest id for deterministic ordering (upstream-ish).
-        if (best == null || nodeId < best) best = nodeId;
+      if (arr < 1) continue; // only release joins with at least one arrived pred
+      const d = depth.has(nodeId) ? depth.get(nodeId) : preds.size;
+      const resolved = arr + (deadPreds.get(nodeId)?.size || 0);
+      if (
+        d < bestDepth ||
+        (d === bestDepth && resolved > bestResolved) ||
+        (d === bestDepth && resolved === bestResolved && (best == null || nodeId < best))
+      ) {
+        best = nodeId;
+        bestDepth = d;
+        bestResolved = resolved;
       }
     }
     return best;
@@ -1808,7 +1869,9 @@ class WorkflowRunner {
     }
 
     if (source === 'files') {
-      const filter = resolveVars(step.filter || '*', vars);
+      // The graph UI writes the pattern into step.items (aligned with loop.node.js);
+      // fall back to the legacy step.filter for backward compatibility.
+      const filter = resolveVars(step.items ?? step.filter ?? '*', vars);
       const ctx = vars.get('ctx') || {};
       const baseDir = ctx.project || process.cwd();
       try {
@@ -1820,7 +1883,9 @@ class WorkflowRunner {
     }
 
     if (source === 'custom') {
-      const raw = resolveVars(step.filter || '', vars);
+      // The graph UI writes the value into step.items (aligned with loop.node.js);
+      // fall back to the legacy step.filter for backward compatibility.
+      const raw = resolveVars(step.items ?? step.filter ?? '', vars);
       // If resolveVars returned an array (e.g. $var pointing to a JS array), use it directly
       if (Array.isArray(raw)) return raw;
       // If it's a string that looks like JSON array, try to parse it
@@ -1981,7 +2046,8 @@ class WorkflowRunner {
             const errorInfo = { caught: true, error: err.message, message: err.message };
             stepOutputs[step.id] = errorInfo;
             vars.set(step.id, errorInfo);
-            this._runDegraded = true;
+            // Explicit error_handler catch = handled by design → not degraded
+            // (see the main-graph error_handler branch for the rationale).
             this._emitStep(runId, step, 'caught', { caught: true, error: err.message });
             if (catchTargets.length > 0) {
               const { visitedNodes: catchVisited } = await this._executeSubGraph(
@@ -2053,9 +2119,11 @@ class WorkflowRunner {
           if (signal.aborted) throw err;
           const errorTargets = this._getNextNodes(nodeId, 1, outgoing);
           if (errorTargets.length > 0) {
-            vars.set(step.id, { error: err.message, success: false });
-            stepOutputs[step.id] = { error: err.message, success: false };
-            this._runDegraded = true;
+            // Error slot connected → handled by design; keep a 'caught' step status
+            // for display but do NOT mark the run degraded (see _executeGraph note).
+            vars.set(step.id, { error: err.message, success: false, caught: true });
+            stepOutputs[step.id] = { error: err.message, success: false, caught: true };
+            this._emitStep(runId, step, 'caught', { caught: true, error: err.message });
             subQueue.push(...errorTargets);
           } else {
             throw err;
@@ -2253,7 +2321,7 @@ class WorkflowRunner {
     }
 
     if (type === 'subworkflow') {
-      return runSubworkflowStep(step, vars, this._workflowService);
+      return runSubworkflowStep(step, vars, this._workflowService, signal);
     }
 
     if (type === 'switch') {

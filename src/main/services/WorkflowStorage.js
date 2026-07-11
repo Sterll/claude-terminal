@@ -198,6 +198,34 @@ async function updateRun(runId, patch) {
 }
 
 /**
+ * Reconcile "running" run records left over from a previous session.
+ *
+ * appendRun() persists a run with status:'running' BEFORE execution. If the app
+ * crashes or quits mid-run, that record is never finalized and stays 'running'
+ * forever. At boot no run is actually active (the in-memory _active map is empty),
+ * so every history record still marked 'running' is a ghost → mark it 'interrupted'
+ * with a finishedAt timestamp.
+ *
+ * @returns {Promise<{ reconciled: number }>} count of records reconciled
+ */
+async function reconcileRunningRuns() {
+  return withFileLock(HISTORY_FILE, async () => {
+    const all = await loadHistory();
+    const now = new Date().toISOString();
+    let reconciled = 0;
+    for (const r of all) {
+      if (r && r.status === 'running') {
+        r.status = 'interrupted';
+        r.finishedAt = r.finishedAt || now;
+        reconciled++;
+      }
+    }
+    if (reconciled > 0) await atomicWrite(HISTORY_FILE, all);
+    return { reconciled };
+  });
+}
+
+/**
  * @param {string} workflowId
  * @param {number} [limit]
  * @returns {Promise<Object[]>}
@@ -347,6 +375,65 @@ function detectCycle(workflowId, dependsOn, allWorkflows) {
   return cycle ? { hasCycle: true, cycle } : { hasCycle: false };
 }
 
+// ─── Graph structure validation ───────────────────────────────────────────────
+
+/**
+ * Validate the structural integrity of a workflow's graph before persisting.
+ * Rejects malformed graphs but tolerates legacy workflows that carry a steps[]
+ * array and no graph at all (those are migrated elsewhere).
+ *
+ * Checks (only when a graph object is present):
+ *   - graph.nodes and graph.links are arrays
+ *   - at least one trigger node ('workflow/trigger') exists
+ *   - every link's origin (link[1]) and target (link[3]) reference existing nodes
+ *
+ * @param {Object} workflow
+ * @returns {{ valid: boolean, error?: string }}
+ */
+function validateWorkflowGraph(workflow) {
+  if (!workflow || typeof workflow !== 'object') {
+    return { valid: false, error: 'Workflow must be an object' };
+  }
+
+  const graph = workflow.graph;
+
+  // Legacy workflows (steps[] only, no graph) are valid — migrated on load.
+  if (!graph) {
+    if (Array.isArray(workflow.steps)) return { valid: true };
+    // No graph and no steps: allow empty scaffolding (e.g. a freshly created wf).
+    return { valid: true };
+  }
+
+  if (!Array.isArray(graph.nodes)) {
+    return { valid: false, error: 'Workflow graph.nodes must be an array' };
+  }
+  if (graph.links != null && !Array.isArray(graph.links)) {
+    return { valid: false, error: 'Workflow graph.links must be an array' };
+  }
+
+  const hasTrigger = graph.nodes.some(n => n && n.type === 'workflow/trigger');
+  if (!hasTrigger) {
+    return { valid: false, error: 'Workflow graph must contain a trigger node (workflow/trigger)' };
+  }
+
+  const nodeIds = new Set(graph.nodes.map(n => n && n.id));
+  for (const link of (graph.links || [])) {
+    if (!Array.isArray(link) || link.length < 5) {
+      return { valid: false, error: 'Workflow graph contains a malformed link entry' };
+    }
+    const originId = link[1];
+    const targetId = link[3];
+    if (!nodeIds.has(originId)) {
+      return { valid: false, error: `Workflow link references missing origin node "${originId}"` };
+    }
+    if (!nodeIds.has(targetId)) {
+      return { valid: false, error: `Workflow link references missing target node "${targetId}"` };
+    }
+  }
+
+  return { valid: true };
+}
+
 // ─── Exports ─────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -360,6 +447,7 @@ module.exports = {
   loadHistory,
   appendRun,
   updateRun,
+  reconcileRunningRuns,
   getRunsForWorkflow,
   getRecentRuns,
   getRun,
@@ -370,6 +458,7 @@ module.exports = {
   loadResultPayload,
   // Validation
   detectCycle,
+  validateWorkflowGraph,
   // Constants (exported for tests)
   MAX_RUNS_PER_WF,
   MAX_RUNS_TOTAL,
