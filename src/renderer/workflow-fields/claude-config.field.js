@@ -177,7 +177,9 @@ ${renderModelEffort(props)}
 <input class="wf-step-edit-input wf-node-prop wf-field-mono wf-claude-cwd-input" data-key="cwd"
   value="" placeholder="${t('workflow.cwd.pathPlaceholder')}" />`;
             projSel.closest('.wf-step-edit-field').after(div);
-            div.querySelector('.wf-claude-cwd-input').addEventListener('input', e => {
+            const cwdEl = div.querySelector('.wf-claude-cwd-input');
+            cwdEl.setAttribute('data-wf-self-bound', '');
+            cwdEl.addEventListener('input', e => {
               node.properties.cwd = e.target.value;
             });
           }
@@ -191,6 +193,7 @@ ${renderModelEffort(props)}
     // Bind CWD input if already rendered
     const cwdInp = container.querySelector('.wf-claude-cwd-input');
     if (cwdInp) {
+      cwdInp.setAttribute('data-wf-self-bound', '');
       cwdInp.addEventListener('input', () => { node.properties.cwd = cwdInp.value; });
     }
 
@@ -273,6 +276,7 @@ ${renderModelEffort(props)}
             modeContent.querySelectorAll('[data-agent-id]').forEach(c => c.classList.remove('active'));
             card.classList.add('active');
             node.properties.agentId = card.dataset.agentId;
+            onChange(node.properties.mode); // flag dirty / snapshot (MAJ-7)
           });
         });
         modeContent.querySelectorAll('[data-skill-id]').forEach(card => {
@@ -280,11 +284,15 @@ ${renderModelEffort(props)}
             modeContent.querySelectorAll('[data-skill-id]').forEach(c => c.classList.remove('active'));
             card.classList.add('active');
             node.properties.skillId = card.dataset.skillId;
+            onChange(node.properties.mode); // flag dirty / snapshot (MAJ-7)
           });
         });
         // Re-bind prompt textarea
         const ta = modeContent.querySelector('[data-key="prompt"]');
-        if (ta) ta.addEventListener('input', () => { node.properties.prompt = ta.value; });
+        if (ta) {
+          ta.setAttribute('data-wf-self-bound', '');
+          ta.addEventListener('input', () => { node.properties.prompt = ta.value; onChange(node.properties.mode); });
+        }
       });
     });
 
@@ -294,6 +302,7 @@ ${renderModelEffort(props)}
         container.querySelectorAll('[data-agent-id]').forEach(c => c.classList.remove('active'));
         card.classList.add('active');
         node.properties.agentId = card.dataset.agentId;
+        onChange(node.properties.mode); // flag dirty / snapshot (MAJ-7)
       });
     });
     container.querySelectorAll('[data-skill-id]').forEach(card => {
@@ -301,7 +310,18 @@ ${renderModelEffort(props)}
         container.querySelectorAll('[data-skill-id]').forEach(c => c.classList.remove('active'));
         card.classList.add('active');
         node.properties.skillId = card.dataset.skillId;
+        onChange(node.properties.mode); // flag dirty / snapshot (MAJ-7)
       });
     });
+
+    // Bind initial prompt textarea (was writing without flagging dirty)
+    const promptTa = container.querySelector('.wf-claude-mode-content [data-key="prompt"]');
+    if (promptTa) {
+      promptTa.setAttribute('data-wf-self-bound', '');
+      promptTa.addEventListener('input', () => {
+        node.properties.prompt = promptTa.value;
+        onChange(node.properties.mode);
+      });
+    }
   },
 };

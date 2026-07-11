@@ -1,45 +1,34 @@
 const { escapeHtml, escapeAttr } = require('./_registry');
 const { t } = require('../i18n');
 
+/**
+ * variable-autocomplete field
+ *
+ * Renders a plain text input marked with `.wf-node-prop`. Two things then wire
+ * it up automatically inside WorkflowPanel:
+ *   - the generic property binding writes the value + flags the draft dirty;
+ *   - `setupAutocomplete()` attaches the real `$variable` dropdown (it scans for
+ *     `input.wf-node-prop` fields).
+ *
+ * The previous implementation used a bespoke `.wf-var-input` class (invisible to
+ * both systems) and a keyup handler that only ever hid an empty dropdown, so the
+ * field was effectively dead. Delegating to the shared machinery makes it live.
+ */
 module.exports = {
   type: 'variable-autocomplete',
 
   render(field, value, node) {
-    return `<div class="wf-field-group" data-key="${escapeAttr(field.key)}">
-  <label class="wf-field-label">${escapeHtml(field.label || field.key)}</label>
-  <input type="text" class="wf-input wf-var-input" value="${escapeAttr(value || '')}"
-         placeholder="${t('workflow.variable.placeholder')}" data-key="${escapeAttr(field.key)}" />
-  <div class="wf-var-suggestions" style="display:none"></div>
+    return `<div class="wf-step-edit-field" data-key="${escapeAttr(field.key)}">
+  <label class="wf-step-edit-label">${escapeHtml(field.label || field.key)}</label>
+  <input type="text" class="wf-step-edit-input wf-node-prop wf-field-mono"
+         value="${escapeAttr(value || '')}"
+         placeholder="${escapeAttr(t('workflow.variable.placeholder'))}"
+         data-key="${escapeAttr(field.key)}" />
 </div>`;
   },
 
-  bind(container, field, node, onChange) {
-    const input       = container.querySelector('.wf-var-input');
-    const suggestions = container.querySelector('.wf-var-suggestions');
-
-    if (!input) return;
-
-    input.addEventListener('input', () => onChange(input.value));
-
-    input.addEventListener('keyup', e => {
-      // Placeholder for future autocomplete: show suggestions when {{ is typed
-      if (!suggestions) return;
-      const cursorPos = input.selectionStart;
-      const textBefore = input.value.slice(0, cursorPos);
-      const openBrace = textBefore.lastIndexOf('{{');
-
-      if (openBrace !== -1 && !textBefore.includes('}}', openBrace)) {
-        // User is typing inside {{ }}; autocomplete could be wired here
-        // For now, we simply hide the suggestions panel
-        suggestions.style.display = 'none';
-      } else {
-        suggestions.style.display = 'none';
-      }
-    });
-
-    // Close suggestions when focus leaves the input
-    input.addEventListener('blur', () => {
-      if (suggestions) suggestions.style.display = 'none';
-    });
-  },
+  // No custom bind needed: the generic wf-node-prop binding + setupAutocomplete
+  // (both run in WorkflowPanel.renderProperties) handle value writes and the
+  // $variable dropdown.
+  bind() {},
 };

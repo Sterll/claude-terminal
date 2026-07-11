@@ -15,21 +15,21 @@ function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function renderFilterField(source, filter) {
+function renderFilterField(source, items) {
   if (source === 'files') {
     return `<div class="wf-step-edit-field">
   <label class="wf-step-edit-label">${t('workflow.loop.globLabel')}</label>
   <span class="wf-field-hint">${t('workflow.loop.globHint')}</span>
-  <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="filter"
-    value="${esc(filter || '')}" placeholder="src/**/*.test.js" />
+  <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="items"
+    value="${esc(items || '')}" placeholder="src/**/*.test.js" />
 </div>`;
   }
   if (source === 'custom') {
     return `<div class="wf-step-edit-field">
   <label class="wf-step-edit-label">${t('workflow.loop.itemsLabel')}</label>
   <span class="wf-field-hint">${t('workflow.loop.itemsHint')}</span>
-  <textarea class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="filter"
-    rows="4" placeholder="api-service\nweb-app\nworker">${esc(filter || '')}</textarea>
+  <textarea class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="items"
+    rows="4" placeholder="api-service\nweb-app\nworker">${esc(items || '')}</textarea>
 </div>`;
   }
   return '';
@@ -88,7 +88,7 @@ module.exports = {
   </select>
 </div>
 <div class="wf-loop-filter-section">
-${renderFilterField(source, props.filter)}
+${renderFilterField(source, props.items)}
 </div>
 <div class="wf-loop-options">
   <div class="wf-loop-opt">
@@ -114,6 +114,7 @@ ${renderUsageHint(itemSchema)}
     // Source select → toggle filter section
     const sourceSel = container.querySelector('.wf-loop-source-select');
     if (sourceSel) {
+      sourceSel.setAttribute('data-wf-self-bound', '');
       sourceSel.addEventListener('change', () => {
         const src = sourceSel.value;
         node.properties.source = src;
@@ -121,11 +122,12 @@ ${renderUsageHint(itemSchema)}
 
         const filterSection = container.querySelector('.wf-loop-filter-section');
         if (filterSection) {
-          filterSection.innerHTML = renderFilterField(src, node.properties.filter || '');
+          filterSection.innerHTML = renderFilterField(src, node.properties.items || '');
           const filterEl = filterSection.querySelector('.wf-node-prop');
           if (filterEl) {
-            filterEl.addEventListener('input', () => { node.properties.filter = filterEl.value; });
-            filterEl.addEventListener('change', () => { node.properties.filter = filterEl.value; });
+            filterEl.setAttribute('data-wf-self-bound', '');
+            filterEl.addEventListener('input', () => { node.properties.items = filterEl.value; });
+            filterEl.addEventListener('change', () => { node.properties.items = filterEl.value; });
           }
         }
       });
@@ -134,8 +136,9 @@ ${renderUsageHint(itemSchema)}
     // Filter field binding (initial)
     const filterEl = container.querySelector('.wf-loop-filter-section .wf-node-prop');
     if (filterEl) {
-      filterEl.addEventListener('input', () => { node.properties.filter = filterEl.value; });
-      filterEl.addEventListener('change', () => { node.properties.filter = filterEl.value; });
+      filterEl.setAttribute('data-wf-self-bound', '');
+      filterEl.addEventListener('input', () => { node.properties.items = filterEl.value; });
+      filterEl.addEventListener('change', () => { node.properties.items = filterEl.value; });
     }
 
     // Mode tabs
@@ -150,6 +153,7 @@ ${renderUsageHint(itemSchema)}
     // Max iterations
     const maxEl = container.querySelector('.wf-loop-max-input');
     if (maxEl) {
+      maxEl.setAttribute('data-wf-self-bound', '');
       maxEl.addEventListener('input', () => { node.properties.maxIterations = maxEl.value ? parseInt(maxEl.value, 10) : ''; });
     }
   },

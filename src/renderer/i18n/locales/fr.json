@@ -7,6 +7,7 @@
     "close": "Fermer",
     "cancel": "Annuler",
     "confirm": "Confirmer",
+    "retry": "Réessayer",
     "ok": "OK",
     "save": "Enregistrer",
     "delete": "Supprimer",
@@ -2237,6 +2238,21 @@
   },
   "workflow": {
     "paused": "EN PAUSE",
+    "unsavedTitle": "Modifications non enregistrées",
+    "unsavedMessage": "Ce workflow a des modifications non enregistrées. Quitter sans enregistrer ?",
+    "discardChanges": "Abandonner les modifications",
+    "toast": {
+      "saveFailed": "Échec de l'enregistrement du workflow.",
+      "runFailed": "Échec du démarrage du workflow.",
+      "toggleFailed": "Échec de la mise à jour du workflow."
+    },
+    "validation": {
+      "generic": "Le workflow contient des erreurs de validation.",
+      "noTrigger": "Le workflow nécessite un nœud déclencheur.",
+      "cycle": "Le workflow contient un cycle.",
+      "orphanNode": "Certains nœuds ne sont pas connectés au flux.",
+      "missingField": "Un champ requis est manquant sur un nœud {type} ({field})."
+    },
     "errorLabel": "Erreur",
     "properties": "Propriétés",
     "lastRun": "Dernier run",
@@ -2315,6 +2331,7 @@
       "urlHint": "Envoyez un POST sur cette URL avec Authorization: Bearer <votre-clé-api>",
       "copyBtn": "Copier",
       "copied": "Copié !",
+      "copyFailed": "Échec de la copie",
       "noCloud": "Relais cloud non configuré — connectez-vous dans Paramètres → Cloud",
       "payloadHint": "Le corps de la requête est disponible via $trigger.payload dans les nœuds du workflow.",
       "saveForUrl": "Sauvegardez le workflow pour obtenir l'URL"
@@ -2401,6 +2418,8 @@
       "typeWebhook": "Webhook (HTTP POST)",
       "cronLabel": "Expression cron",
       "cronHint": "min heure jour mois jour-semaine",
+      "cronInvalid": "Expression cron invalide (5 champs : min heure jour mois jour-semaine)",
+      "regexInvalid": "Expression régulière invalide",
       "hookTypeLabel": "Type de hook",
       "hookTypeHint": "Événement Claude qui déclenche le workflow",
       "hookPreToolUse": "Pre Tool Use — Avant chaque appel outil",
@@ -2637,6 +2656,7 @@
     "duplicateSuffix": " (copie)",
     "marketplace": {
       "community": "Communauté",
+      "loadError": "Impossible de charger les workflows de la communauté.",
       "explore": "Explorer",
       "myPublications": "Mes publications",
       "publishWorkflow": "Publier un workflow",

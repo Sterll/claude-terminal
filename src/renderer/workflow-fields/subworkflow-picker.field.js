@@ -54,7 +54,18 @@ module.exports = {
   },
 
   bind(container, field, node, onChange) {
-    // Standard wf-node-prop binding is handled by WorkflowPanel.
-    // No extra custom binding needed for this field.
+    // workflow (select) + inputVars (textarea) use the generic wf-node-prop
+    // binding from WorkflowPanel. Only waitForCompletion needs coercion to a
+    // real boolean so it stays consistent with what the runner expects.
+    const waitSel = container.querySelector('[data-key="waitForCompletion"]');
+    if (waitSel) {
+      waitSel.setAttribute('data-wf-self-bound', '');
+      waitSel.addEventListener('change', () => {
+        node.properties.waitForCompletion = (waitSel.value === 'true');
+        // onChange writes node.properties[field.key] (= 'workflow'); re-affirm the
+        // current workflow value so dirty gets flagged without clobbering it.
+        onChange(node.properties.workflow || '');
+      });
+    }
   },
 };

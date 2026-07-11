@@ -10,6 +10,72 @@
 const { escapeHtml, escapeAttr } = require('./_registry');
 const { t } = require('../i18n');
 
+/**
+ * Minimal 5-field cron validator (min hour dom month dow).
+ * Accepts *, ranges, steps, lists and numeric values within range.
+ */
+function isValidCron(expr) {
+  if (!expr || typeof expr !== 'string') return false;
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length !== 5) return false;
+  const bounds = [[0, 59], [0, 23], [1, 31], [1, 12], [0, 7]];
+  const fieldOk = (field, [min, max]) => field.split(',').every(part => {
+    const [range, step] = part.split('/');
+    if (step !== undefined && (!/^\d+$/.test(step) || Number(step) === 0)) return false;
+    if (range === '*') return true;
+    const [a, b] = range.split('-');
+    const inRange = v => /^\d+$/.test(v) && Number(v) >= min && Number(v) <= max;
+    if (b !== undefined) return inRange(a) && inRange(b) && Number(a) <= Number(b);
+    return inRange(a);
+  });
+  return parts.every((p, i) => fieldOk(p, bounds[i]));
+}
+
+function isValidRegex(pattern) {
+  if (!pattern) return true; // empty = no filter
+  try { new RegExp(pattern); return true; } catch { return false; }
+}
+
+/** Toggle a visual error state + message on an input. */
+function markFieldError(inputEl, hasError, message) {
+  if (!inputEl) return;
+  inputEl.classList.toggle('wf-field-error', !!hasError);
+  const field = inputEl.closest('.wf-step-edit-field');
+  if (!field) return;
+  let err = field.querySelector('.wf-field-error-msg');
+  if (hasError) {
+    if (!err) {
+      err = document.createElement('span');
+      err.className = 'wf-field-error-msg';
+      field.appendChild(err);
+    }
+    err.textContent = message || '';
+  } else if (err) {
+    err.remove();
+  }
+}
+
+/** Wire cron / regex validation onto whatever inputs exist under `root`. */
+function bindTriggerValidation(root) {
+  const cronEl = root.querySelector('[data-key="triggerValue"]');
+  if (cronEl && cronEl.closest('.wf-trigger-conditional')) {
+    // Only treat triggerValue as cron when the cron field is shown (placeholder hint).
+    const isCron = (cronEl.getAttribute('placeholder') || '').includes('*');
+    if (isCron) {
+      const run = () => markFieldError(cronEl, !isValidCron(cronEl.value), t('workflow.trigger.cronInvalid'));
+      cronEl.addEventListener('input', run);
+      cronEl.addEventListener('change', run);
+      run();
+    }
+  }
+  root.querySelectorAll('[data-key="pattern"], [data-key="branch"]').forEach(el => {
+    const run = () => markFieldError(el, !isValidRegex(el.value), t('workflow.trigger.regexInvalid'));
+    el.addEventListener('input', run);
+    el.addEventListener('change', run);
+    run();
+  });
+}
+
 function getHookTypes() {
   return [
     { value: 'PreToolUse',       label: t('workflow.trigger.hookPreToolUse') },
@@ -299,6 +365,9 @@ function _bindWebhookCopyBtn(root) {
         navigator.clipboard.writeText(url).then(() => {
           btn.textContent = t('workflow.webhook.copied');
           setTimeout(() => { btn.textContent = t('workflow.webhook.copyBtn'); }, 2000);
+        }).catch(() => {
+          btn.textContent = t('workflow.webhook.copyFailed');
+          setTimeout(() => { btn.textContent = t('workflow.webhook.copyBtn'); }, 2000);
         });
       }
     });
@@ -378,9 +447,16 @@ module.exports = {
   bind(container, field, node, onChange) {
     const typeSelect = container.querySelector('.wf-trigger-type-select');
     if (!typeSelect) return;
+    // This field manages the triggerType change itself (partial re-render of the
+    // conditional section). Mark it so the generic panel binding does not ALSO
+    // trigger a full properties re-render on the same event (MAJ-6 / MAJ-8/9).
+    typeSelect.setAttribute('data-wf-self-bound', '');
 
     // Bind copy button for initial render (if webhook is already selected)
     _bindWebhookCopyBtn(container);
+
+    // Validate cron / regex fields present on initial render (MAJ-10)
+    bindTriggerValidation(container);
 
     // Re-render hook section on initial load when hookType is changed
     const hookTypeInit = container.querySelector('.wf-trigger-hook-type');
@@ -524,6 +600,9 @@ module.exports = {
 
       // Bind copy button for webhook
       _bindWebhookCopyBtn(condDiv);
+
+      // Validate cron / regex fields for the freshly rendered section (MAJ-10)
+      bindTriggerValidation(condDiv);
     });
   },
 };

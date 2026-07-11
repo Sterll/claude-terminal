@@ -7,6 +7,7 @@
     "close": "Cerrar",
     "cancel": "Cancelar",
     "confirm": "Confirmar",
+    "retry": "Reintentar",
     "ok": "OK",
     "save": "Guardar",
     "delete": "Eliminar",
@@ -2224,6 +2225,21 @@
   },
   "workflow": {
     "paused": "PAUSADO",
+    "unsavedTitle": "Cambios sin guardar",
+    "unsavedMessage": "Este flujo de trabajo tiene cambios sin guardar. ¿Salir sin guardar?",
+    "discardChanges": "Descartar cambios",
+    "toast": {
+      "saveFailed": "No se pudo guardar el flujo de trabajo.",
+      "runFailed": "No se pudo iniciar el flujo de trabajo.",
+      "toggleFailed": "No se pudo actualizar el flujo de trabajo."
+    },
+    "validation": {
+      "generic": "El flujo de trabajo tiene errores de validación.",
+      "noTrigger": "El flujo de trabajo necesita un nodo disparador.",
+      "cycle": "El flujo de trabajo contiene un ciclo.",
+      "orphanNode": "Algunos nodos no están conectados al flujo.",
+      "missingField": "Falta un campo obligatorio en un nodo {type} ({field})."
+    },
     "errorLabel": "Error",
     "properties": "Propiedades",
     "lastRun": "Última ejecución",
@@ -2302,6 +2318,7 @@
       "urlHint": "Haz POST a esta URL con Authorization: Bearer <tu-clave-api>",
       "copyBtn": "Copiar",
       "copied": "¡Copiado!",
+      "copyFailed": "Error al copiar",
       "noCloud": "Relay cloud no configurado — conéctate en Ajustes → Nube",
       "payloadHint": "El cuerpo de la solicitud está disponible como $trigger.payload en los nodos del workflow.",
       "saveForUrl": "Guarda el workflow para obtener la URL"
@@ -2388,6 +2405,8 @@
       "typeWebhook": "Webhook (HTTP POST)",
       "cronLabel": "Expresión cron",
       "cronHint": "min hora día mes díaSemana",
+      "cronInvalid": "Expresión cron no válida (5 campos: min hora día mes díaSemana)",
+      "regexInvalid": "Expresión regular no válida",
       "hookTypeLabel": "Tipo de hook",
       "hookTypeHint": "Evento de Claude que dispara el workflow",
       "hookPreToolUse": "Pre Tool Use — Antes de cada llamada a herramienta",
@@ -2624,6 +2643,7 @@
     "duplicateSuffix": " (copia)",
     "marketplace": {
       "community": "Comunidad",
+      "loadError": "No se pudieron cargar los flujos de trabajo de la comunidad.",
       "explore": "Explorar",
       "myPublications": "Mis publicaciones",
       "publishWorkflow": "Publicar workflow",

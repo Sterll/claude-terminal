@@ -7,6 +7,7 @@
     "close": "Close",
     "cancel": "Cancel",
     "confirm": "Confirm",
+    "retry": "Retry",
     "ok": "OK",
     "save": "Save",
     "delete": "Delete",
@@ -2237,6 +2238,21 @@
   },
   "workflow": {
     "paused": "PAUSED",
+    "unsavedTitle": "Unsaved changes",
+    "unsavedMessage": "This workflow has unsaved changes. Leave without saving?",
+    "discardChanges": "Discard changes",
+    "toast": {
+      "saveFailed": "Failed to save the workflow.",
+      "runFailed": "Failed to start the workflow.",
+      "toggleFailed": "Failed to update the workflow."
+    },
+    "validation": {
+      "generic": "The workflow has validation errors.",
+      "noTrigger": "The workflow needs a trigger node.",
+      "cycle": "The workflow contains a cycle.",
+      "orphanNode": "Some nodes are not connected to the flow.",
+      "missingField": "A required field is missing on a {type} node ({field})."
+    },
     "errorLabel": "Error",
     "properties": "Properties",
     "lastRun": "Last Run",
@@ -2315,6 +2331,7 @@
       "urlHint": "POST this URL with Authorization: Bearer <your-api-key>",
       "copyBtn": "Copy",
       "copied": "Copied!",
+      "copyFailed": "Copy failed",
       "noCloud": "Cloud relay not configured — connect in Settings → Cloud",
       "payloadHint": "The request body is available as $trigger.payload in your workflow nodes.",
       "saveForUrl": "Save the workflow to get the URL"
@@ -2401,6 +2418,8 @@
       "typeWebhook": "Webhook (HTTP POST)",
       "cronLabel": "Cron expression",
       "cronHint": "min hour day month weekday",
+      "cronInvalid": "Invalid cron expression (5 fields: min hour day month weekday)",
+      "regexInvalid": "Invalid regular expression",
       "hookTypeLabel": "Hook type",
       "hookTypeHint": "Claude event that triggers the workflow",
       "hookPreToolUse": "Pre Tool Use — Before each tool call",
@@ -2637,6 +2656,7 @@
     "duplicateSuffix": " (copy)",
     "marketplace": {
       "community": "Community",
+      "loadError": "Could not load community workflows.",
       "explore": "Explore",
       "myPublications": "My publications",
       "publishWorkflow": "Publish workflow",

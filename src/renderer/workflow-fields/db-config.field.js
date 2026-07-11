@@ -9,6 +9,7 @@
  */
 const { escapeHtml, escapeAttr } = require('./_registry');
 const { t } = require('../i18n');
+const { schemaCache } = require('../services/WorkflowSchemaCache');
 
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -82,13 +83,7 @@ module.exports = {
     <label class="wf-step-edit-label">${t('workflow.db.limit')}</label>
     <span class="wf-field-hint">${t('workflow.db.limitHint')}</span>
     <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="limit" type="number"
-      min="1" max="10000" value="${esc(String(props.limit || 100))}" placeholder="100" />
-  </div>
-  <div class="wf-step-edit-field wf-field-half">
-    <label class="wf-step-edit-label">${t('workflow.db.outputVar')}</label>
-    <span class="wf-field-hint">${t('workflow.db.outputVarHint')}</span>
-    <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="outputVar"
-      value="${esc(props.outputVar || '')}" placeholder="dbResult" />
+      min="1" max="10000" value="${esc(String(props.limit != null ? props.limit : 100))}" placeholder="100" />
   </div>
 </div>` : '';
 
@@ -119,6 +114,33 @@ ${renderOutputHints(dbAction, node.id)}
   },
 
   bind(container, field, node, onChange) {
+    // Persist a default limit even if the user never touches the field (MAJ-8/9)
+    if ((node.properties.action || 'query') === 'query' && node.properties.limit == null) {
+      node.properties.limit = 100;
+    }
+
+    // Bind all own prop inputs (connection / query / limit). The generic panel
+    // binding skips custom-field subtrees, so this field owns its inputs.
+    const bindProps = (root) => {
+      root.querySelectorAll('.wf-node-prop').forEach(el => {
+        const key = el.dataset.key;
+        if (!key) return;
+        el.setAttribute('data-wf-self-bound', '');
+        const evt = (el.tagName === 'TEXTAREA' || el.type === 'text' || el.type === 'number') ? 'input' : 'change';
+        el.addEventListener(evt, () => {
+          const v = el.type === 'number' ? (el.value === '' ? '' : Number(el.value)) : el.value;
+          node.properties[key] = v;
+          if (key === 'connection') {
+            try { schemaCache.invalidate(v); } catch (_) {}
+            onChange(v);
+          } else {
+            onChange(v);
+          }
+        });
+      });
+    };
+    bindProps(container);
+
     // SQL template buttons
     container.querySelectorAll('.wf-sql-tpl').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -161,12 +183,7 @@ ${renderOutputHints(dbAction, node.id)}
   <div class="wf-step-edit-field wf-field-half">
     <label class="wf-step-edit-label">${t('workflow.db.limit')}</label>
     <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="limit" type="number"
-      min="1" max="10000" value="${e(String(props.limit || 100))}" placeholder="100" />
-  </div>
-  <div class="wf-step-edit-field wf-field-half">
-    <label class="wf-step-edit-label">${t('workflow.db.outputVar')}</label>
-    <input class="wf-step-edit-input wf-node-prop wf-field-mono" data-key="outputVar"
-      value="${e(props.outputVar || '')}" placeholder="dbResult" />
+      min="1" max="10000" value="${e(String(props.limit != null ? props.limit : 100))}" placeholder="100" />
   </div>
 </div>` : '';
 
@@ -184,6 +201,7 @@ ${renderOutputHints(dbAction, node.id)}
           qSection.querySelectorAll('.wf-node-prop').forEach(el => {
             const key = el.dataset.key;
             if (!key) return;
+            el.setAttribute('data-wf-self-bound', '');
             const evt = el.tagName === 'TEXTAREA' || el.type === 'text' || el.type === 'number' ? 'input' : 'change';
             el.addEventListener(evt, () => { node.properties[key] = el.type === 'number' ? Number(el.value) : el.value; });
           });

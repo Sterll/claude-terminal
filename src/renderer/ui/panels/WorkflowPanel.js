@@ -9,6 +9,7 @@ const { schemaCache } = require('../../services/WorkflowSchemaCache');
 const { showContextMenu } = require('../components/ContextMenu');
 const { showConfirm } = require('../components/Modal');
 const { createChatView } = require('../components/ChatView');
+const { showToast } = require('../components/Toast');
 const nodeRegistry = require('../../services/NodeRegistry');
 const fieldRegistry = require('../../workflow-fields/_registry');
 
@@ -49,6 +50,9 @@ const _agentLogs = new Map(); // stepId → [{ type, text, ts }]
 const MAX_LOG_ENTRIES = 50;
 
 let _activeEditorWorkflowId = null; // tracks current open editor's workflowId
+let _editorDirty = false;           // true while the open editor has unsaved changes (MAJ-4)
+let _editorRunUnsubs = [];          // unsubscribe handles for editor-scoped run listeners (CRIT-4)
+let teardownEditorRef = null;       // current editor's teardown fn (MAJ-5)
 
 let _panelInitialized = false;
 
@@ -100,6 +104,11 @@ async function load() {
 }
 
 const api = window.electron_api?.workflow;
+
+/** Small toast helper (info/success/warning/error) */
+function toast(message, type = 'info') {
+  try { showToast({ message, type }); } catch (_) { /* ignore */ }
+}
 
 /** Fetch workflows + recent runs from backend */
 async function refreshData() {
@@ -221,7 +230,8 @@ function registerLiveListeners() {
     const graphService = getGraphService();
     if (graphService) {
       const editorEl = document.querySelector('.wf-editor');
-      if (_activeEditorWorkflowId && workflows) {
+      if (_activeEditorWorkflowId && workflows && !_editorDirty) {
+        // Don't clobber an in-progress edit with a remote reload (MAJ-4)
         const updated = workflows.find(w => w.id === _activeEditorWorkflowId);
         if (updated) graphService.loadFromWorkflow(updated);
       }
@@ -565,8 +575,14 @@ function renderWorkflowList(el) {
       const wf = state.workflows.find(w => w.id === id);
       if (!wf) return;
       wf.favorite = !wf.favorite;
-      await api?.save({ ...wf });
       renderContent();
+      const res = await api?.save({ ...wf });
+      if (res && res.success === false) {
+        // Rollback optimistic UI change on failure (MAJ-3)
+        wf.favorite = !wf.favorite;
+        renderContent();
+        toast(res.error || t('workflow.toast.saveFailed'), 'error');
+      }
       return;
     }
     if (e.target.closest('.wf-card-run')) { e.stopPropagation(); triggerWorkflow(id); return; }
@@ -1456,6 +1472,7 @@ function openEditor(workflowId = null, options = {}) {
     if (sbName) sbName.textContent = editorDraft.name || t('workflow.untitled');
     if (sbDirty) sbDirty.style.display = editorDraft.dirty ? '' : 'none';
     if (toolbarDirty) toolbarDirty.style.display = editorDraft.dirty ? '' : 'none';
+    _editorDirty = editorDraft.dirty; // keep module flag in sync (MAJ-4)
     if (undoBtn) undoBtn.disabled = !graphService.canUndo();
     if (redoBtn) redoBtn.disabled = !graphService.canRedo();
   };
@@ -1821,51 +1838,55 @@ function openEditor(workflowId = null, options = {}) {
     }
 
     // ── Bind property inputs ──
+    // Inputs that a custom field already binds itself carry [data-wf-self-bound]
+    // and are skipped here to avoid double writes + duplicated snapshots (MAJ-6).
+    // Passive custom fields (no own binding) still get wired by this generic loop.
     let _propSnapshotTimer = null;
+    // Keys whose change alters which fields are visible / rebuilds pins.
+    // Re-rendering on every keystroke steals focus and (for db) re-fetches the
+    // schema, so we only run that logic on `change`, never on `input` (MAJ-8/9).
+    const RERENDER_KEYS = ['triggerType', 'method', 'action', 'mode', 'connection', 'projectId'];
     propsEl.querySelectorAll('.wf-node-prop').forEach(input => {
-      const handler = () => {
+      if (input.hasAttribute('data-wf-self-bound')) return;
+      // Write the value on both events so typing is captured live.
+      const writeVal = () => {
         const key = input.dataset.key;
-        // Support toggle (checkbox) fields from the generic renderer
         const val = input.type === 'checkbox' ? input.checked : input.value;
         node.properties[key] = val;
         editorDraft.dirty = true;
-        // Update widget display in node
         if (node.widgets) {
           const w = node.widgets.find(w => w.name === key || w.name.toLowerCase() === key.toLowerCase());
           if (w) w.value = val;
         }
         graphService.canvas.setDirty(true, true);
-        // Invalidate schema cache when DB connection changes
-        if (key === 'connection') {
-          schemaCache.invalidate(val);
-        }
-        // Re-render properties if field affects visibility (trigger type, method, action, mode, connection)
-        if (['triggerType', 'method', 'action', 'mode', 'connection', 'projectId'].includes(key)) {
-          renderProperties(node);
-        }
-        // Rebuild Variable pins when action changes (adaptive Get/Set like Unreal)
+        // Debounced snapshot so rapid typing doesn't flood the history
+        clearTimeout(_propSnapshotTimer);
+        _propSnapshotTimer = setTimeout(() => graphService.pushSnapshot(), 600);
+      };
+      // Structural side-effects (re-render / pin rebuild) run only on `change`.
+      const applyStructural = () => {
+        const key = input.dataset.key;
+        const val = input.type === 'checkbox' ? input.checked : input.value;
+        if (key === 'connection') schemaCache.invalidate(val);
         if (key === 'action' && node.type === 'workflow/variable') {
-          // Sync the widget combo
           const aw = node.widgets?.find(w => w.key === 'action');
           if (aw) aw.value = val;
           graphService._rebuildVariablePins(node);
         }
-        // Rebuild Time outputs when action changes
         if (key === 'action' && node.type === 'workflow/time') {
           const aw = node.widgets?.find(w => w.key === 'action');
           if (aw) aw.value = val;
           graphService._rebuildTimeOutputs(node);
         }
-        // Refresh pin type on get_variable when varType changes
         if (key === 'varType' && node._updatePinType) {
           node._updatePinType();
         }
-        // Debounced snapshot so rapid typing doesn't flood the history
-        clearTimeout(_propSnapshotTimer);
-        _propSnapshotTimer = setTimeout(() => graphService.pushSnapshot(), 600);
+        if (RERENDER_KEYS.includes(key)) {
+          renderProperties(node);
+        }
       };
-      input.addEventListener('input', handler);
-      input.addEventListener('change', handler);
+      input.addEventListener('input', writeVal);
+      input.addEventListener('change', () => { writeVal(); applyStructural(); });
     });
 
     // ── Autocomplete for $variable references ──
@@ -1984,9 +2005,24 @@ function openEditor(workflowId = null, options = {}) {
     renderProperties(null);
   };
 
+  // Debounced auto-save so graph edits aren't lost if the user navigates away
+  // without pressing Save (CRIT-3). Only kicks in once the workflow exists.
+  let _autoSaveTimer = null;
+  const scheduleAutoSave = () => {
+    if (!workflowId) return; // never auto-create; first save stays explicit
+    clearTimeout(_autoSaveTimer);
+    _autoSaveTimer = setTimeout(() => {
+      if (editorDraft.dirty && validateGraph({ silent: true })) {
+        saveWorkflow().catch(e => console.warn('[Workflow] auto-save failed', e));
+      }
+    }, 2500);
+  };
+
   graphService.onGraphChanged = () => {
     editorDraft.dirty = true;
+    _editorDirty = true;
     updateStatusBar();
+    scheduleAutoSave();
   };
 
   // ── Variables panel (Blueprint-style) ──────────────────────────────────────
@@ -2250,12 +2286,33 @@ function openEditor(workflowId = null, options = {}) {
 
   // ── Toolbar events ──
   // Back
-  panel.querySelector('#wf-ed-back').addEventListener('click', () => {
-    resizeObs.disconnect();
+  const exitEditor = () => {
+    teardownEditorRef?.();
     panel._cleanupSearch?.();
     resetGraphService();
     renderPanel();
     renderContent();
+  };
+  panel.querySelector('#wf-ed-back').addEventListener('click', async () => {
+    // Warn about unsaved work (CRIT-3). Offer to save before leaving.
+    if (editorDraft.dirty) {
+      let saved = false;
+      if (workflowId && validateGraph({ silent: true })) {
+        // Best-effort auto-save for an already-persisted, valid workflow.
+        saved = await saveWorkflow().catch(() => false);
+      }
+      if (!saved) {
+        const leave = await showConfirm({
+          title: t('workflow.unsavedTitle'),
+          message: t('workflow.unsavedMessage'),
+          confirmLabel: t('workflow.discardChanges'),
+          cancelLabel: t('common.cancel'),
+          danger: true,
+        }).catch(() => true);
+        if (!leave) return; // user cancelled — stay in editor
+      }
+    }
+    exitEditor();
   });
 
   // Name input
@@ -2308,6 +2365,33 @@ function openEditor(workflowId = null, options = {}) {
     updateStatusBar();
   });
 
+  // ── Validation (MAJ-2) ──
+  // Returns true when the graph is valid; otherwise highlights the offending
+  // nodes and shows an explanatory toast. `silent` skips the toast (used on save,
+  // where an invalid graph is allowed as a draft — only Run is blocked).
+  const validateGraph = ({ silent = false } = {}) => {
+    let result;
+    try { result = graphService.validateGraph(); }
+    catch (e) { console.warn('[Workflow] validateGraph error', e); return true; }
+    if (result.valid) {
+      graphService.clearValidationErrors();
+      return true;
+    }
+    if (!silent) {
+      const first = result.errors[0] || '';
+      let msg = t('workflow.validation.generic');
+      if (first === 'validation.noTrigger') msg = t('workflow.validation.noTrigger');
+      else if (first === 'validation.cycle') msg = t('workflow.validation.cycle');
+      else if (first.startsWith('validation.orphanNode')) msg = t('workflow.validation.orphanNode');
+      else if (first.startsWith('validation.missingField')) {
+        const parts = first.split(':');
+        msg = t('workflow.validation.missingField', { type: parts[1] || '', field: parts[2] || '' });
+      }
+      toast(msg, 'error');
+    }
+    return false;
+  };
+
   // ── Shared save logic ──
   const saveWorkflow = async () => {
     const data = graphService.serializeToWorkflow();
@@ -2327,6 +2411,7 @@ function openEditor(workflowId = null, options = {}) {
     const res = await api.save(workflow);
     if (res?.success) {
       editorDraft.dirty = false;
+      _editorDirty = false;
       updateStatusBar();
       await refreshData();
       if (!workflowId && res.id) {
@@ -2335,6 +2420,8 @@ function openEditor(workflowId = null, options = {}) {
       }
       return true;
     }
+    // Save failed — keep the draft dirty and surface the error (MAJ-3)
+    toast(res?.error || t('workflow.toast.saveFailed'), 'error');
     return false;
   };
 
@@ -2378,6 +2465,11 @@ function openEditor(workflowId = null, options = {}) {
       api?.cancel(_edRunId);
       return;
     }
+    // Block the run on an invalid graph (MAJ-2)
+    if (!validateGraph()) {
+      updateStatusBar();
+      return;
+    }
     btn.disabled = true;
     btn.textContent = t('workflow.saving');
     try {
@@ -2385,7 +2477,7 @@ function openEditor(workflowId = null, options = {}) {
       if (!ok) {
         console.warn('[Workflow] Save failed, cannot run');
         btn.disabled = false;
-        btn.innerHTML = '<span class="wf-btn-icon"><svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9"/></svg></span>Run';
+        btn.innerHTML = `<span class="wf-btn-icon"><svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9"/></svg></span>${t('workflow.run')}`;
         return;
       }
       if (workflowId) {
@@ -2395,18 +2487,23 @@ function openEditor(workflowId = null, options = {}) {
       }
     } catch (e) {
       btn.disabled = false;
-      btn.innerHTML = '<span class="wf-btn-icon"><svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9"/></svg></span>Run';
+      btn.innerHTML = `<span class="wf-btn-icon"><svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9"/></svg></span>${t('workflow.run')}`;
     }
   });
 
-  // Listen to run lifecycle to update editor run/stop button
+  // Listen to run lifecycle to update editor run/stop button.
+  // Unsubscribe any listeners left over from a previous editor open (CRIT-4).
+  for (const unsub of _editorRunUnsubs) { try { unsub(); } catch (_) {} }
+  _editorRunUnsubs = [];
   if (api && workflowId) {
-    api.onRunStart(({ run }) => {
+    const u1 = api.onRunStart(({ run }) => {
       if (run?.workflowId === workflowId) _setEdRunBtn(true, run.id);
     });
-    api.onRunEnd(({ runId, status }) => {
+    const u2 = api.onRunEnd(({ runId, status }) => {
       if (runId === _edRunId) _setEdRunBtn(false);
     });
+    if (typeof u1 === 'function') _editorRunUnsubs.push(u1);
+    if (typeof u2 === 'function') _editorRunUnsubs.push(u2);
   }
 
   // ── AI Workflow Builder ──
@@ -2414,6 +2511,7 @@ function openEditor(workflowId = null, options = {}) {
   const aiPanelChat = panel.querySelector('#wf-ai-panel-chat');
   let aiChatInitialized = false;
   let pendingAiPrompt = options.aiPrompt || null;
+  let wfGraphObserver = null; // hoisted so teardownEditor can disconnect it (MAJ-5)
 
   const WORKFLOW_SYSTEM_PROMPT = `You are an expert workflow architect built into the Workflow Builder of Claude Terminal. You build production-quality, robust automation workflows — not just functional ones.
 
@@ -2779,7 +2877,7 @@ CURRENT WORKFLOW: an empty workflow is open in the editor but its name has not b
       });
 
       // MutationObserver: transform workflow diagram code blocks into visual cards
-      const wfGraphObserver = new MutationObserver(() => {
+      wfGraphObserver = new MutationObserver(() => {
         aiPanelChat.querySelectorAll('.chat-code-block:not([data-wf-rendered])').forEach(block => {
           const code = block.querySelector('code');
           if (!code) return;
@@ -2895,14 +2993,23 @@ CURRENT WORKFLOW: an empty workflow is open in the editor but its name has not b
   };
   document.addEventListener('keydown', editorKeyHandler);
 
-  // Cleanup keyboard handler when leaving editor
-  const origBack = panel.querySelector('#wf-ed-back');
-  if (origBack) {
-    const origHandler = origBack.onclick;
-    origBack.addEventListener('click', () => {
-      document.removeEventListener('keydown', editorKeyHandler);
-    }, { once: true });
-  }
+  // ── Centralized editor teardown (MAJ-5) ──
+  // Every editor exit path (back button, language change, MCP-driven navigation)
+  // must call this so no observer / global listener / subscription leaks.
+  let _torndown = false;
+  teardownEditorRef = () => {
+    if (_torndown) return;
+    _torndown = true;
+    try { clearTimeout(_autoSaveTimer); } catch (_) {}
+    try { resizeObs.disconnect(); } catch (_) {}
+    try { window.removeEventListener('keydown', searchKeyHandler); } catch (_) {}
+    try { document.removeEventListener('keydown', editorKeyHandler); } catch (_) {}
+    try { if (wfGraphObserver) { wfGraphObserver.disconnect(); wfGraphObserver = null; } } catch (_) {}
+    for (const unsub of _editorRunUnsubs) { try { unsub(); } catch (_) {} }
+    _editorRunUnsubs = [];
+    _editorDirty = false;
+    _activeEditorWorkflowId = null;
+  };
 
   // ── AI auto-build: persist workflow then open AI panel with the seed prompt ──
   if (options.aiPrompt) {
@@ -3055,7 +3162,10 @@ async function triggerWorkflow(id) {
   const pState = projectsState.get();
   const openedProject = (pState.projects || []).find(p => p.id === pState.openedProjectId);
   const projectPath = openedProject?.path || '';
-  await api.trigger(id, { projectPath });
+  const res = await api.trigger(id, { projectPath });
+  if (res && res.success === false) {
+    toast(res.error || t('workflow.toast.runFailed'), 'error');
+  }
   // Live listener will update UI when run starts
 }
 
@@ -3065,6 +3175,12 @@ async function toggleWorkflow(id, enabled) {
   if (res?.success) {
     const wf = state.workflows.find(w => w.id === id);
     if (wf) wf.enabled = enabled;
+  } else {
+    // Rollback the toggle in the UI and report the failure (MAJ-3)
+    toast(res?.error || t('workflow.toast.toggleFailed'), 'error');
+    const wf = state.workflows.find(w => w.id === id);
+    if (wf) wf.enabled = !enabled;
+    renderContent();
   }
 }
 

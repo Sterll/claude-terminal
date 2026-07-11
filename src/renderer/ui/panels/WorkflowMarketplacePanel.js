@@ -272,6 +272,11 @@ async function _loadTab() {
 
   content.innerHTML = _loadingHtml();
   const result = await _fetchItems();
+  if (result && result.error) {
+    content.innerHTML = _errorHtml(result.error);
+    content.querySelector('.hub-error-retry')?.addEventListener('click', () => _loadTab());
+    return;
+  }
   if (result) {
     st.cache.set(cacheKey, result.items);
     st.total = result.total;
@@ -281,7 +286,8 @@ async function _loadTab() {
 }
 
 async function _fetchItems() {
-  if (!HUB_URL) return { items: _mockItems(), total: _mockItems().length };
+  // No community hub configured → empty catalog (not fake data).
+  if (!HUB_URL) return { items: [], total: 0 };
 
   try {
     const params = new URLSearchParams({ tab: 'browse', page: st.page - 1, sort: st.sort });
@@ -294,8 +300,9 @@ async function _fetchItems() {
     if (st.sort === 'date') items = items.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     else if (st.sort === 'name') items = items.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     return { items, total: data.total || items.length };
-  } catch {
-    return { items: _mockItems(), total: _mockItems().length };
+  } catch (e) {
+    // Surface a real error state instead of faking results with mock data.
+    return { error: e?.message || 'fetch failed' };
   }
 }
 
@@ -490,7 +497,9 @@ async function _importWorkflow(item, btn) {
       ? { ...fullItem.workflowJson, id: `wf_${Date.now()}`, name: fullItem.workflowJson.name || item.name, enabled: true, _importedFrom: item.id }
       : { id: `wf_${Date.now()}`, name: item.name, enabled: true, trigger: { type: 'manual' }, scope: 'current', concurrency: 'skip', steps: [], _importedFrom: item.id };
 
-    const result = await _ctx.api.workflow.save({ workflow });
+    // Preload wraps this as { workflow } for the IPC layer — pass the object
+    // directly (matches WorkflowPanel.saveWorkflow), don't double-wrap.
+    const result = await _ctx.api.workflow.save(workflow);
     if (!result?.success) throw new Error(result?.error || t('workflow.marketplace.failedDefault'));
 
     btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg> ${t('workflow.marketplace.importedBtn')}`;
@@ -787,39 +796,19 @@ function _loadingHtml() {
   `;
 }
 
-function _mockItems() {
-  const all = [
-    { id: 'hub_1', name: 'Daily Code Review', author: 'yanis', verified: true, imports: 1420, createdAt: '2026-02-01T08:00:00Z',
-      description: t('workflow.marketplace.mock.dailyCodeReview'),
-      tags: ['agent', 'git', 'shell'],
-      workflowJson: { steps: [{ id: 's1', type: 'workflow/claude', name: 'Analyze' }, { id: 's2', type: 'workflow/git', name: 'Push' }] } },
-    { id: 'hub_2', name: 'Auto Test on Commit', author: 'mehdi_dev', verified: false, imports: 892, createdAt: '2026-02-10T12:00:00Z',
-      description: t('workflow.marketplace.mock.autoTestOnCommit'),
-      tags: ['shell', 'notify'] },
-    { id: 'hub_3', name: 'PR Summary Agent', author: 'thomas_vc', verified: false, imports: 607, createdAt: '2026-02-15T09:00:00Z',
-      description: t('workflow.marketplace.mock.prSummaryAgent'),
-      tags: ['agent', 'http'] },
-    { id: 'hub_4', name: 'Deploy + Notify Discord', author: 'sarah_builds', verified: false, imports: 341, createdAt: '2026-02-20T14:00:00Z',
-      description: t('workflow.marketplace.mock.deployNotifyDiscord'),
-      tags: ['shell', 'http', 'notify'] },
-    { id: 'hub_5', name: 'Changelog Auto-Writer', author: 'devops_bro', verified: false, imports: 228, createdAt: '2026-02-25T10:00:00Z',
-      description: t('workflow.marketplace.mock.changelogAutoWriter'),
-      tags: ['agent', 'git'] },
-    { id: 'hub_6', name: 'Security Audit Weekly', author: 'sec_team', verified: false, imports: 183, createdAt: '2026-02-28T11:00:00Z',
-      description: t('workflow.marketplace.mock.securityAuditWeekly'),
-      tags: ['agent', 'shell'] },
-  ];
-
-  let items = [...all];
-  if (st.query) {
-    const q = st.query.toLowerCase();
-    items = items.filter(i => i.name.toLowerCase().includes(q) || i.description.toLowerCase().includes(q) || (i.tags||[]).some(t => t.includes(q)));
-  }
-  if (st.sort === 'date') items.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  else if (st.sort === 'name') items.sort((a, b) => a.name.localeCompare(b.name));
-  else items.sort((a, b) => (b.imports || 0) - (a.imports || 0));
-
-  return items;
+function _errorHtml(message) {
+  return `
+    <div class="hub-empty hub-error">
+      <div class="hub-empty-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+          <circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/>
+        </svg>
+      </div>
+      <p>${t('workflow.marketplace.loadError')}</p>
+      ${message ? `<span>${escapeHtml(String(message))}</span>` : ''}
+      <button class="hub-error-retry">${t('common.retry')}</button>
+    </div>
+  `;
 }
 
 module.exports = { init, open, render };

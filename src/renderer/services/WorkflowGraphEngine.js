@@ -112,7 +112,7 @@ function addDataOutputDefs(defs, nodeType) {
 
 const NODE_TYPES = {
   'workflow/trigger': {
-    title: 'Trigger', desc: t('workflow.nodeDesc.trigger'),
+    title: 'Trigger', get desc() { return t('workflow.nodeDesc.trigger'); },
     inputs: [],
     outputs: addDataOutputDefs([{ name: 'Start', type: 'exec' }], 'trigger'),
     props: { triggerType: 'manual', triggerValue: '', hookType: 'PostToolUse' },
@@ -121,7 +121,7 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.triggerType || 'manual').toUpperCase(),
   },
   'workflow/claude': {
-    title: 'Claude', desc: t('workflow.nodeDesc.claude'),
+    title: 'Claude', get desc() { return t('workflow.nodeDesc.claude'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'claude'),
     props: { mode: 'prompt', prompt: '', agentId: '', skillId: '', model: 'sonnet', effort: 'medium', outputSchema: null },
@@ -135,7 +135,7 @@ const NODE_TYPES = {
     badge: (n) => ({ prompt: 'PROMPT', agent: 'AGENT', skill: 'SKILL' }[n.properties.mode] || 'PROMPT'),
   },
   'workflow/shell': {
-    title: 'Shell', desc: t('workflow.nodeDesc.shell'),
+    title: 'Shell', get desc() { return t('workflow.nodeDesc.shell'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'shell'),
     props: { command: '' },
@@ -152,7 +152,7 @@ const NODE_TYPES = {
     },
   },
   'workflow/git': {
-    title: 'Git', desc: t('workflow.nodeDesc.git'),
+    title: 'Git', get desc() { return t('workflow.nodeDesc.git'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'git'),
     props: { action: 'pull', branch: '', message: '' },
@@ -161,7 +161,7 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.action || 'pull').toUpperCase(),
   },
   'workflow/http': {
-    title: 'HTTP', desc: t('workflow.nodeDesc.http'),
+    title: 'HTTP', get desc() { return t('workflow.nodeDesc.http'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'http'),
     props: { method: 'GET', url: '', headers: '', body: '' },
@@ -176,7 +176,7 @@ const NODE_TYPES = {
     badgeColor: (n) => ({ GET: '#22c55e', POST: '#3b82f6', PUT: '#f59e0b', PATCH: '#a78bfa', DELETE: '#ef4444' }[n.properties.method] || '#22d3ee'),
   },
   'workflow/notify': {
-    title: 'Notify', desc: t('workflow.nodeDesc.notify'),
+    title: 'Notify', get desc() { return t('workflow.nodeDesc.notify'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: [{ name: 'Done', type: 'exec' }],
     props: { title: '', message: '' },
@@ -184,7 +184,7 @@ const NODE_TYPES = {
     width: 200,
   },
   'workflow/wait': {
-    title: 'Wait', desc: t('workflow.nodeDesc.wait'),
+    title: 'Wait', get desc() { return t('workflow.nodeDesc.wait'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: [{ name: 'Done', type: 'exec' }],
     props: { mode: 'duration', duration: '5s', timeout: '' },
@@ -197,7 +197,7 @@ const NODE_TYPES = {
     badge: (n) => n.properties.mode === 'approval' ? 'APPROVAL' : (n.properties.duration || '5s').toUpperCase(),
   },
   'workflow/condition': {
-    title: 'Condition', desc: t('workflow.nodeDesc.condition'),
+    title: 'Condition', get desc() { return t('workflow.nodeDesc.condition'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: [{ name: 'TRUE', type: 'exec' }, { name: 'FALSE', type: 'exec' }],
     props: { conditionMode: 'builder', variable: '', operator: '==', value: '', expression: '' },
@@ -225,7 +225,7 @@ const NODE_TYPES = {
     },
   },
   'workflow/project': {
-    title: 'Project', desc: t('workflow.nodeDesc.project'),
+    title: 'Project', get desc() { return t('workflow.nodeDesc.project'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: [{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }, { name: 'Projects', type: 'array' }],
     props: { projectId: '', projectName: '', action: 'set_context' },
@@ -237,7 +237,7 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.action || 'set_context').toUpperCase().replace('_', ' '),
   },
   'workflow/file': {
-    title: 'File', desc: t('workflow.nodeDesc.file'),
+    title: 'File', get desc() { return t('workflow.nodeDesc.file'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'file'),
     props: { action: 'read', path: '', destination: '', content: '', pattern: '*', recursive: false },
@@ -249,7 +249,7 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.action || 'read').toUpperCase(),
   },
   'workflow/db': {
-    title: 'Database', desc: t('workflow.nodeDesc.db'),
+    title: 'Database', get desc() { return t('workflow.nodeDesc.db'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'db'),
     props: { connection: '', query: '', action: 'query' },
@@ -261,7 +261,7 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.action || 'query').toUpperCase(),
   },
   'workflow/loop': {
-    title: 'Loop', desc: t('workflow.nodeDesc.loop'),
+    title: 'Loop', get desc() { return t('workflow.nodeDesc.loop'); },
     inputs: [{ name: 'In', type: 'exec' }, { name: 'items', type: 'array' }],
     outputs: addDataOutputDefs([{ name: 'Each', type: 'exec' }, { name: 'Done', type: 'exec' }], 'loop'),
     props: { source: 'auto', items: '', mode: 'sequential', maxIterations: '', _itemSchema: [] },
@@ -276,7 +276,7 @@ const NODE_TYPES = {
     badgeColor: (n) => n.properties.mode === 'parallel' ? '#f59e0b' : null,
   },
   'workflow/variable': {
-    title: 'Set Variable', desc: t('workflow.nodeDesc.variable'),
+    title: 'Set Variable', get desc() { return t('workflow.nodeDesc.variable'); },
     inputs: [{ name: 'In', type: 'exec' }, { name: 'value', type: 'any' }],
     outputs: [{ name: 'Done', type: 'exec' }, { name: 'value', type: 'any' }],
     props: { action: 'set', name: '', value: '' },
@@ -306,7 +306,7 @@ const NODE_TYPES = {
     },
   },
   'workflow/log': {
-    title: 'Log', desc: t('workflow.nodeDesc.log'),
+    title: 'Log', get desc() { return t('workflow.nodeDesc.log'); },
     inputs: [{ name: 'In', type: 'exec' }, { name: 'message', type: 'string' }],
     outputs: [{ name: 'Done', type: 'exec' }],
     props: { level: 'info', message: '' },
@@ -319,7 +319,7 @@ const NODE_TYPES = {
     badgeColor: (n) => ({ debug: '#94a3b8', info: '#60a5fa', warn: '#fbbf24', error: '#ef4444' }[n.properties.level]),
   },
   'workflow/transform': {
-    title: 'Transform', desc: t('workflow.nodeDesc.transform'),
+    title: 'Transform', get desc() { return t('workflow.nodeDesc.transform'); },
     inputs: [{ name: 'In', type: 'exec' }, { name: 'input', type: 'any' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'transform'),
     props: { operation: 'map', input: '', expression: '', outputVar: '' },
@@ -333,7 +333,7 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.operation || 'map').toUpperCase(),
   },
   'workflow/subworkflow': {
-    title: 'Sub-workflow', desc: t('workflow.nodeDesc.subworkflow'),
+    title: 'Sub-workflow', get desc() { return t('workflow.nodeDesc.subworkflow'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: addDataOutputDefs([{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], 'subworkflow'),
     props: { workflow: '', inputVars: '', waitForCompletion: true },
@@ -346,7 +346,7 @@ const NODE_TYPES = {
     badge: (n) => n.properties.workflow ? n.properties.workflow.slice(0, 12).toUpperCase() : 'WORKFLOW',
   },
   'workflow/time': {
-    title: 'Time', desc: t('workflow.nodeDesc.time'),
+    title: 'Time', get desc() { return t('workflow.nodeDesc.time'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: [{ name: 'Done', type: 'exec' }, { name: 'Error', type: 'exec' }], // rebuilt dynamically
     props: { action: 'get_today', projectId: '' },
@@ -358,7 +358,7 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.action || 'get_today').replace('get_', '').toUpperCase(),
   },
   'workflow/switch': {
-    title: 'Switch', desc: t('workflow.nodeDesc.switch'),
+    title: 'Switch', get desc() { return t('workflow.nodeDesc.switch'); },
     inputs: [{ name: 'In', type: 'exec' }],
     outputs: [{ name: 'default', type: 'exec' }], // rebuilt dynamically
     props: { variable: '', cases: 'case1,case2,case3' },
@@ -370,7 +370,7 @@ const NODE_TYPES = {
     badge: (n) => (n.properties.variable || '$var').slice(0, 14),
   },
   'workflow/get_variable': {
-    title: 'Get Variable', desc: t('workflow.nodeDesc.getVariable'),
+    title: 'Get Variable', get desc() { return t('workflow.nodeDesc.getVariable'); },
     inputs: [],
     outputs: [{ name: 'value', type: 'any' }],
     props: { name: '', varType: 'any' },
@@ -1072,18 +1072,26 @@ class WorkflowGraphEngine {
       };
       // Trigger-type-specific fields — only include when relevant so the
       // saved payload stays tidy and matches what WorkflowScheduler inspects.
-      if (out.type === 'hook' && p.hookType) out.hookType = p.hookType;
+      if (out.type === 'hook') {
+        if (p.hookType)  out.hookType  = p.hookType;
+        if (p.toolName)  out.toolName  = p.toolName;
+        if (p.projectId) out.projectId = p.projectId;
+      }
       if (out.type === 'file_change') {
         if (p.projectId)           out.projectId   = p.projectId;
         if (p.watchPath)           out.watchPath   = p.watchPath;
         if (p.patterns)            out.patterns    = p.patterns;
         if (p.events)              out.events      = p.events;
-        if (p.debounceMs != null)  out.debounceMs  = Number(p.debounceMs) || 500;
+        if (p.debounceMs != null) {
+          const d = Number(p.debounceMs);
+          out.debounceMs = Number.isFinite(d) ? d : 500;
+        }
       }
       if (out.type === 'terminal_exit_code') {
         out.codeFilter = p.codeFilter || 'any';
         if (out.codeFilter === 'custom' && p.customCodes) out.customCodes = p.customCodes;
-        if (p.projectId) out.projectId = p.projectId;
+        if (p.projectId)      out.projectId      = p.projectId;
+        if (p.commandPattern) out.commandPattern = p.commandPattern;
       }
       if (out.type === 'project_opened') {
         if (p.projectId) out.projectId = p.projectId;
@@ -1098,6 +1106,7 @@ class WorkflowGraphEngine {
       if (out.type === 'git_event') {
         if (p.projectId)   out.projectId   = p.projectId;
         if (p.eventFilter) out.eventFilter = p.eventFilter;
+        if (p.branch)      out.branch      = p.branch;
       }
       if (out.type === 'chat_message') {
         if (p.projectId) out.projectId = p.projectId;
@@ -1121,6 +1130,105 @@ class WorkflowGraphEngine {
     }
 
     return { trigger, hookType, graph: data, steps };
+  }
+
+  /**
+   * Validate the current graph before save/run.
+   * Checks: exactly one reachable trigger, no orphan (disconnected) nodes,
+   * required fields per node type, and absence of cycles in the exec flow.
+   * @returns {{ valid: boolean, errors: string[], badNodeIds: number[] }}
+   */
+  validateGraph() {
+    const errors = [];
+    const badNodeIds = new Set();
+
+    const triggers = this._nodes.filter(n => n.type === 'workflow/trigger');
+    if (triggers.length === 0) {
+      errors.push('validation.noTrigger');
+    }
+
+    // ── Required fields per type ──────────────────────────────────────────────
+    const REQUIRED = {
+      'workflow/shell':  ['command'],
+      'workflow/http':   ['url'],
+      'workflow/db':     ['connection', 'query'],
+    };
+    for (const node of this._nodes) {
+      const req = REQUIRED[node.type];
+      if (!req) continue;
+      // db only needs a query when action === 'query'
+      const fields = node.type === 'workflow/db' && (node.properties.action || 'query') !== 'query'
+        ? ['connection']
+        : req;
+      for (const key of fields) {
+        const v = node.properties[key];
+        if (v == null || String(v).trim() === '') {
+          badNodeIds.add(node.id);
+          errors.push(`validation.missingField:${node.type.replace('workflow/', '')}:${key}`);
+          break;
+        }
+      }
+    }
+
+    // ── Orphan detection (nodes with no exec connection at all) ────────────────
+    // A node is connected if any of its exec inputs/outputs carry a link.
+    const connected = new Set();
+    for (const [, link] of this._links) {
+      connected.add(link.origin_id);
+      connected.add(link.target_id);
+    }
+    for (const node of this._nodes) {
+      if (node.type === 'workflow/trigger') continue;
+      if (node.type === 'workflow/get_variable') continue; // pure data node, may stand alone
+      if (this._nodes.length > 1 && !connected.has(node.id)) {
+        badNodeIds.add(node.id);
+        errors.push(`validation.orphanNode:${node.id}`);
+      }
+    }
+
+    // ── Cycle detection over exec links ───────────────────────────────────────
+    const adj = new Map();
+    for (const [, link] of this._links) {
+      if (link.type !== 'exec') continue;
+      if (!adj.has(link.origin_id)) adj.set(link.origin_id, []);
+      adj.get(link.origin_id).push(link.target_id);
+    }
+    const WHITE = 0, GRAY = 1, BLACK = 2;
+    const color = new Map();
+    let cycleFound = false;
+    const visit = (id) => {
+      color.set(id, GRAY);
+      for (const next of (adj.get(id) || [])) {
+        const c = color.get(next) || WHITE;
+        if (c === GRAY) { cycleFound = true; badNodeIds.add(next); return; }
+        if (c === WHITE) visit(next);
+      }
+      color.set(id, BLACK);
+    };
+    for (const node of this._nodes) {
+      if ((color.get(node.id) || WHITE) === WHITE) visit(node.id);
+      if (cycleFound) break;
+    }
+    if (cycleFound) errors.push('validation.cycle');
+
+    // Highlight offending nodes on the canvas
+    this.setValidationErrors([...badNodeIds]);
+
+    return { valid: errors.length === 0, errors, badNodeIds: [...badNodeIds] };
+  }
+
+  /** Mark nodes as invalid (red highlight) or clear when passed empty. */
+  setValidationErrors(nodeIds) {
+    const set = new Set(nodeIds || []);
+    for (const n of this._nodes) {
+      n._validationError = set.has(n.id);
+    }
+    this._markDirty();
+  }
+
+  clearValidationErrors() {
+    for (const n of this._nodes) n._validationError = false;
+    this._markDirty();
   }
 
   loadFromWorkflow(workflow) {
@@ -1181,8 +1289,11 @@ class WorkflowGraphEngine {
       if (wt.debounceMs != null) trigger.properties.debounceMs  = wt.debounceMs;
       if (wt.codeFilter)         trigger.properties.codeFilter  = wt.codeFilter;
       if (wt.customCodes)        trigger.properties.customCodes = wt.customCodes;
+      if (wt.commandPattern)     trigger.properties.commandPattern = wt.commandPattern;
       if (wt.statusFilter)       trigger.properties.statusFilter = wt.statusFilter;
       if (wt.eventFilter)        trigger.properties.eventFilter = wt.eventFilter;
+      if (wt.branch)             trigger.properties.branch      = wt.branch;
+      if (wt.toolName)           trigger.properties.toolName    = wt.toolName;
       if (wt.role)               trigger.properties.role        = wt.role;
       if (wt.pattern)            trigger.properties.pattern     = wt.pattern;
       if (wt.matchMode)          trigger.properties.matchMode   = wt.matchMode;
@@ -1818,6 +1929,14 @@ class WorkflowGraphEngine {
     // Selection outline
     if (node.is_selected) {
       ctx.strokeStyle = hexToRgba(c.accent, 0.35);
+      ctx.lineWidth = 1.5;
+      roundRect(ctx, x - 0.5, y - 0.5, w + 1, TITLE_H + h + 1, r);
+      ctx.stroke();
+    }
+
+    // Validation error outline (MAJ-2)
+    if (node._validationError) {
+      ctx.strokeStyle = STATUS_COLORS.failed;
       ctx.lineWidth = 1.5;
       roundRect(ctx, x - 0.5, y - 0.5, w + 1, TITLE_H + h + 1, r);
       ctx.stroke();
