@@ -16,7 +16,9 @@ module.exports = {
     { name: 'Error', type: 'exec' },
   ],
 
-  props: { action: 'get_today', projectId: '' },
+  // startDate/endDate are declared as props (read by run() and rendered by the
+  // time-config custom field — do not duplicate them as separate fields).
+  props: { action: 'get_today', projectId: '', startDate: '', endDate: '' },
 
   fields: [
     { type: 'time-config', key: 'action', label: 'wfn.time.label' },
@@ -41,7 +43,7 @@ module.exports = {
 
     // Rebuild outputs: clear data outputs (keep exec slots 0 and 1)
     for (let i = 2; i < node.outputs.length; i++) {
-      for (const lid of [...node.outputs[i].links]) {
+      for (const lid of [...(node.outputs[i].links || [])]) {
         if (engine._removeLink) engine._removeLink(lid);
       }
     }

@@ -245,30 +245,52 @@ module.exports = {
     const name   = config.name   || '';
     if (!name) throw new Error('Variable node: no name specified');
 
-    const currentValue = vars instanceof Map ? vars.get(name) : vars?.[name];
+    // Support both a Map store and a plain-object store; otherwise fail clearly.
+    let readVar, writeVar;
+    if (vars instanceof Map) {
+      readVar  = (k) => vars.get(k);
+      writeVar = (k, v) => vars.set(k, v);
+    } else if (vars && typeof vars === 'object') {
+      readVar  = (k) => vars[k];
+      writeVar = (k, v) => { vars[k] = v; };
+    } else {
+      throw new Error('Variable node: unsupported variable store (expected Map or object)');
+    }
+
+    const currentValue = readVar(name);
 
     switch (action) {
       case 'set': {
         const raw   = config.value != null ? config.value : '';
         const value = resolveVars(raw, vars);
-        if (vars instanceof Map) vars.set(name, value);
+        writeVar(name, value);
         return { name, value, action: 'set' };
       }
       case 'get': {
         return { name, value: currentValue ?? null, action: 'get' };
       }
       case 'increment': {
-        const increment = parseFloat(config.value) || 1;
-        const newValue  = (parseFloat(currentValue) || 0) + increment;
-        if (vars instanceof Map) vars.set(name, newValue);
+        // Only default the step to 1 when the config value is empty. An
+        // explicit "0" must stay 0. NaN increments/current values are treated
+        // as their neutral element rather than silently becoming 1.
+        const hasStep = config.value != null && String(config.value).trim() !== '';
+        let step = hasStep ? parseFloat(config.value) : 1;
+        if (Number.isNaN(step)) step = 1;
+        let base = parseFloat(currentValue);
+        if (Number.isNaN(base)) base = 0;
+        const newValue = base + step;
+        writeVar(name, newValue);
         return { name, value: newValue, action: 'increment' };
       }
       case 'append': {
         const rawA  = config.value != null ? config.value : '';
         const value = resolveVars(rawA, vars);
-        const arr   = Array.isArray(currentValue) ? currentValue : (currentValue ? [currentValue] : []);
+        // Clone before push so we never mutate a shared array in place.
+        const arr   = Array.isArray(currentValue)
+          ? [...currentValue]
+          : (currentValue != null ? [currentValue] : []);
         arr.push(value);
-        if (vars instanceof Map) vars.set(name, arr);
+        writeVar(name, arr);
         return { name, value: arr, action: 'append' };
       }
       default:

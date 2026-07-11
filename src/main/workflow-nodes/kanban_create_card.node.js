@@ -82,8 +82,11 @@ module.exports = {
   outputs: [
     { name: 'Done',     type: 'exec'   },
     { name: 'Error',    type: 'exec'   },
-    { name: 'taskId',   type: 'string' },
-    { name: 'columnId', type: 'string' },
+    { name: 'taskId',      type: 'string' },
+    { name: 'columnId',    type: 'string' },
+    { name: 'projectId',   type: 'string' },
+    { name: 'projectName', type: 'string' },
+    { name: 'title',       type: 'string' },
   ],
 
   props: {

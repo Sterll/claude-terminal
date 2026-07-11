@@ -1,5 +1,7 @@
 'use strict';
 
+const { resolveVars } = require('./_registry');
+
 module.exports = {
   type:     'workflow/git',
   title:    'Git',
@@ -16,7 +18,7 @@ module.exports = {
     { name: 'output', type: 'string' },
   ],
 
-  props: { action: 'pull', branch: '', message: '' },
+  props: { action: 'pull', branch: '', message: '', files: '' },
 
   fields: [
     { type: 'cwd-picker', key: 'projectId', label: 'wfn.git.projectId.label',
@@ -40,46 +42,59 @@ module.exports = {
       hint: 'wfn.git.branch.hint',
       placeholder: 'feature/my-branch',
       showIf: (p) => ['checkout','merge'].includes(p.action) },
+    { type: 'text', key: 'files', label: 'Files to stage', mono: true,
+      hint: 'Comma-separated paths, or "." for all (default)',
+      placeholder: '.',
+      showIf: (p) => p.action === 'commit' },
   ],
 
   badge: (n) => (n.properties.action || 'pull').toUpperCase(),
 
-  // NOTE: runGitStep is not yet exported from WorkflowRunner (module.exports = WorkflowRunner class only).
-  // This run() delegates to the git.js utilities directly and will be wired to WorkflowRunner.runGitStep in Task 9.
+  // Runner call convention: run(config, vars, signal, ctx).
   async run(config, vars, signal) {
+    const fs = require('fs');
     const {
       gitCommit, gitPull, gitPush, gitStageFiles,
       checkoutBranch, spawnGit,
     } = require('../utils/git');
 
-    // Minimal inline var resolution until WorkflowRunner exports resolveVars
-    const resolveVars = (value, vars) => {
-      if (typeof value !== 'string') return value;
-      return value.replace(/\$([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)/g, (match, key) => {
-        const parts = key.split('.');
-        let cur = vars instanceof Map ? vars.get(parts[0]) : vars[parts[0]];
-        for (let i = 1; i < parts.length && cur != null; i++) cur = cur[parts[i]];
-        return cur != null ? String(cur).replace(/[\r\n]+$/, '') : match;
-      });
-    };
+    if (signal?.aborted) throw new Error('Aborted');
 
-    // Resolve working directory from vars context or fallback
-    let cwd = resolveVars(config.cwd || '', vars);
-    if (!cwd) {
-      const ctx = (vars instanceof Map ? vars.get('ctx') : vars?.ctx) || {};
-      cwd = ctx.project || process.cwd();
+    // Resolve working directory. Some destructive actions (reset --hard) must
+    // NOT fall back to Electron's own cwd — require an explicit, existing
+    // project directory instead.
+    const varCtx = (vars instanceof Map ? vars.get('ctx') : vars?.ctx) || {};
+    // The cwd-picker field stores its value under `projectId`; also accept an
+    // explicit `cwd` for backward compatibility.
+    let cwd = String(resolveVars(config.cwd || config.projectId || '', vars) ?? '').trim();
+    if (!cwd) cwd = varCtx.project || '';
+
+    if (!cwd || !fs.existsSync(cwd)) {
+      throw new Error('Git node: a valid project working directory is required (no cwd/projectId resolved)');
     }
 
     const action  = config.action || 'pull';
-    const branch  = resolveVars(config.branch  || '', vars);
-    const message = resolveVars(config.message || '', vars);
+    const branch  = String(resolveVars(config.branch  || '', vars) ?? '');
+    const message = String(resolveVars(config.message || '', vars) ?? '');
+
+    // Files to stage for commit: comma-separated string, array, or default '.'.
+    let files = ['.'];
+    if (Array.isArray(config.files)) {
+      files = config.files.length ? config.files : ['.'];
+    } else if (typeof config.files === 'string' && config.files.trim()) {
+      const resolved = String(resolveVars(config.files, vars) ?? '').trim();
+      files = resolved ? resolved.split(',').map(s => s.trim()).filter(Boolean) : ['.'];
+      if (!files.length) files = ['.'];
+    }
+
+    if (signal?.aborted) throw new Error('Aborted');
 
     let res;
     switch (action) {
       case 'pull':      res = await gitPull(cwd); break;
       case 'push':      res = await gitPush(cwd); break;
       case 'commit': {
-        await gitStageFiles(cwd, config.files || ['.']);
+        await gitStageFiles(cwd, files);
         res = await gitCommit(cwd, message || 'workflow commit');
         break;
       }

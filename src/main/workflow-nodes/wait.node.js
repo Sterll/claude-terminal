@@ -24,14 +24,20 @@ module.exports = {
 
   async run(config, vars, signal, ctx) {
     const parseMs = (value) => {
-      if (typeof value === 'number') return value;
-      if (typeof value !== 'string') return 60_000;
-      const match = value.match(/^(\d+(?:\.\d+)?)(ms|s|m|h)$/);
-      if (!match) return parseInt(value, 10) || 60_000;
-      const [, n, unit] = match;
-      const num = parseFloat(n);
-      const multipliers = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 };
-      return Math.round(num * (multipliers[unit] || 1000));
+      let ms;
+      if (typeof value === 'number') ms = value;
+      else if (typeof value !== 'string') ms = 60_000;
+      else {
+        const match = value.match(/^(\d+(?:\.\d+)?)(ms|s|m|h)$/);
+        if (!match) ms = parseInt(value, 10) || 60_000;
+        else {
+          const [, n, unit] = match;
+          const num = parseFloat(n);
+          const multipliers = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 };
+          ms = Math.round(num * (multipliers[unit] || 1000));
+        }
+      }
+      return Math.max(0, ms); // never negative
     };
 
     const sleep = (ms, signal) => new Promise((resolve, reject) => {
@@ -40,9 +46,12 @@ module.exports = {
       signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new Error('Cancelled')); }, { once: true });
     });
 
-    const duration = config.duration;
-    if (duration) {
-      const ms = parseMs(duration);
+    // Branch on mode FIRST — the duration prop has a default ('5s') so a plain
+    // `if (duration)` would short-circuit approval mode.
+    const mode = config.mode || 'duration';
+
+    if (mode !== 'approval') {
+      const ms = parseMs(config.duration || '5s');
       await sleep(ms, signal);
       return { waited: ms, timedOut: false };
     }

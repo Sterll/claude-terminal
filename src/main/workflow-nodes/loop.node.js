@@ -1,8 +1,15 @@
 'use strict';
 
-const fs   = require('fs');
+const fsp  = require('fs').promises;
 const path = require('path');
 const os   = require('os');
+
+// NOTE on `mode` / `concurrency` props: these describe how the graph engine
+// should iterate the emitted items (sequential vs parallel, with a concurrency
+// cap). The actual Each/Done fan-out is driven by the WorkflowRunner's graph
+// traversal, NOT by this node — this run() only resolves and returns the item
+// list. The props are kept so the runner/UI can read the loop strategy; they
+// are intentionally not consumed here.
 
 module.exports = {
   type:     'workflow/loop',
@@ -54,7 +61,7 @@ module.exports = {
     if (source === 'projects') {
       const projFile = path.join(os.homedir(), '.claude-terminal', 'projects.json');
       try {
-        const data = JSON.parse(fs.readFileSync(projFile, 'utf8'));
+        const data = JSON.parse(await fsp.readFile(projFile, 'utf8'));
         items = (data.projects || []).map(p => ({ id: p.id, name: p.name, path: p.path, type: p.type || 'general' }));
       } catch {
         items = [];

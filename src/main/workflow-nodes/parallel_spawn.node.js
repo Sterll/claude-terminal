@@ -94,9 +94,17 @@ module.exports = {
     const mainBranch = resolveVars(config.mainBranch || 'main', vars) || 'main';
     const maxTasks   = Math.max(1, Math.min(10, parseInt(config.maxTasks, 10) || 4));
     const autoTasks  = !!config.autoTasks;
-    const model      = config.model  || undefined;
-    const effort     = config.effort || undefined;
 
+    // Validate model against the supported set; ignore anything else.
+    const VALID_MODELS = ['sonnet', 'opus', 'haiku'];
+    const model  = VALID_MODELS.includes(config.model) ? config.model : undefined;
+    const VALID_EFFORTS = ['low', 'medium', 'high'];
+    const effort = VALID_EFFORTS.includes(config.effort) ? config.effort : undefined;
+
+    // NOTE: ParallelTaskService.startRun does not currently accept an
+    // AbortSignal, so `signal` cannot be forwarded to cancel an in-flight
+    // decomposition. Cancellation of the spawned run is handled separately via
+    // ParallelTaskService.cancelRun(runId). We still honour a pre-abort above.
     const ParallelTaskService = require('../services/ParallelTaskService');
     const result = await ParallelTaskService.startRun({
       projectPath, mainBranch, goal, maxTasks, autoTasks, model, effort,

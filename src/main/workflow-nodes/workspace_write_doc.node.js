@@ -23,8 +23,10 @@ module.exports = {
   outputs: [
     { name: 'Done',     type: 'exec'   },
     { name: 'Error',    type: 'exec'   },
-    { name: 'docId',    type: 'string' },
-    { name: 'filename', type: 'string' },
+    { name: 'docId',       type: 'string' },
+    { name: 'filename',    type: 'string' },
+    { name: 'workspaceId', type: 'string' },
+    { name: 'title',       type: 'string' },
   ],
 
   props: {

@@ -184,7 +184,12 @@ module.exports = {
     const value  = resolveVars(config.variable || '', vars);
     const cases  = (config.cases || '').split(',').map(c => c.trim()).filter(Boolean);
     const idx    = cases.findIndex(c => String(value) === String(c));
-    // idx = matched case slot, cases.length = default slot
+    // idx = matched case slot, cases.length = default slot.
+    // NOTE: `matchedSlot` / `matchedCase` / `value` are engine-routing metadata
+    // consumed by WorkflowRunner._executeGraph to pick the outgoing exec port —
+    // they are NOT data output pins (the declared outputs are dynamic exec ports
+    // rebuilt by rebuildOutputs()). This is why they are not mirrored in
+    // `outputs[]`.
     const matchedSlot = idx >= 0 ? idx : cases.length;
     return { value, matchedCase: idx >= 0 ? cases[idx] : 'default', matchedSlot, success: true };
   },

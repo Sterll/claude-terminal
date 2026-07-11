@@ -137,6 +137,7 @@ module.exports = {
     { name: 'source',     type: 'string' },
     { name: 'toolCount',  type: 'number' },
     { name: 'durationMs', type: 'number' },
+    { name: 'prompts',    type: 'array'  },
   ],
 
   props: {

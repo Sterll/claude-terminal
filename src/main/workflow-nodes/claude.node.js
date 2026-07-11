@@ -17,10 +17,14 @@ module.exports = {
     { name: 'result', type: 'any'    },
   ],
 
-  props: { mode: 'prompt', prompt: '', agentId: '', skillId: '', model: 'sonnet', effort: 'medium', outputSchema: null },
+  props: { mode: 'prompt', prompt: '', agentId: '', skillId: '', model: 'sonnet', effort: 'medium', outputSchema: null, cwd: '', maxTurns: 30 },
 
   fields: [
     { type: 'claude-config', key: 'mode', label: 'wfn.claude.label' },
+    // The claude-config custom field already exposes `cwd`; it does NOT expose
+    // maxTurns, so surface it here (backward-compatible, defaults to 30).
+    { type: 'number', key: 'maxTurns', label: 'Max turns',
+      placeholder: '30' },
   ],
 
   badge: (n) => ({ prompt: 'PROMPT', agent: 'AGENT', skill: 'SKILL' }[n.properties.mode] || 'PROMPT'),
@@ -62,7 +66,8 @@ module.exports = {
     const rawEffort     = config.effort || null;
     const effort        = rawEffort && VALID_EFFORTS.includes(rawEffort) ? rawEffort : null;
     const model         = config.model  || null;
-    const maxTurns      = config.maxTurns || 30;
+    const parsedTurns   = parseInt(config.maxTurns, 10);
+    const maxTurns      = Number.isFinite(parsedTurns) && parsedTurns > 0 ? parsedTurns : 30;
 
     if (signal?.aborted) throw new Error('Cancelled');
 
@@ -72,8 +77,8 @@ module.exports = {
       opts.skills = [config.skillId];
     }
 
-    if (config.outputSchema && config.outputSchema.length > 0) {
-      const validFields = config.outputSchema.filter(f => f.name);
+    if (Array.isArray(config.outputSchema) && config.outputSchema.length > 0) {
+      const validFields = config.outputSchema.filter(f => f && f.name);
       if (validFields.length > 0) {
         const properties = {};
         const required   = [];

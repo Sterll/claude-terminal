@@ -1,5 +1,7 @@
 'use strict';
 
+const { resolveVars, normalizeExitCode } = require('./_registry');
+
 module.exports = {
   type:     'workflow/shell',
   title:    'Shell',
@@ -13,9 +15,11 @@ module.exports = {
   outputs: [
     { name: 'Done',     type: 'exec'   },
     { name: 'Error',    type: 'exec'   },
-    { name: 'stdout',   type: 'string' },
-    { name: 'stderr',   type: 'string' },
-    { name: 'exitCode', type: 'number' },
+    { name: 'stdout',    type: 'string'  },
+    { name: 'stderr',    type: 'string'  },
+    { name: 'exitCode',  type: 'number'  },
+    { name: 'timedOut',  type: 'boolean' },
+    { name: 'truncated', type: 'boolean' },
   ],
 
   props: { command: '' },
@@ -41,24 +45,27 @@ module.exports = {
     }
   },
 
-  // NOTE: resolveVars is not yet exported from WorkflowRunner (module.exports = WorkflowRunner class only).
-  // This run() uses child_process.exec directly and will be wired to WorkflowRunner.runShellStep in Task 9.
+  // Runner call convention: run(config, vars, signal, ctx).
+  //
+  // SECURITY NOTE: a Shell node runs an arbitrary user-authored command line.
+  // We keep child_process.exec here because the command may legitimately use
+  // shell features (pipes, redirects, &&, env expansion). There is no argv to
+  // split safely without breaking those. The command is fully user-controlled
+  // by design — this node is not exposed to untrusted input. `cwd` is resolved
+  // from the workflow project context so the command does not accidentally run
+  // in Electron's own working directory.
   async run(config, vars, signal) {
     const { exec } = require('child_process');
 
-    // Minimal inline var resolution until WorkflowRunner exports resolveVars
-    const resolveVars = (value, vars) => {
-      if (typeof value !== 'string') return value;
-      return value.replace(/\$([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)/g, (match, key) => {
-        const parts = key.split('.');
-        let cur = vars instanceof Map ? vars.get(parts[0]) : vars[parts[0]];
-        for (let i = 1; i < parts.length && cur != null; i++) cur = cur[parts[i]];
-        return cur != null ? String(cur).replace(/[\r\n]+$/, '') : match;
-      });
-    };
-
-    const raw = resolveVars(config.command || '', vars);
+    const raw = String(resolveVars(config.command || '', vars) ?? '');
     if (!raw.trim()) throw new Error('No command specified');
+
+    // Resolve cwd from the project context (config.projectId is a stored id,
+    // the path lives in ctx.project) with a safe fallback to Electron cwd.
+    const varCtx = vars instanceof Map ? (vars.get('ctx') || {}) : (vars?.ctx || {});
+    const cwd = (resolveVars(config.cwd || '', vars) || varCtx.project || '') || undefined;
+
+    const MAX_BUFFER = 4 * 1024 * 1024;
 
     return new Promise((resolve, reject) => {
       if (signal?.aborted) return reject(new Error('Aborted'));
@@ -67,15 +74,26 @@ module.exports = {
       const onAbort = () => { try { child?.kill('SIGKILL'); } catch {} };
       signal?.addEventListener('abort', onAbort, { once: true });
 
-      child = exec(raw, { timeout: 60000, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
-        signal?.removeEventListener('abort', onAbort);
-        if (signal?.aborted) return reject(new Error('Aborted'));
-        resolve({
-          stdout:   stdout   || '',
-          stderr:   stderr   || '',
-          exitCode: err ? (err.code ?? 1) : 0,
-        });
-      });
+      child = exec(
+        raw,
+        { cwd, timeout: 60000, encoding: 'utf8', maxBuffer: MAX_BUFFER },
+        (err, stdout, stderr) => {
+          try {
+            if (signal?.aborted) return reject(new Error('Aborted'));
+            const { exitCode, timedOut, truncated, killed } = normalizeExitCode(err);
+            resolve({
+              stdout:   stdout || '',
+              stderr:   stderr || '',
+              exitCode,
+              timedOut,
+              truncated,
+              killed,
+            });
+          } finally {
+            signal?.removeEventListener('abort', onAbort);
+          }
+        }
+      );
     });
   },
 };

@@ -1,5 +1,7 @@
 'use strict';
 
+const { assertSafeUrl } = require('./_registry');
+
 module.exports = {
   type:     'workflow/webhook',
   title:    'Webhook',
@@ -15,8 +17,9 @@ module.exports = {
   outputs: [
     { name: 'Done',       type: 'exec' },
     { name: 'Error',      type: 'exec' },
-    { name: 'statusCode', type: 'number' },
-    { name: 'body',       type: 'string' },
+    { name: 'statusCode', type: 'number'  },
+    { name: 'body',       type: 'string'  },
+    { name: 'truncated',  type: 'boolean' },
   ],
 
   props: {
@@ -82,8 +85,12 @@ module.exports = {
     if (config.icon)     payload.icon_emoji = config.icon;
 
     const body = JSON.stringify(payload);
-    const parsed = new URL(url);
+    // SSRF guard — reject non-http(s) / private / loopback hosts.
+    const parsed = assertSafeUrl(url);
     const lib = parsed.protocol === 'https:' ? https : http;
+
+    const TIMEOUT_MS   = 15_000;
+    const MAX_BODY     = 256 * 1024; // cap accumulated response body at 256 KB
 
     return new Promise((resolve, reject) => {
       if (signal?.aborted) return reject(new Error('Aborted'));
@@ -99,16 +106,39 @@ module.exports = {
         },
       };
 
+      let onAbort = null;
+      const cleanup = () => {
+        if (onAbort) signal?.removeEventListener('abort', onAbort);
+      };
+
       const req = lib.request(options, (res) => {
         let data = '';
-        res.on('data', (chunk) => { data += chunk; });
+        let truncated = false;
+        res.on('data', (chunk) => {
+          if (data.length < MAX_BODY) {
+            data += chunk;
+            if (data.length > MAX_BODY) { data = data.slice(0, MAX_BODY); truncated = true; }
+          } else {
+            truncated = true;
+          }
+        });
         res.on('end', () => {
-          resolve({ statusCode: res.statusCode, body: data });
+          cleanup();
+          resolve({ statusCode: res.statusCode, body: data, truncated });
         });
       });
 
-      req.on('error', reject);
-      if (signal) signal.addEventListener('abort', () => req.destroy(new Error('Aborted')));
+      req.setTimeout(TIMEOUT_MS, () => {
+        req.destroy(new Error(`Webhook request timed out after ${TIMEOUT_MS}ms`));
+      });
+
+      req.on('error', (err) => { cleanup(); reject(err); });
+
+      if (signal) {
+        onAbort = () => req.destroy(new Error('Aborted'));
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+
       req.write(body);
       req.end();
     });

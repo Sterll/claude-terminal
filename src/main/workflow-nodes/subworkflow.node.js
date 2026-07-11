@@ -26,55 +26,79 @@ module.exports = {
   badge: (n) => n.properties.workflow ? n.properties.workflow.slice(0, 12).toUpperCase() : 'WORKFLOW',
 
   async run(config, vars, signal, ctx) {
-    const resolveVars = (value, vars) => {
-      if (typeof value !== 'string') return value;
-      return value.replace(/\$([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)/g, (match, key) => {
-        const parts = key.split('.');
-        let cur = vars instanceof Map ? vars.get(parts[0]) : vars[parts[0]];
-        for (let i = 1; i < parts.length && cur != null; i++) cur = cur[parts[i]];
-        return cur != null ? String(cur).replace(/[\r\n]+$/, '') : match;
-      });
-    };
+    const { resolveVars } = require('./_registry');
 
     const workflowService = ctx?.workflowService;
-    const workflowRef = resolveVars(config.workflow || '', vars);
+    const workflowRef = String(resolveVars(config.workflow || '', vars) ?? '').trim();
     if (!workflowRef) throw new Error('Sub-workflow: missing workflow name or ID');
+
+    // ── Recursion guard ─────────────────────────────────────────────────────
+    // Depth is threaded through the trigger payload. Each nested call increments
+    // it; refuse to descend past MAX_DEPTH to prevent infinite recursion loops.
+    const MAX_DEPTH = 10;
+    const parentTrigger = (vars instanceof Map ? vars.get('trigger') : vars?.trigger) || {};
+    const currentDepth = Number(parentTrigger.__subworkflowDepth) || 0;
+    if (currentDepth >= MAX_DEPTH) {
+      throw new Error(`Sub-workflow recursion limit reached (depth ${currentDepth} >= ${MAX_DEPTH})`);
+    }
+    const childDepth = currentDepth + 1;
 
     let extraVars = {};
     if (config.inputVars) {
       const raw = resolveVars(config.inputVars, vars);
-      try {
-        extraVars = typeof raw === 'object' ? raw : JSON.parse(raw);
-      } catch {
-        for (const pair of raw.split(',')) {
-          const [k, v] = pair.split('=').map(s => s.trim());
-          if (k) extraVars[k] = v ?? '';
+      if (raw && typeof raw === 'object') {
+        extraVars = raw;
+      } else if (typeof raw === 'string') {
+        try {
+          extraVars = JSON.parse(raw);
+        } catch {
+          for (const pair of raw.split(',')) {
+            const [k, v] = pair.split('=').map(s => s.trim());
+            if (k) extraVars[k] = v ?? '';
+          }
         }
       }
     }
 
     const waitForCompletion = config.waitForCompletion !== false && config.waitForCompletion !== 'no' && config.waitForCompletion !== 'false';
 
+    const triggerData = { parent: true, __subworkflowDepth: childDepth };
+
     if (!workflowService) {
       // No workflow service available — fire-and-forget via sendFn
-      if (ctx?.sendFn) ctx.sendFn('workflow-trigger-subworkflow', { workflow: workflowRef, extraVars });
+      if (ctx?.sendFn) ctx.sendFn('workflow-trigger-subworkflow', { workflow: workflowRef, extraVars, triggerData });
       return { triggered: true, runId: null, waited: false };
     }
 
-    const runId = await workflowService.trigger(workflowRef, 'subworkflow', { parent: true, extraVars });
+    // Service contract: trigger(workflowId, { source, triggerData, extraVars })
+    // → { success, runId }. getRun(runId) returns the run record (async).
+    const triggerResult = await workflowService.trigger(workflowRef, {
+      source: 'subworkflow',
+      triggerData,
+      extraVars,
+    });
+
+    if (!triggerResult || triggerResult.success === false) {
+      throw new Error(`Sub-workflow "${workflowRef}" could not start: ${triggerResult?.error || 'unknown error'}`);
+    }
+    const runId = triggerResult.runId;
+    if (!runId) throw new Error(`Sub-workflow "${workflowRef}" did not return a runId`);
 
     if (!waitForCompletion) {
       return { triggered: true, runId, waited: false };
     }
 
-    // Poll for completion (max 10 minutes)
+    // Poll for completion (max 10 minutes), honouring cancellation.
     const start   = Date.now();
     const TIMEOUT = 10 * 60 * 1000;
     const POLL    = 1000;
 
     while (Date.now() - start < TIMEOUT) {
+      if (signal?.aborted) throw new Error('Aborted');
       await new Promise(r => setTimeout(r, POLL));
-      const run = workflowService.getRunById(runId);
+      if (signal?.aborted) throw new Error('Aborted');
+
+      const run = await workflowService.getRun(runId);
       if (!run) break;
       if (run.status === 'success') {
         return { success: true, runId, outputs: run.outputs || {}, waited: true };

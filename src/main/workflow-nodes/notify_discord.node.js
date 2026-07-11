@@ -92,6 +92,8 @@ module.exports = {
     const aborter = new AbortController();
     const onAbort = () => aborter.abort();
     signal?.addEventListener('abort', onAbort, { once: true });
+    const TIMEOUT_MS = 15_000;
+    const timer = setTimeout(() => aborter.abort(), TIMEOUT_MS);
     try {
       const res = await fetch(url, {
         method: 'POST',
@@ -106,8 +108,10 @@ module.exports = {
       return { status: res.status, ok: res.ok };
     } catch (err) {
       if (signal?.aborted) throw new Error('Aborted');
+      if (aborter.signal.aborted) throw new Error(`Discord webhook timed out after ${TIMEOUT_MS}ms`);
       throw err;
     } finally {
+      clearTimeout(timer);
       signal?.removeEventListener('abort', onAbort);
     }
   },

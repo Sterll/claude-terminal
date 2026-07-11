@@ -232,7 +232,13 @@ module.exports = {
         return unaryMatch[2] === 'is_empty' ? isEmpty : !isEmpty;
       }
 
-      const match = resolved.match(/^(.+?)\s*(==|!=|>=|<=|>|<|contains|starts_with|ends_with|matches)\s+(.+)$/);
+      // Symbol operators may omit spaces (e.g. "x==5"); word operators require
+      // whitespace boundaries so they are not mistaken for substrings of an
+      // operand. Try the symbol form first, then the word form.
+      let match = resolved.match(/^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$/);
+      if (!match) {
+        match = resolved.match(/^(.+?)\s+(contains|starts_with|ends_with|matches)\s+(.+)$/);
+      }
       if (!match) {
         const val = resolved.trim();
         if (val === '' || val === '0' || val === 'null' || val === 'undefined') return false;
@@ -249,10 +255,12 @@ module.exports = {
       switch (op) {
         case '==': return numeric ? ln === rn : left === right;
         case '!=': return numeric ? ln !== rn : left !== right;
-        case '>':  return numeric && ln > rn;
-        case '<':  return numeric && ln < rn;
-        case '>=': return numeric && ln >= rn;
-        case '<=': return numeric && ln <= rn;
+        // Order comparisons: numeric when both parse as numbers, otherwise fall
+        // back to lexicographic string comparison instead of always false.
+        case '>':  return numeric ? ln > rn  : left > right;
+        case '<':  return numeric ? ln < rn  : left < right;
+        case '>=': return numeric ? ln >= rn : left >= right;
+        case '<=': return numeric ? ln <= rn : left <= right;
         case 'contains':    return left.includes(right);
         case 'starts_with': return left.startsWith(right);
         case 'ends_with':   return left.endsWith(right);

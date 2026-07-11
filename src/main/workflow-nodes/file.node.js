@@ -2,6 +2,10 @@
 
 const fs   = require('fs');
 const path = require('path');
+const { resolveVars } = require('./_registry');
+
+// Hard cap on the size of a file read into memory (bytes).
+const MAX_READ_BYTES = 50 * 1024 * 1024; // 50 MB
 
 module.exports = {
   type:     'workflow/file',
@@ -18,8 +22,13 @@ module.exports = {
     { name: 'Error',   type: 'exec'   },
     { name: 'content', type: 'string' },
     { name: 'files',   type: 'array'  },
+    { name: 'count',   type: 'number' },
     { name: 'exists',  type: 'boolean'},
     { name: 'success', type: 'boolean'},
+    { name: 'path',    type: 'string' },
+    { name: 'from',    type: 'string' },
+    { name: 'to',      type: 'string' },
+    { name: 'dir',     type: 'string' },
   ],
 
   props: { action: 'read', path: '', destination: '', content: '', pattern: '*', recursive: false },
@@ -72,21 +81,21 @@ module.exports = {
   badge: (n) => (n.properties.action || 'read').toUpperCase(),
 
   async run(config, vars) {
-    const resolveVars = (value, vars) => {
-      if (typeof value !== 'string') return value;
-      return value.replace(/\$([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)/g, (match, key) => {
-        const parts = key.split('.');
-        let cur = vars instanceof Map ? vars.get(parts[0]) : vars[parts[0]];
-        for (let i = 1; i < parts.length && cur != null; i++) cur = cur[parts[i]];
-        return cur != null ? String(cur).replace(/[\r\n]+$/, '') : match;
-      });
-    };
-
+    // Fail-CLOSED path guard: if no project directory is resolvable we refuse
+    // any absolute path (previously this returned early — fail-open — allowing
+    // arbitrary filesystem access). Relative paths without a project base are
+    // still permitted (resolved against Electron's cwd) but cannot escape once
+    // a base exists.
     const assertPathWithinProject = (filePath, vars) => {
       const ctx = vars instanceof Map ? (vars.get('ctx') || {}) : (vars?.ctx || {});
       const projectDir = ctx.project;
-      if (!projectDir) return;
-      const resolved = path.resolve(filePath);
+      if (!projectDir) {
+        if (path.isAbsolute(filePath)) {
+          throw new Error(`Absolute path "${filePath}" is not allowed without a project context`);
+        }
+        return;
+      }
+      const resolved = path.resolve(projectDir, filePath);
       const base = path.resolve(projectDir);
       const cmp = process.platform === 'win32'
         ? (a, b) => a.toLowerCase() === b.toLowerCase() || a.toLowerCase().startsWith(b.toLowerCase() + path.sep)
@@ -133,22 +142,28 @@ module.exports = {
     if (dest) assertPathWithinProject(dest, vars);
 
     switch (action) {
-      case 'read':
-        return { content: fs.readFileSync(p, 'utf8') };
+      case 'read': {
+        let st;
+        try { st = fs.statSync(p); } catch (e) { throw new Error(`Cannot read "${p}": ${e.message}`); }
+        if (st.size > MAX_READ_BYTES) {
+          throw new Error(`File "${p}" is ${st.size} bytes, exceeds the ${MAX_READ_BYTES}-byte read limit`);
+        }
+        return { content: fs.readFileSync(p, 'utf8'), path: p };
+      }
       case 'write':
         fs.mkdirSync(path.dirname(p), { recursive: true });
         fs.writeFileSync(p, content, 'utf8');
-        return { success: true };
+        return { success: true, path: p };
       case 'append':
         fs.appendFileSync(p, content, 'utf8');
-        return { success: true };
+        return { success: true, path: p };
       case 'copy':
         fs.mkdirSync(path.dirname(dest), { recursive: true });
         fs.copyFileSync(p, dest);
-        return { success: true };
+        return { success: true, from: p, to: dest };
       case 'delete':
         fs.rmSync(p, { force: true, recursive: true });
-        return { success: true };
+        return { success: true, path: p };
       case 'exists':
         return { exists: fs.existsSync(p), path: p };
       case 'move':

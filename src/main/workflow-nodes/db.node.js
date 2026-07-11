@@ -16,11 +16,18 @@ module.exports = {
     { name: 'rows',     type: 'array'  },
     { name: 'firstRow', type: 'object' },
     { name: 'rowCount', type: 'number' },
+    { name: 'columns',  type: 'array'  },
+    { name: 'duration', type: 'number' },
     { name: 'tables',   type: 'array'  },
   ],
 
-  props: { connection: '', query: '', action: 'query' },
+  props: { connection: '', query: '', action: 'query', limit: 100 },
 
+  // SECURITY: the query string is interpolated with workflow variables via
+  // resolveVars. Values are NOT parameterised — do not feed untrusted input
+  // into $vars used inside SQL. Prefer static queries or trusted variables.
+  // The `action`, `query` and `limit` inputs are rendered by the `db-config`
+  // custom field below (do not duplicate them as separate fields).
   fields: [
     { type: 'db-config', key: 'connection', label: 'wfn.db.label' },
   ],
