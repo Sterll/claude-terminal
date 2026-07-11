@@ -25,6 +25,31 @@ const HISTORY_FILE      = path.join(WORKFLOWS_DIR, 'history.json');
 const RESULTS_DIR       = path.join(WORKFLOWS_DIR, 'results');
 const MAX_RUNS_PER_WF   = 50;   // kept per workflow in history
 const MAX_RUNS_TOTAL    = 500;  // global cap to avoid unbounded growth
+const MAX_FIELD_BYTES   = 256 * 1024; // per-field cap for persisted result payloads
+
+// ─── Per-file write serialization (mutex) ─────────────────────────────────────
+// Read-modify-write sequences on shared files (history.json) must not interleave,
+// otherwise concurrent runs cause lost updates. We chain every mutation for a given
+// file onto a single tail promise so they execute strictly one after another.
+const _writeChains = new Map(); // filePath → Promise (tail of the queue)
+
+/**
+ * Run `task` exclusively with respect to other tasks queued on the same file.
+ * @param {string} filePath
+ * @param {() => Promise<T>} task
+ * @returns {Promise<T>}
+ */
+function withFileLock(filePath, task) {
+  const prev = _writeChains.get(filePath) || Promise.resolve();
+  // Swallow prior errors so one failed task doesn't poison the chain.
+  const next = prev.catch(() => {}).then(() => task());
+  // Keep the chain tail; clean up when this is the last queued task.
+  _writeChains.set(filePath, next);
+  next.finally(() => {
+    if (_writeChains.get(filePath) === next) _writeChains.delete(filePath);
+  });
+  return next;
+}
 
 // ─── Init ────────────────────────────────────────────────────────────────────
 
@@ -71,7 +96,7 @@ async function loadWorkflows() {
  */
 async function saveWorkflows(workflows) {
   await ensureDirs();
-  await atomicWrite(DEFINITIONS_FILE, workflows);
+  await withFileLock(DEFINITIONS_FILE, () => atomicWrite(DEFINITIONS_FILE, workflows));
 }
 
 /**
@@ -130,28 +155,29 @@ async function loadHistory() {
  * @param {Object} run
  */
 async function appendRun(run) {
-  let all = await loadHistory();
+  return withFileLock(HISTORY_FILE, async () => {
+    let all = await loadHistory();
 
-  // Prepend newest first
-  all.unshift(run);
+    // Prepend newest first
+    all.unshift(run);
 
-  // Per-workflow cap
-  const wfRuns = all.filter(r => r.workflowId === run.workflowId);
-  if (wfRuns.length > MAX_RUNS_PER_WF) {
-    const toRemove = new Set(wfRuns.slice(MAX_RUNS_PER_WF).map(r => r.id));
-    all = all.filter(r => !toRemove.has(r.id));
-    // Clean up result files
-    for (const id of toRemove) cleanResultFile(id);
-  }
+    // Per-workflow cap
+    const wfRuns = all.filter(r => r.workflowId === run.workflowId);
+    if (wfRuns.length > MAX_RUNS_PER_WF) {
+      const toRemove = new Set(wfRuns.slice(MAX_RUNS_PER_WF).map(r => r.id));
+      all = all.filter(r => !toRemove.has(r.id));
+      // Clean up result files
+      for (const id of toRemove) cleanResultFile(id);
+    }
 
-  // Global cap
-  if (all.length > MAX_RUNS_TOTAL) {
-    const excess = all.splice(MAX_RUNS_TOTAL);
-    for (const r of excess) cleanResultFile(r.id);
-  }
+    // Global cap
+    if (all.length > MAX_RUNS_TOTAL) {
+      const excess = all.splice(MAX_RUNS_TOTAL);
+      for (const r of excess) cleanResultFile(r.id);
+    }
 
-  _historyCache = all;
-  await atomicWrite(HISTORY_FILE, all);
+    await atomicWrite(HISTORY_FILE, all);
+  });
 }
 
 /**
@@ -161,13 +187,14 @@ async function appendRun(run) {
  * @returns {Promise<Object|null>} Updated run or null
  */
 async function updateRun(runId, patch) {
-  const all = await loadHistory();
-  const idx = all.findIndex(r => r.id === runId);
-  if (idx < 0) return null;
-  all[idx] = { ...all[idx], ...patch };
-  _historyCache = all;
-  await atomicWrite(HISTORY_FILE, all);
-  return all[idx];
+  return withFileLock(HISTORY_FILE, async () => {
+    const all = await loadHistory();
+    const idx = all.findIndex(r => r.id === runId);
+    if (idx < 0) return null;
+    all[idx] = { ...all[idx], ...patch };
+    await atomicWrite(HISTORY_FILE, all);
+    return all[idx];
+  });
 }
 
 /**
@@ -206,7 +233,44 @@ async function getRun(runId) {
  */
 async function saveResultPayload(runId, payload) {
   await ensureDirs();
-  await atomicWrite(path.join(RESULTS_DIR, `${runId}.json`), payload);
+  const capped = capPayload(payload);
+  await atomicWrite(path.join(RESULTS_DIR, `${runId}.json`), capped);
+}
+
+/**
+ * Recursively cap oversized string/serialized fields in a result payload so a
+ * single runaway output (e.g. a huge shell dump) cannot bloat storage.
+ * Fields whose serialized size exceeds MAX_FIELD_BYTES are truncated and tagged.
+ * @param {any} value
+ * @returns {any}
+ */
+function capPayload(value) {
+  if (typeof value === 'string') {
+    if (Buffer.byteLength(value, 'utf8') > MAX_FIELD_BYTES) {
+      return value.slice(0, MAX_FIELD_BYTES) + '\n… [truncated]';
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(capPayload);
+  }
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (v && typeof v === 'object') {
+        // Guard against a single large nested object serializing past the cap.
+        let size;
+        try { size = Buffer.byteLength(JSON.stringify(v), 'utf8'); } catch { size = 0; }
+        if (size > MAX_FIELD_BYTES) {
+          out[k] = { _truncated: true, _note: `[truncated: ${size} bytes exceeded ${MAX_FIELD_BYTES}]` };
+          continue;
+        }
+      }
+      out[k] = capPayload(v);
+    }
+    return out;
+  }
+  return value;
 }
 
 /**
@@ -229,19 +293,21 @@ function cleanResultFile(runId) {
  * @param {string} workflowId
  */
 async function deleteRunsForWorkflow(workflowId) {
-  const all = await loadHistory();
-  const toRemove = all.filter(r => r.workflowId === workflowId);
-  const next = all.filter(r => r.workflowId !== workflowId);
-  _historyCache = next;
-  await atomicWrite(HISTORY_FILE, next);
-  for (const r of toRemove) cleanResultFile(r.id);
+  return withFileLock(HISTORY_FILE, async () => {
+    const all = await loadHistory();
+    const toRemove = all.filter(r => r.workflowId === workflowId);
+    const next = all.filter(r => r.workflowId !== workflowId);
+    await atomicWrite(HISTORY_FILE, next);
+    for (const r of toRemove) cleanResultFile(r.id);
+  });
 }
 
 async function clearAllRuns() {
-  const all = await loadHistory();
-  _historyCache = [];
-  await atomicWrite(HISTORY_FILE, []);
-  for (const r of all) cleanResultFile(r.id);
+  return withFileLock(HISTORY_FILE, async () => {
+    const all = await loadHistory();
+    await atomicWrite(HISTORY_FILE, []);
+    for (const r of all) cleanResultFile(r.id);
+  });
 }
 
 // ─── Cycle detection ──────────────────────────────────────────────────────────

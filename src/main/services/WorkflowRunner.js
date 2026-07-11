@@ -44,24 +44,41 @@ function resolveVars(value, vars) {
   const singleVarMatch = value.match(/^\$([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)$/);
   if (singleVarMatch) {
     const parts = singleVarMatch[1].split('.');
-    let cur = vars.get(parts[0]);
-    for (let i = 1; i < parts.length && cur != null; i++) cur = cur[parts[i]];
-    if (cur != null) {
-      // Trim trailing CR/LF from shell command outputs (e.g. `date` on Windows)
-      return typeof cur === 'string' ? cur.replace(/[\r\n]+$/, '') : cur;
+    if (vars.has(parts[0])) {
+      let cur = vars.get(parts[0]);
+      // Walk the property chain.
+      //   - null/undefined intermediate → unresolvable, leave verbatim (fall through)
+      //   - primitive (non-object) intermediate with remaining parts → the suffix is
+      //     literal text (e.g. $today.md) → fall through to mixed-path handler
+      //   - OBJECT parent whose leaf property is missing → '' (don't serialize parent)
+      let fellThrough = false;
+      for (let i = 1; i < parts.length; i++) {
+        if (cur == null) { fellThrough = true; break; }
+        if (typeof cur !== 'object') { fellThrough = true; break; }
+        if (!(parts[i] in cur)) return '';
+        cur = cur[parts[i]];
+      }
+      if (!fellThrough) {
+        if (cur == null) return ''; // leaf resolved to null/undefined → empty string
+        // Trailing-only CR/LF trim for strings (shell outputs commonly append one).
+        // Anchored to the end, so internal newlines in multi-line content are kept.
+        return typeof cur === 'string' ? cur.replace(/[\r\n]+$/, '') : cur;
+      }
+      // fell through → handled by mixed-path replacement below
     }
   }
 
   // Mixed text with variables: interpolate as strings
   return value.replace(/\$([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)/g, (match, key) => {
     const parts = key.split('.');
+    if (!vars.has(parts[0])) return match; // unknown root → leave verbatim
     // Try resolving from longest path down to root variable
     // e.g. $today.md → try "today.md" (fails) → try "today" + suffix ".md"
     for (let take = parts.length; take >= 1; take--) {
       let cur = vars.get(parts[0]);
       for (let i = 1; i < take && cur != null; i++) cur = cur[parts[i]];
       if (cur != null && (take === parts.length || typeof cur !== 'object')) {
-        // Trim CR/LF that shell commands often append (e.g. `date` output on Windows)
+        // Trailing-only CR/LF trim (anchored to end; internal newlines preserved).
         const resolved = typeof cur === 'object' ? JSON.stringify(cur) : String(cur).replace(/[\r\n]+$/, '');
         const suffix = take < parts.length ? '.' + parts.slice(take).join('.') : '';
         return resolved + suffix;
@@ -176,7 +193,13 @@ function runShellStep(config, vars, signal) {
     child = exec(command, { cwd, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024, timeout }, (err, stdout, stderr) => {
       signal?.removeEventListener('abort', onAbort);
       if (signal?.aborted) return reject(new Error('Cancelled'));
-      resolve({ exitCode: err?.code ?? 0, stdout: stdout || '', stderr: stderr || '' });
+      // Trim trailing CR/LF that shells append (e.g. `date` on Windows) so
+      // interpolating $node.stdout into another command doesn't inject newlines.
+      resolve({
+        exitCode: err?.code ?? 0,
+        stdout: (stdout || '').replace(/[\r\n]+$/, ''),
+        stderr: (stderr || '').replace(/[\r\n]+$/, ''),
+      });
     });
   });
 }
@@ -946,7 +969,16 @@ async function runSubworkflowStep(config, vars, workflowService) {
 
   const waitForCompletion = config.waitForCompletion !== false && config.waitForCompletion !== 'no';
 
-  const runId = await workflowService.trigger(workflowRef, 'subworkflow', { parent: true, extraVars });
+  // trigger(ref, opts) returns { success, runId } — use the modern signature.
+  const trig = await workflowService.trigger(workflowRef, {
+    source: 'subworkflow',
+    triggerData: { parent: true },
+    extraVars,
+  });
+  if (!trig || !trig.success || !trig.runId) {
+    throw new Error(`Sub-workflow "${workflowRef}" could not be triggered${trig?.error ? `: ${trig.error}` : ''}`);
+  }
+  const runId = trig.runId;
 
   if (!waitForCompletion) {
     return { triggered: true, runId, waited: false };
@@ -959,10 +991,11 @@ async function runSubworkflowStep(config, vars, workflowService) {
 
   while (Date.now() - start < TIMEOUT) {
     await new Promise(r => setTimeout(r, POLL));
-    const run = workflowService.getRunById(runId);
+    const run = await workflowService.getRun(runId);
     if (!run) break;
     if (run.status === 'success') {
-      return { success: true, runId, outputs: run.outputs || {}, waited: true };
+      const payload = await workflowService.getRunResult(runId).catch(() => null);
+      return { success: true, runId, outputs: payload?.outputs || run.outputs || {}, waited: true };
     }
     if (run.status === 'failed' || run.status === 'cancelled') {
       throw new Error(`Sub-workflow "${workflowRef}" ${run.status}`);
@@ -1081,10 +1114,12 @@ class WorkflowRunner {
 
     const stepOutputs = {};
     this._stepStatuses = new Map(); // Track final step statuses for persistence
+    this._runDegraded  = false;     // set when a catch path is taken / retry exhausted
+    this._timedOut     = false;     // distinguishes global timeout from user cancel
 
     const globalTimeoutMs = workflow.timeout ? parseMs(workflow.timeout) : null;
     const globalTimer = globalTimeoutMs
-      ? setTimeout(() => abort.abort(), globalTimeoutMs)
+      ? setTimeout(() => { this._timedOut = true; abort.abort(); }, globalTimeoutMs)
       : null;
 
     try {
@@ -1096,9 +1131,23 @@ class WorkflowRunner {
         const steps = workflow.steps || [];
         await this._runSteps(steps, vars, run.id, abort.signal, stepOutputs, workflow);
       }
+      // A run that recovered from a caught error or exhausted retry is NOT clean success.
+      if (this._runDegraded) {
+        return {
+          success: false,
+          degraded: true,
+          outputs: stepOutputs,
+          stepStatuses: this._stepStatuses,
+          error: 'Completed with recovered/handled errors',
+        };
+      }
       return { success: true, outputs: stepOutputs, stepStatuses: this._stepStatuses };
     } catch (err) {
       if (abort.signal.aborted) {
+        // Distinguish a global-timeout abort from a user-initiated cancel.
+        if (this._timedOut) {
+          return { success: false, timedOut: true, outputs: stepOutputs, stepStatuses: this._stepStatuses, error: 'Timed out' };
+        }
         return { success: false, cancelled: true, outputs: stepOutputs, stepStatuses: this._stepStatuses, error: 'Cancelled' };
       }
       return { success: false, outputs: stepOutputs, stepStatuses: this._stepStatuses, error: err.message };
@@ -1170,11 +1219,78 @@ class WorkflowRunner {
       throw new Error('No trigger node found in graph');
     }
 
-    // BFS traversal from trigger node
-    // The trigger has output slot 0 = "Start"
-    const visited = new Set();
-    const queue = this._getNextNodes(triggerNode.id, 0, outgoing); // slot 0 = Start
+    // ── Fan-in / join barrier (topological gating) ───────────────────────────
+    // A node with multiple exec predecessors must not run until every predecessor
+    // that will ever fire has fired. We track, per node, the set of static exec
+    // predecessors and, at runtime, which of them "arrived" (routed exec here) or
+    // became "dead" (a predecessor ran but did not route to this node — e.g. an
+    // untaken condition/switch branch). A node is ready when every static exec
+    // predecessor is accounted for (arrived or dead) and at least one arrived.
+    const execPreds = new Map(); // nodeId → Set<originId>  (static exec in-edges to slot 0)
+    for (const [, link] of linkById) {
+      if (link.targetSlot !== 0) continue; // slot 0 = exec "In"
+      const isExec = link.type === -1 || link.type === 'exec' || link.type == null || link.type === '';
+      if (!isExec) continue;
+      if (!execPreds.has(link.targetId)) execPreds.set(link.targetId, new Set());
+      execPreds.get(link.targetId).add(link.originId);
+    }
+    const arrived   = new Map(); // nodeId → Set<originId> that routed exec here
+    const deadPreds = new Map(); // nodeId → Set<originId> that ran but skipped this node
 
+    const _addTo = (map, key, val) => {
+      if (!map.has(key)) map.set(key, new Set());
+      map.get(key).add(val);
+    };
+    // Is a node's join barrier satisfied? (all static exec preds arrived or dead)
+    const _isReady = (nodeId) => {
+      const preds = execPreds.get(nodeId);
+      if (!preds || preds.size <= 1) return true; // single/no predecessor: no barrier
+      const arr = arrived.get(nodeId)?.size || 0;
+      const dead = deadPreds.get(nodeId)?.size || 0;
+      return arr >= 1 && (arr + dead) >= preds.size;
+    };
+
+    const visited = new Set();
+    const queue = [];
+
+    // Record that `originId` fired exec into each target; enqueue targets whose
+    // join barrier is now satisfied.
+    const fire = (originId, targets) => {
+      for (const tid of targets) {
+        _addTo(arrived, tid, originId);
+        if (!visited.has(tid) && !queue.includes(tid) && _isReady(tid)) {
+          queue.push(tid);
+        }
+      }
+    };
+    // Mark that `originId` will NOT fire the given exec target(s) (untaken branch).
+    // May unblock a waiting join whose remaining predecessor just went dead.
+    const seal = (originId, unfiredTargets) => {
+      for (const tid of unfiredTargets) {
+        if (!(execPreds.get(tid)?.has(originId))) continue;
+        _addTo(deadPreds, tid, originId);
+        if (!visited.has(tid) && !queue.includes(tid) && (arrived.get(tid)?.size || 0) >= 1 && _isReady(tid)) {
+          queue.push(tid);
+        }
+      }
+    };
+    // All exec-successor node IDs of a node across every output slot (for sealing).
+    const allExecSuccessors = (nodeId) => {
+      const slots = outgoing.get(nodeId);
+      if (!slots) return [];
+      const out = [];
+      for (const [, targets] of slots) out.push(...targets);
+      return out;
+    };
+    // Fire the taken slot(s) and seal all other exec successors as dead.
+    const route = (nodeId, takenTargets) => {
+      const takenSet = new Set(takenTargets);
+      fire(nodeId, takenTargets);
+      const unfired = allExecSuccessors(nodeId).filter(t => !takenSet.has(t));
+      if (unfired.length) seal(nodeId, unfired);
+    };
+
+    // Seed from trigger (slot 0 = "Start")
     // Emit trigger as running then success
     this._emitStep(runId, { id: `node_${triggerNode.id}`, type: 'trigger' }, 'running', null);
     this._emitStep(runId, { id: `node_${triggerNode.id}`, type: 'trigger' }, 'success', null);
@@ -1182,14 +1298,28 @@ class WorkflowRunner {
     // Expose trigger data as Blueprint data outputs (payload, source)
     const triggerData = vars.get('trigger') || {};
     vars.set(`node_${triggerNode.id}`, { payload: triggerData.payload ?? triggerData, source: triggerData.source || 'manual' });
+    route(triggerNode.id, this._getNextNodes(triggerNode.id, 0, outgoing));
 
     let lastError = null;
+    const forced = new Set(); // nodes released despite an unsatisfied barrier
 
-    while (queue.length > 0) {
+    while (true) {
       if (signal.aborted) throw new Error('Cancelled');
+
+      if (queue.length === 0) {
+        // Queue drained — release any join stalled on an unreachable predecessor,
+        // otherwise we're genuinely done.
+        const stalled = this._pickStalledJoin(execPreds, arrived, visited);
+        if (stalled == null) break;
+        forced.add(stalled);
+        queue.push(stalled);
+      }
 
       const nodeId = queue.shift();
       if (visited.has(nodeId)) continue;
+      // Barrier not satisfied and not force-released: skip; it will be re-enqueued
+      // by a later fire()/seal() once its predecessors resolve.
+      if (!_isReady(nodeId) && !forced.has(nodeId)) continue;
       visited.add(nodeId);
 
       const nodeData = nodeById.get(nodeId);
@@ -1198,7 +1328,7 @@ class WorkflowRunner {
       // Convert node to step format for the dispatcher
       const stepType = nodeData.type.replace('workflow/', '');
       // Merge data pin inputs (Blueprint-style) on top of step properties
-      const dataInputs = this._resolveDataInputs(nodeId, vars, incoming, nodeById);
+      const dataInputs = await this._resolveDataInputs(nodeId, vars, incoming, nodeById);
       const step = {
         id:   `node_${nodeData.id}`,
         type: stepType,
@@ -1218,17 +1348,24 @@ class WorkflowRunner {
         const outputResult = stepOutputs[step.id];
         const condResult = outputResult?.result ?? outputResult?.value ?? true;
         const nextSlot = condResult ? 0 : 1;
-        queue.push(...this._getNextNodes(nodeId, nextSlot, outgoing));
+        route(nodeId, this._getNextNodes(nodeId, nextSlot, outgoing));
       } else if (stepType === 'loop') {
         // ── Loop node: resolve items, then execute body per-iteration ──
         try {
           this._emitStep(runId, step, 'running', null);
 
-          // 1. Resolve the items array and apply maxIterations cap
+          // 1. Resolve the items array and apply maxIterations cap.
+          //    A hard default (1000) guards against runaway loops when the user
+          //    left maxIterations unset or invalid.
           let items = this._resolveLoopItems(step, nodeId, vars, incoming);
-          const maxIter = parseInt(step.maxIterations, 10);
-          if (maxIter > 0 && items.length > maxIter) {
-            items = items.slice(0, maxIter);
+          const HARD_LOOP_CAP = 1000;
+          const parsedMax = parseInt(step.maxIterations, 10);
+          const effectiveMax = parsedMax > 0 ? parsedMax : HARD_LOOP_CAP;
+          if (items.length > effectiveMax) {
+            if (!(parsedMax > 0)) {
+              console.warn(`[WorkflowRunner] Loop ${step.id}: ${items.length} items exceeds hard cap ${HARD_LOOP_CAP} (maxIterations unset) — truncating.`);
+            }
+            items = items.slice(0, effectiveMax);
           }
 
           // 2. Identify "Each" body nodes (slot 0) and "Done" continuation (slot 1)
@@ -1247,15 +1384,18 @@ class WorkflowRunner {
           };
 
           if (isParallel && eachTargets.length) {
-            // Parallel execution with concurrency cap to avoid resource exhaustion
+            // Parallel execution with concurrency cap to avoid resource exhaustion.
             const concurrencyLimit = Math.max(1, parseInt(step.concurrency, 10) || 10);
             const doneResults = new Array(items.length).fill(null);
 
+            // ONE shared child AbortController for the whole parallel loop → a single
+            // listener on the parent signal instead of one per iteration.
+            const loopAbort = new AbortController();
+            const onLoopParentAbort = () => loopAbort.abort();
+            signal.addEventListener('abort', onLoopParentAbort, { once: true });
+
             const runIteration = async (item, idx) => {
-              if (signal.aborted) return { success: false, error: 'Cancelled', _item: item };
-              const iterAbort = new AbortController();
-              const onParentAbort = () => iterAbort.abort();
-              signal.addEventListener('abort', onParentAbort, { once: true });
+              if (loopAbort.signal.aborted) return { success: false, error: 'Cancelled', _item: item };
               try {
                 const iterVars = new Map(vars);
                 iterVars.set('loop', { item, index: idx, total: items.length });
@@ -1263,43 +1403,52 @@ class WorkflowRunner {
                 iterVars.set('index', idx);
                 const iterStepOutputs = {};
                 const { outputs, visitedNodes } = await this._executeSubGraph(
-                  eachTargets, nodeById, outgoing, incoming, iterVars, runId, iterAbort.signal, iterStepOutputs, workflow
+                  eachTargets, nodeById, outgoing, incoming, iterVars, runId, loopAbort.signal, iterStepOutputs, workflow
                 );
                 for (const nid of visitedNodes) allBodyVisited.add(nid);
+                Object.assign(stepOutputs, iterStepOutputs);
                 const iterResult = { ...outputs, _item: item };
                 doneResults[idx] = iterResult;
                 _emitLoopProgress(doneResults.filter(Boolean));
                 return { success: true, result: iterResult };
               } catch (iterErr) {
                 return { success: false, error: iterErr.message, _item: item };
-              } finally {
-                signal.removeEventListener('abort', onParentAbort);
               }
             };
 
-            // Process items in batches of concurrencyLimit
-            for (let batchStart = 0; batchStart < items.length; batchStart += concurrencyLimit) {
-              if (signal.aborted) break;
-              const batch = items.slice(batchStart, batchStart + concurrencyLimit);
-              const settled = await Promise.all(batch.map((item, i) => runIteration(item, batchStart + i)));
-              for (const s of settled) {
-                iterationResults.push(s.success ? s.result : { _error: s.error, _item: s._item });
+            try {
+              // Process items in batches of concurrencyLimit
+              for (let batchStart = 0; batchStart < items.length; batchStart += concurrencyLimit) {
+                if (loopAbort.signal.aborted) break;
+                const batch = items.slice(batchStart, batchStart + concurrencyLimit);
+                const settled = await Promise.all(batch.map((item, i) => runIteration(item, batchStart + i)));
+                for (const s of settled) {
+                  iterationResults.push(s.success ? s.result : { _error: s.error, _item: s._item });
+                }
               }
+            } finally {
+              signal.removeEventListener('abort', onLoopParentAbort);
             }
           } else {
-            // Sequential execution (default)
+            // Sequential execution (default).
+            // Isolate vars/stepOutputs per iteration (mirroring the parallel mode's
+            // `new Map(vars)`) so cached node outputs from iteration N are not read
+            // as stale values in iteration N+1.
             for (let idx = 0; idx < items.length; idx++) {
               if (signal.aborted) throw new Error('Cancelled');
 
-              // Set loop context variables
-              vars.set('loop', { item: items[idx], index: idx, total: items.length });
-              vars.set('item', items[idx]);
-              vars.set('index', idx);
+              const iterVars = new Map(vars);
+              iterVars.set('loop', { item: items[idx], index: idx, total: items.length });
+              iterVars.set('item', items[idx]);
+              iterVars.set('index', idx);
+              const iterStepOutputs = {};
 
               // Execute the "Each" body sub-graph
               const { outputs, visitedNodes } = await this._executeSubGraph(
-                eachTargets, nodeById, outgoing, incoming, vars, runId, signal, stepOutputs, workflow
+                eachTargets, nodeById, outgoing, incoming, iterVars, runId, signal, iterStepOutputs, workflow
               );
+              // Surface each iteration's step outputs to the run-level accumulator.
+              Object.assign(stepOutputs, iterStepOutputs);
               const iterResult = { ...outputs, _item: items[idx] };
               iterationResults.push(iterResult);
               for (const nid of visitedNodes) allBodyVisited.add(nid);
@@ -1323,10 +1472,10 @@ class WorkflowRunner {
           // 6. Mark body nodes as visited so main BFS skips them
           for (const nid of allBodyVisited) visited.add(nid);
 
-          // 7. Follow "Done" path (slot 1) for continuation after loop
-          for (const tid of doneTargets) {
-            if (!visited.has(tid)) queue.push(tid);
-          }
+          // 7. Follow "Done" path (slot 1) for continuation after loop.
+          //    Only the Done targets fire; the Each-body targets were consumed
+          //    internally and are already marked visited.
+          fire(nodeId, doneTargets);
 
         } catch (err) {
           if (signal.aborted) throw err;
@@ -1344,7 +1493,7 @@ class WorkflowRunner {
         }
         const switchOut = stepOutputs[step.id];
         const matchedSlot = switchOut?.matchedSlot ?? 0;
-        queue.push(...this._getNextNodes(nodeId, matchedSlot, outgoing));
+        route(nodeId, this._getNextNodes(nodeId, matchedSlot, outgoing));
       } else if (stepType === 'error_handler') {
         // Try/catch subgraph
         const tryTargets   = this._getNextNodes(nodeId, 0, outgoing);
@@ -1368,7 +1517,9 @@ class WorkflowRunner {
             const errorInfo = { caught: true, error: err.message, message: err.message };
             stepOutputs[step.id] = errorInfo;
             vars.set(step.id, errorInfo);
-            this._emitStep(runId, step, 'success', { caught: true, error: err.message });
+            // An error was caught — the run recovered but is NOT clean success.
+            this._runDegraded = true;
+            this._emitStep(runId, step, 'caught', { caught: true, error: err.message });
             if (catchTargets.length > 0) {
               const { visitedNodes: catchVisited } = await this._executeSubGraph(
                 catchTargets, nodeById, outgoing, incoming, vars, runId, signal, stepOutputs, workflow
@@ -1412,10 +1563,12 @@ class WorkflowRunner {
             }
           }
           if (lastErr) {
+            // Retry exhausted all attempts — this is a failure, not a success.
             const info = { attempts, error: lastErr.message, success: false };
             stepOutputs[step.id] = info;
             vars.set(step.id, info);
-            this._emitStep(runId, step, 'success', { attempts, error: lastErr.message });
+            this._runDegraded = true;
+            this._emitStep(runId, step, 'failed', { attempts, error: lastErr.message });
             if (failTargets.length > 0) {
               const { visitedNodes: failVisited } = await this._executeSubGraph(
                 failTargets, nodeById, outgoing, incoming, vars, runId, signal, stepOutputs, workflow
@@ -1426,15 +1579,17 @@ class WorkflowRunner {
             const info = { attempts, error: null, success: true };
             stepOutputs[step.id] = info;
             vars.set(step.id, info);
-            this._emitStep(runId, step, 'success', { attempts });
+            // Recovered after >1 attempt is distinct from clean first-try success.
+            if (attempts > 1) this._runDegraded = true;
+            this._emitStep(runId, step, attempts > 1 ? 'recovered' : 'success', { attempts });
           }
         }
       } else {
         // Normal step: try to execute
         try {
           await this._runOneStep(step, vars, runId, signal, stepOutputs, workflow);
-          // Success → follow slot 0 (Done)
-          queue.push(...this._getNextNodes(nodeId, 0, outgoing));
+          // Success → follow slot 0 (Done); seal the Error slot (slot 1) as dead.
+          route(nodeId, this._getNextNodes(nodeId, 0, outgoing));
         } catch (err) {
           if (signal.aborted) throw err;
           lastError = err;
@@ -1442,11 +1597,12 @@ class WorkflowRunner {
           // Check if error slot (slot 1) is connected
           const errorTargets = this._getNextNodes(nodeId, 1, outgoing);
           if (errorTargets.length > 0) {
-            // Error is handled — follow the error path
-            // Store error info for downstream nodes
+            // Error is handled — follow the error path (seal the Done slot),
+            // but the run is degraded (a step failed even though it was routed).
             vars.set(step.id, { error: err.message, success: false });
             stepOutputs[step.id] = { error: err.message, success: false };
-            queue.push(...errorTargets);
+            this._runDegraded = true;
+            route(nodeId, errorTargets);
           } else {
             // No error handler — propagate failure
             throw err;
@@ -1457,6 +1613,84 @@ class WorkflowRunner {
 
     // If we got here with a lastError but it was handled via error slots, that's OK
     // The run is considered successful if no unhandled errors occurred
+    void lastError;
+  }
+
+  /**
+   * When the main queue empties, some join nodes may still be waiting on a
+   * predecessor that will never run (its whole upstream branch was pruned by an
+   * untaken condition/switch). Such nodes have at least one arrived predecessor
+   * but their barrier never completed. To avoid silently dropping them, this
+   * releases the "most upstream" stalled node so traversal can resume.
+   *
+   * @returns {number|null} a node id to force-run, or null if none is stalled.
+   * @private
+   */
+  _pickStalledJoin(execPreds, arrived, visited) {
+    let best = null;
+    for (const [nodeId] of execPreds) {
+      if (visited.has(nodeId)) continue;
+      const arr = arrived.get(nodeId)?.size || 0;
+      if (arr >= 1) {
+        // Prefer the smallest id for deterministic ordering (upstream-ish).
+        if (best == null || nodeId < best) best = nodeId;
+      }
+    }
+    return best;
+  }
+
+  // Pure data node types: side-effect-free computations that are never reached by
+  // the exec BFS. When a downstream node demands their output we execute them on
+  // the fly and cache the result. Nodes with side effects (shell/http/db/file/
+  // agent/notify/git/…) are intentionally excluded — they must run via exec flow.
+  static get PURE_DATA_TYPES() {
+    return new Set(['get_variable', 'variable', 'transform', 'time', 'switch', 'condition']);
+  }
+
+  /**
+   * Lazily compute the output of a pure data node (no exec pins), caching under
+   * `node_<id>` in vars. Returns the output object or null if not resolvable.
+   * @private
+   */
+  async _resolvePureDataNode(originId, vars, nodeById) {
+    const originStepId = `node_${originId}`;
+    const cached = vars.get(originStepId);
+    if (cached != null) return cached;
+
+    const pureNode = nodeById.get(originId);
+    const pureType = pureNode?.type?.replace('workflow/', '') ?? '';
+    if (!WorkflowRunner.PURE_DATA_TYPES.has(pureType)) return null;
+
+    const step = { id: originStepId, type: pureType, ...(pureNode?.properties || {}) };
+    let output = null;
+    try {
+      switch (pureType) {
+        case 'get_variable': {
+          const varName = pureNode?.properties?.name || '';
+          output = { value: vars.get(varName) ?? vars.get(`var_${varName}`) ?? null };
+          break;
+        }
+        case 'variable':
+          // Only the 'get' action is side-effect-free; set/increment/append mutate.
+          if ((pureNode?.properties?.action || 'set') === 'get') {
+            const varName = pureNode?.properties?.name || '';
+            output = { value: vars.get(varName) ?? vars.get(`var_${varName}`) ?? null };
+          } else {
+            return null;
+          }
+          break;
+        case 'transform': output = runTransformStep(step, vars); break;
+        case 'switch':    output = runSwitchStep(step, vars); break;
+        case 'condition': output = runConditionStep(step, vars); break;
+        case 'time':      output = await runTimeStep(step, vars); break;
+        default:          return null;
+      }
+    } catch (err) {
+      console.warn(`[WorkflowRunner] Pure data node ${originStepId} (${pureType}) failed:`, err.message);
+      return null;
+    }
+    if (output != null) vars.set(originStepId, output); // cache for future reads
+    return output;
   }
 
   /**
@@ -1464,13 +1698,16 @@ class WorkflowRunner {
    * Iterates each non-exec input slot, finds the connected origin node's output,
    * and returns an object of { inputName: resolvedValue } to merge into step props.
    *
+   * If multiple data links feed a single input slot, only the first is used (a data
+   * input can hold one value); this mirrors LiteGraph's single-value input semantics.
+   *
    * @param {number} nodeId
-   * @param {Map<number,any>} vars
+   * @param {Map<string,any>} vars
    * @param {Map} incoming  - nodeId → Map<targetSlot, {originId, originSlot}[]>
    * @param {Map} nodeById  - nodeId → node data
-   * @returns {Object}
+   * @returns {Promise<Object>}
    */
-  _resolveDataInputs(nodeId, vars, incoming, nodeById) {
+  async _resolveDataInputs(nodeId, vars, incoming, nodeById) {
     const node = nodeById.get(nodeId);
     if (!node || !node.inputs) return {};
 
@@ -1489,21 +1726,14 @@ class WorkflowRunner {
       const isExec = slotType === -1 || slotType === 'exec' || slotType === null || slotType === '';
       if (isExec) continue;
 
+      // A data input slot carries a single value — use the first connected link.
       const { originId, originSlot } = links[0];
       const originStepId = `node_${originId}`;
       let originOutput = vars.get(originStepId);
 
-      // Pure data nodes (no exec pins) are never visited by BFS.
-      // Resolve them inline when first encountered.
+      // Pure data nodes (no exec pins) are never visited by BFS — resolve inline.
       if (originOutput == null) {
-        const pureNode = nodeById.get(originId);
-        const pureType = pureNode?.type?.replace('workflow/', '') ?? '';
-        if (pureType === 'get_variable' || (pureType === 'variable' && pureNode?.properties?.action === 'get')) {
-          const varName = pureNode?.properties?.name || '';
-          const val = vars.get(varName) ?? vars.get(`var_${varName}`) ?? null;
-          originOutput = { value: val };
-          vars.set(originStepId, originOutput); // cache for future reads
-        }
+        originOutput = await this._resolvePureDataNode(originId, vars, nodeById);
       }
       if (originOutput == null) continue;
 
@@ -1663,7 +1893,7 @@ class WorkflowRunner {
 
       const stepType = nodeData.type.replace('workflow/', '');
       // Merge data pin inputs (Blueprint-style) on top of step properties
-      const dataInputs = this._resolveDataInputs(nodeId, vars, incoming, nodeById);
+      const dataInputs = await this._resolveDataInputs(nodeId, vars, incoming, nodeById);
       const step = {
         id:   `node_${nodeData.id}`,
         type: stepType,
@@ -1683,19 +1913,34 @@ class WorkflowRunner {
       } else if (stepType === 'loop') {
         // Nested loop — resolve items and recurse
         this._emitStep(runId, step, 'running', null);
-        const nestedItems = this._resolveLoopItems(step, nodeId, vars, incoming);
+        let nestedItems = this._resolveLoopItems(step, nodeId, vars, incoming);
+        {
+          const HARD_LOOP_CAP = 1000;
+          const parsedMax = parseInt(step.maxIterations, 10);
+          const effectiveMax = parsedMax > 0 ? parsedMax : HARD_LOOP_CAP;
+          if (nestedItems.length > effectiveMax) {
+            if (!(parsedMax > 0)) {
+              console.warn(`[WorkflowRunner] Nested loop ${step.id}: ${nestedItems.length} items exceeds hard cap ${HARD_LOOP_CAP} (maxIterations unset) — truncating.`);
+            }
+            nestedItems = nestedItems.slice(0, effectiveMax);
+          }
+        }
         const eachTargets = this._getNextNodes(nodeId, 0, outgoing);
         const doneTargets = this._getNextNodes(nodeId, 1, outgoing);
         const nestedResults = [];
 
         for (let idx = 0; idx < nestedItems.length; idx++) {
           if (signal.aborted) throw new Error('Cancelled');
-          vars.set('loop', { item: nestedItems[idx], index: idx, total: nestedItems.length });
-          vars.set('item', nestedItems[idx]);
-          vars.set('index', idx);
+          // Isolate per-iteration vars/outputs (avoid stale cached node outputs).
+          const iterVars = new Map(vars);
+          iterVars.set('loop', { item: nestedItems[idx], index: idx, total: nestedItems.length });
+          iterVars.set('item', nestedItems[idx]);
+          iterVars.set('index', idx);
+          const iterStepOutputs = {};
           const { outputs: iterOut, visitedNodes } = await this._executeSubGraph(
-            eachTargets, nodeById, outgoing, incoming, vars, runId, signal, stepOutputs, workflow
+            eachTargets, nodeById, outgoing, incoming, iterVars, runId, signal, iterStepOutputs, workflow
           );
+          Object.assign(stepOutputs, iterStepOutputs);
           nestedResults.push(iterOut);
           for (const nid of visitedNodes) subVisited.add(nid);
         }
@@ -1736,7 +1981,8 @@ class WorkflowRunner {
             const errorInfo = { caught: true, error: err.message, message: err.message };
             stepOutputs[step.id] = errorInfo;
             vars.set(step.id, errorInfo);
-            this._emitStep(runId, step, 'success', { caught: true, error: err.message });
+            this._runDegraded = true;
+            this._emitStep(runId, step, 'caught', { caught: true, error: err.message });
             if (catchTargets.length > 0) {
               const { visitedNodes: catchVisited } = await this._executeSubGraph(
                 catchTargets, nodeById, outgoing, incoming, vars, runId, signal, stepOutputs, workflow
@@ -1782,7 +2028,8 @@ class WorkflowRunner {
             const info = { attempts, error: lastErr.message, success: false };
             stepOutputs[step.id] = info;
             vars.set(step.id, info);
-            this._emitStep(runId, step, 'success', { attempts, error: lastErr.message });
+            this._runDegraded = true;
+            this._emitStep(runId, step, 'failed', { attempts, error: lastErr.message });
             if (failTargets.length > 0) {
               const { visitedNodes: failVisited } = await this._executeSubGraph(
                 failTargets, nodeById, outgoing, incoming, vars, runId, signal, stepOutputs, workflow
@@ -1793,7 +2040,8 @@ class WorkflowRunner {
             const info = { attempts, error: null, success: true };
             stepOutputs[step.id] = info;
             vars.set(step.id, info);
-            this._emitStep(runId, step, 'success', { attempts });
+            if (attempts > 1) this._runDegraded = true;
+            this._emitStep(runId, step, attempts > 1 ? 'recovered' : 'success', { attempts });
           }
         }
       } else {
@@ -1807,6 +2055,7 @@ class WorkflowRunner {
           if (errorTargets.length > 0) {
             vars.set(step.id, { error: err.message, success: false });
             stepOutputs[step.id] = { error: err.message, success: false };
+            this._runDegraded = true;
             subQueue.push(...errorTargets);
           } else {
             throw err;
@@ -2098,19 +2347,30 @@ class WorkflowRunner {
    */
   async _runParallelStep(step, vars, runId, signal, workflow) {
     const substeps = step.steps || [];
-    const settled  = await Promise.allSettled(
-      substeps.map(sub => {
+    const failFast = step.failFast !== false;
+
+    // A single shared child AbortController is propagated to every substep, so we
+    // register exactly ONE listener on the parent signal (instead of N). On the
+    // first failure in failFast mode we abort it to cancel the in-flight peers.
+    const groupAbort = new AbortController();
+    const onParentAbort = () => groupAbort.abort();
+    signal.addEventListener('abort', onParentAbort, { once: true });
+
+    const outputsByStep = new Array(substeps.length);
+    const settled = await Promise.allSettled(
+      substeps.map((sub, i) => {
         const outputs = {};
-        // Each substep gets its own child AbortController so that N parallel
-        // substeps don't stack N listeners on the shared parent signal.
-        const subAbort = new AbortController();
-        const onParentAbort = () => subAbort.abort();
-        signal.addEventListener('abort', onParentAbort, { once: true });
-        return this._runOneStep(sub, vars, runId, subAbort.signal, outputs, workflow)
+        outputsByStep[i] = outputs;
+        return this._runOneStep(sub, vars, runId, groupAbort.signal, outputs, workflow)
           .then(() => outputs[sub.id])
-          .finally(() => signal.removeEventListener('abort', onParentAbort));
+          .catch(err => {
+            // In failFast mode, cancel peers as soon as one substep rejects.
+            if (failFast && !groupAbort.signal.aborted) groupAbort.abort();
+            throw err;
+          });
       })
     );
+    signal.removeEventListener('abort', onParentAbort);
 
     const results = {};
     for (let i = 0; i < substeps.length; i++) {
@@ -2120,8 +2380,11 @@ class WorkflowRunner {
         : { error: settled[i].reason?.message };
     }
 
+    // If the parent was cancelled, surface that rather than a generic failure.
+    if (signal.aborted) throw new Error('Cancelled');
+
     const anyFailed = settled.some(r => r.status === 'rejected');
-    if (anyFailed && step.failFast !== false) {
+    if (anyFailed && failFast) {
       throw new Error('One or more parallel steps failed');
     }
 

@@ -74,6 +74,8 @@ const NODE_DATA_OUTPUTS = {
                  { name: 'count',    type: 'number',  key: 'count' }],
   variable:     [{ name: 'value',    type: 'any',     key: 'value' }],
   get_variable: [{ name: 'value',    type: 'any',     key: 'value' }],
+  condition:    [{ name: 'result',   type: 'boolean', key: 'result' }],
+  switch:       [{ name: 'value',    type: 'string',  key: 'value' }],
   transform:    [{ name: 'result',   type: 'any',     key: 'result' }],
   subworkflow:  [{ name: 'outputs',  type: 'object',  key: 'outputs' }],
   loop:         [{ name: 'item',     type: 'any',     key: 'item' },
@@ -89,7 +91,10 @@ const NODE_DATA_OUTPUTS = {
 const NODE_DATA_OUT_OFFSET = {
   trigger: 1, claude: 2, shell: 2, git: 2, http: 2, db: 2, file: 2,
   notify: 1, wait: 1, log: 1, condition: 2, loop: 2, project: 2,
-  variable: 1, transform: 2, subworkflow: 2, switch: 0,
+  variable: 1, transform: 2, subworkflow: 2,
+  // NOTE: 'switch' has a dynamic number of exec outputs (one per case + default),
+  // so its data-output slot index cannot be a fixed offset. It is intentionally
+  // omitted here; getOutputKeyForSlot() returns null for switch (no data mapping).
   get_variable: 0, time: 2,
 };
 
@@ -101,7 +106,10 @@ function getNodeColors(node) {
 }
 
 function getOutputKeyForSlot(nodeType, slotIndex) {
-  const offset  = NODE_DATA_OUT_OFFSET[nodeType] ?? 0;
+  // Types with a dynamic exec-slot count (e.g. switch) have no fixed data offset;
+  // don't guess a mapping — return null so callers fall back to the whole output.
+  const offset  = NODE_DATA_OUT_OFFSET[nodeType];
+  if (offset == null) return null;
   const dataIdx = slotIndex - offset;
   const outputs = NODE_DATA_OUTPUTS[nodeType];
   if (!outputs || dataIdx < 0 || dataIdx >= outputs.length) return null;

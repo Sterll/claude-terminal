@@ -34,6 +34,7 @@ const RUN_STATUS = Object.freeze({
   FAILED:    'failed',
   CANCELLED: 'cancelled',
   SKIPPED:   'skipped',
+  TIMEOUT:   'timeout',
 });
 
 const MAX_CACHE_ENTRIES = 200;
@@ -155,7 +156,7 @@ class WorkflowService {
               this._send('workflow-list-updated', { workflows: reloadedWorkflows });
               console.log(`[WorkflowService] MCP reload: definitions refreshed`);
             } else if (data.workflowId) {
-              this.trigger(data.workflowId, { trigger: 'mcp' });
+              this.trigger(data.workflowId, { source: 'mcp' });
               console.log(`[WorkflowService] MCP trigger: ${data.workflowId}`);
             }
           } catch (e) {
@@ -324,8 +325,9 @@ class WorkflowService {
    * @param {string} workflowId
    * @param {Object} [opts]
    * @param {Object} [opts.triggerData]  - Data attached to the trigger event
-   * @param {string} [opts.source]       - 'manual' | 'cron' | 'hook' | 'on_workflow'
+   * @param {string} [opts.source]       - 'manual' | 'cron' | 'hook' | 'on_workflow' | 'subworkflow' | 'depends_on'
    * @param {string} [opts.projectPath]  - Override project path for context variables
+   * @param {Object|Map} [opts.extraVars] - Initial variables injected into the run's vars at startup
    * @returns {Promise<{ success: boolean, runId?: string, queued?: boolean, error?: string }>}
    */
   async trigger(workflowId, opts = {}) {
@@ -535,10 +537,28 @@ class WorkflowService {
   }
 
   async _executeRun(workflow, run, abortController, inProgress, opts) {
-    // 1. Resolve dependencies
+    // 1. Resolve dependencies.
+    //    Seed the cycle guard with THIS workflow's id so a deep chain that loops
+    //    back to it (A→B→A) is detected at runtime even if it slipped past the
+    //    save-time detectCycle() check.
     let extraVars = new Map();
     if (workflow.dependsOn?.length) {
-      extraVars = await this._resolveDependencies(workflow, new Set(inProgress));
+      const guard = new Set(inProgress);
+      guard.add(workflow.id);
+      extraVars = await this._resolveDependencies(workflow, guard);
+    }
+
+    // 1b. Inject caller-supplied initial variables (e.g. from a subworkflow node).
+    //     These are seeded into the run's vars at startup. Object form → per-key
+    //     entries; Map form → merged directly. depends_on results take precedence
+    //     only if they share a key (added first, so extraVars below can override).
+    const initialVars = opts?.extraVars;
+    if (initialVars) {
+      if (initialVars instanceof Map) {
+        for (const [k, v] of initialVars) extraVars.set(k, v);
+      } else if (typeof initialVars === 'object') {
+        for (const [k, v] of Object.entries(initialVars)) extraVars.set(k, v);
+      }
     }
 
     // 2. Create runner
@@ -558,11 +578,15 @@ class WorkflowService {
   async _finalizeRun(run, result, workflow) {
     const now      = Date.now();
     const duration = Math.round((now - new Date(run.startedAt).getTime()) / 1000);
-    const status   = result.cancelled
-      ? RUN_STATUS.CANCELLED
-      : result.success
-        ? RUN_STATUS.SUCCESS
-        : RUN_STATUS.FAILED;
+    // Order matters: timeout and cancel are distinct terminal states; a run that
+    // only "recovered" from handled errors (result.degraded) counts as failed.
+    const status   = result.timedOut
+      ? RUN_STATUS.TIMEOUT
+      : result.cancelled
+        ? RUN_STATUS.CANCELLED
+        : result.success
+          ? RUN_STATUS.SUCCESS
+          : RUN_STATUS.FAILED;
 
     // Build final steps array with statuses and outputs
     const finalSteps = (run.steps || []).map(s => {
@@ -616,19 +640,23 @@ class WorkflowService {
       error:      result.error,
     });
 
-    // Notify on_workflow triggers
-    if (status === RUN_STATUS.SUCCESS || status === RUN_STATUS.FAILED) {
+    // Notify on_workflow triggers (timeout counts as a non-success completion)
+    if (status === RUN_STATUS.SUCCESS || status === RUN_STATUS.FAILED || status === RUN_STATUS.TIMEOUT) {
       this._scheduler.onWorkflowComplete(workflow.id, {
         success:    status === RUN_STATUS.SUCCESS,
         outputs:    result.outputs || {},
         workflowId: workflow.id,
+        // Propagate the on_workflow chain lineage so the scheduler's recursion
+        // guard (depth/cycle detection) stays effective across chained runs.
+        _chainLineage: run.triggerData?._chainLineage,
+        _chainDepth:   run.triggerData?._chainDepth,
       });
     }
 
-    // Send desktop notification on failure
-    if (status === RUN_STATUS.FAILED) {
+    // Send desktop notification on failure or timeout
+    if (status === RUN_STATUS.FAILED || status === RUN_STATUS.TIMEOUT) {
       this._send('workflow-notify-desktop', {
-        title:   `Workflow failed: ${workflow.name}`,
+        title:   `Workflow ${status === RUN_STATUS.TIMEOUT ? 'timed out' : 'failed'}: ${workflow.name}`,
         message: result.error || 'An error occurred',
         type:    'error',
       });
