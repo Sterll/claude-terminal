@@ -32,20 +32,48 @@ function parseCron(expr) {
   const parseField = (field, min, max) => {
     if (field === '*') return () => true;
 
+    const parseStep = (raw) => {
+      const step = Number(raw);
+      if (!Number.isFinite(step) || !Number.isInteger(step) || step < 1) {
+        throw new Error(`Invalid cron step "${raw}" in field "${field}"`);
+      }
+      return step;
+    };
+
+    const parseNum = (raw, label) => {
+      const n = Number(raw);
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n < min || n > max) {
+        throw new Error(`Invalid cron ${label} "${raw}" in field "${field}" (expected ${min}-${max})`);
+      }
+      return n;
+    };
+
     const parts = field.split(',');
     const matchers = parts.map(part => {
-      // */step
+      // */step   → every `step` starting at `min`
       if (part.startsWith('*/')) {
-        const step = parseInt(part.slice(2), 10);
+        const step = parseStep(part.slice(2));
         return (v) => (v - min) % step === 0;
+      }
+      // a-b/step → range with step
+      const rangeStep = part.match(/^(\d+)-(\d+)\/(\d+)$/);
+      if (rangeStep) {
+        const a    = parseNum(rangeStep[1], 'value');
+        const b    = parseNum(rangeStep[2], 'value');
+        const step = parseStep(rangeStep[3]);
+        if (a > b) throw new Error(`Invalid cron range "${part}" (start > end)`);
+        return (v) => v >= a && v <= b && (v - a) % step === 0;
       }
       // range a-b
       if (part.includes('-')) {
-        const [a, b] = part.split('-').map(Number);
+        const [rawA, rawB] = part.split('-');
+        const a = parseNum(rawA, 'value');
+        const b = parseNum(rawB, 'value');
+        if (a > b) throw new Error(`Invalid cron range "${part}" (start > end)`);
         return (v) => v >= a && v <= b;
       }
       // exact value
-      const n = parseInt(part, 10);
+      const n = parseNum(part, 'value');
       return (v) => v === n;
     });
     return (v) => matchers.some(m => m(v));
@@ -88,9 +116,26 @@ function evalHookCondition(condition, hookEvent) {
   const match = resolved.match(/^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$/);
   if (!match) return resolved.trim() !== '' && resolved.trim() !== 'false';
   const [, left, op, right] = match;
+  const l = left.trim();
+  const r = right.trim();
+
   switch (op) {
-    case '==': return left.trim() === right.trim();
-    case '!=': return left.trim() !== right.trim();
+    case '==': return l === r;
+    case '!=': return l !== r;
+  }
+
+  // Numeric comparison when both sides are numbers, else lexicographic string compare.
+  const ln = Number(l);
+  const rn = Number(r);
+  const bothNumeric = l !== '' && r !== '' && Number.isFinite(ln) && Number.isFinite(rn);
+  const a = bothNumeric ? ln : l;
+  const b = bothNumeric ? rn : r;
+
+  switch (op) {
+    case '>':  return a >  b;
+    case '<':  return a <  b;
+    case '>=': return a >= b;
+    case '<=': return a <= b;
     default:   return false;
   }
 }
@@ -111,6 +156,10 @@ class WorkflowScheduler {
     this._gitWatchers  = new Map();
     /** Loaded workflow definitions — refreshed on every reload() call */
     this._workflows    = [];
+    /** Max on_workflow chain depth before we cut the chain (recursion guard) */
+    this._maxChainDepth = 10;
+    /** Pre-compiled chat_message regexes — Map<workflowId, { re: RegExp|null, pattern, mode }> */
+    this._chatRegexes  = new Map();
     /**
      * Callback invoked when a trigger fires.
      * Signature: (workflowId, triggerData) => void
@@ -136,6 +185,7 @@ class WorkflowScheduler {
     this._ensureCronTimer();
     this._rebuildFileWatchers();
     this._rebuildGitWatchers();
+    this._rebuildChatRegexes();
   }
 
   /**
@@ -186,18 +236,60 @@ class WorkflowScheduler {
    * @param {Object} result  — { success, outputs, … }
    */
   onWorkflowComplete(finishedWorkflowId, result) {
+    // Recursion guard: the lineage of workflow ids that led to this completion.
+    // WorkflowService may echo _chainLineage / _chainDepth back through the run's
+    // triggerData; if absent we start a fresh lineage from the finished workflow.
+    const parentLineage = Array.isArray(result?._chainLineage)
+      ? result._chainLineage
+      : [];
+    const parentDepth = Number.isFinite(result?._chainDepth)
+      ? result._chainDepth
+      : parentLineage.length;
+
     for (const wf of this._workflows) {
       if (!wf.enabled) continue;
       const trigger = wf.trigger || {};
       if (trigger.type !== 'on_workflow') continue;
       // Match by ID (new) or by name (legacy backwards compat)
       if (trigger.value !== finishedWorkflowId) continue;
+
+      // Optional status filter (like claude_session_end): 'any' | 'success' | 'failed'
+      const wantedStatus = trigger.statusFilter || 'any';
+      if (wantedStatus !== 'any') {
+        const finishedOk = result?.success === true;
+        if (wantedStatus === 'success' && !finishedOk) continue;
+        if (wantedStatus === 'failed'  &&  finishedOk) continue;
+      }
+
       if (!evalHookCondition(trigger.condition, result)) continue;
 
+      // Build the lineage for the workflow we are about to trigger.
+      const nextLineage = [...parentLineage, finishedWorkflowId];
+
+      // Depth guard — refuse to keep chaining past the limit.
+      if (parentDepth + 1 > this._maxChainDepth) {
+        console.warn(
+          `[WorkflowScheduler] on_workflow chain depth exceeded (${parentDepth + 1} > ${this._maxChainDepth}); ` +
+          `not triggering "${wf.name || wf.id}". Lineage: ${nextLineage.join(' → ')}`
+        );
+        continue;
+      }
+
+      // Cycle guard — the workflow we would trigger already appears in the lineage.
+      if (nextLineage.includes(wf.id)) {
+        console.warn(
+          `[WorkflowScheduler] on_workflow cycle detected; not triggering "${wf.name || wf.id}". ` +
+          `Lineage: ${[...nextLineage, wf.id].join(' → ')}`
+        );
+        continue;
+      }
+
       this.dispatch?.(wf.id, {
-        source:    'on_workflow',
-        workflow:  finishedWorkflowId,
-        trigger:   result,
+        source:        'on_workflow',
+        workflow:      finishedWorkflowId,
+        trigger:       result,
+        _chainDepth:   parentDepth + 1,
+        _chainLineage: nextLineage,
       });
     }
   }
@@ -313,7 +405,10 @@ class WorkflowScheduler {
    */
   onChatMessage(event) {
     if (!event || !event.text) return;
-    const text = String(event.text);
+    // Cap the tested text length — a huge chat payload against a regex is a
+    // classic ReDoS vector. 100k chars is far more than any real prompt.
+    let text = String(event.text);
+    if (text.length > 100_000) text = text.slice(0, 100_000);
     const role = event.role || 'assistant';
 
     for (const wf of this._workflows) {
@@ -327,10 +422,14 @@ class WorkflowScheduler {
 
       const pattern = (trigger.pattern || '').trim();
       if (pattern) {
-        const mode = trigger.matchMode || 'contains';
+        const compiled = this._chatRegexes.get(wf.id);
+        const mode = compiled?.mode || trigger.matchMode || 'contains';
         let ok = false;
         if (mode === 'regex') {
-          try { ok = new RegExp(pattern).test(text); }
+          // Use the pre-compiled regex; a null re means the pattern was invalid.
+          const re = compiled?.re;
+          if (!re) continue;
+          try { ok = re.test(text); }
           catch (_) { ok = false; }
         } else {
           ok = text.toLowerCase().includes(pattern.toLowerCase());
@@ -367,26 +466,64 @@ class WorkflowScheduler {
     }
   }
 
+  _rebuildChatRegexes() {
+    this._chatRegexes.clear();
+    for (const wf of this._workflows) {
+      if (!wf.enabled) continue;
+      const trigger = wf.trigger || {};
+      if (trigger.type !== 'chat_message') continue;
+
+      const pattern = (trigger.pattern || '').trim();
+      const mode    = trigger.matchMode || 'contains';
+      if (!pattern || mode !== 'regex') {
+        this._chatRegexes.set(wf.id, { re: null, pattern, mode });
+        continue;
+      }
+      let re = null;
+      try {
+        re = new RegExp(pattern);
+      } catch (err) {
+        // Invalid pattern must never throw inside the event loop — disable it.
+        console.warn(`[WorkflowScheduler] Invalid chat_message regex for "${wf.name || wf.id}": ${err.message}`);
+        re = null;
+      }
+      this._chatRegexes.set(wf.id, { re, pattern, mode });
+    }
+  }
+
   _ensureCronTimer() {
+    // No cron jobs left → stop the ticker entirely, don't waste a 60s interval.
+    if (this._cronJobs.size === 0) {
+      if (this._cronTimer) {
+        clearTimeout(this._cronTimer);
+        clearInterval(this._cronTimer);
+        this._cronTimer = null;
+      }
+      return;
+    }
     if (this._cronTimer) return; // already running
-    if (this._cronJobs.size === 0) return; // no cron jobs, skip timer
     // Align to next full minute, then tick every 60s
     const now   = Date.now();
     const delay = 60_000 - (now % 60_000);
-    // Assign a sentinel immediately to prevent duplicate timers during the delay
-    this._cronTimer = setTimeout(() => {
+    // Assign a sentinel immediately to prevent duplicate timers during the delay.
+    const handle = setTimeout(() => {
+      // Guard against a destroy()/reload() that ran during the initial delay:
+      // only promote to an interval if we are still the active timer handle.
+      if (this._cronTimer !== handle) return;
       this._tick();
       this._cronTimer = setInterval(() => this._tick(), 60_000);
     }, delay);
+    this._cronTimer = handle;
   }
 
   _tick() {
     const now = new Date();
-    const min = now.getMinutes();
+    // Absolute minute index — robust against 0-59 wraparound / timer drift.
+    const minuteIndex = Math.floor(Date.now() / 60_000);
 
-    // Guard: only fire once per minute (handles timer drift)
-    if (min === this._lastTickMin) return;
-    this._lastTickMin = min;
+    // Guard: only fire once per minute.
+    if (minuteIndex === this._lastTickMin) return;
+    this._lastTickMin = minuteIndex;
 
     for (const [wfId, { matcher }] of this._cronJobs) {
       if (matcher(now)) {
@@ -417,7 +554,7 @@ class WorkflowScheduler {
         watchPath,
         patterns: (trigger.patterns || '').trim(),
         events:   trigger.events || 'all',
-        debounceMs: Number(trigger.debounceMs) || 500,
+        debounceMs: trigger.debounceMs != null ? Number(trigger.debounceMs) : 500,
       });
     }
 
@@ -585,7 +722,14 @@ class WorkflowScheduler {
     const handleHeadChange = () => {
       let size;
       try { size = fs.statSync(headLog).size; } catch (_) { return; }
-      if (size <= lastOffset) { lastOffset = size; return; }
+      if (size === lastOffset) return; // no change
+      if (size < lastOffset) {
+        // Log was truncated / rewritten (e.g. `git gc`, reflog expire, fresh clone
+        // over the same path). Our old offset is stale — re-read from the start so
+        // we don't silently miss the new entries.
+        console.warn(`[WorkflowScheduler] git log truncated for ${cfg.repoPath}; re-reading from start`);
+        lastOffset = 0;
+      }
 
       let buf;
       try {
@@ -802,3 +946,4 @@ function readCurrentBranch(repoPath) {
 }
 
 module.exports = WorkflowScheduler;
+module.exports.parseCron = parseCron;

@@ -461,6 +461,21 @@ async function _isRegisteredProjectPath(cwd) {
   } catch (e) { return false; }
 }
 
+/**
+ * Constant-time comparison of two secret strings.
+ * Avoids leaking length/content via early-exit timing.
+ */
+function _secretsMatch(expected, provided) {
+  const a = Buffer.from(String(expected), 'utf8');
+  const b = Buffer.from(String(provided), 'utf8');
+  if (a.length !== b.length) {
+    // Still burn a comparison against a fixed-size buffer to reduce timing signal.
+    crypto.timingSafeEqual(a, a);
+    return false;
+  }
+  return crypto.timingSafeEqual(a, b);
+}
+
 async function _handleClientMessage(ws, token, raw) {
   let msg;
   try { msg = JSON.parse(raw); } catch (e) { return; }
@@ -661,13 +676,45 @@ async function _handleClientMessage(ws, token, raw) {
       }
 
       case 'webhook:trigger': {
-        const { workflowId, payload, triggeredAt } = data || {};
+        const { workflowId, payload, triggeredAt, secret, headers } = data || {};
         if (!workflowId || typeof workflowId !== 'string') {
           console.warn('[Remote] webhook:trigger: missing or invalid workflowId');
           break;
         }
         try {
           const workflowService = require('./WorkflowService');
+
+          // Load the target workflow and enforce that it is actually a webhook
+          // trigger — otherwise any client could fire ANY workflow by id.
+          const wf = await workflowService.getWorkflow(workflowId);
+          if (!wf) {
+            console.warn(`[Remote] webhook:trigger: workflow not found: ${workflowId}`);
+            _wsSend(ws, 'webhook:result', { workflowId, success: false, error: 'Workflow not found' });
+            break;
+          }
+          if (wf.trigger?.type !== 'webhook') {
+            console.warn(`[Remote] webhook:trigger: workflow ${workflowId} is not a webhook trigger`);
+            _wsSend(ws, 'webhook:result', { workflowId, success: false, error: 'Workflow is not a webhook trigger' });
+            break;
+          }
+
+          // Optional per-workflow secret. When set, the caller must present the
+          // matching value (via payload.secret, an explicit `secret`, or an
+          // x-webhook-secret header). Compared in constant time.
+          const expectedSecret = wf.trigger.webhookSecret;
+          if (expectedSecret) {
+            const provided =
+              secret ||
+              (payload && payload.secret) ||
+              (headers && (headers['x-webhook-secret'] || headers['X-Webhook-Secret'])) ||
+              '';
+            if (!_secretsMatch(String(expectedSecret), String(provided))) {
+              console.warn(`[Remote] webhook:trigger: invalid secret for ${workflowId}`);
+              _wsSend(ws, 'webhook:result', { workflowId, success: false, error: 'Invalid webhook secret' });
+              break;
+            }
+          }
+
           console.log(`[Remote] webhook:trigger workflowId=${workflowId}`);
           workflowService.trigger(workflowId, {
             source: 'webhook',

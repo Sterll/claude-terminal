@@ -35,6 +35,7 @@
 
 const { ipcMain } = require('electron');
 const workflowService = require('../services/WorkflowService');
+const { parseCron } = require('../services/WorkflowScheduler');
 
 /**
  * Serialize a function to a string that can be reconstructed via
@@ -83,6 +84,12 @@ function registerWorkflowHandlers(mainWindow) {
 
   ipcMain.handle('workflow-save', async (_e, { workflow }) => {
     try {
+      if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) {
+        return { success: false, error: 'Invalid workflow: expected an object' };
+      }
+      if (typeof workflow.id !== 'string' || !workflow.id.trim()) {
+        return { success: false, error: 'Invalid workflow: "id" must be a non-empty string' };
+      }
       return await workflowService.saveWorkflow(workflow);
     } catch (err) {
       console.error('[workflow-save]', err.message);
@@ -221,16 +228,9 @@ function registerWorkflowHandlers(mainWindow) {
 
   ipcMain.handle('workflow-validate-cron', async (_e, { expr }) => {
     try {
-      const fields = (expr || '').trim().split(/\s+/);
-      if (fields.length !== 5) {
-        return { success: false, valid: false, error: 'Cron must have 5 fields: min hour dom month dow' };
-      }
-      const validField = /^[0-9*,\-/]+$/;
-      for (const f of fields) {
-        if (!validField.test(f)) {
-          return { success: false, valid: false, error: `Invalid cron field: "${f}"` };
-        }
-      }
+      // Use the exact same parser the scheduler runs, so validation never
+      // diverges from actual matching behaviour.
+      parseCron(expr || '');
       return { success: true, valid: true };
     } catch (err) {
       return { success: false, valid: false, error: err.message };
