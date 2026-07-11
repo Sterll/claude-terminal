@@ -77,20 +77,27 @@ function loadRunResult(runId) {
   return null;
 }
 
+// Drops a reload signal file the main process polls. Returns true on success.
+// On failure it logs AND returns false so the caller can warn the user that
+// the change was saved but the UI may not refresh until the app is reloaded.
 function signalReload() {
   try {
     const triggerDir = path.join(getDataDir(), 'workflows', 'triggers');
     if (!fs.existsSync(triggerDir)) fs.mkdirSync(triggerDir, { recursive: true });
     const f = path.join(triggerDir, `reload_${Date.now()}.json`);
     fs.writeFileSync(f, JSON.stringify({ action: 'reload', source: 'mcp', timestamp: new Date().toISOString() }), 'utf8');
-  } catch (e) { log('signalReload error:', e.message); }
+    return true;
+  } catch (e) {
+    log('signalReload error:', e.message);
+    return false;
+  }
 }
 
 function findWorkflow(nameOrId) {
   const defs = loadDefinitions();
   return defs.find(w =>
     w.id === nameOrId ||
-    w.name.toLowerCase() === nameOrId.toLowerCase()
+    (w.name || '').toLowerCase() === nameOrId.toLowerCase()
   );
 }
 
@@ -213,10 +220,33 @@ function saveWorkflowDef(workflow) {
   if (workflow.graph) repairSlotRefs(workflow.graph);
   const file = path.join(getDataDir(), 'workflows', 'definitions.json');
   let defs = [];
-  try { if (fs.existsSync(file)) defs = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) {}
-  const idx = defs.findIndex(w => w.id === workflow.id);
-  if (idx >= 0) defs[idx] = workflow;
-  else defs.push(workflow);
+  // C2: NEVER start from [] when the file exists but is unreadable — that would
+  // erase every other workflow. If the file exists but fails to parse, abort.
+  if (fs.existsSync(file)) {
+    let raw;
+    try {
+      raw = fs.readFileSync(file, 'utf8');
+    } catch (e) {
+      throw new Error(`Cannot read definitions.json (${e.message}). Aborting to avoid data loss.`);
+    }
+    try {
+      defs = JSON.parse(raw);
+    } catch (e) {
+      throw new Error(`definitions.json is unparseable (${e.message}). Aborting to avoid destroying other workflows.`);
+    }
+    if (!Array.isArray(defs)) {
+      throw new Error('definitions.json is not an array. Aborting to avoid data loss.');
+    }
+  }
+  // loadDefinitions() unwraps entry.workflow, so entries on disk may be either
+  // { workflow: {...} } wrappers or bare workflow objects. Match on both and
+  // preserve the on-disk wrapper shape to avoid duplicating an entry.
+  const idx = defs.findIndex(entry => (entry.workflow || entry).id === workflow.id);
+  if (idx >= 0) {
+    defs[idx] = defs[idx] && defs[idx].workflow ? { ...defs[idx], workflow } : workflow;
+  } else {
+    defs.push(workflow);
+  }
   const tmp = file + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(defs, null, 2), 'utf8');
   fs.renameSync(tmp, file);
@@ -237,11 +267,32 @@ function repairSlotRefs(graph) {
     if (src && src.outputs && src.outputs[fromSlot]) {
       if (!Array.isArray(src.outputs[fromSlot].links)) src.outputs[fromSlot].links = [];
       if (!src.outputs[fromSlot].links.includes(linkId)) src.outputs[fromSlot].links.push(linkId);
+      // C1: keep the 6th element (link type) coherent with the source pin's real
+      // type. -1 (EXEC) ONLY for exec pins; data pins must carry their data type
+      // so the runner does not mistake a DATA link for an EXEC edge.
+      link[5] = linkTypeFor(src, fromSlot);
     }
     if (dst && dst.inputs && dst.inputs[toSlot]) {
       dst.inputs[toSlot].link = linkId;
     }
   }
+}
+
+// Derives the LiteGraph link "type" (6th element) for an edge leaving `srcNode`
+// on output slot `fromSlot`. Exec pins → EXEC (-1); data pins → their real data
+// type string. Prefers the live slot on the node, falls back to the registry.
+function linkTypeFor(srcNode, fromSlot) {
+  const live = srcNode && srcNode.outputs && srcNode.outputs[fromSlot];
+  if (live && live.type !== undefined && live.type !== null) {
+    return live.type === EXEC || live.type === 'exec' ? EXEC : live.type;
+  }
+  const slots = getNodeSlots(srcNode ? srcNode.type : undefined);
+  const regSlot = slots.outputs[fromSlot];
+  if (regSlot && regSlot.type !== undefined && regSlot.type !== null) {
+    return regSlot.type === EXEC || regSlot.type === 'exec' ? EXEC : regSlot.type;
+  }
+  // Unknown → assume exec so existing (mostly-exec) graphs keep working.
+  return EXEC;
 }
 
 // ── Auto-layout: topological sort → vertical/horizontal placement ─────────
@@ -341,14 +392,29 @@ function autoLayoutGraph(graph) {
   }
 }
 
+// M3: Use/maintain the standard LiteGraph persistent counters
+// (graph.last_node_id / graph.last_link_id) instead of recomputing max(id)+1.
+// max+1 reuses IDs after deletions (collision risk); a monotonically increasing
+// counter never hands out an ID that once existed. We still take max(existing)
+// into account so we never collide with a node/link already present.
 function nextNodeId(graph) {
-  const nodes = (graph && graph.nodes) || [];
-  return nodes.length ? Math.max(...nodes.map(n => n.id)) + 1 : 1;
+  if (!graph) return 1;
+  const nodes = graph.nodes || [];
+  const maxExisting = nodes.length ? Math.max(...nodes.map(n => n.id)) : 0;
+  const last = typeof graph.last_node_id === 'number' ? graph.last_node_id : 0;
+  const id = Math.max(last, maxExisting) + 1;
+  graph.last_node_id = id;
+  return id;
 }
 
 function nextLinkId(graph) {
-  const links = (graph && graph.links) || [];
-  return links.length ? Math.max(...links.map(l => l[0])) + 1 : 1;
+  if (!graph) return 1;
+  const links = graph.links || [];
+  const maxExisting = links.length ? Math.max(...links.map(l => l[0])) : 0;
+  const last = typeof graph.last_link_id === 'number' ? graph.last_link_id : 0;
+  const id = Math.max(last, maxExisting) + 1;
+  graph.last_link_id = id;
+  return id;
 }
 
 // Pin type constants (mirror of PIN_TYPES in WorkflowGraphService.js)
@@ -1296,7 +1362,15 @@ async function handle(name, args) {
       const wf = loadWorkflowDef(args.workflow);
       if (!wf) return fail(`Workflow "${args.workflow}" not found.`);
 
+      // M1: reject unknown node types when the registry is available, instead of
+      // silently producing a generic Done/Error node that will never run.
+      if (nodeRegistry && !nodeRegistry.has(args.type)) {
+        const valid = nodeRegistry.getTypes().sort().join(', ');
+        return fail(`Unknown node type "${args.type}". Valid types: ${valid}`);
+      }
+
       const graph = wf.graph || { nodes: [], links: [], groups: [] };
+      wf.graph = graph;
       const nodeId = nextNodeId(graph);
 
       const slots = getNodeSlots(args.type);
@@ -1339,8 +1413,23 @@ async function handle(name, args) {
       const graph = wf.graph || { nodes: [], links: [], groups: [] };
       const nodes = graph.nodes || [];
 
-      if (!nodes.find(n => n.id === from_node)) return fail(`Node ${from_node} not found in graph.`);
-      if (!nodes.find(n => n.id === to_node)) return fail(`Node ${to_node} not found in graph.`);
+      const srcNode = nodes.find(n => n.id === from_node);
+      const dstNode = nodes.find(n => n.id === to_node);
+      if (!srcNode) return fail(`Node ${from_node} not found in graph.`);
+      if (!dstNode) return fail(`Node ${to_node} not found in graph.`);
+
+      // Ensure slot arrays exist so we can bounds-check against them.
+      if (!srcNode.outputs) srcNode.outputs = getNodeSlots(srcNode.type).outputs;
+      if (!dstNode.inputs)  dstNode.inputs  = getNodeSlots(dstNode.type).inputs;
+
+      // M2: reject out-of-range slots instead of creating a phantom link that
+      // references a pin that does not exist.
+      if (from_slot < 0 || from_slot >= srcNode.outputs.length) {
+        return fail(`Output slot ${from_slot} is out of range for node ${from_node} (${srcNode.type}), which has ${srcNode.outputs.length} output slot(s).`);
+      }
+      if (to_slot < 0 || to_slot >= dstNode.inputs.length) {
+        return fail(`Input slot ${to_slot} is out of range for node ${to_node} (${dstNode.type}), which has ${dstNode.inputs.length} input slot(s).`);
+      }
 
       // Check duplicate link
       const existing = (graph.links || []).find(l =>
@@ -1348,30 +1437,54 @@ async function handle(name, args) {
       );
       if (existing) return ok(`Link already exists between node ${from_node} slot ${from_slot} → node ${to_node} slot ${to_slot}.`);
 
+      // C1: derive the real link type from the source output pin. EXEC (-1) only
+      // for exec pins; data pins carry their data type as the 6th element.
+      const linkType = linkTypeFor(srcNode, from_slot);
+
+      // M2: cycle detection — refuse an exec-link that would close a cycle in the
+      // exec graph. DFS over existing exec-links plus the proposed one.
+      if (linkType === EXEC) {
+        const execAdj = new Map(); // nodeId → [nodeId] over exec-links only
+        for (const n of nodes) execAdj.set(n.id, []);
+        for (const l of (graph.links || [])) {
+          const t = l.length > 5 ? l[5] : EXEC; // legacy links w/o type → treat as exec
+          if (t === EXEC && execAdj.has(l[1])) execAdj.get(l[1]).push(l[3]);
+        }
+        if (!execAdj.has(from_node)) execAdj.set(from_node, []);
+        execAdj.get(from_node).push(to_node); // include the proposed edge
+
+        // Is `from_node` reachable from `to_node`? If so, the new edge closes a cycle.
+        const stack = [to_node];
+        const seen = new Set();
+        let cycle = false;
+        while (stack.length) {
+          const cur = stack.pop();
+          if (cur === from_node) { cycle = true; break; }
+          if (seen.has(cur)) continue;
+          seen.add(cur);
+          for (const nxt of (execAdj.get(cur) || [])) stack.push(nxt);
+        }
+        if (cycle) {
+          return fail(`Refusing to connect node ${from_node} → node ${to_node}: this exec-link would create a cycle in the execution flow.`);
+        }
+      }
+
       const linkId = nextLinkId(graph);
       // LiteGraph link format: [link_id, origin_id, origin_slot, target_id, target_slot, type]
-      const link = [linkId, from_node, from_slot, to_node, to_slot, -1];
+      const link = [linkId, from_node, from_slot, to_node, to_slot, linkType];
       graph.links = [...(graph.links || []), link];
 
       // Update outputs[from_slot].links on source node
-      const srcNode = nodes.find(n => n.id === from_node);
-      if (srcNode) {
-        if (!srcNode.outputs) srcNode.outputs = getNodeSlots(srcNode.type).outputs;
-        if (srcNode.outputs[from_slot]) {
-          if (!srcNode.outputs[from_slot].links) srcNode.outputs[from_slot].links = [];
-          if (!srcNode.outputs[from_slot].links.includes(linkId)) {
-            srcNode.outputs[from_slot].links.push(linkId);
-          }
+      if (srcNode.outputs[from_slot]) {
+        if (!srcNode.outputs[from_slot].links) srcNode.outputs[from_slot].links = [];
+        if (!srcNode.outputs[from_slot].links.includes(linkId)) {
+          srcNode.outputs[from_slot].links.push(linkId);
         }
       }
 
       // Update inputs[to_slot].link on target node
-      const dstNode = nodes.find(n => n.id === to_node);
-      if (dstNode) {
-        if (!dstNode.inputs) dstNode.inputs = getNodeSlots(dstNode.type).inputs;
-        if (dstNode.inputs[to_slot]) {
-          dstNode.inputs[to_slot].link = linkId;
-        }
+      if (dstNode.inputs[to_slot]) {
+        dstNode.inputs[to_slot].link = linkId;
       }
 
       wf.graph = graph;
@@ -1468,7 +1581,7 @@ async function handle(name, args) {
       if (!wf) return fail(`Workflow "${args.workflow}" not found. Use workflow_list to see available workflows.`);
 
       const crypto = require('crypto');
-      const newId = `wf-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+      const newId = `wf_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
 
       // Deep copy the workflow definition
       const cloned = JSON.parse(JSON.stringify(wf));
@@ -1537,16 +1650,44 @@ async function handle(name, args) {
       }
 
       const crypto = require('crypto');
-      const newId = `wf-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+      const newId = `wf_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
 
       // If the JSON has a flat nodes/links structure, wrap it into graph
       const graph = parsed.graph || { nodes: parsed.nodes || [], links: parsed.links || [] };
+      const importedNodes = graph.nodes || [];
+
+      // C3: validate every node type against the registry. Reject unknown types
+      // rather than importing a graph that can never run.
+      if (nodeRegistry) {
+        const unknown = [...new Set(
+          importedNodes.map(n => n && n.type).filter(t => t && !nodeRegistry.has(t))
+        )];
+        if (unknown.length) {
+          return fail(`Import rejected — unknown node type(s): ${unknown.join(', ')}. Valid types: ${nodeRegistry.getTypes().sort().join(', ')}`);
+        }
+      }
+
+      // C3: security — an imported JSON could bundle shell/http/file nodes with a
+      // cron/hook trigger and enabled:true, auto-executing untrusted code on
+      // import. Force the workflow DISABLED and its trigger to MANUAL regardless
+      // of what the JSON says, so the user must review then activate it manually.
+      const SENSITIVE_TYPES = ['workflow/shell', 'workflow/transform', 'workflow/http', 'workflow/file', 'workflow/git'];
+      const sensitiveFound = [...new Set(
+        importedNodes
+          .map(n => n && n.type)
+          .filter(t => SENSITIVE_TYPES.includes(t))
+          .map(t => t.replace('workflow/', ''))
+      )];
+      const originalTrigger = parsed.trigger || { type: 'manual', value: '' };
+      const nonManualTrigger = originalTrigger.type && originalTrigger.type !== 'manual'
+        ? originalTrigger.type
+        : null;
 
       const workflow = {
         id: newId,
         name: (args.name || parsed.name).trim(),
-        enabled: parsed.enabled !== undefined ? parsed.enabled : true,
-        trigger: parsed.trigger || { type: 'manual', value: '' },
+        enabled: false, // forced: never auto-enable an imported workflow
+        trigger: { type: 'manual', value: '' }, // forced: strip cron/hook/webhook triggers
         graph,
         variables: parsed.variables,
         concurrency: parsed.concurrency,
@@ -1562,10 +1703,21 @@ async function handle(name, args) {
       }
 
       saveWorkflowDef(workflow);
-      signalReload();
+      const reloaded = signalReload();
 
-      log(`Imported workflow "${workflow.name}" (${newId})`);
-      return ok(`Workflow imported successfully.\nName: "${workflow.name}"\nID: ${newId}\nNodes: ${graph.nodes?.length || 0}\nLinks: ${graph.links?.length || 0}`);
+      log(`Imported workflow "${workflow.name}" (${newId}) — disabled, trigger forced to manual`);
+
+      let msg = `Workflow imported successfully (DISABLED — review before enabling).\n`;
+      msg += `Name: "${workflow.name}"\nID: ${newId}\nNodes: ${importedNodes.length || 0}\nLinks: ${graph.links?.length || 0}\n\n`;
+      msg += `SECURITY: this workflow was imported DISABLED and its trigger was forced to "manual". Review it, then enable and re-configure the trigger manually if you trust it.\n`;
+      if (sensitiveFound.length || nonManualTrigger) {
+        msg += `\nWARNING — potentially sensitive content detected:\n`;
+        if (sensitiveFound.length) msg += `  • Sensitive node types: ${sensitiveFound.join(', ')} (these can run commands / touch the filesystem / make network calls).\n`;
+        if (nonManualTrigger) msg += `  • Original trigger was "${nonManualTrigger}" (would auto-run) — it was stripped to "manual".\n`;
+        msg += `Inspect these nodes with workflow_get_graph before enabling.\n`;
+      }
+      if (!reloaded) msg += `\nNote: could not signal the app to reload — the workflow list may not refresh until you reopen Claude Terminal.\n`;
+      return ok(msg);
     }
 
     // ── workflow_delete ──────────────────────────────────────────────────────
@@ -1579,9 +1731,26 @@ async function handle(name, args) {
       // Remove from definitions
       const file = path.join(getDataDir(), 'workflows', 'definitions.json');
       let defs = [];
-      try {
-        if (fs.existsSync(file)) defs = JSON.parse(fs.readFileSync(file, 'utf8'));
-      } catch (_) {}
+      // C2: if the file exists but is unreadable/unparseable, ABORT — otherwise
+      // we would rewrite an empty array and destroy every other workflow.
+      if (fs.existsSync(file)) {
+        let raw;
+        try {
+          raw = fs.readFileSync(file, 'utf8');
+        } catch (e) {
+          return fail(`Cannot read definitions.json (${e.message}). Aborting delete to avoid data loss.`);
+        }
+        try {
+          defs = JSON.parse(raw);
+        } catch (e) {
+          return fail(`definitions.json is unparseable (${e.message}). Aborting delete to avoid destroying other workflows.`);
+        }
+        if (!Array.isArray(defs)) {
+          return fail('definitions.json is not an array. Aborting delete to avoid data loss.');
+        }
+      } else {
+        return fail('definitions.json does not exist — nothing to delete.');
+      }
 
       defs = defs.filter(entry => {
         const w = entry.workflow || entry;
@@ -1666,7 +1835,10 @@ async function handle(name, args) {
       }), 'utf8');
 
       log(`Test trigger written for node ${args.node_id} (${node.type}) in workflow ${wf.id}`);
-      return ok(`Test trigger created for node ${args.node_id} (${node.type}) in workflow "${wf.name}".\nClaude Terminal will execute this node in isolation.`);
+      // M5: The main process does NOT yet handle action==='test_node' — the file
+      // falls into the generic "has workflowId" branch of its trigger poll and
+      // runs the ENTIRE workflow, not just this node. Be honest about that.
+      return ok(`Trigger written for workflow "${wf.name}" while targeting node ${args.node_id} (${node.type}).\n\nWARNING: isolated single-node testing is NOT currently available — Claude Terminal will run the WHOLE workflow (starting from its trigger), not just this node. Use workflow_runs / workflow_run_logs afterwards to inspect the result. To run just one node, edit and trigger a minimal test workflow instead.`);
     }
 
     return fail(`Unknown workflow tool: ${name}`);
