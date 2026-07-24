@@ -1121,6 +1121,7 @@ class ProjectList extends BaseComponent {
     const settings = getProjectSettings(project.id);
     const models = [
       { value: '', label: t('projects.useGlobal') },
+      { value: 'claude-opus-5', label: 'Opus 5' },
       { value: 'claude-opus-4-8', label: 'Opus 4.8' },
       { value: 'claude-opus-4-7', label: 'Opus 4.7' },
       { value: 'claude-sonnet-5', label: 'Sonnet 5' },

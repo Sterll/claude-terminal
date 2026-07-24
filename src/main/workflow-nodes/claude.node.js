@@ -8,7 +8,7 @@ let EFFORT_VALUES;
 try {
   ({ CLAUDE_MODEL_VALUES, EFFORT_VALUES } = require('../../shared/model-options'));
 } catch {
-  CLAUDE_MODEL_VALUES = ['', 'claude-fable-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-haiku-4-5', 'sonnet', 'opus', 'haiku'];
+  CLAUDE_MODEL_VALUES = ['', 'claude-fable-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-haiku-4-5', 'sonnet', 'opus', 'haiku'];
   EFFORT_VALUES = ['', 'low', 'medium', 'high', 'xhigh', 'max'];
 }
 

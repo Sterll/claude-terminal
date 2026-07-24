@@ -92,6 +92,7 @@ const { saveTerminalSessions } = require('../../services/TerminalSessionService'
 
 const MODEL_OPTIONS = [
   { id: 'claude-fable-5', label: 'Fable 5', desc: 'Most capable model' },
+  { id: 'claude-opus-5', label: 'Opus 5', desc: 'Latest generation Opus' },
   { id: 'claude-opus-4-8', label: 'Opus 4.8', desc: 'Most capable for complex work' },
   { id: 'claude-opus-4-7', label: 'Opus 4.7', desc: 'Previous generation Opus' },
   { id: 'claude-sonnet-5', label: 'Sonnet 5', desc: 'Best combination of speed and intelligence' },
