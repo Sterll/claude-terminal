@@ -1277,7 +1277,10 @@ class TerminalManager extends BaseComponent {
     e.stopPropagation();
 
     const tabsContainer = document.getElementById('terminals-tabs');
-    const allTabs = Array.from(tabsContainer.querySelectorAll('.terminal-tab'));
+    // Only act on tabs belonging to the same project as the target tab
+    const thisProjectId = getTerminal(id)?.project?.id;
+    const allTabs = Array.from(tabsContainer.querySelectorAll('.terminal-tab'))
+      .filter(tab => getTerminal(tab.dataset.id)?.project?.id === thisProjectId);
     const thisTab = tabsContainer.querySelector(`.terminal-tab[data-id="${id}"]`);
     const thisIndex = allTabs.indexOf(thisTab);
     const tabsToRight = allTabs.slice(thisIndex + 1);
@@ -2314,7 +2317,23 @@ class TerminalManager extends BaseComponent {
       emptyState.style.display = 'none';
       const activeTab = document.querySelector(`.terminal-tab[data-id="${getActiveTerminal()}"]`);
       if (!activeTab || activeTab.style.display === 'none') {
-        if (firstVisibleId) this.setActiveTerminal(firstVisibleId);
+        // Restaure le dernier onglet actif de CE projet plutôt que le premier visible
+        let targetId = null;
+        if (project) {
+          const history = this._tabActivationHistory.get(project.id);
+          if (history) {
+            for (let i = history.length - 1; i >= 0; i--) {
+              const candidate = history[i];
+              const candidateTab = tabsById.get(String(candidate));
+              if (candidateTab && candidateTab.style.display !== 'none') {
+                targetId = candidate;
+                break;
+              }
+            }
+          }
+        }
+        if (targetId == null) targetId = firstVisibleId;
+        if (targetId != null) this.setActiveTerminal(targetId);
       }
     }
   }
