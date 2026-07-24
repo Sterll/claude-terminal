@@ -192,87 +192,100 @@ function renderTimelineBlock(code) {
 function renderCompareBlock(code) {
   const lines = code.split('\n');
   let title = '';
-  let beforeCode = '';
-  let afterCode = '';
-  let section = 'none';
-  let beforeLabel = 'Before';
-  let afterLabel = 'After';
 
-  // Flexible separator patterns:
-  // "--- before", "--- before (old)", "--- Before:", "---before", "before:", "Before"
-  const beforeRe = /^-{2,}\s*before\b(.*)/i;
-  const afterRe = /^-{2,}\s*after\b(.*)/i;
-  // Fallback: standalone "before:" / "after:" labels (no dashes needed)
-  const beforeLabelRe = /^before\s*[:]\s*(.*)/i;
-  const afterLabelRe = /^after\s*[:]\s*(.*)/i;
+  // A section separator is any line of 2+ dashes, with an optional label:
+  //   "--- before", "--- after (new)", "--- Bandit beater", "---"
+  const sepRe = /^-{2,}\s*(.*)$/;
+  // Standalone labels without dashes: "before:", "after:"
+  const beforeLabelRe = /^before\s*:\s*(.*)$/i;
+  const afterLabelRe = /^after\s*:\s*(.*)$/i;
+
+  // Classify a raw label into a side "kind" (before / after / neutral).
+  // Only literal before/after keywords get the red/green semantic treatment;
+  // any other label (e.g. "Bandit beater", "RPG") is a neutral comparison.
+  const classifyLabel = (raw) => {
+    const t = (raw || '').trim();
+    const bm = t.match(/^before\b\s*(.*)$/i);
+    if (bm) return { kind: 'before', label: bm[1].replace(/^[\s:()-]+|[\s:()-]+$/g, '').trim() || 'Before' };
+    const am = t.match(/^after\b\s*(.*)$/i);
+    if (am) return { kind: 'after', label: am[1].replace(/^[\s:()-]+|[\s:()-]+$/g, '').trim() || 'After' };
+    return { kind: 'neutral', label: t };
+  };
+
+  const sections = []; // { kind, label, lines: [] }
+  let current = null;
 
   for (const line of lines) {
     const trimmed = line.trim();
-    if (!trimmed && section === 'none') continue;
-    const titleMatch = trimmed.match(/^title:\s*(.+)/i);
-    if (titleMatch && section === 'none') { title = titleMatch[1]; continue; }
+    if (!current && !trimmed) continue;
 
-    // Check for separator lines
-    const bMatch = trimmed.match(beforeRe) || trimmed.match(beforeLabelRe);
-    const aMatch = trimmed.match(afterRe) || trimmed.match(afterLabelRe);
-    if (bMatch && section !== 'after') {
-      section = 'before';
-      // Capture custom label if provided (e.g. "--- before (old code)")
-      const extra = bMatch[1]?.replace(/^[\s:()-]+/, '').replace(/[\s)]+$/, '');
-      if (extra) beforeLabel = extra;
-      continue;
-    }
-    if (aMatch && section !== 'none') {
-      section = 'after';
-      const extra = aMatch[1]?.replace(/^[\s:()-]+/, '').replace(/[\s)]+$/, '');
-      if (extra) afterLabel = extra;
-      continue;
+    if (!current) {
+      const titleMatch = trimmed.match(/^title:\s*(.+)$/i);
+      if (titleMatch) { title = titleMatch[1].trim(); continue; }
     }
 
-    if (section === 'before') beforeCode += line + '\n';
-    if (section === 'after') afterCode += line + '\n';
+    const sepMatch = trimmed.match(sepRe);
+    if (sepMatch) {
+      current = { ...classifyLabel(sepMatch[1]), lines: [] };
+      sections.push(current);
+      continue;
+    }
+    const blMatch = trimmed.match(beforeLabelRe);
+    if (blMatch) {
+      current = { kind: 'before', label: blMatch[1].trim() || 'Before', lines: [] };
+      sections.push(current);
+      continue;
+    }
+    const alMatch = trimmed.match(afterLabelRe);
+    if (alMatch) {
+      current = { kind: 'after', label: alMatch[1].trim() || 'After', lines: [] };
+      sections.push(current);
+      continue;
+    }
+
+    if (current) current.lines.push(line);
   }
 
-  // Fallback: if no separators found, try splitting on blank-line boundary
-  if (!beforeCode && !afterCode && section === 'none') {
-    const contentLines = lines.filter(l => !/^title:\s/i.test(l.trim()));
-    const content = contentLines.join('\n').trim();
-    // Try splitting on double newline
+  // Fallback: no explicit sections found -> split on a blank-line boundary.
+  if (sections.length === 0) {
+    const content = lines.filter(l => !/^title:\s/i.test(l.trim())).join('\n').trim();
     const halves = content.split(/\n\s*\n/);
     if (halves.length >= 2) {
       const mid = Math.ceil(halves.length / 2);
-      beforeCode = halves.slice(0, mid).join('\n\n');
-      afterCode = halves.slice(mid).join('\n\n');
-    } else {
-      // Single block of content - put it all in before
-      beforeCode = content;
+      sections.push({ kind: 'before', label: 'Before', lines: halves.slice(0, mid).join('\n\n').split('\n') });
+      sections.push({ kind: 'after', label: 'After', lines: halves.slice(mid).join('\n\n').split('\n') });
+    } else if (content) {
+      sections.push({ kind: 'neutral', label: '', lines: content.split('\n') });
     }
   }
 
-  beforeCode = beforeCode.trimEnd();
-  afterCode = afterCode.trimEnd();
+  const icons = {
+    before: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+    after: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+    neutral: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>',
+  };
+
+  // Compare is a 2-pane widget: keep the first two sections.
+  const sides = sections.slice(0, 2);
+  if (sides.length === 0) return '';
 
   const titleHtml = title
     ? `<div class="chat-compare-header"><span class="chat-compare-label">${escapeHtml(title)}</span></div>`
     : '';
 
-  const beforeIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
-  const afterIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
-
-  // If only before has content and after is empty, show single-pane
-  if (beforeCode && !afterCode) {
-    return `<div class="chat-compare">`
-      + titleHtml
-      + `<div class="chat-compare-body">`
-      + `<div class="chat-compare-side before" style="border-right:none"><div class="chat-compare-side-header">${beforeIcon} ${escapeHtml(beforeLabel)}</div><div class="chat-compare-code"><pre><code>${escapeHtml(beforeCode)}</code></pre></div></div>`
-      + `</div></div>`;
-  }
+  const bodyStyle = sides.length === 1 ? ' style="grid-template-columns:1fr"' : '';
+  const bodyHtml = sides.map((sec) => {
+    const codeText = escapeHtml(sec.lines.join('\n').replace(/^\n+/, '').trimEnd());
+    const header = sec.label ? `${icons[sec.kind]} ${escapeHtml(sec.label)}` : icons[sec.kind];
+    return `<div class="chat-compare-side ${sec.kind}">`
+      + `<div class="chat-compare-side-header">${header}</div>`
+      + `<div class="chat-compare-code"><pre><code>${codeText}</code></pre></div></div>`;
+  }).join('');
 
   return `<div class="chat-compare">`
     + titleHtml
-    + `<div class="chat-compare-body">`
-    + `<div class="chat-compare-side before"><div class="chat-compare-side-header">${beforeIcon} ${escapeHtml(beforeLabel)}</div><div class="chat-compare-code"><pre><code>${escapeHtml(beforeCode)}</code></pre></div></div>`
-    + `<div class="chat-compare-side after"><div class="chat-compare-side-header">${afterIcon} ${escapeHtml(afterLabel)}</div><div class="chat-compare-code"><pre><code>${escapeHtml(afterCode)}</code></pre></div></div>`
+    + `<div class="chat-compare-body"${bodyStyle}>`
+    + bodyHtml
     + `</div></div>`;
 }
 

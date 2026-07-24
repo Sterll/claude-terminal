@@ -323,6 +323,20 @@ describe('MarkdownRenderer', () => {
       expect(html).toContain('After');
     });
 
+    test('compare block with custom section labels renders two neutral panes', () => {
+      const html = MR.render('```compare\ntitle: Bandit beater vs RPG\n--- Bandit beater\nfarm mobs in a loop\n--- RPG (vrai)\nchoices and identity\n```');
+      // Two distinct panes, not a single dumped BEFORE
+      expect(html).toContain('chat-compare-side neutral');
+      expect(html).toContain('Bandit beater');
+      expect(html).toContain('RPG (vrai)');
+      // The "---" separators must be consumed, not rendered as literal content
+      expect(html).not.toContain('--- Bandit beater');
+      expect(html).not.toContain('--- RPG');
+      // Custom labels are not semantic before/after, so no red/green judgement
+      expect(html).not.toContain('chat-compare-side before');
+      expect(html).not.toContain('chat-compare-side after');
+    });
+
     test('tabs block', () => {
       const html = MR.render('```tabs\n--- Tab A\ncontent A\n--- Tab B\ncontent B\n```');
       expect(html).toContain('chat-tabs-block');

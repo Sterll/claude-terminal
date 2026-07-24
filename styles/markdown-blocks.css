@@ -1006,7 +1006,7 @@ code.line-numbers-off .code-line::before {
 .chat-compare-side {
   overflow: hidden;
 }
-.chat-compare-side.before {
+.chat-compare-body > .chat-compare-side:not(:last-child) {
   border-right: 1px solid var(--border-primary);
 }
 .chat-compare-side-header {
@@ -1032,6 +1032,10 @@ code.line-numbers-off .code-line::before {
 .chat-compare-side.after .chat-compare-side-header {
   background: rgba(34,197,94,0.04);
   color: var(--success);
+}
+.chat-compare-side.neutral .chat-compare-side-header {
+  background: rgba(255,255,255,0.02);
+  color: var(--text-secondary);
 }
 .chat-compare-code {
   padding: 0;
