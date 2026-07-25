@@ -10,6 +10,14 @@ const WebSocket = require('ws');
 
 const RECONNECT_DELAYS = [1000, 2000, 5000, 10000, 30000]; // exponential backoff
 const HEARTBEAT_INTERVAL = 30000;
+// A connection must survive this long before we trust it and reset the backoff.
+// Without it, a relay that accepts then immediately drops us (code 1006, token
+// taken over by another desktop…) resets the backoff on every `open` and we
+// hammer it once per second forever.
+const STABLE_CONNECTION_MS = 60000;
+// Consecutive short-lived connections before we give the relay a real break.
+const FLAP_THRESHOLD = 5;
+const FLAP_COOLDOWN_MS = 5 * 60 * 1000;
 
 class CloudRelayClient {
   constructor() {
@@ -29,6 +37,10 @@ class CloudRelayClient {
     this._reconnectTimer = null;
     /** @type {NodeJS.Timeout|null} */
     this._heartbeatTimer = null;
+    /** @type {NodeJS.Timeout|null} */
+    this._stableTimer = null;
+    /** @type {number} Consecutive connections that died before STABLE_CONNECTION_MS */
+    this._unstableStreak = 0;
     /** @type {Function|null} */
     this._onMessage = null;
     /** @type {Function|null} */
@@ -56,6 +68,8 @@ class CloudRelayClient {
     this.apiKey = apiKey;
     this.shouldReconnect = true;
     this.reconnectAttempt = 0;
+    // Explicit user action — clear any flap cooldown and retry right away
+    this._unstableStreak = 0;
     this._doConnect();
   }
 
@@ -69,6 +83,7 @@ class CloudRelayClient {
       clearInterval(this._heartbeatTimer);
       this._heartbeatTimer = null;
     }
+    this._clearStableTimer();
     if (this.ws) {
       this.ws.removeAllListeners();
       this.ws.close(1000, 'Disconnect');
@@ -123,9 +138,16 @@ class CloudRelayClient {
 
     this.ws.on('open', () => {
       this.connected = true;
-      this.reconnectAttempt = 0;
       this._emitStatus({ connected: true });
       this._startHeartbeat();
+      // Reset the backoff only once the connection proves it can last — an
+      // immediate reset here is what turns a flapping relay into a 1s loop.
+      this._clearStableTimer();
+      this._stableTimer = setTimeout(() => {
+        this._stableTimer = null; // null while connected = "this one is healthy"
+        this.reconnectAttempt = 0;
+        this._unstableStreak = 0;
+      }, STABLE_CONNECTION_MS);
     });
 
     this.ws.on('message', (data) => {
@@ -141,8 +163,12 @@ class CloudRelayClient {
 
     this.ws.on('close', (code, reason) => {
       console.log('[CloudRelay] Connection closed:', code, reason?.toString());
+      const wasStable = this._stableTimer === null && this.connected;
       this.connected = false;
       this._stopHeartbeat();
+      // Timer still pending (or we never even opened) = the connection was short-lived
+      if (!wasStable) this._unstableStreak++;
+      this._clearStableTimer();
       this._emitStatus({ connected: false, error: code !== 1000 ? `Closed: ${code}` : undefined });
       this._scheduleReconnect();
     });
@@ -159,9 +185,31 @@ class CloudRelayClient {
       clearTimeout(this._reconnectTimer);
       this._reconnectTimer = null;
     }
-    const delay = RECONNECT_DELAYS[Math.min(this.reconnectAttempt, RECONNECT_DELAYS.length - 1)];
-    this.reconnectAttempt++;
+
+    let delay;
+    if (this._unstableStreak >= FLAP_THRESHOLD) {
+      // The relay keeps accepting then dropping us. Retrying every second only
+      // makes it worse (and spams the UI), so stand down for a while.
+      delay = FLAP_COOLDOWN_MS;
+      this._unstableStreak = 0;
+      this.reconnectAttempt = 0;
+      console.warn(`[CloudRelay] Connection unstable — pausing reconnect for ${FLAP_COOLDOWN_MS / 60000} min`);
+      this._emitStatus({
+        connected: false,
+        error: `Connection unstable — retrying in ${FLAP_COOLDOWN_MS / 60000} min`,
+      });
+    } else {
+      delay = RECONNECT_DELAYS[Math.min(this.reconnectAttempt, RECONNECT_DELAYS.length - 1)];
+      this.reconnectAttempt++;
+    }
     this._reconnectTimer = setTimeout(() => this._doConnect(), delay);
+  }
+
+  _clearStableTimer() {
+    if (this._stableTimer) {
+      clearTimeout(this._stableTimer);
+      this._stableTimer = null;
+    }
   }
 
   _startHeartbeat() {
