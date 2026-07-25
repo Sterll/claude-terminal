@@ -392,7 +392,12 @@ function handlePreviewAction(btn) {
 
 /**
  * Initialize iframe preview with sandboxed content.
- * Uses blob: URLs instead of srcdoc to comply with CSP frame-src policy.
+ *
+ * The document is served over `ct-preview://` (see src/main/ipc/preview.ipc.js)
+ * rather than a blob:/data:/srcdoc URL. Those all inherit the CSP of this page,
+ * which forbids framing them (`frame-src`) and strips their inline scripts —
+ * the preview would render as a blank white iframe. A custom scheme carries its
+ * own CSP, so the preview renders as authored.
  */
 function initializePreviewIframe(container) {
   const iframe = container.querySelector('.chat-preview-iframe');
@@ -410,15 +415,21 @@ function initializePreviewIframe(container) {
     html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{margin:0;padding:16px;background:#1a1a1a;color:#e0e0e0;font-family:system-ui,sans-serif;}</style></head><body>${code}</body></html>`;
   }
 
-  // Revoke previous blob URL if any
-  if (iframe.dataset.blobUrl) {
-    URL.revokeObjectURL(iframe.dataset.blobUrl);
+  const api = window.electron_api?.preview;
+  if (!api) {
+    console.warn('[Markdown] Preview API unavailable — HTML preview disabled');
+    return;
   }
 
-  const blob = new Blob([html], { type: 'text/html' });
-  const blobUrl = URL.createObjectURL(blob);
-  iframe.dataset.blobUrl = blobUrl;
-  iframe.src = blobUrl;
+  api.register(html)
+    .then((res) => {
+      if (res?.url) {
+        iframe.src = res.url;
+      } else {
+        console.warn('[Markdown] Preview registration failed:', res?.error);
+      }
+    })
+    .catch((err) => console.warn('[Markdown] Preview registration failed:', err.message));
 }
 
 module.exports = {

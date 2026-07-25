@@ -726,6 +726,11 @@ contextBridge.exposeInMainWorld('electron_api', {
     getStats: (config) => ipcRenderer.invoke('time:get-stats', config),
   },
 
+  // ==================== HTML PREVIEW ====================
+  preview: {
+    register: (html) => ipcRenderer.invoke('preview:register', html),
+  },
+
   // ==================== PARALLEL TASKS ====================
   parallel: {
     startRun:    (p) => ipcRenderer.invoke('parallel-run-start', p),

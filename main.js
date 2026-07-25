@@ -36,6 +36,11 @@ if (isDev) {
 // ============================================
 // SINGLE INSTANCE LOCK - Must be first!
 // ============================================
+// ============================================
+// CUSTOM SCHEMES - Must be declared before app is ready
+// ============================================
+require('./src/main/ipc/preview.ipc').registerPreviewScheme();
+
 const gotTheLock = app.requestSingleInstanceLock(isDev ? { dev: true } : undefined);
 
 if (!gotTheLock) {
@@ -310,12 +315,17 @@ function bootstrapApp() {
             "img-src 'self' file: data: blob: https:; " +
             "font-src 'self' file: data:; " +
             "connect-src 'self' file: ws://localhost:* http://localhost:* http://127.0.0.1:* https://claude-terminal-hub.claudeterminal.workers.dev; " +
-            "frame-src 'none'; " +
+            // ct-preview: serves sandboxed ```html previews with their own CSP
+            "frame-src ct-preview:; " +
             "object-src 'none'"
           ]
         }
       });
     });
+
+    // Serve ```html markdown previews over ct-preview://
+    require('./src/main/ipc/preview.ipc').registerPreviewProtocol();
+
     initializeApp();
   });
   app.on('will-quit', cleanup);
