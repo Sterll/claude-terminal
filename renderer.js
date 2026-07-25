@@ -2210,6 +2210,8 @@ function _updateCloudConnected(connected) {
 
 /**
  * Check for new cloud projects not present locally and show a notification.
+ * Cloud project names already seen are persisted in cloud-state.json so the
+ * toast only fires once per project instead of on every connect/reconnect.
  */
 async function _checkNewCloudProjects() {
   try {
@@ -2222,11 +2224,19 @@ async function _checkNewCloudProjects() {
       localProjects.map(p => p.path?.replace(/\\/g, '/').split('/').pop()).filter(Boolean)
     );
 
+    const cloudState = await _loadCloudState();
+    const alreadySeen = new Set(cloudState.seenCloudProjectIds || []);
+    const firstRun = !Array.isArray(cloudState.seenCloudProjectIds);
+
     const newProjects = cloudProjects.filter(
-      p => !localNames.has(p.name) && !localBasenames.has(p.name)
+      p => !localNames.has(p.name) && !localBasenames.has(p.name) && !alreadySeen.has(p.name)
     );
 
-    if (newProjects.length === 0) return;
+    // Mark every cloud project as seen — including the ones we notify about now
+    await _saveCloudState({ seenCloudProjectIds: [...new Set(cloudProjects.map(p => p.name))] });
+
+    // First run: only record the baseline, don't dump the whole cloud in a toast
+    if (firstRun || newProjects.length === 0) return;
 
     const names = newProjects.map(p => p.name);
     const list = names.length <= 3 ? names.join(', ') : `${names.slice(0, 3).join(', ')} (+${names.length - 3})`;
@@ -2249,14 +2259,22 @@ async function _checkNewCloudProjects() {
   } catch { /* ignore */ }
 }
 
+// The relay emits `connected` again on every WebSocket reconnect. Refreshing the
+// list each time is cheap, but the new/deleted-project checks are user-facing —
+// run them only once per app session, otherwise a flaky connection spams toasts.
+let _cloudProjectChecksDone = false;
+function _onCloudConnected() {
+  refreshCloudProjects();
+  if (_cloudProjectChecksDone) return;
+  _cloudProjectChecksDone = true;
+  _checkNewCloudProjects();
+  _checkCloudDeletedProjects();
+}
+
 if (api.cloud?.onStatusChanged) {
   api.cloud.onStatusChanged((status) => {
     _updateCloudConnected(status.connected);
-    if (status.connected) {
-      refreshCloudProjects();
-      _checkNewCloudProjects();
-      _checkCloudDeletedProjects();
-    }
+    if (status.connected) _onCloudConnected();
   });
 }
 setTimeout(async () => {
@@ -2264,9 +2282,7 @@ setTimeout(async () => {
     const s = await api.cloud.status();
     if (s.connected) {
       _updateCloudConnected(true);
-      refreshCloudProjects();
-      _checkNewCloudProjects();
-      _checkCloudDeletedProjects();
+      _onCloudConnected();
     }
   } catch { /* ignore */ }
 }, 3000);
