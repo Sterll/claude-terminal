@@ -2040,8 +2040,11 @@ class ChatView extends BaseComponent {
             const diffs = [];
             for (const file of status.files.slice(0, 20)) {
               try {
+                // fileDiff resolves the diff as a plain string, or
+                // { error: true, message } when git could not run. Reading
+                // `d.diff` meant this context never carried any diff at all.
                 const d = await api.git.fileDiff({ projectPath: project.path, filePath: file.path });
-                if (d?.diff) diffs.push(`--- ${file.path} ---\n${d.diff}`);
+                if (typeof d === 'string' && d.trim()) diffs.push(`--- ${file.path} ---\n${d}`);
               } catch (e) { /* skip */ }
             }
             content = diffs.length > 0 ? `Git Changes (${status.files.length} files):\n\n${diffs.join('\n\n')}` : '[No diff content available]';
@@ -3131,7 +3134,7 @@ class ChatView extends BaseComponent {
       }
 
       if (BINARY_EXTS.has(ext)) {
-        return `<div class="chat-tool-content-path">${escapeHtml(path)} <span class="chat-tool-content-meta">(fichier binaire)</span> ${_openFileBtn(path)}</div>`;
+        return `<div class="chat-tool-content-path">${escapeHtml(path)} <span class="chat-tool-content-meta">(${t('chat.binaryFile')})</span> ${_openFileBtn(path)}</div>`;
       }
 
       let effectiveOutput = output;

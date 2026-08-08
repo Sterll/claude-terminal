@@ -28,7 +28,7 @@ function encodeProjectPath(projectPath) {
 
 const MEMORY_TEMPLATES = {
   minimal: {
-    name: 'Minimal',
+    nameKey: 'memory.templates.minimal',
     icon: '\u{1F4DD}',
     content: `# {PROJECT_NAME}
 
@@ -41,7 +41,7 @@ Decrivez votre projet ici.
 `
   },
   fullstack: {
-    name: 'Fullstack',
+    nameKey: 'memory.templates.fullstack',
     icon: '\u{1F680}',
     content: `# {PROJECT_NAME}
 
@@ -73,7 +73,7 @@ npm run test    # Tests
 `
   },
   fivem: {
-    name: 'FiveM Resource',
+    nameKey: 'memory.templates.fivem',
     icon: '\u{1F3AE}',
     content: `# {PROJECT_NAME}
 
@@ -103,7 +103,7 @@ html/       # Interface NUI (HTML/CSS/JS)
 `
   },
   api: {
-    name: 'API REST',
+    nameKey: 'memory.templates.api',
     icon: '\u{1F50C}',
     content: `# {PROJECT_NAME}
 
@@ -129,7 +129,7 @@ Generer la doc Swagger/OpenAPI
 `
   },
   library: {
-    name: 'Librairie/Package',
+    nameKey: 'memory.templates.library',
     icon: '\u{1F4E6}',
     content: `# {PROJECT_NAME}
 
@@ -581,17 +581,17 @@ class MemoryEditor extends BasePanel {
         showTemplates = false;
       } else if (isPrivate) {
         emptyTitle = t('memory.noPrivateClaudeMd');
-        const projectName = this._state.currentProject !== null
-          ? projectsState.get().projects[this._state.currentProject]?.name || 'Project'
-          : 'Project';
+        const projectName = (this._state.currentProject !== null
+          ? projectsState.get().projects[this._state.currentProject]?.name
+          : null) || t('memory.defaultProjectName');
         emptyHint = t('memory.createPrivate', { name: escapeHtml(projectName) });
       } else if (isMemoryFile) {
         emptyTitle = t('memory.noMemoryFiles');
         showTemplates = false;
       } else {
         const projectName = isProject && this._state.currentProject !== null
-          ? projectsState.get().projects[this._state.currentProject]?.name || 'Projet'
-          : 'Global';
+          ? projectsState.get().projects[this._state.currentProject]?.name || t('memory.defaultProjectName')
+          : t('memory.globalSection');
         emptyHint = t('memory.createHint', { name: escapeHtml(projectName) });
       }
 
@@ -609,7 +609,7 @@ class MemoryEditor extends BasePanel {
               ${Object.entries(MEMORY_TEMPLATES).map(([key, tpl]) => `
                 <button class="template-card" data-template="${key}">
                   <span class="template-icon">${tpl.icon}</span>
-                  <span class="template-name">${tpl.name}</span>
+                  <span class="template-name">${escapeHtml(t(tpl.nameKey))}</span>
                 </button>
               `).join('')}
             </div>
@@ -775,14 +775,14 @@ class MemoryEditor extends BasePanel {
     const template = MEMORY_TEMPLATES[templateKey];
     if (!template) return;
 
-    let projectName = 'Mon Projet';
+    let projectName = t('memory.defaultProjectName');
     const source = this._state.currentSource;
 
     if ((source === 'project' || source === 'project-private') && this._state.currentProject !== null) {
       const project = projectsState.get().projects[this._state.currentProject];
       if (project) projectName = project.name;
     } else if (source === 'global') {
-      projectName = 'Instructions Globales Claude';
+      projectName = t('memory.globalInstructionsTitle');
     }
 
     const content = template.content.replace(/\{PROJECT_NAME\}/g, projectName);
@@ -935,7 +935,7 @@ class MemoryEditor extends BasePanel {
       <div class="template-option" data-template="${key}">
         <span class="template-icon">${tpl.icon}</span>
         <div class="template-info">
-          <div class="template-name">${tpl.name}</div>
+          <div class="template-name">${escapeHtml(t(tpl.nameKey))}</div>
           <div class="template-preview">${tpl.content.split('\n').slice(0, 3).join(' ').substring(0, 80)}...</div>
         </div>
       </div>

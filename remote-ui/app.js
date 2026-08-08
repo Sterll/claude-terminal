@@ -2009,8 +2009,8 @@ function _renderMessage(m) {
     const bubble = `<div class="chat-msg user${m.failed ? ' failed' : ''}"${m.failed ? ' style="opacity:0.55"' : ''}>${escHtml(m.content)}${mentionHtml}${imgHtml}</div>`;
     if (!m.failed) return bubble;
     // Dead spinners are worse than an error: say it was not sent, and offer the resend.
-    return bubble + `<div class="chat-msg error-msg">Not sent — you were offline.
-      <button class="btn-allow btn-retry-send" data-retry-id="${escHtml(m.retryId || '')}" style="margin-left:8px;padding:4px 12px;border:none;border-radius:6px;font-size:12px;cursor:pointer">Retry</button>
+    return bubble + `<div class="chat-msg error-msg">${escHtml(t('chat.notSentOffline'))}
+      <button class="btn-allow btn-retry-send" data-retry-id="${escHtml(m.retryId || '')}" style="margin-left:8px;padding:4px 12px;border:none;border-radius:6px;font-size:12px;cursor:pointer">${escHtml(t('misc.retry'))}</button>
     </div>`;
   }
 
@@ -2144,7 +2144,7 @@ function _renderInlinePermission(m) {
     </div>
     ${desc ? `<pre class="perm-inline-desc">${escHtml(_truncate(desc, 200))}</pre>` : ''}
     ${resolved
-      ? '<div class="perm-inline-resolved">Resolved</div>'
+      ? `<div class="perm-inline-resolved">${escHtml(t('perm.resolved'))}</div>`
       : `<div class="perm-inline-actions">
           <button class="btn-action btn-allow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> ${t('misc.allow')}</button>
           <button class="btn-action btn-deny"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> ${t('misc.deny')}</button>
@@ -2173,14 +2173,14 @@ function _respondInlinePermission(el, allow) {
       err.style.cssText = 'color:var(--danger);font-size:12px;margin-top:6px';
       el.appendChild(err);
     }
-    err.textContent = 'Not sent — reconnecting. Tap again once connected.';
+    err.textContent = t('chat.notSentReconnecting');
     _flashSendFailure();
     return;
   }
   state.pendingPermissions.delete(requestId);
   el.classList.add('resolved');
   const actionsEl = el.querySelector('.perm-inline-actions');
-  if (actionsEl) actionsEl.innerHTML = `<div class="perm-inline-resolved">${allow ? 'Allowed' : 'Denied'}</div>`;
+  if (actionsEl) actionsEl.innerHTML = `<div class="perm-inline-resolved">${escHtml(allow ? t('perm.allowed') : t('perm.denied'))}</div>`;
 }
 
 // ─── Chat Input ───────────────────────────────────────────────────────────────
@@ -3296,8 +3296,8 @@ function _setupPwaInstallBanner() {
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       _deferredInstallPrompt = e;
-      hint.textContent = 'Add to your home screen';
-      btn.textContent = 'Install';
+      hint.textContent = t('pwa.addHome');
+      btn.textContent = t('pwa.install');
       banner.classList.remove('hidden');
     });
 

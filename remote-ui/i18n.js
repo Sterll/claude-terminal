@@ -95,10 +95,18 @@ const TRANSLATIONS = {
     // Chat
     'chat.imageAttached': '(image jointe)',
     'chat.noFiles': 'Aucun fichier trouvé',
+    'chat.notSentOffline': 'Non envoyé — vous étiez hors ligne.',
+    'chat.notSentReconnecting': 'Non envoyé — reconnexion. Réessayez une fois connecté.',
+
+    // Permissions
+    'perm.resolved': 'Traitée',
+    'perm.allowed': 'Autorisée',
+    'perm.denied': 'Refusée',
 
     // Misc
     'misc.allow': 'Autoriser',
     'misc.deny': 'Refuser',
+    'misc.retry': 'Réessayer',
     'misc.loading': 'Chargement\u2026',
     'misc.disconnectedAdmin': 'Déconnecté par l\'administrateur',
     'misc.tooManyMobile': 'Trop de mobiles connectés',
@@ -196,9 +204,16 @@ const TRANSLATIONS = {
 
     'chat.imageAttached': '(image attached)',
     'chat.noFiles': 'No files found',
+    'chat.notSentOffline': 'Not sent — you were offline.',
+    'chat.notSentReconnecting': 'Not sent — reconnecting. Tap again once connected.',
+
+    'perm.resolved': 'Resolved',
+    'perm.allowed': 'Allowed',
+    'perm.denied': 'Denied',
 
     'misc.allow': 'Allow',
     'misc.deny': 'Deny',
+    'misc.retry': 'Retry',
     'misc.loading': 'Loading\u2026',
     'misc.disconnectedAdmin': 'Disconnected by administrator',
     'misc.tooManyMobile': 'Too many mobile connections',
@@ -294,9 +309,16 @@ const TRANSLATIONS = {
 
     'chat.imageAttached': '(imagen adjunta)',
     'chat.noFiles': 'Ning\u00fan archivo encontrado',
+    'chat.notSentOffline': 'No enviado \u2014 estabas sin conexi\u00f3n.',
+    'chat.notSentReconnecting': 'No enviado \u2014 reconectando. Int\u00e9ntalo de nuevo al conectar.',
+
+    'perm.resolved': 'Resuelta',
+    'perm.allowed': 'Permitida',
+    'perm.denied': 'Rechazada',
 
     'misc.allow': 'Permitir',
     'misc.deny': 'Rechazar',
+    'misc.retry': 'Reintentar',
     'misc.loading': 'Cargando\u2026',
     'misc.disconnectedAdmin': 'Desconectado por el administrador',
     'misc.tooManyMobile': 'Demasiados m\u00f3viles conectados',
