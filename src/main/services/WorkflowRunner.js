@@ -393,24 +393,10 @@ function runSwitchStep(config, vars) {
 
 // ─── Time parser ──────────────────────────────────────────────────────────────
 
+// Shared with wait.node.js, which kept its own copy of this. Both copies
+// carried the same two silent failures — see _registry.parseDuration.
 function parseMs(value) {
-  if (typeof value === 'number') return value;
-  if (typeof value !== 'string') return 60_000;
-  // Tolerate whitespace and an omitted unit, matching wait.node.js. The old
-  // pattern required the unit to touch the number, so a step timeout of "5 s"
-  // fell through to parseInt and became 5 MILLISECONDS; and
-  // `parseInt(value, 10) || 60_000` turned an explicit 0 into a one-minute
-  // wait, because 0 is falsy. This feeds retry delays and step/workflow
-  // timeouts, so both failures were silent and load-bearing.
-  const match = value.trim().match(/^(\d+(?:\.\d+)?)\s*(ms|s|m|h)?$/i);
-  if (!match) {
-    console.warn(`[WorkflowRunner] Unparseable duration "${value}" — falling back to 60s`);
-    return 60_000;
-  }
-  const num  = parseFloat(match[1]);
-  const unit = (match[2] || 'ms').toLowerCase();
-  const multipliers = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 };
-  return Math.round(num * multipliers[unit]);
+  return require('../workflow-nodes/_registry').parseDuration(value, 'WorkflowRunner');
 }
 
 // ─── Main executor ────────────────────────────────────────────────────────────

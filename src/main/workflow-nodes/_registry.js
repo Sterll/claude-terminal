@@ -205,6 +205,43 @@ function normalizeExitCode(err) {
   return { exitCode, timedOut, truncated, killed };
 }
 
+// ── Duration parsing ─────────────────────────────────────────────────────────
+
+const DEFAULT_DURATION_MS = 60_000;
+
+/**
+ * Parse a human duration ("30s", "5 m", "250ms", "2h", "1500") into milliseconds.
+ *
+ * Shared by the `wait` node and by WorkflowRunner (retry delays, step timeouts,
+ * workflow timeouts) — they each kept their own copy, and each copy carried the
+ * same two silent failures:
+ *   - the unit had to touch the number, so "5 s" missed the pattern, fell
+ *     through to parseInt and became 5 MILLISECONDS instead of 5 seconds;
+ *   - `parseInt(value, 10) || 60_000` treated an explicit 0 as unset, because
+ *     0 is falsy, turning "wait 0" into a one-minute stall.
+ *
+ * A bare number is milliseconds. Anything unparseable warns and falls back,
+ * rather than silently becoming a minute.
+ *
+ * @param {string|number} value
+ * @param {string} [label] prefix for the warning, to say who was parsing
+ * @returns {number} milliseconds, never negative
+ */
+function parseDuration(value, label = 'duration') {
+  if (typeof value === 'number') return Math.max(0, value);
+  if (typeof value !== 'string') return DEFAULT_DURATION_MS;
+
+  const match = value.trim().match(/^(\d+(?:\.\d+)?)\s*(ms|s|m|h)?$/i);
+  if (!match) {
+    console.warn(`[${label}] Unparseable duration "${value}" — falling back to 60s`);
+    return DEFAULT_DURATION_MS;
+  }
+  const num  = parseFloat(match[1]);
+  const unit = (match[2] || 'ms').toLowerCase();
+  const multipliers = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 };
+  return Math.max(0, Math.round(num * multipliers[unit]));
+}
+
 // ── Sandboxed user code ──────────────────────────────────────────────────────
 
 const vm = require('vm');
@@ -305,4 +342,5 @@ module.exports = {
   loadRegistry, get, getAll, has, getTypes, esc,
   resolveVars, assertSafeUrl, normalizeExitCode, resolveProjectPath,
   compileSandboxed, varsToPlainObject, SANDBOX_TIMEOUT_MS,
+  parseDuration, DEFAULT_DURATION_MS,
 };
