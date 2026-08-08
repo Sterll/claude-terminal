@@ -73,11 +73,34 @@ function _registerCloudListeners(api) {
 // ── MCP project event handlers ───────────────────────────────────────────────
 
 function _registerMcpProjectListeners(api) {
-  if (!api?.project?.onQuickActionChanged) return;
-  api.project.onQuickActionChanged(async () => {
-    const { loadProjects } = require('./state/projects.state');
-    await loadProjects();
-  });
+  if (api?.project?.onQuickActionChanged) {
+    api.project.onQuickActionChanged(async () => {
+      const { loadProjects } = require('./state/projects.state');
+      await loadProjects();
+    });
+  }
+
+  // The main process has always forwarded the MCP `quickaction_run` tool to the
+  // 'quickaction:run' channel, and preload has always exposed the listener —
+  // but nothing subscribed, so the tool sent its event into the void and the
+  // action never ran. This is the missing end of that wire.
+  if (api?.project?.onQuickActionRun) {
+    api.project.onQuickActionRun(async ({ projectId, actionId } = {}) => {
+      if (!projectId || !actionId) return;
+      try {
+        const { getProject } = require('./state/projects.state');
+        const project = getProject(projectId);
+        if (!project) {
+          console.warn(`[MCP] quickaction:run for unknown project "${projectId}"`);
+          return;
+        }
+        const { executeQuickAction } = require('./ui/components/QuickActions');
+        await executeQuickAction(project, actionId);
+      } catch (e) {
+        console.error('[MCP] quickaction:run failed:', e && e.message);
+      }
+    });
+  }
 }
 
 // Telemetry consent modal is handled in renderer.js (main entry point)
