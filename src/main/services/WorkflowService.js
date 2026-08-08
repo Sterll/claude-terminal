@@ -180,15 +180,29 @@ class WorkflowService {
    * Poll for MCP trigger/cancel request files.
    * The MCP process writes JSON files in workflows/triggers/ since it
    * cannot call WorkflowService directly (separate process).
+   *
+   * All filesystem access here is async (fs.promises). The tick runs on the same
+   * thread that serves every IPC handler and drives the window, so the previous
+   * existsSync/readdirSync/renameSync/readFileSync pairs stalled the event loop
+   * ~28.8k times a day for a directory that is empty virtually all the time.
+   *
+   * Concurrency: the tick body was already async (it awaits testNode / loadWorkflows),
+   * so two ticks could already overlap before this change. The rename-to-'.processing'
+   * claim is what makes that safe — the loser of the race gets ENOENT and skips the
+   * file — and fs.promises.rename is the same single atomic syscall as renameSync,
+   * so that guarantee is unchanged.
    */
   _startMcpTriggerPoll() {
     const triggersDir = path.join(require('os').homedir(), '.claude-terminal', 'workflows', 'triggers');
+    const fsp = fs.promises;
     this._mcpPollTimer = setInterval(async () => {
       try {
-        if (!fs.existsSync(triggersDir)) return;
+        // No existsSync() pre-check: readdir throws ENOENT when the directory was
+        // never created, and the outer catch swallows it exactly as before — same
+        // observable behaviour, one syscall instead of two.
         // Only pick up freshly-written request files; '.processing' files are ones a
         // previous tick claimed but hasn't finished (or crashed mid-handling).
-        const files = fs.readdirSync(triggersDir).filter(f => f.endsWith('.json'));
+        const files = (await fsp.readdir(triggersDir)).filter(f => f.endsWith('.json'));
         for (const file of files) {
           const filePath = path.join(triggersDir, file);
           // Claim the request atomically by renaming to '.processing' BEFORE handling.
@@ -197,13 +211,13 @@ class WorkflowService {
           // survives as a '.processing' file for post-mortem/inspection.
           const procPath = filePath + '.processing';
           try {
-            fs.renameSync(filePath, procPath);
+            await fsp.rename(filePath, procPath);
           } catch (_) {
             // Someone else claimed it (or it vanished) — skip.
             continue;
           }
           try {
-            const data = JSON.parse(fs.readFileSync(procPath, 'utf8'));
+            const data = JSON.parse(await fsp.readFile(procPath, 'utf8'));
 
             if (data.action === 'cancel' && data.runId) {
               this.cancel(data.runId);
@@ -250,12 +264,12 @@ class WorkflowService {
               console.log(`[WorkflowService] MCP trigger: ${data.workflowId}`);
             }
             // Handled successfully → remove the claimed request.
-            try { fs.unlinkSync(procPath); } catch (_) {}
+            try { await fsp.unlink(procPath); } catch (_) {}
           } catch (e) {
             // Malformed/unreadable request — drop the claimed file so it doesn't
             // linger and re-trigger. (A genuine crash mid-handling still leaves the
             // '.processing' file, which is never re-picked-up by the poll.)
-            try { fs.unlinkSync(procPath); } catch (_) {}
+            try { await fsp.unlink(procPath); } catch (_) {}
           }
         }
       } catch (_) {}
