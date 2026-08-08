@@ -2685,7 +2685,12 @@
       "chatMessagePatternHint": "Optional text / regex to match. Leave empty to match every message.",
       "chatMessageModeLabel": "Match mode",
       "chatMessageModeContains": "Contains text",
-      "chatMessageModeRegex": "Regular expression"
+      "chatMessageModeRegex": "Regular expression",
+      "onWorkflowStatusLabel": "Source status",
+      "onWorkflowStatusHint": "Only run when the source workflow finished this way.",
+      "onWorkflowStatusAny": "Any outcome",
+      "onWorkflowStatusSuccess": "Success only",
+      "onWorkflowStatusFailed": "Failure only"
     },
     "loop": {
       "sourceLabel": "Iteration source",

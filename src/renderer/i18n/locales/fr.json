@@ -2685,7 +2685,12 @@
       "chatMessagePatternHint": "Texte ou regex à faire correspondre (optionnel).",
       "chatMessageModeLabel": "Mode de correspondance",
       "chatMessageModeContains": "Contient le texte",
-      "chatMessageModeRegex": "Expression régulière"
+      "chatMessageModeRegex": "Expression régulière",
+      "onWorkflowStatusLabel": "Statut de la source",
+      "onWorkflowStatusHint": "Ne s'exécute que si le workflow source s'est terminé ainsi.",
+      "onWorkflowStatusAny": "Tous les cas",
+      "onWorkflowStatusSuccess": "Succès uniquement",
+      "onWorkflowStatusFailed": "Échec uniquement"
     },
     "loop": {
       "sourceLabel": "Source d'itération",

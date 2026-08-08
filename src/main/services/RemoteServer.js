@@ -788,7 +788,17 @@ async function _handleClientMessage(ws, token, raw) {
           // Optional per-workflow secret. When set, the caller must present the
           // matching value (via payload.secret, an explicit `secret`, or an
           // x-webhook-secret header). Compared in constant time.
+          //
+          // NOTE: nothing currently WRITES trigger.webhookSecret — neither
+          // serializeToWorkflow() nor any UI field nor WorkflowStorage — so this
+          // check is inert and webhook:trigger is protected only by the session
+          // token gate in EXTERNAL_PRIVILEGED_TYPES. Wiring a real secret needs
+          // a UI field plus agreement with the external relay on how it is
+          // forwarded; until then, say so out loud rather than looking secured.
           const expectedSecret = wf.trigger.webhookSecret;
+          if (!expectedSecret) {
+            console.warn(`[Remote] webhook:trigger: no per-workflow secret set for ${workflowId} — relying on session-token auth only`);
+          }
           if (expectedSecret) {
             const provided =
               secret ||

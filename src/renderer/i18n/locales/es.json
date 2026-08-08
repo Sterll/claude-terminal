@@ -2682,7 +2682,12 @@
       "chatMessagePatternHint": "Texto o regex a buscar (opcional).",
       "chatMessageModeLabel": "Modo de coincidencia",
       "chatMessageModeContains": "Contiene texto",
-      "chatMessageModeRegex": "Expresión regular"
+      "chatMessageModeRegex": "Expresión regular",
+      "onWorkflowStatusLabel": "Estado del origen",
+      "onWorkflowStatusHint": "Solo se ejecuta si el workflow de origen terminó así.",
+      "onWorkflowStatusAny": "Cualquier resultado",
+      "onWorkflowStatusSuccess": "Solo éxito",
+      "onWorkflowStatusFailed": "Solo fallo"
     },
     "loop": {
       "sourceLabel": "Fuente de iteración",
