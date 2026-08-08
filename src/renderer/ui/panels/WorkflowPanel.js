@@ -12,6 +12,8 @@ const { createChatView } = require('../components/ChatView');
 const { showToast } = require('../components/Toast');
 const nodeRegistry = require('../../services/NodeRegistry');
 const fieldRegistry = require('../../workflow-fields/_registry');
+const TasksView = require('./TasksView');
+const { isSimpleTask } = require('../../../shared/simple-task');
 
 const {
   // Constants
@@ -42,9 +44,32 @@ let ctx = null;
 const state = {
   workflows: [],
   runs: [],
-  activeTab: 'workflows',  // 'workflows' | 'runs' | 'hub'
+  // 'tasks' is the default: simple mode is the front door, the graph editor is
+  // the escape hatch behind it.
+  activeTab: 'tasks',  // 'tasks' | 'workflows' | 'runs' | 'hub'
   viewingRunId: null,       // track which run detail is open
 };
+
+/** Dependencies handed to TasksView so it never imports this panel back. */
+function tasksDeps() {
+  return {
+    state,
+    api,
+    toast,
+    confirm: showConfirm,
+    refresh: async () => { await refreshData(); renderContent(); },
+    trigger: triggerWorkflow,
+    toggle: toggleWorkflow,
+    confirmDelete: confirmDeleteWorkflow,
+    openEditor,
+    openHistory: (id) => {
+      state.activeTab = 'runs';
+      renderPanel();
+      renderContent();
+      openDetail(id);
+    },
+  };
+}
 
 const _agentLogs = new Map(); // stepId → [{ type, text, ts }]
 const MAX_LOG_ENTRIES = 50;
@@ -570,11 +595,14 @@ function renderPanel() {
     <div class="wf-panel">
       <div class="wf-topbar">
         <div class="wf-topbar-tabs">
-          <button class="wf-tab active" data-wftab="workflows">
-            ${t('workflow.workflowsTab')} <span class="wf-badge">3</span>
+          <button class="wf-tab ${state.activeTab === 'tasks' ? 'active' : ''}" data-wftab="tasks">
+            ${t('automation.tab')} <span class="wf-badge" data-badge="tasks">0</span>
           </button>
-          <button class="wf-tab" data-wftab="runs">
-            ${t('workflow.runsTab')} <span class="wf-badge">4</span>
+          <button class="wf-tab ${state.activeTab === 'workflows' ? 'active' : ''}" data-wftab="workflows">
+            ${t('workflow.workflowsTab')} <span class="wf-badge" data-badge="workflows">0</span>
+          </button>
+          <button class="wf-tab ${state.activeTab === 'runs' ? 'active' : ''}" data-wftab="runs">
+            ${t('workflow.runsTab')} <span class="wf-badge" data-badge="runs">0</span>
           </button>
           <button class="wf-tab wf-tab--hub" id="wf-tab-hub">
             <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
@@ -590,7 +618,12 @@ function renderPanel() {
     </div>
   `;
 
-  el.querySelector('#wf-btn-new').addEventListener('click', () => openCreateChoiceModal());
+  // "New" is contextual: on the Tasks tab it opens the simple sheet, everywhere
+  // else the blank-vs-AI graph choice.
+  el.querySelector('#wf-btn-new').addEventListener('click', () => {
+    if (state.activeTab === 'tasks') TasksView.openTaskModal(tasksDeps(), null);
+    else openCreateChoiceModal();
+  });
 
   // Hub tab opens modal instead of switching content
   el.querySelector('#wf-tab-hub').addEventListener('click', () => {
@@ -612,21 +645,36 @@ function renderContent() {
   const el = document.getElementById('wf-content');
   if (!el) return;
   _activeEditorWorkflowId = null;
-  // Update badge counts
+
+  // Tasks and advanced workflows are disjoint views over the same list, so each
+  // tab counts only what it actually shows.
+  const tasks    = state.workflows.filter(isSimpleTask);
+  const advanced = state.workflows.filter(w => !isSimpleTask(w));
+
   const panel = document.getElementById('workflow-panel');
   if (panel) {
-    const badges = panel.querySelectorAll('.wf-badge');
-    if (badges[0]) badges[0].textContent = state.workflows.length;
-    if (badges[1]) badges[1].textContent = state.runs.length;
+    const setBadge = (name, value) => {
+      const badge = panel.querySelector(`.wf-badge[data-badge="${name}"]`);
+      if (badge) badge.textContent = value;
+    };
+    setBadge('tasks', tasks.length);
+    setBadge('workflows', advanced.length);
+    setBadge('runs', state.runs.length);
   }
-  if (state.activeTab === 'workflows') renderWorkflowList(el);
+
+  if (state.activeTab === 'tasks') TasksView.render(el, tasksDeps());
+  else if (state.activeTab === 'workflows') renderWorkflowList(el, advanced);
   else if (state.activeTab === 'runs') renderRunHistory(el);
 }
 
 /* ─── Workflow list ────────────────────────────────────────────────────────── */
 
-function renderWorkflowList(el) {
-  if (!state.workflows.length) {
+/**
+ * @param {HTMLElement} el
+ * @param {Array} workflows  advanced workflows only — tasks live in TasksView
+ */
+function renderWorkflowList(el, workflows = state.workflows) {
+  if (!workflows.length) {
     el.innerHTML = `
       <div class="wf-empty">
         <div class="wf-empty-glyph">${svgWorkflow(36)}</div>
@@ -643,7 +691,7 @@ function renderWorkflowList(el) {
   }
 
   // Sort: favorites first, then by last run date
-  const sorted = [...state.workflows].sort((a, b) => {
+  const sorted = [...workflows].sort((a, b) => {
     if (a.favorite && !b.favorite) return -1;
     if (!a.favorite && b.favorite) return 1;
     const aRun = state.runs.find(r => r.workflowId === a.id);

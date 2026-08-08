@@ -24,6 +24,7 @@ const storage   = require('./WorkflowStorage');
 const WorkflowRunner    = require('./WorkflowRunner');
 const WorkflowScheduler = require('./WorkflowScheduler');
 const { getCurrentBranch, getRecentCommits } = require('../utils/git');
+const { isSimpleTask, isOnce } = require('../../shared/simple-task');
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -818,6 +819,17 @@ class WorkflowService {
         message: result.error || 'An error occurred',
         type:    'error',
       });
+    }
+
+    // One-shot tasks (simple mode, schedule.kind === 'once') disable themselves
+    // after they succeed. Their cron expression pins a day-of-month + month, so
+    // without this they would fire again a year later.
+    if (status === RUN_STATUS.SUCCESS && isSimpleTask(workflow) && isOnce(workflow.simple)) {
+      try {
+        await this.setEnabled(workflow.id, false);
+      } catch (e) {
+        console.error(`[WorkflowService] Failed to disable one-shot task ${workflow.id}:`, e.message);
+      }
     }
   }
 

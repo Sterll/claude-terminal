@@ -3587,5 +3587,130 @@
     "noWorkflows": "No workflows found",
     "rateLimitWarning": "GitHub API: {remaining} calls remaining (resets in {minutes}min)",
     "rateLimitExhausted": "GitHub API rate limit reached. Resets at {time}."
+  },
+  "automation": {
+    "tab": "Automations",
+    "card": {
+      "toggleAria": "Enable {name}",
+      "paused": "Paused",
+      "runNow": "Run now",
+      "more": "More actions"
+    },
+    "empty": {
+      "title": "Automate a recurring task",
+      "sub": "Describe what Claude should do and when. No graph, no cron syntax.",
+      "blank": "Start from scratch"
+    },
+    "nextRun": {
+      "today": "Today at {time}",
+      "tomorrow": "Tomorrow at {time}",
+      "on": "{day} at {time}"
+    },
+    "schedule": {
+      "kind": {
+        "once": "Once",
+        "hourly": "Hourly",
+        "daily": "Daily",
+        "weekly": "Weekly",
+        "monthly": "Monthly",
+        "custom": "Custom"
+      },
+      "desc": {
+        "once": "Once on {at}",
+        "hourly": "Every hour at :{minute}",
+        "daily": "Every day at {time}",
+        "weekly": "Every {weekday} at {time}",
+        "monthly": "Day {day} of each month at {time}",
+        "custom": "Cron: {cron}",
+        "none": "No schedule"
+      }
+    },
+    "form": {
+      "createTitle": "New automation",
+      "editTitle": "Edit automation",
+      "nameLabel": "Name",
+      "namePlaceholder": "Daily commit summary",
+      "promptLabel": "What should Claude do?",
+      "promptHint": "Write it exactly as you would type it in the chat.",
+      "promptPlaceholder": "Summarize yesterday's commits and flag anything that looks risky.",
+      "whenLabel": "When?",
+      "onceAt": "On",
+      "hourlyMinute": "At minute",
+      "hourlyHint": "Runs every hour, at the minute you picked.",
+      "at": "At",
+      "onDay": "On",
+      "onDayOfMonth": "On day",
+      "monthlyHint": "Capped at day {max} so the automation never skips a short month.",
+      "cronExpr": "Cron expression",
+      "cronHint": "Five fields: minute hour day-of-month month day-of-week.",
+      "projectLabel": "Project",
+      "projectHint": "Claude runs in this project's folder.",
+      "noProject": "No project (home folder)",
+      "notifyLabel": "Notifications",
+      "notifyDesktop": "Notify me when it finishes",
+      "notifyResult": "Include the result in the notification",
+      "advanced": "Advanced",
+      "model": "Model",
+      "effort": "Effort",
+      "discord": "Discord webhook",
+      "create": "Create",
+      "previewNext": "Next run: {when}",
+      "previewInvalid": "This schedule is not valid yet.",
+      "previewNever": "This schedule never fires."
+    },
+    "menu": {
+      "edit": "Edit",
+      "runNow": "Run now",
+      "history": "View history",
+      "convert": "Convert to advanced workflow",
+      "delete": "Delete"
+    },
+    "convert": {
+      "title": "Convert to advanced workflow",
+      "message": "\"{name}\" becomes an editable node graph. This cannot be undone: the simple form will no longer be available for it.",
+      "confirm": "Convert"
+    },
+    "error": {
+      "nameRequired": "Give the automation a name.",
+      "promptRequired": "Describe what Claude should do.",
+      "dateRequired": "Pick a date and time.",
+      "scheduleInvalid": "This schedule is not valid."
+    },
+    "toast": {
+      "created": "Automation created",
+      "updated": "Automation updated"
+    },
+    "preset": {
+      "dailyCommits": {
+        "title": "Daily commit summary",
+        "desc": "Every morning at 09:00",
+        "prompt": "Summarize the commits made in this repository yesterday. Group them by theme and flag anything that looks risky or unfinished."
+      },
+      "openPrs": {
+        "title": "Open pull requests",
+        "desc": "Every day at 18:00",
+        "prompt": "List the open pull requests on this repository. For each one, say how long it has been open and what is blocking it."
+      },
+      "todoScan": {
+        "title": "TODO sweep",
+        "desc": "Every Monday at 10:00",
+        "prompt": "Scan the codebase for TODO, FIXME and HACK comments. Group them by file and tell me which ones look stale or urgent."
+      },
+      "weeklyTime": {
+        "title": "Weekly time report",
+        "desc": "Every Friday at 17:00",
+        "prompt": "Summarize how much time I spent on this project this week and what I worked on."
+      },
+      "depAudit": {
+        "title": "Dependency audit",
+        "desc": "The 1st of each month",
+        "prompt": "Check this project's dependencies for outdated or vulnerable packages. List what should be upgraded and how risky each upgrade is."
+      },
+      "testHealth": {
+        "title": "Test health check",
+        "desc": "Every Wednesday at 14:00",
+        "prompt": "Run the test suite and report failures, flaky tests and any drop in coverage."
+      }
+    }
   }
 }

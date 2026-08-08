@@ -3587,5 +3587,130 @@
     "noWorkflows": "Aucun workflow trouvé",
     "rateLimitWarning": "API GitHub : {remaining} appels restants (reset dans {minutes}min)",
     "rateLimitExhausted": "Limite API GitHub atteinte. Reset à {time}."
+  },
+  "automation": {
+    "tab": "Automatisations",
+    "card": {
+      "toggleAria": "Activer {name}",
+      "paused": "En pause",
+      "runNow": "Lancer maintenant",
+      "more": "Plus d'actions"
+    },
+    "empty": {
+      "title": "Automatisez une tâche récurrente",
+      "sub": "Décrivez ce que Claude doit faire et quand. Pas de graphe, pas de syntaxe cron.",
+      "blank": "Partir de zéro"
+    },
+    "nextRun": {
+      "today": "Aujourd'hui à {time}",
+      "tomorrow": "Demain à {time}",
+      "on": "{day} à {time}"
+    },
+    "schedule": {
+      "kind": {
+        "once": "Une fois",
+        "hourly": "Chaque heure",
+        "daily": "Chaque jour",
+        "weekly": "Chaque semaine",
+        "monthly": "Chaque mois",
+        "custom": "Personnalisé"
+      },
+      "desc": {
+        "once": "Une fois le {at}",
+        "hourly": "Toutes les heures à :{minute}",
+        "daily": "Chaque jour à {time}",
+        "weekly": "Chaque {weekday} à {time}",
+        "monthly": "Le {day} de chaque mois à {time}",
+        "custom": "Cron : {cron}",
+        "none": "Aucune planification"
+      }
+    },
+    "form": {
+      "createTitle": "Nouvelle automatisation",
+      "editTitle": "Modifier l'automatisation",
+      "nameLabel": "Nom",
+      "namePlaceholder": "Résumé quotidien des commits",
+      "promptLabel": "Que doit faire Claude ?",
+      "promptHint": "Écrivez-le exactement comme dans le chat.",
+      "promptPlaceholder": "Résume les commits d'hier et signale ce qui semble risqué.",
+      "whenLabel": "Quand ?",
+      "onceAt": "Le",
+      "hourlyMinute": "À la minute",
+      "hourlyHint": "S'exécute toutes les heures, à la minute choisie.",
+      "at": "À",
+      "onDay": "Le",
+      "onDayOfMonth": "Le jour",
+      "monthlyHint": "Limité au jour {max} pour que l'automatisation ne saute jamais un mois court.",
+      "cronExpr": "Expression cron",
+      "cronHint": "Cinq champs : minute heure jour-du-mois mois jour-de-semaine.",
+      "projectLabel": "Projet",
+      "projectHint": "Claude travaille dans le dossier de ce projet.",
+      "noProject": "Aucun projet (dossier personnel)",
+      "notifyLabel": "Notifications",
+      "notifyDesktop": "Me notifier quand c'est terminé",
+      "notifyResult": "Inclure le résultat dans la notification",
+      "advanced": "Avancé",
+      "model": "Modèle",
+      "effort": "Effort",
+      "discord": "Webhook Discord",
+      "create": "Créer",
+      "previewNext": "Prochaine exécution : {when}",
+      "previewInvalid": "Cette planification n'est pas encore valide.",
+      "previewNever": "Cette planification ne se déclenche jamais."
+    },
+    "menu": {
+      "edit": "Modifier",
+      "runNow": "Lancer maintenant",
+      "history": "Voir l'historique",
+      "convert": "Convertir en workflow avancé",
+      "delete": "Supprimer"
+    },
+    "convert": {
+      "title": "Convertir en workflow avancé",
+      "message": "« {name} » devient un graphe de nœuds éditable. C'est irréversible : le formulaire simple ne sera plus disponible pour cette automatisation.",
+      "confirm": "Convertir"
+    },
+    "error": {
+      "nameRequired": "Donnez un nom à l'automatisation.",
+      "promptRequired": "Décrivez ce que Claude doit faire.",
+      "dateRequired": "Choisissez une date et une heure.",
+      "scheduleInvalid": "Cette planification n'est pas valide."
+    },
+    "toast": {
+      "created": "Automatisation créée",
+      "updated": "Automatisation mise à jour"
+    },
+    "preset": {
+      "dailyCommits": {
+        "title": "Résumé quotidien des commits",
+        "desc": "Chaque matin à 09:00",
+        "prompt": "Résume les commits faits hier dans ce dépôt. Regroupe-les par thème et signale ce qui semble risqué ou inachevé."
+      },
+      "openPrs": {
+        "title": "Pull requests ouvertes",
+        "desc": "Chaque jour à 18:00",
+        "prompt": "Liste les pull requests ouvertes sur ce dépôt. Pour chacune, indique depuis combien de temps elle est ouverte et ce qui la bloque."
+      },
+      "todoScan": {
+        "title": "Balayage des TODO",
+        "desc": "Chaque lundi à 10:00",
+        "prompt": "Parcours le code à la recherche des commentaires TODO, FIXME et HACK. Regroupe-les par fichier et dis-moi lesquels semblent obsolètes ou urgents."
+      },
+      "weeklyTime": {
+        "title": "Rapport de temps hebdomadaire",
+        "desc": "Chaque vendredi à 17:00",
+        "prompt": "Résume le temps passé sur ce projet cette semaine et ce sur quoi j'ai travaillé."
+      },
+      "depAudit": {
+        "title": "Audit des dépendances",
+        "desc": "Le 1er de chaque mois",
+        "prompt": "Vérifie les dépendances de ce projet : paquets obsolètes ou vulnérables. Liste ce qui devrait être mis à jour et le risque de chaque montée de version."
+      },
+      "testHealth": {
+        "title": "Santé des tests",
+        "desc": "Chaque mercredi à 14:00",
+        "prompt": "Lance la suite de tests et rapporte les échecs, les tests instables et toute baisse de couverture."
+      }
+    }
   }
 }
