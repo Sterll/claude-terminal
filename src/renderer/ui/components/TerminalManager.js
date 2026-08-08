@@ -1595,7 +1595,7 @@ class TerminalManager extends BaseComponent {
     ${worktreeIconHtml}
     <span class="tab-name">${escapeHtml(tabName)}</span>
     ${modeToggleHtml}
-    <button class="tab-close"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>`;
+    <button class="tab-close" aria-label="${escapeHtml(t('common.close'))}"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>`;
     tabsContainer.appendChild(tab);
 
     const container = document.getElementById('terminals-container');
@@ -1883,7 +1883,7 @@ class TerminalManager extends BaseComponent {
     tab.innerHTML = `
     <span class="status-dot ${dotClass}"></span>
     <span class="tab-name">${escapeHtml(`${tabIcon} ${project.name}`)}</span>
-    <button class="tab-close"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>`;
+    <button class="tab-close" aria-label="${escapeHtml(t('common.close'))}"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>`;
     tabsContainer.appendChild(tab);
 
     const container = document.getElementById('terminals-container');
@@ -2823,7 +2823,7 @@ class TerminalManager extends BaseComponent {
     tab.innerHTML = `
     <span class="status-dot"></span>
     <span class="tab-name">${escapeHtml(sessionName || t('terminals.resuming'))}</span>
-    <button class="tab-close"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>`;
+    <button class="tab-close" aria-label="${escapeHtml(t('common.close'))}"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>`;
     tabsContainer.appendChild(tab);
 
     const container = document.getElementById('terminals-container');
@@ -2977,7 +2977,7 @@ class TerminalManager extends BaseComponent {
     tab.innerHTML = `
     <span class="status-dot"></span>
     <span class="tab-name">${escapeHtml(`🐛 ${t('terminals.debug')}`)}</span>
-    <button class="tab-close"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>`;
+    <button class="tab-close" aria-label="${escapeHtml(t('common.close'))}"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>`;
     tabsContainer.appendChild(tab);
 
     const container = document.getElementById('terminals-container');
@@ -3155,7 +3155,7 @@ class TerminalManager extends BaseComponent {
     tab.innerHTML = `
     <span class="file-tab-icon">${fileIcon}</span>
     <span class="tab-name">${escapeHtml(fileName)}</span>
-    <button class="tab-close"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>`;
+    <button class="tab-close" aria-label="${escapeHtml(t('common.close'))}"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>`;
     tabsContainer.appendChild(tab);
 
     const container = document.getElementById('terminals-container');
@@ -3644,7 +3644,7 @@ class TerminalManager extends BaseComponent {
     ${isCloud ? '' : `<button class="tab-mode-toggle" title="${escapeHtml(t('chat.switchToTerminal'))}">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v12zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"/></svg>
     </button>`}
-    <button class="tab-close"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>`;
+    <button class="tab-close" aria-label="${escapeHtml(t('common.close'))}"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>`;
     tabsContainer.appendChild(tab);
 
     const container = document.getElementById('terminals-container');

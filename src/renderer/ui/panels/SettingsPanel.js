@@ -158,6 +158,33 @@ class SettingsPanel extends BasePanel {
     this._ctx = options.ctx || null;
     /** @type {Function[]} cleanup functions for panel teardown */
     this._cleanups = [];
+    /** @type {number} side effects (startup registration, hooks) still in flight */
+    this._sideEffectsPending = 0;
+    /** @type {boolean} a disk flush succeeded while side effects were still running */
+    this._deferredSaveSuccess = false;
+    /** @type {boolean} a side effect failed — suppress the "settings saved" toast */
+    this._sideEffectFailed = false;
+  }
+
+  // ── Save feedback helpers ──
+
+  /**
+   * Show the deferred "settings saved" toast once every side effect settled.
+   * Nothing is shown when a side effect failed: the failure already surfaced
+   * its own error toast, and a green "saved" on top of it would be a lie.
+   */
+  _flushDeferredSaveToast() {
+    if (this._sideEffectsPending > 0) return;
+    if (!this._deferredSaveSuccess) return;
+
+    this._deferredSaveSuccess = false;
+    // `_sideEffectFailed` is intentionally NOT cleared here: reverting a failed
+    // toggle writes settings.json again, and that follow-up flush must stay
+    // silent too. It is reset when the next save attempt starts.
+    if (this._sideEffectFailed) return;
+
+    const { showSuccess } = require('../components/Toast');
+    showSuccess(t('settings.saved'), 2000);
   }
 
   // ── Cleanup helpers ──
@@ -1702,13 +1729,16 @@ class SettingsPanel extends BasePanel {
     // Issue 1: subscribe to save flush for toast notification
     const { onSaveFlush } = require('../../state/settings.state');
     const unsubFlush = onSaveFlush(({ success, error }) => {
-      if (success) {
-        const { showSuccess } = require('../components/Toast');
-        showSuccess(t('settings.saved'), 2000);
-      } else {
+      if (!success) {
         const { showError } = require('../components/Toast');
         showError(t('settings.saveError'), 4000);
+        return;
       }
+      // The JSON hit the disk, but toggles with side effects (launch at
+      // startup, hooks) may still be in flight or may already have failed.
+      // Never claim success until they settle.
+      this._deferredSaveSuccess = true;
+      this._flushDeferredSaveToast();
     });
     this._cleanups.push(unsubFlush);
 
@@ -1897,30 +1927,63 @@ class SettingsPanel extends BasePanel {
         self._ctx.TerminalManager.updateAllTerminalsTheme(newTerminalTheme);
       }
 
-      const launchAtStartupToggle = document.getElementById('launch-at-startup-toggle');
-      if (launchAtStartupToggle) {
-        try {
-          await self.api.app.setLaunchAtStartup(launchAtStartupToggle.checked);
-        } catch (e) {
-          console.error('Error setting launch at startup:', e);
-        }
-      }
+      // Toggles below have side effects outside settings.json (OS login item,
+      // ~/.claude/settings.json). Hold back the "settings saved" toast until
+      // they settle so a failure is never reported as a success.
+      self._sideEffectFailed = false;
+      self._sideEffectsPending++;
+      try {
+        const { showError } = require('../components/Toast');
 
-      if (newHooksEnabled !== settings.hooksEnabled) {
-        try {
-          if (newHooksEnabled) {
-            await self.api.hooks.install();
-          } else {
-            await self.api.hooks.remove();
+        const launchAtStartupToggle = document.getElementById('launch-at-startup-toggle');
+        if (launchAtStartupToggle) {
+          const requestedLaunchAtStartup = launchAtStartupToggle.checked;
+          try {
+            await self.api.app.setLaunchAtStartup(requestedLaunchAtStartup);
+          } catch (e) {
+            console.error('Error setting launch at startup:', e);
+            self._sideEffectFailed = true;
+            // The OS registration did not happen — put the toggle back so it
+            // does not advertise a state the system is not in.
+            launchAtStartupToggle.checked = !requestedLaunchAtStartup;
+            showError(t('settings.launchAtStartupError'), 5000);
           }
-        } catch (e) {
-          console.error('Error toggling hooks:', e);
         }
-        const { switchProvider } = require('../../../renderer/events');
-        switchProvider(newHooksEnabled ? 'hooks' : 'scraping');
-      }
 
-      // Toast is now triggered by onSaveFlush callback (issue 1) — no premature toast here
+        if (newHooksEnabled !== settings.hooksEnabled) {
+          let hooksApplied = false;
+          try {
+            const result = newHooksEnabled
+              ? await self.api.hooks.install()
+              : await self.api.hooks.remove();
+            if (result && result.success === false) {
+              throw new Error(result.error || t('common.errorOccurred'));
+            }
+            hooksApplied = true;
+          } catch (e) {
+            console.error('Error toggling hooks:', e);
+            self._sideEffectFailed = true;
+            // Hooks were never written: revert the toggle and the persisted
+            // flag, and leave the event provider alone. Switching it here
+            // would point the event bus at a pipeline that does not exist.
+            const hooksToggleEl = document.getElementById('hooks-enabled-toggle');
+            if (hooksToggleEl) hooksToggleEl.checked = settings.hooksEnabled;
+            self._ctx.settingsState.set({ ...self._ctx.settingsState.get(), hooksEnabled: settings.hooksEnabled });
+            self._ctx.saveSettings();
+            showError(e.message || t('settings.hooks.toggleError'), 5000);
+          }
+
+          // Only swap the event provider once the hooks really changed on disk.
+          if (hooksApplied) {
+            const { switchProvider } = require('../../../renderer/events');
+            switchProvider(newHooksEnabled ? 'hooks' : 'scraping');
+          }
+        }
+      } finally {
+        self._sideEffectsPending--;
+        // Toast is owned by onSaveFlush (issue 1) + this flush — no premature toast here
+        self._flushDeferredSaveToast();
+      }
     };
 
     const autoSave = () => saveSettingsHandler();
@@ -2094,11 +2157,23 @@ class SettingsPanel extends BasePanel {
       if (!btn) return;
       const action = btn.dataset.action;
       const id = btn.dataset.id;
+      const { showError } = require('../components/Toast');
       if (action === 'switch') {
         btn.disabled = true;
-        const r = await this.api.accounts.switch(id);
-        if (!r.success) { alert(r.error || 'Switch failed'); btn.disabled = false; return; }
-        await renderList();
+        try {
+          const r = await this.api.accounts.switch(id);
+          if (!r?.success) {
+            showError(r?.error || t('accounts.switchError'), 5000);
+            return;
+          }
+          await renderList();
+        } catch (err) {
+          showError(err?.message || t('accounts.switchError'), 5000);
+        } finally {
+          // renderList() rebuilds the row, but an IPC rejection leaves this
+          // very button in the DOM — always give it back.
+          btn.disabled = false;
+        }
       } else if (action === 'rename') {
         const { showPrompt } = require('../components/Modal');
         const newName = await showPrompt({
@@ -2106,9 +2181,16 @@ class SettingsPanel extends BasePanel {
           defaultValue: btn.closest('.account-row')?.querySelector('.account-row-name')?.textContent || ''
         });
         if (!newName) return;
-        const r = await this.api.accounts.rename(id, newName);
-        if (!r.success) { alert(r.error || 'Rename failed'); return; }
-        await renderList();
+        try {
+          const r = await this.api.accounts.rename(id, newName);
+          if (!r?.success) {
+            showError(r?.error || t('accounts.renameError'), 5000);
+            return;
+          }
+          await renderList();
+        } catch (err) {
+          showError(err?.message || t('accounts.renameError'), 5000);
+        }
       } else if (action === 'remove') {
         const { showConfirm } = require('../components/Modal');
         const ok = await showConfirm({
@@ -2116,9 +2198,16 @@ class SettingsPanel extends BasePanel {
           message: t('accounts.removeConfirm') || 'Remove this saved account? The credentials will be deleted from local storage.'
         });
         if (!ok) return;
-        const r = await this.api.accounts.remove(id);
-        if (!r.success) { alert(r.error || 'Remove failed'); return; }
-        await renderList();
+        try {
+          const r = await this.api.accounts.remove(id);
+          if (!r?.success) {
+            showError(r?.error || t('accounts.removeError'), 5000);
+            return;
+          }
+          await renderList();
+        } catch (err) {
+          showError(err?.message || t('accounts.removeError'), 5000);
+        }
       }
     };
 
@@ -2131,9 +2220,17 @@ class SettingsPanel extends BasePanel {
           placeholder: 'e.g. Personal, Work…'
         });
         if (!name) return;
-        const r = await this.api.accounts.capture(name);
-        if (!r.success) { alert(r.error || 'Capture failed'); return; }
-        await renderList();
+        const { showError } = require('../components/Toast');
+        try {
+          const r = await this.api.accounts.capture(name);
+          if (!r?.success) {
+            showError(r?.error || t('accounts.captureError'), 5000);
+            return;
+          }
+          await renderList();
+        } catch (err) {
+          showError(err?.message || t('accounts.captureError'), 5000);
+        }
       };
     }
 

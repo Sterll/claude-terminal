@@ -402,6 +402,25 @@ class GitChangesPanel extends BasePanel {
       }
     });
 
+    // Keyboard activation for the file rows. Rows carry tabindex="0", so
+    // Enter/Space must do what a click on the row does (toggle staging).
+    // Only fires when the row itself has focus — native controls inside
+    // (checkbox, discard/diff buttons) keep their own key handling.
+    this._gitChangesList.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+
+      const item = e.target;
+      if (!item || !item.classList || !item.classList.contains('git-file-item')) return;
+
+      e.preventDefault(); // stop Space from scrolling the list
+      const checkbox = item.querySelector('input[type="checkbox"]');
+      const index = parseInt(item.dataset.index);
+      if (isNaN(index) || !checkbox) return;
+
+      checkbox.checked = !checkbox.checked;
+      this._toggleFileSelection(index, checkbox.checked);
+    });
+
     this._gitChangesList.addEventListener('change', (e) => {
       // Section checkbox change
       const sectionCheckbox = e.target.closest('.git-section-checkbox');
@@ -522,9 +541,14 @@ class GitChangesPanel extends BasePanel {
       const filePath = file.path.split('/').slice(0, -1).join('/');
       const isSelected = self._state.selectedFiles.has(index);
 
-      return `<div class="git-file-item ${isSelected ? 'selected' : ''}" data-index="${index}" data-path="${escapeHtml(file.path)}">
+      // The row is exposed as a focusable list item so the whole entry is
+      // reachable by keyboard (Enter/Space toggles staging — see the keydown
+      // delegate in _setupEventListeners). `listitem` is not
+      // children-presentational, so the checkbox and the discard/diff buttons
+      // inside stay individually accessible.
+      return `<div class="git-file-item ${isSelected ? 'selected' : ''}" data-index="${index}" data-path="${escapeHtml(file.path)}" role="listitem" tabindex="0" aria-label="${escapeHtml(file.path)}">
           <div class="git-file-item-row">
-            <input type="checkbox" ${isSelected ? 'checked' : ''}>
+            <input type="checkbox" aria-label="${escapeHtml(file.path)}" ${isSelected ? 'checked' : ''}>
             <span class="git-file-status ${file.status}">${file.status}</span>
             <div class="git-file-info">
               <div class="git-file-name">${escapeHtml(fileName)}</div>
@@ -554,11 +578,11 @@ class GitChangesPanel extends BasePanel {
       html += `<div class="git-changes-section">
         <div class="git-changes-section-header" data-section="tracked">
           <svg class="git-section-chevron" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
-          <input type="checkbox" class="git-section-checkbox" data-section="tracked" ${allTrackedSelected ? 'checked' : ''} ${!allTrackedSelected && someTrackedSelected ? 'data-indeterminate' : ''}>
-          <span class="git-section-title">${t('ui.trackedChanges')}</span>
+          <input type="checkbox" class="git-section-checkbox" data-section="tracked" aria-labelledby="git-section-title-tracked" ${allTrackedSelected ? 'checked' : ''} ${!allTrackedSelected && someTrackedSelected ? 'data-indeterminate' : ''}>
+          <span class="git-section-title" id="git-section-title-tracked">${t('ui.trackedChanges')}</span>
           <span class="git-section-count">${tracked.length}</span>
         </div>
-        <div class="git-changes-section-files">
+        <div class="git-changes-section-files" role="list" aria-labelledby="git-section-title-tracked">
           ${tracked.map(renderFileItem).join('')}
         </div>
       </div>`;
@@ -571,11 +595,11 @@ class GitChangesPanel extends BasePanel {
       html += `<div class="git-changes-section">
         <div class="git-changes-section-header" data-section="untracked">
           <svg class="git-section-chevron" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
-          <input type="checkbox" class="git-section-checkbox" data-section="untracked" ${allUntrackedSelected ? 'checked' : ''} ${!allUntrackedSelected && someUntrackedSelected ? 'data-indeterminate' : ''}>
-          <span class="git-section-title">${t('ui.untrackedFiles')}</span>
+          <input type="checkbox" class="git-section-checkbox" data-section="untracked" aria-labelledby="git-section-title-untracked" ${allUntrackedSelected ? 'checked' : ''} ${!allUntrackedSelected && someUntrackedSelected ? 'data-indeterminate' : ''}>
+          <span class="git-section-title" id="git-section-title-untracked">${t('ui.untrackedFiles')}</span>
           <span class="git-section-count">${untracked.length}</span>
         </div>
-        <div class="git-changes-section-files">
+        <div class="git-changes-section-files" role="list" aria-labelledby="git-section-title-untracked">
           ${untracked.map(renderFileItem).join('')}
         </div>
       </div>`;
