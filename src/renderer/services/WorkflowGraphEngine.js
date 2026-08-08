@@ -966,8 +966,15 @@ class WorkflowGraphEngine {
 
     // Load nodes
     for (const sn of (data.nodes || [])) {
-      const def = NODE_TYPES[sn.type];
-      if (!def) continue;
+      // Fall back to the main-process registry exactly like addNode() does
+      // (see :571). Eight node types ship a .node.js but have no NODE_TYPES
+      // entry; without this fallback they — and every link touching them —
+      // were silently dropped from the graph on every reload.
+      const def = NODE_TYPES[sn.type] || nodeRegistry.get(sn.type);
+      if (!def) {
+        console.warn(`[GraphEngine] Unknown node type "${sn.type}" (id ${sn.id}) — keeping it out of the canvas`);
+        continue;
+      }
 
       // Build node from serialized data
       const node = {
@@ -1122,6 +1129,11 @@ class WorkflowGraphEngine {
       }
       if (out.type === 'claude_session_end') {
         if (p.projectId) out.projectId = p.projectId;
+        if (p.statusFilter) out.statusFilter = p.statusFilter;
+      }
+      if (out.type === 'on_workflow') {
+        // Read by WorkflowScheduler.onWorkflowComplete; without this the
+        // success/failed filter never reached the scheduler.
         if (p.statusFilter) out.statusFilter = p.statusFilter;
       }
       if (out.type === 'git_event') {
