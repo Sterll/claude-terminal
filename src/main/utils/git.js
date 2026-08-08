@@ -1929,6 +1929,10 @@ module.exports = {
   parseDiffNumstat,
   execGit,
   execGitResult,
+  // Defined here but never exported, so git.node.js destructured `undefined`
+  // and its merge / stash / stash-pop / reset actions all threw
+  // "spawnGit is not a function" the moment they ran.
+  spawnGit,
   describeGitFailure,
   isGitUnavailable,
   killAllGitProcesses,

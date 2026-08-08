@@ -109,6 +109,9 @@ module.exports = {
     return {
       success: res.success !== false,
       output:  res.output || res.stdout || '',
+      // Without this, a failed git step logged {success:false, output:''} and
+      // nothing else — no pathspec, no conflict message, nothing to act on.
+      ...(res.success === false && res.error ? { error: res.error } : {}),
       action,
     };
   },
