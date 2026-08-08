@@ -21,7 +21,7 @@ const {
   GIT_ACTIONS, WAIT_UNITS, CONDITION_VARS, CONDITION_OPS,
   TRIGGER_CONFIG, CRON_MODES,
   // Functions
-  findStepType, buildConditionPreview, getTriggerConfig,
+  findStepType, buildConditionPreview, buildPaletteEntries, getTriggerConfig,
   drawCronPicker, bindWfDropdown, wfDropdown,
   // Formatting
   fmtTime, fmtDuration, statusDot, statusLabel,
@@ -1373,7 +1373,7 @@ function _deriveWorkflowName(prompt) {
   return words.length > 48 ? words.slice(0, 45) + '…' : words;
 }
 
-function openEditor(workflowId = null, options = {}) {
+async function openEditor(workflowId = null, options = {}) {
   _activeEditorWorkflowId = workflowId;
   const wf = workflowId ? state.workflows.find(w => w.id === workflowId) : null;
   const editorDraft = {
@@ -1391,8 +1391,11 @@ function openEditor(workflowId = null, options = {}) {
   // Pre-load DB connections from disk (async, used by DB node properties)
   loadDbConnections();
 
-  // Pre-load node registry (async, used by generic field renderer)
-  nodeRegistry.loadNodeRegistry().catch(e => console.warn('[WorkflowPanel] nodeRegistry load error:', e));
+  // The registry must be in hand BEFORE the palette is built, otherwise the
+  // first editor open lists only the hand-written STEP_TYPES and every
+  // registry-only node is missing until something reopens the editor.
+  await nodeRegistry.loadNodeRegistry()
+    .catch(e => console.warn('[WorkflowPanel] nodeRegistry load error:', e));
 
   // Load all custom field renderers (synchronous, idempotent)
   fieldRegistry.loadAll();
@@ -1401,7 +1404,9 @@ function openEditor(workflowId = null, options = {}) {
 
   // Store previous panel content for restore
   const prevContent = panel.innerHTML;
-  const nodeTypes = STEP_TYPES.filter(st => st.type !== 'trigger');
+  // Merged with the main-process registry so every node that ships is listed —
+  // eight of them used to have a .node.js but no palette entry at all.
+  const nodeTypes = buildPaletteEntries(nodeRegistry.getAll());
 
   // ── Build editor HTML ──
   panel.innerHTML = `

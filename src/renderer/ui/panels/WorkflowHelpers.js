@@ -177,6 +177,65 @@ const STEP_TYPES = [
   { type: 'log',         label: 'Log',          color: 'slate',   icon: svgLog(),          desc: 'workflow.nodeDesc.log',        category: 'flow' },
 ];
 
+// ── Palette assembly ────────────────────────────────────────────────────────
+
+/**
+ * Icons for node types that exist only in the main-process registry. The IPC
+ * payload carries an icon NAME (a string), not markup, so it is mapped here.
+ */
+const REGISTRY_ICONS = {
+  error:     () => svgX(11),
+  refresh:   () => svgTeal(11),
+  bell:      () => svgNotify(),
+  webhook:   () => svgHttp(),
+  parallel:  () => svgChain(11),
+  session:   () => svgClock(11),
+  kanban:    () => svgProject(),
+  workspace: () => svgFile(),
+  code:      () => svgCode(11),
+};
+
+const svgGenericNode = (s = 11) =>
+  `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/></svg>`;
+
+/**
+ * Merge the hand-written STEP_TYPES with everything the main-process registry
+ * reports, so a node cannot ship without appearing in the palette.
+ *
+ * STEP_TYPES wins where both describe a type: it carries translated labels and
+ * hand-drawn icons. Anything the registry knows about and STEP_TYPES does not
+ * is derived from the registry payload — that is how the eight nodes which had
+ * a .node.js but no palette entry (error_handler, retry, webhook,
+ * parallel_spawn, session_recap, notify_discord, kanban_create_card,
+ * workspace_write_doc) become reachable.
+ *
+ * @param {Array} registryDefs  what NodeRegistry.getAll() returned (may be empty)
+ * @returns {Array} palette entries, trigger excluded
+ */
+function buildPaletteEntries(registryDefs = []) {
+  const base  = STEP_TYPES.filter(st => st.type !== 'trigger');
+  const known = new Set(base.map(st => st.type));
+
+  // The registry says 'actions'; the palette groups on 'action'.
+  const normaliseCategory = (c) => (c === 'actions' ? 'action' : (c || 'action'));
+
+  const extra = registryDefs
+    .map(def => ({ def, type: String(def.type || '').replace('workflow/', '') }))
+    .filter(({ type }) => type && type !== 'trigger' && !known.has(type))
+    .map(({ def, type }) => ({
+      type,
+      label:    def.title || type,
+      color:    def.color || 'slate',
+      icon:     (REGISTRY_ICONS[def.icon] || svgGenericNode)(),
+      desc:     def.desc || '',
+      category: normaliseCategory(def.category),
+      _fromRegistry: true,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  return [...base, ...extra];
+}
+
 const STEP_FIELDS = {
   shell: [
     { key: 'command', label: 'Command', placeholder: 'npm run build', mono: true },
@@ -839,7 +898,7 @@ module.exports = {
   GIT_ACTIONS, WAIT_UNITS, CONDITION_VARS, CONDITION_OPS,
   TRIGGER_CONFIG, CRON_MODES, getTriggerConfig,
   // Functions
-  findStepType, buildConditionPreview,
+  findStepType, buildConditionPreview, buildPaletteEntries,
   drawCronPicker, bindWfDropdown, wfDropdown,
   // Formatting
   fmtTime, fmtDuration, statusDot, statusLabel,
