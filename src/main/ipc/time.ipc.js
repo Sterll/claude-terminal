@@ -29,10 +29,26 @@ function startOfDay(ts) {
 
 function startOfWeek(ts) {
   const d = new Date(ts);
-  const day = d.getDay(); // 0=Sun
-  d.setDate(d.getDate() - day);
   d.setHours(0, 0, 0, 0);
+  const day = d.getDay();
+  // Monday = start of week, matching timeTracking.state.js. This used to
+  // subtract d.getDay() (Sunday-first), so the workflow `time` node, the
+  // time_week MCP tool and the dashboard reported different weeks — and on a
+  // Sunday they shared no days at all.
+  const diff = day === 0 ? 6 : day - 1;
+  d.setDate(d.getDate() - diff);
   return d.getTime();
+}
+
+/**
+ * Format a Date as YYYY-MM-DD in LOCAL time.
+ * toISOString() formats in UTC, which disagreed with the local-midnight bucket
+ * boundaries and the local dayOfWeek label — east of UTC every bucket was
+ * stamped with the previous calendar day.
+ */
+function localISODate(d) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 function startOfMonth(ts) {
@@ -157,7 +173,7 @@ function handleGetWeek(data) {
     }
     const d = new Date(dayStart);
     days.push({
-      date:      d.toISOString().slice(0, 10),
+      date:      localISODate(d),
       dayOfWeek: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()],
       ms,
       formatted: formatDuration(ms),
