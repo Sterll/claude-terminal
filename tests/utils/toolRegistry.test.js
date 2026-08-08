@@ -16,6 +16,13 @@ const {
   formatDuration,
 } = require('../../src/renderer/utils/toolRegistry');
 
+// i18n defaults to 'fr' and tests/setup.js never selects a locale, so once the
+// chat.tools.* keys existed these assertions started reading French. Pin
+// English so the expected strings below stay stable whatever the default is.
+beforeAll(() => {
+  require('../../src/renderer/i18n').setLanguage('en');
+});
+
 describe('toolRegistry / categories', () => {
   test('Agent and Task share the agent category', () => {
     expect(getToolCategory('Agent')).toBe('agent');

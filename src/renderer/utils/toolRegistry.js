@@ -9,6 +9,27 @@
  * (autocomplete), SettingsPanel (permission lists).
  */
 
+const { t } = require('../i18n');
+
+/**
+ * Translate with an English literal fallback.
+ *
+ * Locale files are updated separately from this module; until a key lands in
+ * `en.json` / `fr.json` / `es.json`, `t()` returns the raw dot-path, which
+ * would render "chat.tools.stopTask" inside a tool card. `tr()` falls back to
+ * the English literal in that case, so a missing key degrades to readable
+ * English instead of a key path.
+ */
+function tr(key, fallback, params) {
+  const value = t(key, params || {});
+  if (value === key) {
+    // Unresolved: interpolate the fallback ourselves so params still apply.
+    if (!params) return fallback;
+    return String(fallback).replace(/\{(\w+)\}/g, (m, k) => (params[k] !== undefined ? params[k] : m));
+  }
+  return value;
+}
+
 // ── Shared SVG icons ──────────────────────────────────────────────────────
 const ICONS = {
   file:     '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>',
@@ -72,6 +93,17 @@ function formatDuration(secs) {
 
 // ── Background task store (Monitor / TaskOutput / TaskStop / bg Bash) ───
 // Shared across tool calls so cards for the same taskId stay in sync.
+//
+// Retention caps. A long-running background task streams thousands of chunks;
+// without these the store grew without bound and every chunk re-copied the
+// whole array (O(n²)) just to render a 10-line tail.
+const MAX_OUTPUT_CHUNKS = 500;          // retained chunks per task
+const MAX_OUTPUT_CHARS = 64 * 1024;     // retained characters per task
+const MAX_TRACKED_TASKS = 100;          // retained tasks in _map
+const OUTPUT_TAIL_LINES = 10;           // lines actually shown on the card
+
+const TERMINAL_STATUSES = new Set(['stopped', 'done', 'completed', 'failed', 'killed']);
+
 const bgTaskStore = {
   _map: new Map(),
   _subs: new Set(),
@@ -81,17 +113,50 @@ const bgTaskStore = {
   all() {
     return Array.from(this._map.values());
   },
+  /** Evict old tasks so a long session cannot grow _map forever. */
+  _prune() {
+    if (this._map.size < MAX_TRACKED_TASKS) return;
+    // Finished tasks first, oldest-inserted first (Map preserves insertion order).
+    for (const [key, state] of this._map) {
+      if (this._map.size < MAX_TRACKED_TASKS) break;
+      if (state && TERMINAL_STATUSES.has(state.status)) this._map.delete(key);
+    }
+    while (this._map.size >= MAX_TRACKED_TASKS) {
+      const oldest = this._map.keys().next();
+      if (oldest.done) break;
+      this._map.delete(oldest.value);
+    }
+  },
   update(taskId, patch) {
     if (!taskId) return null;
-    const current = this._map.get(taskId) || {
-      taskId,
-      outputs: [],
-      status: 'running',
-      startedAt: Date.now(),
-    };
+    let current = this._map.get(taskId);
+    if (!current) {
+      this._prune();
+      current = {
+        taskId,
+        outputs: [],
+        outputChars: 0,
+        droppedChunks: 0,
+        status: 'running',
+        startedAt: Date.now(),
+      };
+    }
     const next = { ...current, ...patch };
     if (patch && typeof patch.output === 'string' && patch.output.length) {
-      next.outputs = [...(current.outputs || []), patch.output];
+      // Append in place: re-allocating the array per streamed chunk is what
+      // made this O(n²). `next` shares the array with `current` on purpose.
+      const outputs = current.outputs || [];
+      outputs.push(patch.output);
+      let chars = (current.outputChars || 0) + patch.output.length;
+      let dropped = current.droppedChunks || 0;
+      while (outputs.length > MAX_OUTPUT_CHUNKS
+        || (chars > MAX_OUTPUT_CHARS && outputs.length > 1)) {
+        chars -= outputs.shift().length;
+        dropped++;
+      }
+      next.outputs = outputs;
+      next.outputChars = chars;
+      next.droppedChunks = dropped;
       delete next.output;
     }
     this._map.set(taskId, next);
@@ -115,7 +180,8 @@ function copyBtn(text, label) {
       ? window.btoa(unescape(encodeURIComponent(String(text))))
       : '';
   } catch (_) { b64 = ''; }
-  return `<button type="button" class="chat-copy-btn" data-copy-b64="${b64}" title="${escHtml(label || 'Copy')}" aria-label="${escHtml(label || 'Copy')}">
+  const title = label || tr('chat.tools.copy', 'Copy');
+  return `<button type="button" class="chat-copy-btn" data-copy-b64="${b64}" title="${escHtml(title)}" aria-label="${escHtml(title)}">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
   </button>`;
 }
@@ -126,16 +192,29 @@ function formatTaskIdShort(taskId) {
   return s.length > 12 ? s.slice(0, 8) + '…' : s;
 }
 
-function tailLines(text, max) {
-  if (!text) return '';
-  const lines = String(text).split('\n');
-  return lines.slice(-max).join('\n');
+/**
+ * Last `max` lines across a list of output chunks, walking backwards.
+ *
+ * Equivalent to `chunks.join('\n').split('\n').slice(-max).join('\n')` but it
+ * never materialises the full transcript — the old version joined potentially
+ * megabytes of buffered output just to display ~10 lines.
+ */
+function tailLines(chunks, max) {
+  if (!chunks || !chunks.length) return '';
+  const out = [];
+  for (let i = chunks.length - 1; i >= 0 && out.length < max; i--) {
+    const lines = String(chunks[i]).split('\n');
+    for (let j = lines.length - 1; j >= 0 && out.length < max; j--) {
+      out.push(lines[j]);
+    }
+  }
+  return out.reverse().join('\n');
 }
 
 const BG_ACTION_LABELS = {
-  TaskOutput: 'Fetch output',
-  TaskStop: 'Stop task',
-  Monitor: 'Monitor',
+  TaskOutput: () => tr('chat.tools.bgFetchOutput', 'Fetch output'),
+  TaskStop: () => tr('chat.tools.bgStopTask', 'Stop task'),
+  Monitor: () => tr('chat.tools.bgMonitor', 'Monitor'),
 };
 
 function renderBgTaskCard(toolName, input, overrideState) {
@@ -143,26 +222,30 @@ function renderBgTaskCard(toolName, input, overrideState) {
   const state = overrideState || bgTaskStore.get(taskId) || {};
   const command = state.command || '';
   const status = state.status || 'running';
-  const action = BG_ACTION_LABELS[toolName] || toolName || 'Background task';
+  const actionLabelFn = BG_ACTION_LABELS[toolName];
+  const action = actionLabelFn ? actionLabelFn() : (toolName || tr('chat.tools.bgTask', 'Background task'));
 
-  const accumulated = (state.outputs || []).join('\n');
-  const tail = accumulated ? tailLines(accumulated, 10) : '';
+  // Only the visible tail is materialised — the full buffer is never joined
+  // just to render the card.
+  const chunks = state.outputs || [];
+  const tail = tailLines(chunks, OUTPUT_TAIL_LINES);
   const outputHtml = tail
     ? `<pre class="chat-bgtask-output">${escHtml(tail)}</pre>`
     : '';
 
-  const terminalStatuses = new Set(['stopped', 'done', 'completed', 'failed', 'killed']);
-  const isTerminal = terminalStatuses.has(state.status);
+  const isTerminal = TERMINAL_STATUSES.has(state.status);
   const stoppedInfo = state.stoppedAt
-    ? `<span class="chat-bgtask-meta">stopped</span>`
+    ? `<span class="chat-bgtask-meta">${escHtml(tr('chat.tools.bgStopped', 'stopped'))}</span>`
     : isTerminal
       ? `<span class="chat-bgtask-meta">${escHtml(state.status)}</span>`
       : '';
 
+  const stopLabel = tr('chat.tools.bgStopTask', 'Stop task');
+  const stopShort = tr('chat.tools.bgStopShort', 'Stop');
   const stopBtn = (taskId && !isTerminal)
-    ? `<button type="button" class="chat-bgtask-stop-btn" data-stop-task-id="${escHtml(taskId)}" title="Stop task" aria-label="Stop task">
+    ? `<button type="button" class="chat-bgtask-stop-btn" data-stop-task-id="${escHtml(taskId)}" title="${escHtml(stopLabel)}" aria-label="${escHtml(stopLabel)}">
         <svg viewBox="0 0 24 24" fill="currentColor" width="11" height="11"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
-        <span>Stop</span>
+        <span>${escHtml(stopShort)}</span>
       </button>`
     : '';
 
@@ -171,7 +254,9 @@ function renderBgTaskCard(toolName, input, overrideState) {
   const metaParts = [];
   if (Number.isFinite(elapsed) && elapsed > 0) metaParts.push(`⏱ ${formatDuration(elapsed)}`);
   if (state.lastToolName) metaParts.push(`· ${state.lastToolName}`);
-  if (state.usage && state.usage.total_tokens) metaParts.push(`· ${state.usage.total_tokens} tok`);
+  if (state.usage && state.usage.total_tokens) {
+    metaParts.push(`· ${tr('chat.tools.tokens', '{count} tok', { count: state.usage.total_tokens })}`);
+  }
   const metaHtml = metaParts.length
     ? `<div class="chat-bgtask-live-meta">${metaParts.map(escHtml).join(' ')}</div>`
     : '';
@@ -189,13 +274,19 @@ function renderBgTaskCard(toolName, input, overrideState) {
     : '';
 
   const cmdHtml = command
-    ? `<div class="chat-bgtask-cmd" title="${escHtml(command)}"><code>${escHtml(command.slice(0, 140))}${command.length > 140 ? '…' : ''}</code>${copyBtn(command, 'Copy command')}</div>`
+    ? `<div class="chat-bgtask-cmd" title="${escHtml(command)}"><code>${escHtml(command.slice(0, 140))}${command.length > 140 ? '…' : ''}</code>${copyBtn(command, tr('chat.tools.copyCommand', 'Copy command'))}</div>`
     : '';
 
-  const outputHeader = accumulated
+  // Copy payload is the retained buffer only (capped by MAX_OUTPUT_CHARS),
+  // so this join can no longer be megabytes wide.
+  const truncatedNote = state.droppedChunks
+    ? `<span class="chat-bgtask-meta">${escHtml(tr('chat.tools.outputTruncated', 'older output dropped'))}</span>`
+    : '';
+  const outputHeader = chunks.length
     ? `<div class="chat-bgtask-output-header">
-        <span>output (tail)</span>
-        ${copyBtn(accumulated, 'Copy full output')}
+        <span>${escHtml(tr('chat.tools.outputTail', 'output (tail)'))}</span>
+        ${truncatedNote}
+        ${copyBtn(chunks.join('\n'), tr('chat.tools.copyOutput', 'Copy full output'))}
       </div>`
     : '';
 
@@ -232,8 +323,8 @@ const renderers = {
         <div class="chat-special-icon">${ICONS.clock}</div>
         <div class="chat-special-body">
           <div class="chat-special-title">
-            <span class="chat-wakeup-label">Wakeup scheduled</span>
-            <span class="chat-wakeup-countdown" data-countdown>in ${escHtml(formatDuration(delay))}</span>
+            <span class="chat-wakeup-label">${escHtml(tr('chat.tools.wakeupScheduled', 'Wakeup scheduled'))}</span>
+            <span class="chat-wakeup-countdown" data-countdown>${escHtml(tr('chat.tools.wakeupIn', 'in {duration}', { duration: formatDuration(delay) }))}</span>
           </div>
           ${reason ? `<div class="chat-special-desc">${escHtml(reason)}</div>` : ''}
         </div>
@@ -243,8 +334,12 @@ const renderers = {
 
   CronCreate(input) {
     const cron = input.cron || input.schedule || '';
-    const recurring = input.recurring === false ? 'one-shot' : 'recurring';
-    const durable = input.durable === true ? ' · durable' : (input.durable === false ? ' · session' : '');
+    const recurring = input.recurring === false
+      ? tr('chat.tools.cronOneShot', 'one-shot')
+      : tr('chat.tools.cronRecurring', 'recurring');
+    const durable = input.durable === true
+      ? ` · ${tr('chat.tools.cronDurable', 'durable')}`
+      : (input.durable === false ? ` · ${tr('chat.tools.cronSession', 'session')}` : '');
     const fullPrompt = input.prompt || '';
     const promptPreview = fullPrompt.slice(0, 160);
     return `
@@ -252,10 +347,10 @@ const renderers = {
         <div class="chat-special-icon">${ICONS.clock}</div>
         <div class="chat-special-body">
           <div class="chat-special-title">
-            <span class="chat-cron-name">Schedule cron</span>
+            <span class="chat-cron-name">${escHtml(tr('chat.tools.cronSchedule', 'Schedule cron'))}</span>
             ${cron ? `<code class="chat-cron-schedule">${escHtml(cron)}</code>` : ''}
             <span class="chat-cronlist-flags">${escHtml(recurring)}${escHtml(durable)}</span>
-            ${fullPrompt ? copyBtn(fullPrompt, 'Copy prompt') : ''}
+            ${fullPrompt ? copyBtn(fullPrompt, tr('chat.tools.copyPrompt', 'Copy prompt')) : ''}
           </div>
           ${promptPreview ? `<div class="chat-special-desc">${escHtml(promptPreview)}${fullPrompt.length > 160 ? '…' : ''}</div>` : ''}
         </div>
@@ -266,7 +361,9 @@ const renderers = {
   EnterWorktree(input) {
     const path = input.path || '';
     const name = input.name || '';
-    const label = path ? 'Enter worktree' : 'Create worktree';
+    const label = path
+      ? tr('chat.tools.worktreeEnter', 'Enter worktree')
+      : tr('chat.tools.worktreeCreate', 'Create worktree');
     return `
       <div class="chat-special-card chat-worktree-card chat-worktree--enter">
         <div class="chat-special-icon">${ICONS.branch}</div>
@@ -283,13 +380,15 @@ const renderers = {
 
   ExitWorktree(input) {
     const action = input.action || '';
-    const actionLabel = action === 'remove' ? 'remove' : action === 'keep' ? 'keep' : '';
+    const actionLabel = action === 'remove'
+      ? tr('chat.tools.worktreeRemove', 'remove')
+      : action === 'keep' ? tr('chat.tools.worktreeKeep', 'keep') : '';
     return `
       <div class="chat-special-card chat-worktree-card chat-worktree--exit">
         <div class="chat-special-icon">${ICONS.branch}</div>
         <div class="chat-special-body">
           <div class="chat-special-title">
-            <span class="chat-worktree-label">Exit worktree</span>
+            <span class="chat-worktree-label">${escHtml(tr('chat.tools.worktreeExit', 'Exit worktree'))}</span>
             ${actionLabel ? `<span class="chat-worktree-branch">${escHtml(actionLabel)}</span>` : ''}
           </div>
         </div>
@@ -298,7 +397,7 @@ const renderers = {
   },
 
   PushNotification(input) {
-    const title = input.title || 'Notification';
+    const title = input.title || tr('chat.tools.notification', 'Notification');
     const message = input.message || input.body || '';
     const type = input.type && ['info', 'success', 'warning', 'error'].includes(input.type) ? input.type : 'info';
     return `
@@ -333,10 +432,16 @@ const resultRenderers = {
       const schedule = c.humanSchedule || c.schedule || c.cron || '';
       const cronRaw = c.cron || c.schedule || '';
       const prompt = c.prompt || '';
-      const recurring = c.recurring === false ? 'one-shot' : 'recurring';
-      const durable = c.durable === false ? ' · session' : (c.durable === true ? ' · durable' : '');
+      const recurring = c.recurring === false
+        ? tr('chat.tools.cronOneShot', 'one-shot')
+        : tr('chat.tools.cronRecurring', 'recurring');
+      const durable = c.durable === false
+        ? ` · ${tr('chat.tools.cronSession', 'session')}`
+        : (c.durable === true ? ` · ${tr('chat.tools.cronDurable', 'durable')}` : '');
       const promptPreview = prompt ? (prompt.length > 80 ? prompt.slice(0, 80) + '…' : prompt) : '';
-      const flagsEnabled = c.enabled === false ? 'disabled' : 'enabled';
+      const flagsEnabled = c.enabled === false
+        ? tr('chat.tools.cronDisabled', 'disabled')
+        : tr('chat.tools.cronEnabled', 'enabled');
       const stateClass = c.enabled === false ? 'chat-cronlist-state--disabled' : 'chat-cronlist-state--enabled';
       return `
         <div class="chat-cronlist-row">
@@ -345,20 +450,25 @@ const resultRenderers = {
             ${schedule ? `<span class="chat-cronlist-schedule" title="${escHtml(cronRaw)}">${escHtml(schedule)}</span>` : ''}
             <span class="chat-cronlist-flags">${escHtml(recurring)}${escHtml(durable)}</span>
             <span class="chat-cronlist-state ${stateClass}">${escHtml(flagsEnabled)}</span>
-            ${id ? copyBtn(id, 'Copy cron id') : ''}
+            ${id ? copyBtn(id, tr('chat.tools.copyCronId', 'Copy cron id')) : ''}
           </div>
           ${promptPreview ? `<div class="chat-cronlist-prompt" title="${escHtml(prompt)}">${escHtml(promptPreview)}</div>` : ''}
         </div>
       `;
     }).join('');
-    const more = crons.length > 20 ? `<div class="chat-cronlist-more">+ ${crons.length - 20} more</div>` : '';
+    const more = crons.length > 20
+      ? `<div class="chat-cronlist-more">${escHtml(tr('chat.tools.cronListMore', '+ {count} more', { count: crons.length - 20 }))}</div>`
+      : '';
+    const countLabel = crons.length === 1
+      ? tr('chat.tools.cronCountOne', '1 cron', { count: 1 })
+      : tr('chat.tools.cronCountMany', '{count} crons', { count: crons.length });
     return `
       <div class="chat-special-card chat-cron-card chat-cronlist-card">
         <div class="chat-special-icon">${ICONS.clock}</div>
         <div class="chat-special-body">
           <div class="chat-special-title">
-            <span>Cron list</span>
-            <span class="chat-bgtask-meta">${crons.length} cron${crons.length === 1 ? '' : 's'}</span>
+            <span>${escHtml(tr('chat.tools.cronList', 'Cron list'))}</span>
+            <span class="chat-bgtask-meta">${escHtml(countLabel)}</span>
           </div>
           <div class="chat-cronlist-rows">${rows}${more}</div>
         </div>

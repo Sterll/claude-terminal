@@ -719,7 +719,7 @@ class ChatView extends BaseComponent {
     const isProject = chip.type === 'project';
     const displayName = isProject && chip.data?.name ? chip.data.name : (chip.label || `@${chip.type}`);
     // Strip leading @ if present in label - we add our own
-    const cleanName = displayName.replace(/^@(project:|context:|file:|tab:|diff:|symbol:|conversation:)?/, '');
+    const cleanName = displayName.replace(/^@(project:|context:|file:|tab:|conversation:)?/, '');
 
     span.innerHTML = `<span class="chat-inline-chip-at">@</span><span class="chat-inline-chip-label">${escapeHtml(cleanName)}</span>`;
 
@@ -827,18 +827,44 @@ class ChatView extends BaseComponent {
     }
   }
 
-  function selectModel(modelId) {
+  async function selectModel(modelId) {
     const option = MODEL_OPTIONS.find(m => m.id === modelId);
     if (!option) return;
+    const previousId = selectedModel;
+    const previousOption = MODEL_OPTIONS.find(m => m.id === previousId);
     selectedModel = modelId;
     modelLabel.textContent = option.label;
     modelDropdown.style.display = 'none';
     setSetting('chatModel', modelId);
 
-    // If session is active, change model mid-session via SDK
-    if (sessionId) {
-      api.chat.setModel({ sessionId, model: modelId }).catch(() => {});
+    // If session is active, change model mid-session via SDK.
+    // `chat-set-model` never rejects — it resolves { success:false, error },
+    // so the result has to be read or a failed switch stays invisible.
+    if (!sessionId) return;
+    let res;
+    try {
+      res = await api.chat.setModel({ sessionId, model: modelId });
+    } catch (err) {
+      res = { success: false, error: err?.message || String(err) };
     }
+    if (res && res.success) return;
+
+    // Switch failed: the session is still running the previous model.
+    // Revert the label + persisted setting so the footer stops lying.
+    if (previousOption) {
+      selectedModel = previousId;
+      modelLabel.textContent = previousOption.label;
+      setSetting('chatModel', previousId);
+    }
+    const Toast = require('./Toast');
+    Toast.showToast({
+      message: t('chat.modelSwitchFailed', {
+        model: option.label,
+        previous: previousOption ? previousOption.label : previousId,
+        error: (res && res.error) || '',
+      }),
+      type: 'error',
+    });
   }
 
   modelBtn.addEventListener('click', (e) => {
@@ -848,7 +874,7 @@ class ChatView extends BaseComponent {
 
   modelDropdown.addEventListener('click', (e) => {
     const opt = e.target.closest('.chat-model-option');
-    if (opt) selectModel(opt.dataset.model);
+    if (opt) selectModel(opt.dataset.model).catch(err => console.warn('[ChatView] selectModel failed:', err));
   });
 
   // ── Effort selector ──
@@ -885,20 +911,43 @@ class ChatView extends BaseComponent {
     }
   }
 
-  function selectEffort(effortId) {
+  async function selectEffort(effortId) {
     const option = EFFORT_OPTIONS.find(e => e.id === effortId);
     if (!option) return;
+    const previousId = selectedEffort;
+    const previousOption = EFFORT_OPTIONS.find(e => e.id === previousId);
     selectedEffort = effortId;
     effortLabel.textContent = option.label;
     effortDropdown.style.display = 'none';
     setSetting('effortLevel', effortId);
 
-    // If session is active, change effort mid-session via SDK
-    if (sessionId) {
-      api.chat.setEffort({ sessionId, effort: effortId }).catch(err => {
-        console.warn('[ChatView] setEffort failed:', err);
-      });
+    // If session is active, change effort mid-session via SDK.
+    // `chat-set-effort` resolves { success:false, error } instead of rejecting.
+    if (!sessionId) return;
+    let res;
+    try {
+      res = await api.chat.setEffort({ sessionId, effort: effortId });
+    } catch (err) {
+      res = { success: false, error: err?.message || String(err) };
     }
+    if (res && res.success) return;
+
+    // Switch failed: revert label + persisted setting to the live effort level.
+    console.warn('[ChatView] setEffort failed:', res && res.error);
+    if (previousOption) {
+      selectedEffort = previousId;
+      effortLabel.textContent = previousOption.label;
+      setSetting('effortLevel', previousId);
+    }
+    const Toast = require('./Toast');
+    Toast.showToast({
+      message: t('chat.effortSwitchFailed', {
+        effort: option.label,
+        previous: previousOption ? previousOption.label : previousId,
+        error: (res && res.error) || '',
+      }),
+      type: 'error',
+    });
   }
 
   effortBtn.addEventListener('click', (e) => {
@@ -908,7 +957,7 @@ class ChatView extends BaseComponent {
 
   effortDropdown.addEventListener('click', (e) => {
     const opt = e.target.closest('.chat-effort-option');
-    if (opt) selectEffort(opt.dataset.effort);
+    if (opt) selectEffort(opt.dataset.effort).catch(err => console.warn('[ChatView] selectEffort failed:', err));
   });
 
   // Close dropdowns on outside click
@@ -1361,12 +1410,10 @@ class ChatView extends BaseComponent {
   const MENTION_TYPES = [
     { type: 'file', label: '@file', desc: t('chat.mentionFile'), icon: '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>' },
     { type: 'git', label: '@git', desc: t('chat.mentionGit'), icon: '<svg viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 012 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>' },
-    { type: 'diff', label: '@diff', desc: t('chat.mentionDiff'), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18"/><path d="M18 9l-6-6-6 6"/><path d="M6 15l6 6 6-6"/></svg>' },
     { type: 'terminal', label: '@terminal', desc: t('chat.mentionTerminal'), icon: '<svg viewBox="0 0 24 24"><polyline points="4,17 10,11 4,5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>' },
     { type: 'errors', label: '@errors', desc: t('chat.mentionErrors'), icon: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>' },
     { type: 'selection', label: '@selection', desc: t('chat.mentionSelection'), icon: '<svg viewBox="0 0 24 24"><path d="M5 3l14 9-14 9V3z"/></svg>' },
     { type: 'todos', label: '@todos', desc: t('chat.mentionTodos'), icon: '<svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22,4 12,14.01 9,11.01"/></svg>' },
-    { type: 'symbol', label: '@symbol', desc: t('chat.mentionSymbol'), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h4v10H4z"/><path d="M16 7h4v10h-4z"/><path d="M8 12h8"/></svg>' },
     { type: 'project', label: '@project', desc: t('chat.mentionProject'), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>' },
     { type: 'tab', label: '@tab', desc: t('chat.mentionTab'), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 8h8l2-4h8"/><polyline points="7,13 10,16 7,19"/></svg>' },
     { type: 'conversation', label: '@conversation', desc: t('chat.mentionConversation'), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/><path d="M8 9h8"/><path d="M8 13h5"/></svg>' },
@@ -1800,7 +1847,7 @@ class ChatView extends BaseComponent {
     }
 
     const query = atMatch[1].toLowerCase();
-    const LOCAL_ONLY_MENTIONS = ['file', 'git', 'diff', 'errors', 'selection', 'todos', 'symbol'];
+    const LOCAL_ONLY_MENTIONS = ['file', 'git', 'errors', 'selection', 'todos'];
     const availableMentions = project.isCloud ? MENTION_TYPES.filter(m => !LOCAL_ONLY_MENTIONS.includes(m.type)) : MENTION_TYPES;
     const filtered = availableMentions.filter(m => m.type.includes(query));
     if (filtered.length === 0) {
@@ -1907,30 +1954,6 @@ class ChatView extends BaseComponent {
       return;
     }
 
-    // @diff — prompt for ref (default HEAD~1)
-    if (type === 'diff') {
-      removeAtTrigger();
-      hideMentionDropdown();
-      const ref = prompt(t('chat.diffRefPrompt') || 'Git ref to diff against (e.g. HEAD~3, main, abc1234):', 'HEAD~1');
-      if (ref && ref.trim()) {
-        addMentionChip('diff', { ref: ref.trim() });
-      }
-      inputEl.focus();
-      return;
-    }
-
-    // @symbol — prompt for symbol name
-    if (type === 'symbol') {
-      removeAtTrigger();
-      hideMentionDropdown();
-      const name = prompt(t('chat.symbolNamePrompt') || 'Symbol name (function, class, variable):');
-      if (name && name.trim()) {
-        addMentionChip('symbol', { name: name.trim() });
-      }
-      inputEl.focus();
-      return;
-    }
-
     // Direct mention types — add chip immediately
     removeAtTrigger();
     addMentionChip(type);
@@ -1953,8 +1976,6 @@ class ChatView extends BaseComponent {
         label += `:${data.lineRange.start}${data.lineRange.end ? '-' + data.lineRange.end : ''}`;
       }
     }
-    else if (type === 'diff' && data?.ref) label = `@diff:${data.ref}`;
-    else if (type === 'symbol' && data?.name) label = `@symbol:${data.name}`;
     else if (type === 'project' && data?.name) label = `@project:${data.name}`;
     else if (type === 'context' && data?.name) label = `@context:${data.name}`;
     else if (type === 'tab' && data?.name) label = `@tab:${data.name}`;
@@ -2075,74 +2096,6 @@ class ChatView extends BaseComponent {
             content = await ContextPromptService.resolveContextPack(mention.data.id, project?.path);
           } catch (e) {
             content = `[Error resolving context pack: ${mention.data.name}]`;
-          }
-          break;
-        }
-
-        case 'diff': {
-          try {
-            const ref = mention.data?.ref || 'HEAD';
-            const { execSync } = window.electron_nodeModules.child_process;
-            const diff = execSync(`git diff ${ref}`, { cwd: project.path, encoding: 'utf8', maxBuffer: 1024 * 1024, timeout: 15000 });
-            if (diff.trim()) {
-              content = `Git Diff (${ref}):\n\n${diff.length > 30000 ? diff.slice(0, 30000) + '\n\n[Diff truncated at 30,000 chars]' : diff}`;
-            } else {
-              content = `[No diff found for ${ref}]`;
-            }
-          } catch (e) {
-            content = `[Error running git diff: ${e.message}]`;
-          }
-          break;
-        }
-
-        case 'symbol': {
-          try {
-            const symbolName = mention.data?.name || '';
-            if (!symbolName) { content = '[No symbol name provided]'; break; }
-            const { execSync } = window.electron_nodeModules.child_process;
-            // Use git grep for fast symbol search across the project
-            const grepResult = execSync(
-              `git grep -n -E "(function|class|const|let|var|def |interface |type |enum |export )\\s*${symbolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b"`,
-              { cwd: project.path, encoding: 'utf8', maxBuffer: 512 * 1024, timeout: 10000 }
-            ).trim();
-            if (grepResult) {
-              const matches = grepResult.split('\n').slice(0, 10);
-              const parts = [`Symbol: ${symbolName} (${matches.length} definition(s) found)\n`];
-              for (const match of matches) {
-                const [fileLine, ...rest] = match.split(':');
-                const sepIdx = fileLine.lastIndexOf(':');
-                // git grep format: file:line:content
-                parts.push(match);
-              }
-              // Read the first match's surrounding context
-              const firstMatch = matches[0];
-              const firstColon = firstMatch.indexOf(':');
-              const secondColon = firstMatch.indexOf(':', firstColon + 1);
-              if (firstColon > 0 && secondColon > 0) {
-                const filePath = firstMatch.substring(0, firstColon);
-                const lineNum = parseInt(firstMatch.substring(firstColon + 1, secondColon));
-                if (!isNaN(lineNum)) {
-                  const fullPath = window.electron_nodeModules.path.join(project.path, filePath);
-                  try {
-                    const fileContent = await fs.promises.readFile(fullPath, 'utf8');
-                    const allLines = fileContent.split('\n');
-                    const start = Math.max(0, lineNum - 3);
-                    const end = Math.min(allLines.length, lineNum + 30);
-                    parts.push(`\n--- ${filePath}:${start + 1}-${end} ---`);
-                    parts.push(allLines.slice(start, end).map((l, i) => `${start + i + 1}: ${l}`).join('\n'));
-                  } catch (_) { /* file read error */ }
-                }
-              }
-              content = parts.join('\n');
-            } else {
-              content = `[Symbol "${symbolName}" not found in project]`;
-            }
-          } catch (e) {
-            if (e.status === 1) {
-              content = `[Symbol "${mention.data?.name}" not found in project]`;
-            } else {
-              content = `[Error searching for symbol: ${e.message}]`;
-            }
           }
           break;
         }
@@ -6540,6 +6493,14 @@ class ChatView extends BaseComponent {
       document.removeEventListener('keydown', lightboxKeyHandler);
       if (lightboxEl?.parentNode) lightboxEl.parentNode.removeChild(lightboxEl);
       lightboxEl = null;
+      // Release the 1 Hz presence ticker started by attachInteractivity(messagesEl);
+      // its closure holds the transcript container, so it must go before we drop it.
+      // Required directly: services/markdown/index.js only re-exports attachInteractivity.
+      try {
+        require('../../services/markdown/interactivity').detachInteractivity(messagesEl);
+      } catch (e) {
+        console.warn('[ChatView] detachInteractivity failed:', e?.message);
+      }
       wrapperEl.innerHTML = '';
     },
     getSessionId() {
