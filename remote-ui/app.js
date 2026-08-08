@@ -117,6 +117,22 @@ function _restoreSessions() {
 
 // ─── Connection State Machine ──────────────────────────────────────────────────
 
+// Stable per-device id. Used purely for correlation: the relay is a broadcast
+// bus, so the desktop echoes it back on auth results and rejections and each
+// mobile ignores what is not addressed to it. It is never a credential.
+function _getClientId() {
+  try {
+    let id = localStorage.getItem('remote_client_id');
+    if (!id) {
+      id = 'm' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      localStorage.setItem('remote_client_id', id);
+    }
+    return id;
+  } catch (_) {
+    return 'm' + Math.random().toString(36).slice(2, 10);
+  }
+}
+
 const conn = {
   token: localStorage.getItem('remote_session_token'),
   ws: null,
@@ -127,6 +143,13 @@ const conn = {
   mode: localStorage.getItem('remote_conn_mode') || 'lan',
   cloudUrl: localStorage.getItem('remote_cloud_url') || '',
   cloudApiKey: localStorage.getItem('remote_cloud_api_key') || '',
+  // Relay mode only. The cloud API key authenticates us to the RELAY; this token
+  // authenticates us to the DESKTOP and is what unlocks privileged actions. It is
+  // obtained by tunnelling the same 6-digit PIN handshake used on the LAN.
+  relayToken: localStorage.getItem('remote_relay_token') || null,
+  clientId: _getClientId(),
+  _pinNonce: null,
+  _pinTimer: null,
 };
 
 function connSetState(s) {
@@ -221,7 +244,13 @@ function init() {
 
 // ─── Screen Management ────────────────────────────────────────────────────────
 
-function _showAuth(showCloudError) {
+/**
+ * @param {boolean} [showCloudError]
+ * @param {boolean} [relayPinPrompt] - relay mode asking for the desktop PIN.
+ *   Keeps the connection state untouched: the relay socket must stay alive (and
+ *   keep reconnecting) because the handshake itself travels over it.
+ */
+function _showAuth(showCloudError, relayPinPrompt) {
   $('screen-auth').classList.remove('hidden');
   $('screen-main').classList.add('hidden');
   // Reset PIN fields
@@ -239,14 +268,30 @@ function _showAuth(showCloudError) {
   const cloudErrEl = $('cloud-key-error');
   if (cloudErrEl) cloudErrEl.classList.toggle('hidden', !showCloudError);
   // Show the correct auth section based on mode
-  const isCloud = conn.mode === 'relay';
+  const isCloud = conn.mode === 'relay' && !relayPinPrompt;
   const pinSection = $('auth-pin-section');
   const cloudSection = $('auth-cloud-section');
   if (pinSection && cloudSection) {
     pinSection.classList.toggle('hidden', isCloud);
     cloudSection.classList.toggle('hidden', !isCloud);
   }
-  connSetState('auth');
+  if (!relayPinPrompt) connSetState('auth');
+}
+
+/**
+ * Relay mode: ask for the desktop PIN so this device can obtain a session token.
+ * Triggered lazily, on the first privileged action, so read-only browsing and
+ * headless cloud sessions (which never touch the desktop) keep working without it.
+ */
+function _promptRelayPin(errorText) {
+  _showAuth(false, true);
+  const pinInput = $('pin-input');
+  if (pinInput) pinInput.focus();
+  const errorEl = $('pin-error');
+  if (errorEl && errorText) {
+    errorEl.textContent = errorText;
+    errorEl.classList.remove('hidden');
+  }
 }
 
 function _showMain() {
@@ -283,6 +328,10 @@ async function submitPin(pin) {
   if (submitBtn) submitBtn.disabled = true;
   if (errorEl) errorEl.classList.add('hidden');
 
+  // Relay mode: POST /auth is not reachable through the relay, so the same PIN
+  // exchange is tunnelled over the already-open relay socket instead.
+  if (conn.mode === 'relay') { _submitPinOverRelay(pin); return; }
+
   try {
     const res = await fetch('/auth', {
       method: 'POST',
@@ -307,6 +356,89 @@ async function submitPin(pin) {
     if (pinInput) { pinInput.disabled = false; pinInput.focus(); }
     if (submitBtn) submitBtn.disabled = false;
   }
+}
+
+// ─── Relay PIN Handshake ─────────────────────────────────────────────────────
+//
+//   mobile  → { type: 'auth:pin',    data: { pin, nonce }, clientId }
+//   desktop → { type: 'auth:result', data: { ok, token?, error?, nonce, clientId } }
+//
+// The relay only forwards {type, data} frames, so both legs are ordinary frames.
+// The nonce correlates the reply with OUR request: several phones can share one
+// cloud API key, and none of them should adopt a token minted for another.
+
+const RELAY_PIN_TIMEOUT_MS = 10000;
+
+function _submitPinOverRelay(pin) {
+  if (!conn.ws || conn.ws.readyState !== 1) {
+    _relayPinFailed(t('pin.connFail'));
+    return;
+  }
+  conn._pinNonce = 'n' + Math.random().toString(36).slice(2, 12);
+  clearTimeout(conn._pinTimer);
+  // The desktop may be offline behind an otherwise healthy relay, in which case
+  // nothing ever answers — fail loudly instead of hanging on a disabled form.
+  conn._pinTimer = setTimeout(() => {
+    conn._pinTimer = null;
+    conn._pinNonce = null;
+    _relayPinFailed(t('misc.desktopOffline'));
+  }, RELAY_PIN_TIMEOUT_MS);
+  // Deliberately bypasses wsSend(): the handshake is neither queueable nor
+  // subject to the "needs a token" gate it enforces.
+  try {
+    conn.ws.send(JSON.stringify({
+      type: 'auth:pin',
+      data: { pin, nonce: conn._pinNonce },
+      clientId: conn.clientId,
+    }));
+  } catch (err) {
+    clearTimeout(conn._pinTimer);
+    conn._pinTimer = null;
+    conn._pinNonce = null;
+    _relayPinFailed(t('pin.connFail'));
+  }
+}
+
+function _onRelayAuthResult(data) {
+  // Ignore anything we did not ask for, or another device's result.
+  if (!data || !conn._pinNonce || data.nonce !== conn._pinNonce) return;
+  if (data.clientId && data.clientId !== conn.clientId) return;
+
+  clearTimeout(conn._pinTimer);
+  conn._pinTimer = null;
+  conn._pinNonce = null;
+
+  if (!data.ok || !data.token) {
+    _relayPinFailed(data.error || t('pin.error'));
+    return;
+  }
+  conn.relayToken = data.token;
+  try { localStorage.setItem('remote_relay_token', data.token); } catch (_) {}
+  _debugLog('[Relay] Session token obtained via PIN handshake');
+  _showMain();
+  connSetState('connected');
+  wsSend('request:init', {});
+}
+
+function _relayPinFailed(message) {
+  const pinInput = $('pin-input');
+  const submitBtn = $('pin-submit-btn');
+  const errorEl = $('pin-error');
+  if (errorEl) { errorEl.textContent = message; errorEl.classList.remove('hidden'); }
+  if (pinInput) { pinInput.disabled = false; pinInput.value = ''; pinInput.focus(); }
+  if (submitBtn) submitBtn.disabled = false;
+}
+
+/** The desktop refused a frame — drop a dead token and re-ask for the PIN. */
+function _onRemoteRejected(data) {
+  if (!data) return;
+  if (data.clientId && data.clientId !== conn.clientId) return;
+  console.warn('[WS] Server rejected ' + (data.type || 'message') + ': ' + (data.error || 'no reason given'));
+  if (data.reason === 'invalid-token' || data.reason === 'revoked') {
+    conn.relayToken = null;
+    try { localStorage.removeItem('remote_relay_token'); } catch (_) {}
+  }
+  if (conn.mode === 'relay' && !conn.relayToken) _promptRelayPin(data.error);
 }
 
 // ─── Cloud Key Entry ─────────────────────────────────────────────────────────
@@ -426,6 +558,7 @@ function _openWS() {
     _debugLog('[WS] Connected to relay');
     connSetState('connected');
     _requestNotificationPermission();
+    _wsFlushQueue();
   };
 
   ws.onmessage = (event) => {
@@ -474,7 +607,11 @@ function _openWS() {
     if (conn.state !== 'auth') _scheduleReconnect();
   };
 
-  ws.onerror = () => {};
+  // Never swallow this: a silent onerror is how a phone spends a whole session
+  // looking connected while every action falls on the floor.
+  ws.onerror = (e) => {
+    console.warn('[WS] socket error', e?.message || e?.type || '');
+  };
 }
 
 function _scheduleReconnect() {
@@ -540,10 +677,101 @@ function _onRelayKicked() {
   _showAuth();
 }
 
-function wsSend(type, data) {
-  if (conn.ws && conn.ws.readyState === 1) {
-    conn.ws.send(JSON.stringify({ type, data }));
+// ─── Outbound Messages ────────────────────────────────────────────────────────
+
+// Types the desktop refuses without a session token. Mirrors
+// EXTERNAL_PRIVILEGED_TYPES in src/main/services/RemoteServer.js — kept here so
+// the PWA asks for the PIN up front instead of firing into a rejection.
+const RELAY_PRIVILEGED_TYPES = new Set([
+  'chat:send',
+  'chat:start',
+  'chat:interrupt',
+  'chat:permission-response',
+  'git:pull',
+  'git:push',
+  'settings:update',
+  'webhook:trigger',
+]);
+
+// The ONLY types held across a reconnect. All of them are idempotent reads whose
+// single effect is the server answering with fresh state, so replaying one late
+// is harmless.
+//
+// Everything else is dropped on a closed socket and reported to the caller. In
+// particular 'chat:permission-response' must NEVER be queued: a reconnect can be
+// minutes away on mobile, by which point the prompt it answers may have timed
+// out or been resolved on the desktop — replaying a blind "allow" against
+// whatever Claude is asking for *now* is the worst possible failure mode.
+// 'chat:send' / 'chat:start' / 'chat:interrupt' are dropped for a milder version
+// of the same reason (a prompt fired long after the user moved on, an interrupt
+// landing on a turn that already ended); they get an explicit retry affordance
+// instead, so the replay stays a user decision.
+const WS_QUEUEABLE_TYPES = new Set([
+  'request:init',
+  'git:status',
+  'mention:file-list',
+  'sessions:list-past',
+]);
+const WS_QUEUE_MAX = 20;
+const _wsQueue = [];
+
+/** Wrap a message; relay mode carries the desktop session token + client id. */
+function _wsEnvelope(type, data) {
+  const payload = { type, data };
+  if (conn.mode === 'relay') {
+    payload.clientId = conn.clientId;
+    if (conn.relayToken) payload.token = conn.relayToken;
   }
+  return payload;
+}
+
+/**
+ * Send a message to the desktop.
+ * @returns {boolean} true if delivered (or safely queued for the next connect).
+ *   false means the action did NOT happen — the caller must roll back whatever
+ *   optimistic UI it already applied.
+ */
+function wsSend(type, data) {
+  if (conn.mode === 'relay' && !conn.relayToken && RELAY_PRIVILEGED_TYPES.has(type)) {
+    console.warn('[WS] "' + type + '" needs an authenticated relay session — asking for the PIN');
+    _promptRelayPin();
+    return false;
+  }
+
+  if (conn.ws && conn.ws.readyState === 1) {
+    try {
+      conn.ws.send(JSON.stringify(_wsEnvelope(type, data)));
+      return true;
+    } catch (err) {
+      console.warn('[WS] send failed for "' + type + '":', err?.message || err);
+      return false;
+    }
+  }
+
+  if (WS_QUEUEABLE_TYPES.has(type)) {
+    const key = JSON.stringify(data ?? null);
+    const dup = _wsQueue.findIndex(q => q.type === type && q.key === key);
+    if (dup !== -1) _wsQueue.splice(dup, 1);
+    if (_wsQueue.length >= WS_QUEUE_MAX) _wsQueue.shift();
+    _wsQueue.push({ type, data, key });
+    console.warn('[WS] socket not open — queued "' + type + '" (' + _wsQueue.length + ' pending)');
+    return true;
+  }
+
+  console.warn('[WS] socket not open — dropped "' + type + '"');
+  return false;
+}
+
+function _wsFlushQueue() {
+  if (!_wsQueue.length) return;
+  const pending = _wsQueue.splice(0, _wsQueue.length);
+  _debugLog('[WS] Flushing ' + pending.length + ' queued message(s)');
+  for (const item of pending) wsSend(item.type, item.data);
+}
+
+/** Haptic acknowledgement that an action did not go through. */
+function _flashSendFailure() {
+  navigator.vibrate?.([30, 40, 30]);
 }
 
 // ─── Notifications ───────────────────────────────────────────────────────────
@@ -612,6 +840,9 @@ function handleMessage(msg) {
     case 'sessions:past':        onPastSessions(data); break;
     case 'settings:updated':     break; // ack, nothing to do
     case 'pong': break;
+    // Relay session auth (see _submitPinOverRelay)
+    case 'auth:result':          _onRelayAuthResult(data); break;
+    case 'remote:rejected':      _onRemoteRejected(data); break;
     // Relay-specific events
     case 'relay:desktop-online':
       _debugLog('[Relay] Desktop came online');
@@ -1465,14 +1696,19 @@ function resumePastSession(sessionId, projectId) {
     return;
   }
 
-  // Desktop mode: resume via WS relay
+  // Desktop mode: resume via WS relay. Send first — on failure the card must go
+  // back to being tappable instead of staying dimmed and inert.
+  if (!wsSend('chat:start', { cwd: project.path, resumeSessionId: sessionId })) {
+    if (card) {
+      card.style.opacity = '';
+      card.style.pointerEvents = '';
+    }
+    _flashSendFailure();
+    return;
+  }
   state.selectedSessionId = null;
   switchView('chat');
   renderChatView();
-  wsSend('chat:start', {
-    cwd: project.path,
-    resumeSessionId: sessionId,
-  });
 }
 
 function _formatTimeAgo(isoDate) {
@@ -1682,6 +1918,9 @@ function _setupChatDelegation() {
   const container = $('chat-messages');
   if (!container) return;
   container.addEventListener('click', (e) => {
+    // Resend a message that never left the device
+    const retryBtn = e.target.closest('.btn-retry-send');
+    if (retryBtn) { e.stopPropagation(); _retryFailedSend(retryBtn.dataset.retryId); return; }
     // Tool card expand
     const toolCard = e.target.closest('.tool-card.expandable');
     if (toolCard) { _toggleToolExpand(toolCard); return; }
@@ -1767,7 +2006,12 @@ function _renderMessage(m) {
     const mentionHtml = m.mentionLabels?.length
       ? `<div class="chat-user-mentions">${m.mentionLabels.map(l => `<span class="chat-user-mention">${escHtml(l)}</span>`).join('')}</div>`
       : '';
-    return `<div class="chat-msg user">${escHtml(m.content)}${mentionHtml}${imgHtml}</div>`;
+    const bubble = `<div class="chat-msg user${m.failed ? ' failed' : ''}"${m.failed ? ' style="opacity:0.55"' : ''}>${escHtml(m.content)}${mentionHtml}${imgHtml}</div>`;
+    if (!m.failed) return bubble;
+    // Dead spinners are worse than an error: say it was not sent, and offer the resend.
+    return bubble + `<div class="chat-msg error-msg">Not sent — you were offline.
+      <button class="btn-allow btn-retry-send" data-retry-id="${escHtml(m.retryId || '')}" style="margin-left:8px;padding:4px 12px;border:none;border-radius:6px;font-size:12px;cursor:pointer">Retry</button>
+    </div>`;
   }
 
   if (m.role === 'assistant') {
@@ -1913,10 +2157,26 @@ function _respondInlinePermission(el, allow) {
   const requestId = el.dataset.requestId;
   if (!requestId || !state.pendingPermissions.has(requestId)) return;
   navigator.vibrate?.(10);
-  wsSend('chat:permission-response', {
+  const sent = wsSend('chat:permission-response', {
     requestId,
     result: { behavior: allow ? 'allow' : 'deny' },
   });
+  if (!sent) {
+    // Never queued for later: by the time the socket is back the prompt may have
+    // timed out or been answered on the desktop, and a replayed "allow" would
+    // land on whatever Claude is asking for now. Keep it pending and let the
+    // user decide again once reconnected.
+    let err = el.querySelector('.perm-send-error');
+    if (!err) {
+      err = document.createElement('div');
+      err.className = 'perm-send-error';
+      err.style.cssText = 'color:var(--danger);font-size:12px;margin-top:6px';
+      el.appendChild(err);
+    }
+    err.textContent = 'Not sent — reconnecting. Tap again once connected.';
+    _flashSendFailure();
+    return;
+  }
   state.pendingPermissions.delete(requestId);
   el.classList.add('resolved');
   const actionsEl = el.querySelector('.perm-inline-actions');
@@ -2383,7 +2643,9 @@ function sendMessage() {
     const project = state.projects.find(p => p.id === state.selectedProjectId);
     if (!project) return;
     state._pendingUserMessage = text || (image ? t('chat.imageAttached') : mentions.map(m => m.label).join(' '));
-    wsSend('chat:start', {
+    // Send BEFORE touching the composer: there is no transcript yet to hang a
+    // failed bubble on, so the cheapest correct rollback is having cleared nothing.
+    const started = wsSend('chat:start', {
       cwd: project.path,
       prompt: text || '',
       images,
@@ -2391,6 +2653,11 @@ function sendMessage() {
       model: state.selectedModel,
       effort: state.selectedEffort,
     });
+    if (!started) {
+      state._pendingUserMessage = null;
+      _flashSendFailure();
+      return;
+    }
     input.value = '';
     input.style.height = 'auto';
     _clearImageAfterSend();
@@ -2400,24 +2667,60 @@ function sendMessage() {
     return;
   }
 
-  const session = state.sessions[state.selectedSessionId];
+  const sessionId = state.selectedSessionId;
+  const sendData = { sessionId, text: text || '', images, mentions: mentionsPayload };
+  const sent = wsSend('chat:send', sendData);
+  const session = state.sessions[sessionId];
+
+  // No transcript to report into — leave the composer untouched so nothing is lost.
+  if (!sent && !session) { _flashSendFailure(); return; }
+
   if (session) {
     session.messages.push({
       role: 'user',
       content: text || t('chat.imageAttached'),
       imageUrl: image?.dataUrl || null,
       mentionLabels: mentions.map(m => m.label),
+      failed: !sent,
+      retryId: sent ? null : _registerFailedSend('chat:send', sendData),
     });
     renderChatMessages();
     _saveSessions();
   }
-  wsSend('chat:send', { sessionId: state.selectedSessionId, text: text || '', images, mentions: mentionsPayload });
   input.value = '';
   input.style.height = 'auto';
   _clearImageAfterSend();
   _clearMentionsAfterSend();
-  setInputState('sending');
+  // Only claim a turn is running when one actually is — the spinner-that-never-
+  // resolves is exactly the bug this guards.
+  setInputState(sent ? 'sending' : 'idle');
+  if (!sent) _flashSendFailure();
   updateSendBtn();
+}
+
+// ── Failed sends (retry affordance) ──
+// Payloads for messages the user asked to send while the socket was down. Held
+// here rather than auto-replayed on reconnect so the resend stays a deliberate act.
+
+const _failedSends = new Map(); // Map<retryId, { type, data }>
+let _failedSendSeq = 0;
+
+function _registerFailedSend(type, data) {
+  const retryId = 'r' + (++_failedSendSeq);
+  _failedSends.set(retryId, { type, data });
+  return retryId;
+}
+
+function _retryFailedSend(retryId) {
+  const pending = _failedSends.get(retryId);
+  if (!pending) return;
+  if (!wsSend(pending.type, pending.data)) { _flashSendFailure(); return; }
+  _failedSends.delete(retryId);
+  const session = state.sessions[pending.data.sessionId];
+  const msg = session?.messages.find(m => m.retryId === retryId);
+  if (msg) { msg.failed = false; msg.retryId = null; }
+  renderChatMessages();
+  setInputState('sending');
 }
 
 function _clearMentionsAfterSend() {
@@ -2432,9 +2735,13 @@ function _clearImageAfterSend() {
 }
 
 function interruptSession() {
-  if (state.selectedSessionId) {
-    wsSend('chat:interrupt', { sessionId: state.selectedSessionId });
+  if (!state.selectedSessionId) return;
+  // Only flip back to idle if the interrupt actually reached the desktop —
+  // otherwise the turn is still running and the UI would be lying.
+  if (wsSend('chat:interrupt', { sessionId: state.selectedSessionId })) {
     setInputState('idle');
+  } else {
+    _flashSendFailure();
   }
 }
 
@@ -2528,23 +2835,34 @@ function _updatePlusMenuSelection() {
 }
 
 function _selectModel(modelId) {
+  const previous = state.selectedModel;
   state.selectedModel = modelId;
   _updatePlusMenuSelection();
 
   // If there's an active session, update it mid-session
-  if (state.selectedSessionId) {
-    wsSend('settings:update', { sessionId: state.selectedSessionId, model: modelId });
+  if (state.selectedSessionId &&
+      !wsSend('settings:update', { sessionId: state.selectedSessionId, model: modelId })) {
+    // The running session still uses the old model — don't show it as switched.
+    state.selectedModel = previous;
+    _updatePlusMenuSelection();
+    _flashSendFailure();
+    return; // leave the menu open on the reverted selection
   }
   _closePlusMenu();
 }
 
 function _selectEffort(effort) {
+  const previous = state.selectedEffort;
   state.selectedEffort = effort;
   _updatePlusMenuSelection();
 
   // If there's an active session, update it mid-session
-  if (state.selectedSessionId) {
-    wsSend('settings:update', { sessionId: state.selectedSessionId, effort });
+  if (state.selectedSessionId &&
+      !wsSend('settings:update', { sessionId: state.selectedSessionId, effort })) {
+    state.selectedEffort = previous;
+    _updatePlusMenuSelection();
+    _flashSendFailure();
+    return;
   }
   _closePlusMenu();
 }
@@ -2571,13 +2889,18 @@ function _scrollToBottomSmooth() {
 let _gitData = null;
 let _gitBusy = null; // 'pull' | 'push' | null
 
+// _gitBusy is only ever cleared by onGitResult, so a dropped send used to leave
+// both buttons disabled for the rest of the session. Clear it ourselves instead.
 function gitPull() {
   if (_gitBusy) return;
   const project = state.projects.find(p => p.id === state.selectedProjectId);
   if (!project?.path) return;
   _gitBusy = 'pull';
   _updateGitBtns();
-  wsSend('git:pull', { cwd: project.path });
+  if (!wsSend('git:pull', { cwd: project.path })) {
+    onGitResult('pull', { success: false });
+    _flashSendFailure();
+  }
 }
 
 function gitPush() {
@@ -2586,7 +2909,10 @@ function gitPush() {
   if (!project?.path) return;
   _gitBusy = 'push';
   _updateGitBtns();
-  wsSend('git:push', { cwd: project.path });
+  if (!wsSend('git:push', { cwd: project.path })) {
+    onGitResult('push', { success: false });
+    _flashSendFailure();
+  }
 }
 
 function onGitResult(action, data) {

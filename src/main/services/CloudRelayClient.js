@@ -96,13 +96,26 @@ class CloudRelayClient {
   }
 
   /**
-   * Forward a message to the relay (desktop → cloud → mobile)
+   * Forward a message to the relay (desktop → cloud → mobile).
+   * Nothing is queued: every frame here is a snapshot of live state that the
+   * next broadcast supersedes, and a replayed auth result would be worse than a
+   * lost one. Failure is reported rather than swallowed.
    * @param {string|object} data
+   * @returns {boolean} true if handed to the socket
    */
   send(data) {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      console.warn('[CloudRelay] Dropped outbound message — relay socket not open');
+      return false;
+    }
     const msg = typeof data === 'string' ? data : JSON.stringify(data);
-    this.ws.send(msg);
+    try {
+      this.ws.send(msg);
+      return true;
+    } catch (err) {
+      console.warn('[CloudRelay] Send failed:', err.message);
+      return false;
+    }
   }
 
   /** @returns {{ connected: boolean, serverUrl: string|null }} */

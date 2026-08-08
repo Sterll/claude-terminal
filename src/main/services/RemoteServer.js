@@ -3,13 +3,20 @@
  * WebSocket + HTTP server that serves the mobile PWA and bridges
  * Claude Terminal state/events to connected mobile devices.
  *
- * Auth flow:
+ * Auth flow (LAN):
  *  1. User enables Remote in settings → server starts
  *  2. A 4-digit PIN is shown in settings (rotates every 2 min or on demand)
  *  3. Mobile opens http://<ip>:<port>, enters PIN → POST /auth { pin }
  *     → server returns a session token (valid for the server lifetime)
  *  4. Mobile connects WS with ?token=<sessionToken>
  *  5. On reconnect, mobile uses stored session token directly
+ *
+ * Auth flow (cloud relay):
+ *  The relay is a dumb pipe: it only forwards {type, data} frames and carries no
+ *  per-client identity. A relayed mobile therefore proves itself with the SAME
+ *  PIN, tunnelled as an `auth:pin` frame, and receives the SAME kind of session
+ *  token, validated through the same _isTokenValid() path. See
+ *  _handleRelayAuth() / handleExternalMessage() at the bottom of this file.
  */
 
 const http = require('http');
@@ -60,6 +67,10 @@ let _pinUsed = false;  // true after one successful auth (PIN stays displayed bu
 
 // Valid session tokens → { issuedAt } (once authenticated via PIN)
 const _sessionTokens = new Map(); // Map<token, { issuedAt }>
+// Subset of _sessionTokens that was issued over the cloud relay. Tracked apart
+// so relay sessions can be revoked (or survive a local-server restart) as a unit
+// — they have no socket of their own to hang their lifetime on.
+const _relayTokens = new Set(); // Set<token>
 const _connectedClients = new Map(); // Map<sessionToken, WebSocket>
 const _clientMeta = new Map(); // Map<sessionToken, { connectedAt, ip, userAgent }>
 
@@ -1201,7 +1212,16 @@ async function stop() {
   }
   _connectedClients.clear();
   _clientMeta.clear();
-  _sessionTokens.clear();
+  if (_externalTransport) {
+    // Relay sessions are independent of the LAN server — toggling the local
+    // server off must not silently drop a phone back to read-only.
+    for (const token of _sessionTokens.keys()) {
+      if (!_relayTokens.has(token)) _sessionTokens.delete(token);
+    }
+  } else {
+    _sessionTokens.clear();
+    _relayTokens.clear();
+  }
   _pin = null;
   _authAttempts.clear();
 
@@ -1251,10 +1271,84 @@ function setExternalTransport(transport) {
     _ensureChatBridge();
     _startCleanupTimer();
   } else {
-    // Transport released - teardown bridge and cleanup timer if local server also inactive
+    // Transport released — every session token minted over it dies with it, so a
+    // reconnecting phone has to present the PIN again rather than resurrecting a
+    // token nobody can revoke.
+    for (const token of _relayTokens) _sessionTokens.delete(token);
+    _relayTokens.clear();
+    // Teardown bridge and cleanup timer if local server also inactive
     _teardownChatBridge();
     if (!httpServer) _stopCleanupTimer();
   }
+}
+
+// ─── Relay Session Auth ──────────────────────────────────────────────────────
+//
+// A mobile arriving over the relay authenticates exactly like a LAN mobile: it
+// presents the 6-digit PIN shown in Settings → Remote Control and gets back a
+// session token from the same _sessionTokens map. The only difference is the
+// carrier — POST /auth is not reachable through the relay, so the exchange is
+// tunnelled as two ordinary {type, data} frames the relay already knows how to
+// forward:
+//
+//   mobile  → { type: 'auth:pin',    data: { pin, nonce }, clientId }
+//   desktop → { type: 'auth:result', data: { ok, token?, error?, nonce, clientId } }
+//
+// Threat model, stated plainly: the relay sees every frame in clear, so it — and
+// any other mobile already holding the cloud API key — can observe a handshake
+// in flight. That is unchanged from LAN, where the token crosses the Wi-Fi in
+// clear too. What the PIN buys is that possession of the cloud API key ALONE no
+// longer grants write access: the caller must additionally read a rotating code
+// off the desktop screen.
+//
+// The relay gives us no client IP, so brute-force attempts over it all share a
+// single lockout bucket. A client-supplied id is deliberately NOT used as the
+// bucket key: an attacker would just rotate it for an unlimited PIN budget.
+const RELAY_AUTH_BUCKET = 'relay';
+
+/** Extract the optional, client-supplied correlation id (echoed, never trusted). */
+function _externalClientId(parsed) {
+  const raw = parsed && parsed.clientId;
+  return typeof raw === 'string' ? raw.slice(0, 64) : null;
+}
+
+/**
+ * Handle an `auth:pin` frame from the relay: validate the PIN and, on success,
+ * mint a session token with the same lifetime and validation path as a LAN one.
+ * @param {object} parsed
+ */
+async function _handleRelayAuth(parsed) {
+  const data = parsed.data || {};
+  const nonce = typeof data.nonce === 'string' ? data.nonce.slice(0, 64) : null;
+  const clientId = _externalClientId(parsed);
+  const reply = (payload) => _wsSend(_externalWsProxy, 'auth:result', { nonce, clientId, ...payload });
+
+  if (_pin === null) {
+    reply({ ok: false, error: 'No PIN available — open Settings → Remote Control on the desktop' });
+    return;
+  }
+  if (typeof data.pin !== 'string' || !/^\d{6}$/.test(data.pin)) {
+    reply({ ok: false, error: 'Invalid or expired PIN' });
+    return;
+  }
+  if (!await _isPinValid(data.pin, RELAY_AUTH_BUCKET)) {
+    console.warn('[Remote] Relay auth failed — wrong or expired PIN');
+    reply({ ok: false, error: 'Invalid or expired PIN' });
+    return;
+  }
+
+  const token = crypto.randomBytes(24).toString('hex');
+  _sessionTokens.set(token, { issuedAt: Date.now() });
+  _relayTokens.add(token);
+
+  const settings = await _loadSettings();
+  const isPersistentPin = settings.remotePersistentPin && !!settings.remotePersistentPinValue;
+  if (!isPersistentPin) {
+    _pinUsed = true;
+    generatePin(); // Fresh PIN for next auth — same one-shot rule as POST /auth
+  }
+  console.debug(`[Remote] Relay auth OK — session token issued, ${_sessionTokens.size} active token(s)`);
+  reply({ ok: true, token });
 }
 
 // Message types accepted from an external transport that has NOT presented a
@@ -1271,9 +1365,13 @@ const EXTERNAL_READONLY_TYPES = new Set([
 ]);
 
 // Types that start work, mutate state, or approve a Claude tool permission.
-// These require a session token issued by POST /auth, exactly like a local
-// WS client. Anything not listed in either set is silently ignored, so a new
-// handler added to the switch fails closed on the relay path.
+// These require a session token — issued by POST /auth on the LAN, or by the
+// `auth:pin` handshake over the relay — exactly like a local WS client.
+//
+// These two sets are an ALLOWLIST, not just a privilege split: a type absent
+// from both is ignored on the relay path whether or not a valid token is
+// presented. A handler added to the switch in _handleClientMessage therefore
+// stays unreachable from the relay until someone deliberately classifies it here.
 const EXTERNAL_PRIVILEGED_TYPES = new Set([
   'chat:send',
   'chat:start',
@@ -1301,19 +1399,46 @@ function handleExternalMessage(msg) {
   const type = parsed.type;
   if (!type) return;
 
+  const clientId = _externalClientId(parsed);
+
+  // PIN handshake. Handled inline and returned on unconditionally, BEFORE the
+  // token branch, so `auth:pin` can never be routed into _handleClientMessage —
+  // not even by presenting a valid token alongside it.
+  if (type === 'auth:pin') {
+    _handleRelayAuth(parsed).catch(e => console.warn(`[Remote] Relay auth error: ${e.message}`));
+    return;
+  }
+
   const dispatch = (token) => _handleClientMessage(
     _externalWsProxy,
     token,
     Buffer.from(JSON.stringify({ type, data: parsed.data })),
   );
 
-  // If the relay ever forwards a session token, validate it through the exact
-  // same check as local clients and grant the same privileges.
+  // A relayed client that completed the PIN handshake carries its session token
+  // on every frame. Validate it through the exact same check as local clients
+  // and grant the same privileges — that is what lifts the read-only restriction.
   const token = parsed.token || parsed.sessionToken || (parsed.auth && parsed.auth.token) || null;
   if (token) {
-    if (_isTokenValid(token)) { dispatch(token); return; }
-    console.warn(`[Remote] Rejected external "${type}" — invalid or expired session token`);
-    _wsSend(_externalWsProxy, 'remote:rejected', { type, error: 'Invalid or expired session token' });
+    if (!_isTokenValid(token)) {
+      console.warn(`[Remote] Rejected external "${type}" — invalid or expired session token`);
+      _wsSend(_externalWsProxy, 'remote:rejected', {
+        type,
+        clientId,
+        reason: 'invalid-token',
+        error: 'Invalid or expired session token',
+      });
+      return;
+    }
+    // Fail-closed even once authenticated: a handler added to the switch later
+    // stays unreachable over the relay until it is explicitly classified in one
+    // of the two sets above. Authentication lifts the read-only restriction, it
+    // does not widen the surface.
+    if (!EXTERNAL_READONLY_TYPES.has(type) && !EXTERNAL_PRIVILEGED_TYPES.has(type)) {
+      console.debug(`[Remote] Ignored external "${type}" — not classified for the relay path`);
+      return;
+    }
+    dispatch(token);
     return;
   }
 
@@ -1323,9 +1448,11 @@ function handleExternalMessage(msg) {
   }
 
   if (EXTERNAL_PRIVILEGED_TYPES.has(type)) {
-    console.warn(`[Remote] Rejected external "${type}" — no session token (read-only types only over the relay)`);
+    console.warn(`[Remote] Rejected external "${type}" — no session token (PIN handshake required)`);
     _wsSend(_externalWsProxy, 'remote:rejected', {
       type,
+      clientId,
+      reason: 'auth-required',
       error: 'Unauthorized: this action requires an authenticated session',
     });
     return;
@@ -1385,12 +1512,27 @@ function getConnectedClients() {
       connectedAt: _externalTransportConnectedAt,
       ip: 'relay',
       userAgent: 'Cloud Relay',
+      authenticatedSessions: _relayTokens.size,
     });
   }
   return clients;
 }
 
 function disconnectClient(clientId) {
+  // The relay is one virtual client with no socket of its own, so "disconnect"
+  // means revoking every session token issued over it: relayed phones drop back
+  // to read-only until they present the PIN again.
+  if (clientId === 'cloud') {
+    if (!_relayTokens.size) return false;
+    for (const token of _relayTokens) _sessionTokens.delete(token);
+    _relayTokens.clear();
+    _wsSend(_externalWsProxy, 'remote:rejected', {
+      type: null,
+      reason: 'revoked',
+      error: 'Session revoked by administrator',
+    });
+    return true;
+  }
   for (const [token, ws] of _connectedClients.entries()) {
     if (token.slice(0, 8) === clientId) {
       try { ws.close(4403, 'Disconnected by administrator'); } catch (e) {}
