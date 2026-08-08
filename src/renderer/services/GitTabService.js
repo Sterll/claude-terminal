@@ -13,7 +13,22 @@ const { showConfirm, createModal, showModal, closeModal } = require('../ui/compo
 
 // ========== GIT ERROR MAPPER ==========
 
+/**
+ * t() with an explicit fallback: it returns the key path itself when a key is
+ * missing, which would leak "gitTab.gitNotInstalled" into the UI. The main
+ * process already sends an English sentence, so use that until the locale
+ * files carry the key.
+ */
+function tOr(key, fallback) {
+  const value = t(key);
+  return (value && value !== key) ? value : fallback;
+}
+
 const GIT_ERROR_PATTERNS = [
+  // Environment failures first - these are not "the repo says no", they are
+  // "git could not run", and they must not be mistaken for a clean repo.
+  { pattern: /spawn git ENOENT|git is not installed/i, key: 'gitErrors.gitNotInstalled' },
+  { pattern: /git command timed out/i, key: 'gitErrors.gitTimedOut' },
   { pattern: /fatal: not a git repository/i, key: 'gitErrors.notARepo' },
   { pattern: /fatal: ref .+ is not a symbolic ref/i, key: 'gitErrors.notSymbolicRef' },
   { pattern: /error: pathspec .+ did not match any file/i, key: 'gitErrors.pathNotFound' },
@@ -44,6 +59,57 @@ function friendlyGitError(rawError) {
   }
   // Strip "fatal: " / "error: " prefixes for cleaner display
   return rawError.replace(/^(fatal|error):\s*/i, '');
+}
+
+// ========== "GIT COULD NOT RUN" STATE ==========
+
+/**
+ * The main process flags the two failures that are the environment's fault
+ * (`gitUnavailable`) rather than the repository's. Without this, both render as
+ * "this project is not a Git repository", which is how a machine with no git on
+ * PATH ended up showing a healthy, empty repo.
+ * @param {Object|null} payload - A git-info / git-status-detailed IPC payload
+ * @returns {string|null} - Explanation to show, or null when git ran fine
+ */
+function gitUnavailableMessage(payload) {
+  if (!payload || !payload.gitUnavailable) return null;
+  if (payload.unavailableReason === 'enoent') {
+    return tOr('gitTab.gitNotInstalled', payload.message || 'Git is not installed or not available on PATH');
+  }
+  if (payload.unavailableReason === 'timeout') {
+    return tOr('gitTab.gitTimedOut', payload.message || 'Git command timed out');
+  }
+  return payload.message || null;
+}
+
+/** Empty-state markup for "git could not run", with the concrete reason. */
+function gitUnavailableStateHtml(message) {
+  return `<div class="git-empty-state">
+    <p>${escapeHtml(tOr('gitTab.gitUnavailable', 'Git could not run'))}</p>
+    <p style="color:var(--text-secondary);font-size:var(--font-sm)">${escapeHtml(message)}</p>
+  </div>`;
+}
+
+/**
+ * git-file-diff / git-commit-detail resolve to a string on success and to
+ * `{ error: true, message }` on failure - an empty diff must never be
+ * confused with a diff that could not be produced.
+ * @param {string|{error?: boolean, message?: string}} payload
+ * @returns {{failed: boolean, text: string, message: string}}
+ */
+function readDiffPayload(payload) {
+  if (payload && typeof payload === 'object' && payload.error) {
+    return { failed: true, text: '', message: payload.message || '' };
+  }
+  return { failed: false, text: typeof payload === 'string' ? payload : '', message: '' };
+}
+
+/** Error-state markup for a diff pane that failed to load. */
+function diffErrorHtml(message) {
+  return `<div style="padding:16px">
+    <p style="color:var(--danger)">${escapeHtml(tOr('gitTab.diffLoadFailed', 'Could not load the diff'))}</p>
+    ${message ? `<p style="color:var(--text-secondary);font-size:var(--font-sm)">${escapeHtml(friendlyGitError(message))}</p>` : ''}
+  </div>`;
 }
 
 // ========== INPUT MODAL HELPER ==========
@@ -1261,7 +1327,10 @@ function renderSubTabContent() {
 
 function renderChanges(container) {
   if (!changesData || !changesData.success) {
-    container.innerHTML = `<div class="git-empty-state"><p>${t('gitTab.notGitRepo')}</p></div>`;
+    const unavailable = gitUnavailableMessage(changesData);
+    container.innerHTML = unavailable
+      ? gitUnavailableStateHtml(unavailable)
+      : `<div class="git-empty-state"><p>${t('gitTab.notGitRepo')}</p></div>`;
     return;
   }
 
@@ -2243,7 +2312,10 @@ async function handleGenerateMessage() {
   try {
     const result = await api.git.generateCommitMessage({
       projectPath: selectedProject.path,
-      files: changesData.files
+      files: changesData.files,
+      // The main process treats an absent useAi as `true`, so omitting it here
+      // silently overrode the user's "AI commit messages" setting.
+      useAi: getSetting('aiCommitMessages') !== false
     });
     if (result.success && result.message) {
       const msgEl = document.getElementById('git-tab-commit-msg');
@@ -2357,16 +2429,21 @@ function renderDiffContent(diff) {
 }
 
 async function handleViewDiff(filePath, staged) {
-  const diff = await api.git.fileDiff({ projectPath: selectedProject.path, filePath, staged });
+  const payload = await api.git.fileDiff({ projectPath: selectedProject.path, filePath, staged });
+  // A failed diff used to arrive as null and render as "no diff available",
+  // i.e. exactly like an unchanged file.
+  const { failed, text: diff, message } = readDiffPayload(payload);
 
   const toggleHtml = diff ? `<div class="diff-mode-toggle">
     <button class="diff-mode-btn ${diffMode === 'unified' ? 'active' : ''}" data-mode="unified">${t('gitTab.diffUnified')}</button>
     <button class="diff-mode-btn ${diffMode === 'sidebyside' ? 'active' : ''}" data-mode="sidebyside">${t('gitTab.diffSideBySide')}</button>
   </div>` : '';
 
-  const content = !diff
-    ? `<p style="color:var(--text-secondary);padding:16px">${t('gitTab.noDiffAvailable')}</p>`
-    : `${toggleHtml}<div class="git-diff-view" id="git-diff-content">${renderDiffContent(diff)}</div>`;
+  const content = failed
+    ? diffErrorHtml(message)
+    : !diff
+      ? `<p style="color:var(--text-secondary);padding:16px">${t('gitTab.noDiffAvailable')}</p>`
+      : `${toggleHtml}<div class="git-diff-view" id="git-diff-content">${renderDiffContent(diff)}</div>`;
 
   const modal = createModal({
     id: 'git-diff-modal',
@@ -2390,14 +2467,17 @@ async function handleViewDiff(filePath, staged) {
 }
 
 async function handleCommitDetail(hash) {
-  const [detail, fileDiffs] = await Promise.all([
+  const [detailPayload, fileDiffs] = await Promise.all([
     api.git.commitDetail({ projectPath: selectedProject.path, commitHash: hash }),
     api.git.commitFileDiffs({ projectPath: selectedProject.path, commitHash: hash })
   ]);
+  const { failed, text: detail, message } = readDiffPayload(detailPayload);
 
-  const content = detail
-    ? `<div class="git-diff-view">${renderDiffWithLineNumbers(detail)}</div>`
-    : `<p style="color:var(--text-secondary);padding:16px">${t('gitTab.noDiffAvailable')}</p>`;
+  const content = failed
+    ? diffErrorHtml(message)
+    : detail
+      ? `<div class="git-diff-view">${renderDiffWithLineNumbers(detail)}</div>`
+      : `<p style="color:var(--text-secondary);padding:16px">${t('gitTab.noDiffAvailable')}</p>`;
 
   // Build per-file diff section
   let filesHtml = '';

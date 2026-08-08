@@ -654,7 +654,15 @@ class GitChangesPanel extends BasePanel {
         }).catch(() => null) : Promise.resolve(null)
       ]);
 
-      if (!diff || diff.trim() === '') {
+      // git-file-diff resolves the diff string, or { error: true, message }
+      // when git itself could not run. Those are very different things: a
+      // blank pane reads as "no changes" and invites a blind commit.
+      if (diff && typeof diff === 'object' && diff.error) {
+        diffPanel.innerHTML = `<div class="git-inline-diff-empty">${escapeHtml(diff.message || t('gitTab.diffLoadFailed'))}</div>`;
+        return;
+      }
+
+      if (!diff || typeof diff !== 'string' || diff.trim() === '') {
         diffPanel.innerHTML = `<div class="git-inline-diff-empty">${t('gitChanges.noDiff')}</div>`;
         return;
       }
@@ -769,7 +777,12 @@ class GitChangesPanel extends BasePanel {
         filesHtml += '</div>';
       }
 
-      const fullContent = `${filesHtml}<div class="git-diff-view"><pre class="git-diff-content">${escapeHtml(detail || '')}</pre></div>`;
+      // git-commit-detail can resolve { error: true, message }; without this
+      // guard the pane rendered a literal "[object Object]".
+      const detailText = (detail && typeof detail === 'object' && detail.error)
+        ? (detail.message || t('gitTab.diffLoadFailed'))
+        : (typeof detail === 'string' ? detail : '');
+      const fullContent = `${filesHtml}<div class="git-diff-view"><pre class="git-diff-content">${escapeHtml(detailText)}</pre></div>`;
 
       const modal = createModal({
         id: 'git-blame-commit-modal',

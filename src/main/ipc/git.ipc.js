@@ -4,7 +4,7 @@
  */
 
 const { ipcMain } = require('electron');
-const { execGit, getGitInfo, getGitInfoFull, getGitStatusQuick, getGitStatusDetailed, gitPull, gitPush, gitPushBranch, gitMerge, gitMergeAbort, gitMergeContinue, getMergeConflicts, isMergeInProgress, gitClone, gitStageFiles, gitCommit, getProjectStats, getBranches, getCurrentBranch, checkoutBranch, createBranch, deleteBranch, getCommitHistory, getFileDiff, getCommitDetail, cherryPick, revertCommit, gitUnstageFiles, stashApply, stashDrop, gitStashSave, getWorktrees, createWorktree, removeWorktree, lockWorktree, unlockWorktree, pruneWorktrees, detectWorktree, diffWorktreeBranches, diffWorktreeBranchesWithStats, deleteRemoteBranch, gitFetch, renameBranch, gitRebase, gitRebaseAbort, gitRebaseContinue, getFileHistory, getCommitFileDiffs, getCommitFileDiff, gitBlame, getTags, createTag, deleteTag, pushTag, pushAllTags, getRemotes, resolveConflict, getBranchOrphanCommitCount, gitDiscardFiles, stashPop, stashShow, gitAmendCommit, isRebaseInProgress, gitReset, searchCommitHistory, addRemote, removeRemote } = require('../utils/git');
+const { execGit, getGitInfo, getGitInfoFull, getGitStatusQuick, getGitStatusDetailed, gitPull, gitPush, gitPushBranch, gitMerge, gitMergeAbort, gitMergeContinue, getMergeConflicts, isMergeInProgress, gitClone, gitStageFiles, gitCommit, getProjectStats, getBranches, getCurrentBranch, checkoutBranch, createBranch, deleteBranch, getCommitHistory, getFileDiffResult, getCommitDetailResult, cherryPick, revertCommit, gitUnstageFiles, stashApply, stashDrop, gitStashSave, getWorktrees, createWorktree, removeWorktree, lockWorktree, unlockWorktree, pruneWorktrees, detectWorktree, diffWorktreeBranches, diffWorktreeBranchesWithStats, deleteRemoteBranch, gitFetch, renameBranch, gitRebase, gitRebaseAbort, gitRebaseContinue, getFileHistory, getCommitFileDiffs, getCommitFileDiff, gitBlame, getTags, createTag, deleteTag, pushTag, pushAllTags, getRemotes, resolveConflict, getBranchOrphanCommitCount, gitDiscardFiles, stashPop, stashShow, gitAmendCommit, isRebaseInProgress, gitReset, searchCommitHistory, addRemote, removeRemote } = require('../utils/git');
 const { generateCommitMessage, generateMultiCommitMessages, generateSessionRecap, groupFiles } = require('../utils/commitMessageGenerator');
 const { generatePrDescription } = require('../utils/prDescriptionGenerator');
 const GitHubAuthService = require('../services/GitHubAuthService');
@@ -249,21 +249,28 @@ function registerGitHandlers() {
   });
 
   // Get file diff
+  // Resolves to the diff string on success, or { error: true, message } - an
+  // empty diff means "no changes", so a failure must not resolve to '' / null.
   ipcMain.handle('git-file-diff', async (event, { projectPath, filePath, staged }) => {
     try {
-      return await getFileDiff(projectPath, filePath, staged);
+      const result = await getFileDiffResult(projectPath, filePath, staged);
+      if (!result.ok) return { error: true, message: result.error };
+      return result.diff;
     } catch (err) {
-      return null;
+      return { error: true, message: err.message };
     }
   });
 
   // Get commit detail
+  // Same contract as git-file-diff: string on success, { error: true, message } otherwise.
   ipcMain.handle('git-commit-detail', async (event, { projectPath, commitHash }) => {
-    if (!isValidCommitHash(commitHash)) return '';
+    if (!isValidCommitHash(commitHash)) return { error: true, message: 'Invalid commit hash' };
     try {
-      return await getCommitDetail(projectPath, commitHash);
+      const result = await getCommitDetailResult(projectPath, commitHash);
+      if (!result.ok) return { error: true, message: result.error };
+      return result.detail;
     } catch (err) {
-      return '';
+      return { error: true, message: err.message };
     }
   });
 

@@ -57,26 +57,163 @@ function safeDirArgs(cwd) {
   return args;
 }
 
+// ── Failure reporting ───────────────────────────────────────────────────────
+//
+// execGit() historically collapsed four very different outcomes into a bare
+// `null`: the directory is gone, git exited non-zero, git had to be killed on
+// timeout, or **git is not installed at all**. Every one of the 69 git IPC
+// handlers then read that null as "clean repo, no branches, no commits", so a
+// machine without git on PATH rendered a perfectly healthy-looking empty repo.
+//
+// execGitResult() below is the real primitive and reports which of the four it
+// was; execGit() is a thin compatibility wrapper over it so the existing
+// callers keep their string|null contract untouched.
+
+/** Reasons a git invocation can fail, most specific first. */
+const GIT_FAILURE_MESSAGES = {
+  enoent: 'Git is not installed or not available on PATH',
+  timeout: 'Git command timed out',
+  nodir: 'Directory not found',
+};
+
+/** Failures caused by the environment rather than by the repository state. */
+const ENVIRONMENT_FAILURES = new Set(['enoent', 'timeout']);
+
+// ENOENT is a global condition: on a machine without git every single call
+// fails the same way, which would flood the error log with hundreds of
+// identical entries per dashboard load. Log it at most once per window.
+const ENOENT_LOG_INTERVAL_MS = 60000;
+let _lastEnoentLog = 0;
+
+/** Lazily resolved so a missing/broken error log can never break a git call. */
+let _errorLogModule;
+function _errorLog() {
+  if (_errorLogModule === undefined) {
+    try {
+      _errorLogModule = require('../services/ErrorLogService');
+    } catch (_) {
+      _errorLogModule = null;
+    }
+  }
+  return _errorLogModule;
+}
+
 /**
- * Execute a git command in a specific directory using execFile (no shell injection)
+ * Short, log-safe label for a git invocation: the subcommand plus at most one
+ * more positional token. Keeps user paths and branch names out of the log.
+ * @param {string[]} argsArray
+ * @returns {string}
+ */
+function _commandLabel(argsArray) {
+  const positional = argsArray.filter(a => typeof a === 'string' && !a.startsWith('-'));
+  return positional.slice(0, 2).join(' ') || 'git';
+}
+
+/**
+ * Human-readable reason a git invocation failed.
+ * @param {{reason?: string, error?: string}} result - An execGitResult() result
+ * @returns {string}
+ */
+function describeGitFailure(result) {
+  if (!result) return 'Git command failed';
+  if (GIT_FAILURE_MESSAGES[result.reason]) return GIT_FAILURE_MESSAGES[result.reason];
+  const stderr = typeof result.error === 'string' ? result.error.trim() : '';
+  return stderr || 'Git command failed';
+}
+
+/**
+ * True when the failure means "git could not run", as opposed to "the repo
+ * says no". Only these two are worth telling the user about.
+ * @param {{reason?: string}} result - An execGitResult() result
+ * @returns {boolean}
+ */
+function isGitUnavailable(result) {
+  return !!result && ENVIRONMENT_FAILURES.has(result.reason);
+}
+
+/**
+ * Build the `{ isGitRepo: false }` payload, enriched when git itself is the
+ * problem. The extra fields are additive: consumers that only read `isGitRepo`
+ * behave exactly as before.
+ * @param {{reason?: string, error?: string}} [result] - An execGitResult() result
+ * @returns {{isGitRepo: false, gitUnavailable?: boolean, unavailableReason?: string, message?: string}}
+ */
+function notAGitRepo(result) {
+  if (!isGitUnavailable(result)) return { isGitRepo: false };
+  return {
+    isGitRepo: false,
+    gitUnavailable: true,
+    unavailableReason: result.reason,
+    message: describeGitFailure(result),
+  };
+}
+
+/** Record the failures that are actionable; stay silent on routine ones. */
+function _logGitFailure(cwd, argsArray, reason, error) {
+  const log = _errorLog();
+  if (!log) return;
+  try {
+    if (reason === 'enoent') {
+      const now = Date.now();
+      if (now - _lastEnoentLog < ENOENT_LOG_INTERVAL_MS) return;
+      _lastEnoentLog = now;
+      log.logWarning('git', GIT_FAILURE_MESSAGES.enoent, {
+        context: { command: _commandLabel(argsArray), cwd },
+      });
+    } else if (reason === 'timeout') {
+      log.logWarning('git', `git ${_commandLabel(argsArray)} timed out`, {
+        context: { command: _commandLabel(argsArray), cwd, error },
+      });
+    }
+    // 'exit' and 'nodir' are ordinary control flow (no upstream, no tags, a
+    // folder that is simply not a repo) - logging them would be pure noise.
+  } catch (_) {
+    // Logging must never break a git call.
+  }
+}
+
+/**
+ * Execute a git command and report *why* it failed.
+ * This is the primitive; execGit() is the string|null wrapper over it.
  * @param {string} cwd - Working directory
  * @param {string|string[]} args - Git command arguments as array (preferred) or space-separated string (simple commands only)
  * @param {number} timeout - Timeout in ms (default: 10000)
- * @returns {Promise<string|null>} - Command output or null on error
+ * @returns {Promise<{ok: boolean, output: string, reason: 'enoent'|'timeout'|'exit'|'nodir'|null, error: string|null}>}
  */
-function execGit(cwd, args, timeout = 10000) {
+function execGitResult(cwd, args, timeout = 10000) {
+  // WARNING: the string form splits naively on spaces - quotes are NOT honoured (they stay
+  // literal in the argv entry) and any value containing a space becomes several arguments.
+  // Pass an array whenever an argument is user-controlled or may contain spaces.
+  const argsArray = Array.isArray(args) ? args : args.split(' ');
+
   return new Promise((resolve) => {
     // Early bail if directory doesn't exist (e.g. projects synced from another machine)
-    if (!fs.existsSync(cwd)) { resolve(null); return; }
-    // WARNING: the string form splits naively on spaces - quotes are NOT honoured (they stay
-    // literal in the argv entry) and any value containing a space becomes several arguments.
-    // Pass an array whenever an argument is user-controlled or may contain spaces.
-    const argsArray = Array.isArray(args) ? args : args.split(' ');
+    if (!fs.existsSync(cwd)) {
+      resolve({ ok: false, output: '', reason: 'nodir', error: GIT_FAILURE_MESSAGES.nodir });
+      return;
+    }
+
+    let settled = false;
+    const fail = (reason, error) => {
+      if (settled) return;
+      settled = true;
+      _logGitFailure(cwd, argsArray, reason, error);
+      resolve({ ok: false, output: '', reason, error: error || describeGitFailure({ reason }) });
+    };
+
     const fullArgs = [...safeDirArgs(cwd), ...HARDENING_ARGS, ...argsArray];
-    const child = execFile('git', fullArgs, { cwd, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout) => {
+    const child = execFile('git', fullArgs, { cwd, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
       if (timer) clearTimeout(timer);
       _activeProcesses.delete(child);
-      resolve(error ? null : stdout.trimEnd());
+      if (error) {
+        // error.code is the exit status for a normal failure, or an errno
+        // string ('ENOENT') when the binary could not be spawned at all.
+        fail(error.code === 'ENOENT' ? 'enoent' : 'exit', (stderr || error.message || '').trim());
+        return;
+      }
+      if (settled) return;
+      settled = true;
+      resolve({ ok: true, output: stdout.trimEnd(), reason: null, error: null });
     });
 
     _activeProcesses.add(child);
@@ -86,15 +223,27 @@ function execGit(cwd, args, timeout = 10000) {
       _activeProcesses.delete(child);
       try { child.kill('SIGTERM'); } catch (_) {}
       setTimeout(() => { try { child.kill('SIGKILL'); } catch (_) {} }, 1000);
-      resolve(null);
+      fail('timeout', `${GIT_FAILURE_MESSAGES.timeout} after ${timeout}ms`);
     }, timeout);
 
-    child.on('error', () => {
+    child.on('error', (err) => {
       if (timer) clearTimeout(timer);
       _activeProcesses.delete(child);
-      resolve(null);
+      fail(err && err.code === 'ENOENT' ? 'enoent' : 'exit', err && err.message);
     });
   });
+}
+
+/**
+ * Execute a git command in a specific directory using execFile (no shell injection)
+ * Thin wrapper over execGitResult() - use that one when you need the failure reason.
+ * @param {string} cwd - Working directory
+ * @param {string|string[]} args - Git command arguments as array (preferred) or space-separated string (simple commands only)
+ * @param {number} timeout - Timeout in ms (default: 10000)
+ * @returns {Promise<string|null>} - Command output or null on error
+ */
+function execGit(cwd, args, timeout = 10000) {
+  return execGitResult(cwd, args, timeout).then(result => (result.ok ? result.output : null));
 }
 
 /**
@@ -102,20 +251,30 @@ function execGit(cwd, args, timeout = 10000) {
  * @param {string} cwd - Working directory
  * @param {string[]} args - Git command arguments as array
  * @param {Object} opts - Options (maxBuffer, timeout)
- * @returns {Promise<{success: boolean, output?: string, error?: string}>}
+ * @returns {Promise<{success: boolean, output?: string, error?: string, reason?: 'enoent'|'timeout'|'exit'|'nodir'}>}
  */
 function spawnGit(cwd, args, opts = {}) {
   const { maxBuffer = 1024 * 1024, timeout = 15000 } = opts;
   return new Promise((resolve) => {
+    let settled = false;
+    // `reason` is additive - existing callers only read success/output/error.
+    const fail = (reason, error) => {
+      if (settled) return;
+      settled = true;
+      _logGitFailure(cwd, args, reason, error);
+      resolve({ success: false, error: error || describeGitFailure({ reason }), reason });
+    };
+
     // Early bail if directory doesn't exist (e.g. projects synced from another machine)
-    if (!fs.existsSync(cwd)) { resolve({ success: false, error: 'Directory not found' }); return; }
+    if (!fs.existsSync(cwd)) { fail('nodir', GIT_FAILURE_MESSAGES.nodir); return; }
     const fullArgs = [...safeDirArgs(cwd), ...HARDENING_ARGS, ...args];
     const child = execFile('git', fullArgs, { cwd, encoding: 'utf8', maxBuffer, timeout }, (error, stdout, stderr) => {
       if (timer) clearTimeout(timer);
       _activeProcesses.delete(child);
       if (error) {
-        resolve({ success: false, error: stderr || error.message });
-      } else {
+        fail(error.code === 'ENOENT' ? 'enoent' : 'exit', stderr || error.message);
+      } else if (!settled) {
+        settled = true;
         resolve({ success: true, output: stdout || stderr || '' });
       }
     });
@@ -126,13 +285,13 @@ function spawnGit(cwd, args, opts = {}) {
       _activeProcesses.delete(child);
       try { child.kill('SIGTERM'); } catch (_) {}
       setTimeout(() => { try { child.kill('SIGKILL'); } catch (_) {} }, 1000);
-      resolve({ success: false, error: 'Git command timed out' });
+      fail('timeout', GIT_FAILURE_MESSAGES.timeout);
     }, timeout);
 
     child.on('error', (err) => {
       if (timer) clearTimeout(timer);
       _activeProcesses.delete(child);
-      resolve({ success: false, error: err.message });
+      fail(err && err.code === 'ENOENT' ? 'enoent' : 'exit', err && err.message);
     });
   });
 }
@@ -357,8 +516,9 @@ async function getTotalCommits(projectPath) {
  * @returns {Promise<Object>} - Git info object
  */
 async function getGitInfo(projectPath) {
-  const branch = await execGit(projectPath, 'rev-parse --abbrev-ref HEAD');
-  if (!branch) return { isGitRepo: false };
+  const branchResult = await execGitResult(projectPath, 'rev-parse --abbrev-ref HEAD');
+  if (!branchResult.ok || !branchResult.output) return notAGitRepo(branchResult);
+  const branch = branchResult.output;
 
   const lastCommit = await execGit(projectPath, 'log -1 --format="%H|%s|%an|%ar"');
   const status = await execGit(projectPath, 'status --porcelain');
@@ -384,8 +544,9 @@ async function getGitInfo(projectPath) {
 async function getGitInfoFull(projectPath, options = {}) {
   const { skipFetch = true } = options;
 
-  const branch = await execGit(projectPath, 'rev-parse --abbrev-ref HEAD');
-  if (!branch) return { isGitRepo: false };
+  const branchResult = await execGitResult(projectPath, 'rev-parse --abbrev-ref HEAD');
+  if (!branchResult.ok || !branchResult.output) return notAGitRepo(branchResult);
+  const branch = branchResult.output;
 
   // Batch 1: Fast local queries (index only, no network)
   const [
@@ -448,7 +609,7 @@ async function getGitInfoFull(projectPath, options = {}) {
  */
 async function getGitStatusQuick(projectPath) {
   const result = await spawnGit(projectPath, ['status', '--porcelain']);
-  if (!result.success) return { isGitRepo: false };
+  if (!result.success) return notAGitRepo(result);
   const stdout = result.output;
   return {
     isGitRepo: true,
@@ -830,15 +991,26 @@ function parseDiffNumstat(output) {
 async function getGitStatusDetailed(projectPath) {
   try {
     // Get status + all diff stats in parallel (3 commands instead of N*2)
-    const [statusOutput, allDiffRaw, allStagedRaw] = await Promise.all([
-      execGit(projectPath, 'status --porcelain'),
+    const [statusResult, allDiffRaw, allStagedRaw] = await Promise.all([
+      execGitResult(projectPath, 'status --porcelain'),
       execGit(projectPath, 'diff --numstat'),
       execGit(projectPath, 'diff --cached --numstat')
     ]);
 
-    if (statusOutput === null) {
+    if (!statusResult.ok) {
+      // "git could not run" and "this folder is not a repo" used to be the same
+      // message here, which is what made a missing git look like a clean repo.
+      if (isGitUnavailable(statusResult)) {
+        return {
+          success: false,
+          error: describeGitFailure(statusResult),
+          gitUnavailable: true,
+          unavailableReason: statusResult.reason,
+        };
+      }
       return { success: false, error: 'Not a git repository' };
     }
+    const statusOutput = statusResult.output;
 
     const diffMap = parseDiffNumstat(allDiffRaw);
     const stagedMap = parseDiffNumstat(allStagedRaw);
@@ -965,29 +1137,58 @@ async function getCommitHistory(projectPath, { skip = 0, limit = 30, branch = ''
 }
 
 /**
- * Get diff for a specific file
+ * Get diff for a specific file, distinguishing "no changes" from "diff failed".
+ * An empty diff and a diff that could not be produced are the same string, so
+ * callers that show it to the user need this variant to render an error state.
  * @param {string} projectPath - Path to the project
  * @param {string} filePath - File path
  * @param {boolean} staged - Whether to get staged diff
- * @returns {Promise<string>} - Raw diff output
+ * @returns {Promise<{ok: boolean, diff: string, reason: string|null, error: string|null}>}
  */
-async function getFileDiff(projectPath, filePath, staged = false) {
+async function getFileDiffResult(projectPath, filePath, staged = false) {
   const args = ['diff'];
   if (staged) args.push('--cached');
   args.push('--', filePath);
-  const diff = await execGit(projectPath, args, 10000);
-  return diff || '';
+  const result = await execGitResult(projectPath, args, 10000);
+  if (!result.ok) return { ok: false, diff: '', reason: result.reason, error: describeGitFailure(result) };
+  return { ok: true, diff: result.output || '', reason: null, error: null };
+}
+
+/**
+ * Get diff for a specific file (empty string on failure)
+ * Prefer getFileDiffResult() when the caller must tell "no changes" from "diff failed".
+ * @param {string} projectPath - Path to the project
+ * @param {string} filePath - Relative path of the file
+ * @param {boolean} staged - Diff the index instead of the work tree
+ * @returns {Promise<string>} - Diff output
+ */
+async function getFileDiff(projectPath, filePath, staged = false) {
+  const result = await getFileDiffResult(projectPath, filePath, staged);
+  return result.ok ? result.diff : '';
+}
+
+/**
+ * Get commit detail (show --stat), distinguishing an empty result from a failure.
+ * @param {string} projectPath - Path to the project
+ * @param {string} commitHash - Commit hash
+ * @returns {Promise<{ok: boolean, detail: string, reason: string|null, error: string|null}>}
+ */
+async function getCommitDetailResult(projectPath, commitHash) {
+  const result = await execGitResult(projectPath, ['show', '--stat', '--format=commit %H%nAuthor: %an <%ae>%nDate:   %aI%n%n    %s%n%n    %b', commitHash], 10000);
+  if (!result.ok) return { ok: false, detail: '', reason: result.reason, error: describeGitFailure(result) };
+  return { ok: true, detail: result.output || '', reason: null, error: null };
 }
 
 /**
  * Get commit detail (show --stat)
+ * Prefer getCommitDetailResult() when the caller must render a failure state.
  * @param {string} projectPath - Path to the project
  * @param {string} commitHash - Commit hash
  * @returns {Promise<string>} - Commit detail output
  */
 async function getCommitDetail(projectPath, commitHash) {
-  const output = await execGit(projectPath, ['show', '--stat', '--format=commit %H%nAuthor: %an <%ae>%nDate:   %aI%n%n    %s%n%n    %b', commitHash], 10000);
-  return output || '';
+  const result = await getCommitDetailResult(projectPath, commitHash);
+  return result.ok ? result.detail : '';
 }
 
 /**
@@ -1727,6 +1928,9 @@ module.exports = {
   parseGitStatus,
   parseDiffNumstat,
   execGit,
+  execGitResult,
+  describeGitFailure,
+  isGitUnavailable,
   killAllGitProcesses,
   getGitInfo,
   getGitInfoFull,
@@ -1752,7 +1956,9 @@ module.exports = {
   deleteBranch,
   getCommitHistory,
   getFileDiff,
+  getFileDiffResult,
   getCommitDetail,
+  getCommitDetailResult,
   cherryPick,
   revertCommit,
   gitUnstageFiles,
