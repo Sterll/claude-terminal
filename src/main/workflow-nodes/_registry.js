@@ -29,6 +29,39 @@ function has(type)   { return _nodes.has(type); }
 function getTypes()  { return [..._nodes.keys()]; }
 
 /**
+ * Resolve a project reference (id, name fragment, or absolute path) to a
+ * filesystem path. Falls back to the run context's active project when `ref`
+ * is empty.
+ *
+ * Nodes that expose a project picker store `projectId`, which is meaningless
+ * to the filesystem — without this, a project-scoped node triggered by cron
+ * (where there is no "current project") silently runs in the home directory.
+ *
+ * @param {string} ref
+ * @param {Map|Object} vars
+ * @returns {string|null}
+ */
+function resolveProjectPath(ref, vars) {
+  if (!ref) {
+    const ctx = vars instanceof Map ? (vars.get('ctx') || {}) : (vars?.ctx || {});
+    ref = ctx.activeProjectId || ctx.projectId || '';
+  }
+  if (!ref) return null;
+  if (fs.existsSync(ref)) return ref;
+  try {
+    const file = path.join(require('os').homedir(), '.claude-terminal', 'projects.json');
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const needle = String(ref).toLowerCase();
+    const p = (data.projects || []).find(pr =>
+      pr.id === ref || (pr.name || '').toLowerCase().includes(needle)
+    );
+    return p?.path || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Shared HTML escaping utility for node render() functions.
  * Centralised here to avoid duplication across every .node.js file.
  * @param {*} s
@@ -169,5 +202,5 @@ function normalizeExitCode(err) {
 
 module.exports = {
   loadRegistry, get, getAll, has, getTypes, esc,
-  resolveVars, assertSafeUrl, normalizeExitCode,
+  resolveVars, assertSafeUrl, normalizeExitCode, resolveProjectPath,
 };

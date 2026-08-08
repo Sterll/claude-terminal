@@ -26,28 +26,8 @@ function encodeProjectPath(projectPath) {
   return `${encoded}-${Math.abs(hash).toString(36)}`;
 }
 
-function projectsFile() {
-  return path.join(os.homedir(), '.claude-terminal', 'projects.json');
-}
-
-function resolveProjectPath(ref, vars) {
-  if (!ref) {
-    const ctx = vars instanceof Map ? (vars.get('ctx') || {}) : (vars?.ctx || {});
-    ref = ctx.activeProjectId || ctx.projectId || '';
-  }
-  if (!ref) return null;
-  if (fs.existsSync(ref)) return ref;
-  try {
-    const data = JSON.parse(fs.readFileSync(projectsFile(), 'utf8'));
-    const needle = String(ref).toLowerCase();
-    const p = (data.projects || []).find(pr =>
-      pr.id === ref || (pr.name || '').toLowerCase().includes(needle)
-    );
-    return p?.path || null;
-  } catch {
-    return null;
-  }
-}
+// Shared with claude.node.js — see _registry.resolveProjectPath.
+const { resolveProjectPath } = require('./_registry');
 
 async function resolveSessionFile(sessionsDir, sessionId) {
   const direct = path.join(sessionsDir, `${sessionId}.jsonl`);

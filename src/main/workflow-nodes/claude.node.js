@@ -1,5 +1,7 @@
 'use strict';
 
+const { resolveProjectPath } = require('./_registry');
+
 // Shared canonical model / effort option lists (see src/shared/model-options.js).
 // Fall back to an identical hard-coded copy if the shared module is unavailable
 // (e.g. a load-order timing issue), so validation never silently breaks.
@@ -68,7 +70,13 @@ module.exports = {
     const home    = require('os').homedir();
     const fs      = require('fs');
 
-    let cwd = resolveVars(config.cwd || '', vars) || varCtx.project || '';
+    // Resolution order: explicit cwd → the node's project picker → the run
+    // context's project. Without the projectId step, a cron-triggered run (which
+    // has no "current project") would ignore the picker and land in $HOME.
+    let cwd = resolveVars(config.cwd || '', vars)
+      || resolveProjectPath(config.projectId || '', vars)
+      || varCtx.project
+      || '';
     if (!cwd || !fs.existsSync(cwd)) {
       console.warn(`[claude.node] cwd invalid or missing: "${cwd}", falling back to ${home}`);
       cwd = home;
