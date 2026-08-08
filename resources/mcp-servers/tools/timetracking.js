@@ -52,12 +52,24 @@ function isToday(isoStr) {
     d.getDate() === now.getDate();
 }
 
+/**
+ * Days to subtract to reach Monday, the start of the week everywhere else in
+ * this app (src/renderer/state/timeTracking.state.js, src/main/ipc/time.ipc.js).
+ * This file used to subtract getDay() directly — Sunday-first — so the MCP time
+ * tools reported a different week from the dashboard and the workflow `time`
+ * node, and on a Sunday the two weeks shared no days at all.
+ */
+function daysSinceMonday(date) {
+  const day = date.getDay();
+  return day === 0 ? 6 : day - 1;
+}
+
 function isThisWeek(isoStr) {
   if (!isoStr) return false;
   const d = new Date(isoStr);
   const now = new Date();
   const startOfWeek = new Date(now);
-  startOfWeek.setDate(now.getDate() - now.getDay());
+  startOfWeek.setDate(now.getDate() - daysSinceMonday(now));
   startOfWeek.setHours(0, 0, 0, 0);
   return d >= startOfWeek;
 }
@@ -215,8 +227,7 @@ function getPeriodRange(period, offset) {
     end.setDate(now.getDate() - offset);
     end.setHours(23, 59, 59, 999);
   } else if (period === 'week') {
-    const dayOfWeek = now.getDay();
-    start.setDate(now.getDate() - dayOfWeek - (offset * 7));
+    start.setDate(now.getDate() - daysSinceMonday(now) - (offset * 7));
     start.setHours(0, 0, 0, 0);
     end.setDate(start.getDate() + 6);
     end.setHours(23, 59, 59, 999);
