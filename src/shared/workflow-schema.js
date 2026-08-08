@@ -109,6 +109,7 @@ const NODE_DATA_OUTPUTS = {
                  { name: 'dir',      type: 'string',  key: 'dir' }],
   variable:     [{ name: 'value',    type: 'any',     key: 'value' }],
   get_variable: [{ name: 'value',    type: 'any',     key: 'value' }],
+  code:         [{ name: 'result',   type: 'any',     key: 'result' }],
   transform:    [{ name: 'result',   type: 'any',     key: 'result' },
                  { name: 'count',    type: 'number',  key: 'count' }],
   subworkflow:  [{ name: 'outputs',  type: 'object',  key: 'outputs' },
@@ -116,6 +117,13 @@ const NODE_DATA_OUTPUTS = {
   loop:         [{ name: 'item',     type: 'any',     key: 'item' },
                  { name: 'index',    type: 'number',  key: 'index' }],
   project:      [{ name: 'projects', type: 'array',   key: 'projects' }],
+  template:     [{ name: 'text',     type: 'string',  key: 'text' }],
+  terminal:     [{ name: 'output',    type: 'string',  key: 'output' },
+                 { name: 'lines',     type: 'number',  key: 'lines' },
+                 { name: 'command',   type: 'string',  key: 'command' },
+                 { name: 'projectId', type: 'string',  key: 'projectId' },
+                 { name: 'delivered', type: 'boolean', key: 'delivered' }],
+  quickaction:  [{ name: 'command',  type: 'string',  key: 'command' }],
   parallel_spawn:     [{ name: 'runId',       type: 'string',  key: 'runId' }],
   session_recap:      [{ name: 'summary',     type: 'string',  key: 'summary' },
                        { name: 'source',      type: 'string',  key: 'source' },
@@ -154,7 +162,7 @@ const DYNAMIC_PIN_NODES = new Set(['trigger', 'condition', 'switch', 'time', 'va
 const NODE_DATA_OUT_OFFSET = {
   trigger: 1, claude: 2, shell: 2, git: 2, http: 2, db: 2, file: 2,
   notify: 1, wait: 1, log: 1, condition: 2, loop: 2, project: 2,
-  variable: 1, transform: 2, subworkflow: 2,
+  variable: 1, transform: 2, subworkflow: 2, code: 2,
   // NOTE: 'switch' has a dynamic number of exec outputs (one per case + default),
   // so its data-output slot index cannot be a fixed offset. It is intentionally
   // omitted here; getOutputKeyForSlot() returns null for switch (no data mapping).
@@ -164,6 +172,7 @@ const NODE_DATA_OUT_OFFSET = {
   parallel_spawn: 2, session_recap: 2, kanban_create_card: 2,
   workspace_write_doc: 2, notify_discord: 2, webhook: 2,
   error_handler: 2, retry: 2,
+  template: 2, terminal: 2, quickaction: 2,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

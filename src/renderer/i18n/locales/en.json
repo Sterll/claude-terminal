@@ -3325,6 +3325,55 @@
       "color": {
         "label": "Embed color (hex)"
       }
+    },
+    "code": {
+      "code": {
+        "label": "JavaScript",
+        "hint": "Function body. Available: vars (workflow variables) and input. Write your own return."
+      },
+      "input": {
+        "label": "Input",
+        "hint": "Optional value piped in, or a $variable reference."
+      },
+      "outputVar": {
+        "label": "Output variable",
+        "hint": "Store the returned value in a workflow variable (optional)."
+      }
+    },
+    "template": {
+      "template": {
+        "label": "Template",
+        "hint": "Plain text with $variables — e.g. $ctx.project, $node_2.stdout, $loop.item"
+      }
+    },
+    "terminal": {
+      "action": {
+        "label": "Action",
+        "send": "Send a command",
+        "read": "Read recent output"
+      },
+      "project": {
+        "label": "Target project",
+        "hint": "Terminal tab to drive (empty = the project this run belongs to)"
+      },
+      "command": {
+        "label": "Command",
+        "hint": "Typed into the project's terminal. The workflow does not wait for it and never sees its output — use a Shell node when you need the result."
+      },
+      "lines": {
+        "label": "Lines to read",
+        "hint": "Last N lines of captured output (1-200). Empty when nothing has been captured for this project."
+      }
+    },
+    "quickaction": {
+      "project": {
+        "label": "Target project",
+        "hint": "Project owning the quick action (empty = the project this run belongs to)"
+      },
+      "action": {
+        "label": "Quick action",
+        "hint": "Name or id of a quick action saved on the project. It runs in a terminal tab; the workflow does not wait for it."
+      }
     }
   },
   "tasks": {

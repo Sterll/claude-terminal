@@ -3322,6 +3322,55 @@
       "color": {
         "label": "Color del embed (hex)"
       }
+    },
+    "code": {
+      "code": {
+        "label": "JavaScript",
+        "hint": "Cuerpo de función. Disponibles: vars (variables del workflow) e input. Escribe tu propio return."
+      },
+      "input": {
+        "label": "Entrada",
+        "hint": "Valor recibido como entrada, o una referencia $variable."
+      },
+      "outputVar": {
+        "label": "Variable de salida",
+        "hint": "Guarda el valor devuelto en una variable del workflow (opcional)."
+      }
+    },
+    "template": {
+      "template": {
+        "label": "Plantilla",
+        "hint": "Texto libre con $variables — p. ej. $ctx.project, $node_2.stdout, $loop.item"
+      }
+    },
+    "terminal": {
+      "action": {
+        "label": "Acción",
+        "send": "Enviar un comando",
+        "read": "Leer la salida reciente"
+      },
+      "project": {
+        "label": "Proyecto objetivo",
+        "hint": "Pestaña de terminal a controlar (vacío = el proyecto de esta ejecución)"
+      },
+      "command": {
+        "label": "Comando",
+        "hint": "Se escribe en el terminal del proyecto. El workflow no lo espera ni ve su salida — usa un nodo Shell si necesitas el resultado."
+      },
+      "lines": {
+        "label": "Líneas a leer",
+        "hint": "Últimas N líneas de salida capturada (1-200). Vacío si no se ha capturado nada para este proyecto."
+      }
+    },
+    "quickaction": {
+      "project": {
+        "label": "Proyecto objetivo",
+        "hint": "Proyecto propietario de la acción rápida (vacío = el proyecto de esta ejecución)"
+      },
+      "action": {
+        "label": "Acción rápida",
+        "hint": "Nombre o id de una acción rápida guardada en el proyecto. Se ejecuta en una pestaña de terminal; el workflow no la espera."
+      }
     }
   },
   "tasks": {

@@ -3325,6 +3325,55 @@
       "color": {
         "label": "Couleur de l'embed (hex)"
       }
+    },
+    "code": {
+      "code": {
+        "label": "JavaScript",
+        "hint": "Corps de fonction. Disponibles : vars (variables du workflow) et input. Écrivez votre propre return."
+      },
+      "input": {
+        "label": "Entrée",
+        "hint": "Valeur reçue en entrée, ou une référence $variable."
+      },
+      "outputVar": {
+        "label": "Variable de sortie",
+        "hint": "Stocke la valeur renvoyée dans une variable du workflow (optionnel)."
+      }
+    },
+    "template": {
+      "template": {
+        "label": "Modèle",
+        "hint": "Texte libre avec des $variables — ex. $ctx.project, $node_2.stdout, $loop.item"
+      }
+    },
+    "terminal": {
+      "action": {
+        "label": "Action",
+        "send": "Envoyer une commande",
+        "read": "Lire la sortie récente"
+      },
+      "project": {
+        "label": "Projet ciblé",
+        "hint": "Onglet terminal à piloter (vide = le projet de ce run)"
+      },
+      "command": {
+        "label": "Commande",
+        "hint": "Tapée dans le terminal du projet. Le workflow ne l'attend pas et ne voit jamais sa sortie — utilisez un nœud Shell si le résultat vous importe."
+      },
+      "lines": {
+        "label": "Lignes à lire",
+        "hint": "Les N dernières lignes de sortie capturée (1-200). Vide si rien n'a été capturé pour ce projet."
+      }
+    },
+    "quickaction": {
+      "project": {
+        "label": "Projet ciblé",
+        "hint": "Projet propriétaire de l'action rapide (vide = le projet de ce run)"
+      },
+      "action": {
+        "label": "Action rapide",
+        "hint": "Nom ou id d'une action rapide enregistrée sur le projet. Elle s'exécute dans un onglet terminal ; le workflow ne l'attend pas."
+      }
     }
   },
   "tasks": {
