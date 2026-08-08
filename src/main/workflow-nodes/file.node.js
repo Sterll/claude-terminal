@@ -109,10 +109,16 @@ module.exports = {
       const toRegex = (pat) => {
         let reStr = pat
           .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+          // `**/` must match ZERO or more directories, so "**/*.js" also matches
+          // "a.js" at the root. Compiling it to ".*/" required a literal slash,
+          // which silently excluded every top-level file — including for the
+          // pattern the MCP tool documentation recommends.
+          .replace(/\*\*\//g, '\x00GLOBSTARSLASH\x00')
           .replace(/\*\*/g, '\x00DOUBLESTAR\x00')
           .replace(/\*/g, '[^/\\\\]*')
-          .replace(/\x00DOUBLESTAR\x00/g, '.*')
-          .replace(/\?/g, '[^/\\\\]');
+          .replace(/\?/g, '[^/\\\\]')
+          .replace(/\x00GLOBSTARSLASH\x00/g, '(?:.*/)?')
+          .replace(/\x00DOUBLESTAR\x00/g, '.*');
         return new RegExp('^' + reStr + '$', process.platform === 'win32' ? 'i' : '');
       };
       const re = toRegex(pattern);
