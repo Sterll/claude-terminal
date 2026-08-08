@@ -21,6 +21,24 @@ function opts(sb) {
   return sb.prompts[0];
 }
 
+const fs = require('fs');
+
+/** Seed ~/.claude/agents/<id>.md inside the sandbox's fake home. */
+function writeAgentFile(sb, id, model, body) {
+  const dir = path.join(sb.home, '.claude', 'agents');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${id}.md`),
+    ['---', `name: ${id}`, `model: ${model}`, '---', body, ''].join('\n'), 'utf8');
+}
+
+/** Seed the directory layout AgentService also accepts: <id>/AGENT.md. */
+function writeAgentDir(sb, id, model, body) {
+  const dir = path.join(sb.home, '.claude', 'agents', id);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'AGENT.md'),
+    ['---', `name: ${id}`, `model: ${model}`, '---', body, ''].join('\n'), 'utf8');
+}
+
 module.exports = {
   type: 'claude',
   scenarios: [
@@ -105,12 +123,13 @@ module.exports = {
       },
     },
     {
-      name: 'agent mode degrades to a plain prompt (runSinglePrompt has no agent option)',
-      config: { mode: 'agent', agentId: 'code-reviewer', prompt: 'review' },
+      name: 'the agent id itself never leaks into the model options',
+      async setup(sb) { writeAgentFile(sb, 'code-reviewer', 'sonnet', 'Review carefully.'); },
+      config: (sb) => ({ mode: 'agent', agentId: 'code-reviewer', prompt: 'review', cwd: sb.dir }),
       assert(out, sb) {
         const o = opts(sb);
-        assert.strictEqual(o.skills, undefined);
         assert.ok(!('agent' in o) && !('agentId' in o), 'agent id must not leak into the options');
+        assert.strictEqual(o.skills, undefined, 'agent mode must not send skills');
         assert.strictEqual(o.prompt, 'review');
       },
     },
@@ -199,6 +218,61 @@ module.exports = {
         assert.strictEqual(opts(sb).prompt, '');
         assert.strictEqual(out.success, true);
       },
+    },
+
+    // ── Agent mode ───────────────────────────────────────────────────────────
+    // This branch used to only log a warning and run a plain prompt, so picking
+    // an agent in the UI changed nothing at all.
+    {
+      name: 'agent mode runs under the chosen agent system prompt',
+      async setup(sb) { writeAgentFile(sb, 'reviewer', 'sonnet', 'You are a strict reviewer.'); },
+      config: (sb) => ({ mode: 'agent', agentId: 'reviewer', prompt: 'Review this', cwd: sb.dir }),
+      assert(out, sb) {
+        assert.strictEqual(opts(sb).systemPrompt, 'You are a strict reviewer.');
+        assert.strictEqual(opts(sb).prompt, 'Review this');
+      },
+    },
+    {
+      name: 'a directory-style agent is found too',
+      async setup(sb) { writeAgentDir(sb, 'terse-bot', 'haiku', 'Be terse.'); },
+      config: (sb) => ({ mode: 'agent', agentId: 'terse-bot', prompt: 'x', cwd: sb.dir }),
+      assert(out, sb) {
+        assert.strictEqual(opts(sb).systemPrompt, 'Be terse.');
+      },
+    },
+    {
+      name: 'the agent declared model is used when the node does not override it',
+      async setup(sb) { writeAgentFile(sb, 'terse-bot', 'haiku', 'Be terse.'); },
+      config: (sb) => ({ mode: 'agent', agentId: 'terse-bot', prompt: 'x', cwd: sb.dir }),
+      assert(out, sb) {
+        assert.strictEqual(opts(sb).model, 'haiku');
+      },
+    },
+    {
+      name: 'an explicit node model wins over the agent one',
+      async setup(sb) { writeAgentFile(sb, 'terse-bot', 'haiku', 'Be terse.'); },
+      config: (sb) => ({ mode: 'agent', agentId: 'terse-bot', model: 'opus', prompt: 'x', cwd: sb.dir }),
+      assert(out, sb) {
+        assert.strictEqual(opts(sb).model, 'opus');
+      },
+    },
+    {
+      name: 'an agent that does not exist rejects instead of ignoring the choice',
+      config: (sb) => ({ mode: 'agent', agentId: 'ghost', prompt: 'x', cwd: sb.dir }),
+      expectThrow: true,
+      assert(err) { assert.match(err.message, /not found/i); },
+    },
+    {
+      name: 'agent mode with no agent chosen rejects',
+      config: (sb) => ({ mode: 'agent', agentId: '', prompt: 'x', cwd: sb.dir }),
+      expectThrow: true,
+      assert(err) { assert.match(err.message, /no agent/i); },
+    },
+    {
+      name: 'an agent id cannot escape the agents directory',
+      config: (sb) => ({ mode: 'agent', agentId: '../../../etc/passwd', prompt: 'x', cwd: sb.dir }),
+      expectThrow: true,
+      assert(err) { assert.match(err.message, /not found/i); },
     },
   ],
 };

@@ -2,6 +2,42 @@
 
 const { resolveProjectPath } = require('./_registry');
 
+/**
+ * Load a custom agent's system prompt from ~/.claude/agents.
+ *
+ * Both layouts AgentService enumerates are handled: a flat `<id>.md` and a
+ * `<id>/AGENT.md` directory. The YAML frontmatter is stripped — only the body
+ * is the system prompt.
+ *
+ * @param {string} agentId
+ * @returns {{ systemPrompt: string, model: string|null }|null}
+ */
+function loadAgent(agentId) {
+  const fs   = require('fs');
+  const os   = require('os');
+  const path = require('path');
+
+  const safeId = String(agentId || '').trim();
+  // Never let a configured id walk out of the agents directory.
+  if (!safeId || safeId.includes('..') || path.isAbsolute(safeId) || /[\\/]/.test(safeId)) return null;
+
+  const base = path.join(os.homedir(), '.claude', 'agents');
+  const candidates = [path.join(base, `${safeId}.md`), path.join(base, safeId, 'AGENT.md')];
+
+  for (const file of candidates) {
+    let raw;
+    try { raw = fs.readFileSync(file, 'utf8'); } catch { continue; }
+
+    const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+    const body  = (match ? match[2] : raw).trim();
+    if (!body) return null;
+
+    const modelLine = match && match[1].match(/^model:\s*(.+)$/m);
+    return { systemPrompt: body, model: modelLine ? modelLine[1].trim() : null };
+  }
+  return null;
+}
+
 // Shared canonical model / effort option lists (see src/shared/model-options.js).
 // Fall back to an identical hard-coded copy if the shared module is unavailable
 // (e.g. a load-order timing issue), so validation never silently breaks.
@@ -100,14 +136,26 @@ module.exports = {
       opts.skills = [config.skillId];
     }
 
-    // Agent mode: the claude-config field exposes an Agent tab (config.agentId),
-    // but ChatService.runSinglePrompt does not currently accept an agent option,
-    // so there is no supported way to invoke a named subagent from a workflow
-    // step. Rather than crash, fall back to a plain prompt run and warn. If a
-    // future runSinglePrompt gains an `agent`/`agentId` parameter, forward it
-    // here instead of this fallback.
-    if (mode === 'agent' && config.agentId) {
-      console.warn(`[claude.node] Agent mode requested (agentId="${config.agentId}") but ChatService.runSinglePrompt does not support agents — running as a plain prompt.`);
+    // Agent mode: run the prompt under the custom agent's system prompt.
+    // runSinglePrompt has no notion of a named subagent, so the agent's own
+    // markdown body IS the system prompt — which is what the Agent tab has
+    // always implied. Previously this branch only logged a warning and ran a
+    // plain prompt, so picking an agent changed nothing at all.
+    if (mode === 'agent') {
+      const agent = config.agentId ? loadAgent(config.agentId) : null;
+      if (agent) {
+        opts.systemPrompt = agent.systemPrompt;
+        // The node's own model selection wins; the agent's is the fallback.
+        if (!model && agent.model && VALID_MODELS.includes(agent.model)) {
+          opts.model = agent.model;
+        }
+      } else {
+        throw new Error(
+          config.agentId
+            ? `Agent "${config.agentId}" not found in ~/.claude/agents`
+            : 'Agent mode selected but no agent was chosen'
+        );
+      }
     }
 
     if (Array.isArray(config.outputSchema) && config.outputSchema.length > 0) {
