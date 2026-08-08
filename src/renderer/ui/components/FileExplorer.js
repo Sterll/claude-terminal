@@ -117,6 +117,7 @@ class FileExplorer extends BaseComponent {
 
     this._draggedPaths = [];
     this._dragListenersAttached = false;
+    this._contentMatchListenerAttached = false;
 
     this._cutPaths = [];
 
@@ -1660,8 +1661,13 @@ class FileExplorer extends BaseComponent {
       };
     }
 
+    // #file-explorer-tree is a static element in index.html: re-rendering only
+    // replaces its innerHTML, so listeners bound on it survive and would stack
+    // up on every render() (search keystroke, folder expand, ...).
     const treeElForContent = document.getElementById('file-explorer-tree');
-    if (treeElForContent) {
+    if (treeElForContent && !this._contentMatchListenerAttached) {
+      this._contentMatchListenerAttached = true;
+
       treeElForContent.addEventListener('click', (e) => {
         const matchEl = e.target.closest('.fe-content-match');
         if (matchEl) {

@@ -62,9 +62,11 @@ function getDiskCachePath(projectPath) {
 }
 
 /**
- * Read disk cache for a project
+ * Read disk cache for a project.
+ * Returns the payload alongside the timestamp it was written at, so a cache
+ * that is still fresh can be honoured instead of being treated as expired.
  * @param {string} projectPath
- * @returns {Promise<Object|null>}
+ * @returns {Promise<{ data: Object, timestamp: number }|null>}
  */
 async function readDiskCache(projectPath) {
   try {
@@ -72,10 +74,26 @@ async function readDiskCache(projectPath) {
     const raw = await fs.promises.readFile(filePath, 'utf-8');
     const parsed = JSON.parse(raw);
     if (!parsed || !parsed.dashboard) return null;
-    return parsed.dashboard;
+    return { data: parsed.dashboard, timestamp: parseDiskCacheTimestamp(parsed._updatedAt) };
   } catch (e) {
     return null;
   }
+}
+
+/**
+ * Convert the persisted `_updatedAt` ISO string into a usable timestamp.
+ * Missing, unparsable or future-dated values fall back to 0, which makes the
+ * entry explicitly stale (displayed instantly, but revalidated right away)
+ * rather than trusted forever.
+ * @param {string} updatedAt
+ * @returns {number}
+ */
+function parseDiskCacheTimestamp(updatedAt) {
+  if (!updatedAt) return 0;
+  const ts = Date.parse(updatedAt);
+  if (!Number.isFinite(ts) || ts <= 0) return 0;
+  // Clock skew / tampered file: never let a cache look fresher than "now".
+  return Math.min(ts, Date.now());
 }
 
 // Pending disk cache writes (batched to avoid blocking the UI thread)
@@ -222,16 +240,19 @@ async function loadAllDiskCaches() {
   for (let i = 0; i < uncached.length; i += BATCH_SIZE) {
     const batch = uncached.slice(i, i + BATCH_SIZE);
     const results = await Promise.all(batch.map(async (project) => {
-      const diskData = await readDiskCache(project.path);
-      if (diskData) {
-        if (!diskData.projectType) {
-          diskData.projectType = await detectProjectType(project.path);
+      const disk = await readDiskCache(project.path);
+      if (disk) {
+        if (!disk.data.projectType) {
+          disk.data.projectType = await detectProjectType(project.path);
         }
-        return { id: project.id, data: diskData };
+        // Keep the write time: a cache still within CACHE_TTL is honoured and
+        // spares a full rescan at launch, an older one is revalidated as usual.
+        return { id: project.id, data: disk.data, timestamp: disk.timestamp };
       }
       const projectType = await detectProjectType(project.path);
       if (projectType) {
-        return { id: project.id, data: { projectType } };
+        // Type only, no dashboard payload yet -> always needs a real refresh.
+        return { id: project.id, data: { projectType }, timestamp: 0 };
       }
       return null;
     }));
@@ -240,7 +261,7 @@ async function loadAllDiskCaches() {
       if (result) {
         dashboardCache.set(result.id, {
           data: result.data,
-          timestamp: 0,
+          timestamp: result.timestamp,
           loading: false
         });
         loaded++;

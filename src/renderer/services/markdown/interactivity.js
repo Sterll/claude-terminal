@@ -246,15 +246,43 @@ function formatPresenceElapsed(ms) {
 }
 
 /**
+ * Stop the presence ticker of a container (if any) and drop the property.
+ * Safe to call multiple times, and on containers that never had a ticker.
+ * @param {Element} container
+ */
+function stopPresenceTicker(container) {
+  if (!container || !container._dcPresenceTicker) return;
+  clearInterval(container._dcPresenceTicker);
+  delete container._dcPresenceTicker;
+}
+
+/**
  * Start a 1s interval (once per container) that refreshes any
  * .dc-presence-time elements with elapsed/remaining durations.
+ *
+ * The interval self-cancels as soon as the container leaves the document or
+ * once every presence node it used to drive is gone — otherwise the closure
+ * would keep a detached transcript alive for the whole app lifetime.
  */
 function startPresenceTicker(container) {
   if (container._dcPresenceTicker) return;
-  const tick = () => {
+
+  // Only cancel on "no nodes left" once we actually saw some: the container
+  // is usually empty when interactivity is attached and fills in on stream.
+  let sawPresence = false;
+
+  const tick = (fromInterval) => {
     const times = container.querySelectorAll('.dc-presence-time[data-start], .dc-presence-time[data-end]');
     const bars = container.querySelectorAll('.dc-presence-progress[data-start][data-end]');
-    if (!times.length && !bars.length) return;
+    const hasPresence = times.length > 0 || bars.length > 0;
+
+    if (fromInterval && (!container.isConnected || (sawPresence && !hasPresence))) {
+      stopPresenceTicker(container);
+      return;
+    }
+    if (!hasPresence) return;
+    sawPresence = true;
+
     const now = Date.now();
 
     times.forEach((el) => {
@@ -278,8 +306,8 @@ function startPresenceTicker(container) {
       if (elapsed) elapsed.textContent = formatPresenceElapsed(Math.min(now - start, total));
     });
   };
-  container._dcPresenceTicker = setInterval(tick, 1000);
-  tick();
+  container._dcPresenceTicker = setInterval(() => tick(true), 1000);
+  tick(false);
 }
 
 function handleCopyClick(btn) {
@@ -432,8 +460,20 @@ function initializePreviewIframe(container) {
     .catch((err) => console.warn('[Markdown] Preview registration failed:', err.message));
 }
 
+/**
+ * Release every timer attachInteractivity() started on a container.
+ * Call this from the owner's destroy()/teardown before dropping the element,
+ * so the transcript can be garbage collected.
+ * @param {Element} container
+ */
+function detachInteractivity(container) {
+  stopPresenceTicker(container);
+}
+
 module.exports = {
   attachInteractivity,
+  detachInteractivity,
+  stopPresenceTicker,
   initializePreviewIframe,
   COLLAPSE_THRESHOLD,
 };
