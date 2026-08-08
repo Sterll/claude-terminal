@@ -9,7 +9,8 @@ const { BaseComponent } = require('../../core/BaseComponent');
 const { escapeHtml, debounce } = require('../../utils/dom');
 const { getFileIcon, CHEVRON_ICON } = require('../../utils/fileIcons');
 const { showContextMenu } = require('./ContextMenu');
-const { showConfirm } = require('./Modal');
+const { showConfirm, showPrompt } = require('./Modal');
+const Toast = require('./Toast');
 const { t } = require('../../i18n');
 const { fileExists, copyDirRecursive, fsp } = require('../../utils/fs-async');
 
@@ -34,6 +35,32 @@ function getIgnorePatterns() {
     }
   }
   return patterns;
+}
+
+/**
+ * Ask for a file/folder name.
+ *
+ * Resolves to the entered string, or null when the user cancels — the same
+ * contract as the native prompt() this replaces.
+ *
+ * Modal.showPrompt() only resolves on OK/Cancel/backdrop: its Escape handler
+ * closes the dialog without settling the promise, which would leave the caller
+ * awaiting forever. The capture-phase guard routes Escape to the dialog's own
+ * Cancel button so Escape really cancels.
+ */
+function promptForName(title, message) {
+  const escGuard = (e) => {
+    if (e.key !== 'Escape') return;
+    const promptModal = document.getElementById('prompt-modal');
+    if (!promptModal) return;
+    e.preventDefault();
+    e.stopPropagation();
+    promptModal.querySelector('[data-action="cancel"]')?.click();
+  };
+  document.addEventListener('keydown', escGuard, true);
+
+  return showPrompt({ title, message })
+    .finally(() => document.removeEventListener('keydown', escGuard, true));
 }
 
 function isPathSafe(targetPath, rootPath, pathModule) {
@@ -675,7 +702,7 @@ class FileExplorer extends BaseComponent {
     const newPath = this._path.join(dirPath, sanitized);
 
     if (!isPathSafe(newPath, this._rootPath, this._path)) {
-      alert('Cannot rename outside the project folder.');
+      Toast.showError(t('fileExplorer.errorOutsideProject'));
       this.render();
       return;
     }
@@ -699,7 +726,7 @@ class FileExplorer extends BaseComponent {
           await fsp.unlink(newPath);
         }
       } catch (e) {
-        alert(`Error removing existing file: ${e.message}`);
+        Toast.showError(`${t('common.error')}: ${e.message}`);
         this.render();
         return;
       }
@@ -727,9 +754,9 @@ class FileExplorer extends BaseComponent {
       this._refreshGitStatus();
     } catch (e) {
       const userMessage = (e.code === 'EBUSY' || e.code === 'EPERM')
-        ? 'File is locked by another process. Close it and try again.'
-        : `Error: ${e.message}`;
-      alert(userMessage);
+        ? t('fileExplorer.errorFileLocked')
+        : `${t('common.error')}: ${e.message}`;
+      Toast.showError(userMessage);
       this.render();
     }
   }
@@ -829,7 +856,7 @@ class FileExplorer extends BaseComponent {
       this._updateSelectionVisuals();
       this._refreshGitStatus();
     } catch (e) {
-      alert(`Error: ${e.message}`);
+      Toast.showError(`${t('common.error')}: ${e.message}`);
     }
   }
 
@@ -1152,14 +1179,16 @@ class FileExplorer extends BaseComponent {
 
   // ========== FILE OPERATIONS ==========
   async _promptNewFile(dirPath) {
-    const name = prompt(t('fileExplorer.newFilePrompt') || 'File name:');
+    // Resolves null on cancel, like the native prompt() it replaces, so the
+    // guard below still short-circuits.
+    const name = await promptForName(t('fileExplorer.newFile'), t('fileExplorer.newFilePrompt'));
     if (!name || !name.trim()) return;
 
     const sanitized = sanitizeFileName(name.trim());
     const fullPath = this._path.join(dirPath, sanitized);
 
     if (!isPathSafe(fullPath, this._rootPath, this._path)) {
-      alert('Cannot create files outside the project folder.');
+      Toast.showError(t('fileExplorer.errorOutsideProject'));
       return;
     }
 
@@ -1173,19 +1202,19 @@ class FileExplorer extends BaseComponent {
       this._updateSelectionVisuals();
       this._refreshGitStatus();
     } catch (e) {
-      alert(`Error: ${e.message}`);
+      Toast.showError(`${t('common.error')}: ${e.message}`);
     }
   }
 
   async _promptNewFolder(dirPath) {
-    const name = prompt(t('fileExplorer.newFolderPrompt') || 'Folder name:');
+    const name = await promptForName(t('fileExplorer.newFolder'), t('fileExplorer.newFolderPrompt'));
     if (!name || !name.trim()) return;
 
     const sanitized = sanitizeFileName(name.trim());
     const fullPath = this._path.join(dirPath, sanitized);
 
     if (!isPathSafe(fullPath, this._rootPath, this._path)) {
-      alert('Cannot create folders outside the project folder.');
+      Toast.showError(t('fileExplorer.errorOutsideProject'));
       return;
     }
 
@@ -1195,7 +1224,7 @@ class FileExplorer extends BaseComponent {
       this.render();
       this._refreshGitStatus();
     } catch (e) {
-      alert(`Error: ${e.message}`);
+      Toast.showError(`${t('common.error')}: ${e.message}`);
     }
   }
 
@@ -1226,7 +1255,7 @@ class FileExplorer extends BaseComponent {
       this.render();
       this._refreshGitStatus();
     } catch (e) {
-      alert(`Error: ${e.message}`);
+      Toast.showError(`${t('common.error')}: ${e.message}`);
     }
   }
 

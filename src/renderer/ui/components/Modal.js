@@ -56,6 +56,11 @@ function createModal({ id, title, content, buttons = [], size = 'medium', onClos
     </div>
   `;
 
+  // Stored so the Escape handler and the removal observer in showModal() can
+  // reach it. Promise-based helpers rely on it to settle; resolve() is
+  // idempotent, so a double call from two dismissal paths is harmless.
+  modal._onClose = onClose;
+
   // Close button handler
   modal.querySelector('.modal-close').onclick = () => {
     closeModal(modal);
@@ -137,10 +142,14 @@ function showModal(modal) {
   modal._trapHandler = trapHandler;
   document.addEventListener('keydown', trapHandler);
 
-  // Escape key handler
+  // Escape key handler.
+  // `_onClose` must fire here: showPrompt/showConfirm settle their promise from
+  // it, so without this an `await showPrompt(...)` dismissed with Escape never
+  // resolves and the caller hangs forever.
   const escHandler = (e) => {
     if (e.key === 'Escape') {
       closeModal(modal);
+      if (modal._onClose) modal._onClose();
     }
   };
   modal._escHandler = escHandler;
@@ -153,6 +162,9 @@ function showModal(modal) {
         if (removed === modal || removed.contains?.(modal)) {
           cleanupModal(modal);
           observer.disconnect();
+          // Same reason as the Escape handler: a modal torn down externally
+          // must still settle any promise waiting on it.
+          if (modal._onClose) modal._onClose();
           return;
         }
       }

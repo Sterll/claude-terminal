@@ -3,7 +3,7 @@
 const { t } = require('../../i18n');
 const { escapeHtml } = require('../../utils/dom');
 const { formatRelativeTime } = require('../../utils/format');
-const { createModal, showModal, closeModal, showConfirm } = require('../components/Modal');
+const { createModal, showModal, closeModal, showConfirm, showPrompt } = require('../components/Modal');
 const {
   getTasks, addTask, updateTask, deleteTask, moveTask,
   getKanbanColumns, addKanbanColumn, updateKanbanColumn, deleteKanbanColumn, reorderKanbanColumns,
@@ -12,6 +12,35 @@ const {
 } = require('../../state');
 
 const LABEL_COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6','#ec4899','#6b7280'];
+
+/**
+ * Ask for a branch name from inside an already open task modal.
+ *
+ * Resolves to the entered string, or null when the user cancels — the same
+ * contract as the native prompt() this replaces.
+ *
+ * Both the task modal and the prompt register their Escape handler on
+ * `document`, so a bare showPrompt() would let Escape close the task modal
+ * underneath and discard everything typed into it. The capture-phase guard
+ * swallows Escape while the prompt is open and routes it to the prompt's own
+ * Cancel button, which resolves the promise with null.
+ */
+function promptWorktreeBranch() {
+  const escGuard = (e) => {
+    if (e.key !== 'Escape') return;
+    const promptModal = document.getElementById('prompt-modal');
+    if (!promptModal) return;
+    e.preventDefault();
+    e.stopPropagation();
+    promptModal.querySelector('[data-action="cancel"]')?.click();
+  };
+  document.addEventListener('keydown', escGuard, true);
+
+  return showPrompt({
+    title: t('kanban.createWorktree'),
+    message: t('kanban.createWorktreeBranchPrompt'),
+  }).finally(() => document.removeEventListener('keydown', escGuard, true));
+}
 
 /**
  * Render the kanban board into a container element.
@@ -432,7 +461,7 @@ async function showCreateCardModal(container, project, colId, options) {
 
   // Create new worktree button
   modal.querySelector('#kanban-create-new-worktree')?.addEventListener('click', async () => {
-    const branchInput = prompt(t('kanban.createWorktreeBranchPrompt'));
+    const branchInput = await promptWorktreeBranch();
     if (!branchInput?.trim()) return;
     const branchName = branchInput.trim().replace(/\s+/g, '-');
     try {
@@ -686,7 +715,7 @@ async function showEditCardModal(container, project, taskId, options) {
 
   // Create new worktree button in edit modal
   modal.querySelector('#kanban-edit-new-worktree')?.addEventListener('click', async () => {
-    const branchInput = prompt(t('kanban.createWorktreeBranchPrompt'));
+    const branchInput = await promptWorktreeBranch();
     if (!branchInput?.trim()) return;
     const branchName = branchInput.trim().replace(/\s+/g, '-');
     try {

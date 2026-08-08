@@ -2463,12 +2463,21 @@ function renderQuery(container) {
       }
     };
 
-    btn.oncontextmenu = (e) => {
+    btn.oncontextmenu = async (e) => {
+      // preventDefault must happen before the first await, otherwise the native
+      // context menu would already have been shown.
       e.preventDefault();
-      if (confirm(t('database.deleteSavedQuery') + ` "${sq.name}"?`)) {
-        state.removeSavedQuery(sq.id);
-        renderContent();
-      }
+      const confirmed = await showConfirm({
+        title: t('database.deleteSavedQuery'),
+        message: `"${sq.name}"`,
+        confirmLabel: t('common.delete'),
+        danger: true,
+      });
+      if (!confirmed) return;
+      // Deletion is keyed by id, so a re-render happening while the dialog was
+      // open cannot make this target the wrong query.
+      state.removeSavedQuery(sq.id);
+      renderContent();
     };
   });
 
@@ -2905,7 +2914,13 @@ async function disconnectDatabase(id) {
 }
 
 async function deleteConnection(id) {
-  if (!confirm(t('database.deleteConfirm'))) return;
+  const confirmed = await showConfirm({
+    title: t('database.deleteConnection'),
+    message: t('database.deleteConfirm'),
+    confirmLabel: t('common.delete'),
+    danger: true,
+  });
+  if (!confirmed) return;
 
   const state = require('../../state');
   const conn = state.getDatabaseConnection(id);

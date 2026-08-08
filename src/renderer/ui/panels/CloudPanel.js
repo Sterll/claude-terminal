@@ -391,9 +391,26 @@ function setupHandlers(context) {
     try {
       const { projects } = await api.cloud.getProjects();
       _renderProjects(projects || []);
-    } catch {
-      _renderProjects([]);
+    } catch (err) {
+      // Never fall back to _renderProjects([]) here: "No cloud projects" would be
+      // indistinguishable from a failed fetch, and it would invite the user to
+      // re-upload a project that is in fact already there.
+      _renderProjectsError(err);
     }
+  }
+
+  function _renderProjectsError(err) {
+    const grid = document.getElementById('cp-projects-grid');
+    if (!grid) return;
+    grid.innerHTML = `
+      <div class="cp-error">
+        <div>${t('cloud.projectsLoadError')}</div>
+        <div>${_escapeHtml(_ipcErrorMessage(err))}</div>
+        <button class="cp-btn-sm" id="cp-projects-retry-btn">${t('common.retry')}</button>
+      </div>
+    `;
+    const retryBtn = document.getElementById('cp-projects-retry-btn');
+    if (retryBtn) retryBtn.addEventListener('click', () => _loadProjects());
   }
 
   function _renderProjects(projects) {

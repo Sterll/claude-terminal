@@ -360,7 +360,16 @@ function _bindEvents() {
   if (clearBtn) {
     clearBtn.addEventListener('click', async () => {
       if (!api?.errorLog) return;
-      await api.errorLog.clear();
+      try {
+        await api.errorLog.clear();
+      } catch (e) {
+        // Without this the renderer only got an unhandled rejection, and the
+        // entries stayed on screen with no hint that clearing had failed.
+        console.error('[ErrorLogPanel] clear failed:', e);
+        const { showError } = require('../components/Toast');
+        showError(`${t('errorLog.clearError')}: ${_errorText(e)}`);
+        return;
+      }
       _state.clearEntries();
       _expandedEntries.clear();
       _render();
@@ -370,7 +379,15 @@ function _bindEvents() {
   if (exportBtn) {
     exportBtn.addEventListener('click', async () => {
       if (!api?.errorLog) return;
-      const data = await api.errorLog.export();
+      let data;
+      try {
+        data = await api.errorLog.export();
+      } catch (e) {
+        console.error('[ErrorLogPanel] export failed:', e);
+        const { showError } = require('../components/Toast');
+        showError(`${t('errorLog.exportError')}: ${_errorText(e)}`);
+        return;
+      }
       const json = JSON.stringify(data, null, 2);
       const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
