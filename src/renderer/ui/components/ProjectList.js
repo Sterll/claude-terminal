@@ -18,6 +18,7 @@ const {
   isDescendantOf,
   setSelectedProjectFilter,
   setOpenedProjectId,
+  notifyProjectOpened,
   setFolderColor,
   setProjectColor,
   setProjectIcon,
@@ -991,6 +992,9 @@ class ProjectList extends BaseComponent {
         const projectIndex = getProjectIndex(projectId);
         setSelectedProjectFilter(projectIndex);
         setOpenedProjectId(null);
+        // The detail view is closed on this path, so setOpenedProjectId(null)
+        // cannot carry the `project_opened` workflow trigger — announce it.
+        notifyProjectOpened(projectId);
         document.getElementById('project-detail-view').style.display = 'none';
         document.getElementById('terminals-container').style.display = '';
         document.getElementById('terminals-tabs').style.display = '';

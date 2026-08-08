@@ -4,7 +4,7 @@ const WorkflowMarketplace = require('./WorkflowMarketplacePanel');
 const { getAgents } = require('../../services/AgentService');
 const { getSkills } = require('../../services/SkillService');
 const { getGraphService, resetGraphService } = require('../../services/WorkflowGraphEngine');
-const { projectsState } = require('../../state/projects.state');
+const { projectsState, getCurrentProject } = require('../../state/projects.state');
 const { schemaCache } = require('../../services/WorkflowSchemaCache');
 const { showContextMenu } = require('../components/ContextMenu');
 const { showConfirm } = require('../components/Modal');
@@ -3301,10 +3301,10 @@ async function saveWorkflow(draft, existingId) {
 
 async function triggerWorkflow(id) {
   if (!api) return;
-  // Pass the currently opened project path so the runner has a valid cwd
-  const pState = projectsState.get();
-  const openedProject = (pState.projects || []).find(p => p.id === pState.openedProjectId);
-  const projectPath = openedProject?.path || '';
+  // Pass the current project path so the runner has a valid cwd. Reading
+  // openedProjectId alone gave '' almost always: the project detail view is
+  // closed on every sidebar click, so that id is null in the common case.
+  const projectPath = getCurrentProject()?.path || '';
   const res = await api.trigger(id, { projectPath });
   if (res && res.success === false) {
     toast(res.error || t('workflow.toast.runFailed'), 'error');

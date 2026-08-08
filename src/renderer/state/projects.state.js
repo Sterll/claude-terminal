@@ -906,16 +906,53 @@ function setOpenedProjectId(projectId) {
   projectsState.setProp('openedProjectId', projectId);
 
   // Notify workflow triggers only on a real transition to a project (not null→null or unchanged).
-  if (projectId && projectId !== prev) {
-    try {
-      const project = projectsState.get().projects?.find(p => p.id === projectId);
-      window.electron_api?.workflow?.notifyProjectOpened?.({
-        projectId,
-        projectPath: project?.path || null,
-        projectName: project?.name || null,
-      });
-    } catch (_) { /* non-critical */ }
+  if (projectId && projectId !== prev) notifyProjectOpened(projectId);
+}
+
+// Last project announced to the main process, so re-clicking the same project
+// in the sidebar does not re-fire `project_opened` workflows.
+let _lastAnnouncedProjectId = null;
+
+/**
+ * Announce that the user opened a project, for the `project_opened` workflow
+ * trigger.
+ *
+ * Deliberately separate from setOpenedProjectId: that setter tracks the project
+ * *detail view*, which the sidebar click path explicitly closes (it passes
+ * null), so hanging the trigger off it alone meant `project_opened` only ever
+ * fired from the git worktree switch.
+ *
+ * @param {string} projectId
+ */
+function notifyProjectOpened(projectId) {
+  if (!projectId || projectId === _lastAnnouncedProjectId) return;
+  _lastAnnouncedProjectId = projectId;
+  try {
+    const project = projectsState.get().projects?.find(p => p.id === projectId);
+    window.electron_api?.workflow?.notifyProjectOpened?.({
+      projectId,
+      projectPath: project?.path || null,
+      projectName: project?.name || null,
+    });
+  } catch (_) { /* non-critical */ }
+}
+
+/**
+ * The project the user is currently working in: the opened detail view when
+ * there is one, otherwise the project selected in the sidebar.
+ *
+ * `openedProjectId` alone is not enough — the detail view is closed on every
+ * sidebar click, so it is null in the common case.
+ * @returns {Object|null}
+ */
+function getCurrentProject() {
+  const s = projectsState.get();
+  const projects = s.projects || [];
+  if (s.openedProjectId) {
+    const opened = projects.find(p => p.id === s.openedProjectId);
+    if (opened) return opened;
   }
+  return projects[s.selectedProjectFilter] || null;
 }
 
 /**
@@ -1498,6 +1535,8 @@ module.exports = {
   reorderItem,
   setSelectedProjectFilter,
   setOpenedProjectId,
+  notifyProjectOpened,
+  getCurrentProject,
   // Quick Actions
   getQuickActions,
   setQuickActions,
