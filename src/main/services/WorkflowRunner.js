@@ -19,15 +19,8 @@
 
 'use strict';
 
-const { exec, execFile } = require('child_process');
 const fs            = require('fs');
 const path          = require('path');
-const crypto        = require('crypto');
-
-const {
-  gitCommit, gitPull, gitPush, gitStageFiles,
-  checkoutBranch, createBranch, spawnGit,
-} = require('../utils/git');
 
 // ─── Variable resolution ──────────────────────────────────────────────────────
 
@@ -173,471 +166,6 @@ function evalCondition(condition, vars) {
   }
 }
 
-// ─── Shell step ───────────────────────────────────────────────────────────────
-
-function runShellStep(config, vars, signal) {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) return reject(new Error('Cancelled'));
-
-    const command = resolveVars(config.command || '', vars);
-    const cwd     = resolveVars(config.cwd || process.cwd(), vars);
-    const timeout = config.timeout ? parseMs(config.timeout) : 60_000;
-
-    if (!command.trim()) return resolve({ exitCode: 0, stdout: '', stderr: '' });
-
-    let child;
-    const onAbort = () => { try { child?.kill('SIGKILL'); } catch {} };
-    signal?.addEventListener('abort', onAbort, { once: true });
-
-    // Use exec with shell: true to support pipes, &&, redirections, env vars
-    child = exec(command, { cwd, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024, timeout }, (err, stdout, stderr) => {
-      signal?.removeEventListener('abort', onAbort);
-      if (signal?.aborted) return reject(new Error('Cancelled'));
-      // Trim trailing CR/LF that shells append (e.g. `date` on Windows) so
-      // interpolating $node.stdout into another command doesn't inject newlines.
-      resolve({
-        exitCode: err?.code ?? 0,
-        stdout: (stdout || '').replace(/[\r\n]+$/, ''),
-        stderr: (stderr || '').replace(/[\r\n]+$/, ''),
-      });
-    });
-  });
-}
-
-/** Minimal command parser: respects double-quoted segments. */
-function parseCommand(cmd) {
-  const out = [];
-  let cur = '';
-  let inQuote = false;
-  for (let i = 0; i < cmd.length; i++) {
-    const c = cmd[i];
-    if (c === '"') { inQuote = !inQuote; continue; }
-    if (c === ' ' && !inQuote) {
-      if (cur) { out.push(cur); cur = ''; }
-    } else {
-      cur += c;
-    }
-  }
-  if (cur) out.push(cur);
-  return out;
-}
-
-// ─── Git step ─────────────────────────────────────────────────────────────────
-
-async function runGitStep(config, vars) {
-  // Resolve cwd: prefer explicit cwd, then resolve projectId to a path via ctx
-  let cwd = resolveVars(config.cwd || '', vars);
-  if (!cwd && config.projectId) {
-    // projectId is stored but we need the project path — use ctx.project as fallback
-    const ctx = vars.get('ctx') || {};
-    cwd = ctx.project || '';
-  }
-  if (!cwd) {
-    const ctx = vars.get('ctx') || {};
-    cwd = ctx.project || process.cwd();
-  }
-
-  // Support graph-based node format: config.action = 'pull'|'push'|'commit'|etc.
-  if (config.action && !config.actions) {
-    const action = config.action;
-    const branch = resolveVars(config.branch || '', vars);
-    const message = resolveVars(config.message || '', vars);
-    let res;
-
-    switch (action) {
-      case 'pull':       res = await gitPull(cwd); break;
-      case 'push':       res = await gitPush(cwd); break;
-      case 'commit':     {
-        await gitStageFiles(cwd, config.files || ['.']);
-        res = await gitCommit(cwd, message || 'workflow commit');
-        break;
-      }
-      case 'checkout':   res = await checkoutBranch(cwd, branch); break;
-      case 'merge':      res = await spawnGit(cwd, ['merge', branch]); break;
-      case 'stash':      res = await spawnGit(cwd, ['stash']); break;
-      case 'stash-pop':  res = await spawnGit(cwd, ['stash', 'pop']); break;
-      case 'reset':      res = await spawnGit(cwd, ['reset', '--hard', 'HEAD']); break;
-      default:           res = { success: false, error: `Unknown git action: ${action}` };
-    }
-    return { success: res.success !== false, output: res.output || res.stdout || '', action };
-  }
-
-  // Legacy format: config.actions array or single config with pull/push/commit keys
-  const actions = Array.isArray(config.actions) ? config.actions : [config];
-
-  const results = [];
-  for (const action of actions) {
-    const resolved = resolveDeep(action, vars);
-    let res;
-
-    if (resolved.pull)     res = await gitPull(cwd);
-    else if (resolved.push)     res = await gitPush(cwd);
-    else if (resolved.commit)   res = await (async () => {
-      await gitStageFiles(cwd, resolved.files || ['.']);
-      return gitCommit(cwd, resolved.commit);
-    })();
-    else if (resolved.checkout) res = await checkoutBranch(cwd, resolved.checkout);
-    else if (resolved.branch)   res = await createBranch(cwd, resolved.branch);
-    else if (resolved.command)  res = await spawnGit(cwd, resolved.command.split(/\s+/));
-    else res = { success: false, error: 'Unknown git action' };
-
-    results.push(res);
-    if (!res.success) {
-      return { success: false, error: res.error, results };
-    }
-  }
-
-  return { success: true, output: results.map(r => r.output || '').join('\n'), results };
-}
-
-// ─── HTTP step ────────────────────────────────────────────────────────────────
-
-async function runHttpStep(config, vars, signal) {
-  const url     = resolveVars(config.url || '', vars);
-  const method  = (config.method || 'GET').toUpperCase();
-
-  // Headers may come as a JSON string from the panel or as an object from legacy format
-  let rawHeaders = config.headers || {};
-  if (typeof rawHeaders === 'string') {
-    try { rawHeaders = JSON.parse(resolveVars(rawHeaders, vars)); } catch { rawHeaders = {}; }
-  }
-  const headers = resolveDeep(rawHeaders, vars);
-
-  // Body may come as a JSON string from the panel or as an object
-  let rawBody = config.body;
-  if (typeof rawBody === 'string') {
-    rawBody = resolveVars(rawBody, vars);
-    try { rawBody = JSON.parse(rawBody); } catch { /* keep as string */ }
-  }
-  const body = rawBody ? JSON.stringify(resolveDeep(rawBody, vars)) : undefined;
-  const timeout = config.timeout ? parseMs(config.timeout) : 30_000;
-
-  const aborter = new AbortController();
-  const timer   = setTimeout(() => aborter.abort(), timeout);
-  // Chain external cancellation
-  const onAbort = () => aborter.abort();
-  signal?.addEventListener('abort', onAbort, { once: true });
-
-  try {
-    const res  = await fetch(url, { method, headers, body, signal: aborter.signal });
-    const text = await res.text();
-    let json;
-    try { json = JSON.parse(text); } catch { /* text only */ }
-    return { status: res.status, ok: res.ok, body: json ?? text };
-  } catch (err) {
-    if (signal?.aborted) throw new Error('Cancelled');
-    throw err;
-  } finally {
-    clearTimeout(timer);
-    signal?.removeEventListener('abort', onAbort);
-  }
-}
-
-// ─── File step ────────────────────────────────────────────────────────────────
-
-/**
- * Validate that a resolved path stays within the workflow's project directory.
- * Prevents path traversal attacks (e.g. ../../etc/passwd).
- */
-function assertPathWithinProject(filePath, vars) {
-  const ctx = vars.get('ctx') || {};
-  const projectDir = ctx.project;
-  if (!projectDir) return; // no project context — skip check (manual runs)
-  const resolved = path.resolve(filePath);
-  const base = path.resolve(projectDir);
-  // Case-insensitive comparison on Windows to prevent bypass via mixed case
-  const cmp = process.platform === 'win32'
-    ? (a, b) => a.toLowerCase() === b.toLowerCase() || a.toLowerCase().startsWith(b.toLowerCase() + path.sep)
-    : (a, b) => a === b || a.startsWith(b + path.sep);
-  if (!cmp(resolved, base)) {
-    throw new Error(`Path "${filePath}" is outside the project directory`);
-  }
-}
-
-/**
- * Expand a glob pattern in a base directory and return matching file paths.
- * Handles simple wildcards (* and **) without requiring a glob library.
- * Falls back to regex matching if 'glob' npm package is unavailable.
- */
-function expandGlob(pattern, baseDir) {
-  // Build a regex from the glob pattern
-  const toRegex = (pat) => {
-    // Escape special regex chars except * and ?
-    let reStr = pat
-      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-      .replace(/\*\*/g, '\x00DOUBLESTAR\x00')
-      .replace(/\*/g, '[^/\\\\]*')
-      .replace(/\x00DOUBLESTAR\x00/g, '.*')
-      .replace(/\?/g, '[^/\\\\]');
-    return new RegExp('^' + reStr + '$', process.platform === 'win32' ? 'i' : '');
-  };
-
-  const re = toRegex(pattern);
-  const results = [];
-
-  const walk = (dir, rel) => {
-    let entries;
-    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
-    for (const entry of entries) {
-      const relPath = rel ? rel + '/' + entry.name : entry.name;
-      if (entry.isDirectory()) {
-        walk(path.join(dir, entry.name), relPath);
-      } else {
-        if (re.test(relPath)) results.push(relPath);
-      }
-    }
-  };
-
-  walk(baseDir, '');
-  return results;
-}
-
-async function runFileStep(config, vars) {
-  const action  = config.action || 'read';
-  const p       = resolveVars(config.path || '', vars);
-  const dest    = resolveVars(config.destination || config.dest || '', vars);
-  const content = resolveVars(config.content || '', vars);
-
-  // Validate paths stay within the project directory
-  if (p && action !== 'list') assertPathWithinProject(p, vars);
-  if (dest) assertPathWithinProject(dest, vars);
-
-  switch (action) {
-    case 'read':
-      return { content: fs.readFileSync(p, 'utf8') };
-    case 'write':
-      fs.mkdirSync(path.dirname(p), { recursive: true });
-      fs.writeFileSync(p, content, 'utf8');
-      return { success: true };
-    case 'append':
-      fs.appendFileSync(p, content, 'utf8');
-      return { success: true };
-    case 'copy':
-      fs.mkdirSync(path.dirname(dest), { recursive: true });
-      fs.copyFileSync(p, dest);
-      return { success: true };
-    case 'delete':
-      fs.rmSync(p, { force: true, recursive: true });
-      return { success: true };
-    case 'exists':
-      return { exists: fs.existsSync(p), path: p };
-    case 'move':
-    case 'rename': {
-      if (!dest) throw new Error('File move/rename requires a destination path');
-      assertPathWithinProject(p, vars);
-      fs.mkdirSync(path.dirname(dest), { recursive: true });
-      fs.renameSync(p, dest);
-      return { success: true, from: p, to: dest };
-    }
-    case 'list': {
-      // p is used as the base directory; config.pattern is the glob pattern
-      const baseDir = p || (() => { const ctx = vars.get('ctx') || {}; return ctx.project || process.cwd(); })();
-      if (baseDir) assertPathWithinProject(baseDir, vars);
-      const pattern = resolveVars(config.pattern || '*', vars);
-      const recursive = config.recursive === true || config.recursive === 'true';
-
-      let files;
-      // Simple non-recursive listing (no wildcards crossing directories)
-      if (!recursive && !pattern.includes('**') && !pattern.includes('/')) {
-        let entries;
-        try { entries = fs.readdirSync(baseDir, { withFileTypes: true }); } catch { entries = []; }
-        const re = new RegExp(
-          '^' + pattern
-            .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-            .replace(/\*/g, '[^/\\\\]*')
-            .replace(/\?/g, '[^/\\\\]') + '$',
-          process.platform === 'win32' ? 'i' : ''
-        );
-        const type = config.type || 'files'; // 'files' | 'dirs' | 'all'
-        files = entries
-          .filter(e => {
-            if (type === 'files' && !e.isFile()) return false;
-            if (type === 'dirs'  && !e.isDirectory()) return false;
-            return re.test(e.name);
-          })
-          .map(e => e.name);
-      } else {
-        files = expandGlob(pattern, baseDir);
-      }
-
-      return { files, count: files.length, dir: baseDir };
-    }
-    default:
-      throw new Error(`Unknown file action: ${action}`);
-  }
-}
-
-// ─── Database step ───────────────────────────────────────────────────────────
-
-/**
- * Run a database query/schema/tables operation.
- * Requires a DatabaseService instance passed to the runner.
- *
- * @param {Object}  config          - step config
- * @param {Map}     vars            - resolved variables
- * @param {Object}  databaseService - DatabaseService singleton
- * @returns {Promise<Object>}       - { rows, columns, rowCount, duration, firstRow } | { tables, tableCount }
- */
-async function runDbStep(config, vars, databaseService) {
-  if (!databaseService) throw new Error('DatabaseService not available');
-
-  const connId = resolveVars(config.connection || '', vars);
-  if (!connId) throw new Error('No database connection specified');
-
-  const action = config.action || 'query';
-
-  // Ensure connection is active (auto-connect if needed)
-  const connections = await databaseService.loadConnections();
-  const connConfig = connections.find(c => c.id === connId);
-  if (!connConfig) throw new Error(`Database connection "${connId}" not found`);
-
-  // Retrieve password from OS keychain (passwords are stripped from disk config)
-  const cred = await databaseService.getCredential(connId);
-  if (cred?.success && cred.password) {
-    connConfig.password = cred.password;
-  }
-
-  // Connect (or reconnect) to the database
-  const connResult = await databaseService.connect(connId, connConfig);
-  if (!connResult?.success) {
-    throw new Error(`Database connection failed: ${connResult?.error || 'Unknown error'}`);
-  }
-
-  if (action === 'schema') {
-    const schema = await databaseService.getSchema(connId, { force: true });
-    if (!schema?.success) throw new Error(schema?.error || 'Failed to get schema');
-    const tables = schema.tables || [];
-    return { tables, tableCount: tables.length };
-  }
-
-  if (action === 'tables') {
-    const schema = await databaseService.getSchema(connId, { force: true });
-    if (!schema?.success) throw new Error(schema?.error || 'Failed to get schema');
-    const tables = (schema.tables || []).map(t => t.name || t.table_name || t);
-    return { tables, tableCount: tables.length };
-  }
-
-  // action === 'query'
-  const sql   = resolveVars(config.query || '', vars);
-  const limit = parseInt(config.limit, 10) || 100;
-
-  if (!sql.trim()) throw new Error('Empty SQL query');
-
-  const start  = Date.now();
-  const result = await databaseService.executeQuery(connId, sql, limit);
-  const duration = Date.now() - start;
-
-  if (result.error) throw new Error(result.error);
-
-  const rows     = result.rows || [];
-  const columns  = result.columns || [];
-  const rowCount = result.rowCount ?? rows.length;
-  const firstRow = rows.length > 0 ? rows[0] : null;
-
-  return { rows, columns, rowCount, duration, firstRow };
-}
-
-// ─── Project step ─────────────────────────────────────────────────────────────
-
-/**
- * Run a project-related operation (list, set_context, open, build, install, test).
- * @param {Object} config
- * @param {Map}    vars
- * @param {Function} sendFn
- */
-async function runProjectStep(config, vars, sendFn) {
-  const action = config.action || 'set_context';
-  const projectId = config.projectId || '';
-  const ctx = vars.get('ctx') || {};
-
-  if (action === 'list') {
-    // Read all projects from Claude Terminal data file
-    const projFile = path.join(require('os').homedir(), '.claude-terminal', 'projects.json');
-    try {
-      const data = JSON.parse(fs.readFileSync(projFile, 'utf8'));
-      const projects = (data.projects || []).map(p => ({
-        id:   p.id,
-        name: p.name,
-        path: p.path,
-        type: p.type || 'general',
-      }));
-      return { projects, count: projects.length, success: true };
-    } catch {
-      return { projects: [], count: 0, success: true };
-    }
-  }
-
-  if (action === 'set_context') {
-    // Update the workflow context to use this project for subsequent steps
-    if (projectId) ctx.activeProjectId = projectId;
-    vars.set('ctx', ctx);
-    return { success: true, action, projectId };
-  }
-
-  // For open/build/install/test — delegate to renderer via sendFn
-  sendFn('workflow-project-action', { action, projectId: projectId || ctx.activeProjectId || '' });
-  return { success: true, action, projectId };
-}
-
-// ─── Variable step ────────────────────────────────────────────────────────────
-
-/**
- * Manipulate workflow-level variables (set, get, increment, append).
- * @param {Object} config
- * @param {Map}    vars
- */
-function runVariableStep(config, vars) {
-  const action = config.action || 'set';
-  const name   = config.name || '';
-  if (!name) throw new Error('Variable node: no name specified');
-
-  const currentValue = vars.get(name);
-
-  switch (action) {
-    case 'set': {
-      const raw = config.value != null ? config.value : '';
-      const value = resolveVars(raw, vars);
-      vars.set(name, value);
-      return { name, value, action: 'set' };
-    }
-    case 'get': {
-      return { name, value: currentValue ?? null, action: 'get' };
-    }
-    case 'increment': {
-      const increment = parseFloat(config.value) || 1;
-      const newValue = (parseFloat(currentValue) || 0) + increment;
-      vars.set(name, newValue);
-      return { name, value: newValue, action: 'increment' };
-    }
-    case 'append': {
-      const rawA = config.value != null ? config.value : '';
-      const value = resolveVars(rawA, vars);
-      const arr = Array.isArray(currentValue) ? currentValue : (currentValue ? [currentValue] : []);
-      arr.push(value);
-      vars.set(name, arr);
-      return { name, value: arr, action: 'append' };
-    }
-    default:
-      throw new Error(`Variable node: unknown action "${action}"`);
-  }
-}
-
-// ─── Log step ─────────────────────────────────────────────────────────────────
-
-/**
- * Write a message to the workflow run log.
- * @param {Object} config
- * @param {Map}    vars
- * @param {Function} sendFn
- */
-function runLogStep(config, vars, sendFn) {
-  const level   = config.level || 'info';
-  const message = resolveVars(config.message || '', vars);
-
-  sendFn('workflow-log', { level, message, timestamp: Date.now() });
-  return { level, message, logged: true };
-}
-
 // ─── Condition step ───────────────────────────────────────────────────────────
 
 function runConditionStep(config, vars) {
@@ -652,53 +180,6 @@ function runConditionStep(config, vars) {
   }
   const result = evalCondition(resolveVars(expression || 'true', vars), vars);
   return { result, value: result };
-}
-
-// ─── Wait step ────────────────────────────────────────────────────────────────
-
-/**
- * Pause execution. Resolves when:
- *   - `onApprove(runId, stepId)` is called (human confirmation via IPC)
- *   - OR timeout expires (if configured)
- *   - OR signal is aborted
- * @param {Object} config
- * @param {AbortSignal} signal
- * @param {Map<string, Function>} waitCallbacks  - shared registry: key → resolve fn
- * @param {string} runId
- * @param {string} stepId
- */
-function runWaitStep(config, signal, waitCallbacks, runId, stepId) {
-  // Simple delay mode: if duration is set, just sleep for that time
-  const duration = config.duration;
-  if (duration) {
-    const ms = parseMs(duration);
-    return sleep(ms, signal).then(() => ({ waited: ms, timedOut: false }));
-  }
-
-  // Approval mode: wait for human callback or timeout
-  return new Promise((resolve, reject) => {
-    const key     = `${runId}::${stepId}`;
-    const timeout = config.timeout ? parseMs(config.timeout) : null;
-
-    const done = (result) => {
-      waitCallbacks.delete(key);
-      clearTimeout(timer);
-      resolve(result);
-    };
-
-    waitCallbacks.set(key, done);
-
-    const timer = timeout
-      ? setTimeout(() => done({ timedOut: true, approved: false }), timeout)
-      : null;
-
-    const onAbort = () => {
-      waitCallbacks.delete(key);
-      clearTimeout(timer);
-      reject(new Error('Cancelled'));
-    };
-    signal?.addEventListener('abort', onAbort, { once: true });
-  });
 }
 
 // ─── Agent step ───────────────────────────────────────────────────────────────
@@ -776,53 +257,6 @@ async function runAgentStep(config, vars, signal, chatService, onMessage) {
   return chatService.runSinglePrompt(opts);
 }
 
-// ─── Notify step ─────────────────────────────────────────────────────────────
-
-/**
- * @param {Object} config
- * @param {Map}    vars
- * @param {Function} sendFn  - main process _send (workflow-notify channel)
- */
-async function runNotifyStep(config, vars, sendFn) {
-  const message  = resolveVars(config.message || '', vars);
-  const channels = config.channels || ['desktop'];
-  const title    = resolveVars(config.title || 'Workflow', vars);
-
-  const tasks = [];
-
-  for (const ch of channels) {
-    if (ch === 'desktop') {
-      // Delegate to renderer notification system via a dedicated channel
-      sendFn('workflow-notify-desktop', { title, message });
-    } else if (typeof ch === 'object') {
-      // { discord: '$secrets.URL' } or { slack: '...' }
-      const [type, urlRaw] = Object.entries(ch)[0];
-      const url = resolveVars(urlRaw, vars);
-      if (!url || url.startsWith('$')) continue; // unresolved secret → skip
-
-      let body;
-      if (type === 'discord') {
-        body = JSON.stringify({ content: message });
-      } else if (type === 'slack') {
-        body = JSON.stringify({ text: message });
-      } else {
-        body = JSON.stringify({ message });
-      }
-
-      tasks.push(
-        fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body,
-        }).catch(err => console.warn(`[WorkflowRunner] Notify ${type} failed:`, err.message))
-      );
-    }
-  }
-
-  await Promise.allSettled(tasks);
-  return { sent: true, message };
-}
-
 // ─── Time tracking step ──────────────────────────────────────────────────────
 
 /**
@@ -869,16 +303,14 @@ function runTransformStep(config, vars) {
 
   const input = Array.isArray(inputRaw) ? inputRaw : (inputRaw != null ? [inputRaw] : []);
 
-  // Safe expression evaluator — builds a function with item as argument
-  // Only allows simple property access and comparisons, no arbitrary eval
-  const makeFn = (body) => {
-    try {
-      // eslint-disable-next-line no-new-func
-      return new Function('item', 'index', `"use strict"; return (${body});`);
-    } catch {
-      throw new Error(`Invalid expression: ${body}`);
-    }
-  };
+  // Expressions run in the same hardened vm context transform.node.js uses.
+  // The comment that used to sit here claimed this evaluator "only allows
+  // simple property access and comparisons, no arbitrary eval" — a bare
+  // `new Function` allows exactly arbitrary eval, with full host access. This
+  // path is still reachable through _resolvePureDataNode, so it must not be
+  // weaker than the node it mirrors. See _registry.compileSandboxed.
+  const { compileSandboxed } = require('../workflow-nodes/_registry');
+  const makeFn = (body) => compileSandboxed(body, ['item', 'index'], { label: 'transform-expr' });
 
   let result;
   switch (operation) {
@@ -893,7 +325,9 @@ function runTransformStep(config, vars) {
       break;
     case 'reduce': {
       // expr format: "acc + item.value" — acc starts at 0
-      const reduceFn = expr ? new Function('acc', 'item', 'index', `"use strict"; return (${expr});`) : (acc, item) => acc + item; // eslint-disable-line no-new-func
+      const reduceFn = expr
+        ? compileSandboxed(expr, ['acc', 'item', 'index'], { label: 'transform-reduce' })
+        : (acc, item) => acc + item;
       result = input.reduce(reduceFn, 0);
       break;
     }
@@ -942,80 +376,6 @@ function runTransformStep(config, vars) {
   };
 }
 
-// ─── Sub-workflow step ─────────────────────────────────────────────────────────
-
-/**
- * Run another workflow by name or ID and optionally wait for completion.
- * Injects inputVars into the triggered workflow's context.
- */
-async function runSubworkflowStep(config, vars, workflowService, signal) {
-  if (signal?.aborted) throw new Error('Cancelled');
-  const workflowRef = resolveVars(config.workflow || '', vars);
-  if (!workflowRef) throw new Error('Sub-workflow: missing workflow name or ID');
-
-  // Parse optional input variables as JSON object or key=value pairs
-  let extraVars = {};
-  if (config.inputVars) {
-    const raw = resolveVars(config.inputVars, vars);
-    try {
-      extraVars = typeof raw === 'object' ? raw : JSON.parse(raw);
-    } catch {
-      // key=value,key2=value2 fallback
-      for (const pair of raw.split(',')) {
-        const [k, v] = pair.split('=').map(s => s.trim());
-        if (k) extraVars[k] = v ?? '';
-      }
-    }
-  }
-
-  const waitForCompletion = config.waitForCompletion !== false && config.waitForCompletion !== 'no';
-
-  // trigger(ref, opts) returns { success, runId } — use the modern signature.
-  const trig = await workflowService.trigger(workflowRef, {
-    source: 'subworkflow',
-    triggerData: { parent: true },
-    extraVars,
-  });
-  if (!trig || !trig.success || !trig.runId) {
-    throw new Error(`Sub-workflow "${workflowRef}" could not be triggered${trig?.error ? `: ${trig.error}` : ''}`);
-  }
-  const runId = trig.runId;
-
-  if (!waitForCompletion) {
-    return { triggered: true, runId, waited: false };
-  }
-
-  // Poll for completion (max 10 min).
-  // If the PARENT run is cancelled while we wait, propagate the cancellation to the
-  // child (workflowService.cancel) so it — and its child processes / sub-agents —
-  // don't keep running orphaned, then reject with 'Cancelled'.
-  const start = Date.now();
-  const TIMEOUT = 10 * 60 * 1000;
-  const POLL = 1000;
-
-  const cancelChild = () => {
-    try { workflowService.cancel(runId); } catch { /* already finished */ }
-  };
-
-  while (Date.now() - start < TIMEOUT) {
-    if (signal?.aborted) { cancelChild(); throw new Error('Cancelled'); }
-    await new Promise(r => setTimeout(r, POLL));
-    if (signal?.aborted) { cancelChild(); throw new Error('Cancelled'); }
-    const run = await workflowService.getRun(runId);
-    if (!run) break;
-    if (run.status === 'success') {
-      const payload = await workflowService.getRunResult(runId).catch(() => null);
-      return { success: true, runId, outputs: payload?.outputs || run.outputs || {}, waited: true };
-    }
-    if (run.status === 'failed' || run.status === 'cancelled') {
-      throw new Error(`Sub-workflow "${workflowRef}" ${run.status}`);
-    }
-  }
-
-  cancelChild();
-  throw new Error(`Sub-workflow "${workflowRef}" timed out after 10 minutes`);
-}
-
 // ─── Switch step ──────────────────────────────────────────────────────────────
 
 /**
@@ -1036,12 +396,21 @@ function runSwitchStep(config, vars) {
 function parseMs(value) {
   if (typeof value === 'number') return value;
   if (typeof value !== 'string') return 60_000;
-  const match = value.match(/^(\d+(?:\.\d+)?)(ms|s|m|h)$/);
-  if (!match) return parseInt(value, 10) || 60_000;
-  const [, n, unit] = match;
-  const num = parseFloat(n);
+  // Tolerate whitespace and an omitted unit, matching wait.node.js. The old
+  // pattern required the unit to touch the number, so a step timeout of "5 s"
+  // fell through to parseInt and became 5 MILLISECONDS; and
+  // `parseInt(value, 10) || 60_000` turned an explicit 0 into a one-minute
+  // wait, because 0 is falsy. This feeds retry delays and step/workflow
+  // timeouts, so both failures were silent and load-bearing.
+  const match = value.trim().match(/^(\d+(?:\.\d+)?)\s*(ms|s|m|h)?$/i);
+  if (!match) {
+    console.warn(`[WorkflowRunner] Unparseable duration "${value}" — falling back to 60s`);
+    return 60_000;
+  }
+  const num  = parseFloat(match[1]);
+  const unit = (match[2] || 'ms').toLowerCase();
   const multipliers = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 };
-  return Math.round(num * (multipliers[unit] || 1000));
+  return Math.round(num * multipliers[unit]);
 }
 
 // ─── Main executor ────────────────────────────────────────────────────────────
@@ -2286,77 +1655,8 @@ class WorkflowRunner {
       });
     }
 
-    if (type === 'shell') {
-      return runShellStep(step, vars, signal);
-    }
-
-    if (type === 'git') {
-      return runGitStep(step, vars);
-    }
-
-    if (type === 'http') {
-      return runHttpStep(step, vars, signal);
-    }
-
-    if (type === 'file') {
-      return runFileStep(step, vars);
-    }
-
-    if (type === 'db') {
-      const result = await runDbStep(step, vars, this._databaseService);
-      // Also store under outputVar alias if configured (e.g. $dbResult.rows)
-      if (step.outputVar && step.id) {
-        vars.set(step.outputVar, result);
-      }
-      return result;
-    }
-
-    if (type === 'condition') {
-      return runConditionStep(step, vars);
-    }
-
-    if (type === 'project') {
-      return runProjectStep(step, vars, this._send);
-    }
-
-    if (type === 'variable') {
-      return runVariableStep(step, vars);
-    }
-
-    if (type === 'log') {
-      return runLogStep(step, vars, this._send);
-    }
-
-    if (type === 'notify') {
-      return runNotifyStep(step, vars, this._send);
-    }
-
-    if (type === 'wait') {
-      return runWaitStep(step, signal, this._waitCallbacks, runId, step.id || `step_${Date.now()}`);
-    }
-
-    if (type === 'loop') {
-      return this._runLoopStep(step, vars, runId, signal, workflow);
-    }
-
     if (type === 'parallel') {
       return this._runParallelStep(step, vars, runId, signal, workflow);
-    }
-
-    if (type === 'transform') {
-      return runTransformStep(step, vars);
-    }
-
-    if (type === 'subworkflow') {
-      return runSubworkflowStep(step, vars, this._workflowService, signal);
-    }
-
-    if (type === 'switch') {
-      return runSwitchStep(step, vars);
-    }
-
-    if (type === 'time') {
-      return runTimeStep(step, vars);
     }
 
     if (type === 'get_variable') {
@@ -2379,61 +1679,6 @@ class WorkflowRunner {
     }
 
     throw new Error(`Unknown step type: ${type}`);
-  }
-
-  /**
-   * loop step (legacy): iterate over an array, run sub-steps for each item.
-   * Used for linear/legacy workflows with step.over + step.steps.
-   * Graph mode loops are handled directly in _executeGraph.
-   * @private
-   */
-  async _runLoopStep(step, vars, runId, signal, workflow) {
-    let items;
-
-    if (step.source && !step.over) {
-      const source = step.source;
-      if (source === 'previous_output' || source === 'auto') {
-        // Scan vars for most recent array output from a node
-        for (const [key, val] of vars) {
-          if (!key.startsWith('node_') && !key.startsWith('step_')) continue;
-          const arr = this._extractArrayFromOutput(val);
-          if (arr) { items = arr; /* keep scanning — last one wins */ }
-        }
-        if (!items) items = [];
-      } else {
-        items = this._resolveLoopSource(step, vars);
-      }
-    } else {
-      // Legacy format: step.over = '$varName.path'
-      const overKey = resolveVars(step.over || '', vars);
-      const parts = overKey.replace(/^\$/, '').split('.');
-      items = vars.get(parts[0]);
-      for (let i = 1; i < parts.length && items != null; i++) items = items[parts[i]];
-    }
-
-    if (!Array.isArray(items)) {
-      throw new Error(`loop: could not resolve items to an array (source: ${step.source || step.over})`);
-    }
-
-    const results = [];
-    for (let idx = 0; idx < items.length; idx++) {
-      if (signal.aborted) throw new Error('Cancelled');
-
-      const itemVars = new Map(vars);
-      itemVars.set('item', items[idx]);
-      itemVars.set('index', idx);
-      itemVars.set('loop', { item: items[idx], index: idx, total: items.length });
-
-      if (step.steps && step.steps.length > 0) {
-        const iterOutputs = {};
-        await this._runSteps(step.steps, itemVars, runId, signal, iterOutputs, workflow);
-        results.push(iterOutputs);
-      } else {
-        results.push(items[idx]);
-      }
-    }
-
-    return { items: results, count: items.length };
   }
 
   /**
