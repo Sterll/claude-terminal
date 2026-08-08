@@ -17,82 +17,9 @@ const fs   = require('fs');
 
 // ─── Cron parsing ─────────────────────────────────────────────────────────────
 
-/**
- * Parse a 5-field cron expression into a matcher function.
- * Fields: minute hour dom month dow
- * Supports: * / , -
- * @param {string} expr
- * @returns {(date: Date) => boolean}
- */
-function parseCron(expr) {
-  const fields = expr.trim().split(/\s+/);
-  if (fields.length !== 5) throw new Error(`Invalid cron expression: "${expr}"`);
-  const [minF, hourF, domF, monF, dowF] = fields;
-
-  const parseField = (field, min, max) => {
-    if (field === '*') return () => true;
-
-    const parseStep = (raw) => {
-      const step = Number(raw);
-      if (!Number.isFinite(step) || !Number.isInteger(step) || step < 1) {
-        throw new Error(`Invalid cron step "${raw}" in field "${field}"`);
-      }
-      return step;
-    };
-
-    const parseNum = (raw, label) => {
-      const n = Number(raw);
-      if (!Number.isFinite(n) || !Number.isInteger(n) || n < min || n > max) {
-        throw new Error(`Invalid cron ${label} "${raw}" in field "${field}" (expected ${min}-${max})`);
-      }
-      return n;
-    };
-
-    const parts = field.split(',');
-    const matchers = parts.map(part => {
-      // */step   → every `step` starting at `min`
-      if (part.startsWith('*/')) {
-        const step = parseStep(part.slice(2));
-        return (v) => (v - min) % step === 0;
-      }
-      // a-b/step → range with step
-      const rangeStep = part.match(/^(\d+)-(\d+)\/(\d+)$/);
-      if (rangeStep) {
-        const a    = parseNum(rangeStep[1], 'value');
-        const b    = parseNum(rangeStep[2], 'value');
-        const step = parseStep(rangeStep[3]);
-        if (a > b) throw new Error(`Invalid cron range "${part}" (start > end)`);
-        return (v) => v >= a && v <= b && (v - a) % step === 0;
-      }
-      // range a-b
-      if (part.includes('-')) {
-        const [rawA, rawB] = part.split('-');
-        const a = parseNum(rawA, 'value');
-        const b = parseNum(rawB, 'value');
-        if (a > b) throw new Error(`Invalid cron range "${part}" (start > end)`);
-        return (v) => v >= a && v <= b;
-      }
-      // exact value
-      const n = parseNum(part, 'value');
-      return (v) => v === n;
-    });
-    return (v) => matchers.some(m => m(v));
-  };
-
-  const matchMin  = parseField(minF,  0, 59);
-  const matchHour = parseField(hourF, 0, 23);
-  const matchDom  = parseField(domF,  1, 31);
-  const matchMon  = parseField(monF,  1, 12);
-  const matchDow  = parseField(dowF,  0, 6);   // 0 = Sunday
-
-  return (date) => {
-    return matchMin(date.getMinutes())
-      && matchHour(date.getHours())
-      && matchDom(date.getDate())
-      && matchMon(date.getMonth() + 1)
-      && matchDow(date.getDay());
-  };
-}
+// Shared with the renderer (Tasks view "next run" display) and the IPC
+// validator, so validation here can never diverge from what the UI shows.
+const { parseCron } = require('../../shared/cron');
 
 // ─── Hook condition evaluation ────────────────────────────────────────────────
 
