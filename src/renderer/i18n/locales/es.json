@@ -33,7 +33,9 @@
     "remove": "Quitar",
     "ignore": "Ignorar",
     "copied": "¡Copiado!",
-    "justNow": "Ahora mismo"
+    "justNow": "Ahora mismo",
+    "add": "Añadir",
+    "yesterday": "Ayer"
   },
   "projects": {
     "title": "Proyectos",
@@ -77,7 +79,7 @@
     "sectionOpen": "Abrir",
     "sectionProject": "Proyecto",
     "sectionPath": "Ruta",
-    "pathMissingTitle": "Ruta no encontrada en esta m\u00e1quina",
+    "pathMissingTitle": "Ruta no encontrada en esta máquina",
     "locatePath": "Localizar carpeta...",
     "pathUpdated": "Ruta actualizada para \"{name}\"",
     "dragToReorder": "Arrastrar para reordenar",
@@ -202,6 +204,9 @@
   "gitTab": {
     "selectProject": "Selecciona un proyecto para ver la información de git",
     "notGitRepo": "Este proyecto no es un repositorio Git",
+    "gitUnavailable": "No se pudo ejecutar Git",
+    "gitNotInstalled": "Git no está instalado o no está disponible en el PATH",
+    "gitTimedOut": "El comando Git agotó el tiempo de espera",
     "changes": "Cambios",
     "history": "Historial",
     "pullRequests": "Pull Requests",
@@ -293,6 +298,7 @@
     "commitMessageRequired": "El mensaje de commit es obligatorio",
     "commitCreated": "Commit creado",
     "noDiffAvailable": "Sin diff disponible (archivo nuevo o binario)",
+    "diffLoadFailed": "No se pudo cargar el diff",
     "commitDetail": "Commit {hash}",
     "cherryPickTitle": "Cherry-pick",
     "cherryPickSuccess": "Cherry-pick exitoso",
@@ -400,6 +406,8 @@
     "stashPoppedSuccess": "Stash restaurado"
   },
   "gitErrors": {
+    "gitNotInstalled": "Git no está instalado o no está disponible en el PATH. Instala Git y reinicia la aplicación.",
+    "gitTimedOut": "El comando Git agotó el tiempo de espera. El repositorio puede estar ocupado o ser demasiado grande.",
     "notARepo": "Esta carpeta no es un repositorio Git. Inicializa uno con 'git init'.",
     "notSymbolicRef": "La referencia no es válida. La rama puede haber sido eliminada.",
     "pathNotFound": "El archivo o ruta especificado no se encontró en el repositorio.",
@@ -704,6 +712,7 @@
     "unpin": "Desfijar",
     "rename": "Renombrar",
     "renamePlaceholder": "Nombre de sesión...",
+    "untitled": "Sesión sin título",
     "delete": "Eliminar sesión",
     "confirmDelete": "¿Realmente desea eliminar esta sesión? Esta acción es irreversible.",
     "deleted": "Sesión eliminada",
@@ -1085,7 +1094,16 @@
     "createRules": "Crear archivo de reglas globales",
     "rulesHint": "Definir reglas de desarrollo globales aplicadas a todos los proyectos.",
     "noRulesMd": "Sin archivo rules.md",
-    "noPrivateClaudeMd": "Sin CLAUDE.md privado"
+    "noPrivateClaudeMd": "Sin CLAUDE.md privado",
+    "defaultProjectName": "Mi proyecto",
+    "globalInstructionsTitle": "Instrucciones globales de Claude",
+    "templates": {
+      "minimal": "Mínima",
+      "fullstack": "Full Stack",
+      "fivem": "FiveM",
+      "api": "API REST",
+      "library": "Biblioteca"
+    }
   },
   "gitChanges": {
     "filesRequired": "Archivos requeridos",
@@ -1186,6 +1204,8 @@
     "binaryFile": "Archivo binario — no se puede previsualizar",
     "fileTooLarge": "Archivo demasiado grande para previsualizar",
     "cannotRead": "No se puede leer el archivo",
+    "errorOutsideProject": "Esta acción escribiría fuera de la carpeta del proyecto.",
+    "errorFileLocked": "El archivo está bloqueado por otro proceso. Ciérralo e inténtalo de nuevo.",
     "newFile": "Nuevo archivo",
     "newFolder": "Nueva carpeta",
     "openInTerminal": "Abrir en terminal",
@@ -1613,6 +1633,7 @@
     "stopped": "Detenido",
     "ready": "Listo",
     "openFile": "Abrir el archivo",
+    "binaryFile": "archivo binario",
     "cloudBadge": "Cloud",
     "allow": "Permitir",
     "alwaysAllow": "Permitir siempre",
@@ -1985,6 +2006,8 @@
     "clearAll": "Borrar todo",
     "noErrors": "Sin errores registrados - todo funciona correctamente.",
     "loadError": "No se pudo cargar el registro de errores",
+    "clearError": "No se pudo borrar el registro de errores",
+    "exportError": "No se pudo exportar el registro de errores",
     "diagnoseWithClaude": "Diagnosticar con Claude",
     "copyStack": "Copiar traza",
     "toggleStack": "Mostrar/ocultar traza",
@@ -2070,6 +2093,7 @@
     "cloudProjects": "Proyectos cloud",
     "cloudProjectsRefresh": "Actualizar",
     "cloudProjectsEmpty": "Sin proyectos en la nube",
+    "projectsLoadError": "No se pudieron cargar los proyectos cloud",
     "cloudProjectImport": "Importar",
     "cloudProjectImporting": "Importando...",
     "cloudProjectImported": "\"{name}\" importado correctamente",
@@ -2115,7 +2139,15 @@
     "checkUpdates": "Buscar actualizaciones",
     "updateAvailable": "v{version} disponible",
     "newCloudProjectsTitle": "Nuevos proyectos en la nube",
-    "newCloudProjectsMessage": "{list} disponibles en la nube"
+    "newCloudProjectsMessage": "{list} disponibles en la nube",
+    "deleteCloudCopyTitle": "¿Eliminar también la copia en la nube?",
+    "deleteCloudCopyMessage": "\"{name}\" está sincronizado con la nube. ¿Eliminas también la copia en la nube o la conservas?",
+    "deleteCloudCopyConfirm": "Eliminar copia en la nube",
+    "deleteCloudCopyKeep": "Conservar en la nube",
+    "networkErrorTitle": "Nube inaccesible",
+    "networkErrorMessage": "No se pudo contactar con el servidor en la nube. Revisa tu conexión e inténtalo de nuevo.",
+    "projectUpdatedRemotely": "Proyecto actualizado de forma remota",
+    "projectUpdatedRemotelyMessage": "\"{name}\" se modificó desde otro equipo."
   },
   "database": {
     "title": "Base de datos",
@@ -3153,19 +3185,33 @@
         "label": "Objetivo",
         "hint": "Funcionalidad a dividir en sub-tareas paralelas"
       },
-      "mainBranch": { "label": "Rama principal" },
-      "maxTasks":   { "label": "Máx. tareas" },
-      "autoTasks":  { "label": "Confirmar auto (sin revisión)" },
-      "model":      { "label": "Modelo" },
-      "effort":     { "label": "Esfuerzo de razonamiento" }
+      "mainBranch": {
+        "label": "Rama principal"
+      },
+      "maxTasks": {
+        "label": "Máx. tareas"
+      },
+      "autoTasks": {
+        "label": "Confirmar auto (sin revisión)"
+      },
+      "model": {
+        "label": "Modelo"
+      },
+      "effort": {
+        "label": "Esfuerzo de razonamiento"
+      }
     },
     "workspace": {
       "id": {
         "label": "Workspace",
         "hint": "Id o nombre del workspace"
       },
-      "title":   { "label": "Título del documento" },
-      "content": { "label": "Contenido (markdown)" },
+      "title": {
+        "label": "Título del documento"
+      },
+      "content": {
+        "label": "Contenido (markdown)"
+      },
       "tags": {
         "label": "Etiquetas",
         "hint": "Etiquetas separadas por comas"
@@ -3180,7 +3226,9 @@
         "label": "ID de sesión",
         "hint": "Vacío = $ctx.sessionId"
       },
-      "useAi": { "label": "Resumen IA (Claude Haiku)" }
+      "useAi": {
+        "label": "Resumen IA (Claude Haiku)"
+      }
     },
     "wait": {
       "mode": {

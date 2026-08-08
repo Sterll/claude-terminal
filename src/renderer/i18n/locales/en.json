@@ -33,7 +33,9 @@
     "remove": "Remove",
     "ignore": "Ignore",
     "copied": "Copied!",
-    "justNow": "Just now"
+    "justNow": "Just now",
+    "add": "Add",
+    "yesterday": "Yesterday"
   },
   "projects": {
     "title": "Projects",
@@ -202,6 +204,9 @@
   "gitTab": {
     "selectProject": "Select a project to view git information",
     "notGitRepo": "This project is not a Git repository",
+    "gitUnavailable": "Git could not run",
+    "gitNotInstalled": "Git is not installed or not available on PATH",
+    "gitTimedOut": "Git command timed out",
     "changes": "Changes",
     "history": "History",
     "pullRequests": "Pull Requests",
@@ -293,6 +298,7 @@
     "commitMessageRequired": "Commit message is required",
     "commitCreated": "Commit created",
     "noDiffAvailable": "No diff available (new or binary file)",
+    "diffLoadFailed": "Could not load the diff",
     "commitDetail": "Commit {hash}",
     "cherryPickTitle": "Cherry-pick",
     "cherryPickSuccess": "Cherry-pick successful",
@@ -400,6 +406,8 @@
     "stashPoppedSuccess": "Stash popped"
   },
   "gitErrors": {
+    "gitNotInstalled": "Git is not installed or not available on PATH. Install Git, then restart the app.",
+    "gitTimedOut": "The Git command timed out. The repository may be busy or too large.",
     "notARepo": "This folder is not a Git repository. Initialize one with 'git init'.",
     "notSymbolicRef": "The reference is not valid. The branch may have been deleted.",
     "pathNotFound": "The specified file or path was not found in the repository.",
@@ -707,6 +715,7 @@
     "unpin": "Unpin",
     "rename": "Rename",
     "renamePlaceholder": "Session name...",
+    "untitled": "Untitled session",
     "delete": "Delete session",
     "confirmDelete": "Are you sure you want to delete this session? This cannot be undone.",
     "deleted": "Session deleted",
@@ -1088,7 +1097,16 @@
     "createRules": "Create global rules file",
     "rulesHint": "Define global development rules applied to all projects.",
     "noRulesMd": "No rules.md file",
-    "noPrivateClaudeMd": "No private CLAUDE.md"
+    "noPrivateClaudeMd": "No private CLAUDE.md",
+    "defaultProjectName": "My project",
+    "globalInstructionsTitle": "Global Claude Instructions",
+    "templates": {
+      "minimal": "Minimal",
+      "fullstack": "Full Stack",
+      "fivem": "FiveM",
+      "api": "REST API",
+      "library": "Library"
+    }
   },
   "gitChanges": {
     "filesRequired": "Files required",
@@ -1189,6 +1207,8 @@
     "binaryFile": "Binary file - cannot preview",
     "fileTooLarge": "File too large to preview",
     "cannotRead": "Cannot read file",
+    "errorOutsideProject": "This action would write outside the project folder.",
+    "errorFileLocked": "File is locked by another process. Close it and try again.",
     "newFile": "New file",
     "newFolder": "New folder",
     "openInTerminal": "Open in terminal",
@@ -1616,6 +1636,7 @@
     "stopped": "Stopped",
     "ready": "Ready",
     "openFile": "Open file",
+    "binaryFile": "binary file",
     "cloudBadge": "Cloud",
     "allow": "Allow",
     "alwaysAllow": "Always Allow",
@@ -1988,6 +2009,8 @@
     "clearAll": "Clear all",
     "noErrors": "No errors recorded - everything is running smoothly.",
     "loadError": "Could not load the error log",
+    "clearError": "Could not clear the error log",
+    "exportError": "Could not export the error log",
     "diagnoseWithClaude": "Diagnose with Claude",
     "copyStack": "Copy stack",
     "toggleStack": "Toggle stack trace",
@@ -2073,6 +2096,7 @@
     "cloudProjects": "Cloud projects",
     "cloudProjectsRefresh": "Refresh",
     "cloudProjectsEmpty": "No projects in cloud",
+    "projectsLoadError": "Failed to load cloud projects",
     "cloudProjectImport": "Import",
     "cloudProjectImporting": "Importing...",
     "cloudProjectImported": "\"{name}\" imported successfully",
@@ -2118,7 +2142,15 @@
     "checkUpdates": "Check for updates",
     "updateAvailable": "v{version} available",
     "newCloudProjectsTitle": "New cloud projects",
-    "newCloudProjectsMessage": "{list} available on the cloud"
+    "newCloudProjectsMessage": "{list} available on the cloud",
+    "deleteCloudCopyTitle": "Delete the cloud copy too?",
+    "deleteCloudCopyMessage": "\"{name}\" was synced to the cloud. Delete the cloud copy as well, or keep it there?",
+    "deleteCloudCopyConfirm": "Delete cloud copy",
+    "deleteCloudCopyKeep": "Keep in cloud",
+    "networkErrorMessage": "Could not reach the cloud server. Check your connection and try again.",
+    "projectUpdatedRemotely": "Project updated remotely",
+    "projectUpdatedRemotelyMessage": "\"{name}\" was changed on another machine.",
+    "networkErrorTitle": "Cloud unreachable"
   },
   "database": {
     "title": "Database",
@@ -3156,19 +3188,33 @@
         "label": "Goal",
         "hint": "Feature to split into parallel sub-tasks"
       },
-      "mainBranch": { "label": "Main branch" },
-      "maxTasks":   { "label": "Max tasks" },
-      "autoTasks":  { "label": "Auto-confirm tasks (skip review)" },
-      "model":      { "label": "Model" },
-      "effort":     { "label": "Thinking effort" }
+      "mainBranch": {
+        "label": "Main branch"
+      },
+      "maxTasks": {
+        "label": "Max tasks"
+      },
+      "autoTasks": {
+        "label": "Auto-confirm tasks (skip review)"
+      },
+      "model": {
+        "label": "Model"
+      },
+      "effort": {
+        "label": "Thinking effort"
+      }
     },
     "workspace": {
       "id": {
         "label": "Workspace",
         "hint": "Workspace id or name"
       },
-      "title":   { "label": "Doc title" },
-      "content": { "label": "Content (markdown)" },
+      "title": {
+        "label": "Doc title"
+      },
+      "content": {
+        "label": "Content (markdown)"
+      },
       "tags": {
         "label": "Tags",
         "hint": "Comma-separated tags"
@@ -3183,7 +3229,9 @@
         "label": "Session ID",
         "hint": "Leave empty to use $ctx.sessionId"
       },
-      "useAi": { "label": "Use AI summary (Claude Haiku)" }
+      "useAi": {
+        "label": "Use AI summary (Claude Haiku)"
+      }
     },
     "wait": {
       "mode": {

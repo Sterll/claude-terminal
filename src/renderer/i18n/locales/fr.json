@@ -33,7 +33,9 @@
     "remove": "Retirer",
     "ignore": "Ignorer",
     "copied": "Copié !",
-    "justNow": "À l'instant"
+    "justNow": "À l'instant",
+    "add": "Ajouter",
+    "yesterday": "Hier"
   },
   "projects": {
     "title": "Projets",
@@ -148,6 +150,8 @@
     "binaryFile": "Fichier binaire - aperçu impossible",
     "fileTooLarge": "Fichier trop volumineux pour l'aperçu",
     "cannotRead": "Impossible de lire le fichier",
+    "errorOutsideProject": "Cette action écrirait en dehors du dossier du projet.",
+    "errorFileLocked": "Le fichier est verrouillé par un autre processus. Fermez-le puis réessayez.",
     "newFile": "Nouveau fichier",
     "newFolder": "Nouveau dossier",
     "openInTerminal": "Ouvrir dans le terminal",
@@ -295,6 +299,9 @@
   "gitTab": {
     "selectProject": "Sélectionnez un projet pour voir les informations git",
     "notGitRepo": "Ce projet n'est pas un dépôt Git",
+    "gitUnavailable": "Git n'a pas pu s'exécuter",
+    "gitNotInstalled": "Git n'est pas installé ou n'est pas accessible dans le PATH",
+    "gitTimedOut": "La commande Git a expiré",
     "changes": "Changements",
     "history": "Historique",
     "pullRequests": "Pull Requests",
@@ -386,12 +393,13 @@
     "commitMessageRequired": "Le message de commit est requis",
     "commitCreated": "Commit créé",
     "noDiffAvailable": "Aucun diff disponible (fichier binaire ou nouveau)",
+    "diffLoadFailed": "Impossible de charger le diff",
     "commitDetail": "Commit {hash}",
     "cherryPickTitle": "Cherry-pick",
     "cherryPickSuccess": "Cherry-pick réussi",
     "revertTitle": "Revert",
     "revertSuccess": "Revert réussi",
-    "fetchingMessage": "R\u00e9cup\u00e9ration...",
+    "fetchingMessage": "Récupération...",
     "fetchComplete": "Fetch terminé",
     "switchedTo": "Passé sur {name}",
     "branchCreatedMsg": "{name} créée",
@@ -493,6 +501,8 @@
     "stashPoppedSuccess": "Stash poppé"
   },
   "gitErrors": {
+    "gitNotInstalled": "Git n'est pas installé ou n'est pas accessible dans le PATH. Installez Git, puis redémarrez l'application.",
+    "gitTimedOut": "La commande Git a expiré. Le dépôt est peut-être occupé ou trop volumineux.",
     "notARepo": "Ce dossier n'est pas un dépôt Git. Initialisez-en un avec 'git init'.",
     "notSymbolicRef": "La référence n'est pas valide. La branche a peut-être été supprimée.",
     "pathNotFound": "Le fichier ou chemin spécifié n'a pas été trouvé dans le dépôt.",
@@ -800,6 +810,7 @@
     "unpin": "Désépingler",
     "rename": "Renommer",
     "renamePlaceholder": "Nom de la session...",
+    "untitled": "Session sans titre",
     "delete": "Supprimer la session",
     "confirmDelete": "Voulez-vous vraiment supprimer cette session ? Cette action est irréversible.",
     "deleted": "Session supprimée",
@@ -1007,7 +1018,7 @@
     "removeItem": "Supprimer",
     "templateNamePlaceholder": "Ex. : Revue de code",
     "templateContentPlaceholder": "Revoir les changements sur la branche $branch...",
-    "autoClaudeMdUpdate": "Mise \u00e0 jour auto de CLAUDE.md",
+    "autoClaudeMdUpdate": "Mise à jour auto de CLAUDE.md",
     "autoClaudeMdUpdateDesc": "Propose des mises à jour du CLAUDE.md à la fin des sessions chat.",
     "saveError": "Erreur lors de la sauvegarde des paramètres",
     "nameRequired": "Le nom est requis",
@@ -1181,7 +1192,16 @@
     "createRules": "Créer le fichier de règles globales",
     "rulesHint": "Définir des règles de développement globales appliquées à tous les projets.",
     "noRulesMd": "Aucun fichier rules.md",
-    "noPrivateClaudeMd": "Aucun fichier CLAUDE.md privé"
+    "noPrivateClaudeMd": "Aucun fichier CLAUDE.md privé",
+    "defaultProjectName": "Mon projet",
+    "globalInstructionsTitle": "Instructions globales Claude",
+    "templates": {
+      "minimal": "Minimal",
+      "fullstack": "Full Stack",
+      "fivem": "FiveM",
+      "api": "API REST",
+      "library": "Bibliothèque"
+    }
   },
   "gitChanges": {
     "filesRequired": "Fichiers requis",
@@ -1616,6 +1636,7 @@
     "stopped": "Arrêté",
     "ready": "Prêt",
     "openFile": "Ouvrir le fichier",
+    "binaryFile": "fichier binaire",
     "cloudBadge": "Cloud",
     "allow": "Autoriser",
     "alwaysAllow": "Toujours autoriser",
@@ -1988,6 +2009,8 @@
     "clearAll": "Tout effacer",
     "noErrors": "Aucune erreur enregistrée - tout fonctionne correctement.",
     "loadError": "Impossible de charger le journal d'erreurs",
+    "clearError": "Impossible d'effacer le journal d'erreurs",
+    "exportError": "Impossible d'exporter le journal d'erreurs",
     "diagnoseWithClaude": "Diagnostiquer avec Claude",
     "copyStack": "Copier la trace",
     "toggleStack": "Afficher/masquer la trace",
@@ -2073,6 +2096,7 @@
     "cloudProjects": "Projets cloud",
     "cloudProjectsRefresh": "Actualiser",
     "cloudProjectsEmpty": "Aucun projet dans le cloud",
+    "projectsLoadError": "Impossible de charger les projets cloud",
     "cloudProjectImport": "Importer",
     "cloudProjectImporting": "Import...",
     "cloudProjectImported": "\"{name}\" importe avec succes",
@@ -2092,7 +2116,7 @@
     "syncProjects": "Projets",
     "syncTimeTracking": "Suivi du temps",
     "syncMcp": "Configs MCP",
-    "syncSkills": "Comp\u00e9tences & Agents",
+    "syncSkills": "Compétences & Agents",
     "syncMemory": "Memoire",
     "syncHooks": "Config hooks",
     "syncPlugins": "Plugins",
@@ -2118,7 +2142,15 @@
     "checkUpdates": "Verifier les mises a jour",
     "updateAvailable": "v{version} disponible",
     "newCloudProjectsTitle": "Nouveaux projets cloud",
-    "newCloudProjectsMessage": "{list} disponibles sur le cloud"
+    "newCloudProjectsMessage": "{list} disponibles sur le cloud",
+    "deleteCloudCopyTitle": "Supprimer aussi la copie cloud ?",
+    "deleteCloudCopyMessage": "\"{name}\" est synchronisé avec le cloud. Faut-il supprimer aussi la copie cloud, ou la conserver ?",
+    "deleteCloudCopyConfirm": "Supprimer la copie cloud",
+    "deleteCloudCopyKeep": "Conserver dans le cloud",
+    "networkErrorTitle": "Cloud injoignable",
+    "networkErrorMessage": "Impossible de joindre le serveur cloud. Vérifiez votre connexion et réessayez.",
+    "projectUpdatedRemotely": "Projet mis à jour à distance",
+    "projectUpdatedRemotelyMessage": "\"{name}\" a été modifié depuis une autre machine."
   },
   "database": {
     "title": "Base de données",
@@ -3156,19 +3188,33 @@
         "label": "Objectif",
         "hint": "Fonctionnalité à découper en sous-tâches parallèles"
       },
-      "mainBranch": { "label": "Branche principale" },
-      "maxTasks":   { "label": "Nb max de tâches" },
-      "autoTasks":  { "label": "Valider auto (sans revue)" },
-      "model":      { "label": "Modèle" },
-      "effort":     { "label": "Effort de réflexion" }
+      "mainBranch": {
+        "label": "Branche principale"
+      },
+      "maxTasks": {
+        "label": "Nb max de tâches"
+      },
+      "autoTasks": {
+        "label": "Valider auto (sans revue)"
+      },
+      "model": {
+        "label": "Modèle"
+      },
+      "effort": {
+        "label": "Effort de réflexion"
+      }
     },
     "workspace": {
       "id": {
         "label": "Workspace",
         "hint": "Id ou nom du workspace"
       },
-      "title":   { "label": "Titre du document" },
-      "content": { "label": "Contenu (markdown)" },
+      "title": {
+        "label": "Titre du document"
+      },
+      "content": {
+        "label": "Contenu (markdown)"
+      },
       "tags": {
         "label": "Tags",
         "hint": "Tags séparés par des virgules"
@@ -3183,7 +3229,9 @@
         "label": "ID de session",
         "hint": "Vide = $ctx.sessionId"
       },
-      "useAi": { "label": "Résumé IA (Claude Haiku)" }
+      "useAi": {
+        "label": "Résumé IA (Claude Haiku)"
+      }
     },
     "wait": {
       "mode": {
