@@ -63,9 +63,10 @@ const _sessionTokens = new Map(); // Map<token, { issuedAt }>
 const _connectedClients = new Map(); // Map<sessionToken, WebSocket>
 const _clientMeta = new Map(); // Map<sessionToken, { connectedAt, ip, userAgent }>
 
-// Brute-force protection
-let _failedAttempts = 0;
-let _lockoutUntil = 0;
+// Brute-force protection — tracked PER CLIENT IP. A global counter let any host
+// on the LAN lock the legitimate user out with a handful of bad PINs.
+const _authAttempts = new Map(); // Map<ip, { failures, lockoutUntil, lastAttemptAt }>
+const AUTH_ATTEMPT_TTL_MS = 60 * 60 * 1000; // forget idle IPs after 1 hour
 
 // Live time data pushed from renderer
 let _timeData = { todayMs: 0 };
@@ -145,6 +146,38 @@ function _getNetworkInterfaces() {
   return result;
 }
 
+/**
+ * Is `origin` one of the origins this server is actually reachable on?
+ * Derived from the real bound port + local interfaces — never from the
+ * client-controlled Host header.
+ * @param {string|undefined} origin
+ * @returns {boolean} true when absent (native clients send no Origin)
+ */
+function _isAllowedOrigin(origin) {
+  if (!origin) return true;
+  let parsed;
+  try { parsed = new URL(origin); } catch (e) { return false; }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+
+  const boundPort = httpServer?.address()?.port;
+  if (!boundPort) return false;
+  const originPort = Number(parsed.port || (parsed.protocol === 'https:' ? 443 : 80));
+  if (originPort !== Number(boundPort)) return false;
+
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, '');
+  const allowedHosts = new Set(['localhost', '127.0.0.1', '::1', ..._getLocalIps()]);
+  return allowedHosts.has(hostname);
+}
+
+/**
+ * Same check for a Host header (`ip:port`). Unlike Origin, Host is required.
+ * @param {string|undefined} host
+ */
+function _isAllowedHost(host) {
+  if (!host) return false;
+  return _isAllowedOrigin(`http://${host}`);
+}
+
 // ─── PIN Management ───────────────────────────────────────────────────────────
 
 async function generatePin() {
@@ -166,20 +199,48 @@ async function generatePin() {
   return _pin;
 }
 
-async function _isPinValid(pin) {
-  if (Date.now() < _lockoutUntil) return false;
+function _normalizeIp(ip) {
+  if (!ip) return 'unknown';
+  return String(ip).replace(/^::ffff:/, '');
+}
+
+function _pruneAuthAttempts(now) {
+  for (const [ip, entry] of _authAttempts.entries()) {
+    if (now >= entry.lockoutUntil && now - entry.lastAttemptAt > AUTH_ATTEMPT_TTL_MS) {
+      _authAttempts.delete(ip);
+    }
+  }
+}
+
+async function _isPinValid(pin, clientIp) {
+  const ip = _normalizeIp(clientIp);
+  const now = Date.now();
+  _pruneAuthAttempts(now);
+
+  let entry = _authAttempts.get(ip);
+  if (!entry) {
+    entry = { failures: 0, lockoutUntil: 0, lastAttemptAt: 0 };
+    _authAttempts.set(ip, entry);
+  }
+  // Lockout is scoped to the offending IP — other clients keep working.
+  if (now < entry.lockoutUntil) return false;
+  entry.lastAttemptAt = now;
+
   const settings = await _loadSettings();
   const isPersistent = settings.remotePersistentPin && !!settings.remotePersistentPinValue;
-  if (_pin !== null && pin === _pin && (isPersistent || (!_pinUsed && Date.now() < _pinExpiry))) {
-    _failedAttempts = 0;
+  if (_pin !== null && _secretsMatch(_pin, pin) && (isPersistent || (!_pinUsed && now < _pinExpiry))) {
+    _authAttempts.delete(ip);
     return true;
   }
-  _failedAttempts++;
-  if (_failedAttempts >= MAX_AUTH_ATTEMPTS) {
-    _lockoutUntil = Date.now() + AUTH_LOCKOUT_MS;
-    _failedAttempts = 0;
+
+  // The counter is deliberately NOT reset on lockout: once an IP has burned
+  // through MAX_AUTH_ATTEMPTS, every later failure re-arms the lockout at once
+  // instead of handing the attacker a fresh budget of 5 guesses.
+  entry.failures++;
+  if (entry.failures >= MAX_AUTH_ATTEMPTS) {
+    entry.lockoutUntil = now + AUTH_LOCKOUT_MS;
     if (!isPersistent) generatePin();
-    console.warn('[Remote] Too many failed PIN attempts — locked out for 60s');
+    console.warn(`[Remote] Too many failed PIN attempts from ${ip} — locked out for ${AUTH_LOCKOUT_MS / 1000}s`);
   }
   return false;
 }
@@ -203,14 +264,18 @@ async function getPin() {
 // ─── HTTP Handler ─────────────────────────────────────────────────────────────
 
 function _handleHttpRequest(req, res) {
-  // CORS headers — only allow same-origin (PWA is served from this server)
+  // CORS — only allow the server's own origin. The expected origin is derived
+  // from the real bound port + local interfaces, NOT from the attacker
+  // controlled Host header, and a mismatch is rejected outright.
   const origin = req.headers.origin;
   if (origin) {
-    // Only allow requests from the server's own origin
-    const serverOrigin = `http://${req.headers.host}`;
-    if (origin === serverOrigin) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
+    if (!_isAllowedOrigin(origin)) {
+      console.warn(`[Remote] Request rejected — disallowed origin: ${origin}`);
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Forbidden origin' }));
+      return;
     }
+    res.setHeader('Access-Control-Allow-Origin', origin);
   }
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -227,7 +292,7 @@ function _handleHttpRequest(req, res) {
     req.on('end', async () => {
       try {
         const { pin } = JSON.parse(body);
-        if (!await _isPinValid(pin)) {
+        if (!await _isPinValid(pin, req.socket.remoteAddress)) {
           console.warn(`[Remote] Auth failed — wrong or expired PIN`);
           res.writeHead(401, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Invalid or expired PIN' }));
@@ -299,6 +364,17 @@ function _handleHttpRequest(req, res) {
 
 function _handleWsUpgrade(request, socket, head) {
   if (!wss) { socket.destroy(); return; }
+
+  // Origin/Host check — the WS handshake is not subject to the browser's
+  // same-origin policy, so a malicious page could otherwise open a socket to
+  // this server. Native clients send no Origin and stay gated by the token.
+  const origin = request.headers.origin;
+  if (!_isAllowedOrigin(origin) || !_isAllowedHost(request.headers.host)) {
+    console.warn(`[Remote] WS upgrade rejected — origin="${origin || 'none'}" host="${request.headers.host || 'none'}"`);
+    try { socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); } catch (e) {}
+    socket.destroy();
+    return;
+  }
 
   const urlParams = new URLSearchParams(request.url.replace(/^.*\?/, ''));
   const token = urlParams.get('token');
@@ -1127,8 +1203,7 @@ async function stop() {
   _clientMeta.clear();
   _sessionTokens.clear();
   _pin = null;
-  _failedAttempts = 0;
-  _lockoutUntil = 0;
+  _authAttempts.clear();
 
   if (wss) {
     await new Promise(resolve => { const s = wss; wss = null; s.close(resolve); });
@@ -1182,14 +1257,81 @@ function setExternalTransport(transport) {
   }
 }
 
+// Message types accepted from an external transport that has NOT presented a
+// valid session token. The relay protocol authenticates the desktop and the
+// mobile against the relay server with a shared API key, but carries no
+// per-client session token — so an untokened relay message is trusted only for
+// read-only operations.
+const EXTERNAL_READONLY_TYPES = new Set([
+  'ping',
+  'request:init',
+  'git:status',
+  'mention:file-list',
+  'sessions:list-past',
+]);
+
+// Types that start work, mutate state, or approve a Claude tool permission.
+// These require a session token issued by POST /auth, exactly like a local
+// WS client. Anything not listed in either set is silently ignored, so a new
+// handler added to the switch fails closed on the relay path.
+const EXTERNAL_PRIVILEGED_TYPES = new Set([
+  'chat:send',
+  'chat:start',
+  'chat:interrupt',
+  'chat:permission-response',
+  'git:pull',
+  'git:push',
+  'settings:update',
+  'webhook:trigger',
+]);
+
 /**
  * Handle a message arriving from an external transport (e.g. cloud relay).
- * Routes it through the same handler as local WS messages.
+ * Routes it through the same handler as local WS messages, but only after the
+ * same authentication check — a relay message is NOT implicitly trusted.
  * @param {object|string} msg - Parsed JSON message
  */
 function handleExternalMessage(msg) {
-  const raw = typeof msg === 'string' ? msg : JSON.stringify(msg);
-  _handleClientMessage(_externalWsProxy, '__external__', Buffer.from(raw));
+  let parsed = msg;
+  if (typeof parsed === 'string') {
+    try { parsed = JSON.parse(parsed); } catch (e) { return; }
+  }
+  if (!parsed || typeof parsed !== 'object') return;
+
+  const type = parsed.type;
+  if (!type) return;
+
+  const dispatch = (token) => _handleClientMessage(
+    _externalWsProxy,
+    token,
+    Buffer.from(JSON.stringify({ type, data: parsed.data })),
+  );
+
+  // If the relay ever forwards a session token, validate it through the exact
+  // same check as local clients and grant the same privileges.
+  const token = parsed.token || parsed.sessionToken || (parsed.auth && parsed.auth.token) || null;
+  if (token) {
+    if (_isTokenValid(token)) { dispatch(token); return; }
+    console.warn(`[Remote] Rejected external "${type}" — invalid or expired session token`);
+    _wsSend(_externalWsProxy, 'remote:rejected', { type, error: 'Invalid or expired session token' });
+    return;
+  }
+
+  if (EXTERNAL_READONLY_TYPES.has(type)) {
+    dispatch('__external__');
+    return;
+  }
+
+  if (EXTERNAL_PRIVILEGED_TYPES.has(type)) {
+    console.warn(`[Remote] Rejected external "${type}" — no session token (read-only types only over the relay)`);
+    _wsSend(_externalWsProxy, 'remote:rejected', {
+      type,
+      error: 'Unauthorized: this action requires an authenticated session',
+    });
+    return;
+  }
+  // Relay control/sync traffic (cloud:project-updated, sync:entity-changed, …)
+  // is consumed in cloud-relay.ipc.js — drop it here without noise.
 }
 
 /**
