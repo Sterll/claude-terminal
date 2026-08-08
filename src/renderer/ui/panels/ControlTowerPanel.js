@@ -6,6 +6,9 @@
 
 const { t } = require('../../i18n');
 const { escapeHtml } = require('../../utils');
+// Shared modal primitives — role="dialog", aria-modal, labelled close button,
+// Escape-to-close, Tab focus trap and body scroll locking.
+const { createModal, showModal, closeModal } = require('../components/Modal');
 
 // ── Internal state ──────────────────────────────────────────────────────────
 
@@ -13,6 +16,10 @@ const { escapeHtml } = require('../../utils');
 const _agents = new Map();
 
 let _refreshTimer = null;
+// Root element of the currently rendered panel. The refresh timer watches it so it
+// can stop itself if the panel is torn down through a path that never calls
+// cleanup() (e.g. Ctrl+, jumping straight into Settings).
+let _panelRootEl = null;
 let _unsubscribers = [];
 let _chatMessageUnlistener = null;
 let _chatDoneUnlistener = null;
@@ -536,46 +543,43 @@ function _openSpawnModal() {
     return;
   }
 
-  // Build a simple project picker modal
+  // Project picker built on the shared Modal component, which supplies role="dialog",
+  // aria-modal, Escape-to-close, a Tab focus trap and a labelled close button.
+  // Entries are <button> so they are reachable by keyboard and by the focus trap.
   const listHtml = projects.map((p, i) =>
-    `<div class="ct-spawn-project" data-idx="${i}" style="padding:8px 12px;cursor:pointer;border-radius:6px;display:flex;align-items:center;gap:10px;transition:background 0.15s">
-      <div style="width:8px;height:8px;border-radius:50%;background:${p.color || 'var(--accent)'};flex-shrink:0"></div>
-      <div>
-        <div style="font-size:var(--font-sm);color:var(--text-primary);font-weight:500">${escapeHtml(p.name)}</div>
-        <div style="font-size:var(--font-xs);color:var(--text-muted)">${escapeHtml(p.path || '')}</div>
-      </div>
-    </div>`
+    `<button type="button" class="ct-spawn-project" data-idx="${i}" style="width:100%;text-align:left;background:none;border:none;padding:8px 12px;cursor:pointer;border-radius:6px;display:flex;align-items:center;gap:10px;transition:background 0.15s">
+      <span style="width:8px;height:8px;border-radius:50%;background:${p.color || 'var(--accent)'};flex-shrink:0"></span>
+      <span>
+        <span style="display:block;font-size:var(--font-sm);color:var(--text-primary);font-weight:500">${escapeHtml(p.name)}</span>
+        <span style="display:block;font-size:var(--font-xs);color:var(--text-muted)">${escapeHtml(p.path || '')}</span>
+      </span>
+    </button>`
   ).join('');
 
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center';
-  overlay.innerHTML = `
-    <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:var(--radius);width:420px;max-height:520px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.5)">
-      <div style="padding:16px 20px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:var(--font-md);font-weight:600;color:var(--text-primary)">${escapeHtml(t('controlTower.spawnTitle'))}</span>
-        <button id="ct-spawn-close" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;padding:4px">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div style="overflow-y:auto;padding:8px" id="ct-spawn-list">${listHtml}</div>
-    </div>
-  `;
+  const modal = createModal({
+    id: 'ct-spawn-modal',
+    title: t('controlTower.spawnTitle'),
+    size: 'small',
+    content: `<div style="max-height:420px;overflow-y:auto" id="ct-spawn-list">${listHtml}</div>`
+  });
 
-  document.body.appendChild(overlay);
-
-  overlay.querySelector('#ct-spawn-close').onclick = () => overlay.remove();
-  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-
-  overlay.querySelectorAll('.ct-spawn-project').forEach(el => {
+  modal.querySelectorAll('.ct-spawn-project').forEach(el => {
     el.onmouseenter = () => { el.style.background = 'var(--bg-hover)'; };
     el.onmouseleave = () => { el.style.background = ''; };
+    el.onfocus = () => { el.style.background = 'var(--bg-hover)'; };
+    el.onblur = () => { el.style.background = ''; };
     el.onclick = () => {
       const idx = parseInt(el.dataset.idx, 10);
       const project = projects[idx];
-      overlay.remove();
+      closeModal(modal);
       _spawnTerminalForProject(project);
     };
   });
+
+  showModal(modal);
+  // No <input> in this dialog, so showModal's "focus first input" is a no-op —
+  // move focus onto the first entry explicitly.
+  requestAnimationFrame(() => modal.querySelector('.ct-spawn-project')?.focus());
 }
 
 async function _spawnTerminalForProject(project) {
@@ -1143,6 +1147,8 @@ function loadPanel(container) {
     </div>
   `;
 
+  _panelRootEl = container.querySelector('.ct-panel');
+
   document.getElementById('ct-spawn-btn').onclick = _openSpawnModal;
 
   // Initial render
@@ -1174,6 +1180,14 @@ function loadPanel(container) {
   // Start refresh timer (2s for live timers)
   if (_refreshTimer) clearInterval(_refreshTimer);
   _refreshTimer = setInterval(() => {
+    // Defensive self-stop: some tab switches (e.g. SettingsPanel.switchToSettingsTab
+    // reached via Ctrl+,) bypass cleanup(). Rather than tick forever against a
+    // detached or hidden DOM, the timer cancels itself. loadPanel() runs again on
+    // every re-entry into the tab, so it restarts naturally.
+    if (!_isPanelLive()) {
+      cleanup();
+      return;
+    }
     _scanTerminals();
     _updateTimers();
     // Full re-render only if a status change happened (handled by event bus)
@@ -1181,11 +1195,23 @@ function loadPanel(container) {
   }, 2000);
 }
 
+/**
+ * True while the panel's own DOM is still attached AND rendered.
+ * A `display:none` ancestor (how tabs are hidden) yields no client rects and a
+ * null offsetParent, so a hidden panel reads as not live.
+ */
+function _isPanelLive() {
+  const el = _panelRootEl;
+  if (!el || !el.isConnected) return false;
+  return el.offsetParent !== null || el.getClientRects().length > 0;
+}
+
 function cleanup() {
   if (_refreshTimer) {
     clearInterval(_refreshTimer);
     _refreshTimer = null;
   }
+  _panelRootEl = null;
 }
 
 module.exports = { init, loadPanel, cleanup };

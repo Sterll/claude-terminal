@@ -5,6 +5,9 @@
  */
 
 const { t } = require('../../i18n');
+// Shared modal primitives — they provide role="dialog", aria-modal, a labelled close
+// button, Escape-to-close, a Tab focus trap and body scroll locking.
+const { createModal, showModal, closeModal } = require('../components/Modal');
 
 let _ctx = null;
 let _view = 'list';         // 'list' | 'detail' | 'editor' | 'advisor'
@@ -548,60 +551,79 @@ async function saveNow() {
 // ========== MODALS ==========
 
 function showCreateEditModal(existingWs = null) {
-  const modal = document.getElementById('generic-modal') || createGenericModal();
   const isEdit = !!existingWs;
 
   const emojis = ['📦', '🚀', '🎮', '🌐', '🛠️', '📱', '🎨', '💼', '🔬', '📊', '🎯', '🏗️'];
   const colors = ['#d97706', '#ef4444', '#22c55e', '#3b82f6', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
-  modal.innerHTML = `
-    <div id="ws-modal-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:1000">
-      <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:var(--radius);width:440px;max-width:90%;max-height:80vh;overflow:auto">
-        <div class="modal-header">
-          <h3>${escapeHtml(isEdit ? t('workspace.edit') : t('workspace.create'))}</h3>
-          <button class="modal-close" id="ws-modal-close">${ICONS.close}</button>
+  let selectedIcon = existingWs?.icon || '📦';
+  let selectedColor = existingWs?.color || '';
+
+  const content = `
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div>
+        <label style="font-size:var(--font-sm);color:var(--text-secondary);margin-bottom:4px;display:block" for="ws-modal-name">${escapeHtml(t('workspace.name'))}</label>
+        <input type="text" id="ws-modal-name" class="workspace-search-input" value="${escapeHtml(existingWs?.name || '')}" placeholder="${escapeHtml(t('workspace.namePlaceholder'))}">
+      </div>
+      <div>
+        <label style="font-size:var(--font-sm);color:var(--text-secondary);margin-bottom:4px;display:block" for="ws-modal-desc">${escapeHtml(t('workspace.description'))}</label>
+        <input type="text" id="ws-modal-desc" class="workspace-search-input" value="${escapeHtml(existingWs?.description || '')}" placeholder="${escapeHtml(t('workspace.descriptionPlaceholder'))}">
+      </div>
+      <div>
+        <span id="ws-modal-icons-label" style="font-size:var(--font-sm);color:var(--text-secondary);margin-bottom:6px;display:block">${escapeHtml(t('workspace.icon'))}</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap" id="ws-modal-icons" role="group" aria-labelledby="ws-modal-icons-label">
+          ${emojis.map(e => `<button type="button" class="workspace-btn workspace-btn-secondary workspace-btn-sm ws-emoji-btn${existingWs?.icon === e ? ' active' : ''}" data-emoji="${e}" aria-pressed="${existingWs?.icon === e ? 'true' : 'false'}" style="font-size:1.2rem;padding:6px 8px${existingWs?.icon === e ? ';border-color:var(--accent)' : ''}">${e}</button>`).join('')}
         </div>
-        <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;padding:16px">
-          <div>
-            <label style="font-size:var(--font-sm);color:var(--text-secondary);margin-bottom:4px;display:block">${escapeHtml(t('workspace.name'))}</label>
-            <input type="text" id="ws-modal-name" class="workspace-search-input" value="${escapeHtml(existingWs?.name || '')}" placeholder="${escapeHtml(t('workspace.namePlaceholder'))}">
-          </div>
-          <div>
-            <label style="font-size:var(--font-sm);color:var(--text-secondary);margin-bottom:4px;display:block">${escapeHtml(t('workspace.description'))}</label>
-            <input type="text" id="ws-modal-desc" class="workspace-search-input" value="${escapeHtml(existingWs?.description || '')}" placeholder="${escapeHtml(t('workspace.descriptionPlaceholder'))}">
-          </div>
-          <div>
-            <label style="font-size:var(--font-sm);color:var(--text-secondary);margin-bottom:6px;display:block">${escapeHtml(t('workspace.icon'))}</label>
-            <div style="display:flex;gap:6px;flex-wrap:wrap" id="ws-modal-icons">
-              ${emojis.map(e => `<button class="workspace-btn workspace-btn-secondary workspace-btn-sm ws-emoji-btn${existingWs?.icon === e ? ' active' : ''}" data-emoji="${e}" style="font-size:1.2rem;padding:6px 8px${existingWs?.icon === e ? ';border-color:var(--accent)' : ''}">${e}</button>`).join('')}
-            </div>
-          </div>
-          <div>
-            <label style="font-size:var(--font-sm);color:var(--text-secondary);margin-bottom:6px;display:block">${escapeHtml(t('workspace.color'))}</label>
-            <div style="display:flex;gap:6px;flex-wrap:wrap" id="ws-modal-colors">
-              ${colors.map(c => `<button class="ws-color-btn" data-color="${c}" style="width:28px;height:28px;border-radius:50%;background:${c};border:2px solid ${existingWs?.color === c ? 'var(--text-primary)' : 'transparent'};cursor:pointer"></button>`).join('')}
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer" style="padding:12px 16px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--border-color)">
-          <button class="workspace-btn workspace-btn-secondary" id="ws-modal-cancel">${isEdit ? 'Cancel' : 'Cancel'}</button>
-          <button class="workspace-btn workspace-btn-primary" id="ws-modal-confirm">${isEdit ? 'Save' : 'Create'}</button>
+      </div>
+      <div>
+        <span id="ws-modal-colors-label" style="font-size:var(--font-sm);color:var(--text-secondary);margin-bottom:6px;display:block">${escapeHtml(t('workspace.color'))}</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap" id="ws-modal-colors" role="group" aria-labelledby="ws-modal-colors-label">
+          ${colors.map(c => `<button type="button" class="ws-color-btn" data-color="${c}" aria-label="${escapeHtml(c)}" aria-pressed="${existingWs?.color === c ? 'true' : 'false'}" style="width:28px;height:28px;border-radius:50%;background:${c};border:2px solid ${existingWs?.color === c ? 'var(--text-primary)' : 'transparent'};cursor:pointer"></button>`).join('')}
         </div>
       </div>
     </div>
   `;
 
-  modal.style.display = 'block';
+  const modal = createModal({
+    id: 'ws-workspace-modal',
+    title: isEdit ? t('workspace.edit') : t('workspace.create'),
+    size: 'small',
+    content,
+    buttons: [
+      { label: t('common.cancel'), action: 'cancel', onClick: (m) => closeModal(m) },
+      {
+        label: isEdit ? t('common.save') : t('workspace.create'),
+        action: 'confirm',
+        primary: true,
+        onClick: async (m) => {
+          const name = m.querySelector('#ws-modal-name')?.value?.trim();
+          if (!name) return;
+          const description = m.querySelector('#ws-modal-desc')?.value?.trim() || '';
 
-  let selectedIcon = existingWs?.icon || '📦';
-  let selectedColor = existingWs?.color || '';
+          const wsState = require('../../state/workspace.state');
+          if (isEdit) {
+            wsState.updateWorkspace(existingWs.id, { name, description, icon: selectedIcon, color: selectedColor });
+          } else {
+            await wsState.addWorkspace({ name, description, icon: selectedIcon, color: selectedColor });
+          }
+          closeModal(m);
+          render();
+        }
+      }
+    ]
+  });
 
   // Emoji selection
   modal.querySelectorAll('.ws-emoji-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      modal.querySelectorAll('.ws-emoji-btn').forEach(b => { b.style.borderColor = ''; b.classList.remove('active'); });
+      modal.querySelectorAll('.ws-emoji-btn').forEach(b => {
+        b.style.borderColor = '';
+        b.classList.remove('active');
+        b.setAttribute('aria-pressed', 'false');
+      });
       btn.style.borderColor = 'var(--accent)';
       btn.classList.add('active');
+      btn.setAttribute('aria-pressed', 'true');
       selectedIcon = btn.dataset.emoji;
     });
   });
@@ -609,47 +631,17 @@ function showCreateEditModal(existingWs = null) {
   // Color selection
   modal.querySelectorAll('.ws-color-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      modal.querySelectorAll('.ws-color-btn').forEach(b => b.style.borderColor = 'transparent');
+      modal.querySelectorAll('.ws-color-btn').forEach(b => {
+        b.style.borderColor = 'transparent';
+        b.setAttribute('aria-pressed', 'false');
+      });
       btn.style.borderColor = 'var(--text-primary)';
+      btn.setAttribute('aria-pressed', 'true');
       selectedColor = btn.dataset.color;
     });
   });
 
-  const closeModal = () => { modal.style.display = 'none'; };
-  document.getElementById('ws-modal-close')?.addEventListener('click', closeModal);
-  document.getElementById('ws-modal-cancel')?.addEventListener('click', closeModal);
-  document.getElementById('ws-modal-overlay')?.addEventListener('click', (e) => {
-    if (e.target.id === 'ws-modal-overlay') closeModal();
-  });
-
-  document.getElementById('ws-modal-confirm')?.addEventListener('click', async () => {
-    const name = document.getElementById('ws-modal-name')?.value?.trim();
-    if (!name) return;
-    const description = document.getElementById('ws-modal-desc')?.value?.trim() || '';
-
-    const wsState = require('../../state/workspace.state');
-    if (isEdit) {
-      wsState.updateWorkspace(existingWs.id, { name, description, icon: selectedIcon, color: selectedColor });
-    } else {
-      await wsState.addWorkspace({ name, description, icon: selectedIcon, color: selectedColor });
-    }
-    closeModal();
-    render();
-  });
-
-  // Focus name input
-  setTimeout(() => document.getElementById('ws-modal-name')?.focus(), 50);
-}
-
-function createGenericModal() {
-  let modal = document.getElementById('generic-modal');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'generic-modal';
-    modal.style.display = 'none';
-    document.body.appendChild(modal);
-  }
-  return modal;
+  showModal(modal);
 }
 
 function showAddProjectDropdown(ws) {
@@ -693,71 +685,77 @@ function showAddProjectDropdown(ws) {
   dropdown.style.top = top + 'px';
   dropdown.style.left = left + 'px';
 
+  // Close on outside click / Escape — both paths go through dismiss() so the
+  // document-level listeners are always removed with the dropdown.
+  const dismiss = () => {
+    document.removeEventListener('click', closeDropdown);
+    document.removeEventListener('keydown', onKeyDown);
+    dropdown.remove();
+  };
+  const closeDropdown = (e) => {
+    if (!dropdown.contains(e.target) && e.target !== btn) dismiss();
+  };
+  const onKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      dismiss();
+      btn.focus();
+    }
+  };
+
   // Click to add
   dropdown.querySelectorAll('.workspace-project-item').forEach(item => {
     item.addEventListener('click', () => {
       const wsState = require('../../state/workspace.state');
       wsState.addProjectToWorkspace(ws.id, item.dataset.pid);
-      dropdown.remove();
+      dismiss();
     });
   });
 
-  // Close on outside click
-  const closeDropdown = (e) => {
-    if (!dropdown.contains(e.target) && e.target !== btn) {
-      dropdown.remove();
-      document.removeEventListener('click', closeDropdown);
-    }
-  };
+  document.addEventListener('keydown', onKeyDown);
   setTimeout(() => document.addEventListener('click', closeDropdown), 0);
 }
 
 function showNewDocModal(workspaceId) {
-  const modal = createGenericModal();
-  modal.innerHTML = `
-    <div id="ws-doc-modal-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:1000">
-      <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:var(--radius);width:380px;max-width:90%">
-        <div class="modal-header">
-          <h3>${escapeHtml(t('workspace.newDoc'))}</h3>
-          <button class="modal-close" id="ws-doc-modal-close">${ICONS.close}</button>
-        </div>
-        <div class="modal-body" style="padding:16px">
-          <label style="font-size:var(--font-sm);color:var(--text-secondary);margin-bottom:4px;display:block">${escapeHtml(t('workspace.docTitle'))}</label>
-          <input type="text" id="ws-doc-title" class="workspace-search-input" placeholder="${escapeHtml(t('workspace.docTitlePlaceholder'))}">
-        </div>
-        <div class="modal-footer" style="padding:12px 16px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--border-color)">
-          <button class="workspace-btn workspace-btn-secondary" id="ws-doc-cancel">Cancel</button>
-          <button class="workspace-btn workspace-btn-primary" id="ws-doc-create">Create</button>
-        </div>
-      </div>
-    </div>
+  const content = `
+    <label style="font-size:var(--font-sm);color:var(--text-secondary);margin-bottom:4px;display:block" for="ws-doc-title">${escapeHtml(t('workspace.docTitle'))}</label>
+    <input type="text" id="ws-doc-title" class="workspace-search-input" placeholder="${escapeHtml(t('workspace.docTitlePlaceholder'))}">
   `;
-  modal.style.display = 'block';
 
-  const closeModal = () => { modal.style.display = 'none'; };
-  document.getElementById('ws-doc-modal-close')?.addEventListener('click', closeModal);
-  document.getElementById('ws-doc-cancel')?.addEventListener('click', closeModal);
-  document.getElementById('ws-doc-modal-overlay')?.addEventListener('click', (e) => {
-    if (e.target.id === 'ws-doc-modal-overlay') closeModal();
-  });
-
-  document.getElementById('ws-doc-create')?.addEventListener('click', async () => {
-    const title = document.getElementById('ws-doc-title')?.value?.trim();
+  const submit = async (m) => {
+    const title = m.querySelector('#ws-doc-title')?.value?.trim();
     if (!title) return;
     const wsState = require('../../state/workspace.state');
     const doc = await wsState.addDoc(workspaceId, { title, content: `# ${title}\n\n` });
-    closeModal();
+    closeModal(m);
     // Open editor for the new doc
     wsState.workspaceState.set({ editingDocId: doc.id });
     _view = 'editor';
     render();
+  };
+
+  const modal = createModal({
+    id: 'ws-doc-modal',
+    title: t('workspace.newDoc'),
+    size: 'small',
+    content,
+    buttons: [
+      { label: t('common.cancel'), action: 'cancel', onClick: (m) => closeModal(m) },
+      { label: t('common.save'), action: 'confirm', primary: true, onClick: submit }
+    ]
   });
 
-  setTimeout(() => document.getElementById('ws-doc-title')?.focus(), 50);
+  modal.querySelector('#ws-doc-title')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      submit(modal);
+    }
+  });
+
+  showModal(modal);
 }
 
 function showAddLinkModal(workspaceId, projects, docs) {
-  const modal = createGenericModal();
   const entities = [
     ...projects.map(p => ({ type: 'project', id: p.id, name: p.name || window.electron_nodeModules.path.basename(p.path) })),
     ...docs.map(d => ({ type: 'doc', id: d.id, name: d.title })),
@@ -767,62 +765,58 @@ function showAddLinkModal(workspaceId, projects, docs) {
   const optionsHtml = entities.map(e => `<option value="${e.type}:${escapeHtml(e.id)}">${escapeHtml(e.type === 'doc' ? '📄 ' : '📁 ')}${escapeHtml(e.name)}</option>`).join('');
   const labelsHtml = labels.map(l => `<option value="${l}">${escapeHtml(t(`workspace.linkLabels.${l}`))}</option>`).join('');
 
-  modal.innerHTML = `
-    <div id="ws-link-modal-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:1000">
-      <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:var(--radius);width:420px;max-width:90%">
-        <div class="modal-header">
-          <h3>${escapeHtml(t('workspace.addLink'))}</h3>
-          <button class="modal-close" id="ws-link-modal-close">${ICONS.close}</button>
-        </div>
-        <div class="modal-body" style="padding:16px;display:flex;flex-direction:column;gap:12px">
-          <div>
-            <label style="font-size:var(--font-sm);color:var(--text-secondary);margin-bottom:4px;display:block">${escapeHtml(t('workspace.linkSource'))}</label>
-            <select id="ws-link-source" class="workspace-search-input" style="padding:6px 10px">${optionsHtml}</select>
-          </div>
-          <div>
-            <label style="font-size:var(--font-sm);color:var(--text-secondary);margin-bottom:4px;display:block">${escapeHtml(t('workspace.linkLabel'))}</label>
-            <select id="ws-link-label" class="workspace-search-input" style="padding:6px 10px">${labelsHtml}</select>
-          </div>
-          <div>
-            <label style="font-size:var(--font-sm);color:var(--text-secondary);margin-bottom:4px;display:block">${escapeHtml(t('workspace.linkTarget'))}</label>
-            <select id="ws-link-target" class="workspace-search-input" style="padding:6px 10px">${optionsHtml}</select>
-          </div>
-          <div>
-            <label style="font-size:var(--font-sm);color:var(--text-secondary);margin-bottom:4px;display:block">${escapeHtml(t('workspace.linkDescription'))}</label>
-            <input type="text" id="ws-link-desc" class="workspace-search-input" placeholder="">
-          </div>
-        </div>
-        <div class="modal-footer" style="padding:12px 16px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--border-color)">
-          <button class="workspace-btn workspace-btn-secondary" id="ws-link-cancel">Cancel</button>
-          <button class="workspace-btn workspace-btn-primary" id="ws-link-create">${escapeHtml(t('workspace.addLink'))}</button>
-        </div>
+  const content = `
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label style="font-size:var(--font-sm);color:var(--text-secondary);margin-bottom:4px;display:block" for="ws-link-source">${escapeHtml(t('workspace.linkSource'))}</label>
+        <select id="ws-link-source" class="workspace-search-input" style="padding:6px 10px">${optionsHtml}</select>
+      </div>
+      <div>
+        <label style="font-size:var(--font-sm);color:var(--text-secondary);margin-bottom:4px;display:block" for="ws-link-label">${escapeHtml(t('workspace.linkLabel'))}</label>
+        <select id="ws-link-label" class="workspace-search-input" style="padding:6px 10px">${labelsHtml}</select>
+      </div>
+      <div>
+        <label style="font-size:var(--font-sm);color:var(--text-secondary);margin-bottom:4px;display:block" for="ws-link-target">${escapeHtml(t('workspace.linkTarget'))}</label>
+        <select id="ws-link-target" class="workspace-search-input" style="padding:6px 10px">${optionsHtml}</select>
+      </div>
+      <div>
+        <label style="font-size:var(--font-sm);color:var(--text-secondary);margin-bottom:4px;display:block" for="ws-link-desc">${escapeHtml(t('workspace.linkDescription'))}</label>
+        <input type="text" id="ws-link-desc" class="workspace-search-input" placeholder="">
       </div>
     </div>
   `;
-  modal.style.display = 'block';
 
-  const closeModal = () => { modal.style.display = 'none'; };
-  document.getElementById('ws-link-modal-close')?.addEventListener('click', closeModal);
-  document.getElementById('ws-link-cancel')?.addEventListener('click', closeModal);
-  document.getElementById('ws-link-modal-overlay')?.addEventListener('click', (e) => {
-    if (e.target.id === 'ws-link-modal-overlay') closeModal();
+  const modal = createModal({
+    id: 'ws-link-modal',
+    title: t('workspace.addLink'),
+    size: 'small',
+    content,
+    buttons: [
+      { label: t('common.cancel'), action: 'cancel', onClick: (m) => closeModal(m) },
+      {
+        label: t('workspace.addLink'),
+        action: 'confirm',
+        primary: true,
+        onClick: async (m) => {
+          const sourceVal = m.querySelector('#ws-link-source')?.value;
+          const targetVal = m.querySelector('#ws-link-target')?.value;
+          const label = m.querySelector('#ws-link-label')?.value;
+          const description = m.querySelector('#ws-link-desc')?.value?.trim() || '';
+
+          if (!sourceVal || !targetVal || !label) return;
+
+          const [sourceType, sourceId] = sourceVal.split(':');
+          const [targetType, targetId] = targetVal.split(':');
+
+          const wsState = require('../../state/workspace.state');
+          await wsState.addLink(workspaceId, { sourceType, sourceId, targetType, targetId, label, description });
+          closeModal(m);
+        }
+      }
+    ]
   });
 
-  document.getElementById('ws-link-create')?.addEventListener('click', async () => {
-    const sourceVal = document.getElementById('ws-link-source')?.value;
-    const targetVal = document.getElementById('ws-link-target')?.value;
-    const label = document.getElementById('ws-link-label')?.value;
-    const description = document.getElementById('ws-link-desc')?.value?.trim() || '';
-
-    if (!sourceVal || !targetVal || !label) return;
-
-    const [sourceType, sourceId] = sourceVal.split(':');
-    const [targetType, targetId] = targetVal.split(':');
-
-    const wsState = require('../../state/workspace.state');
-    await wsState.addLink(workspaceId, { sourceType, sourceId, targetType, targetId, label, description });
-    closeModal();
-  });
+  showModal(modal);
 }
 
 // ========== HELPERS ==========

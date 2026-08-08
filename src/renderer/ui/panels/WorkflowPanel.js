@@ -56,6 +56,90 @@ let teardownEditorRef = null;       // current editor's teardown fn (MAJ-5)
 
 let _panelInitialized = false;
 
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Trap Tab navigation inside `container` (a dialog). Returns a teardown function.
+ * Used by the custom `.wf-overlay` dialogs, which cannot go through Modal.js
+ * because they rely on their own layout/animation classes.
+ */
+function _trapFocus(container) {
+  const onKeyDown = (e) => {
+    if (e.key !== 'Tab') return;
+    const focusable = Array.from(container.querySelectorAll(FOCUSABLE_SELECTOR))
+      .filter(el => el.offsetParent !== null || el === document.activeElement);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first || !container.contains(document.activeElement)) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else if (document.activeElement === last || !container.contains(document.activeElement)) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+  document.addEventListener('keydown', onKeyDown);
+  return () => document.removeEventListener('keydown', onKeyDown);
+}
+
+/**
+ * Turn a custom `.wf-*` overlay into a proper dialog: dialog role, Escape to close,
+ * Tab trapped inside, focus moved in on open and restored to the opener on close,
+ * backdrop click to dismiss.
+ *
+ * These overlays cannot go through Modal.js `createModal`/`showModal`: they carry
+ * their own `.wf-overlay` / `.wf-modal` layout and animation classes plus bespoke
+ * multi-step bodies, so reusing the shared markup would break them visually.
+ *
+ * @returns {Function} close() — removes the overlay AND every listener it registered,
+ *                     whatever path triggered the close.
+ */
+function _makeDialog(overlay, { dialogEl = null, focusEl = null } = {}) {
+  const teardowns = [];
+  const close = () => {
+    while (teardowns.length) {
+      const fn = teardowns.pop();
+      try { fn(); } catch (_) { /* teardown must never throw */ }
+    }
+    overlay.remove();
+  };
+
+  if (dialogEl) {
+    dialogEl.setAttribute('role', 'dialog');
+    dialogEl.setAttribute('aria-modal', 'true');
+  }
+
+  const onKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      close();
+    }
+  };
+  document.addEventListener('keydown', onKeyDown);
+  teardowns.push(() => document.removeEventListener('keydown', onKeyDown));
+  teardowns.push(_trapFocus(overlay));
+
+  const previouslyFocused = document.activeElement;
+  teardowns.push(() => {
+    if (previouslyFocused && document.contains(previouslyFocused)) {
+      try { previouslyFocused.focus(); } catch (_) { /* element may be unfocusable */ }
+    }
+  });
+
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+  setTimeout(() => {
+    const target = focusEl || overlay.querySelector(FOCUSABLE_SELECTOR);
+    if (target) target.focus();
+  }, 0);
+
+  return close;
+}
+
 // Plural-aware node counter — t() has no ICU plural selection, so pick the
 // singular/plural key ourselves (same approach as the marketplace step counter).
 function _nodeCountText(count) {
@@ -1161,9 +1245,11 @@ function openCreateChoiceModal() {
 
   document.body.appendChild(overlay);
 
-  const close = () => overlay.remove();
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) close();
+  // Escape / focus trap / backdrop dismissal + guaranteed listener teardown on every
+  // close path (X, Cancel, backdrop, card click, submit, Escape).
+  const close = _makeDialog(overlay, {
+    dialogEl: overlay.querySelector('.wf-create-modal'),
+    focusEl: overlay.querySelector('.wf-create-card'),
   });
   overlay.querySelectorAll('[data-action="close"]').forEach(b => b.addEventListener('click', close));
 
@@ -1228,14 +1314,6 @@ function openCreateChoiceModal() {
     }
   });
 
-  // Escape to close
-  const escHandler = (e) => {
-    if (e.key === 'Escape') {
-      close();
-      document.removeEventListener('keydown', escHandler);
-    }
-  };
-  document.addEventListener('keydown', escHandler);
 }
 
 /** Derive a short workflow name from a free-text description (fallback when user leaves the name empty). */
@@ -2519,6 +2597,10 @@ function openEditor(workflowId = null, options = {}) {
   let aiChatInitialized = false;
   let pendingAiPrompt = options.aiPrompt || null;
   let wfGraphObserver = null; // hoisted so teardownEditor can disconnect it (MAJ-5)
+  // Hoisted so teardownEditor can destroy the ChatView. Without this, every editor
+  // opened with the AI panel leaked its IPC subscriptions, document/window listeners,
+  // state subscription and transcript for the lifetime of the app.
+  let aiChatView = null;
 
   const WORKFLOW_SYSTEM_PROMPT = `You are an expert workflow architect built into the Workflow Builder of Claude Terminal. You build production-quality, robust automation workflows — not just functional ones.
 
@@ -2877,7 +2959,7 @@ CURRENT WORKFLOW: "${wfName}" — this is the workflow already open in the edito
 CURRENT WORKFLOW: an empty workflow is open in the editor but its name has not been set yet. Call workflow_get_graph with no name argument first to discover the open workflow's name, then use that name for all subsequent calls. NEVER call workflow_create.`;
       const seedPrompt = pendingAiPrompt;
       pendingAiPrompt = null;
-      createChatView(aiPanelChat, aiProject, {
+      aiChatView = createChatView(aiPanelChat, aiProject, {
         systemPrompt: promptWithContext,
         skipPermissions: true,
         initialPrompt: seedPrompt,
@@ -3012,6 +3094,9 @@ CURRENT WORKFLOW: an empty workflow is open in the editor but its name has not b
     try { window.removeEventListener('keydown', searchKeyHandler); } catch (_) {}
     try { document.removeEventListener('keydown', editorKeyHandler); } catch (_) {}
     try { if (wfGraphObserver) { wfGraphObserver.disconnect(); wfGraphObserver = null; } } catch (_) {}
+    // Destroy the AI panel ChatView (closes the SDK session and removes its 14 IPC
+    // subscriptions, document click listener, window blur listener and state sub).
+    try { if (aiChatView) { aiChatView.destroy(); aiChatView = null; } } catch (_) {}
     for (const unsub of _editorRunUnsubs) { try { unsub(); } catch (_) {} }
     _editorRunUnsubs = [];
     _editorDirty = false;
@@ -3132,11 +3217,14 @@ function openDetail(id) {
   `;
 
   document.body.appendChild(overlay);
-  overlay.querySelector('#wf-det-close').addEventListener('click', () => overlay.remove());
-  overlay.querySelector('#wf-edit').addEventListener('click', () => { overlay.remove(); openEditor(id); });
-  overlay.querySelector('#wf-run-now')?.addEventListener('click', () => { triggerWorkflow(id); overlay.remove(); });
-  overlay.querySelector('#wf-run-now-stop')?.addEventListener('click', e => { const runId = e.currentTarget.dataset.runId; if (runId) api?.cancel(runId); overlay.remove(); });
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  const close = _makeDialog(overlay, {
+    dialogEl: overlay.querySelector('.wf-modal'),
+    focusEl: overlay.querySelector('#wf-det-close'),
+  });
+  overlay.querySelector('#wf-det-close').addEventListener('click', close);
+  overlay.querySelector('#wf-edit').addEventListener('click', () => { close(); openEditor(id); });
+  overlay.querySelector('#wf-run-now')?.addEventListener('click', () => { triggerWorkflow(id); close(); });
+  overlay.querySelector('#wf-run-now-stop')?.addEventListener('click', e => { const runId = e.currentTarget.dataset.runId; if (runId) api?.cancel(runId); close(); });
 }
 
 /* ─── Actions ──────────────────────────────────────────────────────────────── */
@@ -3208,11 +3296,14 @@ async function confirmDeleteWorkflow(id, name) {
   `;
   document.body.appendChild(overlay);
 
-  overlay.querySelector('.wf-confirm-btn--cancel').addEventListener('click', () => overlay.remove());
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  const close = _makeDialog(overlay, {
+    dialogEl: overlay.querySelector('.wf-confirm-box'),
+    focusEl: overlay.querySelector('.wf-confirm-btn--cancel'),
+  });
+  overlay.querySelector('.wf-confirm-btn--cancel').addEventListener('click', close);
 
   overlay.querySelector('.wf-confirm-btn--delete').addEventListener('click', async () => {
-    overlay.remove();
+    close();
     const res = await api.delete(id);
     if (res?.success) {
       state.workflows = state.workflows.filter(w => w.id !== id);

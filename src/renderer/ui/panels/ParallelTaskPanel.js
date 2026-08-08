@@ -26,6 +26,51 @@ let _unsubscribe = null;
 let _runCounter = 0;
 let _runNumbers = new Map();
 
+// Teardown callbacks registered while the New Run modal is open.
+// Every document-level listener attached for the modal MUST register one here so
+// that _closeNewRunModal() removes it, whatever close path was taken.
+let _newRunModalTeardowns = [];
+
+function _registerNewRunModalTeardown(fn) {
+  _newRunModalTeardowns.push(fn);
+}
+
+function _runNewRunModalTeardowns() {
+  const teardowns = _newRunModalTeardowns;
+  _newRunModalTeardowns = [];
+  teardowns.forEach(fn => {
+    try { fn(); } catch (_) { /* teardown must never throw */ }
+  });
+}
+
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Trap Tab navigation inside `container`. Returns a teardown function.
+ */
+function _trapFocus(container) {
+  const onKeyDown = (e) => {
+    if (e.key !== 'Tab') return;
+    const focusable = Array.from(container.querySelectorAll(FOCUSABLE_SELECTOR))
+      .filter(el => el.offsetParent !== null || el === document.activeElement);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first || !container.contains(document.activeElement)) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else if (document.activeElement === last || !container.contains(document.activeElement)) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+  document.addEventListener('keydown', onKeyDown);
+  return () => document.removeEventListener('keydown', onKeyDown);
+}
+
 // ─── Init & Load ──────────────────────────────────────────────────────────────
 
 function init(context) {
@@ -156,7 +201,7 @@ function _buildNewRunModal() {
   const savedAutoTasks = getSetting('parallelAutoTasks') || false;
   return `
     <div class="pt-modal-overlay" id="pt-modal-overlay">
-      <div class="pt-modal" role="dialog" aria-modal="true">
+      <div class="pt-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(t('parallel.modal.title'))}">
 
         <div class="pt-modal-header">
           <div class="pt-modal-header-left">
@@ -167,7 +212,7 @@ function _buildNewRunModal() {
             </svg>
             <span class="pt-modal-title">${t('parallel.modal.title')}</span>
           </div>
-          <button class="pt-modal-close" id="pt-modal-close" aria-label="Close">
+          <button class="pt-modal-close" id="pt-modal-close" aria-label="${escapeHtml(t('common.close'))}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
               <path d="M18 6L6 18M6 6l12 12"/>
             </svg>
@@ -276,7 +321,9 @@ function _buildNewRunModal() {
 }
 
 function _openNewRunModal() {
-  document.getElementById('pt-modal-overlay')?.remove();
+  // Full close (not a bare .remove()) so a previously open modal releases its
+  // document-level listeners before we attach a new set.
+  _closeNewRunModal();
 
   const panel = document.getElementById('tab-tasks');
   if (!panel) return;
@@ -289,8 +336,9 @@ function _openNewRunModal() {
   // Populate project selector
   _populateProjectSelector(modalOverlay);
 
-  // Init custom selects inside modal
-  _initCustomSelects(modalOverlay);
+  // Init custom selects inside modal (returns a teardown for its document listener)
+  const teardownSelects = _initCustomSelects(modalOverlay);
+  if (teardownSelects) _registerNewRunModalTeardown(teardownSelects);
 
   // Auto chip toggle
   const autoChip = modalOverlay.querySelector('#pm-auto-chip');
@@ -331,17 +379,33 @@ function _openNewRunModal() {
   // Start
   modalOverlay.querySelector('#pm-start-btn')?.addEventListener('click', () => _handleStart(modalOverlay));
 
-  // ESC
+  // ESC — registered as a teardown so every close path removes it, not just Escape
   const onKeyDown = (e) => {
-    if (e.key === 'Escape') { _closeNewRunModal(); document.removeEventListener('keydown', onKeyDown); }
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      _closeNewRunModal();
+    }
   };
   document.addEventListener('keydown', onKeyDown);
+  _registerNewRunModalTeardown(() => document.removeEventListener('keydown', onKeyDown));
+
+  // Focus trap
+  _registerNewRunModalTeardown(_trapFocus(modalOverlay));
+
+  // Restore focus to the opener when the modal closes
+  const previouslyFocused = document.activeElement;
+  _registerNewRunModalTeardown(() => {
+    if (previouslyFocused && document.contains(previouslyFocused)) {
+      try { previouslyFocused.focus(); } catch (_) { /* element may be unfocusable */ }
+    }
+  });
 
   // Focus textarea
   setTimeout(() => modalOverlay.querySelector('#pm-goal-input')?.focus(), 50);
 }
 
 function _closeNewRunModal() {
+  _runNewRunModalTeardowns();
   document.getElementById('pt-modal-overlay')?.remove();
 }
 
@@ -374,9 +438,13 @@ function _initCustomSelects(container) {
     });
   });
 
-  document.addEventListener('click', () => {
+  // Outside-click closes any open dropdown. Named + returned as a teardown so the
+  // listener does not accumulate on every modal open.
+  const onDocumentClick = () => {
     root.querySelectorAll('.pt-select.is-open').forEach(s => s.classList.remove('is-open'));
-  });
+  };
+  document.addEventListener('click', onDocumentClick);
+  return () => document.removeEventListener('click', onDocumentClick);
 }
 
 // ─── Start handler ────────────────────────────────────────────────────────────
