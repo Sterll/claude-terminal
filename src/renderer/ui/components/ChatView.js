@@ -222,7 +222,12 @@ function createContextSuggestions(api, project, inputAdapter, getDefaultPlacehol
 const SPARKLE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/><path d="M19 15l.75 2.25L22 18l-2.25.75L19 21l-.75-2.25L16 18l2.25-.75z"/></svg>`;
 
 function createFollowupChips(api, suggestionsContainerEl, inputAdapter, project) {
-  let _pending = []; // SDK suggestions accumulated during a turn
+  // The SDK emits `prompt_suggestion` *after* the `result` message, so it lands
+  // once the turn has already been flushed. Keep both sources in their own bucket
+  // and re-render whenever either one changes, instead of snapshotting on flush.
+  let _sdk = [];        // suggestions pushed by the SDK stream
+  let _ctx = [];        // context chips (TODOs), fetched when the turn ends
+  let _visible = false; // turn is over: chips are allowed on screen
 
   function _render(chips) {
     if (!chips || chips.length === 0) {
@@ -284,23 +289,30 @@ function createFollowupChips(api, suggestionsContainerEl, inputAdapter, project)
     suggestionsContainerEl.style.display = 'flex';
   }
 
-  /** Push a suggestion from the SDK stream (accumulated, rendered on flush) */
-  function addSuggestion(text) {
-    if (typeof text === 'string' && text.trim() && _pending.length < 5) {
-      _pending.push(text.trim());
+  /** Re-render from the current buckets. No-op while streaming or while typing. */
+  function _sync() {
+    if (!_visible) return;
+    if (!inputAdapter.isEmpty()) return;
+    const chips = [..._sdk.slice(0, 3), ..._ctx];
+    if (chips.length > 0) {
+      _render(chips);
     }
   }
 
-  /** Render accumulated suggestions + context chips (called when streaming ends) */
-  async function flush() {
-    const sdkChips = _pending.slice(0, 3);
-    _pending = [];
-    // Fetch context chips (TODOs) in parallel
-    const contextChips = await _fetchContextChips();
-    const allChips = [...sdkChips, ...contextChips];
-    if (allChips.length > 0) {
-      _render(allChips);
+  /** Push a suggestion from the SDK stream. Arrives after the turn ended. */
+  function addSuggestion(text) {
+    if (typeof text === 'string' && text.trim() && _sdk.length < 5) {
+      _sdk.push(text.trim());
+      _sync();
     }
+  }
+
+  /** Called when streaming ends: allow rendering, then fetch context chips */
+  async function flush() {
+    _visible = true;
+    _sync(); // show whatever already arrived
+    _ctx = await _fetchContextChips();
+    _sync();
   }
 
   async function _fetchContextChips() {
@@ -316,7 +328,9 @@ function createFollowupChips(api, suggestionsContainerEl, inputAdapter, project)
   }
 
   function clear() {
-    _pending = [];
+    _sdk = [];
+    _ctx = [];
+    _visible = false;
     suggestionsContainerEl.style.display = 'none';
     suggestionsContainerEl.innerHTML = '';
   }
