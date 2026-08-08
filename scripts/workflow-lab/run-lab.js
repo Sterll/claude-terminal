@@ -18,6 +18,28 @@
 const path = require('path');
 const ROOT = path.join(__dirname, '..', '..');
 
+// ── Re-exec under Electron ──────────────────────────────────────────────────
+// Native modules (better-sqlite3, keytar) are rebuilt for Electron's ABI by
+// `npm install`, so they refuse to load under plain node. Rather than a
+// platform-specific npm script, relaunch ourselves as Electron-as-node so
+// `npm run lab` just works everywhere — and so nodes are exercised on the same
+// ABI the app actually runs on.
+if (!process.versions.electron && !process.env.WF_LAB_CHILD) {
+  const { spawnSync } = require('child_process');
+  let electronBin;
+  try { electronBin = require(path.join(ROOT, 'node_modules', 'electron')); }
+  catch { electronBin = null; }
+
+  if (typeof electronBin === 'string') {
+    const res = spawnSync(electronBin, [__filename, ...process.argv.slice(2)], {
+      stdio: 'inherit',
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', WF_LAB_CHILD: '1' },
+    });
+    process.exit(res.status === null ? 1 : res.status);
+  }
+  console.warn('[lab] electron not found — running under plain node; nodes using native modules will fail to load.');
+}
+
 const { createSandbox, runNode, runGraph } = require('./sandbox');
 const { loadScenarios } = require('./scenarios/_index');
 

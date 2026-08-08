@@ -99,6 +99,12 @@ function createSandbox(label = 'node') {
       git('init', '-q', '-b', 'main');
       git('config', 'user.email', 'lab@example.invalid');
       git('config', 'user.name', 'Workflow Lab');
+      // Pin line endings in the repo's LOCAL config. This helper isolates
+      // GIT_CONFIG_GLOBAL but the node's own spawnGit() does not, so on a
+      // machine with core.autocrlf=true the two disagreed about whether a
+      // checked-out file was modified — making a working stash look broken.
+      git('config', 'core.autocrlf', 'false');
+      git('config', 'core.eol', 'lf');
       sb.file('README.md', '# sandbox\n');
       git('add', '-A');
       git('commit', '-q', '-m', 'initial');
