@@ -12,8 +12,11 @@
 const _debugLog = console.log.bind(console);
 
 // ─── i18n (provided by i18n.js loaded before this file) ──────────────────────
-
-const { t } = window.i18n;
+//
+// i18n.js and app.js are classic scripts, so they share one global scope.
+// i18n.js already declares a global `t()` — redeclaring it here with `const`
+// is an early SyntaxError that stops this whole file from ever executing.
+// Use the global `t()` and `i18n.*` directly instead.
 
 // ─── Tool Icons (SVG) ─────────────────────────────────────────────────────────
 
@@ -408,7 +411,10 @@ function _openWS() {
     // LAN mode: standard local WS with session token
     if (!conn.token) { _showAuth(); return; }
     connSetState('connecting');
-    const wsUrl = `ws://${window.location.host}/ws?token=${conn.token}`;
+    // Derive the scheme from the page: an https origin (e.g. `tailscale serve`)
+    // blocks a plain ws:// socket as mixed content.
+    const wsScheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsScheme}//${window.location.host}/ws?token=${conn.token}`;
     const ws = new WebSocket(wsUrl);
     conn.ws = ws;
   }
