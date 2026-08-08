@@ -205,7 +205,104 @@ function normalizeExitCode(err) {
   return { exitCode, timedOut, truncated, killed };
 }
 
+// ── Sandboxed user code ──────────────────────────────────────────────────────
+
+const vm = require('vm');
+
+const SANDBOX_TIMEOUT_MS = 1000;
+
+/**
+ * Compile user-supplied JavaScript into a callable that runs in a restricted vm
+ * context. Shared by the `transform` and `code` nodes so there is exactly one
+ * hardened implementation to reason about.
+ *
+ * The body is treated as CODE with a fixed parameter list; caller data arrives
+ * as sandbox VALUES. Workflow variables are resolved as DATA before compilation
+ * and are never interpolated into the source, so a `$foo` value cannot inject
+ * executable code.
+ *
+ * SANDBOX ESCAPE HARDENING: host objects handed straight to a vm context keep a
+ * prototype chain rooted in the HOST realm, so `x.constructor.constructor(...)`
+ * would reach the HOST Function constructor and escape. Arguments are therefore
+ * JSON-serialised on the host and rebuilt by JSON.parse running INSIDE the
+ * context, rooting every object the code touches in the sandbox realm. That
+ * re-rooting is the actual defence. Non-serialisable values (functions,
+ * symbols) are dropped by JSON, which is acceptable for data transforms.
+ *
+ * Clearing the context's `Function`/`eval` globals is belt-and-braces only: it
+ * removes the direct bindings, but `({}).constructor.constructor` still yields
+ * the SANDBOX's Function, so code can be compiled at runtime. What matters is
+ * that anything compiled that way is compiled *by the sandbox realm* and
+ * therefore still cannot see the host — `typeof process` stays 'undefined'.
+ * tests pin this behaviour in scripts/workflow-lab/scenarios/code.scenario.js.
+ *
+ * This is a strong guard against accident and casual injection, not a proof
+ * against a determined attacker: Node's vm is not a security boundary.
+ *
+ * @param {string} body
+ * @param {string[]} paramNames
+ * @param {{ statements?: boolean, label?: string }} [opts]
+ *   statements — treat the body as a function body with its own `return`
+ *                instead of a single expression.
+ * @returns {(...args: any[]) => any}
+ */
+function compileSandboxed(body, paramNames, opts = {}) {
+  const { statements = false, label = 'sandbox' } = opts;
+  const argList = paramNames.join(', ');
+  const inner   = statements ? String(body) : `return (${body});`;
+
+  const src = `
+    "use strict";
+    var __args__ = JSON.parse(__data__);
+    (function(${argList}){ "use strict"; ${inner} }).apply(undefined, __args__);
+  `;
+
+  let script;
+  try {
+    script = new vm.Script(src, { filename: `${label}.js` });
+  } catch (e) {
+    throw new Error(`Invalid ${label} code: ${e.message}`);
+  }
+
+  return (...args) => {
+    // Fresh, minimal context per call — no prototype chain to the host global.
+    const sandbox = Object.create(null);
+    sandbox.__data__ = JSON.stringify(args.map(a => (a === undefined ? null : a)));
+    const ctx = vm.createContext(sandbox);
+    try {
+      vm.runInContext('this.Function = undefined; this.eval = undefined;', ctx,
+        { timeout: SANDBOX_TIMEOUT_MS });
+    } catch { /* best-effort lockdown */ }
+    try {
+      return script.runInContext(ctx, { timeout: SANDBOX_TIMEOUT_MS });
+    } catch (e) {
+      if (/Script execution timed out/i.test(String(e && e.message))) {
+        throw new Error(`${label} timed out (>${SANDBOX_TIMEOUT_MS}ms)`);
+      }
+      throw new Error(`${label} error: ${e.message}`);
+    }
+  };
+}
+
+/**
+ * Convert the runner's variables Map into a plain, JSON-safe object so it can
+ * cross into a sandbox. Non-serialisable entries are dropped rather than
+ * throwing, so one odd value cannot break an otherwise valid script.
+ * @param {Map|Object} vars
+ * @returns {Object}
+ */
+function varsToPlainObject(vars) {
+  const entries = vars instanceof Map ? [...vars.entries()] : Object.entries(vars || {});
+  const out = {};
+  for (const [k, v] of entries) {
+    try { JSON.stringify(v); out[k] = v; }
+    catch { /* circular or non-serialisable — skip this one */ }
+  }
+  return out;
+}
+
 module.exports = {
   loadRegistry, get, getAll, has, getTypes, esc,
   resolveVars, assertSafeUrl, normalizeExitCode, resolveProjectPath,
+  compileSandboxed, varsToPlainObject, SANDBOX_TIMEOUT_MS,
 };

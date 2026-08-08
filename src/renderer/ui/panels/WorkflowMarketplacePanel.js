@@ -530,7 +530,8 @@ async function _importWorkflow(item, btn) {
 }
 
 // Node step types considered sensitive enough to warrant a review warning.
-const SENSITIVE_STEP_TYPES = new Set(['shell', 'transform', 'http', 'file', 'git']);
+// 'code' runs user-supplied JavaScript; an imported workflow must flag it.
+const SENSITIVE_STEP_TYPES = new Set(['shell', 'code', 'transform', 'http', 'file', 'git']);
 
 /**
  * Build a review warning for an imported workflow, or null when nothing needs

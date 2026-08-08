@@ -1,70 +1,13 @@
 'use strict';
 
-const vm = require('vm');
-const { esc, resolveVars } = require('./_registry');
+const { esc, resolveVars, compileSandboxed, SANDBOX_TIMEOUT_MS } = require('./_registry');
 
-// Compile an expression body inside a restricted vm sandbox and return a
-// callable. The expression is treated as CODE with a fixed set of parameter
-// names; the caller supplies the actual data (item/index/acc) as sandbox
-// values. Variables are resolved as DATA before compilation and are NEVER
-// interpolated into the code body, so `$foo` values cannot inject executable
-// code. Each invocation runs with a 1000 ms timeout in a context that exposes
-// no require/process/global/console.
-//
-// SANDBOX ESCAPE HARDENING: host objects passed directly into a vm context
-// keep their prototype chain rooted in the HOST realm, so an expression such as
-// `item.constructor.constructor("return process")()` can reach the host
-// Function constructor and escape. To block this, argument DATA is never handed
-// to the sandbox as live host objects. Instead each argument is JSON-serialised
-// on the host and reconstructed INSIDE the vm context (via JSON.parse running
-// in the sandbox realm), so every object/array the expression touches has its
-// prototype chain rooted in the sandbox realm — its `.constructor` is the
-// sandbox's Function, which is itself neutralised below. Non-serialisable
-// values (functions, symbols) are dropped by JSON, which is acceptable for the
-// data transforms this node performs.
-const EXPR_TIMEOUT_MS = 1000;
+// Expression compilation is shared with the `code` node — see
+// _registry.compileSandboxed for the vm hardening rationale.
+const EXPR_TIMEOUT_MS = SANDBOX_TIMEOUT_MS;
 
 function compileExpr(body, paramNames) {
-  const argList = paramNames.join(', ');
-  // The reconstructed args live in the sandbox as `__data__` (a JSON string).
-  // We parse them inside the context so the resulting objects belong to the
-  // sandbox realm, then apply them positionally to the user function.
-  const src = `
-    "use strict";
-    var __args__ = JSON.parse(__data__);
-    (function(${argList}){ "use strict"; return (${body}); }).apply(undefined, __args__);
-  `;
-  let script;
-  try {
-    script = new vm.Script(src, { filename: 'transform-expr.js' });
-  } catch {
-    throw new Error(`Invalid expression: ${body}`);
-  }
-  return (...args) => {
-    // Fresh, minimal context per call — no prototype chain to the host global.
-    const sandbox = Object.create(null);
-    // Serialise host data so it is rebuilt inside the sandbox realm. undefined
-    // values are preserved positionally as null (JSON has no undefined).
-    sandbox.__data__ = JSON.stringify(args.map(a => (a === undefined ? null : a)));
-    const ctx = vm.createContext(sandbox);
-    // Neutralise the sandbox's own Function/eval constructors so that even a
-    // realm-local `constructor.constructor` cannot compile new code.
-    try {
-      vm.runInContext(
-        'this.Function = undefined; this.eval = undefined;',
-        ctx,
-        { timeout: EXPR_TIMEOUT_MS }
-      );
-    } catch { /* best-effort lockdown */ }
-    try {
-      return script.runInContext(ctx, { timeout: EXPR_TIMEOUT_MS });
-    } catch (e) {
-      if (/Script execution timed out/i.test(String(e && e.message))) {
-        throw new Error(`Expression timed out (>${EXPR_TIMEOUT_MS}ms): ${body}`);
-      }
-      throw new Error(`Expression error: ${e.message}`);
-    }
-  };
+  return compileSandboxed(body, paramNames, { label: "transform-expr" });
 }
 
 const TRANSFORM_OPS = [
