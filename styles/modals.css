@@ -1449,6 +1449,16 @@ mark.qp-hl {
   animation: toast-slide-out 0.3s ease forwards;
 }
 
+/* Toast component (ui/components/Toast.js) toggles .show / .hide instead of .toast-exit */
+.toast.show {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.toast.hide {
+  animation: toast-slide-out 0.3s ease forwards;
+}
+
 /* Color accent stripe on left */
 .toast.toast-success { border-left: 3px solid var(--success); }
 .toast.toast-error { border-left: 3px solid var(--danger); }

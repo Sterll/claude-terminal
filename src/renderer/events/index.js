@@ -622,8 +622,10 @@ function wireClaudeMdReviewConsumer() {
             duration: 10000,
             action: t('terminals.claudeMdOpen'),
             onAction: () => {
-              // Open CLAUDE.md in the default editor
-              window.electron_api.dialog.openInEditor({ filePath: claudeMdPath });
+              // Open CLAUDE.md in the configured editor
+              const { getSetting } = require('../state/settings.state');
+              const editor = getSetting('editor') || 'code';
+              window.electron_api.dialog.openInEditor({ editor, path: claudeMdPath });
             }
           });
         } catch (err) {

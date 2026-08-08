@@ -60,6 +60,22 @@ function throwIfBlocked(p) {
 
 // Expose Node.js modules that are needed in renderer
 // Note: For better security, these operations should eventually be moved to main process
+//
+// EXPOSED (and nothing else):
+//   - path      : pure string helpers, no I/O
+//   - fs        : a hand-picked subset (sync + promises), every path argument
+//                 guarded by throwIfBlocked() against system directories
+//   - os        : homedir() only
+//   - process   : USERPROFILE / HOME / APPDATA, resourcesPath, platform
+//   - __dirname : app root, for locating bundled resources
+//
+// NEVER EXPOSE `child_process` (nor `vm`, `module`, `net`, or a raw `require`).
+// The renderer displays untrusted content - markdown from Claude responses,
+// repository files, marketplace/plugin metadata, remote-control payloads. A
+// single injection there would turn an exposed exec/spawn into arbitrary code
+// execution on the user's machine, and the path guards above would not help
+// because a command string is not a path. Anything that must run a process
+// belongs in the main process behind a dedicated, validated IPC handler.
 contextBridge.exposeInMainWorld('electron_nodeModules', {
   path: {
     join: (...args) => path.join(...args),
@@ -698,7 +714,10 @@ contextBridge.exposeInMainWorld('electron_api', {
   setupWizard: {
     complete: (settings) => ipcRenderer.invoke('setup-wizard-complete', settings),
     skip: () => ipcRenderer.send('setup-wizard-skip'),
-    rerun: () => ipcRenderer.send('setup-wizard-rerun')
+    rerun: () => ipcRenderer.send('setup-wizard-rerun'),
+    // Emitted by main after the wizard is re-run from the settings panel,
+    // with the settings it just persisted to settings.json
+    onSettingsChanged: createListener('settings-changed-externally')
   },
 
   // ==================== APP LIFECYCLE ====================
@@ -782,6 +801,10 @@ contextBridge.exposeInMainWorld('electron_api', {
     onLoopProgress:   createListener('workflow-loop-progress'),
     onNotifyDesktop:  createListener('workflow-notify-desktop'),
     onListUpdated:    createListener('workflow-list-updated'),
+    // Main -> renderer request to run a workflow (sent by the Quick Picker).
+    // Distinct from `trigger` above: that one is an invoke (renderer -> main)
+    // on the same channel name, this one only receives webContents.send().
+    onQuickPickTrigger: createListener('workflow-trigger'),
   },
 
   // ==================== CONTROL TOWER ====================

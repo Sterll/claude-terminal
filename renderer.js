@@ -5342,6 +5342,61 @@ api.quickPicker.onNavigateTab(({ tabId, action }) => {
   }
 });
 
+// Quick picker workflow: run a workflow straight from the palette.
+// Main sends this right after `navigate-to-tab`, so the Workflows panel is
+// already loading and its live run listeners will render the progress.
+api.workflow.onQuickPickTrigger(async ({ workflowId } = {}) => {
+  if (!workflowId) return;
+  try {
+    // Pass the currently opened project path so the runner has a valid cwd
+    const { projects, openedProjectId } = projectsState.get();
+    const openedProject = (projects || []).find(p => p.id === openedProjectId);
+    const res = await api.workflow.trigger(workflowId, { projectPath: openedProject?.path || '' });
+    if (res && res.success === false) {
+      showToast({
+        type: 'error',
+        title: t('workflow.contextMenu.runNow'),
+        message: res.error || t('workflow.toast.runFailed')
+      });
+    }
+  } catch (e) {
+    console.error('[QuickPicker] Error triggering workflow:', e);
+  }
+});
+
+// Setup wizard re-run from the settings panel: apply the new settings live
+api.setupWizard.onSettingsChanged((settings) => {
+  if (!settings || typeof settings !== 'object') return;
+
+  const previousLanguage = getCurrentLanguage();
+  settingsState.set(settings);
+  saveSettingsImmediate();
+
+  if (settings.accentColor) {
+    applyAccentColor(settings.accentColor);
+    api.tray.updateAccentColor(settings.accentColor);
+  }
+
+  document.getElementById('btn-notifications')?.classList.toggle('active', isNotificationsEnabled());
+
+  // main.js only applies launchAtStartup on the first-run wizard path
+  if (typeof settings.launchAtStartup === 'boolean') {
+    api.app.setLaunchAtStartup(settings.launchAtStartup)
+      .catch(e => console.error('Error setting launch at startup:', e));
+  }
+
+  // Re-render the settings panel so it reflects the wizard values
+  if (document.querySelector('.nav-tab[data-tab="settings"]')?.classList.contains('active')) {
+    SettingsPanel.renderSettingsTab('general');
+  }
+
+  // Language is applied at load time everywhere, so a reload is required
+  if (settings.language && settings.language !== previousLanguage) {
+    setLanguage(settings.language);
+    location.reload();
+  }
+});
+
 // Remote Control: ouvrir un tab chat depuis mobile
 api.remote.onOpenChatTab(({ cwd, prompt, images, model, effort, resumeSessionId }) => {
   const projects = projectsState.get().projects;
@@ -5969,21 +6024,32 @@ async function checkCIStatus() {
   if (!project) return;
 
   try {
-    const gitInfo = await api.git.infoFull(project.path);
-    if (!gitInfo.isGitRepo || !gitInfo.remoteUrl || !gitInfo.remoteUrl.includes('github.com')) {
+    // Cheap lookup: this poll only needs the origin URL and the current branch.
+    // `git.infoFull` would spawn 18 git child processes (including two full
+    // history walks) every 5-30s; these two spawn one process each.
+    const [remotesResult, currentBranch] = await Promise.all([
+      api.git.remotes({ projectPath: project.path }),
+      api.git.currentBranch({ projectPath: project.path })
+    ]);
+
+    const origin = remotesResult?.success
+      ? (remotesResult.remotes || []).find(r => r.name === 'origin')
+      : null;
+    const remoteUrl = origin?.fetchUrl || origin?.pushUrl || '';
+
+    if (!currentBranch || !remoteUrl.includes('github.com')) {
       if (ciIndicator.currentRun) hideCIIndicator();
       return;
     }
 
-    ciIndicator.currentRemoteUrl = gitInfo.remoteUrl;
+    ciIndicator.currentRemoteUrl = remoteUrl;
 
-    const result = await api.github.workflowRuns(gitInfo.remoteUrl);
+    const result = await api.github.workflowRuns(remoteUrl);
     if (!result.success || !result.authenticated || !result.runs || result.runs.length === 0) {
       if (ciIndicator.currentRun) hideCIIndicator();
       return;
     }
 
-    const currentBranch = gitInfo.branch;
     const inProgressRun = result.runs.find(r => r.status === 'in_progress' || r.status === 'queued');
     const branchRun = result.runs.find(r => r.branch === currentBranch);
     const relevantRun = inProgressRun || branchRun;
@@ -5996,7 +6062,7 @@ async function checkCIStatus() {
     // Fetch jobs/steps when run is active (for step indicator)
     let jobs = ciIndicator.currentJobs;
     if (relevantRun.status === 'in_progress' || relevantRun.status === 'queued') {
-      const jobsResult = await api.github.workflowJobs(gitInfo.remoteUrl, relevantRun.id);
+      const jobsResult = await api.github.workflowJobs(remoteUrl, relevantRun.id);
       if (jobsResult.success && jobsResult.jobs) {
         jobs = jobsResult.jobs;
       }
@@ -6005,7 +6071,7 @@ async function checkCIStatus() {
       stopFastCIPoll();
       // Fetch jobs once on completion so "Fix it" has job data
       if (relevantRun.status === 'completed' && relevantRun.conclusion === 'failure' && ciIndicator.currentJobs.length === 0) {
-        const jobsResult = await api.github.workflowJobs(gitInfo.remoteUrl, relevantRun.id);
+        const jobsResult = await api.github.workflowJobs(remoteUrl, relevantRun.id);
         if (jobsResult.success && jobsResult.jobs) jobs = jobsResult.jobs;
       }
     }

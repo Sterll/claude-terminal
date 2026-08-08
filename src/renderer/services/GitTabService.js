@@ -4,7 +4,7 @@
  */
 
 const api = window.electron_api;
-const { projectsState, getProject, getFolder, getProjectIndex } = require('../state');
+const { projectsState, getProject, getFolder, getProjectIndex, getSetting } = require('../state');
 const { escapeHtml } = require('../utils');
 const { sanitizeColor } = require('../utils/color');
 const { t } = require('../i18n');
@@ -1425,7 +1425,8 @@ function bindChangesEvents(container) {
       handleViewDiff(fileItem.dataset.path, fileItem.dataset.staged === 'true');
     } else if (btn.classList.contains('open-editor-btn') && fileItem) {
       const fullPath = window.electron_nodeModules.path.join(selectedProject.path, fileItem.dataset.path);
-      api.dialog.openInEditor({ filePath: fullPath });
+      const editor = getSetting('editor') || 'code';
+      api.dialog.openInEditor({ editor, path: fullPath });
     } else if (btn.classList.contains('resolve-btn') && fileItem) {
       handleMarkResolved(fileItem.dataset.path);
     } else if (btn.classList.contains('resolve-ours-btn') && fileItem) {
@@ -2247,6 +2248,12 @@ async function handleGenerateMessage() {
     if (result.success && result.message) {
       const msgEl = document.getElementById('git-tab-commit-msg');
       if (msgEl) msgEl.value = result.message;
+
+      // Surface the origin of the message: a timeout or auth failure silently falls
+      // back to the heuristic generator, which must not pass for AI-written text.
+      const isAi = result.source === 'ai';
+      const sourceLabel = isAi ? t('gitChanges.sourceAi') : t('gitChanges.sourceHeuristic');
+      showToast(t('gitChanges.generated', { source: sourceLabel }), isAi ? 'success' : 'warning');
     } else {
       showToast(friendlyGitError(result.error), 'error');
     }

@@ -20,6 +20,8 @@
   --accent: #d97706;
   --accent-hover: #f59e0b;
   --accent-dim: rgba(217, 119, 6, 0.15);
+  /* RGB components of --accent, for rgba() usage. Kept in sync by applyAccentColor(). */
+  --accent-rgb: 217, 119, 6;
   --success: #22c55e;
   --warning: #f59e0b;
   --danger: #ef4444;
@@ -30,7 +32,7 @@
 
   /* Aliases (used across multiple stylesheets) */
   --accent-color: var(--accent);
-  --accent-color-rgb: 217, 119, 6;
+  --accent-color-rgb: var(--accent-rgb);
   --border-primary: var(--border-color);
   --text-tertiary: #666;
 
