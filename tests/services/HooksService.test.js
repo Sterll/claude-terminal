@@ -161,14 +161,18 @@ describe('installHooks', () => {
     expect(backup.existing).toBe(true);
   });
 
-  test('corrupted settings.json is handled gracefully', () => {
+  test('corrupted settings.json is refused, not overwritten', () => {
+    // Regression guard: this previously returned success and replaced the
+    // user's entire settings.json with a hooks-only file, destroying their
+    // permissions / env / model / statusLine.
     mockVirtualFs.set(SETTINGS_PATH, '{invalid json!!!');
 
     const result = HooksService.installHooks();
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/malformed|unreadable/i);
 
-    const settings = readSettings();
-    expect(settings.hooks).toBeDefined();
+    // Original bytes untouched, so the user can still recover their config
+    expect(mockVirtualFs.get(SETTINGS_PATH)).toBe('{invalid json!!!');
   });
 
   test('handles existing hooks as non-array (object) format', () => {

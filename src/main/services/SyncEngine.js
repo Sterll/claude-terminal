@@ -20,6 +20,35 @@ const ENTITY_TYPES = [
   'skills', 'agents', 'memory', 'hooks', 'plugins',
 ];
 
+/**
+ * Sentinel returned by a handler `read()` when the local source simply does not
+ * exist yet (ENOENT). Any other failure (permission denied, sharing violation,
+ * malformed JSON, ...) must propagate so callers never confuse "nothing here"
+ * with "we could not look", which would let cloud data silently clobber local.
+ */
+const MISSING = Symbol('missing');
+
+/** True when the error means "this path does not exist", not "read failed". */
+function isMissingError(err) {
+  return !!err && (err.code === 'ENOENT' || err.code === 'ENOTDIR');
+}
+
+/**
+ * Read + parse a JSON file that is about to be partially rewritten.
+ * Returns null when the file does not exist yet; throws on any other failure so
+ * we never rewrite a file whose current content we failed to read.
+ */
+async function readJsonForMerge(filePath) {
+  let raw;
+  try {
+    raw = await fs.promises.readFile(filePath, 'utf8');
+  } catch (err) {
+    if (isMissingError(err)) return null;
+    throw err;
+  }
+  return JSON.parse(raw);
+}
+
 function computeHash(data) {
   return crypto.createHash('sha256').update(JSON.stringify(data)).digest('hex');
 }
@@ -140,18 +169,22 @@ class SyncEngine {
         settingKey: 'cloudSyncSettings',
         path: settingsFile,
         read: async () => {
+          let raw;
           try {
-            const raw = await fs.promises.readFile(settingsFile, 'utf8');
-            const data = JSON.parse(raw);
-            // Strip sensitive cloud credentials from sync
-            const { cloudApiKey, cloudServerUrl, ...rest } = data;
-            return rest;
-          } catch { return null; }
+            raw = await fs.promises.readFile(settingsFile, 'utf8');
+          } catch (err) {
+            if (isMissingError(err)) return MISSING;
+            throw err;
+          }
+          const data = JSON.parse(raw);
+          // Strip sensitive cloud credentials from sync
+          const { cloudApiKey, cloudServerUrl, ...rest } = data;
+          return rest;
         },
         write: async (data) => {
-          // Merge: keep local cloud credentials
-          let local = {};
-          try { local = JSON.parse(await fs.promises.readFile(settingsFile, 'utf8')); } catch { /* */ }
+          // Merge: keep local cloud credentials (throws if the local file is
+          // unreadable, so we never drop credentials we simply could not read)
+          const local = (await readJsonForMerge(settingsFile)) || {};
           const merged = { ...data, cloudApiKey: local.cloudApiKey, cloudServerUrl: local.cloudServerUrl, cloudAutoConnect: local.cloudAutoConnect };
           await this._atomicWrite(settingsFile, JSON.stringify(merged, null, 2));
         },
@@ -165,18 +198,20 @@ class SyncEngine {
         settingKey: 'cloudSyncProjects',
         path: projectsFile,
         read: async () => {
+          let raw;
           try {
-            const raw = await fs.promises.readFile(projectsFile, 'utf8');
-            return JSON.parse(raw);
-          } catch { return null; }
+            raw = await fs.promises.readFile(projectsFile, 'utf8');
+          } catch (err) {
+            if (isMissingError(err)) return MISSING;
+            throw err;
+          }
+          return JSON.parse(raw);
         },
         write: async (data) => {
-          // Smart merge: preserve local paths (they are machine-specific)
-          let localData = null;
-          try {
-            const raw = await fs.promises.readFile(projectsFile, 'utf8');
-            localData = JSON.parse(raw);
-          } catch { /* no local file yet */ }
+          // Smart merge: preserve local paths (they are machine-specific).
+          // Throws on a genuine read failure so a transient lock can never turn
+          // the merge into a full overwrite of the local project list.
+          const localData = await readJsonForMerge(projectsFile);
 
           const merged = localData ? this._mergeProjectsData(localData, data) : data;
           await this._atomicWrite(projectsFile, JSON.stringify(merged, null, 2));
@@ -190,10 +225,14 @@ class SyncEngine {
         settingKey: 'cloudSyncTimeTracking',
         path: timetrackingFile,
         read: async () => {
+          let raw;
           try {
-            const raw = await fs.promises.readFile(timetrackingFile, 'utf8');
-            return JSON.parse(raw);
-          } catch { return null; }
+            raw = await fs.promises.readFile(timetrackingFile, 'utf8');
+          } catch (err) {
+            if (isMissingError(err)) return MISSING;
+            throw err;
+          }
+          return JSON.parse(raw);
         },
         write: async (data) => {
           await this._atomicWrite(timetrackingFile, JSON.stringify(data, null, 2));
@@ -205,15 +244,20 @@ class SyncEngine {
         settingKey: 'cloudSyncMcpConfigs',
         path: claudeJsonPath,
         read: async () => {
+          let raw;
           try {
-            const raw = await fs.promises.readFile(claudeJsonPath, 'utf8');
-            const full = JSON.parse(raw);
-            return full.mcpServers || {};
-          } catch { return null; }
+            raw = await fs.promises.readFile(claudeJsonPath, 'utf8');
+          } catch (err) {
+            if (isMissingError(err)) return MISSING;
+            throw err;
+          }
+          const full = JSON.parse(raw);
+          return full.mcpServers || {};
         },
         write: async (data) => {
-          let full = {};
-          try { full = JSON.parse(await fs.promises.readFile(claudeJsonPath, 'utf8')); } catch { /* */ }
+          // Throws if ~/.claude.json exists but cannot be parsed — rewriting it
+          // from an empty object would wipe every other Claude Code setting
+          const full = (await readJsonForMerge(claudeJsonPath)) || {};
           full.mcpServers = data;
           await this._atomicWrite(claudeJsonPath, JSON.stringify(full, null, 2));
         },
@@ -245,19 +289,27 @@ class SyncEngine {
         path: skillsDir,
         isDir: true,
         read: async () => {
+          let entries;
           try {
-            const entries = await fs.promises.readdir(skillsDir, { withFileTypes: true });
-            const skills = [];
-            for (const entry of entries) {
-              if (!entry.isDirectory()) continue;
-              const skillFile = path.join(skillsDir, entry.name, 'SKILL.md');
-              try {
-                const content = await fs.promises.readFile(skillFile, 'utf8');
-                skills.push({ name: entry.name, content });
-              } catch { /* skip skills without SKILL.md */ }
+            entries = await fs.promises.readdir(skillsDir, { withFileTypes: true });
+          } catch (err) {
+            if (isMissingError(err)) return MISSING;
+            throw err;
+          }
+          const skills = [];
+          for (const entry of entries) {
+            if (!entry.isDirectory()) continue;
+            const skillFile = path.join(skillsDir, entry.name, 'SKILL.md');
+            try {
+              const content = await fs.promises.readFile(skillFile, 'utf8');
+              skills.push({ name: entry.name, content });
+            } catch (err) {
+              // Skip skills without SKILL.md, but surface real read failures:
+              // a partial listing must never be treated as the full local state
+              if (!isMissingError(err)) throw err;
             }
-            return skills;
-          } catch { return null; }
+          }
+          return skills;
         },
         write: async (data) => {
           if (!Array.isArray(data)) return;
@@ -279,19 +331,26 @@ class SyncEngine {
         path: agentsDir,
         isDir: true,
         read: async () => {
+          let entries;
           try {
-            const entries = await fs.promises.readdir(agentsDir, { withFileTypes: true });
-            const agents = [];
-            for (const entry of entries) {
-              if (!entry.isDirectory()) continue;
-              const agentFile = path.join(agentsDir, entry.name, 'AGENT.md');
-              try {
-                const content = await fs.promises.readFile(agentFile, 'utf8');
-                agents.push({ name: entry.name, content });
-              } catch { /* skip */ }
+            entries = await fs.promises.readdir(agentsDir, { withFileTypes: true });
+          } catch (err) {
+            if (isMissingError(err)) return MISSING;
+            throw err;
+          }
+          const agents = [];
+          for (const entry of entries) {
+            if (!entry.isDirectory()) continue;
+            const agentFile = path.join(agentsDir, entry.name, 'AGENT.md');
+            try {
+              const content = await fs.promises.readFile(agentFile, 'utf8');
+              agents.push({ name: entry.name, content });
+            } catch (err) {
+              // Skip dirs without AGENT.md, but surface real read failures
+              if (!isMissingError(err)) throw err;
             }
-            return agents;
-          } catch { return null; }
+          }
+          return agents;
         },
         write: async (data) => {
           if (!Array.isArray(data)) return;
@@ -313,7 +372,10 @@ class SyncEngine {
         read: async () => {
           try {
             return await fs.promises.readFile(claudeMdPath, 'utf8');
-          } catch { return null; }
+          } catch (err) {
+            if (isMissingError(err)) return MISSING;
+            throw err;
+          }
         },
         write: async (data) => {
           if (typeof data !== 'string') return;
@@ -327,15 +389,20 @@ class SyncEngine {
         settingKey: 'cloudSyncHooksConfig',
         path: claudeSettingsPath,
         read: async () => {
+          let raw;
           try {
-            const raw = await fs.promises.readFile(claudeSettingsPath, 'utf8');
-            const full = JSON.parse(raw);
-            return full.hooks || {};
-          } catch { return null; }
+            raw = await fs.promises.readFile(claudeSettingsPath, 'utf8');
+          } catch (err) {
+            if (isMissingError(err)) return MISSING;
+            throw err;
+          }
+          const full = JSON.parse(raw);
+          return full.hooks || {};
         },
         write: async (data) => {
-          let full = {};
-          try { full = JSON.parse(await fs.promises.readFile(claudeSettingsPath, 'utf8')); } catch { /* */ }
+          // Throws if settings.json exists but is malformed — writing `{ hooks }`
+          // over it would destroy permissions/env/model/statusLine
+          const full = (await readJsonForMerge(claudeSettingsPath)) || {};
           full.hooks = data;
           await this._atomicWrite(claudeSettingsPath, JSON.stringify(full, null, 2));
         },
@@ -346,10 +413,14 @@ class SyncEngine {
         settingKey: 'cloudSyncPlugins',
         path: pluginsFile,
         read: async () => {
+          let raw;
           try {
-            const raw = await fs.promises.readFile(pluginsFile, 'utf8');
-            return JSON.parse(raw);
-          } catch { return null; }
+            raw = await fs.promises.readFile(pluginsFile, 'utf8');
+          } catch (err) {
+            if (isMissingError(err)) return MISSING;
+            throw err;
+          }
+          return JSON.parse(raw);
         },
         write: async (data) => {
           await fs.promises.mkdir(path.dirname(pluginsFile), { recursive: true });
@@ -516,8 +587,9 @@ class SyncEngine {
     // Check toggle
     if (!this._isEntityEnabled(type)) return;
 
+    // A read failure throws and is logged by the caller: never push partial data
     const data = await handler.read();
-    if (data === null || data === undefined) return;
+    if (data === MISSING || data === null || data === undefined) return;
 
     const sanitized = handler.sanitize ? handler.sanitize(data) : data;
     const hash = computeHash(sanitized);
@@ -557,7 +629,7 @@ class SyncEngine {
     if (!handler) throw new Error(`Unknown entity type: ${type}`);
 
     const data = await handler.read();
-    if (data === null) return;
+    if (data === MISSING || data === null) return;
     const sanitized = handler.sanitize ? handler.sanitize(data) : data;
 
     // Force push without clientHash (no conflict check)
@@ -622,9 +694,21 @@ class SyncEngine {
     const envelope = await resp.json();
     const meta = this._syncMeta[type];
 
-    // Check if local also changed (conflict detection)
-    const localData = await handler.read();
-    if (localData !== null && meta) {
+    // Check if local also changed (conflict detection).
+    // A read failure here is NOT "no local data": applying the cloud copy would
+    // silently destroy local state we were merely unable to inspect. Abort.
+    let localData;
+    try {
+      localData = await handler.read();
+    } catch (err) {
+      console.error(
+        `[SyncEngine] Aborting pull for ${type}: could not read local data (${err.message}). ` +
+        `Cloud data was NOT applied — local files are left untouched. Will retry on the next pull.`
+      );
+      return;
+    }
+
+    if (localData !== MISSING && meta) {
       const localHash = computeHash(handler.sanitize ? handler.sanitize(localData) : localData);
       if (localHash !== meta.lastSyncedHash && envelope.hash !== meta.lastSyncedHash) {
         // Both sides changed since last sync -> conflict
@@ -637,7 +721,15 @@ class SyncEngine {
     if (handler.path) {
       this._suppressPath(handler.path);
     }
-    await handler.write(envelope.data);
+    try {
+      await handler.write(envelope.data);
+    } catch (err) {
+      // Handler writes abort rather than rewrite a file they failed to read back
+      console.error(
+        `[SyncEngine] Aborting pull for ${type}: write failed (${err.message}). Sync meta left unchanged.`
+      );
+      return;
+    }
 
     this._syncMeta[type] = {
       lastSyncedHash: envelope.hash,
@@ -760,4 +852,4 @@ class SyncEngine {
 }
 
 const syncEngine = new SyncEngine();
-module.exports = { syncEngine, SyncEngine };
+module.exports = { syncEngine, SyncEngine, MISSING };

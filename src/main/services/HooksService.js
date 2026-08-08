@@ -48,19 +48,57 @@ const HOOK_DEFINITIONS = [
   { key: 'WorktreeRemove', hasMatcher: false }
 ];
 
+// Marker code carried by the error thrown when settings.json cannot be trusted
+const SETTINGS_UNREADABLE = 'CLAUDE_SETTINGS_UNREADABLE';
+
 /**
- * Read Claude settings.json safely
+ * Build the error raised when settings.json exists but cannot be parsed/read.
+ * Mutating functions must surface it instead of writing, otherwise the user's
+ * permissions / env / model / statusLine would be replaced by a hooks-only file.
+ * @param {string} reason
+ * @returns {Error}
+ */
+function settingsUnreadableError(reason) {
+  const err = new Error(
+    `Claude settings.json is malformed, refusing to overwrite (${reason}). ` +
+    `The file was left untouched at ${CLAUDE_SETTINGS_PATH}. ` +
+    `A backup from a previous install may be available at ${CLAUDE_SETTINGS_BACKUP_PATH}.`
+  );
+  err.code = SETTINGS_UNREADABLE;
+  return err;
+}
+
+/**
+ * Read Claude settings.json.
+ * Distinguishes "file absent" (returns {}, legitimate) from "malformed or
+ * unreadable" (throws), so we never write over a file we failed to parse.
  * @returns {Object}
+ * @throws {Error} with code SETTINGS_UNREADABLE when the file exists but is unusable
  */
 function readClaudeSettings() {
+  let raw;
   try {
-    if (fs.existsSync(CLAUDE_SETTINGS_PATH)) {
-      return JSON.parse(fs.readFileSync(CLAUDE_SETTINGS_PATH, 'utf8'));
-    }
+    if (!fs.existsSync(CLAUDE_SETTINGS_PATH)) return {};
+    raw = fs.readFileSync(CLAUDE_SETTINGS_PATH, 'utf8');
   } catch (e) {
+    // The file disappeared between the check and the read: treat as absent
+    if (e && e.code === 'ENOENT') return {};
     console.error('Failed to read Claude settings:', e);
+    throw settingsUnreadableError(e.message);
   }
-  return {};
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    console.error('Failed to parse Claude settings:', e);
+    throw settingsUnreadableError(e.message);
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw settingsUnreadableError('root value is not a JSON object');
+  }
+  return parsed;
 }
 
 /**
@@ -132,11 +170,13 @@ function isOurHook(hookEntry) {
 
 /**
  * Install Claude Terminal hooks into ~/.claude/settings.json
- * Non-destructive: appends alongside existing user hooks
+ * Non-destructive: appends alongside existing user hooks.
+ * Aborts without writing if settings.json exists but cannot be parsed.
  * @returns {{ success: boolean, error?: string }}
  */
 function installHooks() {
   try {
+    // Throws on a malformed/unreadable file -> we abort before any write
     const settings = readClaudeSettings();
 
     // Create backup before modifying
@@ -178,11 +218,13 @@ function installHooks() {
 
 /**
  * Remove Claude Terminal hooks from ~/.claude/settings.json
- * Only removes our hooks (detected by HOOK_IDENTIFIER in command string)
+ * Only removes our hooks (detected by HOOK_IDENTIFIER in command string).
+ * Aborts without writing if settings.json exists but cannot be parsed.
  * @returns {{ success: boolean, error?: string }}
  */
 function removeHooks() {
   try {
+    // Throws on a malformed/unreadable file -> we abort before any write
     const settings = readClaudeSettings();
 
     if (!settings.hooks) {
@@ -275,7 +317,8 @@ function verifyAndRepairHooks() {
       return { ok: false, repaired: false, details: 'Handler script missing: ' + handlerPath };
     }
 
-    // 2. Read current hooks from Claude settings
+    // 2. Read current hooks from Claude settings.
+    // Throws on a malformed file -> reported as not ok, never repaired blindly
     const settings = readClaudeSettings();
     if (!settings.hooks) {
       // No hooks at all — reinstall
