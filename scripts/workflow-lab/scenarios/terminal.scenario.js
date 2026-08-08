@@ -168,16 +168,32 @@ module.exports = {
       },
     },
     {
-      // NOTHING in the app writes terminals/output/*.log today, so on a stock
-      // install this is the only outcome `read` can have. Returning '' would
-      // feed an empty string onward, and a `read -> analyse` chain would report
-      // success having looked at nothing — so it must fail loudly instead.
+      // TerminalOutputCapture only writes for terminals attached to a project,
+      // so a project that never had one has no log. Returning '' would feed an
+      // empty string onward and a `read -> analyse` chain would report success
+      // having looked at nothing — so it must fail loudly instead.
       name: 'read with no capture file at all fails loudly rather than returning empty',
       async setup(sb) { seedProjects(sb, [{ id: 'p-api', name: 'API', path: sb.dir }]); },
       config: { action: 'read', projectId: 'p-api' },
       expectThrow: true,
       assert(err) {
-        assert.match(err.message, /not implemented yet/i);
+        assert.match(err.message, /no captured output/i);
+      },
+    },
+    {
+      // End to end: the writer this app was missing, read back by the node.
+      name: 'reads back what TerminalOutputCapture actually wrote',
+      async setup(sb) {
+        seedProjects(sb, [{ id: 'p-api', name: 'API', path: sb.dir }]);
+        const capture = require('../../../src/main/services/TerminalOutputCapture');
+        capture.record('p-api', '\x1B[32mnpm run build\x1B[0m\r\nBuild succeeded\r\n');
+        capture.flush();
+      },
+      config: { action: 'read', projectId: 'p-api', lines: 10 },
+      assert(out) {
+        assert.match(out.output, /npm run build/);
+        assert.match(out.output, /Build succeeded/);
+        assert.ok(!out.output.includes('\x1B'), 'ANSI escapes reached the workflow');
       },
     },
     {

@@ -260,8 +260,11 @@ async function handle(name, args) {
       }
 
       try {
-        const content = fs.readFileSync(outputFile, 'utf8');
-        const allLines = content.split('\n');
+        // Drop trailing newlines BEFORE splitting. A log ending in "\n" would
+        // otherwise yield a final empty element that eats one slot of the tail:
+        // ask for 2 lines and you get the last line plus a blank.
+        const content = fs.readFileSync(outputFile, 'utf8').replace(/[\r\n]+$/, '');
+        const allLines = content.split(/\r?\n/);
         const tail = allLines.slice(-maxLines);
         const output = tail.join('\n').trim();
 

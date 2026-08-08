@@ -344,6 +344,9 @@ function _stopMcpTriggerPolling() {
  * Cleanup all services before quit
  */
 function cleanupServices() {
+  // Runs before the PTYs are killed so the last output reaches disk instead of
+  // dying in the flush buffer.
+  try { require('./TerminalOutputCapture').shutdown(); } catch (_) { /* non-critical */ }
   terminalService.killAll();
   mcpService.stopAll();
   fivemService.stopAll();

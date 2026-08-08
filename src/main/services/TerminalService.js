@@ -7,6 +7,7 @@ const os = require('os');
 const fs = require('fs');
 const pty = require('node-pty');
 const { execFileSync } = require('child_process');
+const terminalCapture = require('./TerminalOutputCapture');
 
 class TerminalService {
   constructor() {
@@ -129,6 +130,9 @@ class TerminalService {
         const delay = buffer.length > 10000 ? 32 : sinceLastFlush > 100 ? 4 : 16;
         setTimeout(() => {
           this.sendToRenderer('terminal-data', { id, data: buffer });
+          // Persist a rolling tail per project. Buffered and written on its own
+          // timer, so this adds no disk I/O to the render path.
+          terminalCapture.record(ptyProcess._meta?.projectId, buffer);
           buffer = '';
           flushScheduled = false;
           lastFlush = Date.now();
@@ -144,6 +148,9 @@ class TerminalService {
       const signal   = (evt && evt.signal != null) ? evt.signal : null;
       try { ptyProcess.kill(); } catch (e) {}
       this.terminals.delete(id);
+      // Persist whatever the process printed on its way out, before anything
+      // can read the log looking for the failure.
+      terminalCapture.flush();
       this.sendToRenderer('terminal-exit', { id, exitCode, signal });
       // Fire workflow trigger callback (non-blocking)
       if (typeof this.onExitCallback === 'function') {

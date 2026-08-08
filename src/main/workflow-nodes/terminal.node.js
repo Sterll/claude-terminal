@@ -23,11 +23,10 @@ const { findProjectRecord, projectLabel } = require('./_projects');
  *   - If no tab is open for the project, the renderer QUEUES the command for
  *     30 seconds and drops it after that. `delivered: true` therefore means
  *     "handed to the renderer", never "executed".
- *   - `read` tails ~/.claude-terminal/terminals/output/<projectId>.log — the
- *     file `terminal_read_output` reads. Nothing in the app writes that file
- *     today, so `read` returns an empty string on a stock install. It is wired
- *     up so the node works the day capture lands, and it reports emptiness
- *     rather than pretending.
+ *   - `read` tails ~/.claude-terminal/terminals/output/<projectId>.log, the
+ *     file `terminal_read_output` reads and TerminalOutputCapture writes. Only
+ *     terminals attached to a project are captured, and the log is a rolling
+ *     tail with ANSI stripped — not a faithful transcript.
  *
  * Use `shell` instead when you need the output or the exit code. This node is
  * for driving an interactive session a human is watching.
@@ -133,16 +132,16 @@ module.exports = {
     const maxLines = clampLines(resolveVars(config.lines ?? 50, vars));
     const logFile  = outputLogFile(project.id);
 
-    // Nothing in the app writes this file yet, so on a stock install it does not
-    // exist. Returning '' there would quietly feed an empty string onward — a
-    // `read -> claude analyse` chain would analyse nothing and report success.
-    // Fail loudly instead. A log that exists but is empty still returns '',
-    // because that genuinely means "nothing captured".
+    // No log at all means nothing has ever run in a terminal attached to this
+    // project. Returning '' there would quietly feed an empty string onward and
+    // a `read -> claude analyse` chain would analyse nothing while reporting
+    // success. Fail loudly instead. A log that EXISTS but is empty still
+    // returns '', because that genuinely means "nothing captured yet".
     if (!fs.existsSync(logFile)) {
       throw new Error(
         `Terminal node: no captured output for "${projectLabel(project)}". ` +
-        'Terminal output capture is not implemented yet, so "read" has nothing to read — ' +
-        "use a shell node when you need a command's output."
+        'Only terminals opened against a project are captured — open one and run ' +
+        "something, or use a shell node when you need a command's output."
       );
     }
 
