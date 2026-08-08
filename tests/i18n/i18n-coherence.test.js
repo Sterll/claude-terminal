@@ -100,74 +100,85 @@ function findDuplicateKeysInJson(jsonString) {
 const mainLocalesDir = path.resolve(__dirname, '../../src/renderer/i18n/locales');
 const projectTypesDir = path.resolve(__dirname, '../../src/project-types');
 
+// The locale every other locale is compared against.
+const REFERENCE_LOCALE = 'en';
+
+/**
+ * Enumerate every locale shipped in the main locales directory.
+ * Done at module load (not in beforeAll) so `test.each` can build cases.
+ * @returns {string[]} locale codes, e.g. ['en', 'es', 'fr']
+ */
+function discoverLocales() {
+  return fs.readdirSync(mainLocalesDir)
+    .filter(f => f.endsWith('.json'))
+    .map(f => path.basename(f, '.json'))
+    .sort();
+}
+
+const allLocales = discoverLocales();
+const otherLocales = allLocales.filter(l => l !== REFERENCE_LOCALE);
+
+/** Read + parse a locale, returning its raw text, data and key list. */
+function loadLocale(locale) {
+  const raw = fs.readFileSync(path.join(mainLocalesDir, `${locale}.json`), 'utf8');
+  const data = JSON.parse(raw);
+  return { raw, data, keys: extractKeys(data) };
+}
+
 describe('i18n coherence — main locales', () => {
-  let enData, frData, enKeys, frKeys;
-  let enRaw, frRaw;
+  const loaded = {};
 
   beforeAll(() => {
-    enRaw = fs.readFileSync(path.join(mainLocalesDir, 'en.json'), 'utf8');
-    frRaw = fs.readFileSync(path.join(mainLocalesDir, 'fr.json'), 'utf8');
-    enData = JSON.parse(enRaw);
-    frData = JSON.parse(frRaw);
-    enKeys = extractKeys(enData);
-    frKeys = extractKeys(frData);
+    for (const locale of allLocales) {
+      loaded[locale] = loadLocale(locale);
+    }
   });
 
-  test('en.json and fr.json both load as valid JSON', () => {
-    expect(enData).toBeDefined();
-    expect(frData).toBeDefined();
-    expect(typeof enData).toBe('object');
-    expect(typeof frData).toBe('object');
+  test('the reference locale exists and other locales were discovered', () => {
+    expect(allLocales).toContain(REFERENCE_LOCALE);
+    expect(otherLocales.length).toBeGreaterThan(0);
   });
 
-  test('every key in en.json exists in fr.json', () => {
-    const frKeySet = new Set(frKeys);
-    const missingInFr = enKeys.filter(k => !frKeySet.has(k));
-    if (missingInFr.length > 0) {
+  test.each(allLocales)('%s.json loads as valid JSON', (locale) => {
+    expect(loaded[locale].data).toBeDefined();
+    expect(typeof loaded[locale].data).toBe('object');
+  });
+
+  test.each(otherLocales)('every key in en.json exists in %s.json', (locale) => {
+    const localeKeySet = new Set(loaded[locale].keys);
+    const missing = loaded[REFERENCE_LOCALE].keys.filter(k => !localeKeySet.has(k));
+    if (missing.length > 0) {
       // Report missing keys for debugging
-      console.warn(`Keys in en.json missing from fr.json (${missingInFr.length}):\n  ${missingInFr.slice(0, 20).join('\n  ')}${missingInFr.length > 20 ? '\n  ...' : ''}`);
+      console.warn(`Keys in ${REFERENCE_LOCALE}.json missing from ${locale}.json (${missing.length}):\n  ${missing.slice(0, 20).join('\n  ')}${missing.length > 20 ? '\n  ...' : ''}`);
     }
-    expect(missingInFr).toEqual([]);
+    expect(missing).toEqual([]);
   });
 
-  test('every key in fr.json exists in en.json', () => {
-    const enKeySet = new Set(enKeys);
-    const missingInEn = frKeys.filter(k => !enKeySet.has(k));
-    if (missingInEn.length > 0) {
-      console.warn(`Keys in fr.json missing from en.json (${missingInEn.length}):\n  ${missingInEn.slice(0, 20).join('\n  ')}${missingInEn.length > 20 ? '\n  ...' : ''}`);
+  test.each(otherLocales)('every key in %s.json exists in en.json', (locale) => {
+    const referenceKeySet = new Set(loaded[REFERENCE_LOCALE].keys);
+    const extra = loaded[locale].keys.filter(k => !referenceKeySet.has(k));
+    if (extra.length > 0) {
+      console.warn(`Keys in ${locale}.json missing from ${REFERENCE_LOCALE}.json (${extra.length}):\n  ${extra.slice(0, 20).join('\n  ')}${extra.length > 20 ? '\n  ...' : ''}`);
     }
-    expect(missingInEn).toEqual([]);
+    expect(extra).toEqual([]);
   });
 
-  test('no empty string values in en.json', () => {
-    const emptyKeys = enKeys.filter(k => getValueAtPath(enData, k) === '');
+  test.each(allLocales)('no empty string values in %s.json', (locale) => {
+    const { data, keys } = loaded[locale];
+    const emptyKeys = keys.filter(k => getValueAtPath(data, k) === '');
     if (emptyKeys.length > 0) {
-      console.warn(`Empty values in en.json:\n  ${emptyKeys.join('\n  ')}`);
+      console.warn(`Empty values in ${locale}.json:\n  ${emptyKeys.join('\n  ')}`);
     }
     expect(emptyKeys).toEqual([]);
   });
 
-  test('no empty string values in fr.json', () => {
-    const emptyKeys = frKeys.filter(k => getValueAtPath(frData, k) === '');
-    if (emptyKeys.length > 0) {
-      console.warn(`Empty values in fr.json:\n  ${emptyKeys.join('\n  ')}`);
-    }
-    expect(emptyKeys).toEqual([]);
-  });
-
-  test('no duplicate keys in en.json', () => {
-    const dups = findDuplicateKeysInJson(enRaw);
+  test.each(allLocales)('no duplicate keys in %s.json', (locale) => {
+    const dups = findDuplicateKeysInJson(loaded[locale].raw);
     expect(dups).toEqual([]);
   });
 
-  test('no duplicate keys in fr.json', () => {
-    const dups = findDuplicateKeysInJson(frRaw);
-    expect(dups).toEqual([]);
-  });
-
-  test('both locales have a reasonable number of keys (>100)', () => {
-    expect(enKeys.length).toBeGreaterThan(100);
-    expect(frKeys.length).toBeGreaterThan(100);
+  test.each(allLocales)('%s.json has a reasonable number of keys (>100)', (locale) => {
+    expect(loaded[locale].keys.length).toBeGreaterThan(100);
   });
 });
 

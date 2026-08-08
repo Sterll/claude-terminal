@@ -94,8 +94,28 @@ function getCurrentLanguage() {
 }
 
 /**
+ * Resolve a dot-separated key path against a translations object.
+ * @param {Object} source - Translations object to walk
+ * @param {string[]} keys - Pre-split key path segments
+ * @returns {string|null} The string value, or null when unresolved
+ */
+function resolveKeyPath(source, keys) {
+  let value = source;
+  for (const key of keys) {
+    if (value && typeof value === 'object' && key in value) {
+      value = value[key];
+    } else {
+      return null;
+    }
+  }
+  return typeof value === 'string' ? value : null;
+}
+
+/**
  * Get translation by key path (e.g., 'common.close')
- * Supports interpolation with {variable} syntax
+ * Supports interpolation with {variable} syntax.
+ * Missing keys fall back to the English value so an untranslated string
+ * degrades to readable English instead of a raw dot-path.
  * @param {string} keyPath - Dot-separated key path
  * @param {Object} params - Optional parameters for interpolation
  * @returns {string}
@@ -119,16 +139,15 @@ function t(keyPath, params = {}) {
   const translations = i18nState.get().translations;
   const keys = keyPath.split('.');
 
-  let value = translations;
-  for (const key of keys) {
-    if (value && typeof value === 'object' && key in value) {
-      value = value[key];
-    } else {
-      return keyPath;
-    }
+  let value = resolveKeyPath(translations, keys);
+
+  // Fallback 1: the English locale (readable, if untranslated)
+  if (value === null && currentLang !== 'en') {
+    value = resolveKeyPath(locales.en, keys);
   }
 
-  if (typeof value !== 'string') {
+  // Fallback 2 (last resort): the key path itself
+  if (value === null) {
     return keyPath;
   }
 
