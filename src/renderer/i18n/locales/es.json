@@ -2336,7 +2336,8 @@
     "toast": {
       "saveFailed": "No se pudo guardar el flujo de trabajo.",
       "runFailed": "No se pudo iniciar el flujo de trabajo.",
-      "toggleFailed": "No se pudo actualizar el flujo de trabajo."
+      "toggleFailed": "No se pudo actualizar el flujo de trabajo.",
+      "editorOpenFailed": "No se pudo abrir el editor de workflows."
     },
     "validation": {
       "generic": "El flujo de trabajo tiene errores de validación.",

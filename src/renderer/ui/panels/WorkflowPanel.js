@@ -61,7 +61,7 @@ function tasksDeps() {
     trigger: triggerWorkflow,
     toggle: toggleWorkflow,
     confirmDelete: confirmDeleteWorkflow,
-    openEditor,
+    openEditor: openEditorSafe,
     openHistory: (id) => {
       state.activeTab = 'runs';
       renderPanel();
@@ -731,7 +731,7 @@ function renderWorkflowList(el, workflows = state.workflows) {
       if (runId) api?.cancel(runId);
       return;
     }
-    if (e.target.closest('.wf-card-edit')) { e.stopPropagation(); openEditor(id); return; }
+    if (e.target.closest('.wf-card-edit')) { e.stopPropagation(); openEditorSafe(id); return; }
     if (e.target.closest('.wf-switch')) { e.stopPropagation(); return; }
     openDetail(id);
   });
@@ -755,7 +755,7 @@ function renderWorkflowList(el, workflows = state.workflows) {
     showContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
-        { label: t('workflow.contextMenu.edit'), icon: svgEdit(), onClick: () => openEditor(id) },
+        { label: t('workflow.contextMenu.edit'), icon: svgEdit(), onClick: () => openEditorSafe(id) },
         { label: t('workflow.contextMenu.runNow'), icon: svgPlay(12), onClick: () => triggerWorkflow(id) },
         { label: t('workflow.contextMenu.duplicate'), icon: svgCopy(), onClick: () => duplicateWorkflow(id) },
         { separator: true },
@@ -1333,7 +1333,7 @@ function openCreateChoiceModal() {
       const mode = card.dataset.mode;
       if (mode === 'blank') {
         close();
-        openEditor();
+        openEditorSafe();
       } else if (mode === 'ai') {
         showStep('ai');
       }
@@ -1352,7 +1352,7 @@ function openCreateChoiceModal() {
     if (prompt.length < 5) return;
     const name = nameInput.value.trim() || _deriveWorkflowName(prompt);
     close();
-    openEditor(null, { defaultName: name, aiPrompt: prompt });
+    openEditorSafe(null, { defaultName: name, aiPrompt: prompt });
   };
   submitBtn.addEventListener('click', submit);
   promptInput.addEventListener('keydown', (e) => {
@@ -1371,6 +1371,20 @@ function _deriveWorkflowName(prompt) {
   // Take first 6 words, cap at 48 chars
   const words = cleaned.split(' ').slice(0, 6).join(' ');
   return words.length > 48 ? words.slice(0, 45) + '…' : words;
+}
+
+/**
+ * Open the editor from a UI event.
+ *
+ * openEditor is async and every call site is fire-and-forget, so a throw would
+ * become an unhandled rejection and the user would be left staring at a panel
+ * that never changed. Route clicks through here so a failure says so.
+ */
+function openEditorSafe(workflowId = null, options = {}) {
+  return openEditor(workflowId, options).catch(e => {
+    console.error('[WorkflowPanel] openEditor failed:', e);
+    toast(t('workflow.toast.editorOpenFailed'), 'error');
+  });
 }
 
 async function openEditor(workflowId = null, options = {}) {
@@ -1394,8 +1408,15 @@ async function openEditor(workflowId = null, options = {}) {
   // The registry must be in hand BEFORE the palette is built, otherwise the
   // first editor open lists only the hand-written STEP_TYPES and every
   // registry-only node is missing until something reopens the editor.
-  await nodeRegistry.loadNodeRegistry()
-    .catch(e => console.warn('[WorkflowPanel] nodeRegistry load error:', e));
+  //
+  // Bounded on purpose: this await sits on a user action, and getNodeRegistry
+  // has no timeout of its own. An IPC that never answers would otherwise mean
+  // the editor never opens at all — strictly worse than the short palette this
+  // await exists to prevent. On timeout we carry on with whatever loaded.
+  await Promise.race([
+    nodeRegistry.loadNodeRegistry(),
+    new Promise(resolve => setTimeout(resolve, 3000)),
+  ]).catch(e => console.warn('[WorkflowPanel] nodeRegistry load error:', e));
 
   // Load all custom field renderers (synchronous, idempotent)
   fieldRegistry.loadAll();
@@ -3275,7 +3296,7 @@ function openDetail(id) {
     focusEl: overlay.querySelector('#wf-det-close'),
   });
   overlay.querySelector('#wf-det-close').addEventListener('click', close);
-  overlay.querySelector('#wf-edit').addEventListener('click', () => { close(); openEditor(id); });
+  overlay.querySelector('#wf-edit').addEventListener('click', () => { close(); openEditorSafe(id); });
   overlay.querySelector('#wf-run-now')?.addEventListener('click', () => { triggerWorkflow(id); close(); });
   overlay.querySelector('#wf-run-now-stop')?.addEventListener('click', e => { const runId = e.currentTarget.dataset.runId; if (runId) api?.cancel(runId); close(); });
 }

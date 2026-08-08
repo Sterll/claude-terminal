@@ -2339,7 +2339,8 @@
     "toast": {
       "saveFailed": "Failed to save the workflow.",
       "runFailed": "Failed to start the workflow.",
-      "toggleFailed": "Failed to update the workflow."
+      "toggleFailed": "Failed to update the workflow.",
+      "editorOpenFailed": "Could not open the workflow editor."
     },
     "validation": {
       "generic": "The workflow has validation errors.",
