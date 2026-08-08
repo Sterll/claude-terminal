@@ -40,7 +40,10 @@ function saveProjects(data) {
 function findProject(data, ref) {
   if (!ref) return null;
   const needle = String(ref).toLowerCase();
-  return data.projects.find(p =>
+  // loadProjects() defaults carefully on ENOENT, but a legacy or half-written
+  // projects.json with no `projects` key crashed here instead of surfacing as a
+  // lookup failure. parallel_spawn.node.js already guards the same way.
+  return (data.projects || []).find(p =>
     p.id === ref ||
     (p.name || '').toLowerCase() === needle ||
     (p.name || '').toLowerCase().includes(needle) ||

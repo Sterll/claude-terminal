@@ -44,7 +44,12 @@ function getTypes()  { return [..._nodes.keys()]; }
 function resolveProjectPath(ref, vars) {
   if (!ref) {
     const ctx = vars instanceof Map ? (vars.get('ctx') || {}) : (vars?.ctx || {});
-    ref = ctx.activeProjectId || ctx.projectId || '';
+    // `ctx.project` is the run's own project path and is the ONLY one of these
+    // WorkflowRunner actually sets (see _buildVars); activeProjectId is written
+    // solely by the `project` node. Without it the documented "falls back to
+    // the run context" promise never held, and a project-scoped or
+    // cron-triggered workflow with an empty picker hard-failed.
+    ref = ctx.activeProjectId || ctx.projectId || ctx.project || '';
   }
   if (!ref) return null;
   if (fs.existsSync(ref)) return ref;

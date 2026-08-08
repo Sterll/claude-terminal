@@ -64,8 +64,7 @@ module.exports = {
   async run(config, vars, signal) {
     const https = require('https');
     const http  = require('http');
-    const url   = config.url;
-    if (!url) throw new Error('Missing webhook URL');
+    if (!config.url) throw new Error('Missing webhook URL');
 
     // Resolve $xxx variables — supports Maps and plain objects
     function resolve(str) {
@@ -87,6 +86,10 @@ module.exports = {
     if (icon)     payload.icon_emoji = icon;
 
     const body = JSON.stringify(payload);
+    // The URL is the one field that used to skip resolve(), so storing a
+    // webhook in a variable failed with a confusing "Invalid URL: $myHook".
+    // Resolve BEFORE the guard so it inspects the real destination.
+    const url = resolve(config.url);
     // SSRF guard — reject non-http(s) / private / loopback hosts.
     const parsed = assertSafeUrl(url);
     const lib = parsed.protocol === 'https:' ? https : http;

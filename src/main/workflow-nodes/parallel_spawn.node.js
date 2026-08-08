@@ -21,7 +21,9 @@ function projectsFile() {
 function findProjectPath(ref, vars) {
   if (!ref) {
     const ctx = vars instanceof Map ? (vars.get('ctx') || {}) : (vars?.ctx || {});
-    ref = ctx.activeProjectId || ctx.projectId || '';
+    // ctx.project is the run's own project path and the only one
+    // WorkflowRunner actually sets; without it an empty picker always failed.
+    ref = ctx.activeProjectId || ctx.projectId || ctx.project || '';
   }
   if (!ref) return null;
   if (fs.existsSync(ref)) return ref;
