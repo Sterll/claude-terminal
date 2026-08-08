@@ -56,12 +56,18 @@ const PURIFY_CONFIG = {
     'ellipse', 'g', 'text', 'tspan', 'defs', 'use', 'marker',
     'clipPath', 'mask', 'pattern', 'linearGradient', 'radialGradient',
     'stop', 'symbol', 'foreignObject', 'title',
-    // Interactive elements
+    // Interactive elements. `iframe` is required by the HTML preview block
+    // (blocks/code.js renderHtmlPreviewBlock) — its `src` is assigned from JS
+    // after sanitization and points at the `ct-preview://` scheme.
     'input', 'button', 'iframe', 'label',
   ],
   ALLOWED_ATTR: [
     'href', 'target', 'rel', 'class', 'style', 'title',
-    'src', 'srcdoc', 'sandbox', 'alt', 'width', 'height',
+    // `sandbox` is kept so the preview iframe stays sandboxed. `srcdoc` is
+    // deliberately absent: DOMPurify does not treat it as a URI attribute and
+    // therefore never sanitizes its contents, so any `<iframe srcdoc="…">` in
+    // model output would survive intact. The preview never needs it.
+    'src', 'sandbox', 'alt', 'width', 'height',
     'viewBox', 'xmlns', 'fill', 'stroke', 'stroke-width', 'stroke-linecap',
     'stroke-linejoin', 'stroke-dasharray', 'd', 'cx', 'cy', 'r', 'x', 'y',
     'x1', 'y1', 'x2', 'y2', 'rx', 'ry', 'points',
@@ -72,7 +78,10 @@ const PURIFY_CONFIG = {
   ALLOW_DATA_ATTR: true,
   ADD_ATTR: ['target'],
   FORBID_TAGS: ['script', 'object', 'embed'],
-  FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover'],
+  // No FORBID_ATTR denylist here on purpose: ALLOWED_ATTR is an allowlist, so
+  // every attribute not named above is already dropped — that covers all `on*`
+  // handlers, not just the handful a denylist could enumerate. Listing a few
+  // event handlers would only suggest a coverage the denylist does not provide.
 };
 
 // Sentinel for pipes temporarily protected inside inline code spans. The GFM

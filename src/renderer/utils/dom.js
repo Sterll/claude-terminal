@@ -4,7 +4,10 @@
  */
 
 /**
- * Escape HTML special characters to prevent XSS
+ * Escape HTML special characters to prevent XSS.
+ * `'` is escaped too: several call sites interpolate into single-quoted
+ * attributes (e.g. `data-detected='${escapeHtml(...)}'`), which a raw
+ * apostrophe would break out of.
  * @param {string} text - Raw text to escape
  * @returns {string} - Escaped HTML-safe string
  */
@@ -14,7 +17,8 @@ function escapeHtml(text) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 /**
