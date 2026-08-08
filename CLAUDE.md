@@ -394,7 +394,9 @@ Exposes API namespaces on `window.electron_api`:
 
 `terminal` | `git` (69 methods) | `github` | `chat` | `claude` | `mcp` | `mcpRegistry` | `marketplace` | `plugins` | `dialog` | `explorer` | `window` | `app` | `notification` | `usage` | `project` | `hooks` | `updates` | `setupWizard` | `lifecycle` | `quickPicker` | `tray` | `fivem` | `webapp` | `api` | `python` | `minecraft` | `discord` | `remote` | `workspace` | `workflow` | `parallel` | `database` | `time` | `telemetry` | `cloud`
 
-Also exposes `window.electron_nodeModules`: `path`, `fs` (sync + promises), `os.homedir()`, `process.env`, `child_process.execSync`.
+Also exposes `window.electron_nodeModules`: `path`, `fs` (sync + promises, guarded by a system-path blocklist in `preload.js`), `os.homedir()`, a small allowlist of `process.env` vars, and `__dirname`.
+
+**`child_process` is deliberately NOT exposed.** Never add it: the renderer displays model-authored markdown, so a bridge to process spawning would turn any HTML injection into code execution.
 
 ## Data Storage
 
@@ -456,7 +458,8 @@ OS credential store (via keytar)       # GitHub token (Windows Credential Manage
 
 ## Key Implementation Details
 
-- **No context isolation:** `contextIsolation: false` + `nodeIntegration: false` with full `electron_api` bridge
+- **Context isolation is ON:** `contextIsolation: true` + `nodeIntegration: false` in all 5 windows, with the `electron_api` bridge exposed via `contextBridge`
+- **CSP:** `index.html` sets `script-src 'self' 'unsafe-eval'` with **no** `'unsafe-inline'`. This is the app's most important control — it means HTML injected into the chat cannot execute script. Do not relax it.
 - **Single instance:** `app.requestSingleInstanceLock()` prevents multiple instances
 - **Tray integration:** close button minimizes to tray, `app-quit` for real exit
 - **Frameless window:** custom titlebar in HTML/CSS with `-webkit-app-region: drag`
