@@ -53,6 +53,9 @@ const { showContextMenu } = require('./ContextMenu');
 const ContextPromptService = require('../../services/ContextPromptService');
 const { getBuiltinSystemPrompt } = require('../../services/BuiltinSystemPrompts');
 
+// BCP 47 tags used for date formatting, one per supported UI language.
+const DATE_LOCALES = { en: 'en-US', fr: 'fr-FR', es: 'es-ES' };
+
 // Lazy require to avoid circular dependency
 let QuickActions = null;
 function getQuickActions() {
@@ -257,7 +260,7 @@ function formatRelativeTime(dateString) {
   if (diffMins < 60) return t('time.minutesAgo', { count: diffMins });
   if (diffHours < 24) return t('time.hoursAgo', { count: diffHours });
   if (diffDays < 7) return t('time.daysAgo', { count: diffDays });
-  const locale = getCurrentLanguage() === 'fr' ? 'fr-FR' : 'en-US';
+  const locale = DATE_LOCALES[getCurrentLanguage()] || DATE_LOCALES.en;
   return date.toLocaleDateString(locale, { day: 'numeric', month: 'short' });
 }
 
@@ -309,11 +312,11 @@ function getSessionGroup(dateString) {
 
 function groupSessionsByTime(sessions) {
   const groups = {
-    pinned: { key: 'pinned', label: t('sessions.pinned') || (getCurrentLanguage() === 'fr' ? 'Epinglées' : 'Pinned'), sessions: [] },
-    today: { key: 'today', label: t('sessions.today') || t('common.today'), sessions: [] },
-    yesterday: { key: 'yesterday', label: t('sessions.yesterday') || t('time.yesterday') || (getCurrentLanguage() === 'fr' ? 'Hier' : 'Yesterday'), sessions: [] },
-    thisWeek: { key: 'thisWeek', label: t('sessions.thisWeek') || (getCurrentLanguage() === 'fr' ? 'Cette semaine' : 'This week'), sessions: [] },
-    older: { key: 'older', label: t('sessions.older') || (getCurrentLanguage() === 'fr' ? 'Plus ancien' : 'Older'), sessions: [] }
+    pinned: { key: 'pinned', label: t('sessions.pinned'), sessions: [] },
+    today: { key: 'today', label: t('sessions.today'), sessions: [] },
+    yesterday: { key: 'yesterday', label: t('sessions.yesterday'), sessions: [] },
+    thisWeek: { key: 'thisWeek', label: t('sessions.thisWeek'), sessions: [] },
+    older: { key: 'older', label: t('sessions.older'), sessions: [] }
   };
 
   sessions.forEach(session => {
@@ -2468,7 +2471,7 @@ class TerminalManager extends BaseComponent {
         displayTitle = '/' + skillName;
         isSkill = true;
       } else {
-        displayTitle = getCurrentLanguage() === 'fr' ? 'Conversation sans titre' : 'Untitled conversation';
+        displayTitle = t('sessions.untitled');
       }
 
       const hoursAgo = (now - new Date(session.modified).getTime()) / 3600000;
@@ -2558,7 +2561,7 @@ class TerminalManager extends BaseComponent {
           <p class="sessions-empty-hint">${t('terminals.createHint')}</p>
           <button class="sessions-empty-btn" id="sessions-empty-create">
             <svg width="15" height="15"><use href="#s-plus"/></svg>
-            ${t('terminals.newConversation') || (getCurrentLanguage() === 'fr' ? 'Nouvelle conversation' : 'New conversation')}
+            ${t('terminals.newConversation')}
           </button>
         </div>`;
         const emptyBtn = emptyState.querySelector('#sessions-empty-create');
@@ -2608,7 +2611,7 @@ class TerminalManager extends BaseComponent {
               <svg class="sessions-search-icon" width="13" height="13"><use href="#s-search"/></svg>
               <input type="text" class="sessions-search" placeholder="${t('common.search')}..." />
             </div>
-            <button class="sessions-new-btn" title="${t('terminals.newConversation') || (getCurrentLanguage() === 'fr' ? 'Nouvelle conversation' : 'New conversation')}">
+            <button class="sessions-new-btn" title="${t('terminals.newConversation')}">
               <svg width="14" height="14"><use href="#s-plus"/></svg>
               ${t('common.new')}
             </button>
@@ -3261,7 +3264,10 @@ class TerminalManager extends BaseComponent {
 
     if (termData.isPdf) {
       const pdfContainer = wrapper.querySelector('.file-viewer-pdf');
-      import('./dist/pdf-viewer.bundle.js').then(m => {
+      // Sibling of renderer.bundle.js, not './dist/...': a dynamic import() in a
+      // classic external script resolves against the SCRIPT url, so the old path
+      // asked for dist/dist/... and 404'd, silently breaking the viewer.
+      import('./pdf-viewer.bundle.js').then(m => {
         const viewer = m.renderPdf(pdfContainer, fileUrl);
         termData.viewerCleanup = () => viewer.destroy();
       }).catch(err => {
@@ -3272,7 +3278,8 @@ class TerminalManager extends BaseComponent {
 
     if (termData.is3D) {
       const threeContainer = wrapper.querySelector('.file-viewer-3d');
-      import('./dist/three-viewer.bundle.js').then(m => {
+      // Same script-relative resolution as the PDF viewer above.
+      import('./three-viewer.bundle.js').then(m => {
         const viewer = m.render3D(threeContainer, fileUrl, termData.modelExt);
         termData.viewerCleanup = () => viewer.destroy();
       }).catch(err => {

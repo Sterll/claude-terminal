@@ -5068,15 +5068,8 @@ select.wf-step-edit-input {
 }
 .wf-sb-spacer { flex: 1; }
 
-/* ── LiteGraph dark theme overrides ───────────────────────────────────────── */
 
-/* Hide default litegraph CSS that fights our canvas */
-.litegraph canvas { outline: none !important; }
 
-/* Neutralize the default grid pattern (we use CSS overlay) */
-.wf-editor-canvas-wrap .litegraph {
-  background: transparent !important;
-}
 
 /* ── AI Workflow Builder Panel ────────────────────────────────────────────── */
 .wf-editor { position: relative; }
@@ -5201,43 +5194,6 @@ select.wf-step-edit-input {
   font-size: 12px;
 }
 
-.litegraph .litecontextmenu {
-  background: #111113 !important;
-  border: 1px solid rgba(255,255,255,.06) !important;
-  border-radius: 8px !important;
-  box-shadow: 0 8px 32px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.02) !important;
-  font-family: inherit !important;
-  font-size: 11px !important;
-  padding: 3px !important;
-}
-.litegraph .litecontextmenu .litemenu-entry {
-  color: var(--text-secondary) !important;
-  padding: 7px 12px !important;
-  border-radius: 6px !important;
-  margin: 1px 0 !important;
-  transition: color 0.1s !important, background-color 0.1s !important, border-color 0.1s !important, opacity 0.1s !important, transform 0.1s !important
-}
-.litegraph .litecontextmenu .litemenu-entry:hover {
-  background: rgba(255,255,255,.07) !important;
-  color: var(--text-primary) !important;
-}
-.litegraph .litecontextmenu .litemenu-entry.has_submenu {
-  color: var(--text-primary) !important;
-}
-.litegraph .litesearchbox {
-  background: #141414 !important;
-  border: 1px solid rgba(255,255,255,.08) !important;
-  border-radius: 10px !important;
-  box-shadow: 0 12px 40px rgba(0,0,0,.6) !important;
-}
-.litegraph .litesearchbox input {
-  background: rgba(0,0,0,.3) !important;
-  color: var(--text-primary) !important;
-  border: 1px solid rgba(255,255,255,.06) !important;
-  border-radius: 8px !important;
-  padding: 8px 10px !important;
-  font-size: 12px !important;
-}
 
 /* ── Autocomplete popup ─────────────────────────────────────────────────────── */
 .wf-autocomplete-popup {

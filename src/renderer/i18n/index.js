@@ -9,22 +9,122 @@ const { State } = require('../state/State');
 const SUPPORTED_LANGUAGES = ['fr', 'en', 'es'];
 const DEFAULT_LANGUAGE = 'fr';
 
-// Load locale files
-const locales = {
-  fr: require('./locales/fr.json'),
-  en: require('./locales/en.json'),
-  es: require('./locales/es.json')
+// Display names, kept here so the language picker does not have to load every
+// locale file just to read `language.name` out of it.
+const LANGUAGE_NAMES = {
+  fr: 'Français',
+  en: 'English',
+  es: 'Español'
 };
 
-// Current language state
+// ── Locale loading ────────────────────────────────────────────────────────
+//
+// Only English is bundled eagerly. It is the fallback locale used by t() for
+// any key missing from the active language, so it has to be available
+// synchronously at all times; the other locales are loaded on demand the
+// first time they become active (~150 KB of JSON each that most users never
+// need).
+//
+// The on-demand load is *synchronous* on purpose. initI18n() and
+// setLanguage() are called from synchronous code (renderer.js, SettingsPanel)
+// and every t() call right after them expects the new strings to be there
+// already, so an awaited import would have painted a frame of English first.
+// In the packaged renderer the JSON is read through the preload fs bridge
+// from dist/locales/, which scripts/build-renderer.js copies next to the
+// bundle; under Node/Jest it comes straight from the source tree.
+const locales = {
+  en: require('./locales/en.json')
+};
+
+// `module.require` exists under Node/Jest but not in the esbuild browser
+// bundle, which lets the source-tree path stay invisible to the bundler (no
+// locale JSON is pulled into renderer.bundle.js beyond English).
+const _nodeRequire =
+  typeof module === 'object' && module !== null && typeof module.require === 'function'
+    ? module.require.bind(module)
+    : null;
+
+// Project-type translations merged before their locale was loaded.
+const _pendingMerges = {};
+
+/**
+ * Read a locale JSON that is not bundled with the renderer.
+ * @param {string} code - Language code
+ * @returns {Object|null} Parsed translations, or null when unavailable
+ */
+function readLocaleFile(code) {
+  // Node / Jest: the locale files sit next to this module.
+  if (_nodeRequire) {
+    try {
+      return _nodeRequire('./locales/' + code + '.json');
+    } catch (e) {
+      /* fall through to the renderer path */
+    }
+  }
+
+  // Renderer: read the copy the build placed in dist/locales/.
+  try {
+    const nodeModules = typeof window !== 'undefined' ? window.electron_nodeModules : null;
+    if (!nodeModules || !nodeModules.fs || !nodeModules.path) return null;
+    const file = nodeModules.path.join(nodeModules.__dirname, 'dist', 'locales', code + '.json');
+    if (nodeModules.fs.existsSync && !nodeModules.fs.existsSync(file)) return null;
+    const raw = nodeModules.fs.readFileSync(file, 'utf8');
+    if (typeof raw !== 'string' || !raw) return null;
+    return JSON.parse(raw);
+  } catch (e) {
+    console.warn(`[i18n] Could not load locale "${code}":`, e && e.message);
+    return null;
+  }
+}
+
+/**
+ * Get a locale's translations, loading it on first use.
+ * @param {string} code - Language code
+ * @returns {Object|null} Translations, or null when the locale is unavailable
+ */
+function loadLocale(code) {
+  if (locales[code]) return locales[code];
+
+  const translations = readLocaleFile(code);
+  if (!translations) return null;
+
+  locales[code] = translations;
+
+  // Replay any project-type translations merged before this locale existed.
+  const pending = _pendingMerges[code];
+  if (pending) {
+    delete _pendingMerges[code];
+    pending.forEach(extra => deepMerge(translations, extra));
+  }
+
+  return translations;
+}
+
+// Current language state.
+// Starts on the English strings: the active locale is only known once
+// initI18n() runs, and English is the guaranteed-loaded fallback.
 const i18nState = new State({
   currentLanguage: DEFAULT_LANGUAGE,
-  translations: locales[DEFAULT_LANGUAGE]
+  translations: locales.en
 });
 
 // Flat translation cache for O(1) lookups (invalidated on language change)
 let _tCache = new Map();
 let _tCacheLang = null;
+
+/**
+ * Swap the active translations and invalidate the lookup cache.
+ * The cache must be cleared explicitly: the translations object can change
+ * while `currentLanguage` stays the same (locale loaded after the initial
+ * English placeholder, or mergeTranslations on the active language).
+ * @param {string} langCode
+ * @param {Object} translations
+ */
+function applyTranslations(langCode, translations) {
+  _tCache.clear();
+  _tCacheLang = langCode;
+  i18nState.set({ currentLanguage: langCode, translations });
+}
 
 /**
  * Detect system language from navigator or Electron
@@ -79,10 +179,11 @@ function setLanguage(langCode) {
     langCode = DEFAULT_LANGUAGE;
   }
 
-  i18nState.set({
-    currentLanguage: langCode,
-    translations: locales[langCode]
-  });
+  // If the locale cannot be loaded, keep the selected language but render the
+  // English strings - t() would fall back to them key by key anyway.
+  const translations = loadLocale(langCode) || locales.en;
+
+  applyTranslations(langCode, translations);
 }
 
 /**
@@ -179,7 +280,7 @@ function onLanguageChange(listener) {
 function getAvailableLanguages() {
   return SUPPORTED_LANGUAGES.map(code => ({
     code,
-    name: locales[code].language.name
+    name: getLanguageName(code)
   }));
 }
 
@@ -189,28 +290,41 @@ function getAvailableLanguages() {
  * @returns {string}
  */
 function getLanguageName(code) {
-  return locales[code]?.language?.name || code;
+  return locales[code]?.language?.name || LANGUAGE_NAMES[code] || code;
 }
 
 /**
- * Deep merge translations into a locale
- * @param {string} langCode - Language code (fr or en)
+ * Deep merge `source` into `target`, in place.
+ * @param {Object} target
+ * @param {Object} source
+ */
+function deepMerge(target, source) {
+  for (const key of Object.keys(source)) {
+    if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+      if (!target[key] || typeof target[key] !== 'object') {
+        target[key] = {};
+      }
+      deepMerge(target[key], source[key]);
+    } else {
+      target[key] = source[key];
+    }
+  }
+}
+
+/**
+ * Deep merge translations into a locale.
+ * Locales that have not been loaded yet (project types register their
+ * translations for all three languages at boot) keep the merge queued and
+ * replay it when the locale is actually loaded.
+ * @param {string} langCode - Language code (fr, en or es)
  * @param {Object} newTranslations - Translations to merge (deep)
  */
 function mergeTranslations(langCode, newTranslations) {
-  if (!locales[langCode]) return;
+  if (!SUPPORTED_LANGUAGES.includes(langCode)) return;
 
-  function deepMerge(target, source) {
-    for (const key of Object.keys(source)) {
-      if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
-        if (!target[key] || typeof target[key] !== 'object') {
-          target[key] = {};
-        }
-        deepMerge(target[key], source[key]);
-      } else {
-        target[key] = source[key];
-      }
-    }
+  if (!locales[langCode]) {
+    (_pendingMerges[langCode] = _pendingMerges[langCode] || []).push(newTranslations);
+    return;
   }
 
   deepMerge(locales[langCode], newTranslations);

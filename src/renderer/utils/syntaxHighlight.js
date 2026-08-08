@@ -4,34 +4,49 @@
  */
 
 const { escapeHtml } = require('./dom');
-const hljs = require('highlight.js/lib/core');
 
-// Register languages selectively (not the full 192-lang bundle)
-hljs.registerLanguage('javascript', require('highlight.js/lib/languages/javascript'));
-hljs.registerLanguage('typescript', require('highlight.js/lib/languages/typescript'));
-hljs.registerLanguage('python', require('highlight.js/lib/languages/python'));
-hljs.registerLanguage('lua', require('highlight.js/lib/languages/lua'));
-hljs.registerLanguage('xml', require('highlight.js/lib/languages/xml'));
-hljs.registerLanguage('css', require('highlight.js/lib/languages/css'));
-hljs.registerLanguage('scss', require('highlight.js/lib/languages/scss'));
-hljs.registerLanguage('less', require('highlight.js/lib/languages/less'));
-hljs.registerLanguage('json', require('highlight.js/lib/languages/json'));
-hljs.registerLanguage('yaml', require('highlight.js/lib/languages/yaml'));
-hljs.registerLanguage('bash', require('highlight.js/lib/languages/bash'));
-hljs.registerLanguage('sql', require('highlight.js/lib/languages/sql'));
-hljs.registerLanguage('rust', require('highlight.js/lib/languages/rust'));
-hljs.registerLanguage('go', require('highlight.js/lib/languages/go'));
-hljs.registerLanguage('java', require('highlight.js/lib/languages/java'));
-hljs.registerLanguage('cpp', require('highlight.js/lib/languages/cpp'));
-hljs.registerLanguage('c', require('highlight.js/lib/languages/c'));
-hljs.registerLanguage('csharp', require('highlight.js/lib/languages/csharp'));
-hljs.registerLanguage('php', require('highlight.js/lib/languages/php'));
-hljs.registerLanguage('ruby', require('highlight.js/lib/languages/ruby'));
-hljs.registerLanguage('markdown', require('highlight.js/lib/languages/markdown'));
-hljs.registerLanguage('diff', require('highlight.js/lib/languages/diff'));
-hljs.registerLanguage('kotlin', require('highlight.js/lib/languages/kotlin'));
-hljs.registerLanguage('swift', require('highlight.js/lib/languages/swift'));
-hljs.registerLanguage('powershell', require('highlight.js/lib/languages/powershell'));
+// highlight.js core + the 25 grammars are only pulled in on the first
+// highlight() call. The `require()` calls below live inside getHljs() on
+// purpose: the bundler still resolves them statically, but the module
+// factories (and therefore the grammar construction) only run on demand,
+// so opening the app no longer pays for panels that may never be shown.
+let _hljs = null;
+
+function getHljs() {
+  if (_hljs) return _hljs;
+
+  const hljs = require('highlight.js/lib/core');
+
+  // Register languages selectively (not the full 192-lang bundle)
+  hljs.registerLanguage('javascript', require('highlight.js/lib/languages/javascript'));
+  hljs.registerLanguage('typescript', require('highlight.js/lib/languages/typescript'));
+  hljs.registerLanguage('python', require('highlight.js/lib/languages/python'));
+  hljs.registerLanguage('lua', require('highlight.js/lib/languages/lua'));
+  hljs.registerLanguage('xml', require('highlight.js/lib/languages/xml'));
+  hljs.registerLanguage('css', require('highlight.js/lib/languages/css'));
+  hljs.registerLanguage('scss', require('highlight.js/lib/languages/scss'));
+  hljs.registerLanguage('less', require('highlight.js/lib/languages/less'));
+  hljs.registerLanguage('json', require('highlight.js/lib/languages/json'));
+  hljs.registerLanguage('yaml', require('highlight.js/lib/languages/yaml'));
+  hljs.registerLanguage('bash', require('highlight.js/lib/languages/bash'));
+  hljs.registerLanguage('sql', require('highlight.js/lib/languages/sql'));
+  hljs.registerLanguage('rust', require('highlight.js/lib/languages/rust'));
+  hljs.registerLanguage('go', require('highlight.js/lib/languages/go'));
+  hljs.registerLanguage('java', require('highlight.js/lib/languages/java'));
+  hljs.registerLanguage('cpp', require('highlight.js/lib/languages/cpp'));
+  hljs.registerLanguage('c', require('highlight.js/lib/languages/c'));
+  hljs.registerLanguage('csharp', require('highlight.js/lib/languages/csharp'));
+  hljs.registerLanguage('php', require('highlight.js/lib/languages/php'));
+  hljs.registerLanguage('ruby', require('highlight.js/lib/languages/ruby'));
+  hljs.registerLanguage('markdown', require('highlight.js/lib/languages/markdown'));
+  hljs.registerLanguage('diff', require('highlight.js/lib/languages/diff'));
+  hljs.registerLanguage('kotlin', require('highlight.js/lib/languages/kotlin'));
+  hljs.registerLanguage('swift', require('highlight.js/lib/languages/swift'));
+  hljs.registerLanguage('powershell', require('highlight.js/lib/languages/powershell'));
+
+  _hljs = hljs;
+  return _hljs;
+}
 
 // Max size for syntax highlighting (50KB) - plain text above this
 const MAX_HIGHLIGHT_SIZE = 50 * 1024;
@@ -77,7 +92,11 @@ const LANG_MAP = {
 function highlight(code, ext) {
   if (!code) return escapeHtml(code);
   const lang = LANG_MAP[ext] || ext;
-  if (!lang || !hljs.getLanguage(lang)) return escapeHtml(code);
+  // Bail out before touching highlight.js when there is nothing to highlight.
+  if (!lang) return escapeHtml(code);
+
+  const hljs = getHljs();
+  if (!hljs.getLanguage(lang)) return escapeHtml(code);
 
   // Size limit: highlight only the first portion, plain text for the rest
   if (code.length > MAX_HIGHLIGHT_SIZE) {

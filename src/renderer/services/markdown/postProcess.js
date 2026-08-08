@@ -206,9 +206,15 @@ async function loadKatex() {
       link.href = 'node_modules/katex/dist/katex.min.css';
       document.head.appendChild(link);
     }
-    return require('katex');
-  } catch {
-    console.warn('[MarkdownRenderer] KaTeX not available');
+    // Separate esbuild entry (see scripts/build-renderer.js), same pattern as
+    // mermaid: `require('katex')` was lazily *executed* but statically
+    // *resolved*, so ~270 KB shipped in renderer.bundle.js for every session.
+    // Path is relative to dist/renderer.bundle.js (dynamic import in a classic
+    // script resolves against the script URL, not the document).
+    const mod = await import('./katex.bundle.js');
+    return mod.default || mod;
+  } catch (err) {
+    console.warn('[MarkdownRenderer] KaTeX not available:', err && err.message);
     return null;
   }
 }

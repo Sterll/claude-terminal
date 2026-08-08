@@ -40,6 +40,19 @@ const mermaidBuildOptions = {
   minify: true,
 };
 
+// KaTeX bundle (ESM, lazy-loaded when the chat renders math)
+// Kept out of renderer.bundle.js: postProcess.js only *executed* require('katex')
+// lazily, but esbuild still resolved it statically and shipped ~270 KB eagerly.
+const katexBuildOptions = {
+  entryPoints: [path.join(__dirname, '..', 'node_modules', 'katex', 'dist', 'katex.mjs')],
+  bundle: true,
+  outfile: path.join(__dirname, '..', 'dist', 'katex.bundle.js'),
+  format: 'esm',
+  platform: 'browser',
+  target: 'chrome120',
+  minify: true,
+};
+
 // PDF viewer bundle (ESM, lazy-loaded when opening a PDF)
 const pdfViewerBuildOptions = {
   entryPoints: [path.join(__dirname, '..', 'src', 'renderer', 'viewers', 'pdf-viewer.js')],
@@ -70,9 +83,24 @@ const cssBuildOptions = {
   minify: true,
 };
 
+// Non-default locales are read at runtime from dist/locales/ instead of being
+// bundled (src/renderer/i18n/index.js). Only English ships inside
+// renderer.bundle.js, as the fallback locale t() needs synchronously.
+const LAZY_LOCALES = ['fr', 'es'];
+
+function copyLazyLocales() {
+  const srcDir = path.join(__dirname, '..', 'src', 'renderer', 'i18n', 'locales');
+  const destDir = path.join(__dirname, '..', 'dist', 'locales');
+  fs.mkdirSync(destDir, { recursive: true });
+  for (const code of LAZY_LOCALES) {
+    fs.copyFileSync(path.join(srcDir, `${code}.json`), path.join(destDir, `${code}.json`));
+  }
+}
+
 async function build() {
   try {
     if (isWatch) {
+      copyLazyLocales();
       const [jsCtx, cssCtx] = await Promise.all([
         esbuild.context(buildOptions),
         esbuild.context(cssBuildOptions),
@@ -83,6 +111,7 @@ async function build() {
       await Promise.all([
         esbuild.build(buildOptions),
         esbuild.build(mermaidBuildOptions),
+        esbuild.build(katexBuildOptions),
         esbuild.build(pdfViewerBuildOptions),
         esbuild.build(threeViewerBuildOptions),
         esbuild.build(cssBuildOptions),
@@ -92,7 +121,9 @@ async function build() {
       const workerDest = path.join(__dirname, '..', 'dist', 'pdf.worker.min.mjs');
       fs.copyFileSync(workerSrc, workerDest);
 
-      console.log('Build complete: dist/renderer.bundle.js + dist/mermaid.bundle.js + dist/pdf-viewer.bundle.js + dist/three-viewer.bundle.js + dist/styles.bundle.css + dist/pdf.worker.min.mjs');
+      copyLazyLocales();
+
+      console.log('Build complete: dist/renderer.bundle.js + dist/mermaid.bundle.js + dist/katex.bundle.js + dist/pdf-viewer.bundle.js + dist/three-viewer.bundle.js + dist/styles.bundle.css + dist/pdf.worker.min.mjs + dist/locales/{' + LAZY_LOCALES.join(',') + '}.json');
     }
   } catch (error) {
     console.error('Build failed:', error);
