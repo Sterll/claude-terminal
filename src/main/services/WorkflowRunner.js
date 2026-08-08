@@ -1798,10 +1798,9 @@ class WorkflowRunner {
       }
       if (originOutput == null) continue;
 
-      // Get the output key from slot mapping
+      // Get the output key for the connected slot
       const originNode = nodeById.get(originId);
-      const originType = originNode?.type?.replace('workflow/', '') ?? '';
-      const outputKey = getOutputKeyForSlot(originType, originSlot);
+      const outputKey = this._outputKeyForSlot(originNode, originSlot, originOutput);
 
       // Get the input name for this slot
       const inputName = nodeInput?.name ?? null;
@@ -1812,6 +1811,34 @@ class WorkflowRunner {
     }
 
     return resolved;
+  }
+
+  /**
+   * Resolve which key of an origin node's output a connected slot refers to.
+   *
+   * The pin the user actually wired is the authority: `outputs[slot].name` is
+   * carried in the saved graph and, for every node type, matches the property
+   * name `run()` returns. Consulting it first keeps this correct even when a
+   * node builds its pins dynamically (`variable` in get mode drops its exec
+   * pins) or exposes more outputs than the shared slot table declares
+   * (`shell.timedOut`, `db.columns`, `file.path`, …).
+   *
+   * NODE_DATA_OUTPUTS stays as the fallback for graphs saved before pin names
+   * were persisted, and for nodes whose pin name differs from the output key.
+   *
+   * @param {Object} originNode  node as stored in the graph
+   * @param {number} originSlot
+   * @param {Object} originOutput  what the origin node's run() returned
+   * @returns {string|null} key to read, or null to pass the whole object
+   */
+  _outputKeyForSlot(originNode, originSlot, originOutput) {
+    const pinName = originNode?.outputs?.[originSlot]?.name;
+    if (pinName && originOutput && typeof originOutput === 'object'
+        && Object.prototype.hasOwnProperty.call(originOutput, pinName)) {
+      return pinName;
+    }
+    const originType = originNode?.type?.replace('workflow/', '') ?? '';
+    return getOutputKeyForSlot(originType, originSlot);
   }
 
   /**

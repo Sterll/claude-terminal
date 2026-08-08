@@ -54,37 +54,68 @@ const TYPE_COMPAT = {
 // ── Data output descriptors ──────────────────────────────────────────────────
 // node type → ordered list of { name, type, key }
 // 'key' = property name in runtime output object
+//
+// INVARIANT: for every node that ships a src/main/workflow-nodes/<type>.node.js
+// with a STATIC `outputs:` array, this table must list exactly that array's data
+// pins, in the same order, with the same types. Two different consumers build
+// pins from the two different sources — the canvas from this table
+// (WorkflowGraphEngine.addDataOutputDefs) and the MCP graph builder from
+// def.outputs (resources/mcp-servers/tools/workflow.js getNodeSlots) — so any
+// divergence makes a slot index mean two different things and silently routes
+// the wrong value. tests/services/workflowSlotParity.test.js enforces this.
+//
+// The four DYNAMIC_PIN_NODES below are exempt: they rebuild their pins at
+// runtime, so their .node.js declares no data outputs and the canvas is the
+// authority. WorkflowRunner._outputKeyForSlot resolves those by pin name.
 const NODE_DATA_OUTPUTS = {
+  // ── dynamic-pin nodes (no static outputs in their .node.js) ──
   trigger:      [{ name: 'payload',  type: 'object',  key: 'payload' },
                  { name: 'source',   type: 'string',  key: 'source' }],
-  claude:       [{ name: 'output',   type: 'string',  key: 'output' }],
-  shell:        [{ name: 'stdout',   type: 'string',  key: 'stdout' },
-                 { name: 'stderr',   type: 'string',  key: 'stderr' },
-                 { name: 'exitCode', type: 'number',  key: 'exitCode' }],
-  git:          [{ name: 'output',   type: 'string',  key: 'output' }],
-  http:         [{ name: 'body',     type: 'object',  key: 'body' },
-                 { name: 'status',   type: 'number',  key: 'status' },
-                 { name: 'ok',       type: 'boolean', key: 'ok' }],
-  db:           [{ name: 'rows',     type: 'array',   key: 'rows' },
-                 { name: 'rowCount', type: 'number',  key: 'rowCount' },
-                 { name: 'firstRow', type: 'object',  key: 'firstRow' }],
-  file:         [{ name: 'content',  type: 'string',  key: 'content' },
-                 { name: 'exists',   type: 'boolean', key: 'exists' },
-                 { name: 'files',    type: 'array',   key: 'files' },
-                 { name: 'count',    type: 'number',  key: 'count' }],
-  variable:     [{ name: 'value',    type: 'any',     key: 'value' }],
-  get_variable: [{ name: 'value',    type: 'any',     key: 'value' }],
   condition:    [{ name: 'result',   type: 'boolean', key: 'result' }],
   switch:       [{ name: 'value',    type: 'string',  key: 'value' }],
-  transform:    [{ name: 'result',   type: 'any',     key: 'result' }],
-  subworkflow:  [{ name: 'outputs',  type: 'object',  key: 'outputs' }],
-  loop:         [{ name: 'item',     type: 'any',     key: 'item' },
-                 { name: 'index',    type: 'number',  key: 'index' }],
-  project:      [{ name: 'projects', type: 'array',   key: 'projects' }],
   time:         [{ name: 'today',    type: 'number',  key: 'today' },
                  { name: 'week',     type: 'number',  key: 'week' },
                  { name: 'month',    type: 'number',  key: 'month' },
                  { name: 'projects', type: 'array',   key: 'projects' }],
+
+  // ── static-pin nodes: mirror of def.outputs ──
+  claude:       [{ name: 'output',   type: 'string',  key: 'output' },
+                 { name: 'result',   type: 'any',     key: 'result' }],
+  shell:        [{ name: 'stdout',   type: 'string',  key: 'stdout' },
+                 { name: 'stderr',   type: 'string',  key: 'stderr' },
+                 { name: 'exitCode', type: 'number',  key: 'exitCode' },
+                 { name: 'timedOut', type: 'boolean', key: 'timedOut' },
+                 { name: 'truncated', type: 'boolean', key: 'truncated' },
+                 { name: 'killed',   type: 'boolean', key: 'killed' }],
+  git:          [{ name: 'output',   type: 'string',  key: 'output' }],
+  http:         [{ name: 'body',     type: 'any',     key: 'body' },
+                 { name: 'status',   type: 'number',  key: 'status' },
+                 { name: 'ok',       type: 'boolean', key: 'ok' }],
+  db:           [{ name: 'rows',     type: 'array',   key: 'rows' },
+                 { name: 'firstRow', type: 'object',  key: 'firstRow' },
+                 { name: 'rowCount', type: 'number',  key: 'rowCount' },
+                 { name: 'columns',  type: 'array',   key: 'columns' },
+                 { name: 'duration', type: 'number',  key: 'duration' },
+                 { name: 'tables',   type: 'array',   key: 'tables' },
+                 { name: 'tableCount', type: 'number', key: 'tableCount' }],
+  file:         [{ name: 'content',  type: 'string',  key: 'content' },
+                 { name: 'files',    type: 'array',   key: 'files' },
+                 { name: 'count',    type: 'number',  key: 'count' },
+                 { name: 'exists',   type: 'boolean', key: 'exists' },
+                 { name: 'success',  type: 'boolean', key: 'success' },
+                 { name: 'path',     type: 'string',  key: 'path' },
+                 { name: 'from',     type: 'string',  key: 'from' },
+                 { name: 'to',       type: 'string',  key: 'to' },
+                 { name: 'dir',      type: 'string',  key: 'dir' }],
+  variable:     [{ name: 'value',    type: 'any',     key: 'value' }],
+  get_variable: [{ name: 'value',    type: 'any',     key: 'value' }],
+  transform:    [{ name: 'result',   type: 'any',     key: 'result' },
+                 { name: 'count',    type: 'number',  key: 'count' }],
+  subworkflow:  [{ name: 'outputs',  type: 'object',  key: 'outputs' },
+                 { name: 'runId',    type: 'string',  key: 'runId' }],
+  loop:         [{ name: 'item',     type: 'any',     key: 'item' },
+                 { name: 'index',    type: 'number',  key: 'index' }],
+  project:      [{ name: 'projects', type: 'array',   key: 'projects' }],
   parallel_spawn:     [{ name: 'runId',       type: 'string',  key: 'runId' }],
   session_recap:      [{ name: 'summary',     type: 'string',  key: 'summary' },
                        { name: 'source',      type: 'string',  key: 'source' },
@@ -110,6 +141,14 @@ const NODE_DATA_OUTPUTS = {
   retry:              [{ name: 'attempts',    type: 'number',  key: 'attempts' },
                        { name: 'error',       type: 'string',  key: 'error' }],
 };
+
+// Node types that rebuild their pins at runtime, so their .node.js declares no
+// static data outputs (or a varying number of exec outputs). The parity test
+// skips these; WorkflowRunner._outputKeyForSlot resolves them by pin name.
+//   trigger/condition/switch — pins live only in the canvas definition
+//   time                     — output set depends on `action`
+//   variable                 — drops its exec pins entirely in `get` mode
+const DYNAMIC_PIN_NODES = new Set(['trigger', 'condition', 'switch', 'time', 'variable']);
 
 // node type → slot index of first data output (after exec slots)
 const NODE_DATA_OUT_OFFSET = {
@@ -158,6 +197,7 @@ module.exports = {
   TYPE_COMPAT,
   NODE_DATA_OUTPUTS,
   NODE_DATA_OUT_OFFSET,
+  DYNAMIC_PIN_NODES,
   getNodeColors,
   getOutputKeyForSlot,
   isValidConnection,
