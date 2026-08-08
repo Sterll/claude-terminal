@@ -14,6 +14,10 @@ const { sendFeaturePing } = require('../services/TelemetryService');
 const isValidCommitHash = (h) => typeof h === 'string' && /^[a-f0-9]{4,64}$/i.test(h);
 const isValidBranchName = (b) => typeof b === 'string' && b.length > 0 && b.length < 256 && !/[^a-zA-Z0-9._\-\/]/.test(b) && !b.includes('..');
 const isValidStashRef = (r) => typeof r === 'string' && /^stash@\{\d+\}$/.test(r);
+// Remote names go straight into argv - keep them to plain identifiers (no URL, no ext:: transport)
+const isValidRemoteName = (n) => typeof n === 'string' && n.length > 0 && n.length < 256 && /^[\w.-]+$/.test(n);
+// Only https:// and git@host: remotes - blocks ext::/file://ssh:// and other code-execution transports
+const isAllowedRemoteUrl = (u) => typeof u === 'string' && /^(https?:\/\/|git@[\w.-]+:)/i.test(u.trim());
 
 /**
  * Register git IPC handlers
@@ -595,8 +599,10 @@ function registerGitHandlers() {
 
   ipcMain.handle('git-delete-remote-branch', async (event, { projectPath, branch, remote }) => {
     if (!isValidBranchName(branch)) return { success: false, error: 'Invalid branch name' };
+    const remoteName = remote || 'origin';
+    if (!isValidRemoteName(remoteName)) return { success: false, error: 'Invalid remote name' };
     try {
-      await deleteRemoteBranch(projectPath, branch, remote);
+      await deleteRemoteBranch(projectPath, branch, remoteName);
       sendFeaturePing('git_delete_remote_branch');
       return { success: true };
     } catch (err) {
@@ -605,8 +611,10 @@ function registerGitHandlers() {
   });
 
   ipcMain.handle('git-fetch', async (event, { projectPath, remote }) => {
+    const remoteName = remote || 'origin';
+    if (!isValidRemoteName(remoteName)) return { success: false, error: 'Invalid remote name' };
     try {
-      await gitFetch(projectPath, remote);
+      await gitFetch(projectPath, remoteName);
       return { success: true };
     } catch (err) {
       return { success: false, error: err.message };
@@ -815,8 +823,9 @@ function registerGitHandlers() {
 
   // Add remote
   ipcMain.handle('git-remote-add', async (event, { projectPath, name, url }) => {
-    if (!name || typeof name !== 'string') return { success: false, error: 'Invalid remote name' };
+    if (!isValidRemoteName(name)) return { success: false, error: 'Invalid remote name' };
     if (!url || typeof url !== 'string') return { success: false, error: 'Invalid remote URL' };
+    if (!isAllowedRemoteUrl(url)) return { success: false, error: 'Only https:// and git@ URLs are allowed' };
     try {
       return await addRemote(projectPath, name, url);
     } catch (err) {

@@ -6,12 +6,145 @@
 const { ipcMain, dialog, shell, app, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { spawn } = require('child_process');
 const updaterService = require('../services/UpdaterService');
 
 let mainWindow = null;
 
 // Map of active file watchers: filePath -> { watcher: FSWatcher, refCount: number }
 const fileWatchers = new Map();
+
+// ─── External Editor Launch ──────────────────────────────────────────────────
+
+const ALLOWED_EDITORS = ['code', 'cursor', 'webstorm', 'idea', 'subl', 'atom', 'notepad++', 'notepad', 'vim', 'nvim', 'nano', 'zed'];
+
+// Characters that are never legitimate in an editor binary path or a project
+// path, and that would change the meaning of the command line if it ever
+// reaches a command interpreter (cmd.exe is still needed for .cmd/.bat
+// launchers on Windows). Applied to the FULL string, not just the basename.
+// `()` and `{}` are intentionally absent: now that `shell: true` is gone they
+// carry no meaning, and rejecting them would break `C:\Program Files (x86)\...`.
+const DANGEROUS_CHARS = /[;&|$`<>^\n\r\0"]/;
+
+// .cmd / .bat cannot be launched by CreateProcess directly — they need cmd.exe.
+const WINDOWS_SCRIPT_EXT = /\.(cmd|bat)$/i;
+
+/**
+ * Read the editor configured in settings, used when the caller omits `editor`.
+ * @returns {string}
+ */
+function _getConfiguredEditor() {
+  try {
+    const { settingsFile } = require('../utils/paths');
+    const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+    return String(settings.editor || '').trim();
+  } catch (e) {
+    return '';
+  }
+}
+
+/**
+ * Resolve an editor command to a concrete file on Windows, probing PATHEXT the
+ * way a shell would — but without handing the string to a shell.
+ * @param {string} bin
+ * @returns {string|null} Absolute path to the executable/launcher, or null
+ */
+function _resolveWindowsLauncher(bin) {
+  const exts = (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean);
+  const hasExt = path.extname(bin) !== '';
+  const candidates = [];
+  const addCandidate = (full) => {
+    if (hasExt) candidates.push(full);
+    else for (const ext of exts) candidates.push(full + ext);
+  };
+
+  if (path.isAbsolute(bin) || bin.includes('\\') || bin.includes('/')) {
+    addCandidate(path.resolve(bin));
+  } else {
+    for (const dir of (process.env.PATH || '').split(path.delimiter).filter(Boolean)) {
+      addCandidate(path.join(dir.replace(/^"|"$/g, ''), bin));
+    }
+  }
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.statSync(candidate).isFile()) return candidate;
+    } catch (e) {}
+  }
+  return null;
+}
+
+/**
+ * Build the argv for spawning an editor WITHOUT a shell.
+ * @param {string} editorBin
+ * @returns {{ file: string, args: string[] }}
+ */
+function _buildEditorCommand(editorBin) {
+  if (process.platform !== 'win32') return { file: editorBin, args: [] };
+
+  const resolved = _resolveWindowsLauncher(editorBin);
+  // Not found: spawn it as-is so the caller gets a real ENOENT instead of silence.
+  if (!resolved) return { file: editorBin, args: [] };
+
+  if (WINDOWS_SCRIPT_EXT.test(resolved)) {
+    // PATH-based launchers (`code`, `cursor`, `zed`…) are .cmd wrappers. cmd.exe
+    // is required, but both the launcher path and the target have already been
+    // rejected if they contain any metacharacter, so nothing can be injected.
+    return { file: process.env.COMSPEC || 'cmd.exe', args: ['/d', '/s', '/c', resolved] };
+  }
+  return { file: resolved, args: [] };
+}
+
+/**
+ * Open a project folder or a file in the user's external editor.
+ * Accepts `path` or `filePath` (both are used by different renderer callers),
+ * and falls back to the configured editor when `editor` is omitted.
+ * @param {{ editor?: string, path?: string, filePath?: string }} params
+ * @returns {{ success: boolean, error?: string }}
+ */
+function openInEditor(params) {
+  const targetPath = String((params && (params.path || params.filePath)) || '').trim();
+  const editorBin = String((params && params.editor) || '').trim() || _getConfiguredEditor();
+
+  if (!editorBin) {
+    console.error('[Dialog IPC] open-in-editor: no editor specified and none configured');
+    return { success: false, error: 'No editor specified and none configured' };
+  }
+  if (!targetPath) {
+    console.error('[Dialog IPC] open-in-editor: no path provided');
+    return { success: false, error: 'No path provided' };
+  }
+  if (DANGEROUS_CHARS.test(editorBin)) {
+    console.error(`[Dialog IPC] Editor rejected (dangerous chars): "${editorBin}"`);
+    return { success: false, error: 'Editor path contains forbidden characters' };
+  }
+  if (DANGEROUS_CHARS.test(targetPath)) {
+    console.error(`[Dialog IPC] Target path rejected (dangerous chars): "${targetPath}"`);
+    return { success: false, error: 'Target path contains forbidden characters' };
+  }
+
+  const baseName = path.basename(editorBin).replace(/\.(exe|cmd|bat)$/i, '').toLowerCase();
+  if (!ALLOWED_EDITORS.includes(baseName)) {
+    console.debug(`[Dialog IPC] Using custom editor: "${editorBin}"`);
+  }
+
+  try {
+    const { file, args } = _buildEditorCommand(editorBin);
+    const proc = spawn(file, [...args, targetPath], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    proc.on('error', (error) => {
+      console.error(`[Dialog IPC] Failed to open editor "${editorBin}":`, error.message);
+    });
+    proc.unref();
+    return { success: true };
+  } catch (error) {
+    console.error(`[Dialog IPC] Failed to spawn editor "${editorBin}":`, error.message);
+    return { success: false, error: error.message };
+  }
+}
 
 /**
  * Set main window reference
@@ -86,33 +219,11 @@ function registerDialogHandlers() {
     shell.openPath(folderPath);
   });
 
-  // Open in external editor
-  ipcMain.on('open-in-editor', (event, { editor, path: projectPath }) => {
-    const path = require('path');
-    // Allowlist checked against basename only — prevents ../../evil/code bypasses
-    const ALLOWED_EDITORS = ['code', 'cursor', 'webstorm', 'idea', 'subl', 'atom', 'notepad++', 'notepad', 'vim', 'nvim', 'nano', 'zed'];
-    const editorBin = (editor || '').trim();
-    if (!editorBin) return;
-    const baseName = path.basename(editorBin).replace(/\.exe$/i, '').toLowerCase();
-    if (!ALLOWED_EDITORS.includes(baseName)) {
-      // Custom editor: reject if it contains shell metacharacters
-      const DANGEROUS_CHARS = /[;&|$`(){}<>\n\r]/;
-      if (DANGEROUS_CHARS.test(editorBin)) {
-        console.error(`[Dialog IPC] Custom editor rejected (dangerous chars): "${editorBin}"`);
-        return;
-      }
-      console.debug(`[Dialog IPC] Using custom editor: "${editorBin}"`);
-    }
-    // shell:true is required on Windows for PATH-based launchers (.cmd wrappers like `idea`, `cursor`, `zed`).
-    // Injection is prevented by validating editorBin against the allowlist (basename only) or rejecting
-    // dangerous chars for custom editors, and passing projectPath as a separate argument array.
-    const { spawn } = require('child_process');
-    const proc = spawn(editorBin, [projectPath], { shell: process.platform === 'win32', detached: true, stdio: 'ignore' });
-    proc.on('error', (error) => {
-      console.error(`[Dialog IPC] Failed to open editor "${editorBin}":`, error.message);
-    });
-    proc.unref();
-  });
+  // Open in external editor.
+  // Registered as both `handle` (so failures surface to the caller) and `on`
+  // (the preload bridge currently uses `send`, and other callers may too).
+  ipcMain.handle('open-in-editor', (event, params) => openInEditor(params));
+  ipcMain.on('open-in-editor', (event, params) => { openInEditor(params); });
 
   // Open external URL in browser (only https:// and http:// allowed)
   ipcMain.on('open-external', (event, url) => {

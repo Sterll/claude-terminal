@@ -90,15 +90,9 @@ function registerGitHubHandlers() {
     }
   });
 
-  // Get token for git operations
-  ipcMain.handle('github-get-token', async () => {
-    try {
-      const token = await GitHubAuthService.getTokenForGit();
-      return { success: true, token };
-    } catch (e) {
-      return { success: false, error: e.message };
-    }
-  });
+  // NOTE: there is deliberately no `github-get-token` handler. The raw OAuth
+  // token must never cross the IPC bridge into the renderer — git operations
+  // inject it main-side via GitHubAuthService.getTokenForGit().
 
   // Get workflow runs for a repository
   ipcMain.handle('github-workflow-runs', async (event, { remoteUrl }) => {

@@ -12,6 +12,40 @@ const dataDir = path.join(os.homedir(), '.claude-terminal');
 const workspacesFile = path.join(dataDir, 'workspaces.json');
 const workspacesDir = path.join(dataDir, 'workspaces');
 
+/**
+ * Resolve a path and verify it stays inside baseDir
+ * @throws {Error} when the resolved path escapes baseDir
+ */
+function assertWithin(baseDir, candidatePath) {
+  const base = path.resolve(baseDir);
+  const resolved = path.resolve(candidatePath);
+  if (resolved !== base && !resolved.startsWith(base + path.sep)) {
+    throw new Error(`Path traversal detected: "${candidatePath}" escapes "${base}"`);
+  }
+  return resolved;
+}
+
+/**
+ * Resolve a workspace root directory from an untrusted workspace id
+ */
+function workspaceDir(workspaceId) {
+  if (typeof workspaceId !== 'string' || !workspaceId.trim()) {
+    throw new Error('Invalid workspace id');
+  }
+  return assertWithin(workspacesDir, path.join(workspacesDir, workspaceId));
+}
+
+/**
+ * Resolve a file inside a workspace from untrusted id / filename segments
+ */
+function workspaceFile(workspaceId, ...segments) {
+  const root = workspaceDir(workspaceId);
+  if (segments.some(s => typeof s !== 'string' || !s)) {
+    throw new Error('Invalid workspace path segment');
+  }
+  return assertWithin(root, path.join(root, ...segments));
+}
+
 async function ensureDir(dir) {
   try {
     await fs.promises.mkdir(dir, { recursive: true });
@@ -39,7 +73,7 @@ async function getWorkspace(id) {
 }
 
 async function getWorkspaceDocsIndex(workspaceId) {
-  const indexPath = path.join(workspacesDir, workspaceId, 'docs-index.json');
+  const indexPath = workspaceFile(workspaceId, 'docs-index.json');
   try {
     const raw = await fs.promises.readFile(indexPath, 'utf8');
     return JSON.parse(raw).docs || [];
@@ -60,7 +94,7 @@ async function readDoc(workspaceId, docIdOrName) {
   );
   if (!doc) return null;
 
-  const docPath = path.join(workspacesDir, workspaceId, 'docs', doc.filename);
+  const docPath = workspaceFile(workspaceId, 'docs', doc.filename);
   try {
     return { doc, content: await fs.promises.readFile(docPath, 'utf8') };
   } catch {
@@ -69,7 +103,7 @@ async function readDoc(workspaceId, docIdOrName) {
 }
 
 async function writeDoc(workspaceId, title, content) {
-  await ensureDir(path.join(workspacesDir, workspaceId, 'docs'));
+  await ensureDir(workspaceFile(workspaceId, 'docs'));
 
   const docs = await getWorkspaceDocsIndex(workspaceId);
   let doc = docs.find(d =>
@@ -98,13 +132,13 @@ async function writeDoc(workspaceId, title, content) {
   }
 
   // Write content
-  const docPath = path.join(workspacesDir, workspaceId, 'docs', doc.filename);
+  const docPath = workspaceFile(workspaceId, 'docs', doc.filename);
   const tmpPath = docPath + '.tmp';
   await fs.promises.writeFile(tmpPath, content, 'utf8');
   await fs.promises.rename(tmpPath, docPath);
 
   // Save index
-  const indexPath = path.join(workspacesDir, workspaceId, 'docs-index.json');
+  const indexPath = workspaceFile(workspaceId, 'docs-index.json');
   const tmpIndex = indexPath + '.tmp';
   await fs.promises.writeFile(tmpIndex, JSON.stringify({ docs }, null, 2), 'utf8');
   await fs.promises.rename(tmpIndex, indexPath);
@@ -125,11 +159,11 @@ async function deleteDoc(workspaceId, docIdOrName) {
   docs.splice(docIdx, 1);
 
   // Remove file
-  const docPath = path.join(workspacesDir, workspaceId, 'docs', doc.filename);
+  const docPath = workspaceFile(workspaceId, 'docs', doc.filename);
   try { await fs.promises.unlink(docPath); } catch {}
 
   // Save index
-  const indexPath = path.join(workspacesDir, workspaceId, 'docs-index.json');
+  const indexPath = workspaceFile(workspaceId, 'docs-index.json');
   const tmpIndex = indexPath + '.tmp';
   await fs.promises.writeFile(tmpIndex, JSON.stringify({ docs }, null, 2), 'utf8');
   await fs.promises.rename(tmpIndex, indexPath);
@@ -144,7 +178,7 @@ async function searchDocs(workspaceId, query) {
 
   // Read all doc contents in parallel
   const readPromises = docs.map(async (doc) => {
-    const docPath = path.join(workspacesDir, workspaceId, 'docs', doc.filename);
+    const docPath = workspaceFile(workspaceId, 'docs', doc.filename);
     try {
       return await fs.promises.readFile(docPath, 'utf8');
     } catch {
@@ -180,7 +214,7 @@ async function searchDocs(workspaceId, query) {
 }
 
 async function getWorkspaceLinks(workspaceId) {
-  const linksPath = path.join(workspacesDir, workspaceId, 'links.json');
+  const linksPath = workspaceFile(workspaceId, 'links.json');
   try {
     const raw = await fs.promises.readFile(linksPath, 'utf8');
     return JSON.parse(raw).links || [];
@@ -198,7 +232,7 @@ async function addLink(workspaceId, { sourceType, sourceId, targetType, targetId
   };
   links.push(link);
 
-  const linksPath = path.join(workspacesDir, workspaceId, 'links.json');
+  const linksPath = workspaceFile(workspaceId, 'links.json');
   const tmp = linksPath + '.tmp';
   await fs.promises.writeFile(tmp, JSON.stringify({ links }, null, 2), 'utf8');
   await fs.promises.rename(tmp, linksPath);

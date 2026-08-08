@@ -30,6 +30,27 @@ const marketplacesDir = path.join(pluginsDir, 'marketplaces');
 const cacheDir = path.join(pluginsDir, 'cache');
 
 /**
+ * Validate a plugin or marketplace name to prevent path traversal
+ * Only allows alphanumeric characters, hyphens and underscores — no separators, no dots
+ */
+function isValidPluginName(name) {
+  return typeof name === 'string' && /^[a-zA-Z0-9_-]+$/.test(name);
+}
+
+/**
+ * Resolve a path and verify it stays inside baseDir
+ * @throws {Error} when the resolved path escapes baseDir
+ */
+function assertWithin(baseDir, candidatePath) {
+  const base = path.resolve(baseDir);
+  const resolved = path.resolve(candidatePath);
+  if (resolved !== base && !resolved.startsWith(base + path.sep)) {
+    throw new Error(`Path traversal detected: "${candidatePath}" escapes "${base}"`);
+  }
+  return resolved;
+}
+
+/**
  * Get all installed plugins with enriched metadata
  */
 async function getInstalledPlugins() {
@@ -305,6 +326,14 @@ async function installPlugin(marketplace, pluginName) {
   console.debug(`[PluginService] installPlugin: ${pluginName}@${marketplace}`);
 
   try {
+    // Names are used to build filesystem paths — reject anything with separators
+    if (!isValidPluginName(pluginName)) {
+      return { success: false, error: `Invalid plugin name: '${pluginName}'` };
+    }
+    if (!isValidPluginName(marketplace)) {
+      return { success: false, error: `Invalid marketplace name: '${marketplace}'` };
+    }
+
     // Find marketplace entry
     let marketplacesData = {};
     if (fs.existsSync(marketplacesFile)) {
@@ -334,18 +363,29 @@ async function installPlugin(marketplace, pluginName) {
       return { success: false, error: `Plugin '${pluginName}' not found in marketplace` };
     }
 
+    // `source` comes from a third-party catalog — it must stay inside the marketplace
+    if (pluginEntry.source !== undefined && typeof pluginEntry.source !== 'string') {
+      return { success: false, error: 'Invalid plugin source in marketplace catalog' };
+    }
+
     // Resolve source path (relative to marketplace root)
-    const sourcePath = pluginEntry.source
-      ? path.resolve(mpLocation, pluginEntry.source)
-      : path.join(mpLocation, 'plugins', pluginName);
+    let sourcePath;
+    try {
+      sourcePath = assertWithin(mpLocation, pluginEntry.source
+        ? path.resolve(mpLocation, pluginEntry.source)
+        : path.join(mpLocation, 'plugins', pluginName));
+    } catch (e) {
+      console.error('[PluginService] Rejected plugin source:', e.message);
+      return { success: false, error: `Invalid plugin source: '${pluginEntry.source}'` };
+    }
 
     if (!fs.existsSync(sourcePath)) {
       return { success: false, error: `Plugin source not found at ${sourcePath}` };
     }
 
-    // Prepare install dir in cache
+    // Prepare install dir in cache (asserted: it is about to be recursively deleted)
     const key = `${pluginName}@${marketplace}`;
-    const installPath = path.join(cacheDir, key);
+    const installPath = assertWithin(cacheDir, path.join(cacheDir, key));
 
     if (!fs.existsSync(cacheDir)) {
       fs.mkdirSync(cacheDir, { recursive: true });
@@ -554,9 +594,9 @@ function runPluginCommand(command, successPatterns, errorPatterns, timeoutMs = 6
  *   - Branch: "https://github.com/owner/repo#branch"
  */
 async function addMarketplace(url) {
-  const { exec } = require('child_process');
+  const { execFile } = require('child_process');
   const { promisify } = require('util');
-  const execAsync = promisify(exec);
+  const execFileAsync = promisify(execFile);
 
   console.debug(`[PluginService] addMarketplace: ${url}`);
 
@@ -594,23 +634,29 @@ async function addMarketplace(url) {
       cloneUrl = url;
     }
 
-    if (branch) cloneUrl += `#${branch}`;
+    // Both values are passed to git — validate them before going any further
+    if (typeof cloneUrl !== 'string' || !/^(https?:\/\/|git@[\w.-]+:)/i.test(cloneUrl)) {
+      return { success: false, error: 'Invalid repository URL' };
+    }
+    if (branch !== null && !/^[\w.\-/]+$/.test(branch)) {
+      return { success: false, error: 'Invalid branch name' };
+    }
 
     // Ensure marketplaces directory exists
     if (!fs.existsSync(marketplacesDir)) {
       fs.mkdirSync(marketplacesDir, { recursive: true });
     }
 
-    const targetDir = path.join(marketplacesDir, name);
+    const targetDir = assertWithin(marketplacesDir, path.join(marketplacesDir, name));
 
     // Already cloned → return success (idempotent)
     if (fs.existsSync(targetDir)) {
       return { success: true };
     }
 
-    // Clone the repo (with optional branch)
-    const branchFlag = branch ? `--branch "${branch}" ` : '';
-    await execAsync(`git clone ${branchFlag}"${cloneUrl}" "${targetDir}"`, { timeout: 120000 });
+    // Clone the repo (with optional branch) — argv array, never a shell string
+    const cloneArgs = ['clone', ...(branch ? ['--branch', branch] : []), cloneUrl, targetDir];
+    await execFileAsync('git', cloneArgs, { timeout: 120000 });
 
     // Update known_marketplaces.json atomically
     let marketplaces = {};
@@ -643,6 +689,12 @@ async function addMarketplace(url) {
 async function uninstallPlugin(pluginKey) {
   console.debug(`[PluginService] uninstallPlugin: ${pluginKey}`);
   try {
+    // Key is "pluginName@marketplace" — both halves end up in filesystem paths
+    const keyParts = typeof pluginKey === 'string' ? pluginKey.split('@') : [];
+    if (keyParts.length !== 2 || !isValidPluginName(keyParts[0]) || !isValidPluginName(keyParts[1])) {
+      return { success: false, error: `Invalid plugin key: '${pluginKey}'` };
+    }
+
     if (!fs.existsSync(installedFile)) {
       return { success: false, error: 'No installed plugins file found' };
     }
@@ -669,10 +721,12 @@ async function uninstallPlugin(pluginKey) {
     fs.writeFileSync(tmp, JSON.stringify(installed, null, 2), 'utf8');
     fs.renameSync(tmp, installedFile);
 
-    // Delete cache directory (non-fatal if fails)
+    // Delete cache directory (non-fatal if fails).
+    // installPath comes from the manifest, so it is only deleted when it
+    // resolves inside the plugins directory.
     if (installPath) {
       try {
-        fs.rmSync(installPath, { recursive: true, force: true });
+        fs.rmSync(assertWithin(pluginsDir, installPath), { recursive: true, force: true });
       } catch (e) {
         console.warn(`[PluginService] Could not delete install dir ${installPath}:`, e.message);
       }

@@ -14,6 +14,10 @@ const _activeProcesses = new Set();
 const _safeDirCache = new Map();
 const SAFE_DIR_CACHE_TTL = 30000;
 
+// Defence in depth: the `ext::` transport runs an arbitrary shell command on fetch/push.
+// Disable it globally so no code path can reach it, even with a malicious remote URL.
+const HARDENING_ARGS = ['-c', 'protocol.ext.allow=never'];
+
 /**
  * Build safe.directory args array for git
  * Includes worktree parent repo when a .git file (not dir) points to a parent.
@@ -64,8 +68,11 @@ function execGit(cwd, args, timeout = 10000) {
   return new Promise((resolve) => {
     // Early bail if directory doesn't exist (e.g. projects synced from another machine)
     if (!fs.existsSync(cwd)) { resolve(null); return; }
+    // WARNING: the string form splits naively on spaces - quotes are NOT honoured (they stay
+    // literal in the argv entry) and any value containing a space becomes several arguments.
+    // Pass an array whenever an argument is user-controlled or may contain spaces.
     const argsArray = Array.isArray(args) ? args : args.split(' ');
-    const fullArgs = [...safeDirArgs(cwd), ...argsArray];
+    const fullArgs = [...safeDirArgs(cwd), ...HARDENING_ARGS, ...argsArray];
     const child = execFile('git', fullArgs, { cwd, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout) => {
       if (timer) clearTimeout(timer);
       _activeProcesses.delete(child);
@@ -102,7 +109,7 @@ function spawnGit(cwd, args, opts = {}) {
   return new Promise((resolve) => {
     // Early bail if directory doesn't exist (e.g. projects synced from another machine)
     if (!fs.existsSync(cwd)) { resolve({ success: false, error: 'Directory not found' }); return; }
-    const fullArgs = [...safeDirArgs(cwd), ...args];
+    const fullArgs = [...safeDirArgs(cwd), ...HARDENING_ARGS, ...args];
     const child = execFile('git', fullArgs, { cwd, encoding: 'utf8', maxBuffer, timeout }, (error, stdout, stderr) => {
       if (timer) clearTimeout(timer);
       _activeProcesses.delete(child);
@@ -604,7 +611,7 @@ function gitClone(repoUrl, targetPath, options = {}) {
 
     const cloneProcess = execFile(
       'git',
-      ['clone', '--progress', cloneUrl, targetPath],
+      [...HARDENING_ARGS, 'clone', '--progress', cloneUrl, targetPath],
       { encoding: 'utf8', maxBuffer: 1024 * 1024 * 10, timeout: 300000 }, // 5 min timeout
       (error, stdout, stderr) => {
         _activeProcesses.delete(cloneProcess);
