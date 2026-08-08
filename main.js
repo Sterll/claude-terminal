@@ -51,6 +51,12 @@ if (!gotTheLock) {
 }
 
 function bootstrapApp() {
+  // Mirror console.error / console.warn into the error log before anything else
+  // in the main process can log, so caught-and-degraded failures show up in the
+  // shipped app instead of only in a dev terminal. Entries are buffered until
+  // setMainWindow() runs in launchMainApp(), then stream to the renderer.
+  require('./src/main/services/ErrorLogService').installConsoleCapture();
+
   // Set AUMID explicitly for NSIS builds — must match appId in electron-builder.config.js.
   // Without this, Electron may generate a different runtime AUMID, causing the taskbar
   // to show duplicate icons and breaking the taskbar pin across updates.
