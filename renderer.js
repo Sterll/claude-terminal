@@ -5877,10 +5877,20 @@ async function refreshUsageDisplay() {
 
   try {
     const result = await api.usage.refresh();
-    if (result.success) {
-      updateUsageDisplay({ data: result.data, lastFetch: new Date().toISOString() });
+    // A failed fetch that still has cached data is rendered rather than blanked
+    // (stale numbers beat empty bars), but the container is flagged so the UI
+    // can say so instead of passing them off as current.
+    if (result.success || (result.stale && result.data)) {
+      updateUsageDisplay({
+        data: result.data,
+        lastFetch: result.lastFetch || new Date().toISOString()
+      });
+      usageElements.container.classList.toggle('stale', !!result.stale);
+      usageElements.container.title = result.stale
+        ? t('usage.stale', { error: result.error || '' })
+        : '';
     } else {
-      usageElements.container.classList.remove('loading');
+      usageElements.container.classList.remove('loading', 'stale');
       updateUsageBar(usageElements.session, null);
       updateUsageBar(usageElements.weekly, null);
       updateUsageBar(usageElements.sonnet, null);

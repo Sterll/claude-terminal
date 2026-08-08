@@ -105,6 +105,24 @@ body.platform-darwin .titlebar-drag {
   animation: usagePulse 1.2s ease-in-out infinite;
 }
 
+/* Cached figures shown after a failed refresh: dimmed, with a warning dot, so
+   they are never mistaken for current data. Hover title carries the reason. */
+.titlebar-usage.stale {
+  opacity: 0.6;
+  position: relative;
+}
+
+.titlebar-usage.stale::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--warning);
+}
+
 @keyframes usagePulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }

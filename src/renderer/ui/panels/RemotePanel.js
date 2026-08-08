@@ -165,7 +165,7 @@ class RemotePanel extends BasePanel {
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
                   </svg>
-                  ${t('remote.pinRefresh')}
+                  <span id="remote-pin-refresh-label">${t('remote.pinRefresh')}</span>
                 </button>
               </div>
 
@@ -196,6 +196,10 @@ class RemotePanel extends BasePanel {
                 <select id="remote-iface-select" class="rp-select-sm">
                   <option value="">${t('remote.networkInterfaceAuto')}</option>
                 </select>
+              </div>
+              <div class="rp-advanced-row" id="rp-iface-error-row" style="display:none">
+                <div class="rp-pin-countdown expired" id="rp-iface-error-msg"></div>
+                <button class="rp-pin-refresh" id="rp-iface-retry-btn" type="button">${t('common.retry')}</button>
               </div>
               <div class="rp-advanced-row rp-advanced-separator">
                 <div class="rp-advanced-label">${t('remote.persistentPin')}</div>
@@ -268,8 +272,25 @@ class RemotePanel extends BasePanel {
           ifaceSelect.appendChild(opt);
         }
         if (!savedIp) ifaceSelect.value = '';
-      } catch (e) {}
+        this._setIfaceError(null);
+      } catch (e) {
+        // Swallowing this left an interface dropdown with nothing but "Auto" and
+        // no way to know the list failed to load.
+        this._setIfaceError(e);
+      }
     };
+
+    const ifaceRetryBtn = document.getElementById('rp-iface-retry-btn');
+    if (ifaceRetryBtn) {
+      ifaceRetryBtn.addEventListener('click', async () => {
+        ifaceRetryBtn.disabled = true;
+        try {
+          await populateIfaceSelect();
+        } finally {
+          ifaceRetryBtn.disabled = false;
+        }
+      });
+    }
 
     // ── Master toggle ──
     toggle.addEventListener('change', async () => {
@@ -307,7 +328,13 @@ class RemotePanel extends BasePanel {
     if (refreshBtn) {
       refreshBtn.addEventListener('click', async () => {
         refreshBtn.classList.add('spinning');
-        await this.api.remote.generatePin();
+        try {
+          await this.api.remote.generatePin();
+        } catch (e) {
+          this._showPinError(e);
+          setTimeout(() => refreshBtn.classList.remove('spinning'), 400);
+          return;
+        }
         await this._loadAndShowPin();
         setTimeout(() => refreshBtn.classList.remove('spinning'), 400);
       });
@@ -324,7 +351,12 @@ class RemotePanel extends BasePanel {
         this._settingsState.setProp('remotePersistentPin', enabled);
         this._saveSettings();
         if (persistConfig) persistConfig.style.display = enabled ? '' : 'none';
-        await this.api.remote.generatePin();
+        try {
+          await this.api.remote.generatePin();
+        } catch (e) {
+          this._showPinError(e);
+          return;
+        }
         await this._loadAndShowPin();
         if (this._settingsState.get().remoteEnabled) this._startPinPolling();
       });
@@ -340,7 +372,12 @@ class RemotePanel extends BasePanel {
         persistInput.value = val;
         this._settingsState.setProp('remotePersistentPinValue', val);
         this._saveSettings();
-        await this.api.remote.generatePin();
+        try {
+          await this.api.remote.generatePin();
+        } catch (e) {
+          this._showPinError(e);
+          return;
+        }
         await this._loadAndShowPin();
       });
     }
@@ -395,7 +432,13 @@ class RemotePanel extends BasePanel {
 
   async _startPinPolling() {
     this._stopPinPolling();
-    await this.api.remote.generatePin();
+    try {
+      await this.api.remote.generatePin();
+    } catch (e) {
+      // Without this the panel would abort here and leave the digits at "-".
+      this._showPinError(e);
+      return;
+    }
     this._loadAndShowPin();
     const isPersistent = this._settingsState.get().remotePersistentPin;
     const interval = isPersistent ? 30000 : 5000;
@@ -412,7 +455,12 @@ class RemotePanel extends BasePanel {
   async _loadAndShowPin() {
     try {
       const result = await this.api.remote.getPin();
-      if (!result.success) return;
+      // A silent `return` here left the six digits at "-" with no PIN, no error
+      // and no hint — a dead end on the panel's primary action.
+      if (!result || !result.success) {
+        this._showPinError(new Error(result?.error || ''));
+        return;
+      }
       if (result.persistent) {
         this._showPin(result.pin, Infinity, true);
         return;
@@ -420,11 +468,66 @@ class RemotePanel extends BasePanel {
       if (!result.pin || Date.now() >= result.expiresAt) {
         await this.api.remote.generatePin();
         const fresh = await this.api.remote.getPin();
-        if (fresh.success) this._showPin(fresh.pin, fresh.expiresAt, fresh.persistent);
+        if (!fresh || !fresh.success) {
+          this._showPinError(new Error(fresh?.error || ''));
+          return;
+        }
+        this._showPin(fresh.pin, fresh.expiresAt, fresh.persistent);
         return;
       }
       this._showPin(result.pin, result.expiresAt, false);
-    } catch (e) {}
+    } catch (e) {
+      this._showPinError(e);
+    }
+  }
+
+  /** Strip Electron's "Error invoking remote method '...':" wrapper. */
+  _errorText(err) {
+    const raw = (err && err.message) ? String(err.message) : '';
+    return raw
+      .replace(/^Error invoking remote method '[^']*':\s*/, '')
+      .replace(/^Error:\s*/, '')
+      .trim();
+  }
+
+  /**
+   * Inline error state for the PIN column: blank digits, a red reason under
+   * them, and the existing refresh button relabelled as Retry.
+   */
+  _showPinError(err) {
+    ['pin-d0', 'pin-d1', 'pin-d2', 'pin-d3', 'pin-d4', 'pin-d5'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = '-';
+    });
+
+    const countdown = document.getElementById('remote-pin-countdown');
+    if (countdown) {
+      const reason = this._errorText(err);
+      countdown.textContent = reason ? `${t('remote.pinError')} (${reason})` : t('remote.pinError');
+      countdown.classList.remove('persistent');
+      countdown.classList.add('expired');
+    }
+
+    const label = document.getElementById('remote-pin-refresh-label');
+    if (label) label.textContent = t('common.retry');
+  }
+
+  /** Inline error state for the network-interface dropdown. */
+  _setIfaceError(err) {
+    const row = document.getElementById('rp-iface-error-row');
+    const msg = document.getElementById('rp-iface-error-msg');
+    if (!row) return;
+    if (!err) {
+      row.style.display = 'none';
+      return;
+    }
+    if (msg) {
+      const reason = this._errorText(err);
+      msg.textContent = reason
+        ? `${t('remote.networkInterfaceError')} (${reason})`
+        : t('remote.networkInterfaceError');
+    }
+    row.style.display = '';
   }
 
   _showPin(pin, expiresAt, persistent) {
@@ -433,6 +536,10 @@ class RemotePanel extends BasePanel {
       const el = document.getElementById(id);
       if (el) el.textContent = pinStr[i] || '-';
     });
+
+    // Recovered: restore the button's normal label.
+    const label = document.getElementById('remote-pin-refresh-label');
+    if (label) label.textContent = t('remote.pinRefresh');
 
     const countdown = document.getElementById('remote-pin-countdown');
     if (!countdown) return;

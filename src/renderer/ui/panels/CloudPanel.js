@@ -15,6 +15,25 @@ function _escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/**
+ * Electron wraps a rejected ipcMain handler as
+ * "Error invoking remote method 'cloud:sync-force': Error: Cloud not configured".
+ * Strip the plumbing so the user reads the actual reason.
+ */
+function _ipcErrorMessage(err) {
+  const raw = (err && err.message) ? String(err.message) : '';
+  if (!raw) return t('common.errorOccurred');
+  return raw
+    .replace(/^Error invoking remote method '[^']*':\s*/, '')
+    .replace(/^Error:\s*/, '')
+    .trim() || t('common.errorOccurred');
+}
+
+function _toastError(messageKey, err) {
+  const Toast = require('../components/Toast');
+  Toast.show(`${t(messageKey)}: ${_ipcErrorMessage(err)}`, 'error');
+}
+
 function buildHtml(settings) {
   return `
     <div class="cloud-panel">
@@ -517,9 +536,26 @@ function setupHandlers(context) {
     try {
       const { sessions } = await api.cloud.getSessions();
       _renderSessions(sessions || []);
-    } catch {
-      _renderSessions([]);
+    } catch (err) {
+      // Never fall back to _renderSessions([]) here: "No active sessions" would be
+      // indistinguishable from a failed fetch, and it hides the Stop button of a
+      // session that is still running and burning quota.
+      _renderSessionsError(err);
     }
+  }
+
+  function _renderSessionsError(err) {
+    const list = document.getElementById('cp-sessions-list');
+    if (!list) return;
+    list.innerHTML = `
+      <div class="cp-error">
+        <div>${t('cloud.sessionsLoadError')}</div>
+        <div>${_escapeHtml(_ipcErrorMessage(err))}</div>
+        <button class="cp-btn-sm" id="cp-sessions-retry-btn">${t('common.retry')}</button>
+      </div>
+    `;
+    const retryBtn = document.getElementById('cp-sessions-retry-btn');
+    if (retryBtn) retryBtn.addEventListener('click', () => _loadSessions());
   }
 
   function _renderSessions(sessions) {
@@ -555,9 +591,16 @@ function setupHandlers(context) {
         btn.disabled = true;
         try {
           await api.cloud.stopSession({ sessionId: btn.dataset.id });
+          const Toast = require('../components/Toast');
+          Toast.show(t('cloud.sessionStopped'), 'success');
           _loadSessions();
-        } catch {}
-        btn.disabled = false;
+        } catch (err) {
+          // A silent failure here leaves the session running and consuming quota
+          // while the row still shows a Stop button that appears to have worked.
+          _toastError('cloud.sessionStopError', err);
+        } finally {
+          btn.disabled = false;
+        }
       });
     });
   }
@@ -586,20 +629,41 @@ function setupHandlers(context) {
       syncNowBtn.disabled = true;
       try {
         await api.cloud.syncForce();
-      } catch {}
-      syncNowBtn.disabled = false;
+        const Toast = require('../components/Toast');
+        Toast.show(t('cloud.syncDone'), 'success');
+      } catch (err) {
+        _toastError('cloud.syncStatusError', err);
+      } finally {
+        syncNowBtn.disabled = false;
+      }
     });
   }
 
-  // Auto-sync master toggle
+  // Auto-sync master toggle.
+  // The setting is persisted ONLY after the engine confirms it started, otherwise
+  // the toggle would stay ON across restarts while nothing ever syncs — and the
+  // user would believe their data is backed up.
   if (syncAutoToggle) {
-    syncAutoToggle.addEventListener('change', () => {
-      settings.cloudAutoSync = syncAutoToggle.checked;
-      saveSettings(settings);
-      if (syncAutoToggle.checked) {
-        api.cloud.syncStart().catch(() => {});
-      } else {
-        api.cloud.syncStop().catch(() => {});
+    syncAutoToggle.addEventListener('change', async () => {
+      const enabled = syncAutoToggle.checked;
+      syncAutoToggle.disabled = true;
+      try {
+        if (enabled) {
+          await api.cloud.syncStart();
+        } else {
+          await api.cloud.syncStop();
+        }
+        settings.cloudAutoSync = enabled;
+        saveSettings(settings);
+      } catch (err) {
+        // Revert both the checkbox and the persisted setting to the real state.
+        const reverted = !enabled;
+        syncAutoToggle.checked = reverted;
+        settings.cloudAutoSync = reverted;
+        saveSettings(settings);
+        _toastError(enabled ? 'cloud.syncStartError' : 'cloud.syncStopError', err);
+      } finally {
+        syncAutoToggle.disabled = false;
       }
     });
   }
@@ -618,8 +682,11 @@ function setupHandlers(context) {
       resolveAllBtn.disabled = true;
       try {
         await api.cloud.resolveAllConflicts('local');
-      } catch {}
-      resolveAllBtn.disabled = false;
+      } catch (err) {
+        _toastError('cloud.conflictResolveError', err);
+      } finally {
+        resolveAllBtn.disabled = false;
+      }
     });
   }
 
@@ -697,8 +764,11 @@ function setupHandlers(context) {
           btn.disabled = true;
           try {
             await api.cloud.resolveConflict({ entityType: btn.dataset.resolve, resolution: btn.dataset.resolution });
-          } catch {}
-          btn.disabled = false;
+          } catch (err) {
+            _toastError('cloud.conflictResolveError', err);
+          } finally {
+            btn.disabled = false;
+          }
         });
       });
     }

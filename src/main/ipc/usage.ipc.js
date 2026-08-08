@@ -24,13 +24,40 @@ function registerUsageHandlers() {
     return usageService.getUsageData();
   });
 
-  // Force refresh usage data
+  // Force refresh usage data.
+  // refreshUsage() resolves with cached data when the API call fails, so a
+  // resolved promise is NOT proof the numbers are current — ask the service
+  // whether the fetch actually succeeded before reporting success. Otherwise an
+  // expired OAuth token or a moved endpoint shows the same percentages forever.
   ipcMain.handle('refresh-usage', async () => {
     try {
       const data = await usageService.refreshUsage();
+      const fetchState = typeof usageService.getFetchState === 'function'
+        ? usageService.getFetchState()
+        : null;
+
+      if (fetchState && fetchState.stale) {
+        return {
+          success: false,
+          stale: true,
+          data: data || null,
+          lastFetch: fetchState.lastFetch,
+          error: fetchState.error || 'Usage API unreachable'
+        };
+      }
+
+      if (!data) {
+        return {
+          success: false,
+          stale: true,
+          data: null,
+          error: (fetchState && fetchState.error) || 'No usage data available'
+        };
+      }
+
       return { success: true, data };
     } catch (error) {
-      return { success: false, error: error.message };
+      return { success: false, error: error && error.message };
     }
   });
 

@@ -11,6 +11,9 @@ let _unsubscribers = [];
 let _refreshTimer = null;
 let _expandedEntries = new Set();
 let _isLoaded = false;
+// Message of the last failed load/refresh, or null. When set, the stats shown
+// are frozen at their last known value and must be badged as such.
+let _loadError = null;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -71,6 +74,14 @@ function cleanup() {
 const _state = require('../../state/errorLog.state');
 const api = window.electron_api;
 
+function _errorText(e) {
+  const raw = (e && e.message) ? String(e.message) : String(e || '');
+  return raw
+    .replace(/^Error invoking remote method '[^']*':\s*/, '')
+    .replace(/^Error:\s*/, '')
+    .trim();
+}
+
 async function _loadData() {
   try {
     if (!api?.errorLog) return;
@@ -82,9 +93,12 @@ async function _loadData() {
     _state.setEntries(entries || []);
     _state.setStats(stats);
     _state.setPatternAlerts(patterns || []);
+    _loadError = null;
     _render();
   } catch (e) {
     console.error('[ErrorLogPanel] loadData failed:', e);
+    _loadError = _errorText(e);
+    _render();
   }
 }
 
@@ -92,8 +106,24 @@ async function _loadStats() {
   try {
     if (!api?.errorLog) return;
     const stats = await api.errorLog.getStats();
+    const hadError = _loadError !== null;
+    _loadError = null;
     _state.setStats(stats);
-  } catch {}
+    // The state subscription only re-renders the entry list, so the stat tiles
+    // have to be patched explicitly — otherwise they freeze at their last value
+    // even when every refresh succeeds.
+    if (hadError) _render();
+    else _renderStats();
+  } catch (e) {
+    // Swallowing this froze the stats at their last value with no indication
+    // that they had stopped updating.
+    const message = _errorText(e);
+    // Don't re-render on every failed 10s tick — it would steal focus from the
+    // search box while the same banner is already on screen.
+    if (_loadError === message) return;
+    _loadError = message;
+    _render();
+  }
 }
 
 function _initIpcListeners() {
@@ -134,26 +164,39 @@ function _render() {
         </div>
       </div>
 
+      ${_loadError !== null ? `
+      <div class="errorlog-pattern-alerts" id="errorlog-load-error">
+        <div class="errorlog-pattern-alerts-header">
+          <svg viewBox="0 0 24 24" fill="currentColor" class="errorlog-pattern-icon"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+          ${t('errorLog.loadError')}
+        </div>
+        <div class="errorlog-pattern-item">
+          <span class="errorlog-pattern-msg">${escapeHtml(_loadError)}</span>
+          <button class="errorlog-btn" id="errorlog-load-retry">${t('common.retry')}</button>
+        </div>
+      </div>
+      ` : ''}
+
       ${stats ? `
       <div class="errorlog-stats">
         <div class="errorlog-stat">
-          <span class="errorlog-stat-value">${stats.total}</span>
+          <span class="errorlog-stat-value" data-stat="total">${stats.total}</span>
           <span class="errorlog-stat-label">${t('errorLog.stats.total')}</span>
         </div>
         <div class="errorlog-stat errorlog-stat--critical">
-          <span class="errorlog-stat-value">${stats.critical}</span>
+          <span class="errorlog-stat-value" data-stat="critical">${stats.critical}</span>
           <span class="errorlog-stat-label">${t('errorLog.level.critical')}</span>
         </div>
         <div class="errorlog-stat errorlog-stat--warning">
-          <span class="errorlog-stat-value">${stats.warning}</span>
+          <span class="errorlog-stat-value" data-stat="warning">${stats.warning}</span>
           <span class="errorlog-stat-label">${t('errorLog.level.warning')}</span>
         </div>
         <div class="errorlog-stat errorlog-stat--info">
-          <span class="errorlog-stat-value">${stats.info}</span>
+          <span class="errorlog-stat-value" data-stat="info">${stats.info}</span>
           <span class="errorlog-stat-label">${t('errorLog.level.info')}</span>
         </div>
         <div class="errorlog-stat">
-          <span class="errorlog-stat-value">${stats.patternAlerts}</span>
+          <span class="errorlog-stat-value" data-stat="patternAlerts">${stats.patternAlerts}</span>
           <span class="errorlog-stat-label">${t('errorLog.stats.patterns')}</span>
         </div>
       </div>
@@ -201,6 +244,22 @@ function _render() {
 
   _bindEvents();
   _renderEntries();
+}
+
+/** Patch the stat tiles in place (the full _render() would reset scroll/focus). */
+function _renderStats() {
+  if (!_container) return;
+  const stats = _state.errorLogState.get().stats;
+  const statsEl = _container.querySelector('.errorlog-stats');
+  if (!stats || !statsEl) {
+    // The stats block isn't in the DOM yet (first successful load) — build it.
+    _render();
+    return;
+  }
+  for (const key of ['total', 'critical', 'warning', 'info', 'patternAlerts']) {
+    const el = statsEl.querySelector(`[data-stat="${key}"]`);
+    if (el) el.textContent = stats[key];
+  }
 }
 
 function _renderEntries() {
@@ -265,6 +324,15 @@ function _bindEvents() {
   const clearBtn = _container.querySelector('#errorlog-clear');
   const exportBtn = _container.querySelector('#errorlog-export');
   const entriesEl = _container.querySelector('#errorlog-entries');
+  const loadRetryBtn = _container.querySelector('#errorlog-load-retry');
+
+  if (loadRetryBtn) {
+    loadRetryBtn.addEventListener('click', async () => {
+      loadRetryBtn.disabled = true;
+      loadRetryBtn.textContent = t('common.loading');
+      await _loadData();
+    });
+  }
 
   if (filterLevel) {
     filterLevel.addEventListener('change', () => {

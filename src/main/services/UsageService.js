@@ -15,6 +15,11 @@ let fetchInterval = null;
 let isFetching = false;
 let _onUpdateCallback = null;
 let _onLimitCallback = null;
+// Staleness tracking: set whenever a fetch attempt fails. `isStale` stays true
+// for as long as we keep serving `usageData` that the API refused to confirm,
+// so the renderer can badge the numbers instead of showing them as current.
+let lastError = null;
+let isStale = false;
 // De-dupe limit notifications until the next reset window
 let _lastLimitNotifiedReset = null;
 
@@ -109,8 +114,10 @@ function fetchUsageFromAPI(token) {
 // ── Main fetch logic ──
 
 /**
- * Fetch usage data: try API first, fall back to PTY
- * @returns {Promise<Object>}
+ * Fetch usage data from the OAuth API.
+ * There is no second source (the PTY fallback was removed), so a failed fetch
+ * marks the cached data stale rather than silently passing it off as fresh.
+ * @returns {Promise<Object|null>}
  */
 async function fetchUsage() {
   if (isFetching) return usageData;
@@ -124,22 +131,29 @@ async function fetchUsage() {
         const data = await fetchUsageFromAPI(token);
         usageData = data;
         lastFetch = new Date();
+        lastError = null;
+        isStale = false;
         console.log('[Usage] Fetched via API');
         if (_onUpdateCallback) _onUpdateCallback(data);
         _maybeNotifyLimit(data);
         return data;
       } catch (apiErr) {
-        console.log('[Usage] API failed, falling back to PTY:', apiErr.message);
+        lastError = apiErr.message;
+        console.log('[Usage] API request failed:', apiErr.message);
       }
+    } else {
+      lastError = 'No valid Claude OAuth token (missing or expired ~/.claude/.credentials.json)';
+      console.log('[Usage] ' + lastError);
     }
 
     // PTY fallback removed — launching `claude --dangerously-skip-permissions` just
-    // to read usage data is a security risk. Return cached data if available.
+    // to read usage data is a security risk. Serve cached data, flagged as stale.
+    isStale = true;
     if (usageData) {
-      console.log('[Usage] API unavailable, returning cached data');
+      console.warn('[Usage] API unavailable, serving STALE cached data:', lastError);
       return usageData;
     }
-    console.warn('[Usage] API unavailable and no cached data');
+    console.warn('[Usage] API unavailable and no cached data:', lastError);
     return null;
   } finally {
     isFetching = false;
@@ -178,14 +192,30 @@ function stopPeriodicFetch() {
 }
 
 /**
- * Get cached usage data
+ * Get cached usage data.
+ * `stale` is true when the last fetch attempt failed — `data` is then whatever
+ * the API last confirmed, which may be arbitrarily old.
  * @returns {Object}
  */
 function getUsageData() {
   return {
     data: usageData,
     lastFetch: lastFetch ? lastFetch.toISOString() : null,
-    isFetching
+    isFetching,
+    stale: isStale,
+    error: lastError
+  };
+}
+
+/**
+ * Staleness of the most recent fetch attempt.
+ * @returns {{ stale: boolean, error: string|null, lastFetch: string|null }}
+ */
+function getFetchState() {
+  return {
+    stale: isStale,
+    error: lastError,
+    lastFetch: lastFetch ? lastFetch.toISOString() : null
   };
 }
 
@@ -202,9 +232,10 @@ function refreshUsage() {
  */
 function onWindowShow() {
   const staleMinutes = 10;
-  const isStale = !lastFetch || (Date.now() - lastFetch.getTime() > staleMinutes * 60 * 1000);
+  // Renamed to avoid shadowing the module-level `isStale` (fetch-failure flag).
+  const isDataOld = !lastFetch || (Date.now() - lastFetch.getTime() > staleMinutes * 60 * 1000);
 
-  if (isStale && !isFetching) {
+  if (isDataOld && !isFetching) {
     fetchUsage().catch(e => console.error('[Usage]', e.message));
   }
 }
@@ -251,6 +282,7 @@ module.exports = {
   startPeriodicFetch,
   stopPeriodicFetch,
   getUsageData,
+  getFetchState,
   refreshUsage,
   fetchUsage,
   onWindowShow,
