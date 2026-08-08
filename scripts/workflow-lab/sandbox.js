@@ -161,7 +161,13 @@ function createSandbox(label = 'node') {
       for (const s of servers) await new Promise(res => s.close(res));
       process.env.USERPROFILE = prevEnv.USERPROFILE;
       process.env.HOME        = prevEnv.HOME;
-      try { fs.rmSync(base, { recursive: true, force: true }); } catch { /* best effort */ }
+      // Windows holds brief locks on files a child git process just touched, so
+      // a single rmSync leaves the odd directory behind. Retry a few times
+      // before giving up; sweepStaleSandboxes() catches whatever still escapes.
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try { fs.rmSync(base, { recursive: true, force: true }); return; }
+        catch { await new Promise(res => setTimeout(res, 50 * (attempt + 1))); }
+      }
     },
   };
 
@@ -226,4 +232,32 @@ async function runGraph(graph, sb) {
   return runner.execute({ id: 'lab-wf', name: 'lab', graph }, run, new AbortController(), sb.vars);
 }
 
-module.exports = { createSandbox, runNode, runGraph, simpleGraph, assert, EXEC };
+/**
+ * Delete sandbox directories left behind by earlier runs.
+ *
+ * cleanup() retries, but a directory whose files are still locked at process
+ * exit survives anyway. Without this sweep the temp folder accumulates a few
+ * strays on every run, forever.
+ *
+ * @param {number} maxAgeMs only remove directories older than this
+ * @returns {number} how many were removed
+ */
+function sweepStaleSandboxes(maxAgeMs = 60 * 60 * 1000) {
+  const tmp = os.tmpdir();
+  let removed = 0;
+  let entries;
+  try { entries = fs.readdirSync(tmp); } catch { return 0; }
+
+  for (const name of entries) {
+    if (!name.startsWith('wflab-')) continue;
+    const p = path.join(tmp, name);
+    try {
+      if (Date.now() - fs.statSync(p).mtimeMs < maxAgeMs) continue;
+      fs.rmSync(p, { recursive: true, force: true });
+      removed++;
+    } catch { /* still locked — next run will get it */ }
+  }
+  return removed;
+}
+
+module.exports = { createSandbox, runNode, runGraph, simpleGraph, sweepStaleSandboxes, assert, EXEC };

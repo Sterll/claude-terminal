@@ -64,6 +64,28 @@ module.exports = {
       },
     },
     {
+      // Regression: `parseInt('0', 10) || 60_000` treated an explicit 0 as
+      // unset, because 0 is falsy, and stalled the workflow for a minute.
+      name: 'a bare "0" waits zero, not the one-minute fallback',
+      async setup(sb) { sb.t0 = Date.now(); },
+      config: { mode: 'duration', duration: '0' },
+      timeoutMs: 3000,
+      assert(out, sb) {
+        assert.strictEqual(out.waited, 0, `"0" became ${out.waited}ms`);
+        assert.ok(Date.now() - sb.t0 < 2000, 'a zero wait fell back to a long default');
+      },
+    },
+    {
+      // Regression: the unit had to touch the number, so "0.2 s" missed the
+      // pattern and fell through to parseInt("0.2") === 0 -> falsy -> 60s.
+      name: 'a space between value and unit is tolerated, not silently rescaled',
+      config: { mode: 'duration', duration: '0.2 s' },
+      timeoutMs: 3000,
+      assert(out) {
+        assert.strictEqual(out.waited, 200, `"0.2 s" became ${out.waited}ms instead of 200ms`);
+      },
+    },
+    {
       name: 'approval mode resumes when a human approves',
       async setup(sb) { approveAsSoonAsRegistered(sb, { approved: true, timedOut: false }); },
       config: { mode: 'approval' },

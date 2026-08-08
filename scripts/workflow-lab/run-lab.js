@@ -40,7 +40,7 @@ if (!process.versions.electron && !process.env.WF_LAB_CHILD) {
   console.warn('[lab] electron not found — running under plain node; nodes using native modules will fail to load.');
 }
 
-const { createSandbox, runNode, runGraph } = require('./sandbox');
+const { createSandbox, runNode, runGraph, sweepStaleSandboxes } = require('./sandbox');
 const { loadScenarios } = require('./scenarios/_index');
 
 const args    = process.argv.slice(2);
@@ -52,24 +52,40 @@ const C = {
   green: '\x1b[32m', yellow: '\x1b[33m', cyan: '\x1b[36m', bold: '\x1b[1m',
 };
 
+// A node that hangs must not hang the whole lab. Without this, reintroducing
+// the `wait` duration bug (a typo silently becoming a 60s sleep) would stall
+// the run instead of failing it.
+const DEFAULT_TIMEOUT_MS = 20_000;
+
+function withTimeout(promise, ms, label) {
+  let timer;
+  const guard = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms — ${label}`)), ms);
+  });
+  return Promise.race([promise, guard]).finally(() => clearTimeout(timer));
+}
+
 async function runOne(mod, scenario) {
   const sb = createSandbox(mod.type);
   try {
     if (scenario.setup) await scenario.setup(sb);
 
+    const budget = scenario.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+
     let outcome;
     if (scenario.graph) {
-      outcome = await runGraph(scenario.graph(sb), sb);
+      outcome = await withTimeout(runGraph(scenario.graph(sb), sb), budget, scenario.name);
     } else {
       const config = typeof scenario.config === 'function' ? scenario.config(sb) : (scenario.config || {});
       if (scenario.expectThrow) {
         let threw = null;
-        try { await runNode(mod.type, config, sb); }
+        try { await withTimeout(runNode(mod.type, config, sb), budget, scenario.name); }
         catch (e) { threw = e; }
         if (!threw) throw new Error('expected run() to reject, but it resolved');
+        if (/^timed out after/.test(threw.message)) throw threw;
         outcome = threw;
       } else {
-        outcome = await runNode(mod.type, config, sb);
+        outcome = await withTimeout(runNode(mod.type, config, sb), budget, scenario.name);
       }
     }
 
@@ -83,6 +99,9 @@ async function runOne(mod, scenario) {
 }
 
 (async () => {
+  const swept = sweepStaleSandboxes();
+  if (swept) console.log(`${C.dim}swept ${swept} stale sandbox director${swept === 1 ? 'y' : 'ies'}${C.reset}`);
+
   const registry = require(path.join(ROOT, 'src/main/workflow-nodes/_registry'));
   registry.loadRegistry();
   const registered = registry.getAll()
