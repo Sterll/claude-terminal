@@ -13,6 +13,7 @@ class RemotePanel extends BasePanel {
     super(el, options);
     this._pinRefreshInterval = null;
     this._statusInterval = null;
+    this._rootEl = null;
     this._lastQrUrl = null;
     this._settingsState = options.settingsState;
     this._saveSettings = options.saveSettings;
@@ -400,32 +401,89 @@ class RemotePanel extends BasePanel {
       });
     }
 
+    // The tab panel is the lifetime anchor for every timer below: it is what
+    // gets hidden when the user navigates away.
+    this._rootEl = document.getElementById('tab-connectivity');
+    this._populateIfaceSelect = populateIfaceSelect;
+
     if (this._settingsState.get().remoteEnabled) {
       populateIfaceSelect();
       this._refreshServerStatus();
       this._startPinPolling();
     }
 
-    // Server status refresh every 10s
-    if (this._statusInterval) clearInterval(this._statusInterval);
-    this._statusInterval = setInterval(() => {
-      if (!document.getElementById('remote-enabled-toggle')) {
-        clearInterval(this._statusInterval);
-        this._statusInterval = null;
-        this._stopPinPolling();
-        return;
-      }
-      if (this._settingsState.get().remoteEnabled) this._refreshServerStatus();
-    }, 10000);
+    this._startStatusPolling();
+  }
+
+  /**
+   * Called when the Connectivity tab becomes visible again.
+   * setupHandlers() only ever runs once (the tab caches its DOM), so this is
+   * what brings the polling back after an onDeactivate().
+   */
+  onActivate() {
+    this._active = true;
+    if (!this._rootEl || !this._rootEl.isConnected) {
+      this._rootEl = document.getElementById('tab-connectivity');
+    }
+    // Nothing was ever set up (tab never opened) — setupHandlers will start it.
+    if (!document.getElementById('remote-enabled-toggle')) return;
+    this._startStatusPolling();
+    if (this._settingsState?.get().remoteEnabled) {
+      this._refreshServerStatus();
+      this._resumePinPolling();
+    }
+  }
+
+  /**
+   * Called when navigating away from the Connectivity tab.
+   * Stops both polls: at 10s + 5s they were otherwise worth 1080 IPC calls/hour
+   * for as long as the app stayed open.
+   */
+  onDeactivate() {
+    this._active = false;
+    this._stopStatusPolling();
+    this._stopPinPolling();
   }
 
   destroy() {
     this._stopPinPolling();
+    this._stopStatusPolling();
+    super.destroy();
+  }
+
+  // ── Polling lifecycle ──
+
+  /** Server status refresh every 10s. Idempotent. */
+  _startStatusPolling() {
+    this._stopStatusPolling();
+    this._statusInterval = setInterval(() => {
+      // Defensive self-stop: tab switches that bypass onDeactivate() (Ctrl+,
+      // straight into Settings, a panel re-render, ...) must not leave this
+      // ticking. onActivate() restarts it on every re-entry into the tab.
+      if (!this._isLive()) {
+        this._stopStatusPolling();
+        this._stopPinPolling();
+        return;
+      }
+      if (this._settingsState?.get().remoteEnabled) this._refreshServerStatus();
+    }, 10000);
+  }
+
+  _stopStatusPolling() {
     if (this._statusInterval) {
       clearInterval(this._statusInterval);
       this._statusInterval = null;
     }
-    super.destroy();
+  }
+
+  /**
+   * True while the panel's own DOM is attached AND rendered. Tabs are hidden
+   * with `display:none`, which keeps the nodes in the document but strips their
+   * client rects — so an element-presence check alone is not enough.
+   */
+  _isLive() {
+    const el = this._rootEl || document.getElementById('tab-connectivity');
+    return this.isPanelLive(el);
   }
 
   // ── Private ──
@@ -440,10 +498,30 @@ class RemotePanel extends BasePanel {
       return;
     }
     this._loadAndShowPin();
-    const isPersistent = this._settingsState.get().remotePersistentPin;
+    this._schedulePinPolling();
+  }
+
+  /**
+   * Resume PIN display refresh after the tab was left, WITHOUT minting a new
+   * PIN — re-entering the tab must not invalidate a code already being typed
+   * on a phone.
+   */
+  _resumePinPolling() {
+    this._loadAndShowPin();
+    this._schedulePinPolling();
+  }
+
+  _schedulePinPolling() {
+    this._stopPinPolling();
+    const isPersistent = this._settingsState?.get().remotePersistentPin;
     const interval = isPersistent ? 30000 : 5000;
     this._pinRefreshInterval = setInterval(() => {
-      if (!document.getElementById('remote-pin-display')) { this._stopPinPolling(); return; }
+      // Same defensive self-stop as the status poll: a hidden tab keeps its DOM,
+      // so presence of #remote-pin-display proves nothing on its own.
+      if (!document.getElementById('remote-pin-display') || !this._isLive()) {
+        this._stopPinPolling();
+        return;
+      }
       this._loadAndShowPin();
     }, interval);
   }
@@ -731,5 +809,10 @@ module.exports = {
     _instance._settingsState = context.settingsState;
     _instance._saveSettings = context.saveSettings;
     _instance.setupHandlers();
-  }
+  },
+  // Tab lifecycle — no-ops until the panel has actually been built once.
+  onActivate: () => { if (_instance) _instance.onActivate(); },
+  onDeactivate: () => { if (_instance) _instance.onDeactivate(); },
+  /** Alias of onDeactivate, for callers that speak the cleanup() convention. */
+  cleanup: () => { if (_instance) _instance.onDeactivate(); }
 };

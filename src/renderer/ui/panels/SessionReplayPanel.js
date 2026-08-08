@@ -1014,9 +1014,27 @@ function _updatePlayBtn() {
   btn.innerHTML = playerIsPlaying ? pauseSvg : playSvg;
 }
 
+/**
+ * True while the panel's own DOM is attached AND actually rendered.
+ * Tabs are hidden by dropping an `active` class (-> `display:none`), so the
+ * nodes stay in the document: `isConnected` alone would always say "alive".
+ * A `display:none` ancestor yields no client rects and a null offsetParent.
+ */
+function _isPanelLive() {
+  if (!container || !container.isConnected) return false;
+  return container.offsetParent !== null || container.getClientRects().length > 0;
+}
+
 function _startTimer() {
   const delay = PLAYER_SPEED_DELAYS[playerSpeed] || 1000;
   playerTimer = setInterval(() => {
+    // Defensive self-stop: a replay left playing while the user navigates away
+    // would otherwise keep mutating a hidden subtree at up to 4Hz forever.
+    // Tab switches that bypass onDeactivate() are covered here.
+    if (!_isPanelLive()) {
+      _playerPause();
+      return;
+    }
     if (playerCurrentStep >= playerSteps.length - 1) {
       _playerPause();
       return;
@@ -1492,6 +1510,26 @@ function init(containerEl, opts = {}) {
   loadBtn.addEventListener('click', loadReplay);
 }
 
+/**
+ * Called when the Session Replay tab becomes visible.
+ * Nothing to resume: a replay that was playing is deliberately left paused
+ * rather than silently restarted under the user.
+ */
+function onActivate() {}
+
+/**
+ * Called when navigating away from the Session Replay tab.
+ *
+ * Deliberately lighter than cleanup(): init() runs only once (renderer.js
+ * caches the built DOM), so tearing down the custom <select> widgets here
+ * would leave the panel permanently broken on re-entry. All this needs to do
+ * is stop the clock.
+ */
+function onDeactivate() {
+  _playerPause();
+}
+
+/** Full teardown — drops loaded data and destroys the select widgets. */
 function cleanup() {
   currentSteps = [];
   currentSummary = {};
@@ -1507,4 +1545,4 @@ function cleanup() {
   if (sessionSelect?.destroy) sessionSelect.destroy();
 }
 
-module.exports = { init, cleanup };
+module.exports = { init, onActivate, onDeactivate, cleanup };

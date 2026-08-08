@@ -107,6 +107,9 @@ const registry = require('./src/project-types/registry');
 const { mergeTranslations } = require('./src/renderer/i18n');
 const ModalComponent = require('./src/renderer/ui/components/Modal');
 const { MemoryEditor, GitChangesPanel, ShortcutsManager, SettingsPanel, SkillsAgentsPanel, PluginsPanel, MarketplacePanel, McpPanel, WorkflowPanel, DatabasePanel, CloudPanel, ConnectivityPanel, ControlTowerPanel, SessionReplayPanel, ParallelTaskPanel, WorkspacePanel, ErrorLogPanel } = require('./src/renderer/ui/panels');
+// Not re-exported by the panels index: ConnectivityPanel embeds it as a sub-tab,
+// but its polling lifecycle is driven from the tab registry below.
+const RemotePanel = require('./src/renderer/ui/panels/RemotePanel');
 
 // ========== LOCAL MODAL FUNCTIONS ==========
 // These work with the existing HTML modal elements in index.html
@@ -309,7 +312,7 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
 
   ShortcutsManager.init({
     settingsState, saveSettings,
-    switchToSettingsTab: (...args) => SettingsPanel.switchToSettingsTab(...args),
+    switchToSettingsTab: (...args) => _switchToSettingsTab(...args),
     terminalsState, TerminalManager,
     projectsState, setSelectedProjectFilter, ProjectList,
     showSessionsModal,
@@ -2808,10 +2811,20 @@ document.getElementById('btn-notifications').onclick = () => {
   document.getElementById('btn-notifications').classList.toggle('active', enabled);
 };
 
+/**
+ * Settings is not a nav-tab, but opening it still hides whatever panel was
+ * showing. Every route into Settings goes through here so the outgoing panel
+ * gets its deactivate() — Ctrl+, used to slip past teardown entirely.
+ */
+function _switchToSettingsTab(...args) {
+  _leaveCurrentTab('settings');
+  SettingsPanel.switchToSettingsTab(...args);
+}
+
 document.getElementById('btn-settings').onclick = () => {
   const currentActive = document.querySelector('.nav-tab[data-tab].active');
   if (currentActive) _saveScrollPositions(currentActive.dataset.tab);
-  SettingsPanel.switchToSettingsTab();
+  _switchToSettingsTab();
   setSetting('activeTab', 'settings');
 };
 
@@ -2850,34 +2863,201 @@ function _applySidebarTooltips(isCollapsed) {
 }
 
 // ========== TAB NAVIGATION ==========
-// Scroll position preservation across tab switches
+// Scroll position preservation across tab switches.
+//
+// Entries store a SELECTOR, never an element reference. Holding elements here
+// pinned whole detached subtrees alive after any innerHTML re-render — the map
+// is never pruned, so every leaked node stayed for the life of the process.
 const _tabScrollPositions = new Map();
+const _MAX_SCROLL_ENTRIES = 40; // bounded: deep panels have thousands of nodes
+
+/**
+ * Element-free, stable key for a scrollable node inside `panel`.
+ * @returns {string|null} selector resolvable against `panel`, or null
+ */
+function _scrollKey(panel, el) {
+  if (el === panel) return ':scope';
+  if (el.id) return `#${CSS.escape(el.id)}`;
+  const parts = [];
+  let node = el;
+  while (node && node !== panel) {
+    const parent = node.parentElement;
+    if (!parent) return null; // detached mid-walk
+    parts.unshift(`*:nth-child(${Array.prototype.indexOf.call(parent.children, node) + 1})`);
+    node = parent;
+  }
+  if (node !== panel) return null;
+  return `:scope > ${parts.join(' > ')}`;
+}
+
+function _resolveScrollEl(panel, key) {
+  if (key === ':scope') return panel;
+  try {
+    return panel.querySelector(key);
+  } catch {
+    return null; // selector no longer valid after a re-render
+  }
+}
 
 function _saveScrollPositions(tabId) {
   const panel = document.getElementById(`tab-${tabId}`);
   if (!panel) return;
   const entries = [];
   const save = (el) => {
-    if (el.scrollTop || el.scrollLeft) {
-      entries.push({ el, top: el.scrollTop, left: el.scrollLeft });
-    }
+    if (entries.length >= _MAX_SCROLL_ENTRIES) return;
+    if (!el.scrollTop && !el.scrollLeft) return;
+    const key = _scrollKey(panel, el);
+    if (key) entries.push({ key, top: el.scrollTop, left: el.scrollLeft });
   };
   save(panel);
   panel.querySelectorAll('*').forEach(save);
   if (entries.length) _tabScrollPositions.set(tabId, entries);
+  else _tabScrollPositions.delete(tabId);
 }
 
 function _restoreScrollPositions(tabId) {
   const entries = _tabScrollPositions.get(tabId);
   if (!entries) return;
+  const panel = document.getElementById(`tab-${tabId}`);
+  if (!panel) return;
   requestAnimationFrame(() => {
-    for (const { el, top, left } of entries) {
-      if (el.isConnected) {
-        el.scrollTop = top;
-        el.scrollLeft = left;
-      }
+    for (const { key, top, left } of entries) {
+      const el = _resolveScrollEl(panel, key);
+      if (!el) continue;
+      el.scrollTop = top;
+      el.scrollLeft = left;
     }
   });
+}
+
+// ========== PANEL LIFECYCLE REGISTRY ==========
+//
+// Single source of truth for what a tab does when it is entered and, crucially,
+// when it is LEFT. This replaces a hand-written if-ladder that only tore down
+// 4 of the 17 tabs: every other panel kept its timers running forever because
+// nobody remembered to add an `if (tabId !== 'x') X.cleanup()` branch.
+//
+// Contract: `deactivate` of the outgoing tab always runs before `activate` of
+// the incoming one, and a panel with a timer MUST declare a `deactivate`.
+// Panels also self-guard (see ControlTowerPanel / RemotePanel / SessionReplay)
+// so a switch path that bypasses this registry still cannot leak.
+const _TAB_LIFECYCLE = {
+  claude: {
+    activate: () => {
+      const activeId = terminalsState.get().activeTerminal;
+      if (!activeId) return;
+      const termData = terminalsState.get().terminals.get(activeId);
+      if (termData?.fitAddon) termData.fitAddon.fit();
+    }
+  },
+  git: {
+    activate: () => {
+      GitTabService.initGitTab();
+      GitTabService.renderProjectsList();
+    }
+  },
+  database: { activate: () => DatabasePanel.loadPanel() },
+  mcp: { activate: () => McpPanel.loadMcps() },
+  plugins: { activate: () => PluginsPanel.loadPlugins() },
+  skills: { activate: () => SkillsAgentsPanel.loadSkills() },
+  agents: { activate: () => SkillsAgentsPanel.loadAgents() },
+  workflows: { activate: () => WorkflowPanel.load() },
+  tasks: { activate: () => ParallelTaskPanel.load() },
+  'control-tower': {
+    activate: () => {
+      const root = document.getElementById('ct-panel-root');
+      if (root) ControlTowerPanel.loadPanel(root);
+    },
+    deactivate: () => ControlTowerPanel.cleanup()
+  },
+  dashboard: {
+    activate: () => {
+      populateDashboardProjects();
+      if (localState.selectedDashboardProject === -1) {
+        renderOverviewDashboard();
+      } else if (localState.selectedDashboardProject >= 0) {
+        renderDashboardContent(localState.selectedDashboardProject);
+      }
+    },
+    // 30s GitHub Actions poll started by the dashboard cards; it used to keep
+    // hitting the API from a tab nobody was looking at.
+    deactivate: () => DashboardService.stopWorkflowPolling()
+  },
+  timetracking: {
+    activate: () => {
+      const container = document.getElementById('timetracking-container');
+      if (container) TimeTrackingDashboard.init(container);
+    },
+    deactivate: () => TimeTrackingDashboard.cleanup()
+  },
+  'session-replay': {
+    activate: () => {
+      const container = document.getElementById('tab-session-replay');
+      if (container && !container.dataset.initialized) {
+        SessionReplayPanel.init(container, { projectsState, openedProjectId: projectsState.get().openedProjectId });
+        container.dataset.initialized = 'true';
+      }
+      SessionReplayPanel.onActivate();
+    },
+    // Pauses the replay clock only — a full cleanup() would destroy the custom
+    // <select> widgets that init() builds exactly once.
+    deactivate: () => SessionReplayPanel.onDeactivate()
+  },
+  memory: { activate: () => MemoryEditor.loadMemory() },
+  workspace: {
+    activate: () => {
+      const root = document.getElementById('workspace-panel-root');
+      if (root) WorkspacePanel.loadPanel(root);
+    },
+    deactivate: () => WorkspacePanel.cleanup()
+  },
+  errorlog: {
+    activate: () => {
+      const root = document.getElementById('errorlog-panel-root');
+      if (root) ErrorLogPanel.loadPanel(root);
+    },
+    deactivate: () => ErrorLogPanel.cleanup()
+  },
+  connectivity: {
+    activate: () => {
+      const container = document.getElementById('tab-connectivity');
+      if (container && !container.dataset.initialized) {
+        container.innerHTML = ConnectivityPanel.buildHtml(settingsState.get());
+        ConnectivityPanel.setupHandlers({
+          settingsState,
+          projectsState,
+          saveSettings,
+        });
+        container.dataset.initialized = 'true';
+      }
+      // setupHandlers() runs once, so this is what resumes the polls.
+      RemotePanel.onActivate();
+    },
+    deactivate: () => {
+      ConnectivityPanel.cleanup();   // forwards to CloudPanel only
+      RemotePanel.onDeactivate();    // 10s status + 5s PIN polls
+    }
+  }
+};
+
+// The tab we are currently on, so we know whose deactivate() to run.
+let _currentTabId = document.querySelector('.nav-tab[data-tab].active')?.dataset.tab || null;
+
+function _runTabHook(tabId, hook) {
+  const fn = _TAB_LIFECYCLE[tabId]?.[hook];
+  if (!fn) return;
+  try {
+    fn();
+  } catch (e) {
+    // One panel throwing must never strand the app mid-switch.
+    console.error(`[tabs] ${hook} failed for "${tabId}":`, e);
+  }
+}
+
+/** Leave the current tab (if any) and mark `tabId` as current. */
+function _leaveCurrentTab(tabId) {
+  if (_currentTabId && _currentTabId !== tabId) _runTabHook(_currentTabId, 'deactivate');
+  _currentTabId = tabId;
 }
 
 // Set ARIA roles on all nav-tabs (exclude More button which has its own role)
@@ -2909,84 +3089,9 @@ document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
     document.getElementById('btn-more-tabs')?.classList.remove('active');
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.getElementById(`tab-${tabId}`).classList.add('active');
-    if (tabId === 'plugins') PluginsPanel.loadPlugins();
-    if (tabId === 'skills') SkillsAgentsPanel.loadSkills();
-    if (tabId === 'agents') SkillsAgentsPanel.loadAgents();
-    if (tabId === 'mcp') McpPanel.loadMcps();
-    if (tabId === 'workflows') WorkflowPanel.load();
-    if (tabId === 'tasks') ParallelTaskPanel.load();
-    if (tabId === 'database') DatabasePanel.loadPanel();
-    if (tabId === 'git') {
-      GitTabService.initGitTab();
-      GitTabService.renderProjectsList();
-    }
-    if (tabId === 'dashboard') {
-      populateDashboardProjects();
-      if (localState.selectedDashboardProject === -1) {
-        renderOverviewDashboard();
-      } else if (localState.selectedDashboardProject >= 0) {
-        renderDashboardContent(localState.selectedDashboardProject);
-      }
-    }
-    if (tabId === 'memory') MemoryEditor.loadMemory();
-    if (tabId === 'connectivity') {
-      const container = document.getElementById('tab-connectivity');
-      if (container && !container.dataset.initialized) {
-        container.innerHTML = ConnectivityPanel.buildHtml(settingsState.get());
-        ConnectivityPanel.setupHandlers({
-          settingsState,
-          projectsState,
-          saveSettings,
-        });
-        container.dataset.initialized = 'true';
-      }
-    }
-    if (tabId !== 'connectivity') {
-      ConnectivityPanel.cleanup();
-    }
-    // Cleanup TimeTrackingDashboard interval when leaving the tab
-    if (tabId !== 'timetracking') {
-      TimeTrackingDashboard.cleanup();
-    }
-    if (tabId === 'timetracking') {
-      const container = document.getElementById('timetracking-container');
-      if (container) TimeTrackingDashboard.init(container);
-    }
-    if (tabId === 'control-tower') {
-      const root = document.getElementById('ct-panel-root');
-      if (root) ControlTowerPanel.loadPanel(root);
-    }
-    if (tabId !== 'control-tower') {
-      ControlTowerPanel.cleanup();
-    }
-    if (tabId === 'session-replay') {
-      const container = document.getElementById('tab-session-replay');
-      if (container && !container.dataset.initialized) {
-        SessionReplayPanel.init(container, { projectsState, openedProjectId: projectsState.get().openedProjectId });
-        container.dataset.initialized = 'true';
-      }
-    }
-    if (tabId === 'workspace') {
-      const root = document.getElementById('workspace-panel-root');
-      if (root) WorkspacePanel.loadPanel(root);
-    }
-    if (tabId !== 'workspace') {
-      WorkspacePanel.cleanup();
-    }
-    if (tabId === 'errorlog') {
-      const root = document.getElementById('errorlog-panel-root');
-      if (root) ErrorLogPanel.loadPanel(root);
-    }
-    if (tabId !== 'errorlog') {
-      ErrorLogPanel.cleanup();
-    }
-    if (tabId === 'claude') {
-      const activeId = terminalsState.get().activeTerminal;
-      if (activeId) {
-        const termData = terminalsState.get().terminals.get(activeId);
-        if (termData?.fitAddon) termData.fitAddon.fit();
-      }
-    }
+    // Tear down the tab we are leaving, then wake up the one we entered.
+    _leaveCurrentTab(tabId);
+    _runTabHook(tabId, 'activate');
     // Restore scroll positions of the newly active tab
     _restoreScrollPositions(tabId);
     // Persist active tab for restart
@@ -4051,7 +4156,7 @@ document.getElementById('btn-new-project').onclick = () => {
         document.getElementById('link-github-settings')?.addEventListener('click', (e) => {
           e.preventDefault();
           closeModal();
-          SettingsPanel.switchToSettingsTab('github');
+          _switchToSettingsTab('github');
         });
       }
     } catch (e) {
