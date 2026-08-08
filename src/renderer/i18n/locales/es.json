@@ -742,7 +742,7 @@
     "reduceMotion": "Desactivar animaciones",
     "reduceMotionDesc": "Eliminar todas las transiciones y animaciones de la interfaz",
     "aiCommitMessages": "Mensajes de commit con IA",
-    "aiCommitMessagesDesc": "Usar GitHub Models (GPT-4o-mini) para generar mensajes de commit. Requiere conexión a GitHub.",
+    "aiCommitMessagesDesc": "Usar Claude Haiku para generar mensajes de commit. Requiere haber iniciado sesión en Claude Code.",
     "checkForUpdates": "Actualizaciones",
     "checkForUpdatesDesc": "Verificar si hay una nueva versión disponible",
     "checkForUpdatesBtn": "Verificar",
@@ -3107,7 +3107,7 @@
         "label": "ID de sesión",
         "hint": "Vacío = $ctx.sessionId"
       },
-      "useAi": { "label": "Resumen IA (GitHub Models)" }
+      "useAi": { "label": "Resumen IA (Claude Haiku)" }
     },
     "wait": {
       "mode": {

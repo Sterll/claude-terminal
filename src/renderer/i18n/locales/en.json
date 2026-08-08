@@ -745,7 +745,7 @@
     "reduceMotion": "Disable animations",
     "reduceMotionDesc": "Remove all transitions and animations from the interface",
     "aiCommitMessages": "AI commit messages",
-    "aiCommitMessagesDesc": "Use GitHub Models (GPT-4o-mini) to generate commit messages. Requires GitHub connection.",
+    "aiCommitMessagesDesc": "Use Claude Haiku to generate commit messages. Requires Claude Code to be logged in.",
     "checkForUpdates": "Updates",
     "checkForUpdatesDesc": "Check if a new version is available",
     "checkForUpdatesBtn": "Check",
@@ -3120,7 +3120,7 @@
         "label": "Session ID",
         "hint": "Leave empty to use $ctx.sessionId"
       },
-      "useAi": { "label": "Use AI summary (GitHub Models)" }
+      "useAi": { "label": "Use AI summary (Claude Haiku)" }
     },
     "wait": {
       "mode": {
