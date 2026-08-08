@@ -63,7 +63,8 @@ async function handleSessionEnd(projectId, ctx) {
   let summary = null;
   let source = 'heuristic';
 
-  // Try AI summary via IPC (5s timeout enforced in IPC handler too)
+  // Try AI summary via IPC. Generous timeout: the Haiku call spawns a CLI
+  // process (~10-15s). The recap is background work, so waiting is harmless.
   try {
     const result = await Promise.race([
       api.git.generateSessionRecap({
@@ -72,7 +73,7 @@ async function handleSessionEnd(projectId, ctx) {
         durationMs: ctx.durationMs,
         toolCount: ctx.toolCount
       }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('client-timeout')), 6000))
+      new Promise((_, reject) => setTimeout(() => reject(new Error('client-timeout')), 35000))
     ]);
     if (result && result.summary) {
       summary = result.summary;

@@ -1,63 +1,29 @@
 /**
  * Commit Message Generator
- * Uses GitHub Models API (free with GitHub account) for AI commit messages,
- * with a heuristic fallback when unavailable.
+ * Uses Claude Haiku through the Agent SDK (same auth path as the tab-naming
+ * session) for AI commit messages, with a heuristic fallback when unavailable.
  */
 
-const https = require('https');
 const { formatDuration } = require('./formatDuration');
 
-// ============================================================
-// GitHub Models API (GPT-4o-mini - free tier)
-// ============================================================
-
 /**
- * Call GitHub Models API (GPT-4o-mini) with given messages.
- * @param {string} token - GitHub OAuth token
- * @param {Array} messages - Chat messages [{role, content}]
- * @param {number} maxTokens - Max output tokens
- * @param {number} timeoutMs - Request timeout
- * @returns {Promise<string|null>} - Response content or null on failure
+ * Ask Haiku for a completion. Lazily requires ChatService so this module stays
+ * loadable in tests and in any context without the SDK.
+ * @returns {Promise<string|null>}
  */
-function callGitHubModels(token, messages, maxTokens, timeoutMs) {
-  return new Promise((resolve) => {
-    const body = JSON.stringify({
-      model: 'gpt-4o-mini',
-      max_tokens: maxTokens,
-      messages
-    });
-
-    const options = {
-      hostname: 'models.inference.ai.azure.com',
-      path: '/chat/completions',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        'Content-Length': Buffer.byteLength(body)
-      },
-      timeout: timeoutMs
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => { data += chunk; });
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          const content = json.choices?.[0]?.message?.content?.trim();
-          resolve(content || null);
-        } catch (e) {
-          resolve(null);
-        }
-      });
-    });
-    req.on('timeout', () => { req.destroy(); resolve(null); });
-    req.on('error', () => resolve(null));
-    req.write(body);
-    req.end();
-  });
+async function callHaiku({ system, user, timeoutMs }) {
+  try {
+    const ChatService = require('../services/ChatService');
+    return await ChatService.runHaikuPrompt({ systemPrompt: system, prompt: user, timeoutMs });
+  } catch (err) {
+    console.warn('[commitMessageGenerator] Haiku unavailable:', err.message);
+    return null;
+  }
 }
+
+// ============================================================
+// AI generation (Claude Haiku)
+// ============================================================
 
 const SYSTEM_PROMPT = `You are a commit message generator. Generate a single conventional commit message.
 
@@ -85,21 +51,18 @@ function buildPrompt(files, diffContent) {
 }
 
 /**
- * Generate commit message via GitHub Models API (GPT-4o-mini)
- * Free with any GitHub account.
- * @param {string} githubToken - GitHub OAuth token
+ * Generate a commit message via Claude Haiku.
  * @param {Array} files - Changed files
  * @param {string} diffContent - Diff content
+ * @param {number} [timeoutMs=45000] - Generous: the SDK spawns a CLI process (~10-15s)
  * @returns {Promise<string|null>}
  */
-async function generateWithGitHubModels(githubToken, files, diffContent, timeoutMs = 12000) {
-  const userMessage = buildPrompt(files, diffContent);
-  const messages = [
-    { role: 'system', content: SYSTEM_PROMPT },
-    { role: 'user', content: userMessage }
-  ];
-
-  const content = await callGitHubModels(githubToken, messages, 100, timeoutMs);
+async function generateWithAi(files, diffContent, timeoutMs = 45000) {
+  const content = await callHaiku({
+    system: SYSTEM_PROMPT,
+    user: buildPrompt(files, diffContent),
+    timeoutMs
+  });
   if (!content) return null;
 
   let message = content
@@ -237,13 +200,13 @@ function generateSessionRecapHeuristic(ctx) {
 }
 
 /**
- * Generate a session recap summary via GitHub Models API, with heuristic fallback.
+ * Generate a session recap summary via Claude Haiku, with heuristic fallback.
  * @param {{ toolCounts: Object, prompts: string[], durationMs: number, toolCount: number }} ctx
- * @param {string|null} githubToken
- * @param {number} [timeoutMs=5000]
+ * @param {{ useAi?: boolean }} [options] - Set useAi to true to enable AI generation
+ * @param {number} [timeoutMs=30000]
  * @returns {Promise<{ summary: string, source: 'ai'|'heuristic' }>}
  */
-async function generateSessionRecap(ctx, githubToken, timeoutMs = 5000) {
+async function generateSessionRecap(ctx, options, timeoutMs = 30000) {
   if (!ctx) return { summary: '', source: 'heuristic' };
 
   const isRich = ctx.toolCount > 10 || (ctx.prompts && ctx.prompts.length > 2);
@@ -259,13 +222,12 @@ async function generateSessionRecap(ctx, githubToken, timeoutMs = 5000) {
 
   const userMessage = `User requests: ${promptList}\nTools used: ${toolList}\nDuration: ${durationStr}`;
 
-  if (githubToken) {
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage }
-    ];
-
-    const result = await callGitHubModels(githubToken, messages, 150, timeoutMs);
+  if (options?.useAi) {
+    const result = await callHaiku({
+      system: systemPrompt,
+      user: userMessage,
+      timeoutMs
+    });
     if (result) return { summary: result, source: 'ai' };
   }
 
@@ -294,21 +256,20 @@ function groupFiles(files) {
 
 /**
  * Generate a conventional commit message.
- * Tries GitHub Models API first (free), falls back to heuristic.
+ * Tries Claude Haiku first, falls back to heuristic.
  * @param {Array} files - Changed files with path and status
  * @param {string} diffContent - Combined diff content
- * @param {string|null} githubToken - GitHub token for AI generation
+ * @param {{ useAi?: boolean }} [options] - Set useAi to true to enable AI generation
  */
-async function generateCommitMessage(files, diffContent, githubToken) {
+async function generateCommitMessage(files, diffContent, options) {
   if (!files || files.length === 0) {
     return { message: '', source: 'heuristic', groups: [] };
   }
 
   const groups = groupFiles(files);
 
-  // Try GitHub Models API if token available
-  if (githubToken) {
-    const aiMessage = await generateWithGitHubModels(githubToken, files, diffContent);
+  if (options?.useAi) {
+    const aiMessage = await generateWithAi(files, diffContent);
     if (aiMessage) {
       return { message: aiMessage, source: 'ai', groups };
     }
@@ -324,24 +285,24 @@ async function generateCommitMessage(files, diffContent, githubToken) {
  * Returns an array of { group, files, message, source }.
  * @param {Array} files - All changed files
  * @param {Object} diffs - Map of group name to diff content
- * @param {string|null} githubToken
+ * @param {{ useAi?: boolean }} [options] - Set useAi to true to enable AI generation
  */
-async function generateMultiCommitMessages(files, diffs, githubToken) {
+async function generateMultiCommitMessages(files, diffs, options) {
   if (!files || files.length === 0) return [];
 
   const groups = groupFiles(files);
   if (groups.length <= 1) {
     // Single group — use regular generation
     const diff = Object.values(diffs).join('\n\n');
-    const result = await generateCommitMessage(files, diff, githubToken);
+    const result = await generateCommitMessage(files, diff, options);
     return [{ group: groups[0]?.name || 'root', files, message: result.message, source: result.source }];
   }
 
   // Generate a message per group
   const results = await Promise.all(groups.map(async (g) => {
     const diff = diffs[g.name] || '';
-    if (githubToken) {
-      const aiMessage = await generateWithGitHubModels(githubToken, g.files, diff, 8000);
+    if (options?.useAi) {
+      const aiMessage = await generateWithAi(g.files, diff);
       if (aiMessage) return { group: g.name, files: g.files, message: aiMessage, source: 'ai' };
     }
     const message = generateHeuristicMessage(g.files, diff);

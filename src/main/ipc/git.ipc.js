@@ -358,8 +358,7 @@ function registerGitHandlers() {
       }));
 
       const diffContent = diffParts.join('\n\n');
-      const githubToken = useAi !== false ? await GitHubAuthService.getToken() : null;
-      const result = await generateCommitMessage(files, diffContent, githubToken);
+      const result = await generateCommitMessage(files, diffContent, { useAi: useAi !== false });
       return { success: true, ...result };
     } catch (e) {
       return { success: false, error: e.message };
@@ -405,8 +404,7 @@ function registerGitHandlers() {
         diffs[g.name] = diffParts.join('\n\n');
       }
 
-      const githubToken = useAi !== false ? await GitHubAuthService.getToken() : null;
-      const results = await generateMultiCommitMessages(files, diffs, githubToken);
+      const results = await generateMultiCommitMessages(files, diffs, { useAi: useAi !== false });
       return { success: true, commits: results };
     } catch (e) {
       return { success: false, error: e.message };
@@ -463,14 +461,13 @@ function registerGitHandlers() {
         }
       } catch (_) {}
 
-      const githubToken = await GitHubAuthService.getToken();
       const result = await generatePrDescription({
         branch,
         baseBranch: base,
         commits,
         diffContent,
         sessionSummary: sessionSummary || ''
-      }, githubToken);
+      }, { useAi: true });
 
       // Build the compare URL if we can detect the owner/repo
       let compareUrl = null;
@@ -498,11 +495,10 @@ function registerGitHandlers() {
     }
   });
 
-  // Generate session recap via GitHub Models API
+  // Generate session recap via Claude Haiku
   ipcMain.handle('git-generate-session-recap', async (_event, context) => {
     try {
-      const githubToken = await GitHubAuthService.getToken();
-      return await generateSessionRecap(context, githubToken);
+      return await generateSessionRecap(context, { useAi: true });
     } catch (e) {
       return { summary: null, source: 'error' };
     }

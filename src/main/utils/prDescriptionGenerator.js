@@ -1,53 +1,27 @@
 /**
  * PR Description Generator
- * Uses GitHub Models API (free with GitHub account) for AI-generated
- * Pull Request titles and bodies, with a heuristic fallback.
+ * Uses Claude Haiku through the Agent SDK (same auth path as the tab-naming
+ * session) for AI-generated Pull Request titles and bodies, with a heuristic
+ * fallback.
  */
 
-const https = require('https');
-
 // ============================================================
-// GitHub Models API
+// AI generation (Claude Haiku)
 // ============================================================
 
-function callGitHubModels(token, messages, maxTokens, timeoutMs) {
-  return new Promise((resolve) => {
-    const body = JSON.stringify({
-      model: 'gpt-4o-mini',
-      max_tokens: maxTokens,
-      messages
-    });
-
-    const options = {
-      hostname: 'models.inference.ai.azure.com',
-      path: '/chat/completions',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        'Content-Length': Buffer.byteLength(body)
-      },
-      timeout: timeoutMs
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => { data += chunk; });
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          const content = json.choices?.[0]?.message?.content?.trim();
-          resolve(content || null);
-        } catch (e) {
-          resolve(null);
-        }
-      });
-    });
-    req.on('timeout', () => { req.destroy(); resolve(null); });
-    req.on('error', () => resolve(null));
-    req.write(body);
-    req.end();
-  });
+/**
+ * Ask Haiku for a completion. Lazily requires ChatService so this module stays
+ * loadable in tests and in any context without the SDK.
+ * @returns {Promise<string|null>}
+ */
+async function callHaiku({ system, user, timeoutMs }) {
+  try {
+    const ChatService = require('../services/ChatService');
+    return await ChatService.runHaikuPrompt({ systemPrompt: system, prompt: user, timeoutMs });
+  } catch (err) {
+    console.warn('[prDescriptionGenerator] Haiku unavailable:', err.message);
+    return null;
+  }
 }
 
 const SYSTEM_PROMPT = `You are a senior engineer writing GitHub Pull Request descriptions.
@@ -95,14 +69,12 @@ Diff (branch vs base):
 ${diff}`;
 }
 
-async function generateWithGitHubModels(githubToken, context, timeoutMs = 15000) {
-  const userMessage = buildPrompt(context);
-  const messages = [
-    { role: 'system', content: SYSTEM_PROMPT },
-    { role: 'user', content: userMessage }
-  ];
-
-  const content = await callGitHubModels(githubToken, messages, 900, timeoutMs);
+async function generateWithAi(context, timeoutMs = 60000) {
+  const content = await callHaiku({
+    system: SYSTEM_PROMPT,
+    user: buildPrompt(context),
+    timeoutMs
+  });
   if (!content) return null;
 
   const cleaned = content
@@ -189,7 +161,7 @@ function generateHeuristic(context) {
 
 /**
  * Generate a PR title + body.
- * Tries GitHub Models API first, falls back to heuristic.
+ * Tries Claude Haiku first, falls back to heuristic.
  *
  * @param {Object} context
  * @param {string} context.branch           - Source branch name
@@ -197,10 +169,10 @@ function generateHeuristic(context) {
  * @param {string[]} context.commits        - Commit messages on the branch (subject lines)
  * @param {string} context.diffContent      - Full branch diff vs base
  * @param {string} context.sessionSummary   - Recap of the Claude session (free-form markdown or text)
- * @param {string|null} githubToken         - GitHub OAuth token (optional)
+ * @param {{ useAi?: boolean }} [options]   - Set useAi to true to enable AI generation
  * @returns {Promise<{ title: string, body: string, source: 'ai'|'heuristic' }>}
  */
-async function generatePrDescription(context, githubToken) {
+async function generatePrDescription(context, options) {
   const ctx = {
     branch: context.branch || '',
     baseBranch: context.baseBranch || 'main',
@@ -209,8 +181,8 @@ async function generatePrDescription(context, githubToken) {
     sessionSummary: context.sessionSummary || ''
   };
 
-  if (githubToken) {
-    const result = await generateWithGitHubModels(githubToken, ctx);
+  if (options?.useAi) {
+    const result = await generateWithAi(ctx);
     if (result) return { ...result, source: 'ai' };
   }
 

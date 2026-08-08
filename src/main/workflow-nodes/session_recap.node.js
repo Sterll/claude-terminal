@@ -176,16 +176,8 @@ module.exports = {
 
     const ctx = await extractRecapContext(filePath);
 
-    let githubToken = null;
-    if (config.useAi !== false) {
-      try {
-        const GitHubAuthService = require('../services/GitHubAuthService');
-        githubToken = await GitHubAuthService.getToken();
-      } catch {}
-    }
-
     const { generateSessionRecap } = require('../utils/commitMessageGenerator');
-    const { summary, source } = await generateSessionRecap(ctx, githubToken);
+    const { summary, source } = await generateSessionRecap(ctx, { useAi: config.useAi !== false });
 
     return {
       summary:    summary || '',

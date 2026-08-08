@@ -1609,6 +1609,73 @@ class ChatService {
   }
 
   /**
+   * Run a one-shot Haiku prompt with no tools and no project context.
+   * Used by the lightweight AI helpers (commit messages, PR descriptions,
+   * session recaps) — same auth path as the tab-naming session, so it works
+   * with the user's Claude Code subscription.
+   * Never throws: returns null on timeout or failure so callers can fall back.
+   *
+   * @param {Object} opts
+   * @param {string} opts.systemPrompt
+   * @param {string} opts.prompt
+   * @param {number} [opts.timeoutMs=20000]
+   * @returns {Promise<string|null>} - Trimmed assistant text, or null
+   */
+  async runHaikuPrompt({ systemPrompt, prompt, timeoutMs = 20000 }) {
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
+
+    // Remove CLAUDECODE env to avoid nested session detection
+    const prevClaudeCode = process.env.CLAUDECODE;
+    delete process.env.CLAUDECODE;
+
+    const cwd = require('os').homedir();
+    let sessionId = null;
+
+    try {
+      const sdk = await loadSDK();
+      const runtime = resolveRuntime();
+
+      const stream = sdk.query({
+        prompt,
+        options: {
+          cwd,
+          abortController,
+          maxTurns: 1,
+          allowedTools: [],
+          model: 'haiku',
+          executable: runtime.executable,
+          env: runtime.env,
+          pathToClaudeCodeExecutable: getSdkCliPath(),
+          systemPrompt,
+        }
+      });
+
+      let text = '';
+      for await (const message of stream) {
+        if (message.type === 'system' && message.subtype === 'init' && message.session_id) {
+          sessionId = message.session_id;
+        }
+        if (message.type === 'assistant' && Array.isArray(message.message?.content)) {
+          for (const block of message.message.content) {
+            if (block.type === 'text') text += block.text;
+          }
+        }
+      }
+
+      return text.trim() || null;
+    } catch (err) {
+      console.warn('[ChatService] runHaikuPrompt failed:', err.message);
+      return null;
+    } finally {
+      clearTimeout(timeoutId);
+      if (prevClaudeCode) process.env.CLAUDECODE = prevClaudeCode;
+      // One-shot helper: drop the session file so it never shows up in "Resume"
+      if (sessionId) _deleteWorkflowSession(cwd, sessionId);
+    }
+  }
+
+  /**
    * Cancel an in-progress background generation
    */
   cancelGeneration(genId) {
