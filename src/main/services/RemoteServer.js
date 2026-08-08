@@ -995,6 +995,12 @@ function _wsSend(ws, type, data) {
 }
 
 function _broadcast(type, data) {
+  // Serialize only if somebody is actually listening. Chat streaming pushes one
+  // broadcast per token, and JSON.stringify of the message payload is not free —
+  // with no remote client connected that cost would be paid for nothing.
+  const hasExternal = !!_externalTransport?.connected;
+  if (!hasExternal && _connectedClients.size === 0) return;
+
   const msg = JSON.stringify({ type, data });
   // Local WS clients
   for (const ws of _connectedClients.values()) {
@@ -1003,7 +1009,7 @@ function _broadcast(type, data) {
     }
   }
   // External transport — forward to remote clients (e.g. cloud relay)
-  if (_externalTransport?.connected) {
+  if (hasExternal) {
     try { _externalTransport.send(msg); } catch (e) {}
   }
 }

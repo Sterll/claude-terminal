@@ -217,6 +217,53 @@ function createMessageQueue(onIdle) {
   };
 }
 
+// ── Streaming delta coalescing ────────────────────────────────────────────────
+//
+// `content_block_delta` events carry their payload in a type-specific string
+// field, and every consumer (ChatView.handleStreamEvent, remote-ui's
+// _handleStreamEvent) applies it with a plain `+=`. That makes two consecutive
+// deltas for the same content block interchangeable with a single delta holding
+// the concatenation, which is what lets them be merged before crossing IPC.
+//
+// Deliberately NOT listed: `signature_delta` (a complete signature, not an
+// accumulating string), `citations_delta` (array payload), and every event type
+// other than `content_block_delta` — `message_start`, `content_block_start`,
+// `content_block_stop`, `message_delta`, `message_stop` all carry structural
+// state that consumers act on exactly once.
+const COALESCABLE_DELTAS = {
+  text_delta: 'text',
+  thinking_delta: 'thinking',
+  input_json_delta: 'partial_json',
+};
+
+/**
+ * If `message` is a coalescable streaming delta, return the name of the string
+ * field that accumulates. Otherwise return null.
+ */
+function _coalescableDeltaField(message) {
+  if (!message || message.type !== 'stream_event') return null;
+  const event = message.event;
+  if (!event || event.type !== 'content_block_delta') return null;
+  const delta = event.delta;
+  if (!delta) return null;
+  const field = COALESCABLE_DELTAS[delta.type];
+  if (!field || typeof delta[field] !== 'string') return null;
+  return field;
+}
+
+/**
+ * Two deltas may only be merged when they describe the same content block of
+ * the same message: same block index, same delta kind, same subagent routing
+ * (`parent_tool_use_id`) and same SDK session.
+ */
+function _sameDeltaTarget(a, b, field) {
+  return _coalescableDeltaField(a) === field
+    && a.event.index === b.event.index
+    && a.event.delta.type === b.event.delta.type
+    && (a.parent_tool_use_id || null) === (b.parent_tool_use_id || null)
+    && (a.session_id || null) === (b.session_id || null);
+}
+
 class ChatService {
   constructor() {
     /** @type {Map<string, Object>} */
@@ -338,7 +385,39 @@ class ChatService {
     return () => this._sessionInterceptors.delete(sessionId);
   }
 
+  /**
+   * Send a chat event, coalescing consecutive streaming deltas.
+   *
+   * With `includePartialMessages: true` the SDK emits one `stream_event` per
+   * token, and each one costs a structured-clone `webContents.send` plus a
+   * remote broadcast. Consecutive `content_block_delta` events for the same
+   * content block are pure string appends on every consumer, so they are merged
+   * on a short timer (see `_bufferStreamDelta`).
+   *
+   * Every other message type — init, result, permission/elicitation requests,
+   * task updates, idle, done, errors — is dispatched immediately, and any
+   * pending deltas for that session are flushed first so ordering is preserved.
+   */
   _send(channel, data) {
+    const sessionId = data?.sessionId;
+    if (sessionId) {
+      if (this._bufferStreamDelta(channel, sessionId, data)) return;
+      this._flushDeltas(sessionId);
+    } else {
+      // No session context (e.g. chat-generation-progress). Flush everything so
+      // no ordering assumption can ever be violated — this path is infrequent.
+      this._flushAllDeltas();
+    }
+    this._dispatch(channel, data);
+    // The stream is over — drop the (now empty) buffer entry so the map stays
+    // bounded even for sessions that never go through closeSession().
+    if (channel === 'chat-done' || channel === 'chat-error') {
+      this._deltaBuffers?.delete(sessionId);
+    }
+  }
+
+  /** Actually deliver a message. Unchanged routing: interceptor > window > remote. */
+  _dispatch(channel, data) {
     // Route to session interceptor if one is registered
     if (this._sessionInterceptors && data?.sessionId) {
       const interceptor = this._sessionInterceptors.get(data.sessionId);
@@ -352,6 +431,82 @@ class ChatService {
     }
     if (this._remoteEventCallback) {
       this._remoteEventCallback(channel, data);
+    }
+  }
+
+  /**
+   * Try to queue `data` as a coalescable streaming delta.
+   * Returns true when the message was buffered (caller must not send it).
+   *
+   * Only `content_block_delta` events whose consumers treat the payload as a
+   * plain string append are eligible, and two deltas are merged only when they
+   * target the same content block of the same message (same index, same delta
+   * type, same parent_tool_use_id, same SDK session_id).
+   */
+  _bufferStreamDelta(channel, sessionId, data) {
+    if (channel !== 'chat-message') return false;
+    // Workflow agent steps consume raw SDK messages through an interceptor —
+    // leave those completely untouched.
+    if (this._sessionInterceptors?.has(sessionId)) return false;
+
+    const field = _coalescableDeltaField(data.message);
+    if (!field) return false;
+
+    if (!this._deltaBuffers) this._deltaBuffers = new Map();
+    let entry = this._deltaBuffers.get(sessionId);
+    if (!entry) {
+      entry = { queue: [], timer: null, bytes: 0, lastFlush: Date.now() };
+      this._deltaBuffers.set(sessionId, entry);
+    }
+
+    const incoming = data.message;
+    const last = entry.queue.length ? entry.queue[entry.queue.length - 1] : null;
+    if (last && _sameDeltaTarget(last, incoming, field)) {
+      // Merge without mutating the SDK's object graph.
+      entry.queue[entry.queue.length - 1] = {
+        ...last,
+        event: {
+          ...last.event,
+          delta: {
+            ...last.event.delta,
+            [field]: (last.event.delta[field] || '') + (incoming.event.delta[field] || ''),
+          },
+        },
+      };
+    } else {
+      entry.queue.push(incoming);
+    }
+    entry.bytes += (incoming.event.delta[field] || '').length;
+
+    if (!entry.timer) {
+      // Same adaptive shape as TerminalService's PTY batching: react fast after
+      // an idle gap, relax while a burst is in flight.
+      const sinceLastFlush = Date.now() - entry.lastFlush;
+      const delay = entry.bytes > 10000 ? 32 : sinceLastFlush > 100 ? 4 : 16;
+      entry.timer = setTimeout(() => this._flushDeltas(sessionId), delay);
+      if (entry.timer.unref) entry.timer.unref();
+    }
+    return true;
+  }
+
+  /** Emit every buffered delta for a session, in arrival order. */
+  _flushDeltas(sessionId) {
+    const entry = this._deltaBuffers?.get(sessionId);
+    if (!entry) return;
+    if (entry.timer) { clearTimeout(entry.timer); entry.timer = null; }
+    const queue = entry.queue;
+    entry.queue = [];
+    entry.bytes = 0;
+    entry.lastFlush = Date.now();
+    for (const message of queue) {
+      this._dispatch('chat-message', { sessionId, message });
+    }
+  }
+
+  _flushAllDeltas() {
+    if (!this._deltaBuffers) return;
+    for (const sessionId of Array.from(this._deltaBuffers.keys())) {
+      this._flushDeltas(sessionId);
     }
   }
 
@@ -1684,6 +1839,11 @@ class ChatService {
   }
 
   closeSession(sessionId) {
+    // Emit anything still sitting in the coalescing buffer before tearing the
+    // session down — a buffered delta must never be dropped.
+    this._flushDeltas(sessionId);
+    this._deltaBuffers?.delete(sessionId);
+
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
