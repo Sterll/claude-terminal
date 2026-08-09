@@ -543,6 +543,12 @@ const TOOL_DEFS = {
   // MCP discovery
   ListMcpResourcesTool: { category: 'other', icon: ICONS.generic,  detail: () => '' },
   ReadMcpResourceTool:  { category: 'other', icon: ICONS.generic,  detail: detailFns.url },
+  // Re-queries a connected MCP server's tool list without reconnecting (SDK 0.3.226+)
+  RefreshMcpTools:      { category: 'other', icon: ICONS.generic,  detail: (i) => i.server || '' },
+
+  // Feedback / skill discovery (SDK 0.3.226+)
+  SendFeedback:         { category: 'notify', icon: ICONS.bell,     detail: (i) => i.type || '' },
+  ProposeSkills:        { category: 'skill',  icon: ICONS.skill,    detail: detailFns.skill },
 };
 
 // ── Category → RGB (for border-left / chips) ─────────────────────────────
