@@ -662,7 +662,10 @@ async function getDeepAutocompleteSuggestions(graph, currentNodeId, filterText, 
 // ── DOM helpers ──────────────────────────────────────────────────────────────
 
 function upgradeSelectsToDropdowns(container) {
-  container.querySelectorAll('select.wf-step-edit-input, select.wf-node-prop').forEach(sel => {
+  // `[data-dropdown]` is the opt-in marker for selects outside the node editor
+  // (the Automations sheet), so they get the same widget instead of the
+  // OS-drawn listbox.
+  container.querySelectorAll('select.wf-step-edit-input, select.wf-node-prop, select[data-dropdown]').forEach(sel => {
     if (sel.dataset.upgraded) return;
     sel.dataset.upgraded = '1';
     sel.style.display = 'none';

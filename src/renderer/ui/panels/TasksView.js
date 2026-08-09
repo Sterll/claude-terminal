@@ -16,6 +16,7 @@ const { escapeHtml } = require('../../utils');
 const { t, getCurrentLanguage } = require('../../i18n');
 const { projectsState } = require('../../state/projects.state');
 const { showContextMenu } = require('../components/ContextMenu');
+const { upgradeSelectsToDropdowns } = require('./WorkflowHelpers');
 const { MODEL_OPTIONS, EFFORT_OPTIONS } = require('../../../shared/model-options');
 const {
   TASK_PRESETS, MAX_MONTH_DAY, DEFAULT_SIMPLE,
@@ -87,6 +88,10 @@ const ICONS = {
   task:    '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
 };
 
+/** Tick drawn inside the custom checkbox — the native control cannot be themed. */
+const CHECK_MARK =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
 function icon(name, size = 14) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ICONS.task}</svg>`;
 }
@@ -113,11 +118,6 @@ function taskCardHtml(wf, runs) {
         <div class="auto-card-head">
           <span class="auto-card-name">${escapeHtml(wf.name)}</span>
           ${lastRun ? `<span class="auto-card-status ${statusClass}"></span>` : ''}
-          <label class="wf-switch auto-card-switch">
-            <input type="checkbox" class="auto-toggle" ${wf.enabled ? 'checked' : ''}
-              aria-label="${escapeHtml(t('automation.card.toggleAria', { name: wf.name }))}">
-            <span class="wf-switch-track"></span>
-          </label>
         </div>
         <p class="auto-card-prompt">${escapeHtml(simple.prompt)}</p>
         <div class="auto-card-meta">
@@ -129,6 +129,11 @@ function taskCardHtml(wf, runs) {
         </div>
       </div>
       <div class="auto-card-actions">
+        <label class="wf-switch auto-card-switch">
+          <input type="checkbox" class="auto-toggle" ${wf.enabled ? 'checked' : ''}
+            aria-label="${escapeHtml(t('automation.card.toggleAria', { name: wf.name }))}">
+          <span class="wf-switch-track"></span>
+        </label>
         ${isRunning
           ? `<button class="auto-btn auto-btn--stop" data-run-id="${escapeHtml(lastRun.id)}" title="${escapeHtml(t('workflow.stopTitle'))}">
                <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
@@ -333,7 +338,7 @@ function scheduleFieldsHtml(schedule) {
       return `
         <label class="auto-field auto-field--inline">
           <span class="auto-field-label">${escapeHtml(t('automation.form.onDay'))}</span>
-          <select class="auto-input" data-sched="weekday">
+          <select class="auto-input" data-dropdown data-sched="weekday">
             ${days.map((d, i) => `<option value="${i}"${Number(schedule.weekday) === i ? ' selected' : ''}>${escapeHtml(d)}</option>`).join('')}
           </select>
         </label>
@@ -343,7 +348,7 @@ function scheduleFieldsHtml(schedule) {
       return `
         <label class="auto-field auto-field--inline">
           <span class="auto-field-label">${escapeHtml(t('automation.form.onDayOfMonth'))}</span>
-          <select class="auto-input" data-sched="day">
+          <select class="auto-input" data-dropdown data-sched="day">
             ${Array.from({ length: MAX_MONTH_DAY }, (_, i) => i + 1)
               .map(d => `<option value="${d}"${Number(schedule.day) === d ? ' selected' : ''}>${d}</option>`).join('')}
           </select>
@@ -434,18 +439,20 @@ function openTaskModal(deps, existing, preset = null) {
         <label class="auto-field">
           <span class="auto-field-label">${escapeHtml(t('automation.form.projectLabel'))}</span>
           <span class="auto-field-hint">${escapeHtml(t('automation.form.projectHint'))}</span>
-          <select class="auto-input" id="auto-project">${projectOptionsHtml(simple.projectId)}</select>
+          <select class="auto-input" data-dropdown id="auto-project">${projectOptionsHtml(simple.projectId)}</select>
         </label>
 
         <div class="auto-field">
           <span class="auto-field-label">${escapeHtml(t('automation.form.notifyLabel'))}</span>
           <label class="auto-check">
             <input type="checkbox" id="auto-notify-desktop" ${simple.notify.desktop ? 'checked' : ''}>
-            <span>${escapeHtml(t('automation.form.notifyDesktop'))}</span>
+            <span class="auto-check-box">${CHECK_MARK}</span>
+            <span class="auto-check-text">${escapeHtml(t('automation.form.notifyDesktop'))}</span>
           </label>
           <label class="auto-check">
             <input type="checkbox" id="auto-notify-result" ${simple.notify.includeResult ? 'checked' : ''}>
-            <span>${escapeHtml(t('automation.form.notifyResult'))}</span>
+            <span class="auto-check-box">${CHECK_MARK}</span>
+            <span class="auto-check-text">${escapeHtml(t('automation.form.notifyResult'))}</span>
           </label>
         </div>
 
@@ -454,14 +461,14 @@ function openTaskModal(deps, existing, preset = null) {
           <div class="auto-advanced-body">
             <label class="auto-field auto-field--inline">
               <span class="auto-field-label">${escapeHtml(t('automation.form.model'))}</span>
-              <select class="auto-input" id="auto-model">
+              <select class="auto-input" data-dropdown id="auto-model">
                 ${MODEL_OPTIONS.map(o =>
                   `<option value="${escapeHtml(o.value)}"${simple.model === o.value ? ' selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
               </select>
             </label>
             <label class="auto-field auto-field--inline">
               <span class="auto-field-label">${escapeHtml(t('automation.form.effort'))}</span>
-              <select class="auto-input" id="auto-effort">
+              <select class="auto-input" data-dropdown id="auto-effort">
                 ${EFFORT_OPTIONS.map(o =>
                   `<option value="${escapeHtml(o.value)}"${simple.effort === o.value ? ' selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
               </select>
@@ -484,6 +491,11 @@ function openTaskModal(deps, existing, preset = null) {
     </div>
   `;
   document.body.appendChild(overlay);
+
+  // Swap every native <select> for the shared dropdown widget: the OS listbox
+  // ignores the app theme entirely (system blue highlight, system font), which
+  // is glaring on a project list of twenty entries.
+  upgradeSelectsToDropdowns(overlay);
 
   const $ = (sel) => overlay.querySelector(sel);
   const errorEl   = $('#auto-error');
@@ -517,6 +529,8 @@ function openTaskModal(deps, existing, preset = null) {
 
   function rerenderSchedule() {
     fieldsEl.innerHTML = scheduleFieldsHtml(simple.schedule);
+    // The weekly/monthly pickers are rebuilt here, so they need upgrading again.
+    upgradeSelectsToDropdowns(fieldsEl);
     updatePreview();
   }
 

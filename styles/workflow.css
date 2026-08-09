@@ -3601,7 +3601,13 @@ select.wf-step-edit-input {
   height: 30px;
 }
 .wf-editor-zoom button {
-  width: 24px; height: 24px;
+  /* min-width, not width: the fit button carries a translated LABEL ("Ajuster",
+     "Adjust", "Ajustar"), and a fixed 24px box made it overflow onto its
+     neighbour. Square icon buttons still land at 24px from their content. */
+  min-width: 24px; height: 24px;
+  padding: 0 5px;
+  flex-shrink: 0;
+  white-space: nowrap;
   display: flex; align-items: center; justify-content: center;
   background: none; border: none; border-radius: 5px;
   color: rgba(255,255,255,.3);
@@ -3609,6 +3615,12 @@ select.wf-step-edit-input {
   cursor: pointer;
   transition: color 0.1s, background 0.1s;
   font-family: inherit;
+}
+/* Labelled buttons read as words, not as glyphs. */
+#wf-ed-zoom-reset,
+#wf-ed-zoom-fit {
+  font-size: 9.5px; font-weight: 600;
+  letter-spacing: -.02em;
 }
 .wf-editor-zoom button:hover {
   background: rgba(255,255,255,.08); color: rgba(255,255,255,.75);
@@ -3621,11 +3633,7 @@ select.wf-step-edit-input {
   letter-spacing: .01em;
   user-select: none;
 }
-#wf-ed-zoom-reset {
-  font-size: 9.5px !important; font-weight: 600;
-  letter-spacing: -.02em;
-  padding: 0 5px !important; width: auto !important;
-}
+/* (zoom label sizing now lives with .wf-editor-zoom button, above) */
 
 /* Selection status in status bar */
 .wf-sb-selection {
@@ -7110,7 +7118,7 @@ select.wf-step-edit-input {
   letter-spacing: -.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.auto-card-switch { margin-left: auto; flex-shrink: 0; }
+
 
 .auto-card-status { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--text-secondary); }
 .auto-card-status--success     { background: var(--success); }
@@ -7143,7 +7151,16 @@ select.wf-step-edit-input {
 .auto-chip--next     { color: var(--accent-hover); border-color: var(--accent-dim); background: var(--accent-dim); }
 .auto-chip--muted    { font-style: italic; }
 
-.auto-card-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+/* The toggle lives here with the buttons rather than floating at the top of the
+   card: three controls scattered across two corners read as clutter. */
+.auto-card-actions {
+  display: flex; align-items: center; gap: 2px;
+  flex-shrink: 0;
+  align-self: center;
+  padding-left: 4px;
+}
+.auto-card-actions .auto-card-switch { margin-right: 6px; }
+
 .auto-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 28px; height: 28px;
@@ -7152,8 +7169,17 @@ select.wf-step-edit-input {
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background-color .15s var(--wf-ease), color .15s var(--wf-ease), border-color .15s var(--wf-ease);
+  opacity: 0;
+  transition: background-color .15s var(--wf-ease), color .15s var(--wf-ease),
+              border-color .15s var(--wf-ease), opacity .15s var(--wf-ease);
 }
+/* Revealed on hover or keyboard focus, so a list of tasks reads as a list and
+   not as a wall of icons. A running task always shows its stop button. */
+.auto-card:hover .auto-btn,
+.auto-card:focus-within .auto-btn,
+.auto-btn:focus-visible,
+.auto-btn--stop { opacity: 1; }
+
 .auto-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--wf-border); }
 .auto-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .auto-btn--run:hover { color: var(--success); }
@@ -7227,12 +7253,22 @@ select.wf-step-edit-input {
   border-top: 1px solid var(--wf-border);
 }
 
-.auto-field { display: flex; flex-direction: column; gap: 5px; }
-.auto-field--inline { flex-direction: row; align-items: center; gap: 10px; }
-.auto-field--inline .auto-field-label { flex: 0 0 108px; }
+.auto-field { display: flex; flex-direction: column; gap: 6px; }
+.auto-field--inline { flex-direction: row; align-items: center; gap: 12px; }
+/* Sized to the text, not to a fixed column: a one-letter label like "À" left a
+   90px hole before its input. min-width keeps short labels from collapsing. */
+.auto-field--inline .auto-field-label { flex: 0 0 auto; min-width: 42px; }
 .auto-field--inline .auto-input { flex: 1; min-width: 0; }
+/* A time or day picker should not stretch across the whole row. */
+.auto-field--inline .auto-input--time,
+.auto-field--inline select { flex: 0 1 auto; width: auto; min-width: 130px; }
 
-.auto-field-label { font-size: var(--font-xs); font-weight: 600; color: var(--text-primary); }
+.auto-field-label {
+  font-size: var(--font-xs); font-weight: 600; color: var(--text-primary);
+  letter-spacing: -.01em;
+}
+/* A hint sitting directly under its label is one block, not two. */
+.auto-field-label + .auto-field-hint { margin-top: -3px; }
 .auto-field-hint  { font-size: var(--font-2xs); color: var(--text-secondary); line-height: 1.45; margin: 0; }
 
 .auto-input {
@@ -7267,25 +7303,110 @@ select.wf-step-edit-input {
 .auto-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .auto-tab.active { color: var(--accent-hover); border-color: var(--accent); background: var(--accent-dim); }
 
-.auto-sched-fields { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+/* The contextual inputs belong to the tab above them, so they sit in an inset
+   panel rather than floating loose in the form. */
+.auto-sched-fields {
+  display: flex; flex-direction: column; gap: 10px;
+  margin-top: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, .02);
+  border: 1px solid var(--wf-border);
+  border-radius: 9px;
+}
+.auto-sched-fields:empty { display: none; }
+.auto-sched-fields .auto-field { gap: 0; }
 
-.auto-next-preview { margin: 6px 0 0; font-size: var(--font-2xs); color: var(--accent-hover); }
-.auto-next-preview--invalid { color: var(--warning); }
+.auto-next-preview {
+  align-self: flex-start;
+  margin: 10px 0 0;
+  padding: 4px 9px;
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  color: var(--accent-hover);
+  background: var(--accent-dim);
+  border: 1px solid var(--accent-dim);
+  border-radius: 6px;
+}
+.auto-next-preview:empty { display: none; }
+.auto-next-preview--invalid {
+  color: var(--warning);
+  background: rgba(245, 158, 11, .1);
+  border-color: rgba(245, 158, 11, .25);
+}
 
-.auto-check { display: flex; align-items: center; gap: 8px; font-size: var(--font-xs); color: var(--text-primary); cursor: pointer; }
-.auto-check input { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
+/* Custom checkbox: the native control cannot be themed consistently across
+   platforms, and its default blue fought the accent colour. */
+.auto-check {
+  display: flex; align-items: center; gap: 9px;
+  font-size: var(--font-xs); color: var(--text-primary);
+  cursor: pointer; user-select: none;
+  padding: 3px 0;
+}
+.auto-check input {
+  position: absolute;
+  opacity: 0;
+  width: 0; height: 0;
+  margin: 0;
+}
+.auto-check-box {
+  flex-shrink: 0;
+  width: 16px; height: 16px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1.5px solid var(--wf-border);
+  border-radius: 5px;
+  background: var(--bg-primary);
+  color: transparent;
+  transition: background-color .15s var(--wf-ease), border-color .15s var(--wf-ease), color .15s var(--wf-ease);
+}
+.auto-check-box svg { width: 10px; height: 10px; }
+.auto-check:hover .auto-check-box { border-color: rgba(255, 255, 255, .22); }
+.auto-check input:checked + .auto-check-box {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+/* Keyboard focus has to be visible on the box, since the input itself is hidden. */
+.auto-check input:focus-visible + .auto-check-box {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.auto-check-text { line-height: 1.4; }
 
-.auto-advanced { border-top: 1px solid var(--wf-border); padding-top: 12px; }
+
+/* The native time picker draws its own indicator; tint it to match. */
+.auto-input--time::-webkit-calendar-picker-indicator,
+.auto-input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.6);
+  cursor: pointer;
+  opacity: .55;
+  transition: opacity .15s var(--wf-ease);
+}
+.auto-input--time:hover::-webkit-calendar-picker-indicator,
+.auto-input[type="datetime-local"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
+
+.auto-advanced { border-top: 1px solid var(--wf-border); padding-top: 14px; }
 .auto-advanced-summary {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 9px;
+  margin-left: -9px;
+  border-radius: 7px;
   font-size: var(--font-xs); font-weight: 600; color: var(--text-secondary);
   cursor: pointer; list-style: none; user-select: none;
+  transition: background-color .15s var(--wf-ease), color .15s var(--wf-ease);
 }
 .auto-advanced-summary::-webkit-details-marker { display: none; }
-.auto-advanced-summary::before { content: "\25B8  "; }
-.auto-advanced[open] .auto-advanced-summary::before { content: "\25BE  "; }
-.auto-advanced-summary:hover { color: var(--text-primary); }
-.auto-advanced-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-.auto-advanced-body { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; }
+.auto-advanced-summary::before {
+  content: "";
+  width: 0; height: 0;
+  border-left: 4px solid currentColor;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  transition: transform .18s var(--wf-ease);
+}
+.auto-advanced[open] .auto-advanced-summary::before { transform: rotate(90deg); }
+.auto-advanced-summary:hover { color: var(--text-primary); background: var(--bg-hover); }
+.auto-advanced-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.auto-advanced-body { display: flex; flex-direction: column; gap: 12px; padding-top: 14px; }
 
 .auto-error {
   margin: 0;
