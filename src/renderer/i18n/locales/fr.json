@@ -3822,7 +3822,7 @@
       },
       "chatContains": "La réponse contient",
       "chatContainsPlaceholder": "n'importe quoi (laisser vide)",
-      "chatReplyHint": "Se déclenche à chaque réponse de Claude. « Session Claude » se déclenche une fois par tour.",
+      "chatReplyHint": "Se déclenche une fois que Claude a fini de répondre, sur la réponse complète. « Session Claude » se déclenche au même moment mais ne peut pas filtrer sur le texte.",
       "watchLabel": "Surveiller",
       "anyProject": "Tous les projets",
       "pickProject": "Choisir un projet…"

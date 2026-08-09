@@ -1096,6 +1096,17 @@ class ChatService {
   async _processStream(sessionId, queryStream) {
     let msgCount = 0;
     const session = this.sessions.get(sessionId);
+    // Assistant text for the turn in progress. Claude emits one assistant
+    // message per text block — several per turn as soon as tools run in
+    // between — so firing the chat_message trigger on each one spams the
+    // automation while Claude is still talking. Buffer here and flush once,
+    // when the turn actually ends (`result`).
+    let replyBuffer = '';
+    const flushReply = () => {
+      const text = replyBuffer.trim();
+      replyBuffer = '';
+      if (text) this._emitMessage('assistant', text, sessionId);
+    };
     try {
       for await (const message of queryStream) {
         msgCount++;
@@ -1126,15 +1137,19 @@ class ChatService {
         }
         this._send('chat-message', { sessionId, message });
 
-        // Extract assistant text for chat_message trigger dispatch
+        // Accumulate assistant text for the chat_message trigger; dispatched
+        // as one reply when the turn ends, not per streamed message.
         if (message.type === 'assistant' && Array.isArray(message.message?.content)) {
-          let text = '';
           for (const block of message.message.content) {
-            if (block.type === 'text' && block.text) text += block.text;
+            if (block.type === 'text' && block.text) {
+              replyBuffer += (replyBuffer ? '\n\n' : '') + block.text;
+            }
           }
-          if (text) this._emitMessage('assistant', text, sessionId);
+        } else if (message.type === 'result') {
+          flushReply();
         }
       }
+      flushReply();
       this._send('chat-done', { sessionId });
       this._emitLifecycle('end', sessionId, { status: 'success' });
     } catch (err) {

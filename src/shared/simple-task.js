@@ -39,10 +39,9 @@ const EVENT_KINDS = {
   git:           { trigger: 'git_event',           needsProject: true  },
   file_change:   { trigger: 'file_change',         needsProject: true  },
   command_fails: { trigger: 'terminal_exit_code',  needsProject: false },
-  // session_end fires once when Claude finishes a turn; chat_reply fires for
-  // every assistant message, of which a turn can contain several when tools are
-  // used in between. The pattern filter is what makes the second one worth
-  // having on its own.
+  // Both fire once per turn, when Claude stops talking. session_end carries the
+  // turn's status, chat_reply carries the reply text — and the pattern filter it
+  // enables is what makes the second one worth having on its own.
   session_end:   { trigger: 'claude_session_end',  needsProject: false },
   chat_reply:    { trigger: 'chat_message',        needsProject: false },
   project_open:  { trigger: 'project_opened',      needsProject: false },

@@ -132,3 +132,65 @@ describe('ChatService._safeSerialize', () => {
     expect(result).toEqual([1, 'two', { three: 3 }]);
   });
 });
+
+// ── chat_message trigger dispatch (_processStream) ──
+
+describe('ChatService chat_message dispatch', () => {
+  const assistant = text => ({ type: 'assistant', message: { content: [{ type: 'text', text }] } });
+  const toolUse   = ()   => ({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Read', input: {} }] } });
+  const result    = ()   => ({ type: 'result', subtype: 'success' });
+
+  let fired;
+  let sent;
+  let originalSend;
+  let originalLifecycle;
+
+  beforeEach(() => {
+    fired = [];
+    sent = [];
+    originalSend = chatService._send;
+    originalLifecycle = chatService._emitLifecycle;
+    chatService._send = (channel, payload) => sent.push({ channel, payload });
+    chatService._emitLifecycle = () => {};
+    chatService.setMessageCallback(e => fired.push(e));
+  });
+
+  afterEach(() => {
+    chatService._send = originalSend;
+    chatService._emitLifecycle = originalLifecycle;
+    chatService.setMessageCallback(null);
+  });
+
+  const drive = async (messages) => {
+    async function* stream() { for (const m of messages) yield m; }
+    await chatService._processStream('sess-test', stream());
+  };
+
+  test('fires once per turn, not per streamed message', async () => {
+    // A turn holds several assistant messages as soon as a tool runs in the
+    // middle — firing on each one spams the automation while Claude is talking.
+    await drive([assistant('Looking at it.'), toolUse(), assistant('Found it.'), result()]);
+
+    expect(fired).toHaveLength(1);
+    expect(fired[0].role).toBe('assistant');
+    expect(fired[0].text).toBe('Looking at it.\n\nFound it.');
+  });
+
+  test('fires again for the next turn of the same stream', async () => {
+    await drive([assistant('First.'), result(), assistant('Second.'), result()]);
+
+    expect(fired.map(f => f.text)).toEqual(['First.', 'Second.']);
+  });
+
+  test('flushes a turn that ends without a result message', async () => {
+    await drive([assistant('Done talking.')]);
+
+    expect(fired.map(f => f.text)).toEqual(['Done talking.']);
+  });
+
+  test('does not fire for a turn with no assistant text', async () => {
+    await drive([toolUse(), result()]);
+
+    expect(fired).toHaveLength(0);
+  });
+});
