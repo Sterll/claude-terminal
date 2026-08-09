@@ -182,6 +182,13 @@ function handleHookEvent(raw) {
       eventBus.emit(EVENT_TYPES.COMPACTING, {}, meta);
       break;
 
+    case 'DirectoryAdded':
+      eventBus.emit(EVENT_TYPES.DIRECTORY_ADDED, {
+        directory: stdin.directory || null,
+        source: stdin.source || null
+      }, meta);
+      break;
+
     // Ignored events
     case 'Setup':
     case 'TeammateIdle':

@@ -16,7 +16,10 @@ const EVENT_TYPES = {
   NOTIFICATION: 'notification',
   SUBAGENT_START: 'subagent:start',
   SUBAGENT_STOP: 'subagent:stop',
-  COMPACTING: 'claude:compacting'
+  COMPACTING: 'claude:compacting',
+  // A directory joined the session's working set (/add-dir or a repo root
+  // registration). Payload: { directory, source }. SDK 0.3.226+.
+  DIRECTORY_ADDED: 'directory:added'
 };
 
 class ClaudeEventBus {

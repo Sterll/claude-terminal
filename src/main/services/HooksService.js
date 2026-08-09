@@ -45,7 +45,10 @@ const HOOK_DEFINITIONS = [
   { key: 'TaskCompleted', hasMatcher: false },
   { key: 'ConfigChange', hasMatcher: true },
   { key: 'WorktreeCreate', hasMatcher: false },
-  { key: 'WorktreeRemove', hasMatcher: false }
+  { key: 'WorktreeRemove', hasMatcher: false },
+  // SDK 0.3.226+: a directory joined the session's working set, via /add-dir or
+  // by registering a repo root. Lets the explorer and workflows react to scope changes.
+  { key: 'DirectoryAdded', hasMatcher: false }
 ];
 
 // Marker code carried by the error thrown when settings.json cannot be trusted

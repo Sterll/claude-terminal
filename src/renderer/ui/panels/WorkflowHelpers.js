@@ -24,6 +24,7 @@ const HOOK_TYPES = [
   { value: 'ConfigChange',      label: 'ConfigChange',      desc: t('workflow.helpers.hookType.configChange') },
   { value: 'WorktreeCreate',    label: 'WorktreeCreate',    desc: t('workflow.helpers.hookType.worktreeCreate') },
   { value: 'WorktreeRemove',    label: 'WorktreeRemove',    desc: t('workflow.helpers.hookType.worktreeRemove') },
+  { value: 'DirectoryAdded',    label: 'DirectoryAdded',    desc: t('workflow.helpers.hookType.directoryAdded') },
 ];
 
 // ── Node output properties (for autocomplete) ──────────────────────────────

@@ -53,8 +53,8 @@ const BACKUP_PATH = path.join(os.homedir(), '.claude', 'settings.pre-hooks.json'
 const HOOK_IDENTIFIER = 'claude-terminal-hook-handler';
 const HANDLER_PATH = path.join('/mock/app', 'resources', 'hooks', 'claude-terminal-hook-handler.js');
 
-// The service defines 18 hook definitions
-const TOTAL_HOOKS = 18;
+// The service defines 19 hook definitions
+const TOTAL_HOOKS = 19;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

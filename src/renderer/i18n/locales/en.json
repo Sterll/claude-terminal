@@ -3020,7 +3020,8 @@
         "taskCompleted": "Task completed",
         "configChange": "Config changed",
         "worktreeCreate": "Worktree created",
-        "worktreeRemove": "Worktree removed"
+        "worktreeRemove": "Worktree removed",
+        "directoryAdded": "Directory added to session"
       },
       "gitAction": {
         "pull": "Pull",

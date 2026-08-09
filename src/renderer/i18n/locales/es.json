@@ -3017,7 +3017,8 @@
         "taskCompleted": "Tarea completada",
         "configChange": "Configuración cambiada",
         "worktreeCreate": "Worktree creado",
-        "worktreeRemove": "Worktree eliminado"
+        "worktreeRemove": "Worktree eliminado",
+        "directoryAdded": "Carpeta añadida a la sesión"
       },
       "gitAction": {
         "pull": "Pull",

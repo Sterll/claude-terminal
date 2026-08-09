@@ -3020,7 +3020,8 @@
         "taskCompleted": "Tâche terminée",
         "configChange": "Configuration modifiée",
         "worktreeCreate": "Worktree créé",
-        "worktreeRemove": "Worktree supprimé"
+        "worktreeRemove": "Worktree supprimé",
+        "directoryAdded": "Dossier ajouté à la session"
       },
       "gitAction": {
         "pull": "Pull",
