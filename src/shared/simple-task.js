@@ -72,7 +72,20 @@ const DEFAULT_SCHEDULE = {
   patterns: '',         // file_change glob, empty = everything watched
   pattern:  '',         // chat_reply text filter, empty = every reply
   matchMode: 'contains',// contains | regex
+  // WHICH project the event watches. Separate from simple.projectId, which is
+  // where Claude runs — "when I push in the API, summarise it in my notes" is a
+  // real thing to want.
+  //
+  // Three states, not two: '' means "not chosen" and falls back to the run
+  // project, which is how tasks saved before this field existed keep behaving.
+  // ANY_PROJECT is the EXPLICIT "watch everything" — without a distinct value
+  // the fallback would silently override the user's choice whenever a run
+  // project was set, making "any project" unselectable.
+  projectId: '',
 };
+
+/** Sentinel for "watch every project", distinct from "not chosen". */
+const ANY_PROJECT = '__any__';
 
 const DEFAULT_SIMPLE = {
   prompt:    '',
@@ -205,7 +218,12 @@ const ONE_OF = (value, allowed, fallback) => (allowed.includes(value) ? value : 
  */
 function buildTrigger(simple) {
   const when = simple.when;
-  const project = simple.projectId || '';
+  // The event's own project wins; ANY_PROJECT means watch everything, and an
+  // unset value falls back to the run project so tasks saved before the two
+  // were separated keep behaving exactly as they did.
+  const project = when.projectId === ANY_PROJECT
+    ? ''
+    : (when.projectId || simple.projectId || '');
 
   switch (when.kind) {
     case 'git':
@@ -299,6 +317,7 @@ function normalizeSimple(raw) {
       patterns: typeof rawWhen.patterns === 'string' ? rawWhen.patterns : '',
       pattern:  typeof rawWhen.pattern  === 'string' ? rawWhen.pattern  : '',
       matchMode: ONE_OF(rawWhen.matchMode, ['contains', 'regex'], 'contains'),
+      projectId: typeof rawWhen.projectId === 'string' ? rawWhen.projectId : '',
     },
     notify: {
       desktop:       rawNotif.desktop !== false,
@@ -479,7 +498,7 @@ function validateTask(task) {
     // WorkflowScheduler installs per-repository watchers for these and bails
     // when projectId is empty — with no warning. Refusing here is the only way
     // the task does not end up looking armed while watching nothing.
-    if (EVENT_KINDS[kind].needsProject && !simple.projectId) {
+    if (EVENT_KINDS[kind].needsProject && !buildTrigger(simple).projectId) {
       return { valid: false, errorKey: 'automation.error.projectRequired' };
     }
     return { valid: true };
@@ -553,6 +572,7 @@ const TASK_PRESETS = [
 
 module.exports = {
   SCHEDULE_KINDS,
+  ANY_PROJECT,
   EVENT_KINDS,
   EVENT_KIND_NAMES,
   WHEN_KINDS,

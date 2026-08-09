@@ -21,7 +21,8 @@ const { MODEL_OPTIONS, EFFORT_OPTIONS } = require('../../../shared/model-options
 const {
   TASK_PRESETS, MAX_MONTH_DAY, DEFAULT_SIMPLE,
   normalizeSimple, compileTask, describeSchedule, nextRunForTask,
-  isSimpleTask, validateTask, scheduleToCron, splitTime, isEventKind,
+  isSimpleTask, validateTask, scheduleToCron, splitTime, isEventKind, EVENT_KINDS,
+  ANY_PROJECT,
 } = require('../../../shared/simple-task');
 
 const { nextRunAt } = require('../../../shared/cron');
@@ -320,6 +321,34 @@ const EVENT_OPTIONS = {
   ],
 };
 
+/**
+ * Which project the event watches — a different question from where Claude
+ * runs, which the sheet asks separately further down.
+ *
+ * git and file_change install a watcher per repository, so "any project" is not
+ * on offer for them: WorkflowScheduler would install nothing and say nothing.
+ * The others filter with `if (trigger.projectId && mismatch) continue`, so an
+ * empty value genuinely means every project.
+ */
+function eventProjectHtml(kind, current) {
+  const anyAllowed = !EVENT_KINDS[kind]?.needsProject;
+  const list = projectsState.get().projects || [];
+  // ANY_PROJECT is a real value, not the empty string: an unset field falls back
+  // to the run project, so "any project" needs to be expressible on its own.
+  const options = [
+    anyAllowed
+      ? `<option value="${ANY_PROJECT}"${current === ANY_PROJECT ? ' selected' : ''}>${escapeHtml(t('automation.event.anyProject'))}</option>`
+      : `<option value=""${!current ? ' selected' : ''}>${escapeHtml(t('automation.event.pickProject'))}</option>`,
+    ...list.map(p => `<option value="${escapeHtml(p.id)}"${current === p.id ? ' selected' : ''}>${escapeHtml(p.name)}</option>`),
+  ].join('');
+
+  return `
+    <div class="auto-field auto-field--inline">
+      <span class="auto-field-label">${escapeHtml(t('automation.event.watchLabel'))}</span>
+      <select class="auto-input" data-dropdown data-sched="projectId">${options}</select>
+    </div>`;
+}
+
 /** A themed select bound to one `when` key. */
 function eventSelectHtml(key, current) {
   return `<select class="auto-input" data-dropdown data-sched="${key}">
@@ -452,6 +481,7 @@ function scheduleFieldsHtml(schedule) {
     // Most need no configuration at all: the task's own project is the scope.
     case 'git':
       return `
+        ${eventProjectHtml('git', schedule.projectId)}
         <div class="auto-field auto-field--inline">
           <span class="auto-field-label">${escapeHtml(t('automation.event.gitWhat'))}</span>
           ${eventSelectHtml('gitEvent', schedule.gitEvent)}
@@ -460,6 +490,7 @@ function scheduleFieldsHtml(schedule) {
 
     case 'file_change':
       return `
+        ${eventProjectHtml('file_change', schedule.projectId)}
         <label class="auto-field auto-field--inline">
           <span class="auto-field-label">${escapeHtml(t('automation.event.filePattern'))}</span>
           <input type="text" class="auto-input auto-input--mono" data-sched="patterns"
@@ -469,6 +500,7 @@ function scheduleFieldsHtml(schedule) {
 
     case 'command_fails':
       return `
+        ${eventProjectHtml('command_fails', schedule.projectId)}
         <div class="auto-field auto-field--inline">
           <span class="auto-field-label">${escapeHtml(t('automation.event.commandWhat'))}</span>
           ${eventSelectHtml('exitCode', schedule.exitCode)}
@@ -476,6 +508,7 @@ function scheduleFieldsHtml(schedule) {
 
     case 'session_end':
       return `
+        ${eventProjectHtml('session_end', schedule.projectId)}
         <div class="auto-field auto-field--inline">
           <span class="auto-field-label">${escapeHtml(t('automation.event.sessionWhat'))}</span>
           ${eventSelectHtml('status', schedule.status)}
@@ -483,6 +516,7 @@ function scheduleFieldsHtml(schedule) {
 
     case 'chat_reply':
       return `
+        ${eventProjectHtml('chat_reply', schedule.projectId)}
         <label class="auto-field auto-field--inline">
           <span class="auto-field-label">${escapeHtml(t('automation.event.chatContains'))}</span>
           <input type="text" class="auto-input" data-sched="pattern"
@@ -492,7 +526,8 @@ function scheduleFieldsHtml(schedule) {
         <p class="auto-field-hint">${escapeHtml(t('automation.event.chatReplyHint'))}</p>`;
 
     case 'project_open':
-      return `<p class="auto-field-hint">${escapeHtml(t('automation.event.projectOpenHint'))}</p>`;
+      return `${eventProjectHtml('project_open', schedule.projectId)}
+        <p class="auto-field-hint">${escapeHtml(t('automation.event.projectOpenHint'))}</p>`;
 
     case 'custom':
       return `

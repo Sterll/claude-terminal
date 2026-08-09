@@ -3822,7 +3822,10 @@
       },
       "chatContains": "La réponse contient",
       "chatContainsPlaceholder": "n'importe quoi (laisser vide)",
-      "chatReplyHint": "Se déclenche à chaque réponse de Claude. « Session Claude » se déclenche une fois par tour."
+      "chatReplyHint": "Se déclenche à chaque réponse de Claude. « Session Claude » se déclenche une fois par tour.",
+      "watchLabel": "Surveiller",
+      "anyProject": "Tous les projets",
+      "pickProject": "Choisir un projet…"
     }
   }
 }

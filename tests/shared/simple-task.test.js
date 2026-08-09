@@ -1,7 +1,7 @@
 const {
   scheduleToCron, normalizeSimple, buildSimpleGraph, compileTask,
   isSimpleTask, isOnce, validateTask, describeSchedule, buildTrigger, isEventKind, nextRunForTask,
-  MAX_MONTH_DAY, TASK_PRESETS,
+  MAX_MONTH_DAY, TASK_PRESETS, ANY_PROJECT,
 } = require('../../src/shared/simple-task');
 
 const { validateWorkflowGraph } = require('../../src/main/services/WorkflowStorage');
@@ -155,6 +155,46 @@ describe('buildTrigger', () => {
 
   it('falls back to an unrecognised filter default rather than passing it through', () => {
     expect(withKind('git', { gitEvent: 'nonsense' }).eventFilter).toBe('any');
+  });
+});
+
+describe('which project an event watches', () => {
+  const trigger = (simple) => buildTrigger(normalizeSimple(simple));
+
+  it('watches a different project from the one Claude runs in', () => {
+    // "When I push in the API, write it up in my notes" — the two are not the
+    // same decision and the sheet asks them separately.
+    const t = trigger({ projectId: 'notes', when: { kind: 'git', projectId: 'api' } });
+    expect(t.projectId).toBe('api');
+  });
+
+  it('can watch every project even when a run project is set', () => {
+    // The reason ANY_PROJECT exists: with '' meaning "not chosen", the fallback
+    // to the run project would silently override this choice and make
+    // "any project" unselectable.
+    const t = trigger({ projectId: 'notes', when: { kind: 'session_end', projectId: ANY_PROJECT } });
+    expect(t.projectId).toBe('');
+  });
+
+  it('leaves a task saved before the split behaving exactly as before', () => {
+    const t = trigger({ projectId: 'notes', when: { kind: 'session_end' } });
+    expect(t.projectId).toBe('notes');
+  });
+
+  it('still refuses a repository-watched event set to every project', () => {
+    const res = validateTask({
+      name: 'x',
+      simple: { prompt: 'p', projectId: 'notes', when: { kind: 'git', projectId: ANY_PROJECT } },
+    });
+    expect(res.valid).toBe(false);
+    expect(res.errorKey).toBe('automation.error.projectRequired');
+  });
+
+  it('accepts a repository-watched event pointed at an explicit project', () => {
+    expect(validateTask({
+      name: 'x',
+      simple: { prompt: 'p', when: { kind: 'git', projectId: 'api' } },
+    })).toEqual({ valid: true });
   });
 });
 

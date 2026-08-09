@@ -3822,7 +3822,10 @@
       },
       "chatContains": "Reply contains",
       "chatContainsPlaceholder": "anything (leave empty)",
-      "chatReplyHint": "Fires on every reply Claude sends. \"Claude session\" fires once per turn instead."
+      "chatReplyHint": "Fires on every reply Claude sends. \"Claude session\" fires once per turn instead.",
+      "watchLabel": "Watch",
+      "anyProject": "Any project",
+      "pickProject": "Pick a project…"
     }
   }
 }
