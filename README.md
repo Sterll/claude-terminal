@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/downloads/Sterll/claude-terminal/total?color=d97706&label=downloads" alt="Downloads" />
-  <img src="https://img.shields.io/badge/version-1.2.15-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.2.16-orange" alt="Version" />
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-blue" alt="Platform" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="License" />
   <img src="https://img.shields.io/badge/electron-28-purple" alt="Electron" />
@@ -145,11 +145,11 @@ npm install
 ### Chat UI (Claude Agent SDK)
 - Built-in chat interface powered by the Claude Agent SDK with streaming responses
 - **Rich markdown rendering**: mermaid diagrams, KaTeX math, syntax-highlighted code, file trees, kanban boards, diff blocks, HTML previews, and more
-- **Permission cards**: Allow, Always Allow, or Deny tool use requests
+- **Permission cards**: Allow, Always Allow, or Deny tool use requests; when one of your own `permissions.ask` rules triggers the prompt, the card names that rule and hides Always Allow so it can't be one-clicked away
 - **Plan mode**: review and approve/reject agent plans before execution
 - **Thinking blocks**: expandable sections showing Claude's reasoning
-- **Tool cards**: collapsible cards showing tool execution with formatted details
-- **Subagent visualization**: nested task tracking for spawned agents
+- **Tool cards**: collapsible cards showing tool execution with formatted details, including MCP tool refresh, feedback submission, and skill proposal actions
+- **Subagent visualization**: nested task tracking for spawned agents, with each subagent's summary showing its git worktree branch and any mid-run model switch
 - **Todo widget**: persistent task list above the input, auto-dismisses on completion
 - **Image attachments**: paste, drag-drop, or pick PNG/JPEG/GIF/WebP images (up to 20MB)
 - **Slash commands**: auto-completing commands (/compact, /clear, /help, custom skills)
@@ -159,7 +159,7 @@ npm install
 - **1M context window**: extended context for larger codebases (API mode only)
 - **Dynamic model and effort switching**: change model (Sonnet, Opus 4.8, Haiku) and effort level (low, medium, high, xhigh) mid-conversation without starting a new session
 - **Pin conversations**: keep important sessions at the top of the list
-- **Fork sessions**: branch from any message to explore alternative paths
+- **Fork sessions**: branch from any message to explore alternative paths; Claude Terminal warns instead of discarding if a queued turn would be lost
 - **Follow-up suggestions**: context-aware suggestion chips appear after Claude responds to help guide the conversation
 - **Session recaps**: automatic AI-generated summaries of completed sessions
 - Type @project to attach README.md and file tree from any project as context
@@ -246,7 +246,7 @@ npm install
 ### Hooks
 - Integrates with Claude Code CLI hooks for real-time activity tracking
 - One-click install into `~/.claude/settings.json` (non-destructive, preserves user hooks)
-- 15 hook types: PreToolUse, PostToolUse, Notification, SessionStart, Stop, and more
+- Hook types: PreToolUse, PostToolUse, Notification, SessionStart, Stop, DirectoryAdded (fires on `/add-dir`), and more
 - Event bus with normalized events for session, tool, and subagent tracking
 - Fallback terminal scraping when hooks are unavailable
 
@@ -346,6 +346,7 @@ npm install
 ### MCP Server (claude-terminal)
 - Unified MCP server exposing all Claude Terminal features to Claude Code
 - Workflow tools: create, edit, trigger, diagnose, variables, run logs
+- Automation tools: list, view, create, update, enable/disable, and delete Automations directly
 - Database tools: query, export, full schema, stats
 - Project and time tracking tools
 - Quick action triggers with polling
