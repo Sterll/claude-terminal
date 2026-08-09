@@ -436,13 +436,16 @@
   top: 2px; left: 2px;
   transition: color .25s var(--wf-ease), background-color .25s var(--wf-ease), border-color .25s var(--wf-ease), opacity .25s var(--wf-ease), transform .25s var(--wf-ease)
 }
+/* The knob used var(--accent) while the track and glow hardcoded the DEFAULT
+   amber, so any custom accent gave a two-tone switch — a purple knob sitting on
+   a brown track. --accent-rgb is kept in sync by utils/color.js. */
 .wf-switch input:checked + .wf-switch-track {
-  background: rgba(217,119,6,.2);
+  background: rgba(var(--accent-rgb), .25);
 }
 .wf-switch input:checked + .wf-switch-track::after {
   background: var(--accent);
   transform: translateX(13px);
-  box-shadow: 0 0 8px rgba(217,119,6,.4);
+  box-shadow: 0 0 8px rgba(var(--accent-rgb), .45);
 }
 
 .wf-card-run {
@@ -7169,18 +7172,17 @@ select.wf-step-edit-input {
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  opacity: 0;
+  /* Always visible. Revealing these on hover hid the only way to run a task —
+     the card just looked empty. They rest quietly and firm up on hover instead. */
+  opacity: .65;
   transition: background-color .15s var(--wf-ease), color .15s var(--wf-ease),
               border-color .15s var(--wf-ease), opacity .15s var(--wf-ease);
 }
-/* Revealed on hover or keyboard focus, so a list of tasks reads as a list and
-   not as a wall of icons. A running task always shows its stop button. */
 .auto-card:hover .auto-btn,
-.auto-card:focus-within .auto-btn,
 .auto-btn:focus-visible,
 .auto-btn--stop { opacity: 1; }
 
-.auto-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--wf-border); }
+.auto-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--wf-border); opacity: 1; }
 .auto-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .auto-btn--run:hover { color: var(--success); }
 .auto-btn--stop      { color: var(--danger); }
