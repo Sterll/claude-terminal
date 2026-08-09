@@ -87,8 +87,14 @@ function registerWorkflowHandlers(mainWindow) {
       if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) {
         return { success: false, error: 'Invalid workflow: expected an object' };
       }
-      if (typeof workflow.id !== 'string' || !workflow.id.trim()) {
-        return { success: false, error: 'Invalid workflow: "id" must be a non-empty string' };
+      // An ABSENT id means "create": WorkflowStorage.upsertWorkflow assigns one,
+      // and WorkflowService already handles the `workflow.id || '__new__'` case.
+      // Requiring an id here rejected every creation path — the graph editor
+      // omits it too and reads res.id back afterwards — so only a malformed id
+      // is rejected.
+      if (workflow.id !== undefined
+          && (typeof workflow.id !== 'string' || !workflow.id.trim())) {
+        return { success: false, error: 'Invalid workflow: "id" must be a non-empty string when provided' };
       }
       return await workflowService.saveWorkflow(workflow);
     } catch (err) {
