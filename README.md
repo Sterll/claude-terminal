@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/downloads/Sterll/claude-terminal/total?color=d97706&label=downloads" alt="Downloads" />
-  <img src="https://img.shields.io/badge/version-1.2.14-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.2.15-orange" alt="Version" />
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-blue" alt="Platform" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="License" />
   <img src="https://img.shields.io/badge/electron-28-purple" alt="Electron" />
@@ -176,6 +176,7 @@ npm install
 - Tab drag-and-drop reordering, renaming, desktop notifications
 - Filter terminals by project
 - Adaptive ready detection with spinner status
+- Captured terminal output, so the terminal read tools and MCP tools can actually return what ran
 
 ### Project Management
 - Organize projects in nested folders with drag-and-drop
@@ -303,14 +304,16 @@ npm install
 - **Discord Rich Presence**: show the project you're working on in your Discord status (VSCode-style), with an option to hide the project name for privacy; toggle on/off in Settings
 
 ### Workflow Automation
+- **Automations**: a simple, no-graph mode for common tasks — describe what Claude should do and when in a plain form, no node editor or cron syntax required, with six starter presets
+- Automations can trigger on events instead of a schedule: git activity, a file change, a command finishing, a Claude session ending, Claude replying (with an optional text filter), or opening a project — each event watches its own chosen project, independent of where Claude runs
 - Visual node-based workflow editor with custom canvas engine (Blueprint-style)
-- 15+ node types: shell, git, HTTP, Claude (prompt/agent/skill), condition, loop, transform, switch, subworkflow, database, file, project, time, variable, trigger
+- 20+ node types: shell, git, HTTP, Claude (prompt/agent/skill), condition, loop, transform, switch, subworkflow, database, file, project, time, variable, trigger, code (run a JavaScript snippet), template (build strings from variables), terminal, quick action
 - Typed data pins with visual data flow between nodes
 - AI assistant panel for real-time graph editing and node creation
 - Undo/redo, copy/paste, snap-to-grid, minimap, comments
 - Run history with live loop progress and step output inspection
 - Workflow community hub for sharing and importing workflows
-- Cron, hook, and webhook triggers
+- Cron, hook, webhook, and event-based triggers
 - MCP tools for full workflow control from Claude Code
 
 ### Connectivity (Remote & Cloud)
