@@ -357,13 +357,16 @@ class ChatView extends BaseComponent {
 
   createChatView(wrapperEl, project, options = {}) {
     const api = this._api;
-  const { terminalId = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null, skipPermissions = false, onTabRename = null, onStatusChange = null, onSwitchTerminal = null, onSwitchProject = null, onForkSession = null, initialPrompt = null, initialModel = null, initialEffort = null, initialImages = null, onSessionStart = null, systemPrompt = null, builtinSystemPrompt = null } = options;
+  const { terminalId = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, skipPermissions = false, onTabRename = null, onStatusChange = null, onSwitchTerminal = null, onSwitchProject = null, onForkSession = null, initialPrompt = null, initialModel = null, initialEffort = null, initialImages = null, onSessionStart = null, systemPrompt = null, builtinSystemPrompt = null } = options;
   let sessionId = null;
   let isStreaming = false;
   let isAborting = false;
   let pendingResumeId = resumeSessionId || null;
   let pendingForkSession = forkSession || false;
   let pendingResumeAt = resumeSessionAt || null;
+  // Prompt UUID of the turn a pending fork discards — arms the CLI fork guard.
+  // Null when we cannot name that turn, which keeps the pre-0.3.226 behaviour.
+  let pendingDropsTurn = resumeDropsTurn || null;
   let lastStartOpts = null; // cached so we can re-launch the SDK after an account switch
   let switchingAccount = false; // suppress error UI while we hot-swap credentials
   let tabNamePending = false; // avoid concurrent tab name requests
@@ -2808,10 +2811,17 @@ class ChatView extends BaseComponent {
           }
           if (pendingResumeAt) {
             startOpts.resumeSessionAt = pendingResumeAt;
+            // Arm the CLI-side fork guard when we know which turn we mean to drop,
+            // so a fork that would also discard a queued prompt is refused instead
+            // of silently losing it. A refusal is handled by onForkRejected below.
+            if (pendingDropsTurn) {
+              startOpts.resumeDropsTurn = pendingDropsTurn;
+            }
           }
           pendingResumeId = null;
           pendingForkSession = false;
           pendingResumeAt = null;
+          pendingDropsTurn = null;
         }
         // Force parallel task: prepend instruction to prompt
         if (_forceParallelTask) {
@@ -5440,13 +5450,34 @@ class ChatView extends BaseComponent {
     }
   }
 
-  function forkFromMessage(messageUuid) {
+  /**
+   * First user prompt strictly after `fromIdx` in a replayed history, by UUID.
+   * That prompt opens the turn a fork at `fromIdx` would discard.
+   * @returns {string|null} null when nothing follows, or the entry predates uuid capture
+   */
+  function findNextUserUuid(messages, fromIdx) {
+    for (let i = fromIdx + 1; i < messages.length; i++) {
+      if (messages[i]?.role === 'user') return messages[i].uuid || null;
+    }
+    return null;
+  }
+
+  /**
+   * Fork the conversation at `messageUuid`, discarding everything after it.
+   * @param {string} messageUuid - chain UUID to keep (an assistant message)
+   * @param {string|null} dropsTurnUuid - prompt UUID of the turn being discarded.
+   *   When known, it arms the CLI fork guard so the resume is refused rather than
+   *   silently dropping a queued prompt that the UI never showed. Omitted for a
+   *   fork off the newest message, where nothing follows to discard.
+   */
+  function forkFromMessage(messageUuid, dropsTurnUuid = null) {
     // Use the real SDK session UUID, not our internal sessionId
     const realSid = sdkSessionId || pendingResumeId;
     if (!realSid || !onForkSession) return;
     onForkSession({
       resumeSessionId: realSid,
       resumeSessionAt: messageUuid,
+      resumeDropsTurn: dropsTurnUuid || null,
       model: selectedModel,
       effort: selectedEffort,
       skipPermissions,
@@ -6053,6 +6084,36 @@ class ChatView extends BaseComponent {
   });
   unsubscribers.push(unsubPerm);
 
+  // The CLI refused a guarded fork: the discarded range held more than the turn we
+  // named — typically a prompt queued mid-turn that this view never rendered. The
+  // refusal is deterministic, so retry once WITHOUT the guard rather than re-sending
+  // the same request, and tell the user what the fork is about to drop.
+  const unsubForkRejected = api.chat.onForkRejected(async ({ sessionId: sid, resumeSessionId: rsid, resumeSessionAt: rat }) => {
+    if (sid !== sessionId) return;
+    removeThinkingIndicator();
+    if (!rsid || !rat || !lastStartOpts) {
+      setStreaming(false);
+      appendError(t('chat.forkRejected') || 'Fork refused — resume the session instead');
+      return;
+    }
+    // Retry in THIS tab rather than spawning another one: this view is already the
+    // fork target, so a second tab would leave a dead one behind.
+    appendSystemNotice(
+      t('chat.forkGuardFallback') || 'This fork also discards a message queued mid-turn. Forking anyway.',
+      'info'
+    );
+    const retryOpts = { ...lastStartOpts, resumeSessionId: rsid, resumeSessionAt: rat };
+    delete retryOpts.resumeDropsTurn; // unarmed: the guard already told us what it drops
+    setStreaming(true);
+    appendThinkingIndicator();
+    const res = await api.chat.start(retryOpts);
+    if (!res.success) {
+      appendError(res.error || t('chat.errorOccurred'));
+      setStreaming(false);
+    }
+  });
+  unsubscribers.push(unsubForkRejected);
+
   function _clearPermTimers(requestId) {
     const timers = _permTimers.get(requestId);
     if (timers) {
@@ -6247,13 +6308,16 @@ class ChatView extends BaseComponent {
           // Add fork button if message has a UUID (from session JSONL)
           if (msg.uuid && onForkSession) {
             el.dataset.messageUuid = msg.uuid;
+            // The turn this fork would discard starts at the next user prompt.
+            // Naming it arms the CLI guard; null (fork off the tail) leaves it unarmed.
+            const dropsTurn = findNextUserUuid(messages, idx);
             const forkBtn = document.createElement('button');
             forkBtn.className = 'chat-msg-fork-btn';
             forkBtn.title = t('chat.forkSession') || 'Fork from here';
             forkBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/><path d="M6 9a9 9 0 0 0 9 9"/></svg>';
             forkBtn.addEventListener('click', (e) => {
               e.stopPropagation();
-              forkFromMessage(msg.uuid);
+              forkFromMessage(msg.uuid, dropsTurn);
             });
             el.appendChild(forkBtn);
           }

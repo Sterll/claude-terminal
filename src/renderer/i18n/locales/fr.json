@@ -1642,6 +1642,8 @@
     "alwaysAllow": "Toujours autoriser",
     "deny": "Refuser",
     "permissionRequired": "Permission requise",
+    "forkRejected": "Branche refusée - reprenez la session à la place",
+    "forkGuardFallback": "Cette branche supprime aussi un message mis en file pendant le tour. Branchement quand même.",
     "questionFromClaude": "Claude a une question",
     "questionAnswered": "Répondu",
     "answeredExternally": "répondu depuis le Control Tower",

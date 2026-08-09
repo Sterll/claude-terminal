@@ -229,6 +229,8 @@ async function loadSessionHistory(projectPath, sessionId) {
           if (text || images.length > 0) {
             const msg = { role: 'user', text: text || '' };
             if (images.length > 0) msg.images = images;
+            // Carried so a fork can name the turn it discards (resumeDropsTurn)
+            if (obj.uuid) msg.uuid = obj.uuid;
             messages.push(msg);
           }
         }

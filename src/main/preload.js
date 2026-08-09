@@ -562,6 +562,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     onIdle: createListener('chat-idle'),
     onInitializing: createListener('chat-initializing'),
     onPermissionRequest: createListener('chat-permission-request'),
+    onForkRejected: createListener('chat-fork-rejected'),
     generateTabName: (params) => ipcRenderer.invoke('chat-generate-tab-name', params),
     loadHistory: (params) => ipcRenderer.invoke('chat-load-history', params),
     generateSkillAgent: (params) => ipcRenderer.invoke('chat-generate-skill-agent', params),

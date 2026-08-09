@@ -3603,7 +3603,7 @@ class TerminalManager extends BaseComponent {
   // ── Chat terminal ──
 
   async _createChatTerminal(project, options = {}) {
-    const { skipPermissions = false, name: customName = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null, parentProjectId = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, systemPrompt = null, tabTag = null } = options;
+    const { skipPermissions = false, name: customName = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, parentProjectId = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, systemPrompt = null, tabTag = null } = options;
 
     const id = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     let _chatSessionId = null;
@@ -3674,6 +3674,7 @@ class TerminalManager extends BaseComponent {
       resumeSessionId,
       forkSession,
       resumeSessionAt,
+      resumeDropsTurn,
       initialPrompt,
       initialImages,
       initialModel: effectiveModel,
@@ -3700,11 +3701,12 @@ class TerminalManager extends BaseComponent {
       onStatusChange: (status, substatus) => self._updateChatTerminalStatus(id, status, substatus),
       onSwitchTerminal: (dir) => self._callbacks.onSwitchTerminal?.(dir),
       onSwitchProject: (dir) => self._callbacks.onSwitchProject?.(dir),
-      onForkSession: ({ resumeSessionId: forkSid, resumeSessionAt: forkAt, model: forkModel, effort: forkEffort, skipPermissions: forkSkipPerms }) => {
+      onForkSession: ({ resumeSessionId: forkSid, resumeSessionAt: forkAt, resumeDropsTurn: forkDrops, model: forkModel, effort: forkEffort, skipPermissions: forkSkipPerms }) => {
         self._createChatTerminal(project, {
           resumeSessionId: forkSid,
           forkSession: true,
           resumeSessionAt: forkAt,
+          resumeDropsTurn: forkDrops || null,
           skipPermissions: forkSkipPerms || false,
           initialModel: forkModel || null,
           initialEffort: forkEffort || null,

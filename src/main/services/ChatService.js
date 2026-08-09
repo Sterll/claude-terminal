@@ -12,6 +12,13 @@ const { execFileSync } = require('child_process');
 let sdkPromise = null;
 let resolvedRuntime = null;
 
+/**
+ * Prefix the CLI puts on the result when a `resumeDropsTurn` guard rejects a fork
+ * (SDK 0.3.226+). The refusal is deterministic, so callers must fall back to an
+ * unguarded resume rather than retry the same request.
+ */
+const FORK_REJECTED_PREFIX = 'Resume rejected by --resume-drops-turn:';
+
 async function loadSDK() {
   if (!sdkPromise) {
     sdkPromise = import('@anthropic-ai/claude-agent-sdk');
@@ -517,9 +524,13 @@ class ChatService {
    * @param {string} params.prompt - Initial prompt
    * @param {string} [params.permissionMode] - Permission mode
    * @param {string} [params.resumeSessionId] - Session ID to resume
+   * @param {string} [params.resumeSessionAt] - Chain UUID to fork from (truncating resume)
+   * @param {string} [params.resumeDropsTurn] - Prompt UUID of the turn the fork discards.
+   *   Arms the CLI-side guard so a fork that would silently drop a queued user message
+   *   or task notification is refused instead. See _processStream for the refusal path.
    * @returns {Promise<string>} Session ID
    */
-  async startSession({ cwd, projectId = null, prompt, permissionMode = 'default', resumeSessionId = null, sessionId = null, images = [], mentions = [], model = null, enable1MContext = false, forkSession = false, resumeSessionAt = null, effort = null, outputFormat = null, skills = null, systemPrompt = null, settingSources = null, maxTurns = null, cloud = false, cloudProjectName = null, userMessageUuid = null, persistSession = true }) {
+  async startSession({ cwd, projectId = null, prompt, permissionMode = 'default', resumeSessionId = null, sessionId = null, images = [], mentions = [], model = null, enable1MContext = false, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, effort = null, outputFormat = null, skills = null, systemPrompt = null, settingSources = null, maxTurns = null, cloud = false, cloudProjectName = null, userMessageUuid = null, persistSession = true }) {
     if (!sessionId) sessionId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     // Cloud session: delegate to cloud server instead of local SDK
@@ -647,6 +658,12 @@ class ChatService {
         }
         if (resumeSessionAt) {
           options.resumeSessionAt = resumeSessionAt;
+          // Guard the truncation: the CLI refuses the fork if the discarded range
+          // holds anything beyond that turn (a queued prompt, a task notification).
+          // Only armed when the caller knows which turn it means to drop.
+          if (resumeDropsTurn) {
+            options.resumeDropsTurn = resumeDropsTurn;
+          }
         }
       }
 
@@ -663,6 +680,10 @@ class ChatService {
         cwd,
         projectId,
         _stderr: '',
+        // Retained so a refused fork can be replayed without the guard
+        _forkGuard: (resumeSessionId && resumeSessionAt && resumeDropsTurn)
+          ? { resumeSessionId, resumeSessionAt }
+          : null,
       });
 
       this._emitLifecycle('start', sessionId, { projectId, cwd });
@@ -1119,6 +1140,33 @@ class ChatService {
         // Surfaced as a dedicated event so the UI can maintain a live task list
         // with a stop button (queryStream.stopTask). Still forwarded below for
         // the transcript unless flagged skip_transcript.
+        // A guarded fork (resumeDropsTurn) whose discarded range held more than the
+        // dropped turn comes back as a result message, not a thrown error. The
+        // refusal is deterministic — replaying the same request always fails — so
+        // hand the renderer the fork target and let it resume without the guard.
+        if (message.type === 'result' && message.subtype === 'error_during_execution') {
+          // SDKResultError carries the text in `errors[]`; `result` only exists on
+          // the success variant. Check both so the match survives either shape.
+          const texts = [
+            ...(Array.isArray(message.errors) ? message.errors : []),
+            ...(typeof message.result === 'string' ? [message.result] : []),
+          ];
+          const refusal = texts.find(txt => typeof txt === 'string' && txt.includes(FORK_REJECTED_PREFIX));
+          if (refusal) {
+            // The turn was refused, not answered — drop whatever it had said.
+            replyBuffer = '';
+            const guard = session?._forkGuard || null;
+            if (session) session._forkGuard = null;
+            console.warn(`[ChatService] Fork guard refused for ${sessionId}: ${refusal}`);
+            this._send('chat-fork-rejected', {
+              sessionId,
+              reason: refusal,
+              resumeSessionId: guard?.resumeSessionId || null,
+              resumeSessionAt: guard?.resumeSessionAt || null,
+            });
+            continue;
+          }
+        }
         if (message.type === 'system'
           && (message.subtype === 'task_started' || message.subtype === 'task_notification')) {
           this._send('chat-task-update', {
