@@ -534,7 +534,9 @@ module.exports = {
 
 **Env vars available in MCP tools:** `CT_DATA_DIR` (`~/.claude-terminal/`), `CT_PROJECT_PATH` (current project).
 
-**Available tool modules (19):**
+**Available tool modules (20):**
+
+Files prefixed with `_` are shared helpers, not tool modules — the loader ignores them because they export no `tools`/`handle`. `_workflowStore.js` owns the single definitions.json writer protocol (cross-process lock, atomic write, reload signal) used by both `workflow.js` and `automation.js`.
 
 | Module | Key tools |
 |--------|-----------|
@@ -545,7 +547,8 @@ module.exports = {
 | `webapp.js` | `webapp_stack`, `webapp_scripts`, `webapp_start`, `webapp_stop` |
 | `fivem.js` | `fivem_command`, `fivem_list_resources`, `fivem_read_manifest`, `fivem_resource_files`, `fivem_server_cfg` |
 | `discord.js` | `discord_bot_status`, `discord_list_commands` |
-| `workflow.js` | Create/list/run/cancel/diagnose + run logs + variables |
+| `workflow.js` | Create/list/run/cancel/diagnose + run logs + variables (graph workflows; node tools refuse `mode: 'simple'`) |
+| `automation.js` | `automation_list`, `automation_get`, `automation_create`, `automation_update`, `automation_enable`, `automation_delete` — compiles via `src/shared/simple-task.js` |
 | `parallel.js` | `parallel_list_runs`, `parallel_run_detail`, `parallel_start_run`, `parallel_cancel_run`, `parallel_cleanup_run`, `parallel_merge_run` |
 | `workspace.js` | `workspace_list`, `workspace_info`, `workspace_read_doc`, `workspace_write_doc`, `workspace_search`, `workspace_add_link` |
 | `control-tower.js` | `control_tower_agents`, `control_tower_interrupt` |

@@ -36,7 +36,17 @@ You are running inside **Claude Terminal**, a desktop application for managing C
 - \`quickaction_update\` — Update an existing quick action (name, command, icon, pinned)
 - \`quickaction_delete\` — Remove a quick action from a project
 
+### Automations
+Scheduled or event-driven prompts — the Automations tab. Use these rather than the workflow node tools: an automation's graph is generated from its settings, so editing its nodes is overwritten on the next save.
+- \`automation_list\` — List automations: when each fires, its project, its last run
+- \`automation_get\` — One automation in full: prompt, schedule, recent runs
+- \`automation_create\` — Create one (prompt + when: daily/weekly/cron, or on a git/file/chat event)
+- \`automation_update\` — Change one; only the fields passed are touched
+- \`automation_enable\` — Arm or pause it
+- \`automation_delete\` — Delete it and its run history
+
 ### Workflows
+Hand-built node graphs. \`workflow_trigger\`, \`workflow_runs\`, \`workflow_run_logs\` and \`workflow_diagnose\` also accept an automation's ID.
 - \`workflow_list\` — List all workflows with trigger type and last run status
 - \`workflow_get\` — Get workflow details (steps, trigger config, graph)
 - \`workflow_trigger\` — Trigger a workflow execution

@@ -16,56 +16,10 @@
 const fs = require('fs');
 const path = require('path');
 
-// -- Cross-process lock (definitions.json) ------------------------------------
-// The Electron main process mutates the same definitions.json under its own
-// cross-process lock (src/main/utils/fileLock.js). This synchronous variant MUST
-// stay protocol-compatible with it: same lock path, same staleness rules.
-const LOCK_STALE_MS = 15000;
-const LOCK_GIVE_UP_MS = 30000;
-const LOCK_STEP_MS = 25;
-
-function _sleepSync(ms) {
-  // Real synchronous sleep without a busy CPU spin.
-  try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); }
-  catch { const end = Date.now() + ms; while (Date.now() < end) { /* spin fallback */ } }
-}
-
-function _defsLockPath() {
-  return path.join(getDataDir(), 'workflows', 'definitions.json.lock');
-}
-
-// Run `fn` while holding the shared definitions.json lock. Best-effort: never
-// hangs — breaks a stale/abandoned lock and proceeds as a last resort.
-function withDefsLock(fn) {
-  const lockPath = _defsLockPath();
-  const start = Date.now();
-  let fd = null;
-  for (;;) {
-    try {
-      fd = fs.openSync(lockPath, 'wx');
-      try { fs.writeSync(fd, `${process.pid} ${Date.now()}`); } catch (_) {}
-      break;
-    } catch (e) {
-      if (e.code !== 'EEXIST') throw e;
-      let ageMs = 0;
-      try { ageMs = Date.now() - fs.statSync(lockPath).mtimeMs; }
-      catch (_) { continue; } // vanished — retry
-      if (ageMs > LOCK_STALE_MS) { try { fs.unlinkSync(lockPath); } catch (_) {} continue; }
-      if (Date.now() - start > LOCK_GIVE_UP_MS) {
-        try { fs.unlinkSync(lockPath); } catch (_) {}
-        try { fd = fs.openSync(lockPath, 'wx'); } catch (_) { fd = null; }
-        break;
-      }
-      _sleepSync(LOCK_STEP_MS);
-    }
-  }
-  try {
-    return fn();
-  } finally {
-    if (fd != null) { try { fs.closeSync(fd); } catch (_) {} }
-    try { fs.unlinkSync(lockPath); } catch (_) {}
-  }
-}
+// definitions.json access — lock protocol, atomic writes and the reload signals
+// live in one place, shared with automation.js. See _workflowStore.js.
+const store = require('./_workflowStore');
+const { getDataDir, loadDefinitions, loadHistory, signalReload, signalDeleted } = store;
 
 // Resolve node registry: packaged app (extraResources) → dev fallback → graceful skip
 let nodeRegistry = null;
@@ -89,34 +43,8 @@ function log(...args) {
 }
 
 // -- Data access --------------------------------------------------------------
-
-function getDataDir() {
-  return process.env.CT_DATA_DIR || '';
-}
-
-function loadDefinitions() {
-  const file = path.join(getDataDir(), 'workflows', 'definitions.json');
-  try {
-    if (fs.existsSync(file)) {
-      const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
-      // Format may be [{ workflow: {...} }] or [{id, name, ...}]
-      return raw.map(entry => entry.workflow || entry);
-    }
-  } catch (e) {
-    log('Error reading definitions.json:', e.message);
-  }
-  return [];
-}
-
-function loadHistory() {
-  const file = path.join(getDataDir(), 'workflows', 'history.json');
-  try {
-    if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch (e) {
-    log('Error reading history.json:', e.message);
-  }
-  return [];
-}
+// getDataDir / loadDefinitions / loadHistory / signalReload come from
+// _workflowStore, so this module and automation.js cannot drift apart.
 
 function loadRunResult(runId) {
   const file = path.join(getDataDir(), 'workflows', 'results', `${runId}.json`);
@@ -126,22 +54,6 @@ function loadRunResult(runId) {
     log('Error reading run result:', e.message);
   }
   return null;
-}
-
-// Drops a reload signal file the main process polls. Returns true on success.
-// On failure it logs AND returns false so the caller can warn the user that
-// the change was saved but the UI may not refresh until the app is reloaded.
-function signalReload() {
-  try {
-    const triggerDir = path.join(getDataDir(), 'workflows', 'triggers');
-    if (!fs.existsSync(triggerDir)) fs.mkdirSync(triggerDir, { recursive: true });
-    const f = path.join(triggerDir, `reload_${Date.now()}.json`);
-    fs.writeFileSync(f, JSON.stringify({ action: 'reload', source: 'mcp', timestamp: new Date().toISOString() }), 'utf8');
-    return true;
-  } catch (e) {
-    log('signalReload error:', e.message);
-    return false;
-  }
 }
 
 function findWorkflow(nameOrId) {
@@ -269,43 +181,10 @@ function loadWorkflowDef(nameOrId) {
 function saveWorkflowDef(workflow) {
   // Always repair slot refs before saving so the graph renders correctly in LiteGraph
   if (workflow.graph) repairSlotRefs(workflow.graph);
-  const file = path.join(getDataDir(), 'workflows', 'definitions.json');
   // Read-modify-write under the shared cross-process lock so a concurrent write
   // from the Electron main process (WorkflowStorage) cannot clobber this change,
   // and vice-versa.
-  withDefsLock(() => {
-    let defs = [];
-    // C2: NEVER start from [] when the file exists but is unreadable — that would
-    // erase every other workflow. If the file exists but fails to parse, abort.
-    if (fs.existsSync(file)) {
-      let raw;
-      try {
-        raw = fs.readFileSync(file, 'utf8');
-      } catch (e) {
-        throw new Error(`Cannot read definitions.json (${e.message}). Aborting to avoid data loss.`);
-      }
-      try {
-        defs = JSON.parse(raw);
-      } catch (e) {
-        throw new Error(`definitions.json is unparseable (${e.message}). Aborting to avoid destroying other workflows.`);
-      }
-      if (!Array.isArray(defs)) {
-        throw new Error('definitions.json is not an array. Aborting to avoid data loss.');
-      }
-    }
-    // loadDefinitions() unwraps entry.workflow, so entries on disk may be either
-    // { workflow: {...} } wrappers or bare workflow objects. Match on both and
-    // preserve the on-disk wrapper shape to avoid duplicating an entry.
-    const idx = defs.findIndex(entry => (entry.workflow || entry).id === workflow.id);
-    if (idx >= 0) {
-      defs[idx] = defs[idx] && defs[idx].workflow ? { ...defs[idx], workflow } : workflow;
-    } else {
-      defs.push(workflow);
-    }
-    const tmp = file + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(defs, null, 2), 'utf8');
-    fs.renameSync(tmp, file);
-  });
+  store.upsertDefinition(workflow);
 }
 
 // Rebuilds inputs[].link and outputs[].links from the graph.links[] array.
@@ -800,6 +679,26 @@ const tools = [
   },
 ];
 
+// -- Simple-mode guard --------------------------------------------------------
+
+/**
+ * Tools that rewrite a workflow's graph.
+ *
+ * An automation (mode: 'simple') has a GENERATED graph: the Automations tab
+ * recompiles it from the `simple` payload on every save, so a node edited here
+ * is silently overwritten the next time the user touches the automation. That
+ * is data loss with no error, so refuse instead — and point at the tools that
+ * do the equivalent thing on the payload the automation is actually built from.
+ */
+const GRAPH_MUTATORS = new Set([
+  'workflow_add_node',
+  'workflow_connect_nodes',
+  'workflow_update_node',
+  'workflow_delete_node',
+  'workflow_add_variable',
+  'workflow_auto_layout',
+]);
+
 // -- Tool handler -------------------------------------------------------------
 
 async function handle(name, args) {
@@ -807,6 +706,17 @@ async function handle(name, args) {
   const fail = (text) => ({ content: [{ type: 'text', text }], isError: true });
 
   try {
+    if (GRAPH_MUTATORS.has(name) && args && args.workflow) {
+      const target = findWorkflow(args.workflow);
+      if (target && target.mode === 'simple') {
+        return fail(
+          `"${target.name}" (${target.id}) is an automation, not a graph workflow — its nodes are generated `
+          + 'and would be overwritten on the next save. Use automation_update to change it (prompt, schedule, '
+          + 'project, notifications), or automation_get to inspect it.'
+        );
+      }
+    }
+
     if (name === 'workflow_list') {
       const defs = loadDefinitions();
       if (!defs.length) return ok('No workflows configured. Create workflows in Claude Terminal > Workflows panel.');
@@ -820,7 +730,7 @@ async function handle(name, args) {
 
         const nodeCount = w.graph?.nodes?.length || (w.steps || []).length || 0;
         const parts = [
-          `${w.name} (${w.id})`,
+          `${w.name} (${w.id})${w.mode === 'simple' ? '  [automation]' : ''}`,
           `  Trigger: ${formatTrigger(w.trigger)}`,
           `  Enabled: ${w.enabled !== false ? 'yes' : 'no'}`,
           `  Nodes: ${nodeCount}`,
@@ -835,7 +745,14 @@ async function handle(name, args) {
         return parts.join('\n');
       });
 
-      return ok(`Workflows (${defs.length}):\n\n${lines.join('\n\n')}\n\nUse the workflow ID (e.g. "${defs[0]?.id}") to reference workflows in other tools.`);
+      const automations = defs.filter(w => w.mode === 'simple').length;
+      return ok(
+        `Workflows (${defs.length}):\n\n${lines.join('\n\n')}\n\n`
+        + `Use the workflow ID (e.g. "${defs[0]?.id}") to reference workflows in other tools.`
+        + (automations
+          ? `\n${automations} of these are [automation]s — edit those with automation_update, not the node tools.`
+          : '')
+      );
     }
 
     if (name === 'workflow_get') {
@@ -1790,54 +1707,17 @@ async function handle(name, args) {
 
       // Remove from definitions under the shared cross-process lock so a
       // concurrent write from the main process cannot resurrect the entry or be
-      // clobbered. Abort (never start from []) if the file is unreadable.
-      const file = path.join(getDataDir(), 'workflows', 'definitions.json');
-      let lockError = null;
+      // clobbered. Aborts (never starts from []) if the file is unreadable.
       try {
-        withDefsLock(() => {
-          if (!fs.existsSync(file)) {
-            throw new Error('definitions.json does not exist — nothing to delete.');
-          }
-          let raw;
-          try {
-            raw = fs.readFileSync(file, 'utf8');
-          } catch (e) {
-            throw new Error(`Cannot read definitions.json (${e.message}). Aborting delete to avoid data loss.`);
-          }
-          let defs;
-          try {
-            defs = JSON.parse(raw);
-          } catch (e) {
-            throw new Error(`definitions.json is unparseable (${e.message}). Aborting delete to avoid destroying other workflows.`);
-          }
-          if (!Array.isArray(defs)) {
-            throw new Error('definitions.json is not an array. Aborting delete to avoid data loss.');
-          }
-          defs = defs.filter(entry => (entry.workflow || entry).id !== wf.id);
-          const tmp = file + '.tmp';
-          fs.writeFileSync(tmp, JSON.stringify(defs, null, 2), 'utf8');
-          fs.renameSync(tmp, file);
-        });
+        store.removeDefinition(wf.id);
       } catch (e) {
-        lockError = e;
+        return fail(e.message);
       }
-      if (lockError) return fail(lockError.message);
 
       // Delegate run-history + result-file cleanup to the main process so
       // history.json stays single-writer. The main poll handles this action:
       // it calls storage.deleteRunsForWorkflow(), reloads and refreshes the UI.
-      try {
-        const triggerDir = path.join(getDataDir(), 'workflows', 'triggers');
-        if (!fs.existsSync(triggerDir)) fs.mkdirSync(triggerDir, { recursive: true });
-        fs.writeFileSync(
-          path.join(triggerDir, `deleted_${Date.now()}.json`),
-          JSON.stringify({ action: 'workflow_deleted', workflowId: wf.id, source: 'mcp' }),
-          'utf8'
-        );
-      } catch (_) {
-        // Fall back to a plain reload signal so the UI at least refreshes.
-        signalReload();
-      }
+      signalDeleted(wf.id);
 
       log(`Deleted workflow "${wf.name}" (${wf.id}); delegated cleanup of ${runCount} run(s)`);
       return ok(`Workflow "${wf.name}" (${wf.id}) deleted permanently.\n${runCount} run record(s) will be cleaned up.`);

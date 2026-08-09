@@ -73,6 +73,15 @@ module.exports = {
       from: "src/main/workflow-nodes",
       to: "mcp-servers/workflow-nodes",
       filter: ["**/*"]
+    },
+    {
+      // The MCP server runs as a plain node process, which cannot require from
+      // inside app.asar. automation.js compiles tasks with the SAME shared code
+      // the renderer uses (simple-task.js + its cron dependency), so it has to
+      // exist unpacked next to mcp-servers/ — same reason as workflow-nodes.
+      from: "src/shared",
+      to: "mcp-servers/shared",
+      filter: ["**/*"]
     }
   ],
   win: {
