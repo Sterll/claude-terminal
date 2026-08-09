@@ -132,6 +132,21 @@ describe('buildTrigger', () => {
     });
   });
 
+  it('builds a chat_message trigger restricted to Claude replies', () => {
+    // role must be 'assistant': without it the task would also fire on the
+    // user's own prompts, which is the opposite of "when Claude replied".
+    expect(withKind('chat_reply', { pattern: 'done' })).toEqual({
+      type: 'chat_message', value: '', projectId: 'proj-1',
+      role: 'assistant', pattern: 'done', matchMode: 'contains',
+    });
+  });
+
+  it('defaults chat matching to a plain substring, not a regex', () => {
+    expect(withKind('chat_reply').matchMode).toBe('contains');
+    expect(withKind('chat_reply', { matchMode: 'regex' }).matchMode).toBe('regex');
+    expect(withKind('chat_reply', { matchMode: 'sorcery' }).matchMode).toBe('contains');
+  });
+
   it('builds a project_opened trigger', () => {
     expect(withKind('project_open')).toEqual({
       type: 'project_opened', value: '', projectId: 'proj-1',
@@ -325,7 +340,7 @@ describe('TASK_PRESETS', () => {
 
 describe('event tasks end to end', () => {
   it('compiles into a workflow the storage validator accepts', () => {
-    for (const kind of ['git', 'file_change', 'command_fails', 'session_end', 'project_open']) {
+    for (const kind of ['git', 'file_change', 'command_fails', 'session_end', 'chat_reply', 'project_open']) {
       const wf = compileTask({
         name: kind,
         simple: { prompt: 'do it', projectId: 'proj-1', when: { kind } },
@@ -365,7 +380,7 @@ describe('event tasks end to end', () => {
   });
 
   it('allows the events that are not scoped to a repository', () => {
-    for (const kind of ['command_fails', 'session_end', 'project_open']) {
+    for (const kind of ['command_fails', 'session_end', 'chat_reply', 'project_open']) {
       expect(validateTask({ name: 'x', simple: { prompt: 'p', when: { kind } } }))
         .toEqual({ valid: true });
     }

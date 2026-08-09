@@ -335,6 +335,7 @@ const EVENT_TABS = [
   { kind: 'file_change',   label: () => t('automation.event.kind.fileChange') },
   { kind: 'command_fails', label: () => t('automation.event.kind.commandFails') },
   { kind: 'session_end',   label: () => t('automation.event.kind.sessionEnd') },
+  { kind: 'chat_reply',    label: () => t('automation.event.kind.chatReply') },
   { kind: 'project_open',  label: () => t('automation.event.kind.projectOpen') },
 ];
 
@@ -479,6 +480,16 @@ function scheduleFieldsHtml(schedule) {
           <span class="auto-field-label">${escapeHtml(t('automation.event.sessionWhat'))}</span>
           ${eventSelectHtml('status', schedule.status)}
         </div>`;
+
+    case 'chat_reply':
+      return `
+        <label class="auto-field auto-field--inline">
+          <span class="auto-field-label">${escapeHtml(t('automation.event.chatContains'))}</span>
+          <input type="text" class="auto-input" data-sched="pattern"
+            placeholder="${escapeHtml(t('automation.event.chatContainsPlaceholder'))}"
+            value="${escapeHtml(schedule.pattern || '')}">
+        </label>
+        <p class="auto-field-hint">${escapeHtml(t('automation.event.chatReplyHint'))}</p>`;
 
     case 'project_open':
       return `<p class="auto-field-hint">${escapeHtml(t('automation.event.projectOpenHint'))}</p>`;

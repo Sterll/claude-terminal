@@ -3777,7 +3777,8 @@
         "fileChange": "Archivo modificado",
         "commandFails": "Comando",
         "sessionEnd": "Sesión de Claude",
-        "projectOpen": "Proyecto abierto"
+        "projectOpen": "Proyecto abierto",
+        "chatReply": "Claude respondió"
       },
       "gitWhat": "En",
       "gitAny": "Cualquier actividad de git",
@@ -3788,7 +3789,7 @@
       "cmdError": "falla",
       "cmdSuccess": "tiene éxito",
       "cmdAny": "termina",
-      "sessionWhat": "Terminada",
+      "sessionWhat": "Claude terminó",
       "sessAny": "sea cual sea el resultado",
       "sessSuccess": "con éxito",
       "sessError": "con error",
@@ -3815,8 +3816,13 @@
           "success": "Cuando una sesión de Claude tiene éxito",
           "error": "Cuando una sesión de Claude falla"
         },
-        "projectOpen": "Al abrir el proyecto"
-      }
+        "projectOpen": "Al abrir el proyecto",
+        "chatReply": "Cuando Claude responde",
+        "chatReplyPattern": "Cuando una respuesta de Claude menciona «{pattern}»"
+      },
+      "chatContains": "La respuesta contiene",
+      "chatContainsPlaceholder": "cualquier cosa (déjalo vacío)",
+      "chatReplyHint": "Se activa con cada respuesta de Claude. «Sesión de Claude» se activa una vez por turno."
     }
   }
 }

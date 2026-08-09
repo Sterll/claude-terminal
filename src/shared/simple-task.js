@@ -39,7 +39,12 @@ const EVENT_KINDS = {
   git:           { trigger: 'git_event',           needsProject: true  },
   file_change:   { trigger: 'file_change',         needsProject: true  },
   command_fails: { trigger: 'terminal_exit_code',  needsProject: false },
+  // session_end fires once when Claude finishes a turn; chat_reply fires for
+  // every assistant message, of which a turn can contain several when tools are
+  // used in between. The pattern filter is what makes the second one worth
+  // having on its own.
   session_end:   { trigger: 'claude_session_end',  needsProject: false },
+  chat_reply:    { trigger: 'chat_message',        needsProject: false },
   project_open:  { trigger: 'project_opened',      needsProject: false },
 };
 
@@ -65,6 +70,8 @@ const DEFAULT_SCHEDULE = {
   exitCode: 'error',    // any | success | error
   status:   'any',      // any | success | error   (claude session end)
   patterns: '',         // file_change glob, empty = everything watched
+  pattern:  '',         // chat_reply text filter, empty = every reply
+  matchMode: 'contains',// contains | regex
 };
 
 const DEFAULT_SIMPLE = {
@@ -165,6 +172,7 @@ function describeSchedule(when) {
     case 'file_change':   return { key: s.patterns ? 'automation.event.desc.fileChangePattern' : 'automation.event.desc.fileChange', params: { patterns: s.patterns || '' } };
     case 'command_fails': return { key: `automation.event.desc.command.${ONE_OF(s.exitCode, ['any', 'success', 'error'], 'error')}`, params: {} };
     case 'session_end':   return { key: `automation.event.desc.session.${ONE_OF(s.status, ['any', 'success', 'error'], 'any')}`, params: {} };
+    case 'chat_reply':    return { key: s.pattern ? 'automation.event.desc.chatReplyPattern' : 'automation.event.desc.chatReply', params: { pattern: s.pattern || '' } };
     case 'project_open':  return { key: 'automation.event.desc.projectOpen', params: {} };
 
     default:        return { key: 'automation.schedule.desc.none',    params: {} };
@@ -234,6 +242,18 @@ function buildTrigger(simple) {
         statusFilter: ONE_OF(when.status, ['any', 'success', 'error'], 'any'),
       };
 
+    case 'chat_reply':
+      return {
+        type: 'chat_message',
+        value: '',
+        projectId: project,
+        role: 'assistant',
+        pattern: when.pattern || '',
+        // Plain substring unless the user asked for a regex; the scheduler
+        // pre-compiles regexes and caps the tested text against ReDoS.
+        matchMode: ONE_OF(when.matchMode, ['contains', 'regex'], 'contains'),
+      };
+
     case 'project_open':
       return { type: 'project_opened', value: '', projectId: project };
 
@@ -277,6 +297,8 @@ function normalizeSimple(raw) {
       exitCode: ONE_OF(rawWhen.exitCode, ['any', 'success', 'error'], 'error'),
       status:   ONE_OF(rawWhen.status,   ['any', 'success', 'error'], 'any'),
       patterns: typeof rawWhen.patterns === 'string' ? rawWhen.patterns : '',
+      pattern:  typeof rawWhen.pattern  === 'string' ? rawWhen.pattern  : '',
+      matchMode: ONE_OF(rawWhen.matchMode, ['contains', 'regex'], 'contains'),
     },
     notify: {
       desktop:       rawNotif.desktop !== false,
