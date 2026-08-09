@@ -785,9 +785,15 @@ class ChatService {
     // These tools always require user interaction, never auto-approve
     const INTERACTIVE_TOOLS = ['ExitPlanMode', 'EnterPlanMode', 'AskUserQuestion'];
 
+    // A user-configured `permissions.ask` rule forced this prompt (SDK 0.3.226+).
+    // The rule IS the user's stated intent, so host-side auto-approval must not
+    // swallow it — otherwise enabling "skip permissions" silently voids every ask
+    // rule the user wrote in settings.json.
+    const ruleForced = !!options?.matchedAskRule;
+
     // Auto-approve if session has alwaysAllow enabled (except interactive tools)
     const session = this.sessions.get(sessionId);
-    if (session?.alwaysAllow && !INTERACTIVE_TOOLS.includes(toolName)) {
+    if (session?.alwaysAllow && !INTERACTIVE_TOOLS.includes(toolName) && !ruleForced) {
       return { behavior: 'allow', updatedInput: input };
     }
 
@@ -813,6 +819,21 @@ class ChatService {
         suggestions: options.suggestions,
         decisionReason: options.decisionReason,
         toolUseID: options.toolUseID,
+        // Bridge-authored copy: prefer these over reconstructing from toolName+input
+        title: options.title || null,
+        displayName: options.displayName || null,
+        description: options.description || null,
+        // Present when a permissions.ask rule forced the prompt — the UI hides the
+        // "Always Allow" affordance so one click cannot undo the user's own rule.
+        matchedAskRule: options.matchedAskRule
+          ? {
+            source: String(options.matchedAskRule.source || ''),
+            toolName: String(options.matchedAskRule.toolName || ''),
+            ruleContent: options.matchedAskRule.ruleContent ? String(options.matchedAskRule.ruleContent) : null,
+          }
+          : null,
+        // Set when the request comes from a subagent rather than the main loop
+        agentID: options.agentID || null,
       });
 
       if (options.signal) {

@@ -1642,6 +1642,8 @@
     "alwaysAllow": "Always Allow",
     "deny": "Deny",
     "permissionRequired": "Permission Required",
+    "permissionAskRule": "ask rule",
+    "permissionAskRuleHint": "One of your ask rules requires a decision here",
     "forkRejected": "Fork refused — resume the session instead",
     "forkGuardFallback": "This fork also discards a message queued mid-turn. Forking anyway.",
     "questionFromClaude": "Claude has a question",

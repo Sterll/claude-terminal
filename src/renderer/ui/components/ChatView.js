@@ -4538,7 +4538,7 @@ class ChatView extends BaseComponent {
   }
 
   async function appendPermissionCard(data) {
-    const { requestId, toolName, input, decisionReason, suggestions } = data;
+    const { requestId, toolName, input, decisionReason, suggestions, displayName, description, matchedAskRule } = data;
 
     // Check if it's AskUserQuestion
     if (toolName === 'AskUserQuestion') {
@@ -4563,21 +4563,35 @@ class ChatView extends BaseComponent {
     const allowText = t('chat.allow') || 'Allow';
     const alwaysAllowText = t('chat.alwaysAllow') || 'Always Allow';
     const denyText = t('chat.deny') || 'Deny';
+
+    // A `permissions.ask` rule the user wrote forced this prompt (SDK 0.3.226+).
+    // "Always Allow" would write a rule that overrides their own, so drop it and
+    // show which rule fired instead. Rule text is producer-authored — escape it.
+    const ruleForced = !!matchedAskRule;
+    if (ruleForced) el.classList.add('rule-forced');
+    const ruleLabel = ruleForced
+      ? [matchedAskRule.ruleContent || matchedAskRule.toolName, matchedAskRule.source]
+        .filter(Boolean).join(' · ')
+      : '';
+
     el.innerHTML = `
       <div class="chat-perm-header">
         <div class="chat-perm-icon">${getToolIcon(toolName)}</div>
         <span class="chat-perm-title">${escapeHtml(t('chat.permissionRequired') || 'Permission Required')}</span>
+        ${ruleForced ? `<span class="chat-perm-rule-badge" title="${escapeHtml(ruleLabel)}">${escapeHtml(t('chat.permissionAskRule') || 'ask rule')}</span>` : ''}
       </div>
       <div class="chat-perm-body">
         <div class="chat-perm-tool-row">
-          <span class="chat-perm-tool-name" title="${escapeHtml(toolName)}">${formatToolName(toolName)}</span>
+          <span class="chat-perm-tool-name" title="${escapeHtml(toolName)}">${escapeHtml(displayName || '') || formatToolName(toolName)}</span>
           ${detail ? `<code class="chat-perm-tool-detail">${escapeHtml(detail.length > 100 ? '...' + detail.slice(-97) : detail)}</code>` : ''}
         </div>
+        ${description ? `<p class="chat-perm-description">${escapeHtml(description)}</p>` : ''}
         ${decisionReason ? `<p class="chat-perm-reason">${escapeHtml(decisionReason)}</p>` : ''}
+        ${ruleForced ? `<p class="chat-perm-rule-source">${escapeHtml(t('chat.permissionAskRuleHint') || 'Your own ask rule requires a decision here')}${ruleLabel ? ` — <code>${escapeHtml(ruleLabel)}</code>` : ''}</p>` : ''}
       </div>
       <div class="chat-perm-actions">
         <button class="chat-perm-btn allow" data-action="allow">${escapeHtml(allowText)}</button>
-        <button class="chat-perm-btn always-allow" data-action="always-allow">${escapeHtml(alwaysAllowText)}</button>
+        ${ruleForced ? '' : `<button class="chat-perm-btn always-allow" data-action="always-allow">${escapeHtml(alwaysAllowText)}</button>`}
         <button class="chat-perm-btn deny" data-action="deny">${escapeHtml(denyText)}</button>
       </div>
       <div class="chat-perm-feedback" style="display:none">

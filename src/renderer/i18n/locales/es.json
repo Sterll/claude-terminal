@@ -1639,6 +1639,8 @@
     "alwaysAllow": "Permitir siempre",
     "deny": "Denegar",
     "permissionRequired": "Permiso requerido",
+    "permissionAskRule": "regla ask",
+    "permissionAskRuleHint": "Una de tus reglas ask exige una decisión aquí",
     "forkRejected": "Bifurcación rechazada - reanuda la sesión en su lugar",
     "forkGuardFallback": "Esta bifurcación también descarta un mensaje en cola durante el turno. Bifurcando igualmente.",
     "questionFromClaude": "Claude tiene una pregunta",

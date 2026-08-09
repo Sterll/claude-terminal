@@ -1642,6 +1642,8 @@
     "alwaysAllow": "Toujours autoriser",
     "deny": "Refuser",
     "permissionRequired": "Permission requise",
+    "permissionAskRule": "règle ask",
+    "permissionAskRuleHint": "Une de vos règles ask impose une décision ici",
     "forkRejected": "Branche refusée - reprenez la session à la place",
     "forkGuardFallback": "Cette branche supprime aussi un message mis en file pendant le tour. Branchement quand même.",
     "questionFromClaude": "Claude a une question",
