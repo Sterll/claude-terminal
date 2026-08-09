@@ -1646,6 +1646,7 @@
     "permissionAskRuleHint": "Une de vos règles ask impose une décision ici",
     "forkRejected": "Branche refusée - reprenez la session à la place",
     "forkGuardFallback": "Cette branche supprime aussi un message mis en file pendant le tour. Branchement quand même.",
+    "subagentModelSwap": "modèle changé",
     "questionFromClaude": "Claude a une question",
     "questionAnswered": "Répondu",
     "answeredExternally": "répondu depuis le Control Tower",

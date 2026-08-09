@@ -4315,6 +4315,20 @@ hr.chat-plan-separator {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+/* Git worktree the agent ran in (SDK 0.3.226+ Task result) */
+.chat-subagent-stats .sa-stat-branch .sa-stat-num {
+  color: var(--info);
+  font-family: var(--font-mono, monospace);
+  font-weight: 500;
+}
+/* Model was swapped mid-run — modelsUsed carried more than one entry */
+.chat-subagent-stats .sa-stat-swap {
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--warning);
+  background: rgba(245, 158, 11, 0.12);
+  cursor: help;
+}
 
 /* CronList rendered result */
 .chat-cronlist-rows {

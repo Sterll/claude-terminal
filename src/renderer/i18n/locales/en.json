@@ -1646,6 +1646,7 @@
     "permissionAskRuleHint": "One of your ask rules requires a decision here",
     "forkRejected": "Fork refused — resume the session instead",
     "forkGuardFallback": "This fork also discards a message queued mid-turn. Forking anyway.",
+    "subagentModelSwap": "model switched",
     "questionFromClaude": "Claude has a question",
     "questionAnswered": "Answered",
     "answeredExternally": "answered from Control Tower",

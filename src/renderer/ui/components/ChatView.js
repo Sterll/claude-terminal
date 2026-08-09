@@ -3839,7 +3839,8 @@ class ChatView extends BaseComponent {
     // Clear live activity text
     const activityEl = el.querySelector('.chat-subagent-activity');
     if (activityEl) activityEl.textContent = '';
-    // Render stats footer (Agent tool result: totalToolUseCount, totalDurationMs, totalTokens)
+    // Render stats footer (Agent tool result: totalToolUseCount, totalDurationMs,
+    // totalTokens, plus worktreeBranch / modelsUsed from SDK 0.3.226+)
     if (stats && !el.querySelector('.chat-subagent-stats')) {
       const parts = [];
       if (typeof stats.totalToolUseCount === 'number') {
@@ -3852,6 +3853,16 @@ class ChatView extends BaseComponent {
       if (typeof stats.totalTokens === 'number') {
         const k = stats.totalTokens >= 1000 ? (stats.totalTokens / 1000).toFixed(1) + 'k' : String(stats.totalTokens);
         parts.push(`<span class="sa-stat"><span class="sa-stat-num">${escapeHtml(k)}</span> tokens</span>`);
+      }
+      // The agent ran isolated in its own git worktree — surface the branch so the
+      // user knows where the work landed without digging through the transcript.
+      if (stats.worktreeBranch) {
+        parts.push(`<span class="sa-stat sa-stat-branch" title="${escapeHtml(stats.worktreePath || '')}"><span class="sa-stat-num">${escapeHtml(String(stats.worktreeBranch))}</span></span>`);
+      }
+      // More than one entry means the model was swapped mid-run (e.g. a fallback
+      // after an overload), which explains an unexpected change in output quality.
+      if (Array.isArray(stats.modelsUsed) && stats.modelsUsed.length > 1) {
+        parts.push(`<span class="sa-stat sa-stat-swap" title="${escapeHtml(stats.modelsUsed.join(' → '))}">${escapeHtml(t('chat.subagentModelSwap') || 'model switched')}</span>`);
       }
       if (parts.length) {
         const footer = document.createElement('div');

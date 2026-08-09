@@ -1643,6 +1643,7 @@
     "permissionAskRuleHint": "Una de tus reglas ask exige una decisión aquí",
     "forkRejected": "Bifurcación rechazada - reanuda la sesión en su lugar",
     "forkGuardFallback": "Esta bifurcación también descarta un mensaje en cola durante el turno. Bifurcando igualmente.",
+    "subagentModelSwap": "modelo cambiado",
     "questionFromClaude": "Claude tiene una pregunta",
     "questionAnswered": "Respondida",
     "answeredExternally": "respondida desde Control Tower",
