@@ -3711,7 +3711,10 @@
       "create": "Créer",
       "previewNext": "Prochaine exécution : {when}",
       "previewInvalid": "Cette planification n'est pas encore valide.",
-      "previewNever": "Cette planification ne se déclenche jamais."
+      "previewNever": "Cette planification ne se déclenche jamais.",
+      "modeSchedule": "Sur un horaire",
+      "modeEvent": "Sur un événement",
+      "previewEvent": "S'exécute {event}"
     },
     "menu": {
       "edit": "Modifier",
@@ -3729,7 +3732,8 @@
       "nameRequired": "Donnez un nom à l'automatisation.",
       "promptRequired": "Décrivez ce que Claude doit faire.",
       "dateRequired": "Choisissez une date et une heure.",
-      "scheduleInvalid": "Cette planification n'est pas valide."
+      "scheduleInvalid": "Cette planification n'est pas valide.",
+      "projectRequired": "Cet événement est surveillé par projet — choisissez-en un ci-dessous."
     },
     "toast": {
       "created": "Automatisation créée",
@@ -3765,6 +3769,53 @@
         "title": "Santé des tests",
         "desc": "Chaque mercredi à 14:00",
         "prompt": "Lance la suite de tests et rapporte les échecs, les tests instables et toute baisse de couverture."
+      }
+    },
+    "event": {
+      "kind": {
+        "git": "Git",
+        "fileChange": "Fichier modifié",
+        "commandFails": "Commande",
+        "sessionEnd": "Session Claude",
+        "projectOpen": "Projet ouvert"
+      },
+      "gitWhat": "Sur",
+      "gitAny": "N'importe quelle activité git",
+      "gitCommit": "Un commit",
+      "gitPush": "Un push",
+      "gitBranch": "Un changement de branche",
+      "commandWhat": "Quand une commande",
+      "cmdError": "échoue",
+      "cmdSuccess": "réussit",
+      "cmdAny": "se termine",
+      "sessionWhat": "Terminée",
+      "sessAny": "quelle qu'en soit l'issue",
+      "sessSuccess": "avec succès",
+      "sessError": "en erreur",
+      "filePattern": "Fichiers",
+      "filePatternHint": "Motif à surveiller. Laissez vide pour tout le projet.",
+      "needsProjectHint": "Surveillé par dépôt, un projet est donc obligatoire.",
+      "projectOpenHint": "Se déclenche quand vous ouvrez ce projet dans la barre latérale.",
+      "desc": {
+        "git": {
+          "any": "Sur toute activité git",
+          "commit": "À chaque commit",
+          "push": "À chaque push",
+          "branch_switch": "À chaque changement de branche"
+        },
+        "fileChange": "Quand un fichier change",
+        "fileChangePattern": "Quand {patterns} change",
+        "command": {
+          "any": "Quand une commande se termine",
+          "success": "Quand une commande réussit",
+          "error": "Quand une commande échoue"
+        },
+        "session": {
+          "any": "Quand une session Claude se termine",
+          "success": "Quand une session Claude réussit",
+          "error": "Quand une session Claude échoue"
+        },
+        "projectOpen": "À l'ouverture du projet"
       }
     }
   }

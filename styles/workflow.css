@@ -7289,6 +7289,34 @@ select.wf-step-edit-input {
 .auto-input--mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .auto-textarea { resize: vertical; min-height: 76px; line-height: 1.5; }
 
+/* Schedule vs event is a different decision from which schedule, so it gets its
+   own segmented control above the kinds instead of eleven tabs in one row. */
+.auto-mode {
+  display: inline-flex;
+  padding: 2px;
+  margin-bottom: 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--wf-border);
+  border-radius: 8px;
+}
+.auto-mode-btn {
+  padding: 5px 14px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color .15s var(--wf-ease), color .15s var(--wf-ease);
+}
+.auto-mode-btn:hover { color: var(--text-primary); }
+.auto-mode-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.auto-mode-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
 .auto-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
 .auto-tab {
   padding: 5px 10px;

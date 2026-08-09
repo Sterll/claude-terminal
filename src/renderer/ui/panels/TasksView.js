@@ -21,7 +21,7 @@ const { MODEL_OPTIONS, EFFORT_OPTIONS } = require('../../../shared/model-options
 const {
   TASK_PRESETS, MAX_MONTH_DAY, DEFAULT_SIMPLE,
   normalizeSimple, compileTask, describeSchedule, nextRunForTask,
-  isSimpleTask, validateTask, scheduleToCron, splitTime,
+  isSimpleTask, validateTask, scheduleToCron, splitTime, isEventKind,
 } = require('../../../shared/simple-task');
 
 const { nextRunAt } = require('../../../shared/cron');
@@ -63,7 +63,7 @@ function formatNextRun(date) {
 
 /** Human-readable schedule label, e.g. "Every day at 09:00". */
 function scheduleLabel(simple) {
-  const { key, params } = describeSchedule(simple?.schedule);
+  const { key, params } = describeSchedule(simple?.when);
   if (key === 'automation.schedule.desc.weekly') {
     return t(key, { ...params, weekday: weekdayNames()[params.weekday] || '' });
   }
@@ -298,6 +298,68 @@ const SCHEDULE_TABS = [
   { kind: 'custom',  label: () => t('automation.schedule.kind.custom') },
 ];
 
+// Option lists for the event filters. Written out one t() call at a time —
+// building the key as 'automation.event.' + k makes it invisible to the i18n
+// usage scanner, which is how a missing translation ships unnoticed.
+const EVENT_OPTIONS = {
+  gitEvent: () => [
+    { value: 'any',           label: t('automation.event.gitAny') },
+    { value: 'commit',        label: t('automation.event.gitCommit') },
+    { value: 'push',          label: t('automation.event.gitPush') },
+    { value: 'branch_switch', label: t('automation.event.gitBranch') },
+  ],
+  exitCode: () => [
+    { value: 'error',   label: t('automation.event.cmdError') },
+    { value: 'success', label: t('automation.event.cmdSuccess') },
+    { value: 'any',     label: t('automation.event.cmdAny') },
+  ],
+  status: () => [
+    { value: 'any',     label: t('automation.event.sessAny') },
+    { value: 'success', label: t('automation.event.sessSuccess') },
+    { value: 'error',   label: t('automation.event.sessError') },
+  ],
+};
+
+/** A themed select bound to one `when` key. */
+function eventSelectHtml(key, current) {
+  return `<select class="auto-input" data-dropdown data-sched="${key}">
+    ${EVENT_OPTIONS[key]().map(o =>
+      `<option value="${escapeHtml(o.value)}"${current === o.value ? ' selected' : ''}>${escapeHtml(o.label)}</option>`
+    ).join('')}
+  </select>`;
+}
+
+// Same reasoning: keys written out so the i18n usage scanner can see them.
+const EVENT_TABS = [
+  { kind: 'git',           label: () => t('automation.event.kind.git') },
+  { kind: 'file_change',   label: () => t('automation.event.kind.fileChange') },
+  { kind: 'command_fails', label: () => t('automation.event.kind.commandFails') },
+  { kind: 'session_end',   label: () => t('automation.event.kind.sessionEnd') },
+  { kind: 'project_open',  label: () => t('automation.event.kind.projectOpen') },
+];
+
+/**
+ * Eleven choices in one row wraps badly, and "every Tuesday" and "when I push"
+ * are not the same kind of decision anyway. Pick the mode first, then the kind.
+ */
+function whenTabsHtml(kind) {
+  const onEvent = isEventKind(kind);
+  const tabs = onEvent ? EVENT_TABS : SCHEDULE_TABS;
+  return `
+    <div class="auto-mode" role="tablist">
+      <button class="auto-mode-btn${onEvent ? '' : ' active'}" data-mode="schedule" role="tab"
+        aria-selected="${!onEvent}">${escapeHtml(t('automation.form.modeSchedule'))}</button>
+      <button class="auto-mode-btn${onEvent ? ' active' : ''}" data-mode="event" role="tab"
+        aria-selected="${onEvent}">${escapeHtml(t('automation.form.modeEvent'))}</button>
+    </div>
+    <div class="auto-tabs" role="tablist">
+      ${tabs.map(({ kind: k, label }) => `
+        <button class="auto-tab${kind === k ? ' active' : ''}" data-kind="${k}" role="tab"
+          aria-selected="${kind === k}">${escapeHtml(label())}</button>
+      `).join('')}
+    </div>`;
+}
+
 /** Local "YYYY-MM-DDTHH:MM" one hour from now, for the <input type="datetime-local"> default. */
 function defaultOnceValue() {
   const d = new Date();
@@ -385,6 +447,42 @@ function scheduleFieldsHtml(schedule) {
         ${timeInput(t('automation.form.at'))}
         <p class="auto-field-hint">${escapeHtml(t('automation.form.monthlyHint', { max: MAX_MONTH_DAY }))}</p>`;
 
+    // ── Event kinds ────────────────────────────────────────────────────────
+    // Most need no configuration at all: the task's own project is the scope.
+    case 'git':
+      return `
+        <div class="auto-field auto-field--inline">
+          <span class="auto-field-label">${escapeHtml(t('automation.event.gitWhat'))}</span>
+          ${eventSelectHtml('gitEvent', schedule.gitEvent)}
+        </div>
+        <p class="auto-field-hint">${escapeHtml(t('automation.event.needsProjectHint'))}</p>`;
+
+    case 'file_change':
+      return `
+        <label class="auto-field auto-field--inline">
+          <span class="auto-field-label">${escapeHtml(t('automation.event.filePattern'))}</span>
+          <input type="text" class="auto-input auto-input--mono" data-sched="patterns"
+            placeholder="src/**/*.js" value="${escapeHtml(schedule.patterns || '')}">
+        </label>
+        <p class="auto-field-hint">${escapeHtml(t('automation.event.filePatternHint'))}</p>`;
+
+    case 'command_fails':
+      return `
+        <div class="auto-field auto-field--inline">
+          <span class="auto-field-label">${escapeHtml(t('automation.event.commandWhat'))}</span>
+          ${eventSelectHtml('exitCode', schedule.exitCode)}
+        </div>`;
+
+    case 'session_end':
+      return `
+        <div class="auto-field auto-field--inline">
+          <span class="auto-field-label">${escapeHtml(t('automation.event.sessionWhat'))}</span>
+          ${eventSelectHtml('status', schedule.status)}
+        </div>`;
+
+    case 'project_open':
+      return `<p class="auto-field-hint">${escapeHtml(t('automation.event.projectOpenHint'))}</p>`;
+
     case 'custom':
       return `
         <label class="auto-field auto-field--inline">
@@ -420,10 +518,10 @@ function openTaskModal(deps, existing, preset = null) {
   const base = editing ? existing.simple : { ...DEFAULT_SIMPLE };
   const simple = normalizeSimple({
     ...base,
-    ...(preset ? { prompt: t(preset.promptKey), schedule: { ...DEFAULT_SIMPLE.schedule, ...preset.schedule } } : {}),
+    ...(preset ? { prompt: t(preset.promptKey), when: { ...DEFAULT_SIMPLE.when, ...preset.schedule } } : {}),
   });
-  if (simple.schedule.kind === 'once' && !simple.schedule.at) {
-    simple.schedule.at = defaultOnceValue();
+  if (simple.when.kind === 'once' && !simple.when.at) {
+    simple.when.at = defaultOnceValue();
   }
 
   const overlay = document.createElement('div');
@@ -455,13 +553,8 @@ function openTaskModal(deps, existing, preset = null) {
 
         <div class="auto-field">
           <span class="auto-field-label">${escapeHtml(t('automation.form.whenLabel'))}</span>
-          <div class="auto-tabs" role="tablist">
-            ${SCHEDULE_TABS.map(({ kind, label }) => `
-              <button class="auto-tab${simple.schedule.kind === kind ? ' active' : ''}" data-kind="${kind}" role="tab"
-                aria-selected="${simple.schedule.kind === kind}">${escapeHtml(label())}</button>
-            `).join('')}
-          </div>
-          <div class="auto-sched-fields" id="auto-sched-fields">${scheduleFieldsHtml(simple.schedule)}</div>
+          <div id="auto-when-tabs">${whenTabsHtml(simple.when.kind)}</div>
+          <div class="auto-sched-fields" id="auto-sched-fields">${scheduleFieldsHtml(simple.when)}</div>
           <p class="auto-next-preview" id="auto-next-preview"></p>
         </div>
 
@@ -536,7 +629,7 @@ function openTaskModal(deps, existing, preset = null) {
   function readScheduleFields() {
     fieldsEl.querySelectorAll('[data-sched]').forEach(input => {
       const key = input.dataset.sched;
-      simple.schedule[key] = (key === 'weekday' || key === 'day')
+      simple.when[key] = (key === 'weekday' || key === 'day')
         ? parseInt(input.value, 10)
         : input.value;
     });
@@ -548,21 +641,30 @@ function openTaskModal(deps, existing, preset = null) {
     const hEl = fieldsEl.querySelector('[data-sched-h]');
     const mEl = fieldsEl.querySelector('[data-sched-m]');
     if (hEl || mEl) {
-      const [curH, curM] = splitTime(simple.schedule.time);
+      const [curH, curM] = splitTime(simple.when.time);
       const h = hEl ? parseInt(hEl.value, 10) : curH;
       const m = mEl ? parseInt(mEl.value, 10) : curM;
-      simple.schedule.time = `${pad(h)}:${pad(m)}`;
+      simple.when.time = `${pad(h)}:${pad(m)}`;
     }
 
     // The one-shot kind is a date input plus those same pickers.
     const dEl = fieldsEl.querySelector('[data-sched-date]');
     if (dEl) {
-      simple.schedule.at = dEl.value ? `${dEl.value}T${simple.schedule.time}` : '';
+      simple.when.at = dEl.value ? `${dEl.value}T${simple.when.time}` : '';
     }
   }
 
   function updatePreview() {
-    const expr = scheduleToCron(simple.schedule);
+    // An event task has no next run, so the preview states the rule instead.
+    if (isEventKind(simple.when.kind)) {
+      previewEl.classList.remove('auto-next-preview--invalid');
+      previewEl.textContent = t('automation.form.previewEvent', {
+        event: scheduleLabel(simple),
+      });
+      return;
+    }
+
+    const expr = scheduleToCron(simple.when);
     if (!expr) {
       previewEl.textContent = t('automation.form.previewInvalid');
       previewEl.classList.add('auto-next-preview--invalid');
@@ -576,8 +678,8 @@ function openTaskModal(deps, existing, preset = null) {
   }
 
   function rerenderSchedule() {
-    fieldsEl.innerHTML = scheduleFieldsHtml(simple.schedule);
-    // The weekly/monthly pickers are rebuilt here, so they need upgrading again.
+    fieldsEl.innerHTML = scheduleFieldsHtml(simple.when);
+    // The pickers are rebuilt here, so they need upgrading again.
     upgradeSelectsToDropdowns(fieldsEl);
     updatePreview();
   }
@@ -585,22 +687,43 @@ function openTaskModal(deps, existing, preset = null) {
   fieldsEl.addEventListener('input', () => { readScheduleFields(); updatePreview(); });
   fieldsEl.addEventListener('change', () => { readScheduleFields(); updatePreview(); });
 
-  overlay.querySelectorAll('.auto-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      overlay.querySelectorAll('.auto-tab').forEach(x => {
-        x.classList.remove('active');
-        x.setAttribute('aria-selected', 'false');
-      });
-      tab.classList.add('active');
-      tab.setAttribute('aria-selected', 'true');
-      simple.schedule.kind = tab.dataset.kind;
-      if (simple.schedule.kind === 'once' && !simple.schedule.at) {
-        simple.schedule.at = defaultOnceValue();
-      }
-      rerenderSchedule();
-    });
-  });
+  const tabsEl = $('#auto-when-tabs');
 
+  function rerenderTabs() {
+    tabsEl.innerHTML = whenTabsHtml(simple.when.kind);
+    bindTabs();
+    rerenderSchedule();
+  }
+
+  function bindTabs() {
+    tabsEl.querySelectorAll('.auto-mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const wantEvent = btn.dataset.mode === 'event';
+        if (wantEvent === isEventKind(simple.when.kind)) return;
+        // Switching mode lands on that mode's first choice.
+        simple.when.kind = wantEvent ? EVENT_TABS[0].kind : 'daily';
+        rerenderTabs();
+      });
+    });
+
+    tabsEl.querySelectorAll('.auto-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabsEl.querySelectorAll('.auto-tab').forEach(x => {
+          x.classList.remove('active');
+          x.setAttribute('aria-selected', 'false');
+        });
+        tab.classList.add('active');
+        tab.setAttribute('aria-selected', 'true');
+        simple.when.kind = tab.dataset.kind;
+        if (simple.when.kind === 'once' && !simple.when.at) {
+          simple.when.at = defaultOnceValue();
+        }
+        rerenderSchedule();
+      });
+    });
+  }
+
+  bindTabs();
   updatePreview();
 
   /* — close / focus trap — */

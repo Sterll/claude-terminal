@@ -1,6 +1,6 @@
 const {
   scheduleToCron, normalizeSimple, buildSimpleGraph, compileTask,
-  isSimpleTask, isOnce, validateTask, describeSchedule,
+  isSimpleTask, isOnce, validateTask, describeSchedule, buildTrigger, isEventKind, nextRunForTask,
   MAX_MONTH_DAY, TASK_PRESETS,
 } = require('../../src/shared/simple-task');
 
@@ -50,24 +50,96 @@ describe('normalizeSimple', () => {
   it('fills in a complete payload from nothing', () => {
     const s = normalizeSimple(undefined);
     expect(s.prompt).toBe('');
-    expect(s.schedule.kind).toBe('daily');
+    expect(s.when.kind).toBe('daily');
     expect(s.notify.desktop).toBe(true);
   });
 
   it('coerces out-of-range values instead of throwing', () => {
     const s = normalizeSimple({
-      schedule: { kind: 'weekly', weekday: 99, day: 999, time: 'garbage' },
+      when: { kind: 'weekly', weekday: 99, day: 999, time: 'garbage' },
       notify: { desktop: false, discord: '  https://x  ' },
     });
-    expect(s.schedule.weekday).toBe(6);
-    expect(s.schedule.day).toBe(MAX_MONTH_DAY);
-    expect(s.schedule.time).toBe('09:00');
+    expect(s.when.weekday).toBe(6);
+    expect(s.when.day).toBe(MAX_MONTH_DAY);
+    expect(s.when.time).toBe('09:00');
     expect(s.notify.desktop).toBe(false);
     expect(s.notify.discord).toBe('https://x');
   });
 
   it('falls back to the default kind for an unknown one', () => {
-    expect(normalizeSimple({ schedule: { kind: 'fortnightly' } }).schedule.kind).toBe('daily');
+    expect(normalizeSimple({ when: { kind: 'fortnightly' } }).when.kind).toBe('daily');
+  });
+
+  it('accepts an event kind', () => {
+    expect(normalizeSimple({ when: { kind: 'git' } }).when.kind).toBe('git');
+  });
+
+  it('migrates the legacy `schedule` key onto `when`', () => {
+    // Tasks saved before event triggers existed used `schedule`. There is no
+    // migration step anywhere else, so normalizeSimple is the only thing
+    // standing between an old task and a silent reset to the daily default.
+    const s = normalizeSimple({ schedule: { kind: 'weekly', weekday: 5, time: '17:30' } });
+    expect(s.when.kind).toBe('weekly');
+    expect(s.when.weekday).toBe(5);
+    expect(s.when.time).toBe('17:30');
+  });
+
+  it('prefers `when` when a payload somehow carries both', () => {
+    const s = normalizeSimple({ when: { kind: 'git' }, schedule: { kind: 'monthly' } });
+    expect(s.when.kind).toBe('git');
+  });
+
+  it('coerces unknown event filter values to their defaults', () => {
+    const s = normalizeSimple({ when: { kind: 'git', gitEvent: 'nope', exitCode: 'x', status: 'y' } });
+    expect(s.when.gitEvent).toBe('any');
+    expect(s.when.exitCode).toBe('error');
+    expect(s.when.status).toBe('any');
+  });
+});
+
+describe('buildTrigger', () => {
+  const withKind = (kind, extra = {}) =>
+    buildTrigger(normalizeSimple({ projectId: 'proj-1', when: { kind, ...extra } }));
+
+  it('compiles a schedule to a cron trigger', () => {
+    expect(withKind('daily', { time: '09:00' })).toEqual({ type: 'cron', value: '0 9 * * *' });
+  });
+
+  // Every key below has to match what WorkflowScheduler reads; a key it does
+  // not recognise is ignored silently rather than reported.
+  it('builds a git_event trigger scoped to the project', () => {
+    expect(withKind('git', { gitEvent: 'push' })).toEqual({
+      type: 'git_event', value: '', projectId: 'proj-1', eventFilter: 'push',
+    });
+  });
+
+  it('builds a file_change trigger with the watcher defaults', () => {
+    expect(withKind('file_change', { patterns: 'src/**/*.js' })).toEqual({
+      type: 'file_change', value: '', projectId: 'proj-1',
+      patterns: 'src/**/*.js', events: 'all', debounceMs: 500,
+    });
+  });
+
+  it('builds a terminal_exit_code trigger', () => {
+    expect(withKind('command_fails', { exitCode: 'error' })).toEqual({
+      type: 'terminal_exit_code', value: '', projectId: 'proj-1', codeFilter: 'error',
+    });
+  });
+
+  it('builds a claude_session_end trigger', () => {
+    expect(withKind('session_end', { status: 'error' })).toEqual({
+      type: 'claude_session_end', value: '', projectId: 'proj-1', statusFilter: 'error',
+    });
+  });
+
+  it('builds a project_opened trigger', () => {
+    expect(withKind('project_open')).toEqual({
+      type: 'project_opened', value: '', projectId: 'proj-1',
+    });
+  });
+
+  it('falls back to an unrecognised filter default rather than passing it through', () => {
+    expect(withKind('git', { gitEvent: 'nonsense' }).eventFilter).toBe('any');
   });
 });
 
@@ -76,7 +148,7 @@ describe('buildSimpleGraph', () => {
     prompt: 'Summarize yesterday',
     projectId: 'proj_1',
     cwd: 'E:/repo',
-    schedule: { kind: 'daily', time: '09:00' },
+    when: { kind: 'daily', time: '09:00' },
   });
 
   it('produces a trigger -> claude -> notify chain', () => {
@@ -148,7 +220,7 @@ describe('compileTask', () => {
   const task = {
     id: 'wf_abc',
     name: '  Daily summary  ',
-    simple: { prompt: 'Do the thing', schedule: { kind: 'daily', time: '07:15' } },
+    simple: { prompt: 'Do the thing', when: { kind: 'daily', time: '07:15' } },
   };
 
   it('produces a workflow the storage validator accepts', () => {
@@ -188,7 +260,7 @@ describe('compileTask', () => {
 });
 
 describe('validateTask', () => {
-  const ok = { name: 'X', simple: { prompt: 'p', schedule: { kind: 'daily', time: '09:00' } } };
+  const ok = { name: 'X', simple: { prompt: 'p', when: { kind: 'daily', time: '09:00' } } };
 
   it('accepts a complete task', () => {
     expect(validateTask(ok)).toEqual({ valid: true });
@@ -201,20 +273,20 @@ describe('validateTask', () => {
   });
 
   it('rejects a one-shot task with no date', () => {
-    expect(validateTask({ ...ok, simple: { prompt: 'p', schedule: { kind: 'once', at: '' } } }).errorKey)
+    expect(validateTask({ ...ok, simple: { prompt: 'p', when: { kind: 'once', at: '' } } }).errorKey)
       .toBe('automation.error.dateRequired');
   });
 
   it('rejects an invalid custom cron', () => {
-    expect(validateTask({ ...ok, simple: { prompt: 'p', schedule: { kind: 'custom', cron: 'x' } } }).errorKey)
+    expect(validateTask({ ...ok, simple: { prompt: 'p', when: { kind: 'custom', cron: 'x' } } }).errorKey)
       .toBe('automation.error.scheduleInvalid');
   });
 });
 
 describe('isOnce', () => {
   it('only flags one-shot schedules', () => {
-    expect(isOnce({ schedule: { kind: 'once' } })).toBe(true);
-    expect(isOnce({ schedule: { kind: 'daily' } })).toBe(false);
+    expect(isOnce({ when: { kind: 'once' } })).toBe(true);
+    expect(isOnce({ when: { kind: 'daily' } })).toBe(false);
     expect(isOnce(undefined)).toBe(false);
   });
 });
@@ -233,7 +305,7 @@ describe('TASK_PRESETS', () => {
     for (const preset of TASK_PRESETS) {
       const wf = compileTask({
         name: preset.id,
-        simple: { prompt: 'preset prompt', schedule: preset.schedule },
+        simple: { prompt: 'preset prompt', when: preset.schedule },
       });
       expect(validateWorkflowGraph(wf)).toEqual({ valid: true });
       expect(() => parseCron(wf.trigger.value)).not.toThrow();
@@ -248,5 +320,60 @@ describe('TASK_PRESETS', () => {
       expect(p.descKey).toMatch(/^automation\.preset\./);
       expect(p.promptKey).toMatch(/^automation\.preset\./);
     }
+  });
+});
+
+describe('event tasks end to end', () => {
+  it('compiles into a workflow the storage validator accepts', () => {
+    for (const kind of ['git', 'file_change', 'command_fails', 'session_end', 'project_open']) {
+      const wf = compileTask({
+        name: kind,
+        simple: { prompt: 'do it', projectId: 'proj-1', when: { kind } },
+      });
+      expect(validateWorkflowGraph(wf)).toEqual({ valid: true });
+      expect(wf.trigger.type).not.toBe('cron');
+    }
+  });
+
+  it('mirrors the trigger onto the trigger node so the advanced editor agrees', () => {
+    const wf = compileTask({
+      name: 'On push',
+      simple: { prompt: 'x', projectId: 'proj-1', when: { kind: 'git', gitEvent: 'push' } },
+    });
+    const node = wf.graph.nodes.find(n => n.type === 'workflow/trigger');
+    expect(node.properties.triggerType).toBe('git_event');
+    expect(node.properties.eventFilter).toBe('push');
+    expect(node.properties.projectId).toBe('proj-1');
+  });
+
+  it('has no next run, because an event is not a clock', () => {
+    const wf = compileTask({
+      name: 'On push',
+      simple: { prompt: 'x', projectId: 'proj-1', when: { kind: 'git' } },
+    });
+    expect(nextRunForTask({ ...wf, enabled: true })).toBeNull();
+  });
+
+  it('refuses to save a repository-watched event with no project', () => {
+    // WorkflowScheduler installs nothing when projectId is empty and says
+    // nothing about it, so the task would look armed and never fire.
+    for (const kind of ['git', 'file_change']) {
+      const res = validateTask({ name: 'x', simple: { prompt: 'p', when: { kind } } });
+      expect(res.valid).toBe(false);
+      expect(res.errorKey).toBe('automation.error.projectRequired');
+    }
+  });
+
+  it('allows the events that are not scoped to a repository', () => {
+    for (const kind of ['command_fails', 'session_end', 'project_open']) {
+      expect(validateTask({ name: 'x', simple: { prompt: 'p', when: { kind } } }))
+        .toEqual({ valid: true });
+    }
+  });
+
+  it('only treats one-shot schedules as one-shot', () => {
+    expect(isOnce({ when: { kind: 'git' } })).toBe(false);
+    expect(isEventKind('git')).toBe(true);
+    expect(isEventKind('daily')).toBe(false);
   });
 });

@@ -3711,7 +3711,10 @@
       "create": "Crear",
       "previewNext": "Próxima ejecución: {when}",
       "previewInvalid": "Esta programación aún no es válida.",
-      "previewNever": "Esta programación nunca se activa."
+      "previewNever": "Esta programación nunca se activa.",
+      "modeSchedule": "Con un horario",
+      "modeEvent": "Con un evento",
+      "previewEvent": "Se ejecuta {event}"
     },
     "menu": {
       "edit": "Editar",
@@ -3729,7 +3732,8 @@
       "nameRequired": "Dale un nombre a la automatización.",
       "promptRequired": "Describe qué debe hacer Claude.",
       "dateRequired": "Elige una fecha y una hora.",
-      "scheduleInvalid": "Esta programación no es válida."
+      "scheduleInvalid": "Esta programación no es válida.",
+      "projectRequired": "Este evento se vigila por proyecto — elige uno abajo."
     },
     "toast": {
       "created": "Automatización creada",
@@ -3765,6 +3769,53 @@
         "title": "Salud de los tests",
         "desc": "Cada miércoles a las 14:00",
         "prompt": "Ejecuta la suite de tests e informa de los fallos, los tests inestables y cualquier caída de cobertura."
+      }
+    },
+    "event": {
+      "kind": {
+        "git": "Git",
+        "fileChange": "Archivo modificado",
+        "commandFails": "Comando",
+        "sessionEnd": "Sesión de Claude",
+        "projectOpen": "Proyecto abierto"
+      },
+      "gitWhat": "En",
+      "gitAny": "Cualquier actividad de git",
+      "gitCommit": "Un commit",
+      "gitPush": "Un push",
+      "gitBranch": "Un cambio de rama",
+      "commandWhat": "Cuando un comando",
+      "cmdError": "falla",
+      "cmdSuccess": "tiene éxito",
+      "cmdAny": "termina",
+      "sessionWhat": "Terminada",
+      "sessAny": "sea cual sea el resultado",
+      "sessSuccess": "con éxito",
+      "sessError": "con error",
+      "filePattern": "Archivos",
+      "filePatternHint": "Patrón a vigilar. Déjalo vacío para todo el proyecto.",
+      "needsProjectHint": "Se vigila por repositorio, así que hace falta un proyecto.",
+      "projectOpenHint": "Se activa cuando abres este proyecto en la barra lateral.",
+      "desc": {
+        "git": {
+          "any": "En cualquier actividad de git",
+          "commit": "En cada commit",
+          "push": "En cada push",
+          "branch_switch": "En cada cambio de rama"
+        },
+        "fileChange": "Cuando cambia un archivo",
+        "fileChangePattern": "Cuando cambia {patterns}",
+        "command": {
+          "any": "Cuando un comando termina",
+          "success": "Cuando un comando tiene éxito",
+          "error": "Cuando un comando falla"
+        },
+        "session": {
+          "any": "Cuando termina una sesión de Claude",
+          "success": "Cuando una sesión de Claude tiene éxito",
+          "error": "Cuando una sesión de Claude falla"
+        },
+        "projectOpen": "Al abrir el proyecto"
       }
     }
   }

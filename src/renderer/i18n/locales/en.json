@@ -3711,7 +3711,10 @@
       "create": "Create",
       "previewNext": "Next run: {when}",
       "previewInvalid": "This schedule is not valid yet.",
-      "previewNever": "This schedule never fires."
+      "previewNever": "This schedule never fires.",
+      "modeSchedule": "On a schedule",
+      "modeEvent": "On an event",
+      "previewEvent": "Runs {event}"
     },
     "menu": {
       "edit": "Edit",
@@ -3729,7 +3732,8 @@
       "nameRequired": "Give the automation a name.",
       "promptRequired": "Describe what Claude should do.",
       "dateRequired": "Pick a date and time.",
-      "scheduleInvalid": "This schedule is not valid."
+      "scheduleInvalid": "This schedule is not valid.",
+      "projectRequired": "This event is watched per project — pick one below."
     },
     "toast": {
       "created": "Automation created",
@@ -3765,6 +3769,53 @@
         "title": "Test health check",
         "desc": "Every Wednesday at 14:00",
         "prompt": "Run the test suite and report failures, flaky tests and any drop in coverage."
+      }
+    },
+    "event": {
+      "kind": {
+        "git": "Git",
+        "fileChange": "File change",
+        "commandFails": "Command",
+        "sessionEnd": "Claude session",
+        "projectOpen": "Project opened"
+      },
+      "gitWhat": "On",
+      "gitAny": "Any git activity",
+      "gitCommit": "A commit",
+      "gitPush": "A push",
+      "gitBranch": "A branch switch",
+      "commandWhat": "When a command",
+      "cmdError": "fails",
+      "cmdSuccess": "succeeds",
+      "cmdAny": "finishes",
+      "sessionWhat": "Ended",
+      "sessAny": "however it ended",
+      "sessSuccess": "successfully",
+      "sessError": "with an error",
+      "filePattern": "Files",
+      "filePatternHint": "Glob to watch. Leave empty to watch the whole project.",
+      "needsProjectHint": "Watched per repository, so a project is required.",
+      "projectOpenHint": "Runs when you open this project in the sidebar.",
+      "desc": {
+        "git": {
+          "any": "On any git activity",
+          "commit": "On every commit",
+          "push": "On every push",
+          "branch_switch": "On every branch switch"
+        },
+        "fileChange": "When a file changes",
+        "fileChangePattern": "When {patterns} changes",
+        "command": {
+          "any": "When a command finishes",
+          "success": "When a command succeeds",
+          "error": "When a command fails"
+        },
+        "session": {
+          "any": "When a Claude session ends",
+          "success": "When a Claude session succeeds",
+          "error": "When a Claude session errors"
+        },
+        "projectOpen": "When the project is opened"
       }
     }
   }

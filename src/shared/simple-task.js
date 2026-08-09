@@ -24,13 +24,48 @@ const { nextRunAt, isValidCron } = require('./cron');
 const SCHEDULE_KINDS = ['once', 'hourly', 'daily', 'weekly', 'monthly', 'custom'];
 
 /**
+ * Event kinds a task can react to, on top of the clock.
+ *
+ * Only triggers that need at most ONE extra choice are exposed here — the point
+ * of simple mode is that the task's own project supplies the scope, so most of
+ * these need no configuration at all. Everything richer (hook types, chat
+ * patterns, workflow chaining) stays in the advanced editor.
+ *
+ * `needsProject` marks the ones whose watcher is installed per repository:
+ * WorkflowScheduler silently installs nothing when their projectId is empty,
+ * so the task must refuse to save rather than look armed and never fire.
+ */
+const EVENT_KINDS = {
+  git:           { trigger: 'git_event',           needsProject: true  },
+  file_change:   { trigger: 'file_change',         needsProject: true  },
+  command_fails: { trigger: 'terminal_exit_code',  needsProject: false },
+  session_end:   { trigger: 'claude_session_end',  needsProject: false },
+  project_open:  { trigger: 'project_opened',      needsProject: false },
+};
+
+const EVENT_KIND_NAMES = Object.keys(EVENT_KINDS);
+const WHEN_KINDS = [...SCHEDULE_KINDS, ...EVENT_KIND_NAMES];
+
+/** True when this kind fires on an event rather than on the clock. */
+function isEventKind(kind) {
+  return Object.prototype.hasOwnProperty.call(EVENT_KINDS, kind);
+}
+
+/**
  * Monthly tasks are capped at day 28 on purpose: a cron `30 9 31 * *` silently
  * never fires in February, April, June, September and November. Users picking
  * "the 31st" would get a task that looks scheduled but runs 7 times a year.
  */
 const MAX_MONTH_DAY = 28;
 
-const DEFAULT_SCHEDULE = { kind: 'daily', time: '09:00', weekday: 1, day: 1, at: '', cron: '' };
+const DEFAULT_SCHEDULE = {
+  kind: 'daily', time: '09:00', weekday: 1, day: 1, at: '', cron: '',
+  // Event fields, all optional and only read for their own kind.
+  gitEvent: 'any',      // any | commit | push | branch_switch
+  exitCode: 'error',    // any | success | error
+  status:   'any',      // any | success | error   (claude session end)
+  patterns: '',         // file_change glob, empty = everything watched
+};
 
 const DEFAULT_SIMPLE = {
   prompt:    '',
@@ -40,7 +75,9 @@ const DEFAULT_SIMPLE = {
   // on users who never asked for one; the advanced disclosure exposes it.
   model:     '',
   effort:    '',
-  schedule:  { ...DEFAULT_SCHEDULE },
+  // Named `when` because it now holds either a clock schedule or an event.
+  // Tasks saved before events existed carry `schedule`; normalizeSimple migrates.
+  when:      { ...DEFAULT_SCHEDULE },
   notify:    { desktop: true, includeResult: true, discord: '' },
 };
 
@@ -102,16 +139,16 @@ function scheduleToCron(schedule) {
 
 /** True when this task should disable itself after one successful run. */
 function isOnce(simple) {
-  return simple?.schedule?.kind === 'once';
+  return (simple?.when || simple?.schedule)?.kind === 'once';
 }
 
 /**
- * Describe a schedule for display, as an i18n key + params.
+ * Describe when a task runs, as an i18n key + params.
  * The renderer resolves this with t(); the shared layer stays locale-agnostic.
  * @returns {{ key: string, params: Object }}
  */
-function describeSchedule(schedule) {
-  const s = schedule || {};
+function describeSchedule(when) {
+  const s = when || {};
   const time = /^\d{1,2}:\d{2}$/.test(s.time || '') ? s.time : DEFAULT_SCHEDULE.time;
   const [, minute] = splitTime(time);
   switch (s.kind) {
@@ -121,15 +158,88 @@ function describeSchedule(schedule) {
     case 'weekly':  return { key: 'automation.schedule.desc.weekly',  params: { weekday: clampInt(s.weekday, 0, 6, 1), time } };
     case 'monthly': return { key: 'automation.schedule.desc.monthly', params: { day: clampInt(s.day, 1, MAX_MONTH_DAY, 1), time } };
     case 'custom':  return { key: 'automation.schedule.desc.custom',  params: { cron: s.cron || '' } };
+
+    // Event kinds. The filter is folded into the key so each reads as a real
+    // sentence rather than "Git event (commit)".
+    case 'git':           return { key: `automation.event.desc.git.${ONE_OF(s.gitEvent, ['any', 'commit', 'push', 'branch_switch'], 'any')}`, params: {} };
+    case 'file_change':   return { key: s.patterns ? 'automation.event.desc.fileChangePattern' : 'automation.event.desc.fileChange', params: { patterns: s.patterns || '' } };
+    case 'command_fails': return { key: `automation.event.desc.command.${ONE_OF(s.exitCode, ['any', 'success', 'error'], 'error')}`, params: {} };
+    case 'session_end':   return { key: `automation.event.desc.session.${ONE_OF(s.status, ['any', 'success', 'error'], 'any')}`, params: {} };
+    case 'project_open':  return { key: 'automation.event.desc.projectOpen', params: {} };
+
     default:        return { key: 'automation.schedule.desc.none',    params: {} };
   }
 }
 
-/** Next fire time for a task, or null if it is disabled / has no valid schedule. */
+/**
+ * Next fire time for a task, or null when it is disabled, event-driven, or has
+ * no valid schedule. An event task has no next run by definition.
+ */
 function nextRunForTask(workflow, from = new Date()) {
   if (!workflow?.enabled) return null;
   const expr = workflow.trigger?.type === 'cron' ? workflow.trigger.value : null;
   return expr ? nextRunAt(expr, from) : null;
+}
+
+// ── Trigger construction ────────────────────────────────────────────────────
+
+const ONE_OF = (value, allowed, fallback) => (allowed.includes(value) ? value : fallback);
+
+/**
+ * Build the workflow `trigger` object for a task.
+ *
+ * Every key here has to match what WorkflowScheduler reads, exactly — it is the
+ * only consumer, and a key it does not recognise is silently ignored rather
+ * than reported.
+ *
+ * @param {Object} simple  a normalized simple payload
+ * @returns {Object} trigger
+ */
+function buildTrigger(simple) {
+  const when = simple.when;
+  const project = simple.projectId || '';
+
+  switch (when.kind) {
+    case 'git':
+      return {
+        type: 'git_event',
+        value: '',
+        projectId: project,
+        eventFilter: ONE_OF(when.gitEvent, ['any', 'commit', 'push', 'branch_switch'], 'any'),
+      };
+
+    case 'file_change':
+      return {
+        type: 'file_change',
+        value: '',
+        projectId: project,
+        patterns: when.patterns || '',
+        events: 'all',
+        debounceMs: 500,
+      };
+
+    case 'command_fails':
+      return {
+        type: 'terminal_exit_code',
+        value: '',
+        projectId: project,
+        codeFilter: ONE_OF(when.exitCode, ['any', 'success', 'error'], 'error'),
+      };
+
+    case 'session_end':
+      return {
+        type: 'claude_session_end',
+        value: '',
+        projectId: project,
+        statusFilter: ONE_OF(when.status, ['any', 'success', 'error'], 'any'),
+      };
+
+    case 'project_open':
+      return { type: 'project_opened', value: '', projectId: project };
+
+    default:
+      return { type: 'cron', value: scheduleToCron(when) || '' };
+  }
 }
 
 // ── Normalisation ───────────────────────────────────────────────────────────
@@ -137,13 +247,18 @@ function nextRunForTask(workflow, from = new Date()) {
 /**
  * Coerce an arbitrary `simple` payload into a complete, well-typed one.
  * Never throws — unknown kinds fall back to the default schedule.
+ *
+ * Accepts the legacy `schedule` key: tasks saved before event triggers existed
+ * used that name, and there is no migration step anywhere else to do it.
  */
 function normalizeSimple(raw) {
   const src      = raw && typeof raw === 'object' ? raw : {};
-  const rawSched = src.schedule && typeof src.schedule === 'object' ? src.schedule : {};
-  const rawNotif = src.notify   && typeof src.notify   === 'object' ? src.notify   : {};
+  const rawWhen  = (src.when && typeof src.when === 'object' ? src.when
+                 : src.schedule && typeof src.schedule === 'object' ? src.schedule
+                 : {});
+  const rawNotif = src.notify && typeof src.notify === 'object' ? src.notify : {};
 
-  const kind = SCHEDULE_KINDS.includes(rawSched.kind) ? rawSched.kind : DEFAULT_SCHEDULE.kind;
+  const kind = WHEN_KINDS.includes(rawWhen.kind) ? rawWhen.kind : DEFAULT_SCHEDULE.kind;
 
   return {
     prompt:    typeof src.prompt === 'string' ? src.prompt : '',
@@ -151,13 +266,17 @@ function normalizeSimple(raw) {
     cwd:       typeof src.cwd === 'string' ? src.cwd : '',
     model:     typeof src.model  === 'string' ? src.model  : DEFAULT_SIMPLE.model,
     effort:    typeof src.effort === 'string' ? src.effort : DEFAULT_SIMPLE.effort,
-    schedule: {
+    when: {
       kind,
-      time:    /^\d{1,2}:\d{2}$/.test(rawSched.time || '') ? rawSched.time : DEFAULT_SCHEDULE.time,
-      weekday: clampInt(rawSched.weekday, 0, 6, 1),
-      day:     clampInt(rawSched.day, 1, MAX_MONTH_DAY, 1),
-      at:      typeof rawSched.at === 'string' ? rawSched.at : '',
-      cron:    typeof rawSched.cron === 'string' ? rawSched.cron : '',
+      time:    /^\d{1,2}:\d{2}$/.test(rawWhen.time || '') ? rawWhen.time : DEFAULT_SCHEDULE.time,
+      weekday: clampInt(rawWhen.weekday, 0, 6, 1),
+      day:     clampInt(rawWhen.day, 1, MAX_MONTH_DAY, 1),
+      at:      typeof rawWhen.at === 'string' ? rawWhen.at : '',
+      cron:    typeof rawWhen.cron === 'string' ? rawWhen.cron : '',
+      gitEvent: ONE_OF(rawWhen.gitEvent, ['any', 'commit', 'push', 'branch_switch'], 'any'),
+      exitCode: ONE_OF(rawWhen.exitCode, ['any', 'success', 'error'], 'error'),
+      status:   ONE_OF(rawWhen.status,   ['any', 'success', 'error'], 'any'),
+      patterns: typeof rawWhen.patterns === 'string' ? rawWhen.patterns : '',
     },
     notify: {
       desktop:       rawNotif.desktop !== false,
@@ -194,8 +313,8 @@ const NODE_NOTIFY  = 3;
  * @param {string} name    task name, used as the notification title
  */
 function buildSimpleGraph(simple, name) {
-  const s    = normalizeSimple(simple);
-  const cron = scheduleToCron(s.schedule) || '';
+  const s       = normalizeSimple(simple);
+  const trigger = buildTrigger(s);
 
   const channels = [
     s.notify.desktop ? 'desktop' : null,
@@ -210,7 +329,14 @@ function buildSimpleGraph(simple, name) {
     id: NODE_TRIGGER,
     type: 'workflow/trigger',
     pos: [80, 180], size: [200, 62],
-    properties: { triggerType: 'cron', triggerValue: cron, hookType: 'PostToolUse' },
+    // The trigger node's properties mirror the trigger object key for key, so
+    // opening the task in the advanced editor shows the same configuration.
+    properties: {
+      ...trigger,
+      triggerType:  trigger.type,
+      triggerValue: trigger.value || '',
+      hookType: 'PostToolUse',
+    },
     inputs:  [],
     outputs: [{ name: 'Start', type: -1, links: [1] }],
     flags: {},
@@ -283,7 +409,7 @@ function buildSimpleGraph(simple, name) {
       ...n.properties,
     }));
 
-  return { trigger: { type: 'cron', value: cron }, hookType: 'PostToolUse', graph, steps };
+  return { trigger, hookType: 'PostToolUse', graph, steps };
 }
 
 /**
@@ -325,10 +451,22 @@ function validateTask(task) {
   const simple = normalizeSimple(task?.simple);
   if (!simple.prompt.trim()) return { valid: false, errorKey: 'automation.error.promptRequired' };
 
-  if (simple.schedule.kind === 'once' && !parseLocalDateTime(simple.schedule.at)) {
+  const kind = simple.when.kind;
+
+  if (isEventKind(kind)) {
+    // WorkflowScheduler installs per-repository watchers for these and bails
+    // when projectId is empty — with no warning. Refusing here is the only way
+    // the task does not end up looking armed while watching nothing.
+    if (EVENT_KINDS[kind].needsProject && !simple.projectId) {
+      return { valid: false, errorKey: 'automation.error.projectRequired' };
+    }
+    return { valid: true };
+  }
+
+  if (kind === 'once' && !parseLocalDateTime(simple.when.at)) {
     return { valid: false, errorKey: 'automation.error.dateRequired' };
   }
-  if (!scheduleToCron(simple.schedule)) {
+  if (!scheduleToCron(simple.when)) {
     return { valid: false, errorKey: 'automation.error.scheduleInvalid' };
   }
   return { valid: true };
@@ -393,6 +531,11 @@ const TASK_PRESETS = [
 
 module.exports = {
   SCHEDULE_KINDS,
+  EVENT_KINDS,
+  EVENT_KIND_NAMES,
+  WHEN_KINDS,
+  isEventKind,
+  buildTrigger,
   MAX_MONTH_DAY,
   DEFAULT_SCHEDULE,
   DEFAULT_SIMPLE,
