@@ -21,7 +21,7 @@ const { MODEL_OPTIONS, EFFORT_OPTIONS } = require('../../../shared/model-options
 const {
   TASK_PRESETS, MAX_MONTH_DAY, DEFAULT_SIMPLE,
   normalizeSimple, compileTask, describeSchedule, nextRunForTask,
-  isSimpleTask, validateTask, scheduleToCron,
+  isSimpleTask, validateTask, scheduleToCron, splitTime,
 } = require('../../../shared/simple-task');
 
 const { nextRunAt } = require('../../../shared/cron');
@@ -306,29 +306,58 @@ function defaultOnceValue() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/**
+ * Hour + minute as two themed dropdowns.
+ *
+ * `<input type="time">` opens an OS-drawn spinner that no CSS can reach — white
+ * panel, system-blue selection — which looked nothing like the rest of the
+ * sheet. Two selects reuse the dropdown widget the editor already ships, so the
+ * picker is themed, keyboard-navigable, and still allows any minute rather than
+ * snapping to a coarse step.
+ *
+ * @param {string} time "HH:MM"
+ * @param {{ hourOnly?: boolean, minuteOnly?: boolean }} [opts]
+ */
+function timePartsHtml(time, opts = {}) {
+  const [h, m] = splitTime(time);
+  const pad = (n) => String(n).padStart(2, '0');
+  const options = (count, selected) => Array.from({ length: count }, (_, i) =>
+    `<option value="${i}"${i === selected ? ' selected' : ''}>${pad(i)}</option>`).join('');
+
+  const hour = `<select class="auto-input auto-time-part" data-dropdown data-sched-h>${options(24, h)}</select>`;
+  const min  = `<select class="auto-input auto-time-part" data-dropdown data-sched-m>${options(60, m)}</select>`;
+
+  if (opts.hourOnly)   return `<span class="auto-time">${hour}</span>`;
+  if (opts.minuteOnly) return `<span class="auto-time">${min}</span>`;
+  return `<span class="auto-time">${hour}<span class="auto-time-sep">:</span>${min}</span>`;
+}
+
 function scheduleFieldsHtml(schedule) {
   const days = weekdayNames();
   const timeInput = (label) => `
-    <label class="auto-field auto-field--inline">
+    <div class="auto-field auto-field--inline">
       <span class="auto-field-label">${escapeHtml(label)}</span>
-      <input type="time" class="auto-input auto-input--time" data-sched="time" value="${escapeHtml(schedule.time)}">
-    </label>`;
+      ${timePartsHtml(schedule.time)}
+    </div>`;
 
   switch (schedule.kind) {
-    case 'once':
+    case 'once': {
+      const at = schedule.at || defaultOnceValue();
+      const [datePart, timePart] = at.split('T');
       return `
-        <label class="auto-field auto-field--inline">
+        <div class="auto-field auto-field--inline">
           <span class="auto-field-label">${escapeHtml(t('automation.form.onceAt'))}</span>
-          <input type="datetime-local" class="auto-input" data-sched="at"
-            value="${escapeHtml(schedule.at || defaultOnceValue())}">
-        </label>`;
+          <input type="date" class="auto-input auto-input--date" data-sched-date value="${escapeHtml(datePart || '')}">
+          ${timePartsHtml(timePart || '09:00')}
+        </div>`;
+    }
 
     case 'hourly':
       return `
-        <label class="auto-field auto-field--inline">
+        <div class="auto-field auto-field--inline">
           <span class="auto-field-label">${escapeHtml(t('automation.form.hourlyMinute'))}</span>
-          <input type="time" class="auto-input auto-input--time" data-sched="time" value="${escapeHtml(schedule.time)}">
-        </label>
+          ${timePartsHtml(schedule.time, { minuteOnly: true })}
+        </div>
         <p class="auto-field-hint">${escapeHtml(t('automation.form.hourlyHint'))}</p>`;
 
     case 'daily':
@@ -336,23 +365,23 @@ function scheduleFieldsHtml(schedule) {
 
     case 'weekly':
       return `
-        <label class="auto-field auto-field--inline">
+        <div class="auto-field auto-field--inline">
           <span class="auto-field-label">${escapeHtml(t('automation.form.onDay'))}</span>
           <select class="auto-input" data-dropdown data-sched="weekday">
             ${days.map((d, i) => `<option value="${i}"${Number(schedule.weekday) === i ? ' selected' : ''}>${escapeHtml(d)}</option>`).join('')}
           </select>
-        </label>
+        </div>
         ${timeInput(t('automation.form.at'))}`;
 
     case 'monthly':
       return `
-        <label class="auto-field auto-field--inline">
+        <div class="auto-field auto-field--inline">
           <span class="auto-field-label">${escapeHtml(t('automation.form.onDayOfMonth'))}</span>
           <select class="auto-input" data-dropdown data-sched="day">
             ${Array.from({ length: MAX_MONTH_DAY }, (_, i) => i + 1)
               .map(d => `<option value="${d}"${Number(schedule.day) === d ? ' selected' : ''}>${d}</option>`).join('')}
           </select>
-        </label>
+        </div>
         ${timeInput(t('automation.form.at'))}
         <p class="auto-field-hint">${escapeHtml(t('automation.form.monthlyHint', { max: MAX_MONTH_DAY }))}</p>`;
 
@@ -436,11 +465,11 @@ function openTaskModal(deps, existing, preset = null) {
           <p class="auto-next-preview" id="auto-next-preview"></p>
         </div>
 
-        <label class="auto-field">
+        <div class="auto-field">
           <span class="auto-field-label">${escapeHtml(t('automation.form.projectLabel'))}</span>
           <span class="auto-field-hint">${escapeHtml(t('automation.form.projectHint'))}</span>
           <select class="auto-input" data-dropdown id="auto-project">${projectOptionsHtml(simple.projectId)}</select>
-        </label>
+        </div>
 
         <div class="auto-field">
           <span class="auto-field-label">${escapeHtml(t('automation.form.notifyLabel'))}</span>
@@ -459,20 +488,20 @@ function openTaskModal(deps, existing, preset = null) {
         <details class="auto-advanced"${simple.model !== DEFAULT_SIMPLE.model || simple.effort !== DEFAULT_SIMPLE.effort ? ' open' : ''}>
           <summary class="auto-advanced-summary">${escapeHtml(t('automation.form.advanced'))}</summary>
           <div class="auto-advanced-body">
-            <label class="auto-field auto-field--inline">
+            <div class="auto-field auto-field--inline">
               <span class="auto-field-label">${escapeHtml(t('automation.form.model'))}</span>
               <select class="auto-input" data-dropdown id="auto-model">
                 ${MODEL_OPTIONS.map(o =>
                   `<option value="${escapeHtml(o.value)}"${simple.model === o.value ? ' selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
               </select>
-            </label>
-            <label class="auto-field auto-field--inline">
+            </div>
+            <div class="auto-field auto-field--inline">
               <span class="auto-field-label">${escapeHtml(t('automation.form.effort'))}</span>
               <select class="auto-input" data-dropdown id="auto-effort">
                 ${EFFORT_OPTIONS.map(o =>
                   `<option value="${escapeHtml(o.value)}"${simple.effort === o.value ? ' selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
               </select>
-            </label>
+            </div>
             <label class="auto-field auto-field--inline">
               <span class="auto-field-label">${escapeHtml(t('automation.form.discord'))}</span>
               <input type="text" class="auto-input auto-input--mono" id="auto-discord"
@@ -511,6 +540,25 @@ function openTaskModal(deps, existing, preset = null) {
         ? parseInt(input.value, 10)
         : input.value;
     });
+
+    // Hour and minute are two dropdowns; recompose them into "HH:MM". The
+    // hourly kind only renders a minute picker, so the hour falls back to the
+    // current value (scheduleToCron ignores it for that kind anyway).
+    const pad = (n) => String(n).padStart(2, '0');
+    const hEl = fieldsEl.querySelector('[data-sched-h]');
+    const mEl = fieldsEl.querySelector('[data-sched-m]');
+    if (hEl || mEl) {
+      const [curH, curM] = splitTime(simple.schedule.time);
+      const h = hEl ? parseInt(hEl.value, 10) : curH;
+      const m = mEl ? parseInt(mEl.value, 10) : curM;
+      simple.schedule.time = `${pad(h)}:${pad(m)}`;
+    }
+
+    // The one-shot kind is a date input plus those same pickers.
+    const dEl = fieldsEl.querySelector('[data-sched-date]');
+    if (dEl) {
+      simple.schedule.at = dEl.value ? `${dEl.value}T${simple.schedule.time}` : '';
+    }
   }
 
   function updatePreview() {

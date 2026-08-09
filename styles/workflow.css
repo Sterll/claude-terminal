@@ -7375,16 +7375,29 @@ select.wf-step-edit-input {
 .auto-check-text { line-height: 1.4; }
 
 
-/* The native time picker draws its own indicator; tint it to match. */
-.auto-input--time::-webkit-calendar-picker-indicator,
-.auto-input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+/* Hour : minute, as two themed dropdowns instead of the OS time spinner. */
+.auto-time { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+.auto-time .wf-dropdown { min-width: 68px; }
+.auto-time-sep {
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+/* The digits should not jump around as the value changes. */
+.auto-time .wf-dropdown-trigger,
+.auto-time .wf-dropdown-item { font-variant-numeric: tabular-nums; }
+
+/* The date field keeps its native picker — a calendar is far more usable
+   natively than a time spinner — but its indicator is tinted to match. */
+.auto-input--date { flex: 0 0 auto; width: auto; min-width: 140px; }
+.auto-input--date::-webkit-calendar-picker-indicator {
   filter: invert(0.6);
   cursor: pointer;
   opacity: .55;
   transition: opacity .15s var(--wf-ease);
 }
-.auto-input--time:hover::-webkit-calendar-picker-indicator,
-.auto-input[type="datetime-local"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
+.auto-input--date:hover::-webkit-calendar-picker-indicator { opacity: 1; }
 
 .auto-advanced { border-top: 1px solid var(--wf-border); padding-top: 14px; }
 .auto-advanced-summary {
