@@ -29,8 +29,14 @@ const MCP_SHARED_COPIES = [
   { from: path.join('src', 'main', 'workflow-nodes'), to: 'workflow-nodes' },
 ];
 
+// electron-builder exposes the per-platform resources dir on the packager
+// (mac nests it inside the .app bundle); fall back to computing it ourselves if
+// a future version renames the helper.
 function getResourcesDir(context) {
   const { appOutDir, packager, electronPlatformName } = context;
+  if (typeof packager?.getResourcesDir === 'function') {
+    return packager.getResourcesDir(appOutDir);
+  }
   if (electronPlatformName === 'darwin') {
     return path.join(appOutDir, `${packager.appInfo.productFilename}.app`, 'Contents', 'Resources');
   }
