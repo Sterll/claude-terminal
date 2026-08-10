@@ -68,22 +68,17 @@ module.exports = {
       from: "resources/mcp-servers",
       to: "mcp-servers",
       filter: ["**/*"]
-    },
-    {
-      from: "src/main/workflow-nodes",
-      to: "mcp-servers/workflow-nodes",
-      filter: ["**/*"]
-    },
-    {
-      // The MCP server runs as a plain node process, which cannot require from
-      // inside app.asar. automation.js compiles tasks with the SAME shared code
-      // the renderer uses (simple-task.js + its cron dependency), so it has to
-      // exist unpacked next to mcp-servers/ — same reason as workflow-nodes.
-      from: "src/shared",
-      to: "mcp-servers/shared",
-      filter: ["**/*"]
     }
+    // NOTE: src/shared and src/main/workflow-nodes are NOT listed here on
+    // purpose — see afterPack below.
   ],
+  // The external MCP server process cannot read app.asar, so it needs
+  // src/shared and src/main/workflow-nodes unpacked under resources/mcp-servers/.
+  // They must NOT be extraResources: app-builder-lib turns every
+  // extraResources.from inside the project into an exclude pattern for the app
+  // files copy, which silently dropped src/shared from app.asar and crashed the
+  // main process at startup (issue #68). afterPack runs after both copies.
+  afterPack: "./scripts/copy-mcp-shared.js",
   win: {
     target: [
       {
