@@ -19,6 +19,37 @@ let resolvedRuntime = null;
  */
 const FORK_REJECTED_PREFIX = 'Resume rejected by --resume-drops-turn:';
 
+/**
+ * Tools whose `tool_use` block names a file the session is about to write.
+ * Read-only tools are deliberately absent: the point of the record is "what did
+ * this conversation change", which is what an automation needs to scope a commit.
+ */
+const FILE_WRITING_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
+
+/**
+ * Upper bound on the recorded paths. A long refactoring session can touch
+ * hundreds of files; past this the list stops being usable as a prompt anyway,
+ * and an unbounded Set on a long-lived session is a slow leak.
+ */
+const MAX_TOUCHED_FILES = 200;
+
+/**
+ * Note a file this session wrote, for `_sessionContext`.
+ * Silent on anything unexpected — this is bookkeeping on the hot stream path and
+ * must never be able to break the conversation.
+ *
+ * @param {Object} session  entry from ChatService#sessions (may be undefined)
+ * @param {Object} block    an SDK `tool_use` content block
+ */
+function recordTouchedFile(session, block) {
+  if (!session || !FILE_WRITING_TOOLS.has(block?.name)) return;
+  const target = block.input?.file_path || block.input?.notebook_path;
+  if (typeof target !== 'string' || !target) return;
+  if (!session.touchedFiles) session.touchedFiles = new Set();
+  if (session.touchedFiles.size >= MAX_TOUCHED_FILES && !session.touchedFiles.has(target)) return;
+  session.touchedFiles.add(target);
+}
+
 async function loadSDK() {
   if (!sdkPromise) {
     sdkPromise = import('@anthropic-ai/claude-agent-sdk');
@@ -343,6 +374,29 @@ class ChatService {
     this._messageCallback = fn || null;
   }
 
+  /**
+   * The conversation context an automation needs to scope itself to one session.
+   *
+   * `sdkSessionId` is the id the CLI persists under ~/.claude/projects, which is
+   * NOT our own `chat-…` handle — only the former can be resumed. `files` is the
+   * set of paths this session actually wrote, which is the part that lets an
+   * auto-commit task tell its own changes apart from those of the other Claude
+   * sessions running in the same repository.
+   *
+   * @param {Object} session  entry from this.sessions
+   */
+  _sessionContext(session) {
+    const files = session?.touchedFiles ? [...session.touchedFiles] : [];
+    return {
+      sdkSessionId: session?.sdkSessionId || null,
+      files,
+      // Pre-formatted here rather than in the consumer: workflow prompts
+      // interpolate `$trigger.filesText` as a plain string, and an array would
+      // stringify to a comma soup.
+      filesText: files.length ? files.map(f => `- ${f}`).join('\n') : '(none recorded)',
+    };
+  }
+
   _emitMessage(role, text, sessionId) {
     if (!this._messageCallback || !text) return;
     if (this._sessionInterceptors && this._sessionInterceptors.has(sessionId)) return;
@@ -354,6 +408,7 @@ class ChatService {
         sessionId,
         projectId: session.projectId || null,
         cwd: session.cwd || null,
+        ...this._sessionContext(session),
       });
     } catch (err) {
       console.warn(`[ChatService] message callback error:`, err?.message);
@@ -371,6 +426,7 @@ class ChatService {
         sessionId,
         projectId: session.projectId || extra.projectId || null,
         cwd: session.cwd || extra.cwd || null,
+        ...this._sessionContext(session),
         ...extra,
       });
     } catch (err) {
@@ -1206,12 +1262,21 @@ class ChatService {
         }
         this._send('chat-message', { sessionId, message });
 
+        // The CLI's own session id, which is what ~/.claude/projects is keyed by
+        // and the only thing `resume` accepts. Our `sessionId` is an app-local
+        // handle the CLI has never heard of.
+        if (message.type === 'system' && message.subtype === 'init' && message.session_id && session) {
+          session.sdkSessionId = message.session_id;
+        }
+
         // Accumulate assistant text for the chat_message trigger; dispatched
         // as one reply when the turn ends, not per streamed message.
         if (message.type === 'assistant' && Array.isArray(message.message?.content)) {
           for (const block of message.message.content) {
             if (block.type === 'text' && block.text) {
               replyBuffer += (replyBuffer ? '\n\n' : '') + block.text;
+            } else if (block.type === 'tool_use') {
+              recordTouchedFile(session, block);
             }
           }
         } else if (message.type === 'result') {
@@ -1766,7 +1831,7 @@ class ChatService {
    * @param {Object} opts - { cwd, prompt, model, effort, maxTurns, permissionMode, outputFormat, skills, onMessage, signal }
    * @returns {Promise<{ output: string, success: boolean, ... }>}
    */
-  async runSinglePrompt({ cwd, prompt, model, effort, maxTurns, permissionMode, outputFormat, skills, systemPrompt, disallowedTools, onMessage, onOutput, signal }) {
+  async runSinglePrompt({ cwd, prompt, model, effort, maxTurns, permissionMode, outputFormat, skills, systemPrompt, disallowedTools, resume, onMessage, onOutput, signal }) {
     const sdk = await loadSDK();
     const runtime = resolveRuntime();
 
@@ -1800,6 +1865,17 @@ class ChatService {
       if (outputFormat) options.outputFormat = outputFormat;
       if (skills?.length) options.skills = skills;
       if (disallowedTools?.length) options.disallowedTools = disallowedTools;
+
+      // Continue an existing conversation (automations with `useContext`).
+      //
+      // Always a FORK, never a plain resume. A plain resume appends this run's
+      // turns to the user's own session file — two writers on one .jsonl, and
+      // the automation's turns show up in the user's transcript. The fork gets
+      // the full history under a fresh session id that is ours to delete.
+      if (resume) {
+        options.resume = resume;
+        options.forkSession = true;
+      }
 
       const queryStream = sdk.query({ prompt, options });
 
@@ -1840,8 +1916,12 @@ class ChatService {
     } finally {
       if (prevClaudeCode) process.env.CLAUDECODE = prevClaudeCode;
       // Delete the session file created by this workflow step to avoid polluting
-      // the "Resume conversation" list — workflow runs are fire-and-forget
-      if (workflowSessionId) {
+      // the "Resume conversation" list — workflow runs are fire-and-forget.
+      //
+      // Guarded against the fork case: `forkSession` is expected to hand back a
+      // NEW id, but if a future SDK ever ignored it we would be deleting the
+      // user's own conversation. Cheap check, unrecoverable loss if wrong.
+      if (workflowSessionId && workflowSessionId !== resume) {
         _deleteWorkflowSession(resolvedCwd, workflowSessionId);
       }
     }

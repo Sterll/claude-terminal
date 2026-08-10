@@ -194,3 +194,99 @@ describe('ChatService chat_message dispatch', () => {
     expect(fired).toHaveLength(0);
   });
 });
+
+describe('ChatService conversation context', () => {
+  // What an automation needs to scope itself to one conversation: the CLI's own
+  // session id (the only thing `resume` accepts) and the files that session wrote.
+  const SESSION = 'sess-ctx';
+
+  const assistant = text => ({ type: 'assistant', message: { content: [{ type: 'text', text }] } });
+  const write = (name, input) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', name, input }] } });
+  const init = id => ({ type: 'system', subtype: 'init', session_id: id });
+  const result = () => ({ type: 'result', subtype: 'success' });
+
+  let fired;
+  let originalSend;
+  let originalLifecycle;
+
+  beforeEach(() => {
+    fired = [];
+    originalSend = chatService._send;
+    originalLifecycle = chatService._emitLifecycle;
+    chatService._send = () => {};
+    chatService._emitLifecycle = () => {};
+    chatService.setMessageCallback(e => fired.push(e));
+    chatService.sessions.set(SESSION, { cwd: 'E:/repos/api', projectId: 'api' });
+  });
+
+  afterEach(() => {
+    chatService._send = originalSend;
+    chatService._emitLifecycle = originalLifecycle;
+    chatService.setMessageCallback(null);
+    chatService.sessions.delete(SESSION);
+  });
+
+  const drive = async (messages) => {
+    async function* stream() { for (const m of messages) yield m; }
+    await chatService._processStream(SESSION, stream());
+  };
+
+  test('captures the SDK session id from the init message', async () => {
+    // Our own `chat-…` handle is app-local; the CLI has never heard of it.
+    await drive([init('sdk-1234'), assistant('Done.'), result()]);
+
+    expect(chatService.sessions.get(SESSION).sdkSessionId).toBe('sdk-1234');
+    expect(fired[0].sdkSessionId).toBe('sdk-1234');
+  });
+
+  test('records the files the turn wrote, in order and without duplicates', async () => {
+    await drive([
+      init('sdk-1'),
+      write('Write', { file_path: 'E:/repos/api/a.js' }),
+      write('Edit',  { file_path: 'E:/repos/api/b.js' }),
+      write('Edit',  { file_path: 'E:/repos/api/a.js' }),
+      assistant('Done.'),
+      result(),
+    ]);
+
+    expect(fired[0].files).toEqual(['E:/repos/api/a.js', 'E:/repos/api/b.js']);
+    expect(fired[0].filesText).toBe('- E:/repos/api/a.js\n- E:/repos/api/b.js');
+  });
+
+  test('ignores read-only tools', async () => {
+    // The record answers "what did this conversation change", so a Read or a
+    // Grep has no business in it — an auto-commit would stage the wrong files.
+    await drive([
+      write('Read', { file_path: 'E:/repos/api/read-only.js' }),
+      write('Grep', { pattern: 'x' }),
+      assistant('Done.'),
+      result(),
+    ]);
+
+    expect(fired[0].files).toEqual([]);
+    expect(fired[0].filesText).toBe('(none recorded)');
+  });
+
+  test('records notebook edits under their own input key', async () => {
+    await drive([write('NotebookEdit', { notebook_path: 'E:/repos/api/n.ipynb' }), assistant('x'), result()]);
+
+    expect(fired[0].files).toEqual(['E:/repos/api/n.ipynb']);
+  });
+
+  test('survives a tool_use with no usable path', async () => {
+    await drive([write('Write', {}), write('Edit', { file_path: '' }), assistant('x'), result()]);
+
+    expect(fired[0].files).toEqual([]);
+  });
+
+  test('accumulates across the turns of one session', async () => {
+    await drive([
+      write('Write', { file_path: 'E:/repos/api/a.js' }), assistant('First.'), result(),
+      write('Write', { file_path: 'E:/repos/api/b.js' }), assistant('Second.'), result(),
+    ]);
+
+    // The second turn's automation sees everything the conversation touched,
+    // not just the last turn — which is what scoping a commit needs.
+    expect(fired[1].files).toEqual(['E:/repos/api/a.js', 'E:/repos/api/b.js']);
+  });
+});

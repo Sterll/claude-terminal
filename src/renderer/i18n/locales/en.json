@@ -2696,7 +2696,8 @@
       "onWorkflowStatusHint": "Only run when the source workflow finished this way.",
       "onWorkflowStatusAny": "Any outcome",
       "onWorkflowStatusSuccess": "Success only",
-      "onWorkflowStatusFailed": "Failure only"
+      "onWorkflowStatusFailed": "Failure only",
+      "multiProjectNote": "Watches {projects}. Picking one here replaces that list."
     },
     "loop": {
       "sourceLabel": "Iteration source",
@@ -3655,7 +3656,9 @@
       "toggleAria": "Enable {name}",
       "paused": "Paused",
       "runNow": "Run now",
-      "more": "More actions"
+      "more": "More actions",
+      "watches": "Watches {projects}",
+      "withContext": "With conversation"
     },
     "empty": {
       "title": "Automate a recurring task",
@@ -3720,7 +3723,11 @@
       "previewNever": "This schedule never fires.",
       "modeSchedule": "On a schedule",
       "modeEvent": "On an event",
-      "previewEvent": "Runs {event}"
+      "previewEvent": "Runs {event}",
+      "triggerProject": "The project that triggered it",
+      "contextLabel": "Conversation",
+      "useContext": "Continue the conversation that triggered it",
+      "useContextHint": "Claude resumes a copy of that conversation — your own session is left untouched — and is told which files it changed. Use this so an auto-commit only touches that conversation's work when several Claude sessions share a repository."
     },
     "menu": {
       "edit": "Edit",
@@ -3739,7 +3746,8 @@
       "promptRequired": "Describe what Claude should do.",
       "dateRequired": "Pick a date and time.",
       "scheduleInvalid": "This schedule is not valid.",
-      "projectRequired": "This event is watched per project — pick one below."
+      "projectRequired": "This event is watched per project — pick one below.",
+      "triggerProjectNeedsEvent": "\"The project that triggered it\" needs an event, not a schedule."
     },
     "toast": {
       "created": "Automation created",
@@ -3801,7 +3809,6 @@
       "sessError": "with an error",
       "filePattern": "Files",
       "filePatternHint": "Glob to watch. Leave empty to watch the whole project.",
-      "needsProjectHint": "Watched per repository, so a project is required.",
       "projectOpenHint": "Runs when you open this project in the sidebar.",
       "desc": {
         "git": {
@@ -3831,7 +3838,8 @@
       "chatReplyHint": "Fires once Claude has finished replying, on the whole answer. \"Claude session\" fires at the same moment but cannot filter on the text.",
       "watchLabel": "Watch",
       "anyProject": "Any project",
-      "pickProject": "Pick a project…"
+      "watchMultiHint": "Pick one or more projects. \"Any project\" also covers ones you add later.",
+      "watchMultiPickHint": "Watched per repository, so pick at least one project."
     }
   }
 }

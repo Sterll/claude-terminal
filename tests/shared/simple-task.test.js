@@ -1,7 +1,7 @@
 const {
   scheduleToCron, normalizeSimple, buildSimpleGraph, compileTask,
   isSimpleTask, isOnce, validateTask, describeSchedule, buildTrigger, isEventKind, nextRunForTask,
-  MAX_MONTH_DAY, TASK_PRESETS, ANY_PROJECT,
+  MAX_MONTH_DAY, TASK_PRESETS, ANY_PROJECT, TRIGGER_PROJECT,
 } = require('../../src/shared/simple-task');
 
 const { validateWorkflowGraph } = require('../../src/main/services/WorkflowStorage');
@@ -109,26 +109,26 @@ describe('buildTrigger', () => {
   // not recognise is ignored silently rather than reported.
   it('builds a git_event trigger scoped to the project', () => {
     expect(withKind('git', { gitEvent: 'push' })).toEqual({
-      type: 'git_event', value: '', projectId: 'proj-1', eventFilter: 'push',
+      type: 'git_event', value: '', projectId: 'proj-1', projectIds: ['proj-1'], eventFilter: 'push',
     });
   });
 
   it('builds a file_change trigger with the watcher defaults', () => {
     expect(withKind('file_change', { patterns: 'src/**/*.js' })).toEqual({
-      type: 'file_change', value: '', projectId: 'proj-1',
+      type: 'file_change', value: '', projectId: 'proj-1', projectIds: ['proj-1'],
       patterns: 'src/**/*.js', events: 'all', debounceMs: 500,
     });
   });
 
   it('builds a terminal_exit_code trigger', () => {
     expect(withKind('command_fails', { exitCode: 'error' })).toEqual({
-      type: 'terminal_exit_code', value: '', projectId: 'proj-1', codeFilter: 'error',
+      type: 'terminal_exit_code', value: '', projectId: 'proj-1', projectIds: ['proj-1'], codeFilter: 'error',
     });
   });
 
   it('builds a claude_session_end trigger', () => {
     expect(withKind('session_end', { status: 'error' })).toEqual({
-      type: 'claude_session_end', value: '', projectId: 'proj-1', statusFilter: 'error',
+      type: 'claude_session_end', value: '', projectId: 'proj-1', projectIds: ['proj-1'], statusFilter: 'error',
     });
   });
 
@@ -136,7 +136,7 @@ describe('buildTrigger', () => {
     // role must be 'assistant': without it the task would also fire on the
     // user's own prompts, which is the opposite of "when Claude replied".
     expect(withKind('chat_reply', { pattern: 'done' })).toEqual({
-      type: 'chat_message', value: '', projectId: 'proj-1',
+      type: 'chat_message', value: '', projectId: 'proj-1', projectIds: ['proj-1'],
       role: 'assistant', pattern: 'done', matchMode: 'contains',
     });
   });
@@ -149,7 +149,7 @@ describe('buildTrigger', () => {
 
   it('builds a project_opened trigger', () => {
     expect(withKind('project_open')).toEqual({
-      type: 'project_opened', value: '', projectId: 'proj-1',
+      type: 'project_opened', value: '', projectId: 'proj-1', projectIds: ['proj-1'],
     });
   });
 
@@ -195,6 +195,114 @@ describe('which project an event watches', () => {
       name: 'x',
       simple: { prompt: 'p', when: { kind: 'git', projectId: 'api' } },
     })).toEqual({ valid: true });
+  });
+});
+
+describe('watching several projects', () => {
+  const trigger = (simple) => buildTrigger(normalizeSimple(simple));
+
+  it('carries every watched project on the trigger', () => {
+    const t = trigger({ when: { kind: 'session_end', projectIds: ['api', 'web', 'notes'] } });
+    expect(t.projectIds).toEqual(['api', 'web', 'notes']);
+    // The scalar stays empty: it can only speak for one project, and claiming
+    // one of three would misreport the scope to the advanced editor.
+    expect(t.projectId).toBe('');
+  });
+
+  it('keeps the scalar in sync when exactly one project is watched', () => {
+    expect(trigger({ when: { kind: 'session_end', projectIds: ['api'] } })).toMatchObject({
+      projectId: 'api', projectIds: ['api'],
+    });
+  });
+
+  it('migrates the legacy scalar into the list', () => {
+    expect(normalizeSimple({ when: { kind: 'git', projectId: 'api' } }).when.projectIds)
+      .toEqual(['api']);
+  });
+
+  it('collapses "any project" against explicit picks', () => {
+    // "Any project plus the API" is just "any project"; letting both survive
+    // would leave every consumer to special-case the contradiction.
+    expect(normalizeSimple({ when: { kind: 'session_end', projectIds: ['api', ANY_PROJECT] } }).when.projectIds)
+      .toEqual([ANY_PROJECT]);
+    expect(trigger({ when: { kind: 'session_end', projectIds: ['api', ANY_PROJECT] } }).projectIds)
+      .toEqual([]);
+  });
+
+  it('drops duplicates and blanks', () => {
+    expect(normalizeSimple({ when: { kind: 'git', projectIds: ['api', '', 'api', null] } }).when.projectIds)
+      .toEqual(['api']);
+  });
+
+  it('accepts a repository-watched event across several projects', () => {
+    expect(validateTask({
+      name: 'x',
+      simple: { prompt: 'p', when: { kind: 'git', projectIds: ['api', 'web'] } },
+    })).toEqual({ valid: true });
+  });
+});
+
+describe('running where the event fired', () => {
+  const trigger = (simple) => buildTrigger(normalizeSimple(simple));
+  const claudeNode = (simple) =>
+    buildSimpleGraph(normalizeSimple(simple), 'T').graph.nodes.find(n => n.type === 'workflow/claude');
+
+  it('compiles the run project to a trigger reference', () => {
+    const node = claudeNode({
+      prompt: 'p', projectId: TRIGGER_PROJECT,
+      when: { kind: 'chat_reply', projectIds: ['api', 'web'] },
+    });
+    expect(node.properties.cwd).toBe('$trigger.projectPath');
+    // The sentinel is not a project id, so it must not reach the picker.
+    expect(node.properties.projectId).toBe('');
+  });
+
+  it('refuses to run "where it fired" on a schedule', () => {
+    const res = validateTask({
+      name: 'x',
+      simple: { prompt: 'p', projectId: TRIGGER_PROJECT, when: { kind: 'daily', time: '09:00' } },
+    });
+    expect(res.valid).toBe(false);
+    expect(res.errorKey).toBe('automation.error.triggerProjectNeedsEvent');
+  });
+
+  it('does not let the sentinel stand in as a watched project', () => {
+    // Otherwise an unscoped event would "inherit" a run project that is not one,
+    // and the trigger would claim to watch a project called __trigger__.
+    expect(trigger({ projectId: TRIGGER_PROJECT, when: { kind: 'session_end' } }).projectIds)
+      .toEqual([]);
+  });
+});
+
+describe('resuming the triggering conversation', () => {
+  const claudeNode = (simple) =>
+    buildSimpleGraph(normalizeSimple(simple), 'T').graph.nodes.find(n => n.type === 'workflow/claude');
+
+  it('resumes the session and names the files it changed', () => {
+    const node = claudeNode({ prompt: 'Commit it', useContext: true, when: { kind: 'chat_reply' } });
+    expect(node.properties.resumeFrom).toBe('$trigger.sdkSessionId');
+    expect(node.properties.prompt).toContain('$trigger.filesText');
+    // The user's own prompt still has to survive the preamble.
+    expect(node.properties.prompt).toContain('Commit it');
+  });
+
+  it('works for session_end too', () => {
+    expect(claudeNode({ prompt: 'p', useContext: true, when: { kind: 'session_end' } }).properties.resumeFrom)
+      .toBe('$trigger.sdkSessionId');
+  });
+
+  it('ignores the flag on a kind that carries no conversation', () => {
+    // A git push or a cron tick has no session to resume, so the preamble would
+    // be describing a conversation that does not exist.
+    for (const when of [{ kind: 'git', projectIds: ['api'] }, { kind: 'daily', time: '09:00' }]) {
+      const node = claudeNode({ prompt: 'p', useContext: true, when });
+      expect(node.properties.resumeFrom).toBe('');
+      expect(node.properties.prompt).toBe('p');
+    }
+  });
+
+  it('leaves resumeFrom empty when the flag is off', () => {
+    expect(claudeNode({ prompt: 'p', when: { kind: 'chat_reply' } }).properties.resumeFrom).toBe('');
   });
 });
 

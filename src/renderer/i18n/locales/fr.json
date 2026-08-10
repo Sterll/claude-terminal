@@ -2696,7 +2696,8 @@
       "onWorkflowStatusHint": "Ne s'exécute que si le workflow source s'est terminé ainsi.",
       "onWorkflowStatusAny": "Tous les cas",
       "onWorkflowStatusSuccess": "Succès uniquement",
-      "onWorkflowStatusFailed": "Échec uniquement"
+      "onWorkflowStatusFailed": "Échec uniquement",
+      "multiProjectNote": "Surveille {projects}. Choisir un projet ici remplace cette liste."
     },
     "loop": {
       "sourceLabel": "Source d'itération",
@@ -3655,7 +3656,9 @@
       "toggleAria": "Activer {name}",
       "paused": "En pause",
       "runNow": "Lancer maintenant",
-      "more": "Plus d'actions"
+      "more": "Plus d'actions",
+      "watches": "Surveille {projects}",
+      "withContext": "Avec la conversation"
     },
     "empty": {
       "title": "Automatisez une tâche récurrente",
@@ -3720,7 +3723,11 @@
       "previewNever": "Cette planification ne se déclenche jamais.",
       "modeSchedule": "Sur un horaire",
       "modeEvent": "Sur un événement",
-      "previewEvent": "S'exécute {event}"
+      "previewEvent": "S'exécute {event}",
+      "triggerProject": "Le projet qui a déclenché",
+      "contextLabel": "Conversation",
+      "useContext": "Continuer la conversation qui a déclenché",
+      "useContextHint": "Claude reprend une copie de cette conversation — votre session n'est pas modifiée — et reçoit la liste des fichiers qu'elle a changés. Utile pour qu'un auto-commit ne touche que le travail de cette conversation quand plusieurs sessions Claude partagent un dépôt."
     },
     "menu": {
       "edit": "Modifier",
@@ -3739,7 +3746,8 @@
       "promptRequired": "Décrivez ce que Claude doit faire.",
       "dateRequired": "Choisissez une date et une heure.",
       "scheduleInvalid": "Cette planification n'est pas valide.",
-      "projectRequired": "Cet événement est surveillé par projet — choisissez-en un ci-dessous."
+      "projectRequired": "Cet événement est surveillé par projet — choisissez-en un ci-dessous.",
+      "triggerProjectNeedsEvent": "« Le projet qui a déclenché » demande un événement, pas un horaire."
     },
     "toast": {
       "created": "Automatisation créée",
@@ -3801,7 +3809,6 @@
       "sessError": "en erreur",
       "filePattern": "Fichiers",
       "filePatternHint": "Motif à surveiller. Laissez vide pour tout le projet.",
-      "needsProjectHint": "Surveillé par dépôt, un projet est donc obligatoire.",
       "projectOpenHint": "Se déclenche quand vous ouvrez ce projet dans la barre latérale.",
       "desc": {
         "git": {
@@ -3831,7 +3838,8 @@
       "chatReplyHint": "Se déclenche une fois que Claude a fini de répondre, sur la réponse complète. « Session Claude » se déclenche au même moment mais ne peut pas filtrer sur le texte.",
       "watchLabel": "Surveiller",
       "anyProject": "Tous les projets",
-      "pickProject": "Choisir un projet…"
+      "watchMultiHint": "Choisissez un ou plusieurs projets. « N'importe quel projet » couvre aussi ceux ajoutés plus tard.",
+      "watchMultiPickHint": "Surveillé par dépôt : choisissez au moins un projet."
     }
   }
 }

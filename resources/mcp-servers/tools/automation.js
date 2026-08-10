@@ -75,6 +75,9 @@ const VALIDATION_MESSAGES = {
   'automation.error.projectRequired':
     'This event installs a watcher on one repository, so it needs a specific project: pass `watch_project` '
     + '(or `project`, which it falls back to) as a project name or ID. "any" is not possible for this event.',
+  'automation.error.triggerProjectNeedsEvent':
+    'project="trigger" means "wherever the event fired", so it needs an event `when` '
+    + '(git, file_change, command_fails, session_end, chat_reply, project_open), not a schedule.',
   'automation.error.dateRequired': 'when="once" needs `at` as "YYYY-MM-DDTHH:MM" (local time).',
   'automation.error.scheduleInvalid': 'The schedule is incomplete or invalid (check `time`, `day`, `weekday` or `cron`).',
 };
@@ -197,10 +200,19 @@ function buildSimple(args, base) {
   if (has('effort')) simple.effort = String(args.effort);
 
   if (has('project')) {
-    const resolved = resolveProject(args.project);
-    if (resolved.error) return { error: resolved.error };
-    simple.projectId = resolved.id;
+    const raw = String(args.project).trim().toLowerCase();
+    // "the project that fired the event" is a scope, not a project id, so it
+    // never goes through resolveProject.
+    if (raw === 'trigger' || raw === simpleTask.TRIGGER_PROJECT) {
+      simple.projectId = simpleTask.TRIGGER_PROJECT;
+    } else {
+      const resolved = resolveProject(args.project);
+      if (resolved.error) return { error: resolved.error };
+      simple.projectId = resolved.id;
+    }
   }
+
+  if (has('use_context')) simple.useContext = args.use_context === true;
 
   if (has('when')) {
     const kind = String(args.when);
@@ -225,18 +237,24 @@ function buildSimple(args, base) {
   if (has('pattern')) simple.when.pattern = String(args.pattern);
   if (has('match_mode')) simple.when.matchMode = String(args.match_mode);
 
+  // `watch_project` accepts one project or a list; both land in the same array.
   if (has('watch_project')) {
-    const resolved = resolveProject(args.watch_project, { allowAny: true });
-    if (resolved.error) return { error: resolved.error };
-    simple.when.projectId = resolved.id;
+    const raw = Array.isArray(args.watch_project) ? args.watch_project : [args.watch_project];
+    const ids = [];
+    for (const entry of raw) {
+      const resolved = resolveProject(entry, { allowAny: true });
+      if (resolved.error) return { error: resolved.error };
+      if (resolved.id) ids.push(resolved.id);
+    }
+    simple.when.projectIds = ids;
   }
 
   // Caught here rather than left to validateTask, whose generic "needs a
   // project" message would send the caller straight back to "any".
-  if (simple.when.projectId === simpleTask.ANY_PROJECT && needsRealProject(simple.when.kind)) {
+  if (simple.when.projectIds.includes(simpleTask.ANY_PROJECT) && needsRealProject(simple.when.kind)) {
     return {
       error: `when="${simple.when.kind}" installs a watcher on one repository, so watch_project="any" cannot work. `
-        + 'Name the project to watch instead.',
+        + 'Name the projects to watch instead.',
     };
   }
 
@@ -257,7 +275,10 @@ function summarize(wf, { history = null } = {}) {
     `  Runs:     ${describeWhen(s.when)}`,
     `  Project:  ${projectLabel(s.projectId)}`,
   ];
-  if (s.when.projectId) lines.push(`  Watches:  ${projectLabel(s.when.projectId)}`);
+  if (s.when.projectIds.length) {
+    lines.push(`  Watches:  ${s.when.projectIds.map(projectLabel).join(', ')}`);
+  }
+  if (s.useContext) lines.push('  Context:  resumes the conversation that fired it');
   if (s.cwd) lines.push(`  Cwd:      ${s.cwd}`);
   if (s.model || s.effort) lines.push(`  Model:    ${s.model || 'app default'}${s.effort ? ` (effort: ${s.effort})` : ''}`);
 
@@ -276,7 +297,12 @@ function summarize(wf, { history = null } = {}) {
 // Shared between create and update so the two never drift apart.
 const SIMPLE_FIELDS = {
   prompt: { type: 'string', description: 'What Claude is asked to do when the automation fires.' },
-  project: { type: 'string', description: 'Project Claude runs in — name, ID or path.' },
+  project: {
+    type: 'string',
+    description:
+      'Project Claude runs in — name, ID or path. Pass "trigger" to run in whichever watched project '
+      + 'fired the event, which is what you want when the automation watches several.',
+  },
   cwd: { type: 'string', description: 'Working directory override. Defaults to the project path.' },
   model: { type: 'string', description: 'Model override, e.g. "claude-opus-5". Empty = the app default.' },
   effort: { type: 'string', description: 'Reasoning effort override: low | medium | high.' },
@@ -302,12 +328,19 @@ const SIMPLE_FIELDS = {
   pattern: { type: 'string', description: 'when="chat_reply": only fire when the reply matches this text. Empty = every reply.' },
   match_mode: { type: 'string', enum: ['contains', 'regex'], description: 'How `pattern` is matched. Default "contains".' },
   watch_project: {
-    type: 'string',
+    oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
     description:
-      'Which project the EVENT watches — a name or ID, or "any" for all projects. '
+      'Which project(s) the EVENT watches — a name or ID, a list of them, or "any" for all projects. '
       + 'Separate from `project` (where Claude runs): "when I push in the API, write it up in my notes" is a real case. '
-      + 'when="git" and when="file_change" install a per-repository watcher, so they need a named project here '
+      + 'when="git" and when="file_change" install a per-repository watcher, so they need named projects here '
       + '(or in `project`, which they fall back to) and reject "any".',
+  },
+  use_context: {
+    type: 'boolean',
+    description:
+      'Only for when="session_end" / when="chat_reply". Resume the conversation that fired the event — Claude '
+      + 'gets a fork of its history (the user\'s own session is untouched) plus the list of files it changed. '
+      + 'Use it so an auto-commit stays scoped to that conversation when several Claude sessions share a repository.',
   },
 
   notify_desktop: { type: 'boolean', description: 'Desktop notification when the run ends. Default true.' },

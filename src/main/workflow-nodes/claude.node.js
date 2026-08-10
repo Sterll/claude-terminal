@@ -67,7 +67,7 @@ module.exports = {
     { name: 'result', type: 'any'    },
   ],
 
-  props: { mode: 'prompt', prompt: '', agentId: '', skillId: '', model: 'sonnet', effort: 'medium', outputSchema: null, cwd: '', maxTurns: 30 },
+  props: { mode: 'prompt', prompt: '', agentId: '', skillId: '', model: 'sonnet', effort: 'medium', outputSchema: null, cwd: '', maxTurns: 30, resumeFrom: '' },
 
   fields: [
     { type: 'claude-config', key: 'mode', label: 'wfn.claude.label' },
@@ -75,6 +75,11 @@ module.exports = {
     // maxTurns, so surface it here (backward-compatible, defaults to 30).
     { type: 'number', key: 'maxTurns', label: 'Max turns',
       placeholder: '30' },
+    // Automations set this to `$trigger.sdkSessionId` to inherit the context of
+    // the conversation that fired them. Surfaced so a task converted to the
+    // advanced editor does not carry an invisible setting.
+    { type: 'text', key: 'resumeFrom', label: 'Resume session',
+      placeholder: '$trigger.sdkSessionId', mono: true },
   ],
 
   badge: (n) => ({ prompt: 'PROMPT', agent: 'AGENT', skill: 'SKILL' }[n.properties.mode] || 'PROMPT'),
@@ -100,6 +105,15 @@ module.exports = {
       });
     };
 
+    // resolveVars leaves a reference it cannot satisfy as the literal `$name`,
+    // which is right for prose but wrong for a path or an id: a task set to
+    // "run where it fired" but run manually would otherwise get the string
+    // "$trigger.projectPath" as its cwd and skip every fallback below.
+    const resolveRef = (value) => {
+      const out = resolveVars(value || '', vars);
+      return typeof out === 'string' && out.startsWith('$') ? '' : out;
+    };
+
     const mode    = config.mode   || 'prompt';
     const prompt  = resolveVars(config.prompt || '', vars);
     const varCtx  = vars instanceof Map ? (vars.get('ctx') || {}) : (vars?.ctx || {});
@@ -109,7 +123,7 @@ module.exports = {
     // Resolution order: explicit cwd → the node's project picker → the run
     // context's project. Without the projectId step, a cron-triggered run (which
     // has no "current project") would ignore the picker and land in $HOME.
-    let cwd = resolveVars(config.cwd || '', vars)
+    let cwd = resolveRef(config.cwd)
       || resolveProjectPath(config.projectId || '', vars)
       || varCtx.project
       || '';
@@ -131,6 +145,14 @@ module.exports = {
     if (signal?.aborted) throw new Error('Cancelled');
 
     const opts = { cwd, prompt, model, effort, maxTurns, signal };
+
+    // Continue an existing Claude conversation instead of starting cold — how
+    // an automation inherits the context of the session that triggered it.
+    // Usually `$trigger.sdkSessionId`; empty (or unresolved, on a manual run)
+    // just means a normal one-shot run. ChatService always forks, so the
+    // conversation being resumed is read, never written to.
+    const resume = resolveRef(config.resumeFrom);
+    if (resume) opts.resume = resume;
 
     if (mode === 'skill' && config.skillId) {
       opts.skills = [config.skillId];

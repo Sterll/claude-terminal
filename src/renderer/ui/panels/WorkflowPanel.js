@@ -2012,6 +2012,12 @@ async function openEditor(workflowId = null, options = {}) {
         const key = input.dataset.key;
         const val = input.type === 'checkbox' ? input.checked : input.value;
         node.properties[key] = val;
+        // A field may own a list property that its own value supersedes.
+        // The trigger project picker uses this to clear `projectIds`, which
+        // the scheduler prefers — without it, picking a project here would
+        // appear to do nothing on a task that watches several.
+        const clearList = input.dataset.clearList;
+        if (clearList) node.properties[clearList] = [];
         editorDraft.dirty = true;
         if (node.widgets) {
           const w = node.widgets.find(w => w.name === key || w.name.toLowerCase() === key.toLowerCase());

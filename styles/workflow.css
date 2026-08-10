@@ -7285,6 +7285,35 @@ select.wf-step-edit-input {
   transition: border-color .15s var(--wf-ease);
 }
 .auto-input:focus { outline: none; border-color: var(--accent); }
+
+/* Watched projects. A multi-select listbox cannot show "3 of 12 selected" at a
+   glance, and a dropdown hides the answer behind a click — with a handful of
+   projects the whole set fits inline, so the selection is just readable. */
+.auto-chips {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  /* Long project lists scroll rather than pushing the footer off-screen. */
+  max-height: 128px; overflow-y: auto;
+  padding: 2px;
+}
+.auto-pchip {
+  padding: 4px 9px;
+  border-radius: 6px;
+  font-size: var(--font-2xs);
+  font-family: inherit;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  border: 1px solid var(--wf-border);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color .15s var(--wf-ease), color .15s var(--wf-ease), background .15s var(--wf-ease);
+}
+.auto-pchip:hover { color: var(--text-primary); border-color: rgba(255,255,255,.22); }
+.auto-pchip.active {
+  color: var(--accent-hover);
+  border-color: var(--accent-dim);
+  background: var(--accent-dim);
+}
+.auto-pchip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .auto-input--time { max-width: 130px; }
 .auto-input--mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .auto-textarea { resize: vertical; min-height: 76px; line-height: 1.5; }

@@ -36,15 +36,19 @@ const SCHEDULE_KINDS = ['once', 'hourly', 'daily', 'weekly', 'monthly', 'custom'
  * so the task must refuse to save rather than look armed and never fire.
  */
 const EVENT_KINDS = {
-  git:           { trigger: 'git_event',           needsProject: true  },
-  file_change:   { trigger: 'file_change',         needsProject: true  },
-  command_fails: { trigger: 'terminal_exit_code',  needsProject: false },
+  git:           { trigger: 'git_event',           needsProject: true,  carriesSession: false },
+  file_change:   { trigger: 'file_change',         needsProject: true,  carriesSession: false },
+  command_fails: { trigger: 'terminal_exit_code',  needsProject: false, carriesSession: false },
   // Both fire once per turn, when Claude stops talking. session_end carries the
   // turn's status, chat_reply carries the reply text — and the pattern filter it
   // enables is what makes the second one worth having on its own.
-  session_end:   { trigger: 'claude_session_end',  needsProject: false },
-  chat_reply:    { trigger: 'chat_message',        needsProject: false },
-  project_open:  { trigger: 'project_opened',      needsProject: false },
+  //
+  // `carriesSession` marks the two that fire *out of a conversation*: their
+  // trigger payload names the Claude session that just ended, which is what
+  // makes `simple.useContext` possible at all.
+  session_end:   { trigger: 'claude_session_end',  needsProject: false, carriesSession: true  },
+  chat_reply:    { trigger: 'chat_message',        needsProject: false, carriesSession: true  },
+  project_open:  { trigger: 'project_opened',      needsProject: false, carriesSession: false },
 };
 
 const EVENT_KIND_NAMES = Object.keys(EVENT_KINDS);
@@ -71,20 +75,32 @@ const DEFAULT_SCHEDULE = {
   patterns: '',         // file_change glob, empty = everything watched
   pattern:  '',         // chat_reply text filter, empty = every reply
   matchMode: 'contains',// contains | regex
-  // WHICH project the event watches. Separate from simple.projectId, which is
+  // WHICH projects the event watches. Separate from simple.projectId, which is
   // where Claude runs — "when I push in the API, summarise it in my notes" is a
   // real thing to want.
   //
-  // Three states, not two: '' means "not chosen" and falls back to the run
+  // Three states, not two: [] means "not chosen" and falls back to the run
   // project, which is how tasks saved before this field existed keep behaving.
-  // ANY_PROJECT is the EXPLICIT "watch everything" — without a distinct value
+  // [ANY_PROJECT] is the EXPLICIT "watch everything" — without a distinct value
   // the fallback would silently override the user's choice whenever a run
   // project was set, making "any project" unselectable.
-  projectId: '',
+  //
+  // Was a single `projectId` string until multi-project watching landed;
+  // normalizeSimple still reads that key so old tasks migrate on load.
+  projectIds: [],
 };
 
 /** Sentinel for "watch every project", distinct from "not chosen". */
 const ANY_PROJECT = '__any__';
+
+/**
+ * Sentinel for `simple.projectId`: run in whichever project fired the event.
+ *
+ * Only meaningful for event kinds — a cron tick has no project to inherit — so
+ * validateTask refuses it on a schedule. Compiles to `cwd: '$trigger.projectPath'`,
+ * which every event dispatch in WorkflowScheduler now populates.
+ */
+const TRIGGER_PROJECT = '__trigger__';
 
 const DEFAULT_SIMPLE = {
   prompt:    '',
@@ -98,6 +114,9 @@ const DEFAULT_SIMPLE = {
   // Tasks saved before events existed carry `schedule`; normalizeSimple migrates.
   when:      { ...DEFAULT_SCHEDULE },
   notify:    { desktop: true, includeResult: true, discord: '' },
+  // Resume the conversation that fired the event instead of starting cold.
+  // Only honoured for `carriesSession` kinds — see buildSimpleGraph.
+  useContext: false,
 };
 
 function clampInt(value, min, max, fallback) {
@@ -206,30 +225,52 @@ function nextRunForTask(workflow, from = new Date()) {
 const ONE_OF = (value, allowed, fallback) => (allowed.includes(value) ? value : fallback);
 
 /**
+ * The projects an event task watches, resolved to a plain list of ids.
+ *
+ * An empty result means "every project" for the filtering kinds and "nothing
+ * to install" for the per-repository ones — which is exactly why validateTask
+ * refuses to save the latter with an empty list.
+ *
+ * @param {Object} simple  a normalized simple payload
+ * @returns {string[]}
+ */
+function watchedProjectIds(simple) {
+  const ids = simple.when.projectIds || [];
+  if (ids.includes(ANY_PROJECT)) return [];
+  if (ids.length) return ids;
+  // Unset → inherit the run project, so tasks saved before the two fields were
+  // separated keep behaving exactly as they did. TRIGGER_PROJECT is not a
+  // project, so there is nothing to inherit from it.
+  const run = simple.projectId;
+  return run && run !== TRIGGER_PROJECT ? [run] : [];
+}
+
+/**
  * Build the workflow `trigger` object for a task.
  *
  * Every key here has to match what WorkflowScheduler reads, exactly — it is the
  * only consumer, and a key it does not recognise is silently ignored rather
  * than reported.
  *
+ * Both `projectId` and `projectIds` are written. The array is the real answer;
+ * the scalar is kept in sync (set only when exactly one project is watched) so
+ * the advanced trigger editor, which knows nothing about the array, still shows
+ * and edits something truthful for the common single-project case.
+ *
  * @param {Object} simple  a normalized simple payload
  * @returns {Object} trigger
  */
 function buildTrigger(simple) {
   const when = simple.when;
-  // The event's own project wins; ANY_PROJECT means watch everything, and an
-  // unset value falls back to the run project so tasks saved before the two
-  // were separated keep behaving exactly as they did.
-  const project = when.projectId === ANY_PROJECT
-    ? ''
-    : (when.projectId || simple.projectId || '');
+  const projectIds = watchedProjectIds(simple);
+  const project    = projectIds.length === 1 ? projectIds[0] : '';
 
   switch (when.kind) {
     case 'git':
       return {
         type: 'git_event',
         value: '',
-        projectId: project,
+        projectId: project, projectIds,
         eventFilter: ONE_OF(when.gitEvent, ['any', 'commit', 'push', 'branch_switch'], 'any'),
       };
 
@@ -237,7 +278,7 @@ function buildTrigger(simple) {
       return {
         type: 'file_change',
         value: '',
-        projectId: project,
+        projectId: project, projectIds,
         patterns: when.patterns || '',
         events: 'all',
         debounceMs: 500,
@@ -247,7 +288,7 @@ function buildTrigger(simple) {
       return {
         type: 'terminal_exit_code',
         value: '',
-        projectId: project,
+        projectId: project, projectIds,
         codeFilter: ONE_OF(when.exitCode, ['any', 'success', 'error'], 'error'),
       };
 
@@ -255,7 +296,7 @@ function buildTrigger(simple) {
       return {
         type: 'claude_session_end',
         value: '',
-        projectId: project,
+        projectId: project, projectIds,
         statusFilter: ONE_OF(when.status, ['any', 'success', 'error'], 'any'),
       };
 
@@ -263,7 +304,7 @@ function buildTrigger(simple) {
       return {
         type: 'chat_message',
         value: '',
-        projectId: project,
+        projectId: project, projectIds,
         role: 'assistant',
         pattern: when.pattern || '',
         // Plain substring unless the user asked for a regex; the scheduler
@@ -272,7 +313,7 @@ function buildTrigger(simple) {
       };
 
     case 'project_open':
-      return { type: 'project_opened', value: '', projectId: project };
+      return { type: 'project_opened', value: '', projectId: project, projectIds };
 
     default:
       return { type: 'cron', value: scheduleToCron(when) || '' };
@@ -280,6 +321,28 @@ function buildTrigger(simple) {
 }
 
 // ── Normalisation ───────────────────────────────────────────────────────────
+
+/**
+ * Coerce a watched-projects value into a clean list of ids.
+ *
+ * Accepts the legacy scalar `projectId`, which is what tasks saved before
+ * multi-project watching carry. ANY_PROJECT absorbs the rest of the list: "any
+ * project plus SpaceNew" is just "any project", and collapsing it here means no
+ * consumer has to special-case a list that contains both.
+ */
+function normalizeProjectIds(rawWhen) {
+  const raw = Array.isArray(rawWhen.projectIds)
+    ? rawWhen.projectIds
+    : (typeof rawWhen.projectId === 'string' && rawWhen.projectId ? [rawWhen.projectId] : []);
+
+  const out = [];
+  for (const id of raw) {
+    if (typeof id !== 'string' || !id) continue;
+    if (id === ANY_PROJECT) return [ANY_PROJECT];
+    if (!out.includes(id)) out.push(id);
+  }
+  return out;
+}
 
 /**
  * Coerce an arbitrary `simple` payload into a complete, well-typed one.
@@ -316,13 +379,17 @@ function normalizeSimple(raw) {
       patterns: typeof rawWhen.patterns === 'string' ? rawWhen.patterns : '',
       pattern:  typeof rawWhen.pattern  === 'string' ? rawWhen.pattern  : '',
       matchMode: ONE_OF(rawWhen.matchMode, ['contains', 'regex'], 'contains'),
-      projectId: typeof rawWhen.projectId === 'string' ? rawWhen.projectId : '',
+      projectIds: normalizeProjectIds(rawWhen),
     },
     notify: {
       desktop:       rawNotif.desktop !== false,
       includeResult: rawNotif.includeResult !== false,
       discord:       typeof rawNotif.discord === 'string' ? rawNotif.discord.trim() : '',
     },
+    // Gated on the kind, not just the flag: a cron task has no conversation to
+    // resume, and leaving the flag set on one would compile a preamble that
+    // lies about where the run came from.
+    useContext: src.useContext === true && !!EVENT_KINDS[kind]?.carriesSession,
   };
 }
 
@@ -331,6 +398,38 @@ function normalizeSimple(raw) {
 const NODE_TRIGGER = 1;
 const NODE_CLAUDE  = 2;
 const NODE_NOTIFY  = 3;
+
+/**
+ * Prepended to the prompt when `useContext` is on.
+ *
+ * The run also *resumes* the triggering conversation (see `resumeFrom` below),
+ * so the history is already in the model's context — this only states the two
+ * things the history cannot: that the turn came from an automation, and which
+ * files that conversation actually touched.
+ *
+ * The file list is the part that matters. Without it, an auto-commit task on a
+ * repository with several concurrent Claude sessions sees one dirty working
+ * tree and no way to tell whose changes are whose, so it commits all of them.
+ *
+ * Deliberately English, like every other prompt this module compiles: the
+ * shared layer has no `t()` and the payload is an instruction to a model, not
+ * UI text. The user's own prompt follows in whatever language they wrote it.
+ */
+const CONTEXT_PREAMBLE = [
+  '[Automation context]',
+  'This turn was started by an automation, not by the user. It continues the Claude Code',
+  'conversation above, which has just finished in this project.',
+  '',
+  'Files that conversation created or modified:',
+  '$trigger.filesText',
+  '',
+  'Other Claude sessions may be running in the same repository, so the working tree can',
+  'hold changes that have nothing to do with this conversation. Scope everything you do —',
+  'and anything you stage or commit — to the files listed above.',
+  '',
+  '---',
+  '',
+].join('\n');
 
 /**
  * Build the LiteGraph payload for a task.
@@ -382,21 +481,31 @@ function buildSimpleGraph(simple, name) {
     flags: {},
   });
 
+  // "Run where it fired" is expressed as a variable reference rather than a
+  // mode flag: claude.node.js already resolves `$…` against the run's vars, and
+  // WorkflowRunner already exposes the trigger payload as `trigger`. Every event
+  // dispatch in WorkflowScheduler populates projectPath for exactly this.
+  const fromTrigger = s.projectId === TRIGGER_PROJECT;
+
   nodes.push({
     id: NODE_CLAUDE,
     type: 'workflow/claude',
     pos: [400, 180], size: [260, 130],
     properties: {
       mode: 'prompt',
-      prompt: s.prompt,
+      prompt: s.useContext ? CONTEXT_PREAMBLE + s.prompt : s.prompt,
       agentId: '', skillId: '',
       model: s.model,
       effort: s.effort,
       outputSchema: null,
       // Both are written: `cwd` is what claude.node.js executes in, `projectId`
-      // is what the advanced editor's project picker reads back.
-      projectId: s.projectId,
-      cwd: s.cwd,
+      // is what the advanced editor's project picker reads back. The sentinel
+      // is not a real project id, so it must not reach the picker.
+      projectId: fromTrigger ? '' : s.projectId,
+      cwd: fromTrigger ? '$trigger.projectPath' : s.cwd,
+      // Resume the conversation that fired the event. claude.node.js forks it
+      // rather than appending, so the user's own session is never written to.
+      resumeFrom: s.useContext ? '$trigger.sdkSessionId' : '',
       maxTurns: 30,
       _customTitle: name || 'Task',
     },
@@ -495,12 +604,19 @@ function validateTask(task) {
 
   if (isEventKind(kind)) {
     // WorkflowScheduler installs per-repository watchers for these and bails
-    // when projectId is empty — with no warning. Refusing here is the only way
+    // when the list is empty — with no warning. Refusing here is the only way
     // the task does not end up looking armed while watching nothing.
-    if (EVENT_KINDS[kind].needsProject && !buildTrigger(simple).projectId) {
+    if (EVENT_KINDS[kind].needsProject && !watchedProjectIds(simple).length) {
       return { valid: false, errorKey: 'automation.error.projectRequired' };
     }
     return { valid: true };
+  }
+
+  // "Run where it fired" needs something to have fired. On a schedule there is
+  // no triggering project, so the reference would resolve to nothing and the
+  // run would silently land in the home folder.
+  if (simple.projectId === TRIGGER_PROJECT) {
+    return { valid: false, errorKey: 'automation.error.triggerProjectNeedsEvent' };
   }
 
   if (kind === 'once' && !parseLocalDateTime(simple.when.at)) {
@@ -572,11 +688,13 @@ const TASK_PRESETS = [
 module.exports = {
   SCHEDULE_KINDS,
   ANY_PROJECT,
+  TRIGGER_PROJECT,
   EVENT_KINDS,
   EVENT_KIND_NAMES,
   WHEN_KINDS,
   isEventKind,
   buildTrigger,
+  watchedProjectIds,
   MAX_MONTH_DAY,
   DEFAULT_SCHEDULE,
   DEFAULT_SIMPLE,

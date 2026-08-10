@@ -2693,7 +2693,8 @@
       "onWorkflowStatusHint": "Solo se ejecuta si el workflow de origen terminó así.",
       "onWorkflowStatusAny": "Cualquier resultado",
       "onWorkflowStatusSuccess": "Solo éxito",
-      "onWorkflowStatusFailed": "Solo fallo"
+      "onWorkflowStatusFailed": "Solo fallo",
+      "multiProjectNote": "Vigila {projects}. Elegir uno aquí sustituye esa lista."
     },
     "loop": {
       "sourceLabel": "Fuente de iteración",
@@ -3655,7 +3656,9 @@
       "toggleAria": "Activar {name}",
       "paused": "En pausa",
       "runNow": "Ejecutar ahora",
-      "more": "Más acciones"
+      "more": "Más acciones",
+      "watches": "Vigila {projects}",
+      "withContext": "Con la conversación"
     },
     "empty": {
       "title": "Automatiza una tarea recurrente",
@@ -3720,7 +3723,11 @@
       "previewNever": "Esta programación nunca se activa.",
       "modeSchedule": "Con un horario",
       "modeEvent": "Con un evento",
-      "previewEvent": "Se ejecuta {event}"
+      "previewEvent": "Se ejecuta {event}",
+      "triggerProject": "El proyecto que lo activó",
+      "contextLabel": "Conversación",
+      "useContext": "Continuar la conversación que lo activó",
+      "useContextHint": "Claude retoma una copia de esa conversación — tu sesión no se toca — y recibe la lista de archivos que modificó. Úsalo para que un auto-commit solo toque el trabajo de esa conversación cuando varias sesiones de Claude comparten un repositorio."
     },
     "menu": {
       "edit": "Editar",
@@ -3739,7 +3746,8 @@
       "promptRequired": "Describe qué debe hacer Claude.",
       "dateRequired": "Elige una fecha y una hora.",
       "scheduleInvalid": "Esta programación no es válida.",
-      "projectRequired": "Este evento se vigila por proyecto — elige uno abajo."
+      "projectRequired": "Este evento se vigila por proyecto — elige uno abajo.",
+      "triggerProjectNeedsEvent": "«El proyecto que lo activó» necesita un evento, no un horario."
     },
     "toast": {
       "created": "Automatización creada",
@@ -3801,7 +3809,6 @@
       "sessError": "con error",
       "filePattern": "Archivos",
       "filePatternHint": "Patrón a vigilar. Déjalo vacío para todo el proyecto.",
-      "needsProjectHint": "Se vigila por repositorio, así que hace falta un proyecto.",
       "projectOpenHint": "Se activa cuando abres este proyecto en la barra lateral.",
       "desc": {
         "git": {
@@ -3831,7 +3838,8 @@
       "chatReplyHint": "Se activa cuando Claude termina de responder, sobre la respuesta completa. «Sesión de Claude» se activa en el mismo momento pero no puede filtrar por texto.",
       "watchLabel": "Vigilar",
       "anyProject": "Todos los proyectos",
-      "pickProject": "Elige un proyecto…"
+      "watchMultiHint": "Elige uno o varios proyectos. «Cualquier proyecto» cubre también los que añadas después.",
+      "watchMultiPickHint": "Se vigila por repositorio, así que elige al menos un proyecto."
     }
   }
 }

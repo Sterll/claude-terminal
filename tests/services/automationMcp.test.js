@@ -176,7 +176,7 @@ describe('automation_update', () => {
     await call('automation_update', { automation: 'Test', when: 'session_end', status: 'error' });
 
     expect(readDefs()[0].trigger).toEqual({
-      type: 'claude_session_end', value: '', projectId: 'proj-a', statusFilter: 'error',
+      type: 'claude_session_end', value: '', projectId: 'proj-a', projectIds: ['proj-a'], statusFilter: 'error',
     });
   });
 

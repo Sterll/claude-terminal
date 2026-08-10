@@ -90,7 +90,44 @@ function getProjectsList() {
   return (typeof window !== 'undefined' && window._projectsState?.get?.()?.projects) || [];
 }
 
-function renderProjectSelect(key, selected, esc, withAny = true) {
+/**
+ * Bind the plain `data-key` inputs inside a freshly re-rendered section.
+ *
+ * The conditional sections are rebuilt as innerHTML in several places, and each
+ * rebuild drops the listeners the generic panel binder attached — so every call
+ * site has to re-wire them. One helper instead of five copies, and one place
+ * where `data-clear-list` is honoured.
+ */
+function bindProps(root, node) {
+  root.querySelectorAll('.wf-node-prop').forEach(el => {
+    const key = el.dataset.key;
+    if (!key) return;
+    const updateProp = () => {
+      const raw = el.value;
+      if (el.type === 'number') {
+        const n = Number(raw);
+        node.properties[key] = Number.isFinite(n) ? n : raw;
+      } else {
+        node.properties[key] = raw;
+      }
+      const clearList = el.dataset.clearList;
+      if (clearList) node.properties[clearList] = [];
+    };
+    el.addEventListener('change', updateProp);
+    el.addEventListener('input',  updateProp);
+  });
+}
+
+/**
+ * The project scope picker.
+ *
+ * Tasks built in the Automations tab can watch several projects, which lives in
+ * `projectIds` and is what WorkflowScheduler reads first. This single-select
+ * cannot express that, so it does two things instead of silently disagreeing
+ * with it: it says how many projects are actually watched, and picking one here
+ * clears the list (see `data-clear-list`) so the choice actually takes effect.
+ */
+function renderProjectSelect(key, selected, esc, withAny = true, props = null) {
   const projects = getProjectsList();
   const options = projects
     .map(p => `<option value="${esc(p.id)}"${selected === p.id ? ' selected' : ''}>${esc(p.name)}</option>`)
@@ -98,7 +135,17 @@ function renderProjectSelect(key, selected, esc, withAny = true) {
   const anyOpt = withAny
     ? `<option value=""${!selected ? ' selected' : ''}>${t('workflow.trigger.anyProject')}</option>`
     : '';
-  return `<select class="wf-step-edit-input wf-node-prop" data-key="${esc(key)}">
+
+  const watched = Array.isArray(props?.projectIds) ? props.projectIds.filter(Boolean) : [];
+  const multiNote = watched.length > 1
+    ? `<span class="wf-field-hint">${esc(t('workflow.trigger.multiProjectNote', {
+        projects: watched
+          .map(id => projects.find(p => p.id === id)?.name || id)
+          .join(', '),
+      }))}</span>`
+    : '';
+
+  return `${multiNote}<select class="wf-step-edit-input wf-node-prop" data-key="${esc(key)}" data-clear-list="projectIds">
     ${anyOpt}${options}
   </select>`;
 }
@@ -124,7 +171,7 @@ function renderHookSection(props, esc) {
 <div class="wf-step-edit-field">
   <label class="wf-step-edit-label">${t('workflow.trigger.hookProjectLabel')}</label>
   <span class="wf-field-hint">${t('workflow.trigger.hookProjectHint')}</span>
-  ${renderProjectSelect('projectId', props.projectId || '', esc, true)}
+  ${renderProjectSelect('projectId', props.projectId || '', esc, true, props)}
 </div>
 ${toolNameSection}`;
 }
@@ -143,7 +190,7 @@ function renderFileChangeSection(props, esc) {
   return `<div class="wf-step-edit-field">
   <label class="wf-step-edit-label">${t('workflow.trigger.fileChangeProjectLabel')}</label>
   <span class="wf-field-hint">${t('workflow.trigger.fileChangeProjectHint')}</span>
-  ${renderProjectSelect('projectId', props.projectId || '', esc, true)}
+  ${renderProjectSelect('projectId', props.projectId || '', esc, true, props)}
 </div>
 <div class="wf-step-edit-field">
   <label class="wf-step-edit-label">${t('workflow.trigger.fileChangePathLabel')}</label>
@@ -197,7 +244,7 @@ ${customSection}
 <div class="wf-step-edit-field">
   <label class="wf-step-edit-label">${t('workflow.trigger.terminalExitProjectLabel')}</label>
   <span class="wf-field-hint">${t('workflow.trigger.terminalExitProjectHint')}</span>
-  ${renderProjectSelect('projectId', props.projectId || '', esc, true)}
+  ${renderProjectSelect('projectId', props.projectId || '', esc, true, props)}
 </div>
 <div class="wf-step-edit-field">
   <label class="wf-step-edit-label">${t('workflow.trigger.terminalExitCommandLabel')}</label>
@@ -211,7 +258,7 @@ function renderProjectOpenedSection(props, esc) {
   return `<div class="wf-step-edit-field">
   <label class="wf-step-edit-label">${t('workflow.trigger.projectOpenedLabel')}</label>
   <span class="wf-field-hint">${t('workflow.trigger.projectOpenedHint')}</span>
-  ${renderProjectSelect('projectId', props.projectId || '', esc, true)}
+  ${renderProjectSelect('projectId', props.projectId || '', esc, true, props)}
 </div>`;
 }
 
@@ -219,7 +266,7 @@ function renderClaudeSessionStartSection(props, esc) {
   return `<div class="wf-step-edit-field">
   <label class="wf-step-edit-label">${t('workflow.trigger.claudeSessionProjectLabel')}</label>
   <span class="wf-field-hint">${t('workflow.trigger.claudeSessionStartHint')}</span>
-  ${renderProjectSelect('projectId', props.projectId || '', esc, true)}
+  ${renderProjectSelect('projectId', props.projectId || '', esc, true, props)}
 </div>`;
 }
 
@@ -241,7 +288,7 @@ function renderClaudeSessionEndSection(props, esc) {
 <div class="wf-step-edit-field">
   <label class="wf-step-edit-label">${t('workflow.trigger.claudeSessionProjectLabel')}</label>
   <span class="wf-field-hint">${t('workflow.trigger.claudeSessionEndHint')}</span>
-  ${renderProjectSelect('projectId', props.projectId || '', esc, true)}
+  ${renderProjectSelect('projectId', props.projectId || '', esc, true, props)}
 </div>`;
 }
 
@@ -264,7 +311,7 @@ function renderGitEventSection(props, esc) {
 <div class="wf-step-edit-field">
   <label class="wf-step-edit-label">${t('workflow.trigger.gitEventProjectLabel')}</label>
   <span class="wf-field-hint">${t('workflow.trigger.gitEventProjectHint')}</span>
-  ${renderProjectSelect('projectId', props.projectId || '', esc, true)}
+  ${renderProjectSelect('projectId', props.projectId || '', esc, true, props)}
 </div>
 <div class="wf-step-edit-field">
   <label class="wf-step-edit-label">${t('workflow.trigger.gitEventBranchLabel')}</label>
@@ -309,7 +356,7 @@ function renderChatMessageSection(props, esc) {
 <div class="wf-step-edit-field">
   <label class="wf-step-edit-label">${t('workflow.trigger.chatMessageProjectLabel')}</label>
   <span class="wf-field-hint">${t('workflow.trigger.chatMessageProjectHint')}</span>
-  ${renderProjectSelect('projectId', props.projectId || '', esc, true)}
+  ${renderProjectSelect('projectId', props.projectId || '', esc, true, props)}
 </div>`;
 }
 
@@ -467,12 +514,7 @@ module.exports = {
         node.properties.hookType = hookTypeInit.value;
         function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
         condDiv.innerHTML = renderHookSection(node.properties || {}, esc);
-        condDiv.querySelectorAll('.wf-node-prop').forEach(el => {
-          const key = el.dataset.key;
-          if (!key) return;
-          el.addEventListener('change', () => { node.properties[key] = el.value; });
-          el.addEventListener('input',  () => { node.properties[key] = el.value; });
-        });
+        bindProps(condDiv, node);
       });
     }
 
@@ -486,12 +528,7 @@ module.exports = {
         node.properties.codeFilter = exitFilterInit.value;
         function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
         condDiv.innerHTML = renderTerminalExitSection(node.properties || {}, esc);
-        condDiv.querySelectorAll('.wf-node-prop').forEach(el => {
-          const key = el.dataset.key;
-          if (!key) return;
-          el.addEventListener('change', () => { node.properties[key] = el.value; });
-          el.addEventListener('input',  () => { node.properties[key] = el.value; });
-        });
+        bindProps(condDiv, node);
       });
     }
 
@@ -550,22 +587,7 @@ module.exports = {
       condDiv.innerHTML = html;
 
       // Re-bind the new inputs
-      condDiv.querySelectorAll('.wf-node-prop').forEach(el => {
-        const key = el.dataset.key;
-        if (!key) return;
-        const updateProp = () => {
-          // coerce numeric fields so debounceMs is stored as number
-          const v = el.value;
-          if (el.type === 'number') {
-            const n = Number(v);
-            node.properties[key] = Number.isFinite(n) ? n : v;
-          } else {
-            node.properties[key] = v;
-          }
-        };
-        el.addEventListener('change', updateProp);
-        el.addEventListener('input',  updateProp);
-      });
+      bindProps(condDiv, node);
 
       // Re-render hook section when hookType toggles between tool / non-tool kinds
       const hookTypeSel = condDiv.querySelector('.wf-trigger-hook-type');
@@ -573,12 +595,7 @@ module.exports = {
         hookTypeSel.addEventListener('change', () => {
           node.properties.hookType = hookTypeSel.value;
           condDiv.innerHTML = renderHookSection(node.properties || {}, esc);
-          condDiv.querySelectorAll('.wf-node-prop').forEach(el => {
-            const key = el.dataset.key;
-            if (!key) return;
-            el.addEventListener('change', () => { node.properties[key] = el.value; });
-            el.addEventListener('input',  () => { node.properties[key] = el.value; });
-          });
+          bindProps(condDiv, node);
         });
       }
 
@@ -589,12 +606,7 @@ module.exports = {
           node.properties.codeFilter = exitFilter.value;
           condDiv.innerHTML = renderTerminalExitSection(node.properties || {}, esc);
           // re-wire after inner render
-          condDiv.querySelectorAll('.wf-node-prop').forEach(el => {
-            const key = el.dataset.key;
-            if (!key) return;
-            el.addEventListener('change', () => { node.properties[key] = el.value; });
-            el.addEventListener('input',  () => { node.properties[key] = el.value; });
-          });
+          bindProps(condDiv, node);
         });
       }
 

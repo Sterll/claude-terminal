@@ -317,7 +317,7 @@ class WorkflowService {
 
   /**
    * Forward chat message events (user prompt / assistant reply) to the scheduler.
-   * @param {Object} event { role, text, projectId?, sessionId? }
+   * @param {Object} event { role, text, projectId?, cwd?, sessionId?, sdkSessionId?, files?, filesText? }
    */
   onChatMessage(event) {
     this._scheduler.onChatMessage(event);

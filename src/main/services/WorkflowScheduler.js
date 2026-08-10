@@ -67,6 +67,46 @@ function evalHookCondition(condition, hookEvent) {
   }
 }
 
+// ─── Project scoping ──────────────────────────────────────────────────────────
+
+/**
+ * The projects a trigger is scoped to.
+ *
+ * `projectIds` (an array) is the current shape and wins whenever it is present
+ * and non-empty; `projectId` (a scalar) is what every task saved before
+ * multi-project watching carries, and what the advanced trigger editor still
+ * writes. An empty result means "no filter" — i.e. every project.
+ *
+ * @param {Object} trigger
+ * @returns {string[]}
+ */
+function triggerProjectIds(trigger) {
+  const list = trigger?.projectIds;
+  if (Array.isArray(list)) {
+    const ids = list.filter(id => typeof id === 'string' && id);
+    if (ids.length) return ids;
+  }
+  return trigger?.projectId ? [trigger.projectId] : [];
+}
+
+/**
+ * True when an event from `projectId` is in a trigger's scope.
+ * An unscoped trigger matches everything, which is what "any project" compiles to.
+ */
+function triggerWatchesProject(trigger, projectId) {
+  const ids = triggerProjectIds(trigger);
+  return ids.length === 0 || ids.includes(projectId);
+}
+
+/**
+ * Split a per-project watcher key back into its parts.
+ * Watchers are keyed `<workflowId>::<projectId>` so one workflow can hold one
+ * watcher per repository — `::` cannot appear in either half (both are uuids /
+ * generated ids), so a plain lastIndexOf is unambiguous.
+ */
+const watcherKey   = (wfId, projectId) => `${wfId}::${projectId}`;
+const keyWorkflowId = (key) => key.slice(0, key.lastIndexOf('::'));
+
 // ─── WorkflowScheduler class ──────────────────────────────────────────────────
 
 class WorkflowScheduler {
@@ -238,7 +278,7 @@ class WorkflowScheduler {
         ? (trigger.customCodes || '')
         : trigger.codeFilter;
       if (!matchesExitCode(filter, exitCode)) continue;
-      if (trigger.projectId && trigger.projectId !== event.projectId) continue;
+      if (!triggerWatchesProject(trigger, event.projectId)) continue;
 
       // Optional command pattern — matches against the spawned shell command.
       if (trigger.commandPattern && trigger.commandPattern.trim()) {
@@ -268,7 +308,7 @@ class WorkflowScheduler {
       if (!wf.enabled) continue;
       const trigger = wf.trigger || {};
       if (trigger.type !== 'project_opened') continue;
-      if (trigger.projectId && trigger.projectId !== event.projectId) continue;
+      if (!triggerWatchesProject(trigger, event.projectId)) continue;
 
       this.dispatch?.(wf.id, {
         source:      'project_opened',
@@ -281,7 +321,7 @@ class WorkflowScheduler {
 
   /**
    * Call this when a Claude chat session starts or ends.
-   * @param {Object} event  { event: 'start'|'end', sessionId, projectId?, cwd?, status?, error? }
+   * @param {Object} event  { event: 'start'|'end', sessionId, sdkSessionId?, projectId?, cwd?, files?, filesText?, status?, error? }
    */
   onChatSessionEvent(event) {
     if (!event || !event.event) return;
@@ -293,7 +333,7 @@ class WorkflowScheduler {
       if (!wf.enabled) continue;
       const trigger = wf.trigger || {};
       if (trigger.type !== targetType) continue;
-      if (trigger.projectId && trigger.projectId !== event.projectId) continue;
+      if (!triggerWatchesProject(trigger, event.projectId)) continue;
 
       if (targetType === 'claude_session_end') {
         const wanted = trigger.statusFilter || 'any';
@@ -305,6 +345,13 @@ class WorkflowScheduler {
         sessionId: event.sessionId || null,
         projectId: event.projectId || null,
         cwd:       event.cwd || null,
+        // Same value as `cwd`, under the name every other event dispatch uses,
+        // so `$trigger.projectPath` means one thing across all of them.
+        projectPath: event.cwd || null,
+        // Conversation context — what a `useContext` task resumes and scopes to.
+        sdkSessionId: event.sdkSessionId || null,
+        files:        event.files || [],
+        filesText:    event.filesText || '(none recorded)',
         status:    event.status || null,
         error:     event.error || null,
       });
@@ -328,7 +375,7 @@ class WorkflowScheduler {
 
   /**
    * Call this when a chat message (user prompt or assistant reply) is emitted.
-   * @param {Object} event  { role: 'user'|'assistant', text: string, projectId?, sessionId? }
+   * @param {Object} event  { role: 'user'|'assistant', text: string, projectId?, sessionId?, sdkSessionId?, cwd?, files?, filesText? }
    */
   onChatMessage(event) {
     if (!event || !event.text) return;
@@ -342,7 +389,7 @@ class WorkflowScheduler {
       if (!wf.enabled) continue;
       const trigger = wf.trigger || {};
       if (trigger.type !== 'chat_message') continue;
-      if (trigger.projectId && trigger.projectId !== event.projectId) continue;
+      if (!triggerWatchesProject(trigger, event.projectId)) continue;
 
       const wantedRole = trigger.role || 'any';
       if (wantedRole !== 'any' && wantedRole !== role) continue;
@@ -368,8 +415,16 @@ class WorkflowScheduler {
         source:    'chat_message',
         role,
         text,
-        projectId: event.projectId || null,
-        sessionId: event.sessionId || null,
+        projectId:   event.projectId || null,
+        // The reply's own project folder, so a task set to "run where it fired"
+        // lands in the right repository even when it watches several.
+        projectPath: event.cwd || null,
+        cwd:         event.cwd || null,
+        sessionId:    event.sessionId || null,
+        // Conversation context — what a `useContext` task resumes and scopes to.
+        sdkSessionId: event.sdkSessionId || null,
+        files:        event.files || [],
+        filesText:    event.filesText || '(none recorded)',
       });
     }
   }
@@ -468,40 +523,45 @@ class WorkflowScheduler {
     // Snapshot current trigger configs — key them by a stable fingerprint so
     // we reuse existing watchers when nothing changed (avoids storm of
     // file-system teardown/re-setup on every workflow reload).
+    //
+    // Keyed per (workflow, project): a workflow watching three repositories
+    // needs three chokidar instances, and reloading it must not tear down the
+    // two whose configuration did not move.
     const desired = new Map();
     for (const wf of this._workflows) {
       if (!wf.enabled) continue;
       const trigger = wf.trigger || {};
       if (trigger.type !== 'file_change') continue;
 
-      const watchPath = this._resolveWatchPath(trigger);
-      if (!watchPath) continue;
-
-      desired.set(wf.id, {
-        watchPath,
-        patterns: (trigger.patterns || '').trim(),
-        events:   trigger.events || 'all',
-        debounceMs: trigger.debounceMs != null ? Number(trigger.debounceMs) : 500,
-      });
+      for (const target of this._watchTargets(trigger)) {
+        desired.set(watcherKey(wf.id, target.projectId), {
+          watchPath: target.watchPath,
+          projectId: target.projectId,
+          patterns: (trigger.patterns || '').trim(),
+          events:   trigger.events || 'all',
+          debounceMs: trigger.debounceMs != null ? Number(trigger.debounceMs) : 500,
+        });
+      }
     }
 
     // Tear down watchers no longer needed / whose config changed
-    for (const [wfId, entry] of this._fileWatchers) {
-      const target = desired.get(wfId);
+    for (const [key, entry] of this._fileWatchers) {
+      const target = desired.get(key);
       const changed = !target || JSON.stringify(target) !== entry.fingerprint;
       if (changed) {
-        this._teardownFileWatcher(wfId);
+        this._teardownFileWatcher(key);
       }
     }
 
     // Set up new/updated watchers
-    for (const [wfId, cfg] of desired) {
-      if (this._fileWatchers.has(wfId)) continue; // still alive with same config
-      this._setupFileWatcher(wfId, cfg);
+    for (const [key, cfg] of desired) {
+      if (this._fileWatchers.has(key)) continue; // still alive with same config
+      this._setupFileWatcher(key, cfg);
     }
   }
 
-  _setupFileWatcher(wfId, cfg) {
+  _setupFileWatcher(key, cfg) {
+    const wfId = keyWorkflowId(key);
     let chokidar;
     try {
       chokidar = require('chokidar');
@@ -541,6 +601,10 @@ class WorkflowScheduler {
           path:      paths[0] || null,
           paths,
           watchPath: cfg.watchPath,
+          // Which of the watched repositories this fired for — the whole point
+          // of watching several, and what "run where it fired" resolves against.
+          projectId:   cfg.projectId || null,
+          projectPath: cfg.watchPath,
         });
       }, cfg.debounceMs);
     };
@@ -556,27 +620,27 @@ class WorkflowScheduler {
     watcher.on('change', onEvent('change'));
     watcher.on('unlink', onEvent('unlink'));
     watcher.on('error',  (err) => {
-      console.warn(`[WorkflowScheduler] file watcher error (${wfId}):`, err.message);
+      console.warn(`[WorkflowScheduler] file watcher error (${key}):`, err.message);
     });
 
-    this._fileWatchers.set(wfId, {
+    this._fileWatchers.set(key, {
       watcher,
       fingerprint: JSON.stringify(cfg),
       clearDebounce: () => { if (debounceTimer) clearTimeout(debounceTimer); },
     });
   }
 
-  _teardownFileWatcher(wfId) {
-    const entry = this._fileWatchers.get(wfId);
+  _teardownFileWatcher(key) {
+    const entry = this._fileWatchers.get(key);
     if (!entry) return;
     try { entry.clearDebounce?.(); } catch (_) {}
     try { entry.watcher.close(); } catch (_) {}
-    this._fileWatchers.delete(wfId);
+    this._fileWatchers.delete(key);
   }
 
   _teardownAllFileWatchers() {
-    for (const wfId of [...this._fileWatchers.keys()]) {
-      this._teardownFileWatcher(wfId);
+    for (const key of [...this._fileWatchers.keys()]) {
+      this._teardownFileWatcher(key);
     }
   }
 
@@ -589,38 +653,42 @@ class WorkflowScheduler {
       const trigger = wf.trigger || {};
       if (trigger.type !== 'git_event') continue;
 
-      const repoPath = trigger.projectId && typeof this.resolveProjectPath === 'function'
-        ? this.resolveProjectPath(trigger.projectId)
-        : null;
-      if (!repoPath) continue;
+      // One watcher per watched repository — see _rebuildFileWatchers.
+      for (const projectId of triggerProjectIds(trigger)) {
+        const repoPath = typeof this.resolveProjectPath === 'function'
+          ? this.resolveProjectPath(projectId)
+          : null;
+        if (!repoPath) continue;
 
-      desired.set(wf.id, {
-        repoPath,
-        eventFilter: trigger.eventFilter || 'any',
-        branch:      (trigger.branch || '').trim(),
-        projectId:   trigger.projectId,
-      });
+        desired.set(watcherKey(wf.id, projectId), {
+          repoPath,
+          eventFilter: trigger.eventFilter || 'any',
+          branch:      (trigger.branch || '').trim(),
+          projectId,
+        });
+      }
     }
 
     // Tear down obsolete watchers
-    for (const [wfId, entry] of this._gitWatchers) {
-      const target = desired.get(wfId);
+    for (const [key, entry] of this._gitWatchers) {
+      const target = desired.get(key);
       const changed = !target || JSON.stringify({
         repoPath:    target.repoPath,
         eventFilter: target.eventFilter,
         branch:      target.branch,
       }) !== entry.fingerprint;
-      if (changed) this._teardownGitWatcher(wfId);
+      if (changed) this._teardownGitWatcher(key);
     }
 
     // Set up new watchers
-    for (const [wfId, cfg] of desired) {
-      if (this._gitWatchers.has(wfId)) continue;
-      this._setupGitWatcher(wfId, cfg);
+    for (const [key, cfg] of desired) {
+      if (this._gitWatchers.has(key)) continue;
+      this._setupGitWatcher(key, cfg);
     }
   }
 
-  _setupGitWatcher(wfId, cfg) {
+  _setupGitWatcher(key, cfg) {
+    const wfId = keyWorkflowId(key);
     let chokidar;
     try {
       chokidar = require('chokidar');
@@ -695,6 +763,7 @@ class WorkflowScheduler {
           branch,
           projectId: cfg.projectId,
           repoPath:  cfg.repoPath,
+          projectPath: cfg.repoPath,
         });
       }
     };
@@ -710,6 +779,7 @@ class WorkflowScheduler {
         branch,
         projectId: cfg.projectId,
         repoPath:  cfg.repoPath,
+        projectPath: cfg.repoPath,
       });
     };
 
@@ -727,10 +797,10 @@ class WorkflowScheduler {
       if (p.includes(`${path.sep}remotes${path.sep}`)) handlePush(p);
     });
     watcher.on('error', (err) => {
-      console.warn(`[WorkflowScheduler] git watcher error (${wfId}):`, err.message);
+      console.warn(`[WorkflowScheduler] git watcher error (${key}):`, err.message);
     });
 
-    this._gitWatchers.set(wfId, {
+    this._gitWatchers.set(key, {
       watcher,
       fingerprint: JSON.stringify({
         repoPath:    cfg.repoPath,
@@ -740,28 +810,43 @@ class WorkflowScheduler {
     });
   }
 
-  _teardownGitWatcher(wfId) {
-    const entry = this._gitWatchers.get(wfId);
+  _teardownGitWatcher(key) {
+    const entry = this._gitWatchers.get(key);
     if (!entry) return;
     try { entry.watcher.close(); } catch (_) {}
-    this._gitWatchers.delete(wfId);
+    this._gitWatchers.delete(key);
   }
 
   _teardownAllGitWatchers() {
-    for (const wfId of [...this._gitWatchers.keys()]) {
-      this._teardownGitWatcher(wfId);
+    for (const key of [...this._gitWatchers.keys()]) {
+      this._teardownGitWatcher(key);
     }
   }
 
-  _resolveWatchPath(trigger) {
-    // Priority: explicit path > project path > none.
+  /**
+   * The folders a file_change trigger should watch, one entry per watcher.
+   *
+   * An explicit `watchPath` (advanced editor only) overrides the project list
+   * entirely — it is an absolute folder that need not belong to any project, so
+   * there is nothing to fan out over. Otherwise every resolvable watched project
+   * gets its own entry; unresolvable ones are dropped rather than collapsing the
+   * whole trigger.
+   *
+   * @param {Object} trigger
+   * @returns {Array<{ projectId: string, watchPath: string }>}
+   */
+  _watchTargets(trigger) {
     if (trigger.watchPath && trigger.watchPath.trim()) {
-      return trigger.watchPath.trim();
+      return [{ projectId: '', watchPath: trigger.watchPath.trim() }];
     }
-    if (trigger.projectId && typeof this.resolveProjectPath === 'function') {
-      return this.resolveProjectPath(trigger.projectId) || null;
+    if (typeof this.resolveProjectPath !== 'function') return [];
+
+    const targets = [];
+    for (const projectId of triggerProjectIds(trigger)) {
+      const watchPath = this.resolveProjectPath(projectId);
+      if (watchPath) targets.push({ projectId, watchPath });
     }
-    return null;
+    return targets;
   }
 }
 

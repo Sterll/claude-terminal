@@ -22,7 +22,7 @@ const {
   TASK_PRESETS, MAX_MONTH_DAY, DEFAULT_SIMPLE,
   normalizeSimple, compileTask, describeSchedule, nextRunForTask,
   isSimpleTask, validateTask, scheduleToCron, splitTime, isEventKind, EVENT_KINDS,
-  ANY_PROJECT,
+  ANY_PROJECT, TRIGGER_PROJECT,
 } = require('../../../shared/simple-task');
 
 const { nextRunAt } = require('../../../shared/cron');
@@ -73,8 +73,21 @@ function scheduleLabel(simple) {
 
 function projectName(projectId) {
   if (!projectId) return null;
+  if (projectId === TRIGGER_PROJECT) return t('automation.form.triggerProject');
   const list = projectsState.get().projects || [];
   return list.find(p => p.id === projectId)?.name || null;
+}
+
+/**
+ * "Watches: API, Website" for a task scoped to several projects.
+ * Null when there is nothing worth saying — a single watched project is already
+ * implied by the run project chip next to it.
+ */
+function watchLabel(simple) {
+  const ids = simple.when.projectIds || [];
+  if (ids.length < 2) return null;
+  const names = ids.map(id => projectName(id)).filter(Boolean);
+  return names.length ? t('automation.card.watches', { projects: names.join(', ') }) : null;
 }
 
 /* ─── Icons ────────────────────────────────────────────────────────────────── */
@@ -109,6 +122,7 @@ function taskCardHtml(wf, runs) {
   const lastRun  = runs.find(r => r.workflowId === wf.id);
   const next     = formatNextRun(nextRunForTask(wf));
   const proj     = projectName(simple.projectId);
+  const watches  = watchLabel(simple);
   const isRunning = lastRun?.status === 'running';
 
   const statusClass = lastRun ? `auto-card-status--${escapeHtml(lastRun.status)}` : '';
@@ -123,7 +137,9 @@ function taskCardHtml(wf, runs) {
         <p class="auto-card-prompt">${escapeHtml(simple.prompt)}</p>
         <div class="auto-card-meta">
           <span class="auto-chip auto-chip--schedule">${icon('clock', 11)} ${escapeHtml(scheduleLabel(simple))}</span>
+          ${watches ? `<span class="auto-chip">${escapeHtml(watches)}</span>` : ''}
           ${proj ? `<span class="auto-chip">${escapeHtml(proj)}</span>` : ''}
+          ${simple.useContext ? `<span class="auto-chip">${escapeHtml(t('automation.card.withContext'))}</span>` : ''}
           ${wf.enabled && next
             ? `<span class="auto-chip auto-chip--next">${escapeHtml(next)}</span>`
             : `<span class="auto-chip auto-chip--muted">${escapeHtml(t('automation.card.paused'))}</span>`}
@@ -330,22 +346,36 @@ const EVENT_OPTIONS = {
  * The others filter with `if (trigger.projectId && mismatch) continue`, so an
  * empty value genuinely means every project.
  */
-function eventProjectHtml(kind, current) {
+function eventProjectHtml(kind, selected) {
   const anyAllowed = !EVENT_KINDS[kind]?.needsProject;
   const list = projectsState.get().projects || [];
-  // ANY_PROJECT is a real value, not the empty string: an unset field falls back
-  // to the run project, so "any project" needs to be expressible on its own.
-  const options = [
-    anyAllowed
-      ? `<option value="${ANY_PROJECT}"${current === ANY_PROJECT ? ' selected' : ''}>${escapeHtml(t('automation.event.anyProject'))}</option>`
-      : `<option value=""${!current ? ' selected' : ''}>${escapeHtml(t('automation.event.pickProject'))}</option>`,
-    ...list.map(p => `<option value="${escapeHtml(p.id)}"${current === p.id ? ' selected' : ''}>${escapeHtml(p.name)}</option>`),
+  const ids  = Array.isArray(selected) ? selected : [];
+  // An empty list means "not chosen", which falls back to the run project. The
+  // single-select this replaced rendered that state as "Any project" (the first
+  // option won by default), so keep showing the same thing rather than silently
+  // changing what existing tasks look like.
+  const anyActive = anyAllowed && (ids.length === 0 || ids.includes(ANY_PROJECT));
+
+  // Not `.auto-chip` — that class is the read-only pill on the task cards, and
+  // these are toggles with an active state of their own.
+  const chip = (value, label, active) =>
+    `<button type="button" class="auto-pchip${active ? ' active' : ''}" data-pid="${escapeHtml(value)}"
+      aria-pressed="${active}">${escapeHtml(label)}</button>`;
+
+  const chips = [
+    anyAllowed ? chip(ANY_PROJECT, t('automation.event.anyProject'), anyActive) : '',
+    ...list.map(p => chip(p.id, p.name, !anyActive && ids.includes(p.id))),
   ].join('');
 
+  const hint = anyAllowed
+    ? t('automation.event.watchMultiHint')
+    : t('automation.event.watchMultiPickHint');
+
   return `
-    <div class="auto-field auto-field--inline">
+    <div class="auto-field">
       <span class="auto-field-label">${escapeHtml(t('automation.event.watchLabel'))}</span>
-      <select class="auto-input" data-dropdown data-sched="projectId">${options}</select>
+      <div class="auto-chips" data-sched-projects>${chips}</div>
+      <p class="auto-field-hint">${escapeHtml(hint)}</p>
     </div>`;
 }
 
@@ -481,16 +511,15 @@ function scheduleFieldsHtml(schedule) {
     // Most need no configuration at all: the task's own project is the scope.
     case 'git':
       return `
-        ${eventProjectHtml('git', schedule.projectId)}
+        ${eventProjectHtml('git', schedule.projectIds)}
         <div class="auto-field auto-field--inline">
           <span class="auto-field-label">${escapeHtml(t('automation.event.gitWhat'))}</span>
           ${eventSelectHtml('gitEvent', schedule.gitEvent)}
-        </div>
-        <p class="auto-field-hint">${escapeHtml(t('automation.event.needsProjectHint'))}</p>`;
+        </div>`;
 
     case 'file_change':
       return `
-        ${eventProjectHtml('file_change', schedule.projectId)}
+        ${eventProjectHtml('file_change', schedule.projectIds)}
         <label class="auto-field auto-field--inline">
           <span class="auto-field-label">${escapeHtml(t('automation.event.filePattern'))}</span>
           <input type="text" class="auto-input auto-input--mono" data-sched="patterns"
@@ -500,7 +529,7 @@ function scheduleFieldsHtml(schedule) {
 
     case 'command_fails':
       return `
-        ${eventProjectHtml('command_fails', schedule.projectId)}
+        ${eventProjectHtml('command_fails', schedule.projectIds)}
         <div class="auto-field auto-field--inline">
           <span class="auto-field-label">${escapeHtml(t('automation.event.commandWhat'))}</span>
           ${eventSelectHtml('exitCode', schedule.exitCode)}
@@ -508,7 +537,7 @@ function scheduleFieldsHtml(schedule) {
 
     case 'session_end':
       return `
-        ${eventProjectHtml('session_end', schedule.projectId)}
+        ${eventProjectHtml('session_end', schedule.projectIds)}
         <div class="auto-field auto-field--inline">
           <span class="auto-field-label">${escapeHtml(t('automation.event.sessionWhat'))}</span>
           ${eventSelectHtml('status', schedule.status)}
@@ -516,7 +545,7 @@ function scheduleFieldsHtml(schedule) {
 
     case 'chat_reply':
       return `
-        ${eventProjectHtml('chat_reply', schedule.projectId)}
+        ${eventProjectHtml('chat_reply', schedule.projectIds)}
         <label class="auto-field auto-field--inline">
           <span class="auto-field-label">${escapeHtml(t('automation.event.chatContains'))}</span>
           <input type="text" class="auto-input" data-sched="pattern"
@@ -526,7 +555,7 @@ function scheduleFieldsHtml(schedule) {
         <p class="auto-field-hint">${escapeHtml(t('automation.event.chatReplyHint'))}</p>`;
 
     case 'project_open':
-      return `${eventProjectHtml('project_open', schedule.projectId)}
+      return `${eventProjectHtml('project_open', schedule.projectIds)}
         <p class="auto-field-hint">${escapeHtml(t('automation.event.projectOpenHint'))}</p>`;
 
     case 'custom':
@@ -543,12 +572,48 @@ function scheduleFieldsHtml(schedule) {
   }
 }
 
-function projectOptionsHtml(selectedId) {
+function projectOptionsHtml(selectedId, allowTrigger) {
   const list = projectsState.get().projects || [];
   return [
     `<option value=""${!selectedId ? ' selected' : ''}>${escapeHtml(t('automation.form.noProject'))}</option>`,
+    // Only on an event: a cron tick has no triggering project to inherit.
+    allowTrigger
+      ? `<option value="${TRIGGER_PROJECT}"${selectedId === TRIGGER_PROJECT ? ' selected' : ''}>${escapeHtml(t('automation.form.triggerProject'))}</option>`
+      : '',
     ...list.map(p => `<option value="${escapeHtml(p.id)}"${selectedId === p.id ? ' selected' : ''}>${escapeHtml(p.name)}</option>`),
   ].join('');
+}
+
+/**
+ * Where the run happens, and what it knows when it starts.
+ *
+ * Re-rendered whenever the trigger kind changes, because both answers depend on
+ * it: "the project that triggered it" needs an event, and resuming the
+ * triggering conversation needs an event that comes out of one.
+ */
+function scopeFieldsHtml(simple) {
+  const kind      = simple.when.kind;
+  const onEvent   = isEventKind(kind);
+  const canResume = !!EVENT_KINDS[kind]?.carriesSession;
+
+  const contextField = canResume ? `
+    <div class="auto-field">
+      <span class="auto-field-label">${escapeHtml(t('automation.form.contextLabel'))}</span>
+      <label class="auto-check">
+        <input type="checkbox" id="auto-use-context" ${simple.useContext ? 'checked' : ''}>
+        <span class="auto-check-box">${CHECK_MARK}</span>
+        <span class="auto-check-text">${escapeHtml(t('automation.form.useContext'))}</span>
+      </label>
+      <p class="auto-field-hint">${escapeHtml(t('automation.form.useContextHint'))}</p>
+    </div>` : '';
+
+  return `
+    <div class="auto-field">
+      <span class="auto-field-label">${escapeHtml(t('automation.form.projectLabel'))}</span>
+      <span class="auto-field-hint">${escapeHtml(t('automation.form.projectHint'))}</span>
+      <select class="auto-input" data-dropdown id="auto-project">${projectOptionsHtml(simple.projectId, onEvent)}</select>
+    </div>
+    ${contextField}`;
 }
 
 /**
@@ -604,11 +669,7 @@ function openTaskModal(deps, existing, preset = null) {
           <p class="auto-next-preview" id="auto-next-preview"></p>
         </div>
 
-        <div class="auto-field">
-          <span class="auto-field-label">${escapeHtml(t('automation.form.projectLabel'))}</span>
-          <span class="auto-field-hint">${escapeHtml(t('automation.form.projectHint'))}</span>
-          <select class="auto-input" data-dropdown id="auto-project">${projectOptionsHtml(simple.projectId)}</select>
-        </div>
+        <div id="auto-scope">${scopeFieldsHtml(simple)}</div>
 
         <div class="auto-field">
           <span class="auto-field-label">${escapeHtml(t('automation.form.notifyLabel'))}</span>
@@ -669,6 +730,24 @@ function openTaskModal(deps, existing, preset = null) {
   const errorEl   = $('#auto-error');
   const previewEl = $('#auto-next-preview');
   const fieldsEl  = $('#auto-sched-fields');
+  const scopeEl   = $('#auto-scope');
+
+  /* — scope (where it runs, what it knows) — */
+
+  function readScopeFields() {
+    const sel = scopeEl.querySelector('#auto-project');
+    if (sel) simple.projectId = sel.value;
+    const ctx = scopeEl.querySelector('#auto-use-context');
+    // Absent for kinds that carry no conversation. Keep the stored value in
+    // that case, so passing through such a kind does not silently clear it.
+    if (ctx) simple.useContext = ctx.checked;
+  }
+
+  function renderScope() {
+    readScopeFields();
+    scopeEl.innerHTML = scopeFieldsHtml(simple);
+    upgradeSelectsToDropdowns(scopeEl);
+  }
 
   /* — schedule editing — */
 
@@ -727,11 +806,40 @@ function openTaskModal(deps, existing, preset = null) {
     fieldsEl.innerHTML = scheduleFieldsHtml(simple.when);
     // The pickers are rebuilt here, so they need upgrading again.
     upgradeSelectsToDropdowns(fieldsEl);
+    // Both scope answers depend on the kind — "the project that triggered it"
+    // needs an event, and the context toggle needs one carrying a conversation.
+    renderScope();
     updatePreview();
   }
 
   fieldsEl.addEventListener('input', () => { readScheduleFields(); updatePreview(); });
   fieldsEl.addEventListener('change', () => { readScheduleFields(); updatePreview(); });
+
+  // Watched projects are toggle buttons, not an input, so they are read on
+  // click rather than by readScheduleFields.
+  fieldsEl.addEventListener('click', (e) => {
+    const chip = e.target.closest('.auto-pchip');
+    if (!chip || !fieldsEl.contains(chip)) return;
+
+    const pid     = chip.dataset.pid;
+    const current = simple.when.projectIds || [];
+
+    if (pid === ANY_PROJECT) {
+      simple.when.projectIds = [ANY_PROJECT];
+    } else {
+      const explicit = current.filter(id => id !== ANY_PROJECT);
+      let next = explicit.includes(pid)
+        ? explicit.filter(id => id !== pid)
+        : [...explicit, pid];
+      // An empty list means "inherit the run project", which is not what
+      // someone clicking chips is asking for. Deselecting the last one falls
+      // back to "any project" where that exists, and stays empty on the
+      // per-repository kinds — which validateTask then refuses on save.
+      if (!next.length && !EVENT_KINDS[simple.when.kind]?.needsProject) next = [ANY_PROJECT];
+      simple.when.projectIds = next;
+    }
+    rerenderSchedule();
+  });
 
   const tabsEl = $('#auto-when-tabs');
 
@@ -804,8 +912,9 @@ function openTaskModal(deps, existing, preset = null) {
 
   async function save() {
     readScheduleFields();
+    readScopeFields();
 
-    const projectId = $('#auto-project').value;
+    const projectId = simple.projectId;
     const project   = (projectsState.get().projects || []).find(p => p.id === projectId);
 
     const draft = {
@@ -818,7 +927,9 @@ function openTaskModal(deps, existing, preset = null) {
         prompt: $('#auto-prompt').value,
         projectId,
         // Store the resolved path too: claude.node.js executes in `cwd`, and a
-        // cron run has no "current project" to fall back on.
+        // cron run has no "current project" to fall back on. The sentinel is
+        // not a project, so it resolves to nothing here on purpose —
+        // buildSimpleGraph swaps in the trigger reference instead.
         cwd: project?.path || '',
         model:  $('#auto-model').value,
         effort: $('#auto-effort').value,
