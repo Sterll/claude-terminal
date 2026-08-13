@@ -3470,8 +3470,8 @@ hr.chat-plan-separator {
   right: 0;
   min-width: 280px;
   max-width: 360px;
-  background: var(--bg-secondary, #151515);
-  border: 1px solid var(--border-color, #2d2d2d);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 10px 12px;
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
@@ -3610,8 +3610,8 @@ hr.chat-plan-separator {
   bottom: calc(100% + 8px);
   right: 0;
   width: 220px;
-  background: var(--bg-primary, #111);
-  border: 1px solid var(--border-color, #2a2a2a);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   border-radius: 10px;
   padding: 4px;
   z-index: 100;
@@ -3714,8 +3714,8 @@ hr.chat-plan-separator {
   bottom: calc(100% + 8px);
   right: 0;
   width: 220px;
-  background: var(--bg-primary, #111);
-  border: 1px solid var(--border-color, #2a2a2a);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   border-radius: 10px;
   padding: 4px;
   z-index: 100;
@@ -3809,7 +3809,7 @@ hr.chat-plan-separator {
   gap: 4px;
   padding: 3px 9px 3px 6px;
   background: transparent;
-  border: 1px dashed var(--border-color, #2d2d2d);
+  border: 1px dashed var(--border-color);
   border-radius: 20px;
   font-size: 11.5px;
   color: var(--text-secondary, #888);

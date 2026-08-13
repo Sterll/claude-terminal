@@ -1,4 +1,4 @@
-const { hexToRgb, rgbToHex, lightenColor, darkenColor, sanitizeColor, ACCENT_COLORS } = require('../../src/renderer/utils/color');
+const { hexToRgb, rgbToHex, lightenColor, darkenColor, sanitizeColor, ACCENT_COLORS, resolveTheme, applyTheme } = require('../../src/renderer/utils/color');
 
 describe('hexToRgb', () => {
   test('#ff0000 returns {r:255, g:0, b:0}', () => {
@@ -143,6 +143,38 @@ describe('sanitizeColor', () => {
 
   test('rejects too-long hex', () => {
     expect(sanitizeColor('#ff00ff00ff')).toBe('');
+  });
+});
+
+describe('theme', () => {
+  beforeEach(() => {
+    document.documentElement.removeAttribute('data-theme');
+    window.matchMedia = jest.fn().mockImplementation(q => ({
+      matches: false, media: q, addEventListener: jest.fn(), removeEventListener: jest.fn(),
+    }));
+  });
+
+  test('resolveTheme returns explicit values unchanged', () => {
+    expect(resolveTheme('light')).toBe('light');
+    expect(resolveTheme('dark')).toBe('dark');
+  });
+
+  test('resolveTheme maps system to dark when OS is not light', () => {
+    expect(resolveTheme('system')).toBe('dark');
+  });
+
+  test('resolveTheme maps system to light when OS prefers light', () => {
+    window.matchMedia = jest.fn().mockImplementation(q => ({ matches: true, addEventListener: jest.fn() }));
+    expect(resolveTheme('system')).toBe('light');
+  });
+
+  test('resolveTheme falls back to dark on bad input', () => {
+    expect(resolveTheme('bogus')).toBe('dark');
+  });
+
+  test('applyTheme sets data-theme on documentElement and returns resolved', () => {
+    expect(applyTheme('light')).toBe('light');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
   });
 });
 

@@ -18,6 +18,9 @@ const defaultSettings = {
   skipPermissions: false,
   executionMode: 'safe', // 'safe' (default), 'auto' (SDK classifier), 'dangerous' (bypassPermissions)
   accentColor: '#d97706',
+  theme: 'system',
+  terminalThemeLight: 'lightPlus', // Terminal theme used when the app theme resolves to light
+  terminalThemeDark: 'claude', // Terminal theme used when the app theme resolves to dark
   notificationsEnabled: true,
   closeAction: 'ask', // 'ask', 'minimize', 'quit'
   shortcuts: {}, // Custom keyboard shortcuts overrides
@@ -141,6 +144,11 @@ function _migrateSettings(saved) {
   }
   if (saved.activeTab === 'cloud-panel') {
     saved.activeTab = 'connectivity';
+  }
+  // Light/Dark terminal themes: carry a previously chosen single terminalTheme
+  // into the dark slot so existing users keep their selection.
+  if (saved.terminalTheme && !saved.terminalThemeDark) {
+    saved.terminalThemeDark = saved.terminalTheme;
   }
 }
 

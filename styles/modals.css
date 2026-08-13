@@ -1433,7 +1433,7 @@ mark.qp-hl {
   align-items: flex-start;
   gap: 14px;
   padding: 14px 18px;
-  background: linear-gradient(145deg, var(--bg-secondary) 0%, rgba(30, 30, 35, 0.98) 100%);
+  background: linear-gradient(145deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
   border: 1px solid var(--border-color);
   border-radius: 12px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 12px 40px rgba(0, 0, 0, 0.35);

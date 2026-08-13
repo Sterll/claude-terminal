@@ -129,6 +129,36 @@ function sanitizeColor(color) {
   return '';
 }
 
+function resolveTheme(theme) {
+  if (theme === 'light' || theme === 'dark') return theme;
+  if (theme === 'system' && typeof window.matchMedia === 'function') {
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  }
+  return 'dark';
+}
+
+function applyTheme(theme) {
+  const resolved = resolveTheme(theme);
+  document.documentElement.dataset.theme = resolved;
+  return resolved;
+}
+
+let _systemThemeMql = null;
+let _systemThemeHandler = null;
+function watchSystemTheme(getThemeSetting, onApplied) {
+  if (typeof window.matchMedia !== 'function') return;
+  if (_systemThemeMql && _systemThemeHandler) {
+    _systemThemeMql.removeEventListener('change', _systemThemeHandler);
+  }
+  _systemThemeMql = window.matchMedia('(prefers-color-scheme: light)');
+  _systemThemeHandler = () => {
+    if (getThemeSetting() !== 'system') return;
+    const resolved = applyTheme('system');
+    if (typeof onApplied === 'function') onApplied(resolved);
+  };
+  _systemThemeMql.addEventListener('change', _systemThemeHandler);
+}
+
 module.exports = {
   hexToRgb,
   rgbToHex,
@@ -136,5 +166,8 @@ module.exports = {
   darkenColor,
   applyAccentColor,
   sanitizeColor,
-  ACCENT_COLORS
+  ACCENT_COLORS,
+  resolveTheme,
+  applyTheme,
+  watchSystemTheme
 };

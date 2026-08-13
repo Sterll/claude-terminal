@@ -105,6 +105,10 @@ describe('getSetting', () => {
   test('chatModel defaults to null', () => {
     expect(getSetting('chatModel')).toBeNull();
   });
+
+  test('theme defaults to system', () => {
+    expect(getSetting('theme')).toBe('system');
+  });
 });
 
 // ── New tests below ──

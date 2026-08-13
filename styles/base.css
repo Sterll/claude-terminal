@@ -62,6 +62,21 @@
   --font-lg: 1.125rem;    /* 18px */
 }
 
+:root[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f7f7f8;
+  --bg-tertiary: #efeff1;
+  --bg-hover: #e8e8ea;
+  --bg-active: #e0e0e3;
+  --border-color: #d8d8dc;
+  --border-primary: var(--border-color);
+  --text-primary: #1a1a1a;
+  --text-secondary: #666;
+  --text-muted: #999;
+  --text-tertiary: #888;
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+}
+
 body {
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   background: var(--bg-primary);

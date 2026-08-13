@@ -2618,7 +2618,7 @@ body.compact-projects .project-item:not(.active):hover {
 .customize-picker-subtitle {
   display: block;
   font-size: 12px;
-  color: #666;
+  color: var(--text-tertiary);
   margin-top: 3px;
   letter-spacing: 0.01em;
 }
@@ -2632,7 +2632,7 @@ body.compact-projects .project-item:not(.active):hover {
   background: transparent;
   border: none;
   border-radius: 8px;
-  color: #666;
+  color: var(--text-tertiary);
   cursor: pointer;
   transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
 }
@@ -2665,7 +2665,7 @@ body.compact-projects .project-item:not(.active):hover {
   border: none;
   font-size: 13px;
   font-weight: 500;
-  color: #666;
+  color: var(--text-tertiary);
   cursor: pointer;
   transition: background-color 0.2s, color 0.2s, border-color 0.2s, opacity 0.2s;
   position: relative;
@@ -2919,7 +2919,7 @@ body.compact-projects .project-item:not(.active):hover {
 .customize-picker-icon-search svg {
   width: 16px;
   height: 16px;
-  color: #555;
+  color: var(--text-muted);
   flex-shrink: 0;
 }
 
@@ -2928,12 +2928,12 @@ body.compact-projects .project-item:not(.active):hover {
   background: transparent;
   border: none;
   font-size: 13px;
-  color: #e0e0e0;
+  color: var(--text-primary);
   outline: none;
 }
 
 .customize-icon-search-input::placeholder {
-  color: #555;
+  color: var(--text-muted);
 }
 
 /* Icon categories */
@@ -2974,7 +2974,7 @@ body.compact-projects .project-item:not(.active):hover {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #555;
+  color: var(--text-muted);
   margin-bottom: 8px;
   padding-left: 2px;
 }
