@@ -731,12 +731,20 @@ class TerminalManager extends BaseComponent {
 
   // No text in the clipboard usually means an image. We swallow Ctrl+V to run
   // our text paste, so the running `claude` CLI never sees a paste key and
-  // can't grab the image itself. Relay the Alt+V / Option+V sequence (ESC v),
-  // which is the native binding Claude Code listens to for reading an image
-  // off the clipboard. Sent as raw bytes, so it behaves the same on every OS.
+  // can't grab the image itself. Relay the key the CLI binds to image paste, as
+  // raw bytes, so it reads the clipboard itself.
+  //
+  // That binding is platform-dependent — from the CLI's own keymap:
+  //   isWin = platform === 'windows' || platform === 'wsl'
+  //   imagePasteKey = isWin ? 'alt+v' : 'ctrl+v'
+  //   (wsl additionally binds 'ctrl+v')
+  // so it is ESC v on Windows and 0x16 everywhere else. Sending only ESC v is
+  // why image paste silently did nothing on macOS and Linux. A Linux build run
+  // under WSLg gets 0x16, which WSL also binds, so both stay correct.
   _relayImagePaste(terminalId, inputChannel) {
     if (inputChannel !== 'terminal-input') return;
-    this._api.terminal.input({ id: terminalId, data: '\x1bv' });
+    const isWindows = window.electron_nodeModules?.process?.platform === 'win32';
+    this._api.terminal.input({ id: terminalId, data: isWindows ? '\x1bv' : '\x16' });
   }
 
   _setupClipboardShortcuts(wrapper, terminal, terminalId, inputChannel = 'terminal-input') {
