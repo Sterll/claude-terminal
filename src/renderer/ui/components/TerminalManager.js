@@ -118,6 +118,43 @@ function loadWebglAddon(terminal) {
   }
 }
 
+// OSC 52 lets apps inside the PTY (Claude Code, tmux, remote SSH sessions)
+// push text to the system clipboard. xterm.js does not implement it, so
+// without this handler those copies are silently dropped while the inner
+// app still reports success.
+//
+// Only register this on PTY-backed terminals the user drives themselves. Any
+// byte stream reaching a terminal can trigger it, so it is deliberately NOT
+// registered on project-type consoles (fivem/webapp/api/minecraft), which pipe
+// output from a server process that has no business writing the clipboard.
+// Reads are refused for the same reason: they would let that output exfiltrate
+// whatever the user last copied.
+const OSC52_MAX_PAYLOAD = 1_000_000;
+
+function registerOsc52Handler(terminal) {
+  terminal.parser.registerOscHandler(52, (data) => {
+    const semi = data.indexOf(';');
+    if (semi === -1) return true;
+    const payload = data.slice(semi + 1);
+    if (!payload || payload === '?') return true; // clipboard reads not supported
+    // xterm allows up to 10 MB per sequence; cap what we will decode and hand
+    // to the OS clipboard so a runaway app cannot push megabytes into it.
+    if (payload.length > OSC52_MAX_PAYLOAD) return true;
+    try {
+      const bytes = Uint8Array.from(atob(payload), (c) => c.charCodeAt(0));
+      const text = new TextDecoder().decode(bytes);
+      if (window.electron_api?.app?.clipboardWrite) {
+        window.electron_api.app.clipboardWrite(text);
+      } else {
+        navigator.clipboard.writeText(text).catch(() => {});
+      }
+    } catch (e) {
+      console.warn('OSC 52 clipboard decode failed:', e.message);
+    }
+    return true;
+  });
+}
+
 function resetOutputSilenceTimer(_id) { /* no-op */ }
 function clearOutputSilenceTimer(_id) { /* no-op */ }
 
@@ -1638,6 +1675,7 @@ class TerminalManager extends BaseComponent {
 
     terminal.open(wrapper);
     loadWebglAddon(terminal);
+    registerOsc52Handler(terminal);
     setTimeout(() => {
       const fitContainer = wrapper.closest('.terminal-wrapper') || wrapper;
       if (fitContainer.offsetWidth > 0 && fitContainer.offsetHeight > 0) {
@@ -1915,6 +1953,8 @@ class TerminalManager extends BaseComponent {
     const consoleView = wrapper.querySelector(consoleViewSelector);
     terminal.open(consoleView);
     loadWebglAddon(terminal);
+    // No OSC 52 here on purpose — see registerOsc52Handler: this console pipes
+    // a project server's output, which must not reach the system clipboard.
     setTimeout(() => {
       const fitContainer = wrapper.closest('.terminal-wrapper') || wrapper;
       if (fitContainer.offsetWidth > 0 && fitContainer.offsetHeight > 0) {
@@ -2847,6 +2887,7 @@ class TerminalManager extends BaseComponent {
 
     terminal.open(wrapper);
     loadWebglAddon(terminal);
+    registerOsc52Handler(terminal);
     setTimeout(() => {
       const fitContainer = wrapper.closest('.terminal-wrapper') || wrapper;
       if (fitContainer.offsetWidth > 0 && fitContainer.offsetHeight > 0) {
@@ -3001,6 +3042,7 @@ class TerminalManager extends BaseComponent {
 
     terminal.open(wrapper);
     loadWebglAddon(terminal);
+    registerOsc52Handler(terminal);
     setTimeout(() => {
       const fitContainer = wrapper.closest('.terminal-wrapper') || wrapper;
       if (fitContainer.offsetWidth > 0 && fitContainer.offsetHeight > 0) {
@@ -3834,6 +3876,7 @@ class TerminalManager extends BaseComponent {
 
       terminal.open(wrapper);
       loadWebglAddon(terminal);
+      registerOsc52Handler(terminal);
 
       updateTerminal(id, {
         mode: 'terminal',
