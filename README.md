@@ -212,6 +212,10 @@ npm install
 ### Control Tower
 - Real-time overview of all active Claude agents across every project
 - See what each agent is doing (tools it's running, current status, last activity)
+- Grid view: one card per open session, grouped per project, with live terminal thumbnails, model badge, and per-project new-session buttons
+- Filters and sorting: by project, by status, text search, ordered by your last interaction
+- Focus view: maximize any session inside the panel with a filmstrip of the project's other sessions, editable session titles, and one-click jump to the Claude view
+- Finished sessions stay highlighted until you've seen them, so completed work never slips by
 - Interrupt any running session directly from the panel
 - Reply to AskUserQuestion prompts without switching to the chat tab
 - MCP tools for agent monitoring and remote interrupt

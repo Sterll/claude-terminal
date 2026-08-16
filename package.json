@@ -7,6 +7,7 @@
     "start": "node scripts/build-renderer.js && electron .",
     "start:dev": "node scripts/build-renderer.js && electron . --dev",
     "start:inspect": "node scripts/build-renderer.js && electron . --dev --remote-debugging-port=9222",
+    "start:sandbox": "node scripts/build-renderer.js && electron dev-entry.js --dev",
     "watch": "node scripts/build-renderer.js --watch",
     "build:renderer": "node scripts/build-renderer.js",
     "build": "node scripts/build-renderer.js && electron-builder --config electron-builder.config.js",
