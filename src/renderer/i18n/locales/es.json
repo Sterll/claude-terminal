@@ -2336,7 +2336,9 @@
     "rename": "Renombrar",
     "close": "Cerrar",
     "closeOthers": "Cerrar las demás",
-    "closeToRight": "Cerrar pestañas a la derecha"
+    "closeToLeft": "Cerrar pestañas a la izquierda",
+    "closeToRight": "Cerrar pestañas a la derecha",
+    "closeAll": "Cerrar todo"
   },
   "telemetry": {
     "consentTitle": "Ayuda a mejorar Claude Terminal",

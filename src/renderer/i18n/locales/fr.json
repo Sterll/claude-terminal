@@ -2339,7 +2339,9 @@
     "rename": "Renommer",
     "close": "Fermer",
     "closeOthers": "Fermer les autres",
-    "closeToRight": "Fermer les onglets à droite"
+    "closeToLeft": "Fermer les onglets à gauche",
+    "closeToRight": "Fermer les onglets à droite",
+    "closeAll": "Tout fermer"
   },
   "telemetry": {
     "consentTitle": "Aidez à améliorer Claude Terminal",

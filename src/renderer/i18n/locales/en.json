@@ -2339,7 +2339,9 @@
     "rename": "Rename",
     "close": "Close",
     "closeOthers": "Close Others",
-    "closeToRight": "Close Tabs to Right"
+    "closeToLeft": "Close Tabs to Left",
+    "closeToRight": "Close Tabs to Right",
+    "closeAll": "Close All"
   },
   "telemetry": {
     "consentTitle": "Help Improve Claude Terminal",

@@ -1336,6 +1336,7 @@ class TerminalManager extends BaseComponent {
       .filter(tab => getTerminal(tab.dataset.id)?.project?.id === thisProjectId);
     const thisTab = tabsContainer.querySelector(`.terminal-tab[data-id="${id}"]`);
     const thisIndex = allTabs.indexOf(thisTab);
+    const tabsToLeft = thisIndex > 0 ? allTabs.slice(0, thisIndex) : [];
     const tabsToRight = allTabs.slice(thisIndex + 1);
 
     showContextMenu({
@@ -1366,11 +1367,28 @@ class TerminalManager extends BaseComponent {
           }
         },
         {
+          label: t('tabs.closeToLeft'),
+          icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>',
+          disabled: tabsToLeft.length === 0,
+          onClick: () => {
+            tabsToLeft.forEach(tab => self.closeTerminal(tab.dataset.id));
+          }
+        },
+        {
           label: t('tabs.closeToRight'),
           icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>',
           disabled: tabsToRight.length === 0,
           onClick: () => {
             tabsToRight.forEach(tab => self.closeTerminal(tab.dataset.id));
+          }
+        },
+        { separator: true },
+        {
+          label: t('tabs.closeAll'),
+          icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>',
+          disabled: allTabs.length === 0,
+          onClick: () => {
+            allTabs.forEach(tab => self.closeTerminal(tab.dataset.id));
           }
         }
       ]
