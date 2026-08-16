@@ -729,6 +729,11 @@ class TerminalManager extends BaseComponent {
     const now = Date.now();
     if (now - this._lastPasteTime < PASTE_DEBOUNCE_MS) return;
     this._lastPasteTime = now;
+    // Pasting is user interaction (bypasses onKey)
+    if (inputChannel === 'terminal-input') {
+      const td = getTerminal(terminalId);
+      if (td) td.lastInputAt = now;
+    }
     const api = this._api;
     const sendPaste = (text) => {
       if (!text) return;
@@ -1764,6 +1769,17 @@ class TerminalManager extends BaseComponent {
         });
       }, RESUME_WATCHDOG_MS);
     }
+
+    // Real keyboard input only — onData also fires for xterm's automatic
+    // replies to terminal queries (device attributes, cursor reports) and for
+    // wheel-scroll sequences, which would stamp restored sessions as
+    // "interacted with" during their resume replay. Direct mutation: read by
+    // polling consumers (Control Tower sort/status), not worth a state
+    // notification per keystroke.
+    terminal.onKey(() => {
+      const td = getTerminal(id);
+      if (td) td.lastInputAt = Date.now();
+    });
 
     terminal.onData(data => {
       self._api.terminal.input({ id, data });
@@ -3937,6 +3953,11 @@ class TerminalManager extends BaseComponent {
         storedTermData.handlers = { unregister: () => self._unregisterTerminalHandler(ptyId) };
       }
 
+      terminal.onKey(() => {
+        const td = getTerminal(id);
+        if (td) td.lastInputAt = Date.now();
+      });
+
       terminal.onData(data => {
         self._api.terminal.input({ id: ptyId, data });
         const td = getTerminal(id);
@@ -4339,6 +4360,8 @@ module.exports = {
   showAll: () => _getInstance().showAll(),
   setCallbacks: (cbs) => _getInstance().setCallbacks(cbs),
   updateTerminalStatus: (id, status) => _getInstance().updateTerminalStatus(id, status),
+  getTerminalSubstatus: (id) => _getInstance()._terminalSubstatus.get(id) || null,
+  getTerminalLastTool: (id) => _getInstance()._terminalContext.get(id)?.lastTool || null,
   resumeSession: (project, sessionId, options) => _getInstance().resumeSession(project, sessionId, options),
   updateAllTerminalsTheme: (themeId) => _getInstance().updateAllTerminalsTheme(themeId),
   focusNextTerminal: () => _getInstance().focusNextTerminal(),
