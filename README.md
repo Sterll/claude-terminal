@@ -18,6 +18,10 @@
     src="https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_es.json"
     alt="i18n Spanish"
   />
+  <img
+    src="https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_id.json"
+    alt="i18n Indonesian"
+  />
 </p>
 
 <p align="center">
@@ -86,6 +90,7 @@
 | 🇺🇸 English (base) | ![100%][i18n-en-badge] | ~800 / ~800 |
 | 🇫🇷 French | ![i18n fr][i18n-fr-badge] | ~800 / ~800 |
 | 🇪🇸 Spanish | ![i18n es][i18n-es-badge] | ~800 / ~800 |
+| 🇮🇩 Indonesian | ![i18n id][i18n-id-badge] | ~800 / ~800 |
 
 > Coverage badges are updated automatically on every push to locale files.
 > See [`.github/i18n-coverage.md`](.github/i18n-coverage.md) for details and
@@ -94,6 +99,7 @@
 [i18n-en-badge]: https://img.shields.io/badge/i18n-100%25-brightgreen
 [i18n-fr-badge]: https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_fr.json
 [i18n-es-badge]: https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_es.json
+[i18n-id-badge]: https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_id.json
 
 ---
 

@@ -6,7 +6,7 @@
 const { State } = require('../state/State');
 
 // Supported languages
-const SUPPORTED_LANGUAGES = ['fr', 'en', 'es'];
+const SUPPORTED_LANGUAGES = ['fr', 'en', 'es', 'id'];
 const DEFAULT_LANGUAGE = 'fr';
 
 // Display names, kept here so the language picker does not have to load every
@@ -14,7 +14,8 @@ const DEFAULT_LANGUAGE = 'fr';
 const LANGUAGE_NAMES = {
   fr: 'Français',
   en: 'English',
-  es: 'Español'
+  es: 'Español',
+  id: 'Bahasa Indonesia'
 };
 
 // ── Locale loading ────────────────────────────────────────────────────────
