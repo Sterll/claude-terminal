@@ -128,24 +128,43 @@ function applyTranslations(langCode, translations) {
 }
 
 /**
+ * Resolve a BCP 47 tag against SUPPORTED_LANGUAGES.
+ *
+ * The regional form is tried before the bare primary subtag, so a locale that
+ * only makes sense per region (zh-CN vs zh-TW: different scripts, genuinely
+ * different translations) is matched exactly rather than being collapsed onto
+ * a generic "zh". Truncating to the primary subtag unconditionally would make
+ * such a locale impossible to auto-detect.
+ *
+ * @param {string} tag - Language tag, e.g. 'fr', 'fr-FR', 'zh-CN'
+ * @returns {string|null} The matching supported code, or null when unsupported
+ */
+function matchSupportedLanguage(tag) {
+  if (!tag) return null;
+
+  const [rawPrimary, rawRegion] = String(tag).split('-');
+  const primary = (rawPrimary || '').toLowerCase();
+  if (!primary) return null;
+
+  const candidates = rawRegion ? [`${primary}-${rawRegion.toUpperCase()}`, primary] : [primary];
+  for (const candidate of candidates) {
+    const match = SUPPORTED_LANGUAGES.find(code => code.toLowerCase() === candidate.toLowerCase());
+    if (match) return match;
+  }
+  return null;
+}
+
+/**
  * Detect system language from navigator or Electron
- * @returns {string} Language code (fr or en)
+ * @returns {string} Supported language code, 'en' when the system one is not
  */
 function detectSystemLanguage() {
   try {
-    // Try navigator.language first (works in renderer process)
-    let systemLang = navigator.language || navigator.userLanguage || '';
-
-    // Extract language code (e.g., 'fr-FR' -> 'fr')
-    const langCode = systemLang.split('-')[0].toLowerCase();
-
-    // Return if supported, otherwise default
-    if (SUPPORTED_LANGUAGES.includes(langCode)) {
-      return langCode;
-    }
+    // navigator.language works in the renderer process, e.g. 'fr-FR', 'zh-CN'
+    const systemLang = navigator.language || navigator.userLanguage || '';
 
     // Fallback to English for unsupported languages
-    return 'en';
+    return matchSupportedLanguage(systemLang) || 'en';
   } catch (e) {
     console.warn('Could not detect system language:', e);
     return DEFAULT_LANGUAGE;
@@ -157,27 +176,24 @@ function detectSystemLanguage() {
  * @param {string|null} savedLanguage - Previously saved language preference
  */
 function initI18n(savedLanguage = null) {
-  let language;
-
-  if (savedLanguage && SUPPORTED_LANGUAGES.includes(savedLanguage)) {
-    // Use saved preference
-    language = savedLanguage;
-  } else {
-    // Auto-detect from system
-    language = detectSystemLanguage();
-  }
+  // Resolved rather than compared exactly: a preference saved before a locale
+  // gained a regional variant still points at the right file.
+  const language = matchSupportedLanguage(savedLanguage) || detectSystemLanguage();
 
   setLanguage(language);
 }
 
 /**
  * Set the current language
- * @param {string} langCode - Language code (fr or en)
+ * @param {string} langCode - Language code, e.g. 'fr', 'zh-CN'
  */
 function setLanguage(langCode) {
-  if (!SUPPORTED_LANGUAGES.includes(langCode)) {
+  const resolved = matchSupportedLanguage(langCode);
+  if (!resolved) {
     console.warn(`[i18n] Unsupported language: ${langCode}, falling back to ${DEFAULT_LANGUAGE}`);
     langCode = DEFAULT_LANGUAGE;
+  } else {
+    langCode = resolved;
   }
 
   // If the locale cannot be loaded, keep the selected language but render the
@@ -349,6 +365,7 @@ module.exports = {
   getAvailableLanguages,
   getLanguageName,
   detectSystemLanguage,
+  matchSupportedLanguage,
   mergeTranslations,
   SUPPORTED_LANGUAGES,
   DEFAULT_LANGUAGE,

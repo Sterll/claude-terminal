@@ -447,14 +447,32 @@ const TRANSLATIONS = {
 
 let _currentLang = DEFAULT_LANG;
 
+/**
+ * Resolve a BCP 47 tag against SUPPORTED_LANGS, regional form first.
+ * Kept in sync with matchSupportedLanguage() in src/renderer/i18n/index.js:
+ * a locale like zh-CN must match exactly instead of collapsing onto 'zh'.
+ */
+function _matchLang(tag) {
+  if (!tag) return null;
+  const [rawPrimary, rawRegion] = String(tag).split('-');
+  const primary = (rawPrimary || '').toLowerCase();
+  if (!primary) return null;
+  const candidates = rawRegion ? [primary + '-' + rawRegion.toUpperCase(), primary] : [primary];
+  for (const candidate of candidates) {
+    const match = SUPPORTED_LANGS.find(code => code.toLowerCase() === candidate.toLowerCase());
+    if (match) return match;
+  }
+  return null;
+}
+
 function _detectLang() {
   try {
-    const saved = localStorage.getItem('ct-remote-lang');
-    if (saved && SUPPORTED_LANGS.includes(saved)) return saved;
+    const saved = _matchLang(localStorage.getItem('ct-remote-lang'));
+    if (saved) return saved;
   } catch (_) {}
   try {
-    const code = (navigator.language || '').split('-')[0].toLowerCase();
-    if (SUPPORTED_LANGS.includes(code)) return code;
+    const detected = _matchLang(navigator.language);
+    if (detected) return detected;
   } catch (_) {}
   return DEFAULT_LANG;
 }

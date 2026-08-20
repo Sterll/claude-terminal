@@ -76,6 +76,13 @@ Interpolation variables are wrapped in curly braces: `{variable}`.
 
    Replace `<lang>` with the ISO 639-1 code (e.g., `de`, `es`, `ja`, `pt`).
 
+   Use a plain code unless the language genuinely needs different translations
+   per region. When it does, use the full BCP 47 tag with an uppercase region
+   (`zh-CN`, `zh-TW`, `pt-BR`): the loader tries the exact tag before the bare
+   primary subtag, so both forms auto-detect correctly. Do **not** register a
+   bare `zh` alongside `zh-CN` expecting them to be interchangeable, they are
+   two separate locale files.
+
 2. **Translate the values** (not the keys) in the new file.
 
 3. **Verify coverage:**

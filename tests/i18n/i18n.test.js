@@ -4,6 +4,7 @@ const {
   getCurrentLanguage,
   initI18n,
   detectSystemLanguage,
+  matchSupportedLanguage,
   getAvailableLanguages,
   getLanguageName,
   mergeTranslations,
@@ -143,6 +144,64 @@ describe('detectSystemLanguage', () => {
       writable: true,
     });
     expect(detectSystemLanguage()).toBe('en');
+  });
+
+  test('falls back to the primary subtag when the region is not a locale', () => {
+    // 'fr-CA' has no dedicated locale, so it must resolve to plain 'fr'.
+    Object.defineProperty(global, 'navigator', {
+      value: { language: 'fr-CA' },
+      writable: true,
+    });
+    expect(detectSystemLanguage()).toBe('fr');
+  });
+});
+
+// ── matchSupportedLanguage ──
+
+describe('matchSupportedLanguage', () => {
+  test('matches a plain code', () => {
+    expect(matchSupportedLanguage('fr')).toBe('fr');
+  });
+
+  test('matches a regional tag on its primary subtag', () => {
+    expect(matchSupportedLanguage('es-MX')).toBe('es');
+  });
+
+  test('is case insensitive', () => {
+    expect(matchSupportedLanguage('FR-fr')).toBe('fr');
+  });
+
+  test('returns null for unsupported and empty input', () => {
+    expect(matchSupportedLanguage('ja')).toBeNull();
+    expect(matchSupportedLanguage('')).toBeNull();
+    expect(matchSupportedLanguage(null)).toBeNull();
+    expect(matchSupportedLanguage(undefined)).toBeNull();
+  });
+
+  describe('with regional locales registered', () => {
+    // SUPPORTED_LANGUAGES is exported by reference and read on every call, so
+    // registering variants here exercises the real resolution order.
+    beforeEach(() => SUPPORTED_LANGUAGES.push('zh-CN', 'zh-TW'));
+    afterEach(() => SUPPORTED_LANGUAGES.splice(SUPPORTED_LANGUAGES.indexOf('zh-CN'), 2));
+
+    test('resolves a script-specific locale exactly', () => {
+      // The zh-CN / zh-TW case: these are different translations, so the tag
+      // must not be collapsed onto a generic 'zh' that no locale file matches.
+      expect(matchSupportedLanguage('zh-CN')).toBe('zh-CN');
+      expect(matchSupportedLanguage('zh-TW')).toBe('zh-TW');
+    });
+
+    test('normalizes the region casing before matching', () => {
+      expect(matchSupportedLanguage('zh-cn')).toBe('zh-CN');
+    });
+
+    test('does not match a bare primary subtag that has no locale of its own', () => {
+      expect(matchSupportedLanguage('zh')).toBeNull();
+    });
+
+    test('an unregistered region still falls back to the primary subtag', () => {
+      expect(matchSupportedLanguage('fr-BE')).toBe('fr');
+    });
   });
 });
 

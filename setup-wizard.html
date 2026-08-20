@@ -1386,6 +1386,23 @@
       }
     };
 
+    // Resolve a BCP 47 tag against the tables above, regional form first.
+    // Mirrors matchSupportedLanguage() in src/renderer/i18n/index.js so a
+    // locale like zh-CN is matched exactly instead of collapsing onto 'zh'.
+    function matchWizardLang(tag) {
+      if (!tag) return null;
+      const [rawPrimary, rawRegion] = String(tag).split('-');
+      const primary = (rawPrimary || '').toLowerCase();
+      if (!primary) return null;
+      const candidates = rawRegion ? [primary + '-' + rawRegion.toUpperCase(), primary] : [primary];
+      const available = Object.keys(translations);
+      for (const candidate of candidates) {
+        const match = available.find(code => code.toLowerCase() === candidate.toLowerCase());
+        if (match) return match;
+      }
+      return null;
+    }
+
     // ============================================
     // ACCENT COLORS
     // ============================================
@@ -1413,7 +1430,7 @@
     // ============================================
     const TOTAL_STEPS = 8;
     let currentStep = 0;
-    let selectedLang = ['fr', 'es', 'id'].find(l => navigator.language.startsWith(l)) || 'en';
+    let selectedLang = matchWizardLang(navigator.language) || 'en';
     let selectedColor = '#d97706';
     let selectedColorName = 'Amber';
 
@@ -1481,11 +1498,12 @@
     }
 
     function detectLanguage() {
-      const sysLang = navigator.language.substring(0, 2);
-      if (['fr', 'es', 'id'].includes(sysLang)) {
-        selectedLang = sysLang;
+      const match = matchWizardLang(navigator.language);
+      const card = match ? document.querySelector(`[data-lang="${match}"]`) : null;
+      if (card) {
+        selectedLang = match;
         document.querySelectorAll('.language-card').forEach(c => c.classList.remove('selected'));
-        document.querySelector(`[data-lang="${sysLang}"]`).classList.add('selected');
+        card.classList.add('selected');
       }
       applyTranslations();
     }
