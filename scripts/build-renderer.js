@@ -86,7 +86,10 @@ const cssBuildOptions = {
 // Non-default locales are read at runtime from dist/locales/ instead of being
 // bundled (src/renderer/i18n/index.js). Only English ships inside
 // renderer.bundle.js, as the fallback locale t() needs synchronously.
-const LAZY_LOCALES = ['fr', 'es'];
+// Keep in sync with SUPPORTED_LANGUAGES in src/renderer/i18n/index.js, minus
+// 'en': a locale missing here is selectable in the picker but silently renders
+// English, because readLocaleFile() finds nothing in dist/locales/.
+const LAZY_LOCALES = ['fr', 'es', 'id'];
 
 function copyLazyLocales() {
   const srcDir = path.join(__dirname, '..', 'src', 'renderer', 'i18n', 'locales');

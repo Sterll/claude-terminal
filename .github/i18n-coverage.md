@@ -84,10 +84,23 @@ Interpolation variables are wrapped in curly braces: `{variable}`.
 
 4. **Register the new locale** in the i18n loader:
 
-   - Open `src/renderer/i18n/index.js` (or the equivalent module that imports
-     locale files) and add an import/require for the new file.
+   - Open `src/renderer/i18n/index.js` and add the code to `SUPPORTED_LANGUAGES`
+     plus its display name to `LANGUAGE_NAMES`.
 
-5. **Add a badge block** to `.github/workflows/i18n-badge.yml`:
+5. **Ship the locale file with the build** — add the code to `LAZY_LOCALES` in
+   `scripts/build-renderer.js`:
+
+   ```js
+   const LAZY_LOCALES = ['fr', 'es', 'id', '<lang>'];
+   ```
+
+   Only `en.json` is bundled into `renderer.bundle.js`; every other locale is
+   read at runtime from `dist/locales/`, which this list populates. **Skipping
+   this step is silent:** the language shows up in the picker and is persisted,
+   but the UI keeps rendering English, and the Jest suite still passes because
+   it loads locales straight from the source tree.
+
+6. **Add a badge block** to `.github/workflows/i18n-badge.yml`:
 
    ```yaml
    - name: Update badge — German (de)
@@ -102,15 +115,15 @@ Interpolation variables are wrapped in curly braces: `{variable}`.
        color: ${{ steps.parse.outputs.color_de }}
    ```
 
-6. **Add the badge to `README.md`** (in the badges block at the top):
+7. **Add the badge to `README.md`** (in the badges block at the top):
 
    ```markdown
    ![i18n de](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/bernardopg/8aa5c09aca432a7a39aefe32e8ed393a/raw/i18n_de.json)
    ```
 
-7. **Update `TRANSLATIONS.md`** at the project root with the new locale row.
+8. **Update `TRANSLATIONS.md`** at the project root with the new locale row.
 
-8. **Open a Pull Request** — the CI pipeline will run the coverage check
+9. **Open a Pull Request** — the CI pipeline will run the coverage check
    automatically.
 
 ---

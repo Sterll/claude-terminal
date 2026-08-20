@@ -18,7 +18,8 @@ explains how to contribute new languages or improve existing ones.
 |------|----------|-------------|----------|------|--------|
 | 🇺🇸 | English | `en` | ![100%](https://img.shields.io/badge/i18n-100%25-brightgreen) | ~800 / ~800 | Base (reference) |
 | 🇫🇷 | French | `fr` | ![i18n fr](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/bernardopg/8aa5c09aca432a7a39aefe32e8ed393a/raw/i18n_fr.json) | ~800 / ~800 | ✅ Complete |
-| 🇮🇩 | Indonesian | `id` | ![i18n id](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_id.json) | ~800 / ~800 | 🚧 Work in progress |
+| 🇪🇸 | Spanish | `es` | ![i18n es](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_es.json) | ~800 / ~800 | ✅ Complete |
+| 🇮🇩 | Indonesian | `id` | ![i18n id](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_id.json) | ~800 / ~800 | ✅ Complete |
 
 ---
 
@@ -113,7 +114,7 @@ Translations are a community effort. Thank you to everyone who has contributed!
 | Language | Contributor(s) |
 |----------|----------------|
 | French (`fr`) | [@Sterll](https://github.com/Sterll) (original author) |
-| Indonesian (`id`) | User Contribution |
+| Indonesian (`id`) | [@rezadesky](https://github.com/rezadesky) |
 
 To have your name listed here, open a PR that adds or significantly improves a
 locale file. Mention your preferred display name or GitHub handle in the PR
