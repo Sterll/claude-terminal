@@ -22,7 +22,9 @@ All locale files live in:
 ```
 src/renderer/i18n/locales/
 ├── en.json   ← reference/base (always 100 %)
-└── fr.json   ← French translation
+├── fr.json   ← French translation
+├── es.json   ← Spanish translation
+└── id.json   ← Indonesian translation
 ```
 
 Each file is a **nested JSON object** where leaf values are translated strings.
@@ -100,7 +102,13 @@ Interpolation variables are wrapped in curly braces: `{variable}`.
    but the UI keeps rendering English, and the Jest suite still passes because
    it loads locales straight from the source tree.
 
-6. **Add a badge block** to `.github/workflows/i18n-badge.yml`:
+6. **Translate the project-type locales** (optional but recommended) — each type
+   under `src/project-types/*/i18n/` ships its own small locale file, and the
+   type registers them in its `getTranslations()`. Without a `<lang>.json` there
+   the FiveM / web app / API / Minecraft / Python / Discord panels fall back to
+   English key by key while the rest of the UI is translated.
+
+7. **Add a badge block** to `.github/workflows/i18n-badge.yml`:
 
    ```yaml
    - name: Update badge — German (de)
@@ -115,15 +123,15 @@ Interpolation variables are wrapped in curly braces: `{variable}`.
        color: ${{ steps.parse.outputs.color_de }}
    ```
 
-7. **Add the badge to `README.md`** (in the badges block at the top):
+8. **Add the badge to `README.md`** (in the badges block at the top):
 
    ```markdown
    ![i18n de](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/bernardopg/8aa5c09aca432a7a39aefe32e8ed393a/raw/i18n_de.json)
    ```
 
-8. **Update `TRANSLATIONS.md`** at the project root with the new locale row.
+9. **Update `TRANSLATIONS.md`** at the project root with the new locale row.
 
-9. **Open a Pull Request** — the CI pipeline will run the coverage check
+10. **Open a Pull Request** — the CI pipeline will run the coverage check
    automatically.
 
 ---

@@ -1,0 +1,45 @@
+{
+  "minecraft": {
+    "serverConsole": "Konsol server",
+    "stopServer": "Hentikan server",
+    "startServer": "Jalankan server",
+    "stopped": "Dihentikan",
+    "starting": "Menjalankan...",
+    "running": "Berjalan",
+    "players": "{count} pemain",
+    "wizard": {
+      "serverType": "Tipe server",
+      "typeAuto": "Deteksi otomatis",
+      "typePaper": "Paper / Spigot",
+      "typeVanilla": "Vanilla",
+      "typeForge": "Forge (mod)",
+      "typeFabric": "Fabric (mod)",
+      "serverJar": "JAR server",
+      "launchScript": "Skrip peluncuran",
+      "jvmMemory": "Memori JVM",
+      "jvmMemoryHint": "mis. 2G, 4G, 512M",
+      "serverPort": "Port server"
+    },
+    "plugin": {
+      "createPlugin": "Buat plugin Java",
+      "provider": "Penyedia",
+      "apiVersion": "Versi API",
+      "buildTool": "Alat build",
+      "groupId": "Group ID (package)",
+      "pluginName": "Nama kelas plugin",
+      "author": "Penulis",
+      "description": "Deskripsi",
+      "maven": "Maven (pom.xml)",
+      "gradle": "Gradle (build.gradle)"
+    }
+  },
+  "newProject": {
+    "types": {
+      "minecraft": "Server Minecraft",
+      "minecraftDesc": "Server Java (Vanilla, Paper, Forge, Fabric)"
+    }
+  },
+  "dashboard": {
+    "minecraftServer": "Minecraft"
+  }
+}

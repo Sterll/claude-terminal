@@ -1,0 +1,93 @@
+{
+  "webapp": {
+    "devServer": "Server dev",
+    "startServer": "Jalankan server dev",
+    "stopServer": "Hentikan server dev",
+    "openBrowser": "Buka di peramban",
+    "stopped": "Dihentikan",
+    "starting": "Menjalankan...",
+    "running": "Berjalan",
+    "online": "Daring",
+    "console": "Konsol",
+    "serverInfo": "Info",
+    "framework": "Framework",
+    "port": "Port",
+    "url": "URL",
+    "devCommand": "Perintah dev",
+    "packageManager": "Manajer paket",
+    "noPortDetected": "Belum ada port terdeteksi",
+    "detecting": "Mendeteksi...",
+    "serverRunningAt": "Server berjalan di {url}",
+    "reload": "Muat ulang",
+    "preview": "Pratinjau",
+    "devCommandHint": "Biarkan kosong untuk deteksi otomatis dari package.json",
+    "inspect": "Umpan Balik Visual",
+    "feedbackPlaceholder": "Apa yang ingin Anda ubah?",
+    "pinPlaceholder": "Apa yang ingin diubah di sini?",
+    "sendToClaude": "Kirim ke Claude",
+    "sendAll": "Kirim semua ({count})",
+    "deletePin": "Hapus",
+    "responsive": {
+      "full": "Lebar penuh",
+      "mobile": "Ponsel",
+      "tablet": "Tablet",
+      "laptop": "Laptop",
+      "desktop": "Desktop"
+    },
+    "scan": {
+      "title": "Pindai masalah visual",
+      "scanning": "Memindai...",
+      "noIssues": "Tidak ada masalah ditemukan",
+      "issuesFound": "{count} masalah ditemukan",
+      "dismiss": "Abaikan",
+      "customInstruction": "Sesuaikan instruksi perbaikan...",
+      "types": {
+        "overflow": "Overflow",
+        "contrast": "Kontras",
+        "brokenImage": "Gambar Rusak",
+        "zIndex": "Z-Index",
+        "aria": "ARIA",
+        "altText": "Teks Alt",
+        "keyboard": "Papan Ketik",
+        "structure": "Struktur",
+        "a11y": "Aksesibilitas"
+      }
+    },
+    "ruler": {
+      "title": "Ukur jarak",
+      "pinPlaceholder": "Jarak mana yang ingin diubah?",
+      "margin": "Margin",
+      "border": "Border",
+      "padding": "Padding",
+      "content": "Konten"
+    },
+    "settings": {
+      "previewEnabled": "Pratinjau dalam Aplikasi",
+      "previewEnabledDesc": "Sematkan pratinjau langsung dari server dev di dalam aplikasi (memakai lebih banyak memori)"
+    },
+    "noServerRunning": "Tidak ada server yang berjalan",
+    "startingUp": "Sedang dijalankan",
+    "waitingPort": "Menunggu deteksi port…",
+    "startDevServerHint": "Jalankan server dev untuk melihat pratinjau langsung di sini",
+    "devServerNotRunning": "Server dev tidak berjalan",
+    "launchingServer": "Menjalankan server dev…",
+    "serverActive": "Server aktif",
+    "commandLabel": "Perintah",
+    "localUrlLabel": "URL lokal",
+    "openBtn": "Buka",
+    "statusStarting": "Menjalankan",
+    "statusRunning": "Berjalan",
+    "statusStopped": "Dihentikan"
+  },
+  "newProject": {
+    "types": {
+      "webapp": "Aplikasi Web",
+      "webappDesc": "Proyek web dengan server dev terintegrasi"
+    },
+    "devCommand": "Perintah dev",
+    "devCommandPlaceholder": "npm run dev"
+  },
+  "dashboard": {
+    "webApp": "Aplikasi Web"
+  }
+}

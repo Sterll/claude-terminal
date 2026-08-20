@@ -1,0 +1,21 @@
+{
+  "python": {
+    "version": "Versi Python",
+    "venv": "Lingkungan virtual",
+    "venvActive": "Aktif",
+    "venvAbsent": "Tidak ditemukan",
+    "dependencies": "dependensi",
+    "entryPoint": "Titik masuk",
+    "projectType": "Manajer paket",
+    "venvPathLabel": "Path lingkungan virtual",
+    "venvPathHint": "Biarkan kosong untuk deteksi otomatis (.venv, venv, env)",
+    "mainScriptLabel": "Skrip utama",
+    "mainScriptHint": "Biarkan kosong untuk deteksi otomatis"
+  },
+  "newProject": {
+    "types": {
+      "python": "Python",
+      "pythonDesc": "Proyek Python dengan deteksi lingkungan"
+    }
+  }
+}

@@ -15,7 +15,7 @@ const { t } = require('../i18n');
  * Translate with an English literal fallback.
  *
  * Locale files are updated separately from this module; until a key lands in
- * `en.json` / `fr.json` / `es.json`, `t()` returns the raw dot-path, which
+ * `en.json` / `fr.json` / `es.json` / `id.json`, `t()` returns the raw dot-path, which
  * would render "chat.tools.stopTask" inside a tool card. `tr()` falls back to
  * the English literal in that case, so a missing key degrades to readable
  * English instead of a key path.

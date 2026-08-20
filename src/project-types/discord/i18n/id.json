@@ -1,0 +1,59 @@
+{
+  "discord": {
+    "bot": "Bot",
+    "startBot": "Jalankan bot",
+    "stopBot": "Hentikan bot",
+    "online": "Daring",
+    "offline": "Luring",
+    "starting": "Menjalankan...",
+    "console": "Konsol",
+    "commands": "Perintah",
+    "events": "Peristiwa",
+    "guilds": "guild",
+    "library": "Pustaka",
+    "botName": "Nama bot",
+    "noCommands": "Tidak ada perintah terdeteksi. Klik 'Pindai' untuk mencari di file sumber Anda.",
+    "scanCommands": "Pindai perintah",
+    "scanning": "Memindai file sumber...",
+    "searchCommands": "Cari perintah...",
+    "clearEvents": "Bersihkan",
+    "noEvents": "Belum ada peristiwa. Jalankan bot Anda untuk melihat aktivitas.",
+    "startCommand": "Perintah jalankan",
+    "startCommandHint": "Biarkan kosong untuk deteksi otomatis (node bot.js, python bot.py, dll.)",
+    "devServer": "Bot",
+    "devCommandHint": "Perintah untuk menjalankan bot (mis. node bot.js, python bot.py)",
+    "embedBuilder": "Embed Builder",
+    "componentBuilder": "Komponen",
+    "builderPreview": "Pratinjau",
+    "builderAuthor": "Penulis",
+    "builderAuthorName": "Nama penulis",
+    "builderAuthorIcon": "URL ikon penulis",
+    "builderAuthorUrl": "URL penulis",
+    "builderTitle": "Judul",
+    "builderTitleHint": "Judul embed",
+    "builderTitleUrl": "URL judul",
+    "builderDescription": "Deskripsi",
+    "builderDescHint": "Deskripsi embed (mendukung **tebal**, *miring*, `kode`)",
+    "builderColor": "Warna",
+    "builderTimestamp": "Timestamp",
+    "builderTimestampNow": "Waktu saat ini",
+    "builderFields": "Field",
+    "builderImages": "Gambar",
+    "builderThumbnail": "URL thumbnail (kecil, kanan atas)",
+    "builderImage": "URL gambar (besar, bawah)",
+    "builderFooter": "Footer",
+    "builderFooterText": "Teks footer",
+    "builderFooterIcon": "URL ikon footer",
+    "builderActionRows": "Action Row",
+    "builderAddRow": "Tambah action row"
+  },
+  "newProject": {
+    "types": {
+      "discord": "Bot Discord",
+      "discordDesc": "Bot Discord dengan manajemen siklus hidup dan pemindaian perintah"
+    },
+    "categories": {
+      "bots": "Bot"
+    }
+  }
+}

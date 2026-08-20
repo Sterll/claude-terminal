@@ -1,9 +1,9 @@
 /**
  * Claude Terminal Remote — Lightweight i18n module
- * Supports FR/EN/ES with auto-detection, persistence, and DOM integration.
+ * Supports FR/EN/ES/ID with auto-detection, persistence, and DOM integration.
  */
 
-const SUPPORTED_LANGS = ['fr', 'en', 'es'];
+const SUPPORTED_LANGS = ['fr', 'en', 'es', 'id'];
 const DEFAULT_LANG = 'en';
 
 const TRANSLATIONS = {
@@ -334,6 +334,111 @@ const TRANSLATIONS = {
     'pwa.install': 'Instalar',
 
     'control.noSessions': 'Sin sesiones activas',
+    'control.title': 'Mission Control',
+  },
+
+  id: {
+    'pin.message': 'Masukkan PIN 6 digit yang ditampilkan di\nPengaturan → Kendali Jarak Jauh',
+    'pin.error': 'PIN tidak valid atau kedaluwarsa. Coba lagi.',
+    'pin.connFail': 'Koneksi gagal. Apakah server sudah dijalankan?',
+    'cloud.enterKey': 'Masukkan kunci API Anda',
+    'cloud.keyError': 'Koneksi gagal. Periksa kunci API Anda.',
+    'cloud.switchBtn': 'Mode cloud',
+    'cloud.pinModeBtn': 'Mode PIN (LAN)',
+
+    'nav.projects': 'Proyek',
+    'nav.chat': 'Chat',
+    'nav.dashboard': 'Dasbor',
+    'nav.control': 'Kendali',
+    'nav.tabs': 'Tab',
+    'nav.git': 'Git',
+
+    'session.new': 'Chat baru',
+    'session.newHint': 'Ketik pesan untuk memulai',
+    'session.noChats': 'Belum ada chat',
+    'session.noChatsHint': 'Ketuk tombol di bawah untuk memulai',
+    'session.pastDivider': 'Sesi sebelumnya',
+    'session.showMore': 'Tampilkan {count} lagi…',
+
+    'status.reconnecting': 'Menghubungkan ulang…',
+    'status.connected': 'Terhubung',
+    'status.disconnected': 'Terputus',
+    'status.thinking': 'Berpikir…',
+    'status.noOutput': '(tidak ada keluaran)',
+    'status.active': 'Aktif',
+    'status.idle': 'Menganggur',
+    'status.error': 'Kesalahan',
+    'status.permission': 'Izin',
+    'status.claudeWorking': 'Claude sedang bekerja…',
+    'status.done': 'Selesai',
+    'status.claudeFinished': 'Claude selesai',
+    'status.claudeError': 'Kesalahan Claude',
+    'status.permRequired': 'Izin diperlukan',
+    'status.permPrefix': 'Izin:',
+
+    'headless.banner': 'PC luring — Mode cloud tersedia',
+    'headless.bannerActive': 'Sesi cloud aktif',
+    'headless.creating': 'Memulai sesi cloud…',
+    'headless.error': 'Kesalahan sesi cloud',
+    'headless.selectProject': 'Pilih proyek untuk memulai',
+    'cloud.popupTitle': 'Bekerja di cloud',
+    'cloud.popupDesc': 'PC Anda sedang luring. Lanjutkan bekerja dengan sesi cloud langsung di server.',
+    'cloud.popupCta': 'Beralih ke cloud',
+
+    'project.noProjects': 'Belum ada proyek.',
+    'project.noProjectsDash': 'Belum ada proyek',
+
+    'dashboard.timeToday': 'Waktu hari ini',
+    'dashboard.activeProject': 'Proyek aktif',
+    'dashboard.sessions': 'Sesi',
+    'dashboard.projectsSection': 'Proyek',
+
+    'git.loading': 'Memuat…',
+    'git.notRepo': 'Bukan repositori Git',
+    'git.upToDate': 'Terkini',
+    'git.changes': 'Perubahan',
+    'git.clean': 'Working tree bersih',
+    'git.recentCommits': 'Commit terbaru',
+    'git.pull': 'Pull',
+    'git.push': 'Push',
+
+    'mention.file': 'Lampirkan file',
+    'mention.git': 'Perubahan git',
+    'mention.terminal': 'Keluaran terminal',
+    'mention.errors': 'Kesalahan terminal',
+    'mention.todos': 'TODO/FIXME proyek',
+
+    'slash.compact': 'Ringkas percakapan',
+    'slash.clear': 'Bersihkan percakapan',
+    'slash.help': 'Tampilkan bantuan',
+
+    'chat.imageAttached': '(gambar dilampirkan)',
+    'chat.noFiles': 'Tidak ada file ditemukan',
+    'chat.notSentOffline': 'Tidak terkirim — Anda sedang luring.',
+    'chat.notSentReconnecting': 'Tidak terkirim — menghubungkan ulang. Ketuk lagi setelah terhubung.',
+
+    'perm.resolved': 'Diselesaikan',
+    'perm.allowed': 'Diizinkan',
+    'perm.denied': 'Ditolak',
+
+    'misc.allow': 'Izinkan',
+    'misc.deny': 'Tolak',
+    'misc.retry': 'Coba lagi',
+    'misc.loading': 'Memuat…',
+    'misc.disconnectedAdmin': 'Diputuskan oleh administrator',
+    'misc.tooManyMobile': 'Terlalu banyak koneksi ponsel',
+    'misc.desktopOffline': 'PC luring',
+    'misc.justNow': 'baru saja',
+    'misc.camera': 'Kamera',
+    'misc.gallery': 'Galeri',
+    'misc.model': 'Model',
+    'misc.thinking': 'Pemikiran',
+    'misc.noDetails': 'Tidak ada detail tersedia',
+
+    'pwa.addHome': 'Tambahkan ke layar utama',
+    'pwa.install': 'Pasang',
+
+    'control.noSessions': 'Tidak ada sesi aktif',
     'control.title': 'Mission Control',
   },
 };

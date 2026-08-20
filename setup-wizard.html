@@ -843,6 +843,11 @@
             <div class="language-card-name" data-i18n="setup.language.spanish">Spanish</div>
             <div class="language-card-native">Español</div>
           </div>
+          <div class="language-card" data-lang="id">
+            <div class="language-card-flag">ID</div>
+            <div class="language-card-name" data-i18n="setup.language.indonesian">Indonesian</div>
+            <div class="language-card-native">Bahasa Indonesia</div>
+          </div>
         </div>
       </div>
 
@@ -1085,6 +1090,7 @@
         'setup.language.english': 'English',
         'setup.language.french': 'French',
         'setup.language.spanish': 'Spanish',
+        'setup.language.indonesian': 'Indonesian',
         'setup.appearance.title': 'Choose your accent color',
         'setup.appearance.subtitle': 'Personalize the look of your terminal',
         'setup.appearance.preview': 'Preview',
@@ -1160,6 +1166,7 @@
         'setup.language.english': 'English',
         'setup.language.french': 'Francais',
         'setup.language.spanish': 'Espagnol',
+        'setup.language.indonesian': 'Indonesien',
         'setup.appearance.title': "Choisissez votre couleur d'accent",
         'setup.appearance.subtitle': "Personnalisez l'apparence de votre terminal",
         'setup.appearance.preview': 'Apercu',
@@ -1235,6 +1242,7 @@
         'setup.language.english': 'English',
         'setup.language.french': 'Frances',
         'setup.language.spanish': 'Espanol',
+        'setup.language.indonesian': 'Indonesio',
         'setup.appearance.title': 'Elige tu color de acento',
         'setup.appearance.subtitle': 'Personaliza la apariencia de tu terminal',
         'setup.appearance.preview': 'Vista previa',
@@ -1299,6 +1307,82 @@
         'setup.nav.next': 'Siguiente',
         'setup.nav.previous': 'Anterior',
         'setup.nav.step': 'Paso {current} de {total}'
+      },
+      id: {
+        'setup.welcome.title': 'Selamat datang di Claude Terminal',
+        'setup.welcome.subtitle': 'Lingkungan terminal premium Anda untuk Claude Code',
+        'setup.welcome.start': 'Mulai',
+        'setup.welcome.skip': 'Lewati penyiapan',
+        'setup.language.title': 'Pilih bahasa Anda',
+        'setup.language.subtitle': 'Anda dapat mengubahnya nanti di pengaturan',
+        'setup.language.english': 'Inggris',
+        'setup.language.french': 'Prancis',
+        'setup.language.spanish': 'Spanyol',
+        'setup.language.indonesian': 'Indonesia',
+        'setup.appearance.title': 'Pilih warna aksen Anda',
+        'setup.appearance.subtitle': 'Personalisasi tampilan terminal Anda',
+        'setup.appearance.preview': 'Pratinjau',
+        'setup.preferences.title': 'Atur preferensi Anda',
+        'setup.preferences.subtitle': 'Konfigurasikan tool default Anda',
+        'setup.preferences.editor': 'Editor kode default',
+        'setup.preferences.launchStartup': 'Jalankan saat startup',
+        'setup.preferences.launchStartupDesc': 'Jalankan Claude Terminal secara otomatis saat login',
+        'setup.preferences.notifications': 'Aktifkan notifikasi',
+        'setup.preferences.notificationsDesc': 'Dapatkan notifikasi tentang pembaruan dan peristiwa',
+        'setup.terminalMode.title': 'Mode terminal default',
+        'setup.terminalMode.subtitle': 'Kedua mode menggunakan Claude Code — hanya antarmukanya yang berbeda',
+        'setup.terminalMode.terminal': 'Terminal',
+        'setup.terminalMode.terminalDesc': 'Terminal CLI klasik dengan pengalaman xterm.js penuh',
+        'setup.terminalMode.chat': 'Antarmuka Chat',
+        'setup.terminalMode.chatDesc': 'Antarmuka percakapan modern dengan pesan yang kaya',
+        'setup.done.title': 'Semua siap!',
+        'setup.done.subtitle': 'Claude Terminal siap digunakan',
+        'setup.done.summary': 'Pengaturan Anda',
+        'setup.done.launch': 'Jalankan Claude Terminal',
+        'setup.done.languageLabel': 'Bahasa',
+        'setup.done.colorLabel': 'Warna aksen',
+        'setup.done.editorLabel': 'Editor',
+        'setup.done.startupLabel': 'Jalankan saat startup',
+        'setup.done.notificationsLabel': 'Notifikasi',
+        'setup.done.enabled': 'Aktif',
+        'setup.done.disabled': 'Nonaktif',
+        'setup.done.hooksLabel': 'Smart Hooks',
+        'setup.done.terminalModeLabel': 'Mode terminal',
+        'setup.hooks.title': 'Smart Hooks',
+        'setup.hooks.subtitle': 'Tingkatkan Claude Terminal dengan wawasan real-time dari Claude Code',
+        'setup.hooks.description': 'Hook memungkinkan Claude Terminal mendeteksi kapan Claude dimulai, berhenti, atau menggunakan tool. Semua data tetap lokal di perangkat Anda. Ini memungkinkan:',
+        'setup.hooks.benefit1': 'Pelacakan waktu yang akurat per proyek',
+        'setup.hooks.benefit2': 'Notifikasi real-time saat tugas selesai',
+        'setup.hooks.benefit3': 'Statistik dasbor dan wawasan penggunaan',
+        'setup.hooks.dataTitle': 'Apa yang direkam',
+        'setup.hooks.data1': 'Waktu mulai dan berakhirnya sesi',
+        'setup.hooks.data2': 'Nama tool yang digunakan (mis. edit file, bash)',
+        'setup.hooks.data3': 'Path direktori proyek',
+        'setup.hooks.noDataTitle': 'Apa yang TIDAK direkam',
+        'setup.hooks.noData1': 'Isi file atau kode',
+        'setup.hooks.noData2': 'Pesan percakapan',
+        'setup.hooks.noData3': 'Data pribadi atau kunci API',
+        'setup.hooks.enable': 'Aktifkan Smart Hooks',
+        'setup.hooks.enableDesc': 'Dapat diubah nanti di pengaturan',
+        'setup.telemetry.title': 'Bantu Tingkatkan Claude Terminal',
+        'setup.telemetry.subtitle': 'Bagikan data penggunaan anonim untuk membantu kami menyempurnakan aplikasi',
+        'setup.telemetry.description': 'Kami ingin mengumpulkan data penggunaan anonim. Ini sepenuhnya opsional, memakai ID acak, dan kami tidak pernah menyimpan alamat IP atau informasi pribadi.',
+        'setup.telemetry.dataTitle': 'Apa yang dikumpulkan',
+        'setup.telemetry.data1': 'ID anonim acak (UUID)',
+        'setup.telemetry.data2': 'Versi aplikasi dan jenis OS',
+        'setup.telemetry.data3': 'Penggunaan fitur (terminal, chat, git)',
+        'setup.telemetry.data4': 'Laporan kesalahan',
+        'setup.telemetry.noDataTitle': 'Apa yang TIDAK dikumpulkan',
+        'setup.telemetry.noData1': 'Alamat IP atau lokasi',
+        'setup.telemetry.noData2': 'Nama proyek atau path file',
+        'setup.telemetry.noData3': 'Perintah terminal atau pesan chat',
+        'setup.telemetry.noData4': 'Informasi pribadi apa pun',
+        'setup.telemetry.enable': 'Aktifkan telemetri anonim',
+        'setup.telemetry.enableDesc': 'Dapat diubah nanti di pengaturan',
+        'setup.done.telemetryLabel': 'Telemetri',
+        'setup.nav.next': 'Berikutnya',
+        'setup.nav.previous': 'Sebelumnya',
+        'setup.nav.step': 'Langkah {current} dari {total}'
       }
     };
 
@@ -1329,7 +1413,7 @@
     // ============================================
     const TOTAL_STEPS = 8;
     let currentStep = 0;
-    let selectedLang = navigator.language.startsWith('fr') ? 'fr' : navigator.language.startsWith('es') ? 'es' : 'en';
+    let selectedLang = ['fr', 'es', 'id'].find(l => navigator.language.startsWith(l)) || 'en';
     let selectedColor = '#d97706';
     let selectedColorName = 'Amber';
 
@@ -1398,7 +1482,7 @@
 
     function detectLanguage() {
       const sysLang = navigator.language.substring(0, 2);
-      if (['fr', 'es'].includes(sysLang)) {
+      if (['fr', 'es', 'id'].includes(sysLang)) {
         selectedLang = sysLang;
         document.querySelectorAll('.language-card').forEach(c => c.classList.remove('selected'));
         document.querySelector(`[data-lang="${sysLang}"]`).classList.add('selected');
