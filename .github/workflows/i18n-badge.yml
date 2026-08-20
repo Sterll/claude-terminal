@@ -113,6 +113,19 @@ jobs:
           message: ${{ steps.parse.outputs.message_es }}
           color: ${{ steps.parse.outputs.color_es }}
 
+      # ── Indonesian (id) ─────────────────────────────────────────────────────
+
+      - name: Update badge — Indonesian (id)
+        if: steps.parse.outputs.message_id != ''
+        uses: schneegans/dynamic-badges-action@e9a478b16159b4d31420099ba146cdc50f134483
+        with:
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: ${{ secrets.GIST_ID }}
+          filename: i18n_id.json
+          label: "🌐 Indonesian (id)"
+          message: ${{ steps.parse.outputs.message_id }}
+          color: ${{ steps.parse.outputs.color_id }}
+
       # ── Template for future locales ──────────────────────────────────────────
       # To add a new locale (e.g., German 'de'), copy the block above and set:
       #   filename:  i18n_de.json
