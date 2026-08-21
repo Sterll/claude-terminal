@@ -40,6 +40,7 @@ class ApiProvider {
   get webapp() { return this._api.webapp; }
   get api() { return this._api.api; }
   get python() { return this._api.python; }
+  get knowledge() { return this._api.knowledge; }
 
   /** Access any namespace by name */
   get(namespace) {

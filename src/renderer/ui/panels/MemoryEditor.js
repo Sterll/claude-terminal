@@ -243,7 +243,8 @@ class MemoryEditor extends BasePanel {
       listenersAttached: false,
       fileExists: false,
       searchQuery: '',
-      expandedProjects: new Set()
+      expandedProjects: new Set(),
+      knowledge: { enabled: true, entries: [], currentEntryId: null, editing: false, draft: null }
     };
   }
 
@@ -280,6 +281,7 @@ class MemoryEditor extends BasePanel {
   // ── Public entry points ──
 
   async loadMemory() {
+    await this._loadKnowledgeIndex();
     await this.renderMemorySources();
     await this.loadMemoryContent('global');
     this.setupMemoryEventListeners();
@@ -332,11 +334,20 @@ class MemoryEditor extends BasePanel {
     const projects = projectsState.get().projects;
     const searchQuery = filter.toLowerCase();
 
-    // Update active states for global items
+    // Update active states for global items ("knowledge-entry" keeps its parent lit)
+    const activeSource = this._state.currentSource === 'knowledge-entry' ? 'knowledge' : this._state.currentSource;
     document.querySelectorAll('#memory-sources-list > .memory-source-item').forEach(item => {
       const source = item.dataset.source;
-      item.classList.toggle('active', source === this._state.currentSource && this._state.currentProject === null);
+      item.classList.toggle('active', source === activeSource && this._state.currentProject === null);
     });
+
+    const countBadge = document.getElementById('knowledge-count');
+    if (countBadge) {
+      const count = this._state.knowledge.entries.length;
+      countBadge.textContent = String(count);
+      countBadge.style.display = count > 0 ? '' : 'none';
+      countBadge.classList.toggle('disabled', !this._state.knowledge.enabled);
+    }
 
     if (projects.length === 0) {
       projectsList.innerHTML = `<div class="memory-no-projects">${t('memory.noProjects')}</div>`;
@@ -431,6 +442,14 @@ class MemoryEditor extends BasePanel {
     this._state.currentSource = source;
     this._state.currentProject = projectIndex;
     this._state.isEditing = false;
+
+    // Global knowledge lives outside the CLAUDE.md file model: it owns its own
+    // toolbar and editor inside the content area.
+    if (source === 'knowledge' || source === 'knowledge-entry') {
+      await this._loadKnowledgeView(source);
+      await this.renderMemorySources(this._state.searchQuery);
+      return;
+    }
 
     // Reset memory file if switching away from memory-file
     if (source !== 'project-memory-file') {
@@ -759,6 +778,361 @@ class MemoryEditor extends BasePanel {
     });
   }
 
+  // ── Global knowledge ──
+
+  async _loadKnowledgeIndex() {
+    try {
+      const res = await this.api.knowledge.list();
+      if (res && res.success) {
+        this._state.knowledge.enabled = res.enabled !== false;
+        this._state.knowledge.entries = res.entries || [];
+      }
+    } catch (e) {
+      console.error('[MemoryEditor] knowledge list failed:', e);
+    }
+  }
+
+  _findKnowledgeEntry(id) {
+    return this._state.knowledge.entries.find(e => e.id === id) || null;
+  }
+
+  /** Prepare the header chrome, then render either the grid or a single entry. */
+  async _loadKnowledgeView(source) {
+    await this._loadKnowledgeIndex();
+
+    const kn = this._state.knowledge;
+    const entry = source === 'knowledge-entry' ? this._findKnowledgeEntry(kn.currentEntryId) : null;
+
+    document.getElementById('memory-title').textContent = entry
+      ? `${t('knowledge.title')} — ${entry.title}`
+      : t('knowledge.title');
+    document.getElementById('memory-path').textContent = '~/.claude-terminal/knowledge';
+
+    // The generic CLAUDE.md toolbar does not apply here.
+    document.getElementById('memory-stats').style.display = 'none';
+    document.getElementById('btn-memory-edit').style.display = 'none';
+    document.getElementById('btn-memory-create').style.display = 'none';
+    document.getElementById('btn-memory-template').style.display = 'none';
+
+    const contentEl = document.getElementById('memory-content');
+    if (source === 'knowledge-entry' && (entry || kn.editing)) {
+      await this._renderKnowledgeEntry(contentEl, entry);
+    } else {
+      kn.currentEntryId = null;
+      kn.editing = false;
+      this._state.currentSource = 'knowledge';
+      this._renderKnowledgeGrid(contentEl);
+    }
+  }
+
+  _renderKnowledgeGrid(contentEl) {
+    const kn = this._state.knowledge;
+    const query = this._state.searchQuery.toLowerCase();
+    const entries = query
+      ? kn.entries.filter(e =>
+          (e.title || '').toLowerCase().includes(query) ||
+          (e.summary || '').toLowerCase().includes(query) ||
+          (e.aliases || []).some(a => a.toLowerCase().includes(query)) ||
+          (e.tags || []).some(tag => tag.toLowerCase().includes(query)))
+      : kn.entries;
+
+    const cards = entries.map(e => {
+      const aliases = (e.aliases || []).length
+        ? `<span class="knowledge-card-aliases">${t('knowledge.aliasesLabel')}: ${escapeHtml(e.aliases.join(', '))}</span>`
+        : '';
+      const tags = (e.tags || []).map(tag => `<span class="knowledge-tag">${escapeHtml(tag)}</span>`).join('');
+      return `
+        <div class="knowledge-card ${e.pinned ? 'pinned' : ''}" data-id="${escapeHtml(e.id)}">
+          <div class="knowledge-card-head">
+            <span class="knowledge-card-title">${escapeHtml(e.title)}</span>
+            <button class="knowledge-pin-btn ${e.pinned ? 'on' : ''}" data-pin="${escapeHtml(e.id)}"
+                    title="${e.pinned ? t('knowledge.unpin') : t('knowledge.pin')}">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
+            </button>
+          </div>
+          <span class="knowledge-card-cat">${escapeHtml(t(`knowledge.categories.${e.category || 'other'}`))}</span>
+          ${e.summary ? `<p class="knowledge-card-summary">${escapeHtml(e.summary)}</p>` : ''}
+          ${aliases}
+          ${tags ? `<div class="knowledge-card-tags">${tags}</div>` : ''}
+        </div>
+      `;
+    }).join('');
+
+    contentEl.innerHTML = `
+      <div class="knowledge-view">
+        <div class="knowledge-toolbar">
+          <label class="knowledge-toggle">
+            <input type="checkbox" id="knowledge-enabled" ${kn.enabled ? 'checked' : ''}>
+            <span>${t('knowledge.injectToggle')}</span>
+          </label>
+          <div class="knowledge-toolbar-actions">
+            <button class="btn-secondary" id="btn-knowledge-preview">${t('knowledge.preview')}</button>
+            <button class="btn-primary" id="btn-knowledge-new">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+              <span>${t('knowledge.newEntry')}</span>
+            </button>
+          </div>
+        </div>
+        <p class="knowledge-hint">${t('knowledge.injectHint')}</p>
+        ${entries.length
+          ? `<div class="knowledge-grid">${cards}</div>`
+          : `<div class="memory-empty-state">
+               <div class="memory-empty-icon">
+                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>
+               </div>
+               <h3>${t('knowledge.empty')}</h3>
+               <p>${t('knowledge.emptyHint')}</p>
+             </div>`}
+      </div>
+    `;
+
+    const enabledEl = contentEl.querySelector('#knowledge-enabled');
+    if (enabledEl) {
+      enabledEl.onchange = async () => {
+        try {
+          await this.api.knowledge.setEnabled(enabledEl.checked);
+          this._state.knowledge.enabled = enabledEl.checked;
+          await this.renderMemorySources(this._state.searchQuery);
+        } catch (e) {
+          if (this._showToast) this._showToast({ type: 'error', title: e.message });
+        }
+      };
+    }
+
+    const newBtn = contentEl.querySelector('#btn-knowledge-new');
+    if (newBtn) {
+      newBtn.onclick = () => {
+        this._state.knowledge.currentEntryId = null;
+        this._state.knowledge.editing = true;
+        this._state.knowledge.draft = null;
+        this.loadMemoryContent('knowledge-entry');
+      };
+    }
+
+    const previewBtn = contentEl.querySelector('#btn-knowledge-preview');
+    if (previewBtn) previewBtn.onclick = () => this._showKnowledgePreview();
+
+    contentEl.querySelectorAll('.knowledge-pin-btn').forEach(btn => {
+      btn.onclick = async (ev) => {
+        ev.stopPropagation();
+        const id = btn.dataset.pin;
+        const entry = this._findKnowledgeEntry(id);
+        if (!entry) return;
+        try {
+          await this.api.knowledge.setPinned(id, !entry.pinned);
+          await this.loadMemoryContent('knowledge');
+        } catch (e) {
+          if (this._showToast) this._showToast({ type: 'error', title: e.message });
+        }
+      };
+    });
+
+    contentEl.querySelectorAll('.knowledge-card').forEach(card => {
+      card.onclick = () => {
+        this._state.knowledge.currentEntryId = card.dataset.id;
+        this._state.knowledge.editing = false;
+        this.loadMemoryContent('knowledge-entry');
+      };
+    });
+  }
+
+  async _renderKnowledgeEntry(contentEl, entry) {
+    const kn = this._state.knowledge;
+    const backBtn = `
+      <button class="memory-back-btn" id="btn-knowledge-back">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        ${t('knowledge.back')}
+      </button>
+    `;
+
+    if (kn.editing) {
+      const draft = kn.draft || entry || {};
+      const categories = ['server', 'service', 'person', 'convention', 'stack', 'other'];
+      let body = draft.content;
+      if (body === undefined && entry) {
+        const res = await this.api.knowledge.get(entry.id);
+        body = res && res.success ? res.entry.content : '';
+      }
+
+      contentEl.innerHTML = `
+        <div class="knowledge-view">
+          ${backBtn}
+          <div class="knowledge-form">
+            <div class="knowledge-form-row">
+              <label>${t('knowledge.fields.title')}</label>
+              <input type="text" id="kn-title" value="${escapeHtml(draft.title || '')}"
+                     placeholder="${escapeHtml(t('knowledge.placeholders.title'))}">
+            </div>
+            <div class="knowledge-form-row">
+              <label>${t('knowledge.fields.summary')}</label>
+              <input type="text" id="kn-summary" value="${escapeHtml(draft.summary || '')}"
+                     placeholder="${escapeHtml(t('knowledge.placeholders.summary'))}">
+            </div>
+            <div class="knowledge-form-grid">
+              <div class="knowledge-form-row">
+                <label>${t('knowledge.fields.category')}</label>
+                <select id="kn-category">
+                  ${categories.map(c => `<option value="${c}" ${(draft.category || 'other') === c ? 'selected' : ''}>${escapeHtml(t(`knowledge.categories.${c}`))}</option>`).join('')}
+                </select>
+              </div>
+              <div class="knowledge-form-row">
+                <label>${t('knowledge.fields.aliases')}</label>
+                <input type="text" id="kn-aliases" value="${escapeHtml((draft.aliases || []).join(', '))}"
+                       placeholder="${escapeHtml(t('knowledge.placeholders.aliases'))}">
+              </div>
+              <div class="knowledge-form-row">
+                <label>${t('knowledge.fields.tags')}</label>
+                <input type="text" id="kn-tags" value="${escapeHtml((draft.tags || []).join(', '))}"
+                       placeholder="${escapeHtml(t('knowledge.placeholders.tags'))}">
+              </div>
+            </div>
+            <label class="knowledge-toggle knowledge-pin-toggle">
+              <input type="checkbox" id="kn-pinned" ${draft.pinned ? 'checked' : ''}>
+              <span>${t('knowledge.pinnedLabel')}</span>
+            </label>
+            <p class="knowledge-hint">${t('knowledge.pinnedHint')}</p>
+            <textarea class="memory-editor knowledge-body" id="kn-content"
+                      placeholder="${escapeHtml(t('knowledge.placeholders.content'))}">${escapeHtml(body || '')}</textarea>
+            <div class="knowledge-form-actions">
+              <button class="btn-secondary" id="btn-kn-cancel">${t('common.cancel')}</button>
+              <button class="btn-primary" id="btn-kn-save">${t('knowledge.save')}</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      contentEl.querySelector('#btn-kn-cancel').onclick = () => {
+        kn.editing = false;
+        kn.draft = null;
+        this.loadMemoryContent(entry ? 'knowledge-entry' : 'knowledge');
+      };
+      contentEl.querySelector('#btn-kn-save').onclick = () => this._saveKnowledgeEntry(entry);
+      contentEl.querySelector('#btn-knowledge-back').onclick = () => {
+        kn.editing = false;
+        kn.draft = null;
+        this.loadMemoryContent('knowledge');
+      };
+      return;
+    }
+
+    if (!entry) {
+      this.loadMemoryContent('knowledge');
+      return;
+    }
+
+    const res = await this.api.knowledge.get(entry.id);
+    const content = res && res.success ? res.entry.content : '';
+    const chips = [
+      `<span class="knowledge-chip">${escapeHtml(t(`knowledge.categories.${entry.category || 'other'}`))}</span>`,
+      entry.pinned ? `<span class="knowledge-chip pinned">${t('knowledge.pinned')}</span>` : '',
+      ...(entry.aliases || []).map(a => `<span class="knowledge-chip alias">${escapeHtml(a)}</span>`),
+      ...(entry.tags || []).map(tag => `<span class="knowledge-tag">${escapeHtml(tag)}</span>`)
+    ].filter(Boolean).join('');
+
+    contentEl.innerHTML = `
+      <div class="knowledge-view">
+        ${backBtn}
+        <div class="knowledge-entry-header">
+          <h3>${escapeHtml(entry.title)}</h3>
+          <div class="knowledge-entry-actions">
+            <button class="btn-secondary btn-danger-outline" id="btn-kn-delete">${t('knowledge.delete')}</button>
+            <button class="btn-primary" id="btn-kn-edit">${t('common.edit')}</button>
+          </div>
+        </div>
+        ${entry.summary ? `<p class="knowledge-entry-summary">${escapeHtml(entry.summary)}</p>` : ''}
+        <div class="knowledge-chips">${chips}</div>
+        <div class="memory-markdown">${parseMarkdownToHtml(content)}</div>
+      </div>
+    `;
+
+    contentEl.querySelector('#btn-knowledge-back').onclick = () => this.loadMemoryContent('knowledge');
+    contentEl.querySelector('#btn-kn-edit').onclick = () => {
+      kn.editing = true;
+      kn.draft = { ...entry, content };
+      this.loadMemoryContent('knowledge-entry');
+    };
+    contentEl.querySelector('#btn-kn-delete').onclick = () => this._confirmKnowledgeDelete(entry);
+  }
+
+  async _saveKnowledgeEntry(entry) {
+    const value = (id) => {
+      const el = document.getElementById(id);
+      return el ? el.value : '';
+    };
+    const title = value('kn-title').trim();
+    if (!title) {
+      if (this._showToast) this._showToast({ type: 'error', title: t('knowledge.titleRequired') });
+      return;
+    }
+
+    const params = {
+      id: entry ? entry.id : undefined,
+      title,
+      summary: value('kn-summary'),
+      category: value('kn-category'),
+      aliases: value('kn-aliases'),
+      tags: value('kn-tags'),
+      pinned: !!document.getElementById('kn-pinned')?.checked,
+      content: value('kn-content')
+    };
+
+    try {
+      const res = await this.api.knowledge.write(params);
+      if (!res || !res.success) throw new Error((res && res.error) || 'unknown error');
+      this._state.knowledge.editing = false;
+      this._state.knowledge.draft = null;
+      this._state.knowledge.currentEntryId = res.entry.id;
+      await this.loadMemoryContent('knowledge-entry');
+      if (this._showToast) this._showToast({ type: 'success', title: t('knowledge.saved') });
+    } catch (e) {
+      if (this._showToast) this._showToast({ type: 'error', title: t('knowledge.errorSaving', { message: e.message }) });
+    }
+  }
+
+  _confirmKnowledgeDelete(entry) {
+    if (!this._showModal) return;
+    this._showModal(t('knowledge.delete'), `
+      <p style="margin-bottom:16px;color:var(--text-secondary)">
+        ${t('knowledge.deleteConfirm', { name: escapeHtml(entry.title) })}
+      </p>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn-secondary" id="kn-del-cancel">${t('common.cancel')}</button>
+        <button class="btn-primary btn-danger" id="kn-del-confirm">${t('knowledge.delete')}</button>
+      </div>
+    `);
+
+    const cancel = document.getElementById('kn-del-cancel');
+    const confirm = document.getElementById('kn-del-confirm');
+    if (cancel) cancel.onclick = () => this._closeModal();
+    if (confirm) {
+      confirm.onclick = async () => {
+        try {
+          await this.api.knowledge.delete(entry.id);
+          this._closeModal();
+          this._state.knowledge.currentEntryId = null;
+          await this.loadMemoryContent('knowledge');
+        } catch (e) {
+          if (this._showToast) this._showToast({ type: 'error', title: e.message });
+        }
+      };
+    }
+  }
+
+  async _showKnowledgePreview() {
+    if (!this._showModal) return;
+    let block = '';
+    try {
+      const res = await this.api.knowledge.preview();
+      block = (res && res.success ? res.block : '') || '';
+    } catch (e) {
+      block = '';
+    }
+    this._showModal(t('knowledge.previewTitle'), `
+      <p style="margin-bottom:12px;color:var(--text-secondary)">${t('knowledge.previewHint')}</p>
+      <pre class="memory-json">${escapeHtml(block || t('knowledge.previewEmpty'))}</pre>
+    `);
+  }
+
   // ── Helper: create empty file ──
 
   async _createEmptyFile(filePath, defaultContent = '') {
@@ -829,6 +1203,10 @@ class MemoryEditor extends BasePanel {
       searchInput.oninput = async (e) => {
         this._state.searchQuery = e.target.value;
         await this.renderMemorySources(e.target.value);
+        if (this._state.currentSource === 'knowledge') {
+          this._renderKnowledgeGrid(document.getElementById('memory-content'));
+          return;
+        }
         if (this._state.fileExists) {
           await this.renderMemoryContent(this._state.content, this._state.currentSource, this._state.fileExists);
         }
@@ -867,6 +1245,8 @@ class MemoryEditor extends BasePanel {
 
       if (source === 'global') {
         filePath = this._getGlobalClaudeMd();
+      } else if (source === 'knowledge' || source === 'knowledge-entry') {
+        filePath = this.api.path.join(this.api.os.homedir(), '.claude-terminal', 'knowledge');
       } else if (source === 'rules') {
         filePath = this._getRulesMd();
       } else if (source === 'settings' || source === 'commands') {
