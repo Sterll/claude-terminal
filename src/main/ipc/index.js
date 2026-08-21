@@ -33,6 +33,7 @@ const { registerExplorerHandlers } = require('./explorer.ipc');
 const { registerTimeHandlers } = require('./time.ipc');
 const { registerParallelHandlers } = require('./parallel.ipc');
 const { registerWorkspaceHandlers } = require('./workspace.ipc');
+const { registerKnowledgeHandlers } = require('./knowledge.ipc');
 const { registerErrorLogHandlers } = require('./errorLog.ipc');
 const { registerAccountsHandlers } = require('./accounts.ipc');
 const { registerDiscordRpcHandlers } = require('./discord-rpc.ipc');
@@ -80,6 +81,7 @@ function registerAllHandlers(mainWindow) {
   registerTimeHandlers();
   registerParallelHandlers(mainWindow);
   registerWorkspaceHandlers();
+  registerKnowledgeHandlers();
   registerErrorLogHandlers();
   registerAccountsHandlers();
   registerDiscordRpcHandlers();

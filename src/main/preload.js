@@ -517,6 +517,19 @@ contextBridge.exposeInMainWorld('electron_api', {
     deleteDoc: (params) => ipcRenderer.invoke('workspace-delete-doc', params),
   },
 
+  // ==================== KNOWLEDGE (global memory) ====================
+  knowledge: {
+    list: () => ipcRenderer.invoke('knowledge-list'),
+    get: (ref) => ipcRenderer.invoke('knowledge-get', { ref }),
+    write: (params) => ipcRenderer.invoke('knowledge-write', params),
+    delete: (ref) => ipcRenderer.invoke('knowledge-delete', { ref }),
+    setPinned: (ref, pinned) => ipcRenderer.invoke('knowledge-set-pinned', { ref, pinned }),
+    setEnabled: (enabled) => ipcRenderer.invoke('knowledge-set-enabled', { enabled }),
+    search: (query) => ipcRenderer.invoke('knowledge-search', { query }),
+    preview: () => ipcRenderer.invoke('knowledge-preview'),
+    sync: () => ipcRenderer.invoke('knowledge-sync'),
+  },
+
   // ==================== PROJECT ====================
   project: {
     scanTodos: (projectPath) => ipcRenderer.invoke('scan-todos', projectPath),
