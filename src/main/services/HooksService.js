@@ -22,6 +22,103 @@ function getHandlerPath() {
   return path.join(app.getAppPath(), 'resources', 'hooks', 'claude-terminal-hook-handler.js');
 }
 
+// Generated launcher used when no external `node` is reachable. Named after
+// HOOK_IDENTIFIER on purpose: isOurHook() recognises our entries by that
+// substring, so a launcher named anything else would make our own hooks
+// invisible to the installer and pile up duplicates on every run.
+const HOOKS_DATA_DIR = path.join(os.homedir(), '.claude-terminal', 'hooks');
+
+function getLauncherPath() {
+  const ext = process.platform === 'win32' ? '.cmd' : '.sh';
+  return path.join(HOOKS_DATA_DIR, HOOK_IDENTIFIER + ext);
+}
+
+/**
+ * Locate a `node` executable on the app's PATH.
+ *
+ * Walks PATH with fs rather than spawning `which`: this runs on the startup
+ * path, and the app's PATH is what Claude Code inherits anyway, since the CLI
+ * is spawned from this process. A GUI launch on macOS does not inherit the
+ * login shell's PATH, so a node installed through nvm or Homebrew is commonly
+ * invisible here — which is exactly the case the launcher fallback covers.
+ *
+ * @returns {string|null} Absolute path to node, or null when unreachable
+ */
+function findNodeOnPath() {
+  const isWindows = process.platform === 'win32';
+  const dirs = (process.env.PATH || '').split(isWindows ? ';' : ':').filter(Boolean);
+  const extensions = isWindows
+    ? (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)
+    : [''];
+
+  for (const dir of dirs) {
+    for (const ext of extensions) {
+      const candidate = path.join(dir, 'node' + ext.toLowerCase());
+      try {
+        if (fs.existsSync(candidate)) return candidate;
+      } catch (e) {
+        /* unreadable PATH entry, keep looking */
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Write the launcher that runs the handler through Electron's embedded Node.
+ *
+ * The ELECTRON_RUN_AS_NODE variable is set *inside* the script rather than
+ * prefixed onto the hook command: `VAR=1 cmd` is shell syntax that cmd.exe
+ * rejects, and the hook command line is executed by whichever shell Claude
+ * Code picks. A launcher path is inert in every shell.
+ *
+ * @returns {string} Path to the launcher
+ */
+function writeLauncher() {
+  const launcherPath = getLauncherPath();
+  const runtime = process.execPath;
+  const handlerPath = getHandlerPath();
+
+  fs.mkdirSync(HOOKS_DATA_DIR, { recursive: true });
+
+  if (process.platform === 'win32') {
+    fs.writeFileSync(launcherPath, [
+      '@echo off',
+      'set ELECTRON_RUN_AS_NODE=1',
+      `"${runtime}" "${handlerPath}" %1`,
+      ''
+    ].join('\r\n'), 'utf8');
+  } else {
+    fs.writeFileSync(launcherPath, [
+      '#!/bin/sh',
+      'export ELECTRON_RUN_AS_NODE=1',
+      // exec, so the handler's exit code reaches Claude Code unchanged.
+      // PermissionRequest encodes allow/deny as 0/2 and must not be swallowed.
+      `exec "${runtime}" "${handlerPath}" "$1"`,
+      ''
+    ].join('\n'), 'utf8');
+    fs.chmodSync(launcherPath, 0o755);
+  }
+
+  return launcherPath;
+}
+
+/**
+ * Build the command prefix every hook entry shares, minus the hook name.
+ *
+ * Prefers an external node when one is reachable, which keeps the command
+ * byte-identical to what previous versions wrote and spares healthy
+ * installations a settings.json rewrite on upgrade.
+ *
+ * @returns {string}
+ */
+function buildHookInvocation() {
+  if (findNodeOnPath()) {
+    return `node "${getHandlerPath().replace(/\\/g, '/')}"`;
+  }
+  return `"${getLauncherPath().replace(/\\/g, '/')}"`;
+}
+
 /**
  * All hooks to install.
  * Hooks with matcher support use matcher: "" (match all).
@@ -144,12 +241,11 @@ function backupSettings() {
  * @returns {Object}
  */
 function buildHookEntry(hookDef) {
-  const handlerPath = getHandlerPath().replace(/\\/g, '/');
   const entry = {
     hooks: [
       {
         type: 'command',
-        command: `node "${handlerPath}" ${hookDef.key}`
+        command: `${buildHookInvocation()} ${hookDef.key}`
       }
     ]
   };
@@ -181,6 +277,12 @@ function installHooks() {
   try {
     // Throws on a malformed/unreadable file -> we abort before any write
     const settings = readClaudeSettings();
+
+    // No external node: the hooks will point at the launcher, so it has to
+    // exist (and carry current paths) before settings.json references it.
+    if (!findNodeOnPath()) {
+      writeLauncher();
+    }
 
     // Create backup before modifying
     backupSettings();
@@ -304,20 +406,34 @@ function areHooksInstalled() {
  * Verify hooks integrity and repair if needed.
  * Checks:
  * 1. Handler script exists at expected path
- * 2. All 15 hooks are present in ~/.claude/settings.json
- * 3. Paths in hooks match current app location (handles app move/update)
+ * 2. The launcher exists, when hooks run through it rather than external node
+ * 3. All hooks are present in ~/.claude/settings.json
+ * 4. Paths in hooks match current app location (handles app move/update)
  * Silently reinstalls if anything is wrong.
  * @returns {{ ok: boolean, repaired: boolean, details?: string }}
  */
 function verifyAndRepairHooks() {
   try {
     const handlerPath = getHandlerPath();
-    const expectedCommand = `node "${handlerPath.replace(/\\/g, '/')}"`;
+    // Mode-aware: node may have appeared or disappeared since install, and a
+    // stale command in either direction has to trigger a rewrite.
+    const expectedCommand = buildHookInvocation();
 
     // 1. Check handler script exists
     const handlerExists = fs.existsSync(handlerPath);
     if (!handlerExists) {
       return { ok: false, repaired: false, details: 'Handler script missing: ' + handlerPath };
+    }
+
+    // 2. In launcher mode the generated script must exist too. It lives in the
+    // user's data dir, so it can be deleted independently of the app.
+    if (!findNodeOnPath() && !fs.existsSync(getLauncherPath())) {
+      const result = installHooks();
+      return {
+        ok: result.success,
+        repaired: result.success,
+        details: 'Launcher missing, regenerated'
+      };
     }
 
     // 2. Read current hooks from Claude settings.
@@ -381,5 +497,9 @@ module.exports = {
   installHooks,
   removeHooks,
   areHooksInstalled,
-  verifyAndRepairHooks
+  verifyAndRepairHooks,
+  // Exported for tests and diagnostics: which runtime the hooks will use.
+  findNodeOnPath,
+  getLauncherPath,
+  buildHookInvocation
 };
