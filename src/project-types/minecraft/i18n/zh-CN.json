@@ -1,0 +1,45 @@
+{
+  "minecraft": {
+    "serverConsole": "服务器控制台",
+    "stopServer": "停止服务器",
+    "startServer": "启动服务器",
+    "stopped": "已停止",
+    "starting": "正在启动...",
+    "running": "运行中",
+    "players": "{count} 玩家",
+    "wizard": {
+      "serverType": "服务器类型",
+      "typeAuto": "自动检测",
+      "typePaper": "纸/插口",
+      "typeVanilla": "香草",
+      "typeForge": "锻造（改装）",
+      "typeFabric": "面料（改装）",
+      "serverJar": "服务器JAR",
+      "launchScript": "启动脚本",
+      "jvmMemory": "JVM内存",
+      "jvmMemoryHint": "例如2G、4G、512M",
+      "serverPort": "服务器端口"
+    },
+    "plugin": {
+      "createPlugin": "创建一个 Java 插件",
+      "provider": "提供者",
+      "apiVersion": "API版本",
+      "buildTool": "构建工具",
+      "groupId": "组 ID（包）",
+      "pluginName": "插件类名",
+      "author": "作者",
+      "description": "描述",
+      "maven": "Maven（pom.xml）",
+      "gradle": "Gradle（构建.gradle）"
+    }
+  },
+  "newProject": {
+    "types": {
+      "minecraft": "我的世界服务器",
+      "minecraftDesc": "Java 服务器（Vanilla、Paper、Forge、Fabric）"
+    }
+  },
+  "dashboard": {
+    "minecraftServer": "Minecraft"
+  }
+}

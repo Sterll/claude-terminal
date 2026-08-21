@@ -89,7 +89,7 @@ const cssBuildOptions = {
 // Keep in sync with SUPPORTED_LANGUAGES in src/renderer/i18n/index.js, minus
 // 'en': a locale missing here is selectable in the picker but silently renders
 // English, because readLocaleFile() finds nothing in dist/locales/.
-const LAZY_LOCALES = ['fr', 'es', 'id'];
+const LAZY_LOCALES = ['fr', 'es', 'id', 'zh-CN'];
 
 function copyLazyLocales() {
   const srcDir = path.join(__dirname, '..', 'src', 'renderer', 'i18n', 'locales');

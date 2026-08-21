@@ -1,0 +1,21 @@
+{
+  "python": {
+    "version": "Python 版本",
+    "venv": "虚拟环境",
+    "venvActive": "已启用",
+    "venvAbsent": "未找到",
+    "dependencies": "依赖项",
+    "entryPoint": "入口文件",
+    "projectType": "包管理器",
+    "venvPathLabel": "虚拟环境路径",
+    "venvPathHint": "留空以自动检测（.venv、venv、env）",
+    "mainScriptLabel": "主脚本",
+    "mainScriptHint": "留空以自动检测"
+  },
+  "newProject": {
+    "types": {
+      "python": "Python",
+      "pythonDesc": "支持环境检测的 Python 项目"
+    }
+  }
+}

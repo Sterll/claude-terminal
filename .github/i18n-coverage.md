@@ -24,7 +24,8 @@ src/renderer/i18n/locales/
 ├── en.json   ← reference/base (always 100 %)
 ├── fr.json   ← French translation
 ├── es.json   ← Spanish translation
-└── id.json   ← Indonesian translation
+├── id.json   ← Indonesian translation
+└── zh-CN.json ← Simplified Chinese translation
 ```
 
 Each file is a **nested JSON object** where leaf values are translated strings.

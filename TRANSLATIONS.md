@@ -20,6 +20,7 @@ explains how to contribute new languages or improve existing ones.
 | 🇫🇷 | French | `fr` | ![i18n fr](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/bernardopg/8aa5c09aca432a7a39aefe32e8ed393a/raw/i18n_fr.json) | ~800 / ~800 | ✅ Complete |
 | 🇪🇸 | Spanish | `es` | ![i18n es](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_es.json) | ~800 / ~800 | ✅ Complete |
 | 🇮🇩 | Indonesian | `id` | ![i18n id](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_id.json) | ~800 / ~800 | ✅ Complete |
+| 🇨🇳 | Simplified Chinese | `zh-CN` | ![i18n zh-CN](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_zh-CN.json) | ~800 / ~800 | ✅ Complete |
 
 ---
 
@@ -40,8 +41,8 @@ cd claude-terminal
 cp src/renderer/i18n/locales/en.json src/renderer/i18n/locales/<lang>.json
 ```
 
-Replace `<lang>` with the ISO 639-1 code of the target language
-(e.g., `de` for German, `es` for Spanish, `pt` for Portuguese, `ja` for Japanese).
+Replace `<lang>` with an ISO 639-1 code, or a full BCP 47 tag when regional translations differ
+(e.g., `de`, `es`, `ja`, or `zh-CN`).
 
 ### 3. Translate the values
 
@@ -115,6 +116,7 @@ Translations are a community effort. Thank you to everyone who has contributed!
 |----------|----------------|
 | French (`fr`) | [@Sterll](https://github.com/Sterll) (original author) |
 | Indonesian (`id`) | [@rezadesky](https://github.com/rezadesky) |
+| Simplified Chinese (`zh-CN`) | [@tianxing226](https://github.com/tianxing226) |
 
 To have your name listed here, open a PR that adds or significantly improves a
 locale file. Mention your preferred display name or GitHub handle in the PR

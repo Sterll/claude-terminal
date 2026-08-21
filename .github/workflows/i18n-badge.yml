@@ -72,15 +72,16 @@ jobs:
 
           for (const locale of data.locales) {
             const lang = locale.locale;
+            const outputKey = lang.replace(/-/g, '_');
             const message = `${locale.percentage}%`;
             const color = locale.color;
             const label = `i18n ${lang}`;
 
             // Write outputs for the badge action
-            fs.appendFileSync(out, `label_${lang}=${label}\n`);
-            fs.appendFileSync(out, `message_${lang}=${message}\n`);
-            fs.appendFileSync(out, `color_${lang}=${color}\n`);
-            fs.appendFileSync(out, `file_${lang}=i18n_${lang}.json\n`);
+            fs.appendFileSync(out, `label_${outputKey}=${label}\n`);
+            fs.appendFileSync(out, `message_${outputKey}=${message}\n`);
+            fs.appendFileSync(out, `color_${outputKey}=${color}\n`);
+            fs.appendFileSync(out, `file_${outputKey}=i18n_${lang}.json\n`);
 
             console.log(`→ ${lang}: ${message} (${color})`);
           }
@@ -125,6 +126,19 @@ jobs:
           label: "🌐 Indonesian (id)"
           message: ${{ steps.parse.outputs.message_id }}
           color: ${{ steps.parse.outputs.color_id }}
+
+      # ── Simplified Chinese (zh-CN) ───────────────────────────────────────────
+
+      - name: Update badge — Simplified Chinese (zh-CN)
+        if: steps.parse.outputs.message_zh_CN != ''
+        uses: schneegans/dynamic-badges-action@e9a478b16159b4d31420099ba146cdc50f134483
+        with:
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: ${{ secrets.GIST_ID }}
+          filename: i18n_zh-CN.json
+          label: "🌐 Simplified Chinese (zh-CN)"
+          message: ${{ steps.parse.outputs.message_zh_CN }}
+          color: ${{ steps.parse.outputs.color_zh_CN }}
 
       # ── Template for future locales ──────────────────────────────────────────
       # To add a new locale (e.g., German 'de'), copy the block above and set:
