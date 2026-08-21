@@ -1108,6 +1108,53 @@
       "library": "库"
     }
   },
+  "knowledge": {
+    "title": "全局知识",
+    "injectToggle": "让这些知识在所有项目中可用",
+    "injectHint": "已固定的条目会完整注入 ~/.claude/CLAUDE.md，因此 Claude 在每个对话和终端中都知道它们。其余条目只留下一行索引，按需通过 knowledge_get 工具读取。",
+    "newEntry": "新建条目",
+    "preview": "预览注入内容",
+    "previewTitle": "注入到 CLAUDE.md",
+    "previewHint": "这是写入 ~/.claude/CLAUDE.md 中 Claude Terminal 标记之间的确切内容块。",
+    "previewEmpty": "（无内容注入 - 知识库为空或已禁用）",
+    "empty": "还没有全局知识",
+    "emptyHint": "添加你的独立服务器、VPS、客户、域名或约定 - 任何无论在哪个项目都该让 Claude 知道的事。",
+    "back": "返回知识库",
+    "pin": "固定：在每个会话中加载",
+    "unpin": "取消固定：仅按需读取",
+    "pinned": "始终加载",
+    "pinnedLabel": "在每个会话中完整加载此条目",
+    "pinnedHint": "优先固定简短且重要的条目：所有固定内容都会加入每次对话的上下文。",
+    "save": "保存",
+    "saved": "条目已保存",
+    "delete": "删除",
+    "deleteConfirm": "从全局知识库中删除“{name}”？此操作无法撤销。",
+    "titleRequired": "标题为必填项",
+    "errorSaving": "保存失败：{message}",
+    "aliasesLabel": "别名",
+    "fields": {
+      "title": "标题",
+      "summary": "摘要",
+      "category": "分类",
+      "aliases": "别名",
+      "tags": "标签"
+    },
+    "placeholders": {
+      "title": "OVH 独立服务器",
+      "summary": "主生产机器，运行 FiveM 服务器",
+      "aliases": "独服, 生产环境, 我的服务器",
+      "tags": "infra, production",
+      "content": "在此用 markdown 写下事实：IP、系统、服务、访问流程、注意事项……"
+    },
+    "categories": {
+      "server": "服务器",
+      "service": "服务",
+      "person": "人员 / 客户",
+      "convention": "约定",
+      "stack": "技术栈",
+      "other": "其他"
+    }
+  },
   "gitChanges": {
     "filesRequired": "所需文件",
     "selectAtLeastOne": "至少选择一个文件",

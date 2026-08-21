@@ -1108,6 +1108,53 @@
       "library": "Pustaka"
     }
   },
+  "knowledge": {
+    "title": "Pengetahuan Global",
+    "injectToggle": "Jadikan pengetahuan ini tersedia di semua proyek",
+    "injectHint": "Entri yang disematkan disisipkan penuh ke ~/.claude/CLAUDE.md, sehingga Claude mengetahuinya di setiap chat dan terminal. Sisanya hanya meninggalkan satu baris indeks dan dibaca sesuai kebutuhan lewat alat knowledge_get.",
+    "newEntry": "Entri baru",
+    "preview": "Pratinjau penyisipan",
+    "previewTitle": "Disisipkan ke CLAUDE.md",
+    "previewHint": "Ini blok persis yang ditulis di antara penanda Claude Terminal pada ~/.claude/CLAUDE.md.",
+    "previewEmpty": "(tidak ada yang disisipkan - basis kosong atau dinonaktifkan)",
+    "empty": "Belum ada pengetahuan global",
+    "emptyHint": "Tambahkan server dedicated, VPS, klien, domain, atau konvensi - apa pun yang harus Claude ketahui di proyek mana pun.",
+    "back": "Kembali ke pengetahuan",
+    "pin": "Sematkan: muat di setiap sesi",
+    "unpin": "Lepas sematan: baca sesuai kebutuhan",
+    "pinned": "Selalu dimuat",
+    "pinnedLabel": "Muat entri ini secara penuh di setiap sesi",
+    "pinnedHint": "Sematkan terutama entri pendek dan penting: semua yang disematkan ditambahkan ke konteks setiap percakapan.",
+    "save": "Simpan",
+    "saved": "Entri disimpan",
+    "delete": "Hapus",
+    "deleteConfirm": "Hapus \"{name}\" dari pengetahuan global? Tindakan ini tidak dapat dibatalkan.",
+    "titleRequired": "Judul wajib diisi",
+    "errorSaving": "Gagal menyimpan: {message}",
+    "aliasesLabel": "Juga disebut",
+    "fields": {
+      "title": "Judul",
+      "summary": "Ringkasan",
+      "category": "Kategori",
+      "aliases": "Alias",
+      "tags": "Tag"
+    },
+    "placeholders": {
+      "title": "Server dedicated OVH",
+      "summary": "Mesin produksi utama, menjalankan server FiveM",
+      "aliases": "si dedi, prod, server saya",
+      "tags": "infra, produksi",
+      "content": "Tulis faktanya di sini dalam markdown: IP, OS, layanan, prosedur akses, jebakan..."
+    },
+    "categories": {
+      "server": "Server",
+      "service": "Layanan",
+      "person": "Orang / klien",
+      "convention": "Konvensi",
+      "stack": "Stack",
+      "other": "Lainnya"
+    }
+  },
   "gitChanges": {
     "filesRequired": "File wajib dipilih",
     "selectAtLeastOne": "Pilih setidaknya satu file",

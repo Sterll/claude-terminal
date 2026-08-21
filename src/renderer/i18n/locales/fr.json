@@ -1203,6 +1203,53 @@
       "library": "Bibliothèque"
     }
   },
+  "knowledge": {
+    "title": "Connaissances globales",
+    "injectToggle": "Rendre ces connaissances disponibles dans tous les projets",
+    "injectHint": "Les fiches épinglées sont injectées en entier dans ~/.claude/CLAUDE.md : Claude les connaît dans chaque chat et chaque terminal. Les autres ne laissent qu'une ligne d'index et sont lues à la demande via l'outil knowledge_get.",
+    "newEntry": "Nouvelle fiche",
+    "preview": "Aperçu de l'injection",
+    "previewTitle": "Injecté dans CLAUDE.md",
+    "previewHint": "Voici le bloc exact écrit entre les balises Claude Terminal dans ~/.claude/CLAUDE.md.",
+    "previewEmpty": "(rien à injecter - base vide ou désactivée)",
+    "empty": "Aucune connaissance globale",
+    "emptyHint": "Ajoute ton serveur dédié, un VPS, un client, un domaine ou une convention - tout ce que Claude doit savoir quel que soit le projet.",
+    "back": "Retour aux connaissances",
+    "pin": "Épingler : charger dans chaque session",
+    "unpin": "Désépingler : lecture à la demande",
+    "pinned": "Toujours chargée",
+    "pinnedLabel": "Charger cette fiche en entier dans chaque session",
+    "pinnedHint": "Épingle surtout les fiches courtes et importantes : tout ce qui est épinglé s'ajoute au contexte de chaque conversation.",
+    "save": "Enregistrer",
+    "saved": "Fiche enregistrée",
+    "delete": "Supprimer",
+    "deleteConfirm": "Supprimer \"{name}\" des connaissances globales ? Action irréversible.",
+    "titleRequired": "Un titre est obligatoire",
+    "errorSaving": "Enregistrement impossible : {message}",
+    "aliasesLabel": "Aussi appelé",
+    "fields": {
+      "title": "Titre",
+      "summary": "Résumé",
+      "category": "Catégorie",
+      "aliases": "Alias",
+      "tags": "Tags"
+    },
+    "placeholders": {
+      "title": "Serveur dédié OVH",
+      "summary": "Machine de production principale, héberge les serveurs FiveM",
+      "aliases": "le dédié, la prod, mon serveur",
+      "tags": "infra, production",
+      "content": "Écris les faits ici en markdown : IP, OS, services, procédure d'accès, pièges..."
+    },
+    "categories": {
+      "server": "Serveur",
+      "service": "Service",
+      "person": "Personne / client",
+      "convention": "Convention",
+      "stack": "Stack",
+      "other": "Autre"
+    }
+  },
   "gitChanges": {
     "filesRequired": "Fichiers requis",
     "selectAtLeastOne": "Sélectionnez au moins un fichier",

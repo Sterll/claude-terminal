@@ -1105,6 +1105,53 @@
       "library": "Biblioteca"
     }
   },
+  "knowledge": {
+    "title": "Conocimiento global",
+    "injectToggle": "Hacer que este conocimiento esté disponible en todos los proyectos",
+    "injectHint": "Las fichas fijadas se inyectan completas en ~/.claude/CLAUDE.md, así Claude las conoce en cada chat y terminal. Las demás solo dejan una línea de índice y se leen bajo demanda con la herramienta knowledge_get.",
+    "newEntry": "Nueva ficha",
+    "preview": "Vista previa de la inyección",
+    "previewTitle": "Inyectado en CLAUDE.md",
+    "previewHint": "Este es el bloque exacto escrito entre los marcadores de Claude Terminal en ~/.claude/CLAUDE.md.",
+    "previewEmpty": "(nada que inyectar - base vacía o desactivada)",
+    "empty": "Aún no hay conocimiento global",
+    "emptyHint": "Añade tu servidor dedicado, un VPS, un cliente, un dominio o una convención: todo lo que Claude deba saber sea cual sea el proyecto.",
+    "back": "Volver al conocimiento",
+    "pin": "Fijar: cargar en cada sesión",
+    "unpin": "Desfijar: leer bajo demanda",
+    "pinned": "Siempre cargada",
+    "pinnedLabel": "Cargar esta ficha completa en cada sesión",
+    "pinnedHint": "Fija sobre todo fichas cortas e importantes: todo lo fijado se añade al contexto de cada conversación.",
+    "save": "Guardar",
+    "saved": "Ficha guardada",
+    "delete": "Eliminar",
+    "deleteConfirm": "¿Eliminar \"{name}\" del conocimiento global? Esta acción no se puede deshacer.",
+    "titleRequired": "El título es obligatorio",
+    "errorSaving": "No se pudo guardar: {message}",
+    "aliasesLabel": "También llamado",
+    "fields": {
+      "title": "Título",
+      "summary": "Resumen",
+      "category": "Categoría",
+      "aliases": "Alias",
+      "tags": "Etiquetas"
+    },
+    "placeholders": {
+      "title": "Servidor dedicado OVH",
+      "summary": "Máquina de producción principal, aloja los servidores FiveM",
+      "aliases": "el dedicado, prod, mi servidor",
+      "tags": "infra, producción",
+      "content": "Escribe los hechos aquí en markdown: IP, SO, servicios, procedimiento de acceso, trampas..."
+    },
+    "categories": {
+      "server": "Servidor",
+      "service": "Servicio",
+      "person": "Persona / cliente",
+      "convention": "Convención",
+      "stack": "Stack",
+      "other": "Otro"
+    }
+  },
   "gitChanges": {
     "filesRequired": "Archivos requeridos",
     "selectAtLeastOne": "Selecciona al menos un archivo",

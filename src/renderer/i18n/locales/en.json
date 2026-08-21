@@ -1108,6 +1108,53 @@
       "library": "Library"
     }
   },
+  "knowledge": {
+    "title": "Global Knowledge",
+    "injectToggle": "Make this knowledge available in every project",
+    "injectHint": "Pinned entries are injected in full into ~/.claude/CLAUDE.md, so Claude knows them in every chat and terminal. The others only leave a one-line pointer and are read on demand with the knowledge_get tool.",
+    "newEntry": "New entry",
+    "preview": "Preview injection",
+    "previewTitle": "Injected into CLAUDE.md",
+    "previewHint": "This is the exact block written between the Claude Terminal markers in ~/.claude/CLAUDE.md.",
+    "previewEmpty": "(nothing injected - the knowledge base is empty or disabled)",
+    "empty": "No global knowledge yet",
+    "emptyHint": "Add a dedicated server, a VPS, a client, a domain or a convention - anything Claude should know whatever project you are in.",
+    "back": "Back to knowledge",
+    "pin": "Pin: load in every session",
+    "unpin": "Unpin: read on demand only",
+    "pinned": "Always loaded",
+    "pinnedLabel": "Load this entry in full in every session",
+    "pinnedHint": "Keep pinning for short, high-value entries. Everything pinned is added to every conversation context.",
+    "save": "Save",
+    "saved": "Entry saved",
+    "delete": "Delete",
+    "deleteConfirm": "Delete \"{name}\" from the global knowledge base? This cannot be undone.",
+    "titleRequired": "A title is required",
+    "errorSaving": "Could not save: {message}",
+    "aliasesLabel": "Also called",
+    "fields": {
+      "title": "Title",
+      "summary": "Summary",
+      "category": "Category",
+      "aliases": "Aliases",
+      "tags": "Tags"
+    },
+    "placeholders": {
+      "title": "Dedicated server OVH",
+      "summary": "Main production machine, hosts the FiveM servers",
+      "aliases": "the dedi, prod, my server",
+      "tags": "infra, production",
+      "content": "Write the facts here in markdown: IP, OS, services, access procedure, gotchas..."
+    },
+    "categories": {
+      "server": "Server",
+      "service": "Service",
+      "person": "Person / client",
+      "convention": "Convention",
+      "stack": "Stack",
+      "other": "Other"
+    }
+  },
   "gitChanges": {
     "filesRequired": "Files required",
     "selectAtLeastOne": "Select at least one file",
