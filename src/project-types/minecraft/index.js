@@ -161,7 +161,8 @@ module.exports = createType({
         en: require('./i18n/en.json'),
         fr: require('./i18n/fr.json'),
         es: require('./i18n/es.json'),
-        id: require('./i18n/id.json')
+        id: require('./i18n/id.json'),
+        'zh-CN': require('./i18n/zh-CN.json')
       };
     } catch (e) {
       console.warn('[Minecraft] Failed to load translations:', e.message);

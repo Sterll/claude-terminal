@@ -22,6 +22,10 @@
     src="https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_id.json"
     alt="i18n Indonesian"
   />
+  <img
+    src="https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_zh-CN.json"
+    alt="i18n Simplified Chinese"
+  />
 </p>
 
 <p align="center">
@@ -91,6 +95,7 @@
 | 🇫🇷 French | ![i18n fr][i18n-fr-badge] | ~800 / ~800 |
 | 🇪🇸 Spanish | ![i18n es][i18n-es-badge] | ~800 / ~800 |
 | 🇮🇩 Indonesian | ![i18n id][i18n-id-badge] | ~800 / ~800 |
+| 🇨🇳 Simplified Chinese | ![i18n zh-CN][i18n-zh-cn-badge] | ~800 / ~800 |
 
 > Coverage badges are updated automatically on every push to locale files.
 > See [`.github/i18n-coverage.md`](.github/i18n-coverage.md) for details and
@@ -100,6 +105,7 @@
 [i18n-fr-badge]: https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_fr.json
 [i18n-es-badge]: https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_es.json
 [i18n-id-badge]: https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_id.json
+[i18n-zh-cn-badge]: https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_zh-CN.json
 
 ---
 
@@ -304,7 +310,7 @@ npm install
 ### Settings
 - Accent color theming (preset palettes + custom hex)
 - Per-agent and per-tool color customization for chat tool cards
-- Language: English, French, and Spanish with auto-detection
+- Language: English, French, Spanish, Indonesian, and Simplified Chinese with auto-detection
 - Editor integration: VS Code, Cursor, WebStorm, IntelliJ IDEA
 - Customizable keyboard shortcuts
 - Desktop notification preferences

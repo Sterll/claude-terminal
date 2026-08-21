@@ -78,6 +78,12 @@ describe('setLanguage', () => {
     expect(getCurrentLanguage()).toBe('es');
   });
 
+  test('switches to Simplified Chinese', () => {
+    setLanguage('zh-CN');
+    expect(getCurrentLanguage()).toBe('zh-CN');
+    expect(t('common.close')).toBe('关闭');
+  });
+
   test('falls back to default for unsupported language', () => {
     setLanguage('zh');
     expect(getCurrentLanguage()).toBe(DEFAULT_LANGUAGE);
@@ -138,6 +144,14 @@ describe('detectSystemLanguage', () => {
     expect(detectSystemLanguage()).toBe('en');
   });
 
+  test('detects an exact regional locale before the primary subtag', () => {
+    Object.defineProperty(global, 'navigator', {
+      value: { language: 'zh-CN' },
+      writable: true,
+    });
+    expect(detectSystemLanguage()).toBe('zh-CN');
+  });
+
   test('returns en for unsupported language', () => {
     Object.defineProperty(global, 'navigator', {
       value: { language: 'ja-JP' },
@@ -179,14 +193,17 @@ describe('matchSupportedLanguage', () => {
   });
 
   describe('with regional locales registered', () => {
-    // SUPPORTED_LANGUAGES is exported by reference and read on every call, so
-    // registering variants here exercises the real resolution order.
-    beforeEach(() => SUPPORTED_LANGUAGES.push('zh-CN', 'zh-TW'));
-    afterEach(() => SUPPORTED_LANGUAGES.splice(SUPPORTED_LANGUAGES.indexOf('zh-CN'), 2));
+    // zh-CN is a real locale. Register a future zh-TW variant here to ensure
+    // the resolver keeps script-specific translations separate.
+    beforeEach(() => SUPPORTED_LANGUAGES.push('zh-TW'));
+    afterEach(() => {
+      const index = SUPPORTED_LANGUAGES.indexOf('zh-TW');
+      if (index !== -1) SUPPORTED_LANGUAGES.splice(index, 1);
+    });
 
     test('resolves a script-specific locale exactly', () => {
-      // The zh-CN / zh-TW case: these are different translations, so the tag
-      // must not be collapsed onto a generic 'zh' that no locale file matches.
+      // zh-CN and zh-TW are different translations, so neither tag may be
+      // collapsed onto a generic 'zh' that has no locale file.
       expect(matchSupportedLanguage('zh-CN')).toBe('zh-CN');
       expect(matchSupportedLanguage('zh-TW')).toBe('zh-TW');
     });
@@ -226,6 +243,10 @@ describe('getLanguageName', () => {
     const name = getLanguageName('en');
     expect(typeof name).toBe('string');
     expect(name.length).toBeGreaterThan(0);
+  });
+
+  test('returns the native name for Simplified Chinese', () => {
+    expect(getLanguageName('zh-CN')).toBe('简体中文');
   });
 
   test('returns code for unknown language', () => {

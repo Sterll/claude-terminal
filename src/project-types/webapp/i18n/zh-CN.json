@@ -1,0 +1,93 @@
+{
+  "webapp": {
+    "devServer": "开发服务器",
+    "startServer": "启动开发服务器",
+    "stopServer": "停止开发服务器",
+    "openBrowser": "在浏览器中打开",
+    "stopped": "已停止",
+    "starting": "正在启动...",
+    "running": "运行中",
+    "online": "在线",
+    "console": "控制台",
+    "serverInfo": "信息",
+    "framework": "框架",
+    "port": "端口",
+    "url": "URL",
+    "devCommand": "开发命令",
+    "packageManager": "包管理器",
+    "noPortDetected": "尚未检测到端口",
+    "detecting": "正在检测...",
+    "serverRunningAt": "服务器运行于 {url}",
+    "reload": "重新加载",
+    "preview": "预览",
+    "devCommandHint": "留空以从 package.json 自动检测",
+    "inspect": "可视化反馈",
+    "feedbackPlaceholder": "你想更改什么？",
+    "pinPlaceholder": "这里需要更改什么？",
+    "sendToClaude": "发送给 Claude",
+    "sendAll": "全部发送（{count}）",
+    "deletePin": "删除",
+    "responsive": {
+      "full": "全宽",
+      "mobile": "手机",
+      "tablet": "平板",
+      "laptop": "笔记本",
+      "desktop": "桌面端"
+    },
+    "scan": {
+      "title": "扫描视觉问题",
+      "scanning": "正在扫描...",
+      "noIssues": "未发现问题",
+      "issuesFound": "发现 {count} 问题",
+      "dismiss": "忽略",
+      "customInstruction": "自定义修复指令...",
+      "types": {
+        "overflow": "溢出",
+        "contrast": "对比",
+        "brokenImage": "损坏的图片",
+        "zIndex": "Z-index",
+        "aria": "ARIA",
+        "altText": "替代文本",
+        "keyboard": "键盘",
+        "structure": "结构",
+        "a11y": "无障碍"
+      }
+    },
+    "ruler": {
+      "title": "测量间距",
+      "pinPlaceholder": "改变什么间距？",
+      "margin": "外边距",
+      "border": "边框",
+      "padding": "内边距",
+      "content": "内容"
+    },
+    "settings": {
+      "previewEnabled": "应用内预览",
+      "previewEnabledDesc": "直接在应用程序中嵌入开发服务器的实时预览（使用更多内存）"
+    },
+    "noServerRunning": "没有正在运行的服务器",
+    "startingUp": "正在启动",
+    "waitingPort": "等待端口检测...",
+    "startDevServerHint": "启动开发服务器以在此处查看实时预览",
+    "devServerNotRunning": "开发服务器未运行",
+    "launchingServer": "正在启动开发服务器...",
+    "serverActive": "服务器已启动",
+    "commandLabel": "命令",
+    "localUrlLabel": "本地 URL",
+    "openBtn": "打开",
+    "statusStarting": "启动中",
+    "statusRunning": "运行中",
+    "statusStopped": "已停止"
+  },
+  "newProject": {
+    "types": {
+      "webapp": "Web 应用",
+      "webappDesc": "带有集成开发服务器的 Web 项目"
+    },
+    "devCommand": "开发命令",
+    "devCommandPlaceholder": "npm run dev"
+  },
+  "dashboard": {
+    "webApp": "Web 应用"
+  }
+}

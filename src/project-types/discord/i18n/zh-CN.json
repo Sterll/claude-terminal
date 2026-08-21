@@ -1,0 +1,59 @@
+{
+  "discord": {
+    "bot": "机器人",
+    "startBot": "启动机器人",
+    "stopBot": "停止机器人",
+    "online": "在线",
+    "offline": "离线",
+    "starting": "正在启动...",
+    "console": "控制台",
+    "commands": "命令",
+    "events": "事件",
+    "guilds": "个服务器",
+    "library": "库",
+    "botName": "机器人名称",
+    "noCommands": "未检测到命令。单击“扫描”搜索源文件。",
+    "scanCommands": "扫描命令",
+    "scanning": "正在扫描源文件...",
+    "searchCommands": "搜索命令...",
+    "clearEvents": "清除",
+    "noEvents": "暂无事件。启动机器人后可查看活动。",
+    "startCommand": "启动命令",
+    "startCommandHint": "留空以进行自动检测（node bot.js、python bot.py 等）",
+    "devServer": "机器人",
+    "devCommandHint": "启动机器人的命令（例如 node bot.js、python bot.py）",
+    "embedBuilder": "嵌入生成器",
+    "componentBuilder": "组件",
+    "builderPreview": "预览",
+    "builderAuthor": "作者",
+    "builderAuthorName": "作者姓名",
+    "builderAuthorIcon": "作者图标 URL",
+    "builderAuthorUrl": "作者 URL",
+    "builderTitle": "标题",
+    "builderTitleHint": "嵌入标题",
+    "builderTitleUrl": "标题网址",
+    "builderDescription": "描述",
+    "builderDescHint": "嵌入描述（支持**粗体**、*斜体*、`代码`）",
+    "builderColor": "颜色",
+    "builderTimestamp": "时间戳",
+    "builderTimestampNow": "当前时间",
+    "builderFields": "领域",
+    "builderImages": "图片",
+    "builderThumbnail": "缩略图 URL（小，右上角）",
+    "builderImage": "图片 URL（大，底部）",
+    "builderFooter": "页脚",
+    "builderFooterText": "页脚文本",
+    "builderFooterIcon": "页脚图标 URL",
+    "builderActionRows": "操作行",
+    "builderAddRow": "添加操作行"
+  },
+  "newProject": {
+    "types": {
+      "discord": "不和谐机器人",
+      "discordDesc": "具有生命周期管理和命令扫描功能的 Discord 机器人"
+    },
+    "categories": {
+      "bots": "机器人"
+    }
+  }
+}

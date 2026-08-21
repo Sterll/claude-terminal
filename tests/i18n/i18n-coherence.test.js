@@ -274,3 +274,26 @@ describe('i18n coherence — project types', () => {
     expect(emptyFr).toEqual([]);
   });
 });
+
+describe('i18n coherence — Simplified Chinese project types', () => {
+  const projectTypes = ['api', 'discord', 'fivem', 'minecraft', 'python', 'webapp'];
+  const placeholders = (value) => Array.from(String(value).matchAll(/\{[^{}]+\}/g), match => match[0]).sort();
+
+  test.each(projectTypes)('%s: zh-CN matches the English key and placeholder set', (typeName) => {
+    const enFile = path.join(projectTypesDir, typeName, 'i18n', 'en.json');
+    const zhFile = path.join(projectTypesDir, typeName, 'i18n', 'zh-CN.json');
+    const enData = JSON.parse(fs.readFileSync(enFile, 'utf8'));
+    const zhData = JSON.parse(fs.readFileSync(zhFile, 'utf8'));
+    const enKeys = extractKeys(enData);
+    const zhKeys = extractKeys(zhData);
+
+    expect(zhKeys).toEqual(enKeys);
+    expect(zhKeys.filter(key => getValueAtPath(zhData, key) === '')).toEqual([]);
+
+    const placeholderMismatches = enKeys.filter(key =>
+      JSON.stringify(placeholders(getValueAtPath(enData, key))) !==
+      JSON.stringify(placeholders(getValueAtPath(zhData, key)))
+    );
+    expect(placeholderMismatches).toEqual([]);
+  });
+});
