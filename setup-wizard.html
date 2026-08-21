@@ -1607,9 +1607,12 @@
       const prevStepEl = steps[currentStep];
       const nextStepEl = steps[step];
 
-      // Remove active from previous
+      // Remove active from previous.
+      // Only the forward direction gets exit-left: classList.add('') throws a
+      // DOMException, which used to abort the rest of goToStep() on every
+      // backward navigation and left the wizard on a blank step.
       prevStepEl.classList.remove('active');
-      prevStepEl.classList.add(direction > 0 ? 'exit-left' : '');
+      if (direction > 0) prevStepEl.classList.add('exit-left');
       prevStepEl.style.transform = direction > 0 ? 'translateX(-60px)' : 'translateX(60px)';
       prevStepEl.style.opacity = '0';
 
