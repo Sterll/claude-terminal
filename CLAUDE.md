@@ -100,6 +100,7 @@ Remote UI (PWA for mobile)
 | `remote.ipc.js` | 11 | PIN auth, WS server info/start/stop, notify projects/session/tab/time |
 | `workflow.ipc.js` | 18 | Create/list/run/cancel workflows, run logs, diagnose, variables, test node |
 | `workspace.ipc.js` | 7 | Workspace list/overview/search/read/write docs/concept links |
+| `knowledge.ipc.js` | 9 | Global knowledge CRUD, pin, enable, search, CLAUDE.md block preview/sync |
 | `parallel.ipc.js` | 9 | Parallel task orchestration across git worktrees |
 | `database.ipc.js` | 11 | Multi-driver queries (SQLite/MySQL/PostgreSQL/MongoDB/Redis), schema, export |
 | `cloud-relay.ipc.js` | 5 | Cloud relay WSS connection |
@@ -110,7 +111,7 @@ Remote UI (PWA for mobile)
 | `fivem.ipc.js` | - | Delegated to `src/project-types/fivem/` |
 | `index.js` | - | Orchestrator - registers all handlers |
 
-**Total: 256 IPC handlers across 26 files.**
+**Total: 265 IPC handlers across 27 files.**
 
 ### Services (`src/main/services/`)
 
@@ -135,6 +136,7 @@ Remote UI (PWA for mobile)
 | `WorkflowStorage.js` | Persist workflow definitions + run history |
 | `ParallelTaskService.js` | Decompose a feature into independent sub-tasks, one git worktree + branch each, AI merge agent |
 | `WorkspaceService.js` | Workspace knowledge base: docs, concept links, full-text search |
+| `KnowledgeService.js` | Global knowledge base shared by every project; syncs a marked block into `~/.claude/CLAUDE.md` |
 | `CloudRelayClient.js` | WSS client to self-hosted cloud relay |
 | `SyncEngine.js` | Bidirectional desktop <-> cloud sync, conflict resolution, file watcher, per-entity toggles |
 | `TelemetryService.js` | Opt-in anonymous telemetry |
@@ -249,7 +251,7 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 | `PluginsPanel` | Claude Code plugins (browse, install, uninstall, update checks) |
 | `SkillsAgentsPanel` | Skills + agents library with syntax-highlighted editor |
 | `MarketplacePanel` | Skill marketplace search + install |
-| `MemoryEditor` | Edit global / settings / project `CLAUDE.md` |
+| `MemoryEditor` | Edit global / settings / project `CLAUDE.md` + Global Knowledge entries |
 | `ShortcutsManager` | Customizable keyboard shortcuts |
 | `RemotePanel` | Remote control (PIN, QR code, server status) |
 | `ControlTowerPanel` | Real-time overview of all active Claude agents, remote interrupt, reply to AskUserQuestion |
@@ -392,7 +394,7 @@ Each type typically provides `main/[Type]Service.js`, `main/[type].ipc.js`, `ren
 
 Exposes API namespaces on `window.electron_api`:
 
-`terminal` | `git` (69 methods) | `github` | `chat` | `claude` | `mcp` | `mcpRegistry` | `marketplace` | `plugins` | `dialog` | `explorer` | `window` | `app` | `notification` | `usage` | `project` | `hooks` | `updates` | `setupWizard` | `lifecycle` | `quickPicker` | `tray` | `fivem` | `webapp` | `api` | `python` | `minecraft` | `discord` | `remote` | `workspace` | `workflow` | `parallel` | `database` | `time` | `telemetry` | `cloud`
+`terminal` | `git` (69 methods) | `github` | `chat` | `claude` | `mcp` | `mcpRegistry` | `marketplace` | `plugins` | `dialog` | `explorer` | `window` | `app` | `notification` | `usage` | `project` | `hooks` | `updates` | `setupWizard` | `lifecycle` | `quickPicker` | `tray` | `fivem` | `webapp` | `api` | `python` | `minecraft` | `discord` | `remote` | `workspace` | `workflow` | `parallel` | `database` | `time` | `telemetry` | `cloud` | `knowledge`
 
 Also exposes `window.electron_nodeModules`: `path`, `fs` (sync + promises, guarded by a system-path blocklist in `preload.js`), `os.homedir()`, a small allowlist of `process.env` vars, and `__dirname`.
 
@@ -407,6 +409,9 @@ Also exposes `window.electron_nodeModules`: `path`, `fs` (sync + promises, guard
 ├── timetracking.json                  # Time tracking data (v2 format)
 ├── marketplace.json                   # Installed skills manifest
 ├── session-names.json                 # Session display names
+├── knowledge/
+│   ├── index.json                     # Global knowledge entry metadata
+│   └── entries/<slug>.md              # One markdown file per entry
 ├── session-pins.json                  # Pinned sessions
 ├── parallel-runs.json                 # Parallel task run history
 ├── workflows/
@@ -534,7 +539,7 @@ module.exports = {
 
 **Env vars available in MCP tools:** `CT_DATA_DIR` (`~/.claude-terminal/`), `CT_PROJECT_PATH` (current project).
 
-**Available tool modules (20):**
+**Available tool modules (21):**
 
 Files prefixed with `_` are shared helpers, not tool modules — the loader ignores them because they export no `tools`/`handle`. `_workflowStore.js` owns the single definitions.json writer protocol (cross-process lock, atomic write, reload signal) used by both `workflow.js` and `automation.js`.
 
@@ -551,6 +556,7 @@ Files prefixed with `_` are shared helpers, not tool modules — the loader igno
 | `automation.js` | `automation_list`, `automation_get`, `automation_create`, `automation_update`, `automation_enable`, `automation_delete` — compiles via `src/shared/simple-task.js` |
 | `parallel.js` | `parallel_list_runs`, `parallel_run_detail`, `parallel_start_run`, `parallel_cancel_run`, `parallel_cleanup_run`, `parallel_merge_run` |
 | `workspace.js` | `workspace_list`, `workspace_info`, `workspace_read_doc`, `workspace_write_doc`, `workspace_search`, `workspace_add_link` |
+| `knowledge.js` | `knowledge_list`, `knowledge_get`, `knowledge_search`, `knowledge_write`, `knowledge_delete` — cross-project facts, available in every session |
 | `control-tower.js` | `control_tower_agents`, `control_tower_interrupt` |
 | `kanban.js` | Kanban columns + tasks (add / move / update / filter / stats) |
 | `terminal.js` | `terminal_create`, `terminal_list`, `terminal_send_command`, `terminal_read_output`, `terminal_close` |
