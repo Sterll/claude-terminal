@@ -426,6 +426,20 @@ class ChatView extends BaseComponent {
           <span class="chat-tab-badge" hidden>0</span>
         </button>
       </div>
+      <div class="chat-search" hidden>
+        <svg class="chat-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" class="chat-search-input" placeholder="${escapeHtml(t('chat.searchPlaceholder') || 'Search in conversation...')}" spellcheck="false" />
+        <span class="chat-search-count"></span>
+        <button class="chat-search-prev" title="${escapeHtml(t('chat.searchPrevious') || 'Previous match')}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+        </button>
+        <button class="chat-search-next" title="${escapeHtml(t('chat.searchNext') || 'Next match')}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <button class="chat-search-close" title="${escapeHtml(t('chat.searchClose') || 'Close')}">
+          <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+        </button>
+      </div>
       <div class="chat-messages">
         <div class="chat-welcome">
           <img class="chat-welcome-logo" src="assets/claude-mascot.svg" alt="" draggable="false" />
@@ -458,6 +472,9 @@ class ChatView extends BaseComponent {
             <span class="chat-status-dot"></span>
             ${project.isCloud ? `<span class="chat-status-cloud-badge">${escapeHtml(t('chat.cloudBadge') || 'Cloud')}</span>` : ''}
             <span class="chat-status-text">${escapeHtml(t('chat.ready'))}</span>
+            <button class="chat-search-btn" title="${escapeHtml(t('chat.searchConversation') || 'Search in conversation')}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </button>
             <button class="chat-export-btn" title="${escapeHtml(t('chat.exportConversation') || 'Export conversation')}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             </button>
@@ -509,6 +526,200 @@ class ChatView extends BaseComponent {
   const mentionDropdown = chatView.querySelector('.chat-mention-dropdown');
   const followupSuggestionsEl = chatView.querySelector('.chat-followup-suggestions');
   const exportBtn = chatView.querySelector('.chat-export-btn');
+
+  // ── Transcript search (Ctrl+F) ──
+
+  const searchBarEl = chatView.querySelector('.chat-search');
+  const searchInputEl = chatView.querySelector('.chat-search-input');
+  const searchCountEl = chatView.querySelector('.chat-search-count');
+  const searchPrevBtn = chatView.querySelector('.chat-search-prev');
+  const searchNextBtn = chatView.querySelector('.chat-search-next');
+  const searchCloseBtn = chatView.querySelector('.chat-search-close');
+  const searchOpenBtn = chatView.querySelector('.chat-search-btn');
+
+  // Tags whose text is never user-visible prose, so never worth highlighting.
+  const SEARCH_SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'INPUT', 'SELECT', 'OPTION', 'SVG', 'CANVAS']);
+  const SEARCH_MAX_HITS = 500;
+
+  let searchHits = [];
+  let searchHitIndex = -1;
+  let searchDebounceTimer = null;
+  let searchLastQuery = '';
+
+  function clearSearchHighlights() {
+    for (const mark of messagesEl.querySelectorAll('mark.chat-search-hit')) {
+      const parent = mark.parentNode;
+      if (!parent) continue;
+      parent.replaceChild(document.createTextNode(mark.textContent), mark);
+      parent.normalize();
+    }
+    searchHits = [];
+    searchHitIndex = -1;
+  }
+
+  // Collapsed tool cards and hidden panels hold text we can never scroll to,
+  // so matches inside them would only inflate the counter.
+  function isSearchableElement(el, cache) {
+    if (!el || el === messagesEl) return true;
+    const cached = cache.get(el);
+    if (cached !== undefined) return cached;
+    let ok = true;
+    if (SEARCH_SKIP_TAGS.has(el.tagName.toUpperCase()) || el.hasAttribute('hidden')) {
+      ok = false;
+    } else if (el.offsetParent === null) {
+      ok = false;
+    } else {
+      ok = isSearchableElement(el.parentElement, cache);
+    }
+    cache.set(el, ok);
+    return ok;
+  }
+
+  function wrapSearchMatches(textNode, needle) {
+    const marks = [];
+    let current = textNode;
+    for (;;) {
+      const idx = current.nodeValue.toLowerCase().indexOf(needle);
+      if (idx === -1) break;
+      const matchNode = current.splitText(idx);
+      const tail = matchNode.splitText(needle.length);
+      const mark = document.createElement('mark');
+      mark.className = 'chat-search-hit';
+      matchNode.parentNode.replaceChild(mark, matchNode);
+      mark.appendChild(matchNode);
+      marks.push(mark);
+      current = tail;
+    }
+    return marks;
+  }
+
+  function runSearch(query, { keepIndex = false } = {}) {
+    const previousIndex = searchHitIndex;
+    clearSearchHighlights();
+    searchLastQuery = query;
+    const needle = query.trim().toLowerCase();
+    if (needle.length < 2) {
+      searchCountEl.textContent = '';
+      searchBarEl.classList.remove('no-results');
+      return;
+    }
+
+    const visibilityCache = new Map();
+    const walker = document.createTreeWalker(messagesEl, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        if (!node.nodeValue || !node.nodeValue.toLowerCase().includes(needle)) return NodeFilter.FILTER_REJECT;
+        return isSearchableElement(node.parentElement, visibilityCache)
+          ? NodeFilter.FILTER_ACCEPT
+          : NodeFilter.FILTER_REJECT;
+      }
+    });
+
+    const targets = [];
+    let node;
+    while ((node = walker.nextNode())) targets.push(node);
+
+    for (const target of targets) {
+      searchHits.push(...wrapSearchMatches(target, needle));
+      if (searchHits.length >= SEARCH_MAX_HITS) break;
+    }
+
+    searchBarEl.classList.toggle('no-results', searchHits.length === 0);
+    if (!searchHits.length) {
+      searchCountEl.textContent = t('chat.searchNoResults') || 'No results';
+      return;
+    }
+    const nextIndex = keepIndex && previousIndex >= 0
+      ? Math.min(previousIndex, searchHits.length - 1)
+      : 0;
+    focusSearchHit(nextIndex, { scroll: !keepIndex });
+  }
+
+  function focusSearchHit(index, { scroll = true } = {}) {
+    if (!searchHits.length) return;
+    searchHits[searchHitIndex]?.classList.remove('current');
+    searchHitIndex = (index + searchHits.length) % searchHits.length;
+    const hit = searchHits[searchHitIndex];
+    hit.classList.add('current');
+    if (scroll) hit.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    const total = searchHits.length >= SEARCH_MAX_HITS ? `${SEARCH_MAX_HITS}+` : `${searchHits.length}`;
+    searchCountEl.textContent = `${searchHitIndex + 1}/${total}`;
+  }
+
+  function navigateSearch(forward) {
+    // Streaming can replace message nodes under us, detaching the marks we hold.
+    if (searchHits.length && searchHits.some(h => !h.isConnected)) {
+      runSearch(searchLastQuery, { keepIndex: true });
+      if (!searchHits.length) return;
+    }
+    if (!searchHits.length) return;
+    focusSearchHit(searchHitIndex + (forward ? 1 : -1));
+  }
+
+  function openSearch() {
+    // The Changes tab hides the transcript, so there would be nothing to match against.
+    if (messagesEl.hidden) tabbarEl.querySelector('.chat-tab[data-tab="conversation"]')?.click();
+    searchBarEl.hidden = false;
+    // Seed with the current selection so "select then Ctrl+F" works like a browser.
+    const selected = String(window.getSelection() || '').trim();
+    if (selected && selected.length <= 100 && messagesEl.contains(window.getSelection()?.anchorNode || null)) {
+      searchInputEl.value = selected;
+      runSearch(selected);
+    } else if (searchInputEl.value.trim()) {
+      runSearch(searchInputEl.value);
+    }
+    searchInputEl.focus();
+    searchInputEl.select();
+  }
+
+  function closeSearch({ refocusInput = true } = {}) {
+    if (searchBarEl.hidden) return;
+    clearTimeout(searchDebounceTimer);
+    clearSearchHighlights();
+    searchBarEl.hidden = true;
+    searchBarEl.classList.remove('no-results');
+    searchCountEl.textContent = '';
+    if (refocusInput) inputEl?.focus();
+  }
+
+  searchInputEl.addEventListener('input', () => {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => runSearch(searchInputEl.value), 180);
+  });
+
+  searchInputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (searchInputEl.value !== searchLastQuery) {
+        clearTimeout(searchDebounceTimer);
+        runSearch(searchInputEl.value);
+        return;
+      }
+      navigateSearch(!e.shiftKey);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      closeSearch();
+    }
+  });
+
+  searchPrevBtn.addEventListener('click', () => navigateSearch(false));
+  searchNextBtn.addEventListener('click', () => navigateSearch(true));
+  searchCloseBtn.addEventListener('click', () => closeSearch());
+  searchOpenBtn.addEventListener('click', () => {
+    if (searchBarEl.hidden) openSearch(); else closeSearch();
+  });
+
+  // Only the visible chat view claims Ctrl+F; hidden tabs keep display:none wrappers.
+  function _onSearchShortcut(e) {
+    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'f' || e.altKey) return;
+    if (!chatView.isConnected || chatView.offsetParent === null) return;
+    const active = document.activeElement;
+    if (active && active !== document.body && !chatView.contains(active)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openSearch();
+  }
+  document.addEventListener('keydown', _onSearchShortcut, true);
 
   // ── Export conversation ──
 
@@ -6594,6 +6805,8 @@ class ChatView extends BaseComponent {
       pendingImages.length = 0;
       lightboxImages.length = 0;
       // Remove global listeners
+      clearTimeout(searchDebounceTimer);
+      document.removeEventListener('keydown', _onSearchShortcut, true);
       window.removeEventListener('blur', _onShiftBlur);
       document.removeEventListener('click', _closeDropdowns);
       document.removeEventListener('keydown', lightboxKeyHandler);

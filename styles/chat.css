@@ -145,6 +145,126 @@
   font-size: var(--font-sm);
 }
 
+/* ── Transcript search (Ctrl+F) ── */
+.chat-search {
+  position: absolute;
+  top: 10px;
+  right: 22px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+
+.chat-search[hidden] { display: none; }
+
+/* Clear the Conversation/Changes tab bar when it is shown */
+.chat-tabbar:not([hidden]) + .chat-search {
+  top: 50px;
+}
+
+.chat-search-icon {
+  width: 13px;
+  height: 13px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.chat-search-input {
+  width: 200px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 4px 8px;
+  font-size: var(--font-sm);
+  font-family: inherit;
+  outline: none;
+}
+
+.chat-search-input:focus {
+  border-color: var(--accent);
+}
+
+.chat-search.no-results .chat-search-input {
+  border-color: var(--danger);
+}
+
+.chat-search-count {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  min-width: 34px;
+  text-align: center;
+}
+
+.chat-search.no-results .chat-search-count {
+  color: var(--danger);
+}
+
+.chat-search button {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  border-radius: var(--radius-sm);
+}
+
+.chat-search button:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.chat-search button svg {
+  width: 13px;
+  height: 13px;
+}
+
+mark.chat-search-hit {
+  background: rgba(255, 200, 0, 0.28);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0;
+}
+
+mark.chat-search-hit.current {
+  background: rgba(255, 200, 0, 0.7);
+  color: #1a1a1a;
+  outline: 1px solid rgba(255, 200, 0, 0.9);
+}
+
+.chat-search-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  margin-left: 8px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.chat-input-footer:hover .chat-search-btn {
+  opacity: 0.5;
+}
+
+.chat-search-btn:hover {
+  opacity: 1 !important;
+  color: var(--accent-color);
+}
+
+.chat-search-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
 /* ── Messages area ── */
 .chat-messages[hidden] { display: none; }
 .chat-messages {
