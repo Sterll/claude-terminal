@@ -50,6 +50,17 @@ describe('voice system prompt', () => {
     expect(voice().append).toContain('ui_navigate');
   });
 
+  test('spells out the dispatch model instead of refusing work', () => {
+    const { append } = voice();
+
+    expect(append).toContain('tab_send');
+    expect(append).toContain('terminal_create');
+    expect(append).toMatch(/dispatch/i);
+    // It must not tell the user to go back to the keyboard — that was the old,
+    // read-only design.
+    expect(append).not.toMatch(/needs the keyboard/i);
+  });
+
   test('warns that spoken names arrive mangled', () => {
     expect(voice().append).toMatch(/marvel[- ]quiz/i);
   });
@@ -84,18 +95,50 @@ describe('voice-safe toolset', () => {
     }
   });
 
-  test('withholds every tool that could act on the machine', () => {
-    for (const tool of ['Bash', 'Edit', 'Write', 'NotebookEdit', 'KillShell']) {
+  test('can dispatch work to a normal chat tab', () => {
+    for (const tool of [
+      'mcp__claude-terminal__tab_list',
+      'mcp__claude-terminal__tab_send',
+      'mcp__claude-terminal__tab_status',
+      'mcp__claude-terminal__terminal_create',
+    ]) {
+      expect(VOICE_SAFE_TOOLS).toContain(tool);
+    }
+  });
+
+  test('never touches the machine directly', () => {
+    for (const tool of ['Bash', 'Edit', 'Write', 'NotebookEdit', 'KillShell', 'BashOutput']) {
       expect(VOICE_SAFE_TOOLS).not.toContain(tool);
     }
   });
 
-  test('withholds mutating MCP tools', () => {
-    const mutators = VOICE_SAFE_TOOLS.filter(t =>
-      /_(create|delete|update|add|set|run|send|close|install|uninstall|write|merge|cancel|trigger|enable)$/.test(t)
-    );
+  test('excludes terminal_send_command, the one unsupervised dispatch path', () => {
+    // tab_send goes to a Claude session that gates destructive tools behind a
+    // permission prompt. terminal_send_command writes straight to a PTY: raw
+    // shell, no gate, nothing to interrupt.
+    expect(VOICE_SAFE_TOOLS).not.toContain('mcp__claude-terminal__terminal_send_command');
+  });
 
-    expect(mutators).toEqual([]);
+  test('withholds MCP tools that mutate state on their own', () => {
+    const forbidden = [
+      'project_delete', 'project_update', 'project_create',
+      'quickaction_add', 'quickaction_update', 'quickaction_delete',
+      'settings_set', 'sidebar_set_pinned',
+      'kanban_add_task', 'kanban_delete_task', 'kanban_move_task',
+      'workflow_delete', 'workflow_trigger', 'workflow_update_node',
+      'automation_create', 'automation_delete', 'automation_enable',
+      'parallel_start_run', 'parallel_merge_run', 'parallel_cleanup_run',
+      'db_query', 'db_remove_connection',
+      'knowledge_write', 'knowledge_delete',
+      'workspace_write_doc',
+      'plugin_install', 'plugin_uninstall',
+      'marketplace_install', 'marketplace_uninstall',
+      'tab_close', 'terminal_close', 'control_tower_interrupt',
+    ];
+
+    for (const tool of forbidden) {
+      expect(VOICE_SAFE_TOOLS).not.toContain(`mcp__claude-terminal__${tool}`);
+    }
   });
 
   test('is a flat list of unique non-empty strings', () => {

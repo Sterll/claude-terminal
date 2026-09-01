@@ -497,18 +497,48 @@ carefully and they cannot click.
   options.
 - When the user asks to see something, actually move the screen with
   \`ui_navigate\` - do not describe the panel in words.
-- You are limited to read-only tools here. If the user asks for something that
-  would change files, run commands or touch git, say in one sentence that it
-  needs the keyboard, and stop. Do not attempt a workaround.
+
+### You dispatch work, you do not perform it
+
+You have no Bash, Edit or Write. That is deliberate, not something to work
+around. When the user asks for real work ("fix the login bug on spacebot",
+"run the tests", "commit and push"):
+
+1. Find the project with \`project_list\` / \`project_info\`.
+2. Reuse a suitable tab from \`tab_list\`, or open one with \`terminal_create\`
+   in chat mode on that project.
+3. Send the request with \`tab_send\`, phrased as the user would have typed it.
+4. Reply in one sentence saying what you sent and where. Nothing else.
+
+That tab is a normal Claude session: full tools, permission prompts on anything
+destructive, visible and interruptible on the second screen. Dispatching to it
+is how work gets done here - never look for a shortcut around it.
+
+Check on running work with \`tab_status\` and \`tab_read_output\`, and report
+back in one sentence. \`quickaction_run\` is fine for actions the user has
+already configured themselves.
 `.trim();
 
 /**
  * Tools a hands-free session may reach.
  *
- * Deliberately read-only. A voice session must never stall on a permission
- * prompt the user cannot click, and the fix is a narrow toolset - NOT a looser
- * permissionMode. Bash, Edit and Write stay out on purpose: an unattended agent
- * acting on a possibly-misheard transcription is exactly the failure we refuse.
+ * The model is dispatch, not execution. A voice session reads, navigates and
+ * hands work off to ordinary chat tabs; it never touches the filesystem itself.
+ *
+ * Two things follow from that:
+ *  - It cannot stall. Nothing here raises a permission prompt, so canUseTool is
+ *    never reached and the user is never stuck behind a dialog they cannot
+ *    click from a fullscreen game. Restricting the toolset is the fix — NOT a
+ *    looser permissionMode.
+ *  - It is still fully capable. `tab_send` delivers the request to a normal
+ *    session that has the real tools, prompts for permission on anything
+ *    destructive, and stays visible and interruptible on the second screen.
+ *    A misheard transcription lands as a prompt the user can see and stop, not
+ *    as a command already executed.
+ *
+ * Bash, Edit and Write are excluded on purpose. So is `terminal_send_command`:
+ * it writes straight to a PTY, which is arbitrary shell execution with no
+ * permission gate — the one dispatch path with no supervision.
  */
 const VOICE_SAFE_TOOLS = [
   'Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch',
@@ -529,6 +559,16 @@ const VOICE_SAFE_TOOLS = [
   'mcp__claude-terminal__usage_get',
   'mcp__claude-terminal__kanban_list_tasks',
   'mcp__claude-terminal__quickaction_list',
+
+  // Dispatch: hand work to a normal chat tab rather than doing it here.
+  'mcp__claude-terminal__tab_list',
+  'mcp__claude-terminal__tab_status',
+  'mcp__claude-terminal__tab_read_output',
+  'mcp__claude-terminal__tab_send',
+  'mcp__claude-terminal__terminal_create',
+  'mcp__claude-terminal__terminal_list',
+  // Runs a command the user configured themselves, from their own project setup.
+  'mcp__claude-terminal__quickaction_run',
 ];
 
 /**
