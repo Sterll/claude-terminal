@@ -1251,6 +1251,57 @@ if (api.mcpTab) {
     }
   });
 
+  // Phase 3: switch the active sidebar panel.
+  // Clicks the real nav element rather than reimplementing the switch, so scroll
+  // save/restore, the leave/activate hooks and activeTab persistence all stay in
+  // one place (see the .nav-tab onclick handler).
+  api.mcpTab.onNavigate((data) => {
+    const requestId = data.requestId;
+    try {
+      const target = String(data.tab || '').trim();
+      if (!target) {
+        _writeTabResponse(requestId, { ok: false, error: 'Missing "tab"' });
+        return;
+      }
+
+      const from = document.querySelector('.nav-tab[data-tab].active')?.dataset.tab
+        || (document.getElementById('btn-settings')?.classList.contains('active') ? 'settings' : null);
+
+      // Settings is a standalone button, not a data-tab entry.
+      if (target === 'settings') {
+        const btn = document.getElementById('btn-settings');
+        if (!btn) {
+          _writeTabResponse(requestId, { ok: false, error: 'Settings button not found' });
+          return;
+        }
+        btn.click();
+        _writeTabResponse(requestId, { ok: true, from, to: 'settings', wasHidden: false });
+        return;
+      }
+
+      const el = document.querySelector(`.nav-tab[data-tab="${CSS.escape(target)}"]`);
+      if (!el) {
+        const available = [...document.querySelectorAll('.nav-tab[data-tab]')].map(n => n.dataset.tab);
+        _writeTabResponse(requestId, {
+          ok: false,
+          error: `Unknown tab "${target}"`,
+          available,
+        });
+        return;
+      }
+
+      // Unpinned tabs live in the More menu but the element still exists and
+      // still switches correctly — worth reporting so the caller can say so.
+      const wasHidden = el.classList.contains('nav-tab--hidden');
+      el.click();
+
+      _writeTabResponse(requestId, { ok: true, from, to: target, wasHidden });
+    } catch (e) {
+      console.error('[MCP Tab] navigate error:', e);
+      _writeTabResponse(requestId, { ok: false, error: e.message });
+    }
+  });
+
   // Phase 2: wait for a single tab to reach a terminal status.
   api.mcpTab.onWait(async (data) => {
     const requestId = data.requestId;

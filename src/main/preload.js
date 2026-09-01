@@ -840,6 +840,7 @@ contextBridge.exposeInMainWorld('electron_api', {
   // the request. Actions:
   //   Phase 1: create, send, close
   //   Phase 2: wait, wait_any, read, permission
+  //   Phase 3: navigate (switch the active sidebar panel)
   mcpTab: {
     onCreate: createListener('mcp-tab:create'),
     onSend: createListener('mcp-tab:send'),
@@ -848,5 +849,6 @@ contextBridge.exposeInMainWorld('electron_api', {
     onWaitAny: createListener('mcp-tab:wait_any'),
     onRead: createListener('mcp-tab:read'),
     onPermission: createListener('mcp-tab:permission'),
+    onNavigate: createListener('mcp-tab:navigate'),
   }
 });

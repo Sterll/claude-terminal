@@ -41,9 +41,12 @@ function saveSettings(settings) {
 
 // -- Constants ----------------------------------------------------------------
 
+// Must mirror _ALL_TABS_ORDER in renderer.js. Tabs missing here are rejected by
+// sidebar_set_pinned and silently dropped from the pinned list, so keep in sync.
 const ALL_TABS = [
   'claude', 'git', 'database', 'mcp', 'plugins', 'skills',
-  'agents', 'workflows', 'dashboard', 'timetracking', 'memory', 'connectivity',
+  'agents', 'workflows', 'tasks', 'control-tower', 'dashboard', 'timetracking',
+  'session-replay', 'memory', 'workspace', 'errorlog', 'connectivity',
 ];
 
 const TAB_LABELS = {
@@ -55,15 +58,87 @@ const TAB_LABELS = {
   skills: 'Installed skills',
   agents: 'Custom agents',
   workflows: 'Workflow automation',
+  tasks: 'Parallel tasks',
+  'control-tower': 'Control Tower (live agents)',
   dashboard: 'Projects dashboard',
   timetracking: 'Time tracking',
+  'session-replay': 'Session replay',
   memory: 'Memory editor (MEMORY.md)',
+  workspace: 'Workspace knowledge base',
+  errorlog: 'Error log',
   connectivity: 'Connectivity (local Wi-Fi + cloud relay)',
 };
+
+// Navigable but not pinnable: Settings is a standalone button, not a nav tab.
+const NAV_ONLY_TARGETS = { settings: 'Settings panel' };
+
+// -- Live channel to the running app ------------------------------------------
+// Same request/response pipeline as tabs.js: drop a trigger, the main process
+// forwards it to the renderer, the renderer writes back a response file.
+
+const RESPONSE_POLL_INTERVAL_MS = 100;
+const RESPONSE_TIMEOUT_MS = 8000;
+
+function ensureDir(dir) {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
+function writeTrigger(action, payload) {
+  const triggerDir = path.join(getDataDir(), 'tabs', 'triggers');
+  ensureDir(triggerDir);
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  fs.writeFileSync(
+    path.join(triggerDir, `${action}_${requestId}.json`),
+    JSON.stringify({
+      action,
+      requestId,
+      ...payload,
+      source: 'mcp',
+      timestamp: new Date().toISOString(),
+    }),
+    'utf8'
+  );
+  return requestId;
+}
+
+async function awaitResponse(requestId) {
+  const responseDir = path.join(getDataDir(), 'tabs', 'responses');
+  ensureDir(responseDir);
+  const responseFile = path.join(responseDir, `${requestId}.json`);
+  const deadline = Date.now() + RESPONSE_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    if (fs.existsSync(responseFile)) {
+      let data = null;
+      try {
+        data = JSON.parse(fs.readFileSync(responseFile, 'utf8'));
+      } catch (_) {}
+      try { fs.unlinkSync(responseFile); } catch (_) {}
+      return data || { ok: true };
+    }
+    await new Promise(r => setTimeout(r, RESPONSE_POLL_INTERVAL_MS));
+  }
+  return { ok: false, error: 'Claude Terminal did not respond — is the app running?' };
+}
 
 // -- Tool definitions ---------------------------------------------------------
 
 const tools = [
+  {
+    name: 'ui_navigate',
+    description: `Switch the panel currently displayed in Claude Terminal — this actually moves the user's screen, it is not a read operation. Use it whenever the user asks to see, open, show or go to a part of the app ("open git", "show me the dashboard", "go to settings"), especially when they cannot click themselves. Takes effect within about a second. Available targets: ${Object.entries({ ...TAB_LABELS, ...NAV_ONLY_TARGETS }).map(([id, label]) => `${id} (${label})`).join(', ')}.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tab: {
+          type: 'string',
+          enum: [...ALL_TABS, ...Object.keys(NAV_ONLY_TARGETS)],
+          description: 'Panel to display.',
+        },
+      },
+      required: ['tab'],
+    },
+  },
   {
     name: 'sidebar_get_pinned',
     description: 'Get the current pinned tabs configuration in the Claude Terminal sidebar. Returns which tabs are pinned (visible in sidebar) and which are hidden in the More overflow menu.',
@@ -99,6 +174,31 @@ async function handle(name, args) {
   const fail = (text) => ({ content: [{ type: 'text', text }], isError: true });
 
   try {
+    if (name === 'ui_navigate') {
+      const target = String(args.tab || '').trim();
+      if (!target) return fail('Missing required parameter: tab');
+
+      const valid = [...ALL_TABS, ...Object.keys(NAV_ONLY_TARGETS)];
+      if (!valid.includes(target)) {
+        return fail(`Unknown panel "${target}".\nAvailable: ${valid.join(', ')}`);
+      }
+
+      const requestId = writeTrigger('navigate', { tab: target });
+      const res = await awaitResponse(requestId);
+
+      if (!res.ok) {
+        let msg = `Could not switch to "${target}": ${res.error || 'unknown error'}`;
+        if (Array.isArray(res.available)) msg += `\nPanels present in the UI: ${res.available.join(', ')}`;
+        return fail(msg);
+      }
+
+      const label = TAB_LABELS[target] || NAV_ONLY_TARGETS[target] || target;
+      let out = `Now showing: ${label}`;
+      if (res.from && res.from !== target) out += ` (was on ${TAB_LABELS[res.from] || res.from})`;
+      if (res.wasHidden) out += `\nNote: this tab is unpinned, so it lives in the "More" overflow menu — it is displayed, but not visible in the sidebar.`;
+      return ok(out);
+    }
+
     if (name === 'sidebar_get_pinned') {
       const settings = loadSettings();
       const pinned = settings.pinnedTabs || ALL_TABS;
