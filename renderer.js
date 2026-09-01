@@ -1302,6 +1302,34 @@ if (api.mcpTab) {
     }
   });
 
+  // Phase 3: read back what the user is currently looking at. Purely DOM-derived
+  // so it stays truthful even if a panel was opened by a click rather than by
+  // ui_navigate.
+  api.mcpTab.onUiState((data) => {
+    const requestId = data.requestId;
+    try {
+      const settingsOpen = !!document.getElementById('btn-settings')?.classList.contains('active');
+      const activeTab = document.querySelector('.nav-tab[data-tab].active')?.dataset.tab || null;
+
+      const visible = [];
+      const hidden = [];
+      document.querySelectorAll('.nav-tab[data-tab]').forEach((el) => {
+        (el.classList.contains('nav-tab--hidden') ? hidden : visible).push(el.dataset.tab);
+      });
+
+      _writeTabResponse(requestId, {
+        ok: true,
+        current: settingsOpen ? 'settings' : activeTab,
+        settingsOpen,
+        visible,
+        hidden,
+      });
+    } catch (e) {
+      console.error('[MCP Tab] ui_state error:', e);
+      _writeTabResponse(requestId, { ok: false, error: e.message });
+    }
+  });
+
   // Phase 2: wait for a single tab to reach a terminal status.
   api.mcpTab.onWait(async (data) => {
     const requestId = data.requestId;

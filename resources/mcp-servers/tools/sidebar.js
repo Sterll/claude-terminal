@@ -140,6 +140,14 @@ const tools = [
     },
   },
   {
+    name: 'ui_state',
+    description: 'Report what the user is currently looking at in Claude Terminal: which panel is displayed, and which panels are visible in the sidebar versus hidden in the More menu. Use it to answer "where am I?", to check a panel is already open before navigating, or to describe the screen to someone who cannot see it. Read-only — it changes nothing.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
     name: 'sidebar_get_pinned',
     description: 'Get the current pinned tabs configuration in the Claude Terminal sidebar. Returns which tabs are pinned (visible in sidebar) and which are hidden in the More overflow menu.',
     inputSchema: {
@@ -196,6 +204,25 @@ async function handle(name, args) {
       let out = `Now showing: ${label}`;
       if (res.from && res.from !== target) out += ` (was on ${TAB_LABELS[res.from] || res.from})`;
       if (res.wasHidden) out += `\nNote: this tab is unpinned, so it lives in the "More" overflow menu — it is displayed, but not visible in the sidebar.`;
+      return ok(out);
+    }
+
+    if (name === 'ui_state') {
+      const requestId = writeTrigger('ui_state', {});
+      const res = await awaitResponse(requestId);
+
+      if (!res.ok) {
+        return fail(`Could not read the UI state: ${res.error || 'unknown error'}`);
+      }
+
+      const label = (id) => TAB_LABELS[id] || NAV_ONLY_TARGETS[id] || id;
+      let out = `Currently showing: ${res.current ? label(res.current) : '(nothing active)'}\n`;
+      if (Array.isArray(res.visible) && res.visible.length) {
+        out += `\nVisible in the sidebar (${res.visible.length}): ${res.visible.join(', ')}`;
+      }
+      if (Array.isArray(res.hidden) && res.hidden.length) {
+        out += `\nHidden in the More menu (${res.hidden.length}): ${res.hidden.join(', ')}`;
+      }
       return ok(out);
     }
 

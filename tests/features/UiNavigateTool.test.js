@@ -150,6 +150,49 @@ describe('ui_navigate', () => {
   }, 15000);
 });
 
+describe('ui_state', () => {
+  test('describes the screen without changing it', async () => {
+    const stub = stubRenderer({
+      ok: true,
+      current: 'git',
+      settingsOpen: false,
+      visible: ['claude', 'git'],
+      hidden: ['errorlog'],
+    });
+
+    const res = await sidebar.handle('ui_state', {});
+    await stub.done();
+
+    expect(res.isError).toBeUndefined();
+    expect(stub.seen[0]).toMatchObject({ action: 'ui_state', source: 'mcp' });
+
+    const out = textOf(res);
+    expect(out).toContain('Git & version control');
+    expect(out).toContain('Hidden in the More menu');
+    expect(out).toContain('errorlog');
+  });
+
+  test('copes with an empty UI instead of printing undefined', async () => {
+    const stub = stubRenderer({ ok: true, current: null, visible: [], hidden: [] });
+
+    const out = textOf(await sidebar.handle('ui_state', {}));
+    await stub.done();
+
+    expect(out).toContain('nothing active');
+    expect(out).not.toMatch(/undefined/);
+  });
+
+  test('reports a renderer failure rather than inventing a state', async () => {
+    const stub = stubRenderer({ ok: false, error: 'boom' });
+
+    const res = await sidebar.handle('ui_state', {});
+    await stub.done();
+
+    expect(res.isError).toBe(true);
+    expect(textOf(res)).toContain('boom');
+  });
+});
+
 describe('sidebar pinning stays in sync with the renderer', () => {
   test('accepts the panels that were previously rejected', async () => {
     const res = await sidebar.handle('sidebar_set_pinned', {

@@ -850,5 +850,6 @@ contextBridge.exposeInMainWorld('electron_api', {
     onRead: createListener('mcp-tab:read'),
     onPermission: createListener('mcp-tab:permission'),
     onNavigate: createListener('mcp-tab:navigate'),
+    onUiState: createListener('mcp-tab:ui_state'),
   }
 });

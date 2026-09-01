@@ -561,7 +561,7 @@ Files prefixed with `_` are shared helpers, not tool modules — the loader igno
 | `kanban.js` | Kanban columns + tasks (add / move / update / filter / stats) |
 | `terminal.js` | `terminal_create`, `terminal_list`, `terminal_send_command`, `terminal_read_output`, `terminal_close` |
 | `tabs.js` | Tab orchestration with permission control |
-| `sidebar.js` | `ui_navigate` (switch the displayed panel, live via the `tabs/triggers` pipeline), `sidebar_get_pinned`, `sidebar_set_pinned` |
+| `sidebar.js` | `ui_navigate` (switch the displayed panel, live via the `tabs/triggers` pipeline), `ui_state` (read back which panel is showing), `sidebar_get_pinned`, `sidebar_set_pinned` |
 | `marketplace.js` | Skill marketplace tools |
 | `plugins.js` | Plugin install / list / catalog |
 | `settings.js` | `settings_get`, `settings_set` |

@@ -13,12 +13,12 @@ const path = require('path');
 
 const RENDERER = path.join(__dirname, '..', '..', 'renderer.js');
 
-/** Pull `api.mcpTab.onNavigate((data) => { ... })` out of renderer.js. */
-function extractNavigateHandler() {
+/** Pull `api.mcpTab.<method>((data) => { ... })` out of renderer.js. */
+function extractHandler(method) {
   const source = fs.readFileSync(RENDERER, 'utf8');
-  const anchor = 'api.mcpTab.onNavigate(';
+  const anchor = `api.mcpTab.${method}(`;
   const start = source.indexOf(anchor);
-  if (start === -1) throw new Error('api.mcpTab.onNavigate not found in renderer.js');
+  if (start === -1) throw new Error(`api.mcpTab.${method} not found in renderer.js`);
 
   const bodyStart = source.indexOf('{', source.indexOf('=>', start));
   if (bodyStart === -1) throw new Error('Could not locate the handler body');
@@ -38,17 +38,15 @@ function extractNavigateHandler() {
   return source.slice(bodyStart + 1, end);
 }
 
-const HANDLER_BODY = extractNavigateHandler();
-
 /** Build a callable handler with injected collaborators. */
-function makeHandler(writeResponse) {
+function makeHandler(method, writeResponse) {
   const cssShim = (typeof CSS !== 'undefined' && CSS.escape)
     ? CSS
     : { escape: (s) => String(s).replace(/[^a-zA-Z0-9_-]/g, (c) => `\\${c}`) };
 
   const fn = new Function(
     'data', 'document', 'CSS', '_writeTabResponse', 'console',
-    HANDLER_BODY
+    extractHandler(method)
   );
   return (data) => fn(
     data,
@@ -85,7 +83,7 @@ describe('MCP tab navigation handler', () => {
   beforeEach(() => {
     responses = [];
     clicks = setupDom();
-    navigate = makeHandler((requestId, payload) => responses.push({ requestId, payload }));
+    navigate = makeHandler('onNavigate', (requestId, payload) => responses.push({ requestId, payload }));
   });
 
   test('switches to a visible tab and reports where it came from', () => {
@@ -137,5 +135,52 @@ describe('MCP tab navigation handler', () => {
     expect(() => navigate({ requestId: 'r6', tab: '"], script' })).not.toThrow();
     expect(responses[0].payload.ok).toBe(false);
     expect(clicks).toEqual([]);
+  });
+});
+
+describe('MCP UI state handler', () => {
+  let responses;
+  let uiState;
+
+  beforeEach(() => {
+    responses = [];
+    setupDom();
+    uiState = makeHandler('onUiState', (requestId, payload) => responses.push({ requestId, payload }));
+  });
+
+  test('reports the active panel and splits visible from hidden', () => {
+    uiState({ requestId: 's1' });
+
+    expect(responses[0].payload).toMatchObject({
+      ok: true,
+      current: 'claude',
+      settingsOpen: false,
+      visible: ['claude', 'git'],
+      hidden: ['errorlog'],
+    });
+  });
+
+  test('reports settings when the standalone button is active', () => {
+    document.getElementById('btn-settings').classList.add('active');
+
+    uiState({ requestId: 's2' });
+
+    expect(responses[0].payload).toMatchObject({ ok: true, current: 'settings', settingsOpen: true });
+  });
+
+  test('reflects a panel opened by a plain click, not just via ui_navigate', () => {
+    document.querySelector('[data-tab="claude"]').classList.remove('active');
+    document.querySelector('[data-tab="git"]').classList.add('active');
+
+    uiState({ requestId: 's3' });
+
+    expect(responses[0].payload.current).toBe('git');
+  });
+
+  test('survives a DOM with no nav tabs at all', () => {
+    document.body.innerHTML = '';
+
+    expect(() => uiState({ requestId: 's4' })).not.toThrow();
+    expect(responses[0].payload).toMatchObject({ ok: true, current: null, visible: [], hidden: [] });
   });
 });
