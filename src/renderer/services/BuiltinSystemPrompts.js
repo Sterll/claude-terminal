@@ -480,13 +480,82 @@ This is a **Discord bot project**. Claude Terminal provides dedicated tools to m
 - Use \`discord.js\` v14+ builders (EmbedBuilder, ActionRowBuilder, ButtonBuilder)
 `.trim();
 
+const VOICE_APPEND = `
+## Voice Session
+
+This conversation is driven by voice while the user is doing something else -
+often playing a game, glancing at a second screen. They are not reading
+carefully and they cannot click.
+
+- Answer in one or two sentences. A long answer is a failed answer here.
+- Plain sentences only. No tables, no code blocks, no rich markdown blocks, no
+  bullet lists unless the user explicitly asks to enumerate something.
+- Lead with the answer. Never restate the question or narrate your plan.
+- Speech-to-text mangles names: "marvel quiz" means \`marvel-quiz\`. Resolve it
+  yourself with the project tools instead of asking the user to spell it.
+- If a request is genuinely ambiguous, ask one short question. Do not list
+  options.
+- When the user asks to see something, actually move the screen with
+  \`ui_navigate\` - do not describe the panel in words.
+- You are limited to read-only tools here. If the user asks for something that
+  would change files, run commands or touch git, say in one sentence that it
+  needs the keyboard, and stop. Do not attempt a workaround.
+`.trim();
+
+/**
+ * Tools a hands-free session may reach.
+ *
+ * Deliberately read-only. A voice session must never stall on a permission
+ * prompt the user cannot click, and the fix is a narrow toolset - NOT a looser
+ * permissionMode. Bash, Edit and Write stay out on purpose: an unattended agent
+ * acting on a possibly-misheard transcription is exactly the failure we refuse.
+ */
+const VOICE_SAFE_TOOLS = [
+  'Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch',
+  'mcp__claude-terminal__project_list',
+  'mcp__claude-terminal__project_info',
+  'mcp__claude-terminal__project_open',
+  'mcp__claude-terminal__project_stats',
+  'mcp__claude-terminal__project_todos',
+  'mcp__claude-terminal__session_search',
+  'mcp__claude-terminal__session_recap',
+  'mcp__claude-terminal__session_list',
+  'mcp__claude-terminal__ui_navigate',
+  'mcp__claude-terminal__ui_state',
+  'mcp__claude-terminal__sidebar_get_pinned',
+  'mcp__claude-terminal__control_tower_agents',
+  'mcp__claude-terminal__time_today',
+  'mcp__claude-terminal__time_week',
+  'mcp__claude-terminal__usage_get',
+  'mcp__claude-terminal__kanban_list_tasks',
+  'mcp__claude-terminal__quickaction_list',
+];
+
 /**
  * Returns the built-in system prompt for a given project type.
  * Always includes the global Claude Terminal context.
  * @param {string} projectType - e.g. 'fivem', 'webapp', 'discord', 'general'
+ * @param {Object} [opts]
+ * @param {boolean} [opts.voice] - Hands-free session: terse spoken answers, and
+ *   the rich-markdown guidance is dropped since nobody is reading the output.
  * @returns {{ type: 'preset', preset: 'claude_code', append: string }}
  */
-function getBuiltinSystemPrompt(projectType) {
+function getBuiltinSystemPrompt(projectType, opts = {}) {
+  if (opts.voice) {
+    // RICH_MARKDOWN_APPEND is deliberately excluded: its whole purpose is
+    // elaborate visual blocks, which is the opposite of what a voice session
+    // needs.
+    return {
+      type: 'preset',
+      preset: 'claude_code',
+      append: GLOBAL_APPEND + '\n\n' + VOICE_APPEND,
+    };
+  }
+
+  return _getRichSystemPrompt(projectType);
+}
+
+function _getRichSystemPrompt(projectType) {
   const FORMATTING_RULES = `
 ## Formatting Rules
 
@@ -509,4 +578,4 @@ function getBuiltinSystemPrompt(projectType) {
   return { type: 'preset', preset: 'claude_code', append };
 }
 
-module.exports = { getBuiltinSystemPrompt };
+module.exports = { getBuiltinSystemPrompt, VOICE_SAFE_TOOLS };

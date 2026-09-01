@@ -584,9 +584,13 @@ class ChatService {
    * @param {string} [params.resumeDropsTurn] - Prompt UUID of the turn the fork discards.
    *   Arms the CLI-side guard so a fork that would silently drop a queued user message
    *   or task notification is refused instead. See _processStream for the refusal path.
+   * @param {string[]} [params.allowedTools] - Restrict the session to these tools. Used by
+   *   hands-free (voice) sessions to stay clear of anything that would raise a permission
+   *   prompt the user cannot click.
+   * @param {string[]} [params.disallowedTools] - Tools to withhold from the session.
    * @returns {Promise<string>} Session ID
    */
-  async startSession({ cwd, projectId = null, prompt, permissionMode = 'default', resumeSessionId = null, sessionId = null, images = [], mentions = [], model = null, enable1MContext = false, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, effort = null, outputFormat = null, skills = null, systemPrompt = null, settingSources = null, maxTurns = null, cloud = false, cloudProjectName = null, userMessageUuid = null, persistSession = true }) {
+  async startSession({ cwd, projectId = null, prompt, permissionMode = 'default', resumeSessionId = null, sessionId = null, images = [], mentions = [], model = null, enable1MContext = false, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, effort = null, outputFormat = null, skills = null, systemPrompt = null, settingSources = null, maxTurns = null, cloud = false, cloudProjectName = null, userMessageUuid = null, persistSession = true, allowedTools = null, disallowedTools = null }) {
     if (!sessionId) sessionId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     // Cloud session: delegate to cloud server instead of local SDK
@@ -641,6 +645,13 @@ class ChatService {
         pathToClaudeCodeExecutable: getSdkCliPath(),
         systemPrompt: systemPrompt || { type: 'preset', preset: 'claude_code' },
         settingSources: settingSources !== null ? settingSources : ['user', 'project', 'local'],
+        // Hands-free sessions restrict the toolset instead of loosening
+        // permissions: with only non-mutating tools reachable, canUseTool is
+        // never triggered, so nothing stalls behind a prompt the user cannot
+        // click. Loosening permissionMode instead would hand an unattended
+        // agent to a possibly-misheard transcription.
+        ...(allowedTools?.length ? { allowedTools } : {}),
+        ...(disallowedTools?.length ? { disallowedTools } : {}),
         canUseTool: async (toolName, input, opts) => {
           return this._handlePermission(sessionId, toolName, input, opts);
         },
