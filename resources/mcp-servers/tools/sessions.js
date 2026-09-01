@@ -281,6 +281,363 @@ async function parseReplay(projectPath, sessionId) {
   return { steps, summary: { totalSteps: steps.length, totalEstimatedTokens: totalTokens, uniqueFiles, toolBreakdown } };
 }
 
+// -- Cross-project session search ---------------------------------------------
+
+/**
+ * Enumerate session files, newest first.
+ *
+ * Deliberately index-free: a full case-insensitive scan of ~600 MB of
+ * transcripts costs ~4.5s, but files are walked newest-first and the caller
+ * stops as soon as it has enough sessions, so real queries land well under a
+ * second. No database means nothing to keep in sync and no stale results.
+ */
+function listAllSessionFiles(projectPath) {
+  const root = path.join(os.homedir(), '.claude', 'projects');
+  const dirs = [];
+
+  if (projectPath) {
+    dirs.push(path.join(root, encodeProjectPath(projectPath)));
+  } else {
+    let entries;
+    try {
+      entries = fs.readdirSync(root, { withFileTypes: true });
+    } catch {
+      return [];
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) dirs.push(path.join(root, entry.name));
+    }
+  }
+
+  const files = [];
+  for (const dir of dirs) {
+    let names;
+    try {
+      names = fs.readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      if (!name.endsWith('.jsonl')) continue;
+      const filePath = path.join(dir, name);
+      try {
+        const stat = fs.statSync(filePath);
+        if (stat.size < 200) continue;
+        files.push({ filePath, mtimeMs: stat.mtimeMs });
+      } catch (_) {}
+    }
+  }
+
+  return files.sort((a, b) => b.mtimeMs - a.mtimeMs);
+}
+
+// System reminders are injected machinery, not something the user ever said.
+// Matching inside them produces confusing hits.
+const SYSTEM_REMINDER_RE = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
+
+// Synthetic entries the CLI writes into the transcript as if the user had typed
+// them. Reporting these as things the user said is misleading.
+const SYNTHETIC_USER_RE = /^\s*(\[Request interrupted[^\]]*\]|\[No response requested\]|<local-command-[a-z]+>)\s*$/;
+
+/**
+ * Pull only genuine conversation out of a JSONL entry: user prompts and Claude's
+ * text replies. Tool inputs/outputs and thinking blocks are skipped — they are
+ * 99% of the bytes and almost none of the meaning.
+ */
+function conversationalBlocks(obj) {
+  const out = [];
+  if (obj.isSidechain) return out;
+
+  const message = obj.message;
+  if (!message) return out;
+
+  let role = null;
+  if (obj.type === 'user') role = 'user';
+  else if (obj.type === 'assistant' || message.role === 'assistant') role = 'assistant';
+  if (!role) return out;
+
+  const push = (text) => {
+    const cleaned = String(text).replace(SYSTEM_REMINDER_RE, ' ').trim();
+    if (!cleaned) return;
+    if (role === 'user' && SYNTHETIC_USER_RE.test(cleaned)) return;
+    out.push({ role, text: cleaned });
+  };
+
+  const content = message.content;
+  if (typeof content === 'string') {
+    push(content);
+  } else if (Array.isArray(content)) {
+    // type === 'text' only: this is what excludes tool_result blocks.
+    for (const block of content) {
+      if (block.type === 'text' && block.text) push(block.text);
+    }
+  }
+
+  return out;
+}
+
+function makeSnippet(text, terms, radius = 130) {
+  const lower = text.toLowerCase();
+  let idx = -1;
+  for (const term of terms) {
+    const i = lower.indexOf(term);
+    if (i !== -1 && (idx === -1 || i < idx)) idx = i;
+  }
+  if (idx === -1) idx = 0;
+
+  const start = Math.max(0, idx - radius);
+  const end = Math.min(text.length, idx + radius);
+  let snippet = text.slice(start, end).replace(/\s+/g, ' ').trim();
+  if (start > 0) snippet = '…' + snippet;
+  if (end < text.length) snippet += '…';
+  return snippet;
+}
+
+async function searchSessions({ query, projectPath, days, limit, maxSnippets }) {
+  const terms = String(query).toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) {
+    return { sessions: [], scanned: 0, candidates: 0, total: 0, stoppedEarly: false };
+  }
+
+  const allFiles = listAllSessionFiles(projectPath);
+  const total = allFiles.length;
+
+  let files = allFiles;
+  if (days && days > 0) {
+    const cutoff = Date.now() - days * 86400000;
+    files = files.filter(f => f.mtimeMs >= cutoff);
+  }
+
+  const sessions = [];
+  let scanned = 0;
+  let stoppedEarly = false;
+
+  for (const file of files) {
+    if (sessions.length >= limit) {
+      stoppedEarly = true;
+      break;
+    }
+    scanned++;
+
+    let raw;
+    try {
+      raw = await fs.promises.readFile(file.filePath, 'utf8');
+    } catch {
+      continue;
+    }
+
+    // Cheap whole-file gate: every term must appear somewhere before we pay
+    // for JSON parsing.
+    const lower = raw.toLowerCase();
+    if (!terms.every(term => lower.includes(term))) continue;
+
+    const hits = [];
+    let cwd = '';
+    let sessionId = '';
+    let gitBranch = '';
+    let lastTimestamp = '';
+    let firstUserText = null;
+
+    for (const line of raw.split('\n')) {
+      if (!line.trim()) continue;
+      let obj;
+      try {
+        obj = JSON.parse(line);
+      } catch {
+        continue;
+      }
+
+      if (!cwd && obj.cwd) cwd = obj.cwd;
+      if (!sessionId && obj.sessionId) sessionId = obj.sessionId;
+      if (!gitBranch && obj.gitBranch) gitBranch = obj.gitBranch;
+      if (obj.timestamp) lastTimestamp = obj.timestamp;
+
+      for (const block of conversationalBlocks(obj)) {
+        if (firstUserText === null && block.role === 'user') firstUserText = block.text;
+
+        const blockLower = block.text.toLowerCase();
+        const matched = terms.filter(term => blockLower.includes(term));
+        if (!matched.length) continue;
+        hits.push({
+          role: block.role,
+          score: matched.length,
+          timestamp: obj.timestamp || '',
+          text: block.text,
+        });
+      }
+    }
+
+    // The file matched only inside tool output or thinking — not a real hit.
+    if (!hits.length) continue;
+
+    // Claude Terminal's persistent tab-naming session (ChatService._ensureNamingSession)
+    // replays the opening of every prompt the user ever writes, so it matches
+    // almost any query. It is machinery, not a conversation.
+    if (firstUserText && /^Title for: "/.test(firstUserText)) continue;
+
+    hits.sort((a, b) => b.score - a.score);
+
+    sessions.push({
+      sessionId: sessionId || path.basename(file.filePath, '.jsonl'),
+      projectPath: cwd,
+      gitBranch,
+      modified: new Date(file.mtimeMs).toISOString(),
+      lastTimestamp,
+      totalHits: hits.length,
+      snippets: hits.slice(0, maxSnippets).map(h => ({
+        role: h.role,
+        timestamp: h.timestamp,
+        snippet: makeSnippet(h.text, terms),
+      })),
+    });
+  }
+
+  return { sessions, scanned, candidates: files.length, total, stoppedEarly };
+}
+
+// -- Session recap ------------------------------------------------------------
+
+/**
+ * Resolve "this conversation" to a file: an explicit session id, else the most
+ * recently touched session of the project.
+ */
+async function resolveSessionFile(projectPath, sessionId) {
+  const sessionsDir = getProjectSessionsDir(projectPath);
+
+  if (sessionId) {
+    const direct = path.join(sessionsDir, `${sessionId}.jsonl`);
+    try {
+      await fs.promises.access(direct);
+      return direct;
+    } catch (_) {}
+
+    const names = (await fs.promises.readdir(sessionsDir).catch(() => []))
+      .filter(f => f.endsWith('.jsonl'));
+    for (const name of names) {
+      const candidate = path.join(sessionsDir, name);
+      const head = await readFirstLines(candidate, 5);
+      for (const line of head) {
+        try {
+          if (JSON.parse(line).sessionId === sessionId) return candidate;
+        } catch (_) {}
+      }
+    }
+    return null;
+  }
+
+  const names = (await fs.promises.readdir(sessionsDir).catch(() => []))
+    .filter(f => f.endsWith('.jsonl'));
+  let newest = null;
+  for (const name of names) {
+    const candidate = path.join(sessionsDir, name);
+    try {
+      const stat = await fs.promises.stat(candidate);
+      if (stat.size < 200) continue;
+      if (!newest || stat.mtimeMs > newest.mtimeMs) {
+        newest = { filePath: candidate, mtimeMs: stat.mtimeMs };
+      }
+    } catch (_) {}
+  }
+  return newest ? newest.filePath : null;
+}
+
+/**
+ * One pass over a session, keeping only what is needed to say "here is where we
+ * are": the goal, the recent exchanges, what was touched, and how it ended.
+ * Deliberately does not summarise — the calling agent does that.
+ */
+async function parseRecap(filePath, recentCount) {
+  const raw = await fs.promises.readFile(filePath, 'utf8').catch(() => '');
+  if (!raw) return null;
+
+  const exchanges = [];
+  const files = new Set();
+  const toolCounts = {};
+  let sessionId = '';
+  let cwd = '';
+  let gitBranch = '';
+  let firstTimestamp = '';
+  let lastTimestamp = '';
+  let userMessages = 0;
+  let assistantMessages = 0;
+
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    let obj;
+    try {
+      obj = JSON.parse(line);
+    } catch {
+      continue;
+    }
+
+    if (!sessionId && obj.sessionId) sessionId = obj.sessionId;
+    if (!cwd && obj.cwd) cwd = obj.cwd;
+    if (obj.gitBranch) gitBranch = obj.gitBranch;
+    if (obj.timestamp) {
+      if (!firstTimestamp) firstTimestamp = obj.timestamp;
+      lastTimestamp = obj.timestamp;
+    }
+
+    if (obj.isSidechain) continue;
+
+    // Tool usage and touched files come from assistant tool_use blocks.
+    const content = obj.message && obj.message.content;
+    if (Array.isArray(content)) {
+      for (const block of content) {
+        if (block.type === 'tool_use') {
+          toolCounts[block.name] = (toolCounts[block.name] || 0) + 1;
+          const fp = extractFilePath(block.name, block.input);
+          if (fp) files.add(fp);
+        }
+      }
+    }
+
+    for (const block of conversationalBlocks(obj)) {
+      if (block.role === 'user') userMessages++;
+      else assistantMessages++;
+      exchanges.push({
+        role: block.role,
+        timestamp: obj.timestamp || '',
+        text: block.text,
+      });
+    }
+  }
+
+  if (!exchanges.length) return null;
+
+  const goal = exchanges.find(e => e.role === 'user');
+  const recent = exchanges.slice(-recentCount);
+  const lastAssistant = [...exchanges].reverse().find(e => e.role === 'assistant');
+
+  return {
+    sessionId: sessionId || path.basename(filePath, '.jsonl'),
+    cwd,
+    gitBranch,
+    firstTimestamp,
+    lastTimestamp,
+    userMessages,
+    assistantMessages,
+    goal: goal ? goal.text : '',
+    recent,
+    lastAssistant: lastAssistant ? lastAssistant.text : '',
+    files: [...files],
+    toolCounts,
+  };
+}
+
+function formatDurationMs(ms) {
+  if (!ms || ms < 0) return 'unknown';
+  const minutes = Math.round(ms / 60000);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h${String(minutes % 60).padStart(2, '0')}`;
+}
+
+function condense(text, max) {
+  const flat = String(text).replace(/\s+/g, ' ').trim();
+  return flat.length > max ? flat.slice(0, max) + '…' : flat;
+}
+
 // -- Tool definitions ---------------------------------------------------------
 
 const tools = [
@@ -299,6 +656,57 @@ const tools = [
           description: 'Maximum number of sessions to return (default: 10, max: 50)',
         },
       },
+    },
+  },
+  {
+    name: 'session_recap',
+    description: 'Get a compact status digest of a conversation — answers "where are we at on this?" without replaying the whole thing. Defaults to the most recent session of the project, so it works for "what were we doing here?". Returns the original goal, how long it ran, the last few exchanges, files touched, tools used, and how it ended. Prefer this over session_replay when the user wants a status update rather than an audit trail; it is far shorter and is the right tool to answer out loud.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        session_id: {
+          type: 'string',
+          description: 'Session UUID. Omit to recap the most recent session of the project (the usual case for "this conversation").',
+        },
+        project_path: {
+          type: 'string',
+          description: 'Absolute path to the project. Defaults to CT_PROJECT_PATH.',
+        },
+        recent_exchanges: {
+          type: 'number',
+          description: 'How many of the latest messages to include (default: 6, max: 20)',
+        },
+      },
+    },
+  },
+  {
+    name: 'session_search',
+    description: 'Search past Claude Code conversations by keyword, across ALL projects by default. Use this to answer questions like "where did we leave the ninin bug?", "which project was I working on X in?", or "have we discussed this before?" — it is the only way to find something when you do not already know which project or session it is in. Searches user prompts and Claude replies only; tool output and thinking blocks are ignored, so hits are things that were actually said. Returns the session ID, real project path, date and matching excerpts. Follow up with session_replay for the full detail of a session.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Words to look for, case-insensitive. Multiple words are all required to appear somewhere in the session (e.g. "ninin bug").',
+        },
+        project_path: {
+          type: 'string',
+          description: 'Restrict the search to one project. Omit to search every project (the usual case).',
+        },
+        days: {
+          type: 'number',
+          description: 'Only search sessions touched in the last N days. Useful to cut noise on common words.',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of sessions to return (default: 10, max: 30). Sessions are returned newest first.',
+        },
+        max_snippets: {
+          type: 'number',
+          description: 'Maximum excerpts shown per session (default: 3, max: 10)',
+        },
+      },
+      required: ['query'],
     },
   },
   {
@@ -362,6 +770,124 @@ async function handle(name, args) {
       });
 
       return ok(`Sessions for ${path.basename(projectPath)} (${sessions.length}):\n\n${lines.join('\n\n')}\n\nUse session_replay with a session_id to get the full step-by-step audit trail.`);
+    }
+
+    // ── session_recap ────────────────────────────────────────────────────────
+    if (name === 'session_recap') {
+      if (!projectPath) return fail('No project path provided. Pass project_path or set CT_PROJECT_PATH.');
+
+      const recentCount = Math.min(Math.max(args.recent_exchanges || 6, 1), 20);
+      const filePath = await resolveSessionFile(projectPath, args.session_id);
+
+      if (!filePath) {
+        return ok(args.session_id
+          ? `Session ${args.session_id} not found in ${path.basename(projectPath)}.`
+          : `No session found for ${path.basename(projectPath)}. Has Claude Code been run in this project?`);
+      }
+
+      const recap = await parseRecap(filePath, recentCount);
+      if (!recap) return ok(`Session ${path.basename(filePath, '.jsonl')} has no readable conversation.`);
+
+      const started = recap.firstTimestamp ? new Date(recap.firstTimestamp) : null;
+      const ended = recap.lastTimestamp ? new Date(recap.lastTimestamp) : null;
+      const duration = started && ended ? formatDurationMs(ended - started) : 'unknown';
+
+      const topTools = Object.entries(recap.toolCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6)
+        .map(([tool, count]) => `${tool}×${count}`)
+        .join(', ');
+
+      let out = `# Recap: ${recap.sessionId}\n`;
+      out += `${'─'.repeat(60)}\n`;
+      out += `Project: ${recap.cwd || projectPath}\n`;
+      if (recap.gitBranch) out += `Branch: ${recap.gitBranch}\n`;
+      if (started) out += `Started: ${started.toLocaleString()}\n`;
+      if (ended) out += `Last activity: ${ended.toLocaleString()}\n`;
+      // Wall-clock between first and last message, NOT time actually worked —
+      // a conversation resumed over three days spans 72h of mostly nothing.
+      out += `Spans: ${duration} (first to last message)  |  ${recap.userMessages} user / ${recap.assistantMessages} assistant messages\n`;
+      out += `${'─'.repeat(60)}\n\n`;
+
+      out += `## Goal (opening request)\n${condense(recap.goal, 500) || '(none)'}\n\n`;
+
+      out += `## Last ${recap.recent.length} exchange(s)\n`;
+      for (const ex of recap.recent) {
+        const stamp = ex.timestamp ? new Date(ex.timestamp).toLocaleString() : '';
+        out += `[${ex.role}${stamp ? ' ' + stamp : ''}] ${condense(ex.text, 320)}\n`;
+      }
+      out += '\n';
+
+      if (recap.files.length) {
+        out += `## Files touched (${recap.files.length})\n`;
+        out += recap.files.slice(0, 15).join('\n');
+        if (recap.files.length > 15) out += `\n… and ${recap.files.length - 15} more`;
+        out += '\n\n';
+      }
+
+      if (topTools) out += `## Tools used\n${topTools}\n\n`;
+
+      out += `## Where it stopped\n${condense(recap.lastAssistant, 600) || '(no assistant reply)'}\n`;
+
+      return ok(out);
+    }
+
+    // ── session_search ───────────────────────────────────────────────────────
+    if (name === 'session_search') {
+      if (!args.query || !String(args.query).trim()) {
+        return fail('Missing required parameter: query');
+      }
+
+      const limit = Math.min(Math.max(args.limit || 10, 1), 30);
+      const maxSnippets = Math.min(Math.max(args.max_snippets || 3, 1), 10);
+      const scopePath = args.project_path || '';
+
+      const started = Date.now();
+      const { sessions, scanned, candidates, total, stoppedEarly } = await searchSessions({
+        query: args.query,
+        projectPath: scopePath,
+        days: args.days,
+        limit,
+        maxSnippets,
+      });
+      const elapsed = ((Date.now() - started) / 1000).toFixed(1);
+
+      const scope = scopePath ? path.basename(scopePath) : `all projects (${total} sessions)`;
+
+      if (!sessions.length) {
+        let msg = `No conversation found matching "${args.query}" in ${scope}.\n\n`;
+        msg += `Scanned ${scanned} session file(s) in ${elapsed}s.\n`;
+        if (args.days) msg += `Only sessions from the last ${args.days} day(s) were searched — retry without "days" to widen.\n`;
+        msg += `Note: tool output and thinking blocks are not searched, only what was actually said.`;
+        return ok(msg);
+      }
+
+      let out = `# Sessions matching "${args.query}"\n`;
+      out += `${'─'.repeat(60)}\n`;
+      out += `Scope: ${scope}\n`;
+      out += `Found ${sessions.length} session(s), scanned ${scanned}/${candidates} file(s) in ${elapsed}s\n`;
+      out += `${'─'.repeat(60)}\n\n`;
+
+      sessions.forEach((s, i) => {
+        const when = s.lastTimestamp || s.modified;
+        out += `${i + 1}. ${s.sessionId}\n`;
+        out += `   Project: ${s.projectPath || '(unknown)'}\n`;
+        out += `   Last activity: ${new Date(when).toLocaleString()}\n`;
+        if (s.gitBranch) out += `   Branch: ${s.gitBranch}\n`;
+        out += `   Matches: ${s.totalHits}\n`;
+        for (const sn of s.snippets) {
+          const stamp = sn.timestamp ? new Date(sn.timestamp).toLocaleDateString() : '';
+          out += `   [${sn.role}${stamp ? ' ' + stamp : ''}] ${sn.snippet}\n`;
+        }
+        out += '\n';
+      });
+
+      if (stoppedEarly) {
+        out += `[Stopped at ${limit} sessions — ${candidates - scanned} older file(s) were not searched. Raise "limit" or pass "days" to narrow.]\n\n`;
+      }
+      out += `Use session_replay with a session_id (and its Project path) for the full step-by-step detail.`;
+
+      return ok(out);
     }
 
     // ── session_replay ───────────────────────────────────────────────────────
