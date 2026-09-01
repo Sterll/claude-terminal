@@ -547,7 +547,7 @@ Files prefixed with `_` are shared helpers, not tool modules — the loader igno
 |--------|-----------|
 | `projects.js` | `project_list`, `project_info`, `project_todos` |
 | `timetracking.js` | `time_today`, `time_week`, `time_summary`, `time_project` |
-| `sessions.js` | `session_list`, `session_replay` |
+| `sessions.js` | `session_list`, `session_replay`, `session_search` (cross-project keyword search over past conversations, index-free), `session_recap` (compact "where are we at" digest) |
 | `database.js` | `db_query`, `db_list_tables`, `db_describe_table`, `db_schema_full`, `db_stats`, `db_export` |
 | `webapp.js` | `webapp_stack`, `webapp_scripts`, `webapp_start`, `webapp_stop` |
 | `fivem.js` | `fivem_command`, `fivem_list_resources`, `fivem_read_manifest`, `fivem_resource_files`, `fivem_server_cfg` |
@@ -561,7 +561,7 @@ Files prefixed with `_` are shared helpers, not tool modules — the loader igno
 | `kanban.js` | Kanban columns + tasks (add / move / update / filter / stats) |
 | `terminal.js` | `terminal_create`, `terminal_list`, `terminal_send_command`, `terminal_read_output`, `terminal_close` |
 | `tabs.js` | Tab orchestration with permission control |
-| `sidebar.js` | `sidebar_get_pinned`, `sidebar_set_pinned` |
+| `sidebar.js` | `ui_navigate` (switch the displayed panel, live via the `tabs/triggers` pipeline), `sidebar_get_pinned`, `sidebar_set_pinned` |
 | `marketplace.js` | Skill marketplace tools |
 | `plugins.js` | Plugin install / list / catalog |
 | `settings.js` | `settings_get`, `settings_set` |
