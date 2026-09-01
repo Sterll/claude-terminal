@@ -184,13 +184,31 @@ function bootstrapApp() {
   const GLOBAL_SHORTCUT_DEFAULTS = {
     globalQuickPicker: 'CommandOrControl+Shift+P',
     globalNewTerminal: 'CommandOrControl+Shift+T',
-    globalNewWorktree: 'CommandOrControl+Shift+W'
+    globalNewWorktree: 'CommandOrControl+Shift+W',
+    // F13 by default: no game binds it, and any gaming mouse can map a side
+    // button to it — so it can be pressed mid-game without freeing a hand.
+    globalPushToTalk: 'F13'
   };
 
   /**
    * Global shortcut action handlers
    */
   const GLOBAL_SHORTCUT_ACTIONS = {
+    /**
+     * Push-to-talk. Unlike every other global action this must NOT call
+     * showMainWindow(): the whole point is to dictate while a fullscreen game
+     * holds focus, and raising the window would minimise the game.
+     *
+     * It toggles rather than holds because globalShortcut only reports the key
+     * press — Electron exposes no key-release event — so the renderer stops on
+     * silence instead.
+     */
+    globalPushToTalk: () => {
+      const mainWindow = getMainWindow();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('voice:push-to-talk');
+      }
+    },
     globalQuickPicker: () => {
       const mainWindow = getMainWindow();
       if (mainWindow) {
@@ -307,6 +325,18 @@ function bootstrapApp() {
         console.warn('[LinuxDesktopIntegration] skipped:', e && e.message);
       }
     }
+
+    // Permission gate. Electron denies getUserMedia by default, so voice
+    // control needs 'media' explicitly. Everything else stays denied: this is
+    // an allowlist, not a passthrough, because the renderer displays
+    // model-authored content and must not be able to ask for geolocation,
+    // notifications or anything else on its own.
+    session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+      callback(permission === 'media');
+    });
+    session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
+      return permission === 'media';
+    });
 
     // Content Security Policy - allow only local file:// resources
     // Prevents XSS attacks from loading remote scripts/styles/iframes

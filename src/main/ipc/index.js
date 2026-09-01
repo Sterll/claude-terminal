@@ -31,6 +31,7 @@ const { registerDatabaseHandlers } = require('./database.ipc');
 const { registerTelemetryHandlers } = require('./telemetry.ipc');
 const { registerExplorerHandlers } = require('./explorer.ipc');
 const { registerTimeHandlers } = require('./time.ipc');
+const { registerVoiceHandlers } = require('./voice.ipc');
 const { registerParallelHandlers } = require('./parallel.ipc');
 const { registerWorkspaceHandlers } = require('./workspace.ipc');
 const { registerKnowledgeHandlers } = require('./knowledge.ipc');
@@ -79,6 +80,7 @@ function registerAllHandlers(mainWindow) {
   registerTelemetryHandlers();
   registerExplorerHandlers(mainWindow);
   registerTimeHandlers();
+  registerVoiceHandlers();
   registerParallelHandlers(mainWindow);
   registerWorkspaceHandlers();
   registerKnowledgeHandlers();

@@ -759,6 +759,20 @@ contextBridge.exposeInMainWorld('electron_api', {
     getStats: (config) => ipcRenderer.invoke('time:get-stats', config),
   },
 
+  // ==================== VOICE ====================
+  // The renderer captures the microphone and sends raw PCM16 @ 16 kHz. The Groq
+  // key stays in main and in the OS credential store: nothing here ever returns
+  // it, only a masked form.
+  voice: {
+    transcribe: (pcmBuffer, opts) => ipcRenderer.invoke('voice:transcribe', pcmBuffer, opts),
+    hasKey: () => ipcRenderer.invoke('voice:has-key'),
+    setKey: (key) => ipcRenderer.invoke('voice:set-key', key),
+    clearKey: () => ipcRenderer.invoke('voice:clear-key'),
+    testKey: (key) => ipcRenderer.invoke('voice:test-key', key),
+    models: () => ipcRenderer.invoke('voice:models'),
+    onPushToTalk: createListener('voice:push-to-talk'),
+  },
+
   // ==================== HTML PREVIEW ====================
   preview: {
     register: (html) => ipcRenderer.invoke('preview:register', html),
