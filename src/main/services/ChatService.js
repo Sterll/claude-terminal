@@ -637,7 +637,11 @@ class ChatService {
       const options = {
         cwd: effectiveCwd,
         abortController,
-        maxTurns: maxTurns || 100,
+        // No cap by default. This is a single long-lived query per tab fed by an
+        // async iterable, so maxTurns counts every API round-trip of the whole
+        // conversation, not per prompt — a hard-coded value kills a busy tab
+        // mid-work with no way back. Omitted, the CLI applies no limit.
+        ...(maxTurns ? { maxTurns } : {}),
         includePartialMessages: true,
         permissionMode,
         executable: runtime.executable,

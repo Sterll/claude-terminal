@@ -72,7 +72,7 @@ const defaultSettings = {
   activeTab: 'claude', // Last active sidebar tab (restored on restart)
   tabsOrder: null, // null = canonical order, otherwise array of all tabIds in custom order
   parallelMaxAgents: 3, // Default number of parallel agents for Parallel Task Manager (1-10)
-  maxTurns: null, // null = SDK default (100), or custom number for max agentic turns per session
+  maxTurns: null, // null = no limit (SDK/CLI default), or a cap on API round-trips for the whole tab
   autoClaudeMdUpdate: true, // Suggest CLAUDE.md updates after chat sessions
   dailyGoal: 0, // Daily time goal in minutes (0 = disabled)
   githubApiUrl: 'https://api.github.com', // GitHub API base URL (for GitHub Enterprise)
