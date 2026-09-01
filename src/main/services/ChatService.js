@@ -1306,7 +1306,7 @@ class ChatService {
         if (errorType === 'usage_limit') {
           let activeAccountId = null;
           try {
-            activeAccountId = require('./AccountManager').listAccounts().activeId;
+            activeAccountId = (await require('./AccountManager').listAccounts()).activeId;
           } catch (_) { /* AccountManager not initialized yet */ }
           this._send('chat-account-limit', { sessionId, error: errorMsg, activeAccountId });
         }
