@@ -9,6 +9,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const nameMatch = require('./_nameMatch');
 
 // -- Logging ------------------------------------------------------------------
 
@@ -56,15 +57,49 @@ function notifyQuickActionChanged(projectId, mutation, actionName) {
   }), 'utf8');
 }
 
-function findProject(nameOrId) {
-  const data = loadProjects();
-  return data.projects.find(p =>
-    p.id === nameOrId ||
-    (p.name || '').toLowerCase() === nameOrId.toLowerCase() ||
-    path.basename(p.path || '').toLowerCase() === nameOrId.toLowerCase()
-  );
+/** Every name a project answers to. The id comes first: it is never fuzzy-matched. */
+function projectNames(p) {
+  return [p.id, p.name, path.basename(p.path || '')];
 }
 
+/**
+ * Read-side lookup, tolerant of how a name comes back from speech-to-text:
+ * "marvel quiz" and "Marvel-Quiz" both reach `marvel-quiz`. Ambiguity resolves
+ * to null rather than a guess — see _nameMatch.js.
+ *
+ * Mutating tools deliberately keep using the strict findProjectInData below:
+ * approximate matching must never pick the target of a delete or an update.
+ */
+function findProject(nameOrId) {
+  const data = loadProjects();
+  return nameMatch.resolve(nameOrId, data.projects || [], projectNames).match || undefined;
+}
+
+/**
+ * Explain a failed lookup precisely: several candidates, one near-miss the
+ * caller could confirm, or genuinely nothing.
+ */
+function describeProjectLookupFailure(nameOrId) {
+  const data = loadProjects();
+  const { match, candidates } = nameMatch.resolve(nameOrId, data.projects || [], projectNames);
+  const label = (p) => p.name || path.basename(p.path || '?');
+
+  if (candidates.length > 1) {
+    return `"${nameOrId}" matches several projects — say which one:\n`
+      + candidates.map(p => `  - ${label(p)}`).join('\n');
+  }
+  if (match) {
+    // Reached only from the strict path: a close name exists but was not exact.
+    return `No exact project named "${nameOrId}". Closest match: "${label(match)}". `
+      + `Use that exact name or its id for this operation.`;
+  }
+  return `Project "${nameOrId}" not found. Use project_list to see available projects.`;
+}
+
+/**
+ * Strict lookup for mutating tools (update, delete, quick actions). Exact id,
+ * exact name or exact folder name only — no approximation, deliberately.
+ */
 function findProjectInData(data, nameOrId) {
   return data.projects.find(p =>
     p.id === nameOrId ||
@@ -415,7 +450,7 @@ async function handle(name, args) {
     if (name === 'project_info') {
       if (!args.project) return fail('Missing required parameter: project');
       const p = findProject(args.project);
-      if (!p) return fail(`Project "${args.project}" not found. Use project_list to see available projects.`);
+      if (!p) return fail(describeProjectLookupFailure(args.project));
 
       const data = loadProjects();
       const folderMap = new Map();
@@ -483,7 +518,7 @@ async function handle(name, args) {
     if (name === 'quickaction_list') {
       if (!args.project) return fail('Missing required parameter: project');
       const p = findProject(args.project);
-      if (!p) return fail(`Project "${args.project}" not found. Use project_list to see available projects.`);
+      if (!p) return fail(describeProjectLookupFailure(args.project));
 
       const actions = p.quickActions || [];
       if (!actions.length) return ok(`No quick actions configured for ${p.name || path.basename(p.path || '?')}. Configure them in Claude Terminal.`);
@@ -538,7 +573,7 @@ async function handle(name, args) {
 
       const data = loadProjects();
       const p = findProjectInData(data, args.project);
-      if (!p) return fail(`Project "${args.project}" not found. Use project_list to see available projects.`);
+      if (!p) return fail(describeProjectLookupFailure(args.project));
 
       if (!p.quickActions) p.quickActions = [];
 
@@ -576,7 +611,7 @@ async function handle(name, args) {
 
       const data = loadProjects();
       const p = findProjectInData(data, args.project);
-      if (!p) return fail(`Project "${args.project}" not found. Use project_list to see available projects.`);
+      if (!p) return fail(describeProjectLookupFailure(args.project));
 
       const actions = p.quickActions || [];
       const action = actions.find(a =>
@@ -631,7 +666,7 @@ async function handle(name, args) {
 
       const data = loadProjects();
       const p = findProjectInData(data, args.project);
-      if (!p) return fail(`Project "${args.project}" not found. Use project_list to see available projects.`);
+      if (!p) return fail(describeProjectLookupFailure(args.project));
 
       const actions = p.quickActions || [];
       const action = actions.find(a =>
@@ -702,7 +737,7 @@ async function handle(name, args) {
 
       const data = loadProjects();
       const p = findProjectInData(data, args.project);
-      if (!p) return fail(`Project "${args.project}" not found. Use project_list to see available projects.`);
+      if (!p) return fail(describeProjectLookupFailure(args.project));
 
       const projectName = p.name || path.basename(p.path || '?');
       const projectPath = p.path || '?';
@@ -728,7 +763,7 @@ async function handle(name, args) {
 
       const data = loadProjects();
       const p = findProjectInData(data, args.project);
-      if (!p) return fail(`Project "${args.project}" not found. Use project_list to see available projects.`);
+      if (!p) return fail(describeProjectLookupFailure(args.project));
 
       const updates = [];
 
@@ -770,7 +805,7 @@ async function handle(name, args) {
       if (!args.project) return fail('Missing required parameter: project');
 
       const p = findProject(args.project);
-      if (!p) return fail(`Project "${args.project}" not found. Use project_list to see available projects.`);
+      if (!p) return fail(describeProjectLookupFailure(args.project));
       if (!p.path || !fs.existsSync(p.path)) return fail(`Project path not found: ${p.path}`);
 
       const stats = { fileCount: 0, totalLines: 0, languages: {} };
@@ -812,7 +847,7 @@ async function handle(name, args) {
       if (!args.project) return fail('Missing required parameter: project');
 
       const p = findProject(args.project);
-      if (!p) return fail(`Project "${args.project}" not found. Use project_list to see available projects.`);
+      if (!p) return fail(describeProjectLookupFailure(args.project));
 
       // Write trigger file for the app to pick up
       const triggerDir = path.join(getDataDir(), 'projects', 'triggers');
