@@ -1397,7 +1397,11 @@ class ChatView extends BaseComponent {
         } else if (mentionMode === 'prompt') {
           selectPromptTemplate(item.dataset.promptid, item.dataset.promptname);
         } else {
-          selectMentionType(item.dataset.type);
+          // Any other picker mode (conversations, tabs, workspace, registry sources...)
+          // has no data-type on its items — delegate to the picker's own onSelect.
+          const cfg = Object.values(PICKER_CONFIGS).find(c => c.mode === mentionMode);
+          if (cfg) cfg.onSelect(item);
+          else selectMentionType(item.dataset.type);
         }
         return;
       }
