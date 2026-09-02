@@ -132,6 +132,36 @@ function accountFile(id) {
   return path.join(accountsDir, `${id}.json`);
 }
 
+function readSnapshot(id) {
+  const file = accountFile(id);
+  if (!fs.existsSync(file)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Decide whether live credentials are the same account as a stored snapshot
+ * whose access token no longer matches — i.e. the CLI refreshed it in place.
+ *
+ * The access token is what the fingerprint hashes, so it is useless here. The
+ * refresh token survives an access-token refresh, and `refreshTokenExpiresAt`
+ * is anchored to the original login, so it survives a refresh-token rotation
+ * too. Both are per-login values: a different account never matches.
+ *
+ * Returning false is always safe — the caller then leaves the snapshot alone.
+ */
+function isRotationOf(live, snapshot) {
+  const a = live?.claudeAiOauth || live;
+  const b = snapshot?.claudeAiOauth || snapshot;
+  if (!a || !b) return false;
+  if (a.refreshToken && a.refreshToken === b.refreshToken) return true;
+  if (a.refreshTokenExpiresAt && a.refreshTokenExpiresAt === b.refreshTokenExpiresAt) return true;
+  return false;
+}
+
 function generateId() {
   return crypto.randomBytes(8).toString('hex');
 }
@@ -242,9 +272,11 @@ async function switchTo(id) {
  * matching once the CLI refreshes the access token it hashes, so `activeId`
  * — the account we last swapped in — is the fallback.
  *
- * Known gap: a manual `claude /login` onto an account that was never captured
- * leaves the live store belonging to nobody, and the activeId fallback then
- * attributes it to the previously active account.
+ * That fallback is only taken when the live credentials are provably a
+ * rotation of the active account's snapshot. Without the check, a manual
+ * `claude /login` onto a never-captured account would be attributed to the
+ * previously active one, overwriting a good snapshot — and its fingerprint —
+ * with a stranger's tokens. Bailing out instead just skips the refresh.
  */
 async function syncActiveFromDisk() {
   const creds = await readCurrentCredentials();
@@ -253,8 +285,11 @@ async function syncActiveFromDisk() {
   if (!fp) return null;
 
   const index = readIndex();
-  const match = index.accounts.find(a => a.fingerprint === fp)
-    || index.accounts.find(a => a.id === index.activeId);
+  let match = index.accounts.find(a => a.fingerprint === fp);
+  if (!match) {
+    const active = index.accounts.find(a => a.id === index.activeId);
+    if (active && isRotationOf(creds, readSnapshot(active.id))) match = active;
+  }
   if (!match) return null;
 
   fs.writeFileSync(accountFile(match.id), JSON.stringify(creds, null, 2), { mode: 0o600 });

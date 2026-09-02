@@ -82,10 +82,11 @@ function registerUsageHandlers() {
 
   // Proactive notification when a usage bucket crosses the threshold,
   // so the renderer can offer to switch accounts before a 429 occurs.
-  usageService.onLimit((alert) => {
+  usageService.onLimit(async (alert) => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     let activeAccountId = null;
-    try { activeAccountId = require('../services/AccountManager').listAccounts().activeId; } catch (_) {}
+    try { activeAccountId = (await require('../services/AccountManager').listAccounts()).activeId; } catch (_) {}
+    if (!mainWindow || mainWindow.isDestroyed()) return;
     mainWindow.webContents.send('usage-limit-reached', { ...alert, activeAccountId });
   });
 }

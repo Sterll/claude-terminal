@@ -40,11 +40,20 @@ const setPlatform = (value) => {
   Object.defineProperty(process, 'platform', { value, configurable: true });
 };
 
-const creds = (accessToken, subscriptionType = 'max') => ({
+// `login` identifies the /login session the tokens came from. Passing it
+// explicitly models the CLI refreshing an account in place; omitting it yields
+// a brand new, unrelated account. Mirrors the real payload: the access and
+// refresh tokens both rotate, `refreshTokenExpiresAt` stays anchored to the
+// original login.
+const loginStamp = (login) => 1900000000000
+  + [...login].reduce((sum, c) => sum + c.charCodeAt(0), 0);
+
+const creds = (accessToken, subscriptionType = 'max', login = accessToken) => ({
   claudeAiOauth: {
     accessToken,
     refreshToken: `refresh-${accessToken}`,
     expiresAt: 1893456000000,
+    refreshTokenExpiresAt: loginStamp(login),
     subscriptionType
   }
 });
@@ -128,7 +137,7 @@ describe('macOS Keychain store', () => {
     const team = await AccountManager.captureCurrent('Team');
 
     // The CLI refreshes Team's token behind our back.
-    mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-team-v2', 'team')));
+    mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-team-v2', 'team', 'tok-team')));
 
     await AccountManager.switchTo(max.id);
     await AccountManager.switchTo(team.id);
@@ -222,7 +231,7 @@ describe('syncActiveFromDisk', () => {
     mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-team', 'team')));
     const team = await AccountManager.captureCurrent('Team');
 
-    mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-team-v2', 'team')));
+    mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-team-v2', 'team', 'tok-team')));
     const synced = await AccountManager.syncActiveFromDisk();
 
     expect(synced.id).toBe(team.id);
@@ -232,8 +241,74 @@ describe('syncActiveFromDisk', () => {
     expect(list.activeId).toBe(team.id);
   });
 
+  test('follows a rotation that keeps the same refresh token', async () => {
+    const rotated = creds('tok-team-v2', 'team');
+    rotated.claudeAiOauth.refreshToken = 'refresh-tok-team';
+
+    mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-team', 'team')));
+    const team = await AccountManager.captureCurrent('Team');
+
+    mockKeychain.set(MOCK_KEY, JSON.stringify(rotated));
+    expect((await AccountManager.syncActiveFromDisk()).id).toBe(team.id);
+  });
+
+  test('ignores a live store belonging to a never-captured account', async () => {
+    mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-team', 'team')));
+    await AccountManager.captureCurrent('Team');
+
+    // A manual `claude /login` onto an account this app has never seen. It is
+    // nobody's, so attributing it to activeId would destroy Team's snapshot.
+    mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-solo', 'pro')));
+
+    expect(await AccountManager.syncActiveFromDisk()).toBeNull();
+  });
+
   test('is a no-op when no credentials exist at all', async () => {
     expect(await AccountManager.syncActiveFromDisk()).toBeNull();
+  });
+});
+
+describe('snapshot integrity across a switch', () => {
+  const snapshotOf = (id) => JSON.parse(
+    fs.readFileSync(path.join(paths.dataDir, 'accounts', `${id}.json`), 'utf8')
+  );
+
+  test('switching away after an uncaptured /login leaves the outgoing snapshot intact', async () => {
+    mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-a')));
+    const a = await AccountManager.captureCurrent('Account A');
+    mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-b', 'team')));
+    const b = await AccountManager.captureCurrent('Account B');
+    await AccountManager.switchTo(a.id);
+
+    // The user runs `claude /login` onto a third account, never captures it,
+    // then switches to B. A is the outgoing account.
+    mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-c', 'pro')));
+    await AccountManager.switchTo(b.id);
+
+    expect(JSON.parse(mockKeychain.get(MOCK_KEY)).claudeAiOauth.accessToken).toBe('tok-b');
+    // A must still be A — both its snapshot and the fingerprint that identifies it.
+    expect(snapshotOf(a.id).claudeAiOauth.accessToken).toBe('tok-a');
+    const stored = (await AccountManager.listAccounts()).accounts.find(x => x.id === a.id);
+    expect(stored.fingerprint).toBe(
+      require('crypto').createHash('sha256').update('tok-a').digest('hex').slice(0, 16)
+    );
+
+    // And switching back really returns account A, not the stranger.
+    await AccountManager.switchTo(a.id);
+    expect(JSON.parse(mockKeychain.get(MOCK_KEY)).claudeAiOauth.accessToken).toBe('tok-a');
+  });
+
+  test('still refreshes the outgoing snapshot when the CLI rotated its token', async () => {
+    mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-a')));
+    const a = await AccountManager.captureCurrent('Account A');
+    mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-b', 'team')));
+    const b = await AccountManager.captureCurrent('Account B');
+    await AccountManager.switchTo(a.id);
+
+    mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-a-v2', 'max', 'tok-a')));
+    await AccountManager.switchTo(b.id);
+
+    expect(snapshotOf(a.id).claudeAiOauth.accessToken).toBe('tok-a-v2');
   });
 });
 

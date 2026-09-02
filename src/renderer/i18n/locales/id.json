@@ -3703,7 +3703,7 @@
     "switch": "Ganti",
     "captureCurrent": "Simpan akun saat ini",
     "captureTitle": "Simpan akun saat ini",
-    "captureMessage": "Beri nama untuk akun ini. Kredensial yang sedang aktif di ~/.claude/.credentials.json akan disimpan dengan nama tersebut.",
+    "captureMessage": "Beri nama untuk akun ini. Kredensial yang sedang digunakan oleh CLI Claude akan disimpan dengan nama tersebut.",
     "emptyHint": "Belum ada akun tersimpan. Buka terminal, jalankan \"claude /login\", lalu klik \"Simpan akun saat ini\".",
     "limitReached": "Batas penggunaan tercapai pada akun yang aktif.",
     "switched": "Akun diganti. Melanjutkan…",
