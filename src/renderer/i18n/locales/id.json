@@ -1349,6 +1349,7 @@
     "emptyStepProject": "Proyek",
     "emptyStepSession": "Sesi",
     "noSteps": "Tidak ada langkah ditemukan pada sesi ini",
+    "showingSteps": "{shown} dari {total} langkah",
     "steps": "langkah",
     "estimated": "perkiraan",
     "files": "file",

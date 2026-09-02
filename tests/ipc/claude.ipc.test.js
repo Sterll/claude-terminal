@@ -20,7 +20,7 @@ jest.mock('os', () => ({
 
 global.__CT_TMP_HOME__ = TMP_HOME;
 
-const { loadSessionHistory } = require('../../src/main/ipc/claude.ipc');
+const { loadSessionHistory, parseSessionReplay } = require('../../src/main/ipc/claude.ipc');
 
 const PROJECT_PATH = '/tmp/demo-project';
 const SESSION_ID = '11111111-2222-3333-4444-555555555555';
@@ -119,5 +119,68 @@ describe('loadSessionHistory', () => {
     writeSession(1);
     const result = await loadSessionHistory(PROJECT_PATH, 'does-not-exist');
     expect(result).toEqual({ messages: [], total: 0, truncated: false });
+  });
+});
+
+describe('parseSessionReplay', () => {
+  test('counts the whole session but only ships the first page', async () => {
+    writeSession(200); // 200 turns -> prompt + thinking + tool + response each
+    const { steps, summary } = await parseSessionReplay(PROJECT_PATH, SESSION_ID, { limit: 50 });
+
+    expect(summary.totalSteps).toBe(800);
+    expect(summary.returned).toBe(50);
+    expect(summary.truncated).toBe(true);
+    expect(steps).toHaveLength(50);
+    expect(steps[0].index).toBe(0);
+    expect(steps[49].index).toBe(49);
+  });
+
+  test('a page equals the same slice of the unbounded parse', async () => {
+    writeSession(60);
+    const full = await parseSessionReplay(PROJECT_PATH, SESSION_ID, { limit: 0 });
+    const page = await parseSessionReplay(PROJECT_PATH, SESSION_ID, { offset: 100, limit: 40 });
+
+    expect(full.summary.truncated).toBe(false);
+    expect(page.steps).toEqual(full.steps.slice(100, 140));
+    expect(page.steps[0].index).toBe(100);
+  });
+
+  test('summary totals do not depend on the window', async () => {
+    writeSession(60);
+    const full = await parseSessionReplay(PROJECT_PATH, SESSION_ID, { limit: 0 });
+    const page = await parseSessionReplay(PROJECT_PATH, SESSION_ID, { offset: 200, limit: 10 });
+
+    expect(page.summary.totalSteps).toBe(full.summary.totalSteps);
+    expect(page.summary.totalEstimatedTokens).toBe(full.summary.totalEstimatedTokens);
+    expect(page.summary.toolBreakdown).toEqual(full.summary.toolBreakdown);
+    expect(page.summary.uniqueFileCount).toBe(full.summary.uniqueFileCount);
+  });
+
+  test('attaches tool output to a windowed tool step', async () => {
+    writeSession(5);
+    const { steps } = await parseSessionReplay(PROJECT_PATH, SESSION_ID, { limit: 0 });
+    const tools = steps.filter(s => s.type === 'tool');
+
+    expect(tools).toHaveLength(5);
+    expect(tools[0].toolName).toBe('Bash');
+    expect(tools[0].toolOutput).toBe('out 0');
+    expect(tools[0].estimatedOutputTokens).toBeGreaterThan(0);
+  });
+
+  test('counts output tokens of tool steps outside the window', async () => {
+    writeSession(5);
+    // Window starts past every tool step, yet their results still count
+    const tail = await parseSessionReplay(PROJECT_PATH, SESSION_ID, { offset: 19, limit: 1 });
+    const full = await parseSessionReplay(PROJECT_PATH, SESSION_ID, { limit: 0 });
+
+    expect(tail.steps).toHaveLength(1);
+    expect(tail.summary.totalEstimatedTokens).toBe(full.summary.totalEstimatedTokens);
+  });
+
+  test('returns an empty result for an unknown session', async () => {
+    writeSession(1);
+    const { steps, summary } = await parseSessionReplay(PROJECT_PATH, 'does-not-exist');
+    expect(steps).toEqual([]);
+    expect(summary.totalSteps).toBe(0);
   });
 });

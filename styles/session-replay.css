@@ -491,6 +491,30 @@
   font-size: var(--font-sm);
 }
 
+/* Foot of the timeline: paging marker for sessions too long to ship at once */
+.sr-timeline-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 32px;
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: var(--font-2xs);
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
+.sr-timeline-more.loading {
+  color: var(--text-secondary);
+}
+
+.sr-timeline-more .sr-spinner {
+  width: 13px;
+  height: 13px;
+  border-width: 1.5px;
+}
+
 .sr-spinner {
   width: 18px;
   height: 18px;

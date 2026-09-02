@@ -1349,6 +1349,7 @@
     "emptyStepProject": "Project",
     "emptyStepSession": "Session",
     "noSteps": "No steps found in this session",
+    "showingSteps": "{shown} of {total} steps",
     "steps": "steps",
     "estimated": "estimated",
     "files": "files",

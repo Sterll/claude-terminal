@@ -1346,6 +1346,7 @@
     "emptyStepProject": "Proyecto",
     "emptyStepSession": "Sesión",
     "noSteps": "No se encontraron pasos en esta sesión",
+    "showingSteps": "{shown} de {total} pasos",
     "steps": "pasos",
     "estimated": "estimado",
     "files": "archivos",

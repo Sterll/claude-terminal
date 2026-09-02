@@ -1349,6 +1349,7 @@
     "emptyStepProject": "项目",
     "emptyStepSession": "会话",
     "noSteps": "在此会话中找不到步骤",
+    "showingSteps": "{total} 个步骤中的 {shown} 个",
     "steps": "步骤",
     "estimated": "估计的",
     "files": "文件",
