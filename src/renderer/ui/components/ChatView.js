@@ -5437,7 +5437,11 @@ class ChatView extends BaseComponent {
         if (!isAborting) {
           let errorMsg;
           if (message.subtype === 'error_max_turns') {
-            errorMsg = t('chat.errorMaxTurns', { count: getSetting('maxTurns') || message.num_turns || '?' });
+            // num_turns is what the run actually reached, so it is the cap that
+            // was applied. The setting is only read when the session starts —
+            // editing it mid-session would otherwise report a limit that was
+            // never in force.
+            errorMsg = t('chat.errorMaxTurns', { count: message.num_turns || getSetting('maxTurns') || '?' });
           } else if (message.subtype === 'error_max_budget_usd') {
             errorMsg = t('chat.errorMaxBudget', { cost: message.total_cost_usd?.toFixed(2) || '?' });
           } else if (message.subtype === 'error_during_execution') {
