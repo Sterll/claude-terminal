@@ -725,7 +725,19 @@
     "exported": "Sesión exportada",
     "exportedTo": "Exportada a {path}",
     "exportError": "Error al exportar",
-    "exportFormat": "Formato de exportación"
+    "exportFormat": "Formato de exportación",
+    "move": {
+      "title": "Mover a otro proyecto",
+      "intro": "Mover «{name}» fuera de este proyecto. La conversación no se modifica.",
+      "note": "Su transcripción y sus archivos de subagentes, flujos de trabajo y resultados de herramientas se mueven con ella. Las ejecuciones en otros proyectos conservan sus archivos.",
+      "done": "Sesión movida",
+      "doneStrays": "Movida. Se dejaron {count} carpeta(s) de ejecuciones en otros proyectos.",
+      "noTarget": "No hay otro proyecto al que moverla",
+      "errorLive": "Esta sesión está abierta en una pestaña. Ciérrala primero.",
+      "errorCollision": "El proyecto de destino ya tiene una sesión con este identificador",
+      "errorNotFound": "Archivo de sesión no encontrado",
+      "errorGeneric": "No se pudo mover la sesión"
+    }
   },
   "time": {
     "justNow": "ahora mismo",

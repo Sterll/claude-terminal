@@ -1268,6 +1268,102 @@ body.compact-projects .project-item:not(.active):hover {
   color: var(--accent);
 }
 
+/* ── Move-to-project button (mirrors the pin button) ── */
+.session-card-move {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+  color: var(--text-muted);
+  padding: 0;
+  border-radius: 6px;
+  transition: background-color 0.15s, color 0.15s, opacity 0.15s;
+}
+
+.session-card-move svg {
+  width: 13px;
+  height: 13px;
+  max-width: 13px;
+  max-height: 13px;
+}
+
+.session-card:hover .session-card-move {
+  opacity: 0.4;
+}
+
+.session-card-move:hover {
+  opacity: 1 !important;
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+/* ── Move-to-project modal ── */
+.move-session-intro {
+  margin: 0 0 14px;
+  color: var(--text-secondary);
+  font-size: var(--font-sm);
+}
+
+.move-session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.move-session-target {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s, opacity 0.15s;
+}
+
+.move-session-target:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.move-session-target:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.move-session-target.is-moving {
+  opacity: 1;
+  border-color: var(--accent);
+}
+
+.move-session-target-name {
+  font-size: var(--font-base);
+}
+
+.move-session-target-path {
+  color: var(--text-muted);
+  font-size: var(--font-2xs);
+}
+
+.move-session-note {
+  margin: 14px 0 0;
+  color: var(--text-muted);
+  font-size: var(--font-2xs);
+  line-height: 1.5;
+}
+
 /* Pinned group label */
 .session-group[data-group-key="pinned"] .session-group-text {
   color: var(--accent);

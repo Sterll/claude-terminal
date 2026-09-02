@@ -620,6 +620,166 @@ async function deleteSession(projectPath, sessionId) {
   return { success: true };
 }
 
+// ─── Moving a session between projects ──────────────────────────────────────
+//
+// Claude Code files a session under the directory encoding of the cwd it was
+// started in, and finds it again by encoding the cwd it is launched with. The
+// runtime cwd comes from the spawn (TerminalService passes `cwd: project.path`
+// alongside `--resume <id>`), NOT from the transcript — so re-filing the
+// transcript is enough to make a session resumable from another project, and
+// the `cwd` recorded on each line is left alone as the historical record it is.
+//
+// A session is not one file: `<uuid>.jsonl` usually has a sibling `<uuid>/`
+// directory holding subagent transcripts, workflow scripts and tool results.
+// Both move together.
+
+/** Count the lines of a file without holding it in memory. */
+function countLines(filePath) {
+  return new Promise((resolve, reject) => {
+    let count = 0;
+    const stream = fs.createReadStream(filePath);
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    rl.on('line', () => { count++; });
+    rl.on('close', () => resolve(count));
+    rl.on('error', reject);
+  });
+}
+
+/** Recursively move a directory, falling back to copy+remove across devices. */
+async function moveDirectory(from, to) {
+  try {
+    await fs.promises.rename(from, to);
+    return;
+  } catch (err) {
+    if (err.code !== 'EXDEV') throw err;
+  }
+  await fs.promises.cp(from, to, { recursive: true });
+  await fs.promises.rm(from, { recursive: true, force: true });
+}
+
+/**
+ * Move a session's transcript (and its sidecar directory) to another project.
+ *
+ * Copies before deleting rather than renaming: the two directories can sit on
+ * different volumes, and a half-finished rename would lose the transcript.
+ *
+ * @param {string} sessionId
+ * @param {string} fromProjectPath
+ * @param {string} toProjectPath
+ * @returns {Promise<{success: boolean, error?: string, code?: string, movedSidecar?: boolean, warnings?: string[]}>}
+ */
+async function moveSession(sessionId, fromProjectPath, toProjectPath) {
+  if (!sessionId || !fromProjectPath || !toProjectPath) {
+    return { success: false, code: 'bad-request', error: 'sessionId, fromProjectPath and toProjectPath are required' };
+  }
+
+  const fromDir = getProjectSessionsDir(fromProjectPath);
+  const toDir = getProjectSessionsDir(toProjectPath);
+  if (fromDir === toDir) {
+    return { success: false, code: 'same-project', error: 'Source and target project are the same' };
+  }
+
+  const sourceFile = await resolveSessionFile(fromDir, sessionId);
+  if (!sourceFile) {
+    return { success: false, code: 'not-found', error: 'Session file not found' };
+  }
+
+  const fileName = path.basename(sourceFile);
+  const targetFile = path.join(toDir, fileName);
+  try {
+    await fs.promises.access(targetFile);
+    return { success: false, code: 'collision', error: 'A session with this id already exists in the target project' };
+  } catch { /* free, as expected */ }
+
+  await fs.promises.mkdir(toDir, { recursive: true });
+
+  const warnings = [];
+  const tempFile = `${targetFile}.moving`;
+  let movedSidecar = false;
+
+  try {
+    // Claude Code appends to the transcript of a live session. Comparing the
+    // line count on both sides of the copy catches that: it is the one check
+    // that works without asking the OS whether a file is open.
+    const linesBefore = await countLines(sourceFile);
+    await fs.promises.copyFile(sourceFile, tempFile);
+    const linesAfter = await countLines(sourceFile);
+    if (linesBefore !== linesAfter) {
+      await fs.promises.rm(tempFile, { force: true });
+      return { success: false, code: 'session-live', error: 'The session was written to while copying — close it and try again' };
+    }
+
+    const copiedLines = await countLines(tempFile);
+    if (copiedLines !== linesBefore) {
+      await fs.promises.rm(tempFile, { force: true });
+      return { success: false, code: 'verify-failed', error: `Copy is incomplete (${copiedLines}/${linesBefore} lines)` };
+    }
+
+    await fs.promises.rename(tempFile, targetFile);
+
+    // Sidecar: subagent transcripts, workflow scripts, tool results
+    const sourceSidecar = path.join(fromDir, sessionId);
+    const targetSidecar = path.join(toDir, sessionId);
+    try {
+      const stat = await fs.promises.stat(sourceSidecar);
+      if (stat.isDirectory()) {
+        await moveDirectory(sourceSidecar, targetSidecar);
+        movedSidecar = true;
+      }
+    } catch { /* no sidecar, which is normal for short sessions */ }
+
+    // Only now is the source expendable
+    await fs.promises.unlink(sourceFile);
+  } catch (err) {
+    await fs.promises.rm(tempFile, { force: true }).catch(() => {});
+    return { success: false, code: 'io-error', error: err.message };
+  }
+
+  // resolveSessionFile memoizes sessionId -> filePath per directory
+  _sessionIndex.delete(sessionId);
+  _indexedDirs.delete(fromDir);
+  _indexedDirs.delete(toDir);
+
+  // A session that ran across several worktrees leaves sidecars in each of
+  // those projects. They belong to the runs that happened there, so they stay.
+  const strays = await findStraySidecars(sessionId, [fromDir, toDir]);
+  if (strays.length > 0) {
+    warnings.push(`left-sidecars:${strays.length}`);
+  }
+
+  return { success: true, movedSidecar, warnings, targetFile };
+}
+
+/**
+ * Sidecar directories for this session sitting under other projects.
+ * @param {string} sessionId
+ * @param {string[]} ignoredDirs
+ * @returns {Promise<string[]>}
+ */
+async function findStraySidecars(sessionId, ignoredDirs = []) {
+  const projectsDir = path.join(os.homedir(), '.claude', 'projects');
+  const ignored = new Set(ignoredDirs);
+  let entries;
+  try {
+    entries = await fs.promises.readdir(projectsDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const found = await Promise.all(entries.map(async (entry) => {
+    if (!entry.isDirectory()) return null;
+    const dir = path.join(projectsDir, entry.name);
+    if (ignored.has(dir)) return null;
+    const sidecar = path.join(dir, sessionId);
+    try {
+      const stat = await fs.promises.stat(sidecar);
+      return stat.isDirectory() ? sidecar : null;
+    } catch {
+      return null;
+    }
+  }));
+  return found.filter(Boolean);
+}
+
 /**
  * Export a session as Markdown or JSON
  * @param {string} projectPath
@@ -732,6 +892,16 @@ function registerClaudeHandlers() {
     }
   });
 
+  // Move a session (transcript + sidecar) to another project
+  ipcMain.handle('claude-move-session', async (event, { sessionId, fromProjectPath, toProjectPath }) => {
+    try {
+      return await moveSession(sessionId, fromProjectPath, toProjectPath);
+    } catch (err) {
+      console.error('[claude-move-session] Error:', err.message);
+      return { success: false, code: 'io-error', error: err.message };
+    }
+  });
+
   // Export a session as Markdown or JSON
   ipcMain.handle('claude-export-session', async (event, { projectPath, sessionId, format }) => {
     try {
@@ -743,4 +913,4 @@ function registerClaudeHandlers() {
   });
 }
 
-module.exports = { registerClaudeHandlers, getClaudeSessions, loadSessionHistory, parseSessionReplay };
+module.exports = { registerClaudeHandlers, getClaudeSessions, loadSessionHistory, parseSessionReplay, moveSession, findStraySidecars };

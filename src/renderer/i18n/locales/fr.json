@@ -823,7 +823,19 @@
     "exported": "Session exportée",
     "exportedTo": "Exportée vers {path}",
     "exportError": "Erreur lors de l'export",
-    "exportFormat": "Format d'export"
+    "exportFormat": "Format d'export",
+    "move": {
+      "title": "Déplacer vers un autre projet",
+      "intro": "Déplacer « {name} » hors de ce projet. La conversation n’est pas modifiée.",
+      "note": "Son transcript et ses fichiers de sous-agents, workflows et résultats d’outils suivent. Les exécutions faites dans d’autres projets gardent leurs propres fichiers.",
+      "done": "Session déplacée",
+      "doneStrays": "Déplacée. {count} dossier(s) issus d’exécutions dans d’autres projets sont restés en place.",
+      "noTarget": "Aucun autre projet vers lequel déplacer",
+      "errorLive": "Cette session est ouverte dans un onglet. Ferme-le d’abord.",
+      "errorCollision": "Le projet cible a déjà une session avec cet identifiant",
+      "errorNotFound": "Fichier de session introuvable",
+      "errorGeneric": "La session n’a pas pu être déplacée"
+    }
   },
   "time": {
     "justNow": "à l'instant",

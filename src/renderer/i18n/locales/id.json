@@ -728,7 +728,19 @@
     "exported": "Sesi diekspor",
     "exportedTo": "Diekspor ke {path}",
     "exportError": "Gagal mengekspor sesi",
-    "exportFormat": "Format ekspor"
+    "exportFormat": "Format ekspor",
+    "move": {
+      "title": "Pindahkan ke proyek lain",
+      "intro": "Pindahkan \"{name}\" dari proyek ini. Percakapan tidak diubah.",
+      "note": "Transkrip beserta berkas subagen, alur kerja, dan hasil alat ikut dipindahkan. Eksekusi di proyek lain tetap menyimpan berkasnya sendiri.",
+      "done": "Sesi dipindahkan",
+      "doneStrays": "Dipindahkan. {count} folder dari eksekusi di proyek lain dibiarkan di tempatnya.",
+      "noTarget": "Tidak ada proyek lain sebagai tujuan",
+      "errorLive": "Sesi ini sedang terbuka di sebuah tab. Tutup dulu.",
+      "errorCollision": "Proyek tujuan sudah memiliki sesi dengan id ini",
+      "errorNotFound": "Berkas sesi tidak ditemukan",
+      "errorGeneric": "Sesi tidak dapat dipindahkan"
+    }
   },
   "time": {
     "justNow": "baru saja",
