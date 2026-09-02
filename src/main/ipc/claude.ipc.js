@@ -102,6 +102,51 @@ async function extractSessionInfo(filePath) {
   });
 }
 
+// Claude Code appends `custom-title` (renamed by the user) and `ai-title`
+// (generated) lines as the session goes, so the current title is near the END of
+// the file. Reading forward to find it would mean streaming the whole transcript,
+// which reaches 200 MB — so only the tail is read.
+const TITLE_TAIL_BYTES = 128 * 1024;
+
+/**
+ * Read the session's current title from the tail of its JSONL file.
+ * @param {string} filePath
+ * @param {number} size - File size in bytes (from a stat the caller already did)
+ * @returns {Promise<{customTitle: string, aiTitle: string}>}
+ */
+async function readSessionTitle(filePath, size) {
+  let handle;
+  try {
+    handle = await fs.promises.open(filePath, 'r');
+    const length = Math.min(size, TITLE_TAIL_BYTES);
+    const start = Math.max(0, size - length);
+    const buffer = Buffer.alloc(length);
+    await handle.read(buffer, 0, length, start);
+
+    const lines = buffer.toString('utf8').split('\n');
+    // The first line is cut in half unless the read started at the beginning
+    if (start > 0) lines.shift();
+
+    let customTitle = '';
+    let aiTitle = '';
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      if (!line || line.indexOf('-title"') === -1) continue; // cheap pre-filter
+      try {
+        const obj = JSON.parse(line);
+        if (!customTitle && obj.type === 'custom-title' && obj.customTitle) customTitle = obj.customTitle;
+        else if (!aiTitle && obj.type === 'ai-title' && obj.aiTitle) aiTitle = obj.aiTitle;
+        if (customTitle && aiTitle) break;
+      } catch { /* skip malformed lines */ }
+    }
+    return { customTitle, aiTitle };
+  } catch {
+    return { customTitle: '', aiTitle: '' };
+  } finally {
+    await handle?.close().catch(() => {});
+  }
+}
+
 /**
  * Get Claude sessions for a project by scanning .jsonl files directly
  * @param {string} projectPath - The project path
@@ -139,10 +184,14 @@ async function getClaudeSessions(projectPath) {
         if (stat.size < 200) return null;
 
         const sessionId = info.sessionId || file.replace('.jsonl', '');
+        const { customTitle, aiTitle } = await readSessionTitle(filePath, stat.size);
 
         return {
           sessionId,
           summary: '',
+          title: customTitle || aiTitle || '',
+          customTitle,
+          aiTitle,
           firstPrompt: info.firstPrompt || '',
           messageCount: info.messageCount || 0,
           modified: stat.mtime.toISOString(),
@@ -963,4 +1012,4 @@ function registerClaudeHandlers() {
   });
 }
 
-module.exports = { registerClaudeHandlers, getClaudeSessions, loadSessionHistory, parseSessionReplay, moveSession, findStraySidecars };
+module.exports = { registerClaudeHandlers, getClaudeSessions, loadSessionHistory, parseSessionReplay, moveSession, findStraySidecars, readSessionTitle };

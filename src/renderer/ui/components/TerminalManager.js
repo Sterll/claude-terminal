@@ -2542,8 +2542,15 @@ class TerminalManager extends BaseComponent {
 
       if (customName) {
         displayTitle = customName;
-        displaySubtitle = summaryResult.text || promptResult.text;
+        displaySubtitle = session.title || summaryResult.text || promptResult.text;
         isRenamed = true;
+      } else if (session.title) {
+        // Title Claude Code itself carries in the transcript: `custom-title` when
+        // renamed there, `ai-title` otherwise. Far more useful than the raw
+        // opening prompt, which can be thousands of characters long.
+        displayTitle = session.title;
+        displaySubtitle = summaryResult.text || promptResult.text;
+        isRenamed = Boolean(session.customTitle);
       } else if (summaryResult.text) {
         displayTitle = summaryResult.text;
         displaySubtitle = promptResult.text;
@@ -2559,7 +2566,9 @@ class TerminalManager extends BaseComponent {
       const hoursAgo = (now - new Date(session.modified).getTime()) / 3600000;
       const freshness = hoursAgo < 1 ? 'hot' : hoursAgo < 24 ? 'warm' : '';
 
-      const searchText = (displayTitle + ' ' + displaySubtitle + ' ' + (session.gitBranch || '') + ' ' + customName).toLowerCase();
+      // sessionId is in there so pasting an id (or a prefix of one) finds the card
+      const searchText = (displayTitle + ' ' + displaySubtitle + ' ' + (session.gitBranch || '')
+        + ' ' + customName + ' ' + (session.sessionId || '')).toLowerCase();
 
       const pinned = await this._isSessionPinned(session.sessionId);
       results.push({ ...session, displayTitle, displaySubtitle, isSkill, isRenamed, freshness, searchText, pinned });

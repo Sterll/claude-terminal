@@ -1878,13 +1878,18 @@ async function _preprocessModalSessions(sessions) {
     const summaryResult = _cleanModalSessionText(session.summary);
     const skillName = promptResult.skillName || summaryResult.skillName;
     let displayTitle = '', displaySubtitle = '', isSkill = false;
-    if (summaryResult.text) { displayTitle = summaryResult.text; displaySubtitle = promptResult.text; }
+    // The title Claude Code carries in the transcript (`custom-title`, else
+    // `ai-title`) beats the opening prompt, which can run to thousands of chars
+    if (session.title) { displayTitle = session.title; displaySubtitle = summaryResult.text || promptResult.text; }
+    else if (summaryResult.text) { displayTitle = summaryResult.text; displaySubtitle = promptResult.text; }
     else if (promptResult.text) { displayTitle = promptResult.text; }
     else if (skillName) { displayTitle = '/' + skillName; isSkill = true; }
     else { displayTitle = t('newProject.untitledConversation'); }
     const hoursAgo = (now - new Date(session.modified).getTime()) / 3600000;
     const freshness = hoursAgo < 1 ? 'hot' : hoursAgo < 24 ? 'warm' : '';
-    const searchText = (displayTitle + ' ' + displaySubtitle + ' ' + (session.gitBranch || '')).toLowerCase();
+    // sessionId is in there so pasting an id (or a prefix of one) finds the card
+    const searchText = (displayTitle + ' ' + displaySubtitle + ' ' + (session.gitBranch || '')
+      + ' ' + (session.sessionId || '')).toLowerCase();
     const pinned = !!pins[session.sessionId];
     return { ...session, displayTitle, displaySubtitle, isSkill, freshness, searchText, pinned };
   });
