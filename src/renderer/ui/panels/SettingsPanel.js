@@ -1184,6 +1184,18 @@ class SettingsPanel extends BasePanel {
                     <span class="settings-toggle-slider"></span>
                   </label>
                 </div>
+                <div class="settings-row" style="margin-top: 8px;">
+                  <div class="settings-label">
+                    <div>${t('settings.maxTurns')}</div>
+                    <div class="settings-desc">${t('settings.maxTurnsDesc')}</div>
+                  </div>
+                </div>
+                <div style="padding: 0 16px 12px;">
+                  <input type="number" id="max-turns-input" class="settings-input-sm" style="width: 100%;"
+                    min="1" step="1"
+                    value="${settings.maxTurns != null ? escapeHtml(String(settings.maxTurns)) : ''}"
+                    placeholder="${t('settings.maxTurnsPlaceholder')}">
+                </div>
               </div>
             </div>
             <div class="settings-group">
@@ -1811,6 +1823,12 @@ class SettingsPanel extends BasePanel {
       const newDiscordRpcShowProject = discordRpcShowProjectToggle ? discordRpcShowProjectToggle.checked : true;
       const enhancePromptsToggle = document.getElementById('enhance-prompts-toggle');
       const newEnhancePrompts = enhancePromptsToggle ? enhancePromptsToggle.checked : false;
+      const maxTurnsInput = document.getElementById('max-turns-input');
+      const parsedMaxTurns = maxTurnsInput ? parseInt(maxTurnsInput.value, 10) : NaN;
+      // Blank, zero or junk all mean "no cap", which is the CLI's own default.
+      const newMaxTurns = Number.isFinite(parsedMaxTurns) && parsedMaxTurns > 0
+        ? parsedMaxTurns
+        : null;
       const autoClaudeMdToggle = document.getElementById('auto-claude-md-toggle');
       const newAutoClaudeMd = autoClaudeMdToggle ? autoClaudeMdToggle.checked : true;
       const hooksToggle = document.getElementById('hooks-enabled-toggle');
@@ -1885,6 +1903,7 @@ class SettingsPanel extends BasePanel {
         discordRpcShowProject: newDiscordRpcShowProject,
         enhancePrompts: newEnhancePrompts,
         autoClaudeMdUpdate: newAutoClaudeMd,
+        maxTurns: newMaxTurns,
         telemetryEnabled: newTelemetryEnabled,
         telemetryCategories: newTelemetryCategories,
         parallelAutoKanban: newParallelAutoKanban,
