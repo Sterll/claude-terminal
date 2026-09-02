@@ -1719,6 +1719,7 @@
     "resuming": "Resuming conversation...",
     "conversationResumed": "Conversation resumed",
     "loadingHistory": "Loading conversation...",
+    "olderMessages": "{count} earlier messages",
     "loading": "Loading...",
     "tabConversation": "Conversation",
     "tabChanges": "Changes",

@@ -1719,6 +1719,7 @@
     "resuming": "Reprise de la conversation...",
     "conversationResumed": "Conversation reprise",
     "loadingHistory": "Chargement de la conversation...",
+    "olderMessages": "{count} messages plus anciens",
     "loading": "Chargement...",
     "tabConversation": "Conversation",
     "tabChanges": "Modifications",

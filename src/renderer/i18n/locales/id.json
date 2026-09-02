@@ -1719,6 +1719,7 @@
     "resuming": "Melanjutkan percakapan...",
     "conversationResumed": "Percakapan dilanjutkan",
     "loadingHistory": "Memuat percakapan...",
+    "olderMessages": "{count} pesan sebelumnya",
     "loading": "Memuat...",
     "tabConversation": "Percakapan",
     "tabChanges": "Perubahan",

@@ -184,27 +184,62 @@ async function getClaudeSessions(projectPath) {
   }
 }
 
+// Replaying every message of a very long session melts both processes: the array
+// crosses IPC by structured clone and then becomes one DOM node per entry. Sessions
+// in the wild reach 70k lines / 200 MB, so only the tail is loaded by default and
+// the UI asks for more on demand.
+const DEFAULT_HISTORY_LIMIT = 400;
+
 /**
- * Load full conversation history from a session JSONL file.
- * Returns an array of simplified messages for the chat UI replay.
+ * Load conversation history from a session JSONL file.
+ * Returns the last `limit` simplified messages for the chat UI replay.
  * @param {string} projectPath - The project path
  * @param {string} sessionId - The session ID (UUID)
- * @returns {Promise<Array>} - Array of { role, type, content, toolName, toolInput, toolOutput, thinking, ... }
+ * @param {object} [options]
+ * @param {number} [options.limit] - Max messages to return (tail). 0 = no limit.
+ * @param {string} [options.until] - Stop reading after this message uuid (fork point).
+ * @returns {Promise<{messages: Array, total: number, truncated: boolean}>}
  */
-async function loadSessionHistory(projectPath, sessionId) {
+async function loadSessionHistory(projectPath, sessionId, options = {}) {
   const sessionsDir = getProjectSessionsDir(projectPath);
+  const limit = options.limit === 0 ? 0 : (options.limit || DEFAULT_HISTORY_LIMIT);
+  const until = options.until || null;
 
   // Find the JSONL file — uses indexed lookup
   const filePath = await resolveSessionFile(sessionsDir, sessionId);
-  if (!filePath) return [];
+  if (!filePath) return { messages: [], total: 0, truncated: false };
 
-  // Read all lines from the JSONL file
+  // Read the JSONL file, keeping only a bounded window of messages in memory
   return new Promise((resolve) => {
     const messages = [];
+    // Keep some slack above `limit` so the tail can be realigned onto a user-turn
+    // boundary without re-reading the file.
+    const maxKept = limit ? limit * 2 : Infinity;
+    let total = 0;
+    let dropped = 0;
+    let done = false;
     const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
+    const push = (msg) => {
+      total++;
+      messages.push(msg);
+      if (messages.length > maxKept) {
+        const excess = messages.length - limit;
+        messages.splice(0, excess);
+        dropped += excess;
+      }
+    };
+
+    const finish = () => {
+      if (done) return;
+      done = true;
+      rl.close();
+      stream.destroy();
+    };
+
     rl.on('line', (line) => {
+      if (done) return;
       try {
         const obj = JSON.parse(line);
 
@@ -231,7 +266,7 @@ async function loadSessionHistory(projectPath, sessionId) {
             if (images.length > 0) msg.images = images;
             // Carried so a fork can name the turn it discards (resumeDropsTurn)
             if (obj.uuid) msg.uuid = obj.uuid;
-            messages.push(msg);
+            push(msg);
           }
         }
 
@@ -240,9 +275,9 @@ async function loadSessionHistory(projectPath, sessionId) {
           const blocks = obj.message.content;
           for (const block of blocks) {
             if (block.type === 'text' && block.text) {
-              messages.push({ role: 'assistant', type: 'text', text: block.text, ...(obj.uuid ? { uuid: obj.uuid } : {}) });
+              push({ role: 'assistant', type: 'text', text: block.text, ...(obj.uuid ? { uuid: obj.uuid } : {}) });
             } else if (block.type === 'tool_use') {
-              messages.push({
+              push({
                 role: 'assistant',
                 type: 'tool_use',
                 toolName: block.name,
@@ -250,7 +285,7 @@ async function loadSessionHistory(projectPath, sessionId) {
                 toolUseId: block.id
               });
             } else if (block.type === 'thinking' && block.thinking) {
-              messages.push({ role: 'assistant', type: 'thinking', text: block.thinking });
+              push({ role: 'assistant', type: 'thinking', text: block.thinking });
             }
           }
         }
@@ -263,7 +298,7 @@ async function loadSessionHistory(projectPath, sessionId) {
               if (block.type === 'tool_result') {
                 const output = typeof block.content === 'string' ? block.content
                   : Array.isArray(block.content) ? block.content.map(b => b.text || '').join('\n') : '';
-                messages.push({
+                push({
                   role: 'tool_result',
                   toolUseId: block.tool_use_id,
                   output: output.slice(0, 2000) // Limit output size for IPC
@@ -272,11 +307,26 @@ async function loadSessionHistory(projectPath, sessionId) {
             }
           }
         }
+
+        // Fork point reached — everything after it is discarded by the fork anyway
+        if (until && obj.uuid === until) finish();
       } catch { /* skip malformed lines */ }
     });
 
-    rl.on('close', () => resolve(messages));
-    rl.on('error', () => resolve([]));
+    rl.on('close', () => {
+      // Realign the tail onto a user turn so the replay never opens mid tool-run
+      let window = messages;
+      if (limit && messages.length > limit) {
+        let start = messages.length - limit;
+        for (let i = start; i < messages.length; i++) {
+          if (messages[i].role === 'user') { start = i; break; }
+        }
+        dropped += start;
+        window = messages.slice(start);
+      }
+      resolve({ messages: window, total, truncated: dropped > 0 });
+    });
+    rl.on('error', () => resolve({ messages: [], total: 0, truncated: false }));
   });
 }
 
@@ -629,12 +679,13 @@ function registerClaudeHandlers() {
   });
 
   // Load full session history for chat UI replay
-  ipcMain.handle('chat-load-history', async (event, { projectPath, sessionId }) => {
+  ipcMain.handle('chat-load-history', async (event, { projectPath, sessionId, limit, until }) => {
     try {
-      return { success: true, messages: await loadSessionHistory(projectPath, sessionId) };
+      const { messages, total, truncated } = await loadSessionHistory(projectPath, sessionId, { limit, until });
+      return { success: true, messages, total, truncated };
     } catch (err) {
       console.error('[chat-load-history] Error:', err.message);
-      return { success: false, error: err.message, messages: [] };
+      return { success: false, error: err.message, messages: [], total: 0, truncated: false };
     }
   });
 
@@ -669,4 +720,4 @@ function registerClaudeHandlers() {
   });
 }
 
-module.exports = { registerClaudeHandlers, getClaudeSessions };
+module.exports = { registerClaudeHandlers, getClaudeSessions, loadSessionHistory };

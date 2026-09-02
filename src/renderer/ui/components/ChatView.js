@@ -5228,6 +5228,8 @@ class ChatView extends BaseComponent {
 
   let userHasScrolled = false;
   let hasNewMessages = false;
+  // Set by the resume path: pulls in older history as the user scrolls up
+  let onNearHistoryTop = null;
 
   // Create scroll-to-bottom button
   const scrollButton = document.createElement('button');
@@ -5253,6 +5255,8 @@ class ChatView extends BaseComponent {
   messagesEl.addEventListener('scroll', () => {
     const isAtBottom = messagesEl.scrollTop + messagesEl.clientHeight >= messagesEl.scrollHeight - 50;
     userHasScrolled = !isAtBottom && messagesEl.scrollHeight > messagesEl.clientHeight;
+
+    if (onNearHistoryTop) onNearHistoryTop();
 
     if (isAtBottom) {
       userHasScrolled = false;
@@ -6467,27 +6471,25 @@ class ChatView extends BaseComponent {
 
   // If resuming, load and display conversation history
   if (pendingResumeId) {
+    // Sessions can reach tens of thousands of messages. Only the tail is replayed;
+    // the rest streams in page by page as the user scrolls back up.
+    const HISTORY_PAGE = 400;
+    // Start fetching before the user actually hits the top, so the older messages
+    // are usually already in place by the time they get there.
+    const HISTORY_PREFETCH_PX = 800;
+    let historyLimit = HISTORY_PAGE;
+    let historyTopEl = null;
+    let previousCount = 0;
+    let historyExhausted = false;
+    let loadingEarlier = false;
+
     const welcomeEl = wrapperEl.querySelector('.chat-welcome');
     if (welcomeEl) {
       welcomeEl.querySelector('.chat-welcome-text').textContent = t('chat.loadingHistory') || 'Loading conversation...';
       welcomeEl.querySelector('.chat-welcome-logo').classList.add('loading-pulse');
     }
 
-    // Load history async then render
-    api.chat.loadHistory({ projectPath: project.path, sessionId: pendingResumeId }).then(result => {
-      if (welcomeEl) welcomeEl.remove();
-
-      if (result?.success && result.messages?.length > 0) {
-        // When forking at a specific message, only show history up to that point
-        let msgs = result.messages;
-        if (pendingResumeAt) {
-          const cutIdx = msgs.findIndex(m => m.uuid === pendingResumeAt);
-          if (cutIdx >= 0) msgs = msgs.slice(0, cutIdx + 1);
-        }
-        renderHistoryMessages(msgs);
-      }
-
-      // Show resume/fork divider
+    function appendHistoryDivider() {
       const dividerText = pendingForkSession
         ? (t('chat.forkedFrom') || 'Forked conversation')
         : (t('chat.conversationResumed') || 'Conversation resumed');
@@ -6497,6 +6499,117 @@ class ChatView extends BaseComponent {
       messagesEl.appendChild(divider);
       userHasScrolled = false;
       scrollToBottom();
+    }
+
+    /** Top-of-list marker: how much history is still on disk, and the load spinner. */
+    function syncHistoryTop(result, shown) {
+      if (!result?.truncated) {
+        historyExhausted = true;
+        if (historyTopEl) { historyTopEl.remove(); historyTopEl = null; }
+        return;
+      }
+      if (!historyTopEl) {
+        historyTopEl = document.createElement('div');
+        historyTopEl.className = 'chat-history-top';
+      }
+      const hidden = Math.max(0, (result.total || 0) - shown);
+      historyTopEl.dataset.hidden = String(hidden);
+      setHistoryTopIdle();
+      messagesEl.prepend(historyTopEl);
+    }
+
+    function setHistoryTopIdle() {
+      if (!historyTopEl) return;
+      const hidden = Number(historyTopEl.dataset.hidden || 0);
+      historyTopEl.classList.remove('loading');
+      historyTopEl.textContent = t('chat.olderMessages', { count: hidden });
+    }
+
+    function setHistoryTopLoading() {
+      if (!historyTopEl) return;
+      historyTopEl.classList.add('loading');
+      historyTopEl.innerHTML = `<span class="chat-tool-spinner"></span><span>${escapeHtml(t('chat.loadingHistory') || 'Loading conversation...')}</span>`;
+    }
+
+    /** Called on every scroll: pull the next page in once the top is in reach. */
+    function maybeLoadEarlier() {
+      if (loadingEarlier || historyExhausted || !historyTopEl) return;
+      if (messagesEl.scrollTop > HISTORY_PREFETCH_PX) return;
+      loadEarlier();
+    }
+
+    function loadEarlier() {
+      loadingEarlier = true;
+      setHistoryTopLoading();
+      const nextLimit = historyLimit + HISTORY_PAGE;
+      fetchHistory(nextLimit).then(result => {
+        historyLimit = nextLimit;
+        const msgs = result?.messages || [];
+        // The window grows from the end, so the new messages are its prefix
+        const older = msgs.slice(0, Math.max(0, msgs.length - previousCount));
+        previousCount = msgs.length;
+        if (older.length === 0) {
+          loadingEarlier = false;
+          syncHistoryTop({ ...result, truncated: false }, msgs.length);
+          return;
+        }
+        // Prepending shifts the viewport — keep the reading position stable
+        const anchor = historyTopEl.nextSibling;
+        const beforeHeight = messagesEl.scrollHeight;
+        const beforeTop = messagesEl.scrollTop;
+        renderHistoryMessages(older, {
+          anchor,
+          onComplete: () => {
+            messagesEl.scrollTop = beforeTop + (messagesEl.scrollHeight - beforeHeight);
+            syncHistoryTop(result, msgs.length);
+            loadingEarlier = false;
+            // Short page against a tall viewport: keep pulling until the top moves away
+            maybeLoadEarlier();
+          }
+        });
+      }).catch(() => {
+        loadingEarlier = false;
+        setHistoryTopIdle();
+      });
+    }
+
+    function fetchHistory(limit) {
+      return api.chat.loadHistory({
+        projectPath: project.path,
+        sessionId: pendingResumeId,
+        limit,
+        until: pendingResumeAt || undefined
+      });
+    }
+
+    fetchHistory(historyLimit).then(result => {
+      if (welcomeEl) welcomeEl.remove();
+
+      let msgs = (result?.success && result.messages) || [];
+      // Older main processes truncate client-side; harmless double safety for forks
+      if (pendingResumeAt) {
+        const cutIdx = msgs.findIndex(m => m.uuid === pendingResumeAt);
+        if (cutIdx >= 0) msgs = msgs.slice(0, cutIdx + 1);
+      }
+      previousCount = msgs.length;
+
+      if (msgs.length === 0) {
+        appendHistoryDivider();
+        return;
+      }
+
+      renderHistoryMessages(msgs, {
+        onComplete: () => {
+          syncHistoryTop(result, msgs.length);
+          appendHistoryDivider();
+          // Arm the scroll-driven loader only once the initial replay is in place.
+          // The double rAF lets appendHistoryDivider's scroll-to-bottom land first,
+          // so the check below sees the real position (and only pulls another page
+          // when the tail is too short to fill the viewport).
+          onNearHistoryTop = maybeLoadEarlier;
+          requestAnimationFrame(() => requestAnimationFrame(maybeLoadEarlier));
+        }
+      });
     }).catch(() => {
       if (welcomeEl) {
         welcomeEl.querySelector('.chat-welcome-text').textContent = t('chat.conversationResumed') || 'Conversation resumed — type a message to continue.';
@@ -6508,8 +6621,16 @@ class ChatView extends BaseComponent {
   /**
    * Render history messages from JSONL data into the chat UI.
    * Creates static (non-interactive) message elements.
+   *
+   * @param {Array} messages
+   * @param {object} [options]
+   * @param {Node} [options.anchor] - Insert before this node instead of appending
+   *   (used when prepending older messages).
+   * @param {Function} [options.onComplete] - Called once every batch is in the DOM.
    */
-  function renderHistoryMessages(messages) {
+  function renderHistoryMessages(messages, options = {}) {
+    const { anchor = null, onComplete = null } = options;
+
     // Build a map of tool_use_id -> tool_result output for enriching tool cards
     const toolResults = new Map();
     for (const msg of messages) {
@@ -6518,15 +6639,22 @@ class ChatView extends BaseComponent {
       }
     }
 
-    // Batch rendering: build DOM in a fragment, process in chunks to avoid blocking UI
-    const BATCH_SIZE = 20;
+    // Time-sliced rendering: build DOM in a fragment and yield once the frame
+    // budget is spent, so a long replay never freezes the UI.
+    const BATCH_BUDGET_MS = 12;
+    const MIN_BATCH = 20;
     let idx = 0;
 
     function renderBatch() {
       const fragment = document.createDocumentFragment();
-      const end = Math.min(idx + BATCH_SIZE, messages.length);
+      const deadline = Date.now() + BATCH_BUDGET_MS;
+      let end = Math.min(idx + MIN_BATCH, messages.length);
 
       for (; idx < end; idx++) {
+        // Keep filling the frame budget once the minimum batch is done
+        if (idx === end - 1 && end < messages.length && Date.now() < deadline) {
+          end = Math.min(end + MIN_BATCH, messages.length);
+        }
         const msg = messages[idx];
         if (msg.role === 'user') {
           const el = document.createElement('div');
@@ -6663,10 +6791,16 @@ class ChatView extends BaseComponent {
         }
       }
 
-      messagesEl.appendChild(fragment);
-      MarkdownRenderer.postProcess(messagesEl);
+      // Scope post-processing to this batch: running it over the whole message
+      // list once per batch made replay quadratic in the number of messages.
+      const batchNodes = Array.from(fragment.children);
+      if (anchor) messagesEl.insertBefore(fragment, anchor);
+      else messagesEl.appendChild(fragment);
+      MarkdownRenderer.postProcess(batchNodes);
 
       if (idx < messages.length) {
+        // Keep the view pinned to the newest content while the tail streams in
+        if (!anchor) scrollToBottom();
         // Schedule next batch during idle time
         if (typeof requestIdleCallback === 'function') {
           requestIdleCallback(() => renderBatch(), { timeout: 100 });
@@ -6674,8 +6808,11 @@ class ChatView extends BaseComponent {
           setTimeout(renderBatch, 0);
         }
       } else {
-        userHasScrolled = false;
-        scrollToBottom();
+        if (!anchor) {
+          userHasScrolled = false;
+          scrollToBottom();
+        }
+        if (onComplete) onComplete();
       }
     }
 

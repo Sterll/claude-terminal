@@ -1719,6 +1719,7 @@
     "resuming": "继续谈话...",
     "conversationResumed": "谈话继续",
     "loadingHistory": "正在加载对话...",
+    "olderMessages": "更早的 {count} 条消息",
     "loading": "正在加载...",
     "tabConversation": "对话",
     "tabChanges": "变化",

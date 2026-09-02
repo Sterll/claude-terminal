@@ -43,16 +43,67 @@ function setCachedMermaid(source, svg) {
 
 // ── Post-render processing ──
 
+// One observer for the whole renderer, created on first use. Replaying a long
+// session calls postProcess() once per render batch; allocating an observer per
+// call left thousands of them alive, each re-observing every block already
+// handled by the previous ones.
+let _lazyObserver = null;
+
+function getLazyObserver() {
+  if (_lazyObserver) return _lazyObserver;
+  _lazyObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      const el = entry.target;
+      _lazyObserver.unobserve(el);
+
+      if (el.classList.contains('chat-preview-container')) {
+        initializePreviewIframe(el);
+      } else if (el.classList.contains('chat-mermaid-block')) {
+        initMermaidBlocks([el]);
+      } else if (el.classList.contains('chat-math-block')) {
+        initMathBlocks([el]);
+      }
+    });
+  }, { rootMargin: '200px' });
+  return _lazyObserver;
+}
+
 /**
- * Post-render processing: initialize special blocks in a container.
- * Call after inserting rendered HTML into the DOM.
- * Uses IntersectionObserver for off-screen blocks (lazy rendering).
+ * Normalize a postProcess target into a list of DOM roots.
+ * Accepts an element/fragment, or an array/NodeList of elements (a render batch).
  */
-function postProcess(container) {
-  const previews = container.querySelectorAll('.chat-preview-container');
-  const mermaidBlocks = container.querySelectorAll('.chat-mermaid-block');
-  const mathBlocks = container.querySelectorAll('.chat-math-block');
-  const inlineMathEls = container.querySelectorAll('.chat-math-inline[data-math-source]');
+function toRoots(target) {
+  if (!target) return [];
+  if (typeof target.querySelectorAll === 'function') return [target];
+  return Array.from(target).filter(el => el && typeof el.querySelectorAll === 'function');
+}
+
+function queryWithin(roots, selector) {
+  const found = [];
+  for (const root of roots) {
+    if (typeof root.matches === 'function' && root.matches(selector)) found.push(root);
+    found.push(...root.querySelectorAll(selector));
+  }
+  return found;
+}
+
+/**
+ * Post-render processing: initialize special blocks after HTML insertion.
+ * Uses IntersectionObserver for off-screen blocks (lazy rendering).
+ *
+ * @param {Element|DocumentFragment|Element[]|NodeList} target - Container, or the
+ *   nodes of a single render batch. Passing the batch (rather than the whole
+ *   message list) keeps replay linear instead of quadratic.
+ */
+function postProcess(target) {
+  const roots = toRoots(target);
+  if (roots.length === 0) return;
+
+  const previews = queryWithin(roots, '.chat-preview-container');
+  const mermaidBlocks = queryWithin(roots, '.chat-mermaid-block');
+  const mathBlocks = queryWithin(roots, '.chat-math-block');
+  const inlineMathEls = queryWithin(roots, '.chat-math-inline[data-math-source]');
 
   // Render inline math with KaTeX
   if (inlineMathEls.length > 0) {
@@ -69,25 +120,15 @@ function postProcess(container) {
   }
 
   // Use IntersectionObserver for lazy initialization of many blocks
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (!entry.isIntersecting) return;
-      const el = entry.target;
-      observer.unobserve(el);
-
-      if (el.classList.contains('chat-preview-container')) {
-        initializePreviewIframe(el);
-      } else if (el.classList.contains('chat-mermaid-block')) {
-        initMermaidBlocks([el]);
-      } else if (el.classList.contains('chat-math-block')) {
-        initMathBlocks([el]);
-      }
-    });
-  }, { rootMargin: '200px' });
-
-  previews.forEach(el => observer.observe(el));
-  mermaidBlocks.forEach(el => observer.observe(el));
-  mathBlocks.forEach(el => observer.observe(el));
+  const observer = getLazyObserver();
+  const observe = (el) => {
+    if (el.dataset.lazyObserved) return;
+    el.dataset.lazyObserved = '1';
+    observer.observe(el);
+  };
+  previews.forEach(observe);
+  mermaidBlocks.forEach(observe);
+  mathBlocks.forEach(observe);
 }
 
 // ── Lazy-loaded Mermaid ──

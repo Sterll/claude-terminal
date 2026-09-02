@@ -1711,6 +1711,7 @@
     "resuming": "Reanudando conversación...",
     "conversationResumed": "Conversación reanudada",
     "loadingHistory": "Cargando conversación...",
+    "olderMessages": "{count} mensajes anteriores",
     "loading": "Cargando...",
     "tabConversation": "Conversación",
     "tabChanges": "Cambios",

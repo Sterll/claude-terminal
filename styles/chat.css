@@ -779,6 +779,24 @@ mark.chat-search-hit.current {
   white-space: nowrap;
 }
 
+/* ── Top-of-history marker: long sessions replay their tail and stream the
+      rest in as the user scrolls up ── */
+.chat-history-top {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 28px;
+  margin: 4px 0 14px;
+  color: var(--text-muted);
+  font-size: var(--font-2xs);
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+.chat-history-top.loading {
+  color: var(--text-secondary);
+}
+
 /* History messages: slightly dimmed to distinguish from live messages */
 .chat-msg.history,
 .chat-tool-card.history,
