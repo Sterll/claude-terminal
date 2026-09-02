@@ -866,7 +866,7 @@
     "modeAutonomousDesc": "Claude mengeksekusi tanpa konfirmasi",
     "modeAutonomousWarning": "Mode ini memungkinkan Claude menjalankan perintah tanpa persetujuan.",
     "accountsGroup": "Akun Claude",
-    "accountsDesc": "Simpan kredensial yang sedang aktif di ~/.claude/.credentials.json agar Anda dapat berpindah akun ketika salah satunya mencapai batas penggunaan. Jalankan \"claude /login\" di terminal untuk menambahkan akun baru.",
+    "accountsDesc": "Simpan kredensial yang sedang digunakan oleh CLI Claude agar Anda dapat berpindah akun ketika salah satunya mencapai batas penggunaan. Jalankan \"claude /login\" di terminal untuk menambahkan akun baru.",
     "githubAccount": "Akun GitHub",
     "githubDisconnect": "Putuskan",
     "githubConnect": "Hubungkan",

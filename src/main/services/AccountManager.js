@@ -1,7 +1,11 @@
 /**
  * AccountManager
- * Manages multiple Claude OAuth accounts by snapshotting ~/.claude/.credentials.json
- * into ~/.claude-terminal/accounts/ and swapping the active credentials on demand.
+ * Manages multiple Claude OAuth accounts by snapshotting the CLI's live
+ * credential store into ~/.claude-terminal/accounts/ and swapping the active
+ * credentials on demand.
+ *
+ * The live store is platform-dependent: the macOS login Keychain on darwin,
+ * ~/.claude/.credentials.json everywhere else.
  *
  * Login flow stays unchanged: user runs `claude /login` once in a terminal,
  * then captures the resulting credentials as a named account.
@@ -13,6 +17,18 @@ const os = require('os');
 const crypto = require('crypto');
 const { dataDir } = require('../utils/paths');
 
+// On macOS the Claude CLI keeps its OAuth credentials in the login Keychain
+// rather than in ~/.claude/.credentials.json. Same JSON payload, different
+// container — so the store is picked per platform.
+const KEYCHAIN_SERVICE = 'Claude Code-credentials';
+
+let keytar = null;
+try {
+  keytar = require('keytar');
+} catch (_) {
+  // Native module unavailable (electron-rebuild failed) — file store only.
+}
+
 const accountsDir = path.join(dataDir, 'accounts');
 const indexFile = path.join(accountsDir, 'index.json');
 
@@ -21,8 +37,17 @@ function getCredentialsPath() {
   return path.join(claudeDir, '.credentials.json');
 }
 
+function useKeychain() {
+  return process.platform === 'darwin' && keytar !== null;
+}
+
+function keychainAccount() {
+  return os.userInfo().username;
+}
+
 function ensureDir() {
-  if (!fs.existsSync(accountsDir)) fs.mkdirSync(accountsDir, { recursive: true });
+  // 0700: these files hold OAuth tokens in plaintext.
+  if (!fs.existsSync(accountsDir)) fs.mkdirSync(accountsDir, { recursive: true, mode: 0o700 });
 }
 
 function readIndex() {
@@ -42,13 +67,57 @@ function writeIndex(index) {
   fs.renameSync(tmp, indexFile);
 }
 
-function readCurrentCredentials() {
+function readCredentialsFile() {
   const credPath = getCredentialsPath();
   if (!fs.existsSync(credPath)) return null;
   try {
     return JSON.parse(fs.readFileSync(credPath, 'utf-8'));
   } catch {
     return null;
+  }
+}
+
+function writeCredentialsFile(payload) {
+  const credPath = getCredentialsPath();
+  const claudeDir = path.dirname(credPath);
+  if (!fs.existsSync(claudeDir)) fs.mkdirSync(claudeDir, { recursive: true });
+  const tmp = `${credPath}.tmp`;
+  fs.writeFileSync(tmp, payload, { mode: 0o600 });
+  fs.renameSync(tmp, credPath);
+}
+
+/**
+ * Read whatever credentials the Claude CLI is currently using.
+ * Keychain first on macOS, with the file as a fallback for setups that opted
+ * out of it (e.g. CLAUDE_CONFIG_DIR pointing at a portable config).
+ */
+async function readCurrentCredentials() {
+  if (useKeychain()) {
+    try {
+      const raw = await keytar.getPassword(KEYCHAIN_SERVICE, keychainAccount());
+      if (raw) return JSON.parse(raw);
+    } catch (_) {
+      // Keychain access denied or entry unreadable — fall through to the file.
+    }
+  }
+  return readCredentialsFile();
+}
+
+/**
+ * Write credentials back to every store the CLI might read on this platform,
+ * so the swap takes effect whichever one it picks.
+ */
+async function writeCurrentCredentials(creds) {
+  const payload = JSON.stringify(creds, null, 2);
+  let wrote = false;
+  if (useKeychain()) {
+    await keytar.setPassword(KEYCHAIN_SERVICE, keychainAccount(), payload);
+    wrote = true;
+  }
+  // Only touch the file if it already exists (or if it is the only store) —
+  // creating it on macOS would leave a plaintext copy the CLI never asked for.
+  if (!wrote || fs.existsSync(getCredentialsPath())) {
+    writeCredentialsFile(payload);
   }
 }
 
@@ -80,9 +149,9 @@ function summarize(account) {
 /**
  * List all stored accounts with the currently active one flagged.
  */
-function listAccounts() {
+async function listAccounts() {
   const index = readIndex();
-  const currentFp = fingerprintCredentials(readCurrentCredentials());
+  const currentFp = fingerprintCredentials(await readCurrentCredentials());
   let activeId = index.activeId;
   if (currentFp) {
     const match = index.accounts.find(a => a.fingerprint === currentFp);
@@ -101,8 +170,8 @@ function listAccounts() {
  * Capture the current ~/.claude/.credentials.json as a new named account.
  * Throws if no credentials exist or if an account with the same token is already stored.
  */
-function captureCurrent(name) {
-  const creds = readCurrentCredentials();
+async function captureCurrent(name) {
+  const creds = await readCurrentCredentials();
   if (!creds) throw new Error('No credentials found. Run /login in a terminal first.');
   const fingerprint = fingerprintCredentials(creds);
   if (!fingerprint) throw new Error('Credentials file has no usable access token.');
@@ -122,7 +191,7 @@ function captureCurrent(name) {
     lastUsedAt: new Date().toISOString()
   };
 
-  fs.writeFileSync(accountFile(id), JSON.stringify(creds, null, 2));
+  fs.writeFileSync(accountFile(id), JSON.stringify(creds, null, 2), { mode: 0o600 });
   index.accounts.push(account);
   index.activeId = id;
   writeIndex(index);
@@ -130,27 +199,35 @@ function captureCurrent(name) {
 }
 
 /**
- * Swap ~/.claude/.credentials.json with the stored snapshot for this account.
- * Returns the swapped account summary.
+ * Point the live credential store (Keychain on macOS, file elsewhere) at the
+ * stored snapshot for this account. Returns the swapped account summary.
  */
-function switchTo(id) {
-  const index = readIndex();
-  const account = index.accounts.find(a => a.id === id);
-  if (!account) throw new Error(`Account ${id} not found.`);
+async function switchTo(id) {
+  const name = readIndex().accounts.find(a => a.id === id)?.name;
+  if (!name) throw new Error(`Account ${id} not found.`);
 
   const file = accountFile(id);
   if (!fs.existsSync(file)) {
-    throw new Error(`Stored credentials missing for "${account.name}". Re-capture required.`);
+    throw new Error(`Stored credentials missing for "${name}". Re-capture required.`);
   }
 
-  const credPath = getCredentialsPath();
-  const claudeDir = path.dirname(credPath);
-  if (!fs.existsSync(claudeDir)) fs.mkdirSync(claudeDir, { recursive: true });
+  let snapshot;
+  try {
+    snapshot = JSON.parse(fs.readFileSync(file, 'utf-8'));
+  } catch {
+    throw new Error(`Stored credentials for "${name}" are corrupted. Re-capture required.`);
+  }
 
-  const tmp = `${credPath}.tmp`;
-  fs.copyFileSync(file, tmp);
-  fs.renameSync(tmp, credPath);
+  // Refresh the outgoing account's snapshot before overwriting the live store —
+  // the CLI rotates tokens behind our back, and a stale snapshot means a
+  // forced re-login the next time we switch back to it.
+  await syncActiveFromDisk();
+  await writeCurrentCredentials(snapshot);
 
+  // Re-read: syncActiveFromDisk() writes the index too.
+  const index = readIndex();
+  const account = index.accounts.find(a => a.id === id);
+  if (!account) throw new Error(`Account ${id} not found.`);
   account.lastUsedAt = new Date().toISOString();
   index.activeId = id;
   writeIndex(index);
@@ -158,17 +235,30 @@ function switchTo(id) {
 }
 
 /**
- * Refresh the stored snapshot for an account from the live ~/.claude/.credentials.json.
- * Used after the SDK refreshes tokens so backups stay current.
+ * Refresh the stored snapshot of the active account from the live credential
+ * store, so backups stay usable after the CLI rotates its tokens.
+ *
+ * Matching prefers the fingerprint, which is exact when it hits. It stops
+ * matching once the CLI refreshes the access token it hashes, so `activeId`
+ * — the account we last swapped in — is the fallback.
+ *
+ * Known gap: a manual `claude /login` onto an account that was never captured
+ * leaves the live store belonging to nobody, and the activeId fallback then
+ * attributes it to the previously active account.
  */
-function syncActiveFromDisk() {
-  const creds = readCurrentCredentials();
+async function syncActiveFromDisk() {
+  const creds = await readCurrentCredentials();
   if (!creds) return null;
   const fp = fingerprintCredentials(creds);
+  if (!fp) return null;
+
   const index = readIndex();
-  const match = index.accounts.find(a => a.fingerprint === fp);
+  const match = index.accounts.find(a => a.fingerprint === fp)
+    || index.accounts.find(a => a.id === index.activeId);
   if (!match) return null;
-  fs.writeFileSync(accountFile(match.id), JSON.stringify(creds, null, 2));
+
+  fs.writeFileSync(accountFile(match.id), JSON.stringify(creds, null, 2), { mode: 0o600 });
+  match.fingerprint = fp;
   match.lastUsedAt = new Date().toISOString();
   index.activeId = match.id;
   writeIndex(index);

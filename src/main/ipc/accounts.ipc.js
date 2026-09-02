@@ -12,38 +12,48 @@ function broadcast(channel, payload) {
   }
 }
 
-function wrap(fn) {
+async function wrap(fn) {
   try {
-    return { success: true, data: fn() };
+    return { success: true, data: await fn() };
   } catch (err) {
     return { success: false, error: err.message };
+  }
+}
+
+// Reading the live store can hit the macOS Keychain, so the broadcast payload
+// has to be awaited too.
+async function broadcastAccounts() {
+  try {
+    broadcast('accounts-changed', await AccountManager.listAccounts());
+  } catch (err) {
+    console.error('[accounts.ipc] broadcast failed:', err.message);
   }
 }
 
 function registerAccountsHandlers() {
   ipcMain.handle('accounts-list', () => wrap(() => AccountManager.listAccounts()));
 
-  ipcMain.handle('accounts-capture', (_event, { name } = {}) => {
-    const result = wrap(() => AccountManager.captureCurrent(name));
-    if (result.success) broadcast('accounts-changed', AccountManager.listAccounts());
+  ipcMain.handle('accounts-capture', async (_event, { name } = {}) => {
+    const result = await wrap(() => AccountManager.captureCurrent(name));
+    if (result.success) await broadcastAccounts();
     return result;
   });
 
-  ipcMain.handle('accounts-switch', (_event, { id } = {}) => {
-    const result = wrap(() => AccountManager.switchTo(id));
-    if (result.success) broadcast('accounts-changed', AccountManager.listAccounts());
+  ipcMain.handle('accounts-switch', async (_event, { id } = {}) => {
+    const result = await wrap(() => AccountManager.switchTo(id));
+    if (result.success) await broadcastAccounts();
     return result;
   });
 
-  ipcMain.handle('accounts-rename', (_event, { id, name } = {}) => {
-    const result = wrap(() => AccountManager.renameAccount(id, name));
-    if (result.success) broadcast('accounts-changed', AccountManager.listAccounts());
+  ipcMain.handle('accounts-rename', async (_event, { id, name } = {}) => {
+    const result = await wrap(() => AccountManager.renameAccount(id, name));
+    if (result.success) await broadcastAccounts();
     return result;
   });
 
-  ipcMain.handle('accounts-remove', (_event, { id } = {}) => {
-    const result = wrap(() => AccountManager.removeAccount(id));
-    if (result.success) broadcast('accounts-changed', AccountManager.listAccounts());
+  ipcMain.handle('accounts-remove', async (_event, { id } = {}) => {
+    const result = await wrap(() => AccountManager.removeAccount(id));
+    if (result.success) await broadcastAccounts();
     return result;
   });
 
