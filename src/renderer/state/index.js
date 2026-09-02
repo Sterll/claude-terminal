@@ -48,6 +48,9 @@ const skillsAgentsState = new State({
 async function initializeState() {
   await settingsState.loadSettings();
   await projectsState.loadProjects();
+  // Project bar tabs: needs both settings (the saved list) and projects (to drop
+  // ids that no longer resolve), so it runs after the two loads above.
+  projectsState.restoreOpenProjectIds(settingsState.getSetting('openProjectIds'));
   // Initialize time tracking with project state references
   await timeTrackingState.initTimeTracking(projectsState.projectsState);
   // Load FiveM resource shortcuts

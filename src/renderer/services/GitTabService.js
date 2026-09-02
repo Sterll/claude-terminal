@@ -362,7 +362,6 @@ function renderGitTab() {
 }
 
 function renderSidebar() {
-  renderProjectsList();
   renderQuickActions();
   renderBranches();
   renderTags();
@@ -371,133 +370,11 @@ function renderSidebar() {
   renderRemotes();
 }
 
-function countFolderProjects(folder, folders, projects) {
-  let count = 0;
-  for (const childId of (folder.children || [])) {
-    const childFolder = folders.find(f => f.id === childId);
-    if (childFolder) count += countFolderProjects(childFolder, folders, projects);
-    else if (projects.find(p => p.id === childId)) count++;
-  }
-  return count;
-}
-
-function renderProjectsList() {
-  const list = document.getElementById('git-projects-list');
-  if (!list) return;
-
-  const state = projectsState.get();
-  const { projects, folders, rootOrder } = state;
-
-  if (!projects || projects.length === 0) {
-    list.innerHTML = `<div class="git-sidebar-empty">${t('projects.noProjects')}</div>`;
-    return;
-  }
-
-  function renderFolderItem(folder, depth) {
-    const indent = depth * 16;
-    const projectCount = countFolderProjects(folder, folders, projects);
-    const isCollapsed = folder.collapsed;
-
-    const folderIcon = folder.icon
-      ? `<span class="git-folder-emoji">${folder.icon}</span>`
-      : `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>`;
-
-    const colorDot = folder.color
-      ? `<span class="git-folder-color" style="background:${folder.color}"></span>`
-      : '';
-
-    let childrenHtml = '';
-    for (const childId of (folder.children || [])) {
-      const childFolder = folders.find(f => f.id === childId);
-      if (childFolder) {
-        childrenHtml += renderFolderItem(childFolder, depth + 1);
-      } else {
-        const childProject = projects.find(p => p.id === childId);
-        if (childProject) childrenHtml += renderProjectItem(childProject, depth + 1);
-      }
-    }
-
-    return `<div class="git-folder-item" data-folder-id="${escapeAttr(folder.id)}">
-      <div class="git-folder-header" style="padding-left:${8 + indent}px">
-        <span class="git-folder-chevron ${isCollapsed ? 'collapsed' : ''}">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
-        </span>
-        ${colorDot}
-        <span class="git-folder-icon">${folderIcon}</span>
-        <span class="git-folder-name">${escapeHtml(folder.name)}</span>
-        <span class="git-folder-count">${projectCount}</span>
-      </div>
-      <div class="git-folder-children ${isCollapsed ? 'collapsed' : ''}">
-        ${childrenHtml}
-      </div>
-    </div>`;
-  }
-
-  function renderProjectItem(project, depth) {
-    const indent = depth * 16;
-    const isActive = selectedProjectId === project.id;
-
-    const iconHtml = project.icon
-      ? `<span class="git-project-emoji">${project.icon}</span>`
-      : `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>`;
-
-    const colorDot = project.color
-      ? `<span class="git-folder-color" style="background:${project.color}"></span>`
-      : '';
-
-    const pathParts = project.path ? project.path.replace(/\\/g, '/').split('/') : [];
-    const shortPath = pathParts.length > 2 ? '.../' + pathParts.slice(-2).join('/') : project.path || '';
-
-    return `<div class="git-project-item ${isActive ? 'active' : ''}" data-project-id="${escapeAttr(project.id)}" style="padding-left:${indent}px">
-      <div class="git-project-icon">${colorDot}${iconHtml}</div>
-      <div class="git-project-info">
-        <div class="git-project-name">${escapeHtml(project.name)}</div>
-        <div class="git-project-path">${escapeHtml(shortPath)}</div>
-      </div>
-    </div>`;
-  }
-
-  let html = '';
-  for (const itemId of (rootOrder || [])) {
-    const folder = folders.find(f => f.id === itemId);
-    if (folder) {
-      html += renderFolderItem(folder, 0);
-    } else {
-      const project = projects.find(p => p.id === itemId);
-      if (project) html += renderProjectItem(project, 0);
-    }
-  }
-
-  list.innerHTML = html;
-
-  // Delegated click handler for project list
-  list.onclick = (e) => {
-    const header = e.target.closest('.git-folder-header');
-    if (header) {
-      e.stopPropagation();
-      const chevron = header.querySelector('.git-folder-chevron');
-      const children = header.nextElementSibling;
-      if (chevron && children) {
-        chevron.classList.toggle('collapsed');
-        children.classList.toggle('collapsed');
-      }
-      return;
-    }
-    const item = e.target.closest('.git-project-item[data-project-id]');
-    if (item) selectProjectById(item.dataset.projectId);
-  };
-}
-
 async function selectProjectById(projectId) {
   const project = getProject(projectId);
   if (!project) return;
 
   selectedProjectId = projectId;
-
-  // Update active state in sidebar
-  document.querySelectorAll('#git-projects-list .git-project-item').forEach(el => el.classList.remove('active'));
-  const active = document.querySelector(`#git-projects-list .git-project-item[data-project-id="${projectId}"]`);
-  if (active) active.classList.add('active');
 
   // Show loading
   const content = document.getElementById('git-sub-content');
@@ -3282,6 +3159,5 @@ function initGitTab() {
 module.exports = {
   initGitTab,
   selectProject: selectProjectById,
-  renderGitTab,
-  renderProjectsList
+  renderGitTab
 };

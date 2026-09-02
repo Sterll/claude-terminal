@@ -76,10 +76,6 @@
   min-width: 0;
 }
 
-.sr-control-group--project {
-  flex: 2;
-}
-
 .sr-control-group--branch {
   flex: 1;
 }

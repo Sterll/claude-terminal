@@ -46,7 +46,6 @@
     "changeEditor": "Cambiar editor",
     "globalDefault": "Por defecto (global)",
     "customize": "Personalizar",
-    "moreActions": "Más acciones",
     "basicTerminal": "Terminal básica",
     "openClaude": "Abrir Claude Code",
     "newFolder": "Nueva carpeta",
@@ -100,7 +99,15 @@
     "noTags": "Sin etiquetas",
     "existingTags": "Etiquetas existentes",
     "clearTagFilter": "Eliminar filtro",
-    "manageTags": "Gestionar etiquetas"
+    "manageTags": "Gestionar etiquetas",
+    "openProject": "Abrir un proyecto",
+    "noOpenProjects": "Ningún proyecto abierto",
+    "openSessions": "{count} sesión(es) abierta(s)",
+    "closeProject": "Cerrar proyecto",
+    "closeOtherProjects": "Cerrar los demás proyectos",
+    "closeProjectTitle": "¿Cerrar {name}?",
+    "closeProjectMessage": "Este proyecto tiene {count} sesión(es) abierta(s). Cerrar su pestaña las finaliza.",
+    "closeProjectConfirm": "Cerrar y finalizar sesiones"
   },
   "terminals": {
     "noTerminals": "Sin terminal para este proyecto",
@@ -129,7 +136,9 @@
     "resumeSession": "Reanudar sesión de Claude",
     "claudeMdAnalyze": "¿Revisar CLAUDE.md?",
     "claudeMdAnalyzeDesc": "Sesión con {count} herramientas. ¿Revisar CLAUDE.md para actualizaciones?",
-    "claudeMdOpen": "Abrir CLAUDE.md"
+    "claudeMdOpen": "Abrir CLAUDE.md",
+    "addSession": "Nueva sesión o terminal",
+    "newClaudeSession": "Nueva sesión de Claude"
   },
   "git": {
     "noRemote": "Sin remoto",
@@ -843,10 +852,6 @@
     "launchAtStartupError": "No se pudo cambiar el inicio automático.",
     "compactProjects": "Vista compacta de proyectos",
     "compactProjectsDesc": "Mostrar solo el nombre de los proyectos no seleccionados",
-    "cardButtonClaude": "Botón Claude en las tarjetas de proyecto",
-    "cardButtonClaudeDesc": "Mostrar el acceso directo a Claude Code en cada tarjeta de proyecto",
-    "cardButtonTerminal": "Botón Terminal en las tarjetas de proyecto",
-    "cardButtonTerminalDesc": "Mostrar un acceso directo para abrir un terminal clásico en cada tarjeta de proyecto",
     "editor": "Editor de código",
     "editorDesc": "Editor usado para abrir archivos",
     "closeWindow": "Cierre de ventana",
@@ -1027,7 +1032,7 @@
     "hideProjects": "Ocultar proyectos",
     "collapseAll": "Contraer todo",
     "clearSearch": "Limpiar",
-    "toggleExplorer": "Alternar Explorador",
+    "toggleExplorer": "Mostrar/ocultar el explorador de archivos",
     "newTerminal": "Nueva terminal (Ctrl+T)",
     "actionsLabel": "Acciones",
     "quickActions": "Acciones rápidas",
@@ -1332,7 +1337,6 @@
   },
   "sessionReplay": {
     "title": "Replay de sesión",
-    "selectProject": "Selecciona un proyecto...",
     "selectSession": "Selecciona una sesión...",
     "load": "Cargar",
     "loading": "Cargando...",
@@ -1343,7 +1347,6 @@
     "errorLoading": "Error al cargar la sesión",
     "selectToStart": "Selecciona un proyecto y una sesión para iniciar el replay",
     "emptyDesc": "Visualiza el historial completo de cualquier sesión de Claude",
-    "emptyStepProject": "Proyecto",
     "emptyStepSession": "Sesión",
     "noSteps": "No se encontraron pasos en esta sesión",
     "steps": "pasos",
@@ -1384,7 +1387,6 @@
     "paramSubject": "Asunto",
     "paramActiveForm": "Forma activa",
     "paramStatus": "Estado",
-    "labelProject": "Proyecto",
     "labelSession": "Sesión"
   },
   "timetracking": {

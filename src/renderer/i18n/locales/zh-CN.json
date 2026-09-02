@@ -46,7 +46,6 @@
     "changeEditor": "更改编辑器",
     "globalDefault": "默认（全局）",
     "customize": "自定义",
-    "moreActions": "更多操作",
     "basicTerminal": "基础终端",
     "openClaude": "打开 Claude Code",
     "newFolder": "新建文件夹",
@@ -100,7 +99,15 @@
     "sectionPath": "路径",
     "pathMissingTitle": "在本机上找不到路径",
     "locatePath": "定位文件夹...",
-    "pathUpdated": "更新了“{name}”的路径"
+    "pathUpdated": "更新了“{name}”的路径",
+    "openProject": "打开项目",
+    "noOpenProjects": "没有打开的项目",
+    "openSessions": "{count} 个打开的会话",
+    "closeProject": "关闭项目",
+    "closeOtherProjects": "关闭其他项目",
+    "closeProjectTitle": "关闭 {name}？",
+    "closeProjectMessage": "该项目有 {count} 个打开的会话。关闭其标签页将结束这些会话。",
+    "closeProjectConfirm": "关闭并结束会话"
   },
   "terminals": {
     "noTerminals": "该项目没有终端",
@@ -129,7 +136,9 @@
     "messages": "{count} 消息",
     "loading": "正在初始化 Claude Code...",
     "loadingHint": "这可能需要几秒钟",
-    "resumeSession": "继续 Claude 会话"
+    "resumeSession": "继续 Claude 会话",
+    "addSession": "新建会话或终端",
+    "newClaudeSession": "新建 Claude 会话"
   },
   "git": {
     "noRemote": "无远程仓库",
@@ -846,10 +855,6 @@
     "launchAtStartupError": "无法更改启动时启动设置。",
     "compactProjects": "紧凑项目视图",
     "compactProjectsDesc": "仅显示未选定项目的名称",
-    "cardButtonClaude": "项目卡片上的 Claude 按钮",
-    "cardButtonClaudeDesc": "在每个项目卡上显示 Claude Code 快捷方式",
-    "cardButtonTerminal": "项目卡上的终端按钮",
-    "cardButtonTerminalDesc": "在每个项目卡上显示打开基本终端的快捷方式",
     "editor": "代码编辑器",
     "editorDesc": "用于打开文件的编辑器",
     "closeWindow": "窗户关闭",
@@ -1030,7 +1035,7 @@
     "hideProjects": "隐藏项目",
     "collapseAll": "全部折叠",
     "clearSearch": "清除",
-    "toggleExplorer": "切换资源管理器",
+    "toggleExplorer": "显示/隐藏文件浏览器",
     "newTerminal": "新终端（Ctrl+T）",
     "actionsLabel": "操作",
     "quickActions": "快捷操作",
@@ -1335,7 +1340,6 @@
   },
   "sessionReplay": {
     "title": "会话重播",
-    "selectProject": "选择一个项目...",
     "selectSession": "选择一个会话...",
     "load": "负载",
     "loading": "正在加载...",
@@ -1346,7 +1350,6 @@
     "errorLoading": "加载会话时出错",
     "selectToStart": "选择项目和会话以开始重播",
     "emptyDesc": "可视化任何 Claude 会话的完整审计跟踪",
-    "emptyStepProject": "项目",
     "emptyStepSession": "会话",
     "noSteps": "在此会话中找不到步骤",
     "steps": "步骤",
@@ -1387,7 +1390,6 @@
     "paramSubject": "主题",
     "paramActiveForm": "主动形式",
     "paramStatus": "状态",
-    "labelProject": "项目",
     "labelSession": "会话"
   },
   "timetracking": {

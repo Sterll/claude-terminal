@@ -7,6 +7,7 @@ const Toast = require('./Toast');
 const ContextMenu = require('./ContextMenu');
 const Tab = require('./Tab');
 const ProjectList = require('./ProjectList');
+const ProjectBar = require('./ProjectBar');
 const TerminalManager = require('./TerminalManager');
 const CustomizePicker = require('./CustomizePicker');
 const QuickActions = require('./QuickActions');
@@ -18,6 +19,7 @@ module.exports = {
   ...ContextMenu,
   ...Tab,
   ProjectList,
+  ProjectBar,
   TerminalManager,
   CustomizePicker,
   QuickActions,

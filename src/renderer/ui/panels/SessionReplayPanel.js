@@ -34,8 +34,23 @@ let playerTimer = null;
 let _playerDragCleanup = null;
 let currentView = 'timeline'; // 'timeline' | 'player'
 
+/**
+ * The project this panel works on. The project bar owns that choice, so the
+ * panel no longer carries a duplicate dropdown of its own.
+ * @returns {string} project path, or empty string when no project is active
+ */
+function _activeProjectPath() {
+  if (!projectsState) return '';
+  const state = projectsState.get();
+  return state.projects[state.selectedProjectFilter]?.path || '';
+}
+
+// Rebuilds the panel for the project the bar currently holds; assigned in init().
+let _resetForProject = null;
+// Project the panel is currently showing, so re-entering the tab does not reload.
+let _loadedProjectPath = null;
+
 // ── DOM refs ──────────────────────────────────────────────────────────────────
-let projectSelect = null;
 let branchSelect = null;
 let sessionSelect = null;
 let loadBtn = null;
@@ -714,7 +729,7 @@ function _applyBranchFilter() {
 }
 
 async function _deleteCurrentSession(sessionId) {
-  const projectPath = projectSelect.value;
+  const projectPath = _activeProjectPath();
   if (!projectPath || !sessionId) return;
   try {
     const result = await window.electron_api.claude.deleteSession({ projectPath, sessionId });
@@ -740,7 +755,7 @@ async function _deleteCurrentSession(sessionId) {
 }
 
 async function loadReplay() {
-  const projectPath = projectSelect.value;
+  const projectPath = _activeProjectPath();
   const sessionId = sessionSelect.value;
   if (!projectPath || !sessionId) return;
 
@@ -1271,19 +1286,15 @@ function buildEmptyStateHtml() {
       <div class="sr-empty-content">
         <div class="sr-empty-title">${t('sessionReplay.title')}</div>
         <div class="sr-empty-desc">${t('sessionReplay.emptyDesc')}</div>
+        <!-- The project is no longer a step: the project bar already picked it. -->
         <div class="sr-empty-steps">
           <div class="sr-empty-step">
             <div class="sr-empty-step-num">1</div>
-            <div class="sr-empty-step-label">${t('sessionReplay.emptyStepProject')}</div>
-          </div>
-          <div class="sr-empty-step-sep">›</div>
-          <div class="sr-empty-step">
-            <div class="sr-empty-step-num">2</div>
             <div class="sr-empty-step-label">${t('sessionReplay.emptyStepSession')}</div>
           </div>
           <div class="sr-empty-step-sep">›</div>
           <div class="sr-empty-step">
-            <div class="sr-empty-step-num">3</div>
+            <div class="sr-empty-step-num">2</div>
             <div class="sr-empty-step-label">${t('sessionReplay.load')}</div>
           </div>
         </div>
@@ -1312,10 +1323,6 @@ function buildHtml() {
           </div>
         </div>
         <div class="sr-controls">
-          <div class="sr-control-group sr-control-group--project">
-            <label class="sr-control-label">${t('sessionReplay.labelProject')}</label>
-            <div class="sr-cs-container" id="sr-project-select-wrap"></div>
-          </div>
           <div class="sr-control-group sr-control-group--branch" id="sr-branch-select-wrap" style="display:none">
             <label class="sr-control-label">${t('sessions.filterBranch')}</label>
             <div class="sr-cs-container"></div>
@@ -1364,41 +1371,21 @@ function init(containerEl, opts = {}) {
   const exportBtn = container.querySelector('#sr-export-btn');
 
   // Create and inject custom select widgets
-  const projWidget = makeCustomSelect(t('sessionReplay.selectProject'));
   const branchWidget = makeCustomSelect(t('sessions.allBranches'));
   const sessWidget = makeCustomSelect(t('sessionReplay.selectSession'));
   branchWidget.disabled = true;
   sessWidget.disabled = true;
-  container.querySelector('#sr-project-select-wrap').appendChild(projWidget.el);
   container.querySelector('#sr-branch-select-wrap .sr-cs-container').appendChild(branchWidget.el);
   container.querySelector('#sr-session-select-wrap').appendChild(sessWidget.el);
-  projectSelect = projWidget;
   branchSelect = branchWidget;
   sessionSelect = sessWidget;
 
-  // Populate project list
-  if (projectsState) {
-    const state = projectsState.get();
-    const projects = state.projects || [];
-    projectSelect.setOptions(
-      `<option value="">${t('sessionReplay.selectProject')}</option>` +
-      projects.map(p => `<option value="${escapeHtml(p.path)}">${escapeHtml(p.name || p.path)}</option>`).join('')
-    );
-
-    // Default to open project
-    const openedId = opts.openedProjectId || state.openedProjectId;
-    if (openedId) {
-      const openedProject = projects.find(p => p.id === openedId);
-      if (openedProject) {
-        projectSelect.value = openedProject.path;
-        loadSessions(openedProject.path);
-      }
-    }
-  }
-
-  // Event listeners
-  projectSelect.addEventListener('change', () => {
-    const path = projectSelect.value;
+  // Reset everything and load the sessions of whichever project the bar holds.
+  // Exposed as setProject() so the bar can drive the panel while it is open.
+  _resetForProject = (force = false) => {
+    const path = _activeProjectPath();
+    if (!force && path === _loadedProjectPath) return;
+    _loadedProjectPath = path;
     sessionSelect.setOptions(`<option value="">${t('sessionReplay.selectSession')}</option>`);
     sessionSelect.disabled = true;
     loadBtn.disabled = true;
@@ -1417,8 +1404,10 @@ function init(containerEl, opts = {}) {
     timeline.innerHTML = buildEmptyStateHtml();
     summaryBar.innerHTML = '';
     currentSteps = [];
+    currentSessionId = null;
     if (path) loadSessions(path);
-  });
+  };
+  _resetForProject(true);
 
   // Branch filter
   branchSelect.addEventListener('change', () => {
@@ -1540,9 +1529,16 @@ function cleanup() {
   if (_playerDragCleanup) { _playerDragCleanup(); _playerDragCleanup = null; }
   playerSteps = [];
   playerCurrentStep = -1;
-  if (projectSelect?.destroy) projectSelect.destroy();
   if (branchSelect?.destroy) branchSelect.destroy();
   if (sessionSelect?.destroy) sessionSelect.destroy();
 }
 
-module.exports = { init, onActivate, onDeactivate, cleanup };
+/**
+ * Follow the project bar: reload the panel for the newly active project.
+ * No-op before init().
+ */
+function setProject() {
+  if (_resetForProject) _resetForProject();
+}
+
+module.exports = { init, onActivate, onDeactivate, cleanup, setProject };

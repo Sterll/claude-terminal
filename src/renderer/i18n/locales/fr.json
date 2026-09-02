@@ -46,7 +46,6 @@
     "changeEditor": "Changer l'éditeur",
     "globalDefault": "Par défaut (global)",
     "customize": "Personnaliser",
-    "moreActions": "Plus d'actions",
     "basicTerminal": "Terminal basique",
     "openClaude": "Ouvrir Claude Code",
     "newFolder": "Nouveau dossier",
@@ -100,7 +99,15 @@
     "sectionPath": "Chemin",
     "pathMissingTitle": "Chemin introuvable sur cette machine",
     "locatePath": "Localiser le dossier...",
-    "pathUpdated": "Chemin mis à jour pour \"{name}\""
+    "pathUpdated": "Chemin mis à jour pour \"{name}\"",
+    "openProject": "Ouvrir un projet",
+    "noOpenProjects": "Aucun projet ouvert",
+    "openSessions": "{count} session(s) ouverte(s)",
+    "closeProject": "Fermer le projet",
+    "closeOtherProjects": "Fermer les autres projets",
+    "closeProjectTitle": "Fermer {name} ?",
+    "closeProjectMessage": "Ce projet a {count} session(s) ouverte(s). Fermer son onglet y met fin.",
+    "closeProjectConfirm": "Fermer et terminer les sessions"
   },
   "terminals": {
     "noTerminals": "Aucun terminal pour ce projet",
@@ -129,7 +136,9 @@
     "messages": "{count} msgs",
     "loading": "Initialisation de Claude Code...",
     "loadingHint": "Cela peut prendre quelques secondes",
-    "resumeSession": "Reprendre une session Claude"
+    "resumeSession": "Reprendre une session Claude",
+    "addSession": "Nouvelle session ou terminal",
+    "newClaudeSession": "Nouvelle session Claude"
   },
   "mcp": {
     "notFound": "MCP introuvable",
@@ -941,10 +950,6 @@
     "launchAtStartupError": "Impossible de modifier le lancement au démarrage.",
     "compactProjects": "Vue compacte des projets",
     "compactProjectsDesc": "Afficher uniquement le nom des projets non sélectionnés",
-    "cardButtonClaude": "Bouton Claude sur les cartes projet",
-    "cardButtonClaudeDesc": "Afficher le raccourci Claude Code sur chaque carte projet",
-    "cardButtonTerminal": "Bouton Terminal sur les cartes projet",
-    "cardButtonTerminalDesc": "Afficher un raccourci pour ouvrir un terminal classique sur chaque carte projet",
     "editor": "Éditeur de code",
     "editorDesc": "Éditeur utilisé pour ouvrir les fichiers",
     "closeWindow": "Fermeture de la fenêtre",
@@ -1125,7 +1130,7 @@
     "hideProjects": "Masquer les projets",
     "collapseAll": "Tout réduire",
     "clearSearch": "Effacer",
-    "toggleExplorer": "Basculer l'explorateur",
+    "toggleExplorer": "Afficher/masquer l’explorateur de fichiers",
     "newTerminal": "Nouveau terminal (Ctrl+T)",
     "actionsLabel": "Actions",
     "quickActions": "Actions rapides",
@@ -1335,7 +1340,6 @@
   },
   "sessionReplay": {
     "title": "Replay de Session",
-    "selectProject": "Sélectionner un projet...",
     "selectSession": "Sélectionner une session...",
     "load": "Charger",
     "loading": "Chargement...",
@@ -1346,7 +1350,6 @@
     "errorLoading": "Erreur lors du chargement de la session",
     "selectToStart": "Sélectionnez un projet et une session pour lancer le replay",
     "emptyDesc": "Visualisez l'audit complet de n'importe quelle session Claude",
-    "emptyStepProject": "Projet",
     "emptyStepSession": "Session",
     "noSteps": "Aucune étape trouvée dans cette session",
     "steps": "étapes",
@@ -1387,7 +1390,6 @@
     "paramSubject": "Sujet",
     "paramActiveForm": "Forme active",
     "paramStatus": "Statut",
-    "labelProject": "Projet",
     "labelSession": "Session"
   },
   "timetracking": {

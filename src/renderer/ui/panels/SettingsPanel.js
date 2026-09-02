@@ -716,26 +716,6 @@ class SettingsPanel extends BasePanel {
               </div>
               <div class="settings-toggle-row">
                 <div class="settings-toggle-label">
-                  <div>${t('settings.cardButtonClaude')}</div>
-                  <div class="settings-toggle-desc">${t('settings.cardButtonClaudeDesc')}</div>
-                </div>
-                <label class="settings-toggle">
-                  <input type="checkbox" id="card-button-claude-toggle" ${(settings.cardButtons?.claude !== false) ? 'checked' : ''}>
-                  <span class="settings-toggle-slider"></span>
-                </label>
-              </div>
-              <div class="settings-toggle-row">
-                <div class="settings-toggle-label">
-                  <div>${t('settings.cardButtonTerminal')}</div>
-                  <div class="settings-toggle-desc">${t('settings.cardButtonTerminalDesc')}</div>
-                </div>
-                <label class="settings-toggle">
-                  <input type="checkbox" id="card-button-terminal-toggle" ${(settings.cardButtons?.terminal !== false) ? 'checked' : ''}>
-                  <span class="settings-toggle-slider"></span>
-                </label>
-              </div>
-              <div class="settings-toggle-row">
-                <div class="settings-toggle-label">
                   <div>${t('settings.aiCommitMessages')}</div>
                   <div class="settings-toggle-desc">${t('settings.aiCommitMessagesDesc')}</div>
                 </div>
@@ -1799,12 +1779,6 @@ class SettingsPanel extends BasePanel {
 
       const compactProjectsToggle = document.getElementById('compact-projects-toggle');
       const newCompactProjects = compactProjectsToggle ? compactProjectsToggle.checked : true;
-      const cardClaudeToggle = document.getElementById('card-button-claude-toggle');
-      const cardTerminalToggle = document.getElementById('card-button-terminal-toggle');
-      const newCardButtons = {
-        claude: cardClaudeToggle ? cardClaudeToggle.checked : true,
-        terminal: cardTerminalToggle ? cardTerminalToggle.checked : true,
-      };
       const restoreSessionsToggle = document.getElementById('restore-sessions-toggle');
       const newRestoreTerminalSessions = restoreSessionsToggle ? restoreSessionsToggle.checked : true;
       const reduceMotionToggle = document.getElementById('reduce-motion-toggle');
@@ -1885,7 +1859,6 @@ class SettingsPanel extends BasePanel {
         terminalTheme: newTerminalTheme,
         language: newLanguage,
         compactProjects: newCompactProjects,
-        cardButtons: newCardButtons,
         restoreTerminalSessions: newRestoreTerminalSessions,
         reduceMotion: newReduceMotion,
         aiCommitMessages: newAiCommitMessages,

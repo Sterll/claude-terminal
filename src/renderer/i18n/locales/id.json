@@ -46,7 +46,6 @@
     "changeEditor": "Ganti editor",
     "globalDefault": "Default (global)",
     "customize": "Kustomisasi",
-    "moreActions": "Aksi lainnya",
     "basicTerminal": "Terminal dasar",
     "openClaude": "Buka Claude Code",
     "newFolder": "Folder baru",
@@ -100,7 +99,15 @@
     "sectionPath": "Path",
     "pathMissingTitle": "Path tidak ditemukan di perangkat ini",
     "locatePath": "Cari folder...",
-    "pathUpdated": "Path diperbarui untuk \"{name}\""
+    "pathUpdated": "Path diperbarui untuk \"{name}\"",
+    "openProject": "Buka proyek",
+    "noOpenProjects": "Tidak ada proyek terbuka",
+    "openSessions": "{count} sesi terbuka",
+    "closeProject": "Tutup proyek",
+    "closeOtherProjects": "Tutup proyek lainnya",
+    "closeProjectTitle": "Tutup {name}?",
+    "closeProjectMessage": "Proyek ini memiliki {count} sesi terbuka. Menutup tabnya akan mengakhirinya.",
+    "closeProjectConfirm": "Tutup dan akhiri sesi"
   },
   "terminals": {
     "noTerminals": "Tidak ada terminal untuk proyek ini",
@@ -129,7 +136,9 @@
     "messages": "{count} pesan",
     "loading": "Menginisialisasi Claude Code...",
     "loadingHint": "Ini mungkin memakan waktu beberapa detik",
-    "resumeSession": "Lanjutkan sesi Claude"
+    "resumeSession": "Lanjutkan sesi Claude",
+    "addSession": "Sesi atau terminal baru",
+    "newClaudeSession": "Sesi Claude baru"
   },
   "git": {
     "noRemote": "Tidak ada remote",
@@ -846,10 +855,6 @@
     "launchAtStartupError": "Gagal mengubah pengaturan jalankan saat startup.",
     "compactProjects": "Tampilan proyek ringkas",
     "compactProjectsDesc": "Tampilkan hanya nama proyek yang tidak dipilih",
-    "cardButtonClaude": "Tombol Claude pada kartu proyek",
-    "cardButtonClaudeDesc": "Tampilkan pintasan Claude Code pada setiap kartu proyek",
-    "cardButtonTerminal": "Tombol Terminal pada kartu proyek",
-    "cardButtonTerminalDesc": "Tampilkan pintasan untuk membuka terminal dasar pada setiap kartu proyek",
     "editor": "Editor kode",
     "editorDesc": "Editor yang digunakan untuk membuka file",
     "closeWindow": "Penutupan jendela",
@@ -1030,7 +1035,7 @@
     "hideProjects": "Sembunyikan proyek",
     "collapseAll": "Ciutkan semua",
     "clearSearch": "Bersihkan",
-    "toggleExplorer": "Tampilkan/sembunyikan Penjelajah",
+    "toggleExplorer": "Tampilkan/sembunyikan penjelajah berkas",
     "newTerminal": "Terminal baru (Ctrl+T)",
     "actionsLabel": "Aksi",
     "quickActions": "Aksi Cepat",
@@ -1335,7 +1340,6 @@
   },
   "sessionReplay": {
     "title": "Putar Ulang Sesi",
-    "selectProject": "Pilih proyek...",
     "selectSession": "Pilih sesi...",
     "load": "Muat",
     "loading": "Memuat...",
@@ -1346,7 +1350,6 @@
     "errorLoading": "Gagal memuat sesi",
     "selectToStart": "Pilih proyek dan sesi untuk memulai pemutaran ulang",
     "emptyDesc": "Visualisasikan seluruh jejak audit dari sesi Claude mana pun",
-    "emptyStepProject": "Proyek",
     "emptyStepSession": "Sesi",
     "noSteps": "Tidak ada langkah ditemukan pada sesi ini",
     "steps": "langkah",
@@ -1387,7 +1390,6 @@
     "paramSubject": "Subjek",
     "paramActiveForm": "Bentuk aktif",
     "paramStatus": "Status",
-    "labelProject": "Proyek",
     "labelSession": "Sesi"
   },
   "timetracking": {

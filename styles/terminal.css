@@ -14,24 +14,106 @@
   overflow: hidden;
 }
 
-.terminals-header {
+/* Session tabs row — the session actions (explorer, resume, new) sit to the
+   left of the tabs, where the project name chip used to be a row above. */
+.terminals-tabs-row {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   background: var(--bg-secondary);
-  min-height: 0;
-  position: relative;
+  border-bottom: 1px solid var(--border-color);
+  min-height: 40px;
+  flex-shrink: 0;
 }
 
-.terminals-header:has(.terminals-filter[style*="flex"]) {
-  min-height: 36px;
-  padding: 4px 0;
+.session-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px 0 4px;
+  border-right: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.session-action-btn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.session-action-btn:hover {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.session-action-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Menu behind the + : new session, terminal, or search an existing session */
+.session-add-menu {
+  position: fixed;
+  z-index: 1100;
+  min-width: 220px;
+  padding: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.session-add-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.session-add-item:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.session-add-item svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.session-add-item:hover svg {
+  color: var(--accent);
+}
+
+.session-add-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border-color);
 }
 
 .btn-toggle-explorer {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   padding: 4px;
-  margin-left: 6px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
@@ -53,107 +135,17 @@
   height: 16px;
 }
 
+/* Project tools inside the project bar (right side) */
 .terminals-filter {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 8px;
+  padding: 0 8px;
   background: transparent;
-  margin: 4px 8px;
   font-size: 12px;
   flex: 1;
   min-width: 0;
-}
-
-.filter-project {
-  color: var(--accent);
-  font-weight: 600;
-  background: var(--accent-dim);
-  padding: 4px 12px;
-  border-radius: var(--radius-sm);
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex-shrink: 1;
-}
-
-.filter-clear {
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
-  margin-left: 4px;
-}
-
-.filter-clear svg {
-  width: 10px;
-  height: 10px;
-}
-
-.filter-clear:hover {
-  background: var(--accent);
-  color: white;
-}
-
-.filter-resume-session-btn {
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
-  flex-shrink: 0;
-}
-
-.filter-resume-session-btn:hover {
-  background: var(--accent-dim);
-  color: var(--accent);
-}
-
-.filter-resume-session-btn svg {
-  width: 14px;
-  height: 14px;
-}
-
-.filter-new-terminal-btn {
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
-  flex-shrink: 0;
-}
-
-.filter-new-terminal-btn:hover {
-  background: var(--accent-dim);
-  color: var(--accent);
-}
-
-.filter-new-terminal-btn svg {
-  width: 14px;
-  height: 14px;
+  justify-content: flex-end;
 }
 
 /* Git Actions in Filter */

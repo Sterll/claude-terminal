@@ -7,7 +7,9 @@
   <title>Claude Terminal</title>
   <link rel="stylesheet" href="dist/styles.bundle.css">
 </head>
-<body>
+<!-- data-active-tab mirrors the active nav tab; set here so the project bar is
+     correct on the first paint, then kept in sync by the nav tab handler. -->
+<body data-active-tab="claude">
   <!-- Title Bar -->
   <div class="titlebar">
     <div class="titlebar-drag">
@@ -273,38 +275,182 @@
 
     <!-- Content Area -->
     <div class="content" role="main">
-      <!-- Claude Tab -->
-      <div class="tab-content active" id="tab-claude" role="tabpanel" aria-label="Claude">
-        <div class="claude-layout" id="claude-layout">
-          <!-- Show projects button (visible when panel is hidden) -->
-          <button class="btn-show-projects" id="btn-show-projects" data-i18n-title="ui.showProjects" title="Show projects" aria-label="Show projects">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-          </button>
-          <!-- Projects Panel -->
-          <div class="projects-panel" role="complementary" aria-label="Projects">
-            <div class="panel-header">
-              <h2 data-i18n="projects.title">Projets</h2>
-              <div class="panel-actions">
-                <button class="btn-icon" id="btn-new-folder" data-i18n-title="projects.newFolder" aria-label="New folder">
-                  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-1 8h-3v3h-2v-3h-3v-2h3V9h2v3h3v2z"/></svg>
+      <!-- Project Bar — one tab per open project, shared by every screen.
+           Sits inside .content so it reads as secondary to the vertical nav. -->
+      <div class="project-bar" id="project-bar">
+        <div class="project-tabs" id="project-tabs" role="tablist" aria-label="Open projects"></div>
+        <button class="project-tab-add" id="btn-open-project" data-i18n-title="projects.openProject" title="Open a project" aria-label="Open a project" aria-haspopup="dialog" aria-expanded="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
+        <div class="project-bar-tools" id="project-bar-tools">
+          <div class="terminals-filter" id="terminals-filter" style="display: none;">
+            <!-- CI/CD Status Pill -->
+            <div class="filter-ci-pill" id="filter-ci-pill" style="display: none;">
+              <div class="filter-ci-icon">
+                <svg class="ci-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2a10 10 0 0 1 0 20"/></svg>
+                <svg class="ci-check" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                <svg class="ci-fail" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+              </div>
+              <span class="filter-ci-text" id="filter-ci-text"></span>
+              <span class="filter-ci-step" id="filter-ci-step" style="display: none;"></span>
+              <button class="filter-ci-fix" id="filter-ci-fix" style="display: none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                </svg>
+                <span data-i18n="ci.fixIt">Fix it</span>
+              </button>
+            </div>
+
+            <div class="filter-git-actions" id="filter-git-actions" style="display: none;">
+              <div class="filter-git-group">
+                <button class="filter-git-btn" id="filter-btn-pull" data-i18n-title="projects.gitPull" title="Pull">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M17 11l-5 5-5-5"/><path d="M5 21h14"/></svg>
                 </button>
-                <button class="btn-icon" id="btn-new-project" data-i18n-title="common.new" aria-label="New project">
-                  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                <button class="filter-git-btn" id="filter-btn-push" data-i18n-title="projects.gitPush" title="Push">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9"/><path d="M7 14l5-5 5 5"/><path d="M5 3h14"/></svg>
                 </button>
-                <button class="btn-icon" id="btn-toggle-projects" data-i18n-title="ui.hideProjects" title="Hide projects" aria-label="Toggle projects panel">
-                  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+              </div>
+              <button class="filter-git-btn filter-btn-changes" id="filter-btn-changes" data-i18n-title="ui.viewChanges">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                <span data-i18n="ui.changes">Changes</span>
+                <span class="changes-count" id="changes-count" style="display: none;">0</span>
+              </button>
+              <div class="branch-btn-wrapper">
+                <button class="filter-branch-btn" id="filter-btn-branch" data-i18n-title="ui.switchBranch">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+                  <span id="filter-branch-name">main</span>
+                  <span class="worktree-badge" id="worktree-badge" style="display:none">WT</span>
+                  <svg class="branch-arrow" viewBox="0 0 12 12"><path d="M3 5l3 3 3-3" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+                </button>
+                <!-- Branch Dropdown -->
+                <div class="branch-dropdown" id="branch-dropdown">
+                  <div class="branch-dropdown-header">
+                    <span data-i18n="ui.switchBranch">Switch branch</span>
+                  </div>
+                  <div class="branch-dropdown-list" id="branch-dropdown-list"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="actions-dropdown-wrapper" id="actions-dropdown-wrapper" style="display: none;">
+              <button class="filter-actions-btn" id="filter-btn-actions">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                <span data-i18n="ui.actionsLabel">Actions</span>
+                <svg class="actions-arrow" viewBox="0 0 12 12"><path d="M3 5l3 3 3-3" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+              </button>
+              <div class="actions-dropdown" id="actions-dropdown"></div>
+            </div>
+
+            <div class="prompts-dropdown-wrapper" id="prompts-dropdown-wrapper" style="display: none;">
+              <button class="filter-actions-btn" id="filter-btn-prompts">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                <span data-i18n="prompts.inject">Prompts</span>
+                <svg class="actions-arrow" viewBox="0 0 12 12"><path d="M3 5l3 3 3-3" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+              </button>
+              <div class="prompts-dropdown" id="prompts-dropdown"></div>
+            </div>
+          </div>
+          <!-- Git Changes Panel -->
+          <div class="git-changes-panel" id="git-changes-panel">
+            <div class="git-changes-header">
+              <div class="git-changes-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span data-i18n="ui.changes">Changements</span>
+                <span class="git-changes-project" id="git-changes-project"></span>
+              </div>
+              <div class="git-changes-actions">
+                <button class="btn-icon btn-small" id="btn-refresh-changes" data-i18n-title="common.refresh">
+                  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+                </button>
+                <button class="btn-icon btn-small" id="btn-close-changes" data-i18n-title="common.close">
+                  <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
                 </button>
               </div>
             </div>
-            <div class="projects-search" id="projects-search">
-              <svg class="projects-search-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-              <input type="text" id="projects-search-input" data-i18n-placeholder="projects.searchPlaceholder" placeholder="Search projects..." autocomplete="off" spellcheck="false">
-              <button class="projects-search-clear" id="projects-search-clear" style="display:none" aria-label="Clear">&times;</button>
+            <div class="git-changes-toolbar">
+              <label class="git-select-all">
+                <input type="checkbox" id="git-select-all">
+                <span data-i18n="ui.selectAll">Select all</span>
+              </label>
+              <div class="git-changes-stats" id="git-changes-stats"></div>
             </div>
-            <div class="projects-list" id="projects-list" role="list" aria-label="Projects"></div>
-            <div class="panel-resizer" id="projects-panel-resizer"></div>
+            <div class="git-changes-list" id="git-changes-list">
+              <div class="git-changes-loading" data-i18n="common.loading">Loading...</div>
+            </div>
+            <div class="git-commit-section">
+              <div class="git-commit-header">
+                <span data-i18n="ui.commitMessage">Commit message</span>
+                <button class="btn-generate" id="btn-generate-commit" data-i18n-title="ui.generateCommitMessage">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2z"/></svg>
+                  <span data-i18n="ui.generate">Generate</span>
+                </button>
+                <button class="btn-smart-commit" id="btn-smart-commit" style="display:none">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+                  <span data-i18n="gitChanges.smartCommit">Smart Commit</span>
+                </button>
+                <button class="btn-generate-pr" id="btn-generate-pr" data-i18n-title="git.generatePr.button">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
+                  <span data-i18n="git.generatePr.button">Generate PR</span>
+                </button>
+              </div>
+              <textarea id="git-commit-message" data-i18n-placeholder="gitChanges.commitPlaceholder" placeholder="feat: describe changes..." rows="2"></textarea>
+              <div class="git-commit-options">
+                <label class="git-amend-label" title="Amend last commit">
+                  <input type="checkbox" id="git-amend-checkbox">
+                  <span data-i18n="gitChanges.amendCommit">Amend</span>
+                </label>
+                <button class="git-discard-selected-btn" id="btn-discard-selected" disabled>
+                  <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                  <span data-i18n="gitChanges.discardSelected">Discard</span>
+                </button>
+                <button class="git-reset-btn" id="btn-git-reset">
+                  <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg>
+                  <span data-i18n="gitChanges.undoLastCommit">Undo commit</span>
+                </button>
+              </div>
+              <div class="git-commit-actions">
+                <button class="btn-primary" id="btn-commit-selected" disabled>
+                  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                  <span data-i18n="ui.commitSelected">Commit</span> (<span id="commit-count">0</span>)
+                </button>
+              </div>
+            </div>
           </div>
+        </div>
+      </div>
 
+      <!-- Projects popover — the full projects tree (search, folders, drag & drop,
+           per-project menus), opened on demand from the + button above. -->
+      <div class="projects-popover" id="projects-popover" role="dialog" aria-label="Projects" style="display:none">
+        <div class="projects-panel" role="complementary" aria-label="Projects">
+          <div class="panel-header">
+            <h2 data-i18n="projects.title">Projets</h2>
+            <div class="panel-actions">
+              <button class="btn-icon" id="btn-new-folder" data-i18n-title="projects.newFolder" aria-label="New folder">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-1 8h-3v3h-2v-3h-3v-2h3V9h2v3h3v2z"/></svg>
+              </button>
+              <button class="btn-icon" id="btn-new-project" data-i18n-title="common.new" aria-label="New project">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+              </button>
+              <button class="btn-icon" id="btn-close-projects-popover" data-i18n-title="common.close" title="Close" aria-label="Close">
+                <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="projects-search" id="projects-search">
+            <svg class="projects-search-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+            <input type="text" id="projects-search-input" data-i18n-placeholder="projects.searchPlaceholder" placeholder="Search projects..." autocomplete="off" spellcheck="false">
+            <button class="projects-search-clear" id="projects-search-clear" style="display:none" aria-label="Clear">&times;</button>
+          </div>
+          <div class="projects-list" id="projects-list" role="list" aria-label="Projects"></div>
+        </div>
+      </div>
+
+      <!-- Claude Tab -->
+      <div class="tab-content active" id="tab-claude" role="tabpanel" aria-label="Claude">
+        <div class="claude-layout" id="claude-layout">
           <!-- File Explorer Panel -->
           <div class="file-explorer-panel" id="file-explorer-panel" style="display: none;">
             <div class="panel-header">
@@ -340,164 +486,46 @@
 
           <!-- Terminals Panel -->
           <div class="terminals-panel">
-            <div class="terminals-header">
-              <button class="btn-icon btn-toggle-explorer" id="btn-toggle-explorer" data-i18n-title="ui.toggleExplorer" title="Toggle Explorer">
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
-              </button>
-              <div class="terminals-filter" id="terminals-filter" style="display: none;">
-                <span class="filter-project" id="filter-project-name"></span>
-                <button class="filter-resume-session-btn" id="btn-resume-session" data-i18n-title="terminals.resumeSession">
+            <!-- Session tabs row: session actions sit to the left of the tabs -->
+            <div class="terminals-tabs-row">
+              <div class="session-actions">
+                <!-- Side-panel glyph, not a folder: this shows/hides the file
+                     explorer panel rather than opening a folder. -->
+                <button class="btn-icon btn-toggle-explorer" id="btn-toggle-explorer" data-i18n-title="ui.toggleExplorer">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M9 21h6"/>
-                    <path d="M12 2a7 7 0 0 1 4 12.9V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.1A7 7 0 0 1 12 2z"/>
+                    <rect x="3" y="4" width="18" height="16" rx="2"/>
+                    <line x1="9" y1="4" x2="9" y2="20"/>
+                    <line x1="5.5" y1="8.5" x2="6.5" y2="8.5"/>
+                    <line x1="5.5" y1="12" x2="6.5" y2="12"/>
+                    <line x1="5.5" y1="15.5" x2="6.5" y2="15.5"/>
                   </svg>
                 </button>
-                <button class="filter-new-terminal-btn" id="btn-new-terminal" data-i18n-title="ui.newTerminal" title="New terminal (Ctrl+T)">
+                <!-- Single + opens the session menu: new session, terminal,
+                     or search an existing session. -->
+                <button class="session-action-btn" id="btn-new-terminal" data-i18n-title="terminals.addSession" aria-haspopup="menu" aria-expanded="false">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <line x1="12" y1="5" x2="12" y2="19"/>
                     <line x1="5" y1="12" x2="19" y2="12"/>
                   </svg>
                 </button>
-
-                <!-- CI/CD Status Pill -->
-                <div class="filter-ci-pill" id="filter-ci-pill" style="display: none;">
-                  <div class="filter-ci-icon">
-                    <svg class="ci-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2a10 10 0 0 1 0 20"/></svg>
-                    <svg class="ci-check" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-                    <svg class="ci-fail" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
-                  </div>
-                  <span class="filter-ci-text" id="filter-ci-text"></span>
-                  <span class="filter-ci-step" id="filter-ci-step" style="display: none;"></span>
-                  <button class="filter-ci-fix" id="filter-ci-fix" style="display: none;">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-                    </svg>
-                    <span data-i18n="ci.fixIt">Fix it</span>
+                <div class="session-add-menu" id="session-add-menu" role="menu" style="display:none">
+                  <button class="session-add-item" data-session-action="claude" role="menuitem">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10z"/></svg>
+                    <span data-i18n="terminals.newClaudeSession">New Claude session</span>
                   </button>
-                </div>
-
-                <div class="filter-git-actions" id="filter-git-actions" style="display: none;">
-                  <div class="filter-git-group">
-                    <button class="filter-git-btn" id="filter-btn-pull" data-i18n-title="projects.gitPull" title="Pull">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M17 11l-5 5-5-5"/><path d="M5 21h14"/></svg>
-                    </button>
-                    <button class="filter-git-btn" id="filter-btn-push" data-i18n-title="projects.gitPush" title="Push">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9"/><path d="M7 14l5-5 5 5"/><path d="M5 3h14"/></svg>
-                    </button>
-                  </div>
-                  <button class="filter-git-btn filter-btn-changes" id="filter-btn-changes" data-i18n-title="ui.viewChanges">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-                    <span data-i18n="ui.changes">Changes</span>
-                    <span class="changes-count" id="changes-count" style="display: none;">0</span>
+                  <button class="session-add-item" data-session-action="terminal" role="menuitem">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                    <span data-i18n="projects.basicTerminal">Basic terminal</span>
                   </button>
-                  <div class="branch-btn-wrapper">
-                    <button class="filter-branch-btn" id="filter-btn-branch" data-i18n-title="ui.switchBranch">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
-                      <span id="filter-branch-name">main</span>
-                      <span class="worktree-badge" id="worktree-badge" style="display:none">WT</span>
-                      <svg class="branch-arrow" viewBox="0 0 12 12"><path d="M3 5l3 3 3-3" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
-                    </button>
-                    <!-- Branch Dropdown -->
-                    <div class="branch-dropdown" id="branch-dropdown">
-                      <div class="branch-dropdown-header">
-                        <span data-i18n="ui.switchBranch">Switch branch</span>
-                      </div>
-                      <div class="branch-dropdown-list" id="branch-dropdown-list"></div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="actions-dropdown-wrapper" id="actions-dropdown-wrapper" style="display: none;">
-                  <button class="filter-actions-btn" id="filter-btn-actions">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                    <span data-i18n="ui.actionsLabel">Actions</span>
-                    <svg class="actions-arrow" viewBox="0 0 12 12"><path d="M3 5l3 3 3-3" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+                  <div class="session-add-divider"></div>
+                  <button class="session-add-item" data-session-action="search" role="menuitem">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+                    <span data-i18n="terminals.resumeSession">Resume a session</span>
                   </button>
-                  <div class="actions-dropdown" id="actions-dropdown"></div>
-                </div>
-
-                <div class="prompts-dropdown-wrapper" id="prompts-dropdown-wrapper" style="display: none;">
-                  <button class="filter-actions-btn" id="filter-btn-prompts">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                    <span data-i18n="prompts.inject">Prompts</span>
-                    <svg class="actions-arrow" viewBox="0 0 12 12"><path d="M3 5l3 3 3-3" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
-                  </button>
-                  <div class="prompts-dropdown" id="prompts-dropdown"></div>
-                </div>
-
-                <button class="filter-clear" id="btn-show-all" data-i18n-title="ui.showAllTerminals">
-                  <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
-                </button>
-              </div>
-
-              <!-- Git Changes Panel -->
-              <div class="git-changes-panel" id="git-changes-panel">
-                <div class="git-changes-header">
-                  <div class="git-changes-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    <span data-i18n="ui.changes">Changements</span>
-                    <span class="git-changes-project" id="git-changes-project"></span>
-                  </div>
-                  <div class="git-changes-actions">
-                    <button class="btn-icon btn-small" id="btn-refresh-changes" data-i18n-title="common.refresh">
-                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
-                    </button>
-                    <button class="btn-icon btn-small" id="btn-close-changes" data-i18n-title="common.close">
-                      <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
-                    </button>
-                  </div>
-                </div>
-                <div class="git-changes-toolbar">
-                  <label class="git-select-all">
-                    <input type="checkbox" id="git-select-all">
-                    <span data-i18n="ui.selectAll">Select all</span>
-                  </label>
-                  <div class="git-changes-stats" id="git-changes-stats"></div>
-                </div>
-                <div class="git-changes-list" id="git-changes-list">
-                  <div class="git-changes-loading" data-i18n="common.loading">Loading...</div>
-                </div>
-                <div class="git-commit-section">
-                  <div class="git-commit-header">
-                    <span data-i18n="ui.commitMessage">Commit message</span>
-                    <button class="btn-generate" id="btn-generate-commit" data-i18n-title="ui.generateCommitMessage">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2z"/></svg>
-                      <span data-i18n="ui.generate">Generate</span>
-                    </button>
-                    <button class="btn-smart-commit" id="btn-smart-commit" style="display:none">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
-                      <span data-i18n="gitChanges.smartCommit">Smart Commit</span>
-                    </button>
-                    <button class="btn-generate-pr" id="btn-generate-pr" data-i18n-title="git.generatePr.button">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
-                      <span data-i18n="git.generatePr.button">Generate PR</span>
-                    </button>
-                  </div>
-                  <textarea id="git-commit-message" data-i18n-placeholder="gitChanges.commitPlaceholder" placeholder="feat: describe changes..." rows="2"></textarea>
-                  <div class="git-commit-options">
-                    <label class="git-amend-label" title="Amend last commit">
-                      <input type="checkbox" id="git-amend-checkbox">
-                      <span data-i18n="gitChanges.amendCommit">Amend</span>
-                    </label>
-                    <button class="git-discard-selected-btn" id="btn-discard-selected" disabled>
-                      <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
-                      <span data-i18n="gitChanges.discardSelected">Discard</span>
-                    </button>
-                    <button class="git-reset-btn" id="btn-git-reset">
-                      <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg>
-                      <span data-i18n="gitChanges.undoLastCommit">Undo commit</span>
-                    </button>
-                  </div>
-                  <div class="git-commit-actions">
-                    <button class="btn-primary" id="btn-commit-selected" disabled>
-                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-                      <span data-i18n="ui.commitSelected">Commit</span> (<span id="commit-count">0</span>)
-                    </button>
-                  </div>
                 </div>
               </div>
+              <div class="terminals-tabs" id="terminals-tabs" role="tablist" aria-label="Terminal tabs"></div>
             </div>
-            <div class="terminals-tabs" id="terminals-tabs" role="tablist" aria-label="Terminal tabs"></div>
             <div class="terminals-container" id="terminals-container" role="region" aria-label="Terminals">
               <div class="empty-state" id="empty-terminals">
                 <svg viewBox="0 0 24 24" fill="currentColor">
@@ -606,12 +634,6 @@
       <div class="tab-content" id="tab-git">
         <div class="git-tab-layout">
           <div class="git-tab-sidebar">
-            <div class="git-sidebar-section git-sidebar-projects">
-              <div class="git-sidebar-header">
-                <h3 data-i18n="projects.title">Projets</h3>
-              </div>
-              <div class="git-projects-list" id="git-projects-list"></div>
-            </div>
             <div class="git-sidebar-section git-sidebar-quick-actions">
               <div class="git-sidebar-header">
                 <h3 data-i18n="ui.quickActions">Quick Actions</h3>
@@ -703,12 +725,6 @@
       <!-- Dashboard Tab -->
       <div class="tab-content" id="tab-dashboard">
         <div class="dashboard-layout">
-          <div class="dashboard-sidebar">
-            <div class="dashboard-sidebar-header">
-              <h3 data-i18n="projects.title">Projets</h3>
-            </div>
-            <div class="dashboard-projects-list" id="dashboard-projects-list"></div>
-          </div>
           <div class="dashboard-main">
             <div class="dashboard-content" id="dashboard-content">
               <div class="dashboard-empty">

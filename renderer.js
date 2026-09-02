@@ -38,9 +38,6 @@ const {
   getFolder,
   getProject,
   getProjectIndex,
-  getVisualProjectOrder,
-  countProjectsRecursive,
-  toggleFolderCollapse,
   loadProjects,
   saveProjects,
   loadSettings,
@@ -55,6 +52,10 @@ const {
   renameFolder,
   renameProject,
   setSelectedProjectFilter,
+  setOpenedProjectId,
+  openProjectTab,
+  closeProjectTab,
+  getOpenProjects,
   generateProjectId,
   updateProject,
   checkMissingPaths,
@@ -68,6 +69,7 @@ const {
 
   // UI Components
   ProjectList,
+  ProjectBar,
   TerminalManager,
   FileExplorer,
   showContextMenu,
@@ -133,7 +135,8 @@ const localState = {
   gitOperations: new Map(),
   gitRepoStatus: new Map(),
   gitStatusInitialized: false,
-  selectedDashboardProject: -1
+  // Dashboard scope: 'project' (the project bar's active tab) or 'overview'.
+  dashboardScope: 'project'
 };
 
 // ========== I18N STATIC TEXT UPDATES ==========
@@ -173,15 +176,6 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
   initErrorLogListeners();
 
   // Restore saved panel widths (must be after settings are loaded)
-  const savedPanelWidth = settingsState.get().projectsPanelWidth;
-  if (savedPanelWidth) {
-    const panel = document.querySelector('.projects-panel');
-    if (panel) panel.style.width = savedPanelWidth + 'px';
-    if (savedPanelWidth < 210) {
-      const btnToggle = document.getElementById('btn-toggle-projects');
-      if (btnToggle) btnToggle.style.display = 'none';
-    }
-  }
   const savedMemoryWidth = settingsState.get().memorySidebarWidth;
   if (savedMemoryWidth) {
     const memorySidebar = document.querySelector('.memory-sidebar');
@@ -265,6 +259,10 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
         if (idx !== -1) {
           setSelectedProjectFilter(idx);
           TerminalManager.filterByProject(idx);
+          // A restored Dashboard tab activates before this point, so it fell back
+          // to Overview for lack of a project — re-resolve now that we have one.
+          if (document.body.dataset.activeTab === 'dashboard') renderDashboardForScope();
+          else ProjectBar.setOverviewActive(false);
         }
       }
 
@@ -283,6 +281,13 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
     const { setSkipExplorerCapture: clearSkip } = require('./src/renderer/services/TerminalSessionService');
     clearSkip(false);
   } catch (e) { /* ignore */ }
+
+  // Restored tabs with nothing active would leave the bar looking selected-less
+  // and every project-scoped screen empty — fall back to the first tab.
+  if (projectsState.get().selectedProjectFilter === null) {
+    const [firstOpen] = getOpenProjects();
+    if (firstOpen) selectProjectFromBar(getProjectIndex(firstOpen.id));
+  }
 
   // Initialize project types registry
   registry.discoverAll();
@@ -695,7 +700,8 @@ function refreshDashboardAsync(projectId) {
   // Only refresh if dashboard tab is active and this project is selected
   const dashboardTab = document.querySelector('[data-tab="dashboard"]');
   const isDashboardActive = dashboardTab?.classList.contains('active');
-  const isProjectSelected = localState.selectedDashboardProject === projectIndex;
+  const isProjectSelected = localState.dashboardScope === 'project'
+    && projectsState.get().selectedProjectFilter === projectIndex;
 
   if (isDashboardActive && isProjectSelected && projectIndex !== -1) {
     // Invalidate cache to force refresh, but keep old data visible
@@ -2601,10 +2607,220 @@ ProjectList.setCallbacks({
   },
   onRenderProjects: () => ProjectList.render(),
   onCreateFolder: () => promptCreateFolder(null),
-  onFilterTerminals: (idx) => { TerminalManager.filterByProject(idx); saveTerminalSessions(); },
+  onFilterTerminals: (idx) => {
+    TerminalManager.filterByProject(idx);
+    saveTerminalSessions();
+    // Picking a project in the popover is a "go there" gesture: get out of the
+    // way and let the screens follow the newly active tab.
+    closeProjectsPopover();
+    applyProjectContext(idx);
+  },
   countTerminalsForProject: TerminalManager.countTerminalsForProject,
   getTerminalStatsForProject: TerminalManager.getTerminalStatsForProject
 });
+
+// ========== PROJECT BAR ==========
+
+/**
+ * The project the bar currently has active.
+ * @returns {Object|null}
+ */
+function getCurrentProjectFromBar() {
+  const { projects, selectedProjectFilter } = projectsState.get();
+  return projects[selectedProjectFilter] || null;
+}
+
+/**
+ * Re-render whichever screens follow the active project. The project bar is
+ * global, so switching tabs has to refresh the Git and Dashboard views too —
+ * they used to have their own project sidebars driving that.
+ * @param {number|null} projectIndex
+ */
+function applyProjectContext(projectIndex) {
+  const project = projectsState.get().projects[projectIndex] || null;
+  ProjectList.render();
+  ProjectBar.render();
+
+  const activeTab = document.querySelector('.nav-tab[data-tab].active')?.dataset.tab;
+  if (activeTab === 'git' && project) {
+    GitTabService.selectProject(project.id);
+  } else if (activeTab === 'dashboard') {
+    renderDashboardForScope();
+  } else if (activeTab === 'session-replay') {
+    SessionReplayPanel.setProject();
+  } else if (activeTab === 'tasks') {
+    ParallelTaskPanel.onProjectChanged?.();
+  }
+}
+
+/**
+ * Switch the active project from the bar.
+ * @param {number} projectIndex
+ */
+function selectProjectFromBar(projectIndex) {
+  const project = projectsState.get().projects[projectIndex];
+  if (!project) return;
+
+  // Authoritative: also usable at boot, where no tab click preceded it.
+  openProjectTab(project.id);
+
+  // Leaving the project detail view: the bar is a "work in this project" switch,
+  // not a "show project details" one.
+  setOpenedProjectId(null);
+  const detailView = document.getElementById('project-detail-view');
+  if (detailView) detailView.style.display = 'none';
+  const container = document.getElementById('terminals-container');
+  if (container) container.style.display = '';
+  const tabs = document.getElementById('terminals-tabs');
+  if (tabs) tabs.style.display = '';
+
+  // Picking a project tab is the way out of the dashboard's Overview tab.
+  localState.dashboardScope = 'project';
+  ProjectBar.setOverviewActive(false);
+
+  TerminalManager.filterByProject(projectIndex);
+  saveTerminalSessions();
+  applyProjectContext(projectIndex);
+}
+
+/**
+ * Close a project tab. Sessions belong to the project, so a tab with live
+ * terminals asks first rather than silently killing running Claude sessions.
+ * @param {Object} project
+ */
+async function closeProjectFromBar(project) {
+  const projectIndex = getProjectIndex(project.id);
+  const openTerminalIds = [];
+  terminalsState.get().terminals.forEach((termData, id) => {
+    if (termData.project && (termData.project.path === project.path ||
+      (termData.parentProjectId && termData.parentProjectId === project.id))) {
+      openTerminalIds.push(id);
+    }
+  });
+
+  if (openTerminalIds.length > 0) {
+    const confirmed = await ModalComponent.showConfirm({
+      title: t('projects.closeProjectTitle', { name: project.name }),
+      message: t('projects.closeProjectMessage', { count: openTerminalIds.length }),
+      confirmLabel: t('projects.closeProjectConfirm'),
+      danger: true,
+    });
+    if (!confirmed) return;
+    openTerminalIds.forEach(id => TerminalManager.closeTerminal(id));
+  }
+
+  const nextIndex = closeProjectTab(project.id);
+  TerminalManager.filterByProject(nextIndex);
+  saveTerminalSessions();
+  applyProjectContext(nextIndex);
+}
+
+ProjectBar.initProjectBar({
+  onSelectProject: (projectIndex) => selectProjectFromBar(projectIndex),
+  onCloseProject: (project) => closeProjectFromBar(project),
+  onContextMenu: (project, x, y) => showProjectTabContextMenu(project, x, y),
+  onOpenPicker: (anchor) => toggleProjectsPopover(anchor),
+  onSelectOverview: () => {
+    localState.dashboardScope = 'overview';
+    renderDashboardForScope();
+  },
+  getTerminalStatsForProject: TerminalManager.getTerminalStatsForProject,
+});
+
+// ── Projects popover (the + button) ──
+// Hosts the full ProjectList: search, folders, drag & drop and every
+// per-project action, on demand instead of in permanent screen space.
+
+function isProjectsPopoverOpen() {
+  const popover = document.getElementById('projects-popover');
+  return !!popover && popover.style.display !== 'none';
+}
+
+function openProjectsPopover(anchor) {
+  const popover = document.getElementById('projects-popover');
+  if (!popover) return;
+  popover.style.display = 'block';
+  document.getElementById('btn-open-project')?.setAttribute('aria-expanded', 'true');
+
+  // Anchor under the + button, clamped to the viewport.
+  const anchorEl = anchor || document.getElementById('btn-open-project');
+  if (anchorEl) {
+    const rect = anchorEl.getBoundingClientRect();
+    const width = popover.offsetWidth;
+    popover.style.top = `${rect.bottom + 4}px`;
+    popover.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))}px`;
+  }
+
+  ProjectList.render();
+  const search = document.getElementById('projects-search-input');
+  if (search) { search.value = ''; search.focus(); }
+}
+
+function closeProjectsPopover() {
+  const popover = document.getElementById('projects-popover');
+  if (!popover || popover.style.display === 'none') return;
+  popover.style.display = 'none';
+  document.getElementById('btn-open-project')?.setAttribute('aria-expanded', 'false');
+}
+
+function toggleProjectsPopover(anchor) {
+  if (isProjectsPopoverOpen()) closeProjectsPopover();
+  else openProjectsPopover(anchor);
+}
+
+document.getElementById('btn-close-projects-popover')?.addEventListener('click', closeProjectsPopover);
+
+document.addEventListener('click', (e) => {
+  if (!isProjectsPopoverOpen()) return;
+  if (e.target.closest('#projects-popover') || e.target.closest('#btn-open-project')) return;
+  // The per-project menus and the customize picker are portalled to <body>;
+  // clicking them must not dismiss the popover underneath.
+  if (e.target.closest('.more-actions-menu, .customize-picker, .context-menu, .modal-overlay, .editor-context-menu')) return;
+  closeProjectsPopover();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !isProjectsPopoverOpen()) return;
+  // An open per-project menu takes the Escape first — closing the popover under
+  // it would skip a level.
+  if (document.querySelector('.more-actions-menu.active')) return;
+  closeProjectsPopover();
+  e.stopPropagation();
+}, true);
+
+/**
+ * Right-click on a project tab: the projects popover is a picker, so this is
+ * the one place per-project actions live. It reuses the exact menu ProjectList
+ * builds (including project-type entries) and prepends the tab-only items.
+ * @param {Object} project
+ * @param {number} x
+ * @param {number} y
+ */
+function showProjectTabContextMenu(project, x, y) {
+  const extraHtml = `
+    <button class="more-actions-item" data-extra-action="close">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      ${escapeHtml(t("projects.closeProject"))}
+    </button>
+    <button class="more-actions-item" data-extra-action="close-others">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+      ${escapeHtml(t("projects.closeOtherProjects"))}
+    </button>
+    <div class="more-actions-divider"></div>`;
+
+  ProjectList.openActionsMenu(project.id, x, y, {
+    extraHtml,
+    onExtraAction: async (action) => {
+      if (action === "close") {
+        await closeProjectFromBar(project);
+      } else if (action === "close-others") {
+        for (const other of getOpenProjects()) {
+          if (other.id !== project.id) await closeProjectFromBar(other);
+        }
+      }
+    },
+  });
+}
 
 // Tab/project switch functions (shared between xterm handler and IPC ctrl-arrow)
 function switchTerminal(direction) {
@@ -2643,40 +2859,30 @@ function switchTerminal(direction) {
   TerminalManager.setActiveTerminal(visibleTerminals[targetIndex]);
 }
 
+/**
+ * Ctrl+Up / Ctrl+Down walks the project bar, so the shortcut and the tabs agree
+ * on both the set of projects and their order.
+ * @param {'up'|'down'} direction
+ */
 function switchProject(direction) {
-  const projects = projectsState.get().projects;
-  const terminals = terminalsState.get().terminals;
+  const openProjects = getOpenProjects();
+  if (openProjects.length <= 1) return;
 
-  const visualOrder = getVisualProjectOrder();
-  const projectsWithTerminals = visualOrder.filter(project => {
-    for (const [, t] of terminals) {
-      if (t.project && t.project.path === project.path) return true;
-    }
-    return false;
-  });
-
-  if (projectsWithTerminals.length <= 1) return;
-
-  const currentFilter = projectsState.get().selectedProjectFilter;
-  const currentProject = projects[currentFilter];
+  const currentProject = getCurrentProjectFromBar();
   const currentIdx = currentProject
-    ? projectsWithTerminals.findIndex(p => p.path === currentProject.path)
+    ? openProjects.findIndex(p => p.id === currentProject.id)
     : -1;
 
   let targetIdx;
   if (currentIdx === -1) {
     targetIdx = 0;
   } else if (direction === 'up') {
-    targetIdx = (currentIdx - 1 + projectsWithTerminals.length) % projectsWithTerminals.length;
+    targetIdx = (currentIdx - 1 + openProjects.length) % openProjects.length;
   } else {
-    targetIdx = (currentIdx + 1) % projectsWithTerminals.length;
+    targetIdx = (currentIdx + 1) % openProjects.length;
   }
 
-  const targetProject = projectsWithTerminals[targetIdx];
-  const targetIndex = getProjectIndex(targetProject.id);
-  setSelectedProjectFilter(targetIndex);
-  ProjectList.render();
-  TerminalManager.filterByProject(targetIndex);
+  selectProjectFromBar(getProjectIndex(openProjects[targetIdx].id));
 }
 
 // Setup TerminalManager
@@ -2756,15 +2962,49 @@ if (btnToggleExplorer) {
 }
 
 // Wire "+" new terminal button
+// ========== SESSION ADD MENU ==========
+// The single + next to the session tabs: new Claude session, plain terminal, or
+// search an existing session — the three ways to get a tab in this project.
 const btnNewTerminal = document.getElementById('btn-new-terminal');
-if (btnNewTerminal) {
-  btnNewTerminal.onclick = () => {
-    const selectedFilter = projectsState.get().selectedProjectFilter;
-    const projects = projectsState.get().projects;
-    if (selectedFilter !== null && projects[selectedFilter]) {
-      createTerminalForProject(projects[selectedFilter]);
+const sessionAddMenu = document.getElementById('session-add-menu');
+
+function closeSessionAddMenu() {
+  if (!sessionAddMenu || sessionAddMenu.style.display === 'none') return;
+  sessionAddMenu.style.display = 'none';
+  btnNewTerminal?.setAttribute('aria-expanded', 'false');
+}
+
+if (btnNewTerminal && sessionAddMenu) {
+  btnNewTerminal.onclick = (e) => {
+    e.stopPropagation();
+    if (sessionAddMenu.style.display !== 'none') { closeSessionAddMenu(); return; }
+    const rect = btnNewTerminal.getBoundingClientRect();
+    sessionAddMenu.style.display = 'block';
+    sessionAddMenu.style.top = `${rect.bottom + 4}px`;
+    sessionAddMenu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - sessionAddMenu.offsetWidth - 8))}px`;
+    btnNewTerminal.setAttribute('aria-expanded', 'true');
+  };
+
+  sessionAddMenu.onclick = (e) => {
+    const item = e.target.closest('.session-add-item');
+    if (!item) return;
+    closeSessionAddMenu();
+    const project = getCurrentProjectFromBar();
+    if (!project) return;
+    switch (item.dataset.sessionAction) {
+      case 'claude': createTerminalForProject(project); break;
+      case 'terminal': createBasicTerminalForProject(project); break;
+      case 'search': showSessionsModal(project); break;
     }
   };
+
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#session-add-menu') || e.target.closest('#btn-new-terminal')) return;
+    closeSessionAddMenu();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeSessionAddMenu();
+  });
 }
 
 // ========== FILE WATCHER ==========
@@ -2778,17 +3018,6 @@ api.explorer.onWatchLimitWarning((totalPaths) => {
   showToast({ type: 'warning', title: t('fileExplorer.title'), message: t('fileExplorer.watchLimitWarning', { count: totalPaths }) });
 });
 // Wire lightbulb resume session button
-const btnResumeSession = document.getElementById('btn-resume-session');
-if (btnResumeSession) {
-  btnResumeSession.onclick = () => {
-    const selectedFilter = projectsState.get().selectedProjectFilter;
-    const projects = projectsState.get().projects;
-    if (selectedFilter !== null && projects[selectedFilter]) {
-      showSessionsModal(projects[selectedFilter]);
-    }
-  };
-}
-
 // Subscribe to project selection changes for FileExplorer
 projectsState.subscribe(() => {
   const state = projectsState.get();
@@ -3032,7 +3261,9 @@ const _TAB_LIFECYCLE = {
   git: {
     activate: () => {
       GitTabService.initGitTab();
-      GitTabService.renderProjectsList();
+      // The Git tab follows the project bar instead of its own project list.
+      const project = getCurrentProjectFromBar();
+      if (project) GitTabService.selectProject(project.id);
     }
   },
   database: { activate: () => DatabasePanel.loadPanel() },
@@ -3050,14 +3281,7 @@ const _TAB_LIFECYCLE = {
     deactivate: () => ControlTowerPanel.cleanup()
   },
   dashboard: {
-    activate: () => {
-      populateDashboardProjects();
-      if (localState.selectedDashboardProject === -1) {
-        renderOverviewDashboard();
-      } else if (localState.selectedDashboardProject >= 0) {
-        renderDashboardContent(localState.selectedDashboardProject);
-      }
-    },
+    activate: () => renderDashboardForScope(),
     // 30s GitHub Actions poll started by the dashboard cards; it used to keep
     // hitting the API from a tab nobody was looking at.
     deactivate: () => DashboardService.stopWorkflowPolling()
@@ -3076,6 +3300,9 @@ const _TAB_LIFECYCLE = {
         SessionReplayPanel.init(container, { projectsState, openedProjectId: projectsState.get().openedProjectId });
         container.dataset.initialized = 'true';
       }
+      // The project bar may have moved to another project while this tab was
+      // hidden; setProject() is a no-op when it did not.
+      SessionReplayPanel.setProject();
       SessionReplayPanel.onActivate();
     },
     // Pauses the replay clock only — a full cleanup() would destroy the custom
@@ -3168,6 +3395,10 @@ document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
     document.getElementById('btn-more-tabs')?.classList.remove('active');
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.getElementById(`tab-${tabId}`).classList.add('active');
+    // Drives which parts of the project bar are relevant (tools are Claude-only,
+    // the Overview tab is dashboard-only) — see projects.css.
+    document.body.dataset.activeTab = tabId;
+    ProjectBar.setOverviewActive(tabId === 'dashboard' && localState.dashboardScope === 'overview');
     // Tear down the tab we are leaving, then wake up the one we entered.
     _leaveCurrentTab(tabId);
     _runTabHook(tabId, 'activate');
@@ -3810,139 +4041,21 @@ document.getElementById('modal-overlay').onclick = (e) => { if (e.target.id === 
 // ========== MARKETPLACE (extracted to MarketplacePanel module) ==========
 // ========== MCP (extracted to McpPanel module) ==========
 // ========== DASHBOARD ==========
-function populateDashboardProjects() {
-  const list = document.getElementById('dashboard-projects-list');
-  if (!list) return;
-  const state = projectsState.get();
-  const { projects, folders, rootOrder } = state;
+/**
+ * The dashboard follows the project bar: a project tab shows that project, the
+ * Overview tab in front of them shows all projects. There is deliberately no
+ * second project selector on the screen itself.
+ */
+function renderDashboardForScope() {
+  const projectIndex = projectsState.get().selectedProjectFilter;
+  const project = projectsState.get().projects[projectIndex] || null;
+  // With no project open there is nothing to scope to, so overview is the only
+  // thing the dashboard can show.
+  const showOverview = !project || localState.dashboardScope === "overview";
 
-  if (projects.length === 0) {
-    list.innerHTML = `<div class="dashboard-projects-empty">Aucun projet</div>`;
-    return;
-  }
-
-  // Overview item
-  const overviewHtml = `
-    <div class="dashboard-project-item overview-item ${localState.selectedDashboardProject === -1 ? 'active' : ''}" data-index="-1">
-      <div class="dashboard-project-icon">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
-      </div>
-      <div class="dashboard-project-info">
-        <div class="dashboard-project-name">${t('dashboard.overview')}</div>
-      </div>
-    </div>
-  `;
-
-  function renderFolderItem(folder, depth) {
-    const projectCount = countProjectsRecursive(folder.id);
-    const isCollapsed = folder.collapsed;
-    const indent = depth * 16;
-
-    const colorIndicator = folder.color
-      ? `<span class="dash-folder-color" style="background: ${folder.color}"></span>`
-      : '';
-
-    const folderIcon = folder.icon
-      ? `<span class="dash-folder-emoji">${folder.icon}</span>`
-      : `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>`;
-
-    let childrenHtml = '';
-    const children = folder.children || [];
-    for (const childId of children) {
-      const childFolder = folders.find(f => f.id === childId);
-      if (childFolder) {
-        childrenHtml += renderFolderItem(childFolder, depth + 1);
-      } else {
-        const childProject = projects.find(p => p.id === childId);
-        if (childProject && childProject.folderId === folder.id) {
-          childrenHtml += renderProjectItem(childProject, depth + 1);
-        }
-      }
-    }
-
-    return `
-      <div class="dash-folder-item" data-folder-id="${folder.id}">
-        <div class="dash-folder-header" style="padding-left: ${indent + 8}px">
-          <span class="dash-folder-chevron ${isCollapsed ? 'collapsed' : ''}">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
-          </span>
-          ${colorIndicator}
-          <span class="dash-folder-icon">${folderIcon}</span>
-          <span class="dash-folder-name">${escapeHtml(folder.name)}</span>
-          <span class="dash-folder-count">${projectCount}</span>
-        </div>
-        <div class="dash-folder-children ${isCollapsed ? 'collapsed' : ''}">
-          ${childrenHtml}
-        </div>
-      </div>
-    `;
-  }
-
-  function renderProjectItem(project, depth) {
-    const index = getProjectIndex(project.id);
-    const isActive = localState.selectedDashboardProject === index;
-    const indent = depth * 16;
-
-    const colorIndicator = project.color
-      ? `<span class="dash-folder-color" style="background: ${project.color}"></span>`
-      : '';
-
-    const dashTypeHandler = registry.get(project.type);
-    const dashTypeIcon = dashTypeHandler.getDashboardIcon ? dashTypeHandler.getDashboardIcon(project) : null;
-    const iconHtml = project.icon
-      ? `<span class="dashboard-project-emoji">${project.icon}</span>`
-      : (dashTypeIcon || '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>');
-
-    return `
-      <div class="dashboard-project-item ${isActive ? 'active' : ''}" data-index="${index}" style="padding-left: ${indent}px">
-        <div class="dashboard-project-icon">${colorIndicator}${iconHtml}</div>
-        <div class="dashboard-project-info">
-          <div class="dashboard-project-name">${escapeHtml(project.name)}</div>
-          <div class="dashboard-project-path">${escapeHtml(project.path)}</div>
-        </div>
-      </div>
-    `;
-  }
-
-  let itemsHtml = '';
-  for (const itemId of (rootOrder || [])) {
-    const folder = folders.find(f => f.id === itemId);
-    if (folder) {
-      itemsHtml += renderFolderItem(folder, 0);
-    } else {
-      const project = projects.find(p => p.id === itemId);
-      if (project) {
-        itemsHtml += renderProjectItem(project, 0);
-      }
-    }
-  }
-
-  list.innerHTML = overviewHtml + itemsHtml;
-
-  // Click handlers for projects
-  list.querySelectorAll('.dashboard-project-item').forEach(item => {
-    item.onclick = () => {
-      const index = parseInt(item.dataset.index);
-      localState.selectedDashboardProject = index;
-      populateDashboardProjects();
-      if (index === -1) {
-        renderOverviewDashboard();
-      } else {
-        renderDashboardContent(index);
-      }
-    };
-  });
-
-  // Click handlers for folder headers (toggle collapse)
-  list.querySelectorAll('.dash-folder-header').forEach(header => {
-    header.onclick = (e) => {
-      e.stopPropagation();
-      const folderItem = header.closest('.dash-folder-item');
-      const folderId = folderItem.dataset.folderId;
-      toggleFolderCollapse(folderId);
-      populateDashboardProjects();
-    };
-  });
+  ProjectBar.setOverviewActive(showOverview);
+  if (showOverview) renderOverviewDashboard();
+  else renderDashboardContent(projectIndex);
 }
 
 function renderOverviewDashboard() {
@@ -3965,9 +4078,11 @@ function renderOverviewDashboard() {
     dataMap,
     timesMap,
     onCardClick: (index) => {
-      localState.selectedDashboardProject = index;
-      populateDashboardProjects();
-      renderDashboardContent(index);
+      // Clicking an overview card opens that project in the bar and drills in.
+      const project = projectsState.get().projects[index];
+      if (!project) return;
+      openProjectTab(project.id);
+      selectProjectFromBar(index);
     }
   });
 
@@ -3984,7 +4099,7 @@ function renderOverviewDashboard() {
 window.addEventListener('dashboard-preload-progress', () => {
   const dashboardTab = document.querySelector('[data-tab="dashboard"]');
   const isDashboardActive = dashboardTab?.classList.contains('active');
-  if (isDashboardActive && localState.selectedDashboardProject === -1) {
+  if (isDashboardActive && localState.dashboardScope === 'overview') {
     renderOverviewDashboard();
   }
 });
@@ -4609,12 +4724,6 @@ document.getElementById('btn-new-project').onclick = () => {
 };
 
 document.getElementById('btn-new-folder').onclick = () => promptCreateFolder(null);
-document.getElementById('btn-show-all').onclick = () => {
-  setSelectedProjectFilter(null);
-  ProjectList.render();
-  TerminalManager.filterByProject(null);
-  hideFilterGitActions();
-};
 
 // ========== FILTER GIT ACTIONS ==========
 const filterGitActions = document.getElementById('filter-git-actions');
@@ -5665,82 +5774,6 @@ api.tray.onShowSessions(() => {
     showSessionsModal(projects[0]);
   }
 });
-
-// ========== PROJECTS PANEL RESIZER ==========
-(function initProjectsPanelResizer() {
-  const resizer = document.getElementById('projects-panel-resizer');
-  const panel = document.querySelector('.projects-panel');
-  const btnToggle = document.getElementById('btn-toggle-projects');
-  if (!resizer || !panel) return;
-
-  function updateToggleVisibility(width) {
-    if (btnToggle) btnToggle.style.display = width < 210 ? 'none' : '';
-  }
-
-  let startX, startWidth;
-
-  resizer.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    startX = e.clientX;
-    startWidth = panel.offsetWidth;
-    resizer.classList.add('active');
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-
-    const onMouseMove = (e) => {
-      const newWidth = Math.min(600, Math.max(170, startWidth + (e.clientX - startX)));
-      panel.style.width = newWidth + 'px';
-      updateToggleVisibility(newWidth);
-    };
-
-    const onMouseUp = () => {
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      resizer.classList.remove('active');
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      updateToggleVisibility(panel.offsetWidth);
-      settingsState.setProp('projectsPanelWidth', panel.offsetWidth);
-      saveSettingsImmediate();
-    };
-
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-  });
-
-  // Restore saved width
-  const savedWidth = settingsState.get().projectsPanelWidth;
-  if (savedWidth) {
-    panel.style.width = savedWidth + 'px';
-  }
-})();
-
-// ========== PROJECTS PANEL TOGGLE ==========
-(function initProjectsPanelToggle() {
-  const panel = document.querySelector('.projects-panel');
-  const layout = document.getElementById('claude-layout');
-  const btnToggle = document.getElementById('btn-toggle-projects');
-  const btnShow = document.getElementById('btn-show-projects');
-  if (!panel || !layout || !btnToggle || !btnShow) return;
-
-  // Restore saved state
-  if (localStorage.getItem('projects-panel-hidden') === 'true') {
-    panel.classList.add('collapsed');
-    layout.classList.add('projects-hidden');
-  }
-
-  btnToggle.onclick = () => {
-    panel.classList.add('collapsed');
-    layout.classList.add('projects-hidden');
-    localStorage.setItem('projects-panel-hidden', 'true');
-  };
-
-  btnShow.onclick = () => {
-    panel.classList.remove('collapsed');
-    layout.classList.remove('projects-hidden');
-    localStorage.setItem('projects-panel-hidden', 'false');
-  };
-})();
 
 // ========== INIT ==========
 setupContextMenuHandlers();
