@@ -312,6 +312,72 @@ describe('snapshot integrity across a switch', () => {
   });
 });
 
+describe('MCP server tokens', () => {
+  // The credential store is shared: `mcpOAuth` holds the OAuth tokens of every
+  // connected MCP server, and they belong to the machine, not to the account.
+  const withMcp = (accessToken, server) => ({
+    ...creds(accessToken),
+    mcpOAuth: { [`${server}|abc123`]: { serverName: server, accessToken: `mcp-${server}` } }
+  });
+
+  const snapshotOf = (id) => JSON.parse(
+    fs.readFileSync(path.join(paths.dataDir, 'accounts', `${id}.json`), 'utf8')
+  );
+
+  test('switching keeps the MCP tokens the CLI currently holds', async () => {
+    mockKeychain.set(MOCK_KEY, JSON.stringify(withMcp('tok-a', 'notion')));
+    const a = await AccountManager.captureCurrent('Account A');
+    mockKeychain.set(MOCK_KEY, JSON.stringify(withMcp('tok-b', 'notion')));
+    await AccountManager.captureCurrent('Account B');
+
+    // A new MCP server is connected after both accounts were captured.
+    mockKeychain.set(MOCK_KEY, JSON.stringify(withMcp('tok-b', 'stripe')));
+    await AccountManager.switchTo(a.id);
+
+    const live = JSON.parse(mockKeychain.get(MOCK_KEY));
+    expect(live.claudeAiOauth.accessToken).toBe('tok-a');
+    expect(Object.keys(live.mcpOAuth)).toEqual(['stripe|abc123']);
+  });
+
+  test('snapshots do not keep a copy of the MCP tokens', async () => {
+    mockKeychain.set(MOCK_KEY, JSON.stringify(withMcp('tok-a', 'notion')));
+    const a = await AccountManager.captureCurrent('Account A');
+
+    expect(snapshotOf(a.id)).toEqual({ claudeAiOauth: creds('tok-a').claudeAiOauth });
+  });
+
+  test('a legacy snapshot cannot push stale MCP tokens back into the store', async () => {
+    mockKeychain.set(MOCK_KEY, JSON.stringify(withMcp('tok-a', 'notion')));
+    const a = await AccountManager.captureCurrent('Account A');
+    // Snapshot written by a build that stored the whole payload.
+    fs.writeFileSync(
+      path.join(paths.dataDir, 'accounts', `${a.id}.json`),
+      JSON.stringify(withMcp('tok-a', 'notion'))
+    );
+
+    mockKeychain.set(MOCK_KEY, JSON.stringify(withMcp('tok-b', 'stripe')));
+    await AccountManager.captureCurrent('Account B');
+    await AccountManager.switchTo(a.id);
+
+    expect(Object.keys(JSON.parse(mockKeychain.get(MOCK_KEY)).mcpOAuth)).toEqual(['stripe|abc123']);
+  });
+
+  test('preserves MCP tokens through the file store too', async () => {
+    setPlatform('linux');
+    fs.mkdirSync(path.dirname(credentialsFile()), { recursive: true });
+    fs.writeFileSync(credentialsFile(), JSON.stringify(withMcp('tok-a', 'notion')));
+    const a = await AccountManager.captureCurrent('Account A');
+
+    fs.writeFileSync(credentialsFile(), JSON.stringify(withMcp('tok-b', 'stripe')));
+    await AccountManager.captureCurrent('Account B');
+    await AccountManager.switchTo(a.id);
+
+    const live = readCredentialsFile();
+    expect(live.claudeAiOauth.accessToken).toBe('tok-a');
+    expect(Object.keys(live.mcpOAuth)).toEqual(['stripe|abc123']);
+  });
+});
+
 describe('errors', () => {
   test('capture without credentials tells the user to log in', async () => {
     await expect(AccountManager.captureCurrent('Nope'))

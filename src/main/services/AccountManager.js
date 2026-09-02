@@ -104,11 +104,38 @@ async function readCurrentCredentials() {
 }
 
 /**
+ * Reduce live credentials to the part that identifies a Claude account.
+ *
+ * The store holds more than the Claude login: `mcpOAuth` carries the OAuth
+ * tokens of every connected MCP server. Those belong to the machine, not to
+ * the account, so a snapshot has no business keeping a plaintext copy of them.
+ *
+ * Credentials in an unrecognised shape are stored whole — better a superset
+ * than a snapshot that cannot restore the login.
+ */
+function accountCredentials(creds) {
+  return creds?.claudeAiOauth ? { claudeAiOauth: creds.claudeAiOauth } : creds;
+}
+
+/**
+ * Overlay a snapshot's Claude login onto the live store, keeping every other
+ * key the CLI put there. Swapping the store wholesale would roll `mcpOAuth`
+ * back to whenever the account was captured, silently signing the user out of
+ * their MCP servers.
+ */
+async function mergeWithLiveStore(creds) {
+  if (!creds?.claudeAiOauth) return creds;
+  const live = await readCurrentCredentials();
+  if (!live || typeof live !== 'object') return creds;
+  return { ...live, claudeAiOauth: creds.claudeAiOauth };
+}
+
+/**
  * Write credentials back to every store the CLI might read on this platform,
  * so the swap takes effect whichever one it picks.
  */
 async function writeCurrentCredentials(creds) {
-  const payload = JSON.stringify(creds, null, 2);
+  const payload = JSON.stringify(await mergeWithLiveStore(creds), null, 2);
   let wrote = false;
   if (useKeychain()) {
     await keytar.setPassword(KEYCHAIN_SERVICE, keychainAccount(), payload);
@@ -221,7 +248,7 @@ async function captureCurrent(name) {
     lastUsedAt: new Date().toISOString()
   };
 
-  fs.writeFileSync(accountFile(id), JSON.stringify(creds, null, 2), { mode: 0o600 });
+  fs.writeFileSync(accountFile(id), JSON.stringify(accountCredentials(creds), null, 2), { mode: 0o600 });
   index.accounts.push(account);
   index.activeId = id;
   writeIndex(index);
@@ -292,7 +319,7 @@ async function syncActiveFromDisk() {
   }
   if (!match) return null;
 
-  fs.writeFileSync(accountFile(match.id), JSON.stringify(creds, null, 2), { mode: 0o600 });
+  fs.writeFileSync(accountFile(match.id), JSON.stringify(accountCredentials(creds), null, 2), { mode: 0o600 });
   match.fingerprint = fp;
   match.lastUsedAt = new Date().toISOString();
   index.activeId = match.id;
