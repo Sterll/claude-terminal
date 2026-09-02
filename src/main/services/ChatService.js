@@ -34,6 +34,21 @@ const FILE_WRITING_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'
 const MAX_TOUCHED_FILES = 200;
 
 /**
+ * Turn bound for a session that restricts its own toolset — in practice the
+ * hands-free voice profile.
+ *
+ * An interactive tab needs no cap: the user watches it and can interrupt. A
+ * voice session is the opposite, running while the user looks at a game on
+ * another screen. It cannot do damage — its toolset is read-and-dispatch only,
+ * with no Bash, Edit or Write — but a loop that nobody is watching still burns
+ * tokens until something stops it, and there is nobody to stop it.
+ *
+ * High enough that a real request (find the project, read a bit, open a tab,
+ * dispatch, report back) never reaches it. An explicit maxTurns still wins.
+ */
+const RESTRICTED_SESSION_MAX_TURNS = 40;
+
+/**
  * Note a file this session wrote, for `_sessionContext`.
  * Silent on anything unexpected — this is bookkeeping on the hot stream path and
  * must never be able to break the conversation.
@@ -633,6 +648,10 @@ class ChatService {
     try {
       const runtime = resolveRuntime();
       const effectiveCwd = cwd || require('os').homedir();
+      // An allowlist is what makes a session hands-free, so it is also what
+      // marks it unattended. An empty array is not a restriction.
+      const effectiveMaxTurns = maxTurns
+        || (allowedTools?.length ? RESTRICTED_SESSION_MAX_TURNS : null);
 
       const options = {
         cwd: effectiveCwd,
@@ -641,7 +660,9 @@ class ChatService {
         // async iterable, so maxTurns counts every API round-trip of the whole
         // conversation, not per prompt — a hard-coded value kills a busy tab
         // mid-work with no way back. Omitted, the CLI applies no limit.
-        ...(maxTurns ? { maxTurns } : {}),
+        // The exception is a self-restricting session (see the constant): it runs
+        // unattended, so it gets a bound the watched tab does not need.
+        ...(effectiveMaxTurns ? { maxTurns: effectiveMaxTurns } : {}),
         includePartialMessages: true,
         permissionMode,
         executable: runtime.executable,
