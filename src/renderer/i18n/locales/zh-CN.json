@@ -779,6 +779,8 @@
     "accentColorDesc": "自定义主界面颜色",
     "terminalTheme": "终端主题",
     "terminalThemeDesc": "更改终端颜色",
+    "terminalFontSize": "终端字体大小",
+    "terminalFontSizeDesc": "调整终端选项卡中使用的字体大小",
     "theme": "终端主题",
     "notifications": "通知",
     "closeAction": "关闭行为",

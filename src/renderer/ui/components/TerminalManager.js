@@ -1880,7 +1880,7 @@ class TerminalManager extends BaseComponent {
     const terminal = new Terminal({
       theme: getTerminalTheme(terminalThemeId),
       fontFamily: TERMINAL_FONTS.claude.fontFamily,
-      fontSize: TERMINAL_FONTS.claude.fontSize,
+      fontSize: getSetting('terminalFontSize') || TERMINAL_FONTS.claude.fontSize,
       cursorBlink: true,
       scrollback: 5000
     });
@@ -2241,7 +2241,7 @@ class TerminalManager extends BaseComponent {
     const terminal = new Terminal({
       theme: getTerminalTheme(themeId),
       fontFamily: TERMINAL_FONTS[typeId]?.fontFamily || TERMINAL_FONTS.fivem.fontFamily,
-      fontSize: TERMINAL_FONTS[typeId]?.fontSize || TERMINAL_FONTS.fivem.fontSize,
+      fontSize: getSetting('terminalFontSize') || TERMINAL_FONTS[typeId]?.fontSize || TERMINAL_FONTS.fivem.fontSize,
       cursorBlink: false,
       disableStdin: disableStdin === true,
       scrollback: scrollback || 10000
@@ -2255,6 +2255,8 @@ class TerminalManager extends BaseComponent {
       fitAddon,
       project,
       projectIndex,
+      // Type consoles resize their PTY through their own IPC namespace, not `terminal`.
+      ipcNamespace,
       name: `${tabIcon} ${project.name}`,
       status: 'ready',
       type: typeId,
@@ -3286,7 +3288,7 @@ class TerminalManager extends BaseComponent {
     const terminal = new Terminal({
       theme: getTerminalTheme(terminalThemeId),
       fontFamily: TERMINAL_FONTS.claude.fontFamily,
-      fontSize: TERMINAL_FONTS.claude.fontSize,
+      fontSize: getSetting('terminalFontSize') || TERMINAL_FONTS.claude.fontSize,
       cursorBlink: true,
       scrollback: 5000
     });
@@ -3460,7 +3462,7 @@ class TerminalManager extends BaseComponent {
     const terminal = new Terminal({
       theme: getTerminalTheme(terminalThemeId),
       fontFamily: TERMINAL_FONTS.claude.fontFamily,
-      fontSize: TERMINAL_FONTS.claude.fontSize,
+      fontSize: getSetting('terminalFontSize') || TERMINAL_FONTS.claude.fontSize,
       cursorBlink: true,
       scrollback: 5000
     });
@@ -4062,6 +4064,33 @@ class TerminalManager extends BaseComponent {
     });
   }
 
+  updateAllTerminalsFontSize(fontSize) {
+    const terminals = terminalsState.get().terminals;
+    const self = this;
+
+    terminals.forEach((termData, id) => {
+      if (!termData.terminal || !termData.terminal.options) return;
+      termData.terminal.options.fontSize = fontSize;
+      // Defer fit+resize to next frame so xterm.js can recalculate glyph dimensions first
+      requestAnimationFrame(() => {
+        if (termData.fitAddon) {
+          try { termData.fitAddon.fit(); } catch (_) { /* container not measurable yet */ }
+        }
+        try { termData.terminal.refresh(0, termData.terminal.rows - 1); } catch (_) {}
+        const { cols, rows } = termData.terminal;
+        if (!cols || !rows) return;
+        // The container did not change size, so the ResizeObserver stays quiet:
+        // push the new grid to the PTY ourselves, through the same route the
+        // observer would use (project-type namespace, or the PTY behind the tab).
+        if (termData.ipcNamespace) {
+          self._api[termData.ipcNamespace]?.resize({ projectIndex: termData.projectIndex, cols, rows });
+        } else {
+          self._api.terminal.resize({ id: self._ptyTarget(id), cols, rows });
+        }
+      });
+    });
+  }
+
   // ── Navigation ──
 
   _getVisibleTerminalIds() {
@@ -4382,7 +4411,7 @@ class TerminalManager extends BaseComponent {
       const terminal = new Terminal({
         theme: getTerminalTheme(terminalThemeId),
         fontFamily: TERMINAL_FONTS.claude.fontFamily,
-        fontSize: TERMINAL_FONTS.claude.fontSize,
+        fontSize: getSetting('terminalFontSize') || TERMINAL_FONTS.claude.fontSize,
         cursorBlink: true,
         scrollback: 5000
       });
@@ -4826,6 +4855,7 @@ module.exports = {
   getTerminalLastTool: (id) => _getInstance()._terminalContext.get(id)?.lastTool || null,
   resumeSession: (project, sessionId, options) => _getInstance().resumeSession(project, sessionId, options),
   updateAllTerminalsTheme: (themeId) => _getInstance().updateAllTerminalsTheme(themeId),
+  updateAllTerminalsFontSize: (fontSize) => _getInstance().updateAllTerminalsFontSize(fontSize),
   focusNextTerminal: () => _getInstance().focusNextTerminal(),
   focusPrevTerminal: () => _getInstance().focusPrevTerminal(),
   openFileTab: (filePath, project) => _getInstance().openFileTab(filePath, project),

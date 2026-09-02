@@ -779,6 +779,8 @@
     "accentColorDesc": "Sesuaikan warna utama antarmuka",
     "terminalTheme": "Tema terminal",
     "terminalThemeDesc": "Ubah warna terminal",
+    "terminalFontSize": "Ukuran font terminal",
+    "terminalFontSizeDesc": "Sesuaikan ukuran font yang digunakan di tab terminal",
     "theme": "Tema terminal",
     "notifications": "Notifikasi",
     "closeAction": "Aksi penutupan",
