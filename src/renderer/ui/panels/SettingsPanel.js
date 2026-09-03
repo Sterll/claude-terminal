@@ -706,6 +706,16 @@ class SettingsPanel extends BasePanel {
               </div>
               <div class="settings-toggle-row">
                 <div class="settings-toggle-label">
+                  <div>${t('navigationMode.settingsLabel')}</div>
+                  <div class="settings-toggle-desc">${t('navigationMode.settingsHint')}</div>
+                </div>
+                <select id="navigation-mode-select" class="settings-select">
+                  <option value="tabs" ${settings.navigationMode !== 'sidebar' ? 'selected' : ''}>${t('navigationMode.optionTabs')}</option>
+                  <option value="sidebar" ${settings.navigationMode === 'sidebar' ? 'selected' : ''}>${t('navigationMode.optionSidebar')}</option>
+                </select>
+              </div>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-label">
                   <div>${t('settings.compactProjects')}</div>
                   <div class="settings-toggle-desc">${t('settings.compactProjectsDesc')}</div>
                 </div>
@@ -1909,6 +1919,14 @@ class SettingsPanel extends BasePanel {
           showProject: newDiscordRpcShowProject,
         });
       } catch (_) { /* discordRpc bridge unavailable */ }
+
+      // Swapping navigation relocates DOM and repaints the project-scoped
+      // screens, so it goes back through the renderer rather than being applied
+      // here — same path the first-launch card takes.
+      const navSelect = document.getElementById('navigation-mode-select');
+      if (navSelect && navSelect.value !== settings.navigationMode) {
+        document.dispatchEvent(new CustomEvent('navigation-mode-change', { detail: navSelect.value }));
+      }
 
       document.body.classList.toggle('compact-projects', newCompactProjects);
       document.body.classList.toggle('reduce-motion', newReduceMotion);

@@ -2355,3 +2355,112 @@ mark.md-search-hit.md-search-current {
 body.hide-tab-mode-toggle .tab-mode-toggle {
   display: none !important;
 }
+
+/* ── Sidebar navigation mode ──────────────────────────────────────────────
+   The pre-tab-bar terminals header and its filter row. Both navigations ship
+   in full and only one is mounted at a time, so these live alongside the
+   project bar rules rather than replacing them. ── */
+
+.terminals-header {
+  display: flex;
+  align-items: center;
+  background: var(--bg-secondary);
+  min-height: 0;
+  position: relative;
+}
+
+.terminals-header:has(.terminals-filter[style*="flex"]) {
+  min-height: 36px;
+  padding: 4px 0;
+}
+
+.filter-project {
+  color: var(--accent);
+  font-weight: 600;
+  background: var(--accent-dim);
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 1;
+}
+
+.filter-clear {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
+  margin-left: 4px;
+}
+
+.filter-clear svg {
+  width: 10px;
+  height: 10px;
+}
+
+.filter-clear:hover {
+  background: var(--accent);
+  color: white;
+}
+
+.filter-resume-session-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.filter-resume-session-btn:hover {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.filter-resume-session-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.filter-new-terminal-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.filter-new-terminal-btn:hover {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.filter-new-terminal-btn svg {
+  width: 14px;
+  height: 14px;
+}

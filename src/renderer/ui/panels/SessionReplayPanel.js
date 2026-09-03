@@ -1422,6 +1422,13 @@ function buildHtml() {
           </div>
         </div>
         <div class="sr-controls">
+          <!-- Sidebar navigation only: with no project bar to pick from, this
+               screen carries its own selector again. It drives the same active
+               project the bar does, not a second one. -->
+          <div class="sr-control-group sr-control-group--project">
+            <label class="sr-control-label">${t('sessionReplay.labelProject')}</label>
+            <div class="sr-cs-container" id="sr-project-select-wrap"></div>
+          </div>
           <div class="sr-control-group sr-control-group--branch" id="sr-branch-select-wrap" style="display:none">
             <label class="sr-control-label">${t('sessions.filterBranch')}</label>
             <div class="sr-cs-container"></div>
@@ -1469,6 +1476,26 @@ function init(containerEl, opts = {}) {
 
   const deleteBtn = container.querySelector('#sr-delete-btn');
   const exportBtn = container.querySelector('#sr-export-btn');
+
+  // Sidebar navigation only: the project selector this screen used to own.
+  // Picking here goes through the app's single project switch, so the panel
+  // still reads the active project from _activeProjectPath() either way.
+  const projWidget = makeCustomSelect(t('sessionReplay.selectProject'));
+  container.querySelector('#sr-project-select-wrap').appendChild(projWidget.el);
+  if (projectsState) {
+    const state = projectsState.get();
+    const projects = state.projects || [];
+    projWidget.setOptions(
+      `<option value="">${t('sessionReplay.selectProject')}</option>` +
+      projects.map(p => `<option value="${escapeHtml(p.path)}">${escapeHtml(p.name || p.path)}</option>`).join('')
+    );
+    projWidget.value = _activeProjectPath();
+    projWidget.addEventListener('change', () => {
+      const picked = projWidget.value;
+      if (!picked || picked === _activeProjectPath()) return;
+      document.dispatchEvent(new CustomEvent('project-select-by-path', { detail: picked }));
+    });
+  }
 
   // Create and inject custom select widgets
   const branchWidget = makeCustomSelect(t('sessions.allBranches'));

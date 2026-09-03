@@ -971,6 +971,8 @@ body.platform-darwin .titlebar-drag {
   background: var(--bg-primary);
   display: flex;
   flex-direction: column;
+  /* Positioning context for the docked projects panel in sidebar mode */
+  position: relative;
 }
 
 /* ============================================

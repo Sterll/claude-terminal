@@ -1403,7 +1403,9 @@
     "paramSubject": "Sujet",
     "paramActiveForm": "Forme active",
     "paramStatus": "Statut",
-    "labelSession": "Session"
+    "labelSession": "Session",
+    "labelProject": "Projet",
+    "selectProject": "Sélectionner un projet..."
   },
   "timetracking": {
     "title": "Suivi du temps",
@@ -3936,5 +3938,18 @@
       "watchMultiHint": "Choisissez un ou plusieurs projets. « N'importe quel projet » couvre aussi ceux ajoutés plus tard.",
       "watchMultiPickHint": "Surveillé par dépôt : choisissez au moins un projet."
     }
+  },
+  "navigationMode": {
+    "title": "Choisis ta navigation",
+    "intro": "Claude Terminal peut disposer tes projets de deux façons. Tu pourras changer à tout moment dans les Réglages.",
+    "tabsTitle": "Onglets de projet",
+    "tabsDesc": "Un onglet par projet ouvert en haut, comme un navigateur. Laisse le plus de place à l'écran sur lequel tu travailles.",
+    "sidebarTitle": "Colonne projets",
+    "sidebarDesc": "Une colonne projets permanente à gauche, comme avant. Recherche, dossiers et tous les projets restent visibles.",
+    "choose": "Utiliser celle-ci",
+    "settingsLabel": "Navigation",
+    "settingsHint": "Comment tu passes d'un projet à l'autre",
+    "optionTabs": "Onglets de projet",
+    "optionSidebar": "Colonne projets"
   }
 }
