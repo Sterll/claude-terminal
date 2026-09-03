@@ -567,7 +567,7 @@ body.platform-darwin .titlebar-drag {
 }
 
 .nav-separator {
-  padding: 10px 14px 4px;
+  padding: 6px 14px 2px;
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
@@ -577,7 +577,7 @@ body.platform-darwin .titlebar-drag {
 }
 
 .nav-separator--bare {
-  padding: 8px 14px 0;
+  padding: 5px 14px 0;
   border-top: 1px solid var(--border-color);
   margin-top: 4px;
 }
@@ -586,7 +586,7 @@ body.platform-darwin .titlebar-drag {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 14px;
+  padding: 7px 14px 7px 8px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
@@ -598,15 +598,15 @@ body.platform-darwin .titlebar-drag {
   text-align: left;
 }
 
-.nav-tab svg {
+.nav-tab > svg {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
   opacity: 0.7;
 }
 
-.nav-tab:hover svg,
-.nav-tab.active svg {
+.nav-tab:hover > svg,
+.nav-tab.active > svg {
   opacity: 1;
 }
 
@@ -632,7 +632,7 @@ body.platform-darwin .titlebar-drag {
   border-radius: 0 3px 3px 0;
 }
 
-.sidebar.collapsed .nav-tab.active::before {
+.sidebar.collapsed .nav-tabs .nav-tab.active::before {
   left: 0;
   right: 0;
   top: auto;
@@ -682,7 +682,9 @@ body.platform-darwin .titlebar-drag {
   min-width: 56px;
 }
 
-.sidebar.collapsed .nav-tab span {
+/* Scoped to the rail: the More dropdown is a sibling of .nav-tabs, and these
+   rules used to blank out its labels whenever the sidebar was collapsed. */
+.sidebar.collapsed .nav-tabs .nav-tab span {
   display: none;
 }
 
@@ -709,14 +711,14 @@ body.platform-darwin .titlebar-drag {
   padding: 0;
 }
 
-.sidebar.collapsed .nav-tab {
+.sidebar.collapsed .nav-tabs .nav-tab {
   justify-content: center;
   padding: 10px;
   position: relative;
 }
 
 /* Tooltip on hover when sidebar is collapsed */
-.sidebar.collapsed .nav-tab[data-tooltip]::after,
+.sidebar.collapsed .nav-tabs .nav-tab[data-tooltip]::after,
 .sidebar.collapsed .settings-btn[data-tooltip]::after,
 .sidebar.collapsed .notification-toggle[data-tooltip]::after {
   content: attr(data-tooltip);
@@ -738,14 +740,22 @@ body.platform-darwin .titlebar-drag {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-.sidebar.collapsed .nav-tab[data-tooltip]:hover::after,
+.sidebar.collapsed .nav-tabs .nav-tab[data-tooltip]:hover::after,
 .sidebar.collapsed .settings-btn[data-tooltip]:hover::after,
 .sidebar.collapsed .notification-toggle[data-tooltip]:hover::after {
   opacity: 1;
 }
 
+/* 56px cannot hold the footer row — stack it back up when collapsed. */
 .sidebar.collapsed .sidebar-footer {
   padding: 8px;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebar.collapsed .sidebar-footer .version {
+  margin-left: 0;
+  padding-right: 0;
 }
 
 .sidebar.collapsed .notification-toggle span,
@@ -779,6 +789,13 @@ body.platform-darwin .titlebar-drag {
   flex-shrink: 0;
 }
 
+/* Fixed tabs reserve the handle box without offering the affordance. */
+.nav-tab-drag-handle--fixed {
+  width: 12px;
+  height: 18px;
+  pointer-events: none;
+}
+
 .nav-tab:hover .nav-tab-drag-handle {
   opacity: 0.5;
 }
@@ -788,7 +805,7 @@ body.platform-darwin .titlebar-drag {
   color: var(--accent);
 }
 
-.sidebar.collapsed .nav-tab-drag-handle {
+.sidebar.collapsed .nav-tabs .nav-tab-drag-handle {
   display: none;
 }
 
@@ -885,11 +902,32 @@ body.platform-darwin .titlebar-drag {
 
 .sidebar-footer {
   margin-top: auto;
-  padding: 12px 16px;
+  padding: 6px 10px;
   border-top: 1px solid var(--border-color);
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Icon-only in the footer row; the label lives in the tooltip. */
+.sidebar-footer .notification-toggle span,
+.sidebar-footer .settings-btn span {
+  display: none;
+}
+
+.sidebar-footer .notification-toggle,
+.sidebar-footer .settings-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sidebar-footer .version {
+  margin-left: auto;
+  padding-right: 2px;
 }
 
 .notification-toggle {
@@ -1098,8 +1136,10 @@ body.platform-darwin .titlebar-drag {
     --projects-panel-width: 400px;
   }
 
+  /* A wide screen is not a tall one: take the extra room horizontally only.
+     The old 14px vertical padding added 238px to a nav that already overflowed. */
   .nav-tab {
-    padding: 14px 18px;
+    padding: 8px 18px 8px 10px;
   }
 
   .panel-header {

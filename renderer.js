@@ -3515,7 +3515,9 @@ document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
 });
 
 // ========== PINNED TABS SYSTEM ==========
-const _ALL_TABS_ORDER = ['claude', 'git', 'database', 'mcp', 'plugins', 'skills', 'agents', 'workflows', 'tasks', 'control-tower', 'dashboard', 'timetracking', 'session-replay', 'memory', 'workspace', 'errorlog', 'connectivity'];
+// Canonical order — must mirror the grouping in index.html, since the groups
+// carry meaning (whether the project tab drives the screen).
+const _ALL_TABS_ORDER = ['claude', 'git', 'dashboard', 'session-replay', 'tasks', 'control-tower', 'workspace', 'memory', 'timetracking', 'database', 'skills', 'agents', 'plugins', 'mcp', 'workflows', 'errorlog', 'connectivity'];
 
 function applyPinnedTabs() {
   const pinned = settingsState.get().pinnedTabs || _ALL_TABS_ORDER;
@@ -3594,17 +3596,61 @@ function _unpinTab(tabId) {
 }
 
 // ── Sidebar drag & drop ──────────────────────────────────────────────
+/**
+ * The separator a tab currently sits under, i.e. its group.
+ * @param {HTMLElement} tab
+ * @returns {HTMLElement|null}
+ */
+// Tabs whose position is not user-modifiable: Claude heads its group.
+const _FIXED_TABS = new Set(['claude']);
+
+function _groupOf(tab) {
+  let el = tab.previousElementSibling;
+  while (el && !el.classList.contains('nav-separator')) el = el.previousElementSibling;
+  return el;
+}
+
+/**
+ * Restore a saved order *within each group*.
+ *
+ * The previous version re-inserted every tab before the trailing "more"
+ * separator, which flattened all the groups the moment a single tab had been
+ * dragged. The groups say whether the project tab drives the screen, so they
+ * have to survive reordering.
+ */
 function _applyTabsOrder() {
   const order = settingsState.get().tabsOrder;
   if (!order || !order.length) return;
   const nav = document.querySelector('.nav-tabs');
-  const moreSep = document.getElementById('nav-separator-more');
-  if (!nav || !moreSep) return;
-  // Re-insert tabs in saved order, before the "more" separator
-  order.slice().reverse().forEach(tabId => {
+  if (!nav) return;
+
+  // Group each saved id by the separator its tab belongs to, then re-insert
+  // bottom-up inside that group only.
+  const byGroup = new Map();
+  for (const tabId of order) {
     const tab = nav.querySelector(`.nav-tab[data-tab="${tabId}"]`);
-    if (tab) nav.insertBefore(tab, moreSep);
-  });
+    if (!tab) continue;
+    if (_FIXED_TABS.has(tabId)) continue;
+    const group = _groupOf(tab);
+    // A tab above the first separator has no group — it stays put.
+    if (!group) continue;
+    if (!byGroup.has(group)) byGroup.set(group, []);
+    byGroup.get(group).push(tab);
+  }
+
+  for (const [group, tabs] of byGroup) {
+    // Anchor after any fixed tab already pinned to the top of this group.
+    let anchor = group;
+    let next = anchor.nextElementSibling;
+    while (next && next.classList.contains('nav-tab') && _FIXED_TABS.has(next.dataset.tab)) {
+      anchor = next;
+      next = anchor.nextElementSibling;
+    }
+    for (const tab of tabs) {
+      anchor.after(tab);
+      anchor = tab;
+    }
+  }
 }
 
 function _saveTabsOrder() {
@@ -3620,6 +3666,10 @@ function _reorderTab(draggedId, targetId, position) {
   const dragged = nav.querySelector(`.nav-tab[data-tab="${draggedId}"]`);
   const target = nav.querySelector(`.nav-tab[data-tab="${targetId}"]`);
   if (!dragged || !target) return;
+  if (_FIXED_TABS.has(draggedId)) return;
+  // Reordering stays inside a group: a tab under "Project" describes a screen
+  // the project tab drives, so moving it elsewhere would make the label lie.
+  if (_groupOf(dragged) !== _groupOf(target)) return;
   if (position === 'after') {
     target.after(dragged);
   } else {
@@ -3638,6 +3688,15 @@ function _initSidebarDragDrop() {
   // Add drag handle on each tab
   nav.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
     if (tab.id === 'btn-more-tabs') return;
+    if (_FIXED_TABS.has(tab.dataset.tab)) {
+      // No handle, but keep its footprint so the icon stays aligned with the rest.
+      if (!tab.querySelector(".nav-tab-drag-handle")) {
+        const spacer = document.createElement("span");
+        spacer.className = "nav-tab-drag-handle nav-tab-drag-handle--fixed";
+        tab.prepend(spacer);
+      }
+      return;
+    }
     if (tab.querySelector('.nav-tab-drag-handle')) return; // already added
     const handle = document.createElement('span');
     handle.className = 'nav-tab-drag-handle';
@@ -3825,8 +3884,10 @@ function _buildMoreDropdown() {
   dropdown.innerHTML = unpinned.map(tabId => {
     const tab = document.querySelector(`.nav-tab[data-tab="${tabId}"]`);
     if (!tab) return '';
-    const svg = tab.querySelector('svg')?.outerHTML || '';
-    const label = tab.querySelector('span')?.textContent?.trim() || tabId;
+    // Direct children only: _initSidebarDragDrop() prepends a drag-handle span
+    // with its own svg, and querySelector('svg'/'span') was picking that up.
+    const svg = tab.querySelector(':scope > svg')?.outerHTML || '';
+    const label = tab.querySelector(':scope > span:not(.nav-tab-drag-handle)')?.textContent?.trim() || tabId;
     return `
       <button class="nav-tab" data-more-tab="${tabId}" role="menuitem">
         ${svg}

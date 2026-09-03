@@ -1026,8 +1026,6 @@
     "tabClaude": "Claude",
     "moreTabs": "更多",
     "hiddenTabsCount": "{count}隐藏",
-    "separatorTools": "工具",
-    "separatorAI": "人工智能",
     "separatorExtensions": "扩展",
     "tabPlugins": "插件",
     "tabSkills": "技能",
@@ -1038,7 +1036,6 @@
     "tabDatabase": "数据库",
     "tabGit": "Git",
     "separatorCloud": "云",
-    "separatorAnalytics": "分析",
     "tabDashboard": "仪表板",
     "tabTimeTracking": "时间追踪",
     "tabSessionReplay": "重播",
@@ -1081,7 +1078,11 @@
     "tooltipWorkspace": "跨项目知识中心",
     "tooltipConnectivity": "GitHub、远程访问和云设置",
     "tooltipErrorLog": "通过 AI 分类进行集中式错误日志",
-    "tabErrorLog": "错误日志"
+    "tabErrorLog": "错误日志",
+    "separatorProject": "项目",
+    "separatorAllProjects": "所有项目",
+    "separatorCapabilities": "能力",
+    "separatorSystem": "系统"
   },
   "memory": {
     "panelDescription": "配置 Claude 在您的项目中的行为方式。全局设置适用于所有地方，项目设置会覆盖它们。",

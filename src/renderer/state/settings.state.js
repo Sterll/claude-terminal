@@ -68,7 +68,9 @@ const defaultSettings = {
   agentColors: {}, // Custom colors per tool/agent name: { 'Grep': '#ff0000', 'my-agent': '#00ff00' }
   enableFollowupSuggestions: true, // Show AI-generated follow-up suggestion chips after Claude responds (uses Haiku)
   enhancePrompts: false, // Opt-in: reformulate prompts via Haiku for better prompt engineering before sending
-  pinnedTabs: ['claude', 'git', 'database', 'mcp', 'plugins', 'skills', 'agents', 'workflows', 'tasks', 'control-tower', 'dashboard', 'timetracking', 'session-replay', 'memory', 'connectivity'], // Pinned sidebar tabs (rest go to More menu)
+  // Every tab is pinned by default: the grouped sidebar fits without overflow,
+  // so the More menu is now opt-in rather than the default state.
+  pinnedTabs: ['claude', 'git', 'dashboard', 'session-replay', 'tasks', 'control-tower', 'workspace', 'memory', 'timetracking', 'database', 'skills', 'agents', 'plugins', 'mcp', 'workflows', 'errorlog', 'connectivity'],
   activeTab: 'claude', // Last active sidebar tab (restored on restart)
   openProjectIds: [], // Projects with a tab in the project bar, in tab order (restored on restart)
   tabsOrder: null, // null = canonical order, otherwise array of all tabIds in custom order
@@ -141,6 +143,14 @@ function _migrateSettings(saved) {
   }
   if (saved.activeTab === 'cloud-panel') {
     saved.activeTab = 'connectivity';
+  }
+
+  // Workspaces and Error Log were never in the default pinned set, so nobody
+  // could have deliberately unpinned them. The grouped sidebar has room now.
+  if (Array.isArray(saved.pinnedTabs)) {
+    for (const id of ['workspace', 'errorlog']) {
+      if (!saved.pinnedTabs.includes(id)) saved.pinnedTabs.push(id);
+    }
   }
 }
 
