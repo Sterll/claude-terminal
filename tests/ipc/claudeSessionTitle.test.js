@@ -25,13 +25,14 @@ const { getClaudeSessions, readSessionTitle, invalidateSessionsCache } = require
 const PROJECT_PATH = '/tmp/title-demo';
 const sessionsDir = () => path.join(TMP_HOME, '.claude', 'projects', PROJECT_PATH.replace(/[^a-zA-Z0-9]/g, '-'));
 
-/** @param {{sessionId: string, customTitle?: string, aiTitle?: string, padding?: number}} opts */
-function writeSession({ sessionId, customTitle, aiTitle, padding = 0 }) {
+/** @param {{sessionId: string, customTitle?: string, aiTitle?: string, padding?: number, ts?: string}} opts */
+function writeSession({ sessionId, customTitle, aiTitle, padding = 0, ts }) {
   const dir = sessionsDir();
   fs.mkdirSync(dir, { recursive: true });
 
   const lines = [JSON.stringify({
     type: 'user', uuid: 'u-0', sessionId, cwd: PROJECT_PATH, gitBranch: 'main',
+    ...(ts ? { timestamp: ts } : {}),
     message: { role: 'user', content: 'the opening prompt' }
   })];
   if (aiTitle) lines.push(JSON.stringify({ type: 'ai-title', aiTitle, sessionId }));
@@ -60,8 +61,16 @@ describe('readSessionTitle', () => {
 
     expect(await readSessionTitle(file, size)).toEqual({
       customTitle: 'Renamed by hand',
-      aiTitle: 'Generated'
+      aiTitle: 'Generated',
+      lastActivity: ''
     });
+  });
+
+  test('reports the timestamp of the last stamped line as lastActivity', async () => {
+    const file = writeSession({ sessionId: 'a1b', aiTitle: 'Generated', ts: '2026-03-01T10:00:00.000Z' });
+    const { size } = fs.statSync(file);
+
+    expect((await readSessionTitle(file, size)).lastActivity).toBe('2026-03-01T10:00:00.000Z');
   });
 
   test('falls back to ai-title when the session was never renamed', async () => {
@@ -101,7 +110,7 @@ describe('readSessionTitle', () => {
 
   test('returns empty titles for an unreadable file', async () => {
     expect(await readSessionTitle(path.join(sessionsDir(), 'nope.jsonl'), 10)).toEqual({
-      customTitle: '', aiTitle: ''
+      customTitle: '', aiTitle: '', lastActivity: ''
     });
   });
 });
@@ -128,13 +137,14 @@ describe('getClaudeSessions', () => {
     expect(sessions.find(s => s.sessionId === 'b2').title).toBe('');
   });
 
-  test('reads a title only for the sessions it returns', async () => {
-    // The result is capped at 50, so on a project with more sessions than that a
-    // tail read per file would be spent on transcripts nobody is about to see.
+  test('reads tails only for the ranking candidates, not every session', async () => {
+    // The result is capped at 50 and tail reads at 80 candidates (pre-ranked by
+    // mtime), so a project with hundreds of transcripts doesn't pay a 128 KB
+    // read for files that can't make the cut anyway.
     const dir = sessionsDir();
     fs.rmSync(dir, { recursive: true, force: true });
 
-    const total = 60;
+    const total = 90;
     for (let i = 0; i < total; i++) {
       const id = `c${String(i).padStart(2, '0')}`;
       const file = writeSession({ sessionId: id, customTitle: `Title ${i}`, padding: 1 });
@@ -149,14 +159,34 @@ describe('getClaudeSessions', () => {
       const sessions = await getClaudeSessions(PROJECT_PATH);
 
       expect(sessions).toHaveLength(50);
-      expect(openSpy).toHaveBeenCalledTimes(50);
+      expect(openSpy).toHaveBeenCalledTimes(80);
       // The 50 kept are the most recent ones, and each carries its title
-      expect(sessions[0].sessionId).toBe('c59');
-      expect(sessions[0].title).toBe('Title 59');
+      expect(sessions[0].sessionId).toBe('c89');
+      expect(sessions[0].title).toBe('Title 89');
       expect(sessions.every(s => s.title.startsWith('Title '))).toBe(true);
     } finally {
       openSpy.mockRestore();
     }
+  });
+
+  test('orders by last message timestamp, not by file mtime', async () => {
+    // Claude Code keeps appending housekeeping lines after the last real
+    // message, so mtime can leapfrog a genuinely more recent conversation.
+    const dir = sessionsDir();
+    fs.rmSync(dir, { recursive: true, force: true });
+
+    const active = writeSession({ sessionId: 'e-active', padding: 1, ts: '2026-02-01T12:00:00.000Z' });
+    const idle = writeSession({ sessionId: 'e-idle', padding: 1, ts: '2026-02-01T11:00:00.000Z' });
+    // The idle session's file was touched later than the active one's
+    fs.utimesSync(active, new Date('2026-02-01T12:01:00Z'), new Date('2026-02-01T12:01:00Z'));
+    fs.utimesSync(idle, new Date('2026-02-01T13:00:00Z'), new Date('2026-02-01T13:00:00Z'));
+
+    const sessions = await getClaudeSessions(PROJECT_PATH);
+
+    expect(sessions.map(s => s.sessionId)).toEqual(['e-active', 'e-idle']);
+    // `modified` follows the conversation so time groups and labels stay truthful
+    expect(sessions[0].modified).toBe('2026-02-01T12:00:00.000Z');
+    expect(sessions[1].modified).toBe('2026-02-01T11:00:00.000Z');
   });
 
   test('does not leak the internal filePath into the returned sessions', async () => {
