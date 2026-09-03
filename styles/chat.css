@@ -763,9 +763,10 @@ mark.chat-search-hit.current {
   align-items: center;
   gap: 12px;
   margin: 16px 0 12px;
-  color: var(--text-tertiary);
+  /* Same reason as .history below: opacity 0.6 over --text-tertiary rendered
+     11px text at 3.04:1. --text-muted holds 5.27:1 at its nominal value. */
+  color: var(--text-muted);
   font-size: 11px;
-  opacity: 0.6;
 }
 .chat-history-divider::before,
 .chat-history-divider::after {
@@ -773,7 +774,8 @@ mark.chat-search-hit.current {
   flex: 1;
   height: 1px;
   background: currentColor;
-  opacity: 0.3;
+  /* Decorative rules, not text — dimming them with alpha is fine. */
+  opacity: 0.25;
 }
 .chat-history-divider span {
   white-space: nowrap;
@@ -797,12 +799,29 @@ mark.chat-search-hit.current {
   color: var(--text-secondary);
 }
 
-/* History messages: slightly dimmed to distinguish from live messages */
+/* History messages: dimmed one notch down the text ramp so replayed turns read
+   as past. This used to be `opacity: 0.7` on the container, but that multiplies
+   every nested gray too: secondary text landed at 4.47:1 and muted at 3.14:1,
+   under the AA floor the ramp in base.css exists to hold. Remapping the ramp
+   variables dims the whole subtree in one lever (chat.css reads them in 166
+   places) and keeps every level legible.
+   Ratios vs --bg-primary #0d0d0d: 8.08 / 6.57 / 5.85 / 5.27 */
 .chat-msg.history,
 .chat-tool-card.history,
 .chat-thinking.history {
-  opacity: 0.7;
+  --text-primary: #a7a7a7;
+  --text-secondary: #969696;
+  --text-tertiary: #8d8d8d;
+  --text-muted: #858585;
   animation: none;
+}
+
+/* The accent chrome was riding that container opacity, so without it replayed
+   cards would sit brighter than live ones. Pull it back explicitly instead. */
+.chat-tool-card.history {
+  background: linear-gradient(135deg, rgba(var(--accent-color-rgb, 99, 102, 241), 0.04), rgba(var(--accent-color-rgb, 99, 102, 241), 0.015));
+  border-color: rgba(var(--accent-color-rgb, 99, 102, 241), 0.09);
+  border-left-color: rgba(var(--accent-color-rgb, 99, 102, 241), 0.32);
 }
 
 /* Loading pulse animation for welcome logo */
