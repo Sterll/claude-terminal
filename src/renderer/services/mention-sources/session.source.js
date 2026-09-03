@@ -52,7 +52,7 @@ module.exports = {
     const sessions = await loadSessions(ctx.project?.path);
     return sessions.slice(0, 60).map(s => ({
       id: s.sessionId,
-      firstPrompt: s.firstPrompt || s.summary || s.sessionId?.slice(0, 8) || '?',
+      firstPrompt: s.title || s.firstPrompt || s.summary || s.sessionId?.slice(0, 8) || '?',
       summary: s.summary || '',
       modified: s.modified,
       messageCount: s.messageCount || 0,

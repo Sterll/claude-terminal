@@ -8,6 +8,7 @@
 const api = window.electron_api;
 const { path, fs, process: nodeProcess, __dirname } = window.electron_nodeModules;
 const { fileExists, fsp, ensureDirs } = require('./src/renderer/utils/fs-async');
+const { matchesSessionQuery } = require('./src/renderer/utils/sessionSearch');
 
 document.body.classList.add(`platform-${nodeProcess.platform}`);
 
@@ -1813,6 +1814,17 @@ async function _saveModalPins() {
   try { await fsp.writeFile(_modalPinsFile, JSON.stringify(_modalPinsCache || {}, null, 2), 'utf8'); } catch {}
 }
 
+// Names given to sessions inside Claude Terminal, written by the Sessions panel.
+// Read fresh on every modal open rather than cached, so a rename made in the
+// panel shows up here instead of the two lists disagreeing.
+const _modalNamesFile = path.join(window.electron_nodeModules.os.homedir(), '.claude-terminal', 'session-names.json');
+
+async function _loadModalNames() {
+  try {
+    return JSON.parse(await fsp.readFile(_modalNamesFile, 'utf8')) || {};
+  } catch { return {}; }
+}
+
 async function _toggleModalPin(sessionId) {
   const pins = await _loadModalPins();
   if (pins[sessionId]) delete pins[sessionId]; else pins[sessionId] = true;
@@ -1873,18 +1885,26 @@ function _truncateModalText(text, max) {
 async function _preprocessModalSessions(sessions) {
   const now = Date.now();
   const pins = await _loadModalPins();
+  const names = await _loadModalNames();
   return sessions.map(session => {
     const promptResult = _cleanModalSessionText(session.firstPrompt);
     const summaryResult = _cleanModalSessionText(session.summary);
     const skillName = promptResult.skillName || summaryResult.skillName;
+    const customName = names[session.sessionId] || '';
     let displayTitle = '', displaySubtitle = '', isSkill = false;
-    if (summaryResult.text) { displayTitle = summaryResult.text; displaySubtitle = promptResult.text; }
+    // Same order as the Sessions panel: a name given inside Claude Terminal wins,
+    // then the title Claude Code carries in the transcript (`custom-title`, else
+    // `ai-title`), then the opening prompt, which can run to thousands of chars
+    if (customName) { displayTitle = customName; displaySubtitle = session.title || summaryResult.text || promptResult.text; }
+    else if (session.title) { displayTitle = session.title; displaySubtitle = summaryResult.text || promptResult.text; }
+    else if (summaryResult.text) { displayTitle = summaryResult.text; displaySubtitle = promptResult.text; }
     else if (promptResult.text) { displayTitle = promptResult.text; }
     else if (skillName) { displayTitle = '/' + skillName; isSkill = true; }
     else { displayTitle = t('newProject.untitledConversation'); }
     const hoursAgo = (now - new Date(session.modified).getTime()) / 3600000;
     const freshness = hoursAgo < 1 ? 'hot' : hoursAgo < 24 ? 'warm' : '';
-    const searchText = (displayTitle + ' ' + displaySubtitle + ' ' + (session.gitBranch || '')).toLowerCase();
+    const searchText = (displayTitle + ' ' + displaySubtitle + ' ' + (session.gitBranch || '')
+      + ' ' + customName).toLowerCase();
     const pinned = !!pins[session.sessionId];
     return { ...session, displayTitle, displaySubtitle, isSkill, freshness, searchText, pinned };
   });
@@ -2156,7 +2176,7 @@ async function showSessionsModal(project) {
           cards.forEach(card => {
             const sid = card.dataset.sid;
             const session = sessionMap.get(sid);
-            visibility.push({ card, match: !query || (session && session.searchText.includes(query)) });
+            visibility.push({ card, match: matchesSessionQuery(session, query) });
           });
           visibility.forEach(({ card, match }) => { card.style.display = match ? '' : 'none'; });
           groupEls.forEach(group => {

@@ -102,6 +102,51 @@ async function extractSessionInfo(filePath) {
   });
 }
 
+// Claude Code appends `custom-title` (renamed by the user) and `ai-title`
+// (generated) lines as the session goes, so the current title is near the END of
+// the file. Reading forward to find it would mean streaming the whole transcript,
+// which reaches 200 MB — so only the tail is read.
+const TITLE_TAIL_BYTES = 128 * 1024;
+
+/**
+ * Read the session's current title from the tail of its JSONL file.
+ * @param {string} filePath
+ * @param {number} size - File size in bytes (from a stat the caller already did)
+ * @returns {Promise<{customTitle: string, aiTitle: string}>}
+ */
+async function readSessionTitle(filePath, size) {
+  let handle;
+  try {
+    handle = await fs.promises.open(filePath, 'r');
+    const length = Math.min(size, TITLE_TAIL_BYTES);
+    const start = Math.max(0, size - length);
+    const buffer = Buffer.alloc(length);
+    await handle.read(buffer, 0, length, start);
+
+    const lines = buffer.toString('utf8').split('\n');
+    // The first line is cut in half unless the read started at the beginning
+    if (start > 0) lines.shift();
+
+    let customTitle = '';
+    let aiTitle = '';
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      if (!line || line.indexOf('-title"') === -1) continue; // cheap pre-filter
+      try {
+        const obj = JSON.parse(line);
+        if (!customTitle && obj.type === 'custom-title' && obj.customTitle) customTitle = obj.customTitle;
+        else if (!aiTitle && obj.type === 'ai-title' && obj.aiTitle) aiTitle = obj.aiTitle;
+        if (customTitle && aiTitle) break;
+      } catch { /* skip malformed lines */ }
+    }
+    return { customTitle, aiTitle };
+  } catch {
+    return { customTitle: '', aiTitle: '' };
+  } finally {
+    await handle?.close().catch(() => {});
+  }
+}
+
 /**
  * Get Claude sessions for a project by scanning .jsonl files directly
  * @param {string} projectPath - The project path
@@ -143,10 +188,14 @@ async function getClaudeSessions(projectPath) {
         return {
           sessionId,
           summary: '',
+          title: '',
+          customTitle: '',
+          aiTitle: '',
           firstPrompt: info.firstPrompt || '',
           messageCount: info.messageCount || 0,
           modified: stat.mtime.toISOString(),
           size: stat.size,
+          filePath,
           gitBranch: info.gitBranch
         };
       } catch {
@@ -174,10 +223,20 @@ async function getClaudeSessions(projectPath) {
     } catch { /* index may not exist or be stale, that's ok */ }
 
     // Sort by modified date (most recent first) and limit to 50
-    return allSessions
+    const top = allSessions
       .sort((a, b) => new Date(b.modified) - new Date(a.modified))
-      .slice(0, 50)
-      .map(({ size, ...session }) => session);
+      .slice(0, 50);
+
+    // Titles are read only for the sessions actually returned: a 128 KB tail read
+    // per file is wasted on the ones the slice above just dropped.
+    await Promise.all(top.map(async (session) => {
+      const { customTitle, aiTitle } = await readSessionTitle(session.filePath, session.size);
+      session.title = customTitle || aiTitle || '';
+      session.customTitle = customTitle;
+      session.aiTitle = aiTitle;
+    }));
+
+    return top.map(({ size, filePath, ...session }) => session);
   } catch (error) {
     console.error('Error reading Claude sessions:', error);
     return [];
@@ -963,4 +1022,4 @@ function registerClaudeHandlers() {
   });
 }
 
-module.exports = { registerClaudeHandlers, getClaudeSessions, loadSessionHistory, parseSessionReplay, moveSession, findStraySidecars };
+module.exports = { registerClaudeHandlers, getClaudeSessions, loadSessionHistory, parseSessionReplay, moveSession, findStraySidecars, readSessionTitle };

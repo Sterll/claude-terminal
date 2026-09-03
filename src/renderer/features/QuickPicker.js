@@ -335,7 +335,7 @@ function buildSections(query, mode, currentProject) {
       sections.push({ key: 'sessions', label: t('quickPicker.section.sessions'), error: true, items: [] });
     } else if (sessions !== null) {
       const items = sessions.map(s => {
-        const label = s.summary || s.firstPrompt || s.sessionId;
+        const label = s.title || s.summary || s.firstPrompt || s.sessionId;
         const { match, score, labelHtml } = scoreItem(q, label, s.sessionId);
         if (!match) return null;
         return {
