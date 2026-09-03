@@ -158,6 +158,24 @@ function registerOsc52Handler(terminal) {
 function resetOutputSilenceTimer(_id) { /* no-op */ }
 function clearOutputSilenceTimer(_id) { /* no-op */ }
 
+/**
+ * The PTY this tab talks to.
+ *
+ * A tab opened as a terminal is keyed by its PTY id, so the two are the same and
+ * most of this file can treat them as interchangeable. A tab that reached
+ * terminal mode by switching out of chat cannot: it keeps the `chat-…` key it
+ * was created with, and its PTY is recorded separately. Addressing the PTY by
+ * the tab id there reaches nothing — which is how a switched tab kept a live
+ * `claude` running after it was closed.
+ *
+ * @param {object|null} termData
+ * @param {string|number} tabId
+ * @returns {string|number}
+ */
+function ptyIdOf(termData, tabId) {
+  return termData?.ptyId ?? tabId;
+}
+
 function detectCompletionSignal(terminal) {
   if (!terminal?.buffer?.active) return null;
   const buf = terminal.buffer.active;
@@ -503,6 +521,8 @@ class TerminalManager extends BaseComponent {
     this._terminalContext = new Map();
     this._tabActivationHistory = new Map();
     this._loadingTimeouts = new Map();
+    // Tabs mid mode-switch — the chat->terminal leg awaits a PTY spawn.
+    this._modeSwitching = new Set();
     this._callbacks = {
       onNotification: null,
       onRenderProjects: null,
@@ -537,7 +557,8 @@ class TerminalManager extends BaseComponent {
     this._ipcDispatcherInitialized = true;
     const self = this;
     this._api.terminal.onData((data) => {
-      self._lastTerminalData.set(data.id, Date.now());
+      // The activity stamp is recorded by the handler, under the *tab* id — the
+      // readers (`_finalizeReady`) key on that, not on the PTY id we get here.
       const handler = self._terminalDataHandlers.get(data.id);
       if (handler) handler(data);
     });
@@ -547,10 +568,27 @@ class TerminalManager extends BaseComponent {
     });
   }
 
-  _registerTerminalHandler(id, onData, onExit) {
+  /**
+   * Route one PTY's output to a tab.
+   *
+   * The two ids differ once a tab has switched modes (see `ptyIdOf`): the
+   * handler map is keyed by the PTY, because that is what the main process
+   * reports, but every piece of state it touches is keyed by the tab. Passing
+   * only the PTY id — as this used to — meant `getTerminal()` missed, so a
+   * switched tab recorded no output at all and the ready/working debounce never
+   * saw the terminal as busy.
+   *
+   * @param {string|number} ptyId
+   * @param {Function} onData
+   * @param {Function} onExit
+   * @param {string|number} [tabId] - Defaults to `ptyId` for unswitched tabs
+   */
+  _registerTerminalHandler(ptyId, onData, onExit, tabId = ptyId) {
     this._initIpcDispatcher();
+    const self = this;
     const wrappedOnData = (data) => {
-      const td = getTerminal(id);
+      self._lastTerminalData.set(tabId, Date.now());
+      const td = getTerminal(tabId);
       if (td) {
         const chunk = (data && typeof data.data === 'string') ? data.data : '';
         if (chunk) appendTerminalOutput(td, chunk);
@@ -558,8 +596,8 @@ class TerminalManager extends BaseComponent {
       }
       if (onData) onData(data);
     };
-    this._terminalDataHandlers.set(id, wrappedOnData);
-    this._terminalExitHandlers.set(id, onExit);
+    this._terminalDataHandlers.set(ptyId, wrappedOnData);
+    this._terminalExitHandlers.set(ptyId, onExit);
   }
 
   _unregisterTerminalHandler(id) {
@@ -725,6 +763,20 @@ class TerminalManager extends BaseComponent {
 
   // ── Paste helpers ──
 
+  /**
+   * The PTY behind a tab, for the raw-input channel.
+   *
+   * The input helpers below are handed a *tab* id — they look the tab up for its
+   * xterm instance and its state — so they have to translate before writing to
+   * the PTY. Identity for a tab that never switched mode. The type consoles
+   * (fivem/webapp) pass a projectIndex on their own channels and never get here.
+   *
+   * @param {string|number} tabId
+   */
+  _ptyTarget(tabId) {
+    return ptyIdOf(getTerminal(tabId), tabId);
+  }
+
   _performPaste(terminalId, inputChannel = 'terminal-input') {
     const now = Date.now();
     if (now - this._lastPasteTime < PASTE_DEBOUNCE_MS) return;
@@ -760,7 +812,7 @@ class TerminalManager extends BaseComponent {
       } else if (inputChannel === 'webapp-input') {
         api.webapp.input({ projectIndex: terminalId, data: text });
       } else {
-        api.terminal.input({ id: terminalId, data: text });
+        api.terminal.input({ id: this._ptyTarget(terminalId), data: text });
       }
     };
     const tryImagePaste = () => this._relayImagePaste(terminalId, inputChannel);
@@ -786,7 +838,7 @@ class TerminalManager extends BaseComponent {
   _relayImagePaste(terminalId, inputChannel) {
     if (inputChannel !== 'terminal-input') return;
     const isWindows = window.electron_nodeModules?.process?.platform === 'win32';
-    this._api.terminal.input({ id: terminalId, data: isWindows ? '\x1bv' : '\x16' });
+    this._api.terminal.input({ id: this._ptyTarget(terminalId), data: isWindows ? '\x1bv' : '\x16' });
   }
 
   _setupClipboardShortcuts(wrapper, terminal, terminalId, inputChannel = 'terminal-input') {
@@ -951,7 +1003,7 @@ class TerminalManager extends BaseComponent {
           } else if (inputChannel === 'webapp-input') {
             self._api.webapp.input({ projectIndex: terminalId, data: '\n' });
           } else {
-            self._api.terminal.input({ id: terminalId, data: '\n' });
+            self._api.terminal.input({ id: self._ptyTarget(terminalId), data: '\n' });
           }
         }
         return false;
@@ -978,7 +1030,7 @@ class TerminalManager extends BaseComponent {
 
         if (e.key === 'Backspace') {
           if (inputChannel === 'terminal-input') {
-            self._api.terminal.input({ id: terminalId, data: '\x17' });
+            self._api.terminal.input({ id: self._ptyTarget(terminalId), data: '\x17' });
             return false;
           }
           return true;
@@ -1021,7 +1073,7 @@ class TerminalManager extends BaseComponent {
           if (inputChannel === 'terminal-input') {
             const ts = getSetting('terminalShortcuts') || {};
             if (ts.ctrlArrow?.enabled === false) return true;
-            self._api.terminal.input({ id: terminalId, data: '\x1b[1;5D' });
+            self._api.terminal.input({ id: self._ptyTarget(terminalId), data: '\x1b[1;5D' });
             return false;
           }
           return true;
@@ -1030,7 +1082,7 @@ class TerminalManager extends BaseComponent {
           if (inputChannel === 'terminal-input') {
             const ts = getSetting('terminalShortcuts') || {};
             if (ts.ctrlArrow?.enabled === false) return true;
-            self._api.terminal.input({ id: terminalId, data: '\x1b[1;5C' });
+            self._api.terminal.input({ id: self._ptyTarget(terminalId), data: '\x1b[1;5C' });
             return false;
           }
           return true;
@@ -1419,7 +1471,11 @@ class TerminalManager extends BaseComponent {
         if (termData.chatView) {
           termData.chatView.focus();
         }
-      } else if (termData.type !== 'file') {
+      } else if (termData.type !== 'file' && termData.terminal && termData.fitAddon) {
+        // Guarded: a mode switch whose PTY failed to spawn leaves the tab in
+        // terminal mode with no xterm attached, and an unguarded fit() there
+        // threw on every later click on the tab — taking the rest of the click
+        // handler, including the mode toggle, down with it.
         termData.fitAddon.fit();
         termData.terminal.focus();
       }
@@ -1519,7 +1575,9 @@ class TerminalManager extends BaseComponent {
       if (termData.viewerCleanup) termData.viewerCleanup();
       removeTerminal(id);
     } else {
-      this._api.terminal.kill({ id });
+      // Not `id`: a tab that switched out of chat mode owns a PTY under a
+      // different key, and killing `id` there would leave `claude` running.
+      this._api.terminal.kill({ id: ptyIdOf(termData, id) });
       this._cleanupTerminalResources(termData);
       removeTerminal(id);
     }
@@ -3824,9 +3882,23 @@ class TerminalManager extends BaseComponent {
 
   // ── Switch terminal mode ──
 
+  /**
+   * Flip a tab between the Claude CLI in a PTY and the Agent SDK chat view.
+   *
+   * The conversation travels with it: both runtimes address the same session by
+   * id, so the switch resumes rather than starting over. Without that the toggle
+   * looked broken — you left a conversation and landed on a blank "Initializing
+   * Claude Code…", with the session you came from still open in a PTY that
+   * nothing could reach any more.
+   *
+   * @param {string|number} id - Tab id
+   */
   async switchTerminalMode(id) {
     const termData = getTerminal(id);
     if (!termData || termData.isBasic) return;
+    // Re-entrancy guard: the chat->terminal leg awaits a PTY spawn, and a second
+    // click during that window would tear down the half-built tab.
+    if (this._modeSwitching.has(id)) return;
 
     const project = termData.project;
     const currentMode = termData.mode || 'terminal';
@@ -3836,15 +3908,42 @@ class TerminalManager extends BaseComponent {
 
     if (!wrapper || !tab) return;
 
+    this._modeSwitching.add(id);
+    try {
+      await this._switchTerminalMode(id, termData, project, currentMode, newMode, wrapper, tab);
+    } finally {
+      this._modeSwitching.delete(id);
+    }
+  }
+
+  async _switchTerminalMode(id, termData, project, currentMode, newMode, wrapper, tab) {
+    // Carried across the switch so the same conversation continues on the other
+    // side: the chat view reports its SDK session id back into termData, and the
+    // CLI takes it as --resume.
+    const sessionId = termData.claudeSessionId || null;
+    // A worktree tab runs somewhere other than the project root; project.path
+    // would silently move it back to the main checkout.
+    const cwd = termData.cwd || project.path;
+
     if (currentMode === 'terminal') {
-      this._api.terminal.kill({ id });
+      this._api.terminal.kill({ id: ptyIdOf(termData, id) });
       this._cleanupTerminalResources(termData);
       clearOutputSilenceTimer(id);
       this._cancelScheduledReady(id);
+      // The outgoing terminal may still hold a 30s overlay-dismissal timer; it
+      // would fire into a tab that is a chat by then.
+      const pendingLoad = this._loadingTimeouts.get(id);
+      if (pendingLoad) {
+        clearTimeout(pendingLoad);
+        this._loadingTimeouts.delete(id);
+      }
     } else if (currentMode === 'chat') {
       if (termData.chatView) {
         termData.chatView.destroy();
       }
+      // Drop the destroyed view now: the PTY spawn below is awaited, and
+      // anything that activates the tab meanwhile would focus() a dead view.
+      updateTerminal(id, { chatView: null });
     }
 
     wrapper.innerHTML = '';
@@ -3855,16 +3954,29 @@ class TerminalManager extends BaseComponent {
       wrapper.classList.add('chat-wrapper');
       tab.classList.add('chat-mode');
 
+      const projSettings = getProjectSettingsState(termData.parentProjectId || project.id) || {};
       const chatView = createChatView(wrapper, project, {
         terminalId: id,
-        skipPermissions: getSetting('skipPermissions') || false,
+        // The CLI just wrote this session; pick it up instead of opening a blank one.
+        resumeSessionId: sessionId,
+        skipPermissions: getSetting('skipPermissions') || projSettings.skipPermissions === true,
+        initialModel: projSettings.chatModel || null,
+        initialEffort: projSettings.effortLevel || null,
         builtinSystemPrompt: getBuiltinSystemPrompt(project.type),
+        onSessionStart: (sid) => updateTerminal(id, { claudeSessionId: sid }),
+        onTabRename: (name) => {
+          const nameEl = tab.querySelector('.tab-name');
+          if (nameEl) nameEl.textContent = name;
+          updateTerminal(id, { name });
+        },
         onStatusChange: (status, substatus) => self._updateChatTerminalStatus(id, status, substatus),
         onSwitchTerminal: (dir) => self._callbacks.onSwitchTerminal?.(dir),
         onSwitchProject: (dir) => self._callbacks.onSwitchProject?.(dir),
       });
 
-      updateTerminal(id, { mode: 'chat', chatView, terminal: null, fitAddon: null, status: 'ready' });
+      // ptyId cleared along with the PTY it named, so a later close does not try
+      // to kill an id the main process may since have recycled.
+      updateTerminal(id, { mode: 'chat', chatView, terminal: null, fitAddon: null, ptyId: null, status: 'ready' });
 
       const toggleBtn = tab.querySelector('.tab-mode-toggle');
       if (toggleBtn) {
@@ -3890,16 +4002,21 @@ class TerminalManager extends BaseComponent {
       terminal.loadAddon(fitAddon);
 
       const result = await this._api.terminal.create({
-        cwd: project.path,
+        cwd,
         runClaude: true,
-        skipPermissions: getSetting('skipPermissions') || false
+        skipPermissions: getSetting('skipPermissions') || false,
+        // Continue the chat's conversation rather than opening a fresh one.
+        ...(sessionId ? { resumeSessionId: sessionId } : {}),
+        // Attribution for the output capture and the terminal_exit_code triggers.
+        projectId: project.id,
+        projectPath: project.path
       });
 
       if (result && typeof result === 'object' && result.success === false) {
         console.error('Failed to create terminal on mode switch:', result.error);
         terminal.dispose();
         wrapper.innerHTML = `<div class="terminal-error-state"><p>${escapeHtml(result.error || t('terminals.createError'))}</p></div>`;
-        updateTerminal(id, { mode: 'terminal', chatView: null, terminal: null, fitAddon: null, status: 'error' });
+        updateTerminal(id, { mode: 'terminal', chatView: null, terminal: null, fitAddon: null, ptyId: null, status: 'error' });
         if (this._callbacks.onNotification) {
           this._callbacks.onNotification('info', result.error || t('terminals.createError'), null);
         }
@@ -3944,10 +4061,14 @@ class TerminalManager extends BaseComponent {
         }
       }, 100);
 
-      this._setupPasteHandler(wrapper, ptyId, 'terminal-input');
-      this._setupClipboardShortcuts(wrapper, terminal, ptyId, 'terminal-input');
-      this._setupRightClickHandler(wrapper, terminal, ptyId, 'terminal-input');
-      terminal.attachCustomKeyEventHandler(this._createTerminalKeyHandler(terminal, ptyId, 'terminal-input'));
+      // Tab id, not ptyId — these look the tab up for its xterm instance (that
+      // is what preserves bracketed paste) and translate to the PTY themselves.
+      // Handing them the raw ptyId made every lookup miss, so a switched tab
+      // pasted multi-line text as a run of Enters.
+      this._setupPasteHandler(wrapper, id, 'terminal-input');
+      this._setupClipboardShortcuts(wrapper, terminal, id, 'terminal-input');
+      this._setupRightClickHandler(wrapper, terminal, id, 'terminal-input');
+      terminal.attachCustomKeyEventHandler(this._createTerminalKeyHandler(terminal, id, 'terminal-input'));
 
       let lastTitle = '';
       terminal.onTitleChange(title => {
@@ -3963,7 +4084,8 @@ class TerminalManager extends BaseComponent {
           const td = getTerminal(id);
           if (td?.project?.id) heartbeat(td.project.id, 'terminal');
         },
-        () => self.closeTerminal(id)
+        () => self.closeTerminal(id),
+        id
       );
 
       const storedTermData = getTerminal(id);
@@ -4005,7 +4127,11 @@ class TerminalManager extends BaseComponent {
       terminal.focus();
     }
 
-    tab.className = tab.className.replace(/status-\w+/, `status-${getTerminal(id)?.status || 'ready'}`);
+    // classList rather than a regex over className: `/status-\w+/` matched
+    // inside `substatus-thinking` first and rewrote that instead.
+    tab.classList.remove('status-working', 'status-ready', 'status-loading', 'status-error',
+      'substatus-thinking', 'substatus-tool', 'substatus-waiting');
+    tab.classList.add(`status-${getTerminal(id)?.status || 'ready'}`);
   }
 
   // ── Cleanup ──
@@ -4085,7 +4211,7 @@ class TerminalManager extends BaseComponent {
 
     if (data.isBasic || data.mode === 'terminal') {
       try {
-        this._api.terminal.input({ id, data: text + (text.endsWith('\r') || text.endsWith('\n') ? '' : '\r') });
+        this._api.terminal.input({ id: ptyIdOf(data, id), data: text + (text.endsWith('\r') || text.endsWith('\n') ? '' : '\r') });
       } catch (e) {
         return { ok: false, error: e.message };
       }
@@ -4105,7 +4231,9 @@ class TerminalManager extends BaseComponent {
     const status = deriveTabStatus(data);
     const base = {
       tabId,
-      ptyId: typeof id === 'number' ? id : null,
+      // A tab that switched out of chat mode keeps its `chat-…` key, so the PTY
+      // has to come from termData rather than from the map key.
+      ptyId: (() => { const p = ptyIdOf(data, id); return typeof p === 'number' ? p : null; })(),
       projectId: data.project?.id || null,
       projectName: data.project?.name || data.name || null,
       mode: data.mode || 'terminal',
