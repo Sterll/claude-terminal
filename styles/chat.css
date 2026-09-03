@@ -808,6 +808,7 @@ mark.chat-search-hit.current {
    Ratios vs --bg-primary #0d0d0d: 8.08 / 6.57 / 5.85 / 5.27 */
 .chat-msg.history,
 .chat-tool-card.history,
+.chat-subagent-card.history,
 .chat-thinking.history {
   --text-primary: #a7a7a7;
   --text-secondary: #969696;
@@ -822,6 +823,14 @@ mark.chat-search-hit.current {
   background: linear-gradient(135deg, rgba(var(--accent-color-rgb, 99, 102, 241), 0.04), rgba(var(--accent-color-rgb, 99, 102, 241), 0.015));
   border-color: rgba(var(--accent-color-rgb, 99, 102, 241), 0.09);
   border-left-color: rgba(var(--accent-color-rgb, 99, 102, 241), 0.32);
+}
+
+/* Subagent cards state their colours literally rather than through the ramp, so
+   the remap above cannot reach their chrome. Pull it back the same way. */
+.chat-subagent-card.history {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.05), rgba(34, 197, 94, 0.025));
+  border-color: rgba(34, 197, 94, 0.14);
+  border-left-color: rgba(34, 197, 94, 0.3);
 }
 
 /* Loading pulse animation for welcome logo */
@@ -1059,14 +1068,18 @@ mark.chat-search-hit.current {
   opacity: 0.7;
 }
 
+/* The argument line next to a tool name (the path on a Read, the pattern on a
+   Grep). It used to be --text-tertiary at `opacity: 0.6`, which composites to
+   about 3.0:1 over the card background — under the 4.5:1 AA needs at 11px, and
+   on live cards too, exactly when this line is worth reading. --text-muted is
+   the ramp's own bottom step and renders at 4.99:1 without an alpha. */
 .chat-tool-detail {
   font-size: 11px;
-  color: var(--text-tertiary);
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   font-family: 'Cascadia Code', 'Fira Code', monospace;
-  opacity: 0.6;
 }
 
 .chat-tool-status {

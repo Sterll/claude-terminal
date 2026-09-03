@@ -6739,7 +6739,11 @@ class ChatView extends BaseComponent {
             const name = input.name || input.subagent_type || 'agent';
             const desc = input.description || '';
             const el = document.createElement('div');
-            el.className = 'chat-subagent-card completed history';
+            // `done`, not `completed`: the finished state is styled off `.done`
+            // (added at the live path's completion), and no rule ever matched
+            // `.completed` on this component. Replayed subagents were stuck in
+            // the purple running state forever.
+            el.className = 'chat-subagent-card done history';
             el.innerHTML = `
               <div class="chat-subagent-header">
                 <div class="chat-subagent-icon">
