@@ -127,4 +127,46 @@ describe('getClaudeSessions', () => {
     const sessions = await getClaudeSessions(PROJECT_PATH);
     expect(sessions.find(s => s.sessionId === 'b2').title).toBe('');
   });
+
+  test('reads a title only for the sessions it returns', async () => {
+    // The result is capped at 50, so on a project with more sessions than that a
+    // tail read per file would be spent on transcripts nobody is about to see.
+    const dir = sessionsDir();
+    fs.rmSync(dir, { recursive: true, force: true });
+
+    const total = 60;
+    for (let i = 0; i < total; i++) {
+      const id = `c${String(i).padStart(2, '0')}`;
+      const file = writeSession({ sessionId: id, customTitle: `Title ${i}`, padding: 1 });
+      // Explicit mtimes: writing in a loop can land several files on the same ms
+      const when = new Date(Date.UTC(2026, 0, 1) + i * 60_000);
+      fs.utimesSync(file, when, when);
+    }
+
+    // fs.promises.open is reached from readSessionTitle and nowhere else here
+    const openSpy = jest.spyOn(fs.promises, 'open');
+    try {
+      const sessions = await getClaudeSessions(PROJECT_PATH);
+
+      expect(sessions).toHaveLength(50);
+      expect(openSpy).toHaveBeenCalledTimes(50);
+      // The 50 kept are the most recent ones, and each carries its title
+      expect(sessions[0].sessionId).toBe('c59');
+      expect(sessions[0].title).toBe('Title 59');
+      expect(sessions.every(s => s.title.startsWith('Title '))).toBe(true);
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+
+  test('does not leak the internal filePath into the returned sessions', async () => {
+    writeSession({ sessionId: 'd1', customTitle: 'Kept', padding: 1 });
+
+    const sessions = await getClaudeSessions(PROJECT_PATH);
+    const session = sessions.find(s => s.sessionId === 'd1');
+
+    expect(session).toBeDefined();
+    expect(session).not.toHaveProperty('filePath');
+    expect(session).not.toHaveProperty('size');
+  });
 });

@@ -184,18 +184,18 @@ async function getClaudeSessions(projectPath) {
         if (stat.size < 200) return null;
 
         const sessionId = info.sessionId || file.replace('.jsonl', '');
-        const { customTitle, aiTitle } = await readSessionTitle(filePath, stat.size);
 
         return {
           sessionId,
           summary: '',
-          title: customTitle || aiTitle || '',
-          customTitle,
-          aiTitle,
+          title: '',
+          customTitle: '',
+          aiTitle: '',
           firstPrompt: info.firstPrompt || '',
           messageCount: info.messageCount || 0,
           modified: stat.mtime.toISOString(),
           size: stat.size,
+          filePath,
           gitBranch: info.gitBranch
         };
       } catch {
@@ -223,10 +223,20 @@ async function getClaudeSessions(projectPath) {
     } catch { /* index may not exist or be stale, that's ok */ }
 
     // Sort by modified date (most recent first) and limit to 50
-    return allSessions
+    const top = allSessions
       .sort((a, b) => new Date(b.modified) - new Date(a.modified))
-      .slice(0, 50)
-      .map(({ size, ...session }) => session);
+      .slice(0, 50);
+
+    // Titles are read only for the sessions actually returned: a 128 KB tail read
+    // per file is wasted on the ones the slice above just dropped.
+    await Promise.all(top.map(async (session) => {
+      const { customTitle, aiTitle } = await readSessionTitle(session.filePath, session.size);
+      session.title = customTitle || aiTitle || '';
+      session.customTitle = customTitle;
+      session.aiTitle = aiTitle;
+    }));
+
+    return top.map(({ size, filePath, ...session }) => session);
   } catch (error) {
     console.error('Error reading Claude sessions:', error);
     return [];

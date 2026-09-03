@@ -5,6 +5,7 @@
  */
 
 const { BaseComponent } = require('../../core/BaseComponent');
+const { matchesSessionQuery } = require('../../utils/sessionSearch');
 
 const { Terminal } = require('@xterm/xterm');
 const { FitAddon } = require('@xterm/addon-fit');
@@ -2566,9 +2567,8 @@ class TerminalManager extends BaseComponent {
       const hoursAgo = (now - new Date(session.modified).getTime()) / 3600000;
       const freshness = hoursAgo < 1 ? 'hot' : hoursAgo < 24 ? 'warm' : '';
 
-      // sessionId is in there so pasting an id (or a prefix of one) finds the card
       const searchText = (displayTitle + ' ' + displaySubtitle + ' ' + (session.gitBranch || '')
-        + ' ' + customName + ' ' + (session.sessionId || '')).toLowerCase();
+        + ' ' + customName).toLowerCase();
 
       const pinned = await this._isSessionPinned(session.sessionId);
       results.push({ ...session, displayTitle, displaySubtitle, isSkill, isRenamed, freshness, searchText, pinned });
@@ -2810,7 +2810,7 @@ class TerminalManager extends BaseComponent {
             cards.forEach(card => {
               const sid = card.dataset.sid;
               const session = sessionMap.get(sid);
-              const match = !query || (session && session.searchText.includes(query));
+              const match = matchesSessionQuery(session, query);
               visibility.push({ card, match });
             });
 
