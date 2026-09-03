@@ -99,7 +99,7 @@ function ensureWakeupTicker() {
   }, 1000);
 }
 const { getSetting, setSetting, isNotificationsEnabled } = require('../../state/settings.state');
-const { updateTerminal } = require('../../state/terminals.state');
+const { updateTerminal, getTerminal } = require('../../state/terminals.state');
 const { saveTerminalSessions } = require('../../services/TerminalSessionService');
 
 const MODEL_OPTIONS = [
@@ -382,6 +382,10 @@ class ChatView extends BaseComponent {
   let lastStartOpts = null; // cached so we can re-launch the SDK after an account switch
   let switchingAccount = false; // suppress error UI while we hot-swap credentials
   let tabNamePending = false; // avoid concurrent tab name requests
+  // True when the tab carries a user-chosen name that auto naming must not touch
+  const isTabNameLocked = () => {
+    try { return !!(terminalId != null && getTerminal(terminalId)?.nameCustom); } catch { return false; }
+  };
   let currentStreamEl = null;
   let currentStreamText = '';
   let currentThinkingEl = null;
@@ -3087,8 +3091,10 @@ class ChatView extends BaseComponent {
       sendLock = false;
     }
 
-    // Tab rename: instant truncation + async haiku polish
-    if (onTabRename && !text.startsWith('/') && getSetting('aiTabNaming') !== false) {
+    // Tab rename: instant truncation + async haiku polish.
+    // A tab whose name was chosen by the user (rename, custom title) is locked:
+    // no truncation flash, no haiku call.
+    if (onTabRename && !text.startsWith('/') && getSetting('aiTabNaming') !== false && !isTabNameLocked()) {
       // Immediate: smart truncation
       const words = text.split(/\s+/).slice(0, 5).join(' ');
       onTabRename(words.length > 30 ? words.slice(0, 28) + '...' : words);
@@ -6245,7 +6251,7 @@ class ChatView extends BaseComponent {
     if (sid !== sessionId) return;
     appendUserMessage(text, images || [], [], isStreaming);
     // Trigger tab rename for remote messages (same logic as _send)
-    if (onTabRename && text && !text.startsWith('/') && getSetting('aiTabNaming') !== false) {
+    if (onTabRename && text && !text.startsWith('/') && getSetting('aiTabNaming') !== false && !isTabNameLocked()) {
       const words = text.split(/\s+/).slice(0, 5).join(' ');
       onTabRename(words.length > 30 ? words.slice(0, 28) + '...' : words);
       if (!tabNamePending) {

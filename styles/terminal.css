@@ -1047,6 +1047,24 @@
   border-top: 2px solid var(--accent);
 }
 
+/* Pinned tabs — Chrome-style: compact, clustered at the start of the bar,
+   no close button (closing stays available via the context menu) */
+.terminal-tab.pinned-tab {
+  padding: 8px 10px;
+  gap: 6px;
+}
+
+.terminal-tab.pinned-tab .tab-name {
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-tab.pinned-tab .tab-close,
+.terminal-tab.pinned-tab .tab-mode-toggle {
+  display: none;
+}
+
 .tab-name {
   cursor: pointer;
 }

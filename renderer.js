@@ -232,14 +232,18 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
 
         for (const tab of saved.tabs) {
           const cwd = (await fileExists(tab.cwd)) ? tab.cwd : project.path;
-          await TerminalManager.createTerminal(project, {
+          const restoredId = await TerminalManager.createTerminal(project, {
             runClaude: !tab.isBasic,
             cwd,
             mode: tab.mode || null,
             skipPermissions: settingsState.get().skipPermissions,
             resumeSessionId: (!tab.isBasic && tab.claudeSessionId) ? tab.claudeSessionId : null,
             name: tab.name || null,
+            nameCustom: tab.nameCustom || false,
           });
+          if (tab.pinned && restoredId != null) {
+            try { TerminalManager.setTabPinned(restoredId, true); } catch (e) { /* ignore */ }
+          }
         }
 
         if (saved.activeCwd) {
@@ -1821,11 +1825,18 @@ async function _saveModalPins() {
 // Names given to sessions inside Claude Terminal, written by the Sessions panel.
 // Read fresh on every modal open rather than cached, so a rename made in the
 // panel shows up here instead of the two lists disagreeing.
+// Entries are `{ name, custom }`; bare strings predate the flag (non-custom).
 const _modalNamesFile = path.join(window.electron_nodeModules.os.homedir(), '.claude-terminal', 'session-names.json');
 
 async function _loadModalNames() {
   try {
-    return JSON.parse(await fsp.readFile(_modalNamesFile, 'utf8')) || {};
+    const raw = JSON.parse(await fsp.readFile(_modalNamesFile, 'utf8')) || {};
+    const normalized = {};
+    for (const [sid, entry] of Object.entries(raw)) {
+      if (typeof entry === 'string') normalized[sid] = { name: entry, custom: false };
+      else if (entry && entry.name) normalized[sid] = { name: entry.name, custom: !!entry.custom };
+    }
+    return normalized;
   } catch { return {}; }
 }
 
@@ -1894,12 +1905,16 @@ async function _preprocessModalSessions(sessions) {
     const promptResult = _cleanModalSessionText(session.firstPrompt);
     const summaryResult = _cleanModalSessionText(session.summary);
     const skillName = promptResult.skillName || summaryResult.skillName;
-    const customName = names[session.sessionId] || '';
+    const nameEntry = names[session.sessionId] || { name: '', custom: false };
+    // A deliberately chosen name — renamed here or in Claude Code — outranks
+    // every generated one and stays locked against auto renames on resume.
+    const lockedName = nameEntry.custom ? nameEntry.name : session.customTitle;
+    const customName = lockedName || nameEntry.name;
     let displayTitle = '', displaySubtitle = '', isSkill = false;
     // Same order as the Sessions panel: a name given inside Claude Terminal wins,
     // then the title Claude Code carries in the transcript (`custom-title`, else
     // `ai-title`), then the opening prompt, which can run to thousands of chars
-    if (customName) { displayTitle = customName; displaySubtitle = session.title || summaryResult.text || promptResult.text; }
+    if (customName) { displayTitle = customName; displaySubtitle = (session.title !== customName ? session.title : '') || summaryResult.text || promptResult.text; }
     else if (session.title) { displayTitle = session.title; displaySubtitle = summaryResult.text || promptResult.text; }
     else if (summaryResult.text) { displayTitle = summaryResult.text; displaySubtitle = promptResult.text; }
     else if (promptResult.text) { displayTitle = promptResult.text; }
@@ -1910,7 +1925,7 @@ async function _preprocessModalSessions(sessions) {
     const searchText = (displayTitle + ' ' + displaySubtitle + ' ' + (session.gitBranch || '')
       + ' ' + customName).toLowerCase();
     const pinned = !!pins[session.sessionId];
-    return { ...session, displayTitle, displaySubtitle, isSkill, freshness, searchText, pinned };
+    return { ...session, displayTitle, displaySubtitle, isSkill, nameLocked: Boolean(lockedName), freshness, searchText, pinned };
   });
 }
 
@@ -2152,11 +2167,16 @@ async function showSessionsModal(project) {
       const sessionId = card.dataset.sid;
       if (!sessionId) return;
       const session = sessionMap.get(sessionId);
-      const sessionName = session?.displayTitle || null;
+      // A user-chosen name passes through untouched; generated labels are
+      // bounded so a prompt-only session can't flood the tab bar.
+      const sessionName = (session?.nameLocked
+        ? session.displayTitle
+        : _truncateModalText(session?.displayTitle || '', 40)) || null;
       closeModal();
       TerminalManager.resumeSession(project, sessionId, {
         skipPermissions: settingsState.get().skipPermissions,
-        name: sessionName
+        name: sessionName,
+        nameCustom: !!session?.nameLocked
       });
     });
 
