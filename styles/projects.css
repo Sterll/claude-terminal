@@ -353,10 +353,9 @@ body:not([data-active-tab="claude"]) .project-bar-tools {
   pointer-events: none;
 }
 
-/* The tab strip and its + button are the other navigation. The tools row
-   stays: it is the terminals header the sidebar layout also uses. */
-body.nav-sidebar .project-tabs,
-body.nav-sidebar .project-tab-add,
+/* The whole bar is the other navigation. Its tools row is moved into the
+   terminals header first, so nothing is left in it to show. */
+body.nav-sidebar #project-bar,
 body.nav-sidebar #btn-close-projects-popover {
   display: none;
 }
