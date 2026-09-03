@@ -315,9 +315,12 @@ async function loadSessionHistory(projectPath, sessionId, options = {}) {
 
     rl.on('close', () => {
       // Realign the tail onto a user turn so the replay never opens mid tool-run
+      // `dropped > 0` matters on its own: a trim leaves exactly `limit` entries, so a
+      // file ending right on a trim boundary would otherwise skip the realignment and
+      // open mid tool-run.
       let window = messages;
-      if (limit && messages.length > limit) {
-        let start = messages.length - limit;
+      if (limit && (messages.length > limit || dropped > 0)) {
+        let start = Math.max(0, messages.length - limit);
         for (let i = start; i < messages.length; i++) {
           if (messages[i].role === 'user') { start = i; break; }
         }

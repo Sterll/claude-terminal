@@ -6479,9 +6479,23 @@ class ChatView extends BaseComponent {
     const HISTORY_PREFETCH_PX = 800;
     let historyLimit = HISTORY_PAGE;
     let historyTopEl = null;
-    let previousCount = 0;
+    // Size of the window the main process returned last time. The paging maths runs
+    // against the raw window, not against what survived the fork cut below — a cut
+    // that trims anything would otherwise re-render its first messages as "older".
+    let previousRawCount = 0;
+    // First user prompt currently on screen. A prepended page ends right before it,
+    // so it is the turn a fork off that page's last message would discard.
+    let oldestUserUuid = null;
     let historyExhausted = false;
     let loadingEarlier = false;
+
+    /** UUID of the first user prompt in a window, for the fork guard. */
+    function firstUserUuid(list) {
+      for (const msg of list) {
+        if (msg.role === 'user') return msg.uuid || null;
+      }
+      return null;
+    }
 
     const welcomeEl = wrapperEl.querySelector('.chat-welcome');
     if (welcomeEl) {
@@ -6546,8 +6560,8 @@ class ChatView extends BaseComponent {
         historyLimit = nextLimit;
         const msgs = result?.messages || [];
         // The window grows from the end, so the new messages are its prefix
-        const older = msgs.slice(0, Math.max(0, msgs.length - previousCount));
-        previousCount = msgs.length;
+        const older = msgs.slice(0, Math.max(0, msgs.length - previousRawCount));
+        previousRawCount = msgs.length;
         if (older.length === 0) {
           loadingEarlier = false;
           syncHistoryTop({ ...result, truncated: false }, msgs.length);
@@ -6557,8 +6571,11 @@ class ChatView extends BaseComponent {
         const anchor = historyTopEl.nextSibling;
         const beforeHeight = messagesEl.scrollHeight;
         const beforeTop = messagesEl.scrollTop;
+        const nextUserUuid = oldestUserUuid;
+        oldestUserUuid = firstUserUuid(older) || oldestUserUuid;
         renderHistoryMessages(older, {
           anchor,
+          nextUserUuid,
           onComplete: () => {
             messagesEl.scrollTop = beforeTop + (messagesEl.scrollHeight - beforeHeight);
             syncHistoryTop(result, msgs.length);
@@ -6585,13 +6602,16 @@ class ChatView extends BaseComponent {
     fetchHistory(historyLimit).then(result => {
       if (welcomeEl) welcomeEl.remove();
 
-      let msgs = (result?.success && result.messages) || [];
+      const rawMsgs = (result?.success && result.messages) || [];
+      previousRawCount = rawMsgs.length;
+
+      let msgs = rawMsgs;
       // Older main processes truncate client-side; harmless double safety for forks
       if (pendingResumeAt) {
         const cutIdx = msgs.findIndex(m => m.uuid === pendingResumeAt);
         if (cutIdx >= 0) msgs = msgs.slice(0, cutIdx + 1);
       }
-      previousCount = msgs.length;
+      oldestUserUuid = firstUserUuid(msgs);
 
       if (msgs.length === 0) {
         appendHistoryDivider();
@@ -6626,10 +6646,14 @@ class ChatView extends BaseComponent {
    * @param {object} [options]
    * @param {Node} [options.anchor] - Insert before this node instead of appending
    *   (used when prepending older messages).
+   * @param {string|null} [options.nextUserUuid] - Prompt that opens the turn following
+   *   this page. `messages` is only one page of the session, so the last assistant
+   *   messages have no user prompt after them *within the page* — without this the
+   *   fork guard would read them as forks off the tail and stay unarmed.
    * @param {Function} [options.onComplete] - Called once every batch is in the DOM.
    */
   function renderHistoryMessages(messages, options = {}) {
-    const { anchor = null, onComplete = null } = options;
+    const { anchor = null, nextUserUuid = null, onComplete = null } = options;
 
     // Build a map of tool_use_id -> tool_result output for enriching tool cards
     const toolResults = new Map();
@@ -6682,7 +6706,7 @@ class ChatView extends BaseComponent {
             el.dataset.messageUuid = msg.uuid;
             // The turn this fork would discard starts at the next user prompt.
             // Naming it arms the CLI guard; null (fork off the tail) leaves it unarmed.
-            const dropsTurn = findNextUserUuid(messages, idx);
+            const dropsTurn = findNextUserUuid(messages, idx) || nextUserUuid;
             const forkBtn = document.createElement('button');
             forkBtn.className = 'chat-msg-fork-btn';
             forkBtn.title = t('chat.forkSession') || 'Fork from here';

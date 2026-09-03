@@ -303,13 +303,16 @@ async function loadMoreSteps() {
     renderTimeline(more, { append: true });
     syncTimelineFooter();
   } catch {
-    // Leave the footer in place so the next scroll retries
+    // Leave the footer in place so the next scroll retries. Nothing was appended,
+    // so the bottom is still in reach — chaining another load here would spin the
+    // main process on a full re-parse of the transcript, forever.
     syncTimelineFooter();
+    return;
   } finally {
     loadingMoreSteps = false;
-    // Page shorter than the viewport: keep pulling until the bottom moves away
-    if (!replayExhausted) maybeLoadMoreSteps();
   }
+  // Page shorter than the viewport: keep pulling until the bottom moves away
+  if (!replayExhausted) maybeLoadMoreSteps();
 }
 
 function renderNormalStep(step, i) {

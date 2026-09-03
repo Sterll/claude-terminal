@@ -87,6 +87,19 @@ describe('loadSessionHistory', () => {
     expect(messages[messages.length - 1]).toMatchObject({ role: 'tool_result', output: 'out 199' });
   });
 
+  test('realigns even when the sliding window ends exactly on a trim', async () => {
+    // 15 messages against limit 7: the buffer is trimmed back to exactly 7 on the
+    // very last push, so the tail is left starting mid-turn unless the realignment
+    // also triggers on a trim that already happened.
+    writeSession(3);
+    const { messages, total, truncated } = await loadSessionHistory(PROJECT_PATH, SESSION_ID, { limit: 7 });
+
+    expect(total).toBe(15);
+    expect(truncated).toBe(true);
+    expect(messages[0]).toMatchObject({ role: 'user', text: 'prompt 2' });
+    expect(messages[messages.length - 1]).toMatchObject({ role: 'tool_result', output: 'out 2' });
+  });
+
   test('a larger limit returns a superset ending on the same message', async () => {
     writeSession(200);
     const small = await loadSessionHistory(PROJECT_PATH, SESSION_ID, { limit: 50 });
