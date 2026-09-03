@@ -20,7 +20,7 @@ jest.mock('os', () => ({
 
 global.__CT_TMP_HOME__ = TMP_HOME;
 
-const { getClaudeSessions, readSessionTitle } = require('../../src/main/ipc/claude.ipc');
+const { getClaudeSessions, readSessionTitle, invalidateSessionsCache } = require('../../src/main/ipc/claude.ipc');
 
 const PROJECT_PATH = '/tmp/title-demo';
 const sessionsDir = () => path.join(TMP_HOME, '.claude', 'projects', PROJECT_PATH.replace(/[^a-zA-Z0-9]/g, '-'));
@@ -168,5 +168,52 @@ describe('getClaudeSessions', () => {
     expect(session).toBeDefined();
     expect(session).not.toHaveProperty('filePath');
     expect(session).not.toHaveProperty('size');
+  });
+});
+
+// A listing stats every transcript in the project and reads the tail of the fifty
+// it returns, and three surfaces ask for it at once. What matters is that holding
+// the result never hides a session that appeared meanwhile.
+describe('getClaudeSessions caching', () => {
+  test('a repeat call with nothing changed does not re-read the transcripts', async () => {
+    writeSession({ sessionId: 'c1', customTitle: 'Cached', padding: 1 });
+    await getClaudeSessions(PROJECT_PATH);
+
+    const spy = jest.spyOn(fs.promises, 'open');
+    try {
+      const again = await getClaudeSessions(PROJECT_PATH);
+      expect(again.find(s => s.sessionId === 'c1')?.title).toBe('Cached');
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test('a session added meanwhile shows up on the next call', async () => {
+    writeSession({ sessionId: 'c2', customTitle: 'First', padding: 1 });
+    const first = await getClaudeSessions(PROJECT_PATH);
+    expect(first.map(s => s.sessionId)).not.toContain('c3');
+
+    // Writing a new transcript moves the directory mtime, which is what the
+    // cache checks — the new session must not wait for the time bound
+    writeSession({ sessionId: 'c3', customTitle: 'Second', padding: 1 });
+
+    const second = await getClaudeSessions(PROJECT_PATH);
+    expect(second.map(s => s.sessionId)).toContain('c3');
+  });
+
+  test('invalidateSessionsCache forces the next call to re-read', async () => {
+    writeSession({ sessionId: 'c4', customTitle: 'Kept', padding: 1 });
+    await getClaudeSessions(PROJECT_PATH);
+
+    invalidateSessionsCache(PROJECT_PATH);
+
+    const spy = jest.spyOn(fs.promises, 'open');
+    try {
+      await getClaudeSessions(PROJECT_PATH);
+      expect(spy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

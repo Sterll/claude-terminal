@@ -152,9 +152,44 @@ async function readSessionTitle(filePath, size) {
  * @param {string} projectPath - The project path
  * @returns {Promise<Array>} - Array of session objects
  */
-async function getClaudeSessions(projectPath) {
+// Opening the session list, the quick picker and an `@session` mention each ask
+// for the same listing, and a listing stats every transcript in the project then
+// reads the tail of the fifty it returns. Holding the result briefly collapses
+// those bursts into one scan.
+//
+// A cached listing is only reused while the sessions directory has not been
+// touched: its mtime moves when a transcript is created, renamed or deleted, so
+// a session appearing from anywhere is picked up on the next call rather than up
+// to a timeout later. The time bound is what covers appends to an existing
+// transcript, which change the file but not the directory.
+const SESSIONS_CACHE_MS = 5000;
+const _sessionsCache = new Map(); // projectPath -> { at, dirMtimeMs, sessions }
+
+/** Drop a project's cached listing, or every project's when called bare. */
+function invalidateSessionsCache(projectPath) {
+  if (projectPath) _sessionsCache.delete(projectPath);
+  else _sessionsCache.clear();
+}
+
+/** mtime of the sessions directory, or null when it cannot be read. */
+async function _sessionsDirMtime(sessionsDir) {
   try {
-    const sessionsDir = getProjectSessionsDir(projectPath);
+    return (await fs.promises.stat(sessionsDir)).mtimeMs;
+  } catch {
+    return null;
+  }
+}
+
+async function getClaudeSessions(projectPath) {
+  const sessionsDirForCache = getProjectSessionsDir(projectPath);
+  const cached = _sessionsCache.get(projectPath);
+  if (cached && Date.now() - cached.at < SESSIONS_CACHE_MS) {
+    const mtime = await _sessionsDirMtime(sessionsDirForCache);
+    if (mtime !== null && mtime === cached.dirMtimeMs) return cached.sessions;
+  }
+
+  try {
+    const sessionsDir = sessionsDirForCache;
 
     let files;
     try {
@@ -236,7 +271,13 @@ async function getClaudeSessions(projectPath) {
       session.aiTitle = aiTitle;
     }));
 
-    return top.map(({ size, filePath, ...session }) => session);
+    const sessions = top.map(({ size, filePath, ...session }) => session);
+    _sessionsCache.set(projectPath, {
+      at: Date.now(),
+      dirMtimeMs: await _sessionsDirMtime(sessionsDir),
+      sessions,
+    });
+    return sessions;
   } catch (error) {
     console.error('Error reading Claude sessions:', error);
     return [];
@@ -676,6 +717,7 @@ async function deleteSession(projectPath, sessionId) {
     return { success: false, error: 'Session file not found' };
   }
   await fs.promises.unlink(filePath);
+  invalidateSessionsCache(projectPath);
   return { success: true };
 }
 
@@ -848,6 +890,9 @@ async function moveSession(sessionId, fromProjectPath, toProjectPath) {
   _sessionIndex.delete(sessionId);
   _indexedDirs.delete(fromDir);
   _indexedDirs.delete(toDir);
+  // Both listings changed, and the move is exactly when the user looks at them
+  invalidateSessionsCache(fromProjectPath);
+  invalidateSessionsCache(toProjectPath);
 
   // A session that ran across several worktrees leaves sidecars in each of
   // those projects. They belong to the runs that happened there, so they stay.
@@ -1022,4 +1067,4 @@ function registerClaudeHandlers() {
   });
 }
 
-module.exports = { registerClaudeHandlers, getClaudeSessions, loadSessionHistory, parseSessionReplay, moveSession, findStraySidecars, readSessionTitle };
+module.exports = { registerClaudeHandlers, getClaudeSessions, loadSessionHistory, parseSessionReplay, moveSession, findStraySidecars, readSessionTitle, invalidateSessionsCache };
