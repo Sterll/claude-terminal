@@ -278,12 +278,15 @@
       <!-- Project Bar — one tab per open project, shared by every screen.
            Sits inside .content so it reads as secondary to the vertical nav. -->
       <div class="project-bar" id="project-bar">
-        <div class="project-tabs" id="project-tabs" role="tablist" aria-label="Open projects"></div>
+        <!-- The + leads the bar: after the tabs it drifts right as projects open
+             and eventually scrolls out of reach. Here it also lines up with the
+             session row's + one row below. -->
         <button class="project-tab-add" id="btn-open-project" data-i18n-title="projects.openProject" title="Open a project" aria-label="Open a project" aria-haspopup="dialog" aria-expanded="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
         </button>
+        <div class="project-tabs" id="project-tabs" role="tablist" aria-label="Open projects"></div>
         <div class="project-bar-tools" id="project-bar-tools">
           <div class="terminals-filter" id="terminals-filter" style="display: none;">
             <!-- CI/CD Status Pill -->

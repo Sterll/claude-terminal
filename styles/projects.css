@@ -235,11 +235,12 @@ body:not([data-active-tab="dashboard"]) .project-tab--overview {
   box-shadow: inset -2px 0 0 var(--accent);
 }
 
+/* Leads the bar, so it stays put however many projects are open. */
 .project-tab-add {
   width: 26px;
   align-self: center;
   height: 26px;
-  margin: 0 4px;
+  margin: 0 6px 0 0;
   padding: 0;
   border: none;
   background: transparent;
@@ -1453,8 +1454,16 @@ body.compact-projects .project-item:hover {
   flex-shrink: 0;
 }
 
-/* ── Pin Button ── */
-.session-card-pin {
+/* ── Card action buttons (rename, move, pin) ──
+   One rule for the three: they are the same control with a different glyph.
+
+   They stay hidden until the card is hovered, but once shown they are shown
+   properly — at 0.4 opacity over --text-muted they were barely distinguishable
+   from the card background, so the actions read as decoration rather than as
+   buttons you can press. */
+.session-card-pin,
+.session-card-move,
+.session-card-rename {
   width: 28px;
   height: 28px;
   display: flex;
@@ -1465,53 +1474,13 @@ body.compact-projects .project-item:hover {
   border: none;
   cursor: pointer;
   opacity: 0;
-  color: var(--text-muted);
-  padding: 0;
-  border-radius: 6px;
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
-}
-
-.session-card-pin svg {
-  width: 13px;
-  height: 13px;
-  max-width: 13px;
-  max-height: 13px;
-}
-
-.session-card:hover .session-card-pin {
-  opacity: 0.4;
-}
-
-.session-card-pin:hover {
-  opacity: 1 !important;
-  color: var(--accent);
-  background: var(--accent-dim);
-}
-
-/* Pinned state */
-.session-card--pinned .session-card-pin {
-  opacity: 1;
-  color: var(--accent);
-}
-
-/* ── Move-to-project button (mirrors the pin button) ── */
-.session-card-move {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  background: none;
-  border: none;
-  cursor: pointer;
-  opacity: 0;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   padding: 0;
   border-radius: 6px;
   transition: background-color 0.15s, color 0.15s, opacity 0.15s;
 }
 
+.session-card-pin svg,
 .session-card-move svg {
   width: 13px;
   height: 13px;
@@ -1519,14 +1488,41 @@ body.compact-projects .project-item:hover {
   max-height: 13px;
 }
 
-.session-card:hover .session-card-move {
-  opacity: 0.4;
+.session-card-rename svg {
+  width: 12px;
+  height: 12px;
+  max-width: 12px;
+  max-height: 12px;
 }
 
-.session-card-move:hover {
+.session-card:hover .session-card-pin,
+.session-card:hover .session-card-move,
+.session-card:hover .session-card-rename {
+  opacity: 1;
+  background: var(--bg-hover);
+}
+
+.session-card-pin:hover,
+.session-card-move:hover,
+.session-card-rename:hover {
   opacity: 1 !important;
   color: var(--accent);
   background: var(--accent-dim);
+}
+
+.session-card-pin:focus-visible,
+.session-card-move:focus-visible,
+.session-card-rename:focus-visible {
+  opacity: 1;
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* Pinned state — the only action that stays visible off-hover, because it
+   reports state rather than offering one. */
+.session-card--pinned .session-card-pin {
+  opacity: 1;
+  color: var(--accent);
 }
 
 /* ── Move-to-project modal ── */
@@ -1602,41 +1598,6 @@ body.compact-projects .project-item:hover {
   align-items: center;
   gap: 2px;
   flex-shrink: 0;
-}
-
-/* ── Rename Button ── */
-.session-card-rename {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  background: none;
-  border: none;
-  cursor: pointer;
-  opacity: 0;
-  color: var(--text-muted);
-  padding: 0;
-  border-radius: 6px;
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
-}
-
-.session-card-rename svg {
-  width: 12px;
-  height: 12px;
-  max-width: 12px;
-  max-height: 12px;
-}
-
-.session-card:hover .session-card-rename {
-  opacity: 0.4;
-}
-
-.session-card-rename:hover {
-  opacity: 1 !important;
-  color: var(--accent);
-  background: var(--accent-dim);
 }
 
 /* Renamed state — subtle indicator on title */

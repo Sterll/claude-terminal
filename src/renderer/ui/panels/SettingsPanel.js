@@ -579,6 +579,10 @@ class SettingsPanel extends BasePanel {
     document.getElementById('btn-settings').classList.add('active');
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.getElementById('tab-settings').classList.add('active');
+    // Settings is not a nav-tab, so nothing else updates the marker the project
+    // bar keys off — without this it keeps whichever screen we came from and the
+    // bar stays up over a screen that has no project context at all.
+    document.body.dataset.activeTab = 'settings';
     this._ctx?.TimeTrackingDashboard?.cleanup();
     this.renderSettingsTab(initialSubTab);
   }

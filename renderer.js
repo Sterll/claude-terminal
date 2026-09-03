@@ -2997,6 +2997,7 @@ TerminalManager.setCallbacks({
   onCreateTerminal: createTerminalForProject,
   onSwitchTerminal: switchTerminal,
   onSwitchProject: switchProject,
+  onMoveSession: _showMoveSessionModal,
   onActiveTerminalChange: handleActiveTerminalChange
 });
 

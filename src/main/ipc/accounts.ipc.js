@@ -5,6 +5,7 @@
 
 const { ipcMain, BrowserWindow } = require('electron');
 const AccountManager = require('../services/AccountManager');
+const UsageService = require('../services/UsageService');
 
 function broadcast(channel, payload) {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -41,7 +42,12 @@ function registerAccountsHandlers() {
 
   ipcMain.handle('accounts-switch', async (_event, { id } = {}) => {
     const result = await wrap(() => AccountManager.switchTo(id));
-    if (result.success) await broadcastAccounts();
+    if (result.success) {
+      // The usage figures and the cached token belong to the outgoing account.
+      UsageService.invalidateCredentials();
+      UsageService.refreshUsage().catch(err => console.warn('[accounts.ipc] usage refresh failed:', err.message));
+      await broadcastAccounts();
+    }
     return result;
   });
 
