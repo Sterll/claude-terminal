@@ -64,26 +64,38 @@ function parseResultJson(text) {
 }
 
 // ── Wakeup countdown ticker (module-level, single global interval) ──
-let _wakeupTickerStarted = false;
+// Runs only while a wakeup card is actually on screen. The first version armed
+// the interval on the first ScheduleWakeup of the session and then ticked for
+// the rest of the app's life, and its `[data-wakeup-at]` selector carried no
+// class or tag to index on — so every second it walked every element in the
+// document. On a few long transcripts that is ~20 ms a second, permanently.
+let _wakeupTimer = null;
+
+/** @returns {boolean} True while at least one wakeup card is still on screen. */
+function _tickWakeups() {
+  const nodes = document.querySelectorAll('.chat-wakeup-card[data-wakeup-at]');
+  if (!nodes.length) return false;
+  const now = Date.now();
+  nodes.forEach((el) => {
+    const at = Number(el.dataset.wakeupAt) || 0;
+    const cd = el.querySelector('[data-countdown]');
+    if (!cd) return;
+    const remaining = Math.max(0, Math.round((at - now) / 1000));
+    if (remaining === 0) {
+      cd.textContent = 'fired';
+      cd.classList.add('is-fired');
+    } else {
+      cd.textContent = 'in ' + fmtDur(remaining);
+    }
+  });
+  return true;
+}
+
 function ensureWakeupTicker() {
-  if (_wakeupTickerStarted) return;
-  _wakeupTickerStarted = true;
-  setInterval(() => {
-    const nodes = document.querySelectorAll('[data-wakeup-at]');
-    if (!nodes.length) return;
-    const now = Date.now();
-    nodes.forEach((el) => {
-      const at = Number(el.dataset.wakeupAt) || 0;
-      const cd = el.querySelector('[data-countdown]');
-      if (!cd) return;
-      const remaining = Math.max(0, Math.round((at - now) / 1000));
-      if (remaining === 0) {
-        cd.textContent = 'fired';
-        cd.classList.add('is-fired');
-      } else {
-        cd.textContent = 'in ' + fmtDur(remaining);
-      }
-    });
+  _tickWakeups();
+  if (_wakeupTimer) return;
+  _wakeupTimer = setInterval(() => {
+    if (!_tickWakeups()) { clearInterval(_wakeupTimer); _wakeupTimer = null; }
   }, 1000);
 }
 const { getSetting, setSetting, isNotificationsEnabled } = require('../../state/settings.state');

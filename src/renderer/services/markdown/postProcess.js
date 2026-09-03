@@ -6,7 +6,10 @@
 
 const { escapeHtml } = require('../../utils');
 const { t } = require('../../i18n');
-const { initializePreviewIframe } = require('./interactivity');
+const { initializePreviewIframe, ensurePresenceTicker } = require('./interactivity');
+
+/** Presence cards carrying a live timer — the only ones that need a ticker. */
+const PRESENCE_SELECTOR = '.dc-presence-time[data-start], .dc-presence-time[data-end], .dc-presence-progress[data-start][data-end]';
 
 // ── Mermaid SVG cache (LRU, max 50) ──
 
@@ -104,6 +107,13 @@ function postProcess(target) {
   const mermaidBlocks = queryWithin(roots, '.chat-mermaid-block');
   const mathBlocks = queryWithin(roots, '.chat-math-block');
   const inlineMathEls = queryWithin(roots, '.chat-math-inline[data-math-source]');
+
+  // Discord Rich Presence timers. Scoped to the batch just inserted, so a
+  // session that renders no presence card never pays for one — and never arms
+  // the 1 Hz document scan that keeps them counting.
+  if (queryWithin(roots, PRESENCE_SELECTOR).length > 0) {
+    ensurePresenceTicker();
+  }
 
   // Render inline math with KaTeX
   if (inlineMathEls.length > 0) {
