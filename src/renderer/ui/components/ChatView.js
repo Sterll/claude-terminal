@@ -19,6 +19,7 @@ const {
 const { t } = require('../../i18n');
 const { formatDuration: fmtDur } = require('../../utils/toolRegistry');
 const { heartbeat, skillsAgentsState } = require('../../state');
+const { createTranscriptPruner } = require('./TranscriptPruner');
 
 // ── Background task cards re-render on store update ─────────────────
 // Cards for Monitor/TaskOutput/TaskStop read state from bgTaskStore.
@@ -545,6 +546,9 @@ class ChatView extends BaseComponent {
   let searchHitIndex = -1;
   let searchDebounceTimer = null;
   let searchLastQuery = '';
+  // Assigned once the scroll state exists (it needs userHasScrolled); only
+  // user-triggered paths run before that, and they all guard with ?.
+  let transcriptPruner = null;
 
   function clearSearchHighlights() {
     for (const mark of messagesEl.querySelectorAll('mark.chat-search-hit')) {
@@ -658,6 +662,10 @@ class ChatView extends BaseComponent {
   function openSearch() {
     // The Changes tab hides the transcript, so there would be nothing to match against.
     if (messagesEl.hidden) tabbarEl.querySelector('.chat-tab[data-tab="conversation"]')?.click();
+    // Search walks the mounted DOM — bring the pruned entries back for its
+    // whole lifetime, or matches in older messages would silently vanish.
+    transcriptPruner?.suspend();
+    transcriptPruner?.mountAll();
     searchBarEl.hidden = false;
     // Seed with the current selection so "select then Ctrl+F" works like a browser.
     const selected = String(window.getSelection() || '').trim();
@@ -678,6 +686,7 @@ class ChatView extends BaseComponent {
     searchBarEl.hidden = true;
     searchBarEl.classList.remove('no-results');
     searchCountEl.textContent = '';
+    transcriptPruner?.resume();
     if (refocusInput) inputEl?.focus();
   }
 
@@ -5257,6 +5266,7 @@ class ChatView extends BaseComponent {
     userHasScrolled = !isAtBottom && messagesEl.scrollHeight > messagesEl.clientHeight;
 
     if (onNearHistoryTop) onNearHistoryTop();
+    transcriptPruner?.onScroll();
 
     if (isAtBottom) {
       userHasScrolled = false;
@@ -5287,6 +5297,15 @@ class ChatView extends BaseComponent {
     userHasScrolled = false;
     scrollToBottom();
   }
+
+  // Keep the mounted transcript bounded — interaction latency (tab reveal,
+  // typing, selection) scales with mounted element count, not visible content.
+  transcriptPruner = createTranscriptPruner({
+    messagesEl,
+    isPinnedToBottom: () => !userHasScrolled,
+    translate: t,
+  });
+  transcriptPruner.observe();
 
   // ── IPC: SDK Messages ──
 
@@ -6877,6 +6896,7 @@ class ChatView extends BaseComponent {
         } catch (e) { /* events not ready */ }
       }
       if (sessionId) api.chat.close({ sessionId });
+      transcriptPruner?.destroy();
       contextSuggestions.reset();
       followupChips.clear();
       // Clear permission reminder timers
