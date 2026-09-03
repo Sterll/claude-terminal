@@ -1229,6 +1229,12 @@ class ChatService {
    */
   async _processStream(sessionId, queryStream) {
     let msgCount = 0;
+    // Last in-band failure seen on the stream. API errors such as 529
+    // Overloaded don't throw: the SDK yields an assistant message tagged
+    // `error`, then a result flagged `is_error`, and the stream stays open
+    // (streaming input). Tracked so the final lifecycle event reports the
+    // session's real outcome; a later successful turn clears it.
+    let inbandError = null;
     const session = this.sessions.get(sessionId);
     // Assistant text for the turn in progress. Claude emits one assistant
     // message per text block — several per turn as soon as tools run in
@@ -1305,6 +1311,24 @@ class ChatService {
           session.sdkSessionId = message.session_id;
         }
 
+        // In-band failures: assistant messages tagged `error`, and results
+        // flagged `is_error` or carrying an error subtype. Fork-guard refusals
+        // never reach this point (`continue` above) — the renderer auto-resumes
+        // those, so they are not a session outcome.
+        if (message.type === 'assistant' && message.error) {
+          inbandError = `API error: ${message.error}`;
+        } else if (message.type === 'result') {
+          if (message.is_error || message.subtype !== 'success') {
+            const errors = Array.isArray(message.errors) ? message.errors.filter(Boolean) : [];
+            inbandError = errors.join('\n')
+              || inbandError
+              || (message.subtype !== 'success' ? message.subtype
+                : `API error${message.api_error_status ? ` (HTTP ${message.api_error_status})` : ''}`);
+          } else {
+            inbandError = null;
+          }
+        }
+
         // Accumulate assistant text for the chat_message trigger; dispatched
         // as one reply when the turn ends, not per streamed message.
         if (message.type === 'assistant' && Array.isArray(message.message?.content)) {
@@ -1321,7 +1345,15 @@ class ChatService {
       }
       flushReply();
       this._send('chat-done', { sessionId });
-      this._emitLifecycle('end', sessionId, { status: 'success' });
+      if (inbandError) {
+        // The stream closed cleanly, but the last turn had failed in-band —
+        // the renderer already displayed that error, so lifecycle consumers
+        // (claude_session_end triggers filter on `status`) must see the same
+        // outcome, not 'success'.
+        this._emitLifecycle('end', sessionId, { status: 'error', error: inbandError });
+      } else {
+        this._emitLifecycle('end', sessionId, { status: 'success' });
+      }
     } catch (err) {
       const wasInterrupted = session?.interrupting
         || err.name === 'AbortError'

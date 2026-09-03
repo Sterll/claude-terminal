@@ -392,6 +392,7 @@ class ChatView extends BaseComponent {
   let blockIndex = 0;
   let currentMsgHasToolUse = false;
   let turnHadAssistantContent = false; // tracks if current turn displayed any streamed/assistant content
+  let turnErrorShown = false; // an in-band error banner (assistant msg.error) is already on screen for this turn
   let todoWidgetEl = null; // persistent task list widget
   let todoAllDone = false; // tracks if all tasks are completed
   // ── Task tool accumulator (SDK 0.3+ TaskCreate / TaskUpdate / TaskList) ──
@@ -2946,6 +2947,7 @@ class ChatView extends BaseComponent {
 
     if (!isStreaming) {
       turnHadAssistantContent = false;
+      turnErrorShown = false;
       setStreaming(true);
       appendThinkingIndicator();
     }
@@ -5453,9 +5455,20 @@ class ChatView extends BaseComponent {
             errorMsg = errors.length ? errors.join('\n') : t('chat.errorExecution');
           } else {
             const errors = message.errors || [];
-            errorMsg = errors.length ? errors.join('\n') : (message.subtype || t('chat.errorOccurred'));
+            if (errors.length) {
+              errorMsg = errors.join('\n');
+            } else if (message.subtype === 'success') {
+              // In-band API failure (e.g. 529 Overloaded): the result keeps
+              // subtype 'success' with is_error set — never echo that subtype
+              // as the error text, and skip the banner entirely when the
+              // assistant-level error for this turn is already on screen.
+              errorMsg = turnErrorShown ? null
+                : (message.api_error_status >= 500 ? t('chat.errorServer') : t('chat.errorOccurred'));
+            } else {
+              errorMsg = message.subtype || t('chat.errorOccurred');
+            }
           }
-          appendError(errorMsg);
+          if (errorMsg) appendError(errorMsg);
         }
         isAborting = false;
         setStreaming(false);
@@ -5504,6 +5517,7 @@ class ChatView extends BaseComponent {
         blockIndex = 0;
         currentMsgHasToolUse = false;
         turnHadAssistantContent = false;
+        turnErrorShown = false;
         // Update model from stream (reflects mid-session model changes)
         if (event.message?.model) {
           model = event.message.model;
@@ -5947,10 +5961,12 @@ class ChatView extends BaseComponent {
         invalid_request: t('chat.errorInvalidRequest'),
         max_output_tokens: t('chat.errorMaxTokens'),
         server_error: t('chat.errorServer'),
+        overloaded: t('chat.errorServer'),
       };
       const text = errorMessages[msg.error] || t('chat.errorOccurred');
       removeThinkingIndicator();
       appendError(text);
+      turnErrorShown = true;
       setStreaming(false);
       return;
     }

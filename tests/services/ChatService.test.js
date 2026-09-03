@@ -290,3 +290,76 @@ describe('ChatService conversation context', () => {
     expect(fired[1].files).toEqual(['E:/repos/api/a.js', 'E:/repos/api/b.js']);
   });
 });
+
+// ── lifecycle status after in-band API errors (_processStream) ──
+
+describe('ChatService lifecycle status', () => {
+  const SESSION = 'sess-lifecycle';
+  const assistant = text => ({ type: 'assistant', message: { content: [{ type: 'text', text }] } });
+  const okResult = () => ({ type: 'result', subtype: 'success', is_error: false });
+
+  let lifecycle;
+  let originalSend;
+  let originalLifecycle;
+
+  beforeEach(() => {
+    lifecycle = [];
+    originalSend = chatService._send;
+    originalLifecycle = chatService._emitLifecycle;
+    chatService._send = () => {};
+    chatService._emitLifecycle = (event, sessionId, extra = {}) => lifecycle.push({ event, sessionId, ...extra });
+  });
+
+  afterEach(() => {
+    chatService._send = originalSend;
+    chatService._emitLifecycle = originalLifecycle;
+  });
+
+  const drive = async (messages) => {
+    async function* stream() { for (const m of messages) yield m; }
+    await chatService._processStream(SESSION, stream());
+  };
+
+  test('reports success when the stream ends after a clean result', async () => {
+    await drive([assistant('Done.'), okResult()]);
+
+    expect(lifecycle).toEqual([{ event: 'end', sessionId: SESSION, status: 'success' }]);
+  });
+
+  test('reports error when the API failed in-band (529 Overloaded)', async () => {
+    // A 529 never throws: the SDK yields an assistant message tagged `error`,
+    // then a result flagged is_error, and the stream ends normally. That used
+    // to be reported as 'success' right after the UI displayed the error.
+    await drive([
+      { type: 'assistant', error: 'overloaded', message: { content: [] } },
+      { type: 'result', subtype: 'success', is_error: true, api_error_status: 529 },
+    ]);
+
+    expect(lifecycle).toHaveLength(1);
+    expect(lifecycle[0].status).toBe('error');
+    expect(lifecycle[0].error).toContain('overloaded');
+  });
+
+  test('reports error for an error-subtype result', async () => {
+    await drive([
+      { type: 'result', subtype: 'error_during_execution', is_error: true, errors: ['boom'] },
+    ]);
+
+    expect(lifecycle[0].status).toBe('error');
+    expect(lifecycle[0].error).toBe('boom');
+  });
+
+  test('a later successful turn clears an earlier in-band failure', async () => {
+    // Streaming input keeps the session open across turns — the lifecycle
+    // event reports the session's final outcome, not its first hiccup.
+    await drive([
+      { type: 'assistant', error: 'overloaded', message: { content: [] } },
+      { type: 'result', subtype: 'success', is_error: true, api_error_status: 529 },
+      assistant('Retried fine.'),
+      okResult(),
+    ]);
+
+    expect(lifecycle).toHaveLength(1);
+    expect(lifecycle[0].status).toBe('success');
+  });
+});
