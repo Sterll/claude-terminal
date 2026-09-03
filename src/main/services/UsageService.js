@@ -65,6 +65,91 @@ function readOAuthToken() {
 }
 
 /**
+ * Fallback for a response with no `limits` array — the shape the API served
+ * before it described its own buckets. Only the two plan-wide windows can be
+ * recovered this way: a scoped limit is unreadable without `limits`, because
+ * the root key holding its number is a codename rather than a stable name.
+ *
+ * @param {Object} json - Raw API response
+ * @returns {Array<Object>} Bucket list, possibly empty
+ */
+function legacyBuckets(json) {
+  const out = [];
+  if (typeof json?.five_hour?.utilization === 'number') {
+    out.push({
+      id: 'session', type: 'session', label: null, labelKey: 'ui.session',
+      utilization: json.five_hour.utilization, resetsAt: json.five_hour.resets_at ?? null
+    });
+  }
+  if (typeof json?.seven_day?.utilization === 'number') {
+    out.push({
+      id: 'weekly', type: 'weekly', label: null, labelKey: 'ui.weekly',
+      utilization: json.seven_day.utilization, resetsAt: json.seven_day.resets_at ?? null
+    });
+  }
+  return out;
+}
+
+/**
+ * The usage buckets the titlebar renders, read from the API's `limits` array.
+ *
+ * The response used to carry one fixed key per bucket — `five_hour`,
+ * `seven_day`, `seven_day_sonnet`. The per-model key has been null since the
+ * scoped weekly limit moved off Sonnet, and the root key that now carries that
+ * number is a rotating codename (`nimbus_quill` at the time of writing), so
+ * neither one is readable. `limits` is the part of the response that survives a
+ * model rename: the server states which limits exist and names the model each
+ * scoped one applies to, so the label is data instead of a string we have to
+ * ship a release to change.
+ *
+ * Which buckets come back is the server's call, not ours — a plan may expose
+ * one scoped limit, several, or none. Only the two plan-wide windows are
+ * assumed to be always present, and even those go through the same list.
+ *
+ * `labelKey` is set for the plan-wide buckets, whose names are ours to
+ * translate; `label` for scoped ones, whose name only the server knows.
+ *
+ * @param {Object} json - Raw API response
+ * @returns {Array<{id: string, type: string, label: string|null, labelKey: string|null,
+ *                  utilization: number, resetsAt: string|null}>}
+ */
+function readBuckets(json) {
+  if (!Array.isArray(json?.limits)) return legacyBuckets(json);
+
+  const buckets = [];
+  for (const limit of json.limits) {
+    if (!limit || typeof limit.percent !== 'number') continue;
+    const resetsAt = limit.resets_at ?? null;
+
+    if (limit.kind === 'session') {
+      buckets.push({
+        id: 'session', type: 'session', label: null, labelKey: 'ui.session',
+        utilization: limit.percent, resetsAt
+      });
+    } else if (limit.kind === 'weekly_all') {
+      buckets.push({
+        id: 'weekly', type: 'weekly', label: null, labelKey: 'ui.weekly',
+        utilization: limit.percent, resetsAt
+      });
+    } else {
+      // Every other kind is scoped to something. We can only render one the
+      // server named, so an unlabelled bucket is dropped rather than shown as
+      // an anonymous bar.
+      const label = limit.scope?.model?.display_name;
+      if (!label) continue;
+      buckets.push({
+        id: `scoped:${label}`, type: 'scoped', label, labelKey: null,
+        utilization: limit.percent, resetsAt
+      });
+    }
+  }
+
+  // An empty `limits` (or one we could make nothing of) is likelier to be a
+  // shape we don't understand yet than a plan with no limits at all.
+  return buckets.length ? buckets : legacyBuckets(json);
+}
+
+/**
  * Fetch usage data from the OAuth API
  * @returns {Promise<Object>} Parsed usage data in standard format
  */
@@ -91,13 +176,7 @@ function fetchUsageFromAPI(token) {
           const json = JSON.parse(body);
           resolve({
             timestamp: new Date().toISOString(),
-            session: json.five_hour?.utilization ?? null,
-            weekly: json.seven_day?.utilization ?? null,
-            sonnet: json.seven_day_sonnet?.utilization ?? null,
-            opus: json.seven_day_opus?.utilization ?? null,
-            sessionReset: json.five_hour?.resets_at ?? null,
-            weeklyReset: json.seven_day?.resets_at ?? null,
-            sonnetReset: json.seven_day_sonnet?.resets_at ?? null,
+            buckets: readBuckets(json),
             extraUsage: json.extra_usage ?? null,
             _source: 'api'
           });
@@ -250,8 +329,8 @@ function onUpdate(cb) {
 
 /**
  * Register a callback fired when a usage threshold is crossed.
- * Invoked at most once per reset window per scope (session / weekly).
- * @param {Function} cb - cb({ scope, utilization, resetsAt })
+ * Invoked at most once per reset window per bucket.
+ * @param {Function} cb - cb({ scope, label, utilization, resetsAt })
  */
 function onLimit(cb) {
   _onLimitCallback = cb;
@@ -260,25 +339,29 @@ function onLimit(cb) {
 const LIMIT_THRESHOLD = 0.95; // 95%
 
 function _maybeNotifyLimit(data) {
-  if (!_onLimitCallback || !data) return;
-  // Pick the most-pressured bucket
-  const candidates = [
-    { scope: 'session', utilization: data.session, resetsAt: data.sessionReset },
-    { scope: 'weekly',  utilization: data.weekly,  resetsAt: data.weeklyReset  },
-    { scope: 'sonnet',  utilization: data.sonnet,  resetsAt: data.sonnetReset  },
-  ].filter(c => typeof c.utilization === 'number' && c.utilization >= LIMIT_THRESHOLD);
+  if (!_onLimitCallback || !Array.isArray(data?.buckets)) return;
+  // Pick the most-pressured bucket, whichever ones the API sent
+  const candidates = data.buckets
+    .filter(b => typeof b.utilization === 'number' && b.utilization >= LIMIT_THRESHOLD)
+    .sort((a, b) => b.utilization - a.utilization);
   if (!candidates.length) return;
-  // Most utilized first
-  candidates.sort((a, b) => b.utilization - a.utilization);
   const top = candidates[0];
   // De-dupe per reset window
-  const key = `${top.scope}:${top.resetsAt || ''}`;
+  const key = `${top.id}:${top.resetsAt || ''}`;
   if (key === _lastLimitNotifiedReset) return;
   _lastLimitNotifiedReset = key;
-  try { _onLimitCallback(top); } catch (e) { console.error('[Usage] onLimit cb threw:', e.message); }
+  try {
+    _onLimitCallback({
+      scope: top.id,
+      label: top.label,
+      utilization: top.utilization,
+      resetsAt: top.resetsAt
+    });
+  } catch (e) { console.error('[Usage] onLimit cb threw:', e.message); }
 }
 
 module.exports = {
+  readBuckets,
   startPeriodicFetch,
   stopPeriodicFetch,
   getUsageData,
