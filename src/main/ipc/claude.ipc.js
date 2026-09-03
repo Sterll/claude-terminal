@@ -633,28 +633,54 @@ async function deleteSession(projectPath, sessionId) {
 // directory holding subagent transcripts, workflow scripts and tool results.
 // Both move together.
 
-/** Count the lines of a file without holding it in memory. */
-function countLines(filePath) {
-  return new Promise((resolve, reject) => {
-    let count = 0;
-    const stream = fs.createReadStream(filePath);
-    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-    rl.on('line', () => { count++; });
-    rl.on('close', () => resolve(count));
-    rl.on('error', reject);
-  });
+/** Byte size of a file. */
+async function fileSize(filePath) {
+  return (await fs.promises.stat(filePath)).size;
 }
 
-/** Recursively move a directory, falling back to copy+remove across devices. */
-async function moveDirectory(from, to) {
+/** True when the path exists. */
+async function exists(target) {
   try {
-    await fs.promises.rename(from, to);
-    return;
-  } catch (err) {
-    if (err.code !== 'EXDEV') throw err;
+    await fs.promises.access(target);
+    return true;
+  } catch {
+    return false;
   }
-  await fs.promises.cp(from, to, { recursive: true });
+}
+
+/**
+ * Recursively move a directory. Falls back to copy+remove across devices, and
+ * also when the target already exists: a session that ran in the target project
+ * too has left a sidecar there, and both sets of files belong to that same
+ * session, so they are merged rather than refused.
+ */
+async function moveDirectory(from, to) {
+  if (!(await exists(to))) {
+    try {
+      await fs.promises.rename(from, to);
+      return;
+    } catch (err) {
+      if (err.code !== 'EXDEV') throw err;
+    }
+  }
+  await fs.promises.cp(from, to, { recursive: true, force: true });
   await fs.promises.rm(from, { recursive: true, force: true });
+}
+
+/**
+ * Put a moved sidecar back where it came from.
+ * When the target already held one the two were merged, and merged files cannot
+ * be told apart again — the sidecar then stays put and the caller says so.
+ * @returns {Promise<boolean>} true when the source sidecar was restored
+ */
+async function rollbackSidecar(sourceSidecar, targetSidecar, targetSidecarPreexisted) {
+  if (targetSidecarPreexisted) return false;
+  try {
+    await moveDirectory(targetSidecar, sourceSidecar);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -662,6 +688,8 @@ async function moveDirectory(from, to) {
  *
  * Copies before deleting rather than renaming: the two directories can sit on
  * different volumes, and a half-finished rename would lose the transcript.
+ * Nothing is published in the target until the sidecar is across, and anything
+ * already published is undone if a later step fails.
  *
  * @param {string} sessionId
  * @param {string} fromProjectPath
@@ -695,44 +723,66 @@ async function moveSession(sessionId, fromProjectPath, toProjectPath) {
 
   const warnings = [];
   const tempFile = `${targetFile}.moving`;
+  const sourceSidecar = path.join(fromDir, sessionId);
+  const targetSidecar = path.join(toDir, sessionId);
   let movedSidecar = false;
+  // The target may already hold a sidecar from a run that happened there. If it
+  // does, a rollback must not touch it — those files predate this move.
+  const targetSidecarPreexisted = await exists(targetSidecar);
+  let published = false;
 
   try {
     // Claude Code appends to the transcript of a live session. Comparing the
-    // line count on both sides of the copy catches that: it is the one check
-    // that works without asking the OS whether a file is open.
-    const linesBefore = await countLines(sourceFile);
+    // size on both sides of the copy catches that, and a stat costs nothing
+    // next to reading a file that can reach 200 MB.
+    const sizeBefore = await fileSize(sourceFile);
     await fs.promises.copyFile(sourceFile, tempFile);
-    const linesAfter = await countLines(sourceFile);
-    if (linesBefore !== linesAfter) {
+    const sizeAfter = await fileSize(sourceFile);
+    if (sizeBefore !== sizeAfter) {
       await fs.promises.rm(tempFile, { force: true });
       return { success: false, code: 'session-live', error: 'The session was written to while copying — close it and try again' };
     }
 
-    const copiedLines = await countLines(tempFile);
-    if (copiedLines !== linesBefore) {
+    const copiedSize = await fileSize(tempFile);
+    if (copiedSize !== sizeBefore) {
       await fs.promises.rm(tempFile, { force: true });
-      return { success: false, code: 'verify-failed', error: `Copy is incomplete (${copiedLines}/${linesBefore} lines)` };
+      return { success: false, code: 'verify-failed', error: `Copy is incomplete (${copiedSize}/${sizeBefore} bytes)` };
+    }
+
+    // Sidecar first: subagent transcripts, workflow scripts, tool results. It is
+    // the one step that is not atomic, so it runs while nothing is published yet
+    // and a failure can still abort cleanly.
+    let hasSidecar = false;
+    try {
+      hasSidecar = (await fs.promises.stat(sourceSidecar)).isDirectory();
+    } catch { /* no sidecar, which is normal for short sessions */ }
+    if (hasSidecar) {
+      await moveDirectory(sourceSidecar, targetSidecar);
+      movedSidecar = true;
+    }
+
+    // Re-check: the first look happened before the copy, which is not instant
+    if (await exists(targetFile)) {
+      await fs.promises.rm(tempFile, { force: true });
+      if (movedSidecar) await rollbackSidecar(sourceSidecar, targetSidecar, targetSidecarPreexisted);
+      return { success: false, code: 'collision', error: 'A session with this id already exists in the target project' };
     }
 
     await fs.promises.rename(tempFile, targetFile);
-
-    // Sidecar: subagent transcripts, workflow scripts, tool results
-    const sourceSidecar = path.join(fromDir, sessionId);
-    const targetSidecar = path.join(toDir, sessionId);
-    try {
-      const stat = await fs.promises.stat(sourceSidecar);
-      if (stat.isDirectory()) {
-        await moveDirectory(sourceSidecar, targetSidecar);
-        movedSidecar = true;
-      }
-    } catch { /* no sidecar, which is normal for short sessions */ }
+    published = true;
 
     // Only now is the source expendable
     await fs.promises.unlink(sourceFile);
   } catch (err) {
+    // Undo what was already published: without this a failing unlink would
+    // leave the session sitting in both projects at once.
     await fs.promises.rm(tempFile, { force: true }).catch(() => {});
-    return { success: false, code: 'io-error', error: err.message };
+    if (published) await fs.promises.rm(targetFile, { force: true }).catch(() => {});
+    if (movedSidecar) {
+      const restored = await rollbackSidecar(sourceSidecar, targetSidecar, targetSidecarPreexisted);
+      if (!restored) warnings.push('sidecar-not-restored');
+    }
+    return { success: false, code: 'io-error', error: err.message, warnings };
   }
 
   // resolveSessionFile memoizes sessionId -> filePath per directory

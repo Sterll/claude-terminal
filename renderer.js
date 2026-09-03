@@ -1935,9 +1935,9 @@ function _moveSessionErrorMessage(result) {
  * Ask which project to move a session to, then move it.
  * @param {object} session - Preprocessed session card data
  * @param {object} fromProject
- * @param {Function} onDone - Called after a successful move
+ * @param {Function} onFinish - Called once the picker closes, moved or not
  */
-function _showMoveSessionModal(session, fromProject, onDone) {
+function _showMoveSessionModal(session, fromProject, onFinish) {
   if (_isSessionLive(session.sessionId)) {
     showToast({ type: 'warning', title: t('sessions.move.title'), message: t('sessions.move.errorLive') });
     return;
@@ -1949,6 +1949,9 @@ function _showMoveSessionModal(session, fromProject, onDone) {
     return;
   }
 
+  // The sessions list and this picker share the one modal element, and the
+  // sessions-only sizing would otherwise carry over
+  document.getElementById('modal')?.classList.remove('modal--sessions');
   showModal(t('sessions.move.title'), `
     <div class="move-session">
       <p class="move-session-intro">${escapeHtml(t('sessions.move.intro', { name: _truncateModalText(session.displayTitle, 60) }))}</p>
@@ -1976,9 +1979,13 @@ function _showMoveSessionModal(session, fromProject, onDone) {
       toProjectPath: btn.dataset.targetPath
     });
 
+    const targetName = btn.querySelector('.move-session-target-name').textContent;
     closeModal();
+
     if (!result?.success) {
       showToast({ type: 'error', title: t('sessions.move.title'), message: _moveSessionErrorMessage(result) });
+      // The picker replaced the sessions list, so bring the list back either way
+      onFinish?.();
       return;
     }
 
@@ -1989,9 +1996,9 @@ function _showMoveSessionModal(session, fromProject, onDone) {
       // A session that ran across several worktrees left traces in each of them
       message: strays
         ? t('sessions.move.doneStrays', { count: Number(strays.split(':')[1]) })
-        : btn.querySelector('.move-session-target-name').textContent
+        : targetName
     });
-    onDone?.();
+    onFinish?.();
   });
 }
 

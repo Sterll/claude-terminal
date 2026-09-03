@@ -168,6 +168,57 @@ describe('moveSession', () => {
 
     expect((await moveSession(SID, ALPHA, BETA)).warnings).toEqual([]);
   });
+
+  test('merges into a sidecar the target already holds', async () => {
+    // The session also ran in the target project, so it left files there. A plain
+    // rename fails on a non-empty directory: both sets belong to this session.
+    writeSession(ALPHA);
+    writeSidecar(ALPHA);
+    fs.mkdirSync(path.join(sidecar(BETA), 'tool-results'), { recursive: true });
+    fs.writeFileSync(path.join(sidecar(BETA), 'tool-results', 'earlier.json'), '{}\n');
+
+    const result = await moveSession(SID, ALPHA, BETA);
+
+    expect(result.success).toBe(true);
+    expect(result.movedSidecar).toBe(true);
+    // Nothing is silently left behind in a project that no longer has the session
+    expect(fs.existsSync(sidecar(ALPHA))).toBe(false);
+    expect(fs.existsSync(path.join(sidecar(BETA), 'subagents', 'agent-abc.jsonl'))).toBe(true);
+    expect(fs.existsSync(path.join(sidecar(BETA), 'workflows', 'scripts', 'wf.js'))).toBe(true);
+    // ...and what was already there survives
+    expect(fs.existsSync(path.join(sidecar(BETA), 'tool-results', 'earlier.json'))).toBe(true);
+  });
+
+  test('leaves nothing in the target when the source cannot be removed', async () => {
+    // unlink fails when another process holds the transcript open (Windows EBUSY),
+    // which is exactly the live session the size check can miss.
+    writeSession(ALPHA);
+    writeSidecar(ALPHA);
+    const realUnlink = fs.promises.unlink;
+    fs.promises.unlink = jest.fn(async (p) => {
+      if (String(p).endsWith('.jsonl')) {
+        const err = new Error('EBUSY: resource busy or locked');
+        err.code = 'EBUSY';
+        throw err;
+      }
+      return realUnlink(p);
+    });
+
+    try {
+      const result = await moveSession(SID, ALPHA, BETA);
+
+      expect(result.success).toBe(false);
+      expect(result.code).toBe('io-error');
+      // The session must not end up sitting in both projects
+      expect(fs.existsSync(transcript(ALPHA))).toBe(true);
+      expect(fs.existsSync(transcript(BETA))).toBe(false);
+      expect(fs.existsSync(path.join(sidecar(ALPHA), 'subagents', 'agent-abc.jsonl'))).toBe(true);
+      expect(fs.existsSync(sidecar(BETA))).toBe(false);
+      expect(fs.readdirSync(dirFor(BETA)).filter(f => f.endsWith('.moving'))).toEqual([]);
+    } finally {
+      fs.promises.unlink = realUnlink;
+    }
+  });
 });
 
 describe('findStraySidecars', () => {
