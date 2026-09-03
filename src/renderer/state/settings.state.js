@@ -71,6 +71,7 @@ const defaultSettings = {
   pinnedTabs: ['claude', 'git', 'database', 'mcp', 'plugins', 'skills', 'agents', 'workflows', 'tasks', 'control-tower', 'dashboard', 'timetracking', 'session-replay', 'memory', 'connectivity'], // Pinned sidebar tabs (rest go to More menu)
   activeTab: 'claude', // Last active sidebar tab (restored on restart)
   openProjectIds: [], // Projects with a tab in the project bar, in tab order (restored on restart)
+  navigationMode: null, // 'tabs' | 'sidebar' | null = never chosen, ask once on next launch
   tabsOrder: null, // null = canonical order, otherwise array of all tabIds in custom order
   parallelMaxAgents: 3, // Default number of parallel agents for Parallel Task Manager (1-10)
   maxTurns: null, // null = no limit (SDK/CLI default), or a cap on API round-trips for the whole tab

@@ -321,31 +321,49 @@ body:not([data-active-tab="claude"]) .project-bar-tools {
   font-size: var(--font-base);
 }
 
-/* Claude Layout */
-.claude-layout {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-  position: relative;
+/* ── Sidebar navigation mode ──────────────────────────────────────────────
+   The pre-tab-bar navigation, shipped in full alongside the tab bar. The
+   projects host is moved into .claude-layout and stops being a popover: it
+   becomes the docked column it was, with its resizer and collapse toggle.
+   Only one navigation is mounted at a time, so the two never overlap. ── */
+
+.claude-layout > .projects-popover {
+  position: static;
+  width: var(--projects-panel-width);
+  min-width: 170px;
+  max-width: 450px;
+  flex-shrink: 0;
+  max-height: none;
+  border: none;
+  border-right: 1px solid var(--border-color);
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
+  z-index: 10;
+  transition: width 0.2s ease, min-width 0.2s ease, opacity 0.2s ease;
 }
 
-/* Lives inside .projects-popover — sized by it, not by the layout. */
-.projects-panel {
-  flex: 1;
+.claude-layout > .projects-popover.collapsed {
+  width: 0 !important;
   min-width: 0;
-  background: var(--bg-secondary);
-  display: flex;
-  flex-direction: column;
+  max-width: 0;
+  border-right: none;
   overflow: hidden;
-  position: relative;
+  opacity: 0;
+  pointer-events: none;
 }
 
-.projects-popover .panel-header {
-  padding: 10px 12px;
+/* The tab strip and its + button are the other navigation. The tools row
+   stays: it is the terminals header the sidebar layout also uses. */
+body.nav-sidebar .project-tabs,
+body.nav-sidebar .project-tab-add,
+body.nav-sidebar #btn-close-projects-popover {
+  display: none;
 }
 
-.projects-popover .panel-header h2 {
-  font-size: var(--font-base);
+body.nav-tabs .btn-show-projects,
+body.nav-tabs #btn-toggle-projects {
+  display: none !important;
 }
 
 .sessions-panel {
@@ -4176,4 +4194,75 @@ body.compact-projects .project-item:hover {
 .qa-env-var-row input:focus {
   border-color: var(--accent);
   outline: none;
+}
+
+/* Toggle button icon rotation */
+#btn-toggle-projects svg {
+  transition: transform 0.2s ease;
+}
+
+/* Thin strip to re-open projects panel */
+.btn-show-projects {
+  position: absolute;
+  top: 53px;
+  left: 0;
+  width: 20px;
+  height: calc(100% - 53px);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  z-index: 15;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
+  display: none;
+  padding: 0;
+}
+
+.btn-show-projects:hover {
+  background: var(--bg-tertiary);
+  color: var(--accent-color);
+}
+
+.btn-show-projects svg {
+  width: 14px;
+  height: 14px;
+}
+
+.claude-layout.projects-hidden .btn-show-projects {
+  display: flex;
+}
+
+.btn-more-actions {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.btn-more-actions svg {
+  width: 16px;
+  height: 16px;
+}
+
+.btn-more-actions:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+
+/* Those two screens carry their own project list in sidebar mode only */
+body.nav-tabs .git-sidebar-projects,
+body.nav-tabs .dashboard-sidebar,
+body.nav-tabs #terminals-header {
+  display: none !important;
 }

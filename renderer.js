@@ -310,6 +310,7 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
   if (settingsState.get().reduceMotion) {
     document.body.classList.add('reduce-motion');
   }
+  applyNavigationMode(settingsState.get().navigationMode);
   // Restore notification bell state from persisted settings
   document.getElementById('btn-notifications').classList.toggle('active', isNotificationsEnabled());
 
@@ -2856,6 +2857,52 @@ ProjectBar.initProjectBar({
 // Hosts the full ProjectList: search, folders, drag & drop and every
 // per-project action, on demand instead of in permanent screen space.
 
+/**
+ * Navigation mode: the project tab bar, or the same projects panel docked as a
+ * permanent left column. A body class drives the layout and both modes share one
+ * ProjectList, so there is no second implementation to keep in step.
+ * @param {'tabs'|'sidebar'|null} mode - null until the user has been asked
+ */
+function applyNavigationMode(mode) {
+  const sidebar = mode === 'sidebar';
+  document.body.classList.toggle('nav-sidebar', sidebar);
+  document.body.classList.toggle('nav-tabs', !sidebar);
+
+  // Two nodes are shared by both navigations rather than duplicated, because
+  // duplicating them would mean two #projects-list hosts and two tool rows
+  // drifting apart. They are moved to where each navigation expects them.
+  const popover = document.getElementById('projects-popover');
+  const layout = document.getElementById('claude-layout');
+  const content = document.querySelector('.content');
+  const tools = document.getElementById('project-bar-tools');
+  const header = document.getElementById('terminals-header');
+  const bar = document.getElementById('project-bar');
+
+  if (sidebar) {
+    // Docked column, to the left of the file explorer, as it was before the bar
+    if (popover && layout && popover.parentElement !== layout) {
+      layout.insertBefore(popover, layout.querySelector('#file-explorer-panel'));
+    }
+    if (tools && header && tools.parentElement !== header) header.appendChild(tools);
+    if (popover) popover.style.display = 'flex';
+  } else {
+    if (popover && content && popover.parentElement !== content) {
+      content.insertBefore(popover, content.querySelector('.tab-content'));
+    }
+    if (tools && bar && tools.parentElement !== bar) bar.appendChild(tools);
+    // Back to a popover: closed until the + button opens it
+    if (popover) {
+      popover.style.display = 'none';
+      popover.classList.remove('collapsed');
+    }
+  }
+}
+
+/** In sidebar mode the panel is permanent, so it is never "open" or "closed". */
+function isProjectsPanelDocked() {
+  return document.body.classList.contains('nav-sidebar');
+}
+
 function isProjectsPopoverOpen() {
   const popover = document.getElementById('projects-popover');
   return !!popover && popover.style.display !== 'none';
@@ -2864,7 +2911,9 @@ function isProjectsPopoverOpen() {
 function openProjectsPopover(anchor) {
   const popover = document.getElementById('projects-popover');
   if (!popover) return;
-  popover.style.display = 'block';
+  // flex, matching .projects-popover in the stylesheet, so the panel inside
+  // stretches to the popover instead of collapsing to its content height
+  popover.style.display = 'flex';
   document.getElementById('btn-open-project')?.setAttribute('aria-expanded', 'true');
 
   // Anchor under the + button, clamped to the viewport.
@@ -2882,6 +2931,7 @@ function openProjectsPopover(anchor) {
 }
 
 function closeProjectsPopover() {
+  if (isProjectsPanelDocked()) return;
   const popover = document.getElementById('projects-popover');
   if (!popover || popover.style.display === 'none') return;
   popover.style.display = 'none';
@@ -2889,6 +2939,7 @@ function closeProjectsPopover() {
 }
 
 function toggleProjectsPopover(anchor) {
+  if (isProjectsPanelDocked()) return;
   if (isProjectsPopoverOpen()) closeProjectsPopover();
   else openProjectsPopover(anchor);
 }
@@ -3406,7 +3457,7 @@ const _TAB_LIFECYCLE = {
     deactivate: () => ControlTowerPanel.cleanup()
   },
   dashboard: {
-    activate: () => renderDashboardForScope(),
+    activate: () => { populateDashboardProjects(); renderDashboardForScope(); },
     // 30s GitHub Actions poll started by the dashboard cards; it used to keep
     // hitting the API from a tab nobody was looking at.
     deactivate: () => DashboardService.stopWorkflowPolling()
@@ -4171,6 +4222,147 @@ document.getElementById('modal-overlay').onclick = (e) => { if (e.target.id === 
  * Overview tab in front of them shows all projects. There is deliberately no
  * second project selector on the screen itself.
  */
+function populateDashboardProjects() {
+  // Sidebar navigation only: in tab-bar mode the bar and its Overview tab are
+  // the selector, and this list is not on screen.
+  if (!document.body.classList.contains('nav-sidebar')) return;
+  const list = document.getElementById('dashboard-projects-list');
+  if (!list) return;
+  const state = projectsState.get();
+  const { projects, folders, rootOrder } = state;
+
+  if (projects.length === 0) {
+    list.innerHTML = `<div class="dashboard-projects-empty">Aucun projet</div>`;
+    return;
+  }
+
+  // Overview item
+  const overviewHtml = `
+    <div class="dashboard-project-item overview-item ${localState.dashboardScope === 'overview' ? 'active' : ''}" data-index="-1">
+      <div class="dashboard-project-icon">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+      </div>
+      <div class="dashboard-project-info">
+        <div class="dashboard-project-name">${t('dashboard.overview')}</div>
+      </div>
+    </div>
+  `;
+
+  function renderFolderItem(folder, depth) {
+    const projectCount = countProjectsRecursive(folder.id);
+    const isCollapsed = folder.collapsed;
+    const indent = depth * 16;
+
+    const colorIndicator = folder.color
+      ? `<span class="dash-folder-color" style="background: ${folder.color}"></span>`
+      : '';
+
+    const folderIcon = folder.icon
+      ? `<span class="dash-folder-emoji">${folder.icon}</span>`
+      : `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>`;
+
+    let childrenHtml = '';
+    const children = folder.children || [];
+    for (const childId of children) {
+      const childFolder = folders.find(f => f.id === childId);
+      if (childFolder) {
+        childrenHtml += renderFolderItem(childFolder, depth + 1);
+      } else {
+        const childProject = projects.find(p => p.id === childId);
+        if (childProject && childProject.folderId === folder.id) {
+          childrenHtml += renderProjectItem(childProject, depth + 1);
+        }
+      }
+    }
+
+    return `
+      <div class="dash-folder-item" data-folder-id="${folder.id}">
+        <div class="dash-folder-header" style="padding-left: ${indent + 8}px">
+          <span class="dash-folder-chevron ${isCollapsed ? 'collapsed' : ''}">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+          </span>
+          ${colorIndicator}
+          <span class="dash-folder-icon">${folderIcon}</span>
+          <span class="dash-folder-name">${escapeHtml(folder.name)}</span>
+          <span class="dash-folder-count">${projectCount}</span>
+        </div>
+        <div class="dash-folder-children ${isCollapsed ? 'collapsed' : ''}">
+          ${childrenHtml}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderProjectItem(project, depth) {
+    const index = getProjectIndex(project.id);
+    const isActive = localState.dashboardScope !== 'overview' && projectsState.get().selectedProjectFilter === index;
+    const indent = depth * 16;
+
+    const colorIndicator = project.color
+      ? `<span class="dash-folder-color" style="background: ${project.color}"></span>`
+      : '';
+
+    const dashTypeHandler = registry.get(project.type);
+    const dashTypeIcon = dashTypeHandler.getDashboardIcon ? dashTypeHandler.getDashboardIcon(project) : null;
+    const iconHtml = project.icon
+      ? `<span class="dashboard-project-emoji">${project.icon}</span>`
+      : (dashTypeIcon || '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>');
+
+    return `
+      <div class="dashboard-project-item ${isActive ? 'active' : ''}" data-index="${index}" style="padding-left: ${indent}px">
+        <div class="dashboard-project-icon">${colorIndicator}${iconHtml}</div>
+        <div class="dashboard-project-info">
+          <div class="dashboard-project-name">${escapeHtml(project.name)}</div>
+          <div class="dashboard-project-path">${escapeHtml(project.path)}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  let itemsHtml = '';
+  for (const itemId of (rootOrder || [])) {
+    const folder = folders.find(f => f.id === itemId);
+    if (folder) {
+      itemsHtml += renderFolderItem(folder, 0);
+    } else {
+      const project = projects.find(p => p.id === itemId);
+      if (project) {
+        itemsHtml += renderProjectItem(project, 0);
+      }
+    }
+  }
+
+  list.innerHTML = overviewHtml + itemsHtml;
+
+  // Click handlers for projects
+  list.querySelectorAll('.dashboard-project-item').forEach(item => {
+    item.onclick = () => {
+      const index = parseInt(item.dataset.index);
+      if (index === -1) {
+        localState.dashboardScope = 'overview';
+        populateDashboardProjects();
+        renderDashboardForScope();
+      } else {
+        // Same switch the project bar performs, so both navigations agree
+        localState.dashboardScope = 'project';
+        selectProjectFromBar(index);
+        populateDashboardProjects();
+      }
+    };
+  });
+
+  // Click handlers for folder headers (toggle collapse)
+  list.querySelectorAll('.dash-folder-header').forEach(header => {
+    header.onclick = (e) => {
+      e.stopPropagation();
+      const folderItem = header.closest('.dash-folder-item');
+      const folderId = folderItem.dataset.folderId;
+      toggleFolderCollapse(folderId);
+      populateDashboardProjects();
+    };
+  });
+}
+
 function renderDashboardForScope() {
   const projectIndex = projectsState.get().selectedProjectFilter;
   const project = projectsState.get().projects[projectIndex] || null;
@@ -6575,3 +6767,78 @@ window.addEventListener('beforeunload', () => {
   DashboardService.cleanup();
 });
 
+
+// ========== PROJECTS PANEL RESIZER (sidebar navigation) ==========
+// The host is the same node the tab-bar mode uses as a popover; docked, it is
+// the column, so width and collapse apply to it rather than to the inner panel.
+(function initProjectsPanelResizer() {
+  const resizer = document.getElementById('projects-panel-resizer');
+  const panel = document.getElementById('projects-popover');
+  const btnToggle = document.getElementById('btn-toggle-projects');
+  if (!resizer || !panel) return;
+
+  function updateToggleVisibility(width) {
+    if (btnToggle) btnToggle.style.display = width < 210 ? 'none' : '';
+  }
+
+  let startX, startWidth;
+
+  resizer.addEventListener('mousedown', (e) => {
+    if (!document.body.classList.contains('nav-sidebar')) return;
+    e.preventDefault();
+    startX = e.clientX;
+    startWidth = panel.offsetWidth;
+    resizer.classList.add('active');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMouseMove = (ev) => {
+      const newWidth = Math.min(600, Math.max(170, startWidth + (ev.clientX - startX)));
+      panel.style.width = newWidth + 'px';
+      updateToggleVisibility(newWidth);
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      resizer.classList.remove('active');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      updateToggleVisibility(panel.offsetWidth);
+      settingsState.setProp('projectsPanelWidth', panel.offsetWidth);
+      saveSettingsImmediate();
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  });
+
+  const savedWidth = settingsState.get().projectsPanelWidth;
+  if (savedWidth) panel.style.width = savedWidth + 'px';
+})();
+
+// ========== PROJECTS PANEL TOGGLE (sidebar navigation) ==========
+(function initProjectsPanelToggle() {
+  const panel = document.getElementById('projects-popover');
+  const layout = document.getElementById('claude-layout');
+  const btnToggle = document.getElementById('btn-toggle-projects');
+  const btnShow = document.getElementById('btn-show-projects');
+  if (!panel || !layout || !btnToggle || !btnShow) return;
+
+  if (localStorage.getItem('projects-panel-hidden') === 'true') {
+    panel.classList.add('collapsed');
+    layout.classList.add('projects-hidden');
+  }
+
+  btnToggle.onclick = () => {
+    panel.classList.add('collapsed');
+    layout.classList.add('projects-hidden');
+    localStorage.setItem('projects-panel-hidden', 'true');
+  };
+
+  btnShow.onclick = () => {
+    panel.classList.remove('collapsed');
+    layout.classList.remove('projects-hidden');
+    localStorage.setItem('projects-panel-hidden', 'false');
+  };
+})();

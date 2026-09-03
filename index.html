@@ -434,6 +434,9 @@
               <button class="btn-icon" id="btn-new-project" data-i18n-title="common.new" aria-label="New project">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
               </button>
+              <button class="btn-icon" id="btn-toggle-projects" data-i18n-title="ui.hideProjects" title="Hide projects" aria-label="Toggle projects panel">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+              </button>
               <button class="btn-icon" id="btn-close-projects-popover" data-i18n-title="common.close" title="Close" aria-label="Close">
                 <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
               </button>
@@ -445,12 +448,21 @@
             <button class="projects-search-clear" id="projects-search-clear" style="display:none" aria-label="Clear">&times;</button>
           </div>
           <div class="projects-list" id="projects-list" role="list" aria-label="Projects"></div>
+          <!-- Drag handle for the docked column; inert while this is a popover -->
+          <div class="panel-resizer" id="projects-panel-resizer"></div>
         </div>
       </div>
 
       <!-- Claude Tab -->
       <div class="tab-content active" id="tab-claude" role="tabpanel" aria-label="Claude">
         <div class="claude-layout" id="claude-layout">
+          <!-- Sidebar navigation: thin strip that brings the projects panel back
+               once it has been collapsed. Hidden in tab-bar mode. -->
+          <button class="btn-show-projects" id="btn-show-projects" data-i18n-title="ui.showProjects" title="Show projects" aria-label="Show projects">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+          </button>
+          <!-- In sidebar mode the projects host is moved in here and docked as a
+               column; in tab-bar mode it stays a popover above the content. -->
           <!-- File Explorer Panel -->
           <div class="file-explorer-panel" id="file-explorer-panel" style="display: none;">
             <div class="panel-header">
@@ -486,6 +498,10 @@
 
           <!-- Terminals Panel -->
           <div class="terminals-panel">
+            <!-- Sidebar navigation: the tools row (project name, git actions, CI
+                 pill, quick actions) is moved in here instead of sitting in the
+                 project bar. Empty and collapsed in tab-bar mode. -->
+            <div class="terminals-header" id="terminals-header"></div>
             <!-- Session tabs row: session actions sit to the left of the tabs -->
             <div class="terminals-tabs-row">
               <div class="session-actions">
@@ -634,6 +650,13 @@
       <div class="tab-content" id="tab-git">
         <div class="git-tab-layout">
           <div class="git-tab-sidebar">
+            <!-- Sidebar navigation only: this screen's own project list -->
+            <div class="git-sidebar-section git-sidebar-projects">
+              <div class="git-sidebar-header">
+                <h3 data-i18n="projects.title">Projets</h3>
+              </div>
+              <div class="git-projects-list" id="git-projects-list"></div>
+            </div>
             <div class="git-sidebar-section git-sidebar-quick-actions">
               <div class="git-sidebar-header">
                 <h3 data-i18n="ui.quickActions">Quick Actions</h3>
@@ -725,6 +748,13 @@
       <!-- Dashboard Tab -->
       <div class="tab-content" id="tab-dashboard">
         <div class="dashboard-layout">
+          <!-- Sidebar navigation only: this screen's own project list -->
+          <div class="dashboard-sidebar">
+            <div class="dashboard-sidebar-header">
+              <h3 data-i18n="projects.title">Projets</h3>
+            </div>
+            <div class="dashboard-projects-list" id="dashboard-projects-list"></div>
+          </div>
           <div class="dashboard-main">
             <div class="dashboard-content" id="dashboard-content">
               <div class="dashboard-empty">
