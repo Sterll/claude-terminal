@@ -620,6 +620,216 @@ async function deleteSession(projectPath, sessionId) {
   return { success: true };
 }
 
+// ─── Moving a session between projects ──────────────────────────────────────
+//
+// Claude Code files a session under the directory encoding of the cwd it was
+// started in, and finds it again by encoding the cwd it is launched with. The
+// runtime cwd comes from the spawn (TerminalService passes `cwd: project.path`
+// alongside `--resume <id>`), NOT from the transcript — so re-filing the
+// transcript is enough to make a session resumable from another project, and
+// the `cwd` recorded on each line is left alone as the historical record it is.
+//
+// A session is not one file: `<uuid>.jsonl` usually has a sibling `<uuid>/`
+// directory holding subagent transcripts, workflow scripts and tool results.
+// Both move together.
+
+/** Byte size of a file. */
+async function fileSize(filePath) {
+  return (await fs.promises.stat(filePath)).size;
+}
+
+/** True when the path exists. */
+async function exists(target) {
+  try {
+    await fs.promises.access(target);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Recursively move a directory. Falls back to copy+remove across devices, and
+ * also when the target already exists: a session that ran in the target project
+ * too has left a sidecar there, and both sets of files belong to that same
+ * session, so they are merged rather than refused.
+ */
+async function moveDirectory(from, to) {
+  if (!(await exists(to))) {
+    try {
+      await fs.promises.rename(from, to);
+      return;
+    } catch (err) {
+      if (err.code !== 'EXDEV') throw err;
+    }
+  }
+  await fs.promises.cp(from, to, { recursive: true, force: true });
+  await fs.promises.rm(from, { recursive: true, force: true });
+}
+
+/**
+ * Put a moved sidecar back where it came from.
+ * When the target already held one the two were merged, and merged files cannot
+ * be told apart again — the sidecar then stays put and the caller says so.
+ * @returns {Promise<boolean>} true when the source sidecar was restored
+ */
+async function rollbackSidecar(sourceSidecar, targetSidecar, targetSidecarPreexisted) {
+  if (targetSidecarPreexisted) return false;
+  try {
+    await moveDirectory(targetSidecar, sourceSidecar);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Move a session's transcript (and its sidecar directory) to another project.
+ *
+ * Copies before deleting rather than renaming: the two directories can sit on
+ * different volumes, and a half-finished rename would lose the transcript.
+ * Nothing is published in the target until the sidecar is across, and anything
+ * already published is undone if a later step fails.
+ *
+ * @param {string} sessionId
+ * @param {string} fromProjectPath
+ * @param {string} toProjectPath
+ * @returns {Promise<{success: boolean, error?: string, code?: string, movedSidecar?: boolean, warnings?: string[]}>}
+ */
+async function moveSession(sessionId, fromProjectPath, toProjectPath) {
+  if (!sessionId || !fromProjectPath || !toProjectPath) {
+    return { success: false, code: 'bad-request', error: 'sessionId, fromProjectPath and toProjectPath are required' };
+  }
+
+  const fromDir = getProjectSessionsDir(fromProjectPath);
+  const toDir = getProjectSessionsDir(toProjectPath);
+  if (fromDir === toDir) {
+    return { success: false, code: 'same-project', error: 'Source and target project are the same' };
+  }
+
+  const sourceFile = await resolveSessionFile(fromDir, sessionId);
+  if (!sourceFile) {
+    return { success: false, code: 'not-found', error: 'Session file not found' };
+  }
+
+  const fileName = path.basename(sourceFile);
+  const targetFile = path.join(toDir, fileName);
+  try {
+    await fs.promises.access(targetFile);
+    return { success: false, code: 'collision', error: 'A session with this id already exists in the target project' };
+  } catch { /* free, as expected */ }
+
+  await fs.promises.mkdir(toDir, { recursive: true });
+
+  const warnings = [];
+  const tempFile = `${targetFile}.moving`;
+  const sourceSidecar = path.join(fromDir, sessionId);
+  const targetSidecar = path.join(toDir, sessionId);
+  let movedSidecar = false;
+  // The target may already hold a sidecar from a run that happened there. If it
+  // does, a rollback must not touch it — those files predate this move.
+  const targetSidecarPreexisted = await exists(targetSidecar);
+  let published = false;
+
+  try {
+    // Claude Code appends to the transcript of a live session. Comparing the
+    // size on both sides of the copy catches that, and a stat costs nothing
+    // next to reading a file that can reach 200 MB.
+    const sizeBefore = await fileSize(sourceFile);
+    await fs.promises.copyFile(sourceFile, tempFile);
+    const sizeAfter = await fileSize(sourceFile);
+    if (sizeBefore !== sizeAfter) {
+      await fs.promises.rm(tempFile, { force: true });
+      return { success: false, code: 'session-live', error: 'The session was written to while copying — close it and try again' };
+    }
+
+    const copiedSize = await fileSize(tempFile);
+    if (copiedSize !== sizeBefore) {
+      await fs.promises.rm(tempFile, { force: true });
+      return { success: false, code: 'verify-failed', error: `Copy is incomplete (${copiedSize}/${sizeBefore} bytes)` };
+    }
+
+    // Sidecar first: subagent transcripts, workflow scripts, tool results. It is
+    // the one step that is not atomic, so it runs while nothing is published yet
+    // and a failure can still abort cleanly.
+    let hasSidecar = false;
+    try {
+      hasSidecar = (await fs.promises.stat(sourceSidecar)).isDirectory();
+    } catch { /* no sidecar, which is normal for short sessions */ }
+    if (hasSidecar) {
+      await moveDirectory(sourceSidecar, targetSidecar);
+      movedSidecar = true;
+    }
+
+    // Re-check: the first look happened before the copy, which is not instant
+    if (await exists(targetFile)) {
+      await fs.promises.rm(tempFile, { force: true });
+      if (movedSidecar) await rollbackSidecar(sourceSidecar, targetSidecar, targetSidecarPreexisted);
+      return { success: false, code: 'collision', error: 'A session with this id already exists in the target project' };
+    }
+
+    await fs.promises.rename(tempFile, targetFile);
+    published = true;
+
+    // Only now is the source expendable
+    await fs.promises.unlink(sourceFile);
+  } catch (err) {
+    // Undo what was already published: without this a failing unlink would
+    // leave the session sitting in both projects at once.
+    await fs.promises.rm(tempFile, { force: true }).catch(() => {});
+    if (published) await fs.promises.rm(targetFile, { force: true }).catch(() => {});
+    if (movedSidecar) {
+      const restored = await rollbackSidecar(sourceSidecar, targetSidecar, targetSidecarPreexisted);
+      if (!restored) warnings.push('sidecar-not-restored');
+    }
+    return { success: false, code: 'io-error', error: err.message, warnings };
+  }
+
+  // resolveSessionFile memoizes sessionId -> filePath per directory
+  _sessionIndex.delete(sessionId);
+  _indexedDirs.delete(fromDir);
+  _indexedDirs.delete(toDir);
+
+  // A session that ran across several worktrees leaves sidecars in each of
+  // those projects. They belong to the runs that happened there, so they stay.
+  const strays = await findStraySidecars(sessionId, [fromDir, toDir]);
+  if (strays.length > 0) {
+    warnings.push(`left-sidecars:${strays.length}`);
+  }
+
+  return { success: true, movedSidecar, warnings, targetFile };
+}
+
+/**
+ * Sidecar directories for this session sitting under other projects.
+ * @param {string} sessionId
+ * @param {string[]} ignoredDirs
+ * @returns {Promise<string[]>}
+ */
+async function findStraySidecars(sessionId, ignoredDirs = []) {
+  const projectsDir = path.join(os.homedir(), '.claude', 'projects');
+  const ignored = new Set(ignoredDirs);
+  let entries;
+  try {
+    entries = await fs.promises.readdir(projectsDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const found = await Promise.all(entries.map(async (entry) => {
+    if (!entry.isDirectory()) return null;
+    const dir = path.join(projectsDir, entry.name);
+    if (ignored.has(dir)) return null;
+    const sidecar = path.join(dir, sessionId);
+    try {
+      const stat = await fs.promises.stat(sidecar);
+      return stat.isDirectory() ? sidecar : null;
+    } catch {
+      return null;
+    }
+  }));
+  return found.filter(Boolean);
+}
+
 /**
  * Export a session as Markdown or JSON
  * @param {string} projectPath
@@ -732,6 +942,16 @@ function registerClaudeHandlers() {
     }
   });
 
+  // Move a session (transcript + sidecar) to another project
+  ipcMain.handle('claude-move-session', async (event, { sessionId, fromProjectPath, toProjectPath }) => {
+    try {
+      return await moveSession(sessionId, fromProjectPath, toProjectPath);
+    } catch (err) {
+      console.error('[claude-move-session] Error:', err.message);
+      return { success: false, code: 'io-error', error: err.message };
+    }
+  });
+
   // Export a session as Markdown or JSON
   ipcMain.handle('claude-export-session', async (event, { projectPath, sessionId, format }) => {
     try {
@@ -743,4 +963,4 @@ function registerClaudeHandlers() {
   });
 }
 
-module.exports = { registerClaudeHandlers, getClaudeSessions, loadSessionHistory, parseSessionReplay };
+module.exports = { registerClaudeHandlers, getClaudeSessions, loadSessionHistory, parseSessionReplay, moveSession, findStraySidecars };

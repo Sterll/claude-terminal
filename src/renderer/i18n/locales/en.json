@@ -728,7 +728,19 @@
     "exported": "Session exported",
     "exportedTo": "Exported to {path}",
     "exportError": "Failed to export session",
-    "exportFormat": "Export format"
+    "exportFormat": "Export format",
+    "move": {
+      "title": "Move to another project",
+      "intro": "Move “{name}” out of this project. The conversation is not modified.",
+      "note": "Its transcript and any subagent, workflow and tool-result files move with it. Runs it made in other projects keep their own files.",
+      "done": "Session moved",
+      "doneStrays": "Moved. {count} folder(s) from runs in other projects were left in place.",
+      "noTarget": "No other project to move it to",
+      "errorLive": "This session is open in a tab. Close it first.",
+      "errorCollision": "The target project already has a session with this id",
+      "errorNotFound": "Session file not found",
+      "errorGeneric": "The session could not be moved"
+    }
   },
   "time": {
     "justNow": "just now",

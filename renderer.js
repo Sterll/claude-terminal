@@ -1826,6 +1826,7 @@ const MODAL_SVG_DEFS = `<svg style="display:none" xmlns="http://www.w3.org/2000/
   <symbol id="sm-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="sm-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
   <symbol id="sm-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 11V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v7"/><path d="M5 17h14"/><path d="M7 11l-2 6h14l-2-6"/></symbol>
+  <symbol id="sm-move" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h5a2 2 0 0 0 2-2V6a2 2 0 0 1 2-2h7"/><polyline points="17 1 21 5 17 9"/></symbol>
 </svg>`;
 
 function _cleanModalSessionText(text) {
@@ -1906,6 +1907,101 @@ function _groupModalSessions(sessions) {
   return Object.values(groups).filter(g => g.sessions.length > 0);
 }
 
+// ── Moving a session to another project ──────────────────────────────────────
+
+/**
+ * True when a tab is currently running this Claude session.
+ * Claude Code appends to the transcript as it goes, so moving the file under a
+ * live session would corrupt it — the main process catches that too, but asking
+ * here lets the UI explain it instead of failing mid-copy.
+ */
+function _isSessionLive(sessionId) {
+  for (const termData of terminalsState.get().terminals.values()) {
+    if (termData?.claudeSessionId === sessionId) return true;
+  }
+  return false;
+}
+
+function _moveSessionErrorMessage(result) {
+  switch (result?.code) {
+    case 'session-live': return t('sessions.move.errorLive');
+    case 'collision': return t('sessions.move.errorCollision');
+    case 'not-found': return t('sessions.move.errorNotFound');
+    default: return result?.error || t('sessions.move.errorGeneric');
+  }
+}
+
+/**
+ * Ask which project to move a session to, then move it.
+ * @param {object} session - Preprocessed session card data
+ * @param {object} fromProject
+ * @param {Function} onFinish - Called once the picker closes, moved or not
+ */
+function _showMoveSessionModal(session, fromProject, onFinish) {
+  if (_isSessionLive(session.sessionId)) {
+    showToast({ type: 'warning', title: t('sessions.move.title'), message: t('sessions.move.errorLive') });
+    return;
+  }
+
+  const targets = projectsState.get().projects.filter(p => p.path !== fromProject.path);
+  if (targets.length === 0) {
+    showToast({ type: 'info', title: t('sessions.move.title'), message: t('sessions.move.noTarget') });
+    return;
+  }
+
+  // The sessions list and this picker share the one modal element, and the
+  // sessions-only sizing would otherwise carry over
+  document.getElementById('modal')?.classList.remove('modal--sessions');
+  showModal(t('sessions.move.title'), `
+    <div class="move-session">
+      <p class="move-session-intro">${escapeHtml(t('sessions.move.intro', { name: _truncateModalText(session.displayTitle, 60) }))}</p>
+      <div class="move-session-list">
+        ${targets.map(p => `
+          <button class="move-session-target" data-target-path="${escapeHtml(p.path)}">
+            <span class="move-session-target-name">${escapeHtml(p.name)}</span>
+            <span class="move-session-target-path">${escapeHtml(p.path)}</span>
+          </button>`).join('')}
+      </div>
+      <p class="move-session-note">${escapeHtml(t('sessions.move.note'))}</p>
+    </div>
+  `);
+
+  const listEl = document.querySelector('.move-session-list');
+  listEl?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.move-session-target');
+    if (!btn || btn.disabled) return;
+    listEl.querySelectorAll('.move-session-target').forEach(b => { b.disabled = true; });
+    btn.classList.add('is-moving');
+
+    const result = await api.claude.moveSession({
+      sessionId: session.sessionId,
+      fromProjectPath: fromProject.path,
+      toProjectPath: btn.dataset.targetPath
+    });
+
+    const targetName = btn.querySelector('.move-session-target-name').textContent;
+    closeModal();
+
+    if (!result?.success) {
+      showToast({ type: 'error', title: t('sessions.move.title'), message: _moveSessionErrorMessage(result) });
+      // The picker replaced the sessions list, so bring the list back either way
+      onFinish?.();
+      return;
+    }
+
+    const strays = (result.warnings || []).find(w => w.startsWith('left-sidecars:'));
+    showToast({
+      type: 'success',
+      title: t('sessions.move.done'),
+      // A session that ran across several worktrees left traces in each of them
+      message: strays
+        ? t('sessions.move.doneStrays', { count: Number(strays.split(':')[1]) })
+        : targetName
+    });
+    onFinish?.();
+  });
+}
+
 function _buildModalCardHtml(s, index) {
   const freshClass = s.freshness ? ` session-card--${s.freshness}` : '';
   const pinnedClass = s.pinned ? ' session-card--pinned' : '';
@@ -1927,6 +2023,7 @@ ${s.displaySubtitle ? `<span class="session-card-subtitle">${escapeHtml(_truncat
 ${s.gitBranch ? `<span class="session-meta-branch"><svg width="10" height="10"><use href="#sm-branch"/></svg>${escapeHtml(s.gitBranch)}</span>` : ''}
 </div>
 <button class="session-card-pin" data-pin-sid="${s.sessionId}" title="${pinTitle}"><svg width="13" height="13"><use href="#sm-pin"/></svg></button>
+<button class="session-card-move" data-move-sid="${s.sessionId}" title="${escapeHtml(t('sessions.move.title'))}"><svg width="13" height="13"><use href="#sm-move"/></svg></button>
 <div class="session-card-arrow"><svg width="12" height="12"><use href="#sm-arrow"/></svg></div>
 </div>`;
 }
@@ -2010,6 +2107,14 @@ async function showSessionsModal(project) {
         _modalPinsCache = null;
         // Re-render
         showSessionsModal(project);
+        return;
+      }
+      const moveBtn = e.target.closest('.session-card-move');
+      if (moveBtn) {
+        e.stopPropagation();
+        const sid = moveBtn.dataset.moveSid;
+        const session = sessionMap.get(sid);
+        if (session) _showMoveSessionModal(session, project, () => showSessionsModal(project));
         return;
       }
       const card = e.target.closest('.session-card');

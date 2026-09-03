@@ -728,7 +728,19 @@
     "exported": "会话已导出",
     "exportedTo": "导出为{path}",
     "exportError": "导出会话失败",
-    "exportFormat": "导出格式"
+    "exportFormat": "导出格式",
+    "move": {
+      "title": "移动到其他项目",
+      "intro": "将“{name}”移出此项目。对话内容不会被修改。",
+      "note": "其记录以及子智能体、工作流和工具结果文件会一并移动。在其他项目中的运行会保留各自的文件。",
+      "done": "会话已移动",
+      "doneStrays": "已移动。有 {count} 个来自其他项目运行的文件夹被保留在原处。",
+      "noTarget": "没有其他项目可供移动",
+      "errorLive": "该会话已在某个标签页中打开，请先关闭。",
+      "errorCollision": "目标项目中已存在相同 id 的会话",
+      "errorNotFound": "未找到会话文件",
+      "errorGeneric": "无法移动该会话"
+    }
   },
   "time": {
     "justNow": "刚才",
