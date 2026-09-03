@@ -186,24 +186,51 @@ function renderSummary(summary) {
     </div>`;
 }
 
-function renderTimeline(steps) {
+/**
+ * @param {Array} steps - Steps to render (a full session, or one appended page)
+ * @param {object} [options]
+ * @param {boolean} [options.append] - Append after the existing steps instead of replacing
+ */
+function renderTimeline(steps, options = {}) {
+  const { append = false } = options;
+
   if (!steps || steps.length === 0) {
-    timeline.innerHTML = `<div class="sr-empty">${t('sessionReplay.noSteps')}</div>`;
+    if (!append) timeline.innerHTML = `<div class="sr-empty">${t('sessionReplay.noSteps')}</div>`;
     return;
   }
 
   // Fix 2: group consecutive identical tool calls
   const displaySteps = groupConsecutiveAgents(steps);
+  // data-step-index has to match the DOM position among .sr-step, which
+  // focusStep() indexes into, so an appended page continues the numbering.
+  const startIndex = append ? timeline.querySelectorAll('.sr-step').length : 0;
 
-  timeline.innerHTML = displaySteps.map((step, i) => {
+  const html = displaySteps.map((step, i) => {
+    const idx = startIndex + i;
     if (step.type === 'group') {
-      return renderGroupStep(step, i);
+      return renderGroupStep(step, idx);
     }
-    return renderNormalStep(step, i);
+    return renderNormalStep(step, idx);
   }).join('');
 
-  // Attach click handlers for normal steps
-  timeline.querySelectorAll('.sr-step:not(.sr-step--grouped)').forEach(el => {
+  if (append) {
+    const footer = timeline.querySelector('.sr-timeline-more');
+    if (footer) footer.insertAdjacentHTML('beforebegin', html);
+    else timeline.insertAdjacentHTML('beforeend', html);
+  } else {
+    timeline.innerHTML = html;
+  }
+
+  // Attach handlers to the steps that do not have them yet (appended pages)
+  timeline.querySelectorAll('.sr-step:not([data-sr-bound])').forEach(el => {
+    el.dataset.srBound = '1';
+    if (el.classList.contains('sr-step--grouped')) {
+      el.addEventListener('click', () => toggleGroupStep(el));
+      el.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleGroupStep(el); }
+      });
+      return;
+    }
     el.addEventListener('click', () => toggleStep(el));
     el.addEventListener('keydown', e => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleStep(el); }
@@ -211,14 +238,81 @@ function renderTimeline(steps) {
       if (e.key === 'ArrowUp') { e.preventDefault(); focusStep(+el.dataset.stepIndex - 1); }
     });
   });
+}
 
-  // Attach click handlers for grouped steps (toggle accordion)
-  timeline.querySelectorAll('.sr-step--grouped').forEach(el => {
-    el.addEventListener('click', () => toggleGroupStep(el));
-    el.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleGroupStep(el); }
+// ── Timeline paging ───────────────────────────────────────────────────────────
+// A session can hold tens of thousands of steps. The panel loads the first page
+// and pulls the next ones in as the user scrolls down the timeline.
+
+const REPLAY_PAGE = 2000;
+const REPLAY_PREFETCH_PX = 800;
+let replayExhausted = false;
+let loadingMoreSteps = false;
+
+/** Footer marker: how far into the session we are, and the load spinner. */
+function syncTimelineFooter() {
+  const total = currentSummary?.totalSteps || 0;
+  let footer = timeline.querySelector('.sr-timeline-more');
+  if (currentSteps.length >= total) {
+    replayExhausted = true;
+    if (footer) footer.remove();
+    return;
+  }
+  if (!footer) {
+    footer = document.createElement('div');
+    footer.className = 'sr-timeline-more';
+    timeline.appendChild(footer);
+  } else {
+    timeline.appendChild(footer); // keep it last after an append
+  }
+  footer.classList.remove('loading');
+  footer.textContent = t('sessionReplay.showingSteps', { shown: currentSteps.length, total });
+}
+
+function maybeLoadMoreSteps() {
+  if (loadingMoreSteps || replayExhausted || currentView !== 'timeline') return;
+  if (!currentProjectPath || !currentSessionId) return;
+  const distanceToBottom = timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight;
+  if (distanceToBottom > REPLAY_PREFETCH_PX) return;
+  loadMoreSteps();
+}
+
+async function loadMoreSteps() {
+  loadingMoreSteps = true;
+  const footer = timeline.querySelector('.sr-timeline-more');
+  if (footer) {
+    footer.classList.add('loading');
+    footer.innerHTML = `<div class="sr-spinner"></div>${escapeHtml(t('sessionReplay.parsing'))}`;
+  }
+  try {
+    const result = await window.electron_api.claude.sessionReplay({
+      projectPath: currentProjectPath,
+      sessionId: currentSessionId,
+      offset: currentSteps.length,
+      limit: REPLAY_PAGE
     });
-  });
+    if (!result.success) throw new Error(result.error || 'Unknown error');
+    const more = result.steps || [];
+    if (more.length === 0) {
+      replayExhausted = true;
+      timeline.querySelector('.sr-timeline-more')?.remove();
+      return;
+    }
+    currentSteps = currentSteps.concat(more);
+    currentSummary = result.summary || currentSummary;
+    renderTimeline(more, { append: true });
+    syncTimelineFooter();
+  } catch {
+    // Leave the footer in place so the next scroll retries. Nothing was appended,
+    // so the bottom is still in reach — chaining another load here would spin the
+    // main process on a full re-parse of the transcript, forever.
+    syncTimelineFooter();
+    return;
+  } finally {
+    loadingMoreSteps = false;
+  }
+  // Page shorter than the viewport: keep pulling until the bottom moves away
+  if (!replayExhausted) maybeLoadMoreSteps();
 }
 
 function renderNormalStep(step, i) {
@@ -749,8 +843,11 @@ async function loadReplay() {
   timeline.innerHTML = `<div class="sr-loading"><div class="sr-spinner"></div>${t('sessionReplay.parsing')}</div>`;
   summaryBar.innerHTML = '';
 
+  replayExhausted = false;
+  loadingMoreSteps = false;
+
   try {
-    const result = await window.electron_api.claude.sessionReplay({ projectPath, sessionId });
+    const result = await window.electron_api.claude.sessionReplay({ projectPath, sessionId, offset: 0, limit: REPLAY_PAGE });
     if (!result.success) throw new Error(result.error || 'Unknown error');
     currentSteps = result.steps || [];
     currentSummary = result.summary || {};
@@ -760,6 +857,7 @@ async function loadReplay() {
     renderSummary(currentSummary);
     currentView = 'timeline';
     renderTimeline(currentSteps);
+    syncTimelineFooter();
     _renderViewToggle();
     // Show export button
     const exportBtn = container.querySelector('#sr-export-btn');
@@ -1115,6 +1213,7 @@ function _switchToTimeline() {
   playerBarEl.hidden = true;
   timeline.hidden = false;
   renderTimeline(currentSteps);
+  syncTimelineFooter();
   _renderViewToggle();
 }
 
@@ -1357,6 +1456,7 @@ function init(containerEl, opts = {}) {
   summaryBar = container.querySelector('#sr-summary');
   viewToggleEl = container.querySelector('#sr-view-toggle');
   timeline = container.querySelector('#sr-timeline');
+  timeline.addEventListener('scroll', maybeLoadMoreSteps);
   playerChatEl = container.querySelector('#sr-player-chat');
   playerBarEl = container.querySelector('#sr-player-bar');
 

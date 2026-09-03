@@ -184,27 +184,62 @@ async function getClaudeSessions(projectPath) {
   }
 }
 
+// Replaying every message of a very long session melts both processes: the array
+// crosses IPC by structured clone and then becomes one DOM node per entry. Sessions
+// in the wild reach 70k lines / 200 MB, so only the tail is loaded by default and
+// the UI asks for more on demand.
+const DEFAULT_HISTORY_LIMIT = 400;
+
 /**
- * Load full conversation history from a session JSONL file.
- * Returns an array of simplified messages for the chat UI replay.
+ * Load conversation history from a session JSONL file.
+ * Returns the last `limit` simplified messages for the chat UI replay.
  * @param {string} projectPath - The project path
  * @param {string} sessionId - The session ID (UUID)
- * @returns {Promise<Array>} - Array of { role, type, content, toolName, toolInput, toolOutput, thinking, ... }
+ * @param {object} [options]
+ * @param {number} [options.limit] - Max messages to return (tail). 0 = no limit.
+ * @param {string} [options.until] - Stop reading after this message uuid (fork point).
+ * @returns {Promise<{messages: Array, total: number, truncated: boolean}>}
  */
-async function loadSessionHistory(projectPath, sessionId) {
+async function loadSessionHistory(projectPath, sessionId, options = {}) {
   const sessionsDir = getProjectSessionsDir(projectPath);
+  const limit = options.limit === 0 ? 0 : (options.limit || DEFAULT_HISTORY_LIMIT);
+  const until = options.until || null;
 
   // Find the JSONL file — uses indexed lookup
   const filePath = await resolveSessionFile(sessionsDir, sessionId);
-  if (!filePath) return [];
+  if (!filePath) return { messages: [], total: 0, truncated: false };
 
-  // Read all lines from the JSONL file
+  // Read the JSONL file, keeping only a bounded window of messages in memory
   return new Promise((resolve) => {
     const messages = [];
+    // Keep some slack above `limit` so the tail can be realigned onto a user-turn
+    // boundary without re-reading the file.
+    const maxKept = limit ? limit * 2 : Infinity;
+    let total = 0;
+    let dropped = 0;
+    let done = false;
     const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
+    const push = (msg) => {
+      total++;
+      messages.push(msg);
+      if (messages.length > maxKept) {
+        const excess = messages.length - limit;
+        messages.splice(0, excess);
+        dropped += excess;
+      }
+    };
+
+    const finish = () => {
+      if (done) return;
+      done = true;
+      rl.close();
+      stream.destroy();
+    };
+
     rl.on('line', (line) => {
+      if (done) return;
       try {
         const obj = JSON.parse(line);
 
@@ -231,7 +266,7 @@ async function loadSessionHistory(projectPath, sessionId) {
             if (images.length > 0) msg.images = images;
             // Carried so a fork can name the turn it discards (resumeDropsTurn)
             if (obj.uuid) msg.uuid = obj.uuid;
-            messages.push(msg);
+            push(msg);
           }
         }
 
@@ -240,9 +275,9 @@ async function loadSessionHistory(projectPath, sessionId) {
           const blocks = obj.message.content;
           for (const block of blocks) {
             if (block.type === 'text' && block.text) {
-              messages.push({ role: 'assistant', type: 'text', text: block.text, ...(obj.uuid ? { uuid: obj.uuid } : {}) });
+              push({ role: 'assistant', type: 'text', text: block.text, ...(obj.uuid ? { uuid: obj.uuid } : {}) });
             } else if (block.type === 'tool_use') {
-              messages.push({
+              push({
                 role: 'assistant',
                 type: 'tool_use',
                 toolName: block.name,
@@ -250,7 +285,7 @@ async function loadSessionHistory(projectPath, sessionId) {
                 toolUseId: block.id
               });
             } else if (block.type === 'thinking' && block.thinking) {
-              messages.push({ role: 'assistant', type: 'thinking', text: block.thinking });
+              push({ role: 'assistant', type: 'thinking', text: block.thinking });
             }
           }
         }
@@ -263,7 +298,7 @@ async function loadSessionHistory(projectPath, sessionId) {
               if (block.type === 'tool_result') {
                 const output = typeof block.content === 'string' ? block.content
                   : Array.isArray(block.content) ? block.content.map(b => b.text || '').join('\n') : '';
-                messages.push({
+                push({
                   role: 'tool_result',
                   toolUseId: block.tool_use_id,
                   output: output.slice(0, 2000) // Limit output size for IPC
@@ -272,11 +307,29 @@ async function loadSessionHistory(projectPath, sessionId) {
             }
           }
         }
+
+        // Fork point reached — everything after it is discarded by the fork anyway
+        if (until && obj.uuid === until) finish();
       } catch { /* skip malformed lines */ }
     });
 
-    rl.on('close', () => resolve(messages));
-    rl.on('error', () => resolve([]));
+    rl.on('close', () => {
+      // Realign the tail onto a user turn so the replay never opens mid tool-run
+      // `dropped > 0` matters on its own: a trim leaves exactly `limit` entries, so a
+      // file ending right on a trim boundary would otherwise skip the realignment and
+      // open mid tool-run.
+      let window = messages;
+      if (limit && (messages.length > limit || dropped > 0)) {
+        let start = Math.max(0, messages.length - limit);
+        for (let i = start; i < messages.length; i++) {
+          if (messages[i].role === 'user') { start = i; break; }
+        }
+        dropped += start;
+        window = messages.slice(start);
+      }
+      resolve({ messages: window, total, truncated: dropped > 0 });
+    });
+    rl.on('error', () => resolve({ messages: [], total: 0, truncated: false }));
   });
 }
 
@@ -331,147 +384,167 @@ function sanitizeToolInput(input) {
   return input;
 }
 
+// The replay panel scrubs a whole session, but a session can hold tens of
+// thousands of steps. Counters are computed over the entire file; only a window
+// of steps is materialized and shipped to the renderer.
+const DEFAULT_REPLAY_LIMIT = 2000;
+// Tool results follow their call within a line or two, so this cap only matters
+// for calls whose result never arrives (session cut mid-run).
+const MAX_PENDING_TOOLS = 500;
+
 /**
  * Parse a session JSONL file into a flat, ordered list of replay steps.
  * Each step is one of: prompt | tool | response | thinking
  * @param {string} projectPath
  * @param {string} sessionId
+ * @param {object} [options]
+ * @param {number} [options.offset] - Index of the first step to return
+ * @param {number} [options.limit] - Max steps to return. 0 = no limit.
  * @returns {Promise<{steps: Array, summary: object}>}
  */
-async function parseSessionReplay(projectPath, sessionId) {
+async function parseSessionReplay(projectPath, sessionId, options = {}) {
   const sessionsDir = getProjectSessionsDir(projectPath);
+  const offset = Math.max(0, options.offset || 0);
+  const limit = options.limit === 0 ? 0 : (options.limit || DEFAULT_REPLAY_LIMIT);
+
+  const emptySummary = () => ({
+    totalSteps: 0, totalEstimatedTokens: 0, uniqueFileCount: 0,
+    toolBreakdown: {}, offset, returned: 0, truncated: false
+  });
 
   // Find the JSONL file — uses indexed lookup
   const filePath = await resolveSessionFile(sessionsDir, sessionId);
-  if (!filePath) return { steps: [], summary: { totalSteps: 0, totalEstimatedTokens: 0, uniqueFileCount: 0, toolBreakdown: {} } };
+  if (!filePath) return { steps: [], summary: emptySummary() };
 
-  // Read all lines from the JSONL file
-  const rawLines = await new Promise((resolve) => {
-    const lines = [];
+  // Single streaming pass: summary counters cover the whole file, but only the
+  // requested window of steps is materialized. Buffering the raw lines first
+  // retained 546 MB of heap on a 207 MB session before parsing even started.
+  return new Promise((resolve) => {
+    const steps = [];
+    // Map toolUseId -> step object, so a later tool_result can be attached to it.
+    // Holds out-of-window steps too, so their output still counts toward the summary.
+    const pendingTools = new Map();
+    const uniqueFiles = new Set();
+    const toolBreakdown = {};
+    let totalSteps = 0;
+    let totalEstimatedTokens = 0;
+
+    /** True when the step at this global index belongs to the requested window. */
+    function keeps(index) {
+      return limit === 0 || (index >= offset && steps.length < limit);
+    }
+
+    /** Count a text-ish step, and materialize it only if it is in the window. */
+    function addTextStep(type, text, maxLen) {
+      const index = totalSteps++;
+      const tokens = Math.ceil(text.length / 4);
+      totalEstimatedTokens += tokens;
+      if (!keeps(index)) return;
+      steps.push({ index, type, text: text.slice(0, maxLen), estimatedTokens: tokens });
+    }
+
+    function trackPendingTool(id, step) {
+      if (id === undefined || id === null) return;
+      pendingTools.set(id, step);
+      // Results follow their call almost immediately; this only bounds the map
+      // when a session was cut mid-call and a result never arrives.
+      if (pendingTools.size > MAX_PENDING_TOOLS) {
+        pendingTools.delete(pendingTools.keys().next().value);
+      }
+    }
+
+    function attachToolResult(block) {
+      const pending = pendingTools.get(block.tool_use_id);
+      if (!pending) return;
+      const out = typeof block.content === 'string' ? block.content
+        : Array.isArray(block.content) ? block.content.map(b => b.text || '').join('\n') : '';
+      pending.toolOutput = out.slice(0, 3000);
+      pending.estimatedOutputTokens = Math.ceil(out.length / 4);
+      totalEstimatedTokens += pending.estimatedOutputTokens;
+      pendingTools.delete(block.tool_use_id);
+    }
+
     const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-    rl.on('line', line => { if (line.trim()) lines.push(line); });
-    rl.on('close', () => resolve(lines));
-    rl.on('error', () => resolve([]));
+
+    rl.on('line', (line) => {
+      if (!line.trim()) return;
+      try {
+        const obj = JSON.parse(line);
+
+        // ── User message ────────────────────────────────────────────────────
+        if (obj.type === 'user' && obj.message) {
+          const content = obj.message.content;
+          if (typeof content === 'string') {
+            if (content.trim()) addTextStep('prompt', content, 5000);
+          } else if (Array.isArray(content)) {
+            for (const block of content) {
+              if (block.type === 'tool_result') attachToolResult(block);
+            }
+            // Any plain text blocks are user prompts (rare but possible)
+            const textBlocks = content.filter(b => b.type === 'text');
+            if (textBlocks.length > 0) {
+              const text = textBlocks.map(b => b.text).join('\n');
+              if (text.trim()) addTextStep('prompt', text, 5000);
+            }
+          }
+        }
+
+        // ── Assistant message ───────────────────────────────────────────────
+        if ((obj.type === 'assistant' || (!obj.type && obj.message?.role === 'assistant')) && obj.message?.content) {
+          for (const block of obj.message.content) {
+            if (block.type === 'text' && block.text && block.text.trim()) {
+              addTextStep('response', block.text, 5000);
+            } else if (block.type === 'tool_use') {
+              const index = totalSteps++;
+              const fp = extractFilePath(block.name, block.input);
+              const inputStr = JSON.stringify(block.input || {});
+              const estimatedInputTokens = Math.ceil(inputStr.length / 4);
+              totalEstimatedTokens += estimatedInputTokens;
+              toolBreakdown[block.name] = (toolBreakdown[block.name] || 0) + 1;
+              if (fp) uniqueFiles.add(fp);
+              // Built even out of window: its result still feeds the token total,
+              // and pendingTools is the only thing holding it.
+              const step = {
+                index, type: 'tool',
+                toolName: block.name,
+                toolInput: sanitizeToolInput(block.input),
+                toolOutput: null,
+                filePath: fp,
+                estimatedInputTokens,
+                estimatedOutputTokens: 0
+              };
+              if (keeps(index)) steps.push(step);
+              trackPendingTool(block.id, step);
+            } else if (block.type === 'thinking' && block.thinking) {
+              addTextStep('thinking', block.thinking, 3000);
+            }
+          }
+        }
+
+        // ── Standalone tool_result (alternate JSONL format) ─────────────────
+        if (obj.type === 'tool_result' && obj.message?.content) {
+          for (const block of obj.message.content) {
+            if (block.type === 'tool_result') attachToolResult(block);
+          }
+        }
+      } catch { /* skip malformed lines */ }
+    });
+
+    rl.on('close', () => resolve({
+      steps,
+      summary: {
+        totalSteps,
+        totalEstimatedTokens,
+        uniqueFileCount: uniqueFiles.size,
+        toolBreakdown,
+        offset,
+        returned: steps.length,
+        truncated: limit > 0 && steps.length < totalSteps
+      }
+    }));
+    rl.on('error', () => resolve({ steps: [], summary: emptySummary() }));
   });
-
-  const steps = [];
-  // Map toolUseId -> step object (already in steps array) for result attachment
-  const pendingTools = new Map();
-
-  for (const line of rawLines) {
-    try {
-      const obj = JSON.parse(line);
-
-      // ── User message ──────────────────────────────────────────────────────
-      if (obj.type === 'user' && obj.message) {
-        const content = obj.message.content;
-        if (typeof content === 'string') {
-          if (content.trim()) {
-            steps.push({
-              index: steps.length, type: 'prompt',
-              text: content.slice(0, 5000),
-              estimatedTokens: Math.ceil(content.length / 4)
-            });
-          }
-        } else if (Array.isArray(content)) {
-          for (const block of content) {
-            if (block.type === 'tool_result') {
-              // Attach output to the matching pending tool step
-              const pending = pendingTools.get(block.tool_use_id);
-              if (pending) {
-                const out = typeof block.content === 'string' ? block.content
-                  : Array.isArray(block.content) ? block.content.map(b => b.text || '').join('\n') : '';
-                pending.toolOutput = out.slice(0, 3000);
-                pending.estimatedOutputTokens = Math.ceil(out.length / 4);
-                pendingTools.delete(block.tool_use_id);
-              }
-            }
-          }
-          // Any plain text blocks are user prompts (rare but possible)
-          const textBlocks = content.filter(b => b.type === 'text');
-          if (textBlocks.length > 0) {
-            const text = textBlocks.map(b => b.text).join('\n');
-            if (text.trim()) {
-              steps.push({
-                index: steps.length, type: 'prompt',
-                text: text.slice(0, 5000),
-                estimatedTokens: Math.ceil(text.length / 4)
-              });
-            }
-          }
-        }
-      }
-
-      // ── Assistant message ─────────────────────────────────────────────────
-      if ((obj.type === 'assistant' || (!obj.type && obj.message?.role === 'assistant')) && obj.message?.content) {
-        for (const block of obj.message.content) {
-          if (block.type === 'text' && block.text && block.text.trim()) {
-            steps.push({
-              index: steps.length, type: 'response',
-              text: block.text.slice(0, 5000),
-              estimatedTokens: Math.ceil(block.text.length / 4)
-            });
-          } else if (block.type === 'tool_use') {
-            const fp = extractFilePath(block.name, block.input);
-            const inputStr = JSON.stringify(block.input || {});
-            const step = {
-              index: steps.length, type: 'tool',
-              toolName: block.name,
-              toolInput: sanitizeToolInput(block.input),
-              toolOutput: null,
-              filePath: fp,
-              estimatedInputTokens: Math.ceil(inputStr.length / 4),
-              estimatedOutputTokens: 0
-            };
-            steps.push(step);
-            pendingTools.set(block.id, step);
-          } else if (block.type === 'thinking' && block.thinking) {
-            steps.push({
-              index: steps.length, type: 'thinking',
-              text: block.thinking.slice(0, 3000),
-              estimatedTokens: Math.ceil(block.thinking.length / 4)
-            });
-          }
-        }
-      }
-
-      // ── Standalone tool_result (alternate JSONL format) ───────────────────
-      if (obj.type === 'tool_result' && obj.message?.content) {
-        for (const block of obj.message.content) {
-          if (block.type === 'tool_result') {
-            const pending = pendingTools.get(block.tool_use_id);
-            if (pending) {
-              const out = typeof block.content === 'string' ? block.content
-                : Array.isArray(block.content) ? block.content.map(b => b.text || '').join('\n') : '';
-              pending.toolOutput = out.slice(0, 3000);
-              pending.estimatedOutputTokens = Math.ceil(out.length / 4);
-              pendingTools.delete(block.tool_use_id);
-            }
-          }
-        }
-      }
-    } catch { /* skip malformed lines */ }
-  }
-
-  // Compute summary statistics
-  const totalEstimatedTokens = steps.reduce((acc, s) =>
-    acc + (s.estimatedInputTokens || 0) + (s.estimatedOutputTokens || s.estimatedTokens || 0), 0);
-  const uniqueFiles = new Set(steps.filter(s => s.filePath).map(s => s.filePath));
-  const toolBreakdown = {};
-  for (const s of steps.filter(s => s.type === 'tool')) {
-    toolBreakdown[s.toolName] = (toolBreakdown[s.toolName] || 0) + 1;
-  }
-
-  return {
-    steps,
-    summary: {
-      totalSteps: steps.length,
-      totalEstimatedTokens,
-      uniqueFileCount: uniqueFiles.size,
-      toolBreakdown
-    }
-  };
 }
 
 // ─── Session index cache ────────────────────────────────────────────────────
@@ -629,19 +702,20 @@ function registerClaudeHandlers() {
   });
 
   // Load full session history for chat UI replay
-  ipcMain.handle('chat-load-history', async (event, { projectPath, sessionId }) => {
+  ipcMain.handle('chat-load-history', async (event, { projectPath, sessionId, limit, until }) => {
     try {
-      return { success: true, messages: await loadSessionHistory(projectPath, sessionId) };
+      const { messages, total, truncated } = await loadSessionHistory(projectPath, sessionId, { limit, until });
+      return { success: true, messages, total, truncated };
     } catch (err) {
       console.error('[chat-load-history] Error:', err.message);
-      return { success: false, error: err.message, messages: [] };
+      return { success: false, error: err.message, messages: [], total: 0, truncated: false };
     }
   });
 
   // Parse a session JSONL into ordered replay steps for the Session Replay panel
-  ipcMain.handle('claude-session-replay', async (event, { projectPath, sessionId }) => {
+  ipcMain.handle('claude-session-replay', async (event, { projectPath, sessionId, offset, limit }) => {
     try {
-      return { success: true, ...(await parseSessionReplay(projectPath, sessionId)) };
+      return { success: true, ...(await parseSessionReplay(projectPath, sessionId, { offset, limit })) };
     } catch (err) {
       console.error('[claude-session-replay] Error:', err.message);
       return { success: false, error: err.message, steps: [], summary: {} };
@@ -669,4 +743,4 @@ function registerClaudeHandlers() {
   });
 }
 
-module.exports = { registerClaudeHandlers, getClaudeSessions };
+module.exports = { registerClaudeHandlers, getClaudeSessions, loadSessionHistory, parseSessionReplay };
