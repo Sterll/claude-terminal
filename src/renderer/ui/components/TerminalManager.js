@@ -1428,6 +1428,20 @@ class TerminalManager extends BaseComponent {
     // Compact tabs truncate their label; the tooltip carries the full name
     tab.title = pinned ? (termData.name || '') : '';
 
+    // A visible pin marks the tab beyond its compact width — it stands where
+    // the close button was, and clicking it unpins, like an editor's tabs.
+    let pinIcon = tab.querySelector('.tab-pin-icon');
+    if (pinned && !pinIcon) {
+      pinIcon = document.createElement('span');
+      pinIcon.className = 'tab-pin-icon';
+      pinIcon.title = t('tabs.unpin');
+      pinIcon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M15 9.34V6a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1v3.34a2 2 0 0 1-1.11 1.79l-1.24.62A2 2 0 0 0 5.55 13.55V15a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-1.45a2 2 0 0 0-1.11-1.79l-1.24-.62A2 2 0 0 1 15 9.34Z"/></svg>';
+      pinIcon.onclick = (e) => { e.stopPropagation(); this.setTabPinned(id, false); };
+      tab.appendChild(pinIcon);
+    } else if (!pinned && pinIcon) {
+      pinIcon.remove();
+    }
+
     // Re-cluster. The same anchor serves both directions: right after the last
     // other pinned tab — the end of the pinned zone when pinning, the start of
     // the unpinned zone when unpinning.
