@@ -2931,6 +2931,14 @@ function setNavigationMode(mode) {
 // Changing it from Settings goes through the same path as the first-launch card
 document.addEventListener('navigation-mode-change', (e) => setNavigationMode(e.detail));
 
+// Replay and Tasks carry their own project dropdown in sidebar mode, where there
+// is no bar to pick from. They select through this rather than holding a second
+// notion of the active project.
+document.addEventListener('project-select-by-path', (e) => {
+  const index = projectsState.get().projects.findIndex(p => p.path === e.detail);
+  if (index >= 0) selectProjectFromBar(index);
+});
+
 function isProjectsPopoverOpen() {
   const popover = document.getElementById('projects-popover');
   return !!popover && popover.style.display !== 'none';

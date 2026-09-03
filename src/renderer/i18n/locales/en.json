@@ -1403,7 +1403,9 @@
     "paramSubject": "Subject",
     "paramActiveForm": "Active form",
     "paramStatus": "Status",
-    "labelSession": "Session"
+    "labelSession": "Session",
+    "labelProject": "Project",
+    "selectProject": "Select a project..."
   },
   "timetracking": {
     "title": "Time Tracking",

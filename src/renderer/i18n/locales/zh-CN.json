@@ -1403,7 +1403,9 @@
     "paramSubject": "主题",
     "paramActiveForm": "主动形式",
     "paramStatus": "状态",
-    "labelSession": "会话"
+    "labelSession": "会话",
+    "labelProject": "项目",
+    "selectProject": "选择一个项目..."
   },
   "timetracking": {
     "title": "时间追踪",

@@ -1403,7 +1403,9 @@
     "paramSubject": "Subjek",
     "paramActiveForm": "Bentuk aktif",
     "paramStatus": "Status",
-    "labelSession": "Sesi"
+    "labelSession": "Sesi",
+    "labelProject": "Proyek",
+    "selectProject": "Pilih proyek..."
   },
   "timetracking": {
     "title": "Pelacakan Waktu",

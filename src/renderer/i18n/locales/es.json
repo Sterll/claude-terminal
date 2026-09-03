@@ -1400,7 +1400,9 @@
     "paramSubject": "Asunto",
     "paramActiveForm": "Forma activa",
     "paramStatus": "Estado",
-    "labelSession": "Sesión"
+    "labelSession": "Sesión",
+    "labelProject": "Proyecto",
+    "selectProject": "Selecciona un proyecto..."
   },
   "timetracking": {
     "title": "Seguimiento de tiempo",
