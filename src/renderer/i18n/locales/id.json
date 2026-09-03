@@ -3936,5 +3936,18 @@
       "watchMultiHint": "Pilih satu atau beberapa proyek. \"Proyek apa pun\" juga mencakup proyek yang Anda tambahkan nanti.",
       "watchMultiPickHint": "Dipantau per repositori, jadi pilih setidaknya satu proyek."
     }
+  },
+  "navigationMode": {
+    "title": "Pilih navigasi Anda",
+    "intro": "Claude Terminal dapat menata proyek Anda dengan dua cara. Anda bisa mengubahnya kapan saja di Pengaturan.",
+    "tabsTitle": "Tab proyek",
+    "tabsDesc": "Satu tab per proyek yang terbuka di bagian atas, seperti peramban. Menyisakan ruang paling banyak untuk layar yang sedang Anda pakai.",
+    "sidebarTitle": "Kolom proyek",
+    "sidebarDesc": "Kolom proyek permanen di sebelah kiri, seperti sebelumnya. Pencarian, folder, dan semua proyek tetap terlihat.",
+    "choose": "Gunakan ini",
+    "settingsLabel": "Navigasi",
+    "settingsHint": "Cara Anda berpindah antar proyek",
+    "optionTabs": "Tab proyek",
+    "optionSidebar": "Kolom proyek"
   }
 }

@@ -3936,5 +3936,18 @@
       "watchMultiHint": "选择一个或多个项目。 “任何项目”还包括您以后添加的项目。",
       "watchMultiPickHint": "按仓库进行监视，因此请至少选择一个项目。"
     }
+  },
+  "navigationMode": {
+    "title": "选择你的导航方式",
+    "intro": "Claude Terminal 可以用两种方式排布项目。你随时可以在设置中切换。",
+    "tabsTitle": "项目标签页",
+    "tabsDesc": "顶部每个打开的项目一个标签页，就像浏览器一样。为你正在使用的界面留出最多空间。",
+    "sidebarTitle": "项目侧栏",
+    "sidebarDesc": "左侧常驻的项目栏，和以前一样。搜索、文件夹和所有项目始终可见。",
+    "choose": "使用这个",
+    "settingsLabel": "导航",
+    "settingsHint": "你在项目之间切换的方式",
+    "optionTabs": "项目标签页",
+    "optionSidebar": "项目侧栏"
   }
 }

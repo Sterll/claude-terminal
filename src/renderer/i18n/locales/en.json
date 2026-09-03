@@ -3936,5 +3936,18 @@
       "watchMultiHint": "Pick one or more projects. \"Any project\" also covers ones you add later.",
       "watchMultiPickHint": "Watched per repository, so pick at least one project."
     }
+  },
+  "navigationMode": {
+    "title": "Choose your navigation",
+    "intro": "Claude Terminal can lay out your projects two ways. You can switch at any time in Settings.",
+    "tabsTitle": "Project tabs",
+    "tabsDesc": "One tab per open project across the top, browser-style. Leaves the most room for the screen you are working in.",
+    "sidebarTitle": "Projects sidebar",
+    "sidebarDesc": "A permanent projects column on the left, as before. Search, folders and every project stay in view.",
+    "choose": "Use this one",
+    "settingsLabel": "Navigation",
+    "settingsHint": "How you switch between projects",
+    "optionTabs": "Project tabs",
+    "optionSidebar": "Projects sidebar"
   }
 }

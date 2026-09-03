@@ -9,6 +9,7 @@ const api = window.electron_api;
 const { path, fs, process: nodeProcess, __dirname } = window.electron_nodeModules;
 const { fileExists, fsp, ensureDirs } = require('./src/renderer/utils/fs-async');
 const { matchesSessionQuery } = require('./src/renderer/utils/sessionSearch');
+const { applyNavigationMode, isSidebarNavigation } = require('./src/renderer/ui/navigationMode');
 
 document.body.classList.add(`platform-${nodeProcess.platform}`);
 
@@ -311,6 +312,8 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
     document.body.classList.add('reduce-motion');
   }
   applyNavigationMode(settingsState.get().navigationMode);
+  // Asked once, after the rest is on screen so the previews sit over the real app
+  setTimeout(promptNavigationModeChoice, 1200);
   // Restore notification bell state from persisted settings
   document.getElementById('btn-notifications').classList.toggle('active', isNotificationsEnabled());
 
@@ -2858,50 +2861,75 @@ ProjectBar.initProjectBar({
 // per-project action, on demand instead of in permanent screen space.
 
 /**
- * Navigation mode: the project tab bar, or the same projects panel docked as a
- * permanent left column. A body class drives the layout and both modes share one
- * ProjectList, so there is no second implementation to keep in step.
- * @param {'tabs'|'sidebar'|null} mode - null until the user has been asked
+ * Ask once, on the first launch after the two navigations started shipping
+ * together. `navigationMode` stays null until answered, and the answer is what
+ * makes it stop asking — no separate "already seen" flag to fall out of sync.
  */
-function applyNavigationMode(mode) {
-  const sidebar = mode === 'sidebar';
-  document.body.classList.toggle('nav-sidebar', sidebar);
-  document.body.classList.toggle('nav-tabs', !sidebar);
+function promptNavigationModeChoice(attempt = 0) {
+  if (settingsState.get().navigationMode) return;
 
-  // Two nodes are shared by both navigations rather than duplicated, because
-  // duplicating them would mean two #projects-list hosts and two tool rows
-  // drifting apart. They are moved to where each navigation expects them.
-  const popover = document.getElementById('projects-popover');
-  const layout = document.getElementById('claude-layout');
-  const content = document.querySelector('.content');
-  const tools = document.getElementById('project-bar-tools');
-  const header = document.getElementById('terminals-header');
-  const bar = document.getElementById('project-bar');
-
-  if (sidebar) {
-    // Docked column, to the left of the file explorer, as it was before the bar
-    if (popover && layout && popover.parentElement !== layout) {
-      layout.insertBefore(popover, layout.querySelector('#file-explorer-panel'));
-    }
-    if (tools && header && tools.parentElement !== header) header.appendChild(tools);
-    if (popover) popover.style.display = 'flex';
-  } else {
-    if (popover && content && popover.parentElement !== content) {
-      content.insertBefore(popover, content.querySelector('.tab-content'));
-    }
-    if (tools && bar && tools.parentElement !== bar) bar.appendChild(tools);
-    // Back to a popover: closed until the + button opens it
-    if (popover) {
-      popover.style.display = 'none';
-      popover.classList.remove('collapsed');
-    }
+  // The overlay is shared with the other first-launch modal (telemetry consent)
+  // and the last one to open wins, so wait for it instead of being replaced by
+  // it. Bounded, so a modal the user leaves open does not retry forever.
+  const overlay = document.getElementById('modal-overlay');
+  if (overlay?.classList.contains('active')) {
+    if (attempt < 30) setTimeout(() => promptNavigationModeChoice(attempt + 1), 2000);
+    return;
   }
+
+  // Miniatures of each layout, drawn in CSS rather than shipped as images so
+  // they follow the accent colour and cannot go stale against the real UI.
+  const previews = {
+    tabs: `<span class="nav-mini nav-mini--tabs">
+      <span class="nav-mini-nav"></span>
+      <span class="nav-mini-body"><span class="nav-mini-tabs"><i></i><i></i><i></i></span><span class="nav-mini-screen"></span></span>
+    </span>`,
+    sidebar: `<span class="nav-mini nav-mini--sidebar">
+      <span class="nav-mini-nav"></span>
+      <span class="nav-mini-col"><i></i><i></i><i></i></span>
+      <span class="nav-mini-screen"></span>
+    </span>`,
+  };
+  const card = (mode) => `
+    <button class="nav-choice" data-nav-mode="${mode}">
+      <span class="nav-choice-preview">${previews[mode]}</span>
+      <span class="nav-choice-title">${escapeHtml(t(`navigationMode.${mode}Title`))}</span>
+      <span class="nav-choice-desc">${escapeHtml(t(`navigationMode.${mode}Desc`))}</span>
+      <span class="nav-choice-cta">${escapeHtml(t('navigationMode.choose'))}</span>
+    </button>`;
+
+  showModal(t('navigationMode.title'), `
+    <div class="nav-choice-modal">
+      <p class="nav-choice-intro">${escapeHtml(t('navigationMode.intro'))}</p>
+      <div class="nav-choice-grid">${card('tabs')}${card('sidebar')}</div>
+    </div>
+  `);
+
+  document.querySelector('.nav-choice-grid')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.nav-choice');
+    if (!btn) return;
+    setNavigationMode(btn.dataset.navMode);
+    closeModal();
+  });
 }
 
-/** In sidebar mode the panel is permanent, so it is never "open" or "closed". */
-function isProjectsPanelDocked() {
-  return document.body.classList.contains('nav-sidebar');
+/**
+ * Persist a navigation mode and mount it without a restart.
+ * @param {'tabs'|'sidebar'} mode
+ */
+function setNavigationMode(mode) {
+  settingsState.setProp('navigationMode', mode);
+  saveSettingsImmediate();
+  applyNavigationMode(mode);
+  // The project-scoped screens are laid out differently in each mode, so
+  // repaint whichever one is on screen.
+  const projectIndex = projectsState.get().selectedProjectFilter;
+  TerminalManager.filterByProject(projectIndex);
+  applyProjectContext(projectIndex);
 }
+
+// Changing it from Settings goes through the same path as the first-launch card
+document.addEventListener('navigation-mode-change', (e) => setNavigationMode(e.detail));
 
 function isProjectsPopoverOpen() {
   const popover = document.getElementById('projects-popover');
@@ -2931,7 +2959,7 @@ function openProjectsPopover(anchor) {
 }
 
 function closeProjectsPopover() {
-  if (isProjectsPanelDocked()) return;
+  if (isSidebarNavigation()) return;
   const popover = document.getElementById('projects-popover');
   if (!popover || popover.style.display === 'none') return;
   popover.style.display = 'none';
@@ -2939,7 +2967,7 @@ function closeProjectsPopover() {
 }
 
 function toggleProjectsPopover(anchor) {
-  if (isProjectsPanelDocked()) return;
+  if (isSidebarNavigation()) return;
   if (isProjectsPopoverOpen()) closeProjectsPopover();
   else openProjectsPopover(anchor);
 }
