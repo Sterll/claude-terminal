@@ -221,15 +221,12 @@ function _buildNewRunModal() {
 
         <div class="pt-modal-body">
 
-          <!-- Project -->
+          <!-- Project — chosen by the project bar, shown here for confirmation -->
           <div class="pm-field">
             <label class="pm-label">${t('parallel.form.projectLabel')}</label>
-            <div class="pt-select pt-select--full" id="pm-project-select" data-value="">
-              <div class="pt-select-trigger">
-                <span class="pt-select-value">${t('parallel.modal.selectProject')}</span>
-                <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M7 10l5 5 5-5z"/></svg>
-              </div>
-              <div class="pt-select-dropdown"></div>
+            <div class="pm-project-readonly" id="pm-project-current" data-value="">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>
+              <span class="pm-project-name">${t('parallel.modal.selectProject')}</span>
             </div>
           </div>
 
@@ -456,7 +453,7 @@ async function _handleStart(modalEl) {
     return;
   }
 
-  const projectPath = modalEl?.querySelector('#pm-project-select')?.dataset?.value;
+  const projectPath = modalEl?.querySelector('#pm-project-current')?.dataset?.value;
   if (!projectPath) {
     _showToast(t('parallel.errors.noProject'), 'error');
     return;
@@ -1373,34 +1370,34 @@ function _diffFileIcon(ext) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Show the project a run would target. The project bar owns that choice, so
+ * this is a read-out, not a second selector.
+ */
 function _populateProjectSelector(container) {
-  const sel = container?.querySelector('#pm-project-select');
-  if (!sel || !ctx) return;
+  const el = container?.querySelector('#pm-project-current');
+  if (!el || !ctx) return;
 
-  const projects = ctx.projectsState?.get()?.projects || [];
-  const openedId = ctx.projectsState?.get()?.openedProjectId;
-  const filtered = projects.filter(p => p.path);
-  const selected = filtered.find(p => p.id === openedId) || filtered[0];
+  const project = _activeProject();
+  const nameEl = el.querySelector('.pm-project-name');
+  el.dataset.value = project?.path || '';
+  if (nameEl) nameEl.textContent = project ? (project.name || project.path) : t('parallel.modal.selectProject');
+  el.classList.toggle('is-empty', !project);
+}
 
-  const dropdown = sel.querySelector('.pt-select-dropdown');
-  const valueEl = sel.querySelector('.pt-select-value');
-  if (!dropdown) return;
-
-  dropdown.innerHTML = filtered
-    .map(p => `<div class="pt-select-option${p.id === openedId ? ' is-selected' : ''}" data-value="${escapeHtml(p.path)}">${escapeHtml(p.name || p.path)}</div>`)
-    .join('');
-
-  if (selected) {
-    sel.dataset.value = selected.path;
-    if (valueEl) valueEl.textContent = selected.name || selected.path;
-  }
+/**
+ * The project the bar currently holds.
+ * @returns {Object|null}
+ */
+function _activeProject() {
+  const state = ctx?.projectsState?.get();
+  if (!state) return null;
+  return state.projects[state.selectedProjectFilter] || null;
 }
 
 async function _loadHistory() {
   if (!ctx?.api?.parallel) return;
-  const projectPath = ctx.projectsState?.get()?.openedProjectId
-    ? ctx.projectsState?.get()?.projects?.find(p => p.id === ctx.projectsState?.get()?.openedProjectId)?.path
-    : null;
+  const projectPath = _activeProject()?.path || null;
   const result = await ctx.api.parallel.getHistory({ projectPath });
   if (!result.success) return;
 
@@ -1458,4 +1455,13 @@ function _buildNewPRUrl(remoteUrl, forge, base, head) {
 
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
-module.exports = { init, load };
+/**
+ * Follow the project bar: reload the run history for the newly active project.
+ * No-op before the panel has been rendered once.
+ */
+function onProjectChanged() {
+  if (!_initialized) return;
+  _loadHistory();
+}
+
+module.exports = { init, load, onProjectChanged };

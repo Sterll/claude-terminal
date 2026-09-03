@@ -46,7 +46,6 @@
     "changeEditor": "Change editor",
     "globalDefault": "Default (global)",
     "customize": "Customize",
-    "moreActions": "More actions",
     "basicTerminal": "Basic terminal",
     "openClaude": "Open Claude Code",
     "newFolder": "New folder",
@@ -100,7 +99,15 @@
     "sectionPath": "Path",
     "pathMissingTitle": "Path not found on this machine",
     "locatePath": "Locate folder...",
-    "pathUpdated": "Path updated for \"{name}\""
+    "pathUpdated": "Path updated for \"{name}\"",
+    "openProject": "Open a project",
+    "noOpenProjects": "No project open",
+    "openSessions": "{count} open session(s)",
+    "closeProject": "Close project",
+    "closeOtherProjects": "Close other projects",
+    "closeProjectTitle": "Close {name}?",
+    "closeProjectMessage": "This project has {count} open session(s). Closing its tab ends them.",
+    "closeProjectConfirm": "Close and end sessions"
   },
   "terminals": {
     "noTerminals": "No terminal for this project",
@@ -129,7 +136,9 @@
     "messages": "{count} msgs",
     "loading": "Initializing Claude Code...",
     "loadingHint": "This may take a few seconds",
-    "resumeSession": "Resume Claude session"
+    "resumeSession": "Resume Claude session",
+    "addSession": "New session or terminal",
+    "newClaudeSession": "New Claude session"
   },
   "git": {
     "noRemote": "No remote",
@@ -858,10 +867,6 @@
     "launchAtStartupError": "Failed to change the launch at startup setting.",
     "compactProjects": "Compact projects view",
     "compactProjectsDesc": "Show only the name of unselected projects",
-    "cardButtonClaude": "Claude button on project cards",
-    "cardButtonClaudeDesc": "Show the Claude Code shortcut on each project card",
-    "cardButtonTerminal": "Terminal button on project cards",
-    "cardButtonTerminalDesc": "Show a shortcut to open a basic terminal on each project card",
     "editor": "Code editor",
     "editorDesc": "Editor used to open files",
     "closeWindow": "Window close",
@@ -1042,7 +1047,7 @@
     "hideProjects": "Hide projects",
     "collapseAll": "Collapse all",
     "clearSearch": "Clear",
-    "toggleExplorer": "Toggle Explorer",
+    "toggleExplorer": "Show/hide the file explorer",
     "newTerminal": "New terminal (Ctrl+T)",
     "actionsLabel": "Actions",
     "quickActions": "Quick Actions",
@@ -1347,7 +1352,6 @@
   },
   "sessionReplay": {
     "title": "Session Replay",
-    "selectProject": "Select a project...",
     "selectSession": "Select a session...",
     "load": "Load",
     "loading": "Loading...",
@@ -1358,7 +1362,6 @@
     "errorLoading": "Error loading session",
     "selectToStart": "Select a project and session to start replay",
     "emptyDesc": "Visualize the complete audit trail of any Claude session",
-    "emptyStepProject": "Project",
     "emptyStepSession": "Session",
     "noSteps": "No steps found in this session",
     "showingSteps": "{shown} of {total} steps",
@@ -1400,7 +1403,6 @@
     "paramSubject": "Subject",
     "paramActiveForm": "Active form",
     "paramStatus": "Status",
-    "labelProject": "Project",
     "labelSession": "Session"
   },
   "timetracking": {

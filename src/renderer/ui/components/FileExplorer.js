@@ -132,7 +132,6 @@ class FileExplorer extends BaseComponent {
       onAddToChat: null
     };
     this._isVisible = false;
-    this._manuallyHidden = false;
 
     this._gitStatusMap = new Map();
     this._gitPollingInterval = null;
@@ -244,8 +243,9 @@ class FileExplorer extends BaseComponent {
     this._copiedPaths = [];
     this._contentSearchQuery = '';
     this._contentSearchResults = [];
-    if (this._rootPath && !this._manuallyHidden) {
-      this.show();
+    // The explorer stays closed until asked for; switching projects only
+    // refreshes it when it is already open.
+    if (this._rootPath && this._isVisible) {
       this.render();
     }
     this._updateSearchBarVisibility();
@@ -281,9 +281,7 @@ class FileExplorer extends BaseComponent {
   toggle() {
     if (this._isVisible) {
       this.hide();
-      this._manuallyHidden = true;
     } else if (this._rootPath) {
-      this._manuallyHidden = false;
       this.show();
       this.render();
     }
@@ -1600,7 +1598,6 @@ class FileExplorer extends BaseComponent {
     if (btnClose) {
       btnClose.onclick = () => {
         self.hide();
-        self._manuallyHidden = true;
       };
     }
 

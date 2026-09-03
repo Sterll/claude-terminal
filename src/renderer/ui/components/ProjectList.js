@@ -169,16 +169,6 @@ class ProjectList extends BaseComponent {
       });
     }
 
-    // Re-render when card button settings change
-    const { settingsState } = require('../../state/settings.state');
-    this._lastCardButtonsKey = JSON.stringify(settingsState.get().cardButtons || {});
-    this._settingsUnsub = settingsState.subscribe(() => {
-      const key = JSON.stringify(settingsState.get().cardButtons || {});
-      if (key !== self._lastCardButtonsKey) {
-        self._lastCardButtonsKey = key;
-        self.render();
-      }
-    });
   }
 
   setExternalState(state) {
@@ -189,6 +179,73 @@ class ProjectList extends BaseComponent {
 
   setCallbacks(cbs) {
     Object.assign(this._callbacks, cbs);
+  }
+
+  /**
+   * The single actions-menu element, kept on <body> so it can be opened from
+   * the project bar even while the projects popover is closed.
+   * @returns {HTMLElement}
+   */
+  _actionsMenuEl() {
+    let el = document.getElementById('project-actions-menu');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'project-actions-menu';
+      el.className = 'more-actions-menu';
+      document.body.appendChild(el);
+    }
+    return el;
+  }
+
+  /**
+   * Open the per-project actions menu at a point on screen.
+   * @param {string} projectId
+   * @param {number} x
+   * @param {number} y
+   * @param {{extraHtml?: string, onExtraAction?: (action: string) => void}} [opts]
+   *   extraHtml is prepended; its buttons carry data-extra-action, and clicking
+   *   one calls onExtraAction instead of the shared project-action handler.
+   */
+  openActionsMenu(projectId, x, y, opts = {}) {
+    const project = getProject(projectId);
+    if (!project) return;
+    const self = this;
+    const menu = this._actionsMenuEl();
+
+    this.closeAllMoreActionsMenus();
+    menu.innerHTML = (opts.extraHtml || '') + this._buildMenuItemsHtml(project);
+
+    menu.onclick = (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      e.stopPropagation();
+      if (btn.dataset.extraAction) {
+        self.closeAllMoreActionsMenus();
+        opts.onExtraAction?.(btn.dataset.extraAction);
+        return;
+      }
+      self._handleProjectAction(btn);
+    };
+
+    // Type-specific menu items (FiveM, Discord, Python…) bind their own handlers.
+    registry.getAll().forEach(typeHandler => {
+      typeHandler.bindSidebarEvents(menu, {
+        ...self._callbacks,
+        onStartFivem: (pid) => self._callbacks.onStartFivem?.(getProjectIndex(pid)),
+        onStopFivem: (pid) => self._callbacks.onStopFivem?.(getProjectIndex(pid)),
+        onOpenFivemConsole: (pid) => self._callbacks.onOpenFivemConsole?.(getProjectIndex(pid)),
+      });
+    });
+
+    // Measure hidden, then clamp inside the viewport.
+    menu.style.visibility = 'hidden';
+    menu.classList.add('active');
+    const { offsetWidth: w, offsetHeight: h } = menu;
+    menu.style.visibility = '';
+    menu.style.left = `${Math.max(4, Math.min(x, window.innerWidth - w - 4))}px`;
+    menu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - h - 4))}px`;
+
+    this._setupMoreActionsCloseListeners(menu, menu);
   }
 
   closeAllMoreActionsMenus() {
@@ -308,10 +365,15 @@ class ProjectList extends BaseComponent {
     </div>`;
   }
 
-  _renderProjectHtml(project, depth) {
+  /**
+   * The per-project actions menu. Built on demand rather than baked into every
+   * card: the projects popover is a picker, and the menu is opened from the
+   * project tab in the project bar.
+   * @param {Object} project
+   * @returns {string} menu items HTML
+   */
+  _buildMenuItemsHtml(project) {
     const projectIndex = getProjectIndex(project.id);
-    const terminalStats = this._callbacks.getTerminalStatsForProject(projectIndex);
-    const isSelected = projectsState.get().selectedProjectFilter === projectIndex;
     const typeHandler = registry.get(project.type);
     const fivemStatus = this._fivemServers.get(projectIndex)?.status || 'stopped';
     const gitOps = this._gitOperations.get(project.id) || { pulling: false, pushing: false };
@@ -320,43 +382,14 @@ class ProjectList extends BaseComponent {
     const isRunning = fivemStatus === 'running';
     const isStarting = fivemStatus === 'starting';
     const projectColor = project.color || null;
-
     const typeCtx = { project, projectIndex, fivemStatus, isRunning, isStarting, projectColor, escapeHtml, t };
-
-    // User settings: which built-in buttons to show on the card
-    const cardButtons = getSetting('cardButtons') || { claude: true, terminal: true };
-
-    // Claude terminal button (opt-in via settings)
-    const claudeBtn = cardButtons.claude !== false ? `
-    <button class="btn-action-icon btn-claude" data-project-id="${project.id}" title="${t('projects.openClaude')}">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10z"/></svg>
-    </button>` : '';
-
-    // Basic terminal button (opt-in via settings)
-    const terminalBtn = cardButtons.terminal !== false ? `
-    <button class="btn-action-icon btn-basic-terminal" data-project-id="${project.id}" title="${t('projects.basicTerminal')}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-    </button>` : '';
-
-    // Pinned quick actions (up to 3)
-    const pinnedActions = getQuickActions(project.id).filter(a => a.pinned).slice(0, 3);
-    const pinnedActionsHtml = pinnedActions.map(action => {
-      const iconSvg = QUICK_ACTION_ICONS[action.icon] || QUICK_ACTION_ICONS.play;
-      return `<button class="btn-action-icon btn-quick-action" data-project-id="${project.id}" data-action-id="${action.id}" title="${escapeHtml(action.name)}">${iconSvg}</button>`;
-    }).join('');
-
-    // Get additional action buttons from type handler
-    const typeSidebarButtons = typeHandler.getSidebarButtons(typeCtx) || '';
-    const primaryActionsHtml = typeSidebarButtons + pinnedActionsHtml + terminalBtn + claudeBtn;
-
-    // Customize button for menu (opens the CustomizePicker)
     const projectIcon = project.icon || null;
-    const customizePreview = projectIcon || '📁';
+    const customizePreview = projectIcon || '\u{1F4C1}';
     const safeProjectColor = sanitizeColor(projectColor);
     const customizeColorDot = safeProjectColor ? `<span class="customize-preview-dot" style="background: ${safeProjectColor}"></span>` : '';
 
     let menuItemsHtml = '';
-    // Missing path section (cloud-synced project with invalid path)
+// Missing path section (cloud-synced project with invalid path)
     if (pathMissing) {
       menuItemsHtml += `
       <div class="more-actions-section-label">${t('projects.sectionPath')}</div>
@@ -390,6 +423,10 @@ class ProjectList extends BaseComponent {
     // Open section
     menuItemsHtml += `
     <div class="more-actions-section-label">${t('projects.sectionOpen')}</div>
+    <button class="more-actions-item btn-claude" data-project-id="${project.id}">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10z"/></svg>
+      ${t('projects.openClaude')}
+    </button>
     <button class="more-actions-item btn-basic-terminal" data-project-id="${project.id}">
       ${menuIcons.terminal}
       ${t('projects.basicTerminal')}
@@ -443,6 +480,39 @@ class ProjectList extends BaseComponent {
       ${menuIcons.trash}
       ${t('common.delete')}
     </button>`;
+    return menuItemsHtml;
+  }
+
+  _renderProjectHtml(project, depth) {
+    const projectIndex = getProjectIndex(project.id);
+    const terminalStats = this._callbacks.getTerminalStatsForProject(projectIndex);
+    const typeHandler = registry.get(project.type);
+    const fivemStatus = this._fivemServers.get(projectIndex)?.status || 'stopped';
+    const gitOps = this._gitOperations.get(project.id) || { pulling: false, pushing: false };
+    const isGitRepo = this._gitRepoStatus.get(project.id)?.isGitRepo || false;
+    const pathMissing = isPathMissing(project.id);
+    const isRunning = fivemStatus === 'running';
+    const isStarting = fivemStatus === 'starting';
+    const projectColor = project.color || null;
+
+    const typeCtx = { project, projectIndex, fivemStatus, isRunning, isStarting, projectColor, escapeHtml, t };
+
+    // Creating a session or a terminal now lives on the + next to the session
+    // tabs, so the card only carries project-specific shortcuts.
+
+    // Pinned quick actions (up to 3)
+    const pinnedActions = getQuickActions(project.id).filter(a => a.pinned).slice(0, 3);
+    const pinnedActionsHtml = pinnedActions.map(action => {
+      const iconSvg = QUICK_ACTION_ICONS[action.icon] || QUICK_ACTION_ICONS.play;
+      return `<button class="btn-action-icon btn-quick-action" data-project-id="${project.id}" data-action-id="${action.id}" title="${escapeHtml(action.name)}">${iconSvg}</button>`;
+    }).join('');
+
+    // Get additional action buttons from type handler
+    const typeSidebarButtons = typeHandler.getSidebarButtons(typeCtx) || '';
+    const primaryActionsHtml = typeSidebarButtons + pinnedActionsHtml;
+
+    const projectIcon = project.icon || null;
+    const safeProjectColor = sanitizeColor(projectColor);
 
     const statusIndicator = typeHandler.getStatusIndicator(typeCtx);
     const colorIndicator = projectColor ? `<span class="color-indicator" style="background: ${projectColor}"></span>` : '';
@@ -479,7 +549,9 @@ class ProjectList extends BaseComponent {
     const tooltipHtml = `<div class="project-tooltip">${tooltipLines.join('')}</div>`;
 
     return `
-    <div class="project-item ${isSelected ? 'active' : ''} ${project.archived ? 'archived' : ''} ${pathMissing ? 'path-missing' : ''} ${typeHandler.getProjectItemClass(typeCtx)}"
+    <!-- No active/selected state: the popover closes the moment a project is
+         picked, so highlighting one only ever showed the *previous* choice. -->
+    <div class="project-item ${project.archived ? 'archived' : ''} ${pathMissing ? 'path-missing' : ''} ${typeHandler.getProjectItemClass(typeCtx)}"
          data-project-id="${project.id}" data-depth="${depth}" draggable="true" tabindex="0"
          style="margin-left: ${depth * 16}px;">
       ${tooltipHtml}
@@ -503,12 +575,6 @@ class ProjectList extends BaseComponent {
       </div>
       <div class="project-actions">
         ${primaryActionsHtml}
-        <div class="more-actions">
-          <button class="btn-more-actions" title="${t('projects.moreActions')}">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
-          </button>
-          <div class="more-actions-menu">${menuItemsHtml}</div>
-        </div>
       </div>
     </div>`;
   }
@@ -707,7 +773,7 @@ class ProjectList extends BaseComponent {
 
     list.addEventListener('mouseover', (e) => {
       const item = e.target.closest('.project-item');
-      if (!item || item.classList.contains('active')) return;
+      if (!item) return;
       if (!document.body.classList.contains('compact-projects')) return;
       if (self._activeTooltip && self._activeTooltip._forProjectId === item.dataset.projectId) return;
 
@@ -816,6 +882,119 @@ class ProjectList extends BaseComponent {
     showModal(modal);
   }
 
+  /**
+   * Run the action a project button stands for. Shared by the cards in the
+   * popover and by the actions menu opened from a project tab.
+   * @param {HTMLElement} btn
+   */
+  _handleProjectAction(btn) {
+    const self = this;
+    const projectId = btn.dataset.projectId;
+
+    // Any menu item click dismisses the menu it came from.
+    if (btn.classList.contains('more-actions-item')) {
+      self.closeAllMoreActionsMenus();
+    }
+
+    if (btn.classList.contains('btn-claude')) {
+      const project = getProject(projectId);
+      const projectIndex = getProjectIndex(projectId);
+      setSelectedProjectFilter(projectIndex);
+      if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects();
+      if (self._callbacks.onCreateTerminal) self._callbacks.onCreateTerminal(project);
+    } else if (btn.classList.contains('btn-quick-action')) {
+      const project = getProject(projectId);
+      const projectIndex = getProjectIndex(projectId);
+      const actionId = btn.dataset.actionId;
+      setSelectedProjectFilter(projectIndex);
+      if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects();
+      const { executeQuickAction } = require('./QuickActions');
+      executeQuickAction(project, actionId);
+    } else if (btn.classList.contains('btn-git-pull')) {
+      if (self._callbacks.onGitPull) self._callbacks.onGitPull(projectId);
+    } else if (btn.classList.contains('btn-git-push')) {
+      if (self._callbacks.onGitPush) self._callbacks.onGitPush(projectId);
+    } else if (btn.classList.contains('btn-new-worktree')) {
+      const project = getProject(projectId);
+      self.closeAllMoreActionsMenus();
+      if (self._callbacks.onNewWorktree) self._callbacks.onNewWorktree(project);
+    } else if (btn.classList.contains('btn-basic-terminal')) {
+      const project = getProject(projectId);
+      const projectIndex = getProjectIndex(projectId);
+      setSelectedProjectFilter(projectIndex);
+      self.closeAllMoreActionsMenus();
+      if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects();
+      if (self._callbacks.onCreateBasicTerminal) self._callbacks.onCreateBasicTerminal(project);
+    } else if (btn.classList.contains('btn-locate-project')) {
+      self.closeAllMoreActionsMenus();
+      if (self._callbacks.onLocateProject) self._callbacks.onLocateProject(projectId);
+    } else if (btn.classList.contains('btn-open-folder')) {
+      const project = getProject(projectId);
+      if (project) self._api.dialog.openInExplorer(project.path);
+    } else if (btn.classList.contains('btn-open-editor')) {
+      const project = getProject(projectId);
+      if (!project) return;
+      const editor = getProjectEditor(projectId) || getSetting('editor') || 'code';
+      self.closeAllMoreActionsMenus();
+      self._api.dialog.openInEditor({ editor: getEditorCommand(editor), path: project.path });
+    } else if (btn.classList.contains('btn-delete-project')) {
+      self.closeAllMoreActionsMenus();
+      if (self._callbacks.onDeleteProject) self._callbacks.onDeleteProject(projectId);
+    } else if (btn.classList.contains('btn-rename-project')) {
+      self.closeAllMoreActionsMenus();
+      if (self._callbacks.onRenameProject) self._callbacks.onRenameProject(projectId);
+    } else if (btn.classList.contains('btn-folder-color')) {
+      const folderId = btn.dataset.folderId;
+      const folder = getFolder(folderId);
+      if (folder) {
+        CustomizePicker.show(btn, 'folder', folderId, folder, {
+          onColorChange: (id, color) => { setFolderColor(id, color); if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects(); },
+          onIconChange: (id, icon) => { setFolderIcon(id, icon); if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects(); },
+          onClose: () => {}
+        });
+      }
+    } else if (btn.classList.contains('btn-project-settings')) {
+      const project = getProject(projectId);
+      self.closeAllMoreActionsMenus();
+      if (project) self._showProjectSettings(project);
+    } else if (btn.classList.contains('btn-add-to-workspace')) {
+      const anchorRect = btn.getBoundingClientRect();
+      self.closeAllMoreActionsMenus();
+      self._showAddToWorkspaceMenu(anchorRect, projectId);
+    } else if (btn.classList.contains('btn-archive-project')) {
+      const project = getProject(projectId);
+      self.closeAllMoreActionsMenus();
+      if (project) {
+        if (project.archived) { unarchiveProject(projectId); } else { archiveProject(projectId); }
+        if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects();
+      }
+    } else if (btn.classList.contains('btn-chat-settings')) {
+      const project = getProject(projectId);
+      self.closeAllMoreActionsMenus();
+      if (project) self._showChatSettingsModal(project);
+    } else if (btn.classList.contains('btn-manage-tags')) {
+      const project = getProject(projectId);
+      self.closeAllMoreActionsMenus();
+      if (project) self._showTagsModal(project);
+    } else if (btn.classList.contains('btn-toggle-archived')) {
+      self._showArchived = !self._showArchived;
+      if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects();
+    } else if (btn.classList.contains('btn-clear-tag-filter')) {
+      self._selectedTagFilter = null;
+      if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects();
+    } else if (btn.classList.contains('btn-customize-project')) {
+      const project = getProject(projectId);
+      self.closeAllMoreActionsMenus();
+      if (project) {
+        CustomizePicker.show(btn, 'project', projectId, project, {
+          onColorChange: (id, color) => { setProjectColor(id, color); if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects(); },
+          onIconChange: (id, icon) => { setProjectIcon(id, icon); if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects(); },
+          onClose: () => {}
+        });
+      }
+    }
+  }
+
   _attachListeners(list) {
     const self = this;
     // === SINGLE DELEGATED CLICK HANDLER ===
@@ -843,137 +1022,7 @@ class ProjectList extends BaseComponent {
       const btn = target.closest('button');
       if (btn) {
         e.stopPropagation();
-        const projectId = btn.dataset.projectId;
-
-        // Close more-actions menu for any menu item click
-        if (btn.classList.contains('more-actions-item')) {
-          self.closeAllMoreActionsMenus();
-        }
-
-        if (btn.classList.contains('btn-claude')) {
-          const project = getProject(projectId);
-          const projectIndex = getProjectIndex(projectId);
-          setSelectedProjectFilter(projectIndex);
-          if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects();
-          if (self._callbacks.onCreateTerminal) self._callbacks.onCreateTerminal(project);
-        } else if (btn.classList.contains('btn-quick-action')) {
-          const project = getProject(projectId);
-          const projectIndex = getProjectIndex(projectId);
-          const actionId = btn.dataset.actionId;
-          setSelectedProjectFilter(projectIndex);
-          if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects();
-          const { executeQuickAction } = require('./QuickActions');
-          executeQuickAction(project, actionId);
-        } else if (btn.classList.contains('btn-git-pull')) {
-          if (self._callbacks.onGitPull) self._callbacks.onGitPull(projectId);
-        } else if (btn.classList.contains('btn-git-push')) {
-          if (self._callbacks.onGitPush) self._callbacks.onGitPush(projectId);
-        } else if (btn.classList.contains('btn-new-worktree')) {
-          const project = getProject(projectId);
-          self.closeAllMoreActionsMenus();
-          if (self._callbacks.onNewWorktree) self._callbacks.onNewWorktree(project);
-        } else if (btn.classList.contains('btn-basic-terminal')) {
-          const project = getProject(projectId);
-          const projectIndex = getProjectIndex(projectId);
-          setSelectedProjectFilter(projectIndex);
-          self.closeAllMoreActionsMenus();
-          if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects();
-          if (self._callbacks.onCreateBasicTerminal) self._callbacks.onCreateBasicTerminal(project);
-        } else if (btn.classList.contains('btn-locate-project')) {
-          self.closeAllMoreActionsMenus();
-          if (self._callbacks.onLocateProject) self._callbacks.onLocateProject(projectId);
-        } else if (btn.classList.contains('btn-open-folder')) {
-          const project = getProject(projectId);
-          if (project) self._api.dialog.openInExplorer(project.path);
-        } else if (btn.classList.contains('btn-open-editor')) {
-          const project = getProject(projectId);
-          if (!project) return;
-          const editor = getProjectEditor(projectId) || getSetting('editor') || 'code';
-          self.closeAllMoreActionsMenus();
-          self._api.dialog.openInEditor({ editor: getEditorCommand(editor), path: project.path });
-        } else if (btn.classList.contains('btn-delete-project')) {
-          self.closeAllMoreActionsMenus();
-          if (self._callbacks.onDeleteProject) self._callbacks.onDeleteProject(projectId);
-        } else if (btn.classList.contains('btn-rename-project')) {
-          self.closeAllMoreActionsMenus();
-          if (self._callbacks.onRenameProject) self._callbacks.onRenameProject(projectId);
-        } else if (btn.classList.contains('btn-more-actions')) {
-          const menu = btn.nextElementSibling;
-          const isActive = menu.classList.contains('active');
-          self.closeAllMoreActionsMenus();
-          if (!isActive) {
-            const btnRect = btn.getBoundingClientRect();
-            menu.style.visibility = 'hidden';
-            menu.classList.add('active');
-            const menuWidth = menu.offsetWidth;
-            const menuHeight = menu.offsetHeight;
-            menu.classList.remove('active');
-            menu.style.visibility = '';
-            let left = btnRect.right - menuWidth;
-            if (left < 0) left = btnRect.left;
-            const viewportHeight = window.innerHeight;
-            let top;
-            if (btnRect.bottom + menuHeight + 4 > viewportHeight) {
-              top = btnRect.top - menuHeight - 4;
-              if (top < 0) top = 4;
-            } else {
-              top = btnRect.bottom + 4;
-            }
-            menu.style.top = `${top}px`;
-            menu.style.left = `${left}px`;
-            menu.classList.add('active');
-            self._setupMoreActionsCloseListeners(menu, btn);
-          }
-        } else if (btn.classList.contains('btn-folder-color')) {
-          const folderId = btn.dataset.folderId;
-          const folder = getFolder(folderId);
-          if (folder) {
-            CustomizePicker.show(btn, 'folder', folderId, folder, {
-              onColorChange: (id, color) => { setFolderColor(id, color); if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects(); },
-              onIconChange: (id, icon) => { setFolderIcon(id, icon); if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects(); },
-              onClose: () => {}
-            });
-          }
-        } else if (btn.classList.contains('btn-project-settings')) {
-          const project = getProject(projectId);
-          self.closeAllMoreActionsMenus();
-          if (project) self._showProjectSettings(project);
-        } else if (btn.classList.contains('btn-add-to-workspace')) {
-          const anchorRect = btn.getBoundingClientRect();
-          self.closeAllMoreActionsMenus();
-          self._showAddToWorkspaceMenu(anchorRect, projectId);
-        } else if (btn.classList.contains('btn-archive-project')) {
-          const project = getProject(projectId);
-          self.closeAllMoreActionsMenus();
-          if (project) {
-            if (project.archived) { unarchiveProject(projectId); } else { archiveProject(projectId); }
-            if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects();
-          }
-        } else if (btn.classList.contains('btn-chat-settings')) {
-          const project = getProject(projectId);
-          self.closeAllMoreActionsMenus();
-          if (project) self._showChatSettingsModal(project);
-        } else if (btn.classList.contains('btn-manage-tags')) {
-          const project = getProject(projectId);
-          self.closeAllMoreActionsMenus();
-          if (project) self._showTagsModal(project);
-        } else if (btn.classList.contains('btn-toggle-archived')) {
-          self._showArchived = !self._showArchived;
-          if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects();
-        } else if (btn.classList.contains('btn-clear-tag-filter')) {
-          self._selectedTagFilter = null;
-          if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects();
-        } else if (btn.classList.contains('btn-customize-project')) {
-          const project = getProject(projectId);
-          self.closeAllMoreActionsMenus();
-          if (project) {
-            CustomizePicker.show(btn, 'project', projectId, project, {
-              onColorChange: (id, color) => { setProjectColor(id, color); if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects(); },
-              onIconChange: (id, icon) => { setProjectIcon(id, icon); if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects(); },
-              onClose: () => {}
-            });
-          }
-        }
+        self._handleProjectAction(btn);
         return;
       }
 
@@ -1069,37 +1118,6 @@ class ProjectList extends BaseComponent {
         };
         setTimeout(() => document.addEventListener('click', closeMenu, true), 0);
         return;
-      }
-
-      // Project item right-click → more-actions menu at cursor
-      const projectItem = e.target.closest('.project-item');
-      if (projectItem) {
-        e.preventDefault();
-        e.stopPropagation();
-        const moreBtn = projectItem.querySelector('.btn-more-actions');
-        if (!moreBtn) return;
-        const menu = moreBtn.nextElementSibling;
-        if (!menu) return;
-
-        self.closeAllMoreActionsMenus();
-
-        menu.style.visibility = 'hidden';
-        menu.classList.add('active');
-        const menuWidth = menu.offsetWidth;
-        const menuHeight = menu.offsetHeight;
-        menu.classList.remove('active');
-        menu.style.visibility = '';
-
-        let left = e.clientX;
-        let top = e.clientY;
-        if (left + menuWidth > window.innerWidth) left = window.innerWidth - menuWidth - 4;
-        if (left < 0) left = 4;
-        if (top + menuHeight > window.innerHeight) top = window.innerHeight - menuHeight - 4;
-        if (top < 0) top = 4;
-
-        menu.style.top = `${top}px`;
-        menu.style.left = `${left}px`;
-        menu.classList.add('active');
       }
     };
 
@@ -1513,11 +1531,13 @@ function render() { _getInstance().render(); }
 function setCallbacks(cbs) { _getInstance().setCallbacks(cbs); }
 function setExternalState(state) { _getInstance().setExternalState(state); }
 function closeAllMoreActionsMenus() { _getInstance().closeAllMoreActionsMenus(); }
+function openActionsMenu(projectId, x, y, opts) { _getInstance().openActionsMenu(projectId, x, y, opts); }
 
 module.exports = {
   ProjectList,
   render,
   setCallbacks,
   setExternalState,
-  closeAllMoreActionsMenus
+  closeAllMoreActionsMenus,
+  openActionsMenu
 };

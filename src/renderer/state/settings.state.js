@@ -70,6 +70,7 @@ const defaultSettings = {
   enhancePrompts: false, // Opt-in: reformulate prompts via Haiku for better prompt engineering before sending
   pinnedTabs: ['claude', 'git', 'database', 'mcp', 'plugins', 'skills', 'agents', 'workflows', 'tasks', 'control-tower', 'dashboard', 'timetracking', 'session-replay', 'memory', 'connectivity'], // Pinned sidebar tabs (rest go to More menu)
   activeTab: 'claude', // Last active sidebar tab (restored on restart)
+  openProjectIds: [], // Projects with a tab in the project bar, in tab order (restored on restart)
   tabsOrder: null, // null = canonical order, otherwise array of all tabIds in custom order
   parallelMaxAgents: 3, // Default number of parallel agents for Parallel Task Manager (1-10)
   maxTurns: null, // null = no limit (SDK/CLI default), or a cap on API round-trips for the whole tab
@@ -79,7 +80,6 @@ const defaultSettings = {
   githubHostname: 'github.com', // GitHub hostname for remote URL detection
   personaName: '', // User's name for persona (optional, injected into chat system prompt)
   personaInstructions: '', // Custom instructions for Claude persona (optional, appended to system prompt)
-  cardButtons: { claude: true, terminal: true }, // Which built-in action buttons to show on project cards
   discordRpcEnabled: true, // Discord Rich Presence ("Coding in {project} - Claude Terminal")
   discordRpcShowProject: true, // Include the project name in the Discord presence (off = generic)
 };

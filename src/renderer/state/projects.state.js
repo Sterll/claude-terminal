@@ -17,7 +17,10 @@ const initialState = {
   folders: [],
   rootOrder: [],
   selectedProjectFilter: null,
-  openedProjectId: null
+  openedProjectId: null,
+  // Ids of the projects that currently have a tab in the project bar, in tab
+  // order. Persisted in settings.json (UI state), not projects.json (synced).
+  openProjectIds: []
 };
 
 const projectsState = new State(initialState);
@@ -717,7 +720,9 @@ function deleteProject(projectId) {
   }
 
   const projects = state.projects.filter(p => p.id !== projectId);
-  projectsState.set({ projects, folders, rootOrder });
+  const openProjectIds = state.openProjectIds.filter(id => id !== projectId);
+  projectsState.set({ projects, folders, rootOrder, openProjectIds });
+  if (openProjectIds.length !== state.openProjectIds.length) _saveOpenProjectIds();
   saveProjects();
 }
 
@@ -891,10 +896,123 @@ function reorderItem(itemType, itemId, targetId, position) {
 
 /**
  * Set selected project filter
+ *
+ * Selecting a project also gives it a tab in the project bar: every existing
+ * call site (dashboard, quick picker, session resume, terminal close…) is a
+ * place where the user ends up working in that project, so the tab has to be
+ * there for the bar to reflect reality.
  * @param {number|null} projectIndex
  */
 function setSelectedProjectFilter(projectIndex) {
+  const project = projectIndex === null || projectIndex === undefined
+    ? null
+    : projectsState.get().projects[projectIndex];
+  if (project) {
+    openProjectTab(project.id, { activate: false });
+  }
   projectsState.setProp('selectedProjectFilter', projectIndex);
+}
+
+// ========== OPEN PROJECT TABS ==========
+
+/**
+ * Persist the open-tab list. Lives in settings.json rather than projects.json:
+ * it is per-machine UI state, and projects.json is a cloud-synced entity.
+ */
+function _saveOpenProjectIds() {
+  try {
+    const { setSetting } = require('./settings.state');
+    setSetting('openProjectIds', [...projectsState.get().openProjectIds]);
+  } catch (_) { /* settings not ready yet during boot */ }
+}
+
+/**
+ * Restore the open-tab list saved by a previous run, dropping ids of projects
+ * that no longer exist.
+ * @param {string[]} ids
+ */
+function restoreOpenProjectIds(ids) {
+  if (!Array.isArray(ids)) return;
+  const known = new Set(projectsState.get().projects.map(p => p.id));
+  projectsState.setProp('openProjectIds', ids.filter(id => known.has(id)));
+}
+
+/**
+ * @returns {boolean} whether the project has a tab in the project bar
+ */
+function isProjectOpen(projectId) {
+  return projectsState.get().openProjectIds.includes(projectId);
+}
+
+/**
+ * The open projects, in tab order.
+ * @returns {Object[]}
+ */
+function getOpenProjects() {
+  const { projects, openProjectIds } = projectsState.get();
+  return openProjectIds.map(id => projects.find(p => p.id === id)).filter(Boolean);
+}
+
+/**
+ * Give a project a tab, and optionally make it the active one.
+ * @param {string} projectId
+ * @param {{activate?: boolean}} [opts] - activate defaults to true
+ */
+function openProjectTab(projectId, opts = {}) {
+  const { activate = true } = opts;
+  const project = getProject(projectId);
+  if (!project) return;
+
+  const openProjectIds = projectsState.get().openProjectIds;
+  if (!openProjectIds.includes(projectId)) {
+    projectsState.setProp('openProjectIds', [...openProjectIds, projectId]);
+    _saveOpenProjectIds();
+  }
+
+  if (activate) {
+    projectsState.setProp('selectedProjectFilter', getProjectIndex(projectId));
+    notifyProjectOpened(projectId);
+  }
+}
+
+/**
+ * Remove a project's tab. When the closed tab was the active one, focus moves
+ * to the neighbour on its right, else on its left — the tab the user's eye is
+ * already on.
+ * @param {string} projectId
+ * @returns {number|null} the project index that became active, if it changed
+ */
+function closeProjectTab(projectId) {
+  const state = projectsState.get();
+  const position = state.openProjectIds.indexOf(projectId);
+  if (position === -1) return null;
+
+  const remaining = state.openProjectIds.filter(id => id !== projectId);
+  projectsState.setProp('openProjectIds', remaining);
+  _saveOpenProjectIds();
+
+  const wasActive = state.projects[state.selectedProjectFilter]?.id === projectId;
+  if (!wasActive) return null;
+
+  const nextId = remaining[position] || remaining[position - 1] || null;
+  const nextIndex = nextId ? getProjectIndex(nextId) : null;
+  projectsState.setProp('selectedProjectFilter', nextIndex);
+  return nextIndex;
+}
+
+/**
+ * Move an open tab to a new position (drag & drop reordering).
+ * @param {string} projectId
+ * @param {number} toIndex - target position in the open-tab list
+ */
+function moveProjectTab(projectId, toIndex) {
+  const openProjectIds = [...projectsState.get().openProjectIds];
+  const from = openProjectIds.indexOf(projectId);
+  if (from === -1) return;
+  openProjectIds.splice(from, 1);
+  openProjectIds.splice(Math.max(0, Math.min(toIndex, openProjectIds.length)), 0, projectId);
+  projectsState.setProp('openProjectIds', openProjectIds);
+  _saveOpenProjectIds();
 }
 
 /**
@@ -1537,6 +1655,13 @@ module.exports = {
   setOpenedProjectId,
   notifyProjectOpened,
   getCurrentProject,
+  // Open project tabs (project bar)
+  restoreOpenProjectIds,
+  isProjectOpen,
+  getOpenProjects,
+  openProjectTab,
+  closeProjectTab,
+  moveProjectTab,
   // Quick Actions
   getQuickActions,
   setQuickActions,

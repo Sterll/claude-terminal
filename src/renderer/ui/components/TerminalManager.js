@@ -2314,12 +2314,12 @@ class TerminalManager extends BaseComponent {
   filterByProject(projectIndex) {
     const emptyState = document.getElementById('empty-terminals');
     const filterIndicator = document.getElementById('terminals-filter');
-    const filterProjectName = document.getElementById('filter-project-name');
     const projects = projectsState.get().projects;
 
     if (projectIndex !== null && projects[projectIndex]) {
+      // The active project is named by its tab in the project bar; this row only
+      // carries the tools.
       filterIndicator.style.display = 'flex';
-      filterProjectName.textContent = projects[projectIndex].name;
 
       const qa = getQuickActions();
       if (qa) {

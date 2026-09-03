@@ -266,6 +266,38 @@
 .pt-modal-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
 
 /* Form fields */
+/* Read-out of the project the bar holds — not a selector */
+.pm-project-readonly {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+}
+
+.pm-project-readonly svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.pm-project-readonly.is-empty {
+  color: var(--text-muted);
+}
+
+.pm-project-readonly.is-empty svg {
+  color: var(--text-muted);
+}
+
+.pm-project-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pm-field {
   display: flex;
   flex-direction: column;
