@@ -363,3 +363,41 @@ describe('ChatService lifecycle status', () => {
     expect(lifecycle[0].status).toBe('success');
   });
 });
+
+// ── CLI failure text guard ──
+
+describe('ChatService._isCliFailureText', () => {
+  test.each([
+    'Not logged in · Please run /login',
+    'API Error: 401 Invalid API key · Please run /login',
+    'Invalid API key · Please run /login',
+    'Your session has expired. Please run /login to sign in again.',
+    'Voice mode requires a Claude.ai account. Please run /login to sign in.',
+    'Not logged in. Run `claude auth login` to authenticate.',
+    'Credit balance is too low',
+    'Claude usage limit reached',
+  ])('refuses CLI failure text: %s', (text) => {
+    expect(chatService._isCliFailureText(text)).toBe(true);
+  });
+
+  test.each([
+    'Fix /login redirect',
+    'Refonte left menu',
+    'Migrate auth session store',
+    'Debug expired token refresh',
+    'API error handling middleware',
+  ])('lets a real title through: %s', (text) => {
+    expect(chatService._isCliFailureText(text)).toBe(false);
+  });
+
+  test('ignores surrounding whitespace', () => {
+    expect(chatService._isCliFailureText('  Not logged in · Please run /login\n')).toBe(true);
+  });
+
+  test('empty and nullish text is not a failure', () => {
+    expect(chatService._isCliFailureText('')).toBe(false);
+    expect(chatService._isCliFailureText('   ')).toBe(false);
+    expect(chatService._isCliFailureText(null)).toBe(false);
+    expect(chatService._isCliFailureText(undefined)).toBe(false);
+  });
+});
