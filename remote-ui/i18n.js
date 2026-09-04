@@ -115,6 +115,7 @@ const TRANSLATIONS = {
     'misc.camera': 'Caméra',
     'misc.gallery': 'Galerie',
     'misc.model': 'Modèle',
+    'misc.moreModels': 'Plus de modèles',
     'misc.thinking': 'Réflexion',
     'misc.noDetails': 'Aucun détail disponible',
 
@@ -222,6 +223,7 @@ const TRANSLATIONS = {
     'misc.camera': 'Camera',
     'misc.gallery': 'Gallery',
     'misc.model': 'Model',
+    'misc.moreModels': 'More models',
     'misc.thinking': 'Thinking',
     'misc.noDetails': 'No details available',
 
@@ -327,6 +329,7 @@ const TRANSLATIONS = {
     'misc.camera': 'C\u00e1mara',
     'misc.gallery': 'Galer\u00eda',
     'misc.model': 'Modelo',
+    'misc.moreModels': 'Más modelos',
     'misc.thinking': 'Pensamiento',
     'misc.noDetails': 'Sin detalles disponibles',
 
@@ -432,6 +435,7 @@ const TRANSLATIONS = {
     'misc.camera': 'Kamera',
     'misc.gallery': 'Galeri',
     'misc.model': 'Model',
+    'misc.moreModels': 'More models',
     'misc.thinking': 'Pemikiran',
     'misc.noDetails': 'Tidak ada detail tersedia',
 

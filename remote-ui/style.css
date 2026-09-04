@@ -1621,6 +1621,19 @@ html, body {
   margin: 4px 0;
 }
 
+/* Separates the legacy tier inside the flat model list. Lighter than
+   .plus-menu-label, which heads a whole menu section. */
+.plus-menu-sublabel {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  padding: 8px 8px 3px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+
 .plus-action-btn {
   display: flex;
   align-items: center;

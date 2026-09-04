@@ -3912,6 +3912,74 @@ hr.chat-plan-separator {
   flex-shrink: 0;
 }
 
+/* Number shortcut badge, shown on unselected primary rows in place of the
+   check. Same 16px box as the check so rows don't shift when selection moves. */
+.chat-model-shortcut {
+  width: 16px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-model-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border-color, #2a2a2a);
+}
+
+/* ── "More models" submenu ── */
+
+.chat-model-more {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+  transition: background 0.1s ease;
+}
+
+.chat-model-more:hover,
+.chat-model-more.open {
+  background: var(--bg-tertiary, #1e1e1e);
+  color: var(--text-primary, #e8e8e8);
+}
+
+.chat-model-more-arrow {
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-muted);
+}
+
+.chat-model-submenu {
+  display: none;
+  position: absolute;
+  bottom: -5px;
+  /* Opens leftward: the parent dropdown is anchored `right: 0` against the
+     footer, so a right-opening submenu lands off the window edge — which is
+     what made "More models" look like it did nothing at all. */
+  right: calc(100% + 6px);
+  width: 200px;
+  background: var(--bg-primary, #111);
+  border: 1px solid var(--border-color, #2a2a2a);
+  border-radius: 10px;
+  padding: 4px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* Hover opens it for pointers; .open is the click/keyboard path, which is what
+   makes the submenu reachable without a hover state at all. */
+.chat-model-more:hover .chat-model-submenu,
+.chat-model-more.open .chat-model-submenu {
+  display: block;
+}
+
 /* ── Effort selector ── */
 .chat-effort-selector {
   position: relative;

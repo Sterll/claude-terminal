@@ -9,6 +9,7 @@
 const { escapeHtml } = require('../../utils');
 const { t, onLanguageChange } = require('../../i18n');
 const { getSetting, setSetting } = require('../../state/settings.state');
+const ModelCatalog = require('../../services/ModelCatalogClient');
 const {
   parallelTaskState,
   getRuns,
@@ -199,6 +200,17 @@ function _wireEvents() {
 function _buildNewRunModal() {
   const savedMaxTasks = getSetting('parallelMaxAgents') || 3;
   const savedAutoTasks = getSetting('parallelAutoTasks') || false;
+
+  const catalog = ModelCatalog.getCatalog();
+  const modelRows = [...catalog.primary, ...catalog.legacy];
+  // A parallel run fans out across many agents, so the default deliberately
+  // stays on the Sonnet tier instead of following the catalog's first row
+  // (Opus): letting it drift would multiply the cost of every run silently.
+  const defaultModel =
+    modelRows.find(m => /sonnet/i.test(m.resolvedModel || m.value))
+    || catalog.primary[0]
+    || modelRows[0];
+
   return `
     <div class="pt-modal-overlay" id="pt-modal-overlay">
       <div class="pt-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(t('parallel.modal.title'))}">
@@ -266,19 +278,13 @@ function _buildNewRunModal() {
 
             <div class="pm-field">
               <label class="pm-label">${t('parallel.form.modelLabel')}</label>
-              <div class="pt-select pt-select--full" id="pm-model-select" data-value="claude-sonnet-4-6">
+              <div class="pt-select pt-select--full" id="pm-model-select" data-value="${escapeHtml(defaultModel.value)}">
                 <div class="pt-select-trigger">
-                  <span class="pt-select-value">${t('parallel.model.sonnet')}</span>
+                  <span class="pt-select-value">${escapeHtml(defaultModel.displayName)}</span>
                   <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M7 10l5 5 5-5z"/></svg>
                 </div>
                 <div class="pt-select-dropdown">
-                  <div class="pt-select-option" data-value="claude-haiku-4-5-20251001">${t('parallel.model.haiku')}</div>
-                  <div class="pt-select-option is-selected" data-value="claude-sonnet-4-6">${t('parallel.model.sonnet')}</div>
-                  <div class="pt-select-option" data-value="claude-sonnet-5">${t('parallel.model.sonnet5')}</div>
-                  <div class="pt-select-option" data-value="claude-opus-5">${t('parallel.model.opus5')}</div>
-                  <div class="pt-select-option" data-value="claude-opus-4-8">${t('parallel.model.opus48')}</div>
-                  <div class="pt-select-option" data-value="claude-opus-4-7">${t('parallel.model.opus47')}</div>
-                  <div class="pt-select-option" data-value="claude-fable-5">${t('parallel.model.fable5')}</div>
+                  ${modelRows.map(m => `<div class="pt-select-option${m.value === defaultModel.value ? ' is-selected' : ''}" data-value="${escapeHtml(m.value)}">${escapeHtml(m.displayName)}</div>`).join('')}
                 </div>
               </div>
             </div>
@@ -459,7 +465,9 @@ async function _handleStart(modalEl) {
 
   const autoTasks = modalEl?.querySelector('#pm-auto-chip')?.classList.contains('is-active') || false;
   const maxTasks = autoTasks ? null : parseInt(modalEl?.querySelector('#pm-agents-slider')?.value || '3', 10);
-  const model = modalEl?.querySelector('#pm-model-select')?.dataset?.value || 'claude-sonnet-4-6';
+  // Falls back to the service's own default rather than a literal id, so the
+  // fallback can't name a model the CLI has since retired.
+  const model = modalEl?.querySelector('#pm-model-select')?.dataset?.value || null;
   const effort = modalEl?.querySelector('#pm-effort-select')?.dataset?.value || 'high';
 
   if (!autoTasks) setSetting('parallelMaxAgents', maxTasks);

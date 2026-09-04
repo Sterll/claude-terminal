@@ -47,14 +47,13 @@ function getToolDisplayInfo(toolName, input) {
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
+// Fallback tier, used only until the desktop pushes `models:catalog`. Kept
+// short on purpose: a long stale list here would outlive the real one.
 const MODEL_OPTIONS = [
-  { id: 'claude-fable-5', label: 'Fable 5' },
-  { id: 'claude-opus-5', label: 'Opus 5' },
-  { id: 'claude-opus-4-8', label: 'Opus 4.8' },
-  { id: 'claude-opus-4-7', label: 'Opus 4.7' },
-  { id: 'claude-sonnet-5', label: 'Sonnet 5' },
-  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
-  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' },
+  { value: 'claude-opus-5', displayName: 'Opus 5' },
+  { value: 'claude-fable-5-1', displayName: 'Fable 5.1' },
+  { value: 'claude-sonnet-5', displayName: 'Sonnet 5' },
+  { value: 'claude-haiku-4-5-20251001', displayName: 'Haiku 4.5' },
 ];
 
 const EFFORT_OPTIONS = [
@@ -75,8 +74,10 @@ const state = {
   currentView: 'projects',
   todayMs: 0,
   _pendingUserMessage: null,
-  selectedModel: 'claude-sonnet-4-6',
+  selectedModel: 'claude-sonnet-5',
   selectedEffort: 'high',
+  // Replaced by `models:catalog` once the desktop answers.
+  modelCatalog: { primary: MODEL_OPTIONS, legacy: [] },
   inProjectHub: false,
   slashCommands: [], // Dynamic slash commands from SDK
   fileList: [], // File list for @file picker [{path, fullPath}]
@@ -822,6 +823,7 @@ function handleMessage(msg) {
       _updatePlusMenuSelection();
       renderSessionBar(); renderChatMessages();
       break;
+    case 'models:catalog':       onModelCatalog(data); break;
     case 'projects:updated':     onProjectsUpdated(data); break;
     case 'session:started':      onSessionStarted(data); break;
     case 'session:tab-renamed':  onTabRenamed(data); break;
@@ -2782,14 +2784,16 @@ function setupPlusMenu() {
     }
   });
 
-  // Model options
-  $('model-options')?.querySelectorAll('.plus-option').forEach(opt => {
-    opt.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const modelId = opt.dataset.model;
-      if (modelId) _selectModel(modelId);
-    });
+  // Model options — delegated, because the rows are rebuilt whenever the
+  // desktop pushes a new catalog; per-button listeners would not survive it.
+  $('model-options')?.addEventListener('click', (e) => {
+    const opt = e.target.closest('.plus-option');
+    if (!opt) return;
+    e.stopPropagation();
+    const modelId = opt.dataset.model;
+    if (modelId) _selectModel(modelId);
   });
+  _renderModelOptions();
 
   // Effort options
   $('effort-options')?.querySelectorAll('.plus-option').forEach(opt => {
@@ -2819,6 +2823,41 @@ function _closePlusMenu() {
   if (!menu) return;
   menu.classList.add('hidden');
   btn?.classList.remove('open');
+}
+
+function onModelCatalog(data) {
+  if (!data || !Array.isArray(data.primary) || data.primary.length === 0) return;
+  state.modelCatalog = {
+    primary: data.primary,
+    legacy: Array.isArray(data.legacy) ? data.legacy : [],
+  };
+  _renderModelOptions();
+}
+
+/**
+ * Rebuild the model list from the catalog.
+ *
+ * Both tiers go in one flat list separated by a label rather than a nested
+ * submenu: this menu is driven by touch, where a hover-opened side panel is
+ * awkward and easy to dismiss by accident.
+ */
+function _renderModelOptions() {
+  const container = $('model-options');
+  if (!container) return;
+
+  const check = '<span class="plus-option-check hidden">'
+    + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5">'
+    + '<polyline points="20 6 9 17 4 12"/></svg></span>';
+  const row = (m) => `<button class="plus-option" data-model="${escHtml(m.value)}">`
+    + `<span class="plus-option-name">${escHtml(m.displayName)}</span>${check}</button>`;
+
+  const { primary, legacy } = state.modelCatalog;
+  container.innerHTML = primary.map(row).join('')
+    + (legacy.length
+      ? `<div class="plus-menu-sublabel">${escHtml(t('misc.moreModels'))}</div>${legacy.map(row).join('')}`
+      : '');
+
+  _updatePlusMenuSelection();
 }
 
 function _updatePlusMenuSelection() {

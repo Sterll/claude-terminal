@@ -111,7 +111,7 @@ const tools = [
         max_tasks: { type: 'number', description: 'Maximum number of parallel tasks (2-10, default: 4)' },
         auto_tasks: { type: 'boolean', description: 'Let Claude decide the optimal number of tasks (overrides max_tasks)' },
         main_branch: { type: 'string', description: 'Base branch for worktrees (default: current branch)' },
-        model: { type: 'string', description: 'Claude model to use (default: claude-sonnet-4-6)' },
+        model: { type: 'string', description: 'Claude model to use. Accepts a CLI alias ("sonnet", "opus") or a full id. Default: "sonnet".' },
         effort: { type: 'string', description: 'Effort level: low, medium, high, xhigh, max (default: high)' },
       },
       required: ['goal'],

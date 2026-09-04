@@ -28,7 +28,7 @@ const defaultSettings = {
   defaultTerminalMode: 'terminal', // 'terminal' or 'chat' - default mode for new Claude terminals
   hooksEnabled: false, // Hooks installed in ~/.claude/settings.json
   hooksConsentShown: false, // User has seen the hooks consent prompt
-  chatModel: null, // null = CLI default, or model ID string (e.g. 'claude-sonnet-4-6')
+  chatModel: null, // null = CLI default, or a model id from the catalog (e.g. 'opus[1m]', 'sonnet')
   enable1MContext: false, // Enable 1M token context window via betas flag
   effortLevel: 'high', // Effort level for chat sessions: low, medium, high, xhigh, max
   remoteEnabled: false, // Enable remote control via mobile PWA

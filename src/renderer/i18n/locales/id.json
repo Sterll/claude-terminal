@@ -1833,8 +1833,9 @@
     "effortMedium": "Seimbang antara kecepatan & kualitas",
     "effortHigh": "Penalaran mendalam (default)",
     "effortXhigh": "Sangat tinggi - terbaik untuk menulis kode",
-    "effortMax": "Effort maksimum (khusus Opus)",
+    "effortMax": "Effort maksimum",
     "modelSwitchFailed": "Tidak dapat beralih ke {model} - masih menggunakan {previous}. {error}",
+    "moreModels": "Model lainnya",
     "effortSwitchFailed": "Tidak dapat mengubah effort ke {effort} - masih menggunakan {previous}. {error}",
     "code": {
       "showMore": "Tampilkan {count} baris lagi",

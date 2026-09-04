@@ -1833,8 +1833,9 @@
     "effortMedium": "平衡的速度和质量",
     "effortHigh": "深度推理（默认）",
     "effortXhigh": "超高 - 最适合编码",
-    "effortMax": "最大推理强度（仅限 Opus）",
+    "effortMax": "最大推理强度",
     "modelSwitchFailed": "无法切换到 {model} - 仍在使用 {previous}。 {error}",
+    "moreModels": "更多模型",
     "effortSwitchFailed": "无法将工作量切换到 {effort} - 仍在使用 {previous}。 {error}",
     "code": {
       "showMore": "显示 {count} 更多线路",

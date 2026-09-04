@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const { app } = require('electron');
 const { execFileSync } = require('child_process');
+const ModelCatalogService = require('./ModelCatalogService');
 
 let sdkPromise = null;
 let resolvedRuntime = null;
@@ -829,6 +830,12 @@ class ChatService {
       // startup, so the host owns the reset. Without it, a resumed tab would
       // keep showing tasks that belonged to the process that just went away.
       this._send('chat-background-tasks', { sessionId, tasks: [] });
+      // Free catalog refresh: the SDK caches the init handshake, so reading it
+      // here costs no extra round trip. Detached on purpose — a model list is
+      // never worth delaying or failing a session start over.
+      queryStream.initializationResult?.()
+        .then(init => ModelCatalogService.ingestInitResult(init))
+        .catch(() => {});
       this._processStream(sessionId, queryStream);
       return sessionId;
     } catch (err) {
@@ -1098,6 +1105,53 @@ class ChatService {
   }
 
   /**
+   * Spawn a throwaway CLI purely to read its init handshake, which carries the
+   * model list.
+   *
+   * Only reached when no session has started yet and the disk cache is empty or
+   * stale — `ingestInitResult` covers every other case for free. The prompt is
+   * an async generator gated on a promise we hold open: the CLI needs a live
+   * input stream to finish initializing, and closing the gate in `finally` lets
+   * it exit instead of lingering as an orphan.
+   *
+   * @returns {Promise<{models: Array}>}
+   */
+  async fetchModelCatalog() {
+    const sdk = await loadSDK();
+    const runtime = resolveRuntime();
+
+    let openGate;
+    const gate = new Promise(resolve => { openGate = resolve; });
+    async function* idlePrompt() { await gate; }
+
+    const abortController = new AbortController();
+    const queryStream = sdk.query({
+      prompt: idlePrompt(),
+      options: {
+        abortController,
+        executable: runtime.executable,
+        env: runtime.env,
+        pathToClaudeCodeExecutable: getSdkCliPath(),
+        // Nothing runs, so the toolset and prompt only need to be cheap to set
+        // up — we abort before a single turn is ever taken.
+        allowedTools: [],
+        maxTurns: 1,
+      },
+    });
+
+    try {
+      const init = await queryStream.initializationResult();
+      return {
+        models: Array.isArray(init?.models) ? init.models : [],
+      };
+    } finally {
+      openGate();
+      try { abortController.abort(); } catch (_) {}
+      try { queryStream.close?.(); } catch (_) {}
+    }
+  }
+
+  /**
    * Change model mid-session via SDK queryStream.setModel()
    */
   async setModel(sessionId, model) {
@@ -1111,19 +1165,25 @@ class ChatService {
 
   /**
    * Change effort level mid-session.
-   * Prefers SDK setEffort() (newer SDK versions), falls back to setMaxThinkingTokens().
+   *
+   * `applyFlagSettings` is the current control path — the SDK has no
+   * `setEffort()`, and this is the only route that carries 'max' (session-scoped,
+   * deliberately never persisted to a settings file).
+   *
+   * The `setMaxThinkingTokens` fallback is for older SDKs only. It cannot
+   * express effort: it maps high, xhigh and max all to `null`, so those three
+   * become indistinguishable, and its low/medium token budgets are the
+   * deprecated `budget_tokens` mechanism that current models reject outright.
    */
   async setEffort(sessionId, effort) {
     const session = this.sessions.get(sessionId);
     if (session?.isCloud) throw new Error('Effort changes not supported for cloud sessions');
 
-    // Prefer setEffort if available (newer SDK versions with Opus 4.7+ adaptive thinking)
-    if (session?.queryStream?.setEffort) {
-      await session.queryStream.setEffort(effort);
+    if (session?.queryStream?.applyFlagSettings) {
+      await session.queryStream.applyFlagSettings({ effortLevel: effort || null });
       return;
     }
 
-    // Fallback to setMaxThinkingTokens for older SDK versions
     if (!session?.queryStream?.setMaxThinkingTokens) {
       throw new Error('Session not found or effort control not available');
     }
@@ -1131,6 +1191,7 @@ class ChatService {
     const tokens = effort in effortMap ? effortMap[effort] : null;
     await session.queryStream.setMaxThinkingTokens(tokens);
   }
+
 
   /**
    * Stop a running background task by id (SDK 0.2.45+).
@@ -2850,5 +2911,11 @@ function _deleteWorkflowSession(cwd, sessionId) {
   }
 }
 
-module.exports = new ChatService();
+const chatService = new ChatService();
+
+// ChatService owns SDK loading, CLI path resolution and runtime detection, so
+// it supplies the spawn rather than the catalog service duplicating any of it.
+ModelCatalogService.setFetcher(() => chatService.fetchModelCatalog());
+
+module.exports = chatService;
 module.exports.normalizeBackgroundTasks = normalizeBackgroundTasks;
