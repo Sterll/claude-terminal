@@ -47,6 +47,7 @@
     "globalDefault": "Por defecto (global)",
     "customize": "Personalizar",
     "basicTerminal": "Terminal básica",
+    "files": "Archivos",
     "openClaude": "Abrir Claude Code",
     "newFolder": "Nueva carpeta",
     "gitPull": "Git Pull",
@@ -1078,7 +1079,9 @@
     "separatorProject": "Proyecto",
     "separatorAllProjects": "Todos los proyectos",
     "separatorCapabilities": "Capacidades",
-    "separatorSystem": "Sistema"
+    "separatorSystem": "Sistema",
+    "tabFiles": "Archivos",
+    "tooltipFiles": "Archivos"
   },
   "memory": {
     "panelDescription": "Configura como Claude se comporta en tus proyectos. Los ajustes globales aplican en todos lados, los de proyecto los reemplazan.",
@@ -1735,6 +1738,10 @@
     "filesChanged": "archivos modificados",
     "fileChanged": "archivo modificado",
     "noChangesYet": "Aún no se ha modificado ningún archivo.",
+    "diffMoreLines": "… {count} líneas más",
+    "noDiffAvailable": "No hay diff disponible.",
+    "diffVsCurrent": "Comparar con el archivo en disco",
+    "diffNoCurrentChanges": "No hay cambios sin confirmar para este archivo.",
     "todoTitle": "Tareas",
     "todoAllDone": "Todo listo",
     "subagentLaunching": "Lanzando agente...",
@@ -3953,5 +3960,23 @@
     "settingsHint": "Cómo cambias de proyecto",
     "optionTabs": "Pestañas de proyecto",
     "optionSidebar": "Columna de proyectos"
+  },
+  "files": {
+    "modifiedOnly": "Solo modificados",
+    "filesTouched": "archivo(s) tocado(s)",
+    "sessionNoChanges": "Esta sesión no modificó ningún archivo.",
+    "noProject": "Abre un proyecto para explorar sus archivos.",
+    "pickAFile": "Elige un archivo en el árbol.",
+    "viewContent": "Contenido",
+    "viewDiff": "Diff",
+    "toggleSplit": "Unificado / lado a lado",
+    "openInTab": "Abrir en una pestaña",
+    "openInEditor": "Abrir en el editor",
+    "previewInTab": "Este formato se previsualiza en una pestaña.",
+    "tooLarge": "Archivo demasiado grande para mostrarse aquí ({size}).",
+    "linesTruncated": "… {count} líneas más",
+    "sessionCaption": "Sesión",
+    "noSession": "Ninguna",
+    "noSessionHint": "explorar todo el árbol"
   }
 }

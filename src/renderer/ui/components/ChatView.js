@@ -124,6 +124,7 @@ const EFFORT_OPTIONS = [
 // ── Markdown Renderer (delegated to MarkdownRenderer service) ──
 
 const MarkdownRenderer = require('../../services/MarkdownRenderer');
+const DiffRenderer = require('../../services/DiffRenderer');
 
 function renderMarkdown(text) {
   return MarkdownRenderer.render(text);
@@ -3888,74 +3889,65 @@ class ChatView extends BaseComponent {
   }
 
   // ── Session changes tab (files modified during this session) ──
-  // Accumulates per-file added/removed line counts from every file-editing tool
-  // (Write / Edit / MultiEdit / NotebookEdit), including subagents and resumed
-  // history. The map lives in this component instance, so it is session-scoped.
-  const sessionFileChanges = new Map(); // filePath -> { additions, deletions, edits }
+  // Only the tally lives here, so the tab badge can react the moment a tool
+  // runs. The diffs come from the transcript: Claude Code writes the patch it
+  // applied — exact hunks, exact line numbers — next to every edit, which beats
+  // anything this component could reconstruct from old_string/new_string.
+  const sessionFileTally = new Map(); // filePath -> { edits }
+  // A subagent tool_use arrives twice, once streamed and once in the full
+  // assistant message, so count it by id.
+  const recordedToolUseIds = new Set();
 
-  // Count changed lines between two text blocks by stripping the common prefix
-  // and suffix — mirrors how `git diff` reports +/- on the changed hunk only.
-  function _diffLineCounts(oldStr, newStr) {
-    const oldLines = oldStr ? String(oldStr).split('\n') : [];
-    const newLines = newStr ? String(newStr).split('\n') : [];
-    let start = 0;
-    while (start < oldLines.length && start < newLines.length && oldLines[start] === newLines[start]) start++;
-    let oldEnd = oldLines.length;
-    let newEnd = newLines.length;
-    while (oldEnd > start && newEnd > start && oldLines[oldEnd - 1] === newLines[newEnd - 1]) { oldEnd--; newEnd--; }
-    return { additions: Math.max(0, newEnd - start), deletions: Math.max(0, oldEnd - start) };
-  }
-
-  function recordFileChange(toolName, input) {
+  function recordFileChange(toolName, input, toolUseId) {
     if (!input || !toolName) return;
-    const hits = []; // { path, additions, deletions }
+    if (toolUseId) {
+      if (recordedToolUseIds.has(toolUseId)) return;
+      recordedToolUseIds.add(toolUseId);
+    }
+    let path = null;
     switch (toolName) {
       case 'Write':
-        if (input.file_path) hits.push({ path: input.file_path, additions: String(input.content || '').split('\n').length, deletions: 0 });
+      case 'Edit':
+      case 'MultiEdit':
+        path = input.file_path || null;
         break;
-      case 'Edit': {
-        if (!input.file_path) break;
-        const c = _diffLineCounts(input.old_string, input.new_string);
-        hits.push({ path: input.file_path, additions: c.additions, deletions: c.deletions });
+      case 'NotebookEdit':
+        path = input.notebook_path || input.file_path || null;
         break;
-      }
-      case 'MultiEdit': {
-        if (!input.file_path) break;
-        let additions = 0, deletions = 0;
-        for (const e of (input.edits || [])) {
-          const c = _diffLineCounts(e.old_string, e.new_string);
-          additions += c.additions; deletions += c.deletions;
-        }
-        hits.push({ path: input.file_path, additions, deletions });
-        break;
-      }
-      case 'NotebookEdit': {
-        const path = input.notebook_path || input.file_path;
-        if (path) hits.push({ path, additions: String(input.new_source || '').split('\n').length, deletions: 0 });
-        break;
-      }
       default:
         return;
     }
-    if (!hits.length) return;
-    for (const h of hits) {
-      const cur = sessionFileChanges.get(h.path) || { additions: 0, deletions: 0, edits: 0 };
-      cur.additions += h.additions;
-      cur.deletions += h.deletions;
-      cur.edits += 1;
-      sessionFileChanges.set(h.path, cur);
-    }
+    if (!path) return;
+    const cur = sessionFileTally.get(path) || { edits: 0 };
+    cur.edits += 1;
+    sessionFileTally.set(path, cur);
+    // The transcript now has one more edit than we last read.
+    liveChangesStale = true;
     updateChangesTab();
   }
 
-  function updateChangesTab() {
-    const count = sessionFileChanges.size;
+  /**
+   * Badge only. Kept separate from updateChangesTab because the transcript read
+   * refreshes the count, and repainting the panel from there would collapse a
+   * diff the reader has open.
+   */
+  function _updateChangesBadge() {
+    // The tally reveals the tab the instant a tool runs; the transcript count
+    // supersedes it once read, so the badge and the panel agree.
+    const count = liveFileCount == null
+      ? sessionFileTally.size
+      : Math.max(liveFileCount, sessionFileTally.size);
     if (count > 0 && tabbarEl.hidden) tabbarEl.hidden = false;
     if (changesBadgeEl) {
       changesBadgeEl.textContent = String(count);
       changesBadgeEl.hidden = count === 0;
     }
-    // Re-render live if the panel is currently visible
+  }
+
+  function updateChangesTab() {
+    _updateChangesBadge();
+    // Re-render live only while the panel shows this session — repainting it
+    // under someone reading a past session would collapse their open diffs.
     if (!changesPanelEl.hidden) renderChangesPanel();
   }
 
@@ -3969,8 +3961,74 @@ class ChatView extends BaseComponent {
     if (isChanges) renderChangesPanel();
   }
 
+  // ── This session's changes ──
+  // Claude Code appends each edit's patch to the transcript as it runs, so this
+  // panel is just "the transcript of the session I am in", re-read when the
+  // tally says there is something new. Browsing *other* sessions belongs in the
+  // Files screen, where a tree gives it somewhere to land.
+  let changesSourceEntries = null; // Map<path, entry>
+  let changesSourceLoading = false;
+  let liveChangesStale = true;     // an edit landed since we last read the file
+  // File count once the transcript has been read. The tally is only what we
+  // watched go by, and replayed history is capped, so the two disagree on a
+  // long resumed session — the transcript is the one to believe.
+  let liveFileCount = null;
+  let changesDiffMode = getSetting('filesDiffMode') === 'split' ? 'split' : 'unified';
+
+  function _changesEntries() {
+    return changesSourceEntries || new Map();
+  }
+
+  /**
+   * Re-read this session's transcript. `force` skips the staleness check.
+   */
+  async function _loadChangesFor({ force = false } = {}) {
+    // sdkSessionId is the live truth once the SDK has started. Before that — a
+    // resumed tab whose history is on screen but whose query has not begun —
+    // the transcript we replayed is the one to read.
+    const targetId = sdkSessionId || resumeSessionId;
+    if (!targetId) {
+      // No transcript to read yet (the SDK has not handed us a session id).
+      // Clearing the flag matters: renderChangesPanel re-renders on the way
+      // out, and a flag left set turns that into an endless render loop.
+      changesSourceEntries = changesSourceEntries || new Map();
+      liveChangesStale = false;
+      return;
+    }
+    if (!force && !liveChangesStale && changesSourceEntries) return;
+
+    changesSourceLoading = true;
+    // Cleared up front, not on success: a read that fails must not leave the
+    // panel asking for the same file on every repaint. The next edit re-arms it.
+    liveChangesStale = false;
+    try {
+      const res = await api.claude.sessionChanges({ projectPath: project.path, sessionId: targetId });
+      const files = (res && res.success ? res.files : []);
+      liveFileCount = files.length;
+      _updateChangesBadge();
+      changesSourceEntries = new Map(files.map(f => [f.path, f]));
+    } catch {
+      if (!changesSourceEntries) changesSourceEntries = new Map();
+    } finally {
+      changesSourceLoading = false;
+    }
+  }
+
   function renderChangesPanel() {
-    const files = [...sessionFileChanges.entries()];
+    // Entering the tab after an edit landed: re-read the transcript, then
+    // repaint. The tally already moved the badge, so this is never a blocker.
+    if (liveChangesStale && !changesSourceLoading) {
+      _loadChangesFor().then(() => {
+        if (!changesPanelEl.hidden) renderChangesPanel();
+      });
+    }
+
+    if (changesSourceLoading && !changesSourceEntries) {
+      changesPanelEl.innerHTML = `<div class="chat-changes-empty">${escapeHtml(t('common.loading') || 'Loading...')}</div>`;
+      return;
+    }
+
+    const files = [...(_changesEntries().entries())];
     if (!files.length) {
       changesPanelEl.innerHTML = `<div class="chat-changes-empty">${escapeHtml(t('chat.noChangesYet') || 'No files modified yet.')}</div>`;
       return;
@@ -3982,16 +4040,26 @@ class ChatView extends BaseComponent {
       const base = path.split(/[\\/]/).pop();
       const dir = path.slice(0, path.length - base.length);
       return `
-        <div class="chat-change-item" data-path="${escapeHtml(path)}" title="${escapeHtml(path)}">
-          <div class="chat-change-file">
-            <span class="chat-change-base">${escapeHtml(base)}</span>
-            <span class="chat-change-dir">${escapeHtml(dir)}</span>
+        <div class="chat-change-item" data-path="${escapeHtml(path)}">
+          <div class="chat-change-row" role="button" tabindex="0" title="${escapeHtml(path)}">
+            <svg class="chat-change-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+            <div class="chat-change-file">
+              <span class="chat-change-base">${escapeHtml(base)}</span>
+              <span class="chat-change-dir">${escapeHtml(dir)}</span>
+            </div>
+            <div class="chat-change-stats">
+              ${s.edits > 1 ? `<span class="chat-change-edits">${s.edits}×</span>` : ''}
+              <span class="chat-change-add">+${s.additions}</span>
+              <span class="chat-change-del">-${s.deletions}</span>
+              <button class="chat-change-current" title="${escapeHtml(t('chat.diffVsCurrent') || 'Compare with the file on disk')}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-7.35-3.82"/><path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 7.35 3.82"/><polyline points="21 3 19.35 6.82 15.5 6"/><polyline points="3 21 4.65 17.18 8.5 18"/></svg>
+              </button>
+              <button class="chat-change-open" title="${escapeHtml(t('chat.openFile') || 'Open file')}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </button>
+            </div>
           </div>
-          <div class="chat-change-stats">
-            ${s.edits > 1 ? `<span class="chat-change-edits">${s.edits}×</span>` : ''}
-            <span class="chat-change-add">+${s.additions}</span>
-            <span class="chat-change-del">-${s.deletions}</span>
-          </div>
+          <div class="chat-change-diff" hidden></div>
         </div>`;
     }).join('');
     const fileLabel = files.length > 1
@@ -4003,6 +4071,11 @@ class ChatView extends BaseComponent {
         <span class="chat-changes-totals">
           <span class="chat-change-add">+${totalAdd}</span>
           <span class="chat-change-del">-${totalDel}</span>
+          <button class="chat-changes-split" title="${escapeHtml(t('files.toggleSplit'))}">
+            ${changesDiffMode === 'split'
+    ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="1"/><line x1="12" y1="4" x2="12" y2="20"/></svg>'
+    : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="1"/><line x1="3" y1="12" x2="21" y2="12"/></svg>'}
+          </button>
         </span>
       </div>
       <div class="chat-changes-list">${rows}</div>
@@ -4014,11 +4087,122 @@ class ChatView extends BaseComponent {
     if (btn) switchChatTab(btn.dataset.tab);
   });
 
+  /**
+   * Expand or collapse a file's diff. The rows are built on expand and dropped
+   * on collapse: a session can touch dozens of files, and keeping every diff
+   * mounted is exactly the kind of DOM weight that slows the transcript down.
+   */
+  async function toggleFileDiff(item, mode = 'session') {
+    const path = item.dataset.path;
+    const diffEl = item.querySelector('.chat-change-diff');
+    if (!path || !diffEl) return;
+
+    // Clicking the same view again collapses; switching view re-renders.
+    if (item.classList.contains('expanded') && item.dataset.diffMode === mode) {
+      item.classList.remove('expanded');
+      delete item.dataset.diffMode;
+      diffEl.hidden = true;
+      diffEl.innerHTML = '';
+      return;
+    }
+
+    const entry = _changesEntries().get(path);
+    if (!entry) return;
+    item.classList.add('expanded');
+    item.dataset.diffMode = mode;
+    diffEl.hidden = false;
+
+    if (mode === 'current') {
+      diffEl.innerHTML = `<div class="chat-change-note">${escapeHtml(t('common.loading') || 'Loading...')}</div>`;
+      const html = await _buildCurrentDiffHtml(path);
+      if (item.classList.contains('expanded') && item.dataset.diffMode === mode) diffEl.innerHTML = html;
+      return;
+    }
+    // The session diff needs no I/O: the patch came with the transcript.
+    diffEl.innerHTML = DiffRenderer.renderPatch(entry.hunks, { filePath: path, mode: changesDiffMode });
+  }
+
+  /**
+   * The file's uncommitted diff, as git sees it right now. The session hunks
+   * say what the agent wrote at the time; this says what survived — an edit
+   * since reverted or overwritten shows up nowhere here.
+   */
+  async function _buildCurrentDiffHtml(filePath) {
+    let diff;
+    try {
+      diff = await api.git.fileDiff({ projectPath: project.path, filePath });
+    } catch (e) {
+      diff = { error: true, message: e.message };
+    }
+    if (!diff || diff.error) {
+      const msg = (diff && diff.message) || t('chat.noDiffAvailable') || 'No diff available.';
+      return `<div class="chat-change-note">${escapeHtml(msg)}</div>`;
+    }
+    if (typeof diff !== 'string' || !diff.trim()) {
+      return `<div class="chat-change-note">${escapeHtml(t('chat.diffNoCurrentChanges') || 'No uncommitted changes for this file.')}</div>`;
+    }
+    // Reshape git's textual output into the same hunks DiffRenderer draws, so
+    // both readings of a file look alike.
+    return DiffRenderer.renderPatch(_parseUnifiedDiff(diff), { filePath, mode: changesDiffMode });
+  }
+
+  /** Textual unified diff -> structuredPatch-shaped hunks. */
+  function _parseUnifiedDiff(diff) {
+    const hunks = [];
+    let current = null;
+    for (const line of diff.split('\n')) {
+      const header = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
+      if (header) {
+        current = {
+          oldStart: Number(header[1]), oldLines: Number(header[2] ?? 1),
+          newStart: Number(header[3]), newLines: Number(header[4] ?? 1),
+          lines: [],
+        };
+        hunks.push(current);
+        continue;
+      }
+      if (!current) continue; // file headers before the first hunk
+      if (line.startsWith('\\')) continue; // "\ No newline at end of file"
+      if (line[0] === '+' || line[0] === '-' || line[0] === ' ') current.lines.push(line);
+    }
+    return hunks;
+  }
+
   changesPanelEl.addEventListener('click', (e) => {
+    if (e.target.closest('.chat-changes-split')) {
+      changesDiffMode = changesDiffMode === 'split' ? 'unified' : 'split';
+      setSetting('filesDiffMode', changesDiffMode);
+      // Repaint whatever diffs are open in the new layout.
+      const expanded = [...changesPanelEl.querySelectorAll('.chat-change-item.expanded')]
+        .map(el => [el.dataset.path, el.dataset.diffMode]);
+      renderChangesPanel();
+      for (const [path, mode] of expanded) {
+        const el = changesPanelEl.querySelector(`.chat-change-item[data-path="${CSS.escape(path)}"]`);
+        if (el) toggleFileDiff(el, mode);
+      }
+      return;
+    }
+
     const item = e.target.closest('.chat-change-item');
     if (!item || !item.dataset.path) return;
-    const editor = getSetting('editor') || 'code';
-    api.dialog.openInEditor({ editor, path: item.dataset.path });
+    if (e.target.closest('.chat-change-open')) {
+      const editor = getSetting('editor') || 'code';
+      api.dialog.openInEditor({ editor, path: item.dataset.path });
+      return;
+    }
+    if (e.target.closest('.chat-change-current')) {
+      toggleFileDiff(item, 'current');
+      return;
+    }
+    toggleFileDiff(item);
+  });
+
+  changesPanelEl.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const row = e.target.closest('.chat-change-row');
+    if (!row) return;
+    e.preventDefault();
+    toggleFileDiff(row.closest('.chat-change-item'));
   });
 
   // ── Subagent (Task tool) card ──
@@ -4532,7 +4716,7 @@ class ChatView extends BaseComponent {
             try {
               const toolInput = JSON.parse(jsonStr);
               const name = mini.dataset.toolName || mini.querySelector('.sa-tool-name')?.textContent || '';
-              recordFileChange(name, toolInput);
+              recordFileChange(name, toolInput, mini.dataset.toolUseId);
               const detail = getToolDisplayInfo(name, toolInput);
               const detailEl = mini.querySelector('.sa-tool-detail');
               if (detailEl && detail) {
@@ -4563,7 +4747,7 @@ class ChatView extends BaseComponent {
 
     for (const block of content) {
       if (block.type === 'tool_use' && block.name !== 'TodoWrite' && block.name !== 'TaskCreate' && block.name !== 'TaskUpdate' && block.name !== 'TaskList' && block.name !== 'TaskGet') {
-        recordFileChange(block.name, block.input);
+        recordFileChange(block.name, block.input, block.id);
         const detail = getToolDisplayInfo(block.name, block.input);
         info.activityEl.textContent = `${block.name}...`;
 
@@ -5693,7 +5877,7 @@ class ChatView extends BaseComponent {
             if (card) {
               card.dataset.toolInput = JSON.stringify(toolInput);
               const name = card.dataset.toolName || card.querySelector('.chat-tool-name')?.textContent || '';
-              recordFileChange(name, toolInput);
+              recordFileChange(name, toolInput, card.dataset.toolUseId);
               // Custom card renderer (ScheduleWakeup, CronCreate, Worktree, Notification)
               const customHtml = renderToolCardHtml(name, toolInput);
               if (customHtml) {
@@ -6823,7 +7007,7 @@ class ChatView extends BaseComponent {
             continue;
           }
 
-          recordFileChange(msg.toolName, msg.toolInput || {});
+          recordFileChange(msg.toolName, msg.toolInput || {}, msg.toolUseId);
           const detail = getToolDisplayInfo(msg.toolName, msg.toolInput || {});
           const el = document.createElement('div');
           el.className = 'chat-tool-card history';

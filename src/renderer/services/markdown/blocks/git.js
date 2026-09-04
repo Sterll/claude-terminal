@@ -68,10 +68,14 @@ function renderGitCommitBlock(code) {
       }).join('')}</div>`
     : '';
 
-  const hasStats = stats.files || stats.add || stats.del;
+  // "stats: +203" with no file count used to render "0 files +203". The listed
+  // files are a better count than zero, and if there are none either, the chip
+  // has nothing to say and is dropped.
+  const fileCount = stats.files || files.length;
+  const hasStats = fileCount || stats.add || stats.del;
   const statsHtml = hasStats
     ? `<div class="chat-git-commit-stats">`
-      + `<span class="chat-git-stat-files">${stats.files} file${stats.files !== 1 ? 's' : ''}</span>`
+      + (fileCount ? `<span class="chat-git-stat-files">${fileCount} file${fileCount !== 1 ? 's' : ''}</span>` : '')
       + (stats.add ? `<span class="chat-git-stat-add">+${stats.add}</span>` : '')
       + (stats.del ? `<span class="chat-git-stat-del">-${stats.del}</span>` : '')
       + `</div>`

@@ -47,6 +47,7 @@
     "globalDefault": "Default (global)",
     "customize": "Customize",
     "basicTerminal": "Basic terminal",
+    "files": "Files",
     "openClaude": "Open Claude Code",
     "newFolder": "New folder",
     "gitPull": "Git Pull",
@@ -1081,7 +1082,9 @@
     "separatorProject": "Project",
     "separatorAllProjects": "All projects",
     "separatorCapabilities": "Capabilities",
-    "separatorSystem": "System"
+    "separatorSystem": "System",
+    "tabFiles": "Files",
+    "tooltipFiles": "Files"
   },
   "memory": {
     "panelDescription": "Configure how Claude behaves in your projects. Global settings apply everywhere, project settings override them.",
@@ -1743,6 +1746,10 @@
     "filesChanged": "files changed",
     "fileChanged": "file changed",
     "noChangesYet": "No files modified yet.",
+    "diffMoreLines": "… {count} more lines",
+    "noDiffAvailable": "No diff available.",
+    "diffVsCurrent": "Compare with the file on disk",
+    "diffNoCurrentChanges": "No uncommitted changes for this file.",
     "todoTitle": "Tasks",
     "todoAllDone": "All done",
     "subagentLaunching": "Launching agent...",
@@ -3953,5 +3960,23 @@
     "settingsHint": "How you switch between projects",
     "optionTabs": "Project tabs",
     "optionSidebar": "Projects sidebar"
+  },
+  "files": {
+    "modifiedOnly": "Modified only",
+    "filesTouched": "file(s) touched",
+    "sessionNoChanges": "This session changed no file.",
+    "noProject": "Open a project to browse its files.",
+    "pickAFile": "Pick a file in the tree.",
+    "viewContent": "Content",
+    "viewDiff": "Diff",
+    "toggleSplit": "Unified / side-by-side",
+    "openInTab": "Open in a tab",
+    "openInEditor": "Open in the editor",
+    "previewInTab": "This format previews in a tab.",
+    "tooLarge": "File too large to display here ({size}).",
+    "linesTruncated": "… {count} more lines",
+    "sessionCaption": "Session",
+    "noSession": "None",
+    "noSessionHint": "browse the whole tree"
   }
 }

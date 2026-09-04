@@ -664,6 +664,210 @@ async function parseSessionReplay(projectPath, sessionId, options = {}) {
   });
 }
 
+// ─── Session file changes ───────────────────────────────────────────────────
+// Every file-editing tool call is already in the transcript, and Claude Code
+// attaches the diff it computed alongside it as `toolUseResult.structuredPatch`
+// — real hunks with exact oldStart/newStart line numbers. So "what did this
+// session change" is a read, not something the app has to record as it goes,
+// and the line numbers are the tool's own rather than a guess made afterwards
+// by hunting for an anchor in a file that has since moved on.
+//
+// Works retroactively on every transcript already on disk, for terminal
+// sessions as much as chat ones.
+
+const FILE_EDIT_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
+// Measured on real sessions: ~52 KB of patch for 59 edits. This is a runaway
+// guard, not a budget anyone should reach.
+const CHANGES_MAX_PATCH_BYTES = 8 * 1024 * 1024;
+
+/** Additions and deletions in a structuredPatch. */
+function countPatchLines(hunks) {
+  let additions = 0, deletions = 0;
+  for (const hunk of hunks || []) {
+    for (const line of hunk.lines || []) {
+      if (line[0] === '+') additions++;
+      else if (line[0] === '-') deletions++;
+    }
+  }
+  return { additions, deletions };
+}
+
+/** The path a file-editing tool call targeted. */
+function editedPath(toolName, input) {
+  if (!input) return null;
+  if (toolName === 'NotebookEdit') return input.notebook_path || input.file_path || null;
+  return input.file_path || null;
+}
+
+/**
+ * Keep only what the renderer draws. A hunk's `lines` already carry their
+ * +/-/space prefix, which is the whole payload.
+ */
+function normalizeHunks(patch) {
+  const out = [];
+  for (const h of patch || []) {
+    if (!h || !Array.isArray(h.lines)) continue;
+    out.push({
+      oldStart: h.oldStart, oldLines: h.oldLines,
+      newStart: h.newStart, newLines: h.newLines,
+      lines: h.lines,
+    });
+  }
+  return out;
+}
+
+// A Write that creates a file reports `type: "create"` with an EMPTY
+// structuredPatch and the whole file in `content` — there was no previous
+// version to diff against. Left alone that reads as "+0 -0, no diff
+// available" on exactly the files a session added, which is the opposite of
+// useful. Build the patch the tool would have produced.
+const CREATED_FILE_MAX_LINES = 3000;
+
+function patchForCreatedFile(content) {
+  const text = String(content || '');
+  if (!text) return [];
+  let lines = text.split('\n');
+  // A generated lockfile should not ship 40k rows over IPC.
+  const truncated = lines.length > CREATED_FILE_MAX_LINES;
+  if (truncated) lines = lines.slice(0, CREATED_FILE_MAX_LINES);
+  return [{
+    oldStart: 0,
+    oldLines: 0,
+    newStart: 1,
+    newLines: lines.length,
+    lines: lines.map(l => '+' + l),
+  }];
+}
+
+/**
+ * Every file a session edited, with the diff hunks behind each one.
+ *
+ * Deliberately does NOT go through sanitizeToolInput: that caps inputs at 2000
+ * chars for the replay panel, which would empty out most of this.
+ *
+ * @param {string} projectPath
+ * @param {string} sessionId
+ * @param {object} [options]
+ * @param {boolean} [options.statsOnly] - Skip the hunks, keep the counters.
+ * @returns {Promise<{files: Array, totals: object}>}
+ */
+async function parseSessionFileChanges(projectPath, sessionId, options = {}) {
+  const statsOnly = !!options.statsOnly;
+  const sessionsDir = getProjectSessionsDir(projectPath);
+  const empty = () => ({ files: [], totals: { files: 0, additions: 0, deletions: 0, edits: 0, truncated: false } });
+
+  const filePath = await resolveSessionFile(sessionsDir, sessionId);
+  if (!filePath) return empty();
+
+  return new Promise((resolve) => {
+    const byPath = new Map();       // path -> entry
+    const pendingEdits = new Map(); // tool_use_id -> path, until its result lands
+    // A subagent tool call can appear both streamed and in the full assistant
+    // message; ids keep each edit counted once.
+    const seenToolUseIds = new Set();
+    let patchBytes = 0;
+    let truncated = false;
+
+    function entryFor(path) {
+      let entry = byPath.get(path);
+      if (!entry) {
+        entry = {
+          path, additions: 0, deletions: 0, edits: 0,
+          hunks: [], viaSubagent: false, lastEditedAt: null,
+        };
+        byPath.set(path, entry);
+      }
+      return entry;
+    }
+
+    const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+
+    // Closing the readline interface does not release the file handle, and
+    // Windows refuses to delete a file that still has one open.
+    const release = () => { rl.close(); stream.destroy(); };
+
+    rl.on('line', (line) => {
+      if (!line.trim()) return;
+      let obj;
+      try { obj = JSON.parse(line); } catch { return; }
+
+      // ── The call: note which file it targets, keyed by its id ──
+      const isAssistant = obj.type === 'assistant' || (!obj.type && obj.message?.role === 'assistant');
+      if (isAssistant && Array.isArray(obj.message?.content)) {
+        for (const block of obj.message.content) {
+          if (block.type !== 'tool_use' || !FILE_EDIT_TOOLS.has(block.name)) continue;
+          if (block.id && seenToolUseIds.has(block.id)) continue;
+          const path = editedPath(block.name, block.input);
+          if (!path) continue;
+          if (block.id) seenToolUseIds.add(block.id);
+
+          const entry = entryFor(path);
+          entry.edits++;
+          if (obj.isSidechain) entry.viaSubagent = true;
+          if (obj.timestamp) entry.lastEditedAt = obj.timestamp;
+          if (block.id) pendingEdits.set(block.id, path);
+        }
+      }
+
+      // ── The result: the patch the tool actually applied ──
+      // It rides as a sibling field on the line carrying the tool_result.
+      const result = obj.toolUseResult;
+      if (!result || typeof result !== 'object' || !Array.isArray(result.structuredPatch)) return;
+
+      // Only patches belonging to a file-editing call we saw. Matching on the
+      // result's own filePath instead would count any tool that happens to
+      // carry a structuredPatch, which is how a Read ends up in the list.
+      let path = null;
+      if (Array.isArray(obj.message?.content)) {
+        for (const block of obj.message.content) {
+          if (block.type === 'tool_result' && pendingEdits.has(block.tool_use_id)) {
+            path = pendingEdits.get(block.tool_use_id);
+            pendingEdits.delete(block.tool_use_id);
+            break;
+          }
+        }
+      }
+      if (!path) return;
+
+      const entry = entryFor(path);
+      const hunks = result.structuredPatch.length === 0 && result.type === 'create'
+        ? patchForCreatedFile(result.content)
+        : normalizeHunks(result.structuredPatch);
+      const counts = countPatchLines(hunks);
+      entry.additions += counts.additions;
+      entry.deletions += counts.deletions;
+
+      if (statsOnly) return;
+      const bytes = JSON.stringify(hunks).length;
+      if (patchBytes + bytes > CHANGES_MAX_PATCH_BYTES) { truncated = true; return; }
+      patchBytes += bytes;
+      entry.hunks.push(...hunks);
+    });
+
+    rl.on('close', () => {
+      release();
+      // An edit whose result never landed (session cut mid-call) leaves an
+      // entry with zeroed counters; keep it, the file was still touched.
+      const files = [...byPath.values()].sort(
+        (a, b) => (b.additions + b.deletions) - (a.additions + a.deletions)
+      );
+      resolve({
+        files,
+        totals: {
+          files: files.length,
+          additions: files.reduce((n, f) => n + f.additions, 0),
+          deletions: files.reduce((n, f) => n + f.deletions, 0),
+          edits: files.reduce((n, f) => n + f.edits, 0),
+          truncated,
+        },
+      });
+    });
+    rl.on('error', () => { release(); resolve(empty()); });
+    stream.on('error', () => { release(); resolve(empty()); });
+  });
+}
+
 // ─── Session index cache ────────────────────────────────────────────────────
 // Maps sessionId -> filePath, built per sessions directory on first scan.
 // Avoids O(N) sequential file reads on every session lookup.
@@ -1053,6 +1257,16 @@ function registerClaudeHandlers() {
     }
   });
 
+  // Every file a session edited, with its diff hunks
+  ipcMain.handle('claude-session-changes', async (event, { projectPath, sessionId, statsOnly }) => {
+    try {
+      return { success: true, ...(await parseSessionFileChanges(projectPath, sessionId, { statsOnly })) };
+    } catch (err) {
+      console.error('[claude-session-changes] Error:', err.message);
+      return { success: false, error: err.message, files: [], totals: {} };
+    }
+  });
+
   // Delete a session .jsonl file
   ipcMain.handle('claude-delete-session', async (event, { projectPath, sessionId }) => {
     try {
@@ -1084,4 +1298,4 @@ function registerClaudeHandlers() {
   });
 }
 
-module.exports = { registerClaudeHandlers, getClaudeSessions, loadSessionHistory, parseSessionReplay, moveSession, findStraySidecars, readSessionTitle, invalidateSessionsCache };
+module.exports = { registerClaudeHandlers, getClaudeSessions, loadSessionHistory, parseSessionReplay, parseSessionFileChanges, moveSession, findStraySidecars, readSessionTitle, invalidateSessionsCache };

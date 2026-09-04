@@ -104,17 +104,23 @@
           </svg>
           <span data-i18n="ui.tabClaude">Claude</span>
         </button>
-        <button class="nav-tab" data-tab="git" title="Git" data-i18n-title="ui.tooltipGit">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M2.6 10.59L8.38 4.8l1.69 1.7c-.24.85.15 1.78.93 2.23v5.54c-.6.34-1 .99-1 1.73a2 2 0 0 0 2 2 2 2 0 0 0 2-2c0-.74-.4-1.39-1-1.73V9.41l1.35 1.36c-.02.13-.03.26-.03.4a2 2 0 0 0 2 2 2 2 0 0 0 2-2 2 2 0 0 0-2-2c-.14 0-.27.01-.4.04L13.2 7.07a2 2 0 0 0-1.12-2.51L13.71 2.9 21.41 10.59a2 2 0 0 1 0 2.82L13.41 21.41a2 2 0 0 1-2.82 0L2.59 13.41a2 2 0 0 1 0-2.82z"/>
-          </svg>
-          <span data-i18n="ui.tabGit">Git</span>
-        </button>
         <button class="nav-tab" data-tab="dashboard" title="Dashboard" data-i18n-title="ui.tooltipDashboard">
           <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/>
           </svg>
           <span data-i18n="ui.tabDashboard">Dashboard</span>
+        </button>
+        <button class="nav-tab" data-tab="files" title="Files" data-i18n-title="ui.tooltipFiles">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h6v4H4V4zm10 6h6v4h-6v-4zm0 8h6v4h-6v-4zM7 8v12m0-6h7m-7 6h7"/>
+          </svg>
+          <span data-i18n="ui.tabFiles">Fichiers</span>
+        </button>
+        <button class="nav-tab" data-tab="git" title="Git" data-i18n-title="ui.tooltipGit">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M2.6 10.59L8.38 4.8l1.69 1.7c-.24.85.15 1.78.93 2.23v5.54c-.6.34-1 .99-1 1.73a2 2 0 0 0 2 2 2 2 0 0 0 2-2c0-.74-.4-1.39-1-1.73V9.41l1.35 1.36c-.02.13-.03.26-.03.4a2 2 0 0 0 2 2 2 2 0 0 0 2-2 2 2 0 0 0-2-2c-.14 0-.27.01-.4.04L13.2 7.07a2 2 0 0 0-1.12-2.51L13.71 2.9 21.41 10.59a2 2 0 0 1 0 2.82L13.41 21.41a2 2 0 0 1-2.82 0L2.59 13.41a2 2 0 0 1 0-2.82z"/>
+          </svg>
+          <span data-i18n="ui.tabGit">Git</span>
         </button>
         <button class="nav-tab" data-tab="session-replay" title="Session Replay" data-i18n-title="ui.tooltipSessionReplay">
           <svg viewBox="0 0 24 24" fill="currentColor">
@@ -444,38 +450,8 @@
           </button>
           <!-- In sidebar mode the projects host is moved in here and docked as a
                column; in tab-bar mode it stays a popover above the content. -->
-          <!-- File Explorer Panel -->
-          <div class="file-explorer-panel" id="file-explorer-panel" style="display: none;">
-            <div class="panel-header">
-              <h2 data-i18n="fileExplorer.title">Explorer</h2>
-              <div class="panel-actions">
-                <button class="btn-icon" id="btn-collapse-explorer" data-i18n-title="ui.collapseAll" title="Collapse all">
-                  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 18.59L8.83 20 12 16.83 15.17 20l1.41-1.41L12 14l-4.59 4.59zM16.59 5.41L15.17 4 12 7.17 8.83 4 7.41 5.41 12 10l4.59-4.59z"/></svg>
-                </button>
-                <button class="btn-icon" id="btn-refresh-explorer" data-i18n-title="common.refresh" title="Refresh">
-                  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
-                </button>
-                <button class="btn-icon" id="btn-close-explorer" data-i18n-title="common.close" title="Close">
-                  <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
-                </button>
-              </div>
-            </div>
-            <div class="fe-search-container" id="fe-search-container" style="display: none;">
-              <svg class="fe-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
-              <input type="text" id="fe-search-input" class="fe-search-input" data-i18n-placeholder="fileExplorer.searchPlaceholder" placeholder="Search files...">
-              <button class="fe-content-search-toggle" id="fe-content-search-toggle" data-i18n-title="fileExplorer.searchContentToggle" title="Search in contents">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-              </button>
-              <button class="fe-sort-btn" id="fe-sort-btn" data-i18n-title="fileExplorer.sortFiles" title="Sort">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M3 6h18M3 12h12M3 18h6"/></svg>
-              </button>
-              <button class="fe-search-clear" id="fe-search-clear" data-i18n-title="ui.clearSearch" title="Clear" style="display: none;">
-                <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
-              </button>
-            </div>
-            <div class="file-explorer-tree" id="file-explorer-tree"></div>
-            <div class="panel-resizer" id="file-explorer-resizer"></div>
-          </div>
+          <!-- The file explorer used to be docked here as a third column. It is
+               its own screen now (#tab-files), reached from the project menu. -->
 
           <!-- Terminals Panel -->
           <div class="terminals-panel">
@@ -486,17 +462,9 @@
             <!-- Session tabs row: session actions sit to the left of the tabs -->
             <div class="terminals-tabs-row">
               <div class="session-actions">
-                <!-- Side-panel glyph, not a folder: this shows/hides the file
-                     explorer panel rather than opening a folder. -->
-                <button class="btn-icon btn-toggle-explorer" id="btn-toggle-explorer" data-i18n-title="ui.toggleExplorer">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="4" width="18" height="16" rx="2"/>
-                    <line x1="9" y1="4" x2="9" y2="20"/>
-                    <line x1="5.5" y1="8.5" x2="6.5" y2="8.5"/>
-                    <line x1="5.5" y1="12" x2="6.5" y2="12"/>
-                    <line x1="5.5" y1="15.5" x2="6.5" y2="15.5"/>
-                  </svg>
-                </button>
+                <!-- The file explorer is reached from the project menu
+                     ("Files") or Ctrl+E — an unlabelled side-panel glyph here
+                     read as a folder button and told nobody what it did. -->
                 <!-- Single + opens the session menu: new session, terminal,
                      or search an existing session. -->
                 <button class="session-action-btn" id="btn-new-terminal" data-i18n-title="terminals.addSession" aria-haspopup="menu" aria-expanded="false">
@@ -628,6 +596,10 @@
 
 
       <!-- Git Tab -->
+      <!-- Files: tree + viewer. Markup is built by FilesPanel on first activate,
+           because FileExplorer binds its listeners to ids that must exist first. -->
+      <div class="tab-content" id="tab-files"></div>
+
       <div class="tab-content" id="tab-git">
         <div class="git-tab-layout">
           <div class="git-tab-sidebar">

@@ -47,6 +47,7 @@
     "globalDefault": "默认（全局）",
     "customize": "自定义",
     "basicTerminal": "基础终端",
+    "files": "文件",
     "openClaude": "打开 Claude Code",
     "newFolder": "新建文件夹",
     "gitPull": "Git 拉取",
@@ -1081,7 +1082,9 @@
     "separatorProject": "项目",
     "separatorAllProjects": "所有项目",
     "separatorCapabilities": "能力",
-    "separatorSystem": "系统"
+    "separatorSystem": "系统",
+    "tabFiles": "文件",
+    "tooltipFiles": "文件"
   },
   "memory": {
     "panelDescription": "配置 Claude 在您的项目中的行为方式。全局设置适用于所有地方，项目设置会覆盖它们。",
@@ -1743,6 +1746,10 @@
     "filesChanged": "文件已更改",
     "fileChanged": "文件已更改",
     "noChangesYet": "尚未修改任何文件。",
+    "diffMoreLines": "… 还有 {count} 行",
+    "noDiffAvailable": "没有可用的差异。",
+    "diffVsCurrent": "与磁盘上的文件比较",
+    "diffNoCurrentChanges": "该文件没有未提交的更改。",
     "todoTitle": "任务",
     "todoAllDone": "全部完成",
     "subagentLaunching": "启动智能体...",
@@ -3953,5 +3960,23 @@
     "settingsHint": "你在项目之间切换的方式",
     "optionTabs": "项目标签页",
     "optionSidebar": "项目侧栏"
+  },
+  "files": {
+    "modifiedOnly": "仅已修改",
+    "filesTouched": "个文件被改动",
+    "sessionNoChanges": "该会话未修改任何文件。",
+    "noProject": "打开一个项目以浏览其文件。",
+    "pickAFile": "在文件树中选择一个文件。",
+    "viewContent": "内容",
+    "viewDiff": "差异",
+    "toggleSplit": "统一 / 并排",
+    "openInTab": "在标签页中打开",
+    "openInEditor": "在编辑器中打开",
+    "previewInTab": "该格式在标签页中预览。",
+    "tooLarge": "文件过大，无法在此显示（{size}）。",
+    "linesTruncated": "… 还有 {count} 行",
+    "sessionCaption": "会话",
+    "noSession": "无",
+    "noSessionHint": "浏览整个文件树"
   }
 }

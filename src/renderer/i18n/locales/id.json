@@ -47,6 +47,7 @@
     "globalDefault": "Default (global)",
     "customize": "Kustomisasi",
     "basicTerminal": "Terminal dasar",
+    "files": "Berkas",
     "openClaude": "Buka Claude Code",
     "newFolder": "Folder baru",
     "gitPull": "Git Pull",
@@ -1081,7 +1082,9 @@
     "separatorProject": "Proyek",
     "separatorAllProjects": "Semua proyek",
     "separatorCapabilities": "Kemampuan",
-    "separatorSystem": "Sistem"
+    "separatorSystem": "Sistem",
+    "tabFiles": "Berkas",
+    "tooltipFiles": "Berkas"
   },
   "memory": {
     "panelDescription": "Atur bagaimana Claude berperilaku dalam proyek Anda. Pengaturan global berlaku di mana saja, pengaturan proyek akan menimpanya.",
@@ -1743,6 +1746,10 @@
     "filesChanged": "file diubah",
     "fileChanged": "file diubah",
     "noChangesYet": "Belum ada file yang diubah.",
+    "diffMoreLines": "… {count} baris lagi",
+    "noDiffAvailable": "Tidak ada diff yang tersedia.",
+    "diffVsCurrent": "Bandingkan dengan file di disk",
+    "diffNoCurrentChanges": "Tidak ada perubahan yang belum di-commit untuk file ini.",
     "todoTitle": "Tugas",
     "todoAllDone": "Semua selesai",
     "subagentLaunching": "Menjalankan agent...",
@@ -3953,5 +3960,23 @@
     "settingsHint": "Cara Anda berpindah antar proyek",
     "optionTabs": "Tab proyek",
     "optionSidebar": "Kolom proyek"
+  },
+  "files": {
+    "modifiedOnly": "Hanya yang diubah",
+    "filesTouched": "file tersentuh",
+    "sessionNoChanges": "Sesi ini tidak mengubah file apa pun.",
+    "noProject": "Buka proyek untuk menjelajahi file-nya.",
+    "pickAFile": "Pilih file di pohon.",
+    "viewContent": "Konten",
+    "viewDiff": "Diff",
+    "toggleSplit": "Terpadu / berdampingan",
+    "openInTab": "Buka di tab",
+    "openInEditor": "Buka di editor",
+    "previewInTab": "Format ini ditampilkan di tab.",
+    "tooLarge": "File terlalu besar untuk ditampilkan di sini ({size}).",
+    "linesTruncated": "… {count} baris lagi",
+    "sessionCaption": "Sesi",
+    "noSession": "Tidak ada",
+    "noSessionHint": "jelajahi seluruh pohon"
   }
 }

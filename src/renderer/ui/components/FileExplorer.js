@@ -133,6 +133,13 @@ class FileExplorer extends BaseComponent {
     };
     this._isVisible = false;
 
+    // Session overlay, pushed in by FilesPanel. null = plain tree.
+    this._sessionFiles = null;
+    this._modifiedOnly = false;
+    // Non-empty only in the Files screen's Overview: every open project drawn
+    // side by side. Rendering only — see setExtraRoots.
+    this._extraRoots = [];
+
     this._gitStatusMap = new Map();
     this._gitPollingInterval = null;
 
@@ -285,6 +292,90 @@ class FileExplorer extends BaseComponent {
       this.show();
       this.render();
     }
+  }
+
+  // ========== SESSION OVERLAY ==========
+  // "What did session X change", painted onto the same tree. Pushed in by
+  // FilesPanel so the tree never has to reach back up into the panel.
+
+  /**
+   * @param {{files: Map<string,object>|null, modifiedOnly: boolean}} overlay
+   */
+  setSessionOverlay(overlay) {
+    this._sessionFiles = (overlay && overlay.files) || null;
+    this._modifiedOnly = !!(overlay && overlay.modifiedOnly) && !!this._sessionFiles;
+  }
+
+  /** Per-file change stats, or null when the file is untouched. */
+  _sessionChangeFor(filePath) {
+    return this._sessionFiles ? this._sessionFiles.get(filePath) || null : null;
+  }
+
+  /**
+   * Rolled-up counts under a folder, so a collapsed directory still shows that
+   * something inside it moved.
+   */
+  _sessionRollupFor(dirPath) {
+    if (!this._sessionFiles) return null;
+    const prefix = dirPath.endsWith(this._path.sep) ? dirPath : dirPath + this._path.sep;
+    let files = 0, additions = 0, deletions = 0;
+    for (const [p, s] of this._sessionFiles) {
+      if (!p.startsWith(prefix)) continue;
+      files++; additions += s.additions; deletions += s.deletions;
+    }
+    return files ? { files, additions, deletions } : null;
+  }
+
+  /** True when the overlay says this node should be hidden by the filter. */
+  _hiddenByFilter(item) {
+    if (!this._modifiedOnly) return false;
+    return item.isDirectory
+      ? !this._sessionRollupFor(item.path)
+      : !this._sessionChangeFor(item.path);
+  }
+
+  /**
+   * Expand every folder on the way to these paths, then repaint once. Selecting
+   * a session is useless if its files stay buried in collapsed directories.
+   * @param {string[]} paths
+   */
+  async revealPaths(paths) {
+    if (!this._rootPath || !paths || !paths.length) { this.render(); return; }
+    const wanted = new Set();
+    for (const p of paths) {
+      let dir = this._path.dirname(p);
+      // Walk up to the root, collecting each ancestor inside the project.
+      while (dir && dir.startsWith(this._rootPath) && dir !== this._rootPath) {
+        wanted.add(dir);
+        const parent = this._path.dirname(dir);
+        if (parent === dir) break;
+        dir = parent;
+      }
+    }
+    // Load shallowest first: a child's folder entry is only reachable once its
+    // parent has been read.
+    const ordered = [...wanted].sort((a, b) => a.length - b.length);
+    for (const dir of ordered) {
+      if (this._expandedFolders.get(dir)?.loaded) continue;
+      try {
+        const children = await this._readDirectoryAsync(dir);
+        this._expandedFolders.set(dir, { children, loaded: true, loading: false });
+      } catch { /* unreadable folder — skip it, the rest still expands */ }
+    }
+    this.render();
+  }
+
+  /**
+   * Point the explorer at a project and reveal it, whether or not it was
+   * already open. Unlike toggle(), this never closes — it backs the project
+   * menu's "Files" entry, where the intent is always "show me the tree".
+   * @param {string} projectPath
+   */
+  open(projectPath) {
+    if (projectPath) this.setRootPath(projectPath);
+    if (!this._rootPath) return;
+    this.show();
+    this.render();
   }
 
   // ========== GIT STATUS ==========
@@ -930,9 +1021,31 @@ class FileExplorer extends BaseComponent {
     this.render();
   }
 
+  // ========== EXTRA ROOTS ==========
+  // The Files screen's Overview shows every open project at once. Only the
+  // *rendering* is multi-root: _rootPath stays the active project, so the
+  // path guards, the git poll and search keep their single, unambiguous
+  // scope. Browsing another root works; writing into one does not, because
+  // isPathSafe still measures against _rootPath. Refusing is the safe way to
+  // be wrong here.
+  setExtraRoots(paths) {
+    const next = Array.isArray(paths) ? paths.filter(Boolean) : [];
+    const same = next.length === this._extraRoots.length
+      && next.every((p, i) => p === this._extraRoots[i]);
+    if (same) return;
+    this._extraRoots = next;
+  }
+
+  /** Every root to draw, active project first, in project-bar order. */
+  _allRoots() {
+    if (!this._extraRoots.length) return this._rootPath ? [this._rootPath] : [];
+    return this._extraRoots;
+  }
+
   // ========== RENDER ==========
   render() {
-    if (!this._rootPath) return;
+    const roots = this._allRoots();
+    if (!roots.length) return;
 
     const treeEl = document.getElementById('file-explorer-tree');
     if (!treeEl) return;
@@ -941,10 +1054,30 @@ class FileExplorer extends BaseComponent {
       treeEl.innerHTML = this._renderContentSearchResults();
     } else if (this._searchQuery.trim()) {
       treeEl.innerHTML = this._renderSearchResults();
+    } else if (roots.length === 1) {
+      treeEl.innerHTML = this._renderTreeNodes(roots[0], 0);
     } else {
-      treeEl.innerHTML = this._renderTreeNodes(this._rootPath, 0);
+      treeEl.innerHTML = roots.map(r => this._renderRootNode(r)).join('');
     }
     this._attachListeners();
+  }
+
+  /** A project as a collapsible top-level folder, for the Overview tree. */
+  _renderRootNode(rootPath) {
+    const name = this._path.basename(rootPath) || rootPath;
+    const isExpanded = this._expandedFolders.has(rootPath) && this._expandedFolders.get(rootPath).loaded;
+    const roll = this._sessionRollupFor(rootPath);
+    const badge = roll
+      ? `<span class="fe-session-badge fe-session-badge--dir" title="+${roll.additions} -${roll.deletions}">${roll.files}</span>`
+      : '';
+    if (this._modifiedOnly && this._sessionFiles && !roll) return '';
+
+    return `<div class="fe-node fe-dir fe-root" data-path="${escapeHtml(rootPath)}" data-name="${escapeHtml(name)}" data-is-dir="true" style="padding-left: 8px;">
+      <span class="fe-node-chevron ${isExpanded ? 'expanded' : ''}">${CHEVRON_ICON}</span>
+      <span class="fe-node-icon">${getFileIcon(name, true, isExpanded)}</span>
+      <span class="fe-node-name" title="${escapeHtml(rootPath)}">${escapeHtml(name)}</span>
+      ${badge}
+    </div>${isExpanded ? this._renderTreeNodes(rootPath, 1) : ''}`;
   }
 
   _renderTreeNodes(dirPath, depth) {
@@ -969,6 +1102,8 @@ class FileExplorer extends BaseComponent {
         continue;
       }
 
+      if (this._hiddenByFilter(item)) continue;
+
       const isExpanded = this._expandedFolders.has(item.path) && this._expandedFolders.get(item.path).loaded;
       const isSelected = this._selectedFiles.has(item.path);
       const isCut = this._cutPaths.includes(item.path);
@@ -981,8 +1116,9 @@ class FileExplorer extends BaseComponent {
         : `<span class="fe-node-chevron-spacer"></span>`;
 
       const gitBadge = getGitBadgeHtml(item.path, item.isDirectory, this._gitStatusMap, this._rootPath, this._path);
+      const sessionBadge = this._sessionBadgeHtml(item);
 
-      parts.push(`<div class="fe-node ${isSelected ? 'selected' : ''} ${isCut ? 'fe-cut' : ''} ${isCopied ? 'fe-copied' : ''} ${item.isDirectory ? 'fe-dir' : 'fe-file'}"
+      parts.push(`<div class="fe-node ${isSelected ? 'selected' : ''} ${isCut ? 'fe-cut' : ''} ${isCopied ? 'fe-copied' : ''} ${item.isDirectory ? 'fe-dir' : 'fe-file'}${sessionBadge ? ' fe-session-touched' : ''}"
       data-path="${escapeHtml(item.path)}"
       data-name="${escapeHtml(item.name)}"
       data-is-dir="${item.isDirectory}"
@@ -991,6 +1127,7 @@ class FileExplorer extends BaseComponent {
       ${chevron}
       <span class="fe-node-icon">${icon}</span>
       <span class="fe-node-name" title="${escapeHtml(item.path)}">${escapeHtml(item.name)}</span>
+      ${sessionBadge}
       ${gitBadge}
     </div>`);
 
@@ -1000,6 +1137,19 @@ class FileExplorer extends BaseComponent {
     }
 
     return parts.join('');
+  }
+
+  /** `+n −m` for a touched file, or a file count for a folder holding some. */
+  _sessionBadgeHtml(item) {
+    if (!this._sessionFiles) return '';
+    if (item.isDirectory) {
+      const roll = this._sessionRollupFor(item.path);
+      if (!roll) return '';
+      return `<span class="fe-session-badge fe-session-badge--dir" title="${roll.files} file(s) · +${roll.additions} -${roll.deletions}">${roll.files}</span>`;
+    }
+    const s = this._sessionChangeFor(item.path);
+    if (!s) return '';
+    return `<span class="fe-session-badge" title="${s.edits} edit(s)"><span class="fe-session-add">+${s.additions}</span><span class="fe-session-del">-${s.deletions}</span></span>`;
   }
 
   // ========== OPEN FILE ==========
@@ -1813,6 +1963,11 @@ module.exports = {
   show: () => _getInstance().show(),
   hide: () => _getInstance().hide(),
   toggle: () => _getInstance().toggle(),
+  open: (projectPath) => _getInstance().open(projectPath),
+  render: () => _getInstance().render(),
+  setSessionOverlay: (overlay) => _getInstance().setSessionOverlay(overlay),
+  setExtraRoots: (paths) => _getInstance().setExtraRoots(paths),
+  revealPaths: (paths) => _getInstance().revealPaths(paths),
   toggleDotfiles: () => _getInstance().toggleDotfiles(),
   init: () => _getInstance().init(),
   applyWatcherChanges: (changes) => _getInstance().applyWatcherChanges(changes),

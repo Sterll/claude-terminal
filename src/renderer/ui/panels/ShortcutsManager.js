@@ -462,8 +462,13 @@ class ShortcutsManager extends BasePanel {
       }
     }, { global: true });
 
+    // The explorer is a screen now, so this toggles between it and wherever you
+    // were rather than showing and hiding a docked panel.
     registerShortcut(this.getShortcutKey('toggleFileExplorer'), () => {
-      this._ctx.FileExplorer.toggle();
+      const onFiles = document.body.dataset.activeTab === 'files';
+      const target = onFiles ? (this._lastTabBeforeFiles || 'claude') : 'files';
+      if (!onFiles) this._lastTabBeforeFiles = document.body.dataset.activeTab || 'claude';
+      document.querySelector(`.nav-tab[data-tab="${target}"]`)?.click();
     }, { global: true });
   }
 

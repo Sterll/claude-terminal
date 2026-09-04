@@ -109,6 +109,7 @@ class ProjectList extends BaseComponent {
       onGitPull: null,
       onGitPush: null,
       onNewWorktree: null,
+      onOpenProjectFiles: null,
       onDeleteProject: null,
       onRenameProject: null,
       onRenderProjects: null,
@@ -430,6 +431,10 @@ class ProjectList extends BaseComponent {
     <button class="more-actions-item btn-basic-terminal" data-project-id="${project.id}">
       ${menuIcons.terminal}
       ${t('projects.basicTerminal')}
+    </button>
+    <button class="more-actions-item btn-project-files" data-project-id="${project.id}">
+      ${menuIcons.fileTree}
+      ${t('projects.files')}
     </button>
     <button class="more-actions-item btn-open-folder" data-project-id="${project.id}">
       ${menuIcons.folderOpen}
@@ -925,6 +930,12 @@ class ProjectList extends BaseComponent {
       self.closeAllMoreActionsMenus();
       if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects();
       if (self._callbacks.onCreateBasicTerminal) self._callbacks.onCreateBasicTerminal(project);
+    } else if (btn.classList.contains('btn-project-files')) {
+      const project = getProject(projectId);
+      self.closeAllMoreActionsMenus();
+      // The host switches project context and screen: the explorer panel only
+      // exists on the Claude screen.
+      if (project && self._callbacks.onOpenProjectFiles) self._callbacks.onOpenProjectFiles(project);
     } else if (btn.classList.contains('btn-locate-project')) {
       self.closeAllMoreActionsMenus();
       if (self._callbacks.onLocateProject) self._callbacks.onLocateProject(projectId);

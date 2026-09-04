@@ -1,0 +1,393 @@
+/* ==========================================================================
+   Files screen — project tree on the left, the file it selects on the right.
+   Replaces the explorer column that used to be docked into the Claude layout.
+   ========================================================================== */
+
+#tab-files.active {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.files-screen {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: var(--bg-primary);
+}
+
+/* ── Toolbar ── */
+.files-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+.files-toolbar-spacer { flex: 1; }
+
+/* ── Session picker ──
+   Deliberately chunky: it drives everything below it, and the first version was
+   a grey chip nobody could find. The project is chosen in the project bar above
+   this screen, shared with the rest of the Project group. */
+.files-picker { position: relative; }
+.files-picker-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 420px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.files-picker-btn:hover { background: var(--bg-hover); border-color: var(--text-muted); }
+.files-picker-icon { display: flex; flex-shrink: 0; color: var(--text-muted); }
+.files-picker-icon svg { width: 14px; height: 14px; }
+.files-picker-caption {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  flex-shrink: 0;
+}
+.files-picker-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.files-picker-arrow { display: flex; flex-shrink: 0; color: var(--text-muted); }
+.files-picker-arrow svg { width: 12px; height: 12px; }
+
+/* A session is driving the tree — say so loudly. */
+.files-picker--session.active .files-picker-btn {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.files-picker--session.active .files-picker-icon,
+.files-picker--session.active .files-picker-value { color: var(--accent); }
+
+.files-picker-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 40;
+  min-width: 280px;
+  max-width: 560px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.files-picker-menu--wide { min-width: 420px; }
+.files-picker-menu[hidden] { display: none; }
+
+.files-picker-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
+  text-align: left;
+  cursor: pointer;
+}
+.files-picker-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.files-picker-item.active { color: var(--accent); }
+.files-picker-item-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.files-picker-item-hint {
+  flex-shrink: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: var(--font-2xs);
+  direction: rtl;
+  text-align: right;
+}
+.files-picker-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border-color);
+}
+.files-picker-loading { padding: 8px; color: var(--text-muted); font-size: var(--font-xs); }
+
+/* "Only modified files", sitting with the other tree filters in the search row. */
+.fe-modified-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.fe-modified-btn[hidden] { display: none; }
+.fe-modified-btn svg { width: 12px; height: 12px; }
+.fe-modified-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.fe-modified-btn.active { background: var(--accent-dim); color: var(--accent); }
+
+.files-session-totals {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  font-variant-numeric: tabular-nums;
+}
+.files-totals-count { color: var(--text-secondary); }
+
+/* ── Body: two panes ── */
+.files-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.files-tree-pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  min-width: 180px;
+  max-width: 60%;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+.files-tree-pane .file-explorer-tree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0 20px;
+}
+
+.files-viewer-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.files-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 20px;
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  text-align: center;
+}
+.files-empty svg { width: 40px; height: 40px; opacity: 0.35; }
+
+/* A project as a root row in the Overview tree — heavier than a folder, so the
+   boundary between two projects is obvious while scrolling. */
+.fe-node.fe-root {
+  font-weight: 600;
+  color: var(--text-primary);
+  border-top: 1px solid var(--border-color);
+  margin-top: 2px;
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+.fe-node.fe-root:first-child { border-top: none; margin-top: 0; }
+
+/* ── Session overlay badges in the tree ── */
+.fe-session-badge {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+  padding-left: 6px;
+  font-size: var(--font-2xs);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.fe-session-add { color: #4ade80; }
+.fe-session-del { color: #f87171; }
+.fe-session-badge--dir {
+  min-width: 16px;
+  justify-content: center;
+  color: var(--text-muted);
+  background: var(--bg-active);
+  border-radius: 8px;
+  padding: 0 5px;
+}
+.fe-node.fe-session-touched .fe-node-name { color: var(--text-primary); }
+.fe-node.fe-session-touched::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+}
+.fe-node.fe-session-touched { position: relative; }
+
+/* ==========================================================================
+   File viewer
+   ========================================================================== */
+
+.fv-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+.fv-icon { display: flex; flex-shrink: 0; }
+.fv-icon svg, .fv-icon img { width: 15px; height: 15px; }
+
+.fv-path {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+.fv-base { color: var(--text-primary); font-size: var(--font-base); white-space: nowrap; }
+.fv-dir {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+.fv-stats, .fv-meta {
+  display: inline-flex;
+  gap: 8px;
+  margin-left: auto;
+  font-size: var(--font-sm);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.fv-meta { color: var(--text-muted); }
+
+.fv-modes {
+  display: inline-flex;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.fv-mode {
+  padding: 3px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  cursor: pointer;
+}
+.fv-mode:hover { background: var(--bg-hover); color: var(--text-primary); }
+.fv-mode.active { background: var(--accent-dim); color: var(--accent); }
+
+.fv-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.fv-action svg { width: 14px; height: 14px; }
+.fv-action:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.fv-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.fv-code {
+  display: flex;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--font-xs);
+  line-height: 1.55;
+}
+.fv-lines {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 8px 8px 12px;
+  text-align: right;
+  color: var(--text-muted);
+  opacity: 0.4;
+  user-select: none;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-color);
+}
+.fv-ln { display: block; }
+.fv-pre {
+  flex: 1;
+  margin: 0;
+  padding: 8px 12px;
+  overflow-x: auto;
+  white-space: pre;
+}
+.fv-truncated, .fv-error {
+  padding: 8px 12px;
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  font-style: italic;
+}
+.fv-markdown { padding: 16px 24px; max-width: 900px; }
+.fv-media {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  min-height: 100%;
+}
+.fv-media img { max-width: 100%; max-height: 80vh; object-fit: contain; }
+.fv-handoff {
+  padding: 6px 14px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
+  cursor: pointer;
+}
+.fv-handoff:hover { background: var(--bg-hover); border-color: var(--accent); }

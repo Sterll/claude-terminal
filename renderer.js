@@ -116,7 +116,7 @@ const {
 const registry = require('./src/project-types/registry');
 const { mergeTranslations } = require('./src/renderer/i18n');
 const ModalComponent = require('./src/renderer/ui/components/Modal');
-const { MemoryEditor, GitChangesPanel, ShortcutsManager, SettingsPanel, SkillsAgentsPanel, PluginsPanel, MarketplacePanel, McpPanel, WorkflowPanel, DatabasePanel, CloudPanel, ConnectivityPanel, ControlTowerPanel, SessionReplayPanel, ParallelTaskPanel, WorkspacePanel, ErrorLogPanel } = require('./src/renderer/ui/panels');
+const { MemoryEditor, GitChangesPanel, ShortcutsManager, SettingsPanel, SkillsAgentsPanel, PluginsPanel, MarketplacePanel, McpPanel, WorkflowPanel, DatabasePanel, CloudPanel, ConnectivityPanel, ControlTowerPanel, SessionReplayPanel, ParallelTaskPanel, WorkspacePanel, ErrorLogPanel, FilesPanel } = require('./src/renderer/ui/panels');
 // Not re-exported by the panels index: ConnectivityPanel embeds it as a sub-tab,
 // but its polling lifecycle is driven from the tab registry below.
 const RemotePanel = require('./src/renderer/ui/panels/RemotePanel');
@@ -144,7 +144,9 @@ const localState = {
   gitRepoStatus: new Map(),
   gitStatusInitialized: false,
   // Dashboard scope: 'project' (the project bar's active tab) or 'overview'.
-  dashboardScope: 'project'
+  dashboardScope: 'project',
+  // Same split for the Files screen: 'project' or 'overview'.
+  filesScope: 'project'
 };
 
 // ========== I18N STATIC TEXT UPDATES ==========
@@ -2745,6 +2747,7 @@ ProjectList.setCallbacks({
   onGitPull: gitPull,
   onGitPush: gitPush,
   onNewWorktree: openNewWorktreeModal,
+  onOpenProjectFiles: openProjectFiles,
   onCloudUpload: cloudUploadProject,
   onCloudDelete: cloudDeleteProject,
   onCloudReset: resetCloudState,
@@ -2829,8 +2832,10 @@ function selectProjectFromBar(projectIndex) {
   const tabs = document.getElementById('terminals-tabs');
   if (tabs) tabs.style.display = '';
 
-  // Picking a project tab is the way out of the dashboard's Overview tab.
+  // Picking a project tab is the way out of an Overview, on either screen.
   localState.dashboardScope = 'project';
+  localState.filesScope = 'project';
+  FilesPanel.setScope('project');
   ProjectBar.setOverviewActive(false);
 
   TerminalManager.filterByProject(projectIndex);
@@ -2875,7 +2880,15 @@ ProjectBar.initProjectBar({
   onCloseProject: (project) => closeProjectFromBar(project),
   onContextMenu: (project, x, y) => showProjectTabContextMenu(project, x, y),
   onOpenPicker: (anchor) => toggleProjectsPopover(anchor),
+  // Two screens have an all-projects view now, so the Overview tab belongs to
+  // whichever one is showing.
   onSelectOverview: () => {
+    if (document.body.dataset.activeTab === 'files') {
+      localState.filesScope = 'overview';
+      FilesPanel.setScope('overview');
+      ProjectBar.setOverviewActive(true);
+      return;
+    }
     localState.dashboardScope = 'overview';
     renderDashboardForScope();
   },
@@ -3167,21 +3180,17 @@ api.window.onCtrlTab((dir) => {
   api.window.setCtrlTabEnabled(ctrlTabEnabled);
 }
 
-// Setup FileExplorer
-FileExplorer.setCallbacks({
+// The Files screen owns the explorer's callbacks (a click lands in its own
+// viewer, not in a session tab); these two still need the host.
+FilesPanel.setCallbacks({
   onOpenInTerminal: (folderPath) => {
     const selectedFilter = projectsState.get().selectedProjectFilter;
     const projects = projectsState.get().projects;
     if (selectedFilter !== null && projects[selectedFilter]) {
       const project = { ...projects[selectedFilter], path: folderPath };
       TerminalManager.createTerminal(project, { runClaude: false });
+      document.querySelector('[data-tab="claude"]')?.click();
     }
-  },
-  onOpenFile: (filePath) => {
-    const selectedFilter = projectsState.get().selectedProjectFilter;
-    const projects = projectsState.get().projects;
-    const project = selectedFilter !== null ? projects[selectedFilter] : null;
-    TerminalManager.openFileTab(filePath, project);
   },
   onAddToChat: (relativePath, fullPath) => {
     const activeId = terminalsState.get().activeTerminal;
@@ -3189,15 +3198,28 @@ FileExplorer.setCallbacks({
     const termData = terminalsState.get().terminals.get(activeId);
     if (termData?.chatView?.addMentionChip) {
       termData.chatView.addMentionChip('file', { path: relativePath, fullPath });
+      document.querySelector('[data-tab="claude"]')?.click();
     }
   }
 });
-FileExplorer.init();
 
-// Toggle explorer button
-const btnToggleExplorer = document.getElementById('btn-toggle-explorer');
-if (btnToggleExplorer) {
-  btnToggleExplorer.onclick = () => FileExplorer.toggle();
+/**
+ * Show the Files screen for a project. Entry points are the project menu's
+ * "Files" item and Ctrl+E; both land here.
+ * @param {Object} project
+ */
+function openProjectFiles(project) {
+  if (!project) return;
+  const projectIndex = getProjectIndex(project.id);
+  if (projectIndex !== -1 && projectsState.get().selectedProjectFilter !== projectIndex) {
+    TerminalManager.filterByProject(projectIndex);
+    saveTerminalSessions();
+    applyProjectContext(projectIndex);
+  }
+  closeProjectsPopover();
+  // Clicking the nav element keeps scroll save/restore and the lifecycle hooks
+  // in one place — the hook is what mounts the panel.
+  document.querySelector('.nav-tab[data-tab="files"]')?.click();
 }
 
 // Wire "+" new terminal button
@@ -3257,7 +3279,8 @@ api.explorer.onWatchLimitWarning((totalPaths) => {
   showToast({ type: 'warning', title: t('fileExplorer.title'), message: t('fileExplorer.watchLimitWarning', { count: totalPaths }) });
 });
 // Wire lightbulb resume session button
-// Subscribe to project selection changes for FileExplorer
+// Follow the active project. The Files screen repoints itself on activate, so
+// this only has to keep the watcher and the tree root in step.
 projectsState.subscribe(() => {
   const state = projectsState.get();
   const selectedFilter = state.selectedProjectFilter;
@@ -3266,6 +3289,9 @@ projectsState.subscribe(() => {
   if (selectedFilter !== null && projects[selectedFilter]) {
     FileExplorer.setRootPath(projects[selectedFilter].path);
     api.explorer.watchDir(projects[selectedFilter].path);
+    if (document.body.dataset.activeTab === 'files') {
+      FilesPanel.loadPanel(document.getElementById('tab-files'), projects[selectedFilter]);
+    }
   } else {
     FileExplorer.hide();
     api.explorer.stopWatch();
@@ -3548,6 +3574,16 @@ const _TAB_LIFECYCLE = {
     // <select> widgets that init() builds exactly once.
     deactivate: () => SessionReplayPanel.onDeactivate()
   },
+  files: {
+    activate: () => {
+      const container = document.getElementById('tab-files');
+      if (!container) return;
+      FilesPanel.loadPanel(container, getCurrentProjectFromBar());
+      FilesPanel.setScope(localState.filesScope);
+    },
+    // Stops the explorer's 10s git-status poll while the screen is off.
+    deactivate: () => FilesPanel.onDeactivate()
+  },
   memory: { activate: () => MemoryEditor.loadMemory() },
   workspace: {
     activate: () => {
@@ -3635,9 +3671,14 @@ document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.getElementById(`tab-${tabId}`).classList.add('active');
     // Drives which parts of the project bar are relevant (tools are Claude-only,
-    // the Overview tab is dashboard-only) — see projects.css.
+    // the Overview tab belongs to Dashboard and Files) — see projects.css.
     document.body.dataset.activeTab = tabId;
-    ProjectBar.setOverviewActive(tabId === 'dashboard' && localState.dashboardScope === 'overview');
+    // Each screen remembers its own scope, so the tab reflects the one you are
+    // looking at rather than the last one you set anywhere.
+    ProjectBar.setOverviewActive(
+      (tabId === 'dashboard' && localState.dashboardScope === 'overview')
+      || (tabId === 'files' && localState.filesScope === 'overview')
+    );
     // Tear down the tab we are leaving, then wake up the one we entered.
     _leaveCurrentTab(tabId);
     _runTabHook(tabId, 'activate');
@@ -3651,7 +3692,7 @@ document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
 // ========== PINNED TABS SYSTEM ==========
 // Canonical order — must mirror the grouping in index.html, since the groups
 // carry meaning (whether the project tab drives the screen).
-const _ALL_TABS_ORDER = ['claude', 'git', 'dashboard', 'session-replay', 'tasks', 'control-tower', 'workspace', 'memory', 'timetracking', 'database', 'skills', 'agents', 'plugins', 'mcp', 'workflows', 'errorlog', 'connectivity'];
+const _ALL_TABS_ORDER = ['claude', 'dashboard', 'files', 'git', 'session-replay', 'tasks', 'control-tower', 'workspace', 'memory', 'timetracking', 'database', 'skills', 'agents', 'plugins', 'mcp', 'workflows', 'errorlog', 'connectivity'];
 
 function applyPinnedTabs() {
   const pinned = settingsState.get().pinnedTabs || _ALL_TABS_ORDER;
