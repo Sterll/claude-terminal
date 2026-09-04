@@ -7,6 +7,12 @@ const ControlTowerPanel = require('../../src/renderer/ui/panels/ControlTowerPane
 const { addTerminal, clearAllTerminals } = require('../../src/renderer/state/terminals.state');
 const { projectsState } = require('../../src/renderer/state/projects.state');
 
+// Every case here mounts the full panel and awaits several render passes, which
+// takes ~11 s for the file on the slowest CI runner (macos-15-intel) and trips
+// Jest's 5 s default on whichever case happens to run first. Raised for this
+// file only — a global bump would hide genuine hangs elsewhere.
+jest.setTimeout(30000);
+
 // Let pending promises (async _scanTerminals) settle
 const flush = () => new Promise(r => setTimeout(r, 0));
 
