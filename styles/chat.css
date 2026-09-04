@@ -3698,7 +3698,8 @@ hr.chat-plan-separator {
   display: inline-flex;
   align-items: center;
   color: var(--text-tertiary);
-  cursor: help;
+  /* Group opacity stays off this element — it is the overlay's offset parent
+     (see the comment above); the rested dim lives on the ring. */
   outline: none;
   transition: color 0.15s;
 }
@@ -3788,23 +3789,29 @@ hr.chat-plan-separator {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 24px;
   padding-bottom: 6px;
   margin-bottom: 6px;
   border-bottom: 1px solid var(--border-color);
 }
 
+/* Opened on a session with no breakdown to show, the header is the whole
+   overlay — a rule under the only row would be a divider between nothing. */
+.ccp-header:only-child {
+  padding-bottom: 0;
+  margin-bottom: 0;
+  border-bottom: none;
+}
+
 .ccp-title {
-  font-weight: 600;
   font-size: 11px;
-  color: var(--text-primary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: var(--text-secondary);
 }
 
 .ccp-total {
   font-family: 'Cascadia Code', 'Fira Code', monospace;
-  font-size: 10.5px;
-  color: var(--accent, #d97706);
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 
 .ccp-row {
@@ -3843,15 +3850,6 @@ hr.chat-plan-separator {
   font-size: 10px;
   color: var(--text-tertiary);
   text-align: right;
-}
-
-.ccp-loading,
-.ccp-empty {
-  padding: 6px 2px;
-  font-size: 10.5px;
-  color: var(--text-tertiary);
-  text-align: center;
-  font-style: italic;
 }
 
 /* ── Model selector ── */

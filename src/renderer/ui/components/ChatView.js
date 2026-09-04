@@ -5997,13 +5997,16 @@ class ChatView extends BaseComponent {
   /**
    * Paint context usage as a filling ring.
    *
-   * The exact figures moved to the tooltip and the hover breakdown: a ratio is
-   * something you read at a glance, and "4 / 1000K tokens" spent a footer slot
-   * on a number nobody reads digit by digit.
+   * The exact figures moved to the hover overlay: a ratio is something you read
+   * at a glance, and "4 / 1000K tokens" spent a footer slot on a number nobody
+   * reads digit by digit.
    *
    * Only `--ctx-used` crosses over to CSS; the geometry that turns it into an
    * arc stays there, so an empty ring is the stylesheet's default and shows
    * from the first frame rather than waiting on the first result message.
+   *
+   * No `title`: the native tooltip takes about a second to appear and cannot be
+   * styled. `aria-label` carries the same text for assistive tech without it.
    */
   function setContextGauge(used, limit) {
     const ratio = limit > 0 ? Math.max(0, Math.min(used / limit, 1)) : 0;
@@ -6012,85 +6015,93 @@ class ChatView extends BaseComponent {
     // that is worth seeing without opening the breakdown.
     statusTokens.classList.toggle('warn', ratio >= 0.75 && ratio < 0.9);
     statusTokens.classList.toggle('danger', ratio >= 0.9);
-    const pct = Math.round(ratio * 100);
-    statusTokens.title = `${t('chat.contextWindowUsage') || 'Context window'}: `
-      + `${used.toLocaleString()} / ${limit.toLocaleString()} tokens (${pct}%)`;
+    statusTokens.setAttribute(
+      'aria-label',
+      `${t('chat.contextWindowUsage') || 'Context window'}: ${contextSummaryText(used, limit)}`
+    );
   }
 
-  // ── Context usage breakdown popover (SDK 0.2.86+) ──────────────────────
-  let contextUsageFetchTimer = null;
+  /** "371.3k", "1M", "820" — the compact shape the overlay reads in. */
+  function formatTokenCount(n) {
+    const round = (v) => String(Math.round(v * 10) / 10);
+    if (n >= 1e6) return `${round(n / 1e6)}M`;
+    if (n >= 1000) return `${round(n / 1000)}k`;
+    return String(Math.round(n));
+  }
+
+  /** "371.3k / 1M (37%)" */
+  function contextSummaryText(used, limit) {
+    const pct = limit > 0 ? Math.round((used / limit) * 100) : 0;
+    return `${formatTokenCount(used)} / ${formatTokenCount(limit)} (${pct}%)`;
+  }
+
+  // ── Context usage overlay ───────────────────────────────────────────────
+  //
+  // Replaces the native `title`, which the OS holds back for about a second and
+  // renders in its own chrome. This one paints on mouseenter from state already
+  // in hand — no timer, no round trip — and the per-category breakdown
+  // (SDK 0.2.86+) fills in underneath when a live session can supply it.
   let contextUsageBusy = false;
 
+  function contextSummaryHtml(used, limit) {
+    return `
+      <div class="ccp-header">
+        <span class="ccp-title">${escapeHtml(t('chat.contextWindowUsage') || 'Context window')}</span>
+        <span class="ccp-total">${escapeHtml(contextSummaryText(used, limit))}</span>
+      </div>`;
+  }
+
   function renderContextBreakdown(usage) {
-    if (!usage) {
-      contextPopover.innerHTML = `<div class="ccp-empty">${escapeHtml(t('chat.contextNoBreakdown') || 'Breakdown unavailable')}</div>`;
-      return;
-    }
     const breakdown = usage.breakdown || usage.categories || {};
     const total = usage.total || Object.values(breakdown).reduce((a, b) => a + (Number(b) || 0), 0);
     const limit = usage.limit || currentContextLimit();
-    const formatK = (n) => n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'K' : String(n);
     const entries = Object.entries(breakdown)
       .filter(([, v]) => Number(v) > 0)
       .sort((a, b) => Number(b[1]) - Number(a[1]));
+    if (!entries.length) return;
 
-    const header = `
-      <div class="ccp-header">
-        <span class="ccp-title">${escapeHtml(t('chat.contextWindowUsage') || 'Context window')}</span>
-        <span class="ccp-total">${formatK(total)} / ${formatK(limit)}</span>
-      </div>
-    `;
-    const rows = entries.length
-      ? entries.map(([key, value]) => {
-          const v = Number(value) || 0;
-          const pct = total > 0 ? Math.min(100, (v / total) * 100) : 0;
-          return `
-            <div class="ccp-row">
-              <span class="ccp-label">${escapeHtml(key.replace(/_/g, ' '))}</span>
-              <div class="ccp-bar"><div class="ccp-fill" style="width:${pct.toFixed(1)}%"></div></div>
-              <span class="ccp-value">${formatK(v)}</span>
-            </div>
-          `;
-        }).join('')
-      : `<div class="ccp-empty">${escapeHtml(t('chat.contextNoBreakdown') || 'No detailed breakdown available')}</div>`;
-    contextPopover.innerHTML = header + rows;
+    contextPopover.innerHTML = contextSummaryHtml(total, limit) + entries.map(([key, value]) => {
+      const v = Number(value) || 0;
+      const pct = total > 0 ? Math.min(100, (v / total) * 100) : 0;
+      return `
+        <div class="ccp-row">
+          <span class="ccp-label">${escapeHtml(key.replace(/_/g, ' '))}</span>
+          <div class="ccp-bar"><div class="ccp-fill" style="width:${pct.toFixed(1)}%"></div></div>
+          <span class="ccp-value">${escapeHtml(formatTokenCount(v))}</span>
+        </div>`;
+    }).join('');
   }
 
-  async function fetchAndShowContextBreakdown() {
+  /**
+   * Show the overlay immediately, then enrich it.
+   *
+   * The summary is never left waiting on the fetch: a failed or absent
+   * breakdown just means the overlay stays as it opened, which is still the
+   * number the user came for.
+   */
+  function showContextOverlay() {
+    contextPopover.innerHTML = contextSummaryHtml(inputTokens, currentContextLimit());
+    contextPopover.hidden = false;
     if (!sessionId || contextUsageBusy) return;
     contextUsageBusy = true;
-    contextPopover.hidden = false;
-    contextPopover.innerHTML = `<div class="ccp-loading">${escapeHtml(t('chat.loading') || 'Loading...')}</div>`;
-    try {
-      const result = await window.electron_api.chat.getContextUsage({ sessionId });
-      if (result?.success && result.usage) {
-        renderContextBreakdown(result.usage);
-      } else {
-        renderContextBreakdown(null);
-      }
-    } catch {
-      renderContextBreakdown(null);
-    } finally {
-      contextUsageBusy = false;
-    }
+    window.electron_api.chat.getContextUsage({ sessionId })
+      .then(result => {
+        // The pointer may have left while this was in flight.
+        if (!contextPopover.hidden && result?.success && result.usage) {
+          renderContextBreakdown(result.usage);
+        }
+      })
+      .catch(() => {})
+      .finally(() => { contextUsageBusy = false; });
   }
 
   function hideContextBreakdown() {
     contextPopover.hidden = true;
-    if (contextUsageFetchTimer) {
-      clearTimeout(contextUsageFetchTimer);
-      contextUsageFetchTimer = null;
-    }
   }
 
-  statusTokens.addEventListener('mouseenter', () => {
-    if (!sessionId || inputTokens === 0) return;
-    contextUsageFetchTimer = setTimeout(fetchAndShowContextBreakdown, 200);
-  });
+  statusTokens.addEventListener('mouseenter', showContextOverlay);
   statusTokens.addEventListener('mouseleave', hideContextBreakdown);
-  statusTokens.addEventListener('focus', () => {
-    if (sessionId && inputTokens > 0) fetchAndShowContextBreakdown();
-  });
+  statusTokens.addEventListener('focus', showContextOverlay);
   statusTokens.addEventListener('blur', hideContextBreakdown);
 
   let userHasScrolled = false;
