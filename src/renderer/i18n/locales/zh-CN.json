@@ -1086,7 +1086,8 @@
     "separatorSystem": "系统",
     "tabFiles": "文件",
     "tooltipFiles": "文件",
-    "tooltipArtifacts": "从此项目发布到 claude.ai 的产物"
+    "tooltipArtifacts": "从此项目发布到 claude.ai 的产物",
+    "tooltipBackgroundTasks": "后台任务"
   },
   "memory": {
     "panelDescription": "配置 Claude 在您的项目中的行为方式。全局设置适用于所有地方，项目设置会覆盖它们。",
@@ -3530,7 +3531,23 @@
     "noActiveSession": "没有可链接的活动会话",
     "sessionJustNow": "刚刚",
     "sessionMinutesAgo": "{count} 分钟前",
-    "sessionHoursAgo": "{count}h 前"
+    "sessionHoursAgo": "{count}h 前",
+    "navTitle": "后台任务",
+    "running": "进行中",
+    "finished": "已完成",
+    "noneRunning": "没有正在运行的任务。",
+    "empty": "暂无后台任务。",
+    "clear": "清除",
+    "typeAgent": "代理",
+    "typeShell": "Bash",
+    "typeWorkflow": "工作流",
+    "typeMonitor": "监视器",
+    "typeTask": "任务",
+    "statusRunning": "进行中",
+    "statusCompleted": "已完成",
+    "statusFailed": "失败",
+    "statusStopped": "已停止",
+    "statusEnded": "已结束"
   },
   "kanban": {
     "tab": "看板",

@@ -149,6 +149,13 @@
           <span data-i18n="parallel.tabTitle">Tasks</span>
         </button>
         <div class="nav-separator"><span data-i18n="ui.separatorAllProjects">Tous les projets</span></div>
+        <button class="nav-tab" data-tab="background-tasks" title="Background tasks" data-i18n-title="ui.tooltipBackgroundTasks">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"/>
+            <polyline points="12 7 12 12 15 14"/>
+          </svg>
+          <span data-i18n="tasks.navTitle">Background tasks</span>
+        </button>
         <button class="nav-tab" data-tab="control-tower" title="Control Tower" data-i18n-title="ui.tooltipControlTower">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 2L2 7l10 5 10-5-10-5z"/>
@@ -709,6 +716,11 @@
       <!-- Control Tower Tab -->
       <div class="tab-content" id="tab-control-tower">
         <div id="ct-panel-root" style="height:100%;overflow-y:auto"></div>
+      </div>
+
+      <!-- Background Tasks Tab -->
+      <div class="tab-content" id="tab-background-tasks">
+        <div id="bgt-panel-root" style="height:100%;overflow-y:auto"></div>
       </div>
 
       <!-- Dashboard Tab -->

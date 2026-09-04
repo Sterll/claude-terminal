@@ -1086,7 +1086,8 @@
     "separatorSystem": "Sistem",
     "tabFiles": "Berkas",
     "tooltipFiles": "Berkas",
-    "tooltipArtifacts": "Artefak yang diterbitkan ke claude.ai dari proyek ini"
+    "tooltipArtifacts": "Artefak yang diterbitkan ke claude.ai dari proyek ini",
+    "tooltipBackgroundTasks": "Tugas latar belakang"
   },
   "memory": {
     "panelDescription": "Atur bagaimana Claude berperilaku dalam proyek Anda. Pengaturan global berlaku di mana saja, pengaturan proyek akan menimpanya.",
@@ -3530,7 +3531,23 @@
     "noActiveSession": "Tidak ada sesi aktif untuk ditautkan",
     "sessionJustNow": "Baru saja",
     "sessionMinutesAgo": "{count} menit lalu",
-    "sessionHoursAgo": "{count} jam lalu"
+    "sessionHoursAgo": "{count} jam lalu",
+    "navTitle": "Tugas latar belakang",
+    "running": "Berjalan",
+    "finished": "Selesai",
+    "noneRunning": "Tidak ada yang berjalan.",
+    "empty": "Belum ada tugas latar belakang.",
+    "clear": "Hapus",
+    "typeAgent": "Agen",
+    "typeShell": "Bash",
+    "typeWorkflow": "Workflow",
+    "typeMonitor": "Monitor",
+    "typeTask": "Tugas",
+    "statusRunning": "Berjalan",
+    "statusCompleted": "Selesai",
+    "statusFailed": "Gagal",
+    "statusStopped": "Dihentikan",
+    "statusEnded": "Berakhir"
   },
   "kanban": {
     "tab": "Kanban",

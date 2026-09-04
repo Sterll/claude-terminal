@@ -54,6 +54,23 @@ if (_api?.chat?.modelCatalog) {
 
 // ── Cloud event handlers ──────────────────────────────────────────────────
 
+function _registerBackgroundTaskListeners(api) {
+  if (!api?.chat?.onTaskUpdate) return;
+  const store = require('./state/backgroundTasks.state');
+
+  api.chat.onTaskUpdate((data) => {
+    // Ambient housekeeping never belongs in a user-facing task list.
+    if (!data || data.skipTranscript) return;
+    if (data.phase === 'started') store.taskStarted(data);
+    else if (data.phase === 'ended') store.taskEnded(data);
+  });
+
+  // The level feed is what settles a task whose end bookend never arrived.
+  api.chat.onBackgroundTasks?.((data) => {
+    if (data?.sessionId) store.syncLive(data.sessionId, data.tasks);
+  });
+}
+
 function _registerCloudListeners(api) {
   if (!api?.cloud) return;
 

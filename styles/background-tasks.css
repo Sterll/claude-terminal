@@ -1,0 +1,146 @@
+/* ── Background tasks panel ─────────────────────────────────────────────────
+   Cross-session view of what the CLI is running, and what it already ran. */
+
+.bgt-panel {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.bgt-empty,
+.bgt-section-empty {
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+}
+
+.bgt-empty {
+  padding: 32px 16px;
+  text-align: center;
+}
+
+.bgt-section-empty {
+  padding: 10px 12px;
+}
+
+.bgt-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px 8px;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 8px;
+}
+
+.bgt-section-title {
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.bgt-section-count {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pushed to the far edge so it never sits next to the count it would clear. */
+.bgt-clear {
+  margin-left: auto;
+  background: none;
+  border: none;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.bgt-clear:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.bgt-task {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid transparent;
+}
+
+.bgt-task:hover { background: var(--bg-tertiary); }
+
+.bgt-task.running { border-left-color: var(--accent); }
+.bgt-task.completed { border-left-color: var(--success); }
+.bgt-task.failed { border-left-color: var(--danger); }
+.bgt-task.stopped { border-left-color: var(--warning); }
+/* Settled by the live set with no bookend: over, but outcome unknown. */
+.bgt-task.ended { border-left-color: var(--text-muted); }
+
+.bgt-task.done { opacity: 0.75; }
+
+.bgt-task-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.bgt-desc {
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bgt-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+}
+
+.bgt-type {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.bgt-status.running { color: var(--accent); }
+.bgt-status.completed { color: var(--success); }
+.bgt-status.failed { color: var(--danger); }
+.bgt-status.stopped { color: var(--warning); }
+
+.bgt-elapsed,
+.bgt-tokens { font-variant-numeric: tabular-nums; }
+
+.bgt-stop {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--bg-active);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.bgt-stop:hover:not(:disabled) {
+  background: var(--danger);
+  color: #fff;
+}
+
+.bgt-stop:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
