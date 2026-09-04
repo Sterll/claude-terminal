@@ -3544,7 +3544,9 @@
     "statusCompleted": "Completada",
     "statusFailed": "Fallida",
     "statusStopped": "Detenida",
-    "statusEnded": "Finalizada"
+    "statusEnded": "Finalizada",
+    "sessionGroup": "Sesión",
+    "typeSession": "Sesión"
   },
   "kanban": {
     "tab": "Kanban",

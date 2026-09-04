@@ -21,6 +21,7 @@ const { formatDuration } = require('../../utils/format');
 const {
   backgroundTasksState,
   listTasks,
+  groupTasks,
   getTask,
   clearFinished,
 } = require('../../state/backgroundTasks.state');
@@ -29,6 +30,9 @@ let _root = null;
 let _unsubscribe = null;
 // Redrawn on a timer so running durations tick without waiting for state to change.
 let _tickTimer = null;
+// Collapse state is view-only and deliberately outlives a re-render, so a group
+// does not spring open every time a task ticks.
+const _collapsed = new Set();
 
 const TICK_MS = 1000;
 
@@ -89,37 +93,55 @@ function renderTask(task) {
     </div>`;
 }
 
+function groupLabel(group) {
+  if (group.label) return group.label;
+  // No workflow name: the run is a chat session. The id is opaque, so a short
+  // prefix is all that distinguishes one session's tasks from another's.
+  const short = (group.sessionId || '').split('-').pop()?.slice(0, 6) || '?';
+  return `${t('tasks.sessionGroup') || 'Session'} ${short}`;
+}
+
+function renderGroup(group) {
+  const collapsed = _collapsed.has(group.key);
+  const tokens = group.totalTokens
+    ? `<span class="bgt-group-tokens">${escapeHtml(formatTokens({ total_tokens: group.totalTokens }))} tokens</span>`
+    : '';
+  const count = group.running
+    ? `<span class="bgt-group-running">${group.running}/${group.total}</span>`
+    : `<span class="bgt-group-count">${group.total}</span>`;
+
+  return `
+    <div class="bgt-group ${group.running ? 'has-running' : ''}" data-group-key="${escapeHtml(group.key)}">
+      <button class="bgt-group-head" data-group-key="${escapeHtml(group.key)}" aria-expanded="${!collapsed}">
+        <span class="bgt-group-chevron ${collapsed ? 'collapsed' : ''}">&#9662;</span>
+        <span class="bgt-group-kind">${escapeHtml(group.kind === 'workflow' ? (t('tasks.typeWorkflow') || 'Workflow') : (t('tasks.typeSession') || 'Session'))}</span>
+        <span class="bgt-group-label">${escapeHtml(groupLabel(group))}</span>
+        ${count}
+        ${tokens}
+      </button>
+      ${collapsed ? '' : `<div class="bgt-group-body">${group.tasks.map(renderTask).join('')}</div>`}
+    </div>`;
+}
+
 function render() {
   if (!_root) return;
   const tasks = listTasks();
-  const running = tasks.filter(task => task.status === 'running');
-  const finished = tasks.filter(task => task.status !== 'running');
 
   if (!tasks.length) {
     _root.innerHTML = `<div class="bgt-empty">${escapeHtml(t('tasks.empty') || 'No background tasks yet.')}</div>`;
     return;
   }
 
+  const groups = groupTasks(tasks);
+  const anyFinished = tasks.some(task => task.status !== 'running');
+
   _root.innerHTML = `
     <div class="bgt-panel">
-      <div class="bgt-section">
-        <div class="bgt-section-head">
-          <span class="bgt-section-title">${escapeHtml(t('tasks.running') || 'Running')}</span>
-          <span class="bgt-section-count">${running.length}</span>
-        </div>
-        ${running.length
-          ? running.map(renderTask).join('')
-          : `<div class="bgt-section-empty">${escapeHtml(t('tasks.noneRunning') || 'Nothing running.')}</div>`}
+      <div class="bgt-toolbar">
+        <span class="bgt-toolbar-count">${tasks.filter(t2 => t2.status === 'running').length} ${escapeHtml(t('tasks.running') || 'Running')}</span>
+        ${anyFinished ? `<button class="bgt-clear">${escapeHtml(t('tasks.clear') || 'Clear')}</button>` : ''}
       </div>
-      ${finished.length ? `
-      <div class="bgt-section">
-        <div class="bgt-section-head">
-          <span class="bgt-section-title">${escapeHtml(t('tasks.finished') || 'Finished')}</span>
-          <span class="bgt-section-count">${finished.length}</span>
-          <button class="bgt-clear">${escapeHtml(t('tasks.clear') || 'Clear')}</button>
-        </div>
-        ${finished.map(renderTask).join('')}
-      </div>` : ''}
+      ${groups.map(renderGroup).join('')}
     </div>`;
 }
 
@@ -145,6 +167,13 @@ function loadPanel(root, api) {
   root.onclick = (e) => {
     if (e.target.closest('.bgt-clear')) {
       clearFinished();
+      return;
+    }
+    const head = e.target.closest('.bgt-group-head');
+    if (head) {
+      const key = head.dataset.groupKey;
+      if (_collapsed.has(key)) _collapsed.delete(key); else _collapsed.add(key);
+      render();
       return;
     }
     const stop = e.target.closest('.bgt-stop');

@@ -3547,7 +3547,9 @@
     "statusCompleted": "已完成",
     "statusFailed": "失败",
     "statusStopped": "已停止",
-    "statusEnded": "已结束"
+    "statusEnded": "已结束",
+    "sessionGroup": "会话",
+    "typeSession": "会话"
   },
   "kanban": {
     "tab": "看板",

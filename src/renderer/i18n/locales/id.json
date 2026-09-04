@@ -3547,7 +3547,9 @@
     "statusCompleted": "Selesai",
     "statusFailed": "Gagal",
     "statusStopped": "Dihentikan",
-    "statusEnded": "Berakhir"
+    "statusEnded": "Berakhir",
+    "sessionGroup": "Sesi",
+    "typeSession": "Sesi"
   },
   "kanban": {
     "tab": "Kanban",

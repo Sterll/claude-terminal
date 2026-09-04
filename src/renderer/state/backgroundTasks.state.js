@@ -153,6 +153,60 @@ function getTask(taskId) {
   return _all().get(taskId) || null;
 }
 
+/**
+ * Group tasks by the run that produced them.
+ *
+ * A "run" is the workflow a task belongs to, or its session when there is no
+ * workflow. Those are the only groupings the CLI's task feed actually supports:
+ * `BackgroundTaskSummary` carries `name` for workflow tasks and nothing that
+ * links a subagent back to a parent, so a deeper tree — phases, fan-out
+ * branches — would have to be invented rather than reported.
+ *
+ * Aggregates are computed here so the view never has to reduce over the list a
+ * second time to render its header.
+ *
+ * @param {object[]} [tasks] Defaults to the whole registry, running first.
+ * @returns {Array<{key, kind, label, tasks, total, running, totalTokens, startedAt}>}
+ */
+function groupTasks(tasks) {
+  const source = tasks || listTasks();
+  const groups = new Map();
+
+  for (const task of source) {
+    const kind = task.workflowName ? 'workflow' : 'session';
+    const key = `${kind}:${task.workflowName || task.sessionId || 'unknown'}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = {
+        key,
+        kind,
+        label: task.workflowName || null,
+        sessionId: task.sessionId || null,
+        tasks: [],
+        total: 0,
+        running: 0,
+        totalTokens: 0,
+        startedAt: task.startedAt,
+      };
+      groups.set(key, group);
+    }
+    group.tasks.push(task);
+    group.total += 1;
+    if (task.status === 'running') group.running += 1;
+    const tokens = task.usage?.total_tokens ?? task.usage?.totalTokens;
+    if (typeof tokens === 'number') group.totalTokens += tokens;
+    if (task.startedAt < group.startedAt) group.startedAt = task.startedAt;
+  }
+
+  // Groups with live work first, then the most recently started — the same
+  // ordering rule the flat list uses, applied one level up.
+  return [...groups.values()].sort((a, b) => {
+    if (a.running && !b.running) return -1;
+    if (b.running && !a.running) return 1;
+    return b.startedAt - a.startedAt;
+  });
+}
+
 /** Drop finished entries, keeping anything still running. */
 function clearFinished() {
   const tasks = _all();
@@ -172,6 +226,7 @@ module.exports = {
   taskEnded,
   syncLive,
   listTasks,
+  groupTasks,
   getTask,
   clearFinished,
   reset,

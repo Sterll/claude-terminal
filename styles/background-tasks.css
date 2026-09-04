@@ -144,3 +144,88 @@
   opacity: 0.4;
   cursor: default;
 }
+
+/* ── Grouping by run ────────────────────────────────────────────────────────
+   A run is a workflow, or the session when there is no workflow — the only two
+   identities the CLI's task feed actually reports. */
+
+.bgt-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 4px;
+}
+
+.bgt-toolbar-count {
+  font-size: var(--font-2xs);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.bgt-toolbar .bgt-clear { margin-left: auto; }
+
+.bgt-group {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.bgt-group.has-running { border-color: var(--accent-dim); }
+
+.bgt-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  background: var(--bg-secondary);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.bgt-group-head:hover { background: var(--bg-hover); }
+
+.bgt-group-chevron {
+  color: var(--text-muted);
+  transition: transform 0.12s ease;
+}
+
+.bgt-group-chevron.collapsed { transform: rotate(-90deg); }
+
+.bgt-group-kind {
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.bgt-group-label {
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Pushed right so the aggregates line up across groups of different name widths. */
+.bgt-group-count,
+.bgt-group-running,
+.bgt-group-tokens {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bgt-group-count,
+.bgt-group-running { margin-left: auto; }
+
+.bgt-group-running { color: var(--accent); }
+
+.bgt-group-body {
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
