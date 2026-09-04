@@ -1086,7 +1086,7 @@
     "separatorSystem": "System",
     "tabFiles": "Files",
     "tooltipFiles": "Files",
-    "tooltipArtifacts": "Artifact library: HTML, SVG, diagrams and code"
+    "tooltipArtifacts": "Artifacts produced in this project"
   },
   "memory": {
     "panelDescription": "Configure how Claude behaves in your projects. Global settings apply everywhere, project settings override them.",
@@ -1912,7 +1912,7 @@
     "elicitationDecline": "Decline",
     "elicitationOpen": "Continue",
     "cancel": "Cancel",
-    "tabArtifacts": "Artifacts"
+    "tabExtracts": "Extracts"
   },
   "hooks": {
     "consent": {
@@ -2115,16 +2115,15 @@
   "artifacts": {
     "tabTitle": "Artifacts",
     "libraryTitle": "Artifacts",
-    "emptySession": "No artifacts in this session yet.",
+    "emptySession": "Nothing extracted from this conversation yet.",
     "emptyLibrary": "No artifacts yet. They appear here as Claude produces HTML pages, diagrams, SVGs and code.",
     "selectPrompt": "Select an artifact to preview it.",
     "lines": "lines",
-    "countSingular": "artifact",
-    "countPlural": "artifacts",
+    "extractsSingular": "extract",
+    "extractsPlural": "extracts",
     "stored": "stored",
-    "projects": "projects",
     "allKinds": "All kinds",
-    "allProjects": "All projects",
+    "inProject": "in this project",
     "saveAs": "Save as...",
     "saved": "Artifact saved",
     "openInEditor": "Open in editor",

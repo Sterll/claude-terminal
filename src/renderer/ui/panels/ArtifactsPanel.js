@@ -1,9 +1,16 @@
 /**
  * ArtifactsPanel
  *
- * The artifact library: everything Claude has produced across every session and
- * every project, not just the conversation currently open. The per-session view
- * lives in the chat's Artifacts tab (ChatView); this is the archive behind it.
+ * The artifact library for the current project: everything Claude has produced
+ * across that project's sessions, not just the conversation currently open. The
+ * per-session view lives in the chat's Extracts tab (ChatView); this is the
+ * archive behind it.
+ *
+ * Scope comes from the project bar, never from a picker of its own: artifacts
+ * belong to a project, so the panel follows the same "work in this project"
+ * switch the Git and Dashboard tabs follow (see applyProjectContext in
+ * renderer.js). A panel-local project dropdown would have been a second,
+ * competing notion of "current project".
  *
  * Reads the same store the chat writes to (src/shared/artifact-store.js via the
  * `artifacts` IPC namespace), and refreshes on `artifacts-changed` so a delete
@@ -22,11 +29,13 @@ const api = window.electron_api;
 
 let _container = null;
 let _unsubscribeChanged = null;
+// The project the panel is scoped to, mirrored from the project bar.
+let _project = null;
 // The list currently displayed: newest version of each artifact, filtered.
 let _rows = [];
 let _versions = [];
 let _selectedId = null;
-let _filter = { query: '', kind: '', projectId: '' };
+let _filter = { query: '', kind: '' };
 let _stats = null;
 let _loadError = null;
 
@@ -96,10 +105,15 @@ async function _load() {
   }
   try {
     const [listRes, statsRes] = await Promise.all([
-      api.artifacts.list({ ...(_filter.query ? { query: _filter.query } : {}),
-                           ...(_filter.kind ? { kind: _filter.kind } : {}),
-                           ...(_filter.projectId ? { projectId: _filter.projectId } : {}),
-                           latestOnly: true }),
+      api.artifacts.list({
+        // No project on the bar means nothing is scoped yet, not "show me
+        // everything" — an unscoped list here would contradict the tab living
+        // in the Project section.
+        projectId: _project?.id || '__none__',
+        ...(_filter.query ? { query: _filter.query } : {}),
+        ...(_filter.kind ? { kind: _filter.kind } : {}),
+        latestOnly: true,
+      }),
       api.artifacts.stats(),
     ]);
     if (!listRes.success) throw new Error(listRes.error);
@@ -142,22 +156,15 @@ function _render() {
       ${escapeHtml(k ? (KIND_LABEL[k] || k) : (t('artifacts.allKinds') || 'All kinds'))}
     </option>`).join('');
 
-  const projects = [...new Map(_rows.map(r => [r.projectId, r.projectName])).entries()]
-    .filter(([id]) => id);
-  const projectOptions = [`<option value="">${escapeHtml(t('artifacts.allProjects') || 'All projects')}</option>`]
-    .concat(projects.map(([id, name]) => `
-      <option value="${escapeHtml(id)}"${_filter.projectId === id ? ' selected' : ''}>${escapeHtml(name || id)}</option>`))
-    .join('');
-
   _container.innerHTML = `
     <div class="artifacts-panel">
       <div class="artifacts-header">
         <h2 class="artifacts-title">${escapeHtml(t('artifacts.libraryTitle') || 'Artifacts')}</h2>
         ${_stats ? `
           <div class="artifacts-stats">
+            <span><strong>${_rows.length}</strong> ${escapeHtml(t('artifacts.inProject') || 'in this project')}</span>
             <span><strong>${_stats.total}</strong> ${escapeHtml(t('artifacts.stored') || 'stored')}</span>
             <span><strong>${_formatBytes(_stats.bytes)}</strong></span>
-            <span><strong>${_stats.projects}</strong> ${escapeHtml(t('artifacts.projects') || 'projects')}</span>
           </div>` : ''}
       </div>
 
@@ -168,7 +175,6 @@ function _render() {
                placeholder="${escapeHtml(t('common.search') || 'Search')}"
                value="${escapeHtml(_filter.query)}" spellcheck="false" />
         <select class="artifacts-select" id="artifacts-kind">${kindOptions}</select>
-        <select class="artifacts-select" id="artifacts-project">${projectOptions}</select>
       </div>
 
       <div class="artifacts-body">
@@ -198,7 +204,6 @@ function _renderList() {
       <span class="artifacts-row-main">
         <span class="artifacts-row-title">${escapeHtml(a.title)}</span>
         <span class="artifacts-row-meta">
-          ${a.projectName ? `<span>${escapeHtml(a.projectName)}</span><span class="artifacts-dot">•</span>` : ''}
           <span>${a.lines} ${escapeHtml(t('artifacts.lines') || 'lines')}</span>
           <span class="artifacts-dot">•</span>
           <span>${escapeHtml(_timeAgo(a.createdAt))}</span>
@@ -241,7 +246,6 @@ async function _renderDetail() {
         <span class="artifacts-detail-title" title="${escapeHtml(artifact.title)}">${escapeHtml(artifact.title)}</span>
       </div>
       <div class="artifacts-detail-meta">
-        ${artifact.projectName ? `<span>${escapeHtml(artifact.projectName)}</span>` : ''}
         <span>${_formatBytes(artifact.bytes)}</span>
         <span>${artifact.lines} ${escapeHtml(t('artifacts.lines') || 'lines')}</span>
       </div>
@@ -325,11 +329,6 @@ function _bind() {
     _load();
   });
 
-  _container.querySelector('#artifacts-project')?.addEventListener('change', (e) => {
-    _filter.projectId = e.target.value;
-    _load();
-  });
-
   _container.querySelector('#artifacts-list')?.addEventListener('click', (e) => {
     const row = e.target.closest('.artifacts-row');
     if (row?.dataset.id) _select(row.dataset.id);
@@ -338,8 +337,9 @@ function _bind() {
 
 // ── Panel API ───────────────────────────────────────────────────────────────
 
-function loadPanel(container) {
+function loadPanel(container, project = null) {
   _container = container;
+  _project = project;
   _load();
 
   // MCP tools mutate the store from another process; the main process watches
@@ -351,6 +351,20 @@ function loadPanel(container) {
   }
 }
 
+/**
+ * Follow the project bar. Called from applyProjectContext when the user
+ * switches project while this tab is showing; a no-op otherwise, since
+ * loadPanel() re-reads the bar on activate.
+ */
+function setProject(project) {
+  if (!_container) return;
+  if (_project?.id === project?.id) return;
+  _project = project;
+  _selectedId = null;
+  _versions = [];
+  _load();
+}
+
 function cleanup() {
   if (_unsubscribeChanged) {
     _unsubscribeChanged();
@@ -358,4 +372,4 @@ function cleanup() {
   }
 }
 
-module.exports = { loadPanel, cleanup };
+module.exports = { loadPanel, setProject, cleanup };

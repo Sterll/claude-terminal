@@ -1086,7 +1086,7 @@
     "separatorSystem": "Sistem",
     "tabFiles": "Berkas",
     "tooltipFiles": "Berkas",
-    "tooltipArtifacts": "Pustaka artefak: HTML, SVG, diagram, dan kode"
+    "tooltipArtifacts": "Artefak yang dibuat di proyek ini"
   },
   "memory": {
     "panelDescription": "Atur bagaimana Claude berperilaku dalam proyek Anda. Pengaturan global berlaku di mana saja, pengaturan proyek akan menimpanya.",
@@ -1912,7 +1912,7 @@
     "elicitationDecline": "Tolak",
     "elicitationOpen": "Lanjutkan",
     "cancel": "Batal",
-    "tabArtifacts": "Artefak"
+    "tabExtracts": "Ekstrak"
   },
   "hooks": {
     "consent": {
@@ -2115,16 +2115,15 @@
   "artifacts": {
     "tabTitle": "Artefak",
     "libraryTitle": "Artefak",
-    "emptySession": "Belum ada artefak di sesi ini.",
+    "emptySession": "Belum ada yang diekstrak dari percakapan ini.",
     "emptyLibrary": "Belum ada artefak. Artefak muncul di sini saat Claude membuat halaman HTML, diagram, SVG, dan kode.",
     "selectPrompt": "Pilih artefak untuk melihat pratinjaunya.",
     "lines": "baris",
-    "countSingular": "artefak",
-    "countPlural": "artefak",
+    "extractsSingular": "ekstrak",
+    "extractsPlural": "ekstrak",
     "stored": "tersimpan",
-    "projects": "proyek",
     "allKinds": "Semua jenis",
-    "allProjects": "Semua proyek",
+    "inProject": "di proyek ini",
     "saveAs": "Simpan sebagai...",
     "saved": "Artefak disimpan",
     "openInEditor": "Buka di editor",

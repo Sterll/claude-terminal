@@ -469,7 +469,7 @@ class ChatView extends BaseComponent {
           <span class="chat-tab-badge" data-badge="changes" hidden>0</span>
         </button>
         <button class="chat-tab" data-tab="artifacts">
-          <span class="chat-tab-label">${escapeHtml(t('chat.tabArtifacts') || 'Artifacts')}</span>
+          <span class="chat-tab-label">${escapeHtml(t('chat.tabExtracts') || 'Extracts')}</span>
           <span class="chat-tab-badge" data-badge="artifacts" hidden>0</span>
         </button>
       </div>
@@ -4266,13 +4266,18 @@ class ChatView extends BaseComponent {
     toggleFileDiff(row.closest('.chat-change-item'));
   });
 
-  // ── Artifacts tab ──
+  // ── Extracts tab ──
   //
-  // Artifacts are the self-contained things Claude produced in this session: an
-  // HTML page, an SVG, a diagram, a long code block, a file it wrote. They are
-  // detected by scanning the rendered markdown (see ArtifactService), so the tab
+  // The self-contained things Claude produced in THIS conversation: an HTML
+  // page, an SVG, a diagram, a long code block, a file it wrote. Detected by
+  // scanning the rendered markdown (see ArtifactService), so the tab
   // repopulates itself for free when a session is resumed and the transcript is
   // replayed.
+  //
+  // Named "Extracts" and not "Artifacts" on purpose: `Artifact` is a distinct
+  // Agent SDK tool that publishes an .html/.md file to claude.ai and hands back
+  // a shareable URL. Those are remote and explicit; these are local and
+  // inferred, and conflating the two in the UI would be misleading.
 
   /**
    * Pull artifacts out of freshly rendered nodes.
@@ -4307,7 +4312,7 @@ class ChatView extends BaseComponent {
   function renderArtifactsPanel() {
     const artifacts = artifactRegistry.list().reverse();
     if (!artifacts.length) {
-      artifactsPanelEl.innerHTML = `<div class="chat-artifacts-empty">${escapeHtml(t('artifacts.emptySession') || 'No artifacts in this session yet.')}</div>`;
+      artifactsPanelEl.innerHTML = `<div class="chat-artifacts-empty">${escapeHtml(t('artifacts.emptySession') || 'Nothing extracted from this conversation yet.')}</div>`;
       return;
     }
 
@@ -4332,8 +4337,8 @@ class ChatView extends BaseComponent {
     }).join('');
 
     const label = artifacts.length > 1
-      ? (t('artifacts.countPlural') || 'artifacts')
-      : (t('artifacts.countSingular') || 'artifact');
+      ? (t('artifacts.extractsPlural') || 'extracts')
+      : (t('artifacts.extractsSingular') || 'extract');
     artifactsPanelEl.innerHTML = `
       <div class="chat-artifacts-summary">
         <span class="chat-artifacts-count">${artifacts.length} ${escapeHtml(label)}</span>

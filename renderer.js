@@ -2812,6 +2812,8 @@ function applyProjectContext(projectIndex) {
     SessionReplayPanel.setProject();
   } else if (activeTab === 'tasks') {
     ParallelTaskPanel.onProjectChanged?.();
+  } else if (activeTab === 'artifacts') {
+    ArtifactsPanel.setProject(project);
   }
 }
 
@@ -3646,7 +3648,9 @@ const _TAB_LIFECYCLE = {
   artifacts: {
     activate: () => {
       const root = document.getElementById('artifacts-panel-root');
-      if (root) ArtifactsPanel.loadPanel(root);
+      // Artifacts belong to a project, so the panel follows the project bar
+      // instead of carrying its own project picker — same as the Git tab.
+      if (root) ArtifactsPanel.loadPanel(root, getCurrentProjectFromBar());
     },
     // Releases the artifacts-changed IPC listener registered on activate.
     deactivate: () => ArtifactsPanel.cleanup()
@@ -3752,7 +3756,7 @@ document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
 // ========== PINNED TABS SYSTEM ==========
 // Canonical order — must mirror the grouping in index.html, since the groups
 // carry meaning (whether the project tab drives the screen).
-const _ALL_TABS_ORDER = ['claude', 'dashboard', 'files', 'git', 'session-replay', 'tasks', 'artifacts', 'control-tower', 'workspace', 'memory', 'timetracking', 'database', 'skills', 'agents', 'plugins', 'mcp', 'workflows', 'errorlog', 'connectivity'];
+const _ALL_TABS_ORDER = ['claude', 'artifacts', 'dashboard', 'files', 'git', 'session-replay', 'tasks', 'control-tower', 'workspace', 'memory', 'timetracking', 'database', 'skills', 'agents', 'plugins', 'mcp', 'workflows', 'errorlog', 'connectivity'];
 
 function applyPinnedTabs() {
   const pinned = settingsState.get().pinnedTabs || _ALL_TABS_ORDER;

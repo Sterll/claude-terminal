@@ -1086,7 +1086,7 @@
     "separatorSystem": "系统",
     "tabFiles": "文件",
     "tooltipFiles": "文件",
-    "tooltipArtifacts": "产物库：HTML、SVG、图表和代码"
+    "tooltipArtifacts": "在此项目中生成的产物"
   },
   "memory": {
     "panelDescription": "配置 Claude 在您的项目中的行为方式。全局设置适用于所有地方，项目设置会覆盖它们。",
@@ -1912,7 +1912,7 @@
     "elicitationDecline": "拒绝",
     "elicitationOpen": "继续",
     "cancel": "取消",
-    "tabArtifacts": "产物"
+    "tabExtracts": "摘录"
   },
   "hooks": {
     "consent": {
@@ -2115,16 +2115,15 @@
   "artifacts": {
     "tabTitle": "产物",
     "libraryTitle": "产物",
-    "emptySession": "本会话尚无产物。",
+    "emptySession": "尚未从此对话中提取任何内容。",
     "emptyLibrary": "尚无产物。当 Claude 生成 HTML 页面、图表、SVG 和代码时，它们会显示在这里。",
     "selectPrompt": "选择一个产物以预览。",
     "lines": "行",
-    "countSingular": "个产物",
-    "countPlural": "个产物",
+    "extractsSingular": "条摘录",
+    "extractsPlural": "条摘录",
     "stored": "已存储",
-    "projects": "个项目",
     "allKinds": "所有类型",
-    "allProjects": "所有项目",
+    "inProject": "在此项目中",
     "saveAs": "另存为...",
     "saved": "产物已保存",
     "openInEditor": "在编辑器中打开",
