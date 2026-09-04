@@ -52,6 +52,11 @@ if (_api?.chat?.modelCatalog) {
   require('./services/ModelCatalogClient').load(_api).catch(() => {});
 }
 
+// The task registry is fed here rather than from the chat view, so a tab that
+// is closed and reopened does not lose the work it started, and so the two CLI
+// feeds are reconciled in exactly one place.
+_registerBackgroundTaskListeners(_api);
+
 // ── Cloud event handlers ──────────────────────────────────────────────────
 
 function _registerBackgroundTaskListeners(api) {
