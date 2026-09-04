@@ -3790,7 +3790,12 @@
     "colorTitle": "Couleur du compte",
     "colorError": "Impossible d’enregistrer la couleur du compte",
     "boundProjects": "{count} projet(s)",
-    "removeBlocked": "Encore utilisé par {count} projet(s) : {projects}. Déplacez-les vers un autre compte d’abord."
+    "removeBlocked": "Encore utilisé par {count} projet(s) : {projects}. Déplacez-les vers un autre compte d’abord.",
+    "rebindTitle": "Utiliser un autre compte pour ce projet",
+    "rebindScope": "Seul {project} change. Vos autres projets gardent leur compte.",
+    "rebindScopeDefault": "Ceci change le compte par défaut, utilisé par tous les projets qui n’en ont pas.",
+    "limited": "Limite atteinte",
+    "useForProject": "Utiliser ici"
   },
   "usage": {
     "stale": "Données d'usage peut-être obsolètes - la dernière actualisation a échoué. {error}"

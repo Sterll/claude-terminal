@@ -3790,7 +3790,12 @@
     "colorTitle": "Account colour",
     "colorError": "Failed to save the account colour",
     "boundProjects": "{count} project(s)",
-    "removeBlocked": "Still used by {count} project(s): {projects}. Move them to another account first."
+    "removeBlocked": "Still used by {count} project(s): {projects}. Move them to another account first.",
+    "rebindTitle": "Run this project on another account",
+    "rebindScope": "Only {project} moves. Your other projects keep the account they are on.",
+    "rebindScopeDefault": "This changes the default account, used by every project without one of its own.",
+    "limited": "Limit reached",
+    "useForProject": "Use here"
   },
   "usage": {
     "stale": "Usage data may be out of date - the last refresh failed. {error}"

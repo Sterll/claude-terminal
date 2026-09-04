@@ -2227,11 +2227,37 @@ mark.qp-hl {
   line-height: 1.5;
 }
 
+/* States plainly what the choice touches. The old modal swapped a global
+   account without saying so; now that only this project moves, saying which
+   one is the difference between an informed click and a guess. */
+.account-switch-scope {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  padding: 0 2px;
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
 .account-switch-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
   margin-bottom: 12px;
+}
+
+/* Same swatch as the project tab tint, so a row is recognisable as the
+   account colouring the tab it will move. */
+.account-switch-list .account-row-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+.account-switch-list .account-row-dot--none {
+  border: 1px solid var(--border-color);
+  background: transparent;
 }
 
 .account-switch-list .account-row {

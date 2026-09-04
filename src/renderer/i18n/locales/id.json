@@ -3790,7 +3790,12 @@
     "colorTitle": "Warna akun",
     "colorError": "Gagal menyimpan warna akun",
     "boundProjects": "{count} proyek",
-    "removeBlocked": "Masih dipakai {count} proyek: {projects}. Pindahkan ke akun lain dulu."
+    "removeBlocked": "Masih dipakai {count} proyek: {projects}. Pindahkan ke akun lain dulu.",
+    "rebindTitle": "Gunakan akun lain untuk proyek ini",
+    "rebindScope": "Hanya {project} yang berpindah. Proyek lain tetap pada akunnya.",
+    "rebindScopeDefault": "Ini mengubah akun default, yang dipakai semua proyek tanpa akun sendiri.",
+    "limited": "Batas tercapai",
+    "useForProject": "Pakai di sini"
   },
   "usage": {
     "stale": "Data penggunaan mungkin sudah tidak terbaru - pemuatan terakhir gagal. {error}"

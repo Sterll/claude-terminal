@@ -7086,15 +7086,22 @@ class ChatView extends BaseComponent {
 
   // ── IPC: Usage / rate limit reached → propose account switch ──
 
-  const unsubAccountLimit = api.chat.onAccountLimit(async ({ sessionId: sid, error, activeAccountId }) => {
+  const unsubAccountLimit = api.chat.onAccountLimit(async ({ sessionId: sid, error, activeAccountId, projectId }) => {
     if (sid !== sessionId) return;
     if (switchingAccount) return;
     switchingAccount = true;
     try {
       const { showAccountSwitchModal } = require('./AccountSwitchModal');
+      // The modal re-binds this project rather than swapping a global account:
+      // a limit hit here is no reason to move every other tab.
+      const limitedProject = projectId
+        ? require('../../state').getProject(projectId)
+        : null;
       const newId = await showAccountSwitchModal({
         reason: error || t('accounts.limitReached') || 'Usage limit reached on the active account.',
-        activeAccountId
+        activeAccountId,
+        projectId: projectId || null,
+        projectName: limitedProject?.name || ''
       });
       if (!newId) {
         appendError(error || t('chat.errorOccurred'));
@@ -7112,7 +7119,9 @@ class ChatView extends BaseComponent {
         sessionId = null;
         return;
       }
-      const restartOpts = { ...lastStartOpts, prompt: '', resumeSessionId: sessionId };
+      // The binding is read at spawn time, so the restart has to carry the new
+      // account explicitly — lastStartOpts still holds the one that ran out.
+      const restartOpts = { ...lastStartOpts, accountId: newId, prompt: '', resumeSessionId: sessionId };
       appendSystemNotice(t('accounts.switched') || 'Account switched. Resuming…', 'info');
       setStreaming(true);
       appendThinkingIndicator();
