@@ -1458,6 +1458,42 @@ function getProjectEditor(projectId) {
   return project?.preferredEditor || null;
 }
 
+/**
+ * Pin a project to a Claude account. Every terminal and chat session started
+ * for it then authenticates as that account instead of the default one.
+ * @param {string} projectId
+ * @param {string|null} accountId - null to fall back to the default account
+ */
+function setProjectAccount(projectId, accountId) {
+  const state = projectsState.get();
+  const projects = state.projects.map(p =>
+    p.id === projectId ? { ...p, accountId: accountId || undefined } : p
+  );
+  projectsState.set({ projects });
+  saveProjects();
+}
+
+/**
+ * Get the account a project is pinned to.
+ * @param {string} projectId
+ * @returns {string|null} - Account id, or null when it follows the default
+ */
+function getProjectAccount(projectId) {
+  const project = getProject(projectId);
+  return project?.accountId || null;
+}
+
+/**
+ * Projects pinned to an account — used to block deleting an account that is
+ * still in use rather than silently moving its projects elsewhere.
+ * @param {string} accountId
+ * @returns {Array<Object>}
+ */
+function getProjectsForAccount(accountId) {
+  if (!accountId) return [];
+  return projectsState.get().projects.filter(p => p.accountId === accountId);
+}
+
 // ── Project Settings (per-project overrides) ──
 
 /**
@@ -1672,6 +1708,9 @@ module.exports = {
   // Editor per project
   setProjectEditor,
   getProjectEditor,
+  setProjectAccount,
+  getProjectAccount,
+  getProjectsForAccount,
   // Project settings (per-project overrides)
   getProjectSettings,
   setProjectSettings,

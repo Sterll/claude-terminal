@@ -13,6 +13,7 @@ const settingsState = require('./settings.state');
 const timeTrackingState = require('./timeTracking.state');
 const databaseState = require('./database.state');
 const workspaceState = require('./workspace.state');
+const accountsState = require('./accounts.state');
 const errorLogState = require('./errorLog.state');
 
 // Quick picker state (simple, doesn't need a module)
@@ -61,6 +62,10 @@ async function initializeState() {
   const { loadAgents } = require('../services/AgentService');
   const { loadContextPacks, loadPromptTemplates } = require('../services/ContextPromptService');
   await workspaceState.loadWorkspaces();
+  // Project tabs colour themselves from the account list, so it has to be in
+  // place before the first render rather than fetched per tab.
+  await accountsState.loadAccounts();
+  accountsState.watchAccounts();
   Promise.all([loadSkills(), loadAgents(), loadContextPacks(), loadPromptTemplates()]).catch(e => {
     console.error('Error loading skills/agents/library:', e);
   });
@@ -97,6 +102,9 @@ module.exports = {
 
   // Workspaces
   ...workspaceState,
+
+  // Claude accounts
+  ...accountsState,
 
   // Error Log
   ...errorLogState,
