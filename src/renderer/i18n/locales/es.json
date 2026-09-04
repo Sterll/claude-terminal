@@ -933,6 +933,20 @@
       "description": "Información en tiempo real de Claude Code (seguimiento de tiempo, notificaciones, estadísticas)",
       "toggleError": "No se pudieron actualizar los hooks inteligentes."
     },
+    "chrome": {
+      "title": "Claude en Chrome",
+      "enable": "Permitir que Claude use tu navegador",
+      "enableDesc": "Las sesiones de chat pueden abrir pestañas, hacer clic, escribir, leer páginas e inspeccionar la consola mediante la extensión de Claude.",
+      "checking": "Comprobando la integración con el navegador…",
+      "connected": "Conectado: Claude puede controlar {browser}.",
+      "readyDisabled": "Extensión detectada en {browser}. Actívalo para que Claude pueda usarla.",
+      "extensionMissing": "La extensión de Claude para el navegador no está instalada.",
+      "installExtension": "Instalar",
+      "unsupported": "El control del navegador no está disponible en esta plataforma.",
+      "cliMissing": "Falta el binario de Claude Code incluido, por lo que el control del navegador no puede iniciarse.",
+      "hostFailed": "No se pudo registrar el conector del navegador. No se encontró ningún navegador compatible.",
+      "toggleError": "No se pudo actualizar la integración con el navegador."
+    },
     "advanced": "Avanzado",
     "restoreTerminalSessions": "Recordar estados de terminal",
     "restoreTerminalSessionsDesc": "Restaurar las pestañas de terminal y sesiones de Claude de la sesión anterior al iniciar",

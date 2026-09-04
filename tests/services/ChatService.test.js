@@ -141,6 +141,43 @@ describe('ChatService._buildContent', () => {
 
 // ── _safeSerialize ──
 
+describe('ChatService._appendSystemPrompt', () => {
+  // Claude in Chrome appends its instructions to whatever the session already
+  // has. Dropping the preset here would silently strip the Claude Code prompt.
+  test('appends to the default preset without replacing it', () => {
+    const result = chatService._appendSystemPrompt(
+      { type: 'preset', preset: 'claude_code' },
+      'BROWSER'
+    );
+    expect(result).toEqual({ type: 'preset', preset: 'claude_code', append: 'BROWSER' });
+  });
+
+  test('keeps an append the renderer already set', () => {
+    const result = chatService._appendSystemPrompt(
+      { type: 'preset', preset: 'claude_code', append: 'USER' },
+      'BROWSER'
+    );
+    expect(result.append).toBe('USER\n\nBROWSER');
+    expect(result.preset).toBe('claude_code');
+  });
+
+  test('falls back to the preset when nothing is set', () => {
+    expect(chatService._appendSystemPrompt(undefined, 'BROWSER'))
+      .toEqual({ type: 'preset', preset: 'claude_code', append: 'BROWSER' });
+  });
+
+  test('concatenates a fully custom string prompt', () => {
+    expect(chatService._appendSystemPrompt('CUSTOM', 'BROWSER')).toBe('CUSTOM\n\nBROWSER');
+    expect(chatService._appendSystemPrompt('', 'BROWSER')).toBe('BROWSER');
+  });
+
+  test('does not mutate the prompt it was given', () => {
+    const original = { type: 'preset', preset: 'claude_code', append: 'USER' };
+    chatService._appendSystemPrompt(original, 'BROWSER');
+    expect(original.append).toBe('USER');
+  });
+});
+
 describe('ChatService._safeSerialize', () => {
   test('serializes plain object', () => {
     const result = chatService._safeSerialize({ foo: 'bar', count: 42 });

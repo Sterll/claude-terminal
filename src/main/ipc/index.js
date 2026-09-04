@@ -19,6 +19,7 @@ const { registerMarketplaceHandlers } = require('./marketplace.ipc');
 const { registerMcpRegistryHandlers } = require('./mcpRegistry.ipc');
 const { registerPluginHandlers } = require('./plugin.ipc');
 const { registerChatHandlers } = require('./chat.ipc');
+const { registerChromeHandlers } = require('./chrome.ipc');
 const { registerHooksHandlers } = require('./hooks.ipc');
 const { registerMinecraftHandlers } = require('../../project-types/minecraft/main/minecraft.ipc');
 const { registerDiscordHandlers } = require('../../project-types/discord/main/discord.ipc');
@@ -69,6 +70,7 @@ function registerAllHandlers(mainWindow) {
   registerMcpRegistryHandlers();
   registerPluginHandlers();
   registerChatHandlers();
+  registerChromeHandlers();
   registerHooksHandlers();
   registerMinecraftHandlers();
   registerDiscordHandlers();

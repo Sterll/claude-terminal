@@ -936,6 +936,20 @@
       "description": "Real-time insights from Claude Code (time tracking, notifications, dashboard stats)",
       "toggleError": "Failed to update Smart Hooks."
     },
+    "chrome": {
+      "title": "Claude in Chrome",
+      "enable": "Let Claude use your browser",
+      "enableDesc": "Chat sessions can open tabs, click, type, read pages and inspect the console through the Claude browser extension.",
+      "checking": "Checking browser integration…",
+      "connected": "Connected — Claude can drive {browser}.",
+      "readyDisabled": "Extension found in {browser}. Turn this on to let Claude use it.",
+      "extensionMissing": "The Claude browser extension is not installed.",
+      "installExtension": "Install",
+      "unsupported": "Browser control is not available on this platform.",
+      "cliMissing": "The bundled Claude Code binary is missing, so browser control cannot start.",
+      "hostFailed": "Could not register the browser connector. No supported browser was found.",
+      "toggleError": "Failed to update the browser integration."
+    },
     "advanced": "Advanced",
     "restoreTerminalSessions": "Remember last terminal states",
     "restoreTerminalSessionsDesc": "Restore terminal tabs and Claude sessions from the previous session on startup",

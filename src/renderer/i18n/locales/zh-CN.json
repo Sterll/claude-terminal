@@ -936,6 +936,20 @@
       "description": "来自 Claude Code 的实时见解（时间跟踪、通知、仪表板统计数据）",
       "toggleError": "更新智能 Hooks 失败。"
     },
+    "chrome": {
+      "title": "Claude 控制 Chrome",
+      "enable": "允许 Claude 使用你的浏览器",
+      "enableDesc": "聊天会话可通过 Claude 浏览器扩展打开标签页、点击、输入、读取页面并查看控制台。",
+      "checking": "正在检查浏览器集成…",
+      "connected": "已连接 — Claude 可以控制 {browser}。",
+      "readyDisabled": "在 {browser} 中检测到扩展。开启后 Claude 即可使用。",
+      "extensionMissing": "尚未安装 Claude 浏览器扩展。",
+      "installExtension": "安装",
+      "unsupported": "当前平台不支持浏览器控制。",
+      "cliMissing": "缺少随应用附带的 Claude Code 二进制文件，无法启动浏览器控制。",
+      "hostFailed": "无法注册浏览器连接器，未找到受支持的浏览器。",
+      "toggleError": "更新浏览器集成失败。"
+    },
     "advanced": "高级",
     "restoreTerminalSessions": "记住最后的终端状态",
     "restoreTerminalSessionsDesc": "启动时从上一个会话恢复终端选项卡和 Claude 会话",
