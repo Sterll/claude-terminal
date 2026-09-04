@@ -1026,8 +1026,6 @@
     "tabClaude": "Claude",
     "moreTabs": "More",
     "hiddenTabsCount": "{count} hidden",
-    "separatorTools": "Tools",
-    "separatorAI": "AI",
     "separatorExtensions": "Extensions",
     "tabPlugins": "Plugins",
     "tabSkills": "Skills",
@@ -1038,7 +1036,6 @@
     "tabDatabase": "Database",
     "tabGit": "Git",
     "separatorCloud": "Cloud",
-    "separatorAnalytics": "Analytics",
     "tabDashboard": "Dashboard",
     "tabTimeTracking": "Time Tracking",
     "tabSessionReplay": "Replay",
@@ -1080,7 +1077,11 @@
     "tooltipWorkspace": "Cross-project knowledge hubs",
     "tooltipConnectivity": "GitHub, remote access and cloud settings",
     "tooltipErrorLog": "Centralized error log with AI triage",
-    "tabErrorLog": "Error Log"
+    "tabErrorLog": "Error Log",
+    "separatorProject": "Project",
+    "separatorAllProjects": "All projects",
+    "separatorCapabilities": "Capabilities",
+    "separatorSystem": "System"
   },
   "memory": {
     "panelDescription": "Configure how Claude behaves in your projects. Global settings apply everywhere, project settings override them.",

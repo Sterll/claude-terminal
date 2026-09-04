@@ -1121,8 +1121,6 @@
     "tabClaude": "Claude",
     "moreTabs": "Plus",
     "hiddenTabsCount": "{count} masqué(s)",
-    "separatorTools": "Outils",
-    "separatorAI": "AI",
     "separatorExtensions": "Extensions",
     "tabPlugins": "Plugins",
     "tabSkills": "Skills",
@@ -1133,7 +1131,6 @@
     "tabDatabase": "Base de données",
     "tabGit": "Git",
     "separatorCloud": "Cloud",
-    "separatorAnalytics": "Analytique",
     "tabDashboard": "Dashboard",
     "tabTimeTracking": "Suivi du temps",
     "tabSessionReplay": "Replay",
@@ -1175,7 +1172,11 @@
     "tooltipWorkspace": "Hubs de connaissances multi-projets",
     "tooltipConnectivity": "GitHub, accès distant et paramètres cloud",
     "tooltipErrorLog": "Journal d'erreurs centralisé avec triage IA",
-    "tabErrorLog": "Erreurs"
+    "tabErrorLog": "Erreurs",
+    "separatorProject": "Projet",
+    "separatorAllProjects": "Tous les projets",
+    "separatorCapabilities": "Capacités",
+    "separatorSystem": "Système"
   },
   "memory": {
     "panelDescription": "Configurez le comportement de Claude dans vos projets. Les reglages globaux s'appliquent partout, les reglages projet les remplacent.",
