@@ -51,7 +51,7 @@ class TerminalService {
    * @param {string} options.resumeSessionId - Session ID to resume
    * @returns {Object} - { success: boolean, id?: number, error?: string }
    */
-  create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath }) {
+  create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountEnv = null }) {
     const id = ++this.terminalId;
     let shellPath = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash');
     let shellArgs = process.platform === 'win32' ? ['-NoLogo', '-NoProfile'] : [];
@@ -90,7 +90,9 @@ class TerminalService {
         cols: 120,
         rows: 30,
         cwd: effectiveCwd,
-        env: process.env
+        // A project pinned to an account gets that account's credential store;
+        // everything else in ~/.claude stays shared.
+        env: accountEnv ? { ...process.env, ...accountEnv } : process.env
       });
 
       if (!ptyProcess) {

@@ -19,7 +19,7 @@ const {
 } = require('../../utils/toolRegistry');
 const { t } = require('../../i18n');
 const { formatDuration: fmtDur } = require('../../utils/toolRegistry');
-const { heartbeat, skillsAgentsState } = require('../../state');
+const { heartbeat, skillsAgentsState, getProjectAccount } = require('../../state');
 const { createTranscriptPruner } = require('./TranscriptPruner');
 
 // ── Background task cards re-render on store update ─────────────────
@@ -3258,6 +3258,9 @@ class ChatView extends BaseComponent {
         const startOpts = {
           cwd: project.path,
           projectId: project.id,
+          // Only an explicit binding is sent: unbound projects run against the
+          // machine-wide login, which is what keeps `claude /login` capturable.
+          accountId: getProjectAccount(project.id),
           prompt: enhancedText || '',
           // skipPermissions (cloud tabs, quick actions, per-project override) forces full bypass.
           // Otherwise honor the global execution mode: 'auto' uses SDK classifier checks,

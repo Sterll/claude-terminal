@@ -24,6 +24,7 @@ const {
   writeSeedForDir,
   pruneSeedForDir,
   deleteCredentialsForDir,
+  SECURESTORAGE_ENV,
 } = require('../utils/claudeCredentials');
 
 const accountsDir = path.join(dataDir, 'accounts');
@@ -201,16 +202,27 @@ async function listAccounts() {
 }
 
 /**
- * Point unbound projects at this account. Unlike the old switchTo(), nothing
- * is written to any credential store — spawns resolve their account at launch.
+ * Make this the account for everything that is not pinned to one of its own.
+ *
+ * Only bound projects get a private credential store; unbound work — and the
+ * `claude` CLI run outside the app — reads the machine-wide one. So the
+ * default is not merely a pointer: it is also what that store must hold.
+ * Keeping it a pointer alone would let the UI claim a default that no unbound
+ * session actually used.
+ *
+ * It also leaves `claude /login` working the way it always did, which is what
+ * capturing a new account still depends on.
  */
-function setDefault(id) {
+async function setDefault(id) {
   const index = readIndex();
   if (id !== null && !index.accounts.some(a => a.id === id)) {
     throw new Error(`Account ${id} not found.`);
   }
-  index.defaultId = id;
-  writeIndex(index);
+  if (id) await switchTo(id);
+  // Re-read: switchTo() writes the index.
+  const next = readIndex();
+  next.defaultId = id;
+  writeIndex(next);
   return { defaultId: id };
 }
 
@@ -240,15 +252,22 @@ async function ensureAccountStore(id) {
 }
 
 /**
- * Resolve the credential directory for a project, honouring its binding and
- * falling back to the default account.
+ * The environment a spawn should inherit to authenticate as this project's
+ * account, or null when it should use the machine-wide login.
+ *
+ * Deliberately no fallback to the default account: unbound work runs against
+ * the machine-wide store, which is what keeps `claude /login` — and therefore
+ * capturing a new account — behaving as it always has. setDefault() is what
+ * makes the default real, by putting it in that store.
+ *
  * @param {string|null} accountId - The project's binding, if any
- * @returns {Promise<string|null>}
+ * @returns {Promise<Object|null>} Env overlay, or null
  */
-async function resolveStoreDir(accountId) {
-  const id = accountId || readIndex().defaultId;
-  if (!id) return null;
-  return ensureAccountStore(id);
+async function accountEnv(accountId) {
+  if (!accountId) return null;
+  const dir = await ensureAccountStore(accountId);
+  if (!dir) return null;
+  return { [SECURESTORAGE_ENV]: dir };
 }
 
 /**
@@ -419,5 +438,5 @@ module.exports = {
   removeAccount,
   accountConfigDir,
   ensureAccountStore,
-  resolveStoreDir
+  accountEnv
 };

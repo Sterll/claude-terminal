@@ -9,6 +9,7 @@ const fs = require('fs');
 const { app } = require('electron');
 const { execFileSync } = require('child_process');
 const ModelCatalogService = require('./ModelCatalogService');
+const AccountManager = require('./AccountManager');
 
 let sdkPromise = null;
 let resolvedRuntime = null;
@@ -652,7 +653,7 @@ class ChatService {
    * @param {string[]} [params.disallowedTools] - Tools to withhold from the session.
    * @returns {Promise<string>} Session ID
    */
-  async startSession({ cwd, projectId = null, prompt, permissionMode = 'default', resumeSessionId = null, sessionId = null, images = [], mentions = [], model = null, enable1MContext = false, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, effort = null, outputFormat = null, skills = null, systemPrompt = null, settingSources = null, maxTurns = null, cloud = false, cloudProjectName = null, userMessageUuid = null, persistSession = true, allowedTools = null, disallowedTools = null }) {
+  async startSession({ cwd, projectId = null, accountId = null, prompt, permissionMode = 'default', resumeSessionId = null, sessionId = null, images = [], mentions = [], model = null, enable1MContext = false, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, effort = null, outputFormat = null, skills = null, systemPrompt = null, settingSources = null, maxTurns = null, cloud = false, cloudProjectName = null, userMessageUuid = null, persistSession = true, allowedTools = null, disallowedTools = null }) {
     if (!sessionId) sessionId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     // Cloud session: delegate to cloud server instead of local SDK
@@ -694,6 +695,12 @@ class ChatService {
 
     try {
       const runtime = resolveRuntime();
+      // A project pinned to an account authenticates as that account: the
+      // overlay points the CLI's credential store at the account's own
+      // directory, leaving everything else in ~/.claude shared. Unbound
+      // projects keep reading the machine-wide login.
+      const accountOverlay = await AccountManager.accountEnv(accountId);
+      if (accountOverlay) runtime.env = { ...runtime.env, ...accountOverlay };
       const effectiveCwd = cwd || require('os').homedir();
       // An allowlist is what makes a session hands-free, so it is also what
       // marks it unattended. An empty array is not a restriction.
@@ -818,6 +825,9 @@ class ChatService {
         alwaysAllow: permissionMode === 'bypassPermissions',
         cwd,
         projectId,
+        // Which account this session authenticated as, so a usage limit names
+        // the right one instead of whatever the default happens to be now.
+        accountId,
         _stderr: '',
         // Retained so a refused fork can be replayed without the guard
         _forkGuard: (resumeSessionId && resumeSessionAt && resumeDropsTurn)
@@ -1519,11 +1529,19 @@ class ChatService {
         }
         const errorType = this._isUsageLimitError(err.message, stderrLog) ? 'usage_limit' : 'generic';
         if (errorType === 'usage_limit') {
-          let activeAccountId = null;
+          // The limit belongs to whichever account ran this session: its
+          // project's binding, or the default when it has none. The renderer
+          // offers to re-bind the project rather than swap a global account.
+          let activeAccountId = session?.accountId || null;
           try {
-            activeAccountId = (await require('./AccountManager').listAccounts()).activeId;
+            if (!activeAccountId) activeAccountId = (await AccountManager.listAccounts()).defaultId;
           } catch (_) { /* AccountManager not initialized yet */ }
-          this._send('chat-account-limit', { sessionId, error: errorMsg, activeAccountId });
+          this._send('chat-account-limit', {
+            sessionId,
+            error: errorMsg,
+            activeAccountId,
+            projectId: session?.projectId || null
+          });
         }
         this._send('chat-error', { sessionId, error: errorMsg, errorType });
         this._emitLifecycle('end', sessionId, { status: 'error', error: errorMsg });
@@ -1566,6 +1584,7 @@ class ChatService {
     const ctx = session ? {
       cwd: session.cwd || null,
       projectId: session.projectId || null,
+      accountId: session.accountId || null,
     } : null;
     this.closeSession(sessionId);
     return ctx;
