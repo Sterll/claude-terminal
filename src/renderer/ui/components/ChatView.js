@@ -4336,17 +4336,38 @@ class ChatView extends BaseComponent {
 
   /**
    * Pull artifacts out of freshly rendered nodes.
+   *
    * Only ever called on settled content — never mid-stream, where a half-written
    * ```html block would be captured as a truncated page.
+   *
+   * Deferred to idle time. Scanning a replayed transcript costs a few hundred
+   * milliseconds of string building, and none of it is visible until the user
+   * opens the Documents tab, so it has no business sitting on the path that
+   * paints the conversation. Detached nodes still scan fine, so the transcript
+   * pruner running first is harmless.
    */
+  const _harvestQueue = [];
+  let _harvestScheduled = false;
+
   function harvestArtifacts(nodes) {
     if (!nodes) return;
-    try {
-      artifactRegistry.add(ArtifactService.detect(nodes, { messageIndex: messagesEl.children.length }));
-    } catch (e) {
-      // Harvesting is an enhancement; it must never break the transcript.
-      console.warn('[ChatView] artifact harvest failed:', e.message);
-    }
+    _harvestQueue.push({ nodes, messageIndex: messagesEl.children.length });
+    if (_harvestScheduled) return;
+    _harvestScheduled = true;
+    const run = () => {
+      _harvestScheduled = false;
+      const queued = _harvestQueue.splice(0, _harvestQueue.length);
+      for (const item of queued) {
+        try {
+          artifactRegistry.add(ArtifactService.detect(item.nodes, { messageIndex: item.messageIndex }));
+        } catch (e) {
+          // Harvesting is an enhancement; it must never break the transcript.
+          console.warn('[ChatView] artifact harvest failed:', e.message);
+        }
+      }
+    };
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 2000 });
+    else setTimeout(run, 0);
   }
 
   function updateArtifactsTab() {

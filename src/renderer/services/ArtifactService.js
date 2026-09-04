@@ -151,7 +151,20 @@ function readNode(node) {
     if (node.classList.contains('chat-diff-block')) return null;
     const lang = textOf(node, '.chat-code-lang').trim().toLowerCase();
     if (IGNORED_LANGS.has(lang)) return null;
-    const source = readCodeSource(node.querySelector('pre code'));
+
+    const codeEl = node.querySelector('pre code');
+    if (!codeEl) return null;
+    // Reject on the line threshold BEFORE serializing the block. The renderer
+    // emits exactly one <span class="code-line"> per line as a direct child of
+    // <code>, so childElementCount is the line count for free — reading
+    // textContent first meant every short snippet in the transcript paid a full
+    // string build only to be thrown away. A live count beats querySelectorAll
+    // here, which walks the whole subtree.
+    const lineCount = codeEl.childElementCount;
+    if (lineCount && lineCount < MIN_CODE_LINES) return null;
+
+    const source = readCodeSource(codeEl);
+    // Fallback for markup without per-line spans, where the count above is 0.
     if (source.split('\n').length < MIN_CODE_LINES) return null;
     const filename = textOf(node, '.chat-code-filename').trim();
     return { kind: 'code', lang, source, title: deriveTitle('code', source, { filename, lang }) };
