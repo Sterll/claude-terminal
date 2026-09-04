@@ -3799,7 +3799,10 @@
     "usageBoundTitle": "Usage for {name}, this project’s account. Click to change it.",
     "usageDefaultTitle": "Usage for {name}, the default account. Click to pin this project to one.",
     "switchWhileRunningTitle": "Sessions are running",
-    "switchWhileRunning": "{count} session(s) are already running for this project and keep their current account. The change applies to sessions started from now on. Continue?"
+    "switchWhileRunning": "{count} session(s) are already running for this project and keep their current account. The change applies to sessions started from now on. Continue?",
+    "colorNone": "No colour",
+    "chooseForProjectTitle": "Claude account",
+    "chooseForProject": "Which account should {project} run as? You can change this later from its tab."
   },
   "usage": {
     "stale": "Usage data may be out of date - the last refresh failed. {error}"

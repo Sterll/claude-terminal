@@ -2294,6 +2294,48 @@ body.compact-projects .project-item:not(.active):hover {
   transform: scale(1) translateY(0);
 }
 
+/* Account colour dot in the actions menu. Its own class rather than the
+   customize badge, which is absolutely positioned to sit on the corner of a
+   preview and lands nowhere useful on its own. */
+.account-menu-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+/* Account row in the project actions menu: expands in place rather than
+   opening a second floating panel over the first. */
+.more-actions-chevron {
+  margin-left: auto;
+  padding-left: 10px;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.more-actions-item.expanded .more-actions-chevron {
+  color: var(--text-primary);
+}
+
+/* Account panel: positioned in JS beside the row it belongs to, so the menu
+   keeps its shape instead of growing under the cursor. */
+.project-account-submenu {
+  position: fixed;
+  z-index: 10001;
+  min-width: 200px;
+}
+
+.btn-project-account-option.selected {
+  color: var(--accent);
+}
+
+.account-option-check {
+  margin-left: auto;
+  padding-left: 10px;
+}
+
 /* Items */
 .context-menu-item {
   display: flex;

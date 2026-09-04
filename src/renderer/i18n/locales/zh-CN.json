@@ -3799,7 +3799,10 @@
     "usageBoundTitle": "{name} 的用量，该项目所用账户。点击可更改。",
     "usageDefaultTitle": "{name} 的用量，默认账户。点击可为该项目指定账户。",
     "switchWhileRunningTitle": "有会话正在运行",
-    "switchWhileRunning": "该项目已有 {count} 个会话在运行，它们将保留当前账户。更改仅对之后启动的会话生效。是否继续？"
+    "switchWhileRunning": "该项目已有 {count} 个会话在运行，它们将保留当前账户。更改仅对之后启动的会话生效。是否继续？",
+    "colorNone": "无颜色",
+    "chooseForProjectTitle": "Claude 账户",
+    "chooseForProject": "{project} 使用哪个账户运行？之后可从其标签页更改。"
   },
   "usage": {
     "stale": "使用情况数据可能已过时 - 上次刷新失败。 {error}"

@@ -218,11 +218,13 @@ class ProjectBar extends BaseComponent {
   }
 
   /**
-   * Which Claude account this project runs as, and how to change it. Shared
-   * with the usage bar so both entry points warn about running sessions.
+   * The project's normal actions menu — the same one the sidebar's "…" opens,
+   * account row included. A dedicated account popup made right-click mean
+   * something different here than everywhere else the project appears.
    */
   _showAccountMenu(project, x, y) {
-    showProjectAccountMenu({ projectId: project.id, x, y });
+    // Lazy: ProjectList pulls in the whole sidebar, and the bar renders first.
+    require('./ProjectList').openActionsMenu(project.id, x, y);
   }
 
   _select(projectId) {

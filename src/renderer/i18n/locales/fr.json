@@ -3799,7 +3799,10 @@
     "usageBoundTitle": "Usage de {name}, le compte de ce projet. Cliquez pour en changer.",
     "usageDefaultTitle": "Usage de {name}, le compte par défaut. Cliquez pour lier ce projet à un compte.",
     "switchWhileRunningTitle": "Sessions en cours",
-    "switchWhileRunning": "{count} session(s) tournent déjà pour ce projet et gardent leur compte actuel. Le changement s’appliquera aux sessions démarrées ensuite. Continuer ?"
+    "switchWhileRunning": "{count} session(s) tournent déjà pour ce projet et gardent leur compte actuel. Le changement s’appliquera aux sessions démarrées ensuite. Continuer ?",
+    "colorNone": "Aucune couleur",
+    "chooseForProjectTitle": "Compte Claude",
+    "chooseForProject": "Sur quel compte {project} doit-il tourner ? Modifiable ensuite depuis son onglet."
   },
   "usage": {
     "stale": "Données d'usage peut-être obsolètes - la dernière actualisation a échoué. {error}"

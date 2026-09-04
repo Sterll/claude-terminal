@@ -133,27 +133,47 @@ body.platform-darwin .titlebar-drag {
    the bars follow the active tab. Tinted with the account colour so it ties
    back to the project tab carrying the same one. Hidden when no project is
    bound: the titlebar then means what it always did. */
+/* The button stretches to the strip's full height and centres the pill inside
+   it, so the pill's midline matches the buckets' whatever drives the strip
+   height. Aligning the pill itself against the container left it sitting high. */
 .usage-account {
   display: flex;
   align-items: center;
-  align-self: center;
-  gap: 4px;
-  max-width: 120px;
-  padding: 2px 8px;
+  align-self: stretch;
+  margin: 0 10px 0 0;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.usage-account-pill {
+  display: block;
+  /* Aligned on the labels, not on the strip's midline. Each bucket puts a 3px
+     gap and a 3px bar under its label, so the label sits 3px above the block's
+     centre — and a pill centred on the block reads as sitting too low next to
+     SESSION. Shifting by exactly that offset lines the two texts up. */
+  transform: translateY(-3px);
+  max-width: 130px;
+  padding: 3px 9px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--account-color) 45%, transparent);
   background: color-mix(in srgb, var(--account-color) 16%, transparent);
   color: var(--text-primary);
-  font-size: var(--font-2xs);
-  font-family: inherit;
+  /* Matched to .usage-label rather than a token: the pill sits in the same row
+     as SESSION / SEMAINE and has to read as one of them, not as a control. */
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.8px;
+  line-height: 1.4;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
 
-.usage-account:hover:not(:disabled) {
+.usage-account:hover:not(:disabled) .usage-account-pill {
   background: color-mix(in srgb, var(--account-color) 28%, transparent);
   border-color: var(--account-color);
 }
@@ -165,7 +185,7 @@ body.platform-darwin .titlebar-drag {
 /* Running on the default rather than a binding of its own: dashed, and dimmed,
    so "this project has not chosen" reads differently from "this project runs
    on X" without hiding which account the figures belong to. */
-.usage-account--default {
+.usage-account--default .usage-account-pill {
   border-style: dashed;
   color: var(--text-secondary);
   background: color-mix(in srgb, var(--account-color) 8%, transparent);

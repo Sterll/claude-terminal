@@ -2155,10 +2155,11 @@ class SettingsPanel extends BasePanel {
         const bound = getProjectsForAccount(a.id);
         return `
         <div class="account-row${a.id === defaultId ? ' active' : ''}" data-id="${a.id}">
-          <input type="color" class="account-row-color" data-action="color" data-id="${a.id}"
-                 value="${color || '#888888'}"
-                 title="${escapeHtml(t('accounts.colorTitle') || 'Account colour')}"
-                 aria-label="${escapeHtml(t('accounts.colorTitle') || 'Account colour')}">
+          <button type="button" class="account-row-color${color ? '' : ' account-row-color--none'}"
+                  data-action="color" data-id="${a.id}" data-color="${color || ''}"
+                  ${color ? `style="background:${color}"` : ''}
+                  title="${escapeHtml(t('accounts.colorTitle') || 'Account colour')}"
+                  aria-label="${escapeHtml(t('accounts.colorTitle') || 'Account colour')}"></button>
           <div class="account-row-main">
             <div class="account-row-name">${escapeHtml(a.name)}</div>
             <div class="account-row-meta">${escapeHtml((a.fingerprint || '').slice(0, 8))}${bound.length ? ` &middot; ${escapeHtml(t('accounts.boundProjects', { count: bound.length }))}` : ''}</div>
@@ -2181,7 +2182,35 @@ class SettingsPanel extends BasePanel {
       const action = btn.dataset.action;
       const id = btn.dataset.id;
       const { showError } = require('../components/Toast');
-      if (action === 'set-default') {
+      if (action === 'color') {
+        // A fixed palette rather than the native picker: these are tags to tell
+        // accounts apart, and every preset is known to read on the dark theme.
+        const { showAccountColorPicker } = require('../components/AccountMenu');
+        const rect = btn.getBoundingClientRect();
+        // From the attribute, not style.background: the browser normalises the
+        // latter to rgb(), which would never match a hex preset.
+        const current = btn.dataset.color || null;
+        showAccountColorPicker({
+          x: rect.left,
+          y: rect.bottom + 4,
+          current,
+          onPick: async (hex) => {
+            // Paint the swatch straight away. The row is rebuilt when the
+            // accounts-changed broadcast lands, but that is a main-process
+            // round-trip: without this the colour you just picked appears to
+            // do nothing.
+            btn.dataset.color = hex || '';
+            btn.style.background = hex || '';
+            btn.classList.toggle('account-row-color--none', !hex);
+            try {
+              const r = await this.api.accounts.setColor(id, hex);
+              if (!r?.success) showError(r?.error || t('accounts.colorError'), 5000);
+            } catch (err) {
+              showError(err?.message || t('accounts.colorError'), 5000);
+            }
+          }
+        });
+      } else if (action === 'set-default') {
         btn.disabled = true;
         try {
           const r = await this.api.accounts.setDefault(id);
@@ -2242,21 +2271,6 @@ class SettingsPanel extends BasePanel {
         } catch (err) {
           showError(err?.message || t('accounts.removeError'), 5000);
         }
-      }
-    };
-
-    // The colour swatch is an <input>, so it never reaches the click handler
-    // above. `change` rather than `input`: the native picker fires continuously
-    // while dragging, and each event is an IPC write plus a broadcast.
-    listEl.onchange = async (e) => {
-      const input = e.target.closest('input[data-action="color"]');
-      if (!input) return;
-      const { showError } = require('../components/Toast');
-      try {
-        const r = await this.api.accounts.setColor(input.dataset.id, input.value);
-        if (!r?.success) showError(r?.error || t('accounts.colorError'), 5000);
-      } catch (err) {
-        showError(err?.message || t('accounts.colorError'), 5000);
       }
     };
 

@@ -223,6 +223,42 @@ class ProjectList extends BaseComponent {
       const btn = e.target.closest('button');
       if (!btn) return;
       e.stopPropagation();
+      // Opens a panel to the side of the row rather than pushing the menu
+      // open: the menu keeps its shape, and the row it belongs to stays put
+      // and visible while you choose.
+      if (btn.classList.contains('btn-project-account')) {
+        if (document.getElementById('project-account-submenu')) {
+          document.getElementById('project-account-submenu').remove();
+          btn.classList.remove('expanded');
+          return;
+        }
+        const sub = document.createElement('div');
+        sub.id = 'project-account-submenu';
+        sub.className = 'more-actions-menu active project-account-submenu';
+        sub.innerHTML = self._buildAccountOptionsHtml(project);
+        document.body.appendChild(sub);
+
+        const menuRect = menu.getBoundingClientRect();
+        const rowRect = btn.getBoundingClientRect();
+        const subRect = sub.getBoundingClientRect();
+        // Flip to the left when there is no room: the menu is often opened
+        // near the right edge, from the project bar.
+        const flip = menuRect.right + subRect.width > window.innerWidth - 4;
+        sub.style.left = `${flip ? Math.max(4, menuRect.left - subRect.width + 2) : menuRect.right - 2}px`;
+        sub.style.top = `${Math.max(4, Math.min(rowRect.top - 4, window.innerHeight - subRect.height - 4))}px`;
+
+        sub.onclick = (ev) => {
+          const option = ev.target.closest('.btn-project-account-option');
+          if (!option) return;
+          ev.stopPropagation();
+          const accountId = option.dataset.accountId || null;
+          self.closeAllMoreActionsMenus();
+          require('./AccountMenu').applyProjectAccount(project.id, accountId);
+        };
+
+        btn.classList.add('expanded');
+        return;
+      }
       if (btn.dataset.extraAction) {
         self.closeAllMoreActionsMenus();
         opts.onExtraAction?.(btn.dataset.extraAction);
@@ -253,6 +289,9 @@ class ProjectList extends BaseComponent {
   }
 
   closeAllMoreActionsMenus() {
+    // The account panel hangs off the menu but lives on <body>, so closing the
+    // menu has to take it down too or it is left floating on its own.
+    document.getElementById('project-account-submenu')?.remove();
     document.querySelectorAll('.more-actions-menu.active').forEach(menu => menu.classList.remove('active'));
     if (this._moreActionsCloseHandler) {
       document.removeEventListener('click', this._moreActionsCloseHandler, true);
@@ -376,6 +415,40 @@ class ProjectList extends BaseComponent {
    * @param {Object} project
    * @returns {string} menu items HTML
    */
+  /**
+   * The account choices shown when the menu's account row is expanded, each
+   * with its colour dot so a row is recognisable as the account tinting the
+   * project's tab. A checkmark marks the current choice.
+   * @param {Object} project
+   * @returns {string}
+   */
+  _buildAccountOptionsHtml(project) {
+    const {
+      getAccounts, getDefaultAccount, projectFollowsDefault
+    } = require('../../state/accounts.state');
+    const { getProjectAccount } = require('../../state/projects.state');
+
+    const bound = getProjectAccount(project.id);
+    const fallback = getDefaultAccount();
+    const row = (label, color, selected, accountId) => {
+      const safe = sanitizeColor(color);
+      return `
+      <button class="more-actions-item btn-project-account-option${selected ? ' selected' : ''}"
+              data-account-id="${escapeHtml(accountId || '')}">
+        <span class="account-menu-dot"${safe ? ` style="background: ${safe}"` : ''}></span>
+        ${escapeHtml(label)}
+        ${selected ? '<span class="account-option-check">&#10003;</span>' : ''}
+      </button>`;
+    };
+
+    return row(
+      fallback ? t('accounts.useDefaultNamed', { name: fallback.name }) : (t('accounts.useDefault') || 'Default account'),
+      fallback?.color,
+      projectFollowsDefault(project.id),
+      null
+    ) + getAccounts().map(a => row(a.name, a.color, bound === a.id, a.id)).join('');
+  }
+
   _buildMenuItemsHtml(project) {
     const projectIndex = getProjectIndex(project.id);
     const typeHandler = registry.get(project.type);
@@ -402,6 +475,26 @@ class ProjectList extends BaseComponent {
         ${t('projects.locatePath')}
       </button>`;
     }
+    // Which Claude account this project runs as. Listed with the project's own
+    // settings rather than under an action group: it is a property of the
+    // project, not something you do to it.
+    try {
+      const { getAccounts, getAccountForProject } = require('../../state/accounts.state');
+      if (getAccounts().length > 1) {
+        const account = getAccountForProject(project.id);
+        const accountColor = sanitizeColor(account?.color);
+        menuItemsHtml += `
+      <div class="more-actions-section-label">${escapeHtml(t('accounts.chooseForProjectTitle') || 'Claude account')}</div>
+      <button class="more-actions-item btn-project-account" data-project-id="${escapeHtml(project.id)}">
+        <span class="account-menu-dot"${accountColor ? ` style="background: ${accountColor}"` : ''}></span>
+        ${escapeHtml(account?.name || t('accounts.useDefault') || 'Default account')}
+        <span class="more-actions-chevron">&#8250;</span>
+      </button>`;
+      }
+    } catch (_) {
+      // Accounts unavailable — the menu simply does not offer the choice.
+    }
+
     const typeMenuItems = typeHandler.getMenuItems ? typeHandler.getMenuItems(typeCtx) : '';
     if (typeMenuItems) {
       menuItemsHtml += typeMenuItems;
@@ -1166,6 +1259,17 @@ class ProjectList extends BaseComponent {
         };
         setTimeout(() => document.addEventListener('click', closeMenu, true), 0);
         return;
+      }
+
+      // Right-clicking the row itself picks the Claude account it runs as —
+      // the same menu the project tab offers, so the choice is reachable from
+      // wherever the project is on screen.
+      // Right-clicking a row opens the same actions menu as its "…" button,
+      // so the project offers one menu wherever it is on screen.
+      const projectRow = e.target.closest('.project-item[data-project-id]');
+      if (projectRow) {
+        e.preventDefault();
+        self.openActionsMenu(projectRow.dataset.projectId, e.clientX, e.clientY);
       }
     };
 

@@ -10,13 +10,73 @@
 const { showContextMenu } = require('./ContextMenu');
 const { showConfirm } = require('./Modal');
 const { sanitizeColor } = require('../../utils/color');
+const { escapeHtml } = require('../../utils/dom');
 const { t } = require('../../i18n');
 const {
   getAccounts,
   getDefaultAccount,
+  getAccountForProject,
   projectFollowsDefault
 } = require('../../state/accounts.state');
 const { setProjectAccount, getProjectAccount } = require('../../state/projects.state');
+
+/**
+ * Account colours, sharing the Kanban label hues so the app keeps one palette.
+ * A fixed list rather than a full colour picker: these are tags to tell two or
+ * three accounts apart at a glance, not a design surface, and every value here
+ * is known to read against the dark theme.
+ */
+const ACCOUNT_COLORS = [
+  '#ef4444', '#f97316', '#eab308', '#22c55e',
+  '#3b82f6', '#8b5cf6', '#ec4899', '#6b7280'
+];
+
+/**
+ * Swatch grid for picking an account colour.
+ *
+ * @param {Object} opts
+ * @param {number} opts.x
+ * @param {number} opts.y
+ * @param {string|null} opts.current
+ * @param {Function} opts.onPick - called with a hex string, or null to clear
+ */
+function showAccountColorPicker({ x, y, current, onPick }) {
+  document.querySelectorAll('.account-color-popover').forEach(el => el.remove());
+
+  const popover = document.createElement('div');
+  popover.className = 'account-color-popover';
+
+  const safeCurrent = sanitizeColor(current);
+  popover.innerHTML = `
+    ${ACCOUNT_COLORS.map(c => `
+      <button type="button" class="account-color-swatch${c === safeCurrent ? ' selected' : ''}"
+              data-color="${c}" style="background:${c}" title="${c}"></button>
+    `).join('')}
+    <button type="button" class="account-color-swatch account-color-swatch--none${safeCurrent ? '' : ' selected'}"
+            data-color="" title="${escapeHtml(t('accounts.colorNone') || 'No colour')}"></button>
+  `;
+
+  document.body.appendChild(popover);
+  const rect = popover.getBoundingClientRect();
+  popover.style.left = `${Math.min(x, window.innerWidth - rect.width - 8)}px`;
+  popover.style.top = `${Math.min(y, window.innerHeight - rect.height - 8)}px`;
+
+  const close = () => {
+    popover.remove();
+    document.removeEventListener('click', onOutside, true);
+  };
+  const onOutside = (e) => { if (!popover.contains(e.target)) close(); };
+
+  popover.onclick = (e) => {
+    const swatch = e.target.closest('.account-color-swatch');
+    if (!swatch) return;
+    e.stopPropagation();
+    close();
+    onPick(swatch.dataset.color || null);
+  };
+
+  setTimeout(() => document.addEventListener('click', onOutside, true), 0);
+}
 
 /**
  * ContextMenu injects `icon` as raw HTML, so the colour goes through
@@ -95,6 +155,9 @@ function showProjectAccountMenu({ projectId, x, y, onPicked }) {
     if (await applyProjectAccount(projectId, accountId) && onPicked) onPicked(accountId);
   };
 
+  // Flat, unlike the project menu's side panel: this one is opened from the
+  // usage chip, which is already a statement of the current account — the list
+  // only has to offer the alternatives.
   const items = [{
     label: fallback
       ? t('accounts.useDefaultNamed', { name: fallback.name })
@@ -114,4 +177,10 @@ function showProjectAccountMenu({ projectId, x, y, onPicked }) {
   showContextMenu({ x, y, items, target: projectId });
 }
 
-module.exports = { showProjectAccountMenu, applyProjectAccount, liveSessionCount };
+module.exports = {
+  showProjectAccountMenu,
+  showAccountColorPicker,
+  applyProjectAccount,
+  liveSessionCount,
+  ACCOUNT_COLORS
+};

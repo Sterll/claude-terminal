@@ -3799,7 +3799,10 @@
     "usageBoundTitle": "Pemakaian {name}, akun proyek ini. Klik untuk menggantinya.",
     "usageDefaultTitle": "Pemakaian {name}, akun default. Klik untuk menetapkan akun bagi proyek ini.",
     "switchWhileRunningTitle": "Ada sesi berjalan",
-    "switchWhileRunning": "{count} sesi sudah berjalan untuk proyek ini dan tetap memakai akunnya. Perubahan berlaku untuk sesi berikutnya. Lanjutkan?"
+    "switchWhileRunning": "{count} sesi sudah berjalan untuk proyek ini dan tetap memakai akunnya. Perubahan berlaku untuk sesi berikutnya. Lanjutkan?",
+    "colorNone": "Tanpa warna",
+    "chooseForProjectTitle": "Akun Claude",
+    "chooseForProject": "Akun mana yang dipakai {project}? Bisa diubah nanti dari tabnya."
   },
   "usage": {
     "stale": "Data penggunaan mungkin sudah tidak terbaru - pemuatan terakhir gagal. {error}"
