@@ -51,6 +51,23 @@ function registerAccountsHandlers() {
     return result;
   });
 
+  ipcMain.handle('accounts-set-default', async (_event, { id } = {}) => {
+    const result = await wrap(() => AccountManager.setDefault(id ?? null));
+    if (result.success) await broadcastAccounts();
+    return result;
+  });
+
+  ipcMain.handle('accounts-update', async (_event, { id, name, color } = {}) => {
+    // Only forward the keys the caller actually sent: undefined means "leave
+    // it alone", and the renderer sends one field at a time.
+    const patch = {};
+    if (name !== undefined) patch.name = name;
+    if (color !== undefined) patch.color = color;
+    const result = await wrap(() => AccountManager.updateAccount(id, patch));
+    if (result.success) await broadcastAccounts();
+    return result;
+  });
+
   ipcMain.handle('accounts-rename', async (_event, { id, name } = {}) => {
     const result = await wrap(() => AccountManager.renameAccount(id, name));
     if (result.success) await broadcastAccounts();

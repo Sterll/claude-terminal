@@ -571,6 +571,8 @@ contextBridge.exposeInMainWorld('electron_api', {
     list: () => ipcRenderer.invoke('accounts-list'),
     capture: (name) => ipcRenderer.invoke('accounts-capture', { name }),
     switch: (id) => ipcRenderer.invoke('accounts-switch', { id }),
+    setDefault: (id) => ipcRenderer.invoke('accounts-set-default', { id }),
+    setColor: (id, color) => ipcRenderer.invoke('accounts-update', { id, color }),
     rename: (id, name) => ipcRenderer.invoke('accounts-rename', { id, name }),
     remove: (id) => ipcRenderer.invoke('accounts-remove', { id }),
     syncActive: () => ipcRenderer.invoke('accounts-sync-active'),
