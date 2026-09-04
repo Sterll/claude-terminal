@@ -864,7 +864,12 @@ class ChatView extends BaseComponent {
   }
 
   // ── Attach interactive markdown block handlers (sort, collapse, preview, etc.) ──
+  // Delegation is per-container and postProcess() does not set it up, so every
+  // container that renders markdown needs its own call. The Documents preview
+  // is a second such container: without this its Preview/Code toggle, viewport
+  // buttons, copy buttons and external links are all inert.
   MarkdownRenderer.attachInteractivity(messagesEl);
+  MarkdownRenderer.attachInteractivity(artifactBodyEl);
 
   // ── Mention state ──
 

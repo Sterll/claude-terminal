@@ -351,6 +351,16 @@ function _bind() {
 function loadPanel(container, project = null) {
   _container = container;
   _project = project;
+
+  // Markdown block handlers (Preview/Code toggle, viewport buttons, copy,
+  // external links) are delegated per container and postProcess() does not set
+  // them up. Attached on the panel root, which survives every re-render, and
+  // guarded so re-entering the tab does not stack listeners.
+  if (!container.dataset.interactivityAttached) {
+    container.dataset.interactivityAttached = 'true';
+    MarkdownRenderer.attachInteractivity(container);
+  }
+
   _load();
 
   // MCP tools mutate the store from another process; the main process watches
