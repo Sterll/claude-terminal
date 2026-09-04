@@ -27,6 +27,10 @@ jobs:
 
   build-macos:
     strategy:
+      # The two architectures are independent artifacts. Cancelling one because
+      # the other tripped just loses a good build and skips merge-mac-yml, which
+      # needs both legs to produce a latest-mac.yml covering arm64 and x64.
+      fail-fast: false
       matrix:
         include:
           - runner: macos-latest
