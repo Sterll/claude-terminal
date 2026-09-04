@@ -18,6 +18,12 @@ document.addEventListener('visibilitychange', () => {
   document.body.classList.toggle('background-paused', document.hidden);
 });
 
+// macOS never reports the document hidden for a visible-but-unfocused window,
+// so the class above misses the common case. This pauses the perpetual
+// indicator animations (spinners, pulses, cursor) on blur — each one forces
+// the compositor to produce frames whose cost scales with the whole DOM.
+require('./src/renderer/services/IdleAnimationPauser').init();
+
 // Import all modules from src/renderer
 const {
   // Utils

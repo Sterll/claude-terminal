@@ -254,6 +254,18 @@ function createMainWindow({ isDev = false } = {}) {
     mainWindow.webContents.openDevTools();
   }
 
+  // Hidden DevTools access in packaged builds — profiling a real session needs
+  // a Performance trace on real data, and only DevTools can capture one. No
+  // menu exists in the frameless window, so without this there is no way in.
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    if ((input.control || input.meta) && input.alt && input.shift
+      && String(input.key).toLowerCase() === 'i') {
+      mainWindow.webContents.toggleDevTools();
+      event.preventDefault();
+    }
+  });
+
   // Track normal (non-maximized) bounds for correct state restoration
   mainWindow.on('resize', () => {
     if (!mainWindow.isMaximized()) {
