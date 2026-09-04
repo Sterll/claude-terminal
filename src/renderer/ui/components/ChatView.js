@@ -64,6 +64,20 @@ function parseResultJson(text) {
   try { return JSON.parse(trimmed); } catch (_) { return null; }
 }
 
+// TaskCreate answers with a plain sentence — "Task #3 created successfully: <subject>" —
+// not JSON. The id it hands back is the one every later TaskUpdate addresses, so failing
+// to read it leaves the task filed under its tool_use_id and freezes the bar at 0/N.
+const TASK_CREATED_RE = /task\s*#?\s*([A-Za-z0-9_-]+)\s+created/i;
+
+/** @returns {string|null} The task id a TaskCreate result reports, JSON or prose. */
+function parseCreatedTaskId(text) {
+  const parsed = parseResultJson(text);
+  const jsonId = parsed?.task?.id ?? parsed?.taskId ?? parsed?.id;
+  if (jsonId != null) return String(jsonId);
+  const match = TASK_CREATED_RE.exec(text || '');
+  return match ? match[1] : null;
+}
+
 // ── Wakeup countdown ticker (module-level, single global interval) ──
 // Runs only while a wakeup card is actually on screen. The first version armed
 // the interval on the first ScheduleWakeup of the session and then ticked for
@@ -415,7 +429,10 @@ class ChatView extends BaseComponent {
   // ── Task tool accumulator (SDK 0.3+ TaskCreate / TaskUpdate / TaskList) ──
   const tasksMap = new Map(); // taskId -> { id, subject, description, activeForm, status, order }
   const pendingCreateByUseId = new Map(); // tool_use_id -> { subject, description, activeForm, order }
+  const taskIdByUseId = new Map(); // tool_use_id -> real task id, once the result promoted it
+  const pendingTaskUpdates = new Map(); // task id -> patch held until its create is promoted
   let taskOrderCounter = 0;
+  let taskRenderSuspended = false; // batches the widget render during a history replay
   let slashCommands = []; // populated from system/init message
   let slashSelectedIndex = -1; // currently highlighted item in slash dropdown
   // Accumulates messages for CLAUDE.md analysis (role: 'user'|'assistant', content: string)
@@ -4638,36 +4655,52 @@ class ChatView extends BaseComponent {
 
   function applyTaskCreate(input, toolUseId) {
     if (!input || !input.subject) return;
-    pendingCreateByUseId.set(toolUseId, {
-      subject: input.subject,
-      description: input.description || '',
-      activeForm: input.activeForm || '',
-      order: ++taskOrderCounter,
-    });
+    // Every TaskCreate is seen twice — once from the stream (content_block_stop) and
+    // once from the full assistant message. Keying off the tool_use_id (or the real id
+    // it was promoted to) makes the second pass an update, not a duplicate row with a
+    // second slot in the ordering.
+    const key = taskIdByUseId.get(toolUseId) || toolUseId;
+    const existing = tasksMap.get(key);
+    const order = existing ? existing.order : ++taskOrderCounter;
+    if (!taskIdByUseId.has(toolUseId)) {
+      pendingCreateByUseId.set(toolUseId, {
+        subject: input.subject,
+        description: input.description || '',
+        activeForm: input.activeForm || '',
+        order,
+      });
+    }
     // Optimistic render with temp id (tool_use_id) so the widget updates immediately;
     // it'll be replaced with the real task id when the tool_result arrives.
-    tasksMap.set(toolUseId, {
-      id: toolUseId,
+    tasksMap.set(key, {
+      id: key,
       subject: input.subject,
       description: input.description || '',
       activeForm: input.activeForm || '',
-      status: 'pending',
-      order: taskOrderCounter,
-      _temp: true,
+      status: existing?.status || 'pending',
+      order,
+      _temp: key === toolUseId,
     });
     renderTasksWidget();
   }
 
   function applyTaskUpdate(input) {
-    if (!input || !input.taskId) return;
-    const task = tasksMap.get(input.taskId);
-    if (!task) return;
+    if (!input || input.taskId == null) return;
+    const id = String(input.taskId);
+    const task = tasksMap.get(id);
+    if (!task) {
+      // The matching create hasn't been promoted to its real id yet (its tool_result is
+      // still in flight, or arrived in a shape we couldn't read). Hold the patch and
+      // replay it on promotion — dropping it is what left the bar stuck at 0/N.
+      pendingTaskUpdates.set(id, { ...(pendingTaskUpdates.get(id) || {}), ...input });
+      return;
+    }
     if (input.subject != null) task.subject = input.subject;
     if (input.description != null) task.description = input.description;
     if (input.activeForm != null) task.activeForm = input.activeForm;
     if (input.status != null) {
       if (input.status === 'deleted') {
-        tasksMap.delete(input.taskId);
+        tasksMap.delete(id);
       } else {
         task.status = input.status;
       }
@@ -4677,16 +4710,18 @@ class ChatView extends BaseComponent {
 
   function promoteTaskCreateResult(toolUseId, taskId) {
     if (!toolUseId || !taskId) return;
+    const id = String(taskId);
     const pending = pendingCreateByUseId.get(toolUseId);
     pendingCreateByUseId.delete(toolUseId);
+    taskIdByUseId.set(toolUseId, id);
     // Move from temp tool_use_id key to real task id key
     const existing = tasksMap.get(toolUseId);
     if (existing) {
       tasksMap.delete(toolUseId);
-      tasksMap.set(taskId, { ...existing, id: taskId, _temp: false });
+      tasksMap.set(id, { ...existing, id, _temp: false });
     } else if (pending) {
-      tasksMap.set(taskId, {
-        id: taskId,
+      tasksMap.set(id, {
+        id,
         subject: pending.subject,
         description: pending.description,
         activeForm: pending.activeForm,
@@ -4694,12 +4729,27 @@ class ChatView extends BaseComponent {
         order: pending.order,
       });
     }
+    const held = pendingTaskUpdates.get(id);
+    if (held) {
+      pendingTaskUpdates.delete(id);
+      applyTaskUpdate(held); // renders
+      return;
+    }
     renderTasksWidget();
   }
 
   function renderTasksWidget() {
+    if (taskRenderSuspended) return;
     const tasks = getOrderedTasks();
-    if (!tasks.length) return;
+    if (!tasks.length) {
+      // Every task deleted — drop the bar rather than leave the last count standing
+      if (todoWidgetEl) {
+        todoWidgetEl.remove();
+        todoWidgetEl = null;
+        todoAllDone = false;
+      }
+      return;
+    }
 
     const completed = tasks.filter(td => td.status === 'completed').length;
     const active = tasks.find(td => td.status === 'in_progress');
@@ -4762,6 +4812,8 @@ class ChatView extends BaseComponent {
     if (!Array.isArray(todos) || !todos.length) return;
     tasksMap.clear();
     pendingCreateByUseId.clear();
+    taskIdByUseId.clear();
+    pendingTaskUpdates.clear();
     todos.forEach((todo, i) => {
       const id = `todo-${i}`;
       tasksMap.set(id, {
@@ -4774,6 +4826,35 @@ class ChatView extends BaseComponent {
       });
     });
     taskOrderCounter = Math.max(taskOrderCounter, todos.length);
+    renderTasksWidget();
+  }
+
+  /**
+   * Replay the Task tools of a resumed session so the bar opens on the plan the
+   * conversation left off at, instead of staying blank until the next TaskCreate.
+   * The history carries each create's result text, so ids promote exactly as live.
+   * @param {Array} messages One page of history, oldest first.
+   */
+  function hydrateTasksFromHistory(messages) {
+    taskRenderSuspended = true;
+    try {
+      for (const msg of messages) {
+        if (msg.role === 'assistant' && msg.type === 'tool_use') {
+          if (msg.toolName === 'TodoWrite' && msg.toolInput?.todos) {
+            updateTodoWidget(msg.toolInput.todos);
+          } else if (msg.toolName === 'TaskCreate' && msg.toolInput) {
+            applyTaskCreate(msg.toolInput, msg.toolUseId);
+          } else if (msg.toolName === 'TaskUpdate' && msg.toolInput) {
+            applyTaskUpdate(msg.toolInput);
+          }
+        } else if (msg.role === 'tool_result' && pendingCreateByUseId.has(msg.toolUseId)) {
+          const taskId = parseCreatedTaskId(msg.output || '');
+          if (taskId) promoteTaskCreateResult(msg.toolUseId, taskId);
+        }
+      }
+    } finally {
+      taskRenderSuspended = false;
+    }
     renderTasksWidget();
   }
 
@@ -5847,8 +5928,7 @@ class ChatView extends BaseComponent {
     if (block.tool_use_id && pendingCreateByUseId.has(block.tool_use_id)) {
       const raw = typeof block.content === 'string' ? block.content
         : Array.isArray(block.content) ? block.content.map(b => b.text || '').join('\n') : '';
-      const parsed = parseResultJson(raw);
-      const taskId = parsed?.task?.id;
+      const taskId = parseCreatedTaskId(raw);
       if (taskId) promoteTaskCreateResult(block.tool_use_id, taskId);
       return;
     }
@@ -6671,6 +6751,10 @@ class ChatView extends BaseComponent {
         return;
       }
 
+      // Only this first page seeds the bar: later pages are prepended *older*
+      // messages, whose creates and updates would land out of order.
+      hydrateTasksFromHistory(msgs);
+
       renderHistoryMessages(msgs, {
         onComplete: () => {
           syncHistoryTop(result, msgs.length);
@@ -7018,6 +7102,10 @@ class ChatView extends BaseComponent {
       toolInputBuffers.clear();
       todoToolIndices.clear();
       taskToolIndices.clear();
+      tasksMap.clear();
+      pendingCreateByUseId.clear();
+      taskIdByUseId.clear();
+      pendingTaskUpdates.clear();
       // Clean up parallel run widgets
       for (const [, w] of parallelRunWidgets) {
         if (typeof w.cleanup === 'function') w.cleanup();
