@@ -3795,7 +3795,11 @@
     "rebindScope": "Solo cambia {project}. Tus otros proyectos conservan su cuenta.",
     "rebindScopeDefault": "Esto cambia la cuenta predeterminada, usada por todos los proyectos sin una propia.",
     "limited": "Límite alcanzado",
-    "useForProject": "Usar aquí"
+    "useForProject": "Usar aquí",
+    "usageBoundTitle": "Uso de {name}, la cuenta de este proyecto. Haz clic para cambiarla.",
+    "usageDefaultTitle": "Uso de {name}, la cuenta predeterminada. Haz clic para asignar una a este proyecto.",
+    "switchWhileRunningTitle": "Sesiones en curso",
+    "switchWhileRunning": "{count} sesión(es) ya están en curso para este proyecto y conservan su cuenta actual. El cambio se aplicará a las sesiones que inicies después. ¿Continuar?"
   },
   "usage": {
     "stale": "Datos de uso posiblemente desactualizados - la última actualización falló. {error}"

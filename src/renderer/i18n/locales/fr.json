@@ -3795,7 +3795,11 @@
     "rebindScope": "Seul {project} change. Vos autres projets gardent leur compte.",
     "rebindScopeDefault": "Ceci change le compte par défaut, utilisé par tous les projets qui n’en ont pas.",
     "limited": "Limite atteinte",
-    "useForProject": "Utiliser ici"
+    "useForProject": "Utiliser ici",
+    "usageBoundTitle": "Usage de {name}, le compte de ce projet. Cliquez pour en changer.",
+    "usageDefaultTitle": "Usage de {name}, le compte par défaut. Cliquez pour lier ce projet à un compte.",
+    "switchWhileRunningTitle": "Sessions en cours",
+    "switchWhileRunning": "{count} session(s) tournent déjà pour ce projet et gardent leur compte actuel. Le changement s’appliquera aux sessions démarrées ensuite. Continuer ?"
   },
   "usage": {
     "stale": "Données d'usage peut-être obsolètes - la dernière actualisation a échoué. {error}"

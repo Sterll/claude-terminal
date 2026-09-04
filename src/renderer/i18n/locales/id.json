@@ -3795,7 +3795,11 @@
     "rebindScope": "Hanya {project} yang berpindah. Proyek lain tetap pada akunnya.",
     "rebindScopeDefault": "Ini mengubah akun default, yang dipakai semua proyek tanpa akun sendiri.",
     "limited": "Batas tercapai",
-    "useForProject": "Pakai di sini"
+    "useForProject": "Pakai di sini",
+    "usageBoundTitle": "Pemakaian {name}, akun proyek ini. Klik untuk menggantinya.",
+    "usageDefaultTitle": "Pemakaian {name}, akun default. Klik untuk menetapkan akun bagi proyek ini.",
+    "switchWhileRunningTitle": "Ada sesi berjalan",
+    "switchWhileRunning": "{count} sesi sudah berjalan untuk proyek ini dan tetap memakai akunnya. Perubahan berlaku untuk sesi berikutnya. Lanjutkan?"
   },
   "usage": {
     "stale": "Data penggunaan mungkin sudah tidak terbaru - pemuatan terakhir gagal. {error}"

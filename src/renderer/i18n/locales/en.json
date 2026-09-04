@@ -3795,7 +3795,11 @@
     "rebindScope": "Only {project} moves. Your other projects keep the account they are on.",
     "rebindScopeDefault": "This changes the default account, used by every project without one of its own.",
     "limited": "Limit reached",
-    "useForProject": "Use here"
+    "useForProject": "Use here",
+    "usageBoundTitle": "Usage for {name}, this project’s account. Click to change it.",
+    "usageDefaultTitle": "Usage for {name}, the default account. Click to pin this project to one.",
+    "switchWhileRunningTitle": "Sessions are running",
+    "switchWhileRunning": "{count} session(s) are already running for this project and keep their current account. The change applies to sessions started from now on. Continue?"
   },
   "usage": {
     "stale": "Usage data may be out of date - the last refresh failed. {error}"

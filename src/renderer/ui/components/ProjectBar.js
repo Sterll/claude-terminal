@@ -27,15 +27,8 @@ const {
   isPathMissing,
 } = require('../../state');
 const { getWorkspacesForProject } = require('../../state/workspace.state');
-const {
-  accountsState,
-  getAccounts,
-  getAccountForProject,
-  getDefaultAccount,
-  projectFollowsDefault,
-} = require('../../state/accounts.state');
-const { setProjectAccount, getProjectAccount } = require('../../state/projects.state');
-const { showContextMenu } = require('./ContextMenu');
+const { accountsState, getAccountForProject } = require('../../state/accounts.state');
+const { showProjectAccountMenu } = require('./AccountMenu');
 const { escapeHtml, sanitizeColor } = require('../../utils');
 const { t } = require('../../i18n');
 
@@ -225,44 +218,11 @@ class ProjectBar extends BaseComponent {
   }
 
   /**
-   * Which Claude account this project runs as, and how to change it.
-   *
-   * Mirrors the per-project editor picker: a checkmark on the current choice
-   * and a "default" entry naming the account it resolves to, so the menu says
-   * what the project uses rather than only what it overrides.
+   * Which Claude account this project runs as, and how to change it. Shared
+   * with the usage bar so both entry points warn about running sessions.
    */
   _showAccountMenu(project, x, y) {
-    const accounts = getAccounts();
-    if (!accounts.length) return;
-
-    // ContextMenu injects `icon` as raw HTML, so the colour goes through
-    // sanitizeColor before it reaches a style attribute.
-    const dot = (color) => {
-      const safe = sanitizeColor(color);
-      return safe
-        ? `<span class="context-menu-dot" style="background:${safe}"></span>`
-        : '<span class="context-menu-dot context-menu-dot--none"></span>';
-    };
-
-    const bound = getProjectAccount(project.id);
-    const fallback = getDefaultAccount();
-    const items = [{
-      label: fallback
-        ? t('accounts.useDefaultNamed', { name: fallback.name })
-        : t('accounts.useDefault'),
-      icon: projectFollowsDefault(project.id) ? '&#10003;' : dot(fallback?.color),
-      onClick: () => setProjectAccount(project.id, null),
-    }, { separator: true }];
-
-    for (const account of accounts) {
-      items.push({
-        label: account.name,
-        icon: bound === account.id ? '&#10003;' : dot(account.color),
-        onClick: () => setProjectAccount(project.id, account.id),
-      });
-    }
-
-    showContextMenu({ x, y, items, target: project });
+    showProjectAccountMenu({ projectId: project.id, x, y });
   }
 
   _select(projectId) {

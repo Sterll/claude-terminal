@@ -145,9 +145,30 @@ body.platform-darwin .titlebar-drag {
   background: color-mix(in srgb, var(--account-color) 16%, transparent);
   color: var(--text-primary);
   font-size: var(--font-2xs);
+  font-family: inherit;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.usage-account:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--account-color) 28%, transparent);
+  border-color: var(--account-color);
+}
+
+.usage-account:disabled {
+  cursor: default;
+}
+
+/* Running on the default rather than a binding of its own: dashed, and dimmed,
+   so "this project has not chosen" reads differently from "this project runs
+   on X" without hiding which account the figures belong to. */
+.usage-account--default {
+  border-style: dashed;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--account-color) 8%, transparent);
 }
 
 /* ── Usage Item ── */

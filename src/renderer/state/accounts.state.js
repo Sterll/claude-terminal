@@ -101,6 +101,29 @@ function projectFollowsDefault(projectId) {
   return !getProjectAccount(projectId);
 }
 
+/**
+ * The account whose usage figures apply to a project, and whether it got there
+ * by falling back.
+ *
+ * An unbound project runs against the machine-wide store, so the honest answer
+ * is whichever account owns that store — `liveId` — not the default. The two
+ * normally agree, since setDefault writes the default into it; they diverge
+ * after a manual `claude /login`, and naming the default then would attribute
+ * the numbers to an account that did not produce them.
+ *
+ * @param {string|null} projectId
+ * @returns {{account: Object|null, isDefault: boolean}}
+ */
+function getUsageAccountForProject(projectId) {
+  const bound = projectId ? getProjectAccount(projectId) : null;
+  if (bound) {
+    const account = getAccount(bound);
+    if (account) return { account, isDefault: false };
+  }
+  const { liveId, defaultId } = accountsState.get();
+  return { account: getAccount(liveId) || getAccount(defaultId), isDefault: true };
+}
+
 function getAccounts() {
   return accountsState.get().accounts;
 }
@@ -117,5 +140,6 @@ module.exports = {
   getAccounts,
   getAccountForProject,
   getDefaultAccount,
-  projectFollowsDefault
+  projectFollowsDefault,
+  getUsageAccountForProject
 };

@@ -3795,7 +3795,11 @@
     "rebindScope": "仅 {project} 会切换，其他项目保持原有账户。",
     "rebindScopeDefault": "这将更改默认账户，供所有未单独指定账户的项目使用。",
     "limited": "已达上限",
-    "useForProject": "在此使用"
+    "useForProject": "在此使用",
+    "usageBoundTitle": "{name} 的用量，该项目所用账户。点击可更改。",
+    "usageDefaultTitle": "{name} 的用量，默认账户。点击可为该项目指定账户。",
+    "switchWhileRunningTitle": "有会话正在运行",
+    "switchWhileRunning": "该项目已有 {count} 个会话在运行，它们将保留当前账户。更改仅对之后启动的会话生效。是否继续？"
   },
   "usage": {
     "stale": "使用情况数据可能已过时 - 上次刷新失败。 {error}"

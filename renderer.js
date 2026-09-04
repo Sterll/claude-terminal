@@ -6357,20 +6357,35 @@ const usageElements = {
 let usageAccountId = null;
 
 /**
- * The account the tab on screen actually runs as.
+ * The project whose tab is on screen.
+ * @returns {Object|null}
+ */
+function currentUsageProject() {
+  try {
+    const { projectsState } = require('./src/renderer/state');
+    const state = projectsState.get();
+    return state.projects[state.selectedProjectFilter] || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * Which account the figures should be fetched for.
+ *
+ * `null` means the machine-wide store, which is what an unbound project's CLI
+ * reads — so the fetch follows the binding, not the label. The label still
+ * names the account that owns that store (see the resolver in accounts.state),
+ * because "whose numbers are these" always has an answer.
+ *
  * @returns {string|null}
  */
 function currentUsageAccountId() {
   try {
-    const { projectsState, getAccountForProject } = require('./src/renderer/state');
-    const state = projectsState.get();
-    const project = state.projects[state.selectedProjectFilter];
-    if (!project) return null;
-    // Only a binding counts: an unbound project runs on the machine-wide
-    // login, whichever account the default currently points at.
     const { getProjectAccount } = require('./src/renderer/state');
-    if (!getProjectAccount(project.id)) return null;
-    return getAccountForProject(project.id)?.id || null;
+    const project = currentUsageProject();
+    if (!project) return null;
+    return getProjectAccount(project.id) || null;
   } catch (_) {
     return null;
   }
@@ -6378,8 +6393,10 @@ function currentUsageAccountId() {
 
 /**
  * Name the account next to the bars, in its own colour, so the numbers are
- * attributable at a glance. Hidden when nothing is bound — the titlebar then
- * means what it always did.
+ * always attributable — bound or not. A project running on the default is
+ * marked as such rather than left blank: the tab is tinted either way, and a
+ * silent titlebar next to a coloured tab is the inconsistency, not the
+ * information.
  */
 function renderUsageAccountLabel() {
   const { container } = usageElements;
@@ -6387,24 +6404,40 @@ function renderUsageAccountLabel() {
 
   let el = usageElements.account;
   if (!el) {
-    el = document.createElement('span');
+    el = document.createElement('button');
     el.className = 'usage-account';
+    el.type = 'button';
+    // Clicking the bars refreshes; clicking the account opens its picker.
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const project = currentUsageProject();
+      if (!project) return;
+      const rect = el.getBoundingClientRect();
+      try {
+        const { showProjectAccountMenu } = require('./src/renderer/ui/components/AccountMenu');
+        showProjectAccountMenu({ projectId: project.id, x: rect.left, y: rect.bottom + 4 });
+      } catch (_) {
+        // Menu unavailable; the tab's context menu still offers the same choice.
+      }
+    });
     container.insertBefore(el, container.firstChild);
     usageElements.account = el;
   }
 
-  if (!usageAccountId) {
-    el.style.display = 'none';
-    return;
-  }
-
   try {
-    const { getAccount } = require('./src/renderer/state');
+    const { getUsageAccountForProject } = require('./src/renderer/state');
     const { sanitizeColor } = require('./src/renderer/utils');
-    const account = getAccount(usageAccountId);
+    const project = currentUsageProject();
+    const { account, isDefault } = getUsageAccountForProject(project?.id || null);
     if (!account) { el.style.display = 'none'; return; }
+
     el.style.display = '';
     el.textContent = account.name;
+    el.classList.toggle('usage-account--default', isDefault);
+    el.disabled = !project;
+    el.title = isDefault
+      ? t('accounts.usageDefaultTitle', { name: account.name })
+      : t('accounts.usageBoundTitle', { name: account.name });
     const color = sanitizeColor(account.color);
     el.style.setProperty('--account-color', color || 'var(--text-secondary)');
   } catch (_) {
@@ -6695,10 +6728,12 @@ if (usageElements.container) {
   // Bindings and colours can change under us too, hence both subscriptions.
   const syncUsageAccount = () => {
     const next = currentUsageAccountId();
+    // The label tracks more than the fetched account — a project can move
+    // between two accounts that both resolve to the machine store — so it is
+    // redrawn on every notification, not only when the fetch target changes.
     renderUsageAccountLabel();
     if (next === usageAccountId) return;
     usageAccountId = next;
-    renderUsageAccountLabel();
     // Blank the bars rather than leave the previous account's figures up while
     // the new ones are in flight.
     renderUsageBuckets(PLACEHOLDER_USAGE_BUCKETS);
