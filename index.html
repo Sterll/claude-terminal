@@ -434,6 +434,15 @@
             <input type="text" id="projects-search-input" data-i18n-placeholder="projects.searchPlaceholder" placeholder="Search projects..." autocomplete="off" spellcheck="false">
             <button class="projects-search-clear" id="projects-search-clear" style="display:none" aria-label="Clear">&times;</button>
           </div>
+          <!-- The all-projects entry, for the screens that have such a view.
+               In tab-bar mode that job belongs to the Overview project tab;
+               the bar is hidden in column mode, so the column carries it. -->
+          <button class="projects-overview-item" id="projects-overview-item" role="button">
+            <span class="projects-overview-icon">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+            </span>
+            <span data-i18n="dashboard.overview">Vue d'ensemble</span>
+          </button>
           <div class="projects-list" id="projects-list" role="list" aria-label="Projects"></div>
           <!-- Drag handle for the docked column; inert while this is a popover -->
           <div class="panel-resizer" id="projects-panel-resizer"></div>
@@ -458,6 +467,9 @@
             <!-- Sidebar navigation: the tools row (project name, git actions, CI
                  pill, quick actions) is moved in here instead of sitting in the
                  project bar. Empty and collapsed in tab-bar mode. -->
+            <!-- Column mode only: navigationMode moves the tools row in here.
+                 The project name and the resume-session button live inside it,
+                 at the head, as they did before the project tab bar. -->
             <div class="terminals-header" id="terminals-header"></div>
             <!-- Session tabs row: session actions sit to the left of the tabs -->
             <div class="terminals-tabs-row">
@@ -603,13 +615,6 @@
       <div class="tab-content" id="tab-git">
         <div class="git-tab-layout">
           <div class="git-tab-sidebar">
-            <!-- Sidebar navigation only: this screen's own project list -->
-            <div class="git-sidebar-section git-sidebar-projects">
-              <div class="git-sidebar-header">
-                <h3 data-i18n="projects.title">Projets</h3>
-              </div>
-              <div class="git-projects-list" id="git-projects-list"></div>
-            </div>
             <div class="git-sidebar-section git-sidebar-quick-actions">
               <div class="git-sidebar-header">
                 <h3 data-i18n="ui.quickActions">Quick Actions</h3>
@@ -701,13 +706,6 @@
       <!-- Dashboard Tab -->
       <div class="tab-content" id="tab-dashboard">
         <div class="dashboard-layout">
-          <!-- Sidebar navigation only: this screen's own project list -->
-          <div class="dashboard-sidebar">
-            <div class="dashboard-sidebar-header">
-              <h3 data-i18n="projects.title">Projets</h3>
-            </div>
-            <div class="dashboard-projects-list" id="dashboard-projects-list"></div>
-          </div>
           <div class="dashboard-main">
             <div class="dashboard-content" id="dashboard-content">
               <div class="dashboard-empty">

@@ -1603,8 +1603,3 @@
   flex-shrink: 0;
 }
 
-/* Sidebar navigation only: with a project bar on screen this selector would be
-   a second way to pick the same thing. */
-body.nav-tabs .sr-control-group--project {
-  display: none;
-}

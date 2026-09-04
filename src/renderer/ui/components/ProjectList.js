@@ -57,6 +57,7 @@ const { QUICK_ACTION_ICONS } = require('./QuickActions');
 const registry = require('../../../project-types/registry');
 const menuIcons = require('../icons/menuIcons');
 const { getWorkspacesForProject } = require('../../state/workspace.state');
+const { isSidebarNavigation } = require('../navigationMode');
 
 /**
  * Get drop position based on mouse Y relative to element
@@ -502,8 +503,25 @@ class ProjectList extends BaseComponent {
 
     const typeCtx = { project, projectIndex, fivemStatus, isRunning, isStarting, projectColor, escapeHtml, t };
 
-    // Creating a session or a terminal now lives on the + next to the session
-    // tabs, so the card only carries project-specific shortcuts.
+    // In tab-bar mode, starting a session or a terminal lives on the + next to
+    // the session tabs, so the card carries only project-specific shortcuts.
+    // The docked column has no such +: it is the whole navigation, so the two
+    // ways to start work go back on the card, in the order they had there.
+    const inColumn = isSidebarNavigation();
+    const terminalBtn = inColumn ? `
+      <button class="btn-action-icon btn-basic-terminal" data-project-id="${project.id}" title="${escapeHtml(t('projects.basicTerminal'))}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+      </button>` : '';
+    const claudeBtn = inColumn ? `
+      <button class="btn-action-icon btn-claude" data-project-id="${project.id}" title="${escapeHtml(t('projects.openClaude'))}">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10z"/></svg>
+      </button>` : '';
+    // Every per-project action, behind the ⋮. In tab-bar mode it opens from
+    // the project tab's context menu instead, so the card does not need it.
+    const moreBtn = inColumn ? `
+      <button class="btn-more-actions" data-project-id="${project.id}" title="${escapeHtml(t('projects.moreActions'))}">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+      </button>` : '';
 
     // Pinned quick actions (up to 3)
     const pinnedActions = getQuickActions(project.id).filter(a => a.pinned).slice(0, 3);
@@ -514,7 +532,7 @@ class ProjectList extends BaseComponent {
 
     // Get additional action buttons from type handler
     const typeSidebarButtons = typeHandler.getSidebarButtons(typeCtx) || '';
-    const primaryActionsHtml = typeSidebarButtons + pinnedActionsHtml;
+    const primaryActionsHtml = typeSidebarButtons + pinnedActionsHtml + terminalBtn + claudeBtn + moreBtn;
 
     const projectIcon = project.icon || null;
     const safeProjectColor = sanitizeColor(projectColor);
@@ -553,10 +571,15 @@ class ProjectList extends BaseComponent {
     }
     const tooltipHtml = `<div class="project-tooltip">${tooltipLines.join('')}</div>`;
 
+    // As a popover this closes the moment a project is picked, so an active
+    // marker would only ever show the *previous* choice. As the docked column
+    // it stays on screen, and the project you are in is the one thing it has
+    // to say — that card opens up while the rest stay collapsed.
+    const isActive = isSidebarNavigation()
+      && projectsState.get().selectedProjectFilter === projectIndex;
+
     return `
-    <!-- No active/selected state: the popover closes the moment a project is
-         picked, so highlighting one only ever showed the *previous* choice. -->
-    <div class="project-item ${project.archived ? 'archived' : ''} ${pathMissing ? 'path-missing' : ''} ${typeHandler.getProjectItemClass(typeCtx)}"
+    <div class="project-item ${isActive ? 'active' : ''} ${project.archived ? 'archived' : ''} ${pathMissing ? 'path-missing' : ''} ${typeHandler.getProjectItemClass(typeCtx)}"
          data-project-id="${project.id}" data-depth="${depth}" draggable="true" tabindex="0"
          style="margin-left: ${depth * 16}px;">
       ${tooltipHtml}
@@ -895,6 +918,18 @@ class ProjectList extends BaseComponent {
   _handleProjectAction(btn) {
     const self = this;
     const projectId = btn.dataset.projectId;
+
+    // The card's ⋮ opens the same menu the project tab's context menu does,
+    // anchored under the button. The menu is portalled to <body> and built on
+    // demand, so it is not embedded in every card the way it once was.
+    if (btn.classList.contains('btn-more-actions')) {
+      const open = document.querySelector('.more-actions-menu.active');
+      self.closeAllMoreActionsMenus();
+      if (open) return; // second click on the same button closes it
+      const rect = btn.getBoundingClientRect();
+      self.openActionsMenu(projectId, rect.left, rect.bottom + 4);
+      return;
+    }
 
     // Any menu item click dismisses the menu it came from.
     if (btn.classList.contains('more-actions-item')) {

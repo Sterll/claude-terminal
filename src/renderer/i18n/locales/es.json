@@ -108,7 +108,8 @@
     "closeOtherProjects": "Cerrar los demás proyectos",
     "closeProjectTitle": "¿Cerrar {name}?",
     "closeProjectMessage": "Este proyecto tiene {count} sesión(es) abierta(s). Cerrar su pestaña las finaliza.",
-    "closeProjectConfirm": "Cerrar y finalizar sesiones"
+    "closeProjectConfirm": "Cerrar y finalizar sesiones",
+    "moreActions": "Más acciones"
   },
   "terminals": {
     "noTerminals": "Sin terminal para este proyecto",

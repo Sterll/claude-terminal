@@ -108,7 +108,8 @@
     "closeOtherProjects": "Tutup proyek lainnya",
     "closeProjectTitle": "Tutup {name}?",
     "closeProjectMessage": "Proyek ini memiliki {count} sesi terbuka. Menutup tabnya akan mengakhirinya.",
-    "closeProjectConfirm": "Tutup dan akhiri sesi"
+    "closeProjectConfirm": "Tutup dan akhiri sesi",
+    "moreActions": "Aksi lainnya"
   },
   "terminals": {
     "noTerminals": "Tidak ada terminal untuk proyek ini",
