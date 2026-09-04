@@ -542,13 +542,13 @@ class ChatView extends BaseComponent {
             </button>
           </div>
           <div class="chat-footer-right">
-            <div class="chat-effort-selector">
-              <button class="chat-effort-btn"><span class="chat-effort-label">High</span> <span class="chat-effort-arrow">&#9662;</span></button>
-              <div class="chat-effort-dropdown" style="display:none"></div>
-            </div>
             <div class="chat-model-selector">
               <button class="chat-model-btn"><span class="chat-model-label">Sonnet</span> <span class="chat-model-arrow">&#9662;</span></button>
               <div class="chat-model-dropdown" style="display:none"></div>
+            </div>
+            <div class="chat-effort-selector">
+              <button class="chat-effort-btn"><span class="chat-effort-label">High</span> <span class="chat-effort-arrow">&#9662;</span></button>
+              <div class="chat-effort-dropdown" style="display:none"></div>
             </div>
             <span class="chat-status-tokens" tabindex="0">
               <svg class="chat-ctx-ring" viewBox="0 0 20 20" aria-hidden="true">
