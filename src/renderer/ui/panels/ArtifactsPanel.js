@@ -1,10 +1,19 @@
 /**
  * ArtifactsPanel
  *
- * The artifact library for the current project: everything Claude has produced
- * across that project's sessions, not just the conversation currently open. The
- * per-session view lives in the chat's Documents tab (ChatView); this is the
- * archive behind it.
+ * The gallery of PUBLISHED artifacts for the current project — the local
+ * equivalent of the artifact list in Claude Desktop. These come from the Agent
+ * SDK's `Artifact` tool, which uploads an .html or .md file to claude.ai and
+ * returns a shareable URL, so each one has a real title, a subtitle, a
+ * browser-tab emoji and a link that opens in a browser.
+ *
+ * Deliberately NOT the extracts. The store also holds everything harvested from
+ * conversations (HTML blocks, diagrams, long code blocks, written files), but
+ * those belong to the conversation that produced them and are shown in the
+ * chat's Documents tab. Listing both here would blur two different things: one
+ * is something the user published on purpose, the other is a by-product of a
+ * chat. They stay in the store for the artifact_* MCP tools, which is what lets
+ * a later session find a page built weeks ago.
  *
  * Scope comes from the project bar, never from a picker of its own: artifacts
  * belong to a project, so the panel follows the same "work in this project"
@@ -12,13 +21,12 @@
  * renderer.js). A panel-local project dropdown would have been a second,
  * competing notion of "current project".
  *
- * Reads the same store the chat writes to (src/shared/artifact-store.js via the
- * `artifacts` IPC namespace), and refreshes on `artifacts-changed` so a delete
- * made by an MCP tool in another process shows up here without a manual reload.
+ * Refreshes on `artifacts-changed`, so a publish made in a chat — or a delete
+ * made by an MCP tool in another process — shows up without a manual reload.
  *
  * Selection is by group rather than by row: the list shows one entry per
- * artifact with a v1/v2/v3 switcher, because a rewritten page is the same
- * artifact, not a new one.
+ * artifact with a v1/v2/v3 switcher, because a republished page is a new
+ * version of the same artifact, not a new one.
  */
 
 const { t } = require('../../i18n');
@@ -35,13 +43,8 @@ let _project = null;
 let _rows = [];
 let _versions = [];
 let _selectedId = null;
-let _filter = { query: '', kind: '' };
-let _stats = null;
+let _filter = { query: '' };
 let _loadError = null;
-
-const KIND_LABEL = {
-  published: 'Published', html: 'HTML', svg: 'SVG', mermaid: 'Diagram', code: 'Code', file: 'File',
-};
 
 const LANG_BY_EXT = {
   js: 'javascript', jsx: 'jsx', ts: 'typescript', tsx: 'tsx', py: 'python',
@@ -104,21 +107,19 @@ async function _load() {
     return;
   }
   try {
-    const [listRes, statsRes] = await Promise.all([
-      api.artifacts.list({
-        // No project on the bar means nothing is scoped yet, not "show me
-        // everything" — an unscoped list here would contradict the tab living
-        // in the Project section.
-        projectId: _project?.id || '__none__',
-        ...(_filter.query ? { query: _filter.query } : {}),
-        ...(_filter.kind ? { kind: _filter.kind } : {}),
-        latestOnly: true,
-      }),
-      api.artifacts.stats(),
-    ]);
+    const listRes = await api.artifacts.list({
+      // No project on the bar means nothing is scoped yet, not "show me
+      // everything" — an unscoped list here would contradict the tab living in
+      // the Project section.
+      projectId: _project?.id || '__none__',
+      // Published only. Conversation extracts live in the chat's Documents tab;
+      // this screen is the published gallery.
+      kind: 'published',
+      ...(_filter.query ? { query: _filter.query } : {}),
+      latestOnly: true,
+    });
     if (!listRes.success) throw new Error(listRes.error);
     _rows = listRes.artifacts || [];
-    _stats = statsRes.success ? statsRes.stats : null;
     _loadError = null;
   } catch (e) {
     console.error('[ArtifactsPanel] load failed:', e);
@@ -150,22 +151,15 @@ async function _select(id) {
 
 function _render() {
   if (!_container) return;
-  const kinds = ['', 'html', 'svg', 'mermaid', 'code', 'file'];
-  const kindOptions = kinds.map(k => `
-    <option value="${k}"${_filter.kind === k ? ' selected' : ''}>
-      ${escapeHtml(k ? (KIND_LABEL[k] || k) : (t('artifacts.allKinds') || 'All kinds'))}
-    </option>`).join('');
-
+  // No kind filter: this screen is published artifacts only, so the picker
+  // would have had a single entry.
   _container.innerHTML = `
     <div class="artifacts-panel">
       <div class="artifacts-header">
         <h2 class="artifacts-title">${escapeHtml(t('artifacts.libraryTitle') || 'Artifacts')}</h2>
-        ${_stats ? `
-          <div class="artifacts-stats">
-            <span><strong>${_rows.length}</strong> ${escapeHtml(t('artifacts.inProject') || 'in this project')}</span>
-            <span><strong>${_stats.total}</strong> ${escapeHtml(t('artifacts.stored') || 'stored')}</span>
-            <span><strong>${_formatBytes(_stats.bytes)}</strong></span>
-          </div>` : ''}
+        <div class="artifacts-stats">
+          <span><strong>${_rows.length}</strong> ${escapeHtml(t('artifacts.publishedCount') || 'published in this project')}</span>
+        </div>
       </div>
 
       ${_loadError ? `<div class="artifacts-error">${escapeHtml(_loadError)}</div>` : ''}
@@ -174,7 +168,6 @@ function _render() {
         <input type="search" class="artifacts-search" id="artifacts-search"
                placeholder="${escapeHtml(t('common.search') || 'Search')}"
                value="${escapeHtml(_filter.query)}" spellcheck="false" />
-        <select class="artifacts-select" id="artifacts-kind">${kindOptions}</select>
       </div>
 
       <div class="artifacts-body">
@@ -194,15 +187,17 @@ function _renderList() {
   if (!listEl) return;
 
   if (!_rows.length) {
-    listEl.innerHTML = `<div class="artifacts-empty">${escapeHtml(t('artifacts.emptyLibrary') || 'No artifacts yet. They appear here as Claude produces them.')}</div>`;
+    listEl.innerHTML = `<div class="artifacts-empty">${escapeHtml(t('artifacts.emptyLibrary') || 'No published artifacts in this project. They appear here when Claude publishes a page with the Artifact tool.')}</div>`;
     return;
   }
 
+  // Every row is a publish, so the emoji the Artifact tool carries is the
+  // identity — the format badge falls back only when a publish had none.
   listEl.innerHTML = _rows.map((a) => `
     <button class="artifacts-row${a.id === _selectedId ? ' active' : ''}" data-id="${escapeHtml(a.id)}">
       ${a.favicon
         ? `<span class="artifacts-row-favicon">${escapeHtml(a.favicon)}</span>`
-        : `<span class="artifacts-row-kind" data-kind="${escapeHtml(a.kind)}">${escapeHtml(KIND_LABEL[a.kind] || a.kind)}</span>`}
+        : `<span class="artifacts-row-kind" data-kind="published">${escapeHtml(a.lang === 'markdown' ? 'MD' : 'HTML')}</span>`}
       <span class="artifacts-row-main">
         <span class="artifacts-row-title">${escapeHtml(a.title)}</span>
         ${a.description ? `<span class="artifacts-row-desc">${escapeHtml(a.description)}</span>` : ''}
@@ -221,7 +216,9 @@ async function _renderDetail() {
   if (!detailEl) return;
 
   if (!_selectedId) {
-    detailEl.innerHTML = `<div class="artifacts-empty">${escapeHtml(t('artifacts.selectPrompt') || 'Select an artifact to preview it.')}</div>`;
+    detailEl.innerHTML = _rows.length
+      ? `<div class="artifacts-empty">${escapeHtml(t('artifacts.selectPrompt') || 'Select an artifact to preview it.')}</div>`
+      : '';
     return;
   }
 
@@ -245,12 +242,16 @@ async function _renderDetail() {
   detailEl.innerHTML = `
     <div class="artifacts-detail-head">
       <div class="artifacts-detail-title-row">
-        <span class="artifacts-row-kind" data-kind="${escapeHtml(artifact.kind)}">${escapeHtml(KIND_LABEL[artifact.kind] || artifact.kind)}</span>
+        ${artifact.favicon
+          ? `<span class="artifacts-row-favicon">${escapeHtml(artifact.favicon)}</span>`
+          : `<span class="artifacts-row-kind" data-kind="published">${escapeHtml(artifact.lang === 'markdown' ? 'MD' : 'HTML')}</span>`}
         <span class="artifacts-detail-title" title="${escapeHtml(artifact.title)}">${escapeHtml(artifact.title)}</span>
       </div>
+      ${artifact.description ? `<div class="artifacts-detail-desc">${escapeHtml(artifact.description)}</div>` : ''}
       <div class="artifacts-detail-meta">
         <span>${_formatBytes(artifact.bytes)}</span>
         <span>${artifact.lines} ${escapeHtml(t('artifacts.lines') || 'lines')}</span>
+        ${artifact.url ? `<span class="artifacts-detail-url" title="${escapeHtml(artifact.url)}">${escapeHtml(artifact.url)}</span>` : ''}
       </div>
       ${versionChips}
       <div class="artifacts-detail-actions">
@@ -333,11 +334,6 @@ function _bind() {
       _filter.query = searchEl.value.trim();
       _load();
     }, 200);
-  });
-
-  _container.querySelector('#artifacts-kind')?.addEventListener('change', (e) => {
-    _filter.kind = e.target.value;
-    _load();
   });
 
   _container.querySelector('#artifacts-list')?.addEventListener('click', (e) => {

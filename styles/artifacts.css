@@ -422,12 +422,28 @@ body.resizing-h iframe { pointer-events: none; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.artifacts-detail-desc {
+  margin-top: 6px;
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+}
+
 .artifacts-detail-meta {
   display: flex;
+  align-items: center;
   gap: 12px;
   margin-top: 4px;
   font-size: var(--font-2xs);
   color: var(--text-muted);
+}
+/* The published URL is the useful identity of an artifact, but it is long —
+   let it take the leftover room and ellipsize rather than wrap the row. */
+.artifacts-detail-url {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--accent);
 }
 
 .artifacts-versions {

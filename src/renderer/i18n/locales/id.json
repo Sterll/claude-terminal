@@ -1086,7 +1086,7 @@
     "separatorSystem": "Sistem",
     "tabFiles": "Berkas",
     "tooltipFiles": "Berkas",
-    "tooltipArtifacts": "Artefak yang dibuat di proyek ini"
+    "tooltipArtifacts": "Artefak yang diterbitkan ke claude.ai dari proyek ini"
   },
   "memory": {
     "panelDescription": "Atur bagaimana Claude berperilaku dalam proyek Anda. Pengaturan global berlaku di mana saja, pengaturan proyek akan menimpanya.",
@@ -2116,14 +2116,12 @@
     "tabTitle": "Artefak",
     "libraryTitle": "Artefak",
     "emptySession": "Belum ada dokumen yang dibuat dalam percakapan ini.",
-    "emptyLibrary": "Belum ada artefak. Artefak muncul di sini saat Claude membuat halaman HTML, diagram, SVG, dan kode.",
+    "emptyLibrary": "Belum ada artefak yang diterbitkan di proyek ini. Artefak muncul di sini saat Claude menerbitkan halaman dengan alat Artifact.",
     "selectPrompt": "Pilih artefak untuk melihat pratinjaunya.",
     "lines": "baris",
     "documentsSingular": "dokumen",
     "documentsPlural": "dokumen",
-    "stored": "tersimpan",
-    "allKinds": "Semua jenis",
-    "inProject": "di proyek ini",
+    "publishedCount": "diterbitkan di proyek ini",
     "saveAs": "Simpan sebagai...",
     "saved": "Artefak disimpan",
     "openInEditor": "Buka di editor",

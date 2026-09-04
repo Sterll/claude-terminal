@@ -1181,7 +1181,7 @@
     "separatorSystem": "Système",
     "tabFiles": "Fichiers",
     "tooltipFiles": "Fichiers",
-    "tooltipArtifacts": "Artefacts produits dans ce projet"
+    "tooltipArtifacts": "Artefacts publiés sur claude.ai depuis ce projet"
   },
   "memory": {
     "panelDescription": "Configurez le comportement de Claude dans vos projets. Les reglages globaux s'appliquent partout, les reglages projet les remplacent.",
@@ -2116,14 +2116,12 @@
     "tabTitle": "Artefacts",
     "libraryTitle": "Artefacts",
     "emptySession": "Aucun document produit dans cette conversation pour l’instant.",
-    "emptyLibrary": "Aucun artefact. Ils apparaissent ici au fur et à mesure que Claude produit des pages HTML, des diagrammes, des SVG et du code.",
+    "emptyLibrary": "Aucun artefact publié dans ce projet. Ils apparaissent ici quand Claude publie une page avec l’outil Artifact.",
     "selectPrompt": "Sélectionnez un artefact pour l’afficher.",
     "lines": "lignes",
     "documentsSingular": "document",
     "documentsPlural": "documents",
-    "stored": "stockés",
-    "allKinds": "Tous les types",
-    "inProject": "dans ce projet",
+    "publishedCount": "publiés dans ce projet",
     "saveAs": "Enregistrer sous...",
     "saved": "Artefact enregistré",
     "openInEditor": "Ouvrir dans l’éditeur",
