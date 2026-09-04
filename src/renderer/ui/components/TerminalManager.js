@@ -103,6 +103,7 @@ const SESSION_SVG_DEFS = `<svg style="display:none" xmlns="http://www.w3.org/200
   <symbol id="s-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
   <symbol id="s-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 11V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v7"/><path d="M5 17h14"/><path d="M7 11l-2 6h14l-2-6"/></symbol>
   <symbol id="s-rename" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></symbol>
+  <symbol id="s-move" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h5a2 2 0 0 0 2-2V6a2 2 0 0 1 2-2h7"/><polyline points="17 1 21 5 17 9"/></symbol>
 </svg>`;
 
 // ── Pure helper functions (module-level, no mutable state) ──
@@ -398,6 +399,7 @@ function buildSessionCardHtml(s, index) {
   const iconId = s.isSkill ? 's-bolt' : 's-chat';
   const pinTitle = s.pinned ? (t('sessions.unpin') || 'Unpin') : (t('sessions.pin') || 'Pin');
   const renameTitle = t('sessions.rename') || 'Rename';
+  const moveTitle = t('sessions.move.title');
 
   return `<div class="session-card${freshClass}${pinnedClass}${renamedClass}${animClass}" data-sid="${s.sessionId}" style="--ci:${index < MAX_ANIMATED ? index : 0}">
 <div class="session-card-icon${skillClass}"><svg width="16" height="16"><use href="#${iconId}"/></svg></div>
@@ -411,8 +413,9 @@ ${s.displaySubtitle ? `<span class="session-card-subtitle">${escapeHtml(truncate
 ${s.gitBranch ? `<span class="session-meta-branch"><svg width="10" height="10"><use href="#s-branch"/></svg>${escapeHtml(s.gitBranch)}</span>` : ''}
 </div>
 <div class="session-card-actions">
-<button class="session-card-rename" data-rename-sid="${s.sessionId}" title="${renameTitle}"><svg width="12" height="12"><use href="#s-rename"/></svg></button>
-<button class="session-card-pin" data-pin-sid="${s.sessionId}" title="${pinTitle}"><svg width="13" height="13"><use href="#s-pin"/></svg></button>
+<button class="session-card-rename" data-rename-sid="${s.sessionId}" title="${escapeHtml(renameTitle)}" aria-label="${escapeHtml(renameTitle)}"><svg width="12" height="12"><use href="#s-rename"/></svg></button>
+<button class="session-card-move" data-move-sid="${s.sessionId}" title="${escapeHtml(moveTitle)}" aria-label="${escapeHtml(moveTitle)}"><svg width="13" height="13"><use href="#s-move"/></svg></button>
+<button class="session-card-pin" data-pin-sid="${s.sessionId}" title="${escapeHtml(pinTitle)}" aria-label="${escapeHtml(pinTitle)}"><svg width="13" height="13"><use href="#s-pin"/></svg></button>
 </div>
 <div class="session-card-arrow"><svg width="12" height="12"><use href="#s-arrow"/></svg></div>
 </div>`;
@@ -529,7 +532,10 @@ class TerminalManager extends BaseComponent {
       onRenderProjects: null,
       onCreateTerminal: null,
       onSwitchTerminal: null,
-      onSwitchProject: null
+      onSwitchProject: null,
+      // (session, fromProject, onDone) => void — the move-to-project modal lives
+      // in the host, which owns the project list and the toasts.
+      onMoveSession: null
     };
 
     // Session pins
@@ -2834,6 +2840,16 @@ class TerminalManager extends BaseComponent {
           const titleEl = card?.querySelector('.session-card-title');
           if (!titleEl) return;
           self._startInlineRename(titleEl, sid, sessionMap.get(sid), () => self._renderSessionsPanel(project, emptyState));
+          return;
+        }
+
+        const moveBtn = e.target.closest('.session-card-move');
+        if (moveBtn) {
+          e.stopPropagation();
+          const session = sessionMap.get(moveBtn.dataset.moveSid);
+          if (session && self._callbacks.onMoveSession) {
+            self._callbacks.onMoveSession(session, project, () => self._renderSessionsPanel(project, emptyState));
+          }
           return;
         }
 

@@ -3,10 +3,8 @@
  * Fetches Claude usage data via the OAuth API (primary) or PTY /usage command (fallback).
  */
 
-const path = require('path');
-const fs = require('fs');
-const os = require('os');
 const https = require('https');
+const { readAccessToken } = require('../utils/claudeCredentials');
 
 // Cache
 let usageData = null;
@@ -28,40 +26,48 @@ const OAUTH_BETA_HEADER = 'oauth-2025-04-20';
 
 // ── OAuth API (primary) ──
 
-// Token cache to avoid repeated sync I/O
+// Token cache to avoid hitting the credential store (and, on macOS, the
+// Keychain) on every poll.
 let _tokenCache = null;
 let _tokenCacheTime = 0;
 const TOKEN_CACHE_TTL = 30000; // 30s
 
 /**
- * Read the OAuth access token from ~/.claude/.credentials.json
- * @returns {string|null}
+ * Read the OAuth access token from the CLI's live credential store — the macOS
+ * login Keychain on darwin, ~/.claude/.credentials.json elsewhere. Reading only
+ * the file here is what left the usage panel blank on macOS, where the CLI has
+ * never written one.
+ * @returns {Promise<string|null>}
  */
-function readOAuthToken() {
+async function readOAuthToken() {
   const now = Date.now();
   if (_tokenCache !== null && now - _tokenCacheTime < TOKEN_CACHE_TTL) {
     return _tokenCache;
   }
   try {
-    const configDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
-    const credPath = path.join(configDir, '.credentials.json');
-    if (!fs.existsSync(credPath)) { _tokenCache = null; _tokenCacheTime = now; return null; }
-    const creds = JSON.parse(fs.readFileSync(credPath, 'utf-8'));
-    const token = creds?.claudeAiOauth?.accessToken;
-    if (!token) { _tokenCache = null; _tokenCacheTime = now; return null; }
-    // Check expiry
-    const expiresAt = creds.claudeAiOauth.expiresAt;
-    if (expiresAt && now > expiresAt) {
-      console.log('[Usage] OAuth token expired');
-      _tokenCache = null; _tokenCacheTime = now;
-      return null;
-    }
-    _tokenCache = token; _tokenCacheTime = now;
-    return token;
+    _tokenCache = await readAccessToken();
   } catch (e) {
-    _tokenCache = null; _tokenCacheTime = now;
-    return null;
+    _tokenCache = null;
   }
+  _tokenCacheTime = now;
+  return _tokenCache;
+}
+
+/**
+ * Drop the cached token and usage figures.
+ *
+ * Called after an account switch: the numbers belong to the account that was
+ * active when they were fetched, so serving them for the incoming one would be
+ * a plain lie, and the 30s token cache would keep querying the outgoing account.
+ */
+function invalidateCredentials() {
+  _tokenCache = null;
+  _tokenCacheTime = 0;
+  usageData = null;
+  lastFetch = null;
+  isStale = false;
+  lastError = null;
+  _lastLimitNotifiedReset = null;
 }
 
 /**
@@ -125,7 +131,7 @@ async function fetchUsage() {
 
   try {
     // Try OAuth API first
-    const token = readOAuthToken();
+    const token = await readOAuthToken();
     if (token) {
       try {
         const data = await fetchUsageFromAPI(token);
@@ -142,7 +148,7 @@ async function fetchUsage() {
         console.log('[Usage] API request failed:', apiErr.message);
       }
     } else {
-      lastError = 'No valid Claude OAuth token (missing or expired ~/.claude/.credentials.json)';
+      lastError = 'No valid Claude OAuth token (missing or expired — run /login in a terminal)';
       console.log('[Usage] ' + lastError);
     }
 
@@ -285,6 +291,7 @@ module.exports = {
   getFetchState,
   refreshUsage,
   fetchUsage,
+  invalidateCredentials,
   onWindowShow,
   onUpdate,
   onLimit

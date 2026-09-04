@@ -13,37 +13,14 @@
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const crypto = require('crypto');
 const { dataDir } = require('../utils/paths');
-
-// On macOS the Claude CLI keeps its OAuth credentials in the login Keychain
-// rather than in ~/.claude/.credentials.json. Same JSON payload, different
-// container — so the store is picked per platform.
-const KEYCHAIN_SERVICE = 'Claude Code-credentials';
-
-let keytar = null;
-try {
-  keytar = require('keytar');
-} catch (_) {
-  // Native module unavailable (electron-rebuild failed) — file store only.
-}
+// The live store is platform-dependent (Keychain on darwin, file elsewhere);
+// claudeCredentials owns that choice so every reader agrees on it.
+const { readCredentials, writeCredentials } = require('../utils/claudeCredentials');
 
 const accountsDir = path.join(dataDir, 'accounts');
 const indexFile = path.join(accountsDir, 'index.json');
-
-function getCredentialsPath() {
-  const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
-  return path.join(claudeDir, '.credentials.json');
-}
-
-function useKeychain() {
-  return process.platform === 'darwin' && keytar !== null;
-}
-
-function keychainAccount() {
-  return os.userInfo().username;
-}
 
 function ensureDir() {
   // 0700: these files hold OAuth tokens in plaintext.
@@ -67,40 +44,11 @@ function writeIndex(index) {
   fs.renameSync(tmp, indexFile);
 }
 
-function readCredentialsFile() {
-  const credPath = getCredentialsPath();
-  if (!fs.existsSync(credPath)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(credPath, 'utf-8'));
-  } catch {
-    return null;
-  }
-}
-
-function writeCredentialsFile(payload) {
-  const credPath = getCredentialsPath();
-  const claudeDir = path.dirname(credPath);
-  if (!fs.existsSync(claudeDir)) fs.mkdirSync(claudeDir, { recursive: true });
-  const tmp = `${credPath}.tmp`;
-  fs.writeFileSync(tmp, payload, { mode: 0o600 });
-  fs.renameSync(tmp, credPath);
-}
-
 /**
  * Read whatever credentials the Claude CLI is currently using.
- * Keychain first on macOS, with the file as a fallback for setups that opted
- * out of it (e.g. CLAUDE_CONFIG_DIR pointing at a portable config).
  */
 async function readCurrentCredentials() {
-  if (useKeychain()) {
-    try {
-      const raw = await keytar.getPassword(KEYCHAIN_SERVICE, keychainAccount());
-      if (raw) return JSON.parse(raw);
-    } catch (_) {
-      // Keychain access denied or entry unreadable — fall through to the file.
-    }
-  }
-  return readCredentialsFile();
+  return readCredentials();
 }
 
 /**
@@ -135,17 +83,7 @@ async function mergeWithLiveStore(creds) {
  * so the swap takes effect whichever one it picks.
  */
 async function writeCurrentCredentials(creds) {
-  const payload = JSON.stringify(await mergeWithLiveStore(creds), null, 2);
-  let wrote = false;
-  if (useKeychain()) {
-    await keytar.setPassword(KEYCHAIN_SERVICE, keychainAccount(), payload);
-    wrote = true;
-  }
-  // Only touch the file if it already exists (or if it is the only store) —
-  // creating it on macOS would leave a plaintext copy the CLI never asked for.
-  if (!wrote || fs.existsSync(getCredentialsPath())) {
-    writeCredentialsFile(payload);
-  }
+  await writeCredentials(JSON.stringify(await mergeWithLiveStore(creds), null, 2));
 }
 
 function fingerprintCredentials(creds) {
