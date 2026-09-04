@@ -1152,6 +1152,28 @@ class ChatService {
   }
 
   /**
+   * Push in-flight foreground work to the background — the control-request
+   * equivalent of Ctrl+B in the terminal.
+   *
+   * Each blocking tool call returns immediately with a "running in the
+   * background" result and the turn continues; the task keeps running and
+   * announces itself through the same feeds the tasks panel already reads.
+   *
+   * @param {string} sessionId
+   * @param {string} [toolUseId] Targets one tool_use block; omitted backgrounds
+   *   every foreground task.
+   * @returns {Promise<boolean>} false only when `toolUseId` matched nothing.
+   */
+  async backgroundTasks(sessionId, toolUseId) {
+    const session = this.sessions.get(sessionId);
+    if (session?.isCloud) throw new Error('Backgrounding not supported for cloud sessions');
+    if (!session?.queryStream?.backgroundTasks) {
+      throw new Error('Session not found or backgrounding not available');
+    }
+    return session.queryStream.backgroundTasks(toolUseId || undefined);
+  }
+
+  /**
    * Change model mid-session via SDK queryStream.setModel()
    */
   async setModel(sessionId, model) {

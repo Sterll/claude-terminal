@@ -4930,3 +4930,28 @@ input.chat-elicit-input[type="checkbox"] {
   opacity: 0.5;
   pointer-events: none;
 }
+
+/* Sends in-flight foreground work to the background without ending the turn.
+   Sits beside stop and shares its footprint, but must not read as destructive. */
+.chat-bg-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.chat-bg-btn svg { width: 15px; height: 15px; }
+
+.chat-bg-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.chat-bg-btn:disabled { opacity: 0.4; cursor: default; }

@@ -521,6 +521,11 @@ class ChatView extends BaseComponent {
           <div class="chat-input" contenteditable="true" role="textbox" data-placeholder="${escapeHtml(t('chat.placeholder'))}" spellcheck="false"></div>
           <input type="file" class="chat-file-input" accept="image/png,image/jpeg,image/gif,image/webp" multiple style="display:none" />
           <div class="chat-input-actions">
+            <button class="chat-bg-btn" title="${escapeHtml(t('chat.runInBackground') || 'Run in background')}" style="display:none">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="13" height="13" rx="2"/><path d="M8 21h11a2 2 0 0 0 2-2V8"/>
+              </svg>
+            </button>
             <button class="chat-stop-btn" title="${t('common.stop')}" style="display:none">
               <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
             </button>
@@ -579,6 +584,7 @@ class ChatView extends BaseComponent {
   const inputEl = chatView.querySelector('.chat-input');
   const sendBtn = chatView.querySelector('.chat-send-btn');
   const stopBtn = chatView.querySelector('.chat-stop-btn');
+  const bgBtn = chatView.querySelector('.chat-bg-btn');
   const statusDot = chatView.querySelector('.chat-status-dot');
   const statusTextEl = chatView.querySelector('.chat-status-text');
   const modelBtn = chatView.querySelector('.chat-model-btn');
@@ -2861,6 +2867,29 @@ class ChatView extends BaseComponent {
       isAborting = true;
       api.chat.interrupt({ sessionId });
     }
+  });
+
+  // Unlike stop, this does not end the turn: each blocking tool returns a
+  // "running in the background" result, the conversation carries on, and the
+  // work reappears in the background tasks panel.
+  bgBtn.addEventListener('click', async () => {
+    if (!sessionId) return;
+    bgBtn.disabled = true;
+    let res;
+    try {
+      res = await api.chat.backgroundWork({ sessionId });
+    } catch (err) {
+      res = { success: false, error: err?.message || String(err) };
+    }
+    if (res?.success) return;
+    // Re-enable so a failure isn't a dead end — backgrounding can be disabled
+    // for the session entirely, in which case nothing was ever going to move.
+    bgBtn.disabled = false;
+    const Toast = require('./Toast');
+    Toast.showToast({
+      message: t('chat.backgroundWorkFailed', { error: (res && res.error) || '' }),
+      type: 'error',
+    });
   });
 
   // ── Image Lightbox ──
@@ -5932,6 +5961,9 @@ class ChatView extends BaseComponent {
   function setStreaming(streaming) {
     isStreaming = streaming;
     stopBtn.style.display = streaming ? '' : 'none';
+    // Only meaningful while something is actually in the foreground.
+    bgBtn.style.display = streaming ? '' : 'none';
+    if (!streaming) bgBtn.disabled = false;
     chatView.classList.toggle('streaming', streaming);
 
     // Fix #7: Disable model/effort dropdowns during streaming
