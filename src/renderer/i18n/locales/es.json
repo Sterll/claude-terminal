@@ -2125,7 +2125,8 @@
     "saved": "Artefacto guardado",
     "openInEditor": "Abrir en el editor",
     "resizePane": "Redimensionar el panel de artefactos",
-    "jumpToMessage": "Ir al mensaje"
+    "jumpToMessage": "Ir al mensaje",
+    "openPublished": "Abrir la página publicada"
   },
   "errorLog": {
     "title": "Registro de errores",

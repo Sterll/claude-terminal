@@ -23,6 +23,8 @@ const {
 const {
   detect,
   fromFileTool,
+  fromArtifactTool,
+  isArtifactPublish,
   deriveTitle,
   readCodeSource,
   createRegistry,
@@ -191,6 +193,87 @@ describe('fromFileTool', () => {
     expect(fromFileTool('Edit', { file_path: '/a.js', old_string: 'a', new_string: 'b' })).toBeNull();
     expect(fromFileTool('Read', { file_path: '/a.js' })).toBeNull();
     expect(fromFileTool('Write', { file_path: '/a.js' })).toBeNull();
+  });
+});
+
+describe('published artifacts (the Agent SDK Artifact tool)', () => {
+  describe('isArtifactPublish', () => {
+    it('accepts a publish, which is the default action', () => {
+      expect(isArtifactPublish('Artifact', { file_path: '/tmp/page.html', favicon: '📊' })).toBe(true);
+      expect(isArtifactPublish('Artifact', { action: 'publish', file_path: '/tmp/page.html' })).toBe(true);
+    });
+
+    it('rejects a list, which only enumerates the gallery', () => {
+      expect(isArtifactPublish('Artifact', { action: 'list', limit: 25 })).toBe(false);
+    });
+
+    it('rejects a call with no file to publish, and other tools', () => {
+      expect(isArtifactPublish('Artifact', { favicon: '📊' })).toBe(false);
+      expect(isArtifactPublish('Write', { file_path: '/tmp/page.html' })).toBe(false);
+    });
+  });
+
+  it('carries the URL, description and favicon that only a publish has', () => {
+    const artifact = fromArtifactTool(
+      { file_path: '/tmp/report.html', description: 'Q3 numbers', favicon: '📊' },
+      '<html><title>Q3 report</title></html>',
+      'https://claude.ai/public/artifacts/abc'
+    );
+
+    expect(artifact).toMatchObject({
+      kind: 'published',
+      lang: 'html',
+      title: 'Q3 report',
+      description: 'Q3 numbers',
+      favicon: '📊',
+      url: 'https://claude.ai/public/artifacts/abc',
+      path: '/tmp/report.html',
+    });
+  });
+
+  it('lets a Markdown page keep its filename identity, per the tool contract', () => {
+    const artifact = fromArtifactTool(
+      { file_path: '/tmp/audit-notes.md', title: 'Ignored for markdown' },
+      '# Some heading\n\nbody',
+    );
+
+    expect(artifact).toMatchObject({ lang: 'markdown', title: 'audit-notes.md' });
+  });
+
+  it('prefers the HTML <title> over the title parameter, which only fills in', () => {
+    const withTag = fromArtifactTool(
+      { file_path: '/tmp/p.html', title: 'Fallback' },
+      '<html><title>From the tag</title></html>'
+    );
+    const withoutTag = fromArtifactTool({ file_path: '/tmp/p.html', title: 'Fallback' }, '<div>no tag</div>');
+
+    expect(withTag.title).toBe('From the tag');
+    expect(withoutTag.title).toBe('Fallback');
+  });
+
+  it('falls back to the basename when neither a tag nor a title is given', () => {
+    const artifact = fromArtifactTool({ file_path: '/a/b/dashboard.html' }, '<div>x</div>');
+
+    expect(artifact.title).toBe('dashboard.html');
+  });
+
+  it('is null-safe on a call with no path', () => {
+    expect(fromArtifactTool({}, 'content')).toBeNull();
+  });
+
+  it('captures without a URL, since replayed history may have no result to pair', () => {
+    const artifact = fromArtifactTool({ file_path: '/tmp/p.html' }, '<div>x</div>');
+
+    expect(artifact.url).toBeNull();
+    expect(artifact.kind).toBe('published');
+  });
+
+  it('gives identical content the same id whatever the URL, so recapture is idempotent', () => {
+    const source = '<html><title>Same</title></html>';
+    const a = fromArtifactTool({ file_path: '/tmp/p.html' }, source, 'https://claude.ai/a');
+    const b = fromArtifactTool({ file_path: '/tmp/p.html' }, source, null);
+
+    expect(a.id).toBe(b.id);
   });
 });
 

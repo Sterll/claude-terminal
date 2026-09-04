@@ -2128,7 +2128,8 @@
     "saved": "产物已保存",
     "openInEditor": "在编辑器中打开",
     "resizePane": "调整产物面板大小",
-    "jumpToMessage": "跳转到消息"
+    "jumpToMessage": "跳转到消息",
+    "openPublished": "打开已发布页面"
   },
   "errorLog": {
     "title": "错误日志",

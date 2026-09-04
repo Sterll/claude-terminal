@@ -43,7 +43,8 @@ function log(...args) {
 
 // -- Formatting ---------------------------------------------------------------
 
-const KINDS = ['html', 'svg', 'mermaid', 'code', 'file'];
+// Mirrors KINDS in src/shared/artifact-schema.js.
+const KINDS = ['published', 'html', 'svg', 'mermaid', 'code', 'file'];
 
 function formatBytes(bytes) {
   if (!bytes) return '0 B';
@@ -62,8 +63,13 @@ function formatRow(a) {
   const version = (a.version || 1) > 1 ? ` v${a.version}` : '';
   const project = a.projectName ? ` · ${a.projectName}` : '';
   const lang = a.lang ? ` · ${a.lang}` : '';
-  return `- [${a.kind}] ${a.title}${version} — ${a.id}\n`
-    + `  ${a.lines} lines · ${formatBytes(a.bytes)}${lang}${project} · ${formatDate(a.createdAt)}`;
+  const icon = a.favicon ? `${a.favicon} ` : '';
+  // The URL only exists on published artifacts, and it is the single most
+  // useful thing to hand back — it is what the user can actually open or share.
+  const url = a.url ? `\n  ${a.url}` : '';
+  const description = a.description ? `\n  ${a.description}` : '';
+  return `- ${icon}[${a.kind}] ${a.title}${version} — ${a.id}${description}\n`
+    + `  ${a.lines} lines · ${formatBytes(a.bytes)}${lang}${project} · ${formatDate(a.createdAt)}${url}`;
 }
 
 function ok(text) {
@@ -189,15 +195,18 @@ async function handleGet(args) {
   if (!artifact) return fail(`No artifact with id "${args.id}". Use artifact_list to find one.`);
 
   const header = [
-    `# ${artifact.title}`,
+    `# ${artifact.favicon ? `${artifact.favicon} ` : ''}${artifact.title}`,
     '',
+    artifact.description ? `> ${artifact.description}` : null,
+    artifact.description ? '' : null,
     `- id: ${artifact.id}`,
     `- kind: ${artifact.kind}${artifact.lang ? ` (${artifact.lang})` : ''}`,
     `- version: v${artifact.version || 1}`,
     `- size: ${artifact.lines} lines, ${formatBytes(artifact.bytes)}`,
     artifact.projectName ? `- project: ${artifact.projectName}` : null,
+    artifact.url ? `- published at: ${artifact.url}` : null,
     `- created: ${formatDate(artifact.createdAt)}`,
-  ].filter(Boolean).join('\n');
+  ].filter(v => v !== null).join('\n');
 
   if (args.metadataOnly) return ok(header);
   if (!artifact.source) {

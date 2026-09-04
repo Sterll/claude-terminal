@@ -12,8 +12,16 @@
  * Shared between the renderer, the main process and the MCP server.
  */
 
-/** Artifact kinds, in the order the UI lists them. */
-const KINDS = ['html', 'svg', 'mermaid', 'code', 'file'];
+/**
+ * Artifact kinds, in the order the UI lists them.
+ *
+ * `published` is the odd one out and the only explicit one: it comes from the
+ * Agent SDK's `Artifact` tool, which uploads an .html or .md file to claude.ai
+ * and hands back a shareable URL. Every other kind is inferred from the
+ * rendered transcript. Published artifacts therefore carry `url`, `description`
+ * and `favicon`, which nothing else has.
+ */
+const KINDS = ['published', 'html', 'svg', 'mermaid', 'code', 'file'];
 
 /**
  * FNV-1a, 32-bit, hex. Not a cryptographic hash and does not need to be: it
@@ -62,6 +70,8 @@ const EXT_BY_LANG = {
 
 /** Extension a blob is stored under, so the blobs folder stays browsable. */
 function extensionFor(kind, lang, title) {
+  // A published artifact is whatever file was uploaded: .html or .md.
+  if (kind === 'published') return String(lang).toLowerCase() === 'markdown' ? 'md' : 'html';
   if (kind === 'html') return 'html';
   if (kind === 'svg') return 'svg';
   if (kind === 'mermaid') return 'mmd';

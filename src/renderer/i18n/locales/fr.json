@@ -2128,7 +2128,8 @@
     "saved": "Artefact enregistré",
     "openInEditor": "Ouvrir dans l’éditeur",
     "resizePane": "Redimensionner le panneau d’artefact",
-    "jumpToMessage": "Aller au message"
+    "jumpToMessage": "Aller au message",
+    "openPublished": "Ouvrir la page publiée"
   },
   "errorLog": {
     "title": "Journal d'erreurs",

@@ -224,6 +224,55 @@ function fromFileTool(toolName, input) {
   return null;
 }
 
+// ── Published artifacts (the Agent SDK `Artifact` tool) ──────────────────────
+
+/**
+ * Is this tool call a publish worth capturing?
+ *
+ * The tool has two actions: `publish` (the default) uploads a file, and `list`
+ * merely enumerates the gallery. Only the former produces anything.
+ */
+function isArtifactPublish(toolName, input) {
+  return toolName === 'Artifact'
+    && !!input
+    && input.action !== 'list'
+    && !!input.file_path;
+}
+
+/**
+ * Build a `published` artifact from an `Artifact` tool call.
+ *
+ * The tool takes a path, never inline content ("Content always comes from
+ * file_path — there is no inline content parameter"), so the caller reads the
+ * file and passes it in. `url` arrives later, with the tool result, and is
+ * optional: an artifact captured from replayed history has no result to wait
+ * for and is still worth keeping.
+ *
+ * Titles follow the tool's own rule: HTML prefers its <title>, Markdown pages
+ * "keep their filename identity".
+ */
+function fromArtifactTool(input, source, url = null) {
+  if (!input?.file_path) return null;
+  const filename = String(input.file_path).split(/[\\/]/).pop();
+  const isMarkdown = /\.md$/i.test(filename);
+
+  const title = isMarkdown
+    ? filename
+    : (firstMatch(source, /<title[^>]*>([^<]+)<\/title>/i) || input.title || filename);
+
+  return {
+    kind: 'published',
+    lang: isMarkdown ? 'markdown' : 'html',
+    source,
+    title,
+    path: input.file_path,
+    url: url || null,
+    description: input.description || null,
+    favicon: input.favicon || null,
+    id: computeId('published', source),
+  };
+}
+
 // ── Session registry ─────────────────────────────────────────────────────────
 
 /**
@@ -252,6 +301,12 @@ function createRegistry({ project, getSessionId, onChange } = {}) {
       lang: a.lang,
       source: a.source,
       messageIndex: a.messageIndex,
+      // Named explicitly rather than spread: `node` must never reach the
+      // structured-clone boundary, and a DOM node would throw there.
+      url: a.url || null,
+      description: a.description || null,
+      favicon: a.favicon || null,
+      path: a.path || null,
     }));
     pending = [];
     const api = window.electron_api?.artifacts;
@@ -311,6 +366,8 @@ module.exports = {
   MIN_CODE_LINES,
   detect,
   fromFileTool,
+  fromArtifactTool,
+  isArtifactPublish,
   deriveTitle,
   readCodeSource,
   createRegistry,

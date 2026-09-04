@@ -2128,7 +2128,8 @@
     "saved": "Artifact saved",
     "openInEditor": "Open in editor",
     "resizePane": "Resize artifact panel",
-    "jumpToMessage": "Go to message"
+    "jumpToMessage": "Go to message",
+    "openPublished": "Open published page"
   },
   "errorLog": {
     "title": "Error Log",

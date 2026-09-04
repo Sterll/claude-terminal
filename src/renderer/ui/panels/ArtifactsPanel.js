@@ -40,7 +40,7 @@ let _stats = null;
 let _loadError = null;
 
 const KIND_LABEL = {
-  html: 'HTML', svg: 'SVG', mermaid: 'Diagram', code: 'Code', file: 'File',
+  published: 'Published', html: 'HTML', svg: 'SVG', mermaid: 'Diagram', code: 'Code', file: 'File',
 };
 
 const LANG_BY_EXT = {
@@ -200,9 +200,12 @@ function _renderList() {
 
   listEl.innerHTML = _rows.map((a) => `
     <button class="artifacts-row${a.id === _selectedId ? ' active' : ''}" data-id="${escapeHtml(a.id)}">
-      <span class="artifacts-row-kind" data-kind="${escapeHtml(a.kind)}">${escapeHtml(KIND_LABEL[a.kind] || a.kind)}</span>
+      ${a.favicon
+        ? `<span class="artifacts-row-favicon">${escapeHtml(a.favicon)}</span>`
+        : `<span class="artifacts-row-kind" data-kind="${escapeHtml(a.kind)}">${escapeHtml(KIND_LABEL[a.kind] || a.kind)}</span>`}
       <span class="artifacts-row-main">
         <span class="artifacts-row-title">${escapeHtml(a.title)}</span>
+        ${a.description ? `<span class="artifacts-row-desc">${escapeHtml(a.description)}</span>` : ''}
         <span class="artifacts-row-meta">
           <span>${a.lines} ${escapeHtml(t('artifacts.lines') || 'lines')}</span>
           <span class="artifacts-dot">•</span>
@@ -253,6 +256,7 @@ async function _renderDetail() {
       <div class="artifacts-detail-actions">
         <button class="artifacts-btn" data-action="copy">${escapeHtml(t('common.copy') || 'Copy')}</button>
         <button class="artifacts-btn" data-action="save">${escapeHtml(t('artifacts.saveAs') || 'Save as...')}</button>
+        ${artifact.url ? `<button class="artifacts-btn" data-action="open-url">${escapeHtml(t('artifacts.openPublished') || 'Open published page')}</button>` : ''}
         <button class="artifacts-btn artifacts-btn--danger" data-action="delete">${escapeHtml(t('common.delete') || 'Delete')}</button>
       </div>
     </div>
@@ -260,7 +264,11 @@ async function _renderDetail() {
   `;
 
   const bodyEl = detailEl.querySelector('#artifacts-detail-body');
-  bodyEl.innerHTML = MarkdownRenderer.render(_asMarkdown(artifact));
+  // A published Markdown page IS a document — render it as one rather than
+  // fencing it into a code block showing its own syntax.
+  const isMarkdownDoc = artifact.kind === 'published' && artifact.lang === 'markdown';
+  bodyEl.innerHTML = MarkdownRenderer.render(isMarkdownDoc ? artifact.source : _asMarkdown(artifact));
+  bodyEl.classList.toggle('artifacts-doc', isMarkdownDoc);
   MarkdownRenderer.postProcess(bodyEl);
 
   detailEl.querySelector('.artifacts-detail-head').addEventListener('click', (e) => {
@@ -297,6 +305,9 @@ async function _runAction(action, artifact) {
       }
       break;
     }
+    case 'open-url':
+      if (artifact.url) api.dialog.openExternal(artifact.url);
+      break;
     case 'delete': {
       const res = await api.artifacts.delete(artifact.id);
       if (!res.success) {

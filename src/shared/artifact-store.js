@@ -133,6 +133,20 @@ function blobPath(meta) {
   return path.join(BLOBS_DIR, meta.blob || `${meta.id}.txt`);
 }
 
+/**
+ * Fields only a `published` artifact has: the claude.ai URL it lives at, the
+ * one-line gallery subtitle and the browser-tab emoji. Omitted entirely for
+ * every other kind rather than stored as nulls, so index.json stays readable.
+ */
+function publishedFields(input) {
+  const extra = {};
+  if (input.url) extra.url = String(input.url);
+  if (input.description) extra.description = String(input.description).slice(0, 300);
+  if (input.favicon) extra.favicon = String(input.favicon).slice(0, 8);
+  if (input.path) extra.path = String(input.path);
+  return extra;
+}
+
 // ── Index ────────────────────────────────────────────────────────────────────
 
 const EMPTY_INDEX = { version: 1, artifacts: [] };
@@ -222,6 +236,7 @@ async function saveArtifact(input) {
       messageIndex: Number.isInteger(input.messageIndex) ? input.messageIndex : null,
       createdAt: input.createdAt || new Date().toISOString(),
       blob: `${id}.${extensionFor(kind, input.lang, title)}`,
+      ...publishedFields(input),
     };
 
     await atomicWriteText(blobPath(meta), source);
@@ -291,6 +306,7 @@ async function saveMany(inputs) {
         messageIndex: Number.isInteger(input.messageIndex) ? input.messageIndex : null,
         createdAt: input.createdAt || new Date().toISOString(),
         blob: `${id}.${extensionFor(kind, input.lang, title)}`,
+        ...publishedFields(input),
       };
       writes.push(atomicWriteText(blobPath(meta), source));
       index.artifacts.push(meta);

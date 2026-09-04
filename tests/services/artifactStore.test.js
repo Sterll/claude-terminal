@@ -82,6 +82,51 @@ describe('saveArtifact', () => {
   });
 });
 
+describe('published artifacts', () => {
+  it('persists the URL, description and favicon a publish carries', async () => {
+    const { artifact } = await store.saveArtifact({
+      projectId: 'p1',
+      kind: 'published',
+      lang: 'markdown',
+      title: 'audit.md',
+      source: '# Audit',
+      url: 'https://claude.ai/public/artifacts/abc',
+      description: 'Findings from the Q3 audit',
+      favicon: '🔍',
+      path: '/tmp/audit.md',
+    });
+
+    expect(artifact).toMatchObject({
+      kind: 'published',
+      url: 'https://claude.ai/public/artifacts/abc',
+      description: 'Findings from the Q3 audit',
+      favicon: '🔍',
+      path: '/tmp/audit.md',
+    });
+    // Markdown publishes keep a .md blob so the folder stays browsable.
+    expect(artifact.blob.endsWith('.md')).toBe(true);
+  });
+
+  it('omits the published-only fields entirely for other kinds', async () => {
+    const { artifact } = await store.saveArtifact({
+      projectId: 'p1', kind: 'code', lang: 'js', title: 'a.js', source: 'const a = 1;',
+    });
+
+    expect(artifact).not.toHaveProperty('url');
+    expect(artifact).not.toHaveProperty('favicon');
+    expect(artifact).not.toHaveProperty('description');
+  });
+
+  it('carries them through a batch too', async () => {
+    const { created } = await store.saveMany([
+      { projectId: 'p1', kind: 'published', lang: 'html', title: 'p.html', source: '<p>a</p>', url: 'https://claude.ai/a', favicon: '📊' },
+    ]);
+
+    expect(created[0]).toMatchObject({ url: 'https://claude.ai/a', favicon: '📊' });
+    expect(created[0].blob.endsWith('.html')).toBe(true);
+  });
+});
+
 describe('saveMany', () => {
   it('numbers versions correctly when they arrive in one batch', async () => {
     const { created } = await store.saveMany([
