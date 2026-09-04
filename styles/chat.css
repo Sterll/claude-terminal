@@ -314,16 +314,10 @@ mark.chat-search-hit.current {
   cursor: pointer;
   padding: 2px 4px;
   margin-left: 8px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-
-.chat-input-footer:hover .chat-search-btn {
-  opacity: 1;
+  transition: color 0.15s;
 }
 
 .chat-search-btn:hover {
-  opacity: 1 !important;
   color: var(--accent-color);
 }
 
@@ -2131,16 +2125,10 @@ hr.chat-plan-separator {
   cursor: pointer;
   padding: 2px 4px;
   margin-left: 8px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-
-.chat-input-footer:hover .chat-export-btn {
-  opacity: 1;
+  transition: color 0.15s;
 }
 
 .chat-export-btn:hover {
-  opacity: 1 !important;
   color: var(--accent-color);
 }
 
@@ -5093,27 +5081,79 @@ input.chat-elicit-input[type="checkbox"] {
 .chat-task-row-stop:hover:not(:disabled) { background: var(--danger); color: #fff; }
 .chat-task-row-stop:disabled { opacity: 0.4; cursor: default; }
 
-/* Footer toggle, with a live count of what is running. */
-.chat-tasks-btn { position: relative; }
-
-.chat-tasks-badge {
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  min-width: 13px;
-  padding: 0 3px;
-  border-radius: 7px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 9px;
-  line-height: 13px;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
+/* Footer toggle, sharing the status-row idiom with search and export: muted
+   but always present, brightening on hover. Only `hidden` when this session
+   has produced no task at all. */
+.chat-tasks-btn {
+  position: relative;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  margin-left: 8px;
+  transition: color 0.15s;
 }
 
-.chat-tasks-badge[hidden] { display: none; }
+.chat-tasks-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+.chat-tasks-btn:hover {
+  color: var(--text-primary);
+}
+
+/* Live work pulses the icon rather than stacking a counter on top of it: a
+   badge large enough to read covers the glyph it is meant to annotate. */
+.chat-tasks-btn.has-running {
+  color: var(--accent-color, var(--accent));
+  animation: chat-tasks-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes chat-tasks-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* Someone who asked the OS to reduce motion still needs the signal. */
+@media (prefers-reduced-motion: reduce) {
+  .chat-tasks-btn.has-running { animation: none; }
+}
+
 
 /* The other tabs (Changes, Documents) are siblings of .chat-body, so the row
    has to yield when the transcript is hidden — otherwise it would keep its
    flex space and push them out of view. */
 .chat-body:has(> .chat-messages[hidden]) { display: none; }
+
+/* A drawer row points at its place in the transcript, so it reads as a link. */
+.chat-task-row { cursor: pointer; }
+
+/* Brief outline on the block the user was sent to — a smooth scroll that ends
+   mid-transcript leaves no clue which block was the target. */
+.chat-task-flash {
+  animation: chat-task-flash 1.4s ease-out;
+  border-radius: var(--radius-sm);
+}
+
+@keyframes chat-task-flash {
+  0%, 30% { box-shadow: 0 0 0 2px var(--accent-color, var(--accent)); }
+  100% { box-shadow: 0 0 0 2px transparent; }
+}
+
+/* The row itself answers when there is nothing to jump to, rather than the
+   click just doing nothing. */
+.chat-task-row-noanchor { animation: chat-task-shake 0.28s ease-in-out; }
+
+@keyframes chat-task-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-task-flash,
+  .chat-task-row-noanchor { animation: none; }
+  .chat-task-flash { box-shadow: 0 0 0 2px var(--accent-color, var(--accent)); }
+}

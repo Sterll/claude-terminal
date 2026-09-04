@@ -557,8 +557,7 @@ class ChatView extends BaseComponent {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             </button>
             <button class="chat-tasks-btn" title="${escapeHtml(t('tasks.navTitle') || 'Background tasks')}" hidden>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
-              <span class="chat-tasks-badge">0</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
             <button class="chat-export-btn" title="${escapeHtml(t('chat.exportConversation') || 'Export conversation')}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -606,7 +605,6 @@ class ChatView extends BaseComponent {
   const tasksDrawerEl = chatView.querySelector('.chat-tasks-drawer');
   const tasksBodyEl = chatView.querySelector('.chat-tasks-body');
   const tasksBtn = chatView.querySelector('.chat-tasks-btn');
-  const tasksBadgeEl = chatView.querySelector('.chat-tasks-badge');
   const statusDot = chatView.querySelector('.chat-status-dot');
   const statusTextEl = chatView.querySelector('.chat-status-text');
   const modelBtn = chatView.querySelector('.chat-model-btn');
@@ -7395,6 +7393,9 @@ class ChatView extends BaseComponent {
   const { formatDuration: fmtTaskDuration } = require('../../utils/format');
 
   let tasksTicker = null;
+  // Tasks already announced to the user, so the drawer opens on the moment a
+  // task starts and not again on every later change to it.
+  const announcedTaskIds = new Set();
 
   function sessionTasks() {
     return sessionId ? listAllTasks().filter(task => task.sessionId === sessionId) : [];
@@ -7420,8 +7421,7 @@ class ChatView extends BaseComponent {
 
     // The toggle only earns its place once this session has produced a task.
     tasksBtn.hidden = tasks.length === 0;
-    tasksBadgeEl.textContent = String(running.length);
-    tasksBadgeEl.hidden = running.length === 0;
+    tasksBtn.classList.toggle('has-running', running.length > 0);
     if (!tasks.length) tasksDrawerEl.hidden = true;
     if (tasksDrawerEl.hidden) return;
 
@@ -7478,17 +7478,79 @@ class ChatView extends BaseComponent {
 
   tasksBtn.addEventListener('click', () => toggleTasksDrawer());
   tasksDrawerEl.querySelector('.chat-tasks-close').addEventListener('click', () => toggleTasksDrawer(false));
+  /**
+   * Where a task lives in the transcript.
+   *
+   * The tool block that spawned it is the right anchor for both states: while
+   * the task runs it is the call, and once it settles the same block carries
+   * the result. Falling back to the inline card covers tasks the CLI reported
+   * without a tool_use id.
+   *
+   * @returns {HTMLElement|null}
+   */
+  function findTaskAnchor(task) {
+    if (task.toolUseId) {
+      try {
+        const byTool = messagesEl.querySelector(`[data-tool-use-id="${CSS.escape(task.toolUseId)}"]`);
+        if (byTool) return byTool;
+      } catch (_) { /* an id CSS.escape cannot handle is not worth throwing over */ }
+    }
+    try {
+      return messagesEl.querySelector(`.chat-task-card[data-task-id="${CSS.escape(task.taskId)}"]`);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function revealTask(task) {
+    const anchor = findTaskAnchor(task);
+    if (!anchor) return false;
+    // The transcript is virtualised in places, so ask for the block first and
+    // flash it after the scroll has had a frame to land.
+    anchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    requestAnimationFrame(() => {
+      anchor.classList.add('chat-task-flash');
+      setTimeout(() => anchor.classList.remove('chat-task-flash'), 1400);
+    });
+    return true;
+  }
+
   tasksBodyEl.addEventListener('click', (e) => {
     const stop = e.target.closest('.chat-task-row-stop');
-    if (!stop) return;
-    const task = getStoredTask(stop.dataset.taskId);
-    if (!task?.sessionId) return;
-    stop.disabled = true;
-    try { api.chat.stopTask({ sessionId: task.sessionId, taskId: task.taskId }); }
-    catch (_) { stop.disabled = false; }
+    if (stop) {
+      const task = getStoredTask(stop.dataset.taskId);
+      if (!task?.sessionId) return;
+      stop.disabled = true;
+      try { api.chat.stopTask({ sessionId: task.sessionId, taskId: task.taskId }); }
+      catch (_) { stop.disabled = false; }
+      return;
+    }
+
+    const row = e.target.closest('.chat-task-row');
+    if (!row) return;
+    const task = getStoredTask(row.dataset.taskId);
+    if (!task) return;
+    // Nothing to jump to is worth saying: silence would read as a dead click.
+    if (!revealTask(task)) row.classList.add('chat-task-row-noanchor');
+    setTimeout(() => row.classList.remove('chat-task-row-noanchor'), 700);
   });
 
-  unsubscribers.push(backgroundTasksState.subscribe(() => renderTasksDrawer()));
+  /**
+   * A task starting is the one moment the drawer has something new to say, so
+   * it opens itself then — but only then. Reacting to every state change would
+   * re-open a drawer the user just closed, on the next duration tick.
+   */
+  function onTasksChanged() {
+    const fresh = sessionTasks().filter(task => !announcedTaskIds.has(task.taskId));
+    for (const task of fresh) announcedTaskIds.add(task.taskId);
+    if (tasksDrawerEl.hidden && fresh.some(task => task.status === 'running')) {
+      toggleTasksDrawer(true); // renders on the way through
+      return;
+    }
+    renderTasksDrawer();
+  }
+
+  unsubscribers.push(backgroundTasksState.subscribe(onTasksChanged));
   unsubscribers.push(() => { if (tasksTicker) clearInterval(tasksTicker); tasksTicker = null; });
 
   // ── Background task lifecycle (live task list with stop button) ──

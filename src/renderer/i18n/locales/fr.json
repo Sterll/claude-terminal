@@ -3534,7 +3534,7 @@
     "sessionJustNow": "À l'instant",
     "sessionMinutesAgo": "Il y a {count} min",
     "sessionHoursAgo": "Il y a {count}h",
-    "navTitle": "Tâches de fond",
+    "navTitle": "Tâches en arrière-plan",
     "running": "En cours",
     "finished": "Terminé",
     "noneRunning": "Rien en cours.",
