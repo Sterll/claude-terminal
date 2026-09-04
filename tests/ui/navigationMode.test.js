@@ -98,6 +98,18 @@ describe('applyNavigationMode', () => {
     expect(document.getElementById('projects-popover').style.display).toBe('none');
   });
 
+  test('the height the popover measured for itself does not follow it into the column', () => {
+    // openProjectsPopover() sizes the popover against the + it hangs from, as
+    // an inline style — which would otherwise beat the column's max-height:none
+    // and cap a full-height column at a popover's worth of rows.
+    applyNavigationMode('tabs');
+    document.getElementById('projects-popover').style.maxHeight = '420px';
+
+    applyNavigationMode('sidebar');
+
+    expect(document.getElementById('projects-popover').style.maxHeight).toBe('');
+  });
+
   test('a collapsed column does not come back collapsed as a popover', () => {
     applyNavigationMode('sidebar');
     document.getElementById('projects-popover').classList.add('collapsed');

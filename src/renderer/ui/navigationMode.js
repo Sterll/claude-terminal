@@ -63,10 +63,12 @@ function applyNavigationMode(mode, doc = typeof document !== 'undefined' ? docum
     }
     if (tools && header && tools.parentElement !== header) header.appendChild(tools);
     // Which screens it shows on is a CSS concern (see .projects-popover.docked),
-    // so no inline display to fight with.
+    // so no inline display to fight with. The height the popover measured for
+    // itself goes with it, or the column would inherit that cap.
     if (popover) {
       popover.classList.add('docked');
       popover.style.display = '';
+      popover.style.maxHeight = '';
     }
   } else {
     if (popover && content && popover.parentElement !== content) {

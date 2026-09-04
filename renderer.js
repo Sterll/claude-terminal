@@ -2914,13 +2914,18 @@ function selectOverview() {
 /**
  * The column's Overview entry: offered only on the screens that have such a
  * view, and lit when it is the one showing.
+ *
+ * Column mode only. It sits in the projects panel, which is the same node the
+ * + opens as a popover in tab-bar mode — where the Overview project tab already
+ * does this job, so leaving it visible put an all-projects entry inside a
+ * project picker.
  */
 function syncOverviewEntry() {
   const entry = document.getElementById('projects-overview-item');
   if (!entry) return;
   const tab = document.body.dataset.activeTab;
   const scoped = tab === 'dashboard' || tab === 'files';
-  entry.hidden = !scoped;
+  entry.hidden = !scoped || !isSidebarNavigation();
   const active = (tab === 'dashboard' && localState.dashboardScope === 'overview')
     || (tab === 'files' && localState.filesScope === 'overview');
   entry.classList.toggle('active', active);
@@ -2993,11 +2998,28 @@ function setNavigationMode(mode) {
   settingsState.setProp('navigationMode', mode);
   saveSettingsImmediate();
   applyNavigationMode(mode);
+  // Both follow the mode and the panel is shared, so they have to be redone on
+  // the way in as well as on the way out.
+  applyProjectsPanelWidth();
+  syncOverviewEntry();
   // The project-scoped screens are laid out differently in each mode, so
   // repaint whichever one is on screen.
   const projectIndex = projectsState.get().selectedProjectFilter;
   TerminalManager.filterByProject(projectIndex);
   applyProjectContext(projectIndex);
+}
+
+/**
+ * The width the resizer persists belongs to the docked column. The popover is
+ * the same node, so applying it in tab-bar mode sized the picker from a column
+ * setting — and the inline style beat the stylesheet, so it could not size
+ * itself back.
+ */
+function applyProjectsPanelWidth() {
+  const panel = document.getElementById('projects-popover');
+  if (!panel) return;
+  const saved = settingsState.get().projectsPanelWidth;
+  panel.style.width = isSidebarNavigation() && saved ? `${saved}px` : '';
 }
 
 // Changing it from Settings goes through the same path as the first-launch card
@@ -3020,9 +3042,14 @@ function openProjectsPopover(anchor) {
   const anchorEl = anchor || document.getElementById('btn-open-project');
   if (anchorEl) {
     const rect = anchorEl.getBoundingClientRect();
-    const width = popover.offsetWidth;
-    popover.style.top = `${rect.bottom + 4}px`;
-    popover.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))}px`;
+    const top = rect.bottom + 4;
+    // Sized by the room actually left under the +, which the stylesheet cannot
+    // know: a fixed cap ran the list past the bottom of a short window, and
+    // capped a tall one well short of what it could have shown.
+    const room = window.innerHeight - top - 12;
+    popover.style.maxHeight = `${Math.max(200, Math.min(520, room))}px`;
+    popover.style.top = `${top}px`;
+    popover.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - popover.offsetWidth - 8))}px`;
   }
 
   ProjectList.render();
@@ -6926,8 +6953,7 @@ window.addEventListener('beforeunload', () => {
     document.addEventListener('mouseup', onMouseUp);
   });
 
-  const savedWidth = settingsState.get().projectsPanelWidth;
-  if (savedWidth) panel.style.width = savedWidth + 'px';
+  applyProjectsPanelWidth();
 })();
 
 // ========== PROJECTS PANEL TOGGLE (column navigation) ==========

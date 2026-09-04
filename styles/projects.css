@@ -281,13 +281,21 @@ body:not([data-active-tab="claude"]) .project-bar-tools {
 
 /* ========== PROJECTS POPOVER ==========
    The full project tree on demand (search, folders, drag & drop, per-project
-   menus) instead of in permanent screen space. */
+   menus) instead of in permanent screen space.
+
+   Same node as the docked column of the other navigation, so everything that
+   belongs to the column has to be undone here — see the picker block further
+   down. Its own width, not --projects-panel-width: that variable follows the
+   window (400px past 1920, 450 past 2560) because a column shares the screen
+   with the content, which a popover laid over it does not. The height is
+   measured against the + it hangs from, in openProjectsPopover(); the value
+   here only holds until then. */
 
 .projects-popover {
   position: fixed;
   z-index: 1000;
-  width: var(--projects-panel-width);
-  max-height: min(560px, calc(100vh - 120px));
+  width: 300px;
+  max-height: min(520px, calc(100vh - 120px));
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
@@ -315,12 +323,113 @@ body:not([data-active-tab="claude"]) .project-bar-tools {
   position: relative;
 }
 
-.projects-popover .panel-header {
-  padding: 10px 12px;
+/* ── The picker, in tab-bar mode ───────────────────────────────────────────
+   The column and the popover are one node, so the popover inherited the
+   column's design: cards with a background and 8px between them, a full panel
+   header, a root drop zone and a resize handle. A column is lived in — it
+   stands there all session and has the room to show a path, a duration and a
+   row of shortcuts. This is picked from and dismissed in one click, so the
+   same chrome is only distance between the + and the project you came for.
+
+   Rows are menu items here. Everything the column earns its space with is
+   dropped, whatever the compact-projects setting says: in a picker there is
+   no second line worth reading. ── */
+
+body.nav-tabs .projects-popover .panel-header {
+  padding: 8px 8px 8px 12px;
+  border-bottom: none;
 }
 
-.projects-popover .panel-header h2 {
-  font-size: var(--font-base);
+body.nav-tabs .projects-popover .panel-header h2 {
+  font-size: var(--font-xs);
+  letter-spacing: 0.6px;
+}
+
+body.nav-tabs .projects-popover .panel-actions .btn-icon {
+  width: 24px;
+  height: 24px;
+}
+
+body.nav-tabs .projects-popover .panel-actions .btn-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+body.nav-tabs .projects-popover .projects-search {
+  padding: 0 12px 8px;
+  border-bottom: none;
+}
+
+/* Through .projects-list, not straight to .project-item: the compact-projects
+   rules further down are `body.compact-projects .project-item:not(.active)`,
+   which ties on specificity and wins on source order. */
+body.nav-tabs .projects-popover .projects-list {
+  padding: 4px;
+}
+
+body.nav-tabs .projects-popover .projects-list .project-item {
+  padding: 4px 8px;
+  margin-bottom: 1px;
+  background: transparent;
+  border-color: transparent;
+  border-radius: var(--radius-sm);
+}
+
+body.nav-tabs .projects-popover .projects-list .project-item:hover {
+  background: var(--bg-hover);
+  border-color: transparent;
+}
+
+body.nav-tabs .projects-popover .projects-list .project-info,
+body.nav-tabs .projects-popover .projects-list .project-name {
+  margin-bottom: 0;
+}
+
+body.nav-tabs .projects-popover .projects-list .project-name {
+  font-size: var(--font-sm);
+  font-weight: 500;
+  gap: 7px;
+}
+
+body.nav-tabs .projects-popover .projects-list .project-name > svg,
+body.nav-tabs .projects-popover .projects-list .project-emoji-icon {
+  width: 14px;
+  height: 14px;
+  font-size: 12px;
+}
+
+body.nav-tabs .projects-popover .projects-list .terminal-count {
+  height: 16px;
+}
+
+body.nav-tabs .projects-popover .projects-list .project-path,
+body.nav-tabs .projects-popover .projects-list .project-time,
+body.nav-tabs .projects-popover .projects-list .project-tags,
+body.nav-tabs .projects-popover .projects-list .project-actions {
+  display: none;
+}
+
+body.nav-tabs .projects-popover .projects-list .folder-header {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+/* Dropping a project on the root still works — the strip just stops holding
+   16px of empty list open to advertise itself. */
+body.nav-tabs .projects-popover .projects-list .drop-zone-root {
+  height: 0;
+  margin-top: 0;
+}
+
+body.nav-tabs .projects-popover .projects-list .drop-zone-root.drag-over {
+  height: 32px;
+  margin-top: 4px;
+}
+
+/* The resize handle is the column's. Here it is an invisible strip down the
+   popover's right edge, over the rows it covers. */
+body.nav-tabs .projects-popover .panel-resizer {
+  display: none;
 }
 
 /* ── Sidebar navigation mode ──────────────────────────────────────────────
