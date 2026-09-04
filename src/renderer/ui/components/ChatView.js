@@ -418,9 +418,7 @@ class ChatView extends BaseComponent {
   // chosen. Only a real choice may be written back; see resolveModelSelection.
   let modelIsExplicit = !!selectedModel;
   let selectedEffort = initialEffort || getSetting('effortLevel') || 'high';
-  let totalCost = 0;
-  let totalTokens = 0;
-  let inputTokens = 0; // tracks context window usage
+  let inputTokens = 0; // drives the context gauge
   const toolCards = new Map(); // content_block index -> element
   const toolInputBuffers = new Map(); // content_block index -> accumulated JSON string
   const todoToolIndices = new Map(); // block index -> { kind: 'TaskCreate'|'TaskUpdate'|'TaskList'|'TaskGet'|'TodoWrite', toolUseId }
@@ -552,10 +550,12 @@ class ChatView extends BaseComponent {
               <div class="chat-model-dropdown" style="display:none"></div>
             </div>
             <span class="chat-status-tokens" tabindex="0">
-              <span class="chat-status-tokens-text"></span>
+              <svg class="chat-ctx-ring" viewBox="0 0 20 20" aria-hidden="true">
+                <circle class="chat-ctx-ring-track" cx="10" cy="10" r="7"/>
+                <circle class="chat-ctx-ring-fill" cx="10" cy="10" r="7"/>
+              </svg>
               <div class="chat-context-popover" hidden></div>
             </span>
-            <span class="chat-status-cost"></span>
           </div>
         </div>
       </div>
@@ -587,9 +587,7 @@ class ChatView extends BaseComponent {
   const effortLabel = chatView.querySelector('.chat-effort-label');
   const effortDropdown = chatView.querySelector('.chat-effort-dropdown');
   const statusTokens = chatView.querySelector('.chat-status-tokens');
-  const statusTokensText = chatView.querySelector('.chat-status-tokens-text');
   const contextPopover = chatView.querySelector('.chat-context-popover');
-  const statusCost = chatView.querySelector('.chat-status-cost');
   const slashDropdown = chatView.querySelector('.chat-slash-dropdown');
   const attachBtn = chatView.querySelector('.chat-attach-btn');
   const fileInput = chatView.querySelector('.chat-file-input');
@@ -5992,16 +5990,30 @@ class ChatView extends BaseComponent {
       if (match) modelLabel.textContent = match.displayName;
       else modelLabel.textContent = model.split('-').slice(1, 3).join('-');
     }
-    if (inputTokens > 0) {
-      const contextLimit = currentContextLimit();
-      const pct = Math.round((inputTokens / contextLimit) * 100);
-      const formatK = (n) => n >= 1000 ? Math.round(n / 1000) + 'K' : n;
-      statusTokensText.textContent = `${formatK(inputTokens)} / ${formatK(contextLimit)} (${pct}%)`;
-      statusTokens.title = `${t('chat.contextWindowUsage') || 'Context window'}: ${inputTokens.toLocaleString()} / ${contextLimit.toLocaleString()} tokens`;
-    } else if (totalTokens > 0) {
-      statusTokensText.textContent = `${totalTokens.toLocaleString()} tokens`;
-    }
-    if (totalCost > 0) statusCost.textContent = `$${totalCost.toFixed(4)}`;
+    setContextGauge(inputTokens, currentContextLimit());
+  }
+
+  /**
+   * Paint context usage as a filling ring.
+   *
+   * The exact figures moved to the tooltip and the hover breakdown: a ratio is
+   * something you read at a glance, and "4 / 1000K tokens" spent a footer slot
+   * on a number nobody reads digit by digit.
+   *
+   * Only `--ctx-used` crosses over to CSS; the geometry that turns it into an
+   * arc stays there, so an empty ring is the stylesheet's default and shows
+   * from the first frame rather than waiting on the first result message.
+   */
+  function setContextGauge(used, limit) {
+    const ratio = limit > 0 ? Math.max(0, Math.min(used / limit, 1)) : 0;
+    statusTokens.style.setProperty('--ctx-used', String(ratio));
+    // Pressure, not decoration: past three quarters a compaction is close, and
+    // that is worth seeing without opening the breakdown.
+    statusTokens.classList.toggle('warn', ratio >= 0.75 && ratio < 0.9);
+    statusTokens.classList.toggle('danger', ratio >= 0.9);
+    const pct = Math.round(ratio * 100);
+    statusTokens.title = `${t('chat.contextWindowUsage') || 'Context window'}: `
+      + `${used.toLocaleString()} / ${limit.toLocaleString()} tokens (${pct}%)`;
   }
 
   // ── Context usage breakdown popover (SDK 0.2.86+) ──────────────────────
@@ -6290,11 +6302,7 @@ class ChatView extends BaseComponent {
 
     // Result — update stats. Also detect SDK errors.
     if (message.type === 'result') {
-      if (message.total_cost_usd != null) totalCost = message.total_cost_usd;
-      if (message.usage) {
-        totalTokens = (message.usage.input_tokens || 0) + (message.usage.output_tokens || 0);
-        inputTokens = message.usage.input_tokens || 0;
-      }
+      if (message.usage) inputTokens = message.usage.input_tokens || 0;
       if (message.model) model = message.model;
       updateStatusInfo();
 
@@ -6546,13 +6554,10 @@ class ChatView extends BaseComponent {
         break;
       }
 
-      case 'message_delta':
-        // Contains stop_reason, usage
-        if (event.usage) {
-          totalTokens = (event.usage.input_tokens || 0) + (event.usage.output_tokens || 0);
-          updateStatusInfo();
-        }
-        break;
+      // 'message_delta' carries stop_reason and a running usage count. The
+      // footer no longer shows a token total, and the context gauge reads the
+      // authoritative figure off the result message, so there is nothing to do
+      // with it here.
 
       case 'message_stop':
         removeThinkingIndicator();

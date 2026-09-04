@@ -3690,26 +3690,69 @@ hr.chat-plan-separator {
   color: var(--text-muted);
 }
 
-.chat-status-tokens,
-.chat-status-cost {
-  font-size: var(--font-2xs);
-  color: var(--text-muted);
-  font-family: 'Cascadia Code', 'Fira Code', monospace;
-}
-
-/* No opacity here: this is the popover's offset parent, and group opacity on
-   the parent would dim .chat-context-popover along with it. */
+/* No opacity on this element: it is the popover's offset parent, and group
+   opacity would dim .chat-context-popover along with it (see #109). The rested
+   dim lives on the ring SVG below, which the popover does not inherit. */
 .chat-status-tokens {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-tertiary);
   cursor: help;
   outline: none;
   transition: color 0.15s;
+}
+
+.chat-status-tokens .chat-ctx-ring {
+  opacity: 0.4;
+  transition: opacity 0.15s;
 }
 
 .chat-status-tokens:hover,
 .chat-status-tokens:focus-visible {
   color: var(--text-primary);
 }
+
+.chat-status-tokens:hover .chat-ctx-ring,
+.chat-status-tokens:focus-visible .chat-ctx-ring {
+  opacity: 1;
+}
+
+/* ── Context gauge ──
+   A ring that fills as the window is consumed, in place of the digits that used
+   to sit here. Colour follows pressure: accent, then warning past 75%, then
+   danger past 90% — the point where a compaction is imminent. */
+.chat-ctx-ring {
+  width: 14px;
+  height: 14px;
+  /* Start the sweep at 12 o'clock instead of 3. */
+  transform: rotate(-90deg);
+}
+
+.chat-ctx-ring-track {
+  fill: none;
+  stroke: var(--border-color);
+  stroke-width: 3;
+}
+
+.chat-ctx-ring-fill {
+  /* 2πr for r=7. Kept here with the radius it derives from, so JS only ever
+     hands over --ctx-used (0..1) and an empty ring is the default — the gauge
+     shows from the first frame instead of waiting on the first result. */
+  --ctx-circumference: 43.982;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: var(--ctx-circumference);
+  stroke-dashoffset: calc(var(--ctx-circumference) * (1 - var(--ctx-used, 0)));
+  /* Finite, and only on a value that just changed — the ring never animates on
+     its own, so an idle chat costs no frames. */
+  transition: stroke-dashoffset 0.35s ease, stroke 0.35s ease;
+}
+
+.chat-status-tokens.warn .chat-ctx-ring-fill { stroke: var(--warning); }
+.chat-status-tokens.danger .chat-ctx-ring-fill { stroke: var(--danger); }
 
 /* ── Context window breakdown popover (SDK 0.2.86+ getContextUsage) ── */
 
