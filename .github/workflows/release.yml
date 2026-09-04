@@ -117,10 +117,24 @@ jobs:
           for i in $(seq 0 $(( COUNT - 1 ))); do
             NAME=$(jq -r ".[$i].name" dmg_list.json)
             SIZE=$(jq -r ".[$i].size" dmg_list.json)
-            DOWNLOAD_URL=$(jq -r ".[$i].browser_download_url" dmg_list.json)
+            ASSET_API_URL=$(jq -r ".[$i].url" dmg_list.json)
 
-            # Download DMG to compute sha512
-            curl -sL "$DOWNLOAD_URL" -o "$NAME"
+            # Download DMG to compute sha512.
+            # Must go through the authenticated API asset endpoint, NOT
+            # browser_download_url: electron-builder creates the release as a
+            # draft, and a draft's browser_download_url is not public. An
+            # unauthenticated curl there silently retrieves GitHub's 9-byte
+            # "Not Found" body instead of the DMG, so every architecture ends up
+            # sharing sha512(b"Not Found") and electron-updater rejects the
+            # download it just made. The job still exits 0, so nothing warns.
+            gh api -H "Accept: application/octet-stream" "$ASSET_API_URL" > "$NAME"
+
+            ACTUAL_SIZE=$(stat -c%s "$NAME")
+            if [ "$ACTUAL_SIZE" != "$SIZE" ]; then
+              echo "::error::$NAME downloaded as $ACTUAL_SIZE bytes, expected $SIZE"
+              exit 1
+            fi
+
             SHA512=$(sha512sum "$NAME" | awk '{print $1}' | xxd -r -p | base64 -w0)
             rm "$NAME"
 
@@ -128,6 +142,15 @@ jobs:
             echo "    sha512: $SHA512" >> merged.yml
             echo "    size: $SIZE" >> merged.yml
           done
+
+          # Distinct binaries cannot share a hash — if they do, the downloads
+          # failed and produced identical error bodies.
+          DISTINCT=$(grep '    sha512:' merged.yml | sort -u | wc -l)
+          if [ "$DISTINCT" != "$COUNT" ]; then
+            echo "::error::$COUNT DMGs produced only $DISTINCT distinct sha512 values"
+            cat merged.yml
+            exit 1
+          fi
 
           # Use the x64 DMG as default path/sha512 (electron-updater picks the right one from files array)
           X64_NAME=$(jq -r '[.[] | select(.name | contains("arm64") | not)] | .[0].name' dmg_list.json)
