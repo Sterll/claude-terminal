@@ -229,7 +229,10 @@ function attachInteractivity(container) {
   });
 
   // ── Discord Rich Presence live timers ──
-  startPresenceTicker(container);
+  // Deliberately not started here. The ticker is demand-driven: postProcess()
+  // turns it on when a rendered batch actually contains a presence card. Arming
+  // one per container up front cost a 1 Hz querySelectorAll over the whole
+  // transcript, for a block type almost no session ever renders.
 }
 
 /**
@@ -245,69 +248,75 @@ function formatPresenceElapsed(ms) {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 }
 
+// One interval for the whole renderer, and only while a presence card is on
+// screen. It used to be one interval per chat container, armed the moment
+// interactivity was attached and never released when no presence card ever
+// showed up: `sawPresence` stayed false, so the "nothing left to drive" exit was
+// unreachable and each container kept scanning its own subtree once a second
+// forever. With a handful of chat tabs open on long transcripts that measured
+// ~30-60 ms of querySelectorAll per second, for zero matching nodes.
+let _presenceTicker = null;
+
 /**
- * Stop the presence ticker of a container (if any) and drop the property.
- * Safe to call multiple times, and on containers that never had a ticker.
- * @param {Element} container
+ * Stop the presence ticker.
+ *
+ * Kept for the container-shaped call from detachInteractivity(); the ticker no
+ * longer closes over a container, so any argument is ignored.
  */
-function stopPresenceTicker(container) {
-  if (!container || !container._dcPresenceTicker) return;
-  clearInterval(container._dcPresenceTicker);
-  delete container._dcPresenceTicker;
+function stopPresenceTicker() {
+  if (!_presenceTicker) return;
+  clearInterval(_presenceTicker);
+  _presenceTicker = null;
 }
 
 /**
- * Start a 1s interval (once per container) that refreshes any
- * .dc-presence-time elements with elapsed/remaining durations.
- *
- * The interval self-cancels as soon as the container leaves the document or
- * once every presence node it used to drive is gone — otherwise the closure
- * would keep a detached transcript alive for the whole app lifetime.
+ * Refresh every live presence timer in the document.
+ * @returns {boolean} True while at least one presence node is still on screen.
  */
-function startPresenceTicker(container) {
-  if (container._dcPresenceTicker) return;
+function _tickPresence() {
+  const times = document.querySelectorAll('.dc-presence-time[data-start], .dc-presence-time[data-end]');
+  const bars = document.querySelectorAll('.dc-presence-progress[data-start][data-end]');
+  if (times.length === 0 && bars.length === 0) return false;
 
-  // Only cancel on "no nodes left" once we actually saw some: the container
-  // is usually empty when interactivity is attached and fills in on stream.
-  let sawPresence = false;
+  const now = Date.now();
 
-  const tick = (fromInterval) => {
-    const times = container.querySelectorAll('.dc-presence-time[data-start], .dc-presence-time[data-end]');
-    const bars = container.querySelectorAll('.dc-presence-progress[data-start][data-end]');
-    const hasPresence = times.length > 0 || bars.length > 0;
-
-    if (fromInterval && (!container.isConnected || (sawPresence && !hasPresence))) {
-      stopPresenceTicker(container);
-      return;
+  times.forEach((el) => {
+    const end = el.getAttribute('data-end');
+    const start = el.getAttribute('data-start');
+    if (end) {
+      el.textContent = `${formatPresenceElapsed(Number(end) - now)} left`;
+    } else if (start) {
+      el.textContent = `${formatPresenceElapsed(now - Number(start))} elapsed`;
     }
-    if (!hasPresence) return;
-    sawPresence = true;
+  });
 
-    const now = Date.now();
+  bars.forEach((el) => {
+    const start = Number(el.getAttribute('data-start'));
+    const end = Number(el.getAttribute('data-end'));
+    const total = Math.max(1, end - start);
+    const pct = Math.min(100, Math.max(0, ((now - start) / total) * 100));
+    const fill = el.querySelector('.dc-presence-bar-fill');
+    if (fill) fill.style.width = `${pct.toFixed(2)}%`;
+    const elapsed = el.querySelector('.dc-presence-elapsed');
+    if (elapsed) elapsed.textContent = formatPresenceElapsed(Math.min(now - start, total));
+  });
+  return true;
+}
 
-    times.forEach((el) => {
-      const end = el.getAttribute('data-end');
-      const start = el.getAttribute('data-start');
-      if (end) {
-        el.textContent = `${formatPresenceElapsed(Number(end) - now)} left`;
-      } else if (start) {
-        el.textContent = `${formatPresenceElapsed(now - Number(start))} elapsed`;
-      }
-    });
-
-    bars.forEach((el) => {
-      const start = Number(el.getAttribute('data-start'));
-      const end = Number(el.getAttribute('data-end'));
-      const total = Math.max(1, end - start);
-      const pct = Math.min(100, Math.max(0, ((now - start) / total) * 100));
-      const fill = el.querySelector('.dc-presence-bar-fill');
-      if (fill) fill.style.width = `${pct.toFixed(2)}%`;
-      const elapsed = el.querySelector('.dc-presence-elapsed');
-      if (elapsed) elapsed.textContent = formatPresenceElapsed(Math.min(now - start, total));
-    });
-  };
-  container._dcPresenceTicker = setInterval(() => tick(true), 1000);
-  tick(false);
+/**
+ * Arm the 1 Hz presence ticker, if it is not already running.
+ *
+ * Called by postProcess() with a batch that contains a presence card, so the
+ * cost is only ever paid by sessions that render one. The ticker stops itself
+ * on the first tick that finds nothing left to update — including when the tab
+ * holding the card is closed, since a detached card is no longer in `document`.
+ */
+function ensurePresenceTicker() {
+  _tickPresence();
+  if (_presenceTicker) return;
+  _presenceTicker = setInterval(() => {
+    if (!_tickPresence()) stopPresenceTicker();
+  }, 1000);
 }
 
 function handleCopyClick(btn) {
@@ -462,17 +471,21 @@ function initializePreviewIframe(container) {
 
 /**
  * Release every timer attachInteractivity() started on a container.
- * Call this from the owner's destroy()/teardown before dropping the element,
- * so the transcript can be garbage collected.
- * @param {Element} container
+ * Call this from the owner's destroy()/teardown before dropping the element.
+ *
+ * Now a no-op: the presence ticker is global and holds no container, so closing
+ * one tab must not silence a card still open in another. It retires itself on
+ * the first tick that finds nothing left in the document.
+ * @param {Element} _container
  */
-function detachInteractivity(container) {
-  stopPresenceTicker(container);
+function detachInteractivity(_container) {
+  /* nothing container-scoped left to release */
 }
 
 module.exports = {
   attachInteractivity,
   detachInteractivity,
+  ensurePresenceTicker,
   stopPresenceTicker,
   initializePreviewIframe,
   COLLAPSE_THRESHOLD,
