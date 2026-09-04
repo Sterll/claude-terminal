@@ -3,7 +3,7 @@
  *
  * The artifact library for the current project: everything Claude has produced
  * across that project's sessions, not just the conversation currently open. The
- * per-session view lives in the chat's Extracts tab (ChatView); this is the
+ * per-session view lives in the chat's Documents tab (ChatView); this is the
  * archive behind it.
  *
  * Scope comes from the project bar, never from a picker of its own: artifacts

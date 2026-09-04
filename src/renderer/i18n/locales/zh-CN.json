@@ -1912,7 +1912,7 @@
     "elicitationDecline": "拒绝",
     "elicitationOpen": "继续",
     "cancel": "取消",
-    "tabExtracts": "摘录"
+    "tabDocuments": "文档"
   },
   "hooks": {
     "consent": {
@@ -2115,12 +2115,12 @@
   "artifacts": {
     "tabTitle": "产物",
     "libraryTitle": "产物",
-    "emptySession": "尚未从此对话中提取任何内容。",
+    "emptySession": "此对话尚未生成任何文档。",
     "emptyLibrary": "尚无产物。当 Claude 生成 HTML 页面、图表、SVG 和代码时，它们会显示在这里。",
     "selectPrompt": "选择一个产物以预览。",
     "lines": "行",
-    "extractsSingular": "条摘录",
-    "extractsPlural": "条摘录",
+    "documentsSingular": "个文档",
+    "documentsPlural": "个文档",
     "stored": "已存储",
     "allKinds": "所有类型",
     "inProject": "在此项目中",

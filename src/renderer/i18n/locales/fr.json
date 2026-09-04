@@ -1912,7 +1912,7 @@
     "elicitationDecline": "Refuser",
     "elicitationOpen": "Continuer",
     "cancel": "Annuler",
-    "tabExtracts": "Extraits"
+    "tabDocuments": "Documents"
   },
   "hooks": {
     "consent": {
@@ -2115,12 +2115,12 @@
   "artifacts": {
     "tabTitle": "Artefacts",
     "libraryTitle": "Artefacts",
-    "emptySession": "Rien d’extrait de cette conversation pour l’instant.",
+    "emptySession": "Aucun document produit dans cette conversation pour l’instant.",
     "emptyLibrary": "Aucun artefact. Ils apparaissent ici au fur et à mesure que Claude produit des pages HTML, des diagrammes, des SVG et du code.",
     "selectPrompt": "Sélectionnez un artefact pour l’afficher.",
     "lines": "lignes",
-    "extractsSingular": "extrait",
-    "extractsPlural": "extraits",
+    "documentsSingular": "document",
+    "documentsPlural": "documents",
     "stored": "stockés",
     "allKinds": "Tous les types",
     "inProject": "dans ce projet",

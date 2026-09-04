@@ -455,13 +455,8 @@ class ChatView extends BaseComponent {
 
   // ── Build DOM ──
 
-  // `.chat-view` is a row: the conversation column plus the artifact pane that
-  // slides in beside it. Everything that was in the view before now lives in
-  // `.chat-main`, whose inner indentation is left alone so the diff stays
-  // readable.
   wrapperEl.innerHTML = `
     <div class="chat-view">
-      <div class="chat-main">
       <div class="chat-tabbar" hidden>
         <button class="chat-tab active" data-tab="conversation">${escapeHtml(t('chat.tabConversation') || 'Conversation')}</button>
         <button class="chat-tab" data-tab="changes">
@@ -469,7 +464,7 @@ class ChatView extends BaseComponent {
           <span class="chat-tab-badge" data-badge="changes" hidden>0</span>
         </button>
         <button class="chat-tab" data-tab="artifacts">
-          <span class="chat-tab-label">${escapeHtml(t('chat.tabExtracts') || 'Extracts')}</span>
+          <span class="chat-tab-label">${escapeHtml(t('chat.tabDocuments') || 'Documents')}</span>
           <span class="chat-tab-badge" data-badge="artifacts" hidden>0</span>
         </button>
       </div>
@@ -494,7 +489,22 @@ class ChatView extends BaseComponent {
         </div>
       </div>
       <div class="chat-changes-panel" hidden></div>
-      <div class="chat-artifacts-panel" hidden></div>
+      <!-- Documents is itself a two-column screen: the list of what this
+           conversation produced on the left, the preview of the selected one on
+           the right. Both live inside the tab, so leaving the tab takes the
+           preview with it. -->
+      <div class="chat-artifacts-panel" hidden>
+        <div class="chat-artifacts-side">
+          <div class="chat-artifacts-summary"></div>
+          <div class="chat-artifacts-list"></div>
+        </div>
+        <div class="chat-artifacts-resizer" role="separator" aria-orientation="vertical" tabindex="0"
+             aria-label="${escapeHtml(t('artifacts.resizePane') || 'Resize artifact panel')}"></div>
+        <div class="chat-artifact-view">
+          <div class="chat-artifact-head"></div>
+          <div class="chat-artifact-body"></div>
+        </div>
+      </div>
       <div class="chat-input-area">
         <div class="chat-mention-dropdown" style="display:none"></div>
         <div class="chat-slash-dropdown" style="display:none"></div>
@@ -544,15 +554,6 @@ class ChatView extends BaseComponent {
           </div>
         </div>
       </div>
-      </div>
-      <aside class="chat-artifact-pane" hidden>
-        <div class="chat-artifact-resizer" role="separator" aria-orientation="vertical" tabindex="0"
-             aria-label="${escapeHtml(t('artifacts.resizePane') || 'Resize artifact panel')}"></div>
-        <div class="chat-artifact-pane-inner">
-          <div class="chat-artifact-head"></div>
-          <div class="chat-artifact-body"></div>
-        </div>
-      </aside>
     </div>
   `;
 
@@ -561,7 +562,10 @@ class ChatView extends BaseComponent {
   const tabbarEl = chatView.querySelector('.chat-tabbar');
   const changesPanelEl = chatView.querySelector('.chat-changes-panel');
   const artifactsPanelEl = chatView.querySelector('.chat-artifacts-panel');
-  const artifactPaneEl = chatView.querySelector('.chat-artifact-pane');
+  const artifactsSideEl = chatView.querySelector('.chat-artifacts-side');
+  const artifactsSummaryEl = chatView.querySelector('.chat-artifacts-summary');
+  const artifactsListEl = chatView.querySelector('.chat-artifacts-list');
+  const artifactViewEl = chatView.querySelector('.chat-artifact-view');
   const artifactHeadEl = chatView.querySelector('.chat-artifact-head');
   const artifactBodyEl = chatView.querySelector('.chat-artifact-body');
   const changesBadgeEl = chatView.querySelector('.chat-tab-badge[data-badge="changes"]');
@@ -4312,7 +4316,7 @@ class ChatView extends BaseComponent {
     toggleFileDiff(row.closest('.chat-change-item'));
   });
 
-  // ── Extracts tab ──
+  // ── Documents tab ──
   //
   // The self-contained things Claude produced in THIS conversation: an HTML
   // page, an SVG, a diagram, a long code block, a file it wrote. Detected by
@@ -4320,7 +4324,7 @@ class ChatView extends BaseComponent {
   // repopulates itself for free when a session is resumed and the transcript is
   // replayed.
   //
-  // Named "Extracts" and not "Artifacts" on purpose: `Artifact` is a distinct
+  // Named "Documents" and not "Artifacts" on purpose: `Artifact` is a distinct
   // Agent SDK tool that publishes an .html/.md file to claude.ai and hands back
   // a shareable URL. Those are remote and explicit; these are local and
   // inferred, and conflating the two in the UI would be misleading.
@@ -4354,20 +4358,21 @@ class ChatView extends BaseComponent {
     published: 'Published', html: 'HTML', svg: 'SVG', mermaid: 'Diagram', code: 'Code', file: 'File',
   };
 
-  /** Cards, newest first, one per artifact. */
+  /** Left column: one row per extract, newest first. */
   function renderArtifactsPanel() {
     const artifacts = artifactRegistry.list().reverse();
+
     if (!artifacts.length) {
-      artifactsPanelEl.innerHTML = `<div class="chat-artifacts-empty">${escapeHtml(t('artifacts.emptySession') || 'Nothing extracted from this conversation yet.')}</div>`;
+      artifactsSummaryEl.innerHTML = '';
+      artifactsListEl.innerHTML = `<div class="chat-artifacts-empty">${escapeHtml(t('artifacts.emptySession') || 'No documents produced in this conversation yet.')}</div>`;
+      renderArtifactPlaceholder();
       return;
     }
 
-    const openId = artifactPaneEl.dataset.artifactId || '';
-    const cards = artifacts.map((a) => {
+    const openId = artifactViewEl.dataset.artifactId || '';
+    artifactsListEl.innerHTML = artifacts.map((a) => {
       const kindLabel = ARTIFACT_KIND_LABEL[a.kind] || a.kind;
-      const meta = a.kind === 'code' || a.kind === 'file'
-        ? `${a.lines || a.source.split('\n').length} ${escapeHtml(t('artifacts.lines') || 'lines')}`
-        : escapeHtml(a.lang || kindLabel);
+      const lines = a.lines || a.source.split('\n').length;
       // A published artifact brought its own emoji and subtitle from the
       // Artifact tool; nothing else has either.
       const thumb = a.favicon
@@ -4385,21 +4390,26 @@ class ChatView extends BaseComponent {
             <span class="chat-artifact-card-meta">
               <span class="chat-artifact-kind">${escapeHtml(kindLabel)}</span>
               <span class="chat-artifact-dot">•</span>
-              <span>${meta}</span>
+              <span>${lines} ${escapeHtml(t('artifacts.lines') || 'lines')}</span>
             </span>
           </span>
         </button>`;
     }).join('');
 
     const label = artifacts.length > 1
-      ? (t('artifacts.extractsPlural') || 'extracts')
-      : (t('artifacts.extractsSingular') || 'extract');
-    artifactsPanelEl.innerHTML = `
-      <div class="chat-artifacts-summary">
-        <span class="chat-artifacts-count">${artifacts.length} ${escapeHtml(label)}</span>
-      </div>
-      <div class="chat-artifacts-grid">${cards}</div>
-    `;
+      ? (t('artifacts.documentsPlural') || 'documents')
+      : (t('artifacts.documentsSingular') || 'document');
+    artifactsSummaryEl.innerHTML = `<span class="chat-artifacts-count">${artifacts.length} ${escapeHtml(label)}</span>`;
+
+    // Opening the tab with nothing selected should still show something useful,
+    // so preview the newest extract rather than an empty right column.
+    if (!openId) openArtifact(artifacts[0].id);
+  }
+
+  function renderArtifactPlaceholder() {
+    artifactHeadEl.innerHTML = '';
+    artifactBodyEl.innerHTML = `<div class="chat-artifacts-empty">${escapeHtml(t('artifacts.selectPrompt') || 'Select an artifact to preview it.')}</div>`;
+    artifactBodyEl.classList.remove('chat-artifact-doc');
   }
 
   function artifactGlyph(kind) {
@@ -4455,22 +4465,16 @@ class ChatView extends BaseComponent {
   function openArtifact(id) {
     const artifact = artifactRegistry.get(id);
     if (!artifact) return;
-    artifactPaneEl.dataset.artifactId = id;
-    artifactPaneEl.hidden = false;
-    chatView.classList.add('artifact-open');
+    artifactViewEl.dataset.artifactId = id;
     renderArtifactPane(artifact);
-    // Keep the grid's selection ring in sync when it is the visible tab.
-    if (!artifactsPanelEl.hidden) renderArtifactsPanel();
+    // Move the selection ring without re-rendering the list, which would
+    // recurse: renderArtifactsPanel() auto-opens the newest when nothing is
+    // selected, and that would call back into here.
+    for (const card of artifactsListEl.querySelectorAll('.chat-artifact-card')) {
+      card.classList.toggle('active', card.dataset.artifactId === id);
+    }
   }
 
-  function closeArtifactPane() {
-    artifactPaneEl.hidden = true;
-    delete artifactPaneEl.dataset.artifactId;
-    chatView.classList.remove('artifact-open');
-    artifactBodyEl.innerHTML = '';
-    artifactHeadEl.innerHTML = '';
-    if (!artifactsPanelEl.hidden) renderArtifactsPanel();
-  }
 
   function renderArtifactPane(artifact) {
     const kindLabel = ARTIFACT_KIND_LABEL[artifact.kind] || artifact.kind;
@@ -4479,9 +4483,6 @@ class ChatView extends BaseComponent {
       <div class="chat-artifact-title-row">
         <span class="chat-artifact-kind-badge" data-kind="${escapeHtml(artifact.kind)}">${escapeHtml(kindLabel)}</span>
         <span class="chat-artifact-title" title="${escapeHtml(artifact.title)}">${escapeHtml(artifact.title)}</span>
-        <button class="chat-artifact-action" data-action="close" title="${escapeHtml(t('common.close') || 'Close')}">
-          <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
-        </button>
       </div>
       <div class="chat-artifact-actions">
         <button class="chat-artifact-action" data-action="copy">${escapeHtml(t('common.copy') || 'Copy')}</button>
@@ -4513,9 +4514,6 @@ class ChatView extends BaseComponent {
     if (!artifact) return;
 
     switch (btn.dataset.action) {
-      case 'close':
-        closeArtifactPane();
-        break;
       case 'copy':
         try {
           await navigator.clipboard.writeText(artifact.source);
@@ -4561,18 +4559,20 @@ class ChatView extends BaseComponent {
   });
 
   // Drag the divider between the conversation and the artifact pane.
-  const ARTIFACT_PANE_MIN = 320;
+  // Drag the divider between the list and the preview.
+  const ARTIFACT_LIST_MIN = 200;
+  const ARTIFACT_VIEW_MIN = 280;
   (function setupArtifactResizer() {
-    const handle = chatView.querySelector('.chat-artifact-resizer');
+    const handle = chatView.querySelector('.chat-artifacts-resizer');
     if (!handle) return;
     let startX = 0;
     let startWidth = 0;
 
     function onMove(e) {
-      // The pane sits on the right, so dragging left widens it.
-      const width = startWidth + (startX - e.clientX);
-      const max = Math.max(ARTIFACT_PANE_MIN, chatView.clientWidth - ARTIFACT_PANE_MIN);
-      artifactPaneEl.style.width = `${Math.min(max, Math.max(ARTIFACT_PANE_MIN, width))}px`;
+      // The list is on the left, so dragging right widens it.
+      const width = startWidth + (e.clientX - startX);
+      const max = Math.max(ARTIFACT_LIST_MIN, artifactsPanelEl.clientWidth - ARTIFACT_VIEW_MIN);
+      artifactsSideEl.style.width = `${Math.min(max, Math.max(ARTIFACT_LIST_MIN, width))}px`;
     }
 
     function onUp() {
@@ -4584,7 +4584,7 @@ class ChatView extends BaseComponent {
     handle.addEventListener('mousedown', (e) => {
       e.preventDefault();
       startX = e.clientX;
-      startWidth = artifactPaneEl.getBoundingClientRect().width;
+      startWidth = artifactsSideEl.getBoundingClientRect().width;
       document.body.classList.add('resizing-h');
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);

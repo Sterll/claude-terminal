@@ -1912,7 +1912,7 @@
     "elicitationDecline": "Decline",
     "elicitationOpen": "Continue",
     "cancel": "Cancel",
-    "tabExtracts": "Extracts"
+    "tabDocuments": "Documents"
   },
   "hooks": {
     "consent": {
@@ -2115,12 +2115,12 @@
   "artifacts": {
     "tabTitle": "Artifacts",
     "libraryTitle": "Artifacts",
-    "emptySession": "Nothing extracted from this conversation yet.",
+    "emptySession": "No documents produced in this conversation yet.",
     "emptyLibrary": "No artifacts yet. They appear here as Claude produces HTML pages, diagrams, SVGs and code.",
     "selectPrompt": "Select an artifact to preview it.",
     "lines": "lines",
-    "extractsSingular": "extract",
-    "extractsPlural": "extracts",
+    "documentsSingular": "document",
+    "documentsPlural": "documents",
     "stored": "stored",
     "allKinds": "All kinds",
     "inProject": "in this project",

@@ -1912,7 +1912,7 @@
     "elicitationDecline": "Tolak",
     "elicitationOpen": "Lanjutkan",
     "cancel": "Batal",
-    "tabExtracts": "Ekstrak"
+    "tabDocuments": "Dokumen"
   },
   "hooks": {
     "consent": {
@@ -2115,12 +2115,12 @@
   "artifacts": {
     "tabTitle": "Artefak",
     "libraryTitle": "Artefak",
-    "emptySession": "Belum ada yang diekstrak dari percakapan ini.",
+    "emptySession": "Belum ada dokumen yang dibuat dalam percakapan ini.",
     "emptyLibrary": "Belum ada artefak. Artefak muncul di sini saat Claude membuat halaman HTML, diagram, SVG, dan kode.",
     "selectPrompt": "Pilih artefak untuk melihat pratinjaunya.",
     "lines": "baris",
-    "extractsSingular": "ekstrak",
-    "extractsPlural": "ekstrak",
+    "documentsSingular": "dokumen",
+    "documentsPlural": "dokumen",
     "stored": "tersimpan",
     "allKinds": "Semua jenis",
     "inProject": "di proyek ini",

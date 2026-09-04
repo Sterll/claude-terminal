@@ -6,31 +6,16 @@
    ========================================================================== */
 
 /* ── Chat view container ── */
-/* A row: the conversation column, plus the artifact pane when one is open.
-   `.chat-main` carries the column layout the view itself used to have, so
-   nothing inside the conversation had to change. */
 .chat-view {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   height: 100%;
   background: var(--bg-primary);
   overflow: hidden;
   position: relative;
 }
 
-.chat-main {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  /* Without this a wide artifact (a long code line) would push the
-     conversation column out instead of scrolling inside its own pane. */
-  min-width: 0;
-  height: 100%;
-  overflow: hidden;
-  position: relative;
-}
-
-/* ── Session tab bar (Conversation / Changes / Artifacts) ── */
+/* ── Session tab bar (Conversation / Changes / Documents) ── */
 .chat-tabbar {
   display: flex;
   align-items: stretch;
