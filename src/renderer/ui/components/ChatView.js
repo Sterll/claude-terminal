@@ -119,6 +119,7 @@ const { updateTerminal, getTerminal } = require('../../state/terminals.state');
 const { saveTerminalSessions } = require('../../services/TerminalSessionService');
 
 const { matchModel, resolveModelSelection, hasOneMContext, DEFAULT_ALIAS } = require('../../../shared/model-options');
+const { contextTokensFromUsage } = require('../../../shared/context-usage');
 const ModelCatalog = require('../../services/ModelCatalogClient');
 
 // Catalog access is shared with the project-settings and parallel-run pickers
@@ -6302,7 +6303,8 @@ class ChatView extends BaseComponent {
 
     // Result — update stats. Also detect SDK errors.
     if (message.type === 'result') {
-      if (message.usage) inputTokens = message.usage.input_tokens || 0;
+      const turnTokens = contextTokensFromUsage(message.usage);
+      if (turnTokens > 0) inputTokens = turnTokens;
       if (message.model) model = message.model;
       updateStatusInfo();
 
@@ -7542,6 +7544,14 @@ class ChatView extends BaseComponent {
 
       const rawMsgs = (result?.success && result.messages) || [];
       previousRawCount = rawMsgs.length;
+
+      // A resumed conversation has no live session to query until the user sends
+      // something, so the gauge would sit empty on a transcript already holding
+      // 200K. The transcript carries the figure — open on it.
+      if (result?.contextTokens > 0) {
+        inputTokens = result.contextTokens;
+        updateStatusInfo();
+      }
 
       let msgs = rawMsgs;
       // Older main processes truncate client-side; harmless double safety for forks
