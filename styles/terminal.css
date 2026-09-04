@@ -1047,6 +1047,42 @@
   border-top: 2px solid var(--accent);
 }
 
+/* Pinned tabs — Chrome-style: compact, clustered at the start of the bar,
+   no close button (closing stays available via the context menu) */
+.terminal-tab.pinned-tab {
+  padding: 8px 10px;
+  gap: 6px;
+}
+
+.terminal-tab.pinned-tab .tab-name {
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-tab.pinned-tab .tab-close,
+.terminal-tab.pinned-tab .tab-mode-toggle {
+  display: none;
+}
+
+/* The pin glyph takes the close button's spot; clicking it unpins */
+.tab-pin-icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.tab-pin-icon svg {
+  width: 11px;
+  height: 11px;
+}
+
+.tab-pin-icon:hover {
+  color: var(--accent);
+}
+
 .tab-name {
   cursor: pointer;
 }

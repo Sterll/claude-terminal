@@ -2411,6 +2411,8 @@
   },
   "tabs": {
     "rename": "Rename",
+    "pin": "Pin Tab",
+    "unpin": "Unpin Tab",
     "close": "Close",
     "closeOthers": "Close Others",
     "closeToLeft": "Close Tabs to Left",

@@ -109,10 +109,14 @@ async function extractSessionInfo(filePath) {
 const TITLE_TAIL_BYTES = 128 * 1024;
 
 /**
- * Read the session's current title from the tail of its JSONL file.
+ * Read the session's current title and last activity from the tail of its JSONL file.
+ * `lastActivity` is the timestamp of the last message line. File mtime is not
+ * reliable for ordering: Claude Code keeps appending housekeeping lines
+ * (titles, file-history snapshots…) well after the last real message, so an
+ * idle session can look more recent than one the user just worked in.
  * @param {string} filePath
  * @param {number} size - File size in bytes (from a stat the caller already did)
- * @returns {Promise<{customTitle: string, aiTitle: string}>}
+ * @returns {Promise<{customTitle: string, aiTitle: string, lastActivity: string}>}
  */
 async function readSessionTitle(filePath, size) {
   let handle;
@@ -129,19 +133,24 @@ async function readSessionTitle(filePath, size) {
 
     let customTitle = '';
     let aiTitle = '';
+    let lastActivity = '';
     for (let i = lines.length - 1; i >= 0; i--) {
       const line = lines[i];
-      if (!line || line.indexOf('-title"') === -1) continue; // cheap pre-filter
+      if (!line) continue;
+      const isTitleLine = line.indexOf('-title"') !== -1;
+      const mayHaveTimestamp = !lastActivity && line.indexOf('"timestamp"') !== -1;
+      if (!isTitleLine && !mayHaveTimestamp) continue; // cheap pre-filter
       try {
         const obj = JSON.parse(line);
         if (!customTitle && obj.type === 'custom-title' && obj.customTitle) customTitle = obj.customTitle;
         else if (!aiTitle && obj.type === 'ai-title' && obj.aiTitle) aiTitle = obj.aiTitle;
-        if (customTitle && aiTitle) break;
+        if (!lastActivity && obj.timestamp) lastActivity = obj.timestamp;
+        if (customTitle && aiTitle && lastActivity) break;
       } catch { /* skip malformed lines */ }
     }
-    return { customTitle, aiTitle };
+    return { customTitle, aiTitle, lastActivity };
   } catch {
-    return { customTitle: '', aiTitle: '' };
+    return { customTitle: '', aiTitle: '', lastActivity: '' };
   } finally {
     await handle?.close().catch(() => {});
   }
@@ -257,19 +266,27 @@ async function getClaudeSessions(projectPath) {
       }
     } catch { /* index may not exist or be stale, that's ok */ }
 
-    // Sort by modified date (most recent first) and limit to 50
-    const top = allSessions
+    // Pre-rank by mtime and read tails only for the head of that ranking: a
+    // 128 KB tail read per file is wasted on sessions that can't make the cut.
+    // The margin over 50 absorbs mtime drift (appends only push mtime forward,
+    // so a session with recent real activity is always near the top by mtime).
+    const candidates = allSessions
       .sort((a, b) => new Date(b.modified) - new Date(a.modified))
-      .slice(0, 50);
+      .slice(0, 80);
 
-    // Titles are read only for the sessions actually returned: a 128 KB tail read
-    // per file is wasted on the ones the slice above just dropped.
-    await Promise.all(top.map(async (session) => {
-      const { customTitle, aiTitle } = await readSessionTitle(session.filePath, session.size);
+    await Promise.all(candidates.map(async (session) => {
+      const { customTitle, aiTitle, lastActivity } = await readSessionTitle(session.filePath, session.size);
       session.title = customTitle || aiTitle || '';
       session.customTitle = customTitle;
       session.aiTitle = aiTitle;
+      // Order and time labels follow the conversation, not file housekeeping
+      if (lastActivity) session.modified = lastActivity;
     }));
+
+    // Final order by real last activity (most recent first), limit to 50
+    const top = candidates
+      .sort((a, b) => new Date(b.modified) - new Date(a.modified))
+      .slice(0, 50);
 
     const sessions = top.map(({ size, filePath, ...session }) => session);
     _sessionsCache.set(projectPath, {

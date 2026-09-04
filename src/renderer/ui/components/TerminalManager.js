@@ -1211,6 +1211,8 @@ class TerminalManager extends BaseComponent {
       e.dataTransfer.dropEffect = 'move';
 
       if (!self._draggedTab || self._draggedTab === tab) return;
+      // Pinned and unpinned tabs live in separate zones, like browser tabs
+      if (self._draggedTab.classList.contains('pinned-tab') !== tab.classList.contains('pinned-tab')) return;
 
       const rect = tab.getBoundingClientRect();
       const midX = rect.left + rect.width / 2;
@@ -1229,6 +1231,8 @@ class TerminalManager extends BaseComponent {
       tab.classList.remove('drag-over-left', 'drag-over-right');
 
       if (!self._draggedTab || self._draggedTab === tab) return;
+      // No dropping across the pinned/unpinned boundary
+      if (self._draggedTab.classList.contains('pinned-tab') !== tab.classList.contains('pinned-tab')) return;
 
       const tabsContainer = document.getElementById('terminals-tabs');
       const rect = tab.getBoundingClientRect();
@@ -1245,14 +1249,27 @@ class TerminalManager extends BaseComponent {
 
   // ── Terminal tab name & status ──
 
-  async updateTerminalTabName(id, name) {
+  /**
+   * Rename a tab. Auto renames (AI naming, OSC titles, slash-command hook)
+   * leave `custom` unset and are ignored once the tab carries a name the user
+   * chose; a custom rename locks the tab against further auto renames.
+   */
+  async updateTerminalTabName(id, name, { custom = false } = {}) {
     const termData = getTerminal(id);
     if (!termData) return;
+    if (!custom && termData.nameCustom) return;
+    // PTY title scraping re-emits the same name continuously; a no-op rename
+    // is not worth a remote broadcast and a session save. A custom rename
+    // still passes so an unchanged name can acquire the lock.
+    if (!custom && termData.name === name) return;
 
-    updateTerminal(id, { name });
+    updateTerminal(id, custom ? { name, nameCustom: true } : { name });
 
     if (termData.claudeSessionId && name) {
-      await this._setSessionCustomName(termData.claudeSessionId, name);
+      await this._setSessionCustomName(termData.claudeSessionId, name, { custom });
+      if (this._api.remote?.notifyTabRenamed) {
+        this._api.remote.notifyTabRenamed({ sessionId: termData.claudeSessionId, tabName: name });
+      }
     }
 
     const tab = document.querySelector(`.terminal-tab[data-id="${id}"]`);
@@ -1261,6 +1278,7 @@ class TerminalManager extends BaseComponent {
       if (nameSpan) {
         nameSpan.textContent = name;
       }
+      if (tab.classList.contains('pinned-tab')) tab.title = name;
     }
     const TerminalSessionService = require('../../services/TerminalSessionService');
     TerminalSessionService.saveTerminalSessions();
@@ -1366,21 +1384,74 @@ class TerminalManager extends BaseComponent {
     input.focus();
     input.select();
 
+    let cancelled = false;
     const finishRename = () => {
-      const newName = input.value.trim() || currentName;
-      updateTerminal(id, { name: newName });
+      const typed = input.value.trim();
+      const newName = (!cancelled && typed) || currentName;
       const newSpan = document.createElement('span');
       newSpan.className = 'tab-name';
       newSpan.textContent = newName;
       newSpan.ondblclick = (e) => { e.stopPropagation(); self._startRenameTab(id); };
       input.replaceWith(newSpan);
+      if (cancelled) return;
+      if (typed) {
+        // A name typed by hand is custom: it sticks, auto renames stop
+        self.updateTerminalTabName(id, newName, { custom: true });
+      } else {
+        // Cleared: drop the custom lock so auto naming takes over again
+        updateTerminal(id, { nameCustom: false });
+        const td = getTerminal(id);
+        if (td?.claudeSessionId) self._setSessionCustomName(td.claudeSessionId, '');
+      }
     };
 
     input.onblur = finishRename;
     input.onkeydown = (e) => {
       if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-      if (e.key === 'Escape') { input.value = currentName; input.blur(); }
+      if (e.key === 'Escape') { cancelled = true; input.blur(); }
     };
+  }
+
+  // ── Tab pinning ──
+  //
+  // Chrome-style pinned tabs: compact, no close button, clustered at the
+  // start of the bar. Bulk close actions spare them; closing one stays
+  // available through its context menu.
+
+  setTabPinned(id, pinned) {
+    const termData = getTerminal(id);
+    const tab = document.querySelector(`.terminal-tab[data-id="${id}"]`);
+    if (!termData || !tab) return;
+
+    updateTerminal(id, { pinned: !!pinned });
+    tab.classList.toggle('pinned-tab', !!pinned);
+    // Compact tabs truncate their label; the tooltip carries the full name
+    tab.title = pinned ? (termData.name || '') : '';
+
+    // A visible pin marks the tab beyond its compact width — it stands where
+    // the close button was, and clicking it unpins, like an editor's tabs.
+    let pinIcon = tab.querySelector('.tab-pin-icon');
+    if (pinned && !pinIcon) {
+      pinIcon = document.createElement('span');
+      pinIcon.className = 'tab-pin-icon';
+      pinIcon.title = t('tabs.unpin');
+      pinIcon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M15 9.34V6a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1v3.34a2 2 0 0 1-1.11 1.79l-1.24.62A2 2 0 0 0 5.55 13.55V15a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-1.45a2 2 0 0 0-1.11-1.79l-1.24-.62A2 2 0 0 1 15 9.34Z"/></svg>';
+      pinIcon.onclick = (e) => { e.stopPropagation(); this.setTabPinned(id, false); };
+      tab.appendChild(pinIcon);
+    } else if (!pinned && pinIcon) {
+      pinIcon.remove();
+    }
+
+    // Re-cluster. The same anchor serves both directions: right after the last
+    // other pinned tab — the end of the pinned zone when pinning, the start of
+    // the unpinned zone when unpinning.
+    const tabsContainer = document.getElementById('terminals-tabs');
+    const otherPinned = Array.from(tabsContainer.querySelectorAll('.terminal-tab.pinned-tab')).filter(el => el !== tab);
+    const lastPinned = otherPinned[otherPinned.length - 1] || null;
+    tabsContainer.insertBefore(tab, lastPinned ? lastPinned.nextSibling : tabsContainer.firstChild);
+
+    const TerminalSessionService = require('../../services/TerminalSessionService');
+    TerminalSessionService.saveTerminalSessions();
   }
 
   _showTabContextMenu(e, id) {
@@ -1390,7 +1461,8 @@ class TerminalManager extends BaseComponent {
 
     const tabsContainer = document.getElementById('terminals-tabs');
     // Only act on tabs belonging to the same project as the target tab
-    const thisProjectId = getTerminal(id)?.project?.id;
+    const termData = getTerminal(id);
+    const thisProjectId = termData?.project?.id;
     const allTabs = Array.from(tabsContainer.querySelectorAll('.terminal-tab'))
       .filter(tab => getTerminal(tab.dataset.id)?.project?.id === thisProjectId);
     const thisTab = tabsContainer.querySelector(`.terminal-tab[data-id="${id}"]`);
@@ -1398,10 +1470,25 @@ class TerminalManager extends BaseComponent {
     const tabsToLeft = thisIndex > 0 ? allTabs.slice(0, thisIndex) : [];
     const tabsToRight = allTabs.slice(thisIndex + 1);
 
+    // Bulk close actions spare pinned tabs, like a browser's do
+    const isPinnedEl = (el) => el.classList.contains('pinned-tab');
+    const closableOthers = allTabs.filter(tab => tab !== thisTab && !isPinnedEl(tab));
+    const closableLeft = tabsToLeft.filter(tab => !isPinnedEl(tab));
+    const closableRight = tabsToRight.filter(tab => !isPinnedEl(tab));
+    const closableAll = allTabs.filter(tab => !isPinnedEl(tab));
+    const isPinned = !!termData?.pinned;
+
     showContextMenu({
       x: e.clientX,
       y: e.clientY,
       items: [
+        {
+          label: isPinned ? t('tabs.unpin') : t('tabs.pin'),
+          icon: isPinned
+            ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89"/><path d="m2 2 20 20"/><path d="M9 9v1.76A2 2 0 0 1 7.89 12.55L6.65 13.17A2 2 0 0 0 5.55 14.96V16a1 1 0 0 0 1 1h11"/></svg>'
+            : '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M15 9.34V6a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1v3.34a2 2 0 0 1-1.11 1.79l-1.24.62A2 2 0 0 0 5.55 13.55V15a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-1.45a2 2 0 0 0-1.11-1.79l-1.24-.62A2 2 0 0 1 15 9.34Z"/></svg>',
+          onClick: () => self.setTabPinned(id, !isPinned)
+        },
         {
           label: t('tabs.rename'),
           shortcut: 'Double-click',
@@ -1417,37 +1504,34 @@ class TerminalManager extends BaseComponent {
         {
           label: t('tabs.closeOthers'),
           icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>',
-          disabled: allTabs.length <= 1,
+          disabled: closableOthers.length === 0,
           onClick: () => {
-            allTabs.forEach(tab => {
-              const tabId = tab.dataset.id;
-              if (tabId !== id) self.closeTerminal(tabId);
-            });
+            closableOthers.forEach(tab => self.closeTerminal(tab.dataset.id));
           }
         },
         {
           label: t('tabs.closeToLeft'),
           icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>',
-          disabled: tabsToLeft.length === 0,
+          disabled: closableLeft.length === 0,
           onClick: () => {
-            tabsToLeft.forEach(tab => self.closeTerminal(tab.dataset.id));
+            closableLeft.forEach(tab => self.closeTerminal(tab.dataset.id));
           }
         },
         {
           label: t('tabs.closeToRight'),
           icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>',
-          disabled: tabsToRight.length === 0,
+          disabled: closableRight.length === 0,
           onClick: () => {
-            tabsToRight.forEach(tab => self.closeTerminal(tab.dataset.id));
+            closableRight.forEach(tab => self.closeTerminal(tab.dataset.id));
           }
         },
         { separator: true },
         {
           label: t('tabs.closeAll'),
           icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>',
-          disabled: allTabs.length === 0,
+          disabled: closableAll.length === 0,
           onClick: () => {
-            allTabs.forEach(tab => self.closeTerminal(tab.dataset.id));
+            closableAll.forEach(tab => self.closeTerminal(tab.dataset.id));
           }
         }
       ]
@@ -1643,13 +1727,13 @@ class TerminalManager extends BaseComponent {
   // ── Create terminal ──
 
   async createTerminal(project, options = {}) {
-    const { skipPermissions = false, runClaude = true, name: customName = null, mode: explicitMode = null, cwd: overrideCwd = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, resumeSessionId = null, systemPrompt = null, tabTag = null } = options;
+    const { skipPermissions = false, runClaude = true, name: customName = null, nameCustom = false, mode: explicitMode = null, cwd: overrideCwd = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, resumeSessionId = null, systemPrompt = null, tabTag = null } = options;
 
     const mode = explicitMode || (runClaude ? (getSetting('defaultTerminalMode') || 'terminal') : 'terminal');
 
     if (mode === 'chat' && runClaude) {
       const chatProject = overrideCwd ? { ...project, path: overrideCwd } : project;
-      return this._createChatTerminal(chatProject, { skipPermissions, name: customName, parentProjectId: overrideCwd ? project.id : null, resumeSessionId, initialPrompt, initialImages, initialModel, initialEffort, onSessionStart, systemPrompt, tabTag });
+      return this._createChatTerminal(chatProject, { skipPermissions, name: customName, nameCustom, parentProjectId: overrideCwd ? project.id : null, resumeSessionId, initialPrompt, initialImages, initialModel, initialEffort, onSessionStart, systemPrompt, tabTag });
     }
 
     const result = await this._api.terminal.create({
@@ -1696,6 +1780,7 @@ class TerminalManager extends BaseComponent {
       project,
       projectIndex,
       name: tabName,
+      nameCustom: !!(customName && nameCustom),
       status: initialStatus,
       inputBuffer: '',
       isBasic: isBasicTerminal,
@@ -2558,6 +2643,13 @@ class TerminalManager extends BaseComponent {
   }
 
   // ── Session Custom Names ──
+  //
+  // session-names.json holds the name a session is displayed under. Two
+  // provenances share the file: names the user chose (custom) and names the
+  // AI tab naming produced (kept only so the list matches what the tab
+  // showed). Entries are `{ name, custom }`; bare strings predate the flag
+  // and are read as non-custom, since the auto namer wrote the vast majority
+  // of them. Only custom names survive auto renames.
 
   async _loadSessionNames() {
     if (this._namesCache) return this._namesCache;
@@ -2576,19 +2668,40 @@ class TerminalManager extends BaseComponent {
     } catch { /* ignore write errors */ }
   }
 
-  async _getSessionCustomName(sessionId) {
-    return (await this._loadSessionNames())[sessionId] || '';
+  async _getSessionNameEntry(sessionId) {
+    const raw = (await this._loadSessionNames())[sessionId];
+    if (!raw) return { name: '', custom: false };
+    if (typeof raw === 'string') return { name: raw, custom: false };
+    return { name: raw.name || '', custom: !!raw.custom };
   }
 
-  async _setSessionCustomName(sessionId, name) {
+  async _setSessionCustomName(sessionId, name, { custom = true } = {}) {
     const names = await this._loadSessionNames();
+    const existing = names[sessionId];
+    // An auto rename never clobbers a name the user chose
+    if (!custom && existing && typeof existing === 'object' && existing.custom) return;
     if (name) {
-      names[sessionId] = name;
+      names[sessionId] = { name, custom };
     } else {
       delete names[sessionId];
     }
     this._namesCache = names;
     await this._saveSessionNames();
+  }
+
+  // Mirror a rename made in the sessions list onto any open tab running that
+  // session, so the tab does not overwrite it on the next auto rename.
+  _applyNameToOpenTabs(sessionId, name, custom) {
+    terminalsState.get().terminals.forEach((td, id) => {
+      if (td?.claudeSessionId !== sessionId) return;
+      updateTerminal(id, name ? { name, nameCustom: !!custom } : { nameCustom: false });
+      const tab = document.querySelector(`.terminal-tab[data-id="${id}"]`);
+      if (tab && name) {
+        const nameSpan = tab.querySelector('.tab-name');
+        if (nameSpan) nameSpan.textContent = name;
+        if (tab.classList.contains('pinned-tab')) tab.title = name;
+      }
+    });
   }
 
   async _preprocessSessions(sessions) {
@@ -2598,7 +2711,11 @@ class TerminalManager extends BaseComponent {
       const promptResult = cleanSessionText(session.firstPrompt);
       const summaryResult = cleanSessionText(session.summary);
       const skillName = promptResult.skillName || summaryResult.skillName;
-      const customName = await this._getSessionCustomName(session.sessionId);
+      const nameEntry = await this._getSessionNameEntry(session.sessionId);
+      // A deliberately chosen name — renamed here or in Claude Code — outranks
+      // every generated one and is never auto-renamed again.
+      const lockedName = nameEntry.custom ? nameEntry.name : session.customTitle;
+      const customName = lockedName || nameEntry.name;
 
       let displayTitle = '';
       let displaySubtitle = '';
@@ -2607,8 +2724,8 @@ class TerminalManager extends BaseComponent {
 
       if (customName) {
         displayTitle = customName;
-        displaySubtitle = session.title || summaryResult.text || promptResult.text;
-        isRenamed = true;
+        displaySubtitle = (session.title !== customName ? session.title : '') || summaryResult.text || promptResult.text;
+        isRenamed = Boolean(lockedName);
       } else if (session.title) {
         // Title Claude Code itself carries in the transcript: `custom-title` when
         // renamed there, `ai-title` otherwise. Far more useful than the raw
@@ -2635,7 +2752,7 @@ class TerminalManager extends BaseComponent {
         + ' ' + customName).toLowerCase();
 
       const pinned = await this._isSessionPinned(session.sessionId);
-      results.push({ ...session, displayTitle, displaySubtitle, isSkill, isRenamed, freshness, searchText, pinned });
+      results.push({ ...session, displayTitle, displaySubtitle, isSkill, isRenamed, nameLocked: Boolean(lockedName), freshness, searchText, pinned });
     }
     return results;
   }
@@ -2663,12 +2780,19 @@ class TerminalManager extends BaseComponent {
       cleanup();
       if (newName && newName !== currentName) {
         await self._setSessionCustomName(sessionId, newName);
+        self._applyNameToOpenTabs(sessionId, newName, true);
         if (sessionData) {
           sessionData.displayTitle = newName;
           sessionData.isRenamed = true;
+          sessionData.nameLocked = true;
         }
       } else if (!newName) {
         await self._setSessionCustomName(sessionId, '');
+        self._applyNameToOpenTabs(sessionId, null, false);
+        if (sessionData) {
+          sessionData.isRenamed = false;
+          sessionData.nameLocked = false;
+        }
       }
       if (onDone) onDone();
     }
@@ -2858,7 +2982,17 @@ class TerminalManager extends BaseComponent {
         const sessionId = card.dataset.sid;
         if (!sessionId) return;
         const skipPermissions = getSetting('skipPermissions') || false;
-        self.resumeSession(project, sessionId, { skipPermissions });
+        const session = sessionMap.get(sessionId);
+        // A user-chosen name passes through untouched; generated labels are
+        // bounded so a prompt-only session can't flood the tab bar.
+        const tabLabel = session?.nameLocked
+          ? session.displayTitle
+          : truncateText(session?.displayTitle || '', 40);
+        self.resumeSession(project, sessionId, {
+          skipPermissions,
+          name: tabLabel || null,
+          nameCustom: !!session?.nameLocked
+        });
       });
 
       emptyState.querySelector('.sessions-new-btn').onclick = () => {
@@ -2918,12 +3052,12 @@ class TerminalManager extends BaseComponent {
   // ── Resume session ──
 
   async resumeSession(project, sessionId, options = {}) {
-    const { skipPermissions = false, name: sessionName = null } = options;
+    const { skipPermissions = false, name: sessionName = null, nameCustom = false } = options;
 
     const mode = getSetting('defaultTerminalMode') || 'terminal';
     if (mode === 'chat') {
       console.log(`[TerminalManager] Resuming in chat mode — sessionId: ${sessionId}`);
-      return this._createChatTerminal(project, { skipPermissions, resumeSessionId: sessionId, name: sessionName });
+      return this._createChatTerminal(project, { skipPermissions, resumeSessionId: sessionId, name: sessionName, nameCustom });
     }
 
     const result = await this._api.terminal.create({
@@ -2966,6 +3100,7 @@ class TerminalManager extends BaseComponent {
       project,
       projectIndex,
       name: sessionName || t('terminals.resuming'),
+      nameCustom: !!(sessionName && nameCustom),
       status: 'working',
       inputBuffer: '',
       isBasic: false,
@@ -2978,7 +3113,9 @@ class TerminalManager extends BaseComponent {
 
     addTerminal(id, termData);
 
-    if (sessionName) {
+    // Only a name the user actually chose is worth locking in; the display
+    // title a resume happens to carry would otherwise masquerade as a rename.
+    if (sessionName && nameCustom) {
       await this._setSessionCustomName(sessionId, sessionName);
     }
 
@@ -3770,7 +3907,7 @@ class TerminalManager extends BaseComponent {
   // ── Chat terminal ──
 
   async _createChatTerminal(project, options = {}) {
-    const { skipPermissions = false, name: customName = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, parentProjectId = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, systemPrompt = null, tabTag = null } = options;
+    const { skipPermissions = false, name: customName = null, nameCustom = false, resumeSessionId = null, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, parentProjectId = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, systemPrompt = null, tabTag = null } = options;
 
     const id = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     let _chatSessionId = null;
@@ -3785,6 +3922,7 @@ class TerminalManager extends BaseComponent {
       project,
       projectIndex,
       name: tabName,
+      nameCustom: !!(customName && nameCustom),
       status: 'ready',
       inputBuffer: '',
       isBasic: false,
@@ -3851,24 +3989,17 @@ class TerminalManager extends BaseComponent {
       onSessionStart: (sid) => {
         _chatSessionId = sid;
         updateTerminal(id, { claudeSessionId: sid });
+        // A tab renamed before its session existed persists the name now
+        const td = getTerminal(id);
+        if (td?.nameCustom && td.name) self._setSessionCustomName(sid, td.name);
         if (onSessionStart) onSessionStart(sid);
       },
-      onTabRename: async (name) => {
-        const nameEl = tab.querySelector('.tab-name');
-        if (nameEl) nameEl.textContent = name;
-        const data = getTerminal(id);
-        if (data) data.name = name;
-        if (_chatSessionId && name) {
-          await self._setSessionCustomName(_chatSessionId, name);
-        }
-        if (_chatSessionId && self._api.remote?.notifyTabRenamed) {
-          self._api.remote.notifyTabRenamed({ sessionId: _chatSessionId, tabName: name });
-        }
-      },
+      onTabRename: (name) => self.updateTerminalTabName(id, name),
       onStatusChange: (status, substatus) => self._updateChatTerminalStatus(id, status, substatus),
       onSwitchTerminal: (dir) => self._callbacks.onSwitchTerminal?.(dir),
       onSwitchProject: (dir) => self._callbacks.onSwitchProject?.(dir),
       onForkSession: ({ resumeSessionId: forkSid, resumeSessionAt: forkAt, resumeDropsTurn: forkDrops, model: forkModel, effort: forkEffort, skipPermissions: forkSkipPerms }) => {
+        const src = getTerminal(id);
         self._createChatTerminal(project, {
           resumeSessionId: forkSid,
           forkSession: true,
@@ -3877,7 +4008,8 @@ class TerminalManager extends BaseComponent {
           skipPermissions: forkSkipPerms || false,
           initialModel: forkModel || null,
           initialEffort: forkEffort || null,
-          name: `Fork: ${tabName}`
+          name: `Fork: ${src?.name || tabName}`,
+          nameCustom: !!src?.nameCustom
         });
       },
     });
@@ -3989,11 +4121,7 @@ class TerminalManager extends BaseComponent {
         initialEffort: projSettings.effortLevel || null,
         builtinSystemPrompt: getBuiltinSystemPrompt(project.type),
         onSessionStart: (sid) => updateTerminal(id, { claudeSessionId: sid }),
-        onTabRename: (name) => {
-          const nameEl = tab.querySelector('.tab-name');
-          if (nameEl) nameEl.textContent = name;
-          updateTerminal(id, { name });
-        },
+        onTabRename: (name) => self.updateTerminalTabName(id, name),
         onStatusChange: (status, substatus) => self._updateChatTerminalStatus(id, status, substatus),
         onSwitchTerminal: (dir) => self._callbacks.onSwitchTerminal?.(dir),
         onSwitchProject: (dir) => self._callbacks.onSwitchProject?.(dir),
@@ -4561,7 +4689,8 @@ module.exports = {
   writeApiConsole: (projectIndex, data) => _getInstance().writeApiConsole(projectIndex, data),
   switchTerminalMode: (id) => _getInstance().switchTerminalMode(id),
   setScrapingCallback: (cb) => _getInstance().setScrapingCallback(cb),
-  updateTerminalTabName: (id, name) => _getInstance().updateTerminalTabName(id, name),
+  updateTerminalTabName: (id, name, opts) => _getInstance().updateTerminalTabName(id, name, opts),
+  setTabPinned: (id, pinned) => _getInstance().setTabPinned(id, pinned),
   cleanupProjectMaps: (projectIndex) => _getInstance().cleanupProjectMaps(projectIndex),
   scheduleScrollAfterRestore: (id) => _getInstance().scheduleScrollAfterRestore(id),
   // MCP orchestration

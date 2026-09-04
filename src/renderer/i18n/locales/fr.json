@@ -2411,6 +2411,8 @@
   },
   "tabs": {
     "rename": "Renommer",
+    "pin": "Épingler l'onglet",
+    "unpin": "Désépingler l'onglet",
     "close": "Fermer",
     "closeOthers": "Fermer les autres",
     "closeToLeft": "Fermer les onglets à gauche",

@@ -2411,6 +2411,8 @@
   },
   "tabs": {
     "rename": "Ganti nama",
+    "pin": "Sematkan Tab",
+    "unpin": "Lepas Sematan Tab",
     "close": "Tutup",
     "closeOthers": "Tutup Tab Lain",
     "closeToLeft": "Tutup Tab di Sebelah Kiri",

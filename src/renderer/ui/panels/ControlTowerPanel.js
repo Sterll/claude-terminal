@@ -1781,7 +1781,7 @@ function _startRenameMaximized() {
       } catch { /* ignore */ }
       try {
         const TerminalManager = require('../components/TerminalManager');
-        TerminalManager.updateTerminalTabName(agent.terminalId, value);
+        TerminalManager.updateTerminalTabName(agent.terminalId, value, { custom: true });
       } catch { /* state-only rename still shows in Control Tower */ }
     }
     titleEl.textContent = agent.sessionName || agent.projectName;
