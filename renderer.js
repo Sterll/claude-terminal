@@ -6282,32 +6282,117 @@ api.app.getVersion().then(version => {
 }).catch(() => {});
 
 // ========== USAGE MONITOR ==========
-let usageResetTargets = { session: null, weekly: null, sonnet: null };
+// Which limit buckets exist is the API's call (see UsageService.readBuckets), so
+// the bars are built from whatever it returns rather than declared in the HTML.
+// The two plan-wide windows are the only ones assumed to always be there, and
+// only as the placeholder shown before the first response lands.
+const PLACEHOLDER_USAGE_BUCKETS = [
+  { id: 'session', type: 'session', label: null, labelKey: 'ui.session', utilization: null, resetsAt: null },
+  { id: 'weekly',  type: 'weekly',  label: null, labelKey: 'ui.weekly',  utilization: null, resetsAt: null }
+];
+
+/** bucket id -> its rendered nodes */
+const usageBucketEls = new Map();
+/** bucket id -> reset Date, for the once-a-minute countdown */
+const usageResetTargets = new Map();
 let usageResetInterval = null;
 
 const usageElements = {
   container: document.getElementById('titlebar-usage'),
-  session: {
-    bar: document.getElementById('usage-bar-session'),
-    percent: document.getElementById('usage-percent-session'),
-    reset: document.getElementById('usage-reset-session')
-  },
-  weekly: {
-    bar: document.getElementById('usage-bar-weekly'),
-    percent: document.getElementById('usage-percent-weekly'),
-    reset: document.getElementById('usage-reset-weekly')
-  },
-  sonnet: {
-    bar: document.getElementById('usage-bar-sonnet'),
-    percent: document.getElementById('usage-percent-sonnet'),
-    reset: document.getElementById('usage-reset-sonnet')
-  },
   extra: {
     item: document.getElementById('usage-item-extra'),
     bar: document.getElementById('usage-bar-extra'),
     percent: document.getElementById('usage-percent-extra')
   }
 };
+
+/**
+ * Build the nodes for one usage bucket.
+ *
+ * A scoped bucket's name is whatever the API called the model, so it is set as
+ * text and never as markup. Plan-wide buckets keep their data-i18n attribute so
+ * a language switch still retranslates them in place.
+ *
+ * @param {Object} bucket
+ * @returns {{item: Element, label: Element, bar: Element, percent: Element, reset: Element}}
+ */
+function createUsageBucketEl(bucket) {
+  const item = document.createElement('div');
+  item.className = 'usage-item';
+  item.dataset.type = bucket.type;
+
+  const header = document.createElement('div');
+  header.className = 'usage-header';
+
+  const label = document.createElement('span');
+  label.className = 'usage-label';
+  if (bucket.labelKey) label.dataset.i18n = bucket.labelKey;
+
+  const value = document.createElement('span');
+  value.className = 'usage-value';
+  const percent = document.createElement('span');
+  percent.className = 'usage-percent';
+  percent.textContent = '--';
+  const reset = document.createElement('span');
+  reset.className = 'usage-reset';
+  value.append(percent, reset);
+
+  header.append(label, value);
+
+  const barContainer = document.createElement('div');
+  barContainer.className = 'usage-bar-container';
+  const bar = document.createElement('div');
+  bar.className = 'usage-bar';
+  bar.style.width = '0%';
+  barContainer.appendChild(bar);
+
+  item.append(header, barContainer);
+  return { item, label, bar, percent, reset };
+}
+
+/**
+ * Reconcile the rendered bars against a bucket list, keyed by bucket id, so a
+ * limit the API stops sending takes its bar with it instead of freezing on its
+ * last value.
+ *
+ * @param {Array<Object>} buckets
+ */
+function renderUsageBuckets(buckets) {
+  const { container, extra } = usageElements;
+  if (!container) return;
+
+  const seen = new Set();
+
+  for (const bucket of buckets) {
+    seen.add(bucket.id);
+    let els = usageBucketEls.get(bucket.id);
+    if (!els) {
+      els = createUsageBucketEl(bucket);
+      usageBucketEls.set(bucket.id, els);
+    }
+    // Re-inserting an existing node moves it, so walking the list in order also
+    // reorders the bars when the API sends its limits in a different order.
+    // Always before the extra-usage item, which is not a plan limit.
+    container.insertBefore(els.item, extra.item || null);
+
+    els.label.textContent = bucket.labelKey ? t(bucket.labelKey) : bucket.label;
+    updateUsageBar(els, bucket.utilization);
+
+    const resetsAt = bucket.resetsAt ? new Date(bucket.resetsAt) : null;
+    if (resetsAt && !isNaN(resetsAt.getTime())) {
+      usageResetTargets.set(bucket.id, resetsAt);
+    } else {
+      usageResetTargets.delete(bucket.id);
+    }
+  }
+
+  for (const [id, els] of usageBucketEls) {
+    if (seen.has(id)) continue;
+    els.item.remove();
+    usageBucketEls.delete(id);
+    usageResetTargets.delete(id);
+  }
+}
 
 /**
  * Update a single usage bar
@@ -6378,31 +6463,20 @@ function updateUsageDisplay(usageData) {
 
   usageElements.container.classList.remove('loading');
 
-  if (!usageData || !usageData.data) {
-    updateUsageBar(usageElements.session, null);
-    updateUsageBar(usageElements.weekly, null);
-    updateUsageBar(usageElements.sonnet, null);
-    updateResetEl(usageElements.session.reset, null);
-    updateResetEl(usageElements.weekly.reset, null);
-    updateResetEl(usageElements.sonnet.reset, null);
+  const buckets = usageData?.data?.buckets;
+  if (!Array.isArray(buckets)) {
+    // No usable payload: keep the plan-wide bars on screen, blanked, rather
+    // than collapsing the titlebar to nothing.
+    renderUsageBuckets(PLACEHOLDER_USAGE_BUCKETS);
     if (usageElements.extra.item) usageElements.extra.item.style.display = 'none';
     return;
   }
 
-  const data = usageData.data;
-
-  // Update all three usage bars
-  updateUsageBar(usageElements.session, data.session);
-  updateUsageBar(usageElements.weekly, data.weekly);
-  updateUsageBar(usageElements.sonnet, data.sonnet);
+  renderUsageBuckets(buckets);
 
   // Extra usage (paid tokens beyond plan) — show only when non-zero
-  updateExtraUsage(data.extraUsage);
+  updateExtraUsage(usageData.data.extraUsage);
 
-  // Set reset targets for each category
-  usageResetTargets.session = data.sessionReset ? new Date(data.sessionReset) : null;
-  usageResetTargets.weekly = data.weeklyReset ? new Date(data.weeklyReset) : null;
-  usageResetTargets.sonnet = data.sonnetReset ? new Date(data.sonnetReset) : null;
   startResetCountdown();
 }
 
@@ -6414,9 +6488,9 @@ function startResetCountdown() {
 }
 
 function updateAllResets() {
-  updateResetEl(usageElements.session.reset, usageResetTargets.session);
-  updateResetEl(usageElements.weekly.reset, usageResetTargets.weekly);
-  updateResetEl(usageElements.sonnet.reset, usageResetTargets.sonnet);
+  for (const [id, els] of usageBucketEls) {
+    updateResetEl(els.reset, usageResetTargets.get(id) || null);
+  }
 }
 
 function updateResetEl(el, target) {
@@ -6462,21 +6536,20 @@ async function refreshUsageDisplay() {
         : '';
     } else {
       usageElements.container.classList.remove('loading', 'stale');
-      updateUsageBar(usageElements.session, null);
-      updateUsageBar(usageElements.weekly, null);
-      updateUsageBar(usageElements.sonnet, null);
+      renderUsageBuckets(PLACEHOLDER_USAGE_BUCKETS);
     }
   } catch (error) {
     usageElements.container.classList.remove('loading');
-    updateUsageBar(usageElements.session, null);
-    updateUsageBar(usageElements.weekly, null);
-    updateUsageBar(usageElements.sonnet, null);
+    renderUsageBuckets(PLACEHOLDER_USAGE_BUCKETS);
     console.error('Usage refresh error:', error);
   }
 }
 
 // Initialize usage monitor
 if (usageElements.container) {
+  // Bars the API has not described yet, so the titlebar is not empty on boot.
+  renderUsageBuckets(PLACEHOLDER_USAGE_BUCKETS);
+
   // Click to refresh
   usageElements.container.addEventListener('click', () => {
     refreshUsageDisplay();

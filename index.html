@@ -20,33 +20,12 @@
     </div>
     <!-- Usage Display -->
     <div class="titlebar-usage" id="titlebar-usage" data-i18n-title="common.refresh">
-      <div class="usage-item" data-type="session">
-        <div class="usage-header">
-          <span class="usage-label" data-i18n="ui.session">Session</span>
-          <span class="usage-value"><span class="usage-percent" id="usage-percent-session">--</span><span class="usage-reset" id="usage-reset-session"></span></span>
-        </div>
-        <div class="usage-bar-container">
-          <div class="usage-bar" id="usage-bar-session" style="width: 0%"></div>
-        </div>
-      </div>
-      <div class="usage-item" data-type="weekly">
-        <div class="usage-header">
-          <span class="usage-label" data-i18n="ui.weekly">Weekly</span>
-          <span class="usage-value"><span class="usage-percent" id="usage-percent-weekly">--</span><span class="usage-reset" id="usage-reset-weekly"></span></span>
-        </div>
-        <div class="usage-bar-container">
-          <div class="usage-bar" id="usage-bar-weekly" style="width: 0%"></div>
-        </div>
-      </div>
-      <div class="usage-item" data-type="sonnet">
-        <div class="usage-header">
-          <span class="usage-label" data-i18n="ui.sonnet">Sonnet</span>
-          <span class="usage-value"><span class="usage-percent" id="usage-percent-sonnet">--</span><span class="usage-reset" id="usage-reset-sonnet"></span></span>
-        </div>
-        <div class="usage-bar-container">
-          <div class="usage-bar" id="usage-bar-sonnet" style="width: 0%"></div>
-        </div>
-      </div>
+      <!--
+        The plan-limit bars are built by the renderer, not written here: which
+        buckets exist is the API's call, so the markup follows the response
+        instead of hardcoding one bar per limit the API happened to expose the
+        day it was written. Bars are inserted before the "extra" item below.
+      -->
       <div class="usage-item" data-type="extra" id="usage-item-extra" style="display: none;">
         <div class="usage-header">
           <span class="usage-label" data-i18n="ui.extra">Extra</span>
