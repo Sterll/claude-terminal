@@ -589,6 +589,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     getContextUsage: (params) => ipcRenderer.invoke('chat-get-context-usage', params),
     stopTask: (params) => ipcRenderer.invoke('chat-stop-task', params),
     onTaskUpdate: createListener('chat-task-update'),
+    onBackgroundTasks: createListener('chat-background-tasks'),
     respondElicitation: (params) => ipcRenderer.send('chat-elicitation-response', params),
     onElicitationRequest: createListener('chat-elicitation-request'),
     reloadSkills: (params) => ipcRenderer.invoke('chat-reload-skills', params || {}),

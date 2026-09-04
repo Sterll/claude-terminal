@@ -20,6 +20,28 @@ let resolvedRuntime = null;
 const FORK_REJECTED_PREFIX = 'Resume rejected by --resume-drops-turn:';
 
 /**
+ * Shape a `background_tasks_changed` payload for the renderer.
+ *
+ * Ambient entries are the CLI's own housekeeping — skip_transcript tasks and
+ * auto-started watchers — which the SDK asks hosts to keep out of activity
+ * indicators. Dropping them here rather than in the renderer means no consumer
+ * has to remember the rule.
+ *
+ * @param {Array<{task_id: string, task_type?: string, description?: string, ambient?: boolean}>} tasks
+ * @returns {Array<{taskId: string, taskType: string|null, description: string}>}
+ */
+function normalizeBackgroundTasks(tasks) {
+  if (!Array.isArray(tasks)) return [];
+  return tasks
+    .filter(task => task && task.task_id && task.ambient !== true)
+    .map(task => ({
+      taskId: task.task_id,
+      taskType: task.task_type || null,
+      description: task.description || '',
+    }));
+}
+
+/**
  * Tools whose `tool_use` block names a file the session is about to write.
  * Read-only tools are deliberately absent: the point of the record is "what did
  * this conversation change", which is what an automation needs to scope a commit.
@@ -803,6 +825,10 @@ class ChatService {
       });
 
       this._emitLifecycle('start', sessionId, { projectId, cwd });
+      // The background-task level is per CLI process and nothing is emitted at
+      // startup, so the host owns the reset. Without it, a resumed tab would
+      // keep showing tasks that belonged to the process that just went away.
+      this._send('chat-background-tasks', { sessionId, tasks: [] });
       this._processStream(sessionId, queryStream);
       return sessionId;
     } catch (err) {
@@ -1324,6 +1350,20 @@ class ChatService {
             workflowName: message.workflow_name || null,
             usage: message.usage || null,
             skipTranscript: message.skip_transcript === true,
+          });
+        }
+
+        // The level counterpart of the task_started/task_notification bookends:
+        // the full set of live background tasks, re-sent on every membership
+        // change. REPLACE semantics — the renderer swaps its set for this
+        // payload rather than pairing edges, so a bookend that never arrives
+        // (dropped frame, CLI restart) cannot wedge a task as permanently
+        // running. Ambient entries are the CLI's own housekeeping and are
+        // dropped here rather than in the renderer, since no consumer wants them.
+        if (message.type === 'system' && message.subtype === 'background_tasks_changed') {
+          this._send('chat-background-tasks', {
+            sessionId,
+            tasks: normalizeBackgroundTasks(message.tasks),
           });
         }
         this._send('chat-message', { sessionId, message });
@@ -2811,3 +2851,4 @@ function _deleteWorkflowSession(cwd, sessionId) {
 }
 
 module.exports = new ChatService();
+module.exports.normalizeBackgroundTasks = normalizeBackgroundTasks;
