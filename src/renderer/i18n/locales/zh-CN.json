@@ -1913,7 +1913,7 @@
     "elicitationDecline": "拒绝",
     "elicitationOpen": "继续",
     "cancel": "取消",
-    "tabDocuments": "文档",
+    "tabDocuments": "文档",
     "runInBackground": "转入后台运行",
     "backgroundWorkFailed": "无法将任务转入后台。 {error}"
   },

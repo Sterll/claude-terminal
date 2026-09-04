@@ -1913,7 +1913,7 @@
     "elicitationDecline": "Tolak",
     "elicitationOpen": "Lanjutkan",
     "cancel": "Batal",
-    "tabDocuments": "Dokumen",
+    "tabDocuments": "Dokumen",
     "runInBackground": "Jalankan di latar belakang",
     "backgroundWorkFailed": "Tidak dapat memindahkan pekerjaan ke latar belakang. {error}"
   },

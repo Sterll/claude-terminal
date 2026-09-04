@@ -1913,7 +1913,7 @@
     "elicitationDecline": "Refuser",
     "elicitationOpen": "Continuer",
     "cancel": "Annuler",
-    "tabDocuments": "Documents",
+    "tabDocuments": "Documents",
     "runInBackground": "Passer en arrière-plan",
     "backgroundWorkFailed": "Impossible de passer le travail en arrière-plan. {error}"
   },

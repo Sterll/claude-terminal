@@ -1913,7 +1913,7 @@
     "elicitationDecline": "Decline",
     "elicitationOpen": "Continue",
     "cancel": "Cancel",
-    "tabDocuments": "Documents",
+    "tabDocuments": "Documents",
     "runInBackground": "Run in background",
     "backgroundWorkFailed": "Could not move the work to the background. {error}"
   },

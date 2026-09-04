@@ -1910,7 +1910,7 @@
     "elicitationDecline": "Rechazar",
     "elicitationOpen": "Continuar",
     "cancel": "Cancelar",
-    "tabDocuments": "Documentos",
+    "tabDocuments": "Documentos",
     "runInBackground": "Ejecutar en segundo plano",
     "backgroundWorkFailed": "No se pudo pasar el trabajo a segundo plano. {error}"
   },

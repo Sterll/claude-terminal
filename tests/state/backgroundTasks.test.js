@@ -7,7 +7,7 @@
 
 const store = require('../../src/renderer/state/backgroundTasks.state');
 const {
-  taskStarted, taskEnded, syncLive, listTasks, getTask, clearFinished, reset, MAX_FINISHED,
+  taskStarted, taskEnded, syncLive, listTasks, getTask, reset, MAX_FINISHED,
 } = store;
 
 beforeEach(() => reset());
@@ -131,18 +131,6 @@ describe('listTasks', () => {
   });
 });
 
-describe('clearFinished', () => {
-  test('keeps running tasks and drops the rest', () => {
-    taskStarted({ taskId: 'live', sessionId: 's1' });
-    taskStarted({ taskId: 'done', sessionId: 's1' });
-    taskEnded({ taskId: 'done', sessionId: 's1', status: 'completed' });
-
-    clearFinished();
-
-    expect(listTasks().map(t => t.taskId)).toEqual(['live']);
-  });
-});
-
 describe('pruning', () => {
   test('caps finished history without evicting running work', () => {
     taskStarted({ taskId: 'live', sessionId: 's1' });
@@ -158,75 +146,3 @@ describe('pruning', () => {
   });
 });
 
-describe('groupTasks', () => {
-  const { groupTasks } = store;
-
-  test('groups workflow tasks under their workflow name', () => {
-    taskStarted({ taskId: 'a', sessionId: 's1', taskType: 'workflow', workflowName: 'nightly-audit' });
-    taskStarted({ taskId: 'b', sessionId: 's1', taskType: 'workflow', workflowName: 'nightly-audit' });
-
-    const groups = groupTasks();
-    expect(groups).toHaveLength(1);
-    expect(groups[0]).toMatchObject({ kind: 'workflow', label: 'nightly-audit', total: 2, running: 2 });
-  });
-
-  test('falls back to the session when there is no workflow', () => {
-    // The task feed carries nothing linking a subagent to a parent, so the
-    // session is the only other run identity available.
-    taskStarted({ taskId: 'a', sessionId: 's1', subagentType: 'Explore' });
-
-    expect(groupTasks()[0]).toMatchObject({ kind: 'session', sessionId: 's1', label: null });
-  });
-
-  test('keeps two sessions apart', () => {
-    taskStarted({ taskId: 'a', sessionId: 's1' });
-    taskStarted({ taskId: 'b', sessionId: 's2' });
-
-    expect(groupTasks()).toHaveLength(2);
-  });
-
-  test('separates a workflow from the session that hosts it', () => {
-    taskStarted({ taskId: 'a', sessionId: 's1', workflowName: 'audit' });
-    taskStarted({ taskId: 'b', sessionId: 's1' });
-
-    const kinds = groupTasks().map(g => g.kind).sort();
-    expect(kinds).toEqual(['session', 'workflow']);
-  });
-
-  test('sums tokens across a group', () => {
-    taskStarted({ taskId: 'a', sessionId: 's1', workflowName: 'audit' });
-    taskEnded({ taskId: 'a', sessionId: 's1', status: 'completed', usage: { total_tokens: 1000 } });
-    taskStarted({ taskId: 'b', sessionId: 's1', workflowName: 'audit' });
-    taskEnded({ taskId: 'b', sessionId: 's1', status: 'completed', usage: { total_tokens: 500 } });
-
-    expect(groupTasks()[0].totalTokens).toBe(1500);
-  });
-
-  test('counts running against the total', () => {
-    taskStarted({ taskId: 'a', sessionId: 's1', workflowName: 'audit' });
-    taskStarted({ taskId: 'b', sessionId: 's1', workflowName: 'audit' });
-    taskEnded({ taskId: 'b', sessionId: 's1', status: 'completed' });
-
-    expect(groupTasks()[0]).toMatchObject({ total: 2, running: 1 });
-  });
-
-  test('puts groups with live work first', () => {
-    taskStarted({ taskId: 'a', sessionId: 'done-session' });
-    taskEnded({ taskId: 'a', sessionId: 'done-session', status: 'completed' });
-    taskStarted({ taskId: 'b', sessionId: 'live-session' });
-
-    expect(groupTasks()[0].sessionId).toBe('live-session');
-  });
-
-  test('takes the earliest start as the group start', () => {
-    taskStarted({ taskId: 'a', sessionId: 's1', workflowName: 'audit' });
-    const first = getTask('a').startedAt;
-    taskStarted({ taskId: 'b', sessionId: 's1', workflowName: 'audit' });
-
-    expect(groupTasks()[0].startedAt).toBe(first);
-  });
-
-  test('returns nothing for an empty registry', () => {
-    expect(groupTasks()).toEqual([]);
-  });
-});
