@@ -222,12 +222,58 @@ body.resizing-h iframe { pointer-events: none; }
   color: var(--accent-hover);
 }
 
-/* A published .md page renders as a document, so give it document measure
-   instead of letting it run the full width of the pane. */
+/* ── Published Markdown, rendered as a document ──
+   The chat's prose rules are scoped to .chat-msg-content and tuned for
+   transcript density (18px h1, 4px paragraph gaps). A published page is meant
+   to be read, not skimmed in a message list, so it gets its own measure and
+   rhythm rather than inheriting either the chat's or the browser's defaults. */
 .chat-artifact-doc,
 .artifacts-doc {
   max-width: 72ch;
   margin: 0 auto;
+  font-size: var(--font-base);
+  line-height: 1.65;
+}
+
+.chat-artifact-doc h1, .artifacts-doc h1,
+.chat-artifact-doc h2, .artifacts-doc h2,
+.chat-artifact-doc h3, .artifacts-doc h3,
+.chat-artifact-doc h4, .artifacts-doc h4 {
+  color: var(--text-primary);
+  line-height: 1.3;
+  margin: 1.6em 0 0.5em;
+}
+/* No leading gap above the very first heading of the document. */
+.chat-artifact-doc > :first-child, .artifacts-doc > :first-child { margin-top: 0; }
+
+.chat-artifact-doc h1, .artifacts-doc h1 {
+  font-size: 1.6rem;
+  font-weight: 650;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--border-color);
+}
+.chat-artifact-doc h2, .artifacts-doc h2 { font-size: 1.25rem; font-weight: 650; }
+.chat-artifact-doc h3, .artifacts-doc h3 { font-size: 1.05rem; font-weight: 600; }
+.chat-artifact-doc h4, .artifacts-doc h4 { font-size: 0.95rem; font-weight: 600; }
+
+.chat-artifact-doc p, .artifacts-doc p { margin: 0 0 1em; }
+
+.chat-artifact-doc ul, .artifacts-doc ul,
+.chat-artifact-doc ol, .artifacts-doc ol { margin: 0 0 1em; padding-left: 1.5em; }
+.chat-artifact-doc li, .artifacts-doc li { margin: 0.3em 0; }
+
+.chat-artifact-doc blockquote, .artifacts-doc blockquote {
+  margin: 0 0 1em;
+  padding: 0.2em 0 0.2em 1em;
+  border-left: 3px solid var(--accent);
+  color: var(--text-secondary);
+}
+
+.chat-artifact-doc table, .artifacts-doc table { margin: 0 0 1.2em; }
+.chat-artifact-doc hr, .artifacts-doc hr {
+  margin: 2em 0;
+  border: none;
+  border-top: 1px solid var(--border-color);
 }
 
 .chat-artifact-actions {
