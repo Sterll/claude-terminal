@@ -1180,7 +1180,8 @@
     "separatorCapabilities": "Capacités",
     "separatorSystem": "Système",
     "tabFiles": "Fichiers",
-    "tooltipFiles": "Fichiers"
+    "tooltipFiles": "Fichiers",
+    "tooltipArtifacts": "Bibliothèque d’artefacts : HTML, SVG, diagrammes et code"
   },
   "memory": {
     "panelDescription": "Configurez le comportement de Claude dans vos projets. Les reglages globaux s'appliquent partout, les reglages projet les remplacent.",
@@ -1910,7 +1911,8 @@
     "elicitationSubmit": "Envoyer",
     "elicitationDecline": "Refuser",
     "elicitationOpen": "Continuer",
-    "cancel": "Annuler"
+    "cancel": "Annuler",
+    "tabArtifacts": "Artefacts"
   },
   "hooks": {
     "consent": {
@@ -2109,6 +2111,25 @@
     "analyzeProjectDone": "Doc generee : {title} ({links} lien(s))",
     "analyzeProjectError": "Echec de l'analyse du projet",
     "badge": "WS"
+  },
+  "artifacts": {
+    "tabTitle": "Artefacts",
+    "libraryTitle": "Artefacts",
+    "emptySession": "Aucun artefact dans cette session pour l’instant.",
+    "emptyLibrary": "Aucun artefact. Ils apparaissent ici au fur et à mesure que Claude produit des pages HTML, des diagrammes, des SVG et du code.",
+    "selectPrompt": "Sélectionnez un artefact pour l’afficher.",
+    "lines": "lignes",
+    "countSingular": "artefact",
+    "countPlural": "artefacts",
+    "stored": "stockés",
+    "projects": "projets",
+    "allKinds": "Tous les types",
+    "allProjects": "Tous les projets",
+    "saveAs": "Enregistrer sous...",
+    "saved": "Artefact enregistré",
+    "openInEditor": "Ouvrir dans l’éditeur",
+    "resizePane": "Redimensionner le panneau d’artefact",
+    "jumpToMessage": "Aller au message"
   },
   "errorLog": {
     "title": "Journal d'erreurs",

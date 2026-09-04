@@ -141,6 +141,14 @@
           <span data-i18n="parallel.tabTitle">Tasks</span>
         </button>
         <div class="nav-separator"><span data-i18n="ui.separatorAllProjects">Tous les projets</span></div>
+        <button class="nav-tab" data-tab="artifacts" title="Artifacts" data-i18n-title="ui.tooltipArtifacts">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z"/>
+            <path d="M4 6.5l8 4.5 8-4.5"/>
+            <path d="M12 11v9"/>
+          </svg>
+          <span data-i18n="artifacts.tabTitle">Artifacts</span>
+        </button>
         <button class="nav-tab" data-tab="control-tower" title="Control Tower" data-i18n-title="ui.tooltipControlTower">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 2L2 7l10 5 10-5-10-5z"/>
@@ -791,6 +799,11 @@
       <!-- Workspace Tab -->
       <div class="tab-content" id="tab-workspace">
         <div class="workspace-layout" id="workspace-panel-root"></div>
+      </div>
+
+      <!-- Artifacts Tab -->
+      <div class="tab-content" id="tab-artifacts">
+        <div id="artifacts-panel-root"></div>
       </div>
 
       <!-- Error Log Tab -->

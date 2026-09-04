@@ -70,7 +70,7 @@ const defaultSettings = {
   enhancePrompts: false, // Opt-in: reformulate prompts via Haiku for better prompt engineering before sending
   // Every tab is pinned by default: the grouped sidebar fits without overflow,
   // so the More menu is now opt-in rather than the default state.
-  pinnedTabs: ['claude', 'dashboard', 'files', 'git', 'session-replay', 'tasks', 'control-tower', 'workspace', 'memory', 'timetracking', 'database', 'skills', 'agents', 'plugins', 'mcp', 'workflows', 'errorlog', 'connectivity'],
+  pinnedTabs: ['claude', 'dashboard', 'files', 'git', 'session-replay', 'tasks', 'artifacts', 'control-tower', 'workspace', 'memory', 'timetracking', 'database', 'skills', 'agents', 'plugins', 'mcp', 'workflows', 'errorlog', 'connectivity'],
   activeTab: 'claude', // Last active sidebar tab (restored on restart)
   openProjectIds: [], // Projects with a tab in the project bar, in tab order (restored on restart)
   navigationMode: null, // 'tabs' | 'sidebar' | null = never chosen, ask once on next launch
@@ -146,10 +146,11 @@ function _migrateSettings(saved) {
     saved.activeTab = 'connectivity';
   }
 
-  // Workspaces and Error Log were never in the default pinned set, so nobody
-  // could have deliberately unpinned them. The grouped sidebar has room now.
+  // Workspaces, Error Log and Artifacts were never in the default pinned set,
+  // so nobody could have deliberately unpinned them. The grouped sidebar has
+  // room now.
   if (Array.isArray(saved.pinnedTabs)) {
-    for (const id of ['workspace', 'errorlog']) {
+    for (const id of ['workspace', 'errorlog', 'artifacts']) {
       if (!saved.pinnedTabs.includes(id)) saved.pinnedTabs.push(id);
     }
     // Files is new, so an existing array cannot have deliberately excluded it.

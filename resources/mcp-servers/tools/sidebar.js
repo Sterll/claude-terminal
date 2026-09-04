@@ -46,7 +46,7 @@ function saveSettings(settings) {
 const ALL_TABS = [
   'claude', 'git', 'database', 'mcp', 'plugins', 'skills',
   'agents', 'workflows', 'tasks', 'control-tower', 'dashboard', 'timetracking',
-  'session-replay', 'memory', 'workspace', 'errorlog', 'connectivity',
+  'session-replay', 'memory', 'workspace', 'artifacts', 'errorlog', 'connectivity',
 ];
 
 const TAB_LABELS = {
@@ -65,6 +65,7 @@ const TAB_LABELS = {
   'session-replay': 'Session replay',
   memory: 'Memory editor (MEMORY.md)',
   workspace: 'Workspace knowledge base',
+  artifacts: 'Artifact library (HTML, SVG, diagrams, code)',
   errorlog: 'Error log',
   connectivity: 'Connectivity (local Wi-Fi + cloud relay)',
 };

@@ -1085,7 +1085,8 @@
     "separatorCapabilities": "Capabilities",
     "separatorSystem": "System",
     "tabFiles": "Files",
-    "tooltipFiles": "Files"
+    "tooltipFiles": "Files",
+    "tooltipArtifacts": "Artifact library: HTML, SVG, diagrams and code"
   },
   "memory": {
     "panelDescription": "Configure how Claude behaves in your projects. Global settings apply everywhere, project settings override them.",
@@ -1910,7 +1911,8 @@
     "elicitationSubmit": "Submit",
     "elicitationDecline": "Decline",
     "elicitationOpen": "Continue",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "tabArtifacts": "Artifacts"
   },
   "hooks": {
     "consent": {
@@ -2109,6 +2111,25 @@
     "analyzeProjectDone": "Doc generated: {title} ({links} link(s))",
     "analyzeProjectError": "Failed to analyze project",
     "badge": "WS"
+  },
+  "artifacts": {
+    "tabTitle": "Artifacts",
+    "libraryTitle": "Artifacts",
+    "emptySession": "No artifacts in this session yet.",
+    "emptyLibrary": "No artifacts yet. They appear here as Claude produces HTML pages, diagrams, SVGs and code.",
+    "selectPrompt": "Select an artifact to preview it.",
+    "lines": "lines",
+    "countSingular": "artifact",
+    "countPlural": "artifacts",
+    "stored": "stored",
+    "projects": "projects",
+    "allKinds": "All kinds",
+    "allProjects": "All projects",
+    "saveAs": "Save as...",
+    "saved": "Artifact saved",
+    "openInEditor": "Open in editor",
+    "resizePane": "Resize artifact panel",
+    "jumpToMessage": "Go to message"
   },
   "errorLog": {
     "title": "Error Log",

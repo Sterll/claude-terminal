@@ -530,6 +530,24 @@ contextBridge.exposeInMainWorld('electron_api', {
     sync: () => ipcRenderer.invoke('knowledge-sync'),
   },
 
+  // ==================== ARTIFACTS ====================
+  artifacts: {
+    list: (options) => ipcRenderer.invoke('artifacts-list', options || {}),
+    get: (id) => ipcRenderer.invoke('artifacts-get', { id }),
+    versions: (groupKey) => ipcRenderer.invoke('artifacts-versions', { groupKey }),
+    save: (artifact) => ipcRenderer.invoke('artifacts-save', artifact),
+    saveMany: (artifacts) => ipcRenderer.invoke('artifacts-save-many', { artifacts }),
+    delete: (id) => ipcRenderer.invoke('artifacts-delete', { id }),
+    deleteWhere: (filter) => ipcRenderer.invoke('artifacts-delete-where', filter),
+    stats: () => ipcRenderer.invoke('artifacts-stats'),
+    // Fired after any mutation, including ones made by the MCP tools.
+    onChanged: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on('artifacts-changed', handler);
+      return () => ipcRenderer.removeListener('artifacts-changed', handler);
+    },
+  },
+
   // ==================== PROJECT ====================
   project: {
     scanTodos: (projectPath) => ipcRenderer.invoke('scan-todos', projectPath),

@@ -35,6 +35,7 @@ const { registerVoiceHandlers } = require('./voice.ipc');
 const { registerParallelHandlers } = require('./parallel.ipc');
 const { registerWorkspaceHandlers } = require('./workspace.ipc');
 const { registerKnowledgeHandlers } = require('./knowledge.ipc');
+const { registerArtifactHandlers } = require('./artifacts.ipc');
 const { registerErrorLogHandlers } = require('./errorLog.ipc');
 const { registerAccountsHandlers } = require('./accounts.ipc');
 const { registerDiscordRpcHandlers } = require('./discord-rpc.ipc');
@@ -84,6 +85,7 @@ function registerAllHandlers(mainWindow) {
   registerParallelHandlers(mainWindow);
   registerWorkspaceHandlers();
   registerKnowledgeHandlers();
+  registerArtifactHandlers();
   registerErrorLogHandlers();
   registerAccountsHandlers();
   registerDiscordRpcHandlers();

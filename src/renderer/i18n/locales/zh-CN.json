@@ -1085,7 +1085,8 @@
     "separatorCapabilities": "能力",
     "separatorSystem": "系统",
     "tabFiles": "文件",
-    "tooltipFiles": "文件"
+    "tooltipFiles": "文件",
+    "tooltipArtifacts": "产物库：HTML、SVG、图表和代码"
   },
   "memory": {
     "panelDescription": "配置 Claude 在您的项目中的行为方式。全局设置适用于所有地方，项目设置会覆盖它们。",
@@ -1910,7 +1911,8 @@
     "elicitationSubmit": "提交",
     "elicitationDecline": "拒绝",
     "elicitationOpen": "继续",
-    "cancel": "取消"
+    "cancel": "取消",
+    "tabArtifacts": "产物"
   },
   "hooks": {
     "consent": {
@@ -2109,6 +2111,25 @@
     "analyzeProjectDone": "生成的文档：{title}（{links} 链接）",
     "analyzeProjectError": "无法分析项目",
     "badge": "WS"
+  },
+  "artifacts": {
+    "tabTitle": "产物",
+    "libraryTitle": "产物",
+    "emptySession": "本会话尚无产物。",
+    "emptyLibrary": "尚无产物。当 Claude 生成 HTML 页面、图表、SVG 和代码时，它们会显示在这里。",
+    "selectPrompt": "选择一个产物以预览。",
+    "lines": "行",
+    "countSingular": "个产物",
+    "countPlural": "个产物",
+    "stored": "已存储",
+    "projects": "个项目",
+    "allKinds": "所有类型",
+    "allProjects": "所有项目",
+    "saveAs": "另存为...",
+    "saved": "产物已保存",
+    "openInEditor": "在编辑器中打开",
+    "resizePane": "调整产物面板大小",
+    "jumpToMessage": "跳转到消息"
   },
   "errorLog": {
     "title": "错误日志",
