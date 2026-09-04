@@ -108,7 +108,9 @@ function renderHtmlPreviewBlock(code, filename) {
     + `<button class="chat-preview-btn active" data-action="preview">${escapeHtml(t('chat.preview.title') || 'Preview')}</button>`
     + `<button class="chat-preview-btn" data-action="code">${escapeHtml(t('chat.preview.code') || 'Code')}</button>`
     + `<span class="chat-preview-sep"></span>`
-    + `<button class="chat-preview-btn" data-action="viewport-desktop" title="${t('chat.preview.desktop') || 'Desktop'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>`
+    // Desktop is the initial state — the container carries no viewport-* class
+    // until one is picked — so it starts highlighted.
+    + `<button class="chat-preview-btn active" data-action="viewport-desktop" title="${t('chat.preview.desktop') || 'Desktop'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>`
     + `<button class="chat-preview-btn" data-action="viewport-tablet" title="${t('chat.preview.tablet') || 'Tablet'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></button>`
     + `<button class="chat-preview-btn" data-action="viewport-mobile" title="${t('chat.preview.mobile') || 'Mobile'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></button>`
     + `<span class="chat-preview-sep"></span>`
