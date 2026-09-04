@@ -105,7 +105,7 @@ describe('macOS Keychain store', () => {
     expect(account.name).toBe('Max 20x');
     const list = await AccountManager.listAccounts();
     expect(list.accounts).toHaveLength(1);
-    expect(list.activeId).toBe(account.id);
+    expect(list.liveId).toBe(account.id);
   });
 
   test('refuses to capture the same token twice', async () => {
@@ -154,11 +154,11 @@ describe('macOS Keychain store', () => {
     const team = await AccountManager.captureCurrent('Team');
 
     await AccountManager.switchTo(max.id);
-    expect((await AccountManager.listAccounts()).activeId).toBe(max.id);
+    expect((await AccountManager.listAccounts()).liveId).toBe(max.id);
     expect(JSON.parse(mockKeychain.get(MOCK_KEY)).claudeAiOauth.subscriptionType).toBe('max');
 
     await AccountManager.switchTo(team.id);
-    expect((await AccountManager.listAccounts()).activeId).toBe(team.id);
+    expect((await AccountManager.listAccounts()).liveId).toBe(team.id);
     expect(JSON.parse(mockKeychain.get(MOCK_KEY)).claudeAiOauth.subscriptionType).toBe('team');
   });
 
@@ -213,13 +213,13 @@ describe('file store (Windows / Linux)', () => {
 });
 
 describe('syncActiveFromDisk', () => {
-  test('matches on fingerprint even when activeId points elsewhere', async () => {
+  test('matches on fingerprint even when liveId points elsewhere', async () => {
     mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-max')));
     const max = await AccountManager.captureCurrent('Max 20x');
     mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-team', 'team')));
     const team = await AccountManager.captureCurrent('Team');
 
-    // activeId is Team, but the live store holds Max's untouched token.
+    // liveId is Team, but the live store holds Max's untouched token.
     mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-max')));
     const synced = await AccountManager.syncActiveFromDisk();
 
@@ -227,7 +227,7 @@ describe('syncActiveFromDisk', () => {
     expect(synced.id).not.toBe(team.id);
   });
 
-  test('falls back to activeId once a refresh invalidates the fingerprint', async () => {
+  test('falls back to liveId once a refresh invalidates the fingerprint', async () => {
     mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-team', 'team')));
     const team = await AccountManager.captureCurrent('Team');
 
@@ -238,7 +238,7 @@ describe('syncActiveFromDisk', () => {
     // The stored fingerprint tracks the new token, so the next call matches
     // exactly rather than relying on the fallback again.
     const list = await AccountManager.listAccounts();
-    expect(list.activeId).toBe(team.id);
+    expect(list.liveId).toBe(team.id);
   });
 
   test('follows a rotation that keeps the same refresh token', async () => {
@@ -257,7 +257,7 @@ describe('syncActiveFromDisk', () => {
     await AccountManager.captureCurrent('Team');
 
     // A manual `claude /login` onto an account this app has never seen. It is
-    // nobody's, so attributing it to activeId would destroy Team's snapshot.
+    // nobody's, so attributing it to liveId would destroy Team's snapshot.
     mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-solo', 'pro')));
 
     expect(await AccountManager.syncActiveFromDisk()).toBeNull();
