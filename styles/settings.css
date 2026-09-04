@@ -2952,6 +2952,24 @@
   background: var(--accent-dim);
 }
 
+/* Colour swatch. The native colour input is stripped of its chrome so it reads
+   as a swatch rather than a form control in a list of rows. */
+.account-row-color {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.account-row-color::-webkit-color-swatch-wrapper { padding: 0; }
+.account-row-color::-webkit-color-swatch { border: none; border-radius: 50%; }
+
 .account-row-main {
   flex: 1;
   min-width: 0;

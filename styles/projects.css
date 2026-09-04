@@ -99,6 +99,39 @@ body[data-active-tab="tasks"] .project-bar {
   font-weight: 600;
 }
 
+/* Claude account tint — the tab carries --account-color, set inline from the
+   account bound to the project (or the default one). Mixed rather than applied
+   flat: a saturated fill would fight the .active state, which still has to read
+   as the selected tab whatever account it belongs to. The inset bar keeps the
+   account legible at the low background alpha. */
+.project-tab.has-account {
+  background: color-mix(in srgb, var(--account-color) 14%, transparent);
+  box-shadow: inset 2px 0 0 var(--account-color);
+}
+
+.project-tab.has-account:hover {
+  background: color-mix(in srgb, var(--account-color) 22%, var(--bg-hover));
+}
+
+.project-tab.has-account.active {
+  background: color-mix(in srgb, var(--account-color) 26%, var(--bg-active));
+  border-color: var(--account-color);
+  color: var(--text-primary);
+}
+
+/* Colour swatch in the tab's account menu. */
+.context-menu-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.context-menu-dot--none {
+  border: 1px solid var(--border-color);
+  background: transparent;
+}
+
 /* Overview tab — only screens with an all-projects view have one, so it is not
    a second selector competing with the project tabs. */
 .project-tab--overview {

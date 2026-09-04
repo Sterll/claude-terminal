@@ -27,6 +27,15 @@ const {
   isPathMissing,
 } = require('../../state');
 const { getWorkspacesForProject } = require('../../state/workspace.state');
+const {
+  accountsState,
+  getAccounts,
+  getAccountForProject,
+  getDefaultAccount,
+  projectFollowsDefault,
+} = require('../../state/accounts.state');
+const { setProjectAccount, getProjectAccount } = require('../../state/projects.state');
+const { showContextMenu } = require('./ContextMenu');
 const { escapeHtml, sanitizeColor } = require('../../utils');
 const { t } = require('../../i18n');
 
@@ -97,6 +106,9 @@ class ProjectBar extends BaseComponent {
     // Session count and its "working" state are on the tabs, so terminal
     // changes have to repaint the bar too.
     this.subscribe(terminalsState, () => this.render());
+    // Tabs are tinted by their account, so a colour or default change has to
+    // repaint the bar too.
+    this.subscribe(accountsState, () => this.render());
     this.render();
   }
 
@@ -138,6 +150,13 @@ class ProjectBar extends BaseComponent {
   }
 
   _renderTabHtml(project, isActive) {
+    // The account colour drives a CSS custom property rather than an inline
+    // background, so projects.css owns how strong the tint is and the active
+    // state stays distinguishable. project.color is a separate thing — the
+    // user's own dot, left where it was.
+    const accountColor = sanitizeColor(getAccountForProject(project.id)?.color);
+    const accountStyle = accountColor ? ` style="--account-color:${accountColor}"` : '';
+
     const color = sanitizeColor(project.color);
     const colorDot = color
       ? `<span class="project-tab-color" style="background:${color}"></span>`
@@ -163,7 +182,7 @@ class ProjectBar extends BaseComponent {
       ? `<span class="project-tab-missing" title="${escapeHtml(t('projects.pathMissingTitle'))}">!</span>`
       : '';
 
-    return `<div class="project-tab${isActive ? ' active' : ''}" data-project-id="${escapeHtml(project.id)}" role="tab" aria-selected="${isActive}" tabindex="${isActive ? '0' : '-1'}" draggable="true" title="${escapeHtml(project.path || project.name)}">
+    return `<div class="project-tab${isActive ? ' active' : ''}${accountColor ? ' has-account' : ''}"${accountStyle} data-project-id="${escapeHtml(project.id)}" role="tab" aria-selected="${isActive}" tabindex="${isActive ? '0' : '-1'}" draggable="true" title="${escapeHtml(project.path || project.name)}">
       ${colorDot}
       <span class="project-tab-icon">${icon}${workspaceBadge}</span>
       <span class="project-tab-name">${escapeHtml(project.name)}</span>
@@ -197,9 +216,53 @@ class ProjectBar extends BaseComponent {
     if (!tab) return;
     e.preventDefault();
     const project = getProject(tab.dataset.projectId);
-    if (project && this._callbacks.onContextMenu) {
+    if (!project) return;
+    if (this._callbacks.onContextMenu) {
       this._callbacks.onContextMenu(project, e.clientX, e.clientY);
+      return;
     }
+    this._showAccountMenu(project, e.clientX, e.clientY);
+  }
+
+  /**
+   * Which Claude account this project runs as, and how to change it.
+   *
+   * Mirrors the per-project editor picker: a checkmark on the current choice
+   * and a "default" entry naming the account it resolves to, so the menu says
+   * what the project uses rather than only what it overrides.
+   */
+  _showAccountMenu(project, x, y) {
+    const accounts = getAccounts();
+    if (!accounts.length) return;
+
+    // ContextMenu injects `icon` as raw HTML, so the colour goes through
+    // sanitizeColor before it reaches a style attribute.
+    const dot = (color) => {
+      const safe = sanitizeColor(color);
+      return safe
+        ? `<span class="context-menu-dot" style="background:${safe}"></span>`
+        : '<span class="context-menu-dot context-menu-dot--none"></span>';
+    };
+
+    const bound = getProjectAccount(project.id);
+    const fallback = getDefaultAccount();
+    const items = [{
+      label: fallback
+        ? t('accounts.useDefaultNamed', { name: fallback.name })
+        : t('accounts.useDefault'),
+      icon: projectFollowsDefault(project.id) ? '&#10003;' : dot(fallback?.color),
+      onClick: () => setProjectAccount(project.id, null),
+    }, { separator: true }];
+
+    for (const account of accounts) {
+      items.push({
+        label: account.name,
+        icon: bound === account.id ? '&#10003;' : dot(account.color),
+        onClick: () => setProjectAccount(project.id, account.id),
+      });
+    }
+
+    showContextMenu({ x, y, items, target: project });
   }
 
   _select(projectId) {

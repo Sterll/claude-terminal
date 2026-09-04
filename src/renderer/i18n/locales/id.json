@@ -3782,7 +3782,15 @@
     "switchError": "Gagal mengganti akun",
     "renameError": "Gagal mengganti nama akun",
     "removeError": "Gagal menghapus akun",
-    "captureError": "Gagal menyimpan akun saat ini"
+    "captureError": "Gagal menyimpan akun saat ini",
+    "isDefault": "Default",
+    "makeDefault": "Jadikan default",
+    "useDefault": "Akun default",
+    "useDefaultNamed": "Akun default ({name})",
+    "colorTitle": "Warna akun",
+    "colorError": "Gagal menyimpan warna akun",
+    "boundProjects": "{count} proyek",
+    "removeBlocked": "Masih dipakai {count} proyek: {projects}. Pindahkan ke akun lain dulu."
   },
   "usage": {
     "stale": "Data penggunaan mungkin sudah tidak terbaru - pemuatan terakhir gagal. {error}"

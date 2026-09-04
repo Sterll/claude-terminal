@@ -3782,7 +3782,15 @@
     "switchError": "Impossible de changer de compte",
     "renameError": "Impossible de renommer le compte",
     "removeError": "Impossible de supprimer le compte",
-    "captureError": "Impossible de sauvegarder le compte actuel"
+    "captureError": "Impossible de sauvegarder le compte actuel",
+    "isDefault": "Par défaut",
+    "makeDefault": "Définir par défaut",
+    "useDefault": "Compte par défaut",
+    "useDefaultNamed": "Compte par défaut ({name})",
+    "colorTitle": "Couleur du compte",
+    "colorError": "Impossible d’enregistrer la couleur du compte",
+    "boundProjects": "{count} projet(s)",
+    "removeBlocked": "Encore utilisé par {count} projet(s) : {projects}. Déplacez-les vers un autre compte d’abord."
   },
   "usage": {
     "stale": "Données d'usage peut-être obsolètes - la dernière actualisation a échoué. {error}"

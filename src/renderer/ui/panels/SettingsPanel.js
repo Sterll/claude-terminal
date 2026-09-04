@@ -12,6 +12,7 @@ const { t, setLanguage, getCurrentLanguage, getAvailableLanguages } = require('.
 // ── Module-level constants ──
 
 const { BUILTIN_TOOLS } = require('../../utils/toolRegistry');
+const { getProjectsForAccount } = require('../../state/projects.state');
 
 // ── Module-level pure helpers ──
 
@@ -2139,7 +2140,7 @@ class SettingsPanel extends BasePanel {
         listEl.innerHTML = `<div class="settings-desc" style="padding: 12px 16px; color: var(--danger);">${escapeHtml(res.error || 'Failed to load accounts')}</div>`;
         return;
       }
-      const { accounts, activeId, hasCredentials } = res.data;
+      const { accounts, defaultId, hasCredentials } = res.data;
       if (!accounts.length) {
         listEl.innerHTML = `
           <div class="settings-desc" style="padding: 12px 16px;">
@@ -2148,21 +2149,29 @@ class SettingsPanel extends BasePanel {
         if (captureBtn) captureBtn.disabled = !hasCredentials;
         return;
       }
-      listEl.innerHTML = accounts.map(a => `
-        <div class="account-row${a.id === activeId ? ' active' : ''}" data-id="${a.id}">
+      const { sanitizeColor } = require('../../utils');
+      listEl.innerHTML = accounts.map(a => {
+        const color = sanitizeColor(a.color);
+        const bound = getProjectsForAccount(a.id);
+        return `
+        <div class="account-row${a.id === defaultId ? ' active' : ''}" data-id="${a.id}">
+          <input type="color" class="account-row-color" data-action="color" data-id="${a.id}"
+                 value="${color || '#888888'}"
+                 title="${escapeHtml(t('accounts.colorTitle') || 'Account colour')}"
+                 aria-label="${escapeHtml(t('accounts.colorTitle') || 'Account colour')}">
           <div class="account-row-main">
             <div class="account-row-name">${escapeHtml(a.name)}</div>
-            <div class="account-row-meta">${escapeHtml((a.fingerprint || '').slice(0, 8))}${a.lastUsedAt ? ` &middot; ${escapeHtml(new Date(a.lastUsedAt).toLocaleString())}` : ''}</div>
+            <div class="account-row-meta">${escapeHtml((a.fingerprint || '').slice(0, 8))}${bound.length ? ` &middot; ${escapeHtml(t('accounts.boundProjects', { count: bound.length }))}` : ''}</div>
           </div>
           <div class="account-row-buttons">
-            ${a.id === activeId
-              ? `<span class="account-row-status">${escapeHtml(t('accounts.active') || 'Active')}</span>`
-              : `<button class="btn btn-secondary btn-sm" data-action="switch" data-id="${a.id}">${escapeHtml(t('accounts.switch') || 'Switch')}</button>`}
+            ${a.id === defaultId
+              ? `<span class="account-row-status">${escapeHtml(t('accounts.isDefault') || 'Default')}</span>`
+              : `<button class="btn btn-secondary btn-sm" data-action="set-default" data-id="${a.id}">${escapeHtml(t('accounts.makeDefault') || 'Make default')}</button>`}
             <button class="btn btn-secondary btn-sm" data-action="rename" data-id="${a.id}">${escapeHtml(t('common.rename') || 'Rename')}</button>
             <button class="btn btn-secondary btn-sm" data-action="remove" data-id="${a.id}">${escapeHtml(t('common.delete') || 'Delete')}</button>
           </div>
-        </div>
-      `).join('');
+        </div>`;
+      }).join('');
       if (captureBtn) captureBtn.disabled = !hasCredentials;
     };
 
@@ -2172,10 +2181,10 @@ class SettingsPanel extends BasePanel {
       const action = btn.dataset.action;
       const id = btn.dataset.id;
       const { showError } = require('../components/Toast');
-      if (action === 'switch') {
+      if (action === 'set-default') {
         btn.disabled = true;
         try {
-          const r = await this.api.accounts.switch(id);
+          const r = await this.api.accounts.setDefault(id);
           if (!r?.success) {
             showError(r?.error || t('accounts.switchError'), 5000);
             return;
@@ -2206,6 +2215,17 @@ class SettingsPanel extends BasePanel {
           showError(err?.message || t('accounts.renameError'), 5000);
         }
       } else if (action === 'remove') {
+        // Refuse while projects still run as this account: silently dropping
+        // them onto another one is the last thing you want with billing
+        // attached. The user unbinds them first, from the tab menu.
+        const bound = getProjectsForAccount(id);
+        if (bound.length) {
+          showError(t('accounts.removeBlocked', {
+            count: bound.length,
+            projects: bound.map(p => p.name).join(', ')
+          }), 8000);
+          return;
+        }
         const { showConfirm } = require('../components/Modal');
         const ok = await showConfirm({
           title: t('common.delete') || 'Delete',
@@ -2222,6 +2242,21 @@ class SettingsPanel extends BasePanel {
         } catch (err) {
           showError(err?.message || t('accounts.removeError'), 5000);
         }
+      }
+    };
+
+    // The colour swatch is an <input>, so it never reaches the click handler
+    // above. `change` rather than `input`: the native picker fires continuously
+    // while dragging, and each event is an IPC write plus a broadcast.
+    listEl.onchange = async (e) => {
+      const input = e.target.closest('input[data-action="color"]');
+      if (!input) return;
+      const { showError } = require('../components/Toast');
+      try {
+        const r = await this.api.accounts.setColor(input.dataset.id, input.value);
+        if (!r?.success) showError(r?.error || t('accounts.colorError'), 5000);
+      } catch (err) {
+        showError(err?.message || t('accounts.colorError'), 5000);
       }
     };
 

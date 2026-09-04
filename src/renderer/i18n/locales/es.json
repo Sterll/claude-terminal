@@ -3782,7 +3782,15 @@
     "switchError": "No se pudo cambiar de cuenta",
     "renameError": "No se pudo renombrar la cuenta",
     "removeError": "No se pudo eliminar la cuenta",
-    "captureError": "No se pudo guardar la cuenta actual"
+    "captureError": "No se pudo guardar la cuenta actual",
+    "isDefault": "Predeterminada",
+    "makeDefault": "Definir como predeterminada",
+    "useDefault": "Cuenta predeterminada",
+    "useDefaultNamed": "Cuenta predeterminada ({name})",
+    "colorTitle": "Color de la cuenta",
+    "colorError": "No se pudo guardar el color de la cuenta",
+    "boundProjects": "{count} proyecto(s)",
+    "removeBlocked": "Todavía la usan {count} proyecto(s): {projects}. Muévelos a otra cuenta primero."
   },
   "usage": {
     "stale": "Datos de uso posiblemente desactualizados - la última actualización falló. {error}"

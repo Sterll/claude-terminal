@@ -3782,7 +3782,15 @@
     "switchError": "Failed to switch account",
     "renameError": "Failed to rename account",
     "removeError": "Failed to remove account",
-    "captureError": "Failed to save the current account"
+    "captureError": "Failed to save the current account",
+    "isDefault": "Default",
+    "makeDefault": "Make default",
+    "useDefault": "Default account",
+    "useDefaultNamed": "Default account ({name})",
+    "colorTitle": "Account colour",
+    "colorError": "Failed to save the account colour",
+    "boundProjects": "{count} project(s)",
+    "removeBlocked": "Still used by {count} project(s): {projects}. Move them to another account first."
   },
   "usage": {
     "stale": "Usage data may be out of date - the last refresh failed. {error}"
