@@ -128,6 +128,28 @@ body.platform-darwin .titlebar-drag {
   50% { opacity: 0.4; }
 }
 
+/* ── Usage account ──
+   Names the account the figures belong to, since projects pick their own and
+   the bars follow the active tab. Tinted with the account colour so it ties
+   back to the project tab carrying the same one. Hidden when no project is
+   bound: the titlebar then means what it always did. */
+.usage-account {
+  display: flex;
+  align-items: center;
+  align-self: center;
+  gap: 4px;
+  max-width: 120px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--account-color) 45%, transparent);
+  background: color-mix(in srgb, var(--account-color) 16%, transparent);
+  color: var(--text-primary);
+  font-size: var(--font-2xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ── Usage Item ── */
 .usage-item {
   display: flex;

@@ -98,7 +98,17 @@ async function writeCredentials(payload) {
  * @returns {Promise<string|null>}
  */
 async function readAccessToken() {
-  const creds = await readCredentials();
+  return tokenFromCredentials(await readCredentials());
+}
+
+/**
+ * The usable access token in a credentials payload, or null when it is absent
+ * or expired. Kept here so every store — machine-wide or per-account — applies
+ * the same expiry rule.
+ * @param {Object|null} creds
+ * @returns {string|null}
+ */
+function tokenFromCredentials(creds) {
   const oauth = creds?.claudeAiOauth;
   if (!oauth?.accessToken) return null;
   if (oauth.expiresAt && Date.now() > oauth.expiresAt) return null;
@@ -217,6 +227,7 @@ module.exports = {
   readCredentials,
   writeCredentials,
   readAccessToken,
+  tokenFromCredentials,
   keychainServiceForDir,
   readCredentialsForDir,
   writeSeedForDir,

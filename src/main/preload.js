@@ -716,8 +716,9 @@ contextBridge.exposeInMainWorld('electron_api', {
 
   // ==================== USAGE ====================
   usage: {
-    getData: () => ipcRenderer.invoke('get-usage-data'),
-    refresh: () => ipcRenderer.invoke('refresh-usage'),
+    getData: (accountId = null) => ipcRenderer.invoke('get-usage-data', accountId),
+    refresh: (accountId = null) => ipcRenderer.invoke('refresh-usage', accountId),
+    setFocus: (accountId = null) => ipcRenderer.invoke('set-usage-focus', accountId),
     startMonitor: (intervalMs) => ipcRenderer.invoke('start-usage-monitor', intervalMs),
     stopMonitor: () => ipcRenderer.invoke('stop-usage-monitor'),
     onDataUpdated: (callback) => ipcRenderer.on('usage-data-updated', (event, data) => callback(data)),

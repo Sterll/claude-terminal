@@ -20,8 +20,16 @@ function setMainWindow(win) {
  */
 function registerUsageHandlers() {
   // Get current cached usage data
-  ipcMain.handle('get-usage-data', () => {
-    return usageService.getUsageData();
+  // Figures are per account: the caller says which one it is showing, and
+  // omitting it means the machine-wide login that unbound projects run as.
+  ipcMain.handle('get-usage-data', (_event, accountId = null) => {
+    return usageService.getUsageData(accountId);
+  });
+
+  // The poller only refreshes the account on screen.
+  ipcMain.handle('set-usage-focus', (_event, accountId = null) => {
+    usageService.setFocusedAccount(accountId);
+    return { success: true };
   });
 
   // Force refresh usage data.
@@ -29,11 +37,11 @@ function registerUsageHandlers() {
   // resolved promise is NOT proof the numbers are current — ask the service
   // whether the fetch actually succeeded before reporting success. Otherwise an
   // expired OAuth token or a moved endpoint shows the same percentages forever.
-  ipcMain.handle('refresh-usage', async () => {
+  ipcMain.handle('refresh-usage', async (_event, accountId = null) => {
     try {
-      const data = await usageService.refreshUsage();
+      const data = await usageService.refreshUsage(accountId);
       const fetchState = typeof usageService.getFetchState === 'function'
-        ? usageService.getFetchState()
+        ? usageService.getFetchState(accountId)
         : null;
 
       if (fetchState && fetchState.stale) {
@@ -55,7 +63,7 @@ function registerUsageHandlers() {
         };
       }
 
-      return { success: true, data };
+      return { success: true, data, accountId };
     } catch (error) {
       return { success: false, error: error && error.message };
     }
@@ -74,9 +82,12 @@ function registerUsageHandlers() {
   });
 
   // Push usage updates to renderer when data arrives from periodic fetch
-  usageService.onUpdate((data) => {
+  usageService.onUpdate((data, accountId) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('usage-data-updated', { data, lastFetch: new Date().toISOString() });
+      // The renderer drops a payload for an account it is no longer showing —
+      // a background refresh must not repaint the titlebar with another
+      // account's numbers.
+      mainWindow.webContents.send('usage-data-updated', { data, accountId, lastFetch: new Date().toISOString() });
     }
   });
 
@@ -84,8 +95,12 @@ function registerUsageHandlers() {
   // so the renderer can offer to switch accounts before a 429 occurs.
   usageService.onLimit(async (alert) => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
-    let activeAccountId = null;
-    try { activeAccountId = (await require('../services/AccountManager').listAccounts()).activeId; } catch (_) {}
+    // The alert names the account it was measured for. Falling back to the
+    // default only covers the machine-wide login, whose figures it is.
+    let activeAccountId = alert.accountId || null;
+    if (!activeAccountId) {
+      try { activeAccountId = (await require('../services/AccountManager').listAccounts()).defaultId; } catch (_) {}
+    }
     if (!mainWindow || mainWindow.isDestroyed()) return;
     mainWindow.webContents.send('usage-limit-reached', { ...alert, activeAccountId });
   });

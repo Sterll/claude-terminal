@@ -6348,6 +6348,70 @@ const usageElements = {
   }
 };
 
+// ── Which account the titlebar is reporting on ──
+//
+// Figures belong to an account, and projects pick their own. So the bars follow
+// the active project tab: showing the default account's numbers while the tab
+// in front runs on another one would be a confident lie. `null` is the
+// machine-wide login, which unbound projects run as.
+let usageAccountId = null;
+
+/**
+ * The account the tab on screen actually runs as.
+ * @returns {string|null}
+ */
+function currentUsageAccountId() {
+  try {
+    const { projectsState, getAccountForProject } = require('./src/renderer/state');
+    const state = projectsState.get();
+    const project = state.projects[state.selectedProjectFilter];
+    if (!project) return null;
+    // Only a binding counts: an unbound project runs on the machine-wide
+    // login, whichever account the default currently points at.
+    const { getProjectAccount } = require('./src/renderer/state');
+    if (!getProjectAccount(project.id)) return null;
+    return getAccountForProject(project.id)?.id || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * Name the account next to the bars, in its own colour, so the numbers are
+ * attributable at a glance. Hidden when nothing is bound — the titlebar then
+ * means what it always did.
+ */
+function renderUsageAccountLabel() {
+  const { container } = usageElements;
+  if (!container) return;
+
+  let el = usageElements.account;
+  if (!el) {
+    el = document.createElement('span');
+    el.className = 'usage-account';
+    container.insertBefore(el, container.firstChild);
+    usageElements.account = el;
+  }
+
+  if (!usageAccountId) {
+    el.style.display = 'none';
+    return;
+  }
+
+  try {
+    const { getAccount } = require('./src/renderer/state');
+    const { sanitizeColor } = require('./src/renderer/utils');
+    const account = getAccount(usageAccountId);
+    if (!account) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    el.textContent = account.name;
+    const color = sanitizeColor(account.color);
+    el.style.setProperty('--account-color', color || 'var(--text-secondary)');
+  } catch (_) {
+    el.style.display = 'none';
+  }
+}
+
 /**
  * Build the nodes for one usage bucket.
  *
@@ -6563,7 +6627,11 @@ async function refreshUsageDisplay() {
   usageElements.container.classList.add('loading');
 
   try {
-    const result = await api.usage.refresh();
+    const requested = usageAccountId;
+    const result = await api.usage.refresh(requested);
+    // Tabs can be switched mid-flight; a late answer for the account we left
+    // must not repaint the bars.
+    if (requested !== usageAccountId) return;
     // A failed fetch that still has cached data is rendered rather than blanked
     // (stale numbers beat empty bars), but the container is flagged so the UI
     // can say so instead of passing them off as current.
@@ -6603,17 +6671,19 @@ if (usageElements.container) {
   // Listen for push updates from main process (no polling needed)
   if (api.usage.onDataUpdated) {
     api.usage.onDataUpdated((usagePayload) => {
-      if (usagePayload && usagePayload.data) {
-        updateUsageDisplay(usagePayload);
-      }
+      if (!usagePayload || !usagePayload.data) return;
+      // A background refresh for another account must not land in the bars.
+      if ((usagePayload.accountId || null) !== usageAccountId) return;
+      updateUsageDisplay(usagePayload);
     });
   }
 
   // Fallback poll every 30s (in case push event is missed)
   setInterval(async () => {
     try {
-      const data = await api.usage.getData();
-      if (data && data.data) {
+      const requested = usageAccountId;
+      const data = await api.usage.getData(requested);
+      if (data && data.data && requested === usageAccountId) {
         updateUsageDisplay(data);
       }
     } catch (e) {
@@ -6621,8 +6691,32 @@ if (usageElements.container) {
     }
   }, 30000);
 
+  // Follow the active project tab: its account owns the numbers on screen.
+  // Bindings and colours can change under us too, hence both subscriptions.
+  const syncUsageAccount = () => {
+    const next = currentUsageAccountId();
+    renderUsageAccountLabel();
+    if (next === usageAccountId) return;
+    usageAccountId = next;
+    renderUsageAccountLabel();
+    // Blank the bars rather than leave the previous account's figures up while
+    // the new ones are in flight.
+    renderUsageBuckets(PLACEHOLDER_USAGE_BUCKETS);
+    api.usage.setFocus(next).catch(() => {});
+    refreshUsageDisplay();
+  };
+
+  try {
+    const { projectsState, accountsState } = require('./src/renderer/state');
+    projectsState.subscribe(syncUsageAccount);
+    accountsState.subscribe(syncUsageAccount);
+  } catch (_) {
+    // State not ready yet; the initial fetch below still runs.
+  }
+
   // Initial fetch (after 2s to let main process start)
   setTimeout(() => {
+    syncUsageAccount();
     refreshUsageDisplay();
   }, 2000);
 }
