@@ -118,7 +118,7 @@ const { getSetting, setSetting, isNotificationsEnabled } = require('../../state/
 const { updateTerminal, getTerminal } = require('../../state/terminals.state');
 const { saveTerminalSessions } = require('../../services/TerminalSessionService');
 
-const { matchModel, hasOneMContext, DEFAULT_ALIAS } = require('../../../shared/model-options');
+const { matchModel, resolveModelSelection, hasOneMContext, DEFAULT_ALIAS } = require('../../../shared/model-options');
 const ModelCatalog = require('../../services/ModelCatalogClient');
 
 // Catalog access is shared with the project-settings and parallel-run pickers
@@ -413,6 +413,10 @@ class ChatView extends BaseComponent {
   // catalog may still be the fallback, so an unresolvable id must not be
   // rewritten yet or a persisted choice would be lost on a slow CLI.
   let selectedModel = initialModel || getSetting('chatModel') || '';
+  // Whether `selectedModel` is a choice someone made — a stored setting, or a
+  // pick from the menu — rather than one the picker derived because nothing was
+  // chosen. Only a real choice may be written back; see resolveModelSelection.
+  let modelIsExplicit = !!selectedModel;
   let selectedEffort = initialEffort || getSetting('effortLevel') || 'high';
   let totalCost = 0;
   let totalTokens = 0;
@@ -1114,27 +1118,19 @@ class ChatView extends BaseComponent {
    * window the request didn't ask for. `matchModel` keeps the `default` alias
    * out of this path, so a deliberate choice is never re-pointed by a CLI
    * release; only an explicit pick of "Default (recommended)" stores it.
+   *
+   * Runs twice per session — once on the catalog we happen to hold, once after
+   * the CLI answers — so it has to be safe to call on the fallback tier. That
+   * is what `modelIsExplicit` guards: without it the derived first pass looked
+   * like a preference to the second, and got saved as one.
    */
   function applyResolvedModel() {
     const preferred = selectedModel || initialModel || getSetting('chatModel') || '';
-    const current = matchModel(allCatalogModels(), preferred);
-    if (current) {
-      if (selectedModel !== current.value) {
-        selectedModel = current.value;
-        if (preferred) setSetting('chatModel', selectedModel);
-      }
-      modelLabel.textContent = current.displayName;
-      return;
-    }
-    const first = ModelCatalog.getCatalog().primary[0];
-    if (!preferred && first) {
-      selectedModel = first.value;
-      modelLabel.textContent = first.displayName;
-    } else if (preferred) {
-      // An id the catalog doesn't cover (older setting, or a CLI that moved on).
-      // Show it rather than silently swapping the user's model.
-      modelLabel.textContent = preferred.replace(/^claude-/, '');
-    }
+    const resolved = resolveModelSelection(allCatalogModels(), preferred, modelIsExplicit);
+    if (!resolved) return;
+    selectedModel = resolved.value;
+    modelLabel.textContent = resolved.label;
+    if (resolved.persist) setSetting('chatModel', selectedModel);
   }
 
   /**
@@ -1250,7 +1246,9 @@ class ChatView extends BaseComponent {
     if (!option) return;
     const previousId = selectedModel;
     const previousOption = matchModel(models, previousId);
+    const previousExplicit = modelIsExplicit;
     selectedModel = option.value;
+    modelIsExplicit = true;
     modelLabel.textContent = option.displayName;
     closeModelDropdown();
     setSetting('chatModel', selectedModel);
@@ -1274,8 +1272,11 @@ class ChatView extends BaseComponent {
     // Revert the label + persisted setting so the footer stops lying.
     if (previousOption) {
       selectedModel = previousId;
+      modelIsExplicit = previousExplicit;
       modelLabel.textContent = previousOption.displayName;
-      setSetting('chatModel', previousId);
+      // Reverting to a model nobody had chosen means clearing the setting, not
+      // writing it back: `null` is how "no explicit choice" is stored.
+      setSetting('chatModel', previousExplicit ? previousId : null);
     }
     const Toast = require('./Toast');
     Toast.showToast({

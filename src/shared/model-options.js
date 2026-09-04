@@ -72,6 +72,12 @@ const ALL_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 const PRE_4_7_EFFORTS = ['low', 'medium', 'high', 'max'];
 
 /**
+ * The CLI's "whatever we currently recommend" row. Treated specially wherever a
+ * stored id is resolved, because its target moves between releases.
+ */
+const DEFAULT_ALIAS = 'default';
+
+/**
  * Models the CLI still accepts but no longer advertises. Shaped like the SDK's
  * `ModelInfo` so both tiers render through one code path.
  */
@@ -125,6 +131,25 @@ const LEGACY_MODELS = [
  */
 const FALLBACK_PRIMARY = [
   {
+    // Leads the tier because the CLI leads its own menu with this row, and the
+    // picker paints `primary[0]` whenever nothing has been chosen. When the two
+    // tiers disagreed about that row the footer read "Opus 5" on a cold start
+    // and "Default (recommended)" once the CLI answered — one state, two
+    // labels, decided by whether an IPC round trip had landed yet.
+    //
+    // It is also the safer id to send while the CLI is unreachable: 'default'
+    // means "you choose", where the pinned 'claude-opus-5' this used to fall
+    // back to froze a choice nobody made.
+    value: DEFAULT_ALIAS,
+    displayName: 'Default (recommended)',
+    // The CLI names its current pick here ("Opus 5 with 1M context · …"); we
+    // can't know it offline, and guessing would be the same lie as before.
+    description: '',
+    supportsEffort: true,
+    supportedEffortLevels: ALL_EFFORTS,
+    supportsAdaptiveThinking: true,
+  },
+  {
     value: 'claude-opus-5',
     displayName: 'Opus 5',
     description: 'Complex agentic coding and enterprise work',
@@ -157,12 +182,6 @@ const FALLBACK_PRIMARY = [
     supportsAdaptiveThinking: false,
   },
 ];
-
-/**
- * The CLI's "whatever we currently recommend" row. Treated specially wherever a
- * stored id is resolved, because its target moves between releases.
- */
-const DEFAULT_ALIAS = 'default';
 
 /**
  * Strip a CLI variant suffix: 'claude-opus-5[1m]' -> 'claude-opus-5'.
@@ -205,6 +224,50 @@ function matchModel(models, id) {
   return models.find(m => m.value !== DEFAULT_ALIAS && covers(m))
     || models.find(covers)
     || null;
+}
+
+/**
+ * Decide what the picker should show, and whether that decision is worth
+ * storing.
+ *
+ * Splits apart two questions the footer used to answer with one variable:
+ * *which* model is active, and whether anyone actually chose it. A selection
+ * merely derived from the catalog — the row shown when nothing is stored — must
+ * never be written back. Persisting it turned a render race into a permanent
+ * setting: a first paint that landed before the CLI catalog arrived saw a
+ * different `primary[0]`, adopted it, and saved it as if the user had picked.
+ *
+ * @param {Array<object>} models Catalog rows, both tiers, in menu order.
+ * @param {string} preferred The id in play — a stored setting, or the one this
+ *   view already resolved. '' when nothing has been chosen.
+ * @param {boolean} explicit Whether `preferred` came from a real choice.
+ * @returns {{value: string, label: string, persist: boolean}|null} null when
+ *   there is nothing to paint: no preference, and no catalog to default to.
+ */
+function resolveModelSelection(models, preferred, explicit) {
+  const current = matchModel(models, preferred);
+  if (current) {
+    return {
+      value: current.value,
+      label: current.displayName,
+      // Adopting the catalog's own id is worth storing only when the id it
+      // replaces was a real choice. That is what upgrades a stored
+      // 'claude-opus-5' to the CLI's 'opus[1m]' build — without inventing a
+      // choice out of a value the picker itself supplied a moment earlier.
+      persist: !!explicit && current.value !== preferred,
+    };
+  }
+
+  if (!preferred) {
+    // Nothing chosen: the first row is the recommended default. Both tiers lead
+    // with it, so this label no longer depends on whether the CLI has answered.
+    const first = Array.isArray(models) ? models[0] : null;
+    return first ? { value: first.value, label: first.displayName, persist: false } : null;
+  }
+
+  // An id the catalog doesn't cover — an older setting, or a CLI that moved on.
+  // Show it rather than silently swapping the user's model.
+  return { value: preferred, label: preferred.replace(/^claude-/, ''), persist: false };
 }
 
 // A description segment that is purely pricing, e.g. "$5/$25 per Mtok".
@@ -321,6 +384,7 @@ module.exports = {
   DEFAULT_ALIAS,
   baseModelId,
   matchModel,
+  resolveModelSelection,
   dedupeLegacy,
   hasOneMContext,
   orderPrimary,

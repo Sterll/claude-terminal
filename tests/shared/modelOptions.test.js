@@ -8,6 +8,7 @@
 const {
   baseModelId,
   matchModel,
+  resolveModelSelection,
   dedupeLegacy,
   hasOneMContext,
   normalizeModelRow,
@@ -15,6 +16,7 @@ const {
   CLAUDE_MODEL_VALUES,
   LEGACY_MODELS,
   FALLBACK_PRIMARY,
+  DEFAULT_ALIAS,
 } = require('../../src/shared/model-options');
 
 // Shaped like the CLI's real init payload.
@@ -254,7 +256,74 @@ describe('dedupeLegacy', () => {
   });
 });
 
+describe('resolveModelSelection', () => {
+  // The footer paints twice: once on whatever catalog is loaded, once after the
+  // CLI answers. Both passes go through here, so the interesting cases are the
+  // ones where the two passes see different catalogs.
+  const FALLBACK = [...FALLBACK_PRIMARY, ...dedupeLegacy(FALLBACK_PRIMARY, LEGACY_MODELS)];
+  const CLI = [...orderPrimary(CLI_MODELS), ...dedupeLegacy(CLI_MODELS, LEGACY_MODELS)];
+
+  test('labels an unchosen model the same on either tier', () => {
+    // The reported glitch: the same fresh install read "Opus 5" when the footer
+    // painted before the catalog IPC landed, and "Default (recommended)" when
+    // it landed first. Which one you got depended on the reload.
+    const cold = resolveModelSelection(FALLBACK, '', false);
+    const warm = resolveModelSelection(CLI, '', false);
+    expect(cold.label).toBe(warm.label);
+    expect(cold.value).toBe(DEFAULT_ALIAS);
+    expect(warm.value).toBe(DEFAULT_ALIAS);
+  });
+
+  test('never persists a selection nobody made', () => {
+    // Second pass of a cold start: `preferred` is the id the first pass derived,
+    // not a preference. Storing it froze the race into settings.json.
+    const derived = resolveModelSelection(FALLBACK, '', false);
+    const second = resolveModelSelection(CLI, derived.value, false);
+    expect(derived.persist).toBe(false);
+    expect(second.persist).toBe(false);
+  });
+
+  test('still upgrades a stored id to the build the CLI advertises', () => {
+    // The one case that *should* write: a real choice of 'claude-opus-5' adopts
+    // the CLI's 'opus[1m]' row, so the footer stops claiming the wrong context.
+    const res = resolveModelSelection(CLI, 'claude-opus-5', true);
+    expect(res.value).toBe('opus[1m]');
+    expect(res.persist).toBe(true);
+  });
+
+  test('does not rewrite a choice that already matches', () => {
+    const res = resolveModelSelection(CLI, 'sonnet', true);
+    expect(res.value).toBe('sonnet');
+    expect(res.persist).toBe(false);
+  });
+
+  test('shows an id the catalog does not cover rather than swapping it', () => {
+    const res = resolveModelSelection(CLI, 'claude-opus-3', true);
+    expect(res.label).toBe('opus-3');
+    expect(res.value).toBe('claude-opus-3');
+    expect(res.persist).toBe(false);
+  });
+
+  test('returns null when there is nothing at all to paint', () => {
+    expect(resolveModelSelection([], '', false)).toBeNull();
+    expect(resolveModelSelection(null, '', false)).toBeNull();
+  });
+});
+
 describe('catalog contents', () => {
+  test('both tiers lead with the recommended alias', () => {
+    // What keeps the two passes above agreeing. `orderPrimary` is applied to the
+    // fallback too (ModelCatalogService._shape), so assert it survives ordering.
+    expect(FALLBACK_PRIMARY[0].value).toBe(DEFAULT_ALIAS);
+    expect(orderPrimary(FALLBACK_PRIMARY)[0].value).toBe(DEFAULT_ALIAS);
+    expect(orderPrimary(CLI_MODELS)[0].value).toBe(DEFAULT_ALIAS);
+  });
+
+  test('the offline alias does not soak up a concrete id', () => {
+    // It carries no resolvedModel, so matchModel must still prefer a real row.
+    expect(matchModel(FALLBACK_PRIMARY, 'claude-opus-5').value).toBe('claude-opus-5');
+  });
+
   test('the workflow node accepts the current Fable id', () => {
     // Regression guard: this list gates `claude` node validation, and Fable 5.1
     // was rejected there while only Fable 5 was listed.
