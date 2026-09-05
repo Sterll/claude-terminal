@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/downloads/Sterll/claude-terminal/total?color=d97706&label=downloads" alt="Downloads" />
-  <img src="https://img.shields.io/badge/version-1.2.18-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.3.0-orange" alt="Version" />
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-blue" alt="Platform" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="License" />
   <img src="https://img.shields.io/badge/electron-28-purple" alt="Electron" />
@@ -169,7 +169,10 @@ npm install
 - **File rewind**: revert chat context to an earlier file state via SDK checkpointing — useful for undoing unwanted edits mid-session
 - **Cost tracking**: model name, token count, and USD cost in the status bar
 - **1M context window**: extended context for larger codebases (API mode only)
-- **Dynamic model and effort switching**: change model (Sonnet, Opus 4.8, Haiku) and effort level (low, medium, high, xhigh) mid-conversation without starting a new session
+- **Dynamic model and effort switching**: the model picker is built live from the Claude CLI's own catalog, so newly released models (e.g. Fable 5.1) show up automatically; switch model and effort level (low, medium, high, xhigh) mid-conversation without starting a new session
+- **Background tasks drawer**: a collapsible drawer scoped to the current session shows work Claude is running in the background, so you can keep chatting while it finishes
+- **Artifacts library & Documents tab**: files and snippets Claude generates are saved to a reusable artifact library and also surface in a per-conversation Documents tab for quick access
+- **Conversation search**: press Ctrl+F to search across the current conversation transcript
 - **Pin conversations**: keep important sessions at the top of the list
 - **Fork sessions**: branch from any message to explore alternative paths; Claude Terminal warns instead of discarding if a queued turn would be lost
 - **Follow-up suggestions**: context-aware suggestion chips appear after Claude responds to help guide the conversation
@@ -189,6 +192,24 @@ npm install
 - Filter terminals by project
 - Adaptive ready detection with spinner status
 - Captured terminal output, so the terminal read tools and MCP tools can actually return what ran
+
+### Navigation
+- Choose how you browse projects: a project tab bar across the top, or a classic projects column on the side
+- Asked once in the first-launch setup wizard, and switchable anytime from Settings
+
+### Files
+- A dedicated Files screen shows every file touched in a session, with per-session diffs rendered GitHub-style
+- Quickly review what Claude changed without leaving the chat context
+
+### Accounts
+- Bind a separate Claude account to each project, with its own isolated credential store
+- Switch projects without switching accounts by hand, and without one project's login affecting another's
+
+### Voice
+- Dictate messages to the chat input by microphone (Groq transcription)
+- Verbatim dictation mode with focused-tab routing so your words land in the right conversation
+- Hands-free session profile for fully voice-driven sessions
+- Speaks project names the way you'd say them, so @mentions by voice resolve correctly
 
 ### Project Management
 - Organize projects in nested folders with drag-and-drop
@@ -302,6 +323,9 @@ npm install
 - Browse session history with timestamps and metadata
 - Pin sessions to the top and rename them inline from the resume dialog
 - Modernized session resume modal with search and pinned sessions
+- Sessions show their real conversation title instead of a timestamp, and are searchable by id
+- **Move a session to another project**: relocate a conversation without losing its history
+- Custom tab names are locked and no longer get silently overwritten by auto-naming
 
 ### Memory
 - Edit global, settings and project-specific CLAUDE.md files
@@ -474,6 +498,7 @@ npm run test:watch
 | `Ctrl+,` | Settings |
 | `Ctrl+←` / `Ctrl+→` | Switch terminal (left/right) |
 | `Ctrl+↑` / `Ctrl+↓` | Switch project (up/down) |
+| `Ctrl+F` | Search the current conversation transcript |
 | `Escape` | Close dialogs |
 
 Shortcuts are customizable in Settings.
