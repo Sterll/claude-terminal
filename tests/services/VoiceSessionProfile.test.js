@@ -24,11 +24,27 @@ describe('voice system prompt', () => {
     expect(typeof prompt.append).toBe('string');
   });
 
-  test('asks for short spoken answers', () => {
+  test('makes the screen the output channel, not prose', () => {
     const { append } = voice();
 
     expect(append).toContain('Voice Session');
-    expect(append).toMatch(/one or two sentences/i);
+    expect(append).toMatch(/action is the answer/i);
+    expect(append).toMatch(/act, never narrate/i);
+  });
+
+  test('routes even questions to a visible chat tab', () => {
+    const { append } = voice();
+
+    // "où en est le bug ninin" must land on screen, not in spoken prose.
+    expect(append).toMatch(/questions too/i);
+    expect(append).toMatch(/session_search/);
+  });
+
+  test('reserves text for ambiguity and failure only', () => {
+    const { append } = voice();
+
+    expect(append).toMatch(/only when acting is impossible/i);
+    expect(append).toMatch(/one short sentence/i);
   });
 
   test('drops the rich markdown guidance, which is the opposite of what voice needs', () => {
