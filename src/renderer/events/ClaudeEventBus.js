@@ -46,7 +46,7 @@ class ClaudeEventBus {
    * Emit a normalized event to all listeners.
    * @param {string} type - Event type from EVENT_TYPES
    * @param {Object} data - Event-specific data
-   * @param {Object} meta - { projectId, projectPath, source }
+   * @param {Object} meta - { projectId, projectPath, sessionId, source }
    */
   emit(type, data = {}, meta = {}) {
     const envelope = {
@@ -54,6 +54,10 @@ class ClaudeEventBus {
       timestamp: Date.now(),
       projectId: meta.projectId || null,
       projectPath: meta.projectPath || null,
+      // Which Claude produced this, not just where it ran. Several sessions share
+      // a project - a chat tab, a PTY tab, a workflow node, a `claude` outside the
+      // app - and only this tells them apart. See SessionRouter.
+      sessionId: meta.sessionId || null,
       source: meta.source || 'unknown',
       data
     };

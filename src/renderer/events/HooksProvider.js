@@ -26,25 +26,33 @@ function normalizePath(p) {
 
 /**
  * Resolve projectId from a cwd path by matching against known projects.
+ *
+ * The match is on whole path segments, so `/w/api` no longer captures the events
+ * of `/w/api-legacy`, and the deepest match wins so a project nested inside
+ * another gets its own events rather than its parent's.
+ *
  * @param {string} cwd
  * @returns {{ projectId: string|null, projectPath: string }}
  */
 function resolveProject(cwd) {
   if (!cwd) return { projectId: null, projectPath: '' };
   const normalized = normalizePath(cwd);
+  let best = null;
   try {
     const { projectsState } = require('../state/projects.state');
     const projects = projectsState.get().projects || [];
     for (const p of projects) {
       const pPath = normalizePath(p.path);
-      if (pPath && normalized.startsWith(pPath)) {
-        return { projectId: p.id, projectPath: pPath };
+      if (!pPath) continue;
+      if (normalized !== pPath && !normalized.startsWith(pPath + '/')) continue;
+      if (!best || pPath.length > best.projectPath.length) {
+        best = { projectId: p.id, projectPath: pPath };
       }
     }
   } catch (e) {
     console.error('[HooksProvider] Failed to resolve project — hook events may be lost:', e);
   }
-  return { projectId: null, projectPath: normalized };
+  return best || { projectId: null, projectPath: normalized };
 }
 
 /**
@@ -55,7 +63,7 @@ function ensureSession(cwd, meta) {
   const key = normalizePath(cwd);
   if (!sessions.has(key)) {
     sessions.set(key, { active: true, startTime: Date.now() });
-    eventBus.emit(EVENT_TYPES.SESSION_START, { sessionId: null, model: null, synthetic: true }, meta);
+    eventBus.emit(EVENT_TYPES.SESSION_START, { sessionId: meta.sessionId || null, model: null, synthetic: true }, meta);
   }
 }
 
@@ -84,7 +92,9 @@ function handleHookEvent(raw) {
   const hookName = raw.hook;
   const stdin = raw.stdin || {};
   const cwd = raw.cwd || stdin.cwd || null;
-  const meta = { ...resolveProject(cwd), source: 'hooks' };
+  // session_id is what makes an event routable to one tab; cwd only narrows it to
+  // a project, which several unrelated Claudes can share at once.
+  const meta = { ...resolveProject(cwd), sessionId: stdin.session_id || null, source: 'hooks' };
 
   // Skip events from non-project sessions (e.g. /usage monitor, home dir)
   if (!meta.projectId) {

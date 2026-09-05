@@ -7,6 +7,7 @@
 const { eventBus, EVENT_TYPES } = require('./ClaudeEventBus');
 const HooksProvider = require('./HooksProvider');
 const ScrapingProvider = require('./ScrapingProvider');
+const SessionRouter = require('./SessionRouter');
 
 let activeProvider = null; // 'hooks' | 'scraping'
 let consumerUnsubscribers = [];
@@ -33,6 +34,33 @@ const SESSION_END_DEDUP_MS = 4000;
 // ── Last-active Claude tab tracking (for multi-tab session ID capture) ──
 // projectId -> terminalId (the tab that was most recently focused)
 const lastActiveClaudeTab = new Map();
+
+// ── Stuck-'working' watchdog (hooks-only) ──
+// The badge only drops back to 'ready' on Stop/SessionEnd. A Claude killed with
+// SIGKILL, a worktree removed mid-run, or a machine put to sleep never sends one,
+// and the tab pulses for the rest of the app's life. Any further hook traffic on
+// the session rearms this, so a single tool call running for half an hour is safe.
+const HOOK_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+const idleWatchdogs = new Map(); // terminalId -> timeout handle
+
+function clearIdleWatchdog(terminalId) {
+  const handle = idleWatchdogs.get(terminalId);
+  if (handle) {
+    clearTimeout(handle);
+    idleWatchdogs.delete(terminalId);
+  }
+}
+
+function armIdleWatchdog(terminalId, setStatus) {
+  clearIdleWatchdog(terminalId);
+  idleWatchdogs.set(terminalId, setTimeout(() => {
+    idleWatchdogs.delete(terminalId);
+    try {
+      const { getTerminal } = require('../state/terminals.state');
+      if (getTerminal(terminalId)?.status === 'working') setStatus(terminalId, 'ready');
+    } catch (e) { /* state not ready */ }
+  }, HOOK_IDLE_TIMEOUT_MS));
+}
 
 // ── Consumer: Time Tracking (hooks-only — scraping uses existing direct calls in TerminalManager) ──
 function wireTimeTrackingConsumer() {
@@ -121,7 +149,7 @@ function wireNotificationConsumer() {
       // never accumulates stale data across sessions (bounded to one entry per project).
       const ctx = sessionContext.get(e.projectId);
 
-      const terminalId = resolveTerminalId(e.projectId);
+      const terminalId = resolveTerminalId(e.projectId, e.sessionId);
       const projectName = resolveProjectName(e.projectId);
 
       const body = (ctx && ctx.toolCount > 0)
@@ -152,7 +180,7 @@ function wireNotificationConsumer() {
       const title = e.data?.title || 'Claude';
       const body = e.data?.message || '';
       if (!body) return;
-      const terminalId = resolveTerminalId(e.projectId);
+      const terminalId = resolveTerminalId(e.projectId, e.sessionId);
       if (notificationFn) {
         notificationFn('info', title, body, terminalId);
       }
@@ -198,9 +226,19 @@ function resolveProjectName(projectId) {
 }
 
 /**
- * Try to find an active terminal for a project so notification click can switch to it.
+ * Best tab to focus when the notification for an event is clicked.
+ *
+ * Exact when the session is known. Otherwise any tab of the project, which is a
+ * small miss: a notification landing on a neighbouring tab of the same project
+ * is a navigation shortcut that fell short, not a claim about what that tab is
+ * doing. Status has no such licence — see wireTerminalStatusConsumer.
+ *
+ * @param {string} projectId
+ * @param {string|null} [sessionId]
  */
-function resolveTerminalId(projectId) {
+function resolveTerminalId(projectId, sessionId = null) {
+  const exact = sessionId ? SessionRouter.resolve(sessionId, { projectId }) : null;
+  if (exact !== null) return exact;
   if (!projectId) return null;
   // Prefer the most recent real Claude terminal (same heuristic as session-id capture),
   // so a notification click lands on the tab that actually finished — not an old/basic one.
@@ -295,7 +333,7 @@ function wireAttentionConsumer() {
       if (!shouldNotify(e.projectId)) return;
 
       const projectName = resolveProjectName(e.projectId);
-      const terminalId = resolveTerminalId(e.projectId);
+      const terminalId = resolveTerminalId(e.projectId, e.sessionId);
 
       // AskUserQuestion: build interactive answer buttons from Claude's options
       // SDK structure: toolInput.questions[0].question + toolInput.questions[0].options[].label
@@ -349,7 +387,7 @@ function wireAttentionConsumer() {
       }
 
       const projectName = resolveProjectName(e.projectId);
-      const terminalId = resolveTerminalId(e.projectId);
+      const terminalId = resolveTerminalId(e.projectId, e.sessionId);
       const tool = e.data?.tool || null;
 
       const body = tool
@@ -391,28 +429,65 @@ function wireAttentionConsumer() {
 // ── Consumer: Terminal Tab Status (hooks-only — forces tab status from hook events) ──
 // When hooks are active, the scraping-based status detection may be slow (debounce).
 // This consumer provides instant tab status updates from hooks.
+//
+// Routing is by session id, never by project. Resolving by project put every event
+// of a folder on one arbitrary tab, so an idle tab started pulsing whenever
+// anything else ran there — a chat tab, a workflow node, a `claude` outside the
+// app. An event whose session cannot be tied to a tab is dropped instead.
 function wireTerminalStatusConsumer() {
+  const setStatus = (terminalId, status) => {
+    try {
+      const TerminalManager = require('../ui/components/TerminalManager');
+      TerminalManager.updateTerminalStatus(terminalId, status);
+    } catch (err) { /* TerminalManager not ready */ }
+  };
+
+  /**
+   * The PTY tab this event belongs to, or null if that cannot be established.
+   * Chat tabs are filtered out: they drive their badge from the SDK stream
+   * (ChatView.onStatusChange), which is finer-grained than the hooks and already
+   * distinguishes thinking from tool calls.
+   */
+  const terminalTab = (e, { adopt }) => {
+    if (e.source !== 'hooks' || !e.projectId || !e.sessionId) return null;
+    const terminalId = SessionRouter.resolve(e.sessionId, {
+      projectId: e.projectId,
+      adopt,
+      prefer: lastActiveClaudeTab.get(e.projectId) ?? null
+    });
+    if (terminalId === null) return null;
+    try {
+      const { getTerminal } = require('../state/terminals.state');
+      const td = getTerminal(terminalId);
+      return td && td.mode === 'terminal' ? terminalId : null;
+    } catch (err) { return null; }
+  };
+
   consumerUnsubscribers.push(
     // Claude working → set tab to 'working'
     eventBus.on(EVENT_TYPES.CLAUDE_WORKING, (e) => {
-      if (e.source !== 'hooks' || !e.projectId) return;
-      const terminalId = resolveTerminalId(e.projectId);
-      if (!terminalId) return;
-      try {
-        const TerminalManager = require('../ui/components/TerminalManager');
-        TerminalManager.updateTerminalStatus(terminalId, 'working');
-      } catch (err) { /* TerminalManager not ready */ }
+      const terminalId = terminalTab(e, { adopt: true });
+      if (terminalId === null) return;
+      setStatus(terminalId, 'working');
+      armIdleWatchdog(terminalId, setStatus);
+    }),
+
+    // Still alive: one tool call can run for minutes without another status event,
+    // so its completion is what keeps the watchdog from firing mid-work.
+    eventBus.on(EVENT_TYPES.TOOL_END, (e) => {
+      const terminalId = terminalTab(e, { adopt: false });
+      if (terminalId !== null && idleWatchdogs.has(terminalId)) armIdleWatchdog(terminalId, setStatus);
     }),
 
     // Session end (Stop/SessionEnd) → set tab to 'ready'
     eventBus.on(EVENT_TYPES.SESSION_END, (e) => {
-      if (e.source !== 'hooks' || !e.projectId) return;
-      const terminalId = resolveTerminalId(e.projectId);
-      if (!terminalId) return;
-      try {
-        const TerminalManager = require('../ui/components/TerminalManager');
-        TerminalManager.updateTerminalStatus(terminalId, 'ready');
-      } catch (err) { /* TerminalManager not ready */ }
+      const terminalId = terminalTab(e, { adopt: false });
+      // 'stop' fires after every turn; only 'end' means the process is gone and
+      // its tab is free to host the next session.
+      if (e.sessionId && e.data?.reason === 'end') SessionRouter.release(e.sessionId);
+      if (terminalId === null) return;
+      clearIdleWatchdog(terminalId);
+      setStatus(terminalId, 'ready');
     }),
 
     // PreCompact → show compacting notification for terminal-mode projects
@@ -421,7 +496,7 @@ function wireTerminalStatusConsumer() {
       const projectName = resolveProjectName(e.projectId);
       if (notificationFn) {
         const { t } = require('../i18n');
-        notificationFn('info', projectName || 'Claude Terminal', t('chat.compacting') || 'Compacting conversation...', resolveTerminalId(e.projectId));
+        notificationFn('info', projectName || 'Claude Terminal', t('chat.compacting') || 'Compacting conversation...', resolveTerminalId(e.projectId, e.sessionId));
       }
     })
   );
@@ -452,7 +527,10 @@ function wireTabRenameConsumer() {
       if (!prompt || !prompt.trimStart().startsWith('/')) return;
       const { getSetting } = require('../state/settings.state');
       if (!getSetting('tabRenameOnSlashCommand')) return;
-      const terminalId = lastActiveClaudeTab.get(e.projectId) ?? findClaudeTerminalForProject(e.projectId);
+      // Session first: a /command typed in one tab must not rename another.
+      const terminalId = (e.sessionId ? SessionRouter.resolve(e.sessionId, { projectId: e.projectId }) : null)
+        ?? lastActiveClaudeTab.get(e.projectId)
+        ?? findClaudeTerminalForProject(e.projectId);
       if (!terminalId) return;
       const name = prompt.length > MAX_TAB_NAME_LEN
         ? prompt.slice(0, MAX_TAB_NAME_LEN - 1) + '\u2026'
@@ -666,6 +744,9 @@ function activateProvider(mode) {
 function deactivateProvider() {
   if (activeProvider === 'hooks') {
     HooksProvider.stop();
+    // No more hook traffic to rearm them, and no more Stop to clear them.
+    for (const terminalId of [...idleWatchdogs.keys()]) clearIdleWatchdog(terminalId);
+    SessionRouter.reset();
   } else if (activeProvider === 'scraping') {
     ScrapingProvider.stop();
   }
@@ -673,19 +754,33 @@ function deactivateProvider() {
 }
 
 // ── Consumer: Session ID Capture (hooks-only — captures Claude session IDs for resume) ──
+// A PTY tab has no way to learn the id of the `claude` it launched, so it is
+// adopted from the SessionStart hook. Deferred by a beat because the SDK announces
+// a chat session's id on its own `init` message: if that lands first the session is
+// already spoken for, and no PTY tab should claim it. Only the resume pointer is
+// delayed here, nothing the user can see.
+const SESSION_ADOPT_DELAY_MS = 1200;
+
 function wireSessionIdCapture() {
   consumerUnsubscribers.push(
     eventBus.on(EVENT_TYPES.SESSION_START, (e) => {
       if (e.source !== 'hooks') return;
-      if (!e.data?.sessionId) return;
-      if (!e.projectId) return;
-      const terminalId = findClaudeTerminalForProject(e.projectId);
-      if (!terminalId) return;
-      const { updateTerminal } = require('../state/terminals.state');
-      updateTerminal(terminalId, { claudeSessionId: e.data.sessionId });
-      const TerminalSessionService = require('../services/TerminalSessionService');
-      TerminalSessionService.saveTerminalSessions();
-      console.debug(`[Events] Captured session ID ${e.data.sessionId} for terminal ${terminalId}`);
+      const sessionId = e.data?.sessionId || e.sessionId;
+      if (!sessionId || !e.projectId) return;
+      const prefer = lastActiveClaudeTab.get(e.projectId) ?? null;
+      setTimeout(() => {
+        const terminalId = SessionRouter.resolve(sessionId, { projectId: e.projectId, adopt: true, prefer });
+        if (terminalId === null) return;
+        const { getTerminal, updateTerminal } = require('../state/terminals.state');
+        const td = getTerminal(terminalId);
+        // Never write over a chat tab: its id comes from the SDK, and repointing it
+        // would aim that tab's Resume at somebody else's conversation.
+        if (!td || td.mode !== 'terminal' || td.claudeSessionId === sessionId) return;
+        updateTerminal(terminalId, { claudeSessionId: sessionId });
+        const TerminalSessionService = require('../services/TerminalSessionService');
+        TerminalSessionService.saveTerminalSessions();
+        console.debug(`[Events] Captured session ID ${sessionId} for terminal ${terminalId}`);
+      }, SESSION_ADOPT_DELAY_MS);
     })
   );
 }
