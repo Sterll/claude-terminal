@@ -6,6 +6,7 @@
 
 const { BaseComponent } = require('../../core/BaseComponent');
 const { matchesSessionQuery } = require('../../utils/sessionSearch');
+const { isSidebarNavigation } = require('../navigationMode');
 
 const { Terminal } = require('@xterm/xterm');
 const { FitAddon } = require('@xterm/addon-fit');
@@ -2467,9 +2468,18 @@ class TerminalManager extends BaseComponent {
     const projects = projectsState.get().projects;
 
     if (projectIndex !== null && projects[projectIndex]) {
-      // The active project is named by its tab in the project bar; this row only
-      // carries the tools.
       filterIndicator.style.display = 'flex';
+
+      // Naming the project belongs to whichever navigation is mounted: the tab
+      // bar carries it in tab mode, so this slot fills only in column mode —
+      // which is also what lets the project bar be dropped there entirely,
+      // instead of standing on its own row to say one word.
+      const nameEl = document.getElementById('filter-project-name');
+      if (nameEl) {
+        const named = isSidebarNavigation();
+        nameEl.textContent = named ? (projects[projectIndex].name || '') : '';
+        nameEl.style.display = named ? '' : 'none';
+      }
 
       const qa = getQuickActions();
       if (qa) {

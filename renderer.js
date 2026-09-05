@@ -219,6 +219,12 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
       }
     }
   }
+  // Before the session restore below: restoring a tab calls filterByProject(),
+  // which asks which navigation is mounted to decide whether the tools row has
+  // to name the project. Applied later, that question got answered wrong for
+  // every tab restored at boot.
+  applyNavigationMode(settingsState.get().navigationMode);
+
   // Booting straight onto Claude clicks no tab, so nothing would have set the
   // screen-scoped bits of the docked column.
   document.body.dataset.activeTab = document.body.dataset.activeTab || 'claude';
@@ -327,7 +333,6 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
   if (settingsState.get().reduceMotion) {
     document.body.classList.add('reduce-motion');
   }
-  applyNavigationMode(settingsState.get().navigationMode);
   // Asked once, after the rest is on screen so the previews sit over the real app
   setTimeout(promptNavigationModeChoice, 1200);
   // Restore notification bell state from persisted settings

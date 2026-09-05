@@ -281,6 +281,9 @@
         <div class="project-tabs" id="project-tabs" role="tablist" aria-label="Open projects"></div>
         <div class="project-bar-tools" id="project-bar-tools">
           <div class="terminals-filter" id="terminals-filter" style="display: none;">
+            <!-- Column mode only: the tab bar names the project in tab mode, so
+                 this slot stays empty there rather than saying it twice. -->
+            <span class="filter-project" id="filter-project-name"></span>
             <!-- CI/CD Status Pill -->
             <div class="filter-ci-pill" id="filter-ci-pill" style="display: none;">
               <div class="filter-ci-icon">

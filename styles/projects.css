@@ -4471,21 +4471,15 @@ body.nav-tabs #terminals-header {
 .projects-overview-icon svg { width: 15px; height: 15px; }
 
 /* ── The project bar in column mode ──
-   The column is the selector, so the bar has nothing left to select — but it
-   is still the one place on every screen that says which project you are
-   looking at, which matters most once the column is collapsed. It stays,
-   stripped to the active project's name: no +, no close, no other tabs, and
-   no Overview (the column carries that entry). */
-body.nav-sidebar #btn-open-project,
-body.nav-sidebar .project-tab:not(.active),
-body.nav-sidebar .project-tab-close,
-body.nav-sidebar .project-tabs-empty {
+   The column is the selector, so the bar has nothing left to select. Kept only
+   for the active project's name, it stood on its own 38px row to say one word,
+   above a tools row that is usually near-empty — three stacked bands of chrome
+   over the conversation. The bar goes; the name moves into the tools row
+   (.filter-project), which is where it lived before the tab bar existed and
+   which is on screen anyway. Its tools have already been relocated into
+   #terminals-header by applyNavigationMode(), so nothing is lost with it. */
+body.nav-sidebar #project-bar {
   display: none;
-}
-
-body.nav-sidebar .project-tab.active {
-  cursor: default;
-  padding-right: 12px;
 }
 
 
