@@ -714,10 +714,20 @@ class SettingsPanel extends BasePanel {
                   <div>${t('navigationMode.settingsLabel')}</div>
                   <div class="settings-toggle-desc">${t('navigationMode.settingsHint')}</div>
                 </div>
-                <select id="navigation-mode-select" class="settings-select">
-                  <option value="tabs" ${settings.navigationMode !== 'sidebar' ? 'selected' : ''}>${t('navigationMode.optionTabs')}</option>
-                  <option value="sidebar" ${settings.navigationMode === 'sidebar' ? 'selected' : ''}>${t('navigationMode.optionSidebar')}</option>
-                </select>
+                <div class="settings-dropdown" id="navigation-mode-dropdown" data-value="${settings.navigationMode === 'sidebar' ? 'sidebar' : 'tabs'}">
+                  <div class="settings-dropdown-trigger">
+                    <span>${settings.navigationMode === 'sidebar' ? t('navigationMode.optionSidebar') : t('navigationMode.optionTabs')}</span>
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+                  </div>
+                  <div class="settings-dropdown-menu">
+                    ${[{ v: 'tabs', l: t('navigationMode.optionTabs') }, { v: 'sidebar', l: t('navigationMode.optionSidebar') }].map(o =>
+                      `<div class="settings-dropdown-option ${(settings.navigationMode === 'sidebar' ? 'sidebar' : 'tabs') === o.v ? 'selected' : ''}" data-value="${o.v}">
+                        <span class="dropdown-check"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></span>
+                        ${o.l}
+                      </div>`
+                    ).join('')}
+                  </div>
+                </div>
               </div>
               <div class="settings-toggle-row">
                 <div class="settings-toggle-label">
@@ -1928,9 +1938,10 @@ class SettingsPanel extends BasePanel {
       // Swapping navigation relocates DOM and repaints the project-scoped
       // screens, so it goes back through the renderer rather than being applied
       // here — same path the first-launch card takes.
-      const navSelect = document.getElementById('navigation-mode-select');
-      if (navSelect && navSelect.value !== settings.navigationMode) {
-        document.dispatchEvent(new CustomEvent('navigation-mode-change', { detail: navSelect.value }));
+      const navDropdown = document.getElementById('navigation-mode-dropdown');
+      const pickedNav = navDropdown?.dataset.value;
+      if (pickedNav && pickedNav !== (settings.navigationMode === 'sidebar' ? 'sidebar' : 'tabs')) {
+        document.dispatchEvent(new CustomEvent('navigation-mode-change', { detail: pickedNav }));
       }
 
       document.body.classList.toggle('compact-projects', newCompactProjects);
