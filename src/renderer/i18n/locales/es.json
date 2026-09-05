@@ -109,6 +109,10 @@
     "closeProjectTitle": "¿Cerrar {name}?",
     "closeProjectMessage": "Este proyecto tiene {count} sesión(es) abierta(s). Cerrar su pestaña las finaliza.",
     "closeProjectConfirm": "Cerrar y finalizar sesiones",
+    "closeProjectMessageEmpty": "Se cerrará su pestaña. El proyecto en sí no se elimina.",
+    "closeOthersTitle": "¿Cerrar {count} proyecto(s) más?",
+    "closeOthersMessage": "Se cerrarán sus pestañas y finalizarán {count} sesión(es) en curso.",
+    "closeOthersMessageEmpty": "Se cerrarán sus pestañas. Los proyectos en sí no se eliminan.",
     "moreActions": "Más acciones"
   },
   "terminals": {
@@ -2444,6 +2448,8 @@
     "closeOthers": "Cerrar las demás",
     "closeToLeft": "Cerrar pestañas a la izquierda",
     "closeToRight": "Cerrar pestañas a la derecha",
+    "closeTabTitle": "¿Cerrar {name}?",
+    "closeTabMessage": "Se cerrará esta pestaña. Cualquier sesión en curso finalizará.",
     "closeAll": "Cerrar todo"
   },
   "telemetry": {

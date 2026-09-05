@@ -109,6 +109,10 @@
     "closeProjectTitle": "Tutup {name}?",
     "closeProjectMessage": "Proyek ini memiliki {count} sesi terbuka. Menutup tabnya akan mengakhirinya.",
     "closeProjectConfirm": "Tutup dan akhiri sesi",
+    "closeProjectMessageEmpty": "Tabnya akan ditutup. Proyeknya sendiri tidak dihapus.",
+    "closeOthersTitle": "Tutup {count} proyek lainnya?",
+    "closeOthersMessage": "Tab mereka akan ditutup dan {count} sesi yang berjalan akan diakhiri.",
+    "closeOthersMessageEmpty": "Tab mereka akan ditutup. Proyeknya sendiri tidak dihapus.",
     "moreActions": "Aksi lainnya"
   },
   "terminals": {
@@ -2447,6 +2451,8 @@
     "closeOthers": "Tutup Tab Lain",
     "closeToLeft": "Tutup Tab di Sebelah Kiri",
     "closeToRight": "Tutup Tab di Sebelah Kanan",
+    "closeTabTitle": "Tutup {name}?",
+    "closeTabMessage": "Tab ini akan ditutup. Sesi apa pun yang berjalan di dalamnya akan berakhir.",
     "closeAll": "Tutup Semua"
   },
   "telemetry": {
