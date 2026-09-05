@@ -2952,6 +2952,69 @@
   background: var(--accent-dim);
 }
 
+/* Colour swatch opening a fixed palette. A plain button rather than
+   <input type="color">: the OS picker is a lot of machinery for choosing
+   between eight tags, and it lets through values that vanish on a dark
+   background. */
+.account-row-color {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  transition: transform 0.12s, border-color 0.12s;
+}
+
+.account-row-color:hover { transform: scale(1.12); border-color: var(--text-secondary); }
+
+/* No colour set: a hollow ring, not a black dot pretending to be one. */
+.account-row-color--none {
+  background:
+    linear-gradient(45deg, transparent 44%, var(--text-muted) 44%,
+                    var(--text-muted) 56%, transparent 56%);
+}
+
+/* ── Palette popover ── */
+.account-color-popover {
+  position: fixed;
+  z-index: 10000;
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 8px;
+  padding: 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.account-color-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.12s;
+}
+
+.account-color-swatch:hover { transform: scale(1.15); }
+
+.account-color-swatch.selected {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--bg-tertiary) inset;
+}
+
+.account-color-swatch--none {
+  background:
+    linear-gradient(45deg, transparent 44%, var(--text-muted) 44%,
+                    var(--text-muted) 56%, transparent 56%);
+  border: 2px solid var(--border-color);
+}
+
 .account-row-main {
   flex: 1;
   min-width: 0;

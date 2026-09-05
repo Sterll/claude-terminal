@@ -86,8 +86,20 @@ describe('refresh-usage', () => {
 
     const result = await handlers['refresh-usage']();
 
-    expect(result).toEqual({ success: true, data: mockData });
+    // accountId rides along: figures are per account now, and the renderer
+    // drops an answer for a tab it has already left.
+    expect(result).toEqual({ success: true, data: mockData, accountId: null });
     expect(mockUsageService.refreshUsage).toHaveBeenCalledTimes(1);
+  });
+
+  test('fetches the account it was asked for', async () => {
+    const mockData = { dailyUsage: 12, maxDaily: 100 };
+    mockUsageService.refreshUsage.mockResolvedValue(mockData);
+
+    const result = await handlers['refresh-usage']({}, 'acct-team');
+
+    expect(mockUsageService.refreshUsage).toHaveBeenCalledWith('acct-team');
+    expect(result).toEqual({ success: true, data: mockData, accountId: 'acct-team' });
   });
 
   test('returns error on service failure', async () => {

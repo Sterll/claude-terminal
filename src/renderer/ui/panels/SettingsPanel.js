@@ -12,6 +12,7 @@ const { t, setLanguage, getCurrentLanguage, getAvailableLanguages } = require('.
 // ── Module-level constants ──
 
 const { BUILTIN_TOOLS } = require('../../utils/toolRegistry');
+const { getProjectsForAccount } = require('../../state/projects.state');
 
 // ── Module-level pure helpers ──
 
@@ -2139,7 +2140,7 @@ class SettingsPanel extends BasePanel {
         listEl.innerHTML = `<div class="settings-desc" style="padding: 12px 16px; color: var(--danger);">${escapeHtml(res.error || 'Failed to load accounts')}</div>`;
         return;
       }
-      const { accounts, activeId, hasCredentials } = res.data;
+      const { accounts, defaultId, hasCredentials } = res.data;
       if (!accounts.length) {
         listEl.innerHTML = `
           <div class="settings-desc" style="padding: 12px 16px;">
@@ -2148,21 +2149,30 @@ class SettingsPanel extends BasePanel {
         if (captureBtn) captureBtn.disabled = !hasCredentials;
         return;
       }
-      listEl.innerHTML = accounts.map(a => `
-        <div class="account-row${a.id === activeId ? ' active' : ''}" data-id="${a.id}">
+      const { sanitizeColor } = require('../../utils');
+      listEl.innerHTML = accounts.map(a => {
+        const color = sanitizeColor(a.color);
+        const bound = getProjectsForAccount(a.id);
+        return `
+        <div class="account-row${a.id === defaultId ? ' active' : ''}" data-id="${a.id}">
+          <button type="button" class="account-row-color${color ? '' : ' account-row-color--none'}"
+                  data-action="color" data-id="${a.id}" data-color="${color || ''}"
+                  ${color ? `style="background:${color}"` : ''}
+                  title="${escapeHtml(t('accounts.colorTitle') || 'Account colour')}"
+                  aria-label="${escapeHtml(t('accounts.colorTitle') || 'Account colour')}"></button>
           <div class="account-row-main">
             <div class="account-row-name">${escapeHtml(a.name)}</div>
-            <div class="account-row-meta">${escapeHtml((a.fingerprint || '').slice(0, 8))}${a.lastUsedAt ? ` &middot; ${escapeHtml(new Date(a.lastUsedAt).toLocaleString())}` : ''}</div>
+            <div class="account-row-meta">${escapeHtml((a.fingerprint || '').slice(0, 8))}${bound.length ? ` &middot; ${escapeHtml(t('accounts.boundProjects', { count: bound.length }))}` : ''}</div>
           </div>
           <div class="account-row-buttons">
-            ${a.id === activeId
-              ? `<span class="account-row-status">${escapeHtml(t('accounts.active') || 'Active')}</span>`
-              : `<button class="btn btn-secondary btn-sm" data-action="switch" data-id="${a.id}">${escapeHtml(t('accounts.switch') || 'Switch')}</button>`}
+            ${a.id === defaultId
+              ? `<span class="account-row-status">${escapeHtml(t('accounts.isDefault') || 'Default')}</span>`
+              : `<button class="btn btn-secondary btn-sm" data-action="set-default" data-id="${a.id}">${escapeHtml(t('accounts.makeDefault') || 'Make default')}</button>`}
             <button class="btn btn-secondary btn-sm" data-action="rename" data-id="${a.id}">${escapeHtml(t('common.rename') || 'Rename')}</button>
             <button class="btn btn-secondary btn-sm" data-action="remove" data-id="${a.id}">${escapeHtml(t('common.delete') || 'Delete')}</button>
           </div>
-        </div>
-      `).join('');
+        </div>`;
+      }).join('');
       if (captureBtn) captureBtn.disabled = !hasCredentials;
     };
 
@@ -2172,10 +2182,38 @@ class SettingsPanel extends BasePanel {
       const action = btn.dataset.action;
       const id = btn.dataset.id;
       const { showError } = require('../components/Toast');
-      if (action === 'switch') {
+      if (action === 'color') {
+        // A fixed palette rather than the native picker: these are tags to tell
+        // accounts apart, and every preset is known to read on the dark theme.
+        const { showAccountColorPicker } = require('../components/AccountMenu');
+        const rect = btn.getBoundingClientRect();
+        // From the attribute, not style.background: the browser normalises the
+        // latter to rgb(), which would never match a hex preset.
+        const current = btn.dataset.color || null;
+        showAccountColorPicker({
+          x: rect.left,
+          y: rect.bottom + 4,
+          current,
+          onPick: async (hex) => {
+            // Paint the swatch straight away. The row is rebuilt when the
+            // accounts-changed broadcast lands, but that is a main-process
+            // round-trip: without this the colour you just picked appears to
+            // do nothing.
+            btn.dataset.color = hex || '';
+            btn.style.background = hex || '';
+            btn.classList.toggle('account-row-color--none', !hex);
+            try {
+              const r = await this.api.accounts.setColor(id, hex);
+              if (!r?.success) showError(r?.error || t('accounts.colorError'), 5000);
+            } catch (err) {
+              showError(err?.message || t('accounts.colorError'), 5000);
+            }
+          }
+        });
+      } else if (action === 'set-default') {
         btn.disabled = true;
         try {
-          const r = await this.api.accounts.switch(id);
+          const r = await this.api.accounts.setDefault(id);
           if (!r?.success) {
             showError(r?.error || t('accounts.switchError'), 5000);
             return;
@@ -2206,6 +2244,17 @@ class SettingsPanel extends BasePanel {
           showError(err?.message || t('accounts.renameError'), 5000);
         }
       } else if (action === 'remove') {
+        // Refuse while projects still run as this account: silently dropping
+        // them onto another one is the last thing you want with billing
+        // attached. The user unbinds them first, from the tab menu.
+        const bound = getProjectsForAccount(id);
+        if (bound.length) {
+          showError(t('accounts.removeBlocked', {
+            count: bound.length,
+            projects: bound.map(p => p.name).join(', ')
+          }), 8000);
+          return;
+        }
         const { showConfirm } = require('../components/Modal');
         const ok = await showConfirm({
           title: t('common.delete') || 'Delete',

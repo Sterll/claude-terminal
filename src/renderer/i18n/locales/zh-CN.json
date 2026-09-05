@@ -3782,7 +3782,27 @@
     "switchError": "切换账号失败",
     "renameError": "账户重命名失败",
     "removeError": "删除账户失败",
-    "captureError": "保存当前账户失败"
+    "captureError": "保存当前账户失败",
+    "isDefault": "默认",
+    "makeDefault": "设为默认",
+    "useDefault": "默认账户",
+    "useDefaultNamed": "默认账户（{name}）",
+    "colorTitle": "账户颜色",
+    "colorError": "无法保存账户颜色",
+    "boundProjects": "{count} 个项目",
+    "removeBlocked": "仍有 {count} 个项目在使用：{projects}。请先将它们移到其他账户。",
+    "rebindTitle": "为该项目使用其他账户",
+    "rebindScope": "仅 {project} 会切换，其他项目保持原有账户。",
+    "rebindScopeDefault": "这将更改默认账户，供所有未单独指定账户的项目使用。",
+    "limited": "已达上限",
+    "useForProject": "在此使用",
+    "usageBoundTitle": "{name} 的用量，该项目所用账户。点击可更改。",
+    "usageDefaultTitle": "{name} 的用量，默认账户。点击可为该项目指定账户。",
+    "switchWhileRunningTitle": "有会话正在运行",
+    "switchWhileRunning": "该项目已有 {count} 个会话在运行，它们将保留当前账户。更改仅对之后启动的会话生效。是否继续？",
+    "colorNone": "无颜色",
+    "chooseForProjectTitle": "Claude 账户",
+    "chooseForProject": "{project} 使用哪个账户运行？之后可从其标签页更改。"
   },
   "usage": {
     "stale": "使用情况数据可能已过时 - 上次刷新失败。 {error}"

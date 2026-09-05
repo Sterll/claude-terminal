@@ -65,6 +65,9 @@ async function createTerminal(project, { runClaude = true, resumeSessionId = nul
     cwd: project.path,
     runClaude,
     skipPermissions,
+    // Only an explicit binding is sent: unbound projects run against the
+    // machine-wide login, which is what keeps `claude /login` capturable.
+    accountId: require('../state').getProjectAccount(project.id),
     ...(resumeSessionId ? { resumeSessionId } : {})
   });
 

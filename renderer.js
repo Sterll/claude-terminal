@@ -4544,6 +4544,81 @@ async function renderDashboardContent(projectIndex) {
 }
 
 // ========== NEW PROJECT ==========
+/**
+ * Account field for the new-project wizard.
+ *
+ * Offered here because creation is when the intent is known — "this one is
+ * work" — rather than leaving it to be remembered afterwards. "Default" is
+ * pre-selected: choosing an account is an override, not a required step.
+ * Omitted when there is only one account, since there is nothing to choose.
+ *
+ * @returns {string} HTML, or '' when the field has no purpose
+ */
+function buildWizardAccountField() {
+  try {
+    const { getAccounts, getDefaultAccount } = require('./src/renderer/state');
+    const { escapeHtml } = require('./src/renderer/utils');
+    const accounts = getAccounts();
+    if (accounts.length < 2) return '';
+    const fallback = getDefaultAccount();
+    const defaultLabel = fallback
+      ? t('accounts.useDefaultNamed', { name: fallback.name })
+      : (t('accounts.useDefault') || 'Default account');
+    // A native <select> cannot show a colour dot: macOS draws the popup
+    // itself and ignores option styling. Hence a button plus a panel, with
+    // the value parked in a hidden input so the create step reads it the same
+    // way it would read a select.
+    const { sanitizeColor } = require('./src/renderer/utils');
+    const dot = (c) => {
+      const safe = sanitizeColor(c);
+      return `<span class="wizard-account-dot"${safe ? ` style="background:${safe}"` : ''}></span>`;
+    };
+    const options = [{ id: '', label: defaultLabel, color: fallback?.color }]
+      .concat(accounts.map(a => ({ id: a.id, label: a.name, color: a.color })));
+    return `
+      <div class="wizard-field wizard-account-field">
+        <label class="wizard-label">${escapeHtml(t('accounts.chooseForProjectTitle') || 'Claude account')}</label>
+        <input type="hidden" id="wizard-account" value="">
+        <button type="button" class="wizard-input wizard-account-btn" id="wizard-account-btn">
+          ${dot(fallback?.color)}
+          <span class="wizard-account-label">${escapeHtml(defaultLabel)}</span>
+        </button>
+        <div class="wizard-account-panel" id="wizard-account-panel" hidden>
+          ${options.map(o => `
+            <button type="button" class="wizard-account-option" data-id="${escapeHtml(o.id)}">
+              ${dot(o.color)}
+              <span>${escapeHtml(o.label)}</span>
+            </button>`).join('')}
+        </div>
+      </div>`;
+  } catch (_) {
+    return '';
+  }
+}
+
+// Delegated: the wizard is rebuilt on every open, so binding per-instance
+// handlers would mean re-binding them each time.
+document.addEventListener('click', (e) => {
+  const panel = document.getElementById('wizard-account-panel');
+  if (!panel) return;
+
+  if (e.target.closest('#wizard-account-btn')) {
+    panel.hidden = !panel.hidden;
+    return;
+  }
+
+  const option = e.target.closest('.wizard-account-option');
+  if (option) {
+    const btn = document.getElementById('wizard-account-btn');
+    document.getElementById('wizard-account').value = option.dataset.id || '';
+    btn.innerHTML = option.innerHTML;
+    panel.hidden = true;
+    return;
+  }
+
+  if (!e.target.closest('.wizard-account-field')) panel.hidden = true;
+});
+
 document.getElementById('btn-new-project').onclick = () => {
   const projectTypes = registry.getAll();
   const categoriesGrouped = registry.getByCategory();
@@ -4639,6 +4714,8 @@ document.getElementById('btn-new-project').onclick = () => {
           </div>
           <div class="type-specific-fields">${projectTypes.map(tp => tp.getWizardFields()).filter(Boolean).join('')}</div>
         </div>
+
+        ${buildWizardAccountField()}
 
         <div class="wizard-field clone-status" style="display: none;">
           <div class="clone-progress">
@@ -5092,6 +5169,11 @@ document.getElementById('btn-new-project').onclick = () => {
     // Register project — wrapped in try-catch (BUG 1)
     try {
       const project = { id: generateProjectId(), name, path: projPath, type: selectedType, folderId: null };
+      // Empty value means "follow the default", which is the absence of a
+      // binding rather than a binding to the default account — otherwise the
+      // project would stop following the default the day it changes.
+      const chosenAccount = document.getElementById('wizard-account')?.value;
+      if (chosenAccount) project.accountId = chosenAccount;
       // Merge type-specific wizard config
       const typeHandler = registry.get(selectedType);
       const typeConfig = typeHandler.getWizardConfig(document.getElementById('form-project'));
@@ -6348,6 +6430,144 @@ const usageElements = {
   }
 };
 
+// ── Which account the titlebar is reporting on ──
+//
+// Figures belong to an account, and projects pick their own. So the bars follow
+// the active project tab: showing the default account's numbers while the tab
+// in front runs on another one would be a confident lie. `null` is the
+// machine-wide login, which unbound projects run as.
+let usageAccountId = null;
+
+/**
+ * Screens where a project is the subject, so the usage chip may re-bind it.
+ * Everywhere else the chip reports which account the figures belong to and
+ * nothing more.
+ */
+const USAGE_PROJECT_SCREENS = new Set(['claude', 'git', 'tasks', 'session-replay']);
+
+/**
+ * The project the screen is actually showing, or null when there is none.
+ *
+ * Read from the active project tab rather than `selectedProjectFilter`: that
+ * index keeps pointing at the last project opened even on the dashboard or in
+ * settings, where no project is in context. Trusting it let the account picker
+ * silently re-bind that project from a screen that never mentioned it.
+ *
+ * @returns {Object|null}
+ */
+function currentUsageProject() {
+  try {
+    // From state, not from the active tab in the DOM: this runs from a
+    // projectsState subscription, which fires before ProjectBar has re-rendered.
+    // Reading the tab there returned the *previous* project, so with two
+    // projects on two accounts the chip showed each other's account.
+    const { projectsState } = require('./src/renderer/state');
+    const state = projectsState.get();
+    return state.projects[state.selectedProjectFilter] || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * Whether the screen on show is one whose subject is a project.
+ *
+ * The project bar is shared by every screen, so `selectedProjectFilter` keeps
+ * pointing at the last project opened even on the dashboard or in a workspace.
+ * Re-binding from there hit a project the screen never mentioned — hence a
+ * separate check, consulted when the chip is clicked rather than when the
+ * label is drawn.
+ *
+ * @returns {boolean}
+ */
+function canRebindFromUsageChip() {
+  const screen = document.querySelector('.nav-tab[data-tab].active')?.dataset.tab;
+  return USAGE_PROJECT_SCREENS.has(screen);
+}
+
+/**
+ * Which account the figures should be fetched for.
+ *
+ * `null` means the machine-wide store, which is what an unbound project's CLI
+ * reads — so the fetch follows the binding, not the label. The label still
+ * names the account that owns that store (see the resolver in accounts.state),
+ * because "whose numbers are these" always has an answer.
+ *
+ * @returns {string|null}
+ */
+function currentUsageAccountId() {
+  try {
+    const { getProjectAccount } = require('./src/renderer/state');
+    const project = currentUsageProject();
+    if (!project) return null;
+    return getProjectAccount(project.id) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * Name the account next to the bars, in its own colour, so the numbers are
+ * always attributable — bound or not. A project running on the default is
+ * marked as such rather than left blank: the tab is tinted either way, and a
+ * silent titlebar next to a coloured tab is the inconsistency, not the
+ * information.
+ */
+function renderUsageAccountLabel() {
+  const { container } = usageElements;
+  if (!container) return;
+
+  let el = usageElements.account;
+  if (!el) {
+    el = document.createElement('button');
+    el.className = 'usage-account';
+    el.type = 'button';
+    // The pill lives in an inner span while the button stretches to the strip
+    // height. Centring the pill against a stretched box is exact; relying on
+    // align-self against a container whose height comes from its own children
+    // is what left it looking high.
+    el.innerHTML = '<span class="usage-account-pill"></span>';
+    // Clicking the bars refreshes; clicking the account opens its picker.
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const project = currentUsageProject();
+      // Checked at click time: the screen can change without any state
+      // notification, so a value captured at render would go stale.
+      if (!project || !canRebindFromUsageChip()) return;
+      const rect = el.getBoundingClientRect();
+      try {
+        const { showProjectAccountMenu } = require('./src/renderer/ui/components/AccountMenu');
+        showProjectAccountMenu({ projectId: project.id, x: rect.left, y: rect.bottom + 4 });
+      } catch (_) {
+        // Menu unavailable; the tab's context menu still offers the same choice.
+      }
+    });
+    container.insertBefore(el, container.firstChild);
+    usageElements.account = el;
+  }
+
+  try {
+    const { getUsageAccountForProject } = require('./src/renderer/state');
+    const { sanitizeColor } = require('./src/renderer/utils');
+    const project = currentUsageProject();
+    const { account, isDefault } = getUsageAccountForProject(project?.id || null);
+    if (!account) { el.style.display = 'none'; return; }
+
+    el.style.display = '';
+    const pill = el.querySelector('.usage-account-pill') || el;
+    pill.textContent = account.name;
+    el.classList.toggle('usage-account--default', isDefault);
+    el.disabled = !project || !canRebindFromUsageChip();
+    el.title = isDefault
+      ? t('accounts.usageDefaultTitle', { name: account.name })
+      : t('accounts.usageBoundTitle', { name: account.name });
+    const color = sanitizeColor(account.color);
+    el.style.setProperty('--account-color', color || 'var(--text-secondary)');
+  } catch (_) {
+    el.style.display = 'none';
+  }
+}
+
 /**
  * Build the nodes for one usage bucket.
  *
@@ -6563,7 +6783,11 @@ async function refreshUsageDisplay() {
   usageElements.container.classList.add('loading');
 
   try {
-    const result = await api.usage.refresh();
+    const requested = usageAccountId;
+    const result = await api.usage.refresh(requested);
+    // Tabs can be switched mid-flight; a late answer for the account we left
+    // must not repaint the bars.
+    if (requested !== usageAccountId) return;
     // A failed fetch that still has cached data is rendered rather than blanked
     // (stale numbers beat empty bars), but the container is flagged so the UI
     // can say so instead of passing them off as current.
@@ -6603,17 +6827,19 @@ if (usageElements.container) {
   // Listen for push updates from main process (no polling needed)
   if (api.usage.onDataUpdated) {
     api.usage.onDataUpdated((usagePayload) => {
-      if (usagePayload && usagePayload.data) {
-        updateUsageDisplay(usagePayload);
-      }
+      if (!usagePayload || !usagePayload.data) return;
+      // A background refresh for another account must not land in the bars.
+      if ((usagePayload.accountId || null) !== usageAccountId) return;
+      updateUsageDisplay(usagePayload);
     });
   }
 
   // Fallback poll every 30s (in case push event is missed)
   setInterval(async () => {
     try {
-      const data = await api.usage.getData();
-      if (data && data.data) {
+      const requested = usageAccountId;
+      const data = await api.usage.getData(requested);
+      if (data && data.data && requested === usageAccountId) {
         updateUsageDisplay(data);
       }
     } catch (e) {
@@ -6621,8 +6847,41 @@ if (usageElements.container) {
     }
   }, 30000);
 
+  // Follow the active project tab: its account owns the numbers on screen.
+  // Bindings and colours can change under us too, hence both subscriptions.
+  const syncUsageAccount = () => {
+    const next = currentUsageAccountId();
+    // The label tracks more than the fetched account — a project can move
+    // between two accounts that both resolve to the machine store — so it is
+    // redrawn on every notification, not only when the fetch target changes.
+    renderUsageAccountLabel();
+    if (next === usageAccountId) return;
+    usageAccountId = next;
+    // Blank the bars rather than leave the previous account's figures up while
+    // the new ones are in flight.
+    renderUsageBuckets(PLACEHOLDER_USAGE_BUCKETS);
+    api.usage.setFocus(next).catch(() => {});
+    refreshUsageDisplay();
+  };
+
+  try {
+    const { projectsState, accountsState } = require('./src/renderer/state');
+    projectsState.subscribe(syncUsageAccount);
+    accountsState.subscribe(syncUsageAccount);
+  } catch (_) {
+    // State not ready yet; the initial fetch below still runs.
+  }
+
+  // Switching screens changes whether the chip may re-bind, and that emits no
+  // state notification — so listen for it directly, after the class has moved.
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.nav-tab[data-tab]')) return;
+    requestAnimationFrame(syncUsageAccount);
+  }, true);
+
   // Initial fetch (after 2s to let main process start)
   setTimeout(() => {
+    syncUsageAccount();
     refreshUsageDisplay();
   }, 2000);
 }

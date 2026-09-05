@@ -571,6 +571,8 @@ contextBridge.exposeInMainWorld('electron_api', {
     list: () => ipcRenderer.invoke('accounts-list'),
     capture: (name) => ipcRenderer.invoke('accounts-capture', { name }),
     switch: (id) => ipcRenderer.invoke('accounts-switch', { id }),
+    setDefault: (id) => ipcRenderer.invoke('accounts-set-default', { id }),
+    setColor: (id, color) => ipcRenderer.invoke('accounts-update', { id, color }),
     rename: (id, name) => ipcRenderer.invoke('accounts-rename', { id, name }),
     remove: (id) => ipcRenderer.invoke('accounts-remove', { id }),
     syncActive: () => ipcRenderer.invoke('accounts-sync-active'),
@@ -714,8 +716,9 @@ contextBridge.exposeInMainWorld('electron_api', {
 
   // ==================== USAGE ====================
   usage: {
-    getData: () => ipcRenderer.invoke('get-usage-data'),
-    refresh: () => ipcRenderer.invoke('refresh-usage'),
+    getData: (accountId = null) => ipcRenderer.invoke('get-usage-data', accountId),
+    refresh: (accountId = null) => ipcRenderer.invoke('refresh-usage', accountId),
+    setFocus: (accountId = null) => ipcRenderer.invoke('set-usage-focus', accountId),
     startMonitor: (intervalMs) => ipcRenderer.invoke('start-usage-monitor', intervalMs),
     stopMonitor: () => ipcRenderer.invoke('stop-usage-monitor'),
     onDataUpdated: (callback) => ipcRenderer.on('usage-data-updated', (event, data) => callback(data)),

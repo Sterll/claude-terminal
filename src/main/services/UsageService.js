@@ -4,70 +4,123 @@
  */
 
 const https = require('https');
-const { readAccessToken } = require('../utils/claudeCredentials');
+const { readAccessToken, readCredentialsForDir, tokenFromCredentials } = require('../utils/claudeCredentials');
 
-// Cache
-let usageData = null;
-let lastFetch = null;
+// Per-account state.
+//
+// Projects pick their own account, so there is no single set of numbers to
+// hold any more: figures fetched for one account are simply wrong for another.
+// Everything that used to be a module-level singleton is keyed by account id,
+// with the MACHINE key standing for the machine-wide login — what unbound
+// projects, and the default account, actually run as.
+const MACHINE = '__machine__';
+
 let fetchInterval = null;
-let isFetching = false;
 let _onUpdateCallback = null;
 let _onLimitCallback = null;
-// Staleness tracking: set whenever a fetch attempt fails. `isStale` stays true
-// for as long as we keep serving `usageData` that the API refused to confirm,
-// so the renderer can badge the numbers instead of showing them as current.
-let lastError = null;
-let isStale = false;
-// De-dupe limit notifications until the next reset window
-let _lastLimitNotifiedReset = null;
+
+// Which account the UI is showing. Only this one is polled: fetching every
+// known account on a timer would multiply API calls by the number of accounts
+// to keep numbers nobody is looking at warm.
+let focusedAccount = MACHINE;
+
+/** @type {Map<string, Object>} */
+const entries = new Map();
+
+function key(accountId) {
+  return accountId || MACHINE;
+}
+
+/**
+ * Per-account slot. `isStale` stays true for as long as we keep serving data
+ * the API refused to confirm, so the renderer can badge the numbers instead of
+ * showing them as current.
+ */
+function entryFor(accountId) {
+  const k = key(accountId);
+  let entry = entries.get(k);
+  if (!entry) {
+    entry = {
+      accountId: accountId || null,
+      usageData: null,
+      lastFetch: null,
+      isFetching: false,
+      lastError: null,
+      isStale: false,
+      lastLimitNotifiedReset: null,
+      tokenCache: null,
+      tokenCacheTime: 0
+    };
+    entries.set(k, entry);
+  }
+  return entry;
+}
 
 const USAGE_API_URL = 'https://api.anthropic.com/api/oauth/usage';
 const OAUTH_BETA_HEADER = 'oauth-2025-04-20';
 
 // ── OAuth API (primary) ──
 
-// Token cache to avoid hitting the credential store (and, on macOS, the
+// Token cache TTL, to avoid hitting the credential store (and, on macOS, the
 // Keychain) on every poll.
-let _tokenCache = null;
-let _tokenCacheTime = 0;
 const TOKEN_CACHE_TTL = 30000; // 30s
 
 /**
- * Read the OAuth access token from the CLI's live credential store — the macOS
- * login Keychain on darwin, ~/.claude/.credentials.json elsewhere. Reading only
- * the file here is what left the usage panel blank on macOS, where the CLI has
- * never written one.
+ * Read the OAuth access token for an account.
+ *
+ * A bound account is read from its own credential directory — the same one its
+ * spawned CLI authenticates against — so the figures come back for the account
+ * that actually did the work. With no id, this is the machine-wide login: the
+ * macOS Keychain on darwin, ~/.claude/.credentials.json elsewhere.
+ *
+ * @param {string|null} accountId
  * @returns {Promise<string|null>}
  */
-async function readOAuthToken() {
+async function readOAuthToken(accountId) {
+  const entry = entryFor(accountId);
   const now = Date.now();
-  if (_tokenCache !== null && now - _tokenCacheTime < TOKEN_CACHE_TTL) {
-    return _tokenCache;
+  if (entry.tokenCache !== null && now - entry.tokenCacheTime < TOKEN_CACHE_TTL) {
+    return entry.tokenCache;
   }
   try {
-    _tokenCache = await readAccessToken();
+    if (accountId) {
+      const { accountConfigDir } = require('./AccountManager');
+      entry.tokenCache = tokenFromCredentials(await readCredentialsForDir(accountConfigDir(accountId)));
+    } else {
+      entry.tokenCache = await readAccessToken();
+    }
   } catch (e) {
-    _tokenCache = null;
+    entry.tokenCache = null;
   }
-  _tokenCacheTime = now;
-  return _tokenCache;
+  entry.tokenCacheTime = now;
+  return entry.tokenCache;
 }
 
 /**
- * Drop the cached token and usage figures.
+ * Drop cached tokens and figures — for one account, or all of them.
  *
- * Called after an account switch: the numbers belong to the account that was
- * active when they were fetched, so serving them for the incoming one would be
- * a plain lie, and the 30s token cache would keep querying the outgoing account.
+ * The numbers belong to the account they were fetched for, so serving them for
+ * another would be a plain lie, and the 30s token cache would keep querying the
+ * outgoing one. Called with no id after a change to the machine-wide store,
+ * which every unbound project reads.
+ *
+ * @param {string|null} [accountId] - omit to clear every account
  */
-function invalidateCredentials() {
-  _tokenCache = null;
-  _tokenCacheTime = 0;
-  usageData = null;
-  lastFetch = null;
-  isStale = false;
-  lastError = null;
-  _lastLimitNotifiedReset = null;
+function invalidateCredentials(accountId) {
+  const reset = (entry) => {
+    entry.tokenCache = null;
+    entry.tokenCacheTime = 0;
+    entry.usageData = null;
+    entry.lastFetch = null;
+    entry.isStale = false;
+    entry.lastError = null;
+    entry.lastLimitNotifiedReset = null;
+  };
+  if (accountId === undefined) {
+    for (const entry of entries.values()) reset(entry);
+    return;
+  }
+  reset(entryFor(accountId));
 }
 
 /**
@@ -204,45 +257,65 @@ function fetchUsageFromAPI(token) {
  * marks the cached data stale rather than silently passing it off as fresh.
  * @returns {Promise<Object|null>}
  */
-async function fetchUsage() {
-  if (isFetching) return usageData;
-  isFetching = true;
+async function fetchUsage(accountId) {
+  const entry = entryFor(accountId);
+  if (entry.isFetching) return entry.usageData;
+  entry.isFetching = true;
 
   try {
     // Try OAuth API first
-    const token = await readOAuthToken();
+    const token = await readOAuthToken(entry.accountId);
     if (token) {
       try {
         const data = await fetchUsageFromAPI(token);
-        usageData = data;
-        lastFetch = new Date();
-        lastError = null;
-        isStale = false;
+        entry.usageData = data;
+        entry.lastFetch = new Date();
+        entry.lastError = null;
+        entry.isStale = false;
         console.log('[Usage] Fetched via API');
-        if (_onUpdateCallback) _onUpdateCallback(data);
-        _maybeNotifyLimit(data);
+        if (_onUpdateCallback) _onUpdateCallback(data, entry.accountId);
+        _maybeNotifyLimit(entry, data);
         return data;
       } catch (apiErr) {
-        lastError = apiErr.message;
+        entry.lastError = apiErr.message;
         console.log('[Usage] API request failed:', apiErr.message);
       }
     } else {
-      lastError = 'No valid Claude OAuth token (missing or expired — run /login in a terminal)';
-      console.log('[Usage] ' + lastError);
+      entry.lastError = 'No valid Claude OAuth token (missing or expired — run /login in a terminal)';
+      console.log('[Usage] ' + entry.lastError);
     }
 
     // PTY fallback removed — launching `claude --dangerously-skip-permissions` just
     // to read usage data is a security risk. Serve cached data, flagged as stale.
-    isStale = true;
-    if (usageData) {
-      console.warn('[Usage] API unavailable, serving STALE cached data:', lastError);
-      return usageData;
+    entry.isStale = true;
+    if (entry.usageData) {
+      console.warn('[Usage] API unavailable, serving STALE cached data:', entry.lastError);
+      return entry.usageData;
     }
-    console.warn('[Usage] API unavailable and no cached data:', lastError);
+    console.warn('[Usage] API unavailable and no cached data:', entry.lastError);
     return null;
   } finally {
-    isFetching = false;
+    entry.isFetching = false;
   }
+}
+
+/**
+ * Point the poller at the account the UI is showing.
+ *
+ * Its figures are refreshed immediately: switching project tabs should not
+ * leave the previous account's numbers on screen until the next tick.
+ *
+ * @param {string|null} accountId
+ */
+function setFocusedAccount(accountId) {
+  const next = key(accountId);
+  if (next === focusedAccount) return;
+  focusedAccount = next;
+  fetchUsage(accountId).catch(e => console.error('[Usage]', e.message));
+}
+
+function getFocusedAccount() {
+  return focusedAccount === MACHINE ? null : focusedAccount;
 }
 
 /**
@@ -252,18 +325,19 @@ async function fetchUsage() {
 function startPeriodicFetch(intervalMs = 600000) {
   const { isMainWindowVisible } = require('../windows/MainWindow');
 
-  setTimeout(() => {
+  // Only the focused account is polled. Sweeping every known account on a
+  // timer would multiply API calls to keep numbers nobody is looking at warm;
+  // the others are refreshed on demand, when a tab or a panel asks for them.
+  const tick = () => {
     if (isMainWindowVisible()) {
-      fetchUsage().catch(e => console.error('[Usage]', e.message));
+      fetchUsage(getFocusedAccount()).catch(e => console.error('[Usage]', e.message));
     }
-  }, 5000);
+  };
+
+  setTimeout(tick, 5000);
 
   if (fetchInterval) clearInterval(fetchInterval);
-  fetchInterval = setInterval(() => {
-    if (isMainWindowVisible()) {
-      fetchUsage().catch(e => console.error('[Usage]', e.message));
-    }
-  }, intervalMs);
+  fetchInterval = setInterval(tick, intervalMs);
 }
 
 /**
@@ -282,13 +356,15 @@ function stopPeriodicFetch() {
  * the API last confirmed, which may be arbitrarily old.
  * @returns {Object}
  */
-function getUsageData() {
+function getUsageData(accountId) {
+  const entry = entryFor(accountId);
   return {
-    data: usageData,
-    lastFetch: lastFetch ? lastFetch.toISOString() : null,
-    isFetching,
-    stale: isStale,
-    error: lastError
+    accountId: entry.accountId,
+    data: entry.usageData,
+    lastFetch: entry.lastFetch ? entry.lastFetch.toISOString() : null,
+    isFetching: entry.isFetching,
+    stale: entry.isStale,
+    error: entry.lastError
   };
 }
 
@@ -296,20 +372,22 @@ function getUsageData() {
  * Staleness of the most recent fetch attempt.
  * @returns {{ stale: boolean, error: string|null, lastFetch: string|null }}
  */
-function getFetchState() {
+function getFetchState(accountId) {
+  const entry = entryFor(accountId);
   return {
-    stale: isStale,
-    error: lastError,
-    lastFetch: lastFetch ? lastFetch.toISOString() : null
+    stale: entry.isStale,
+    error: entry.lastError,
+    lastFetch: entry.lastFetch ? entry.lastFetch.toISOString() : null
   };
 }
 
 /**
  * Force refresh
+ * @param {string|null} [accountId]
  * @returns {Promise<Object>}
  */
-function refreshUsage() {
-  return fetchUsage();
+function refreshUsage(accountId) {
+  return fetchUsage(accountId);
 }
 
 /**
@@ -317,11 +395,12 @@ function refreshUsage() {
  */
 function onWindowShow() {
   const staleMinutes = 10;
-  // Renamed to avoid shadowing the module-level `isStale` (fetch-failure flag).
-  const isDataOld = !lastFetch || (Date.now() - lastFetch.getTime() > staleMinutes * 60 * 1000);
+  const entry = entryFor(getFocusedAccount());
+  // Renamed to avoid shadowing the per-entry `isStale` (fetch-failure flag).
+  const isDataOld = !entry.lastFetch || (Date.now() - entry.lastFetch.getTime() > staleMinutes * 60 * 1000);
 
-  if (isDataOld && !isFetching) {
-    fetchUsage().catch(e => console.error('[Usage]', e.message));
+  if (isDataOld && !entry.isFetching) {
+    fetchUsage(entry.accountId).catch(e => console.error('[Usage]', e.message));
   }
 }
 
@@ -344,7 +423,7 @@ function onLimit(cb) {
 
 const LIMIT_THRESHOLD = 0.95; // 95%
 
-function _maybeNotifyLimit(data) {
+function _maybeNotifyLimit(entry, data) {
   if (!_onLimitCallback || !Array.isArray(data?.buckets)) return;
   // Pick the most-pressured bucket, whichever ones the API sent
   const candidates = data.buckets
@@ -352,16 +431,19 @@ function _maybeNotifyLimit(data) {
     .sort((a, b) => b.utilization - a.utilization);
   if (!candidates.length) return;
   const top = candidates[0];
-  // De-dupe per reset window
-  const key = `${top.id}:${top.resetsAt || ''}`;
-  if (key === _lastLimitNotifiedReset) return;
-  _lastLimitNotifiedReset = key;
+  // De-dupe per reset window, per account: the de-dupe key lives on the entry,
+  // so one account hitting its limit cannot swallow the notification for
+  // another that hits the same bucket in the same window.
+  const dedupe = `${top.id}:${top.resetsAt || ''}`;
+  if (dedupe === entry.lastLimitNotifiedReset) return;
+  entry.lastLimitNotifiedReset = dedupe;
   try {
     _onLimitCallback({
       scope: top.id,
       label: top.label,
       utilization: top.utilization,
-      resetsAt: top.resetsAt
+      resetsAt: top.resetsAt,
+      accountId: entry.accountId
     });
   } catch (e) { console.error('[Usage] onLimit cb threw:', e.message); }
 }
@@ -375,6 +457,8 @@ module.exports = {
   refreshUsage,
   fetchUsage,
   invalidateCredentials,
+  setFocusedAccount,
+  getFocusedAccount,
   onWindowShow,
   onUpdate,
   onLimit

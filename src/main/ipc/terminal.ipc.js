@@ -4,6 +4,7 @@
  */
 
 const { ipcMain } = require('electron');
+const AccountManager = require('../services/AccountManager');
 const terminalService = require('../services/TerminalService');
 const { sendFeaturePing } = require('../services/TelemetryService');
 
@@ -12,10 +13,13 @@ const { sendFeaturePing } = require('../services/TelemetryService');
  */
 function registerTerminalHandlers() {
   // Create terminal
-  ipcMain.handle('terminal-create', (event, { cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath }) => {
+  ipcMain.handle('terminal-create', async (event, { cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountId }) => {
     try {
       sendFeaturePing('terminal:create');
-      return terminalService.create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath });
+      // Resolved here rather than inside create(), which stays synchronous:
+      // reading an account's store can hit the Keychain.
+      const accountEnv = await AccountManager.accountEnv(accountId || null);
+      return terminalService.create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountEnv });
     } catch (error) {
       console.error('[Terminal IPC] Create error:', error);
       return { success: false, error: error.message };

@@ -27,6 +27,8 @@ const {
   isPathMissing,
 } = require('../../state');
 const { getWorkspacesForProject } = require('../../state/workspace.state');
+const { accountsState, getAccountForProject } = require('../../state/accounts.state');
+const { showProjectAccountMenu } = require('./AccountMenu');
 const { escapeHtml, sanitizeColor } = require('../../utils');
 const { t } = require('../../i18n');
 
@@ -97,6 +99,9 @@ class ProjectBar extends BaseComponent {
     // Session count and its "working" state are on the tabs, so terminal
     // changes have to repaint the bar too.
     this.subscribe(terminalsState, () => this.render());
+    // Tabs are tinted by their account, so a colour or default change has to
+    // repaint the bar too.
+    this.subscribe(accountsState, () => this.render());
     this.render();
   }
 
@@ -138,6 +143,13 @@ class ProjectBar extends BaseComponent {
   }
 
   _renderTabHtml(project, isActive) {
+    // The account colour drives a CSS custom property rather than an inline
+    // background, so projects.css owns how strong the tint is and the active
+    // state stays distinguishable. project.color is a separate thing — the
+    // user's own dot, left where it was.
+    const accountColor = sanitizeColor(getAccountForProject(project.id)?.color);
+    const accountStyle = accountColor ? ` style="--account-color:${accountColor}"` : '';
+
     const color = sanitizeColor(project.color);
     const colorDot = color
       ? `<span class="project-tab-color" style="background:${color}"></span>`
@@ -163,7 +175,7 @@ class ProjectBar extends BaseComponent {
       ? `<span class="project-tab-missing" title="${escapeHtml(t('projects.pathMissingTitle'))}">!</span>`
       : '';
 
-    return `<div class="project-tab${isActive ? ' active' : ''}" data-project-id="${escapeHtml(project.id)}" role="tab" aria-selected="${isActive}" tabindex="${isActive ? '0' : '-1'}" draggable="true" title="${escapeHtml(project.path || project.name)}">
+    return `<div class="project-tab${isActive ? ' active' : ''}${accountColor ? ' has-account' : ''}"${accountStyle} data-project-id="${escapeHtml(project.id)}" role="tab" aria-selected="${isActive}" tabindex="${isActive ? '0' : '-1'}" draggable="true" title="${escapeHtml(project.path || project.name)}">
       ${colorDot}
       <span class="project-tab-icon">${icon}${workspaceBadge}</span>
       <span class="project-tab-name">${escapeHtml(project.name)}</span>
@@ -197,9 +209,22 @@ class ProjectBar extends BaseComponent {
     if (!tab) return;
     e.preventDefault();
     const project = getProject(tab.dataset.projectId);
-    if (project && this._callbacks.onContextMenu) {
+    if (!project) return;
+    if (this._callbacks.onContextMenu) {
       this._callbacks.onContextMenu(project, e.clientX, e.clientY);
+      return;
     }
+    this._showAccountMenu(project, e.clientX, e.clientY);
+  }
+
+  /**
+   * The project's normal actions menu — the same one the sidebar's "…" opens,
+   * account row included. A dedicated account popup made right-click mean
+   * something different here than everywhere else the project appears.
+   */
+  _showAccountMenu(project, x, y) {
+    // Lazy: ProjectList pulls in the whole sidebar, and the bar renders first.
+    require('./ProjectList').openActionsMenu(project.id, x, y);
   }
 
   _select(projectId) {
