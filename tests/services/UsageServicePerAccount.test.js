@@ -170,6 +170,51 @@ describe('invalidation', () => {
   });
 });
 
+describe('usageForAccount', () => {
+  test('fetches an account it has never seen', async () => {
+    mockBodyByToken.set('tok-acct-max', usageBody(0.25));
+
+    const usage = await UsageService.usageForAccount('acct-max');
+
+    expect(usage.data.buckets[0].utilization).toBe(0.25);
+    expect(mockRequestedTokens).toEqual(['tok-acct-max']);
+  });
+
+  test('serves recent figures from the cache', async () => {
+    mockBodyByToken.set('tok-acct-max', usageBody(0.25));
+    await UsageService.usageForAccount('acct-max');
+
+    await UsageService.usageForAccount('acct-max');
+
+    // The settings list asks about every account and re-renders on any account
+    // change, so asking again a moment later must not cost a second API call.
+    expect(mockRequestedTokens).toHaveLength(1);
+  });
+
+  test('refetches figures older than the age asked for', async () => {
+    mockBodyByToken.set('tok-acct-max', usageBody(0.25));
+    await UsageService.usageForAccount('acct-max');
+
+    mockBodyByToken.set('tok-acct-max', usageBody(0.60));
+    const usage = await UsageService.usageForAccount('acct-max', 0);
+
+    // A maxAge of 0 is what the explicit refresh button sends: it has to reach
+    // the API even when the cached figures are milliseconds old.
+    expect(mockRequestedTokens).toHaveLength(2);
+    expect(usage.data.buckets[0].utilization).toBe(0.60);
+  });
+
+  test('reports an account it cannot read rather than borrowing figures', async () => {
+    mockBodyByToken.set('tok-acct-max', usageBody(0.25));
+    await UsageService.usageForAccount('acct-max');
+
+    const usage = await UsageService.usageForAccount('acct-team'); // 401
+
+    expect(usage.data).toBeNull();
+    expect(usage.stale).toBe(true);
+  });
+});
+
 describe('focus', () => {
   test('the focused account is what the poller refreshes', async () => {
     mockBodyByToken.set('tok-acct-team', usageBody(0.44));

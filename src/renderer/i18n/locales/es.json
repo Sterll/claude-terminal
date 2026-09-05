@@ -3802,7 +3802,11 @@
     "switchWhileRunning": "{count} sesión(es) ya están en curso para este proyecto y conservan su cuenta actual. El cambio se aplicará a las sesiones que inicies después. ¿Continuar?",
     "colorNone": "Sin color",
     "chooseForProjectTitle": "Cuenta de Claude",
-    "chooseForProject": "¿Con qué cuenta debe ejecutarse {project}? Puedes cambiarlo luego desde su pestaña."
+    "chooseForProject": "¿Con qué cuenta debe ejecutarse {project}? Puedes cambiarlo luego desde su pestaña.",
+    "usageLoading": "Leyendo el uso…",
+    "usageUnavailable": "Uso no disponible: ejecuta «claude /login» en esta cuenta",
+    "usageStale": "La API no pudo confirmar estas cifras",
+    "usageRefresh": "Actualizar el uso"
   },
   "usage": {
     "stale": "Datos de uso posiblemente desactualizados - la última actualización falló. {error}"
