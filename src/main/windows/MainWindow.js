@@ -6,7 +6,7 @@
 const { BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { settingsFile } = require('../utils/paths');
+const { settingsFile, windowStateFile } = require('../utils/paths');
 
 // Ctrl+Tab interception flag — synced from renderer settings via IPC
 let ctrlTabEnabled = true;
@@ -18,13 +18,22 @@ let normalBounds = null;
 let saveTimer = null;
 
 /**
- * Load saved window state from settings.json
+ * Load saved window state from window-state.json.
+ * Window state lives in its own main-owned file: settings.json belongs to the
+ * renderer, and writing into it from here raced the renderer's atomic saves.
  * @returns {Object|null} Saved window state or null
  */
 function loadWindowState() {
   try {
-    const data = fs.readFileSync(settingsFile, 'utf8');
-    const settings = JSON.parse(data);
+    const state = JSON.parse(fs.readFileSync(windowStateFile, 'utf8'));
+    if (state && typeof state === 'object') return state;
+  } catch (e) {
+    // Fall through to the legacy location
+  }
+  // Legacy: windowState used to live inside settings.json (read-only fallback
+  // so an update keeps the window geometry; never written back there).
+  try {
+    const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
     return settings.windowState || null;
   } catch (e) {
     return null;
@@ -57,7 +66,7 @@ function validateWindowState(state) {
 }
 
 /**
- * Save window state to settings.json using async atomic write
+ * Save window state to window-state.json using async atomic write
  * @param {BrowserWindow} win
  */
 async function saveWindowStateAsync(win) {
@@ -80,22 +89,15 @@ async function saveWindowStateAsync(win) {
   };
 
   try {
-    let current = {};
-    try {
-      current = JSON.parse(await fs.promises.readFile(settingsFile, 'utf8'));
-    } catch (e) {
-      // File doesn't exist or is corrupt - start fresh
-    }
-    current.windowState = state;
-    const data = JSON.stringify(current, null, 2);
-    const tmpFile = settingsFile + '.tmp';
+    const data = JSON.stringify(state, null, 2);
+    const tmpFile = windowStateFile + '.tmp';
     await fs.promises.writeFile(tmpFile, data, 'utf8');
     try {
-      await fs.promises.rename(tmpFile, settingsFile);
+      await fs.promises.rename(tmpFile, windowStateFile);
     } catch (renameErr) {
       if (renameErr.code === 'EPERM') {
         // Fallback: write directly (less atomic but avoids data loss)
-        await fs.promises.writeFile(settingsFile, data, 'utf8');
+        await fs.promises.writeFile(windowStateFile, data, 'utf8');
         try { await fs.promises.unlink(tmpFile); } catch (_) {}
       } else {
         throw renameErr;
@@ -130,13 +132,9 @@ function saveWindowStateSync(win) {
   };
 
   try {
-    let current = {};
-    try {
-      current = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
-    } catch (e) {}
-    current.windowState = state;
-    const data = JSON.stringify(current, null, 2);
-    fs.writeFileSync(settingsFile, data, 'utf8');
+    // Plain write is fine here: the file only holds geometry, and a torn
+    // write at worst re-centers the window on next launch.
+    fs.writeFileSync(windowStateFile, JSON.stringify(state, null, 2), 'utf8');
   } catch (e) {
     console.error('[MainWindow] Failed to save window state:', e);
   }

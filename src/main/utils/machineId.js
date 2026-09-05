@@ -8,7 +8,7 @@
 const os = require('os');
 const crypto = require('crypto');
 const fs = require('fs');
-const { settingsFile } = require('./paths');
+const { settingsFile, machineIdFile, ensureDataDir } = require('./paths');
 
 const MAX_LEN = 32;
 
@@ -34,14 +34,27 @@ function generateMachineId() {
 
 /**
  * Get the machineId for this installation.
- * Reads from settings.json, generates and saves if absent.
+ * Lives in its own main-owned file: a read-modify-write on settings.json from
+ * here could race the renderer's atomic saves and wipe the user's settings.
  * @returns {string}
  */
 function getMachineId() {
   try {
+    const data = JSON.parse(fs.readFileSync(machineIdFile, 'utf8'));
+    if (data && typeof data.machineId === 'string') {
+      return data.machineId;
+    }
+  } catch (e) {
+    // Fall through to the legacy location
+  }
+
+  // Legacy: machineId used to be stored in settings.json (read-only fallback,
+  // migrated to its own file so existing installs keep their cloud scoping).
+  try {
     if (fs.existsSync(settingsFile)) {
       const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
       if (settings.machineId && typeof settings.machineId === 'string') {
+        _persistMachineId(settings.machineId);
         return settings.machineId;
       }
     }
@@ -56,12 +69,8 @@ function getMachineId() {
 
 function _persistMachineId(id) {
   try {
-    let settings = {};
-    if (fs.existsSync(settingsFile)) {
-      settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
-    }
-    settings.machineId = id;
-    fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2), 'utf8');
+    ensureDataDir();
+    fs.writeFileSync(machineIdFile, JSON.stringify({ machineId: id }, null, 2), 'utf8');
   } catch (e) {
     console.warn('[machineId] Failed to persist machineId:', e.message);
   }

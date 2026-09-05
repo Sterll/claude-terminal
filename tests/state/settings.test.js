@@ -152,7 +152,9 @@ describe('loadSettings', () => {
   });
 
   test('handles missing file gracefully', async () => {
-    window.electron_nodeModules.fs.promises.access.mockRejectedValue(new Error('ENOENT'));
+    const enoent = Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    window.electron_nodeModules.fs.promises.access.mockRejectedValue(enoent);
+    window.electron_nodeModules.fs.promises.readFile.mockRejectedValue(enoent);
 
     await loadSettings();
     // Defaults should remain

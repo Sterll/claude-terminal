@@ -111,22 +111,28 @@ function registerSetupHandlers(onComplete, onSkip) {
 function saveSetupSettings(wizardSettings) {
   ensureDataDir();
 
-  let existing = {};
   try {
+    let existing = {};
     if (fs.existsSync(settingsFile)) {
-      existing = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+      // A parse failure throws into the catch below: merging onto {} would
+      // rewrite the file with the wizard payload alone and wipe every other
+      // setting the renderer has persisted.
+      const raw = fs.readFileSync(settingsFile, 'utf8');
+      if (raw.trim()) existing = JSON.parse(raw);
     }
+
+    const merged = {
+      ...existing,
+      ...wizardSettings,
+      setupCompleted: true
+    };
+
+    const tmpFile = settingsFile + '.wizard.tmp';
+    fs.writeFileSync(tmpFile, JSON.stringify(merged, null, 2));
+    fs.renameSync(tmpFile, settingsFile);
   } catch (e) {
-    // Ignore read errors
+    console.error('[SetupWizard] Refusing to save settings (existing file unreadable, a write would lose data):', e);
   }
-
-  const merged = {
-    ...existing,
-    ...wizardSettings,
-    setupCompleted: true
-  };
-
-  fs.writeFileSync(settingsFile, JSON.stringify(merged, null, 2));
 }
 
 /**

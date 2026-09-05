@@ -54,14 +54,23 @@ async function _renameWithRetry(from, to, attempts = 5) {
 }
 
 /**
+ * Monotonic counter so every atomic write gets its own tmp file.
+ */
+let _tmpCounter = 0;
+
+/**
  * Atomic write with backup and recovery.
- * Pattern: ensure dir -> backup existing -> write tmp -> rename -> cleanup backup
+ * Pattern: ensure dir -> backup existing -> write tmp -> rename
+ * The .bak is kept after a successful write on purpose: it is the only
+ * last-known-good copy left if the main file is later truncated or wiped.
  * @param {string} filePath
  * @param {string} content
  * @param {{ backup?: boolean }} opts
  */
 async function atomicWrite(filePath, content, { backup = true } = {}) {
-  const tmpFile = filePath + '.tmp';
+  // Unique tmp per write: with a fixed `<file>.tmp` name, two overlapping
+  // writers could rename each other's half-written file into place.
+  const tmpFile = `${filePath}.${(++_tmpCounter).toString(36)}-${Math.random().toString(36).slice(2, 8)}.tmp`;
   const bakFile = filePath + '.bak';
 
   try {
@@ -74,10 +83,6 @@ async function atomicWrite(filePath, content, { backup = true } = {}) {
 
     await fsp.writeFile(tmpFile, content, 'utf8');
     await _renameWithRetry(tmpFile, filePath);
-
-    if (backup) {
-      try { await fsp.unlink(bakFile); } catch {}
-    }
   } catch (err) {
     if (backup) {
       try { await fsp.copyFile(bakFile, filePath); } catch {}

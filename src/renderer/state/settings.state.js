@@ -171,35 +171,40 @@ function _migrateSettings(saved) {
   }
 }
 
+/**
+ * Read and parse a settings JSON file.
+ * Empty or whitespace-only content counts as unreadable: a truncated file is
+ * as much a data loss as a corrupt one and must trigger the backup path.
+ * @param {string} file
+ * @returns {Promise<Object|null>}
+ */
+async function _readSettingsFile(file) {
+  try {
+    const raw = await fsp.readFile(file, 'utf8');
+    if (!raw || !raw.trim()) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 async function loadSettings() {
   const backupFile = `${settingsFile}.bak`;
-  try {
-    if (await fileExists(settingsFile)) {
-      const raw = await fsp.readFile(settingsFile, 'utf8');
-      if (raw && raw.trim()) {
-        const saved = JSON.parse(raw);
-        _migrateSettings(saved);
-        settingsState.set({ ...defaultSettings, ...saved });
-        return;
-      }
+
+  let saved = await _readSettingsFile(settingsFile);
+  if (!saved) {
+    const fromBackup = await _readSettingsFile(backupFile);
+    if (fromBackup) {
+      console.warn('Settings file missing, empty or corrupt - restored from backup');
+      saved = fromBackup;
+    } else if (await fileExists(settingsFile)) {
+      console.error('Settings file unreadable and no usable backup - falling back to defaults');
     }
-  } catch (e) {
-    console.error('Error loading settings, attempting backup restore:', e);
-    // Try to restore from backup
-    try {
-      if (await fileExists(backupFile)) {
-        const backupRaw = await fsp.readFile(backupFile, 'utf8');
-        if (backupRaw && backupRaw.trim()) {
-          const saved = JSON.parse(backupRaw);
-          _migrateSettings(saved);
-          settingsState.set({ ...defaultSettings, ...saved });
-          console.warn('Settings restored from backup file');
-          return;
-        }
-      }
-    } catch (backupErr) {
-      console.error('Backup restore also failed:', backupErr);
-    }
+  }
+
+  if (saved) {
+    _migrateSettings(saved);
+    settingsState.set({ ...defaultSettings, ...saved });
   }
 }
 
@@ -243,15 +248,28 @@ function saveSettings() {
 /**
  * Save settings to file immediately (no debounce)
  * Uses atomic write: tmp file -> backup old -> rename
+ * Flushes are chained so two overlapping saves never interleave their
+ * backup/rename steps on the same file.
  */
+let _pendingSave = null;
 async function saveSettingsImmediate() {
   clearTimeout(saveSettingsTimer);
+  const prev = _pendingSave;
+  const flush = (async () => {
+    if (prev) {
+      try { await prev; } catch (_) {}
+    }
+    return atomicWriteJSON(settingsFile, settingsState.get());
+  })();
+  _pendingSave = flush;
   try {
-    await atomicWriteJSON(settingsFile, settingsState.get());
+    await flush;
     _notifySaveListeners({ success: true });
   } catch (e) {
     console.error('Error saving settings:', e);
     _notifySaveListeners({ success: false, error: e });
+  } finally {
+    if (_pendingSave === flush) _pendingSave = null;
   }
 }
 

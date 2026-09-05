@@ -15,6 +15,11 @@ const claudeDir = path.join(homeDir, '.claude');
 // Application data files
 const settingsFile = path.join(dataDir, 'settings.json');
 const projectsFile = path.join(dataDir, 'projects.json');
+// Files owned by the main process. settings.json is owned by the renderer:
+// a main-side read-modify-write can race the renderer's atomic rename, read
+// an in-flight file as empty and rewrite it with everything else stripped.
+const windowStateFile = path.join(dataDir, 'window-state.json');
+const machineIdFile = path.join(dataDir, 'machine-id.json');
 
 /**
  * Ensure the data directory exists
@@ -63,6 +68,8 @@ module.exports = {
   claudeDir,
   settingsFile,
   projectsFile,
+  windowStateFile,
+  machineIdFile,
   ensureDataDir,
   loadAccentColor,
   getAssetsDir
