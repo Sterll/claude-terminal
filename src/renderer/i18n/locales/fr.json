@@ -3778,6 +3778,7 @@
     "emptyHint": "Aucun compte enregistré. Ouvrez un terminal, lancez \"claude /login\", puis cliquez sur \"Sauvegarder le compte actuel\".",
     "limitReached": "Limite d'usage atteinte sur le compte actif.",
     "switched": "Compte changé. Reprise…",
+    "switchedNoResume": "Compte changé. La conversation précédente n'a pas pu être reprise — la suite se fera sans son contexte.",
     "removeConfirm": "Supprimer ce compte enregistré ? Les identifiants seront effacés du stockage local.",
     "switchError": "Impossible de changer de compte",
     "renameError": "Impossible de renommer le compte",

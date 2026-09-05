@@ -7119,10 +7119,35 @@ class ChatView extends BaseComponent {
         sessionId = null;
         return;
       }
+      // `resume` only accepts the CLI's own session UUID. Our `sessionId` is an
+      // app-local `chat-…` handle the CLI has never heard of: handing it over
+      // makes the CLI refuse the resume outright, and the tab carries on with an
+      // empty context while the whole transcript is still on screen.
+      // Before the SDK's init message there is nothing to resume but the id this
+      // tab was opened on.
+      const realSid = sdkSessionId || resumeSessionId;
       // The binding is read at spawn time, so the restart has to carry the new
       // account explicitly — lastStartOpts still holds the one that ran out.
-      const restartOpts = { ...lastStartOpts, accountId: newId, prompt: '', resumeSessionId: sessionId };
-      appendSystemNotice(t('accounts.switched') || 'Account switched. Resuming…', 'info');
+      // Everything that belonged to the turn that opened the tab is dropped: the
+      // restart sends no prompt, so replaying its images, mentions or message
+      // uuid would post the opening message a second time. A fork's truncation
+      // point goes too — it names a message of the session being resumed, not of
+      // the fork that came out of it.
+      const restartOpts = {
+        ...lastStartOpts,
+        accountId: newId,
+        prompt: '',
+        images: [],
+        mentions: [],
+        userMessageUuid: null,
+        forkSession: false,
+        resumeSessionAt: null,
+        resumeDropsTurn: null,
+        resumeSessionId: realSid || null,
+      };
+      appendSystemNotice(realSid
+        ? (t('accounts.switched') || 'Account switched. Resuming…')
+        : (t('accounts.switchedNoResume') || 'Account switched. The previous conversation could not be resumed — continuing without its context.'), 'info');
       setStreaming(true);
       appendThinkingIndicator();
       const res = await api.chat.start(restartOpts);

@@ -924,15 +924,24 @@ async function resolveSessionFile(sessionsDir, sessionId) {
     return direct;
   } catch { /* not found by name */ }
 
+  // The index spans every directory scanned so far, so a hit has to be checked
+  // against the one being asked about. Returning another project's transcript
+  // would put its history on screen while the CLI — which only ever looks under
+  // the cwd it is launched with — resumes nothing at all.
+  const inThisDir = () => {
+    const cached = _sessionIndex.get(sessionId);
+    return cached && path.dirname(cached) === sessionsDir ? cached : null;
+  };
+
   // Try index
   await buildSessionIndex(sessionsDir);
-  const cached = _sessionIndex.get(sessionId);
+  const cached = inThisDir();
   if (cached) return cached;
 
   // Not found — invalidate and rebuild once (session may be new)
   _indexedDirs.delete(sessionsDir);
   await buildSessionIndex(sessionsDir);
-  return _sessionIndex.get(sessionId) || null;
+  return inThisDir();
 }
 
 /**
