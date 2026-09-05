@@ -4,7 +4,7 @@
  */
 
 const https = require('https');
-const { readAccessToken, readCredentialsForDir, tokenFromCredentials } = require('../utils/claudeCredentials');
+const { readCredentials, readCredentialsForDir, tokenFromCredentials } = require('../utils/claudeCredentials');
 
 // Per-account state.
 //
@@ -49,7 +49,8 @@ function entryFor(accountId) {
       isStale: false,
       lastLimitNotifiedReset: null,
       tokenCache: null,
-      tokenCacheTime: 0
+      tokenCacheUntil: 0,
+      rejectedToken: null
     };
     entries.set(k, entry);
   }
@@ -61,9 +62,34 @@ const OAUTH_BETA_HEADER = 'oauth-2025-04-20';
 
 // ── OAuth API (primary) ──
 
-// Token cache TTL, to avoid hitting the credential store (and, on macOS, the
-// Keychain) on every poll.
-const TOKEN_CACHE_TTL = 30000; // 30s
+// Token cache lifetimes.
+//
+// Reading the store is not free on macOS: the credentials live in the login
+// Keychain, in an item created by the Claude CLI whose ACL does not list this
+// app, so every read that misses the cache raises a system password prompt. The
+// renderer polls usage once a minute, so any TTL shorter than that expired
+// before every single tick — and because the window need only be visible, not
+// focused, the prompts were raised behind it and surfaced in a batch the moment
+// the app came back to the front.
+//
+// A token is therefore held until it actually expires, and an absent or
+// unreadable one is cached too, so a refusal is not retried a minute later.
+const TOKEN_CACHE_MAX = 6 * 60 * 60 * 1000;   // cap for a long-lived token
+const TOKEN_CACHE_BACKOFF = 15 * 60 * 1000;   // no token, or store unreadable
+const TOKEN_EXPIRY_MARGIN = 60 * 1000;        // re-read shortly before expiry
+
+/**
+ * The credentials an account authenticates with: its own store when it is
+ * bound to one, the machine-wide login otherwise.
+ *
+ * @param {string|null} accountId
+ * @returns {Promise<Object|null>}
+ */
+function readCredentialsFor(accountId) {
+  if (!accountId) return readCredentials();
+  const { accountConfigDir } = require('./AccountManager');
+  return readCredentialsForDir(accountConfigDir(accountId));
+}
 
 /**
  * Read the OAuth access token for an account.
@@ -79,20 +105,32 @@ const TOKEN_CACHE_TTL = 30000; // 30s
 async function readOAuthToken(accountId) {
   const entry = entryFor(accountId);
   const now = Date.now();
-  if (entry.tokenCache !== null && now - entry.tokenCacheTime < TOKEN_CACHE_TTL) {
-    return entry.tokenCache;
-  }
+  if (now < entry.tokenCacheUntil) return entry.tokenCache;
+
+  let token = null;
+  let expiresAt = null;
   try {
-    if (accountId) {
-      const { accountConfigDir } = require('./AccountManager');
-      entry.tokenCache = tokenFromCredentials(await readCredentialsForDir(accountConfigDir(accountId)));
-    } else {
-      entry.tokenCache = await readAccessToken();
-    }
+    const creds = await readCredentialsFor(accountId);
+    token = tokenFromCredentials(creds);
+    expiresAt = creds?.claudeAiOauth?.expiresAt ?? null;
   } catch (e) {
-    entry.tokenCache = null;
+    // Store unreadable: Keychain access refused, or the file is malformed.
+    // Treated as no token, and backed off, rather than retried on every tick.
   }
-  entry.tokenCacheTime = now;
+
+  if (token !== null && token === entry.rejectedToken) {
+    // The store still holds the token the API just refused. Reading it again
+    // buys nothing until the CLI writes a new one.
+    entry.tokenCache = null;
+    entry.tokenCacheUntil = now + TOKEN_CACHE_BACKOFF;
+    return null;
+  }
+
+  entry.rejectedToken = null;
+  entry.tokenCache = token;
+  entry.tokenCacheUntil = token
+    ? Math.min(expiresAt !== null ? expiresAt - TOKEN_EXPIRY_MARGIN : Infinity, now + TOKEN_CACHE_MAX)
+    : now + TOKEN_CACHE_BACKOFF;
   return entry.tokenCache;
 }
 
@@ -100,7 +138,7 @@ async function readOAuthToken(accountId) {
  * Drop cached tokens and figures — for one account, or all of them.
  *
  * The numbers belong to the account they were fetched for, so serving them for
- * another would be a plain lie, and the 30s token cache would keep querying the
+ * another would be a plain lie, and the cached token would keep querying the
  * outgoing one. Called with no id after a change to the machine-wide store,
  * which every unbound project reads.
  *
@@ -109,7 +147,8 @@ async function readOAuthToken(accountId) {
 function invalidateCredentials(accountId) {
   const reset = (entry) => {
     entry.tokenCache = null;
-    entry.tokenCacheTime = 0;
+    entry.tokenCacheUntil = 0;
+    entry.rejectedToken = null;
     entry.usageData = null;
     entry.lastFetch = null;
     entry.isStale = false;
@@ -229,7 +268,9 @@ function fetchUsageFromAPI(token) {
       res.on('data', chunk => body += chunk);
       res.on('end', () => {
         if (res.statusCode !== 200) {
-          return reject(new Error(`API ${res.statusCode}: ${body.slice(0, 200)}`));
+          const err = new Error(`API ${res.statusCode}: ${body.slice(0, 200)}`);
+          err.statusCode = res.statusCode;
+          return reject(err);
         }
         try {
           const json = JSON.parse(body);
@@ -278,6 +319,13 @@ async function fetchUsage(accountId) {
         return data;
       } catch (apiErr) {
         entry.lastError = apiErr.message;
+        // A refused token is worth one re-read: the CLI may have rotated it.
+        // readOAuthToken() stops re-reading once the store gives back this same
+        // token, so this cannot turn into a Keychain prompt loop on macOS.
+        if (apiErr.statusCode === 401 || apiErr.statusCode === 403) {
+          entry.rejectedToken = token;
+          entry.tokenCacheUntil = 0;
+        }
         console.log('[Usage] API request failed:', apiErr.message);
       }
     } else {
