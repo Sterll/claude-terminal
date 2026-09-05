@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const readline = require('readline');
+const { contextTokensFromUsage } = require('../../shared/context-usage');
 
 /**
  * Encode project path to match Claude's folder naming convention.
@@ -315,7 +316,7 @@ const DEFAULT_HISTORY_LIMIT = 400;
  * @param {object} [options]
  * @param {number} [options.limit] - Max messages to return (tail). 0 = no limit.
  * @param {string} [options.until] - Stop reading after this message uuid (fork point).
- * @returns {Promise<{messages: Array, total: number, truncated: boolean}>}
+ * @returns {Promise<{messages: Array, total: number, truncated: boolean, contextTokens: number}>}
  */
 async function loadSessionHistory(projectPath, sessionId, options = {}) {
   const sessionsDir = getProjectSessionsDir(projectPath);
@@ -324,7 +325,7 @@ async function loadSessionHistory(projectPath, sessionId, options = {}) {
 
   // Find the JSONL file — uses indexed lookup
   const filePath = await resolveSessionFile(sessionsDir, sessionId);
-  if (!filePath) return { messages: [], total: 0, truncated: false };
+  if (!filePath) return { messages: [], total: 0, truncated: false, contextTokens: 0 };
 
   // Read the JSONL file, keeping only a bounded window of messages in memory
   return new Promise((resolve) => {
@@ -334,6 +335,12 @@ async function loadSessionHistory(projectPath, sessionId, options = {}) {
     const maxKept = limit ? limit * 2 : Infinity;
     let total = 0;
     let dropped = 0;
+    // Context occupancy at the last turn read, for the chat's context gauge. A
+    // resumed conversation has no live session to ask until the user sends
+    // something, but the figure is already on disk. Tracked across every line
+    // rather than the returned window, so a trimmed replay still reports the
+    // real tail.
+    let contextTokens = 0;
     let done = false;
     const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
@@ -359,6 +366,9 @@ async function loadSessionHistory(projectPath, sessionId, options = {}) {
       if (done) return;
       try {
         const obj = JSON.parse(line);
+
+        const turnTokens = contextTokensFromUsage(obj.message?.usage);
+        if (turnTokens > 0) contextTokens = turnTokens;
 
         // User message
         if (obj.type === 'user' && obj.message) {
@@ -444,9 +454,9 @@ async function loadSessionHistory(projectPath, sessionId, options = {}) {
         dropped += start;
         window = messages.slice(start);
       }
-      resolve({ messages: window, total, truncated: dropped > 0 });
+      resolve({ messages: window, total, truncated: dropped > 0, contextTokens });
     });
-    rl.on('error', () => resolve({ messages: [], total: 0, truncated: false }));
+    rl.on('error', () => resolve({ messages: [], total: 0, truncated: false, contextTokens: 0 }));
   });
 }
 
@@ -1239,11 +1249,11 @@ function registerClaudeHandlers() {
   // Load full session history for chat UI replay
   ipcMain.handle('chat-load-history', async (event, { projectPath, sessionId, limit, until }) => {
     try {
-      const { messages, total, truncated } = await loadSessionHistory(projectPath, sessionId, { limit, until });
-      return { success: true, messages, total, truncated };
+      const { messages, total, truncated, contextTokens } = await loadSessionHistory(projectPath, sessionId, { limit, until });
+      return { success: true, messages, total, truncated, contextTokens };
     } catch (err) {
       console.error('[chat-load-history] Error:', err.message);
-      return { success: false, error: err.message, messages: [], total: 0, truncated: false };
+      return { success: false, error: err.message, messages: [], total: 0, truncated: false, contextTokens: 0 };
     }
   });
 

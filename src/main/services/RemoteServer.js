@@ -452,6 +452,9 @@ async function _sendFullInit(ws) {
   });
   // 2. projects + sessions (deferred — disk I/O)
   setImmediate(() => _sendProjectsAndSessions(ws));
+  // Model catalog, deferred for the same reason: resolving it can spawn a CLI
+  // on a cold cache, and `hello` must not wait on that.
+  setImmediate(() => _sendModelCatalog(ws));
   // 3. time tracking snapshot
   if (_timeData.todayMs > 0) {
     _wsSend(ws, 'time:update', { todayMs: _timeData.todayMs });
@@ -459,6 +462,25 @@ async function _sendFullInit(ws) {
   // 4. Request fresh time data from renderer
   if (_isMainWindowReady()) {
     mainWindow.webContents.send('remote:request-time-push');
+  }
+}
+
+/**
+ * Push the two-tier model catalog to a connected client.
+ *
+ * Sent separately from `hello` rather than inlined: on a cold cache resolving
+ * it can spawn a CLI, and a mobile client should not wait on that to render.
+ * Failure is silent — the PWA keeps its own fallback list.
+ */
+async function _sendModelCatalog(ws) {
+  try {
+    const catalog = await require('./ModelCatalogService').getCatalog();
+    _wsSend(ws, 'models:catalog', {
+      primary: catalog.primary,
+      legacy: catalog.legacy,
+    });
+  } catch (err) {
+    console.warn('[Remote] model catalog unavailable:', err?.message || err);
   }
 }
 
@@ -754,6 +776,7 @@ async function _handleClientMessage(ws, token, raw) {
         });
         setImmediate(() => {
           _sendProjectsAndSessions(ws);
+          _sendModelCatalog(ws);
           _wsSend(ws, 'time:update', _timeData);
           if (_isMainWindowReady()) {
             mainWindow.webContents.send('remote:request-time-push');

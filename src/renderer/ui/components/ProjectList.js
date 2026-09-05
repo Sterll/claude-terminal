@@ -58,6 +58,8 @@ const registry = require('../../../project-types/registry');
 const menuIcons = require('../icons/menuIcons');
 const { getWorkspacesForProject } = require('../../state/workspace.state');
 const { isSidebarNavigation } = require('../navigationMode');
+const ModelCatalog = require('../../services/ModelCatalogClient');
+const { matchModel } = require('../../../shared/model-options');
 
 /**
  * Get drop position based on mouse Y relative to element
@@ -1187,15 +1189,6 @@ class ProjectList extends BaseComponent {
 
   _showChatSettingsModal(project) {
     const settings = getProjectSettings(project.id);
-    const models = [
-      { value: '', label: t('projects.useGlobal') },
-      { value: 'claude-opus-5', label: 'Opus 5' },
-      { value: 'claude-opus-4-8', label: 'Opus 4.8' },
-      { value: 'claude-opus-4-7', label: 'Opus 4.7' },
-      { value: 'claude-sonnet-5', label: 'Sonnet 5' },
-      { value: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
-      { value: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' },
-    ];
     const efforts = [
       { value: '', label: t('projects.useGlobal') },
       { value: 'low', label: 'Low' },
@@ -1205,7 +1198,21 @@ class ProjectList extends BaseComponent {
       { value: 'max', label: 'Max' },
     ];
 
-    const modelOptions = models.map(m => `<option value="${m.value}" ${(settings.chatModel || '') === m.value ? 'selected' : ''}>${m.label}</option>`).join('');
+    // Same two-tier catalog as the chat footer, warmed at startup — an
+    // <optgroup> per tier is the select equivalent of the "More models" submenu.
+    const catalog = ModelCatalog.getCatalog();
+    const selectedModel = settings.chatModel || '';
+    const renderOption = (m) => {
+      const isSelected = matchModel([m], selectedModel) !== null;
+      return `<option value="${escapeHtml(m.value)}"${isSelected ? ' selected' : ''}>${escapeHtml(m.displayName)}</option>`;
+    };
+    const modelOptions = [
+      `<option value=""${selectedModel === '' ? ' selected' : ''}>${t('projects.useGlobal')}</option>`,
+      catalog.primary.map(renderOption).join(''),
+      catalog.legacy.length
+        ? `<optgroup label="${escapeHtml(t('chat.moreModels'))}">${catalog.legacy.map(renderOption).join('')}</optgroup>`
+        : '',
+    ].join('');
     const effortOptions = efforts.map(e => `<option value="${e.value}" ${(settings.effortLevel || '') === e.value ? 'selected' : ''}>${e.label}</option>`).join('');
 
     const modal = createModal({

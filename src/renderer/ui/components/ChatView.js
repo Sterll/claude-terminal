@@ -118,15 +118,14 @@ const { getSetting, setSetting, isNotificationsEnabled } = require('../../state/
 const { updateTerminal, getTerminal } = require('../../state/terminals.state');
 const { saveTerminalSessions } = require('../../services/TerminalSessionService');
 
-const MODEL_OPTIONS = [
-  { id: 'claude-fable-5', label: 'Fable 5', desc: 'Most capable model' },
-  { id: 'claude-opus-5', label: 'Opus 5', desc: 'Latest generation Opus' },
-  { id: 'claude-opus-4-8', label: 'Opus 4.8', desc: 'Most capable for complex work' },
-  { id: 'claude-opus-4-7', label: 'Opus 4.7', desc: 'Previous generation Opus' },
-  { id: 'claude-sonnet-5', label: 'Sonnet 5', desc: 'Best combination of speed and intelligence' },
-  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6', desc: 'Best for everyday tasks' },
-  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', desc: 'Fastest for quick answers' },
-];
+const { matchModel, resolveModelSelection, hasOneMContext, DEFAULT_ALIAS } = require('../../../shared/model-options');
+const { contextTokensFromUsage } = require('../../../shared/context-usage');
+const ModelCatalog = require('../../services/ModelCatalogClient');
+
+// Catalog access is shared with the project-settings and parallel-run pickers
+// (see ModelCatalogClient), so all three always agree on which models exist.
+const allCatalogModels = () => ModelCatalog.allModels();
+const loadModelCatalog = (api, opts) => ModelCatalog.load(api, opts);
 
 const EFFORT_OPTIONS = [
   { id: 'low', label: 'Low', desc: t('chat.effortLow') },
@@ -411,11 +410,16 @@ class ChatView extends BaseComponent {
   let currentAssistantMsgEl = null; // tracks the current .chat-msg-assistant wrapper for UUID tagging
   let sdkSessionId = null; // real SDK session UUID (different from our internal sessionId)
   let model = '';
-  let selectedModel = initialModel || getSetting('chatModel') || MODEL_OPTIONS[0].id;
+  // Resolved against the catalog in initModelSelector — at this point the
+  // catalog may still be the fallback, so an unresolvable id must not be
+  // rewritten yet or a persisted choice would be lost on a slow CLI.
+  let selectedModel = initialModel || getSetting('chatModel') || '';
+  // Whether `selectedModel` is a choice someone made — a stored setting, or a
+  // pick from the menu — rather than one the picker derived because nothing was
+  // chosen. Only a real choice may be written back; see resolveModelSelection.
+  let modelIsExplicit = !!selectedModel;
   let selectedEffort = initialEffort || getSetting('effortLevel') || 'high';
-  let totalCost = 0;
-  let totalTokens = 0;
-  let inputTokens = 0; // tracks context window usage
+  let inputTokens = 0; // drives the context gauge
   const toolCards = new Map(); // content_block index -> element
   const toolInputBuffers = new Map(); // content_block index -> accumulated JSON string
   const todoToolIndices = new Map(); // block index -> { kind: 'TaskCreate'|'TaskUpdate'|'TaskList'|'TaskGet'|'TodoWrite', toolUseId }
@@ -538,19 +542,21 @@ class ChatView extends BaseComponent {
             </button>
           </div>
           <div class="chat-footer-right">
-            <div class="chat-effort-selector">
-              <button class="chat-effort-btn"><span class="chat-effort-label">High</span> <span class="chat-effort-arrow">&#9662;</span></button>
-              <div class="chat-effort-dropdown" style="display:none"></div>
-            </div>
             <div class="chat-model-selector">
               <button class="chat-model-btn"><span class="chat-model-label">Sonnet</span> <span class="chat-model-arrow">&#9662;</span></button>
               <div class="chat-model-dropdown" style="display:none"></div>
             </div>
+            <div class="chat-effort-selector">
+              <button class="chat-effort-btn"><span class="chat-effort-label">High</span> <span class="chat-effort-arrow">&#9662;</span></button>
+              <div class="chat-effort-dropdown" style="display:none"></div>
+            </div>
             <span class="chat-status-tokens" tabindex="0">
-              <span class="chat-status-tokens-text"></span>
+              <svg class="chat-ctx-ring" viewBox="0 0 20 20" aria-hidden="true">
+                <circle class="chat-ctx-ring-track" cx="10" cy="10" r="7"/>
+                <circle class="chat-ctx-ring-fill" cx="10" cy="10" r="7"/>
+              </svg>
               <div class="chat-context-popover" hidden></div>
             </span>
-            <span class="chat-status-cost"></span>
           </div>
         </div>
       </div>
@@ -582,9 +588,7 @@ class ChatView extends BaseComponent {
   const effortLabel = chatView.querySelector('.chat-effort-label');
   const effortDropdown = chatView.querySelector('.chat-effort-dropdown');
   const statusTokens = chatView.querySelector('.chat-status-tokens');
-  const statusTokensText = chatView.querySelector('.chat-status-tokens-text');
   const contextPopover = chatView.querySelector('.chat-context-popover');
-  const statusCost = chatView.querySelector('.chat-status-cost');
   const slashDropdown = chatView.querySelector('.chat-slash-dropdown');
   const attachBtn = chatView.querySelector('.chat-attach-btn');
   const fileInput = chatView.querySelector('.chat-file-input');
@@ -1102,47 +1106,154 @@ class ChatView extends BaseComponent {
 
   // ── Model selector ──
 
-  function initModelSelector() {
-    const preferred = initialModel || getSetting('chatModel');
-    const current = MODEL_OPTIONS.find(m => m.id === preferred) || MODEL_OPTIONS[0];
-    modelLabel.textContent = current.label;
-    selectedModel = current.id;
+  const MODEL_CHECK_SVG = '<svg class="chat-model-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
+
+  /**
+   * Resolve the stored model against the catalog and paint the footer.
+   *
+   * Adopts the catalog row's own `value`, which is what upgrades a stored
+   * 'claude-opus-5' to the CLI's 'opus[1m]' build — the label already said
+   * "Opus (1M context)", so not adopting it left the footer claiming a context
+   * window the request didn't ask for. `matchModel` keeps the `default` alias
+   * out of this path, so a deliberate choice is never re-pointed by a CLI
+   * release; only an explicit pick of "Default (recommended)" stores it.
+   *
+   * Runs twice per session — once on the catalog we happen to hold, once after
+   * the CLI answers — so it has to be safe to call on the fallback tier. That
+   * is what `modelIsExplicit` guards: without it the derived first pass looked
+   * like a preference to the second, and got saved as one.
+   */
+  function applyResolvedModel() {
+    const preferred = selectedModel || initialModel || getSetting('chatModel') || '';
+    const resolved = resolveModelSelection(allCatalogModels(), preferred, modelIsExplicit);
+    if (!resolved) return;
+    selectedModel = resolved.value;
+    modelLabel.textContent = resolved.label;
+    if (resolved.persist) setSetting('chatModel', selectedModel);
+  }
+
+  /**
+   * Context window for the gauge.
+   *
+   * The `[1m]` build carries its own window, so the model decides — the
+   * `enable1MContext` setting is a separate beta opt-in and can't be the only
+   * input, or picking "Opus (1M context)" would still read "/200K".
+   */
+  function currentContextLimit() {
+    const active = matchModel(allCatalogModels(), selectedModel);
+    const oneM = hasOneMContext(selectedModel)
+      || hasOneMContext(active?.value)
+      || hasOneMContext(active?.resolvedModel)
+      || getSetting('enable1MContext');
+    return oneM ? 1000000 : 200000;
+  }
+
+  async function initModelSelector() {
+    applyResolvedModel();
+    await loadModelCatalog(api);
+    applyResolvedModel();
+    syncEffortVisibility();
+  }
+
+  /**
+   * @param {object} m Catalog row (SDK ModelInfo shape).
+   * @param {number|null} index Position in the primary tier, or null for the
+   *   legacy submenu — only the primary tier carries number shortcuts.
+   */
+  function renderModelRow(m, index) {
+    const isActive = matchModel([m], selectedModel) !== null;
+    const shortcut = index !== null && index < 9 ? String(index + 1) : '';
+    const badge = isActive
+      ? MODEL_CHECK_SVG
+      : (shortcut ? `<span class="chat-model-shortcut">${shortcut}</span>` : '');
+    return `
+      <div class="chat-model-option${isActive ? ' active' : ''}" data-model="${escapeHtml(m.value)}">
+        <div class="chat-model-option-info">
+          <span class="chat-model-option-label">${escapeHtml(m.displayName)}</span>
+          ${index !== null && m.description ? `<span class="chat-model-option-desc">${escapeHtml(m.description)}</span>` : ''}
+        </div>
+        ${badge}
+      </div>`;
   }
 
   function buildModelDropdown() {
-    modelDropdown.innerHTML = MODEL_OPTIONS.map(m => {
-      const isActive = m.id === selectedModel;
-      return `
-      <div class="chat-model-option${isActive ? ' active' : ''}" data-model="${m.id}">
-        <div class="chat-model-option-info">
-          <span class="chat-model-option-label">${m.label}</span>
-          <span class="chat-model-option-desc">${m.desc}</span>
+    const legacy = ModelCatalog.getCatalog().legacy || [];
+
+    modelDropdown.innerHTML = `
+      <div class="chat-model-group">
+        ${ModelCatalog.getCatalog().primary.map((m, i) => renderModelRow(m, i)).join('')}
+      </div>
+      ${legacy.length ? `
+      <div class="chat-model-sep"></div>
+      <div class="chat-model-more">
+        <span class="chat-model-more-label">${escapeHtml(t('chat.moreModels') || 'More models')}</span>
+        <span class="chat-model-more-arrow">&#8249;</span>
+        <div class="chat-model-submenu">
+          ${legacy.map(m => renderModelRow(m, null)).join('')}
         </div>
-        ${isActive ? '<svg class="chat-model-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
-      </div>`;
-    }).join('');
+      </div>` : ''}`;
+  }
+
+  function closeModelDropdown() {
+    modelDropdown.style.display = 'none';
+    document.removeEventListener('keydown', onModelMenuKeydown, true);
+  }
+
+  /**
+   * Number shortcuts address the primary tier only — the legacy submenu stays
+   * out of the numbered flow so the digits keep meaning the same thing as the
+   * catalog grows.
+   */
+  function onModelMenuKeydown(e) {
+    if (modelDropdown.style.display === 'none') return;
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      closeModelDropdown();
+      return;
+    }
+    if (!/^[1-9]$/.test(e.key)) return;
+    const target = ModelCatalog.getCatalog().primary[Number(e.key) - 1];
+    if (!target) return;
+    e.preventDefault();
+    e.stopPropagation();
+    selectModel(target.value).catch(err => console.warn('[ChatView] selectModel failed:', err));
   }
 
   function toggleModelDropdown() {
     if (modelBtn.disabled) return;
-    const visible = modelDropdown.style.display !== 'none';
-    if (visible) {
-      modelDropdown.style.display = 'none';
-    } else {
-      buildModelDropdown();
-      modelDropdown.style.display = '';
+    if (modelDropdown.style.display !== 'none') {
+      closeModelDropdown();
+      return;
     }
+    buildModelDropdown();
+    modelDropdown.style.display = '';
+    document.addEventListener('keydown', onModelMenuKeydown, true);
+    // A cold first open renders the fallback tier; repaint in place once the
+    // CLI answers so the user never has to close and reopen to see the truth.
+    loadModelCatalog(api).then(() => {
+      if (modelDropdown.style.display === 'none') return;
+      applyResolvedModel();
+      syncEffortVisibility();
+      buildModelDropdown();
+    }).catch(() => {});
   }
 
+
   async function selectModel(modelId) {
-    const option = MODEL_OPTIONS.find(m => m.id === modelId);
+    const models = allCatalogModels();
+    const option = matchModel(models, modelId);
     if (!option) return;
     const previousId = selectedModel;
-    const previousOption = MODEL_OPTIONS.find(m => m.id === previousId);
-    selectedModel = modelId;
-    modelLabel.textContent = option.label;
-    modelDropdown.style.display = 'none';
-    setSetting('chatModel', modelId);
+    const previousOption = matchModel(models, previousId);
+    const previousExplicit = modelIsExplicit;
+    selectedModel = option.value;
+    modelIsExplicit = true;
+    modelLabel.textContent = option.displayName;
+    closeModelDropdown();
+    setSetting('chatModel', selectedModel);
+    // Effort support is per model — switching to Haiku has to retire the
+    // control, not leave a stale ladder behind.
+    syncEffortVisibility();
 
     // If session is active, change model mid-session via SDK.
     // `chat-set-model` never rejects — it resolves { success:false, error },
@@ -1150,7 +1261,7 @@ class ChatView extends BaseComponent {
     if (!sessionId) return;
     let res;
     try {
-      res = await api.chat.setModel({ sessionId, model: modelId });
+      res = await api.chat.setModel({ sessionId, model: selectedModel });
     } catch (err) {
       res = { success: false, error: err?.message || String(err) };
     }
@@ -1160,14 +1271,17 @@ class ChatView extends BaseComponent {
     // Revert the label + persisted setting so the footer stops lying.
     if (previousOption) {
       selectedModel = previousId;
-      modelLabel.textContent = previousOption.label;
-      setSetting('chatModel', previousId);
+      modelIsExplicit = previousExplicit;
+      modelLabel.textContent = previousOption.displayName;
+      // Reverting to a model nobody had chosen means clearing the setting, not
+      // writing it back: `null` is how "no explicit choice" is stored.
+      setSetting('chatModel', previousExplicit ? previousId : null);
     }
     const Toast = require('./Toast');
     Toast.showToast({
       message: t('chat.modelSwitchFailed', {
-        model: option.label,
-        previous: previousOption ? previousOption.label : previousId,
+        model: option.displayName,
+        previous: previousOption ? previousOption.displayName : previousId,
         error: (res && res.error) || '',
       }),
       type: 'error',
@@ -1180,8 +1294,19 @@ class ChatView extends BaseComponent {
   });
 
   modelDropdown.addEventListener('click', (e) => {
+    // Order matters: submenu rows sit inside .chat-model-more, so the option
+    // test has to run first or picking a legacy model would just toggle the
+    // submenu shut.
     const opt = e.target.closest('.chat-model-option');
-    if (opt) selectModel(opt.dataset.model).catch(err => console.warn('[ChatView] selectModel failed:', err));
+    if (opt) {
+      selectModel(opt.dataset.model).catch(err => console.warn('[ChatView] selectModel failed:', err));
+      return;
+    }
+    const more = e.target.closest('.chat-model-more');
+    if (more) {
+      e.stopPropagation();
+      more.classList.toggle('open');
+    }
   });
 
   // ── Effort selector ──
@@ -1193,8 +1318,43 @@ class ChatView extends BaseComponent {
     selectedEffort = current.id;
   }
 
+  /**
+   * Effort levels the selected model actually accepts.
+   *
+   * The catalog carries this per model: Haiku 4.5 has no effort control at all,
+   * and `max` is not Opus-only — Sonnet 5 offers the full ladder. Falls back to
+   * the full list when the catalog hasn't loaded yet, so the picker degrades to
+   * "everything" rather than "nothing".
+   */
+  function availableEfforts() {
+    const active = matchModel(allCatalogModels(), selectedModel);
+    if (!active || active.supportsEffort === undefined) return EFFORT_OPTIONS;
+    if (!active.supportsEffort) return [];
+    const levels = active.supportedEffortLevels;
+    if (!Array.isArray(levels) || levels.length === 0) return EFFORT_OPTIONS;
+    return EFFORT_OPTIONS.filter(e => levels.includes(e.id));
+  }
+
+  /**
+   * Hide the whole control on a model without effort support — Claude Desktop
+   * drops the menu entirely for Haiku rather than showing a dead one.
+   */
+  function syncEffortVisibility() {
+    const efforts = availableEfforts();
+    const supported = efforts.length > 0;
+    effortBtn.parentElement.style.display = supported ? '' : 'none';
+    if (supported && !efforts.some(e => e.id === selectedEffort)) {
+      // The stored level isn't on this model's ladder — fall back to its
+      // default rather than sending a level the CLI will reject.
+      const fallback = efforts.find(e => e.id === 'high') || efforts[0];
+      selectedEffort = fallback.id;
+      effortLabel.textContent = fallback.label;
+      setSetting('effortLevel', fallback.id);
+    }
+  }
+
   function buildEffortDropdown() {
-    effortDropdown.innerHTML = EFFORT_OPTIONS.map(e => {
+    effortDropdown.innerHTML = availableEfforts().map(e => {
       const isActive = e.id === selectedEffort;
       return `
       <div class="chat-effort-option${isActive ? ' active' : ''}" data-effort="${e.id}">
@@ -1267,14 +1427,16 @@ class ChatView extends BaseComponent {
     if (opt) selectEffort(opt.dataset.effort).catch(err => console.warn('[ChatView] selectEffort failed:', err));
   });
 
-  // Close dropdowns on outside click
+  // Close dropdowns on outside click. Routed through closeModelDropdown so the
+  // menu's keydown listener is torn down with it — setting display directly
+  // would leak a handler that swallows digit keys typed into the composer.
   function _closeDropdowns() {
-    modelDropdown.style.display = 'none';
+    closeModelDropdown();
     effortDropdown.style.display = 'none';
   }
   document.addEventListener('click', _closeDropdowns);
 
-  initModelSelector();
+  initModelSelector().catch(err => console.warn('[ChatView] initModelSelector failed:', err));
   initEffortSelector();
 
   // ── Context suggestions (placeholder rotation before first message) ──
@@ -5778,7 +5940,7 @@ class ChatView extends BaseComponent {
     modelBtn.classList.toggle('disabled', streaming);
     effortBtn.classList.toggle('disabled', streaming);
     if (streaming) {
-      modelDropdown.style.display = 'none';
+      closeModelDropdown();
       effortDropdown.style.display = 'none';
     }
 
@@ -5823,96 +5985,123 @@ class ChatView extends BaseComponent {
   function updateStatusInfo() {
     // Update model selector label from stream-detected model
     if (model) {
-      const match = MODEL_OPTIONS.find(m => model.includes(m.label.toLowerCase()) || model.includes(m.id));
-      if (match) modelLabel.textContent = match.label;
+      // The stream reports the wire id the CLI actually served, which may be a
+      // resolved alias — matchModel is what maps it back to a catalog row.
+      const match = matchModel(allCatalogModels(), model);
+      if (match) modelLabel.textContent = match.displayName;
       else modelLabel.textContent = model.split('-').slice(1, 3).join('-');
     }
-    if (inputTokens > 0) {
-      const contextLimit = getSetting('enable1MContext') ? 1000000 : 200000;
-      const pct = Math.round((inputTokens / contextLimit) * 100);
-      const formatK = (n) => n >= 1000 ? Math.round(n / 1000) + 'K' : n;
-      statusTokensText.textContent = `${formatK(inputTokens)} / ${formatK(contextLimit)} (${pct}%)`;
-      statusTokens.title = `${t('chat.contextWindowUsage') || 'Context window'}: ${inputTokens.toLocaleString()} / ${contextLimit.toLocaleString()} tokens`;
-    } else if (totalTokens > 0) {
-      statusTokensText.textContent = `${totalTokens.toLocaleString()} tokens`;
-    }
-    if (totalCost > 0) statusCost.textContent = `$${totalCost.toFixed(4)}`;
+    setContextGauge(inputTokens, currentContextLimit());
   }
 
-  // ── Context usage breakdown popover (SDK 0.2.86+) ──────────────────────
-  let contextUsageFetchTimer = null;
+  /**
+   * Paint context usage as a filling ring.
+   *
+   * The exact figures moved to the hover overlay: a ratio is something you read
+   * at a glance, and "4 / 1000K tokens" spent a footer slot on a number nobody
+   * reads digit by digit.
+   *
+   * Only `--ctx-used` crosses over to CSS; the geometry that turns it into an
+   * arc stays there, so an empty ring is the stylesheet's default and shows
+   * from the first frame rather than waiting on the first result message.
+   *
+   * No `title`: the native tooltip takes about a second to appear and cannot be
+   * styled. `aria-label` carries the same text for assistive tech without it.
+   */
+  function setContextGauge(used, limit) {
+    const ratio = limit > 0 ? Math.max(0, Math.min(used / limit, 1)) : 0;
+    statusTokens.style.setProperty('--ctx-used', String(ratio));
+    // Pressure, not decoration: past three quarters a compaction is close, and
+    // that is worth seeing without opening the breakdown.
+    statusTokens.classList.toggle('warn', ratio >= 0.75 && ratio < 0.9);
+    statusTokens.classList.toggle('danger', ratio >= 0.9);
+    statusTokens.setAttribute(
+      'aria-label',
+      `${t('chat.contextWindowUsage') || 'Context window'}: ${contextSummaryText(used, limit)}`
+    );
+  }
+
+  /** "371.3k", "1M", "820" — the compact shape the overlay reads in. */
+  function formatTokenCount(n) {
+    const round = (v) => String(Math.round(v * 10) / 10);
+    if (n >= 1e6) return `${round(n / 1e6)}M`;
+    if (n >= 1000) return `${round(n / 1000)}k`;
+    return String(Math.round(n));
+  }
+
+  /** "371.3k / 1M (37%)" */
+  function contextSummaryText(used, limit) {
+    const pct = limit > 0 ? Math.round((used / limit) * 100) : 0;
+    return `${formatTokenCount(used)} / ${formatTokenCount(limit)} (${pct}%)`;
+  }
+
+  // ── Context usage overlay ───────────────────────────────────────────────
+  //
+  // Replaces the native `title`, which the OS holds back for about a second and
+  // renders in its own chrome. This one paints on mouseenter from state already
+  // in hand — no timer, no round trip — and the per-category breakdown
+  // (SDK 0.2.86+) fills in underneath when a live session can supply it.
   let contextUsageBusy = false;
 
+  function contextSummaryHtml(used, limit) {
+    return `
+      <div class="ccp-header">
+        <span class="ccp-title">${escapeHtml(t('chat.contextWindowUsage') || 'Context window')}</span>
+        <span class="ccp-total">${escapeHtml(contextSummaryText(used, limit))}</span>
+      </div>`;
+  }
+
   function renderContextBreakdown(usage) {
-    if (!usage) {
-      contextPopover.innerHTML = `<div class="ccp-empty">${escapeHtml(t('chat.contextNoBreakdown') || 'Breakdown unavailable')}</div>`;
-      return;
-    }
     const breakdown = usage.breakdown || usage.categories || {};
     const total = usage.total || Object.values(breakdown).reduce((a, b) => a + (Number(b) || 0), 0);
-    const limit = usage.limit || (getSetting('enable1MContext') ? 1000000 : 200000);
-    const formatK = (n) => n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'K' : String(n);
+    const limit = usage.limit || currentContextLimit();
     const entries = Object.entries(breakdown)
       .filter(([, v]) => Number(v) > 0)
       .sort((a, b) => Number(b[1]) - Number(a[1]));
+    if (!entries.length) return;
 
-    const header = `
-      <div class="ccp-header">
-        <span class="ccp-title">${escapeHtml(t('chat.contextWindowUsage') || 'Context window')}</span>
-        <span class="ccp-total">${formatK(total)} / ${formatK(limit)}</span>
-      </div>
-    `;
-    const rows = entries.length
-      ? entries.map(([key, value]) => {
-          const v = Number(value) || 0;
-          const pct = total > 0 ? Math.min(100, (v / total) * 100) : 0;
-          return `
-            <div class="ccp-row">
-              <span class="ccp-label">${escapeHtml(key.replace(/_/g, ' '))}</span>
-              <div class="ccp-bar"><div class="ccp-fill" style="width:${pct.toFixed(1)}%"></div></div>
-              <span class="ccp-value">${formatK(v)}</span>
-            </div>
-          `;
-        }).join('')
-      : `<div class="ccp-empty">${escapeHtml(t('chat.contextNoBreakdown') || 'No detailed breakdown available')}</div>`;
-    contextPopover.innerHTML = header + rows;
+    contextPopover.innerHTML = contextSummaryHtml(total, limit) + entries.map(([key, value]) => {
+      const v = Number(value) || 0;
+      const pct = total > 0 ? Math.min(100, (v / total) * 100) : 0;
+      return `
+        <div class="ccp-row">
+          <span class="ccp-label">${escapeHtml(key.replace(/_/g, ' '))}</span>
+          <div class="ccp-bar"><div class="ccp-fill" style="width:${pct.toFixed(1)}%"></div></div>
+          <span class="ccp-value">${escapeHtml(formatTokenCount(v))}</span>
+        </div>`;
+    }).join('');
   }
 
-  async function fetchAndShowContextBreakdown() {
+  /**
+   * Show the overlay immediately, then enrich it.
+   *
+   * The summary is never left waiting on the fetch: a failed or absent
+   * breakdown just means the overlay stays as it opened, which is still the
+   * number the user came for.
+   */
+  function showContextOverlay() {
+    contextPopover.innerHTML = contextSummaryHtml(inputTokens, currentContextLimit());
+    contextPopover.hidden = false;
     if (!sessionId || contextUsageBusy) return;
     contextUsageBusy = true;
-    contextPopover.hidden = false;
-    contextPopover.innerHTML = `<div class="ccp-loading">${escapeHtml(t('chat.loading') || 'Loading...')}</div>`;
-    try {
-      const result = await window.electron_api.chat.getContextUsage({ sessionId });
-      if (result?.success && result.usage) {
-        renderContextBreakdown(result.usage);
-      } else {
-        renderContextBreakdown(null);
-      }
-    } catch {
-      renderContextBreakdown(null);
-    } finally {
-      contextUsageBusy = false;
-    }
+    window.electron_api.chat.getContextUsage({ sessionId })
+      .then(result => {
+        // The pointer may have left while this was in flight.
+        if (!contextPopover.hidden && result?.success && result.usage) {
+          renderContextBreakdown(result.usage);
+        }
+      })
+      .catch(() => {})
+      .finally(() => { contextUsageBusy = false; });
   }
 
   function hideContextBreakdown() {
     contextPopover.hidden = true;
-    if (contextUsageFetchTimer) {
-      clearTimeout(contextUsageFetchTimer);
-      contextUsageFetchTimer = null;
-    }
   }
 
-  statusTokens.addEventListener('mouseenter', () => {
-    if (!sessionId || inputTokens === 0) return;
-    contextUsageFetchTimer = setTimeout(fetchAndShowContextBreakdown, 200);
-  });
+  statusTokens.addEventListener('mouseenter', showContextOverlay);
   statusTokens.addEventListener('mouseleave', hideContextBreakdown);
-  statusTokens.addEventListener('focus', () => {
-    if (sessionId && inputTokens > 0) fetchAndShowContextBreakdown();
-  });
+  statusTokens.addEventListener('focus', showContextOverlay);
   statusTokens.addEventListener('blur', hideContextBreakdown);
 
   let userHasScrolled = false;
@@ -6125,11 +6314,8 @@ class ChatView extends BaseComponent {
 
     // Result — update stats. Also detect SDK errors.
     if (message.type === 'result') {
-      if (message.total_cost_usd != null) totalCost = message.total_cost_usd;
-      if (message.usage) {
-        totalTokens = (message.usage.input_tokens || 0) + (message.usage.output_tokens || 0);
-        inputTokens = message.usage.input_tokens || 0;
-      }
+      const turnTokens = contextTokensFromUsage(message.usage);
+      if (turnTokens > 0) inputTokens = turnTokens;
       if (message.model) model = message.model;
       updateStatusInfo();
 
@@ -6381,13 +6567,10 @@ class ChatView extends BaseComponent {
         break;
       }
 
-      case 'message_delta':
-        // Contains stop_reason, usage
-        if (event.usage) {
-          totalTokens = (event.usage.input_tokens || 0) + (event.usage.output_tokens || 0);
-          updateStatusInfo();
-        }
-        break;
+      // 'message_delta' carries stop_reason and a running usage count. The
+      // footer no longer shows a token total, and the context gauge reads the
+      // authoritative figure off the result message, so there is nothing to do
+      // with it here.
 
       case 'message_stop':
         removeThinkingIndicator();
@@ -7372,6 +7555,14 @@ class ChatView extends BaseComponent {
 
       const rawMsgs = (result?.success && result.messages) || [];
       previousRawCount = rawMsgs.length;
+
+      // A resumed conversation has no live session to query until the user sends
+      // something, so the gauge would sit empty on a transcript already holding
+      // 200K. The transcript carries the figure — open on it.
+      if (result?.contextTokens > 0) {
+        inputTokens = result.contextTokens;
+        updateStatusInfo();
+      }
 
       let msgs = rawMsgs;
       // Older main processes truncate client-side; harmless double safety for forks

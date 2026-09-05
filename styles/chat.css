@@ -3690,26 +3690,70 @@ hr.chat-plan-separator {
   color: var(--text-muted);
 }
 
-.chat-status-tokens,
-.chat-status-cost {
-  font-size: var(--font-2xs);
-  color: var(--text-muted);
-  font-family: 'Cascadia Code', 'Fira Code', monospace;
-}
-
-/* No opacity here: this is the popover's offset parent, and group opacity on
-   the parent would dim .chat-context-popover along with it. */
+/* No opacity on this element: it is the popover's offset parent, and group
+   opacity would dim .chat-context-popover along with it (see #109). The rested
+   dim lives on the ring SVG below, which the popover does not inherit. */
 .chat-status-tokens {
   position: relative;
-  cursor: help;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-tertiary);
+  /* Group opacity stays off this element — it is the overlay's offset parent
+     (see the comment above); the rested dim lives on the ring. */
   outline: none;
   transition: color 0.15s;
+}
+
+.chat-status-tokens .chat-ctx-ring {
+  opacity: 0.4;
+  transition: opacity 0.15s;
 }
 
 .chat-status-tokens:hover,
 .chat-status-tokens:focus-visible {
   color: var(--text-primary);
 }
+
+.chat-status-tokens:hover .chat-ctx-ring,
+.chat-status-tokens:focus-visible .chat-ctx-ring {
+  opacity: 1;
+}
+
+/* ── Context gauge ──
+   A ring that fills as the window is consumed, in place of the digits that used
+   to sit here. Colour follows pressure: accent, then warning past 75%, then
+   danger past 90% — the point where a compaction is imminent. */
+.chat-ctx-ring {
+  width: 14px;
+  height: 14px;
+  /* Start the sweep at 12 o'clock instead of 3. */
+  transform: rotate(-90deg);
+}
+
+.chat-ctx-ring-track {
+  fill: none;
+  stroke: var(--border-color);
+  stroke-width: 3;
+}
+
+.chat-ctx-ring-fill {
+  /* 2πr for r=7. Kept here with the radius it derives from, so JS only ever
+     hands over --ctx-used (0..1) and an empty ring is the default — the gauge
+     shows from the first frame instead of waiting on the first result. */
+  --ctx-circumference: 43.982;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: var(--ctx-circumference);
+  stroke-dashoffset: calc(var(--ctx-circumference) * (1 - var(--ctx-used, 0)));
+  /* Finite, and only on a value that just changed — the ring never animates on
+     its own, so an idle chat costs no frames. */
+  transition: stroke-dashoffset 0.35s ease, stroke 0.35s ease;
+}
+
+.chat-status-tokens.warn .chat-ctx-ring-fill { stroke: var(--warning); }
+.chat-status-tokens.danger .chat-ctx-ring-fill { stroke: var(--danger); }
 
 /* ── Context window breakdown popover (SDK 0.2.86+ getContextUsage) ── */
 
@@ -3745,23 +3789,29 @@ hr.chat-plan-separator {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 24px;
   padding-bottom: 6px;
   margin-bottom: 6px;
   border-bottom: 1px solid var(--border-color);
 }
 
+/* Opened on a session with no breakdown to show, the header is the whole
+   overlay — a rule under the only row would be a divider between nothing. */
+.ccp-header:only-child {
+  padding-bottom: 0;
+  margin-bottom: 0;
+  border-bottom: none;
+}
+
 .ccp-title {
-  font-weight: 600;
   font-size: 11px;
-  color: var(--text-primary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: var(--text-secondary);
 }
 
 .ccp-total {
   font-family: 'Cascadia Code', 'Fira Code', monospace;
-  font-size: 10.5px;
-  color: var(--accent, #d97706);
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 
 .ccp-row {
@@ -3800,15 +3850,6 @@ hr.chat-plan-separator {
   font-size: 10px;
   color: var(--text-tertiary);
   text-align: right;
-}
-
-.ccp-loading,
-.ccp-empty {
-  padding: 6px 2px;
-  font-size: 10.5px;
-  color: var(--text-tertiary);
-  text-align: center;
-  font-style: italic;
 }
 
 /* ── Model selector ── */
@@ -3910,6 +3951,74 @@ hr.chat-plan-separator {
   height: 16px;
   color: var(--accent-color, #d97706);
   flex-shrink: 0;
+}
+
+/* Number shortcut badge, shown on unselected primary rows in place of the
+   check. Same 16px box as the check so rows don't shift when selection moves. */
+.chat-model-shortcut {
+  width: 16px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-model-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border-color, #2a2a2a);
+}
+
+/* ── "More models" submenu ── */
+
+.chat-model-more {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+  transition: background 0.1s ease;
+}
+
+.chat-model-more:hover,
+.chat-model-more.open {
+  background: var(--bg-tertiary, #1e1e1e);
+  color: var(--text-primary, #e8e8e8);
+}
+
+.chat-model-more-arrow {
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-muted);
+}
+
+.chat-model-submenu {
+  display: none;
+  position: absolute;
+  bottom: -5px;
+  /* Opens leftward: the parent dropdown is anchored `right: 0` against the
+     footer, so a right-opening submenu lands off the window edge — which is
+     what made "More models" look like it did nothing at all. */
+  right: calc(100% + 6px);
+  width: 200px;
+  background: var(--bg-primary, #111);
+  border: 1px solid var(--border-color, #2a2a2a);
+  border-radius: 10px;
+  padding: 4px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* Hover opens it for pointers; .open is the click/keyboard path, which is what
+   makes the submenu reachable without a hover state at all. */
+.chat-model-more:hover .chat-model-submenu,
+.chat-model-more.open .chat-model-submenu {
+  display: block;
 }
 
 /* ── Effort selector ── */

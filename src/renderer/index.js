@@ -44,6 +44,14 @@ const _api = window.electron_api;
 _registerCloudListeners(_api);
 _registerMcpProjectListeners(_api);
 
+// Warm the model catalog once at startup. Every picker (chat footer, project
+// settings, parallel run) then reads it synchronously, which is what keeps
+// those call sites from each having to be async just to render a dropdown.
+// Detached: a model list is never worth blocking startup on.
+if (_api?.chat?.modelCatalog) {
+  require('./services/ModelCatalogClient').load(_api).catch(() => {});
+}
+
 // ── Cloud event handlers ──────────────────────────────────────────────────
 
 function _registerCloudListeners(api) {

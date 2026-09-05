@@ -13,6 +13,16 @@ const crypto = require('crypto');
 const { createWorktree, removeWorktree, gitMerge, gitMergeAbort, gitMergeContinue, getMergeConflicts, checkoutBranch, createBranch, isMergeInProgress, execGit } = require('../utils/git');
 const chatService = require('./ChatService');
 
+/**
+ * Default model for a run whose caller didn't name one.
+ *
+ * The CLI alias, not a pinned id: a run fans out across many agents, so the
+ * tier matters (Sonnet, not Opus) but the generation should follow the CLI.
+ * A pinned id here goes stale silently — this was still 'claude-sonnet-4-6'
+ * two Sonnet generations later.
+ */
+const DEFAULT_RUN_MODEL = 'sonnet';
+
 const HISTORY_FILE = path.join(os.homedir(), '.claude-terminal', 'parallel-runs.json');
 const MAX_HISTORY = 100;
 
@@ -494,7 +504,7 @@ class ParallelTaskService {
     const result = await chatService.runSinglePrompt({
       cwd: projectPath,
       prompt,
-      model: model || 'claude-sonnet-4-6',
+      model: model || DEFAULT_RUN_MODEL,
       effort: effort || 'high',
       maxTurns: 10,
       permissionMode: 'bypassPermissions',
@@ -592,7 +602,7 @@ class ParallelTaskService {
       await chatService.runSinglePrompt({
         cwd: task.worktreePath,
         prompt: task.prompt,
-        model: model || 'claude-sonnet-4-6',
+        model: model || DEFAULT_RUN_MODEL,
         effort: effort || 'high',
         maxTurns: 50,
         permissionMode: 'bypassPermissions',
@@ -708,7 +718,7 @@ class ParallelTaskService {
 
         // Conflict — try auto-resolve with Claude
         if (mergeResult.hasConflicts) {
-          const resolved = await this._resolveConflicts(mergeWorktreePath, task.branch, model || 'claude-sonnet-4-6', effort || 'high', runId);
+          const resolved = await this._resolveConflicts(mergeWorktreePath, task.branch, model || DEFAULT_RUN_MODEL, effort || 'high', runId);
           if (resolved) {
             merged.push(task.branch);
             continue;

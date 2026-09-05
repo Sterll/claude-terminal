@@ -1813,7 +1813,6 @@
     "searchNext": "Résultat suivant (Entrée)",
     "searchClose": "Fermer (Échap)",
     "contextWindowUsage": "Fenêtre de contexte",
-    "contextNoBreakdown": "Aucun détail disponible",
     "previewContextPack": "Aperçu du Context Pack",
     "editPlan": "Modifier le plan",
     "doneEditing": "Édition terminée",
@@ -1833,8 +1832,9 @@
     "effortMedium": "Équilibre vitesse & qualité",
     "effortHigh": "Raisonnement approfondi (défaut)",
     "effortXhigh": "Extra haut - idéal pour le code",
-    "effortMax": "Effort maximum (Opus uniquement)",
+    "effortMax": "Effort maximum",
     "modelSwitchFailed": "Impossible de passer à {model} - toujours sur {previous}. {error}",
+    "moreModels": "Plus de modèles",
     "effortSwitchFailed": "Impossible de passer l'effort sur {effort} - toujours sur {previous}. {error}",
     "code": {
       "showMore": "Afficher {count} lignes de plus",

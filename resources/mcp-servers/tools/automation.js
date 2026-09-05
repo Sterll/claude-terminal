@@ -305,7 +305,7 @@ const SIMPLE_FIELDS = {
   },
   cwd: { type: 'string', description: 'Working directory override. Defaults to the project path.' },
   model: { type: 'string', description: 'Model override, e.g. "claude-opus-5". Empty = the app default.' },
-  effort: { type: 'string', description: 'Reasoning effort override: low | medium | high.' },
+  effort: { type: 'string', description: 'Reasoning effort override: low | medium | high | xhigh | max.' },
 
   when: {
     type: 'string',

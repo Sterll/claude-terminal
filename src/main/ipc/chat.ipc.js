@@ -5,6 +5,7 @@
 
 const { ipcMain } = require('electron');
 const chatService = require('../services/ChatService');
+const modelCatalog = require('../services/ModelCatalogService');
 const { sendFeaturePing } = require('../services/TelemetryService');
 
 function registerChatHandlers() {
@@ -96,6 +97,19 @@ function registerChatHandlers() {
       return { success: true };
     } catch (err) {
       console.error('[chat-set-model] Error:', err.message);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Two-tier model catalog for the chat picker. Never rejects: the picker has
+  // to render something, so a failure downgrades to the static fallback rather
+  // than leaving the menu empty.
+  ipcMain.handle('chat-model-catalog', async (_event, { refresh = false } = {}) => {
+    try {
+      const catalog = await modelCatalog.getCatalog({ refresh });
+      return { success: true, ...catalog };
+    } catch (err) {
+      console.error('[chat-model-catalog] Error:', err.message);
       return { success: false, error: err.message };
     }
   });

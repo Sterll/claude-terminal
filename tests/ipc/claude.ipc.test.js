@@ -131,7 +131,37 @@ describe('loadSessionHistory', () => {
   test('returns an empty result for an unknown session', async () => {
     writeSession(1);
     const result = await loadSessionHistory(PROJECT_PATH, 'does-not-exist');
-    expect(result).toEqual({ messages: [], total: 0, truncated: false });
+    expect(result).toEqual({ messages: [], total: 0, truncated: false, contextTokens: 0 });
+  });
+
+  // The chat's context gauge reads this: a resumed conversation has no live
+  // session to query, so the tail of the transcript is the only source.
+  test('reports the context occupancy of the last turn, cache included', () => {
+    const dir = sessionsDir();
+    fs.mkdirSync(dir, { recursive: true });
+    const turn = (n, usage) => JSON.stringify({
+      type: 'assistant', uuid: `a-${n}`, sessionId: SESSION_ID,
+      message: { role: 'assistant', content: [{ type: 'text', text: `answer ${n}` }], usage }
+    });
+    fs.writeFileSync(path.join(dir, `${SESSION_ID}.jsonl`), [
+      turn(0, { input_tokens: 10, cache_read_input_tokens: 1000, output_tokens: 50 }),
+      turn(1, { input_tokens: 2, cache_creation_input_tokens: 1675, cache_read_input_tokens: 232050 }),
+    ].join('\n') + '\n');
+
+    return loadSessionHistory(PROJECT_PATH, SESSION_ID).then(result => {
+      expect(result.contextTokens).toBe(233727);
+    });
+  });
+
+  test('keeps the real tail figure when the replay window is trimmed', async () => {
+    // A trimmed replay drops early messages; the gauge must still describe the
+    // end of the conversation, not the last message that survived the window.
+    writeSession(50);
+    const trimmed = await loadSessionHistory(PROJECT_PATH, SESSION_ID, { limit: 5 });
+    expect(trimmed.truncated).toBe(true);
+    // This fixture carries no usage at all, so "unknown" must read as 0 rather
+    // than as a stale number from somewhere else.
+    expect(trimmed.contextTokens).toBe(0);
   });
 });
 

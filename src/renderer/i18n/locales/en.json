@@ -1813,7 +1813,6 @@
     "searchNext": "Next match (Enter)",
     "searchClose": "Close (Escape)",
     "contextWindowUsage": "Context window",
-    "contextNoBreakdown": "No detailed breakdown available",
     "previewContextPack": "Context Pack Preview",
     "editPlan": "Edit plan",
     "doneEditing": "Done editing",
@@ -1833,8 +1832,9 @@
     "effortMedium": "Balanced speed & quality",
     "effortHigh": "Deep reasoning (default)",
     "effortXhigh": "Extra high - best for coding",
-    "effortMax": "Maximum effort (Opus only)",
+    "effortMax": "Maximum effort",
     "modelSwitchFailed": "Could not switch to {model} - still using {previous}. {error}",
+    "moreModels": "More models",
     "effortSwitchFailed": "Could not switch effort to {effort} - still using {previous}. {error}",
     "code": {
       "showMore": "Show {count} more lines",
