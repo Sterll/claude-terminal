@@ -70,7 +70,7 @@ const defaultSettings = {
   enhancePrompts: false, // Opt-in: reformulate prompts via Haiku for better prompt engineering before sending
   // Every tab is pinned by default: the grouped sidebar fits without overflow,
   // so the More menu is now opt-in rather than the default state.
-  pinnedTabs: ['claude', 'git', 'dashboard', 'session-replay', 'tasks', 'control-tower', 'workspace', 'memory', 'timetracking', 'database', 'skills', 'agents', 'plugins', 'mcp', 'workflows', 'errorlog', 'connectivity'],
+  pinnedTabs: ['claude', 'dashboard', 'files', 'git', 'session-replay', 'tasks', 'control-tower', 'workspace', 'memory', 'timetracking', 'database', 'skills', 'agents', 'plugins', 'mcp', 'workflows', 'errorlog', 'connectivity'],
   activeTab: 'claude', // Last active sidebar tab (restored on restart)
   openProjectIds: [], // Projects with a tab in the project bar, in tab order (restored on restart)
   navigationMode: null, // 'tabs' | 'sidebar' | null = never chosen, ask once on next launch
@@ -152,6 +152,21 @@ function _migrateSettings(saved) {
     for (const id of ['workspace', 'errorlog']) {
       if (!saved.pinnedTabs.includes(id)) saved.pinnedTabs.push(id);
     }
+    // Files is new, so an existing array cannot have deliberately excluded it.
+    // Slot it under Dashboard, where it sits in the Project group.
+    if (!saved.pinnedTabs.includes('files')) {
+      const after = saved.pinnedTabs.indexOf('dashboard');
+      saved.pinnedTabs.splice(after === -1 ? saved.pinnedTabs.length : after + 1, 0, 'files');
+    }
+  }
+
+  // Same for a custom nav order. _applyTabsOrder re-inserts the tabs it knows
+  // after the group anchor, so an id missing from the array gets pushed to the
+  // bottom of its group — Files would sink below Tasks on any account that has
+  // ever reordered the sidebar.
+  if (Array.isArray(saved.tabsOrder) && saved.tabsOrder.length && !saved.tabsOrder.includes('files')) {
+    const after = saved.tabsOrder.indexOf('dashboard');
+    saved.tabsOrder.splice(after === -1 ? saved.tabsOrder.length : after + 1, 0, 'files');
   }
 }
 

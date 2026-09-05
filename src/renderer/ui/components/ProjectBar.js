@@ -206,7 +206,10 @@ class ProjectBar extends BaseComponent {
     const project = getProject(projectId);
     if (!project) return;
     const projectIndex = getProjectIndex(projectId);
-    if (projectsState.get().selectedProjectFilter === projectIndex) return;
+    // Re-selecting the active project is normally a no-op, but not while the
+    // Overview is showing: its tab is how you get back to a single project,
+    // and clicking the one you were already on has to work.
+    if (!this._overviewActive && projectsState.get().selectedProjectFilter === projectIndex) return;
     // The host owns the switch (it also drives the screens), so it opens the tab.
     if (this._callbacks.onSelectProject) this._callbacks.onSelectProject(projectIndex, project);
   }

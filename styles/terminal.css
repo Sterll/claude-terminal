@@ -110,31 +110,6 @@
   background: var(--border-color);
 }
 
-.btn-toggle-explorer {
-  width: 26px;
-  height: 26px;
-  padding: 4px;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  border-radius: 4px;
-  cursor: pointer;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.btn-toggle-explorer:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.btn-toggle-explorer svg {
-  width: 16px;
-  height: 16px;
-}
-
 /* Project tools inside the project bar (right side) */
 .terminals-filter {
   display: flex;

@@ -43,6 +43,7 @@
 }
 
 body[data-active-tab="claude"] .project-bar,
+body[data-active-tab="files"] .project-bar,
 body[data-active-tab="git"] .project-bar,
 body[data-active-tab="dashboard"] .project-bar,
 body[data-active-tab="session-replay"] .project-bar,
@@ -114,7 +115,7 @@ body[data-active-tab="tasks"] .project-bar {
   display: block;
 }
 
-body:not([data-active-tab="dashboard"]) .project-tab--overview {
+body:not([data-active-tab="dashboard"]):not([data-active-tab="files"]) .project-tab--overview {
   display: none;
 }
 

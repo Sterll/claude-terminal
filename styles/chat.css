@@ -90,6 +90,11 @@
 .chat-changes-list { display: flex; flex-direction: column; gap: 1px; }
 
 .chat-change-item {
+  border-radius: var(--radius-sm);
+}
+.chat-change-item.expanded { background: var(--bg-secondary); }
+
+.chat-change-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -99,12 +104,74 @@
   cursor: pointer;
   transition: background 0.1s ease;
 }
-.chat-change-item:hover { background: var(--bg-hover); }
+.chat-change-row:hover { background: var(--bg-hover); }
+.chat-change-row:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
 
+.chat-change-chevron {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.12s ease;
+}
+.chat-change-item.expanded .chat-change-chevron { transform: rotate(90deg); }
+
+.chat-change-open,
+.chat-change-current {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s ease, color 0.1s ease;
+}
+.chat-change-open svg,
+.chat-change-current svg { width: 13px; height: 13px; }
+.chat-change-row:hover .chat-change-open,
+.chat-change-row:hover .chat-change-current { opacity: 1; }
+.chat-change-open:hover,
+.chat-change-current:hover { color: var(--text-primary); background: var(--bg-active); }
+.chat-change-open:focus-visible,
+.chat-change-current:focus-visible { opacity: 1; outline: 1px solid var(--accent); }
+.chat-change-item.expanded[data-diff-mode="current"] .chat-change-current {
+  opacity: 1;
+  color: var(--accent);
+}
+
+/* Diff body, mounted only while the file is expanded. */
+.chat-change-diff {
+  padding: 2px 10px 10px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.chat-change-diff[hidden] { display: none; }
+.chat-change-diff .chat-diff-viewer { margin: 0; }
+
+.chat-change-note {
+  padding: 6px 8px;
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  font-style: italic;
+}
+
+/* Takes the row's slack so the name starts at the left edge. Without flex:1 the
+   row's space-between centres this block between the chevron and the stats. */
 .chat-change-file {
   display: flex;
   align-items: baseline;
   gap: 8px;
+  flex: 1;
   min-width: 0;
   overflow: hidden;
 }
@@ -1658,6 +1725,15 @@ mark.chat-search-hit.current {
   word-break: break-all;
   padding-right: 4px;
 }
+
+/* Hunk headers in a raw unified diff (the "compare with disk" view) */
+.diff-line.diff-hunk .diff-text {
+  color: var(--info);
+  opacity: 0.85;
+}
+
+/* A raw diff carries its own +/- column, so it needs no gutter */
+.chat-diff-viewer--raw .diff-line { padding-left: 10px; }
 
 /* Added lines */
 .diff-line.diff-add {

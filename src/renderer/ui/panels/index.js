@@ -20,8 +20,10 @@ const SessionReplayPanel = require('./SessionReplayPanel');
 const ParallelTaskPanel = require('./ParallelTaskPanel');
 const WorkspacePanel = require('./WorkspacePanel');
 const ErrorLogPanel = require('./ErrorLogPanel');
+const FilesPanel = require('./FilesPanel');
 
 module.exports = {
+  FilesPanel,
   MemoryEditor,
   GitChangesPanel,
   ShortcutsManager,

@@ -183,6 +183,13 @@ function createMainWindow({ isDev = false } = {}) {
     frame: isMac ? undefined : false,
     titleBarStyle: isMac ? 'hiddenInset' : undefined,
     trafficLightPosition: isMac ? { x: 12, y: 10 } : undefined,
+    // Without this, macOS spends the first click on an unfocused window just
+    // focusing it: every action costs two clicks whenever you come back from
+    // another app. The tradeoff is that a click used to raise the window now
+    // also hits whatever is under the cursor, so it can fire a close or a
+    // delete you only meant to focus with. Worth it for an app you switch into
+    // constantly. No-op off macOS.
+    acceptFirstMouse: true,
     backgroundColor: '#0d0d0d',
     webPreferences: {
       nodeIntegration: false,

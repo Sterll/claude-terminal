@@ -47,6 +47,7 @@
     "globalDefault": "Par défaut (global)",
     "customize": "Personnaliser",
     "basicTerminal": "Terminal basique",
+    "files": "Fichiers",
     "openClaude": "Ouvrir Claude Code",
     "newFolder": "Nouveau dossier",
     "gitPull": "Git Pull",
@@ -1176,7 +1177,9 @@
     "separatorProject": "Projet",
     "separatorAllProjects": "Tous les projets",
     "separatorCapabilities": "Capacités",
-    "separatorSystem": "Système"
+    "separatorSystem": "Système",
+    "tabFiles": "Fichiers",
+    "tooltipFiles": "Fichiers"
   },
   "memory": {
     "panelDescription": "Configurez le comportement de Claude dans vos projets. Les reglages globaux s'appliquent partout, les reglages projet les remplacent.",
@@ -1743,6 +1746,10 @@
     "filesChanged": "fichiers modifiés",
     "fileChanged": "fichier modifié",
     "noChangesYet": "Aucun fichier modifié pour l'instant.",
+    "diffMoreLines": "… {count} lignes de plus",
+    "noDiffAvailable": "Aucun diff disponible.",
+    "diffVsCurrent": "Comparer avec le fichier sur le disque",
+    "diffNoCurrentChanges": "Aucune modification non commitée pour ce fichier.",
     "todoTitle": "Tâches",
     "todoAllDone": "Terminé",
     "subagentLaunching": "Lancement de l'agent...",
@@ -3953,5 +3960,23 @@
     "settingsHint": "Comment tu passes d'un projet à l'autre",
     "optionTabs": "Onglets de projet",
     "optionSidebar": "Colonne projets"
+  },
+  "files": {
+    "modifiedOnly": "Modifiés uniquement",
+    "filesTouched": "fichier(s) touché(s)",
+    "sessionNoChanges": "Cette session n'a modifié aucun fichier.",
+    "noProject": "Ouvrez un projet pour parcourir ses fichiers.",
+    "pickAFile": "Choisissez un fichier dans l’arborescence.",
+    "viewContent": "Contenu",
+    "viewDiff": "Diff",
+    "toggleSplit": "Unifié / côte à côte",
+    "openInTab": "Ouvrir dans un onglet",
+    "openInEditor": "Ouvrir dans l’éditeur",
+    "previewInTab": "Ce format s’affiche dans un onglet.",
+    "tooLarge": "Fichier trop volumineux pour être affiché ici ({size}).",
+    "linesTruncated": "… {count} lignes de plus",
+    "sessionCaption": "Session",
+    "noSession": "Aucune",
+    "noSessionHint": "parcourir toute l’arborescence"
   }
 }
