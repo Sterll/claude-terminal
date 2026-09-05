@@ -12,39 +12,23 @@
  * step because currentStep had never been updated.
  */
 
-const fs = require('fs');
-const path = require('path');
+const {
+  readWizardHtml,
+  extractFunction,
+  readTotalSteps,
+  mountWizardMarkup,
+} = require('./wizardSource');
 
-const WIZARD_HTML = path.resolve(__dirname, '../../setup-wizard.html');
+const html = readWizardHtml();
 
-/**
- * Pull a top-level function's full source out of a file by brace matching.
- * @param {string} source
- * @param {string} signature - e.g. 'function goToStep(step) {'
- * @returns {string}
- */
-function extractFunction(source, signature) {
-  const start = source.indexOf(signature);
-  if (start === -1) throw new Error(`Not found in setup-wizard.html: ${signature}`);
-
-  let depth = 0;
-  for (let i = start + signature.length - 1; i < source.length; i++) {
-    if (source[i] === '{') depth++;
-    else if (source[i] === '}') {
-      depth--;
-      if (depth === 0) return source.slice(start, i + 1);
-    }
-  }
-  throw new Error(`Unbalanced braces while extracting: ${signature}`);
-}
-
-const TOTAL_STEPS = 8;
+// Read from the shipped script rather than hardcoded: adding a step used to
+// leave this constant behind, and the suite kept passing against the old count.
+const TOTAL_STEPS = readTotalSteps(html);
 
 /**
  * Build a wizard harness running the real goToStep() over real DOM nodes.
  */
 function createWizard() {
-  const html = fs.readFileSync(WIZARD_HTML, 'utf8');
   const goToStepSource = extractFunction(html, 'function goToStep(step) {');
 
   document.body.innerHTML = Array.from(
@@ -86,6 +70,14 @@ function activeIndices(steps) {
 }
 
 describe('setup wizard navigation', () => {
+  test('the shipped markup has one page per step, numbered without gaps', () => {
+    // goToStep() indexes into the .step node list, so a TOTAL_STEPS that no
+    // longer matches the markup walks off the end and blanks the wizard.
+    mountWizardMarkup(html);
+    const indices = Array.from(document.querySelectorAll('.step'), el => Number(el.dataset.step));
+    expect(indices).toEqual(Array.from({ length: TOTAL_STEPS }, (_, i) => i));
+  });
+
   test('moving forward advances the step and shows exactly one page', () => {
     const w = createWizard();
     w.goToStep(1);

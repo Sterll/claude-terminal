@@ -600,14 +600,14 @@
     }
 
     /* ============================================ */
-    /* TERMINAL MODE STEP                           */
+    /* MODE CARD STEPS (terminal mode, navigation)  */
     /* ============================================ */
-    .terminal-mode-options {
+    .mode-options {
       display: flex;
       gap: 20px;
     }
 
-    .terminal-mode-card {
+    .mode-card {
       width: 220px;
       padding: 28px 24px;
       background: var(--bg-surface);
@@ -618,17 +618,17 @@
       text-align: center;
     }
 
-    .terminal-mode-card:hover {
+    .mode-card:hover {
       border-color: var(--text-muted);
       background: var(--bg-elevated);
     }
 
-    .terminal-mode-card.selected {
+    .mode-card.selected {
       border-color: var(--accent);
       background: rgba(var(--accent-rgb), 0.08);
     }
 
-    .terminal-mode-icon {
+    .mode-icon {
       width: 48px;
       height: 48px;
       margin: 0 auto 16px;
@@ -639,55 +639,52 @@
       justify-content: center;
     }
 
-    .terminal-mode-icon svg {
+    .mode-icon svg {
       width: 24px;
       height: 24px;
       color: var(--accent);
     }
 
-    .terminal-mode-name {
+    .mode-name {
       font-size: 16px;
       font-weight: 600;
       margin-bottom: 6px;
     }
 
-    .terminal-mode-desc {
+    .mode-desc {
       font-size: 12px;
       color: var(--text-secondary);
       line-height: 1.4;
     }
 
     /* ============================================ */
-    /* HOOKS STEP                                   */
+    /* DENSE STEPS (hooks, telemetry)               */
     /* ============================================ */
-    [data-step="5"],
-    [data-step="6"] {
+    /* Keyed off a class rather than a data-step index: inserting a step used to
+       silently move this styling onto whichever pages landed on 5 and 6. */
+    .step-compact {
       padding: 12px 60px 8px;
       overflow-y: auto;
     }
 
-    [data-step="5"] .step-icon,
-    [data-step="6"] .step-icon {
+    .step-compact .step-icon {
       width: 52px;
       height: 52px;
       margin-bottom: 12px;
       border-radius: 14px;
     }
 
-    [data-step="5"] .step-icon svg,
-    [data-step="6"] .step-icon svg {
+    .step-compact .step-icon svg {
       width: 26px;
       height: 26px;
     }
 
-    [data-step="5"] .step-title,
-    [data-step="6"] .step-title {
+    .step-compact .step-title {
       margin-bottom: 4px;
       font-size: 24px;
     }
 
-    [data-step="5"] .step-subtitle,
-    [data-step="6"] .step-subtitle {
+    .step-compact .step-subtitle {
       margin-bottom: 16px;
       font-size: 13px;
     }
@@ -922,26 +919,64 @@
         </div>
         <div class="step-title" data-i18n="setup.terminalMode.title">Default terminal mode</div>
         <div class="step-subtitle" data-i18n="setup.terminalMode.subtitle">Both modes use Claude Code — only the interface changes</div>
-        <div class="terminal-mode-options">
-          <div class="terminal-mode-card selected" data-mode="terminal">
-            <div class="terminal-mode-icon">
+        <div class="mode-options" id="terminal-mode-options">
+          <div class="mode-card selected" data-mode="terminal">
+            <div class="mode-icon">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v12zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"/></svg>
             </div>
-            <div class="terminal-mode-name" data-i18n="setup.terminalMode.terminal">Terminal</div>
-            <div class="terminal-mode-desc" data-i18n="setup.terminalMode.terminalDesc">Classic CLI terminal with full xterm.js experience</div>
+            <div class="mode-name" data-i18n="setup.terminalMode.terminal">Terminal</div>
+            <div class="mode-desc" data-i18n="setup.terminalMode.terminalDesc">Classic CLI terminal with full xterm.js experience</div>
           </div>
-          <div class="terminal-mode-card" data-mode="chat">
-            <div class="terminal-mode-icon">
+          <div class="mode-card" data-mode="chat">
+            <div class="mode-icon">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
             </div>
-            <div class="terminal-mode-name" data-i18n="setup.terminalMode.chat">Chat UI</div>
-            <div class="terminal-mode-desc" data-i18n="setup.terminalMode.chatDesc">Modern conversational interface with rich messages</div>
+            <div class="mode-name" data-i18n="setup.terminalMode.chat">Chat UI</div>
+            <div class="mode-desc" data-i18n="setup.terminalMode.chatDesc">Modern conversational interface with rich messages</div>
           </div>
         </div>
       </div>
 
-      <!-- Step 6: Hooks -->
+      <!-- Step 6: Navigation -->
+      <!-- Answering here writes navigationMode, which is what stops the app
+           asking again on first launch. Skipping the wizard leaves it unset,
+           so the in-app chooser still runs. -->
       <div class="step" data-step="5">
+        <div class="step-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zM6 10h5v2H6v-2zm0 3h5v2H6v-2z"/></svg>
+        </div>
+        <div class="step-title" data-i18n="setup.navigation.title">Choose your navigation</div>
+        <div class="step-subtitle" data-i18n="setup.navigation.subtitle">You can change this later in settings</div>
+        <div class="mode-options" id="navigation-mode-options">
+          <div class="mode-card selected" data-mode="tabs">
+            <div class="mode-icon">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <rect x="2" y="4" width="20" height="16" rx="2" opacity="0.25"/>
+                <rect x="4" y="6" width="5" height="2.5" rx="0.75"/>
+                <rect x="10" y="6" width="5" height="2.5" rx="0.75"/>
+                <rect x="16" y="6" width="4" height="2.5" rx="0.75"/>
+              </svg>
+            </div>
+            <div class="mode-name" data-i18n="setup.navigation.tabs">Project tabs</div>
+            <div class="mode-desc" data-i18n="setup.navigation.tabsDesc">One tab per open project across the top, browser-style</div>
+          </div>
+          <div class="mode-card" data-mode="sidebar">
+            <div class="mode-icon">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <rect x="2" y="4" width="20" height="16" rx="2" opacity="0.25"/>
+                <rect x="4" y="6" width="5" height="2.5" rx="0.75"/>
+                <rect x="4" y="10.75" width="5" height="2.5" rx="0.75"/>
+                <rect x="4" y="15.5" width="5" height="2.5" rx="0.75"/>
+              </svg>
+            </div>
+            <div class="mode-name" data-i18n="setup.navigation.sidebar">Projects sidebar</div>
+            <div class="mode-desc" data-i18n="setup.navigation.sidebarDesc">A permanent projects column on the left, always in view</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 7: Hooks -->
+      <div class="step step-compact" data-step="6">
         <div class="step-icon">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
         </div>
@@ -992,8 +1027,8 @@
         </div>
       </div>
 
-      <!-- Step 7: Telemetry -->
-      <div class="step" data-step="6">
+      <!-- Step 8: Telemetry -->
+      <div class="step step-compact" data-step="7">
         <div class="step-icon">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
         </div>
@@ -1032,8 +1067,8 @@
         </div>
       </div>
 
-      <!-- Step 8: Done -->
-      <div class="step" data-step="7">
+      <!-- Step 9: Done -->
+      <div class="step" data-step="8">
         <div class="done-checkmark">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
         </div>
@@ -1107,6 +1142,12 @@
         'setup.terminalMode.terminalDesc': 'Classic CLI terminal with full xterm.js experience',
         'setup.terminalMode.chat': 'Chat UI',
         'setup.terminalMode.chatDesc': 'Modern conversational interface with rich messages',
+        'setup.navigation.title': 'Choose your navigation',
+        'setup.navigation.subtitle': 'How you switch between projects. You can change this later in settings',
+        'setup.navigation.tabs': 'Project tabs',
+        'setup.navigation.tabsDesc': 'One tab per open project across the top, browser-style',
+        'setup.navigation.sidebar': 'Projects sidebar',
+        'setup.navigation.sidebarDesc': 'A permanent projects column on the left, always in view',
         'setup.done.title': "You're all set!",
         'setup.done.subtitle': 'Claude Terminal is ready to use',
         'setup.done.summary': 'Your settings',
@@ -1120,6 +1161,7 @@
         'setup.done.disabled': 'Disabled',
         'setup.done.hooksLabel': 'Smart Hooks',
         'setup.done.terminalModeLabel': 'Terminal mode',
+        'setup.done.navigationLabel': 'Navigation',
         'setup.hooks.title': 'Smart Hooks',
         'setup.hooks.subtitle': 'Enhance Claude Terminal with real-time insights from Claude Code',
         'setup.hooks.description': 'Hooks let Claude Terminal detect when Claude starts, stops, or uses tools. All data stays local on your machine. This enables:',
@@ -1183,6 +1225,12 @@
         'setup.terminalMode.terminalDesc': 'Terminal CLI classique avec experience xterm.js complete',
         'setup.terminalMode.chat': 'Chat UI',
         'setup.terminalMode.chatDesc': 'Interface conversationnelle moderne avec messages enrichis',
+        'setup.navigation.title': 'Choisissez votre navigation',
+        'setup.navigation.subtitle': "Comment vous passez d'un projet a l'autre. Vous pourrez la changer plus tard dans les parametres",
+        'setup.navigation.tabs': 'Onglets de projet',
+        'setup.navigation.tabsDesc': 'Un onglet par projet ouvert en haut, comme un navigateur',
+        'setup.navigation.sidebar': 'Colonne projets',
+        'setup.navigation.sidebarDesc': 'Une colonne projets permanente a gauche, toujours visible',
         'setup.done.title': "C'est pret !",
         'setup.done.subtitle': 'Claude Terminal est pret a etre utilise',
         'setup.done.summary': 'Vos parametres',
@@ -1196,6 +1244,7 @@
         'setup.done.disabled': 'Desactive',
         'setup.done.hooksLabel': 'Hooks intelligents',
         'setup.done.terminalModeLabel': 'Mode terminal',
+        'setup.done.navigationLabel': 'Navigation',
         'setup.hooks.title': 'Hooks intelligents',
         'setup.hooks.subtitle': 'Enrichissez Claude Terminal avec des infos en temps reel de Claude Code',
         'setup.hooks.description': 'Les hooks detectent quand Claude demarre, s\'arrete ou utilise des outils. Toutes les donnees restent en local sur votre machine. Cela active :',
@@ -1259,6 +1308,12 @@
         'setup.terminalMode.terminalDesc': 'Terminal CLI clasico con experiencia xterm.js completa',
         'setup.terminalMode.chat': 'Chat UI',
         'setup.terminalMode.chatDesc': 'Interfaz conversacional moderna con mensajes enriquecidos',
+        'setup.navigation.title': 'Elige tu navegacion',
+        'setup.navigation.subtitle': 'Como cambias de proyecto. Puedes cambiarlo mas tarde en los ajustes',
+        'setup.navigation.tabs': 'Pestanas de proyecto',
+        'setup.navigation.tabsDesc': 'Una pestana por proyecto abierto en la parte superior, como un navegador',
+        'setup.navigation.sidebar': 'Columna de proyectos',
+        'setup.navigation.sidebarDesc': 'Una columna de proyectos permanente a la izquierda, siempre a la vista',
         'setup.done.title': 'Todo listo!',
         'setup.done.subtitle': 'Claude Terminal esta listo para usar',
         'setup.done.summary': 'Tus ajustes',
@@ -1272,6 +1327,7 @@
         'setup.done.disabled': 'Desactivado',
         'setup.done.hooksLabel': 'Hooks inteligentes',
         'setup.done.terminalModeLabel': 'Modo terminal',
+        'setup.done.navigationLabel': 'Navegacion',
         'setup.hooks.title': 'Hooks inteligentes',
         'setup.hooks.subtitle': 'Mejora Claude Terminal con informacion en tiempo real de Claude Code',
         'setup.hooks.description': 'Los hooks detectan cuando Claude inicia, se detiene o usa herramientas. Todos los datos permanecen en tu maquina local. Esto permite:',
@@ -1335,6 +1391,12 @@
         'setup.terminalMode.terminalDesc': 'Terminal CLI klasik dengan pengalaman xterm.js penuh',
         'setup.terminalMode.chat': 'Antarmuka Chat',
         'setup.terminalMode.chatDesc': 'Antarmuka percakapan modern dengan pesan yang kaya',
+        'setup.navigation.title': 'Pilih navigasi Anda',
+        'setup.navigation.subtitle': 'Cara Anda berpindah antar proyek. Anda dapat mengubahnya nanti di pengaturan',
+        'setup.navigation.tabs': 'Tab proyek',
+        'setup.navigation.tabsDesc': 'Satu tab per proyek yang terbuka di bagian atas, seperti peramban',
+        'setup.navigation.sidebar': 'Kolom proyek',
+        'setup.navigation.sidebarDesc': 'Kolom proyek permanen di sebelah kiri, selalu terlihat',
         'setup.done.title': 'Semua siap!',
         'setup.done.subtitle': 'Claude Terminal siap digunakan',
         'setup.done.summary': 'Pengaturan Anda',
@@ -1348,6 +1410,7 @@
         'setup.done.disabled': 'Nonaktif',
         'setup.done.hooksLabel': 'Smart Hooks',
         'setup.done.terminalModeLabel': 'Mode terminal',
+        'setup.done.navigationLabel': 'Navigasi',
         'setup.hooks.title': 'Smart Hooks',
         'setup.hooks.subtitle': 'Tingkatkan Claude Terminal dengan wawasan real-time dari Claude Code',
         'setup.hooks.description': 'Hook memungkinkan Claude Terminal mendeteksi kapan Claude dimulai, berhenti, atau menggunakan tool. Semua data tetap lokal di perangkat Anda. Ini memungkinkan:',
@@ -1428,7 +1491,7 @@
     // ============================================
     // STATE
     // ============================================
-    const TOTAL_STEPS = 8;
+    const TOTAL_STEPS = 9;
     let currentStep = 0;
     let selectedLang = matchWizardLang(navigator.language) || 'en';
     let selectedColor = '#d97706';
@@ -1476,13 +1539,33 @@
         });
       });
 
-      // Terminal mode cards
-      document.querySelectorAll('.terminal-mode-card').forEach(card => {
-        card.addEventListener('click', () => {
-          document.querySelectorAll('.terminal-mode-card').forEach(c => c.classList.remove('selected'));
+      wireModeCards();
+    }
+
+    /**
+     * Card pickers, used by the terminal mode and navigation steps.
+     * Selection is scoped to its own group: two steps now share these classes,
+     * and a document-wide deselect would clear the other step's answer.
+     */
+    function wireModeCards() {
+      document.querySelectorAll('.mode-options').forEach(group => {
+        group.addEventListener('click', (e) => {
+          const card = e.target.closest('.mode-card');
+          if (!card || !group.contains(card)) return;
+          group.querySelectorAll('.mode-card').forEach(c => c.classList.remove('selected'));
           card.classList.add('selected');
         });
       });
+    }
+
+    /**
+     * Read the card picked in one mode group.
+     * @param {string} groupId - id of the .mode-options container
+     * @param {string} fallback - returned when nothing is selected
+     * @returns {string}
+     */
+    function selectedMode(groupId, fallback) {
+      return document.querySelector(`#${groupId} .mode-card.selected`)?.dataset.mode || fallback;
     }
 
     function loadAppVersion() {
@@ -1670,10 +1753,15 @@
       const notifications = document.getElementById('pref-notifications').checked;
       const hooksEnabled = document.getElementById('pref-hooks').checked;
       const telemetryEnabled = document.getElementById('pref-telemetry').checked;
-      const terminalMode = document.querySelector('.terminal-mode-card.selected')?.dataset.mode || 'terminal';
+      const terminalMode = selectedMode('terminal-mode-options', 'terminal');
       const terminalModeNames = { terminal: 'Terminal', chat: 'Chat UI' };
+      const navigationMode = selectedMode('navigation-mode-options', 'tabs');
+      const navigationModeNames = {
+        tabs: t('setup.navigation.tabs'),
+        sidebar: t('setup.navigation.sidebar')
+      };
 
-      const langName = { fr: 'Français', en: 'English', es: 'Español' }[selectedLang] || 'English';
+      const langName = { fr: 'Français', en: 'English', es: 'Español', id: 'Bahasa Indonesia' }[selectedLang] || 'English';
 
       document.getElementById('done-summary').innerHTML = `
         <div class="done-summary-row">
@@ -1694,6 +1782,10 @@
         <div class="done-summary-row">
           <span class="done-summary-label">${t('setup.done.terminalModeLabel')}</span>
           <span class="done-summary-value">${terminalModeNames[terminalMode]}</span>
+        </div>
+        <div class="done-summary-row">
+          <span class="done-summary-label">${t('setup.done.navigationLabel')}</span>
+          <span class="done-summary-value">${navigationModeNames[navigationMode]}</span>
         </div>
         <div class="done-summary-row">
           <span class="done-summary-label">${t('setup.done.startupLabel')}</span>
@@ -1722,7 +1814,11 @@
         language: selectedLang,
         accentColor: selectedColor,
         editor: document.getElementById('pref-editor').value,
-        defaultTerminalMode: document.querySelector('.terminal-mode-card.selected')?.dataset.mode || 'terminal',
+        defaultTerminalMode: selectedMode('terminal-mode-options', 'terminal'),
+        // Answering here is what silences the app's first-launch navigation
+        // chooser: it only runs while navigationMode is unset. Skipping the
+        // wizard writes nothing, so the chooser still gets its turn.
+        navigationMode: selectedMode('navigation-mode-options', 'tabs'),
         launchAtStartup: document.getElementById('pref-startup').checked,
         notificationsEnabled: document.getElementById('pref-notifications').checked,
         hooksEnabled: document.getElementById('pref-hooks').checked,
