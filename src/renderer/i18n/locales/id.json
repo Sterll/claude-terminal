@@ -1086,7 +1086,8 @@
     "separatorSystem": "Sistem",
     "tabFiles": "Berkas",
     "tooltipFiles": "Berkas",
-    "tooltipArtifacts": "Artefak yang diterbitkan ke claude.ai dari proyek ini"
+    "tooltipArtifacts": "Artefak yang diterbitkan ke claude.ai dari proyek ini",
+    "tooltipBackgroundTasks": "Tugas latar belakang"
   },
   "memory": {
     "panelDescription": "Atur bagaimana Claude berperilaku dalam proyek Anda. Pengaturan global berlaku di mana saja, pengaturan proyek akan menimpanya.",
@@ -1912,7 +1913,9 @@
     "elicitationDecline": "Tolak",
     "elicitationOpen": "Lanjutkan",
     "cancel": "Batal",
-    "tabDocuments": "Dokumen"
+    "tabDocuments": "Dokumen",
+    "runInBackground": "Jalankan di latar belakang",
+    "backgroundWorkFailed": "Tidak dapat memindahkan pekerjaan ke latar belakang. {error}"
   },
   "hooks": {
     "consent": {
@@ -3530,7 +3533,25 @@
     "noActiveSession": "Tidak ada sesi aktif untuk ditautkan",
     "sessionJustNow": "Baru saja",
     "sessionMinutesAgo": "{count} menit lalu",
-    "sessionHoursAgo": "{count} jam lalu"
+    "sessionHoursAgo": "{count} jam lalu",
+    "navTitle": "Tugas latar belakang",
+    "running": "Berjalan",
+    "finished": "Selesai",
+    "noneRunning": "Tidak ada yang berjalan.",
+    "empty": "Belum ada tugas latar belakang.",
+    "clear": "Hapus",
+    "typeAgent": "Agen",
+    "typeShell": "Bash",
+    "typeWorkflow": "Workflow",
+    "typeMonitor": "Monitor",
+    "typeTask": "Tugas",
+    "statusRunning": "Berjalan",
+    "statusCompleted": "Selesai",
+    "statusFailed": "Gagal",
+    "statusStopped": "Dihentikan",
+    "statusEnded": "Berakhir",
+    "sessionGroup": "Sesi",
+    "typeSession": "Sesi"
   },
   "kanban": {
     "tab": "Kanban",

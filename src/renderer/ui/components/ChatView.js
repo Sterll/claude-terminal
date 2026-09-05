@@ -486,11 +486,25 @@ class ChatView extends BaseComponent {
           <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
         </button>
       </div>
-      <div class="chat-messages">
-        <div class="chat-welcome">
-          <img class="chat-welcome-logo" src="assets/claude-mascot.svg" alt="" draggable="false" />
-          <div class="chat-welcome-text">${escapeHtml(t('chat.welcomeMessage'))}</div>
+      <div class="chat-body">
+        <div class="chat-messages">
+          <div class="chat-welcome">
+            <img class="chat-welcome-logo" src="assets/claude-mascot.svg" alt="" draggable="false" />
+            <div class="chat-welcome-text">${escapeHtml(t('chat.welcomeMessage'))}</div>
+          </div>
         </div>
+        <!-- Background tasks for THIS session, beside the conversation rather
+             than replacing it: the point is to watch work run while still
+             reading the transcript. -->
+        <aside class="chat-tasks-drawer" hidden>
+          <div class="chat-tasks-head">
+            <span class="chat-tasks-title">${escapeHtml(t('tasks.navTitle') || 'Background tasks')}</span>
+            <button class="chat-tasks-close" title="${escapeHtml(t('common.close') || 'Close')}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div class="chat-tasks-body"></div>
+        </aside>
       </div>
       <div class="chat-changes-panel" hidden></div>
       <!-- Documents is itself a two-column screen: the list of what this
@@ -521,6 +535,11 @@ class ChatView extends BaseComponent {
           <div class="chat-input" contenteditable="true" role="textbox" data-placeholder="${escapeHtml(t('chat.placeholder'))}" spellcheck="false"></div>
           <input type="file" class="chat-file-input" accept="image/png,image/jpeg,image/gif,image/webp" multiple style="display:none" />
           <div class="chat-input-actions">
+            <button class="chat-bg-btn" title="${escapeHtml(t('chat.runInBackground') || 'Run in background')}" style="display:none">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="13" height="13" rx="2"/><path d="M8 21h11a2 2 0 0 0 2-2V8"/>
+              </svg>
+            </button>
             <button class="chat-stop-btn" title="${t('common.stop')}" style="display:none">
               <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
             </button>
@@ -536,6 +555,9 @@ class ChatView extends BaseComponent {
             <span class="chat-status-text">${escapeHtml(t('chat.ready'))}</span>
             <button class="chat-search-btn" title="${escapeHtml(t('chat.searchConversation') || 'Search in conversation')}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </button>
+            <button class="chat-tasks-btn" title="${escapeHtml(t('tasks.navTitle') || 'Background tasks')}" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
             <button class="chat-export-btn" title="${escapeHtml(t('chat.exportConversation') || 'Export conversation')}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -579,6 +601,10 @@ class ChatView extends BaseComponent {
   const inputEl = chatView.querySelector('.chat-input');
   const sendBtn = chatView.querySelector('.chat-send-btn');
   const stopBtn = chatView.querySelector('.chat-stop-btn');
+  const bgBtn = chatView.querySelector('.chat-bg-btn');
+  const tasksDrawerEl = chatView.querySelector('.chat-tasks-drawer');
+  const tasksBodyEl = chatView.querySelector('.chat-tasks-body');
+  const tasksBtn = chatView.querySelector('.chat-tasks-btn');
   const statusDot = chatView.querySelector('.chat-status-dot');
   const statusTextEl = chatView.querySelector('.chat-status-text');
   const modelBtn = chatView.querySelector('.chat-model-btn');
@@ -2861,6 +2887,29 @@ class ChatView extends BaseComponent {
       isAborting = true;
       api.chat.interrupt({ sessionId });
     }
+  });
+
+  // Unlike stop, this does not end the turn: each blocking tool returns a
+  // "running in the background" result, the conversation carries on, and the
+  // work reappears in the background tasks panel.
+  bgBtn.addEventListener('click', async () => {
+    if (!sessionId) return;
+    bgBtn.disabled = true;
+    let res;
+    try {
+      res = await api.chat.backgroundWork({ sessionId });
+    } catch (err) {
+      res = { success: false, error: err?.message || String(err) };
+    }
+    if (res?.success) return;
+    // Re-enable so a failure isn't a dead end — backgrounding can be disabled
+    // for the session entirely, in which case nothing was ever going to move.
+    bgBtn.disabled = false;
+    const Toast = require('./Toast');
+    Toast.showToast({
+      message: t('chat.backgroundWorkFailed', { error: (res && res.error) || '' }),
+      type: 'error',
+    });
   });
 
   // ── Image Lightbox ──
@@ -5932,6 +5981,9 @@ class ChatView extends BaseComponent {
   function setStreaming(streaming) {
     isStreaming = streaming;
     stopBtn.style.display = streaming ? '' : 'none';
+    // Only meaningful while something is actually in the foreground.
+    bgBtn.style.display = streaming ? '' : 'none';
+    if (!streaming) bgBtn.disabled = false;
     chatView.classList.toggle('streaming', streaming);
 
     // Fix #7: Disable model/effort dropdowns during streaming
@@ -7328,6 +7380,178 @@ class ChatView extends BaseComponent {
     setStatus('waiting', t('chat.waitingForInput') || 'Waiting for input...');
   });
   unsubscribers.push(unsubElicit);
+
+
+  // ── Background tasks drawer (this session only) ──
+  //
+  // Reads the shared registry but shows only this session's work: the drawer
+  // sits next to the conversation that produced it, so anything from another
+  // tab would just be noise here.
+
+  const { backgroundTasksState, listTasks: listAllTasks, getTask: getStoredTask } =
+    require('../../state/backgroundTasks.state');
+  const { formatDuration: fmtTaskDuration } = require('../../utils/format');
+
+  let tasksTicker = null;
+  // Tasks already announced to the user, so the drawer opens on the moment a
+  // task starts and not again on every later change to it.
+  const announcedTaskIds = new Set();
+
+  function sessionTasks() {
+    return sessionId ? listAllTasks().filter(task => task.sessionId === sessionId) : [];
+  }
+
+  function taskTypeLabel(task) {
+    if (task.type === 'subagent') return task.agentType || t('tasks.typeAgent') || 'Agent';
+    if (task.type === 'shell') return t('tasks.typeShell') || 'Bash';
+    if (task.type === 'workflow') return task.workflowName || t('tasks.typeWorkflow') || 'Workflow';
+    if (task.type === 'monitor') return t('tasks.typeMonitor') || 'Monitor';
+    return task.type || t('tasks.typeTask') || 'Task';
+  }
+
+  function taskTokens(usage) {
+    const total = usage?.total_tokens ?? usage?.totalTokens;
+    if (typeof total !== 'number') return '';
+    return total >= 1000 ? `${(total / 1000).toFixed(1)}k` : String(total);
+  }
+
+  function renderTasksDrawer() {
+    const tasks = sessionTasks();
+    const running = tasks.filter(task => task.status === 'running');
+
+    // The toggle only earns its place once this session has produced a task.
+    tasksBtn.hidden = tasks.length === 0;
+    tasksBtn.classList.toggle('has-running', running.length > 0);
+    if (!tasks.length) tasksDrawerEl.hidden = true;
+    if (tasksDrawerEl.hidden) return;
+
+    const row = (task) => {
+      const live = task.status === 'running';
+      const end = live ? Date.now() : (task.endedAt || Date.now());
+      const secs = Math.max(0, Math.round((end - task.startedAt) / 1000));
+      const tokens = taskTokens(task.usage);
+      return `
+        <div class="chat-task-row ${escapeHtml(task.status)}" data-task-id="${escapeHtml(task.taskId)}">
+          <div class="chat-task-row-main">
+            <div class="chat-task-row-desc">${escapeHtml(task.description || taskTypeLabel(task))}</div>
+            <div class="chat-task-row-meta">
+              <span class="chat-task-row-type">${escapeHtml(taskTypeLabel(task))}</span>
+              <span class="chat-task-row-time">${escapeHtml(fmtTaskDuration(secs))}</span>
+              ${tokens ? `<span class="chat-task-row-tokens">${escapeHtml(tokens)}</span>` : ''}
+            </div>
+          </div>
+          ${live ? `<button class="chat-task-row-stop" data-task-id="${escapeHtml(task.taskId)}" title="${escapeHtml(t('chat.stopTask') || 'Stop task')}">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+          </button>` : ''}
+        </div>`;
+    };
+
+    const finished = tasks.filter(task => task.status !== 'running');
+    tasksBodyEl.innerHTML = `
+      <div class="chat-tasks-group">
+        <div class="chat-tasks-group-title">${escapeHtml(t('tasks.running') || 'Running')} <span>${running.length}</span></div>
+        ${running.length ? running.map(row).join('')
+          : `<div class="chat-tasks-empty">${escapeHtml(t('tasks.noneRunning') || 'Nothing running.')}</div>`}
+      </div>
+      ${finished.length ? `
+      <div class="chat-tasks-group">
+        <div class="chat-tasks-group-title">${escapeHtml(t('tasks.finished') || 'Finished')} <span>${finished.length}</span></div>
+        ${finished.map(row).join('')}
+      </div>` : ''}`;
+  }
+
+  function toggleTasksDrawer(force) {
+    const open = force !== undefined ? force : tasksDrawerEl.hidden;
+    tasksDrawerEl.hidden = !open;
+    // Durations are read off the clock, so nothing repaints them while the
+    // drawer is shut — and a ticker on a hidden panel is pure waste.
+    if (open && !tasksTicker) {
+      tasksTicker = setInterval(() => {
+        if (!tasksDrawerEl.hidden && sessionTasks().some(task => task.status === 'running')) renderTasksDrawer();
+      }, 1000);
+    } else if (!open && tasksTicker) {
+      clearInterval(tasksTicker);
+      tasksTicker = null;
+    }
+    renderTasksDrawer();
+  }
+
+  tasksBtn.addEventListener('click', () => toggleTasksDrawer());
+  tasksDrawerEl.querySelector('.chat-tasks-close').addEventListener('click', () => toggleTasksDrawer(false));
+  /**
+   * Where a task lives in the transcript.
+   *
+   * The tool block that spawned it is the right anchor for both states: while
+   * the task runs it is the call, and once it settles the same block carries
+   * the result. Falling back to the inline card covers tasks the CLI reported
+   * without a tool_use id.
+   *
+   * @returns {HTMLElement|null}
+   */
+  function findTaskAnchor(task) {
+    if (task.toolUseId) {
+      try {
+        const byTool = messagesEl.querySelector(`[data-tool-use-id="${CSS.escape(task.toolUseId)}"]`);
+        if (byTool) return byTool;
+      } catch (_) { /* an id CSS.escape cannot handle is not worth throwing over */ }
+    }
+    try {
+      return messagesEl.querySelector(`.chat-task-card[data-task-id="${CSS.escape(task.taskId)}"]`);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function revealTask(task) {
+    const anchor = findTaskAnchor(task);
+    if (!anchor) return false;
+    // The transcript is virtualised in places, so ask for the block first and
+    // flash it after the scroll has had a frame to land.
+    anchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    requestAnimationFrame(() => {
+      anchor.classList.add('chat-task-flash');
+      setTimeout(() => anchor.classList.remove('chat-task-flash'), 1400);
+    });
+    return true;
+  }
+
+  tasksBodyEl.addEventListener('click', (e) => {
+    const stop = e.target.closest('.chat-task-row-stop');
+    if (stop) {
+      const task = getStoredTask(stop.dataset.taskId);
+      if (!task?.sessionId) return;
+      stop.disabled = true;
+      try { api.chat.stopTask({ sessionId: task.sessionId, taskId: task.taskId }); }
+      catch (_) { stop.disabled = false; }
+      return;
+    }
+
+    const row = e.target.closest('.chat-task-row');
+    if (!row) return;
+    const task = getStoredTask(row.dataset.taskId);
+    if (!task) return;
+    // Nothing to jump to is worth saying: silence would read as a dead click.
+    if (!revealTask(task)) row.classList.add('chat-task-row-noanchor');
+    setTimeout(() => row.classList.remove('chat-task-row-noanchor'), 700);
+  });
+
+  /**
+   * A task starting is the one moment the drawer has something new to say, so
+   * it opens itself then — but only then. Reacting to every state change would
+   * re-open a drawer the user just closed, on the next duration tick.
+   */
+  function onTasksChanged() {
+    const fresh = sessionTasks().filter(task => !announcedTaskIds.has(task.taskId));
+    for (const task of fresh) announcedTaskIds.add(task.taskId);
+    if (tasksDrawerEl.hidden && fresh.some(task => task.status === 'running')) {
+      toggleTasksDrawer(true); // renders on the way through
+      return;
+    }
+    renderTasksDrawer();
+  }
+
+  unsubscribers.push(backgroundTasksState.subscribe(onTasksChanged));
+  unsubscribers.push(() => { if (tasksTicker) clearInterval(tasksTicker); tasksTicker = null; });
 
   // ── Background task lifecycle (live task list with stop button) ──
   //

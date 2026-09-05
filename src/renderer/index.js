@@ -52,7 +52,29 @@ if (_api?.chat?.modelCatalog) {
   require('./services/ModelCatalogClient').load(_api).catch(() => {});
 }
 
+// The task registry is fed here rather than from the chat view, so a tab that
+// is closed and reopened does not lose the work it started, and so the two CLI
+// feeds are reconciled in exactly one place.
+_registerBackgroundTaskListeners(_api);
+
 // ── Cloud event handlers ──────────────────────────────────────────────────
+
+function _registerBackgroundTaskListeners(api) {
+  if (!api?.chat?.onTaskUpdate) return;
+  const store = require('./state/backgroundTasks.state');
+
+  api.chat.onTaskUpdate((data) => {
+    // Ambient housekeeping never belongs in a user-facing task list.
+    if (!data || data.skipTranscript) return;
+    if (data.phase === 'started') store.taskStarted(data);
+    else if (data.phase === 'ended') store.taskEnded(data);
+  });
+
+  // The level feed is what settles a task whose end bookend never arrived.
+  api.chat.onBackgroundTasks?.((data) => {
+    if (data?.sessionId) store.syncLive(data.sessionId, data.tasks);
+  });
+}
 
 function _registerCloudListeners(api) {
   if (!api?.cloud) return;

@@ -114,6 +114,17 @@ function registerChatHandlers() {
     }
   });
 
+  // Push in-flight foreground work to the background (Ctrl+B equivalent)
+  ipcMain.handle('chat-background-work', async (_event, { sessionId, toolUseId } = {}) => {
+    try {
+      const backgrounded = await chatService.backgroundTasks(sessionId, toolUseId);
+      return { success: true, backgrounded };
+    } catch (err) {
+      console.error('[chat-background-work] Error:', err.message);
+      return { success: false, error: err.message };
+    }
+  });
+
   // Change effort level mid-session
   ipcMain.handle('chat-set-effort', async (_event, { sessionId, effort }) => {
     try {

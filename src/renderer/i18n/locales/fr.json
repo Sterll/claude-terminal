@@ -1181,7 +1181,8 @@
     "separatorSystem": "Système",
     "tabFiles": "Fichiers",
     "tooltipFiles": "Fichiers",
-    "tooltipArtifacts": "Artefacts publiés sur claude.ai depuis ce projet"
+    "tooltipArtifacts": "Artefacts publiés sur claude.ai depuis ce projet",
+    "tooltipBackgroundTasks": "Tâches de fond"
   },
   "memory": {
     "panelDescription": "Configurez le comportement de Claude dans vos projets. Les reglages globaux s'appliquent partout, les reglages projet les remplacent.",
@@ -1912,7 +1913,9 @@
     "elicitationDecline": "Refuser",
     "elicitationOpen": "Continuer",
     "cancel": "Annuler",
-    "tabDocuments": "Documents"
+    "tabDocuments": "Documents",
+    "runInBackground": "Passer en arrière-plan",
+    "backgroundWorkFailed": "Impossible de passer le travail en arrière-plan. {error}"
   },
   "hooks": {
     "consent": {
@@ -3530,7 +3533,25 @@
     "noActiveSession": "Aucune session active à lier",
     "sessionJustNow": "À l'instant",
     "sessionMinutesAgo": "Il y a {count} min",
-    "sessionHoursAgo": "Il y a {count}h"
+    "sessionHoursAgo": "Il y a {count}h",
+    "navTitle": "Tâches en arrière-plan",
+    "running": "En cours",
+    "finished": "Terminé",
+    "noneRunning": "Rien en cours.",
+    "empty": "Aucune tâche de fond pour l'instant.",
+    "clear": "Effacer",
+    "typeAgent": "Agent",
+    "typeShell": "Bash",
+    "typeWorkflow": "Workflow",
+    "typeMonitor": "Moniteur",
+    "typeTask": "Tâche",
+    "statusRunning": "En cours",
+    "statusCompleted": "Terminé",
+    "statusFailed": "Échec",
+    "statusStopped": "Arrêté",
+    "statusEnded": "Terminé",
+    "sessionGroup": "Session",
+    "typeSession": "Session"
   },
   "kanban": {
     "tab": "Kanban",
