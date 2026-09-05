@@ -252,7 +252,7 @@ mark.chat-search-hit.current {
 }
 
 .chat-input-footer:hover .chat-search-btn {
-  opacity: 0.5;
+  opacity: 1;
 }
 
 .chat-search-btn:hover {
@@ -2060,7 +2060,7 @@ hr.chat-plan-separator {
 }
 
 .chat-input-footer:hover .chat-export-btn {
-  opacity: 0.5;
+  opacity: 1;
 }
 
 .chat-export-btn:hover {
@@ -3606,30 +3606,33 @@ hr.chat-plan-separator {
   margin-right: 4px;
 }
 
+/* The footer carries the model, the context gauge and the running cost — the
+   things you check before spending a turn. It stays on the AA text ramp: no
+   opacity multiplier on top of the tokens, hierarchy comes from the ramp step. */
 .chat-status-text {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  opacity: 0.6;
+  font-size: var(--font-xs);
+  color: var(--text-muted);
 }
 
 .chat-status-tokens,
 .chat-status-cost {
-  font-size: 10px;
-  color: var(--text-tertiary);
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
   font-family: 'Cascadia Code', 'Fira Code', monospace;
-  opacity: 0.4;
 }
 
+/* No opacity here: this is the popover's offset parent, and group opacity on
+   the parent would dim .chat-context-popover along with it. */
 .chat-status-tokens {
   position: relative;
   cursor: help;
   outline: none;
-  transition: opacity 0.15s;
+  transition: color 0.15s;
 }
 
 .chat-status-tokens:hover,
 .chat-status-tokens:focus-visible {
-  opacity: 0.85;
+  color: var(--text-primary);
 }
 
 /* ── Context window breakdown popover (SDK 0.2.86+ getContextUsage) ── */
@@ -3747,23 +3750,21 @@ hr.chat-plan-separator {
   padding: 2px 6px;
   cursor: pointer;
   font-family: 'Cascadia Code', 'Fira Code', monospace;
-  font-size: 10px;
+  font-size: var(--font-2xs);
   color: var(--accent-color, #d97706);
-  opacity: 0.6;
-  transition: opacity 0.15s;
+  transition: background 0.15s;
 }
 
 .chat-model-btn:hover {
-  opacity: 1;
+  background: var(--bg-hover);
 }
 
 .chat-model-btn.locked {
   cursor: default;
-  opacity: 0.3;
 }
 
 .chat-model-btn.locked:hover {
-  opacity: 0.3;
+  background: none;
 }
 
 .chat-model-btn.locked .chat-model-arrow {
@@ -3772,7 +3773,7 @@ hr.chat-plan-separator {
 
 .chat-model-arrow {
   font-size: 0.5625rem;
-  opacity: 0.5;
+  opacity: 0.75;
 }
 
 .chat-model-dropdown {
@@ -3824,9 +3825,8 @@ hr.chat-plan-separator {
 }
 
 .chat-model-option-desc {
-  font-size: 10px;
-  color: var(--text-tertiary);
-  opacity: 0.5;
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
 }
 
 .chat-model-check {
@@ -3851,23 +3851,21 @@ hr.chat-plan-separator {
   padding: 2px 6px;
   cursor: pointer;
   font-family: 'Cascadia Code', 'Fira Code', monospace;
-  font-size: 10px;
+  font-size: var(--font-2xs);
   color: var(--text-secondary, #888);
-  opacity: 0.6;
-  transition: opacity 0.15s;
+  transition: background 0.15s;
 }
 
 .chat-effort-btn:hover {
-  opacity: 1;
+  background: var(--bg-hover);
 }
 
 .chat-effort-btn.locked {
   cursor: default;
-  opacity: 0.3;
 }
 
 .chat-effort-btn.locked:hover {
-  opacity: 0.3;
+  background: none;
 }
 
 .chat-effort-btn.locked .chat-effort-arrow {
@@ -3876,7 +3874,7 @@ hr.chat-plan-separator {
 
 .chat-effort-arrow {
   font-size: 0.5625rem;
-  opacity: 0.5;
+  opacity: 0.75;
 }
 
 .chat-effort-dropdown {
@@ -3928,9 +3926,8 @@ hr.chat-plan-separator {
 }
 
 .chat-effort-option-desc {
-  font-size: 10px;
-  color: var(--text-tertiary);
-  opacity: 0.5;
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
 }
 
 .chat-effort-check {
@@ -4095,17 +4092,22 @@ hr.chat-plan-separator {
   50% { opacity: 0.5; background: rgba(217, 119, 6, 0.08); }
 }
 
-/* Fix #7: Disabled model/effort buttons during streaming */
+/* Fix #7: Disabled model/effort buttons during streaming.
+   Locked and disabled mean "you can't change this", not "you can't read this" —
+   streaming is exactly when you want to confirm which model is billing. The
+   state is signalled by dropping off the accent onto the muted ramp step (still
+   AA) plus cursor and the hidden arrow, never by fading the label out. */
+.chat-model-btn.locked,
+.chat-model-btn.disabled,
+.chat-effort-btn.locked,
+.chat-effort-btn.disabled {
+  color: var(--text-muted);
+}
+
 .chat-model-btn.disabled,
 .chat-effort-btn.disabled {
   cursor: not-allowed;
-  opacity: 0.3;
   pointer-events: none;
-}
-
-.chat-model-btn.disabled:hover,
-.chat-effort-btn.disabled:hover {
-  opacity: 0.3;
 }
 
 .chat-model-btn.disabled .chat-model-arrow,
