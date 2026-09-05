@@ -219,6 +219,10 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
       }
     }
   }
+  // Booting straight onto Claude clicks no tab, so nothing would have set the
+  // screen-scoped bits of the docked column.
+  document.body.dataset.activeTab = document.body.dataset.activeTab || 'claude';
+  syncOverviewEntry();
 
   // Initialize Claude event bus and provider (hooks or scraping)
   initClaudeEvents();
@@ -2832,11 +2836,12 @@ function selectProjectFromBar(projectIndex) {
   const tabs = document.getElementById('terminals-tabs');
   if (tabs) tabs.style.display = '';
 
-  // Picking a project tab is the way out of an Overview, on either screen.
+  // Picking a project is the way out of an Overview, on either screen.
   localState.dashboardScope = 'project';
   localState.filesScope = 'project';
   FilesPanel.setScope('project');
   ProjectBar.setOverviewActive(false);
+  syncOverviewEntry();
 
   TerminalManager.filterByProject(projectIndex);
   saveTerminalSessions();
@@ -2880,20 +2885,53 @@ ProjectBar.initProjectBar({
   onCloseProject: (project) => closeProjectFromBar(project),
   onContextMenu: (project, x, y) => showProjectTabContextMenu(project, x, y),
   onOpenPicker: (anchor) => toggleProjectsPopover(anchor),
-  // Two screens have an all-projects view now, so the Overview tab belongs to
-  // whichever one is showing.
-  onSelectOverview: () => {
-    if (document.body.dataset.activeTab === 'files') {
-      localState.filesScope = 'overview';
-      FilesPanel.setScope('overview');
-      ProjectBar.setOverviewActive(true);
-      return;
-    }
-    localState.dashboardScope = 'overview';
-    renderDashboardForScope();
-  },
+  onSelectOverview: () => selectOverview(),
   getTerminalStatsForProject: TerminalManager.getTerminalStatsForProject,
 });
+
+/**
+ * Show the all-projects view of whichever screen is up. Two navigations reach
+ * this: the Overview project tab (tab-bar mode) and the entry at the top of the
+ * docked column (column mode), so it must not assume either is on screen.
+ */
+function selectOverview() {
+  if (document.body.dataset.activeTab === 'files') {
+    localState.filesScope = 'overview';
+    FilesPanel.setScope('overview');
+    ProjectBar.setOverviewActive(true);
+  } else {
+    localState.dashboardScope = 'overview';
+    renderDashboardForScope();
+  }
+  syncOverviewEntry();
+}
+
+/**
+ * Name the project the sessions below belong to. In tab-bar mode the project
+ * bar says it; in column mode nothing did, so the session row sat under a bare
+ * tools strip with no idea whose sessions it was showing.
+ */
+/**
+ * The column's Overview entry: offered only on the screens that have such a
+ * view, and lit when it is the one showing.
+ *
+ * Column mode only. It sits in the projects panel, which is the same node the
+ * + opens as a popover in tab-bar mode — where the Overview project tab already
+ * does this job, so leaving it visible put an all-projects entry inside a
+ * project picker.
+ */
+function syncOverviewEntry() {
+  const entry = document.getElementById('projects-overview-item');
+  if (!entry) return;
+  const tab = document.body.dataset.activeTab;
+  const scoped = tab === 'dashboard' || tab === 'files';
+  entry.hidden = !scoped || !isSidebarNavigation();
+  const active = (tab === 'dashboard' && localState.dashboardScope === 'overview')
+    || (tab === 'files' && localState.filesScope === 'overview');
+  entry.classList.toggle('active', active);
+}
+
+document.getElementById('projects-overview-item')?.addEventListener('click', () => selectOverview());
 
 // ── Projects popover (the + button) ──
 // Hosts the full ProjectList: search, folders, drag & drop and every
@@ -2960,6 +2998,10 @@ function setNavigationMode(mode) {
   settingsState.setProp('navigationMode', mode);
   saveSettingsImmediate();
   applyNavigationMode(mode);
+  // Both follow the mode and the panel is shared, so they have to be redone on
+  // the way in as well as on the way out.
+  applyProjectsPanelWidth();
+  syncOverviewEntry();
   // The project-scoped screens are laid out differently in each mode, so
   // repaint whichever one is on screen.
   const projectIndex = projectsState.get().selectedProjectFilter;
@@ -2967,16 +3009,21 @@ function setNavigationMode(mode) {
   applyProjectContext(projectIndex);
 }
 
+/**
+ * The width the resizer persists belongs to the docked column. The popover is
+ * the same node, so applying it in tab-bar mode sized the picker from a column
+ * setting — and the inline style beat the stylesheet, so it could not size
+ * itself back.
+ */
+function applyProjectsPanelWidth() {
+  const panel = document.getElementById('projects-popover');
+  if (!panel) return;
+  const saved = settingsState.get().projectsPanelWidth;
+  panel.style.width = isSidebarNavigation() && saved ? `${saved}px` : '';
+}
+
 // Changing it from Settings goes through the same path as the first-launch card
 document.addEventListener('navigation-mode-change', (e) => setNavigationMode(e.detail));
-
-// Replay and Tasks carry their own project dropdown in sidebar mode, where there
-// is no bar to pick from. They select through this rather than holding a second
-// notion of the active project.
-document.addEventListener('project-select-by-path', (e) => {
-  const index = projectsState.get().projects.findIndex(p => p.path === e.detail);
-  if (index >= 0) selectProjectFromBar(index);
-});
 
 function isProjectsPopoverOpen() {
   const popover = document.getElementById('projects-popover');
@@ -2995,9 +3042,14 @@ function openProjectsPopover(anchor) {
   const anchorEl = anchor || document.getElementById('btn-open-project');
   if (anchorEl) {
     const rect = anchorEl.getBoundingClientRect();
-    const width = popover.offsetWidth;
-    popover.style.top = `${rect.bottom + 4}px`;
-    popover.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))}px`;
+    const top = rect.bottom + 4;
+    // Sized by the room actually left under the +, which the stylesheet cannot
+    // know: a fixed cap ran the list past the bottom of a short window, and
+    // capped a tall one well short of what it could have shown.
+    const room = window.innerHeight - top - 12;
+    popover.style.maxHeight = `${Math.max(200, Math.min(520, room))}px`;
+    popover.style.top = `${top}px`;
+    popover.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - popover.offsetWidth - 8))}px`;
   }
 
   ProjectList.render();
@@ -3278,7 +3330,6 @@ api.explorer.onChanges((changes) => {
 api.explorer.onWatchLimitWarning((totalPaths) => {
   showToast({ type: 'warning', title: t('fileExplorer.title'), message: t('fileExplorer.watchLimitWarning', { count: totalPaths }) });
 });
-// Wire lightbulb resume session button
 // Follow the active project. The Files screen repoints itself on activate, so
 // this only has to keep the watcher and the tree root in step.
 projectsState.subscribe(() => {
@@ -3546,7 +3597,7 @@ const _TAB_LIFECYCLE = {
     deactivate: () => ControlTowerPanel.cleanup()
   },
   dashboard: {
-    activate: () => { populateDashboardProjects(); renderDashboardForScope(); },
+    activate: () => renderDashboardForScope(),
     // 30s GitHub Actions poll started by the dashboard cards; it used to keep
     // hitting the API from a tab nobody was looking at.
     deactivate: () => DashboardService.stopWorkflowPolling()
@@ -3679,6 +3730,7 @@ document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
       (tabId === 'dashboard' && localState.dashboardScope === 'overview')
       || (tabId === 'files' && localState.filesScope === 'overview')
     );
+    syncOverviewEntry();
     // Tear down the tab we are leaving, then wake up the one we entered.
     _leaveCurrentTab(tabId);
     _runTabHook(tabId, 'activate');
@@ -4377,156 +4429,6 @@ async function renameProjectUI(projectId) {
 document.getElementById('modal-close').onclick = closeModal;
 document.getElementById('modal-overlay').onclick = (e) => { if (e.target.id === 'modal-overlay') closeModal(); };
 
-// ========== SKILLS & AGENTS (extracted to SkillsAgentsPanel module) ==========
-// ========== PLUGINS (extracted to PluginsPanel module) ==========
-// ========== MARKETPLACE (extracted to MarketplacePanel module) ==========
-// ========== MCP (extracted to McpPanel module) ==========
-// ========== DASHBOARD ==========
-/**
- * The dashboard follows the project bar: a project tab shows that project, the
- * Overview tab in front of them shows all projects. There is deliberately no
- * second project selector on the screen itself.
- */
-function populateDashboardProjects() {
-  // Sidebar navigation only: in tab-bar mode the bar and its Overview tab are
-  // the selector, and this list is not on screen.
-  if (!document.body.classList.contains('nav-sidebar')) return;
-  const list = document.getElementById('dashboard-projects-list');
-  if (!list) return;
-  const state = projectsState.get();
-  const { projects, folders, rootOrder } = state;
-
-  if (projects.length === 0) {
-    list.innerHTML = `<div class="dashboard-projects-empty">Aucun projet</div>`;
-    return;
-  }
-
-  // Overview item
-  const overviewHtml = `
-    <div class="dashboard-project-item overview-item ${localState.dashboardScope === 'overview' ? 'active' : ''}" data-index="-1">
-      <div class="dashboard-project-icon">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
-      </div>
-      <div class="dashboard-project-info">
-        <div class="dashboard-project-name">${t('dashboard.overview')}</div>
-      </div>
-    </div>
-  `;
-
-  function renderFolderItem(folder, depth) {
-    const projectCount = countProjectsRecursive(folder.id);
-    const isCollapsed = folder.collapsed;
-    const indent = depth * 16;
-
-    const colorIndicator = folder.color
-      ? `<span class="dash-folder-color" style="background: ${folder.color}"></span>`
-      : '';
-
-    const folderIcon = folder.icon
-      ? `<span class="dash-folder-emoji">${folder.icon}</span>`
-      : `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>`;
-
-    let childrenHtml = '';
-    const children = folder.children || [];
-    for (const childId of children) {
-      const childFolder = folders.find(f => f.id === childId);
-      if (childFolder) {
-        childrenHtml += renderFolderItem(childFolder, depth + 1);
-      } else {
-        const childProject = projects.find(p => p.id === childId);
-        if (childProject && childProject.folderId === folder.id) {
-          childrenHtml += renderProjectItem(childProject, depth + 1);
-        }
-      }
-    }
-
-    return `
-      <div class="dash-folder-item" data-folder-id="${folder.id}">
-        <div class="dash-folder-header" style="padding-left: ${indent + 8}px">
-          <span class="dash-folder-chevron ${isCollapsed ? 'collapsed' : ''}">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
-          </span>
-          ${colorIndicator}
-          <span class="dash-folder-icon">${folderIcon}</span>
-          <span class="dash-folder-name">${escapeHtml(folder.name)}</span>
-          <span class="dash-folder-count">${projectCount}</span>
-        </div>
-        <div class="dash-folder-children ${isCollapsed ? 'collapsed' : ''}">
-          ${childrenHtml}
-        </div>
-      </div>
-    `;
-  }
-
-  function renderProjectItem(project, depth) {
-    const index = getProjectIndex(project.id);
-    const isActive = localState.dashboardScope !== 'overview' && projectsState.get().selectedProjectFilter === index;
-    const indent = depth * 16;
-
-    const colorIndicator = project.color
-      ? `<span class="dash-folder-color" style="background: ${project.color}"></span>`
-      : '';
-
-    const dashTypeHandler = registry.get(project.type);
-    const dashTypeIcon = dashTypeHandler.getDashboardIcon ? dashTypeHandler.getDashboardIcon(project) : null;
-    const iconHtml = project.icon
-      ? `<span class="dashboard-project-emoji">${project.icon}</span>`
-      : (dashTypeIcon || '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>');
-
-    return `
-      <div class="dashboard-project-item ${isActive ? 'active' : ''}" data-index="${index}" style="padding-left: ${indent}px">
-        <div class="dashboard-project-icon">${colorIndicator}${iconHtml}</div>
-        <div class="dashboard-project-info">
-          <div class="dashboard-project-name">${escapeHtml(project.name)}</div>
-          <div class="dashboard-project-path">${escapeHtml(project.path)}</div>
-        </div>
-      </div>
-    `;
-  }
-
-  let itemsHtml = '';
-  for (const itemId of (rootOrder || [])) {
-    const folder = folders.find(f => f.id === itemId);
-    if (folder) {
-      itemsHtml += renderFolderItem(folder, 0);
-    } else {
-      const project = projects.find(p => p.id === itemId);
-      if (project) {
-        itemsHtml += renderProjectItem(project, 0);
-      }
-    }
-  }
-
-  list.innerHTML = overviewHtml + itemsHtml;
-
-  // Click handlers for projects
-  list.querySelectorAll('.dashboard-project-item').forEach(item => {
-    item.onclick = () => {
-      const index = parseInt(item.dataset.index);
-      if (index === -1) {
-        localState.dashboardScope = 'overview';
-        populateDashboardProjects();
-        renderDashboardForScope();
-      } else {
-        // Same switch the project bar performs, so both navigations agree
-        localState.dashboardScope = 'project';
-        selectProjectFromBar(index);
-        populateDashboardProjects();
-      }
-    };
-  });
-
-  // Click handlers for folder headers (toggle collapse)
-  list.querySelectorAll('.dash-folder-header').forEach(header => {
-    header.onclick = (e) => {
-      e.stopPropagation();
-      const folderItem = header.closest('.dash-folder-item');
-      const folderId = folderItem.dataset.folderId;
-      toggleFolderCollapse(folderId);
-      populateDashboardProjects();
-    };
-  });
-}
 
 function renderDashboardForScope() {
   const projectIndex = projectsState.get().selectedProjectFilter;
@@ -7051,32 +6953,27 @@ window.addEventListener('beforeunload', () => {
     document.addEventListener('mouseup', onMouseUp);
   });
 
-  const savedWidth = settingsState.get().projectsPanelWidth;
-  if (savedWidth) panel.style.width = savedWidth + 'px';
+  applyProjectsPanelWidth();
 })();
 
-// ========== PROJECTS PANEL TOGGLE (sidebar navigation) ==========
+// ========== PROJECTS PANEL TOGGLE (column navigation) ==========
+// The collapsed state used to be a class on .claude-layout, which is inside
+// #tab-claude. Now that the column stands beside every screen, so must the
+// strip that brings it back — otherwise collapsing it on Git or Files left no
+// way to reopen it.
 (function initProjectsPanelToggle() {
   const panel = document.getElementById('projects-popover');
-  const layout = document.getElementById('claude-layout');
   const btnToggle = document.getElementById('btn-toggle-projects');
   const btnShow = document.getElementById('btn-show-projects');
-  if (!panel || !layout || !btnToggle || !btnShow) return;
+  if (!panel || !btnToggle || !btnShow) return;
 
-  if (localStorage.getItem('projects-panel-hidden') === 'true') {
-    panel.classList.add('collapsed');
-    layout.classList.add('projects-hidden');
-  }
-
-  btnToggle.onclick = () => {
-    panel.classList.add('collapsed');
-    layout.classList.add('projects-hidden');
-    localStorage.setItem('projects-panel-hidden', 'true');
+  const setCollapsed = (collapsed) => {
+    panel.classList.toggle('collapsed', collapsed);
+    document.body.classList.toggle('projects-collapsed', collapsed);
+    localStorage.setItem('projects-panel-hidden', String(collapsed));
   };
 
-  btnShow.onclick = () => {
-    panel.classList.remove('collapsed');
-    layout.classList.remove('projects-hidden');
-    localStorage.setItem('projects-panel-hidden', 'false');
-  };
+  setCollapsed(localStorage.getItem('projects-panel-hidden') === 'true');
+  btnToggle.onclick = () => setCollapsed(true);
+  btnShow.onclick = () => setCollapsed(false);
 })();

@@ -281,13 +281,21 @@ body:not([data-active-tab="claude"]) .project-bar-tools {
 
 /* ========== PROJECTS POPOVER ==========
    The full project tree on demand (search, folders, drag & drop, per-project
-   menus) instead of in permanent screen space. */
+   menus) instead of in permanent screen space.
+
+   Same node as the docked column of the other navigation, so everything that
+   belongs to the column has to be undone here — see the picker block further
+   down. Its own width, not --projects-panel-width: that variable follows the
+   window (400px past 1920, 450 past 2560) because a column shares the screen
+   with the content, which a popover laid over it does not. The height is
+   measured against the + it hangs from, in openProjectsPopover(); the value
+   here only holds until then. */
 
 .projects-popover {
   position: fixed;
   z-index: 1000;
-  width: var(--projects-panel-width);
-  max-height: min(560px, calc(100vh - 120px));
+  width: 300px;
+  max-height: min(520px, calc(100vh - 120px));
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
@@ -315,22 +323,125 @@ body:not([data-active-tab="claude"]) .project-bar-tools {
   position: relative;
 }
 
-.projects-popover .panel-header {
-  padding: 10px 12px;
+/* ── The picker, in tab-bar mode ───────────────────────────────────────────
+   The column and the popover are one node, so the popover inherited the
+   column's design: cards with a background and 8px between them, a full panel
+   header, a root drop zone and a resize handle. A column is lived in — it
+   stands there all session and has the room to show a path, a duration and a
+   row of shortcuts. This is picked from and dismissed in one click, so the
+   same chrome is only distance between the + and the project you came for.
+
+   Rows are menu items here. Everything the column earns its space with is
+   dropped, whatever the compact-projects setting says: in a picker there is
+   no second line worth reading. ── */
+
+body.nav-tabs .projects-popover .panel-header {
+  padding: 8px 8px 8px 12px;
+  border-bottom: none;
 }
 
-.projects-popover .panel-header h2 {
-  font-size: var(--font-base);
+body.nav-tabs .projects-popover .panel-header h2 {
+  font-size: var(--font-xs);
+  letter-spacing: 0.6px;
+}
+
+body.nav-tabs .projects-popover .panel-actions .btn-icon {
+  width: 24px;
+  height: 24px;
+}
+
+body.nav-tabs .projects-popover .panel-actions .btn-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+body.nav-tabs .projects-popover .projects-search {
+  padding: 0 12px 8px;
+  border-bottom: none;
+}
+
+/* Through .projects-list, not straight to .project-item: the compact-projects
+   rules further down are `body.compact-projects .project-item:not(.active)`,
+   which ties on specificity and wins on source order. */
+body.nav-tabs .projects-popover .projects-list {
+  padding: 4px;
+}
+
+body.nav-tabs .projects-popover .projects-list .project-item {
+  padding: 4px 8px;
+  margin-bottom: 1px;
+  background: transparent;
+  border-color: transparent;
+  border-radius: var(--radius-sm);
+}
+
+body.nav-tabs .projects-popover .projects-list .project-item:hover {
+  background: var(--bg-hover);
+  border-color: transparent;
+}
+
+body.nav-tabs .projects-popover .projects-list .project-info,
+body.nav-tabs .projects-popover .projects-list .project-name {
+  margin-bottom: 0;
+}
+
+body.nav-tabs .projects-popover .projects-list .project-name {
+  font-size: var(--font-sm);
+  font-weight: 500;
+  gap: 7px;
+}
+
+body.nav-tabs .projects-popover .projects-list .project-name > svg,
+body.nav-tabs .projects-popover .projects-list .project-emoji-icon {
+  width: 14px;
+  height: 14px;
+  font-size: 12px;
+}
+
+body.nav-tabs .projects-popover .projects-list .terminal-count {
+  height: 16px;
+}
+
+body.nav-tabs .projects-popover .projects-list .project-path,
+body.nav-tabs .projects-popover .projects-list .project-time,
+body.nav-tabs .projects-popover .projects-list .project-tags,
+body.nav-tabs .projects-popover .projects-list .project-actions {
+  display: none;
+}
+
+body.nav-tabs .projects-popover .projects-list .folder-header {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+/* Dropping a project on the root still works — the strip just stops holding
+   16px of empty list open to advertise itself. */
+body.nav-tabs .projects-popover .projects-list .drop-zone-root {
+  height: 0;
+  margin-top: 0;
+}
+
+body.nav-tabs .projects-popover .projects-list .drop-zone-root.drag-over {
+  height: 32px;
+  margin-top: 4px;
+}
+
+/* The resize handle is the column's. Here it is an invisible strip down the
+   popover's right edge, over the rows it covers. */
+body.nav-tabs .projects-popover .panel-resizer {
+  display: none;
 }
 
 /* ── Sidebar navigation mode ──────────────────────────────────────────────
    The pre-tab-bar navigation, shipped in full alongside the tab bar. The
-   projects host is moved into .claude-layout and stops being a popover: it
-   becomes the docked column it was, with its resizer and collapse toggle.
-   Only one navigation is mounted at a time, so the two never overlap. ── */
+   projects host is docked between the nav and the content and stops being a
+   popover: it becomes the column it was, with its resizer and collapse
+   toggle. Only one navigation is mounted at a time, so the two never
+   overlap. ── */
 
-.claude-layout > .projects-popover {
+.projects-popover.docked {
   position: static;
+  display: flex;
   width: var(--projects-panel-width);
   min-width: 170px;
   max-width: 450px;
@@ -345,7 +456,7 @@ body:not([data-active-tab="claude"]) .project-bar-tools {
   transition: width 0.2s ease, min-width 0.2s ease, opacity 0.2s ease;
 }
 
-.claude-layout > .projects-popover.collapsed {
+.projects-popover.docked.collapsed {
   width: 0 !important;
   min-width: 0;
   max-width: 0;
@@ -355,9 +466,15 @@ body:not([data-active-tab="claude"]) .project-bar-tools {
   pointer-events: none;
 }
 
-/* The whole bar is the other navigation. Its tools row is moved into the
-   terminals header first, so nothing is left in it to show. */
-body.nav-sidebar #project-bar,
+/* The column is the project selector, so it stands only where a project
+   context means anything — the same screens the tab bar serves. */
+body.nav-sidebar:not([data-active-tab="claude"]):not([data-active-tab="files"]):not([data-active-tab="git"]):not([data-active-tab="dashboard"]):not([data-active-tab="session-replay"]):not([data-active-tab="tasks"]) .projects-popover.docked {
+  display: none;
+}
+
+/* The bar's tools row is moved into the terminals header in this mode, and the
+   column replaces it as the selector — but the bar itself stays, reduced to
+   the active project's name (see below). */
 body.nav-sidebar #btn-close-projects-popover {
   display: none;
 }
@@ -516,24 +633,28 @@ body.nav-tabs #btn-toggle-projects {
   background: var(--bg-tertiary);
 }
 
-/* Compact mode: collapsed non-active projects */
-body.compact-projects .project-item {
+/* Compact mode: collapsed non-active projects. The one you are working in
+   stays open — its path, its time and its shortcuts are the reason the docked
+   column exists. Nothing marked a card active while the project tab bar was
+   the only navigation, so these carried no :not(.active) and collapsed every
+   card alike. */
+body.compact-projects .project-item:not(.active) {
   padding: 8px 12px;
   margin-bottom: 4px;
   border-color: transparent;
 }
 
-body.compact-projects .project-item .project-path,
-body.compact-projects .project-item .project-time,
-body.compact-projects .project-item .project-actions {
+body.compact-projects .project-item:not(.active) .project-path,
+body.compact-projects .project-item:not(.active) .project-time,
+body.compact-projects .project-item:not(.active) .project-actions {
   display: none;
 }
 
-body.compact-projects .project-item .project-info {
+body.compact-projects .project-item:not(.active) .project-info {
   margin-bottom: 0;
 }
 
-body.compact-projects .project-item .project-name {
+body.compact-projects .project-item:not(.active) .project-name {
   margin-bottom: 0;
 }
 
@@ -641,9 +762,16 @@ body.compact-projects .project-item .project-name {
   background: var(--bg-hover);
 }
 
-body.compact-projects .project-item:hover {
+body.compact-projects .project-item:not(.active):hover {
   border-color: var(--border-color);
   background: var(--bg-hover, var(--bg-secondary));
+}
+
+/* The project you are working in, in the docked column. */
+.project-item.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  box-shadow: 0 0 12px var(--accent-dim), inset 0 0 0 1px var(--accent-dim);
 }
 
 .project-info {
@@ -4191,7 +4319,18 @@ body.compact-projects .project-item:hover {
   height: 14px;
 }
 
-.claude-layout.projects-hidden .btn-show-projects {
+/* Docked beside the content, the strip is a column of its own rather than an
+   overlay pinned inside .claude-layout — so it is reachable from every screen
+   the projects column serves. */
+.main-container > .btn-show-projects {
+  position: static;
+  height: auto;
+  align-self: stretch;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-color);
+}
+
+body.nav-sidebar.projects-collapsed .main-container > .btn-show-projects {
   display: flex;
 }
 
@@ -4221,12 +4360,59 @@ body.compact-projects .project-item:hover {
 }
 
 
-/* Those two screens carry their own project list in sidebar mode only */
-body.nav-tabs .git-sidebar-projects,
-body.nav-tabs .dashboard-sidebar,
+/* The tools row above the sessions belongs to column mode; in tab-bar mode the
+   project bar carries it. (Dashboard and Git used to keep their own project
+   lists here too — the docked column is the single navigation now.) */
 body.nav-tabs #terminals-header {
   display: none !important;
 }
+
+/* ── The column's Overview entry ──
+   In tab-bar mode the Overview project tab does this job. The bar is hidden in
+   column mode, so without this the all-projects view is unreachable there. */
+.projects-overview-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: calc(100% - 16px);
+  margin: 0 8px 6px;
+  padding: 9px 11px;
+  border: 1px solid transparent;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border-radius: var(--radius);
+  font-size: var(--font-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.projects-overview-item[hidden] { display: none; }
+.projects-overview-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.projects-overview-item.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.projects-overview-icon { display: flex; flex-shrink: 0; }
+.projects-overview-icon svg { width: 15px; height: 15px; }
+
+/* ── The project bar in column mode ──
+   The column is the selector, so the bar has nothing left to select — but it
+   is still the one place on every screen that says which project you are
+   looking at, which matters most once the column is collapsed. It stays,
+   stripped to the active project's name: no +, no close, no other tabs, and
+   no Overview (the column carries that entry). */
+body.nav-sidebar #btn-open-project,
+body.nav-sidebar .project-tab:not(.active),
+body.nav-sidebar .project-tab-close,
+body.nav-sidebar .project-tabs-empty {
+  display: none;
+}
+
+body.nav-sidebar .project-tab.active {
+  cursor: default;
+  padding-right: 12px;
+}
+
 
 /* ── First-launch navigation chooser ──────────────────────────────────────
    The two layouts side by side, each drawn as a CSS miniature so it follows

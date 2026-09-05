@@ -108,7 +108,8 @@
     "closeOtherProjects": "Fermer les autres projets",
     "closeProjectTitle": "Fermer {name} ?",
     "closeProjectMessage": "Ce projet a {count} session(s) ouverte(s). Fermer son onglet y met fin.",
-    "closeProjectConfirm": "Fermer et terminer les sessions"
+    "closeProjectConfirm": "Fermer et terminer les sessions",
+    "moreActions": "Plus d'actions"
   },
   "terminals": {
     "noTerminals": "Aucun terminal pour ce projet",

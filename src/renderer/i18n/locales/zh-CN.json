@@ -108,7 +108,8 @@
     "closeOtherProjects": "关闭其他项目",
     "closeProjectTitle": "关闭 {name}？",
     "closeProjectMessage": "该项目有 {count} 个打开的会话。关闭其标签页将结束这些会话。",
-    "closeProjectConfirm": "关闭并结束会话"
+    "closeProjectConfirm": "关闭并结束会话",
+    "moreActions": "更多操作"
   },
   "terminals": {
     "noTerminals": "该项目没有终端",

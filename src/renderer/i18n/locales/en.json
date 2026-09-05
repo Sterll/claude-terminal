@@ -108,7 +108,8 @@
     "closeOtherProjects": "Close other projects",
     "closeProjectTitle": "Close {name}?",
     "closeProjectMessage": "This project has {count} open session(s). Closing its tab ends them.",
-    "closeProjectConfirm": "Close and end sessions"
+    "closeProjectConfirm": "Close and end sessions",
+    "moreActions": "More actions"
   },
   "terminals": {
     "noTerminals": "No terminal for this project",

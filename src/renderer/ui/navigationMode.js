@@ -40,26 +40,47 @@ function applyNavigationMode(mode, doc = typeof document !== 'undefined' ? docum
   doc.body.classList.toggle('nav-tabs', !sidebar);
 
   const popover = doc.getElementById('projects-popover');
-  const layout = doc.getElementById('claude-layout');
+  const container = doc.querySelector('.main-container');
   const content = doc.querySelector('.content');
+  const layout = doc.getElementById('claude-layout');
+  const showBtn = doc.getElementById('btn-show-projects');
   const tools = doc.getElementById('project-bar-tools');
   const header = doc.getElementById('terminals-header');
   const bar = doc.getElementById('project-bar');
 
   if (sidebar) {
-    // Docked column, left of the file explorer, as it was before the tab bar
-    if (popover && layout && popover.parentElement !== layout) {
-      layout.insertBefore(popover, layout.querySelector('#file-explorer-panel'));
+    // Docked between the nav and the content, so it stands beside every screen
+    // rather than inside one of them. It used to live in .claude-layout, which
+    // meant it vanished with the Claude tab: in sidebar mode Dashboard, Git,
+    // Replay, Tasks and Files were left with no project switcher at all.
+    if (popover && container && content && popover.parentElement !== container) {
+      container.insertBefore(popover, content);
+    }
+    // The strip that reopens a collapsed column travels with it, right after,
+    // so the CSS can key off the adjacency.
+    if (showBtn && container && content && showBtn.parentElement !== container) {
+      container.insertBefore(showBtn, content);
     }
     if (tools && header && tools.parentElement !== header) header.appendChild(tools);
-    if (popover) popover.style.display = 'flex';
+    // Which screens it shows on is a CSS concern (see .projects-popover.docked),
+    // so no inline display to fight with. The height the popover measured for
+    // itself goes with it, or the column would inherit that cap.
+    if (popover) {
+      popover.classList.add('docked');
+      popover.style.display = '';
+      popover.style.maxHeight = '';
+    }
   } else {
     if (popover && content && popover.parentElement !== content) {
       content.insertBefore(popover, content.querySelector('.tab-content'));
     }
+    if (showBtn && layout && showBtn.parentElement !== layout) {
+      layout.insertBefore(showBtn, layout.firstChild);
+    }
     if (tools && bar && tools.parentElement !== bar) bar.appendChild(tools);
     // Back to a popover: closed until the + button opens it
     if (popover) {
+      popover.classList.remove('docked');
       popover.style.display = 'none';
       popover.classList.remove('collapsed');
     }
