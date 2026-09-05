@@ -4695,6 +4695,9 @@ input.chat-elicit-input[type="checkbox"] {
 .chat-task-card.failed { border-left: 3px solid var(--danger); }
 .chat-task-card.stopped { border-left: 3px solid var(--warning); }
 .chat-task-card.completed { border-left: 3px solid var(--success); }
+/* Settled by the live-task set rather than a bookend: the task is over, but
+   nothing told us how, so it must not read as success or failure. */
+.chat-task-card.ended { border-left: 3px solid var(--text-muted); }
 .chat-task-label {
   flex: 1;
   color: var(--text-primary);
@@ -4720,6 +4723,7 @@ input.chat-elicit-input[type="checkbox"] {
 .chat-task-status-icon.completed { color: var(--success); }
 .chat-task-status-icon.failed { color: var(--danger); }
 .chat-task-status-icon.stopped { color: var(--warning); }
+.chat-task-status-icon.ended { color: var(--text-muted); }
 .chat-task-stop {
   display: flex;
   align-items: center;

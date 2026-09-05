@@ -6,6 +6,7 @@
 
 const { BaseComponent } = require('../../core/BaseComponent');
 const { escapeHtml, highlight } = require('../../utils');
+const { BackgroundTaskReconciler } = require('../../services/BackgroundTaskReconciler');
 const { sanitizeColor } = require('../../utils/color');
 const {
   getToolIcon,
@@ -6557,50 +6558,95 @@ class ChatView extends BaseComponent {
   unsubscribers.push(unsubElicit);
 
   // ── Background task lifecycle (live task list with stop button) ──
+  //
+  // Two feeds describe the same tasks. `chat-task-update` carries the
+  // start/end bookends and is the only one that knows *how* a task ended.
+  // `chat-background-tasks` carries the full live set on every membership
+  // change and is authoritative about *whether* one is still running. A card is
+  // normally settled by its bookend; the set is the backstop for a bookend that
+  // never arrives, which would otherwise leave a spinner turning forever.
+
+  function findTaskCard(taskId) {
+    try {
+      return messagesEl.querySelector(`.chat-task-card[data-task-id="${CSS.escape(taskId)}"]`);
+    } catch (_) {
+      return Array.from(messagesEl.querySelectorAll('.chat-task-card'))
+        .find(c => c.dataset.taskId === taskId) || null;
+    }
+  }
+
+  // Owns the "the set says it's gone but no bookend said how" backstop.
+  const taskReconciler = new BackgroundTaskReconciler({
+    onSettle: (taskId) => {
+      const stale = findTaskCard(taskId);
+      if (stale && stale.classList.contains('running')) settleTaskCard(stale, 'ended');
+    },
+  });
+
+  /**
+   * @param {HTMLElement} card
+   * @param {'completed'|'failed'|'stopped'|'ended'} status `ended` is the
+   *   backstop outcome: the task is gone from the live set, but no bookend said
+   *   how it finished, so the card must not claim success.
+   */
+  function settleTaskCard(card, status) {
+    card.classList.remove('running', 'stopping');
+    card.classList.add('done', status);
+    const stopBtn = card.querySelector('.chat-task-stop');
+    if (stopBtn) stopBtn.remove();
+    const spinner = card.querySelector('.chat-task-spinner');
+    if (spinner) {
+      const glyph = status === 'completed' ? '✓'
+        : status === 'stopped' ? '■'
+        : status === 'ended' ? '·'
+        : '✕';
+      spinner.outerHTML = `<span class="chat-task-status-icon ${status}">${glyph}</span>`;
+    }
+  }
+
   const unsubTask = api.chat.onTaskUpdate((data) => {
     if (data.sessionId !== sessionId) return;
     if (data.skipTranscript) return; // ambient/housekeeping tasks stay hidden
     const taskId = data.taskId;
     if (!taskId) return;
-    let card;
-    try {
-      card = messagesEl.querySelector(`.chat-task-card[data-task-id="${CSS.escape(taskId)}"]`);
-    } catch (_) {
-      card = Array.from(messagesEl.querySelectorAll('.chat-task-card')).find(c => c.dataset.taskId === taskId);
-    }
+    const card = findTaskCard(taskId);
 
     if (data.phase === 'started') {
       if (card) return;
-      card = document.createElement('div');
-      card.className = 'chat-task-card running';
-      card.dataset.taskId = taskId;
+      const el = document.createElement('div');
+      el.className = 'chat-task-card running';
+      el.dataset.taskId = taskId;
       const label = escapeHtml(data.description || data.subagentType || data.workflowName || t('chat.backgroundTask') || 'Background task');
-      card.innerHTML = `
+      el.innerHTML = `
         <div class="chat-task-spinner"></div>
         <span class="chat-task-label">${label}</span>
         <button class="chat-task-stop" title="${escapeHtml(t('chat.stopTask') || 'Stop task')}">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
         </button>`;
-      card.querySelector('.chat-task-stop')?.addEventListener('click', () => {
+      el.querySelector('.chat-task-stop')?.addEventListener('click', () => {
         try { api.chat.stopTask({ sessionId, taskId }); } catch (_) {}
-        card.classList.add('stopping');
+        el.classList.add('stopping');
       });
-      messagesEl.appendChild(card);
-      requestAnimationFrame(() => card.scrollIntoView({ behavior: 'smooth', block: 'end' }));
+      messagesEl.appendChild(el);
+      requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'end' }));
     } else if (data.phase === 'ended' && card) {
-      const status = data.status || 'completed';
-      card.classList.remove('running', 'stopping');
-      card.classList.add('done', status);
-      const stopBtn = card.querySelector('.chat-task-stop');
-      if (stopBtn) stopBtn.remove();
-      const spinner = card.querySelector('.chat-task-spinner');
-      if (spinner) {
-        const ok = status === 'completed';
-        spinner.outerHTML = `<span class="chat-task-status-icon ${status}">${ok ? '✓' : (status === 'stopped' ? '■' : '✕')}</span>`;
-      }
+      // The bookend won the race — cancel the backstop and use its real status.
+      taskReconciler.cancel(taskId);
+      settleTaskCard(card, data.status || 'completed');
     }
   });
   unsubscribers.push(unsubTask);
+
+  const unsubBgTasks = api.chat.onBackgroundTasks((data) => {
+    if (data.sessionId !== sessionId) return;
+    const live = (data.tasks || []).map(task => task.taskId).filter(Boolean);
+    const running = Array.from(messagesEl.querySelectorAll('.chat-task-card.running'))
+      .map(card => card.dataset.taskId)
+      .filter(Boolean);
+    taskReconciler.sync(live, running);
+  });
+  unsubscribers.push(unsubBgTasks);
+  unsubscribers.push(() => taskReconciler.dispose());
 
   // If resuming, load and display conversation history
   if (pendingResumeId) {

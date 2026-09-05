@@ -401,3 +401,47 @@ describe('ChatService._isCliFailureText', () => {
     expect(chatService._isCliFailureText(undefined)).toBe(false);
   });
 });
+
+// ── normalizeBackgroundTasks ──
+// Shapes the `background_tasks_changed` level payload for the renderer.
+describe('normalizeBackgroundTasks', () => {
+  const { normalizeBackgroundTasks } = require('../../src/main/services/ChatService');
+
+  test('maps the SDK payload to the renderer shape', () => {
+    expect(normalizeBackgroundTasks([
+      { task_id: 't1', task_type: 'subagent', description: 'Review the auth module' },
+    ])).toEqual([
+      { taskId: 't1', taskType: 'subagent', description: 'Review the auth module' },
+    ]);
+  });
+
+  test('drops ambient housekeeping tasks', () => {
+    // The SDK asks hosts to keep these out of activity indicators; filtering
+    // here means no consumer has to remember the rule.
+    const out = normalizeBackgroundTasks([
+      { task_id: 't1', task_type: 'shell', description: 'npm test' },
+      { task_id: 't2', task_type: 'monitor', description: 'watcher', ambient: true },
+    ]);
+    expect(out.map(t => t.taskId)).toEqual(['t1']);
+  });
+
+  test('drops entries without a task id', () => {
+    // An id-less entry could never be reconciled against a card.
+    expect(normalizeBackgroundTasks([{ task_type: 'shell' }, null])).toEqual([]);
+  });
+
+  test('defaults the optional fields', () => {
+    expect(normalizeBackgroundTasks([{ task_id: 't1' }])).toEqual([
+      { taskId: 't1', taskType: null, description: '' },
+    ]);
+  });
+
+  test('returns an empty list for a malformed payload', () => {
+    // An empty set is meaningful here — it means "nothing is running" — so it
+    // must never be confused with "no information".
+    expect(normalizeBackgroundTasks(undefined)).toEqual([]);
+    expect(normalizeBackgroundTasks(null)).toEqual([]);
+    expect(normalizeBackgroundTasks('nope')).toEqual([]);
+
+  });
+});
