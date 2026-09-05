@@ -7402,7 +7402,6 @@ class ChatView extends BaseComponent {
 
   const { backgroundTasksState, listTasks: listAllTasks, getTask: getStoredTask } =
     require('../../state/backgroundTasks.state');
-  const { formatDuration: fmtTaskDuration } = require('../../utils/format');
 
   let tasksTicker = null;
   // Tasks already announced to the user, so the drawer opens on the moment a
@@ -7440,6 +7439,8 @@ class ChatView extends BaseComponent {
     const row = (task) => {
       const live = task.status === 'running';
       const end = live ? Date.now() : (task.endedAt || Date.now());
+      // Seconds, which is what `fmtDur` counts in. The identically named
+      // export from utils/format counts milliseconds and reads these as "0m".
       const secs = Math.max(0, Math.round((end - task.startedAt) / 1000));
       const tokens = taskTokens(task.usage);
       return `
@@ -7448,7 +7449,7 @@ class ChatView extends BaseComponent {
             <div class="chat-task-row-desc">${escapeHtml(task.description || taskTypeLabel(task))}</div>
             <div class="chat-task-row-meta">
               <span class="chat-task-row-type">${escapeHtml(taskTypeLabel(task))}</span>
-              <span class="chat-task-row-time">${escapeHtml(fmtTaskDuration(secs))}</span>
+              <span class="chat-task-row-time">${escapeHtml(fmtDur(secs))}</span>
               ${tokens ? `<span class="chat-task-row-tokens">${escapeHtml(tokens)}</span>` : ''}
             </div>
           </div>
