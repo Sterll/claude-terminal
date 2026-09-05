@@ -116,7 +116,7 @@ const {
 const registry = require('./src/project-types/registry');
 const { mergeTranslations } = require('./src/renderer/i18n');
 const ModalComponent = require('./src/renderer/ui/components/Modal');
-const { MemoryEditor, GitChangesPanel, ShortcutsManager, SettingsPanel, SkillsAgentsPanel, PluginsPanel, MarketplacePanel, McpPanel, WorkflowPanel, DatabasePanel, CloudPanel, ConnectivityPanel, ControlTowerPanel, SessionReplayPanel, ParallelTaskPanel, WorkspacePanel, ErrorLogPanel, FilesPanel } = require('./src/renderer/ui/panels');
+const { MemoryEditor, GitChangesPanel, ShortcutsManager, SettingsPanel, SkillsAgentsPanel, PluginsPanel, MarketplacePanel, McpPanel, WorkflowPanel, DatabasePanel, CloudPanel, ConnectivityPanel, ControlTowerPanel, SessionReplayPanel, ParallelTaskPanel, WorkspacePanel, ErrorLogPanel, FilesPanel, ArtifactsPanel } = require('./src/renderer/ui/panels');
 // Not re-exported by the panels index: ConnectivityPanel embeds it as a sub-tab,
 // but its polling lifecycle is driven from the tab registry below.
 const RemotePanel = require('./src/renderer/ui/panels/RemotePanel');
@@ -2812,6 +2812,8 @@ function applyProjectContext(projectIndex) {
     SessionReplayPanel.setProject();
   } else if (activeTab === 'tasks') {
     ParallelTaskPanel.onProjectChanged?.();
+  } else if (activeTab === 'artifacts') {
+    ArtifactsPanel.setProject(project);
   }
 }
 
@@ -3643,6 +3645,16 @@ const _TAB_LIFECYCLE = {
     },
     deactivate: () => WorkspacePanel.cleanup()
   },
+  artifacts: {
+    activate: () => {
+      const root = document.getElementById('artifacts-panel-root');
+      // Artifacts belong to a project, so the panel follows the project bar
+      // instead of carrying its own project picker — same as the Git tab.
+      if (root) ArtifactsPanel.loadPanel(root, getCurrentProjectFromBar());
+    },
+    // Releases the artifacts-changed IPC listener registered on activate.
+    deactivate: () => ArtifactsPanel.cleanup()
+  },
   errorlog: {
     activate: () => {
       const root = document.getElementById('errorlog-panel-root');
@@ -3744,7 +3756,7 @@ document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
 // ========== PINNED TABS SYSTEM ==========
 // Canonical order — must mirror the grouping in index.html, since the groups
 // carry meaning (whether the project tab drives the screen).
-const _ALL_TABS_ORDER = ['claude', 'dashboard', 'files', 'git', 'session-replay', 'tasks', 'control-tower', 'workspace', 'memory', 'timetracking', 'database', 'skills', 'agents', 'plugins', 'mcp', 'workflows', 'errorlog', 'connectivity'];
+const _ALL_TABS_ORDER = ['claude', 'artifacts', 'dashboard', 'files', 'git', 'session-replay', 'tasks', 'control-tower', 'workspace', 'memory', 'timetracking', 'database', 'skills', 'agents', 'plugins', 'mcp', 'workflows', 'errorlog', 'connectivity'];
 
 function applyPinnedTabs() {
   const pinned = settingsState.get().pinnedTabs || _ALL_TABS_ORDER;

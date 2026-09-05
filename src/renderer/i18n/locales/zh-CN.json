@@ -1085,7 +1085,8 @@
     "separatorCapabilities": "能力",
     "separatorSystem": "系统",
     "tabFiles": "文件",
-    "tooltipFiles": "文件"
+    "tooltipFiles": "文件",
+    "tooltipArtifacts": "从此项目发布到 claude.ai 的产物"
   },
   "memory": {
     "panelDescription": "配置 Claude 在您的项目中的行为方式。全局设置适用于所有地方，项目设置会覆盖它们。",
@@ -1910,7 +1911,8 @@
     "elicitationSubmit": "提交",
     "elicitationDecline": "拒绝",
     "elicitationOpen": "继续",
-    "cancel": "取消"
+    "cancel": "取消",
+    "tabDocuments": "文档"
   },
   "hooks": {
     "consent": {
@@ -2109,6 +2111,23 @@
     "analyzeProjectDone": "生成的文档：{title}（{links} 链接）",
     "analyzeProjectError": "无法分析项目",
     "badge": "WS"
+  },
+  "artifacts": {
+    "tabTitle": "产物",
+    "libraryTitle": "产物",
+    "emptySession": "此对话尚未生成任何文档。",
+    "emptyLibrary": "此项目还没有已发布的产物。当 Claude 使用 Artifact 工具发布页面时，它们会显示在这里。",
+    "selectPrompt": "选择一个产物以预览。",
+    "lines": "行",
+    "documentsSingular": "个文档",
+    "documentsPlural": "个文档",
+    "publishedCount": "个已发布于此项目",
+    "saveAs": "另存为...",
+    "saved": "产物已保存",
+    "openInEditor": "在编辑器中打开",
+    "resizePane": "调整产物面板大小",
+    "jumpToMessage": "跳转到消息",
+    "openPublished": "打开已发布页面"
   },
   "errorLog": {
     "title": "错误日志",

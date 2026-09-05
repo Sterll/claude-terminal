@@ -1085,7 +1085,8 @@
     "separatorCapabilities": "Capabilities",
     "separatorSystem": "System",
     "tabFiles": "Files",
-    "tooltipFiles": "Files"
+    "tooltipFiles": "Files",
+    "tooltipArtifacts": "Artifacts published to claude.ai from this project"
   },
   "memory": {
     "panelDescription": "Configure how Claude behaves in your projects. Global settings apply everywhere, project settings override them.",
@@ -1910,7 +1911,8 @@
     "elicitationSubmit": "Submit",
     "elicitationDecline": "Decline",
     "elicitationOpen": "Continue",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "tabDocuments": "Documents"
   },
   "hooks": {
     "consent": {
@@ -2109,6 +2111,23 @@
     "analyzeProjectDone": "Doc generated: {title} ({links} link(s))",
     "analyzeProjectError": "Failed to analyze project",
     "badge": "WS"
+  },
+  "artifacts": {
+    "tabTitle": "Artifacts",
+    "libraryTitle": "Artifacts",
+    "emptySession": "No documents produced in this conversation yet.",
+    "emptyLibrary": "No published artifacts in this project. They appear here when Claude publishes a page with the Artifact tool.",
+    "selectPrompt": "Select an artifact to preview it.",
+    "lines": "lines",
+    "documentsSingular": "document",
+    "documentsPlural": "documents",
+    "publishedCount": "published in this project",
+    "saveAs": "Save as...",
+    "saved": "Artifact saved",
+    "openInEditor": "Open in editor",
+    "resizePane": "Resize artifact panel",
+    "jumpToMessage": "Go to message",
+    "openPublished": "Open published page"
   },
   "errorLog": {
     "title": "Error Log",

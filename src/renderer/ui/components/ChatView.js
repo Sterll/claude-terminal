@@ -140,6 +140,7 @@ const EFFORT_OPTIONS = [
 
 const MarkdownRenderer = require('../../services/MarkdownRenderer');
 const DiffRenderer = require('../../services/DiffRenderer');
+const ArtifactService = require('../../services/ArtifactService');
 
 function renderMarkdown(text) {
   return MarkdownRenderer.render(text);
@@ -460,7 +461,11 @@ class ChatView extends BaseComponent {
         <button class="chat-tab active" data-tab="conversation">${escapeHtml(t('chat.tabConversation') || 'Conversation')}</button>
         <button class="chat-tab" data-tab="changes">
           <span class="chat-tab-label">${escapeHtml(t('chat.tabChanges') || 'Changes')}</span>
-          <span class="chat-tab-badge" hidden>0</span>
+          <span class="chat-tab-badge" data-badge="changes" hidden>0</span>
+        </button>
+        <button class="chat-tab" data-tab="artifacts">
+          <span class="chat-tab-label">${escapeHtml(t('chat.tabDocuments') || 'Documents')}</span>
+          <span class="chat-tab-badge" data-badge="artifacts" hidden>0</span>
         </button>
       </div>
       <div class="chat-search" hidden>
@@ -484,6 +489,22 @@ class ChatView extends BaseComponent {
         </div>
       </div>
       <div class="chat-changes-panel" hidden></div>
+      <!-- Documents is itself a two-column screen: the list of what this
+           conversation produced on the left, the preview of the selected one on
+           the right. Both live inside the tab, so leaving the tab takes the
+           preview with it. -->
+      <div class="chat-artifacts-panel" hidden>
+        <div class="chat-artifacts-side">
+          <div class="chat-artifacts-summary"></div>
+          <div class="chat-artifacts-list"></div>
+        </div>
+        <div class="chat-artifacts-resizer" role="separator" aria-orientation="vertical" tabindex="0"
+             aria-label="${escapeHtml(t('artifacts.resizePane') || 'Resize artifact panel')}"></div>
+        <div class="chat-artifact-view">
+          <div class="chat-artifact-head"></div>
+          <div class="chat-artifact-body"></div>
+        </div>
+      </div>
       <div class="chat-input-area">
         <div class="chat-mention-dropdown" style="display:none"></div>
         <div class="chat-slash-dropdown" style="display:none"></div>
@@ -540,7 +561,15 @@ class ChatView extends BaseComponent {
   const messagesEl = chatView.querySelector('.chat-messages');
   const tabbarEl = chatView.querySelector('.chat-tabbar');
   const changesPanelEl = chatView.querySelector('.chat-changes-panel');
-  const changesBadgeEl = chatView.querySelector('.chat-tab-badge');
+  const artifactsPanelEl = chatView.querySelector('.chat-artifacts-panel');
+  const artifactsSideEl = chatView.querySelector('.chat-artifacts-side');
+  const artifactsSummaryEl = chatView.querySelector('.chat-artifacts-summary');
+  const artifactsListEl = chatView.querySelector('.chat-artifacts-list');
+  const artifactViewEl = chatView.querySelector('.chat-artifact-view');
+  const artifactHeadEl = chatView.querySelector('.chat-artifact-head');
+  const artifactBodyEl = chatView.querySelector('.chat-artifact-body');
+  const changesBadgeEl = chatView.querySelector('.chat-tab-badge[data-badge="changes"]');
+  const artifactsBadgeEl = chatView.querySelector('.chat-tab-badge[data-badge="artifacts"]');
   const inputEl = chatView.querySelector('.chat-input');
   const sendBtn = chatView.querySelector('.chat-send-btn');
   const stopBtn = chatView.querySelector('.chat-stop-btn');
@@ -835,7 +864,12 @@ class ChatView extends BaseComponent {
   }
 
   // ── Attach interactive markdown block handlers (sort, collapse, preview, etc.) ──
+  // Delegation is per-container and postProcess() does not set it up, so every
+  // container that renders markdown needs its own call. The Documents preview
+  // is a second such container: without this its Preview/Code toggle, viewport
+  // buttons, copy buttons and external links are all inert.
   MarkdownRenderer.attachInteractivity(messagesEl);
+  MarkdownRenderer.attachInteractivity(artifactBodyEl);
 
   // ── Mention state ──
 
@@ -3777,6 +3811,9 @@ class ChatView extends BaseComponent {
       }
       injectInlineImages(currentStreamEl);
       MarkdownRenderer.postProcess(currentStreamEl);
+      // Finalization is the first moment the block is settled: harvesting any
+      // earlier would capture a truncated ```html page mid-stream.
+      harvestArtifacts(currentStreamEl);
     }
     if (currentStreamText) conversationHistory.push({ role: 'assistant', content: currentStreamText });
     currentStreamEl = null;
@@ -3916,12 +3953,72 @@ class ChatView extends BaseComponent {
   // assistant message, so count it by id.
   const recordedToolUseIds = new Set();
 
-  function recordFileChange(toolName, input, toolUseId) {
+  // Artifacts this session produced. Session-scoped like the tally below, and
+  // fed from the same recordFileChange() the tool stream already drives.
+  const artifactRegistry = ArtifactService.createRegistry({
+    project,
+    getSessionId: () => sessionId,
+    onChange: () => updateArtifactsTab(),
+  });
+
+  // Publishes waiting on their tool result, which is where the URL lives.
+  // Keyed by tool_use_id; entries are consumed by resolveArtifactPublish.
+  const pendingPublishes = new Map();
+
+  /**
+   * Read the file an `Artifact` call published and register it as an extract.
+   * The tool takes a path and never inline content, so the content has to come
+   * off disk here.
+   */
+  async function capturePublishedArtifact(input, url) {
+    const { fsp } = require('../../utils/fs-async');
+    let source;
+    try {
+      source = await fsp.readFile(input.file_path, 'utf8');
+    } catch (e) {
+      // Often a temp file that is already gone. Without content there is
+      // nothing to preview, and a sourceless card would just be dead weight.
+      console.warn('[ChatView] published artifact unreadable:', e.message);
+      return;
+    }
+    artifactRegistry.add(ArtifactService.fromArtifactTool(input, source, url));
+  }
+
+  /** Pair a tool result with its pending publish and capture the artifact. */
+  function resolveArtifactPublish(toolUseId, resultText) {
+    const input = pendingPublishes.get(toolUseId);
+    if (!input) return;
+    pendingPublishes.delete(toolUseId);
+    const parsed = parseResultJson(resultText || '');
+    const url = parsed?.url || (String(resultText || '').match(/https?:\/\/\S+/) || [])[0] || null;
+    capturePublishedArtifact(input, url);
+  }
+
+  function recordFileChange(toolName, input, toolUseId = null) {
     if (!input || !toolName) return;
+    // A subagent tool_use arrives twice, once streamed and once in the full
+    // assistant message — the id keeps publishes and tallies counted once.
     if (toolUseId) {
       if (recordedToolUseIds.has(toolUseId)) return;
       recordedToolUseIds.add(toolUseId);
     }
+
+    // The `Artifact` tool publishes an .html/.md file to claude.ai. Unlike every
+    // other extract this one is explicit, so it is captured from the tool call
+    // rather than inferred from the transcript — and deferred until the result
+    // arrives, both to pick up the published URL and to skip failed publishes.
+    if (ArtifactService.isArtifactPublish(toolName, input)) {
+      if (toolUseId) pendingPublishes.set(toolUseId, input);
+      else capturePublishedArtifact(input, null);
+      return;
+    }
+
+    // A `Write` authors a complete file, which is an artifact in its own right.
+    // `Edit`/`MultiEdit` only amend an existing one — that is what the Changes
+    // tab is for, and mirroring them here would just duplicate it.
+    const fileArtifact = ArtifactService.fromFileTool(toolName, input);
+    if (fileArtifact) artifactRegistry.add(fileArtifact);
+
     let path = null;
     switch (toolName) {
       case 'Write':
@@ -3970,13 +4067,14 @@ class ChatView extends BaseComponent {
   }
 
   function switchChatTab(tab) {
-    const isChanges = tab === 'changes';
     tabbarEl.querySelectorAll('.chat-tab').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.tab === tab);
     });
-    messagesEl.hidden = isChanges;
-    changesPanelEl.hidden = !isChanges;
-    if (isChanges) renderChangesPanel();
+    messagesEl.hidden = tab !== 'conversation';
+    changesPanelEl.hidden = tab !== 'changes';
+    artifactsPanelEl.hidden = tab !== 'artifacts';
+    if (tab === 'changes') renderChangesPanel();
+    if (tab === 'artifacts') renderArtifactsPanel();
   }
 
   // ── This session's changes ──
@@ -4222,6 +4320,302 @@ class ChatView extends BaseComponent {
     e.preventDefault();
     toggleFileDiff(row.closest('.chat-change-item'));
   });
+
+  // ── Documents tab ──
+  //
+  // The self-contained things Claude produced in THIS conversation: an HTML
+  // page, an SVG, a diagram, a long code block, a file it wrote. Detected by
+  // scanning the rendered markdown (see ArtifactService), so the tab
+  // repopulates itself for free when a session is resumed and the transcript is
+  // replayed.
+  //
+  // Named "Documents" and not "Artifacts" on purpose: `Artifact` is a distinct
+  // Agent SDK tool that publishes an .html/.md file to claude.ai and hands back
+  // a shareable URL. Those are remote and explicit; these are local and
+  // inferred, and conflating the two in the UI would be misleading.
+
+  /**
+   * Pull artifacts out of freshly rendered nodes.
+   *
+   * Only ever called on settled content — never mid-stream, where a half-written
+   * ```html block would be captured as a truncated page.
+   *
+   * Deferred to idle time. Scanning a replayed transcript costs a few hundred
+   * milliseconds of string building, and none of it is visible until the user
+   * opens the Documents tab, so it has no business sitting on the path that
+   * paints the conversation. Detached nodes still scan fine, so the transcript
+   * pruner running first is harmless.
+   */
+  const _harvestQueue = [];
+  let _harvestScheduled = false;
+
+  function harvestArtifacts(nodes) {
+    if (!nodes) return;
+    _harvestQueue.push({ nodes, messageIndex: messagesEl.children.length });
+    if (_harvestScheduled) return;
+    _harvestScheduled = true;
+    const run = () => {
+      _harvestScheduled = false;
+      const queued = _harvestQueue.splice(0, _harvestQueue.length);
+      for (const item of queued) {
+        try {
+          artifactRegistry.add(ArtifactService.detect(item.nodes, { messageIndex: item.messageIndex }));
+        } catch (e) {
+          // Harvesting is an enhancement; it must never break the transcript.
+          console.warn('[ChatView] artifact harvest failed:', e.message);
+        }
+      }
+    };
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 2000 });
+    else setTimeout(run, 0);
+  }
+
+  function updateArtifactsTab() {
+    const count = artifactRegistry.size;
+    if (count > 0 && tabbarEl.hidden) tabbarEl.hidden = false;
+    if (artifactsBadgeEl) {
+      artifactsBadgeEl.textContent = String(count);
+      artifactsBadgeEl.hidden = count === 0;
+    }
+    if (!artifactsPanelEl.hidden) renderArtifactsPanel();
+  }
+
+  const ARTIFACT_KIND_LABEL = {
+    published: 'Published', html: 'HTML', svg: 'SVG', mermaid: 'Diagram', code: 'Code', file: 'File',
+  };
+
+  /** Left column: one row per extract, newest first. */
+  function renderArtifactsPanel() {
+    const artifacts = artifactRegistry.list().reverse();
+
+    if (!artifacts.length) {
+      artifactsSummaryEl.innerHTML = '';
+      artifactsListEl.innerHTML = `<div class="chat-artifacts-empty">${escapeHtml(t('artifacts.emptySession') || 'No documents produced in this conversation yet.')}</div>`;
+      renderArtifactPlaceholder();
+      return;
+    }
+
+    const openId = artifactViewEl.dataset.artifactId || '';
+    artifactsListEl.innerHTML = artifacts.map((a) => {
+      const kindLabel = ARTIFACT_KIND_LABEL[a.kind] || a.kind;
+      const lines = a.lines || a.source.split('\n').length;
+      // A published artifact brought its own emoji and subtitle from the
+      // Artifact tool; nothing else has either.
+      const thumb = a.favicon
+        ? `<span class="chat-artifact-favicon">${escapeHtml(a.favicon)}</span>`
+        : artifactGlyph(a.kind);
+      const sub = a.description
+        ? `<span class="chat-artifact-card-desc">${escapeHtml(a.description)}</span>`
+        : '';
+      return `
+        <button class="chat-artifact-card${a.id === openId ? ' active' : ''}" data-artifact-id="${escapeHtml(a.id)}" title="${escapeHtml(a.title)}">
+          <span class="chat-artifact-thumb" data-kind="${escapeHtml(a.kind)}">${thumb}</span>
+          <span class="chat-artifact-card-text">
+            <span class="chat-artifact-card-title">${escapeHtml(a.title)}</span>
+            ${sub}
+            <span class="chat-artifact-card-meta">
+              <span class="chat-artifact-kind">${escapeHtml(kindLabel)}</span>
+              <span class="chat-artifact-dot">•</span>
+              <span>${lines} ${escapeHtml(t('artifacts.lines') || 'lines')}</span>
+            </span>
+          </span>
+        </button>`;
+    }).join('');
+
+    const label = artifacts.length > 1
+      ? (t('artifacts.documentsPlural') || 'documents')
+      : (t('artifacts.documentsSingular') || 'document');
+    artifactsSummaryEl.innerHTML = `<span class="chat-artifacts-count">${artifacts.length} ${escapeHtml(label)}</span>`;
+
+    // Opening the tab with nothing selected should still show something useful,
+    // so preview the newest extract rather than an empty right column.
+    if (!openId) openArtifact(artifacts[0].id);
+  }
+
+  function renderArtifactPlaceholder() {
+    artifactHeadEl.innerHTML = '';
+    artifactBodyEl.innerHTML = `<div class="chat-artifacts-empty">${escapeHtml(t('artifacts.selectPrompt') || 'Select an artifact to preview it.')}</div>`;
+    artifactBodyEl.classList.remove('chat-artifact-doc');
+  }
+
+  function artifactGlyph(kind) {
+    switch (kind) {
+      case 'html':
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 9h20"/></svg>';
+      case 'svg':
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 010 18a15 15 0 010-18"/></svg>';
+      case 'mermaid':
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="5" rx="1"/><rect x="14" y="16" width="7" height="5" rx="1"/><path d="M6.5 8v6a2 2 0 002 2h5.5"/></svg>';
+      case 'file':
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>';
+      default:
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>';
+    }
+  }
+
+  // ── Artifact split-pane ──
+
+  /**
+   * Fence an artifact back into markdown and let the normal renderer display it.
+   *
+   * This is what keeps the viewer small: the HTML preview (with its viewport
+   * toolbar), the Mermaid lazy render, the SVG sanitizer and the syntax
+   * highlighter all already exist as markdown blocks. Re-rendering also
+   * re-registers the ct-preview:// document, which matters because those are
+   * held in a bounded LRU (src/main/ipc/preview.ipc.js) — reusing the iframe
+   * from the transcript would eventually show a blank page.
+   */
+  function artifactAsMarkdown(artifact) {
+    const langByKind = { html: 'html', svg: 'svg', mermaid: 'mermaid' };
+    let lang = langByKind[artifact.kind] || artifact.lang || '';
+    if (artifact.kind === 'file') lang = guessLangFromPath(artifact.title);
+    // A fence has to be longer than the longest backtick run in the body.
+    const longestRun = (artifact.source.match(/`+/g) || []).reduce((max, run) => Math.max(max, run.length), 0);
+    const fence = '`'.repeat(Math.max(3, longestRun + 1));
+    return `${fence}${lang}\n${artifact.source}\n${fence}`;
+  }
+
+  const LANG_BY_EXT = {
+    js: 'javascript', jsx: 'jsx', ts: 'typescript', tsx: 'tsx', py: 'python',
+    rs: 'rust', go: 'go', java: 'java', rb: 'ruby', php: 'php', cs: 'csharp',
+    cpp: 'cpp', c: 'c', lua: 'lua', sql: 'sql', sh: 'bash', json: 'json',
+    yml: 'yaml', yaml: 'yaml', toml: 'toml', xml: 'xml', css: 'css',
+    scss: 'scss', md: 'markdown', html: 'html', svg: 'svg',
+  };
+
+  function guessLangFromPath(name) {
+    const ext = String(name || '').split('.').pop().toLowerCase();
+    return LANG_BY_EXT[ext] || '';
+  }
+
+  function openArtifact(id) {
+    const artifact = artifactRegistry.get(id);
+    if (!artifact) return;
+    artifactViewEl.dataset.artifactId = id;
+    renderArtifactPane(artifact);
+    // Move the selection ring without re-rendering the list, which would
+    // recurse: renderArtifactsPanel() auto-opens the newest when nothing is
+    // selected, and that would call back into here.
+    for (const card of artifactsListEl.querySelectorAll('.chat-artifact-card')) {
+      card.classList.toggle('active', card.dataset.artifactId === id);
+    }
+  }
+
+
+  function renderArtifactPane(artifact) {
+    const kindLabel = ARTIFACT_KIND_LABEL[artifact.kind] || artifact.kind;
+    const canOpenInEditor = artifact.kind === 'file' && artifact.path;
+    artifactHeadEl.innerHTML = `
+      <div class="chat-artifact-title-row">
+        <span class="chat-artifact-kind-badge" data-kind="${escapeHtml(artifact.kind)}">${escapeHtml(kindLabel)}</span>
+        <span class="chat-artifact-title" title="${escapeHtml(artifact.title)}">${escapeHtml(artifact.title)}</span>
+      </div>
+      <div class="chat-artifact-actions">
+        <button class="chat-artifact-action" data-action="copy">${escapeHtml(t('common.copy') || 'Copy')}</button>
+        <button class="chat-artifact-action" data-action="save">${escapeHtml(t('artifacts.saveAs') || 'Save as...')}</button>
+        ${canOpenInEditor ? `<button class="chat-artifact-action" data-action="edit">${escapeHtml(t('artifacts.openInEditor') || 'Open in editor')}</button>` : ''}
+        ${artifact.url ? `<button class="chat-artifact-action" data-action="open-url">${escapeHtml(t('artifacts.openPublished') || 'Open published page')}</button>` : ''}
+        ${artifact.node?.isConnected ? `<button class="chat-artifact-action" data-action="reveal">${escapeHtml(t('artifacts.jumpToMessage') || 'Go to message')}</button>` : ''}
+      </div>
+    `;
+
+    // A published Markdown page IS a document — render it as one rather than
+    // fencing it into a code block showing its own syntax. Everything else goes
+    // through a fence so the renderer picks the right block for it.
+    const isMarkdownDoc = artifact.kind === 'published' && artifact.lang === 'markdown';
+    artifactBodyEl.innerHTML = renderMarkdown(isMarkdownDoc ? artifact.source : artifactAsMarkdown(artifact));
+    artifactBodyEl.classList.toggle('chat-artifact-doc', isMarkdownDoc);
+    MarkdownRenderer.postProcess(artifactBodyEl);
+  }
+
+  artifactsPanelEl.addEventListener('click', (e) => {
+    const card = e.target.closest('.chat-artifact-card');
+    if (card?.dataset.artifactId) openArtifact(card.dataset.artifactId);
+  });
+
+  artifactHeadEl.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.chat-artifact-action');
+    if (!btn) return;
+    const artifact = artifactRegistry.get(artifactPaneEl.dataset.artifactId);
+    if (!artifact) return;
+
+    switch (btn.dataset.action) {
+      case 'copy':
+        try {
+          await navigator.clipboard.writeText(artifact.source);
+          require('./Toast').showToast({ message: t('common.copied') || 'Copied', type: 'success' });
+        } catch (err) {
+          console.warn('[ChatView] artifact copy failed:', err.message);
+        }
+        break;
+      case 'save': {
+        const filePath = await api.dialog.saveFileDialog({
+          title: t('artifacts.saveAs') || 'Save as...',
+          defaultPath: artifact.title,
+        });
+        if (!filePath) break;
+        const { fsp } = require('../../utils/fs-async');
+        try {
+          await fsp.writeFile(filePath, artifact.source, 'utf8');
+          require('./Toast').showToast({ message: t('artifacts.saved') || 'Artifact saved', type: 'success' });
+        } catch (err) {
+          require('./Toast').showToast({ message: err.message, type: 'error' });
+        }
+        break;
+      }
+      case 'edit':
+        api.dialog.openInEditor({ editor: getSetting('editor') || 'code', path: artifact.path });
+        break;
+      case 'open-url':
+        if (artifact.url) api.dialog.openExternal(artifact.url);
+        break;
+      case 'reveal': {
+        // The transcript pruner detaches old messages, so the node can be alive
+        // but unmounted. Scrolling to it would silently do nothing.
+        if (!artifact.node?.isConnected) break;
+        switchChatTab('conversation');
+        artifact.node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        artifact.node.classList.add('chat-artifact-flash');
+        setTimeout(() => artifact.node.classList.remove('chat-artifact-flash'), 1200);
+        break;
+      }
+      default:
+        break;
+    }
+  });
+
+  // Drag the divider between the conversation and the artifact pane.
+  // Drag the divider between the list and the preview.
+  const ARTIFACT_LIST_MIN = 200;
+  const ARTIFACT_VIEW_MIN = 280;
+  (function setupArtifactResizer() {
+    const handle = chatView.querySelector('.chat-artifacts-resizer');
+    if (!handle) return;
+    let startX = 0;
+    let startWidth = 0;
+
+    function onMove(e) {
+      // The list is on the left, so dragging right widens it.
+      const width = startWidth + (e.clientX - startX);
+      const max = Math.max(ARTIFACT_LIST_MIN, artifactsPanelEl.clientWidth - ARTIFACT_VIEW_MIN);
+      artifactsSideEl.style.width = `${Math.min(max, Math.max(ARTIFACT_LIST_MIN, width))}px`;
+    }
+
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.classList.remove('resizing-h');
+    }
+
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      startX = e.clientX;
+      startWidth = artifactsSideEl.getBoundingClientRect().width;
+      document.body.classList.add('resizing-h');
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  })();
 
   // ── Subagent (Task tool) card ──
 
@@ -6109,6 +6503,16 @@ class ChatView extends BaseComponent {
   }
 
   function processToolResultBlock(block) {
+    // Artifact publish — the result is where the claude.ai URL comes from.
+    // Runs before the early returns below so it is never skipped.
+    if (block.tool_use_id && pendingPublishes.has(block.tool_use_id)) {
+      const raw = typeof block.content === 'string' ? block.content
+        : Array.isArray(block.content) ? block.content.map(b => b.text || '').join('\n') : '';
+      // A failed publish produced nothing worth listing; drop it.
+      if (block.is_error) pendingPublishes.delete(block.tool_use_id);
+      else resolveArtifactPublish(block.tool_use_id, raw);
+    }
+
     // TaskCreate result — promote pending temp id to real task id
     if (block.tool_use_id && pendingCreateByUseId.has(block.tool_use_id)) {
       const raw = typeof block.content === 'string' ? block.content
@@ -6327,6 +6731,7 @@ class ChatView extends BaseComponent {
           el.innerHTML = `<div class="chat-msg-content">${renderMarkdown(block.text)}</div>`;
           injectInlineImages(el.querySelector('.chat-msg-content'));
           MarkdownRenderer.postProcess(el.querySelector('.chat-msg-content'));
+          harvestArtifacts(el.querySelector('.chat-msg-content'));
           messagesEl.appendChild(el);
           conversationHistory.push({ role: 'assistant', content: block.text });
           turnHadAssistantContent = true;
@@ -7163,6 +7568,9 @@ class ChatView extends BaseComponent {
           }
           if (msg.toolUseId && toolResults.has(msg.toolUseId)) {
             el.dataset.toolOutput = toolResults.get(msg.toolUseId);
+            // History carries results too, so a replayed publish recovers its
+            // URL exactly like a live one.
+            resolveArtifactPublish(msg.toolUseId, toolResults.get(msg.toolUseId));
           }
 
           // Group consecutive same-tool cards in history
@@ -7192,6 +7600,10 @@ class ChatView extends BaseComponent {
       if (anchor) messagesEl.insertBefore(fragment, anchor);
       else messagesEl.appendChild(fragment);
       MarkdownRenderer.postProcess(batchNodes);
+      // Replaying history re-harvests every artifact it contains. Ids are
+      // content hashes, so this repopulates the tab on session resume without
+      // ever duplicating an entry.
+      harvestArtifacts(batchNodes);
 
       if (idx < messages.length) {
         // Keep the view pinned to the newest content while the tail streams in
@@ -7248,6 +7660,8 @@ class ChatView extends BaseComponent {
         } catch (e) { /* events not ready */ }
       }
       if (sessionId) api.chat.close({ sessionId });
+      // Persist whatever the debounce was still holding, before the view goes.
+      artifactRegistry.flush();
       transcriptPruner?.destroy();
       contextSuggestions.reset();
       followupChips.clear();

@@ -1082,7 +1082,8 @@
     "separatorCapabilities": "Capacidades",
     "separatorSystem": "Sistema",
     "tabFiles": "Archivos",
-    "tooltipFiles": "Archivos"
+    "tooltipFiles": "Archivos",
+    "tooltipArtifacts": "Artefactos publicados en claude.ai desde este proyecto"
   },
   "memory": {
     "panelDescription": "Configura como Claude se comporta en tus proyectos. Los ajustes globales aplican en todos lados, los de proyecto los reemplazan.",
@@ -1907,7 +1908,8 @@
     "elicitationSubmit": "Enviar",
     "elicitationDecline": "Rechazar",
     "elicitationOpen": "Continuar",
-    "cancel": "Cancelar"
+    "cancel": "Cancelar",
+    "tabDocuments": "Documentos"
   },
   "hooks": {
     "consent": {
@@ -2106,6 +2108,23 @@
     "analyzeProjectDone": "Doc generada: {title} ({links} enlace(s))",
     "analyzeProjectError": "Error al analizar el proyecto",
     "badge": "ET"
+  },
+  "artifacts": {
+    "tabTitle": "Artefactos",
+    "libraryTitle": "Artefactos",
+    "emptySession": "Todavía no se ha producido ningún documento en esta conversación.",
+    "emptyLibrary": "No hay artefactos publicados en este proyecto. Aparecen aquí cuando Claude publica una página con la herramienta Artifact.",
+    "selectPrompt": "Selecciona un artefacto para previsualizarlo.",
+    "lines": "líneas",
+    "documentsSingular": "documento",
+    "documentsPlural": "documentos",
+    "publishedCount": "publicados en este proyecto",
+    "saveAs": "Guardar como...",
+    "saved": "Artefacto guardado",
+    "openInEditor": "Abrir en el editor",
+    "resizePane": "Redimensionar el panel de artefactos",
+    "jumpToMessage": "Ir al mensaje",
+    "openPublished": "Abrir la página publicada"
   },
   "errorLog": {
     "title": "Registro de errores",

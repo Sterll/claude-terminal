@@ -361,6 +361,9 @@ function cleanupServices() {
   discordRpcService.destroy();
   databaseService.disconnectAll().catch(() => {});
   _stopMcpTriggerPolling();
+  // fs.watch on the artifacts index. Required lazily (same pattern as the
+  // explorer watchers below) to keep this module free of an ipc/ dependency.
+  try { require('./ArtifactService').stopWatching(); } catch (_) { /* non-critical */ }
   // File explorer chokidar watchers. Required lazily (same pattern as git below)
   // to keep this module free of an ipc/ dependency at load time. Without this the
   // watchers were only ever released by an explicit renderer IPC call, so a quit

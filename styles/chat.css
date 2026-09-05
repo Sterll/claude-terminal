@@ -15,7 +15,7 @@
   position: relative;
 }
 
-/* ── Session tab bar (Conversation / Changes) ── */
+/* ── Session tab bar (Conversation / Changes / Documents) ── */
 .chat-tabbar {
   display: flex;
   align-items: stretch;

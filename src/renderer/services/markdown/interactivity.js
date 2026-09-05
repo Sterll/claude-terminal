@@ -423,6 +423,11 @@ function handlePreviewAction(btn) {
     if (viewport !== 'desktop') {
       container.classList.add(`viewport-${viewport}`);
     }
+    // Move the highlight the way the Preview/Code pair does. Without this the
+    // three viewport buttons looked identical whatever was selected, so the
+    // current width was invisible.
+    container.querySelectorAll('.chat-preview-btn[data-action^="viewport-"]')
+      .forEach(b => b.classList.toggle('active', b === btn));
     return;
   }
 }

@@ -1085,7 +1085,8 @@
     "separatorCapabilities": "Kemampuan",
     "separatorSystem": "Sistem",
     "tabFiles": "Berkas",
-    "tooltipFiles": "Berkas"
+    "tooltipFiles": "Berkas",
+    "tooltipArtifacts": "Artefak yang diterbitkan ke claude.ai dari proyek ini"
   },
   "memory": {
     "panelDescription": "Atur bagaimana Claude berperilaku dalam proyek Anda. Pengaturan global berlaku di mana saja, pengaturan proyek akan menimpanya.",
@@ -1910,7 +1911,8 @@
     "elicitationSubmit": "Kirim",
     "elicitationDecline": "Tolak",
     "elicitationOpen": "Lanjutkan",
-    "cancel": "Batal"
+    "cancel": "Batal",
+    "tabDocuments": "Dokumen"
   },
   "hooks": {
     "consent": {
@@ -2109,6 +2111,23 @@
     "analyzeProjectDone": "Dokumen dibuat: {title} ({links} tautan)",
     "analyzeProjectError": "Gagal menganalisis proyek",
     "badge": "WS"
+  },
+  "artifacts": {
+    "tabTitle": "Artefak",
+    "libraryTitle": "Artefak",
+    "emptySession": "Belum ada dokumen yang dibuat dalam percakapan ini.",
+    "emptyLibrary": "Belum ada artefak yang diterbitkan di proyek ini. Artefak muncul di sini saat Claude menerbitkan halaman dengan alat Artifact.",
+    "selectPrompt": "Pilih artefak untuk melihat pratinjaunya.",
+    "lines": "baris",
+    "documentsSingular": "dokumen",
+    "documentsPlural": "dokumen",
+    "publishedCount": "diterbitkan di proyek ini",
+    "saveAs": "Simpan sebagai...",
+    "saved": "Artefak disimpan",
+    "openInEditor": "Buka di editor",
+    "resizePane": "Ubah ukuran panel artefak",
+    "jumpToMessage": "Ke pesan",
+    "openPublished": "Buka halaman terbit"
   },
   "errorLog": {
     "title": "Log Kesalahan",
