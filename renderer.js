@@ -1430,7 +1430,8 @@ let _termSyncTimer = null;
 const { deriveTabStatus } = require('./src/renderer/state/terminals.state');
 
 function _buildTabsSnapshot() {
-  const terminals = terminalsState.get().terminals;
+  const termState = terminalsState.get();
+  const terminals = termState.terminals;
   const legacy = [];
   const rich = [];
   for (const [id, td] of terminals) {
@@ -1478,16 +1479,20 @@ function _buildTabsSnapshot() {
       details,
     });
   }
-  return { legacy, rich };
+  // The focused tab, so "the current conversation" is resolvable from outside.
+  // lastActivityAt is NOT a substitute: a tab building in the background beats
+  // the tab the user is actually looking at.
+  const activeTd = termState.activeTerminal != null ? terminals.get(termState.activeTerminal) : null;
+  return { legacy, rich, activeTabId: activeTd?.tabId || null };
 }
 
 function _writeTabsSnapshot() {
   try {
-    const { legacy, rich } = _buildTabsSnapshot();
+    const { legacy, rich, activeTabId } = _buildTabsSnapshot();
     const legacyPath = path.join(dataDir, 'terminals.json');
     const richPath = path.join(dataDir, 'tabs.json');
     fsp.writeFile(legacyPath, JSON.stringify(legacy, null, 2)).catch(() => {});
-    fsp.writeFile(richPath, JSON.stringify({ updatedAt: Date.now(), tabs: rich }, null, 2)).catch(() => {});
+    fsp.writeFile(richPath, JSON.stringify({ updatedAt: Date.now(), activeTabId, tabs: rich }, null, 2)).catch(() => {});
   } catch (_) {}
 }
 

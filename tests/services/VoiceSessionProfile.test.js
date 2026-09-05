@@ -40,6 +40,15 @@ describe('voice system prompt', () => {
     expect(append).toMatch(/session_search/);
   });
 
+  test('treats dictated prompts as verbatim and resolves "current" via focus', () => {
+    const { append } = voice();
+
+    expect(append).toMatch(/verbatim/i);
+    expect(append).toMatch(/rephrase nothing/i);
+    expect(append).toMatch(/FOCUSED/);
+    expect(append).toMatch(/never guess from activity/i);
+  });
+
   test('reserves text for ambiguity and failure only', () => {
     const { append } = voice();
 

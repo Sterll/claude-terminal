@@ -66,7 +66,11 @@ function readJson(file, fallback) {
 
 function loadTabs() {
   const snap = readJson(path.join(getDataDir(), 'tabs.json'), { tabs: [] });
-  return Array.isArray(snap.tabs) ? snap.tabs : [];
+  const tabs = Array.isArray(snap.tabs) ? snap.tabs : [];
+  // Mark the tab the user is looking at, so "the current conversation" means
+  // the focused tab and not whichever background task last produced output.
+  for (const t of tabs) t.focused = !!snap.activeTabId && t.tabId === snap.activeTabId;
+  return tabs;
 }
 
 function findProjectById(projectId) {
@@ -239,7 +243,7 @@ const tools = [
 // -- Tool handler -------------------------------------------------------------
 
 function formatTabLine(t) {
-  const parts = [`${t.tabId}  [${t.mode}]  ${t.status}`];
+  const parts = [`${t.tabId}  [${t.mode}]  ${t.status}${t.focused ? '  << FOCUSED (what the user is looking at)' : ''}`];
   if (t.projectName) parts.push(`  project: ${t.projectName}`);
   if (t.title && t.title !== t.projectName) parts.push(`  title:   ${t.title}`);
   if (t.lastActivityAt) parts.push(`  active:  ${t.lastActivityAt}`);
