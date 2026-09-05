@@ -1,0 +1,521 @@
+// RemoteControlService unit tests — Claude Code Remote Control for chat sessions.
+//
+// Strategy: the SDK bridge, the credential store and settings.json are all
+// mocked, so the tests exercise the only thing this service really owns — the
+// translation between this app's chat events and the bridge's API, in both
+// directions.
+
+let mockSettings = {};
+
+jest.mock('../../src/main/utils/paths', () => ({ settingsFile: '/virtual/settings.json' }));
+
+jest.mock('fs', () => {
+  const realFs = jest.requireActual('fs');
+  return {
+    ...realFs,
+    readFileSync: jest.fn((p, enc) => {
+      if (p === '/virtual/settings.json') return JSON.stringify(mockSettings);
+      return realFs.readFileSync(p, enc);
+    }),
+  };
+});
+
+// ─── Fake bridge ────────────────────────────────────────────────────────────
+
+let mockHandle;
+let mockAttachOpts;
+let mockCreateResult;
+let mockCredsResult;
+let mockBridgeAvailable;
+
+function makeHandle() {
+  return {
+    write: jest.fn(),
+    sendResult: jest.fn(),
+    reportState: jest.fn(),
+    reportMetadata: jest.fn(),
+    reportDelivery: jest.fn(),
+    sendControlRequest: jest.fn(),
+    sendControlResponse: jest.fn(),
+    sendControlCancelRequest: jest.fn(),
+    reconnectTransport: jest.fn().mockResolvedValue(undefined),
+    flush: jest.fn().mockResolvedValue(undefined),
+    close: jest.fn(),
+    getSequenceNum: jest.fn(() => 7),
+    getEpoch: jest.fn(() => 3),
+    isConnected: jest.fn(() => true),
+  };
+}
+
+jest.mock('../../src/main/utils/claudeBridge', () => ({
+  loadBridge: jest.fn(async () => (mockBridgeAvailable ? {
+    createCodeSession: jest.fn(async () => mockCreateResult),
+    fetchRemoteCredentials: jest.fn(async () => mockCredsResult),
+    attachBridgeSession: jest.fn(async (opts) => { mockAttachOpts = opts; return mockHandle; }),
+    isCredentialsFailure: r => !!r?.terminal,
+    isCredentialsRejection: r => r?.terminal === false,
+    isCreateSessionFailure: r => !!r?.terminal,
+  } : null)),
+  getUnavailableReason: () => 'stubbed out',
+  getApiBaseUrl: () => 'https://api.anthropic.com',
+}));
+
+jest.mock('../../src/main/utils/claudeCredentials', () => ({
+  readAccessToken: jest.fn(async () => 'oauth-token'),
+  readCredentialsForDir: jest.fn(async () => ({ claudeAiOauth: { accessToken: 'scoped-token' } })),
+  tokenFromCredentials: jest.fn(c => c?.claudeAiOauth?.accessToken || null),
+  readTrustedDeviceToken: jest.fn(async () => null),
+}));
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/** Fresh singleton per test — the service holds mirror state across calls. */
+function freshService() {
+  jest.resetModules();
+  return require('../../src/main/services/RemoteControlService');
+}
+
+function fakeChatService() {
+  const listeners = new Set();
+  return {
+    sessions: new Map(),
+    addEventListener: jest.fn(fn => { listeners.add(fn); return () => listeners.delete(fn); }),
+    sendMessage: jest.fn(),
+    interrupt: jest.fn(),
+    resolvePermission: jest.fn(),
+    setModel: jest.fn().mockResolvedValue(undefined),
+    stopTask: jest.fn().mockResolvedValue(undefined),
+    emit: (channel, data) => { for (const fn of listeners) fn(channel, data); },
+  };
+}
+
+/** Let the queued microtasks of an attach settle (jsdom has no setImmediate). */
+const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+
+async function startMirror(service, chat, meta = {}) {
+  service.attachToChatService(chat);
+  await service.onSessionStarted('chat-1', { cwd: '/repo', ...meta });
+  await settle();
+}
+
+beforeEach(() => {
+  mockSettings = { claudeRemoteControlEnabled: true };
+  mockHandle = makeHandle();
+  mockAttachOpts = null;
+  mockCreateResult = 'cse_abc123';
+  mockCredsResult = { worker_jwt: 'jwt', api_base_url: 'https://api.anthropic.com', worker_epoch: 4, expires_in: 14400 };
+  mockBridgeAvailable = true;
+  jest.clearAllMocks();
+});
+
+afterEach(() => {
+  // A test that swaps in fake timers must not leave them for the next one:
+  // `settle()` waits on a real setTimeout and would never fire.
+  jest.useRealTimers();
+});
+
+// ─── Opt-in gating ──────────────────────────────────────────────────────────
+
+describe('opt-in gating', () => {
+  test('does nothing when the feature is off', async () => {
+    mockSettings = {};
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+    expect(mockAttachOpts).toBeNull();
+    expect((await service.getStatus()).activeSessions).toBe(0);
+  });
+
+  test('does nothing when managed settings forbid Remote Control', async () => {
+    mockSettings = { claudeRemoteControlEnabled: true, disableRemoteControl: true };
+    const service = freshService();
+    await startMirror(service, fakeChatService());
+    expect(mockAttachOpts).toBeNull();
+  });
+
+  test('does nothing when the SDK ships no bridge', async () => {
+    mockBridgeAvailable = false;
+    const service = freshService();
+    await startMirror(service, fakeChatService());
+    expect(mockAttachOpts).toBeNull();
+    const status = await service.getStatus();
+    expect(status.supported).toBe(false);
+    expect(status.unavailableReason).toBe('stubbed out');
+  });
+
+  test('terminal tabs stay unconnected unless separately opted in', async () => {
+    const service = freshService();
+    expect(service.launchesTerminalsConnected()).toBe(false);
+    mockSettings = { claudeRemoteControlEnabled: true, claudeRemoteControlTerminals: true };
+    expect(service.launchesTerminalsConnected()).toBe(true);
+    mockSettings.disableRemoteControl = true;
+    expect(service.launchesTerminalsConnected()).toBe(false);
+  });
+});
+
+// ─── Attach ─────────────────────────────────────────────────────────────────
+
+describe('attach', () => {
+  test('mints a session, attaches, and publishes metadata', async () => {
+    const service = freshService();
+    await startMirror(service, fakeChatService());
+
+    expect(mockAttachOpts.sessionId).toBe('cse_abc123');
+    expect(mockAttachOpts.ingressToken).toBe('jwt');
+    // The mint already bumped the epoch; passing it back skips a re-register.
+    expect(mockAttachOpts.epoch).toBe(4);
+    expect(mockHandle.reportMetadata).toHaveBeenCalledWith(
+      expect.objectContaining({ cwd: '/repo', host: 'claude-terminal' }),
+    );
+    expect((await service.getStatus()).activeSessions).toBe(1);
+  });
+
+  test('attaches outbound-only when driving is switched off', async () => {
+    mockSettings = { claudeRemoteControlEnabled: true, claudeRemoteControlDrive: false };
+    const service = freshService();
+    await startMirror(service, fakeChatService());
+    expect(mockAttachOpts.outboundOnly).toBe(true);
+  });
+
+  test('an untrusted device produces an actionable message, not a crash', async () => {
+    mockCredsResult = { terminal: true, reason: 'untrusted_device' };
+    const service = freshService();
+    await startMirror(service, fakeChatService());
+
+    expect(mockAttachOpts).toBeNull();
+    const status = await service.getStatus();
+    expect(status.lastError).toMatch(/trusted device/i);
+    expect(status.lastError).toMatch(/claude/i);
+  });
+
+  test('a rejected login is reported as needing a re-login', async () => {
+    mockCreateResult = { terminal: false, reason: 'oauth_rejected' };
+    const service = freshService();
+    await startMirror(service, fakeChatService());
+    expect((await service.getStatus()).lastError).toMatch(/login/i);
+  });
+
+  test('a session bound to an account uses that account credentials', async () => {
+    // Both the mock and the credential module have to be resolved from the same
+    // registry as the service, so the reset comes first.
+    jest.resetModules();
+    jest.doMock('../../src/main/services/AccountManager', () => ({
+      accountConfigDir: id => `/accounts/${id}`,
+    }));
+    const creds = require('../../src/main/utils/claudeCredentials');
+    const service = require('../../src/main/services/RemoteControlService');
+
+    service.attachToChatService(fakeChatService());
+    await service.onSessionStarted('chat-1', { cwd: '/repo', accountId: 'acct-7' });
+    await settle();
+
+    expect(creds.readCredentialsForDir).toHaveBeenCalledWith('/accounts/acct-7');
+    // The machine-wide login must not be what a bound session authenticates as.
+    expect(creds.readAccessToken).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Outbound translation ───────────────────────────────────────────────────
+
+describe('outbound', () => {
+  test('forwards SDK messages verbatim', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+
+    const message = { type: 'assistant', message: { role: 'assistant', content: [] } };
+    chat.emit('chat-message', { sessionId: 'chat-1', message });
+    expect(mockHandle.write).toHaveBeenCalledWith(message);
+    expect(mockHandle.reportState).toHaveBeenCalledWith('running');
+  });
+
+  test('synthesises the user prompt, which the SDK stream never echoes', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+
+    chat.emit('chat-user-message', { sessionId: 'chat-1', text: 'hello' });
+    expect(mockHandle.write).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'user',
+      message: { role: 'user', content: [{ type: 'text', text: 'hello' }] },
+    }));
+  });
+
+  test('relays the opening prompt, which is emitted before the mirror exists', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    service.attachToChatService(chat);
+
+    // ChatService relays the first prompt as `chat-user-message` well before it
+    // registers the session, so it can only arrive through the meta.
+    await service.onSessionStarted('chat-1', { cwd: '/repo', initialPrompt: 'open the file' });
+    await settle();
+
+    const userWrites = mockHandle.write.mock.calls.filter(c => c[0]?.type === 'user');
+    expect(userWrites).toHaveLength(1);
+    expect(userWrites[0][0].message.content[0].text).toBe('open the file');
+  });
+
+  test('a resumed session with no opening prompt writes nothing extra', async () => {
+    const service = freshService();
+    await startMirror(service, fakeChatService(), { initialPrompt: '' });
+    expect(mockHandle.write.mock.calls.filter(c => c[0]?.type === 'user')).toHaveLength(0);
+  });
+
+  test('the opening prompt comes before the replies buffered during attach', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    service.attachToChatService(chat);
+
+    const attaching = service.onSessionStarted('chat-1', { cwd: '/repo', initialPrompt: 'hi' });
+    chat.emit('chat-message', { sessionId: 'chat-1', message: { type: 'assistant' } });
+    await attaching;
+    await settle();
+
+    expect(mockHandle.write.mock.calls[0][0].type).toBe('user');
+    expect(mockHandle.write.mock.calls[1][0].type).toBe('assistant');
+  });
+
+  test('ends the turn on idle so the remote spinner stops', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+
+    chat.emit('chat-message', { sessionId: 'chat-1', message: { type: 'assistant' } });
+    chat.emit('chat-idle', { sessionId: 'chat-1' });
+    expect(mockHandle.sendResult).toHaveBeenCalled();
+    expect(mockHandle.reportState).toHaveBeenLastCalledWith('idle');
+  });
+
+  test('reports state transitions once, not per streamed message', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+
+    for (let i = 0; i < 5; i++) {
+      chat.emit('chat-message', { sessionId: 'chat-1', message: { type: 'stream_event' } });
+    }
+    expect(mockHandle.reportState.mock.calls.filter(c => c[0] === 'running')).toHaveLength(1);
+  });
+
+  test('flushes and closes when the stream ends', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+
+    chat.emit('chat-done', { sessionId: 'chat-1' });
+    await settle();
+    expect(mockHandle.flush).toHaveBeenCalled();
+    expect(mockHandle.close).toHaveBeenCalled();
+    expect((await service.getStatus()).activeSessions).toBe(0);
+  });
+
+  test('buffers events that arrive before the handle exists, then replays them', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    service.attachToChatService(chat);
+
+    // Do not settle: the attach is still in flight.
+    const attaching = service.onSessionStarted('chat-1', { cwd: '/repo' });
+    chat.emit('chat-message', { sessionId: 'chat-1', message: { type: 'assistant', n: 1 } });
+    chat.emit('chat-message', { sessionId: 'chat-1', message: { type: 'assistant', n: 2 } });
+    expect(mockHandle.write).not.toHaveBeenCalled();
+
+    await attaching;
+    await settle();
+    expect(mockHandle.write).toHaveBeenCalledTimes(2);
+    expect(mockHandle.write.mock.calls[0][0].n).toBe(1);
+    expect(mockHandle.write.mock.calls[1][0].n).toBe(2);
+  });
+});
+
+// ─── Inbound translation ────────────────────────────────────────────────────
+
+describe('inbound', () => {
+  test('a prompt typed on claude.ai reaches the local session', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+
+    mockAttachOpts.onInboundMessage({ message: { role: 'user', content: [{ type: 'text', text: 'ship it' }] } });
+    expect(chat.sendMessage).toHaveBeenCalledWith('chat-1', 'ship it');
+  });
+
+  test('an inbound prompt is not echoed back out', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+
+    mockAttachOpts.onInboundMessage({ message: { role: 'user', content: [{ type: 'text', text: 'ship it' }] } });
+    // ChatService answers every send with this event, local or remote.
+    chat.emit('chat-user-message', { sessionId: 'chat-1', text: 'ship it' });
+
+    const userWrites = mockHandle.write.mock.calls.filter(c => c[0]?.type === 'user');
+    expect(userWrites).toHaveLength(0);
+  });
+
+  test('a locally typed prompt is still mirrored after an inbound one', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+
+    mockAttachOpts.onInboundMessage({ message: { role: 'user', content: [{ type: 'text', text: 'from phone' }] } });
+    chat.emit('chat-user-message', { sessionId: 'chat-1', text: 'from phone' });
+    chat.emit('chat-user-message', { sessionId: 'chat-1', text: 'from desktop' });
+
+    const userWrites = mockHandle.write.mock.calls.filter(c => c[0]?.type === 'user');
+    expect(userWrites).toHaveLength(1);
+    expect(userWrites[0][0].message.content[0].text).toBe('from desktop');
+  });
+
+  test('interrupt is forwarded', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+    mockAttachOpts.onInterrupt();
+    expect(chat.interrupt).toHaveBeenCalledWith('chat-1');
+  });
+
+  test('a read-only mirror refuses to drive the session', async () => {
+    mockSettings = { claudeRemoteControlEnabled: true, claudeRemoteControlDrive: false };
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+
+    mockAttachOpts.onInboundMessage({ message: { role: 'user', content: [{ type: 'text', text: 'do it' }] } });
+    mockAttachOpts.onInterrupt();
+    expect(chat.sendMessage).not.toHaveBeenCalled();
+    expect(chat.interrupt).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Permissions ────────────────────────────────────────────────────────────
+
+describe('permissions', () => {
+  const request = { sessionId: 'chat-1', requestId: 'perm-1', toolName: 'Bash', input: { command: 'ls' } };
+
+  test('a prompt is forwarded and marks the session as needing action', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+
+    chat.emit('chat-permission-request', request);
+    expect(mockHandle.reportState).toHaveBeenLastCalledWith('requires_action');
+    expect(mockHandle.sendControlRequest).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'control_request',
+      request_id: 'perm-1',
+      request: expect.objectContaining({ subtype: 'can_use_tool', tool_name: 'Bash' }),
+    }));
+  });
+
+  test('answering on claude.ai resolves the local prompt', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+    chat.emit('chat-permission-request', request);
+
+    mockAttachOpts.onPermissionResponse({
+      type: 'control_response',
+      response: { subtype: 'success', request_id: 'perm-1', response: { behavior: 'allow', updatedInput: { command: 'ls' } } },
+    });
+    expect(chat.resolvePermission).toHaveBeenCalledWith('perm-1', {
+      behavior: 'allow', updatedInput: { command: 'ls' },
+    });
+  });
+
+  test('answering on the desktop retracts the remote prompt', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+    chat.emit('chat-permission-request', request);
+    chat.emit('chat-permission-resolved', { sessionId: 'chat-1', requestId: 'perm-1' });
+
+    expect(mockHandle.sendControlCancelRequest).toHaveBeenCalledWith('perm-1');
+  });
+
+  test('a second answer after the first is ignored', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+    chat.emit('chat-permission-request', request);
+    chat.emit('chat-permission-resolved', { sessionId: 'chat-1', requestId: 'perm-1' });
+
+    const verdict = mockAttachOpts.onPermissionResponse({
+      type: 'control_response',
+      response: { subtype: 'success', request_id: 'perm-1', response: { behavior: 'allow' } },
+    });
+    expect(verdict).toBe(false);
+    expect(chat.resolvePermission).not.toHaveBeenCalled();
+  });
+
+  test('an unparseable response is rejected so the prompt can be re-delivered', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+    chat.emit('chat-permission-request', request);
+
+    expect(mockAttachOpts.onPermissionResponse({
+      type: 'control_response',
+      response: { subtype: 'success', request_id: 'perm-1', response: { behavior: 'maybe' } },
+    })).toBe(false);
+    expect(mockAttachOpts.onPermissionResponse({
+      type: 'control_response',
+      response: { subtype: 'error', request_id: 'perm-1', error: 'nope' },
+    })).toBe(false);
+    expect(chat.resolvePermission).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Transport lifecycle ────────────────────────────────────────────────────
+
+describe('transport lifecycle', () => {
+  test('a superseded epoch is not retried', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+
+    mockAttachOpts.onClose(4090);
+    await settle();
+    expect(mockHandle.reconnectTransport).not.toHaveBeenCalled();
+    expect((await service.getStatus()).activeSessions).toBe(0);
+  });
+
+  test('an expired credential re-mints and reconnects with the new epoch', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+
+    // Fake timers only from here: startMirror above waits on a real one.
+    jest.useFakeTimers();
+    mockCredsResult = { worker_jwt: 'jwt-2', api_base_url: 'https://api.anthropic.com', worker_epoch: 9 };
+    mockAttachOpts.onClose(401);
+    await jest.advanceTimersByTimeAsync(5000);
+
+    expect(mockHandle.reconnectTransport).toHaveBeenCalledWith(
+      expect.objectContaining({ ingressToken: 'jwt-2', epoch: 9 }),
+    );
+  });
+
+  test('switching account drops every mirror', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+
+    service.onAccountChanged();
+    await settle();
+    expect(mockHandle.close).toHaveBeenCalled();
+    expect((await service.getStatus()).activeSessions).toBe(0);
+  });
+
+  test('subscribing twice does not double-write', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    service.attachToChatService(chat);
+    service.attachToChatService(chat);
+    await service.onSessionStarted('chat-1', { cwd: '/repo' });
+    await settle();
+
+    chat.emit('chat-message', { sessionId: 'chat-1', message: { type: 'assistant' } });
+    expect(mockHandle.write).toHaveBeenCalledTimes(1);
+  });
+});

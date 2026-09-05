@@ -33,6 +33,15 @@ const defaultSettings = {
   effortLevel: 'high', // Effort level for chat sessions: low, medium, high, xhigh, max
   remoteEnabled: false, // Enable remote control via mobile PWA
   remotePort: 3712, // Port for the remote control WebSocket/HTTP server
+  // Claude Code's own Remote Control: mirror chat sessions to claude.ai and the
+  // Claude mobile app. Opt-in — it ships local transcripts off the machine.
+  claudeRemoteControlEnabled: false,
+  // Whether claude.ai may drive a mirrored session (prompts, interrupts,
+  // permission answers) or only watch it.
+  claudeRemoteControlDrive: true,
+  // Launch `claude --rc` in terminal tabs too. Separate opt-in: it changes how
+  // the real CLI starts, not just what this app mirrors.
+  claudeRemoteControlTerminals: false,
   restoreTerminalSessions: true, // Restore terminal tabs from previous session on startup
   remoteSelectedIp: null, // Selected network interface IP for pairing URL (null = auto)
   remotePersistentPin: false, // Use a fixed PIN that never expires

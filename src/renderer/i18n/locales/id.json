@@ -2226,7 +2226,23 @@
   "connectivity": {
     "tabTitle": "Konektivitas",
     "localTab": "Lokal",
-    "cloudTab": "Cloud"
+    "cloudTab": "Cloud",
+    "claudeTab": "claude.ai"
+  },
+  "claudeRemote": {
+    "enable": "Kontrol Jarak Jauh (claude.ai)",
+    "enableDesc": "Ikuti dan kendalikan sesi chat Anda dari claude.ai/code atau aplikasi seluler Claude.",
+    "allowDriving": "Izinkan kendali jarak jauh",
+    "drivingOn": "claude.ai dapat mengirim perintah, menghentikan giliran, dan menjawab permintaan izin. Sesi yang sudah terbuka tetap hanya-baca sampai dimulai ulang.",
+    "drivingOff": "Hanya cermin: claude.ai menampilkan percakapan tetapi tidak dapat bertindak di mesin ini.",
+    "privacy": "Sesi yang dicerminkan mengirim percakapannya — perintah, isi berkas, dan keluaran alat — ke claude.ai.",
+    "blocked": "Kontrol Jarak Jauh dinonaktifkan oleh kebijakan organisasi Anda.",
+    "unsupported": "Versi ini tidak dapat menyediakan Kontrol Jarak Jauh.",
+    "statusUnknown": "Status tidak tersedia.",
+    "mirroring": "{count} sesi dicerminkan ke claude.ai.",
+    "idle": "Belum ada sesi yang dicerminkan. Buka tab chat untuk memulai.",
+    "terminals": "Hubungkan juga tab terminal",
+    "terminalsDesc": "Menjalankan CLI Claude dengan --rc di tab terminal, sehingga sesi tersebut juga sampai ke claude.ai."
   },
   "cloud": {
     "tabTitle": "Cloud",

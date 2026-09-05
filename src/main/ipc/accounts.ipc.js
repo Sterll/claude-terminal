@@ -85,6 +85,10 @@ function registerAccountsHandlers() {
     if (result.success) {
       // The usage figures and the cached token belong to the outgoing account.
       UsageService.invalidateCredentials();
+      // So do the Remote Control mirrors: each was minted with the outgoing
+      // account's OAuth token, and its worker JWT authenticates as that account
+      // until it expires.
+      require('../services/RemoteControlService').onAccountChanged();
       UsageService.refreshUsage().catch(err => console.warn('[accounts.ipc] usage refresh failed:', err.message));
       await broadcastAccounts();
     }

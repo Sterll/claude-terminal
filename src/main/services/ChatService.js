@@ -11,6 +11,7 @@ const { execFileSync } = require('child_process');
 const ModelCatalogService = require('./ModelCatalogService');
 const AccountManager = require('./AccountManager');
 const chromeBridgeService = require('./ChromeBridgeService');
+const remoteControlService = require('./RemoteControlService');
 const { getSdkCliPath } = require('../utils/sdkCli');
 const { isCliFailureText } = require('../../shared/cli-failure-text');
 const { isApiErrorMessage } = require('../../shared/api-error');
@@ -382,8 +383,53 @@ class ChatService {
     this.mainWindow = window;
   }
 
+  /**
+   * Subscribe to every chat event this service dispatches, as raw
+   * `(channel, data)` pairs — the same stream the renderer window receives.
+   *
+   * Replaces the original single-callback slot, which could only ever have one
+   * owner: RemoteServer claimed it for the mobile PWA, so mirroring a session
+   * to claude.ai as well would have silently unhooked the phone.
+   *
+   * @param {Function} fn - (channel, data) => void
+   * @returns {Function} unsubscribe
+   */
+  addEventListener(fn) {
+    if (typeof fn !== 'function') return () => {};
+    if (!this._eventListeners) this._eventListeners = new Set();
+    this._eventListeners.add(fn);
+    return () => this._eventListeners?.delete(fn);
+  }
+
+  /**
+   * Compatibility shim for the original single-slot API: registers `fn` as a
+   * listener and drops whichever one this setter installed before, so repeated
+   * calls keep behaving as a slot rather than stacking up.
+   */
   setRemoteEventCallback(fn) {
-    this._remoteEventCallback = fn || null;
+    if (this._remoteEventUnsubscribe) {
+      this._remoteEventUnsubscribe();
+      this._remoteEventUnsubscribe = null;
+    }
+    if (fn) this._remoteEventUnsubscribe = this.addEventListener(fn);
+  }
+
+  /**
+   * Fan an event out to every listener.
+   *
+   * Each is isolated: with more than one consumer, a throwing listener must not
+   * cost the others their event — a crash in the claude.ai mirror is not a
+   * reason for the phone to stop updating.
+   */
+  _emitEvent(channel, data) {
+    if (!this._eventListeners?.size) return;
+    for (const listener of this._eventListeners) {
+      try {
+        listener(channel, data);
+      } catch (err) {
+        console.warn('[ChatService] event listener error:', err?.message);
+      }
+    }
   }
 
   /**
@@ -523,9 +569,7 @@ class ChatService {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send(channel, data);
     }
-    if (this._remoteEventCallback) {
-      this._remoteEventCallback(channel, data);
-    }
+    this._emitEvent(channel, data);
   }
 
   /**
@@ -651,9 +695,7 @@ class ChatService {
         ...(userMessageUuid ? { uuid: userMessageUuid } : {})
       });
       // Relay initial user message to remote clients
-      if (this._remoteEventCallback) {
-        this._remoteEventCallback('chat-user-message', { sessionId, text: prompt, images: images.length });
-      }
+      this._emitEvent('chat-user-message', { sessionId, text: prompt, images: images.length });
     }
 
     const abortController = new AbortController();
@@ -819,6 +861,24 @@ class ChatService {
       });
 
       this._emitLifecycle('start', sessionId, { projectId, cwd });
+
+      // Claude Remote Control: mirror the session to claude.ai when the user
+      // opted in. Deliberately not awaited — attaching costs two HTTP round
+      // trips, and none of them is a reason to make a local session slower to
+      // start or able to fail.
+      //
+      // Internal sessions are skipped: a workflow agent step registers an
+      // interceptor, runs unattended and belongs to machinery the user never
+      // started, so mirroring it would only clutter their claude.ai session list.
+      if (!this._sessionInterceptors?.has(sessionId)) {
+        remoteControlService.onSessionStarted(sessionId, {
+          cwd: effectiveCwd, projectId, accountId, model,
+          // The opening prompt is relayed as `chat-user-message` far earlier in
+          // this method, before the mirror exists to hear it, so it is handed
+          // over explicitly instead.
+          initialPrompt: prompt,
+        });
+      }
       // The background-task level is per CLI process and nothing is emitted at
       // startup, so the host owns the reset. Without it, a resumed tab would
       // keep showing tasks that belonged to the process that just went away.
@@ -864,9 +924,7 @@ class ChatService {
         ...(userMessageUuid ? { uuid: userMessageUuid } : {})
       });
       // Relay user message to remote clients so mobile sees it
-      if (this._remoteEventCallback) {
-        this._remoteEventCallback('chat-user-message', { sessionId, text, images: images.length });
-      }
+      this._emitEvent('chat-user-message', { sessionId, text, images: images.length });
       // Fire chat_message trigger for user prompts
       if (typeof text === 'string' && text.trim()) {
         this._emitMessage('user', text, sessionId);
@@ -1664,8 +1722,8 @@ class ChatService {
       // Mark session as stream-ended so closeSession won't emit duplicate session:closed
       if (session) session._streamEnded = true;
       // Notify remote clients that this session's stream has ended
-      if (this._remoteEventCallback) {
-        this._remoteEventCallback('session:closed', { sessionId });
+      {
+        this._emitEvent('session:closed', { sessionId });
       }
     }
   }
@@ -2428,9 +2486,10 @@ class ChatService {
     }
     const alreadyNotified = session._streamEnded;
     this.sessions.delete(sessionId);
+    remoteControlService.onSessionClosed(sessionId);
     // Notify remote clients (skip if _processStream already sent session:closed)
-    if (!alreadyNotified && this._remoteEventCallback) {
-      this._remoteEventCallback('session:closed', { sessionId });
+    if (!alreadyNotified) {
+      this._emitEvent('session:closed', { sessionId });
     }
   }
 

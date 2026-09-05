@@ -99,6 +99,7 @@ Remote UI (PWA for mobile)
 | `project.ipc.js` | 1 | TODO/FIXME/HACK/XXX scanning, project stats |
 | `hooks.ipc.js` | 5 | Install/remove/status/verify hooks in `~/.claude/settings.json` |
 | `remote.ipc.js` | 11 | PIN auth, WS server info/start/stop, notify projects/session/tab/time |
+| `remote-control.ipc.js` | 2 | Claude Remote Control (claude.ai bridge): status, disable |
 | `workflow.ipc.js` | 18 | Create/list/run/cancel workflows, run logs, diagnose, variables, test node |
 | `workspace.ipc.js` | 7 | Workspace list/overview/search/read/write docs/concept links |
 | `knowledge.ipc.js` | 9 | Global knowledge CRUD, pin, enable, search, CLAUDE.md block preview/sync |
@@ -131,6 +132,7 @@ Remote UI (PWA for mobile)
 | `HooksService.js` | 15 Claude hook types, non-destructive install, auto-backup/repair |
 | `HookEventServer.js` | HTTP server on `127.0.0.1:0`, receives POST from hook handler |
 | `RemoteServer.js` | WebSocket + HTTP for PWA, dynamic port, 6-digit PIN auth, broadcast updates |
+| `RemoteControlService.js` | Claude Code Remote Control: mirrors chat sessions to claude.ai / the Claude mobile app over the SDK bridge, and routes prompts, interrupts and permission answers back |
 | `DatabaseService.js` | Multi-driver pooling (SQLite/MySQL/PostgreSQL/MongoDB/Redis), schema, idle eviction |
 | `WorkflowService.js` | Workflow automation orchestrator (central) |
 | `WorkflowRunner.js` | Execute a single workflow run (variables, conditions, data flow) |
@@ -159,6 +161,7 @@ Remote UI (PWA for mobile)
 | Utility | Purpose |
 |---------|---------|
 | `paths.js` | Path constants (`~/.claude-terminal/`, `~/.claude/`), `ensureDataDir()`, `loadAccentColor()` |
+| `claudeBridge.js` | Dynamic ESM loader for the Agent SDK's Remote Control bridge, with feature detection over its `@alpha` surface |
 | `git.js` | 20+ git operations via `execGit()`, status parsing, safe.directory, 15s timeout, worktree support |
 | `commitMessageGenerator.js` | AI commit via GitHub Models API (gpt-4o-mini), heuristic fallback |
 | `prDescriptionGenerator.js` | AI-generated PR descriptions |
@@ -266,7 +269,8 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 | `DatabasePanel` | Multi-driver data browser, SQL editor, Redis tree-view |
 | `KanbanPanel` | Kanban board (tasks by column) |
 | `CloudPanel` | Cloud sync with per-entity toggles, project upload/download, diff modal |
-| `ConnectivityPanel` | Unified local remote + cloud connectivity status |
+| `ConnectivityPanel` | Unified local remote + cloud connectivity status (Local / Cloud / claude.ai sub-tabs) |
+| `ClaudeRemotePanel` | Claude Remote Control settings: mirroring, remote driving, `--rc` for terminal tabs |
 
 ### Features (`src/renderer/features/`)
 
@@ -396,7 +400,7 @@ Each type typically provides `main/[Type]Service.js`, `main/[type].ipc.js`, `ren
 
 Exposes API namespaces on `window.electron_api`:
 
-`terminal` | `git` (69 methods) | `github` | `chat` | `claude` | `mcp` | `mcpRegistry` | `marketplace` | `plugins` | `dialog` | `explorer` | `window` | `app` | `notification` | `usage` | `project` | `hooks` | `updates` | `setupWizard` | `lifecycle` | `quickPicker` | `tray` | `fivem` | `webapp` | `api` | `python` | `minecraft` | `discord` | `remote` | `workspace` | `workflow` | `parallel` | `database` | `time` | `telemetry` | `cloud` | `knowledge`
+`terminal` | `git` (69 methods) | `github` | `chat` | `claude` | `mcp` | `mcpRegistry` | `marketplace` | `plugins` | `dialog` | `explorer` | `window` | `app` | `notification` | `usage` | `project` | `hooks` | `updates` | `setupWizard` | `lifecycle` | `quickPicker` | `tray` | `fivem` | `webapp` | `api` | `python` | `minecraft` | `discord` | `remote` | `remoteControl` | `workspace` | `workflow` | `parallel` | `database` | `time` | `telemetry` | `cloud` | `knowledge`
 
 Also exposes `window.electron_nodeModules`: `path`, `fs` (sync + promises, guarded by a system-path blocklist in `preload.js`), `os.homedir()`, a small allowlist of `process.env` vars, and `__dirname`.
 
@@ -478,7 +482,8 @@ OS credential store (via keytar)       # GitHub token (Windows Credential Manage
 - **Renderer bundling:** esbuild IIFE -> `dist/renderer.bundle.js` with sourcemaps, target `chrome120`
 - **Persistence:** atomic writes (temp + rename), `.bak` backup files, corruption recovery
 - **Updates:** generic provider, 30 min periodic checks, differential packages
-- **Remote control:** WS server with PIN auth, QR code, PWA in `remote-ui/`
+- **Remote control (local):** WS server with PIN auth, QR code, PWA in `remote-ui/`
+- **Remote Control (claude.ai):** opt-in (`claudeRemoteControlEnabled`). Attaches each chat session to `@anthropic-ai/claude-agent-sdk/bridge` so it appears at claude.ai/code and in the Claude mobile app. The bridge export is ESM-only and `@alpha` — loaded through `src/main/utils/claudeBridge.js`, which resolves it out of `app.asar.unpacked` and feature-detects every function it uses. `claudeRemoteControlDrive` decides between a read-only mirror (`outboundOnly`) and full driving; `claudeRemoteControlTerminals` adds `--rc` to the CLI in terminal tabs. Honours the managed-settings `disableRemoteControl` kill switch
 - **Model, effort and permission mode are per conversation:** the chat footer's chip (model · effort, right) and mode picker (left, as Claude Desktop places it) change the current tab only. The stored `chatModel` / `effortLevel` / `executionMode` are the defaults a new tab starts from, moved only through each menu's "Use for new conversations" row — a pick never writes them, so the last choice in one tab cannot silently become every later tab's. The model menu lists models only: the CLI's `default` alias is read for the model it points at (`recommendedModelId`, surfaced as the catalog's `recommended`) and then dropped (`dropDefaultAlias`), so an unpinned tab shows that model **by name** instead of a "Default (recommended)" row that stood for whichever model the CLI favoured that week. `chatModel: null` still means "nothing pinned"; pinning always stores a concrete id. Modes are the SDK's (`default`, `acceptEdits`, `plan`, `bypassPermissions`, `auto`), mapped to the legacy `executionMode` spellings in `src/shared/permission-modes.js`; `ChatService.setPermissionMode` switches mid-session and moves the app-side auto-approval with it. Fable is a hand-curated premium tier (`PREMIUM_FAMILIES` in `src/shared/model-options.js`, hand-curated because the CLI catalog says nothing about it): violet chip and composer border, "Premium" badge in the menu, a tag on the tab, and a dismissible notice above the composer when a new tab inherits it. What the UI says about it is that the family draws on its own usage limit — the model-scoped `limits` entry the usage API returns beside `session` and `weekly_all` — and that this also counts toward overall usage; on a subscription it is not billed on top, so no string may say it is. `max` effort turns the effort segment warning-coloured. Every (re)start and every mid-session switch leaves a line in the transcript
 - **Cloud sync:** self-hosted Docker relay, per-entity toggles, file watcher, conflict diff modal
 - **Claude in Chrome:** opt-in (`chromeBridgeEnabled`). Adds the `claude-in-chrome` MCP server — 22 browser tools — to chat sessions by spawning the bundled SDK binary with `--claude-in-chrome-mcp`; Chrome reaches it through a native messaging host manifest whose name (`com.anthropic.claude_code_browser_extension`) is fixed by the extension and therefore shared with Claude Code, so an existing working manifest is adopted, never overwritten

@@ -24,6 +24,7 @@ const { registerHooksHandlers } = require('./hooks.ipc');
 const { registerMinecraftHandlers } = require('../../project-types/minecraft/main/minecraft.ipc');
 const { registerDiscordHandlers } = require('../../project-types/discord/main/discord.ipc');
 const { registerRemoteHandlers } = require('./remote.ipc');
+const { registerRemoteControlHandlers } = require('./remote-control.ipc');
 const { registerWorkflowHandlers } = require('./workflow.ipc');
 const { registerCloudRelayHandlers, setCloudRelayMainWindow } = require('./cloud-relay.ipc');
 const { registerCloudProjectsHandlers, setCloudProjectsMainWindow } = require('./cloud-projects.ipc');
@@ -75,6 +76,7 @@ function registerAllHandlers(mainWindow) {
   registerMinecraftHandlers();
   registerDiscordHandlers();
   registerRemoteHandlers();
+  registerRemoteControlHandlers();
   registerWorkflowHandlers(mainWindow);
   registerCloudRelayHandlers();
   registerCloudProjectsHandlers();

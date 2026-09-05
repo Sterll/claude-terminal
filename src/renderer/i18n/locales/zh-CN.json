@@ -2226,7 +2226,23 @@
   "connectivity": {
     "tabTitle": "连接性",
     "localTab": "本地",
-    "cloudTab": "云"
+    "cloudTab": "云",
+    "claudeTab": "claude.ai"
+  },
+  "claudeRemote": {
+    "enable": "远程控制 (claude.ai)",
+    "enableDesc": "在 claude.ai/code 或 Claude 移动应用中跟踪并操作你的聊天会话。",
+    "allowDriving": "允许远程操作",
+    "drivingOn": "claude.ai 可以发送消息、中断当前回合并回应权限请求。已打开的会话在重启前仍为只读。",
+    "drivingOff": "仅镜像：claude.ai 显示对话，但无法在本机执行操作。",
+    "privacy": "镜像会话会将其对话内容（消息、文件内容和工具输出）发送到 claude.ai。",
+    "blocked": "远程控制已被你所在组织的策略禁用。",
+    "unsupported": "此版本无法提供远程控制。",
+    "statusUnknown": "状态不可用。",
+    "mirroring": "已将 {count} 个会话镜像到 claude.ai。",
+    "idle": "尚无镜像会话。打开一个聊天标签页即可开始。",
+    "terminals": "同时连接终端标签页",
+    "terminalsDesc": "在终端标签页中以 --rc 启动 Claude CLI，让这些会话也能到达 claude.ai。"
   },
   "cloud": {
     "tabTitle": "云",

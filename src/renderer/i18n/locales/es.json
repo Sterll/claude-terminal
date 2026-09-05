@@ -2223,7 +2223,23 @@
   "connectivity": {
     "tabTitle": "Conectividad",
     "localTab": "Local",
-    "cloudTab": "Nube"
+    "cloudTab": "Nube",
+    "claudeTab": "claude.ai"
+  },
+  "claudeRemote": {
+    "enable": "Control remoto (claude.ai)",
+    "enableDesc": "Sigue y dirige tus sesiones de chat desde claude.ai/code o la app móvil de Claude.",
+    "allowDriving": "Permitir el control remoto",
+    "drivingOn": "claude.ai puede enviar mensajes, interrumpir un turno y responder a las solicitudes de permiso. Las sesiones ya abiertas siguen en solo lectura hasta reiniciarlas.",
+    "drivingOff": "Solo espejo: claude.ai muestra la conversación pero no puede actuar en esta máquina.",
+    "privacy": "Las sesiones reflejadas envían su conversación — mensajes, contenido de archivos y salida de herramientas — a claude.ai.",
+    "blocked": "El control remoto está desactivado por la política de tu organización.",
+    "unsupported": "Esta versión no puede ofrecer el control remoto.",
+    "statusUnknown": "Estado no disponible.",
+    "mirroring": "{count} sesión(es) reflejada(s) en claude.ai.",
+    "idle": "Ninguna sesión reflejada. Abre una pestaña de chat para empezar.",
+    "terminals": "Conectar también las pestañas de terminal",
+    "terminalsDesc": "Lanza el CLI de Claude con --rc en las pestañas de terminal, para que esas sesiones también lleguen a claude.ai."
   },
   "cloud": {
     "tabTitle": "Nube",

@@ -7,6 +7,7 @@
 const { t } = require('../../i18n');
 const RemotePanel = require('./RemotePanel');
 const CloudPanel = require('./CloudPanel');
+const ClaudeRemotePanel = require('./ClaudeRemotePanel');
 
 let _activeSubTab = 'cloud'; // default sub-tab
 
@@ -30,6 +31,13 @@ function buildHtml(settings) {
           </svg>
           <span>${t('connectivity.cloudTab', 'Cloud')}</span>
         </button>
+        <button class="cn-tab ${_activeSubTab === 'claude' ? 'active' : ''}" data-cn-tab="claude">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="5" y="2" width="14" height="20" rx="2"/>
+            <line x1="12" y1="18" x2="12.01" y2="18"/>
+          </svg>
+          <span>${t('connectivity.claudeTab', 'claude.ai')}</span>
+        </button>
       </div>
 
       <!-- Sub-tab content -->
@@ -42,6 +50,11 @@ function buildHtml(settings) {
         <div class="cn-sub-panel ${_activeSubTab === 'cloud' ? 'active' : ''}" data-cn-panel="cloud">
           <div class="cn-sub-panel-inner">
             ${CloudPanel.buildHtml(settings)}
+          </div>
+        </div>
+        <div class="cn-sub-panel ${_activeSubTab === 'claude' ? 'active' : ''}" data-cn-panel="claude">
+          <div class="cn-sub-panel-inner">
+            ${ClaudeRemotePanel.buildHtml(settings)}
           </div>
         </div>
       </div>
@@ -64,12 +77,16 @@ function setupHandlers(context) {
       document.querySelectorAll('.cn-sub-panel[data-cn-panel]').forEach(panel => {
         panel.classList.toggle('active', panel.dataset.cnPanel === target);
       });
+
+      // The mirror count and the last error go stale while the tab is hidden.
+      if (target === 'claude') ClaudeRemotePanel.refreshStatus(context?.api || window.electron_api);
     });
   });
 
   // Setup both sub-panels
   RemotePanel.setupHandlers(context);
   CloudPanel.setupHandlers(context);
+  ClaudeRemotePanel.setupHandlers(context);
 }
 
 function cleanup() {

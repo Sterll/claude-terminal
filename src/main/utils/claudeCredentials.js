@@ -219,6 +219,50 @@ async function deleteCredentialsForDir(dir) {
   }
 }
 
+/**
+ * The device token Remote Control needs when the account's organisation has
+ * elevated auth enforcement switched on.
+ *
+ * Bridge sessions are SecurityTier=ELEVATED, so the CLI sends this as
+ * `X-Trusted-Device-Token` and the server answers 403 `untrusted_device`
+ * without it. Enrollment (`POST /api/auth/trusted_devices`) is the CLI's own
+ * job and happens by itself the first time Claude Code runs Remote Control;
+ * all this app can do is find the token the CLI stored and reuse it.
+ *
+ * Checked in the order the CLI resolves them: the environment override first,
+ * then the credential store (namespaced when the caller passes an account
+ * directory), then `~/.claude.json`.
+ *
+ * Returns null when the account has never enrolled — the common case, and not
+ * an error: the header is simply omitted, and the server only objects when its
+ * enforcement gate is actually on.
+ *
+ * @param {string|null} [dir] - Per-account credential directory, if any
+ * @returns {Promise<string|null>}
+ */
+async function readTrustedDeviceToken(dir = null) {
+  if (process.env.CLAUDE_TRUSTED_DEVICE_TOKEN) return process.env.CLAUDE_TRUSTED_DEVICE_TOKEN;
+
+  try {
+    const creds = dir ? await readCredentialsForDir(dir) : await readCredentials();
+    if (typeof creds?.trustedDeviceToken === 'string' && creds.trustedDeviceToken) {
+      return creds.trustedDeviceToken;
+    }
+  } catch (_) { /* store unreadable — the config file below may still have it */ }
+
+  try {
+    const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+    // ~/.claude.json sits beside the directory, not inside it.
+    const configPath = path.join(path.dirname(claudeDir), '.claude.json');
+    const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    if (typeof cfg?.trustedDeviceToken === 'string' && cfg.trustedDeviceToken) {
+      return cfg.trustedDeviceToken;
+    }
+  } catch (_) { /* absent or malformed — treated as not enrolled */ }
+
+  return null;
+}
+
 module.exports = {
   KEYCHAIN_SERVICE,
   SECURESTORAGE_ENV,
@@ -228,6 +272,7 @@ module.exports = {
   writeCredentials,
   readAccessToken,
   tokenFromCredentials,
+  readTrustedDeviceToken,
   keychainServiceForDir,
   readCredentialsForDir,
   writeSeedForDir,
