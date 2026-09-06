@@ -201,8 +201,21 @@ function baseModelId(id) {
  *
  * A persisted setting can hold any of three things: the exact `value` the CLI
  * advertises ('opus[1m]'), a canonical wire id the alias resolves to
- * ('claude-opus-5'), or a legacy id chosen from the More models submenu. Match
- * in that order of specificity so an exact hit always wins over a base-id one.
+ * ('claude-opus-5'), or a legacy id chosen from the More models submenu. The
+ * stream adds a fourth spelling: the CLI's init message names the model it is
+ * running the way `resolvedModel` spells it ('claude-opus-5[1m]'), while the
+ * API answers with the bare wire id ('claude-opus-5'). Match in that order of
+ * specificity so an exact hit always wins over a base-id one.
+ *
+ * Past the first tier, prefer a concrete row over the `default` alias.
+ * `default` points at whatever the CLI currently recommends, so resolving an
+ * id onto it would let a later CLI release silently move a deliberate choice —
+ * while the concrete row ('opus[1m]') is the same model the user actually
+ * picked. The alias also shares its `resolvedModel` with that row and leads
+ * the menu, so an exact pass without the preference handed it every id the
+ * init message reported: the footer read "Default (recommended)" from session
+ * start until the first stream event named the bare wire id and flipped it
+ * back to the model that had been picked all along.
  *
  * @param {Array<object>} models Catalog rows (SDK ModelInfo shape).
  * @param {string} id Persisted or requested model id.
@@ -210,20 +223,21 @@ function baseModelId(id) {
  */
 function matchModel(models, id) {
   if (!Array.isArray(models) || !id) return null;
-  const exact = models.find(m => m.value === id || m.resolvedModel === id);
+
+  // Naming a row's own `value` is the one way to land on the alias: only an
+  // explicit pick of "Default (recommended)" stores 'default'.
+  const byValue = models.find(m => m.value === id);
+  if (byValue) return byValue;
+
+  const concreteFirst = covers =>
+    models.find(m => m.value !== DEFAULT_ALIAS && covers(m)) || models.find(covers) || null;
+
+  const exact = concreteFirst(m => m.resolvedModel === id);
   if (exact) return exact;
 
   const base = baseModelId(id);
   if (!base) return null;
-  const covers = m => baseModelId(m.value) === base || baseModelId(m.resolvedModel) === base;
-
-  // Prefer a concrete row over the `default` alias. `default` points at
-  // whatever the CLI currently recommends, so resolving a stored id onto it
-  // would let a later CLI release silently move a deliberate choice — while
-  // the concrete row ('opus[1m]') is the same model the user actually picked.
-  return models.find(m => m.value !== DEFAULT_ALIAS && covers(m))
-    || models.find(covers)
-    || null;
+  return concreteFirst(m => baseModelId(m.value) === base || baseModelId(m.resolvedModel) === base);
 }
 
 /**
