@@ -29,7 +29,12 @@ jest.mock('https', () => ({
 }));
 
 jest.mock('../../src/main/utils/claudeCredentials', () => ({
-  readAccessToken: jest.fn(async () => 'tok-machine'),
+  // The machine-wide store is read whole rather than through readAccessToken:
+  // the service caches a token until its own expiresAt, which only the full
+  // credentials carry.
+  readCredentials: jest.fn(async () => ({
+    claudeAiOauth: { accessToken: 'tok-machine', expiresAt: 4102444800000 }
+  })),
   readCredentialsForDir: jest.fn(async (dir) => ({
     claudeAiOauth: { accessToken: `tok-${dir.split('/').pop()}`, expiresAt: 4102444800000 }
   })),

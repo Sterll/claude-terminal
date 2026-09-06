@@ -102,3 +102,133 @@ describe('readBuckets', () => {
     expect(readBuckets({ limits: null })).toEqual([]);
   });
 });
+
+/**
+ * Guards the OAuth token cache.
+ *
+ * On macOS the machine-wide credentials live in the login Keychain, in an item
+ * created by the Claude CLI whose ACL does not list this app, so every read of
+ * the store is a system password prompt. The renderer polls usage once a
+ * minute; the cache used to hold the token for 30 seconds, so it expired before
+ * every single tick and the prompts piled up behind the window. These tests pin
+ * the read count.
+ */
+describe('OAuth token cache', () => {
+  const CREDENTIALS_MODULE = '../../src/main/utils/claudeCredentials';
+  const HOUR = 3600 * 1000;
+
+  let readCredentials;
+  let httpsGet;
+
+  /** Load a fresh UsageService over a mocked credential store and https. */
+  function load(statuses = [200]) {
+    const queue = [...statuses];
+    readCredentials = jest.fn();
+    httpsGet = jest.fn((options, callback) => {
+      const statusCode = queue.length > 1 ? queue.shift() : (queue[0] ?? 200);
+      const body = statusCode === 200 ? JSON.stringify({ limits: [] }) : 'unauthorized';
+      const res = {
+        statusCode,
+        on: (event, fn) => {
+          if (event === 'data') fn(body);
+          if (event === 'end') fn();
+          return res;
+        }
+      };
+      callback(res);
+      return { on: jest.fn(), destroy: jest.fn() };
+    });
+
+    jest.resetModules();
+    // Only the store read is faked; tokenFromCredentials stays real, since the
+    // expiry rule it applies is part of what these tests exercise.
+    jest.doMock(CREDENTIALS_MODULE, () => ({
+      ...jest.requireActual(CREDENTIALS_MODULE),
+      readCredentials
+    }));
+    jest.doMock('https', () => ({ get: httpsGet }));
+    return require('../../src/main/services/UsageService');
+  }
+
+  const validCreds = (accessToken = 'token-a') =>
+    ({ claudeAiOauth: { accessToken, expiresAt: Date.now() + HOUR } });
+
+  afterEach(() => {
+    jest.dontMock(CREDENTIALS_MODULE);
+    jest.dontMock('https');
+    jest.resetModules();
+  });
+
+  test('reads the credential store once across repeated polls', async () => {
+    const usage = load();
+    readCredentials.mockResolvedValue(validCreds());
+
+    await usage.fetchUsage();
+    await usage.fetchUsage();
+    await usage.fetchUsage();
+
+    expect(readCredentials).toHaveBeenCalledTimes(1);
+    expect(httpsGet).toHaveBeenCalledTimes(3);
+  });
+
+  test('does not ask again on the next poll when the store is unreadable', async () => {
+    const usage = load();
+    readCredentials.mockRejectedValue(new Error('User canceled the operation.'));
+
+    expect(await usage.fetchUsage()).toBeNull();
+    expect(await usage.fetchUsage()).toBeNull();
+
+    expect(readCredentials).toHaveBeenCalledTimes(1);
+    expect(httpsGet).not.toHaveBeenCalled();
+  });
+
+  test('does not ask again on the next poll when the stored token has expired', async () => {
+    const usage = load();
+    readCredentials.mockResolvedValue({
+      claudeAiOauth: { accessToken: 'stale', expiresAt: Date.now() - 1000 }
+    });
+
+    await usage.fetchUsage();
+    await usage.fetchUsage();
+
+    expect(readCredentials).toHaveBeenCalledTimes(1);
+    expect(httpsGet).not.toHaveBeenCalled();
+  });
+
+  test('re-reads once when the API refuses the token, then stops', async () => {
+    const usage = load([401]);
+    readCredentials.mockResolvedValue(validCreds());
+
+    await usage.fetchUsage(); // reads the store, gets a 401
+    await usage.fetchUsage(); // re-reads once in case the CLI rotated it
+    await usage.fetchUsage(); // store still holds the refused token: no read
+
+    expect(readCredentials).toHaveBeenCalledTimes(2);
+    expect(httpsGet).toHaveBeenCalledTimes(1);
+  });
+
+  test('picks up a token the CLI rotated after the API refused the old one', async () => {
+    const usage = load([401, 200]);
+    readCredentials
+      .mockResolvedValueOnce(validCreds('token-a'))
+      .mockResolvedValue(validCreds('token-b'));
+
+    await usage.fetchUsage();
+    await usage.fetchUsage();
+
+    expect(httpsGet).toHaveBeenCalledTimes(2);
+    expect(httpsGet.mock.calls[0][0].headers.Authorization).toBe('Bearer token-a');
+    expect(httpsGet.mock.calls[1][0].headers.Authorization).toBe('Bearer token-b');
+  });
+
+  test('re-reads the store after an account switch', async () => {
+    const usage = load();
+    readCredentials.mockResolvedValue(validCreds());
+
+    await usage.fetchUsage();
+    usage.invalidateCredentials();
+    await usage.fetchUsage();
+
+    expect(readCredentials).toHaveBeenCalledTimes(2);
+  });
+});
