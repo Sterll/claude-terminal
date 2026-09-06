@@ -109,6 +109,10 @@
     "closeProjectTitle": "Close {name}?",
     "closeProjectMessage": "This project has {count} open session(s). Closing its tab ends them.",
     "closeProjectConfirm": "Close and end sessions",
+    "closeProjectMessageEmpty": "Its tab will be closed. The project itself is not deleted.",
+    "closeOthersTitle": "Close {count} other project(s)?",
+    "closeOthersMessage": "Their tabs will be closed and {count} running session(s) ended.",
+    "closeOthersMessageEmpty": "Their tabs will be closed. The projects themselves are not deleted.",
     "moreActions": "More actions"
   },
   "terminals": {
@@ -2447,6 +2451,8 @@
     "closeOthers": "Close Others",
     "closeToLeft": "Close Tabs to Left",
     "closeToRight": "Close Tabs to Right",
+    "closeTabTitle": "Close {name}?",
+    "closeTabMessage": "This tab will be closed. Any session running in it ends.",
     "closeAll": "Close All"
   },
   "telemetry": {

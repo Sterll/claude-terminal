@@ -52,6 +52,7 @@ const {
 const registry = require('../../../project-types/registry');
 const { createChatView } = require('./ChatView');
 const { showContextMenu } = require('./ContextMenu');
+const { showConfirm } = require('./Modal');
 const ContextPromptService = require('../../services/ContextPromptService');
 const { getBuiltinSystemPrompt } = require('../../services/BuiltinSystemPrompts');
 
@@ -528,6 +529,8 @@ class TerminalManager extends BaseComponent {
     this._loadingTimeouts = new Map();
     // Tabs mid mode-switch — the chat->terminal leg awaits a PTY spawn.
     this._modeSwitching = new Set();
+    // A close-confirmation dialog is up; further × clicks are ignored.
+    this._closeConfirmOpen = false;
     this._callbacks = {
       onNotification: null,
       onRenderProjects: null,
@@ -1632,6 +1635,48 @@ class TerminalManager extends BaseComponent {
 
   // ── Close terminal ──
 
+  /**
+   * Ask before a tab's × throws away a running session.
+   *
+   * Only the per-tab close button routes through here. Tabs are also closed by
+   * a PTY exiting, by closing their project, and by the bulk context-menu
+   * actions — those either are not a user gesture at all or have already asked
+   * once for the whole batch, so putting the prompt in closeTerminal() would
+   * fire it twice (or N times) for a single decision.
+   *
+   * @param {string} id - Terminal id
+   * @param {Function} close - Performs the real close once confirmed
+   */
+  async _confirmCloseTab(id, close) {
+    // The dialog is modal, so a × click on another tab while it is up would
+    // stack a second overlay that Escape/Enter then answers at the same time.
+    if (this._closeConfirmOpen) return;
+
+    // Read the label off the tab rather than termData.name: a renamed tab (or
+    // one titled from Claude's output) only has its current name in the DOM.
+    const tabName = document.querySelector(`.terminal-tab[data-id="${id}"] .tab-name`)?.textContent?.trim()
+      || getTerminal(id)?.name
+      || '';
+
+    this._closeConfirmOpen = true;
+    let confirmed = false;
+    try {
+      confirmed = await showConfirm({
+        title: t('tabs.closeTabTitle', { name: tabName }),
+        message: t('tabs.closeTabMessage'),
+        confirmLabel: t('tabs.close'),
+        danger: true
+      });
+    } finally {
+      this._closeConfirmOpen = false;
+    }
+
+    if (!confirmed) return;
+    // The tab can be gone by the time the user answers (PTY exit, project close).
+    if (!getTerminal(id)) return;
+    close();
+  }
+
   closeTerminal(id) {
     const termData = getTerminal(id);
     const closedProjectIndex = termData?.projectIndex;
@@ -1989,7 +2034,7 @@ class TerminalManager extends BaseComponent {
 
     tab.onclick = (e) => { if (!e.target.closest('.tab-close') && !e.target.closest('.tab-name-input') && !e.target.closest('.tab-mode-toggle')) self.setActiveTerminal(id); };
     tab.querySelector('.tab-name').ondblclick = (e) => { e.stopPropagation(); self._startRenameTab(id); };
-    tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); self.closeTerminal(id); };
+    tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); self._confirmCloseTab(id, () => self.closeTerminal(id)); };
     tab.oncontextmenu = (e) => self._showTabContextMenu(e, id);
 
     const modeToggleBtn = tab.querySelector('.tab-mode-toggle');
@@ -2220,7 +2265,7 @@ class TerminalManager extends BaseComponent {
 
     tab.onclick = (e) => { if (!e.target.closest('.tab-close') && !e.target.closest('.tab-name-input')) self.setActiveTerminal(id); };
     tab.querySelector('.tab-name').ondblclick = (e) => { e.stopPropagation(); self._startRenameTab(id); };
-    tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); self._closeTypeConsole(id, projectIndex, typeId); };
+    tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); self._confirmCloseTab(id, () => self._closeTypeConsole(id, projectIndex, typeId)); };
     tab.oncontextmenu = (e) => self._showTabContextMenu(e, id);
 
     this._setupTabDragDrop(tab);
@@ -3227,7 +3272,7 @@ class TerminalManager extends BaseComponent {
 
     tab.onclick = (e) => { if (!e.target.closest('.tab-close') && !e.target.closest('.tab-name-input')) self.setActiveTerminal(id); };
     tab.querySelector('.tab-name').ondblclick = (e) => { e.stopPropagation(); self._startRenameTab(id); };
-    tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); self.closeTerminal(id); };
+    tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); self._confirmCloseTab(id, () => self.closeTerminal(id)); };
     tab.oncontextmenu = (e) => self._showTabContextMenu(e, id);
 
     this._setupTabDragDrop(tab);
@@ -3396,7 +3441,7 @@ class TerminalManager extends BaseComponent {
 
     tab.onclick = (e) => { if (!e.target.closest('.tab-close') && !e.target.closest('.tab-name-input')) self.setActiveTerminal(id); };
     tab.querySelector('.tab-name').ondblclick = (e) => { e.stopPropagation(); self._startRenameTab(id); };
-    tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); self.closeTerminal(id); };
+    tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); self._confirmCloseTab(id, () => self.closeTerminal(id)); };
     tab.oncontextmenu = (e) => self._showTabContextMenu(e, id);
 
     this._setupTabDragDrop(tab);
@@ -3835,7 +3880,7 @@ class TerminalManager extends BaseComponent {
     const self = this;
     tab.onclick = (e) => { if (!e.target.closest('.tab-close') && !e.target.closest('.tab-name-input')) self.setActiveTerminal(id); };
     tab.querySelector('.tab-name').ondblclick = (e) => { e.stopPropagation(); self._startRenameTab(id); };
-    tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); self.closeTerminal(id); };
+    tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); self._confirmCloseTab(id, () => self.closeTerminal(id)); };
     tab.oncontextmenu = (e) => self._showTabContextMenu(e, id);
 
     this._setupTabDragDrop(tab);
@@ -4036,7 +4081,7 @@ class TerminalManager extends BaseComponent {
 
     tab.onclick = (e) => { if (!e.target.closest('.tab-close') && !e.target.closest('.tab-name-input') && !e.target.closest('.tab-mode-toggle')) self.setActiveTerminal(id); };
     tab.querySelector('.tab-name').ondblclick = (e) => { e.stopPropagation(); self._startRenameTab(id); };
-    tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); self.closeTerminal(id); };
+    tab.querySelector('.tab-close').onclick = (e) => { e.stopPropagation(); self._confirmCloseTab(id, () => self.closeTerminal(id)); };
     tab.oncontextmenu = (e) => self._showTabContextMenu(e, id);
     const modeToggleBtn = tab.querySelector('.tab-mode-toggle');
     if (modeToggleBtn) {

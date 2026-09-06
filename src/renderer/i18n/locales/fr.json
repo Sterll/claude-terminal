@@ -109,6 +109,10 @@
     "closeProjectTitle": "Fermer {name} ?",
     "closeProjectMessage": "Ce projet a {count} session(s) ouverte(s). Fermer son onglet y met fin.",
     "closeProjectConfirm": "Fermer et terminer les sessions",
+    "closeProjectMessageEmpty": "Son onglet va être fermé. Le projet lui-même n'est pas supprimé.",
+    "closeOthersTitle": "Fermer {count} autre(s) projet(s) ?",
+    "closeOthersMessage": "Leurs onglets vont être fermés et {count} session(s) en cours terminée(s).",
+    "closeOthersMessageEmpty": "Leurs onglets vont être fermés. Les projets eux-mêmes ne sont pas supprimés.",
     "moreActions": "Plus d'actions"
   },
   "terminals": {
@@ -2447,6 +2451,8 @@
     "closeOthers": "Fermer les autres",
     "closeToLeft": "Fermer les onglets à gauche",
     "closeToRight": "Fermer les onglets à droite",
+    "closeTabTitle": "Fermer {name} ?",
+    "closeTabMessage": "Cet onglet va être fermé. Toute session en cours y sera terminée.",
     "closeAll": "Tout fermer"
   },
   "telemetry": {
