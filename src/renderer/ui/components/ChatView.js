@@ -119,7 +119,7 @@ const { updateTerminal, getTerminal } = require('../../state/terminals.state');
 const { saveTerminalSessions } = require('../../services/TerminalSessionService');
 
 const { matchModel, resolveModelSelection, hasOneMContext, DEFAULT_ALIAS } = require('../../../shared/model-options');
-const { contextTokensFromUsage } = require('../../../shared/context-usage');
+const { contextTokensFromMessage } = require('../../../shared/context-usage');
 const ModelCatalog = require('../../services/ModelCatalogClient');
 
 // Catalog access is shared with the project-settings and parallel-run pickers
@@ -6106,25 +6106,68 @@ class ChatView extends BaseComponent {
       </div>`;
   }
 
-  function renderContextBreakdown(usage) {
-    const breakdown = usage.breakdown || usage.categories || {};
-    const total = usage.total || Object.values(breakdown).reduce((a, b) => a + (Number(b) || 0), 0);
-    const limit = usage.limit || currentContextLimit();
-    const entries = Object.entries(breakdown)
-      .filter(([, v]) => Number(v) > 0)
-      .sort((a, b) => Number(b[1]) - Number(a[1]));
-    if (!entries.length) return;
+  /**
+   * Rows the CLI reports that are not occupancy: what is left, and the slice it
+   * holds back for a compaction. Both belong to the window, neither is in use,
+   * and listing them next to "Messages" would read as if they were.
+   */
+  const CONTEXT_FREE_ROW = /^(free|autocompact|compaction)/i;
 
-    contextPopover.innerHTML = contextSummaryHtml(total, limit) + entries.map(([key, value]) => {
-      const v = Number(value) || 0;
-      const pct = total > 0 ? Math.min(100, (v / total) * 100) : 0;
+  /**
+   * Categories, from whichever shape the CLI answered in.
+   *
+   * `getContextUsage()` returns `categories: [{ name, tokens, isDeferred }]`.
+   * The map-of-numbers this used to read never existed on that response, so
+   * `Object.entries` walked an array, `Number({...})` came back NaN, every row
+   * was filtered out and the overlay stayed on its header — the breakdown has
+   * simply never drawn. Both shapes are accepted so an older CLI still renders.
+   */
+  function contextUsageRows(usage) {
+    const raw = usage.categories || usage.breakdown || {};
+    const rows = Array.isArray(raw)
+      ? raw.map(c => ({
+          name: String(c?.name || ''),
+          tokens: Number(c?.tokens) || 0,
+          kind: c?.kind,
+          deferred: !!c?.isDeferred
+        }))
+      : Object.entries(raw).map(([name, tokens]) => ({
+          name: name.replace(/_/g, ' '),
+          tokens: Number(tokens) || 0
+        }));
+    return rows
+      .filter(r => r.tokens > 0
+        && !r.deferred
+        && (r.kind ? r.kind === 'used' : !CONTEXT_FREE_ROW.test(r.name)))
+      .sort((a, b) => b.tokens - a.tokens);
+  }
+
+  function renderContextBreakdown(usage) {
+    const rows = contextUsageRows(usage);
+    if (!rows.length) return;
+    const summed = rows.reduce((a, r) => a + r.tokens, 0);
+    const total = Number(usage.totalTokens) || Number(usage.total) || summed;
+    // The window the ring is drawn against stays the model's, so the overlay
+    // cannot disagree with what sits behind it. The CLI's own `rawMaxTokens` is
+    // the autocompact window, which is a different question.
+    const limit = currentContextLimit();
+
+    contextPopover.innerHTML = contextSummaryHtml(total, limit) + rows.map(row => {
+      const pct = summed > 0 ? Math.min(100, (row.tokens / summed) * 100) : 0;
       return `
         <div class="ccp-row">
-          <span class="ccp-label">${escapeHtml(key.replace(/_/g, ' '))}</span>
+          <span class="ccp-label">${escapeHtml(row.name)}</span>
           <div class="ccp-bar"><div class="ccp-fill" style="width:${pct.toFixed(1)}%"></div></div>
-          <span class="ccp-value">${escapeHtml(formatTokenCount(v))}</span>
+          <span class="ccp-value">${escapeHtml(formatTokenCount(row.tokens))}</span>
         </div>`;
     }).join('');
+
+    // The CLI counted the window itself — that beats the last turn's usage, and
+    // the ring should not keep showing a figure the overlay just corrected.
+    if (total > 0) {
+      inputTokens = total;
+      setContextGauge(total, limit);
+    }
   }
 
   /**
@@ -6277,6 +6320,13 @@ class ChatView extends BaseComponent {
           ? t('chat.compacted', { tokens: preTokens.toLocaleString() }) || `Conversation compacted (${preTokens.toLocaleString()} tokens before)`
           : t('chat.compactedSimple') || 'Conversation compacted';
         appendSystemNotice(notice, 'compact');
+        // The window just emptied; without this the ring stays full until the
+        // next turn's first frame reports the new prefix.
+        const postTokens = message.compact_metadata?.post_tokens;
+        if (postTokens > 0) {
+          inputTokens = postTokens;
+          updateStatusInfo();
+        }
         setStreaming(false);
       } else if (message.subtype === 'task_started') {
         const taskId = message.task_id;
@@ -6356,6 +6406,16 @@ class ChatView extends BaseComponent {
 
     // Full assistant message (backup for non-streaming or tool use detection)
     if (message.type === 'assistant') {
+      // One API call's input side is the window occupancy at that moment; the
+      // result message's usage is the turn's total over every call it made, so
+      // reading the gauge off the result made a tool-heavy turn stack several
+      // ~300K prefixes into "1.1M / 1M (109%)". Streamed frames of one call
+      // repeat that call's usage — the compare keeps the repaint to one.
+      const frameTokens = contextTokensFromMessage(message);
+      if (frameTokens > 0 && frameTokens !== inputTokens) {
+        inputTokens = frameTokens;
+        updateStatusInfo();
+      }
       handleAssistantMessage(message);
       return;
     }
@@ -6369,8 +6429,9 @@ class ChatView extends BaseComponent {
 
     // Result — update stats. Also detect SDK errors.
     if (message.type === 'result') {
-      const turnTokens = contextTokensFromUsage(message.usage);
-      if (turnTokens > 0) inputTokens = turnTokens;
+      // No gauge update here: `message.usage` is the turn's total across every
+      // API call it made, not what occupies the window. The assistant frames
+      // above carry that.
       if (message.model) model = message.model;
       updateStatusInfo();
 

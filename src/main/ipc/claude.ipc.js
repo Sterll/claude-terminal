@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const readline = require('readline');
-const { contextTokensFromUsage } = require('../../shared/context-usage');
+const { contextTokensFromMessage } = require('../../shared/context-usage');
 
 /**
  * Encode project path to match Claude's folder naming convention.
@@ -367,7 +367,8 @@ async function loadSessionHistory(projectPath, sessionId, options = {}) {
       try {
         const obj = JSON.parse(line);
 
-        const turnTokens = contextTokensFromUsage(obj.message?.usage);
+        // Sidechain lines are a subagent's own window, not this conversation's.
+        const turnTokens = contextTokensFromMessage(obj);
         if (turnTokens > 0) contextTokens = turnTokens;
 
         // User message
