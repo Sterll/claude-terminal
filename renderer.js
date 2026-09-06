@@ -3766,7 +3766,11 @@ document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
 // ========== PINNED TABS SYSTEM ==========
 // Canonical order — must mirror the grouping in index.html, since the groups
 // carry meaning (whether the project tab drives the screen).
-const _ALL_TABS_ORDER = ['claude', 'artifacts', 'dashboard', 'files', 'git', 'session-replay', 'tasks', 'control-tower', 'workspace', 'memory', 'timetracking', 'database', 'skills', 'agents', 'plugins', 'mcp', 'workflows', 'errorlog', 'connectivity'];
+// 'artifacts' is deliberately absent: its nav button is commented out in
+// index.html because the screen cannot be populated (see the note there). Both
+// the customize modal and the More dropdown are built from this list, so
+// leaving it in would offer a tab that no longer exists in the DOM.
+const _ALL_TABS_ORDER = ['claude', 'dashboard', 'files', 'git', 'session-replay', 'tasks', 'control-tower', 'workspace', 'memory', 'timetracking', 'database', 'skills', 'agents', 'plugins', 'mcp', 'workflows', 'errorlog', 'connectivity'];
 
 function applyPinnedTabs() {
   const pinned = settingsState.get().pinnedTabs || _ALL_TABS_ORDER;

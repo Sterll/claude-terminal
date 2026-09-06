@@ -46,7 +46,9 @@ function saveSettings(settings) {
 const ALL_TABS = [
   'claude', 'git', 'database', 'mcp', 'plugins', 'skills',
   'agents', 'workflows', 'tasks', 'control-tower', 'dashboard', 'timetracking',
-  'session-replay', 'memory', 'workspace', 'artifacts', 'errorlog', 'connectivity',
+  // 'artifacts' is omitted on purpose: its sidebar button is hidden, so there is
+  // nothing to navigate to. TAB_LABELS keeps its entry for when it comes back.
+  'session-replay', 'memory', 'workspace', 'errorlog', 'connectivity',
 ];
 
 const TAB_LABELS = {

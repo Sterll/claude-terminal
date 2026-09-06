@@ -151,6 +151,20 @@ describe('loadSettings', () => {
     expect(getSetting('accentColor')).toBe('#d97706');
   });
 
+  test('back-fills workspace and errorlog into a saved pin list, but not artifacts', async () => {
+    window.electron_nodeModules.fs.promises.access.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.readFile.mockResolvedValue(
+      JSON.stringify({ pinnedTabs: ['claude', 'git'] })
+    );
+
+    await loadSettings();
+
+    const tabs = getSetting('pinnedTabs');
+    expect(tabs).toContain('workspace');
+    expect(tabs).toContain('errorlog');
+    expect(tabs).not.toContain('artifacts');
+  });
+
   test('handles missing file gracefully', async () => {
     const enoent = Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
     window.electron_nodeModules.fs.promises.access.mockRejectedValue(enoent);
@@ -496,6 +510,14 @@ describe('setting default values', () => {
     expect(tabs).toContain('claude');
     expect(tabs).toContain('git');
     expect(tabs).toContain('dashboard');
+  });
+
+  // The Artifacts nav button is commented out in index.html: the screen lists
+  // `published` artifacts only, and nothing in a Claude Terminal session can
+  // produce that kind. Pinning a tab whose button is absent would leave the
+  // customize modal offering a screen that cannot be opened.
+  test('pinnedTabs leaves out the hidden artifacts tab', () => {
+    expect(getSetting('pinnedTabs')).not.toContain('artifacts');
   });
 
   test('parallelMaxAgents defaults to 3', () => {

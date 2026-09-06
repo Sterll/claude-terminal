@@ -104,6 +104,14 @@
           </svg>
           <span data-i18n="ui.tabClaude">Claude</span>
         </button>
+        <!-- Hidden, not removed. The screen lists `published` artifacts only, and
+             the sole producer of that kind is the Agent SDK's `Artifact` tool, which
+             a Claude Terminal chat session is never offered: the tool is absent from
+             every headless SDK session. The gallery is empty by construction, so the
+             entry point is withdrawn until it can hold something. Everything behind
+             it stays: the panel, the store, the IPC layer, the artifact_* MCP tools,
+             and the chat's Documents tab, which still shows what a conversation
+             produced. Restore this button the day `published` can exist.
         <button class="nav-tab" data-tab="artifacts" title="Artifacts" data-i18n-title="ui.tooltipArtifacts">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z"/>
@@ -112,6 +120,7 @@
           </svg>
           <span data-i18n="artifacts.tabTitle">Artifacts</span>
         </button>
+        -->
         <button class="nav-tab" data-tab="dashboard" title="Dashboard" data-i18n-title="ui.tooltipDashboard">
           <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/>
