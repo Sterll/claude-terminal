@@ -78,6 +78,26 @@ describe('matchModel', () => {
     expect(matchModel(onlyDefault, 'claude-opus-5').value).toBe('default');
   });
 
+  test('prefers a concrete row when the alias shares its exact resolvedModel', () => {
+    // What the CLI's init message reports for a session started on 'opus[1m]':
+    // the id as resolvedModel spells it, suffix included. Both rows carry it
+    // and the alias sits first, so an exact pass that took the first hit made
+    // the footer read "Default (recommended)" from session start until the
+    // first stream event named the bare 'claude-opus-5' and flipped it back.
+    expect(matchModel(CLI_MODELS, 'claude-opus-5[1m]').value).toBe('opus[1m]');
+  });
+
+  test('the init id and the API id land on the same row', () => {
+    // One turn, two spellings of one model. The label must not move between
+    // them, whichever order the events arrive in.
+    expect(matchModel(CLI_MODELS, 'claude-opus-5[1m]')).toBe(matchModel(CLI_MODELS, 'claude-opus-5'));
+  });
+
+  test('still resolves default when it alone carries that resolvedModel', () => {
+    const rows = [CLI_MODELS[0], CLI_MODELS[3]];
+    expect(matchModel(rows, 'claude-opus-5[1m]').value).toBe('default');
+  });
+
   test('an explicit default pick resolves to itself', () => {
     expect(matchModel(CLI_MODELS, 'default').value).toBe('default');
   });
