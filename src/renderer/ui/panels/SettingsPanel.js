@@ -2274,7 +2274,6 @@ class SettingsPanel extends BasePanel {
       this._loadAccountsUsage();
       if (captureBtn) captureBtn.disabled = !hasCredentials;
     };
-    this._renderAccountsList = renderList;
 
     listEl.onclick = async (e) => {
       const btn = e.target.closest('button[data-action]');
