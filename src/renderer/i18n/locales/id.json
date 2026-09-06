@@ -3809,7 +3809,11 @@
     "switchWhileRunning": "{count} sesi sudah berjalan untuk proyek ini dan tetap memakai akunnya. Perubahan berlaku untuk sesi berikutnya. Lanjutkan?",
     "colorNone": "Tanpa warna",
     "chooseForProjectTitle": "Akun Claude",
-    "chooseForProject": "Akun mana yang dipakai {project}? Bisa diubah nanti dari tabnya."
+    "chooseForProject": "Akun mana yang dipakai {project}? Bisa diubah nanti dari tabnya.",
+    "usageLoading": "Membaca penggunaan…",
+    "usageUnavailable": "Penggunaan tidak tersedia — jalankan \"claude /login\" pada akun ini",
+    "usageStale": "API tidak dapat memastikan angka ini",
+    "usageRefresh": "Segarkan penggunaan"
   },
   "usage": {
     "stale": "Data penggunaan mungkin sudah tidak terbaru - pemuatan terakhir gagal. {error}"

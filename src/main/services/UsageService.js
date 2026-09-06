@@ -439,6 +439,30 @@ function refreshUsage(accountId) {
 }
 
 /**
+ * Figures for an account, refetched only when the ones already on hand are
+ * older than `maxAgeMs`.
+ *
+ * The settings list asks about every account at once, and it re-renders on any
+ * account change — a rename, a colour, a new capture. Refetching on each of
+ * those would turn a rename into one API call per account, and on macOS one
+ * Keychain read per account with it, so anything recent enough is served from
+ * the cache instead.
+ *
+ * @param {string|null} accountId
+ * @param {number} [maxAgeMs] - 0 forces a fetch
+ * @returns {Promise<Object>} same shape as getUsageData()
+ */
+async function usageForAccount(accountId, maxAgeMs = 5 * 60 * 1000) {
+  const entry = entryFor(accountId);
+  const age = entry.lastFetch ? Date.now() - entry.lastFetch.getTime() : Infinity;
+  // `>=` so that a maxAge of 0 always refetches: figures fetched in the same
+  // millisecond are not "younger than 0ms", and the explicit refresh button
+  // would otherwise be a no-op on a fast machine.
+  if (age >= maxAgeMs) await fetchUsage(accountId);
+  return getUsageData(accountId);
+}
+
+/**
  * Called when window becomes visible - refresh if data is stale
  */
 function onWindowShow() {
@@ -503,6 +527,7 @@ module.exports = {
   getUsageData,
   getFetchState,
   refreshUsage,
+  usageForAccount,
   fetchUsage,
   invalidateCredentials,
   setFocusedAccount,

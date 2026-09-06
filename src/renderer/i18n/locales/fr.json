@@ -3809,7 +3809,11 @@
     "switchWhileRunning": "{count} session(s) tournent déjà pour ce projet et gardent leur compte actuel. Le changement s’appliquera aux sessions démarrées ensuite. Continuer ?",
     "colorNone": "Aucune couleur",
     "chooseForProjectTitle": "Compte Claude",
-    "chooseForProject": "Sur quel compte {project} doit-il tourner ? Modifiable ensuite depuis son onglet."
+    "chooseForProject": "Sur quel compte {project} doit-il tourner ? Modifiable ensuite depuis son onglet.",
+    "usageLoading": "Lecture de la consommation…",
+    "usageUnavailable": "Consommation indisponible — lancez « claude /login » sur ce compte",
+    "usageStale": "L'API n'a pas pu confirmer ces chiffres",
+    "usageRefresh": "Actualiser la consommation"
   },
   "usage": {
     "stale": "Données d'usage peut-être obsolètes - la dernière actualisation a échoué. {error}"

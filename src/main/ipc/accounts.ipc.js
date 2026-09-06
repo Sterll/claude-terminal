@@ -21,6 +21,30 @@ async function wrap(fn) {
   }
 }
 
+/** Accounts whose credential store this run has already bootstrapped. */
+const seededStores = new Set();
+
+/**
+ * Make sure an account has a credential store to read a token from, once per
+ * run. Accounts captured before per-account stores existed have only a
+ * snapshot, and without the seed they report themselves signed out forever.
+ *
+ * Bounded to one attempt per account because probing a store costs a Keychain
+ * read on macOS, and the settings list asks for these figures on every account
+ * change — a rename would otherwise re-probe every account.
+ *
+ * @param {string} id
+ */
+async function seedStoreOnce(id) {
+  if (seededStores.has(id)) return;
+  seededStores.add(id);
+  try {
+    await AccountManager.ensureAccountStore(id);
+  } catch (err) {
+    console.warn('[accounts.ipc] credential store seed failed:', err.message);
+  }
+}
+
 // Reading the live store can hit the macOS Keychain, so the broadcast payload
 // has to be awaited too.
 async function broadcastAccounts() {
@@ -33,6 +57,22 @@ async function broadcastAccounts() {
 
 function registerAccountsHandlers() {
   ipcMain.handle('accounts-list', () => wrap(() => AccountManager.listAccounts()));
+
+  // Usage figures for every stored account, keyed by account id, so the
+  // settings list can say which account still has room before the user moves
+  // a project onto it.
+  //
+  // Fetched in parallel: the calls are independent, and a serial sweep would
+  // make the whole list wait out one account's five-second API timeout.
+  ipcMain.handle('accounts-usage', (_event, { maxAgeMs } = {}) => wrap(async () => {
+    const { accounts } = await AccountManager.listAccounts();
+    const usage = {};
+    await Promise.all(accounts.map(async (account) => {
+      await seedStoreOnce(account.id);
+      usage[account.id] = await UsageService.usageForAccount(account.id, maxAgeMs);
+    }));
+    return usage;
+  }));
 
   ipcMain.handle('accounts-capture', async (_event, { name } = {}) => {
     const result = await wrap(() => AccountManager.captureCurrent(name));

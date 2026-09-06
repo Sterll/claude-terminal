@@ -569,6 +569,7 @@ contextBridge.exposeInMainWorld('electron_api', {
   // ==================== ACCOUNTS (multi Claude OAuth) ====================
   accounts: {
     list: () => ipcRenderer.invoke('accounts-list'),
+    usage: (maxAgeMs) => ipcRenderer.invoke('accounts-usage', { maxAgeMs }),
     capture: (name) => ipcRenderer.invoke('accounts-capture', { name }),
     switch: (id) => ipcRenderer.invoke('accounts-switch', { id }),
     setDefault: (id) => ipcRenderer.invoke('accounts-set-default', { id }),

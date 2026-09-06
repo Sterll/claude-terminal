@@ -3809,7 +3809,11 @@
     "switchWhileRunning": "{count} session(s) are already running for this project and keep their current account. The change applies to sessions started from now on. Continue?",
     "colorNone": "No colour",
     "chooseForProjectTitle": "Claude account",
-    "chooseForProject": "Which account should {project} run as? You can change this later from its tab."
+    "chooseForProject": "Which account should {project} run as? You can change this later from its tab.",
+    "usageLoading": "Reading usage…",
+    "usageUnavailable": "Usage unavailable — run \"claude /login\" on this account",
+    "usageStale": "The API could not confirm these figures",
+    "usageRefresh": "Refresh usage"
   },
   "usage": {
     "stale": "Usage data may be out of date - the last refresh failed. {error}"

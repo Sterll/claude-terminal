@@ -3056,3 +3056,59 @@
   letter-spacing: 0.5px;
   padding: 4px 8px;
 }
+
+/* ── Per-account usage ──
+   The settings card carries a second line, the usage strip, so it stacks —
+   scoped to the list because the same .account-row class is a single-row
+   button in the switch modal. */
+.accounts-list .account-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.account-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Indented to the account name rather than to the card, so the strip reads as
+   part of the row above it and not as a separate band. */
+.account-row-usage {
+  padding-left: 34px;
+}
+
+/* Same bars as the titlebar. Their colours, warning tints and reset countdown
+   all come from layout.css, so an account reads here exactly as the active one
+   does up there.
+
+   Capped rather than stretched: a bar spread over a third of a wide card puts
+   its label and its percentage at opposite ends of the row, and the two stop
+   looking like one reading. */
+.account-usage-bars {
+  display: flex;
+  align-items: stretch;
+}
+
+.account-usage-bars .usage-item {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 200px;
+}
+
+.account-usage-bars .usage-item:first-child {
+  padding-left: 0;
+}
+
+/* Figures the API could not confirm: shown, but visibly not current. */
+.account-usage-bars.stale {
+  opacity: 0.5;
+}
+
+.account-usage-note {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  padding: 2px 0;
+}
