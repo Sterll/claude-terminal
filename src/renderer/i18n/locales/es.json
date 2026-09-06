@@ -3784,6 +3784,7 @@
     "emptyHint": "Aún no hay cuentas guardadas. Abre un terminal, ejecuta \"claude /login\", luego haz clic en \"Guardar la cuenta actual\".",
     "limitReached": "Límite de uso alcanzado en la cuenta activa.",
     "switched": "Cuenta cambiada. Reanudando…",
+    "switchedNoResume": "Cuenta cambiada. No se pudo reanudar la conversación anterior — se continúa sin su contexto.",
     "removeConfirm": "¿Eliminar esta cuenta guardada? Las credenciales se borrarán del almacenamiento local.",
     "switchError": "No se pudo cambiar de cuenta",
     "renameError": "No se pudo renombrar la cuenta",

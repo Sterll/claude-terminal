@@ -21,7 +21,7 @@ jest.mock('os', () => ({
 
 global.__CT_TMP_HOME__ = TMP_HOME;
 
-const { moveSession, findStraySidecars, getClaudeSessions } = require('../../src/main/ipc/claude.ipc');
+const { moveSession, findStraySidecars, getClaudeSessions, loadSessionHistory } = require('../../src/main/ipc/claude.ipc');
 
 const ALPHA = '/tmp/proj-alpha';
 const BETA = '/tmp/proj-beta';
@@ -228,5 +228,39 @@ describe('findStraySidecars', () => {
 
     expect(await findStraySidecars(SID, [dirFor(ALPHA)])).toEqual([sidecar(GAMMA)]);
     expect(await findStraySidecars(SID, [dirFor(ALPHA), dirFor(GAMMA)])).toEqual([]);
+  });
+});
+
+// Sessions are looked up through an index that spans every directory scanned so
+// far. A transcript whose file name is not its session id can only be found
+// through it — and it must never answer for a project that does not hold it,
+// or the chat replays another project's conversation while the CLI, which only
+// looks under the cwd it is launched with, resumes nothing.
+describe('session lookup is scoped to the project asked about', () => {
+  const ODD = 'bbbbbbbb-1111-2222-3333-444444444444';
+
+  /** A transcript filed under a name that is not its session id. */
+  function writeRenamedSession(projectPath, sid, fileName) {
+    writeSession(projectPath, sid);
+    fs.renameSync(transcript(projectPath, sid), path.join(dirFor(projectPath), fileName));
+  }
+
+  test('a transcript found by index in one project is not served for another', async () => {
+    writeRenamedSession(ALPHA, ODD, 'renamed.jsonl');
+    fs.mkdirSync(dirFor(BETA), { recursive: true });
+
+    // Indexes ALPHA, which is what puts ODD in the shared index
+    expect((await loadSessionHistory(ALPHA, ODD)).messages.length).toBeGreaterThan(0);
+
+    expect(await loadSessionHistory(BETA, ODD)).toMatchObject({ messages: [], total: 0 });
+  });
+
+  test('the project that holds it still finds it after another was indexed', async () => {
+    writeRenamedSession(ALPHA, ODD, 'renamed.jsonl');
+    writeRenamedSession(BETA, ODD, 'renamed-too.jsonl');
+
+    expect((await loadSessionHistory(ALPHA, ODD)).messages.length).toBeGreaterThan(0);
+    expect((await loadSessionHistory(BETA, ODD)).messages.length).toBeGreaterThan(0);
+    expect((await loadSessionHistory(ALPHA, ODD)).messages.length).toBeGreaterThan(0);
   });
 });

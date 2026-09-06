@@ -3784,6 +3784,7 @@
     "emptyHint": "Belum ada akun tersimpan. Buka terminal, jalankan \"claude /login\", lalu klik \"Simpan akun saat ini\".",
     "limitReached": "Batas penggunaan tercapai pada akun yang aktif.",
     "switched": "Akun diganti. Melanjutkan…",
+    "switchedNoResume": "Akun diganti. Percakapan sebelumnya tidak bisa dilanjutkan — dilanjutkan tanpa konteksnya.",
     "removeConfirm": "Hapus akun tersimpan ini? Kredensialnya akan dihapus dari penyimpanan lokal.",
     "switchError": "Gagal mengganti akun",
     "renameError": "Gagal mengganti nama akun",

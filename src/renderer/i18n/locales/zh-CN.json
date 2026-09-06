@@ -3784,6 +3784,7 @@
     "emptyHint": "尚未保存账户。打开终端，运行“claude /login”，然后单击“保存当前账户”。",
     "limitReached": "活动账户已达到使用限制。",
     "switched": "账号已切换。正在恢复…",
+    "switchedNoResume": "账号已切换。无法恢复之前的对话 — 将在缺少其上下文的情况下继续。",
     "removeConfirm": "删除这个已保存的账户吗？凭据将从本地存储中删除。",
     "switchError": "切换账号失败",
     "renameError": "账户重命名失败",
