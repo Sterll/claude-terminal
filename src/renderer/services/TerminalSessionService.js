@@ -6,6 +6,7 @@
  */
 
 const { fs, path } = window.electron_nodeModules;
+const { isCliFailureText } = require('../../shared/cli-failure-text');
 
 // Debounce timer for saves
 let saveTimer = null;
@@ -42,6 +43,16 @@ async function loadSessionData() {
 
     // Validate structure
     if (!data || typeof data !== 'object' || !data.projects) return null;
+
+    // Names written before the naming guard existed: a lapsed login was saved
+    // as the tab's own title, so every restart restores a tab called "Not
+    // logged in · Please run /login". Clearing it restores the default (the
+    // project name); a name the user typed is theirs, whatever it says.
+    for (const session of Object.values(data.projects)) {
+      for (const tab of (session?.tabs || [])) {
+        if (!tab.nameCustom && isCliFailureText(tab.name)) tab.name = null;
+      }
+    }
 
     return data;
   } catch (e) {

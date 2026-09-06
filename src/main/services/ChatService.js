@@ -10,6 +10,7 @@ const { app } = require('electron');
 const { execFileSync } = require('child_process');
 const ModelCatalogService = require('./ModelCatalogService');
 const AccountManager = require('./AccountManager');
+const { isCliFailureText } = require('../../shared/cli-failure-text');
 
 let sdkPromise = null;
 let resolvedRuntime = null;
@@ -71,30 +72,6 @@ const MAX_TOUCHED_FILES = 200;
  * dispatch, report back) never reaches it. An explicit maxTurns still wins.
  */
 const RESTRICTED_SESSION_MAX_TURNS = 40;
-
-/**
- * Signatures of a CLI failure that the SDK hands back as ordinary assistant
- * text instead of as a stream error.
- *
- * The short haiku helpers (tab naming, prompt enhancement, commit messages)
- * read the first text block and use it verbatim, so an expired login turns a
- * tab into "Not logged in · Please run /login" — persisted to
- * session-names.json and broadcast to the remote UI. Text matching any of these
- * is refused so each caller falls back to what it already had.
- *
- * Deliberately anchored on the CLI's own phrasing: a title *about* login
- * ("Fix /login redirect") has to keep going through.
- */
-const CLI_FAILURE_TEXT = [
-  /^api error:/i,
-  /^not logged in\b/i,
-  /^invalid api key\b/i,
-  /\bplease run \/login\b/i,
-  /\bplease run `?claude (login|auth)\b/i,
-  /\bsession (has )?expired\b/i,
-  /\bcredit balance (is )?too low\b/i,
-  /\busage limit reached\b/i,
-];
 
 /**
  * Note a file this session wrote, for `_sessionContext`.
@@ -1674,13 +1651,14 @@ class ChatService {
    * Does this haiku answer look like the CLI reporting a failure rather than
    * doing the job it was asked?
    *
+   * The patterns live in `src/shared/cli-failure-text.js` because the renderer
+   * asks the same question of the names this guard was added too late to stop.
+   *
    * @param {string} text  the assistant text block, unnormalized
    * @returns {boolean}
    */
   _isCliFailureText(text) {
-    const trimmed = (text || '').trim();
-    if (!trimmed) return false;
-    return CLI_FAILURE_TEXT.some(re => re.test(trimmed));
+    return isCliFailureText(text);
   }
 
   /**

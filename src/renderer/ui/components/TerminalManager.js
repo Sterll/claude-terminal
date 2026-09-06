@@ -6,6 +6,7 @@
 
 const { BaseComponent } = require('../../core/BaseComponent');
 const { matchesSessionQuery } = require('../../utils/sessionSearch');
+const { isCliFailureText } = require('../../../shared/cli-failure-text');
 const { isSidebarNavigation } = require('../navigationMode');
 
 const { Terminal } = require('@xterm/xterm');
@@ -2714,6 +2715,19 @@ class TerminalManager extends BaseComponent {
     } catch {
       this._namesCache = {};
     }
+    // Names written before the naming guard existed: a lapsed login was saved
+    // as the session's own title. Dropping the entry falls the list back to the
+    // session's first prompt. Custom names are the user's and are left alone.
+    let healed = false;
+    for (const [sessionId, entry] of Object.entries(this._namesCache)) {
+      const custom = typeof entry === 'object' && !!entry?.custom;
+      const name = typeof entry === 'string' ? entry : entry?.name;
+      if (!custom && isCliFailureText(name)) {
+        delete this._namesCache[sessionId];
+        healed = true;
+      }
+    }
+    if (healed) await this._saveSessionNames();
     return this._namesCache;
   }
 
