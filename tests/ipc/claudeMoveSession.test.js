@@ -54,12 +54,18 @@ function writeSidecar(projectPath, sid = SID) {
   fs.writeFileSync(path.join(sidecar(projectPath, sid), 'workflows', 'scripts', 'wf.js'), 'export const meta = {}\n');
 }
 
+// maxRetries because Windows will not remove a directory whose files still
+// have a handle open — the move releases them, but the OS can lag a tick
+// behind, and a plain recursive remove then fails the whole suite with
+// ENOTEMPTY. Same reason as in claudeSessionChanges.test.js.
+const rmDir = (dir) => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+
 beforeEach(() => {
-  fs.rmSync(path.join(TMP_HOME, '.claude'), { recursive: true, force: true });
+  rmDir(path.join(TMP_HOME, '.claude'));
 });
 
 afterAll(() => {
-  fs.rmSync(TMP_HOME, { recursive: true, force: true });
+  rmDir(TMP_HOME);
 });
 
 describe('moveSession', () => {
