@@ -46,7 +46,7 @@ function registerProjectHandlers() {
             if (stat.isDirectory()) {
               await scanDir(fullPath, depth + 1);
             } else if (stat.isFile() && extensions.some(ext => item.endsWith(ext))) {
-              await scanFile(fullPath, projectPath);
+              await scanFile(fullPath, resolvedPath);
             }
           } catch (e) {}
         }
