@@ -535,8 +535,10 @@ function activateItem(item, handlers, picker) {
       window.electron_api?.git?.checkout({ projectPath: item.data.projectPath, branch: item.data.branch });
       break;
     case 'session':
-      // Open the Claude sessions panel; TODO: open specific session
       document.querySelector('[data-tab="claude"]')?.click();
+      if (item.data?.sessionId) {
+        window.dispatchEvent(new CustomEvent('select-claude-session', { detail: { sessionId: item.data.sessionId, projectPath: item.data.projectPath } }));
+      }
       break;
     case 'mcp':
       document.querySelector('[data-tab="mcp"]')?.click();
