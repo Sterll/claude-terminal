@@ -423,6 +423,12 @@ class RemoteControlService {
       return 'Claude rejected the saved login. Run /login in a terminal, then try again.';
     }
     if (!result?.terminal) return null;
+    // `createCodeSession` failures carry the server's own sentence — an org
+    // policy refusal reads "Remote Control is disabled by your organization's
+    // policy", which says far more than the status code this used to show.
+    if (typeof result.detail === 'string' && result.detail.trim()) {
+      return result.detail.trim();
+    }
     switch (result.reason) {
       case 'untrusted_device':
         // Enrollment is the CLI's flow, and it runs on its own the first time

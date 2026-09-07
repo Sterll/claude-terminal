@@ -227,6 +227,27 @@ describe('attach', () => {
     expect(status.lastError).toMatch(/claude/i);
   });
 
+  test('shows the server\'s own refusal, not just its status code', async () => {
+    // What an org that forbids Remote Control actually returns.
+    mockCreateResult = {
+      terminal: true,
+      reason: 'request_rejected',
+      status: 403,
+      detail: "Remote Control is disabled by your organization's policy",
+    };
+    const service = freshService();
+    const res = await startMirror(service, fakeChatService());
+    expect(res.success).toBe(false);
+    expect(res.error).toBe("Remote Control is disabled by your organization's policy");
+  });
+
+  test('falls back to the status code when the server explains nothing', async () => {
+    mockCreateResult = { terminal: true, reason: 'request_rejected', status: 403, detail: undefined };
+    const service = freshService();
+    const res = await startMirror(service, fakeChatService());
+    expect(res.error).toMatch(/403/);
+  });
+
   test('a rejected login is reported as needing a re-login', async () => {
     mockCreateResult = { terminal: false, reason: 'oauth_rejected' };
     const service = freshService();
