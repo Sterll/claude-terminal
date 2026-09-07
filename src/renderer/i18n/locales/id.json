@@ -1976,7 +1976,8 @@
     "cancel": "Batal",
     "tabDocuments": "Dokumen",
     "runInBackground": "Jalankan di latar belakang",
-    "backgroundWorkFailed": "Tidak dapat memindahkan pekerjaan ke latar belakang. {error}"
+    "backgroundWorkFailed": "Tidak dapat memindahkan pekerjaan ke latar belakang. {error}",
+    "slashRemoteControl": "Bagikan percakapan ini ke claude.ai (on / off)"
   },
   "hooks": {
     "consent": {

@@ -1973,7 +1973,8 @@
     "cancel": "Cancelar",
     "tabDocuments": "Documentos",
     "runInBackground": "Ejecutar en segundo plano",
-    "backgroundWorkFailed": "No se pudo pasar el trabajo a segundo plano. {error}"
+    "backgroundWorkFailed": "No se pudo pasar el trabajo a segundo plano. {error}",
+    "slashRemoteControl": "Compartir esta conversación con claude.ai (on / off)"
   },
   "hooks": {
     "consent": {

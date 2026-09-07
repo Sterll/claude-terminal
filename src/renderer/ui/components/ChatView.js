@@ -2451,8 +2451,13 @@ class ChatView extends BaseComponent {
       '/batch', '/simplify', '/debug', '/loop', '/claude-api',
       '/security-review', '/btw', '/review',
       // Claude Terminal own commands
-      '/parallel-task', '/reload-plugins',
+      '/parallel-task', '/reload-plugins', '/remote-control',
     ];
+    // Commands this app handles itself, in handleSend, without ever reaching
+    // the CLI. The session's `slash_commands` cannot know about them, so they
+    // have to be merged in explicitly — otherwise they are listed before a
+    // session starts and vanish the moment one does, while still working.
+    const localCommands = ['/parallel-task', '/reload-plugins', '/remote-control'];
     // Normalize to '/name' lowercase so SDK-provided commands (sometimes without leading '/')
     // match our '/name' skill/builtin entries and don't show up twice.
     const normKey = (c) => ('/' + String(c).replace(/^\//, '')).toLowerCase();
@@ -2470,7 +2475,7 @@ class ChatView extends BaseComponent {
     const allDefaults = dedupe([...builtinDefaults, ...skillCommands]);
     // When session provides slash_commands, merge with skills; otherwise use full defaults
     const available = slashCommands.length > 0
-      ? dedupe([...slashCommands, ...skillCommands])
+      ? dedupe([...slashCommands, ...localCommands, ...skillCommands])
       : allDefaults;
     const filtered = available.filter(cmd => {
       const name = cmd.replace(/^\//, '').toLowerCase();
@@ -2528,6 +2533,7 @@ class ChatView extends BaseComponent {
       // Claude Terminal commands
       '/parallel-task': t('chat.slashParallelTask'),
       '/reload-plugins': t('chat.slashReloadPlugins'),
+      '/remote-control': t('chat.slashRemoteControl'),
     };
     if (descriptions[cmd]) return descriptions[cmd];
     // Check skills for description

@@ -1976,7 +1976,8 @@
     "cancel": "Cancel",
     "tabDocuments": "Documents",
     "runInBackground": "Run in background",
-    "backgroundWorkFailed": "Could not move the work to the background. {error}"
+    "backgroundWorkFailed": "Could not move the work to the background. {error}",
+    "slashRemoteControl": "Share this conversation with claude.ai (on / off)"
   },
   "hooks": {
     "consent": {

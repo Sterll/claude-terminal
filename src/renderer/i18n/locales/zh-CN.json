@@ -1976,7 +1976,8 @@
     "cancel": "取消",
     "tabDocuments": "文档",
     "runInBackground": "转入后台运行",
-    "backgroundWorkFailed": "无法将任务转入后台。 {error}"
+    "backgroundWorkFailed": "无法将任务转入后台。 {error}",
+    "slashRemoteControl": "将此对话分享到 claude.ai（on / off）"
   },
   "hooks": {
     "consent": {
