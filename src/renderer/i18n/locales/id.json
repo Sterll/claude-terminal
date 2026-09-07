@@ -2231,7 +2231,7 @@
   },
   "claudeRemote": {
     "enable": "Kontrol Jarak Jauh (claude.ai)",
-    "enableDesc": "Ikuti dan kendalikan sesi chat Anda dari claude.ai/code atau aplikasi seluler Claude.",
+    "enableDesc": "Izinkan tab chat dibagikan ke claude.ai. Tidak ada yang dibagikan sampai Anda mengaktifkannya di sebuah percakapan.",
     "allowDriving": "Izinkan kendali jarak jauh",
     "drivingOn": "claude.ai dapat mengirim perintah, menghentikan giliran, dan menjawab permintaan izin. Sesi yang sudah terbuka tetap hanya-baca sampai dimulai ulang.",
     "drivingOff": "Hanya cermin: claude.ai menampilkan percakapan tetapi tidak dapat bertindak di mesin ini.",
@@ -2240,9 +2240,15 @@
     "unsupported": "Versi ini tidak dapat menyediakan Kontrol Jarak Jauh.",
     "statusUnknown": "Status tidak tersedia.",
     "mirroring": "{count} sesi dicerminkan ke claude.ai.",
-    "idle": "Belum ada sesi yang dicerminkan. Buka tab chat untuk memulai.",
+    "idle": "Tidak ada percakapan yang dibagikan. Gunakan tombol claude.ai di tab chat, atau ketik /remote-control.",
     "terminals": "Hubungkan juga tab terminal",
-    "terminalsDesc": "Menjalankan CLI Claude dengan --rc di tab terminal, sehingga sesi tersebut juga sampai ke claude.ai."
+    "terminalsDesc": "Menjalankan CLI Claude dengan --rc di tab terminal, sehingga sesi tersebut juga sampai ke claude.ai.",
+    "mirrorOff": "Bagikan percakapan ini ke claude.ai",
+    "mirrorOn": "Dibagikan ke claude.ai — klik untuk berhenti",
+    "noSession": "Kirim pesan dulu, agar Kontrol Jarak Jauh punya sesi untuk dibagikan.",
+    "noticeOn": "Percakapan ini sekarang ada di claude.ai, mulai dari sini.",
+    "noticeOff": "Percakapan ini tidak lagi dibagikan ke claude.ai.",
+    "noticeFailed": "Tidak dapat menghubungi claude.ai."
   },
   "cloud": {
     "tabTitle": "Cloud",

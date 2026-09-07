@@ -668,6 +668,11 @@ contextBridge.exposeInMainWorld('electron_api', {
   remoteControl: {
     getStatus: () => ipcRenderer.invoke('remote-control:status'),
     disable: () => ipcRenderer.invoke('remote-control:disable'),
+    // Per-chat-tab control: the footer button and the `/remote-control` command.
+    enableSession: (sessionId) => ipcRenderer.invoke('remote-control:enable-session', { sessionId }),
+    disableSession: (sessionId) => ipcRenderer.invoke('remote-control:disable-session', { sessionId }),
+    getSessionStatus: (sessionId) => ipcRenderer.invoke('remote-control:session-status', { sessionId }),
+    onSessionStatus: createListener('remote-control:session-status-changed'),
   },
 
   // ==================== ERROR LOG ====================

@@ -2231,7 +2231,7 @@
   },
   "claudeRemote": {
     "enable": "Contrôle à distance (claude.ai)",
-    "enableDesc": "Suivez et pilotez vos sessions de chat depuis claude.ai/code ou l’application mobile Claude.",
+    "enableDesc": "Autorise le partage d’onglets de chat avec claude.ai. Rien n’est partagé tant que vous ne l’activez pas dans une conversation.",
     "allowDriving": "Autoriser le pilotage",
     "drivingOn": "claude.ai peut envoyer des messages, interrompre un tour et répondre aux demandes de permission. Les sessions déjà ouvertes restent en lecture seule jusqu’à leur redémarrage.",
     "drivingOff": "Miroir seul : claude.ai affiche la conversation mais ne peut rien faire sur cette machine.",
@@ -2240,9 +2240,15 @@
     "unsupported": "Cette version ne peut pas assurer le contrôle à distance.",
     "statusUnknown": "Statut indisponible.",
     "mirroring": "{count} session(s) en miroir sur claude.ai.",
-    "idle": "Aucune session en miroir. Ouvrez un onglet de chat pour commencer.",
+    "idle": "Aucune conversation partagée. Utilisez le bouton claude.ai dans un onglet de chat, ou tapez /remote-control.",
     "terminals": "Connecter aussi les onglets terminal",
-    "terminalsDesc": "Lance le CLI Claude avec --rc dans les onglets terminal, pour que ces sessions arrivent aussi sur claude.ai."
+    "terminalsDesc": "Lance le CLI Claude avec --rc dans les onglets terminal, pour que ces sessions arrivent aussi sur claude.ai.",
+    "mirrorOff": "Partager cette conversation avec claude.ai",
+    "mirrorOn": "Partagée avec claude.ai — cliquez pour arrêter",
+    "noSession": "Envoyez d’abord un message : le contrôle à distance a besoin d’une session à partager.",
+    "noticeOn": "Cette conversation est désormais sur claude.ai, à partir de maintenant.",
+    "noticeOff": "Cette conversation n’est plus partagée avec claude.ai.",
+    "noticeFailed": "Impossible de joindre claude.ai."
   },
   "cloud": {
     "tabTitle": "Cloud",

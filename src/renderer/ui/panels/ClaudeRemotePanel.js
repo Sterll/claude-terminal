@@ -3,6 +3,12 @@
  * Claude Code's Remote Control — mirror chat sessions to claude.ai and the
  * Claude mobile app, and optionally let them drive the session back.
  *
+ * This panel does NOT share anything by itself. It holds the master switch
+ * that says Remote Control may be used at all, plus the two preferences that
+ * apply to whichever conversations are shared. The sharing decision is taken
+ * per conversation, in the chat tab's own footer button or with
+ * `/remote-control` — never here, and never for every session at once.
+ *
  * Sibling of RemotePanel, which serves this app's own PWA over the local
  * network. Both live under Connectivity; they are different products that
  * unfortunately share a name, so the copy here always says "claude.ai".
@@ -30,7 +36,7 @@ function buildHtml(settings) {
         </div>
         <div class="rp-master-text">
           <div class="rp-master-title">${t('claudeRemote.enable', 'Remote Control (claude.ai)')}</div>
-          <div class="rp-master-desc">${t('claudeRemote.enableDesc', 'Follow and steer your chat sessions from claude.ai/code or the Claude mobile app.')}</div>
+          <div class="rp-master-desc">${t('claudeRemote.enableDesc', 'Allow chat tabs to be shared with claude.ai. Nothing is shared until you turn it on in a conversation.')}</div>
         </div>
       </div>
       <div class="rp-master-actions">
@@ -111,7 +117,7 @@ async function refreshStatus(api) {
   const n = _status.activeSessions || 0;
   el.textContent = n
     ? t('claudeRemote.mirroring', '{count} session(s) mirrored to claude.ai.').replace('{count}', n)
-    : t('claudeRemote.idle', 'No session mirrored yet. Open a chat tab to start one.');
+    : t('claudeRemote.idle', 'No conversation shared. Use the claude.ai button in a chat tab, or type /remote-control there.');
 }
 
 function setupHandlers(context) {

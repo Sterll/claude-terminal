@@ -2163,6 +2163,41 @@ hr.chat-plan-separator {
   height: 12px;
 }
 
+/* ── Remote Control (claude.ai) toggle ── */
+/* Off by default like its neighbours; accent when this conversation is being
+   mirrored, danger when the last attempt came back with a reason. */
+.chat-remote-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  margin-left: 8px;
+  transition: color 0.15s;
+}
+
+.chat-remote-btn:hover {
+  color: var(--accent-color);
+}
+
+.chat-remote-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.chat-remote-btn.active {
+  color: var(--accent-color);
+}
+
+.chat-remote-btn.error {
+  color: var(--danger);
+}
+
+.chat-remote-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
 /* ── Context pack preview button ── */
 .chat-mention-preview-btn {
   background: none;

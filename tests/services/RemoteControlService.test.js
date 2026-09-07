@@ -85,6 +85,8 @@ function fakeChatService() {
     resolvePermission: jest.fn(),
     setModel: jest.fn().mockResolvedValue(undefined),
     stopTask: jest.fn().mockResolvedValue(undefined),
+    // The service pushes per-session status back through ChatService's own bus.
+    _send: jest.fn(),
     emit: (channel, data) => { for (const fn of listeners) fn(channel, data); },
   };
 }
@@ -92,10 +94,16 @@ function fakeChatService() {
 /** Let the queued microtasks of an attach settle (jsdom has no setImmediate). */
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 
+/**
+ * Turn the mirror on for `chat-1` the way a footer button click does: the
+ * session already exists on ChatService, and the user asks for it explicitly.
+ */
 async function startMirror(service, chat, meta = {}) {
   service.attachToChatService(chat);
-  await service.onSessionStarted('chat-1', { cwd: '/repo', ...meta });
+  chat.sessions.set('chat-1', { cwd: '/repo', ...meta });
+  const result = await service.enableForSession('chat-1');
   await settle();
+  return result;
 }
 
 beforeEach(() => {
@@ -117,30 +125,61 @@ afterEach(() => {
 // ─── Opt-in gating ──────────────────────────────────────────────────────────
 
 describe('opt-in gating', () => {
-  test('does nothing when the feature is off', async () => {
+  test('refuses, with a reason, when the feature is off', async () => {
     mockSettings = {};
     const service = freshService();
     const chat = fakeChatService();
-    await startMirror(service, chat);
+    const res = await startMirror(service, chat);
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/settings/i);
     expect(mockAttachOpts).toBeNull();
     expect((await service.getStatus()).activeSessions).toBe(0);
   });
 
-  test('does nothing when managed settings forbid Remote Control', async () => {
+  test('refuses when managed settings forbid Remote Control', async () => {
     mockSettings = { claudeRemoteControlEnabled: true, disableRemoteControl: true };
     const service = freshService();
-    await startMirror(service, fakeChatService());
+    const res = await startMirror(service, fakeChatService());
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/organisation policy/i);
     expect(mockAttachOpts).toBeNull();
   });
 
-  test('does nothing when the SDK ships no bridge', async () => {
+  test('refuses when the SDK ships no bridge', async () => {
     mockBridgeAvailable = false;
     const service = freshService();
-    await startMirror(service, fakeChatService());
+    const res = await startMirror(service, fakeChatService());
+    expect(res.success).toBe(false);
     expect(mockAttachOpts).toBeNull();
     const status = await service.getStatus();
     expect(status.supported).toBe(false);
     expect(status.unavailableReason).toBe('stubbed out');
+  });
+
+  test('refuses a tab that has no running session yet', async () => {
+    const service = freshService();
+    service.attachToChatService(fakeChatService());
+    const res = await service.enableForSession('chat-never-started');
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/send a message/i);
+    expect(mockAttachOpts).toBeNull();
+  });
+
+  test('a session starting does NOT mirror on its own', async () => {
+    // The regression this whole design exists to prevent: turning the feature
+    // on in settings must never put a conversation on claude.ai by itself.
+    const service = freshService();
+    const chat = fakeChatService();
+    service.attachToChatService(chat);
+    chat.sessions.set('chat-1', { cwd: '/repo' });
+
+    // Everything a live session emits, with nobody having asked to share it.
+    chat.emit('chat-message', { sessionId: 'chat-1', message: { type: 'assistant' } });
+    chat.emit('chat-idle', { sessionId: 'chat-1' });
+    await settle();
+
+    expect(mockAttachOpts).toBeNull();
+    expect((await service.getStatus()).activeSessions).toBe(0);
   });
 
   test('terminal tabs stay unconnected unless separately opted in', async () => {
@@ -205,8 +244,10 @@ describe('attach', () => {
     const creds = require('../../src/main/utils/claudeCredentials');
     const service = require('../../src/main/services/RemoteControlService');
 
-    service.attachToChatService(fakeChatService());
-    await service.onSessionStarted('chat-1', { cwd: '/repo', accountId: 'acct-7' });
+    const chat = fakeChatService();
+    service.attachToChatService(chat);
+    chat.sessions.set('chat-1', { cwd: '/repo', accountId: 'acct-7' });
+    await service.enableForSession('chat-1');
     await settle();
 
     expect(creds.readCredentialsForDir).toHaveBeenCalledWith('/accounts/acct-7');
@@ -241,39 +282,19 @@ describe('outbound', () => {
     }));
   });
 
-  test('relays the opening prompt, which is emitted before the mirror exists', async () => {
+  test('starts from the moment it is enabled, without backfilling the transcript', async () => {
     const service = freshService();
     const chat = fakeChatService();
-    service.attachToChatService(chat);
 
-    // ChatService relays the first prompt as `chat-user-message` well before it
-    // registers the session, so it can only arrive through the meta.
-    await service.onSessionStarted('chat-1', { cwd: '/repo', initialPrompt: 'open the file' });
-    await settle();
+    // Mirroring is switched on part-way through a conversation, so what was
+    // already said is not replayed — claude.ai joins from here on.
+    await startMirror(service, chat);
+    expect(mockHandle.write).not.toHaveBeenCalled();
 
+    chat.emit('chat-user-message', { sessionId: 'chat-1', text: 'said after enabling' });
     const userWrites = mockHandle.write.mock.calls.filter(c => c[0]?.type === 'user');
     expect(userWrites).toHaveLength(1);
-    expect(userWrites[0][0].message.content[0].text).toBe('open the file');
-  });
-
-  test('a resumed session with no opening prompt writes nothing extra', async () => {
-    const service = freshService();
-    await startMirror(service, fakeChatService(), { initialPrompt: '' });
-    expect(mockHandle.write.mock.calls.filter(c => c[0]?.type === 'user')).toHaveLength(0);
-  });
-
-  test('the opening prompt comes before the replies buffered during attach', async () => {
-    const service = freshService();
-    const chat = fakeChatService();
-    service.attachToChatService(chat);
-
-    const attaching = service.onSessionStarted('chat-1', { cwd: '/repo', initialPrompt: 'hi' });
-    chat.emit('chat-message', { sessionId: 'chat-1', message: { type: 'assistant' } });
-    await attaching;
-    await settle();
-
-    expect(mockHandle.write.mock.calls[0][0].type).toBe('user');
-    expect(mockHandle.write.mock.calls[1][0].type).toBe('assistant');
+    expect(userWrites[0][0].message.content[0].text).toBe('said after enabling');
   });
 
   test('ends the turn on idle so the remote spinner stops', async () => {
@@ -316,7 +337,8 @@ describe('outbound', () => {
     service.attachToChatService(chat);
 
     // Do not settle: the attach is still in flight.
-    const attaching = service.onSessionStarted('chat-1', { cwd: '/repo' });
+    chat.sessions.set('chat-1', { cwd: '/repo' });
+    const attaching = service.enableForSession('chat-1');
     chat.emit('chat-message', { sessionId: 'chat-1', message: { type: 'assistant', n: 1 } });
     chat.emit('chat-message', { sessionId: 'chat-1', message: { type: 'assistant', n: 2 } });
     expect(mockHandle.write).not.toHaveBeenCalled();
@@ -466,6 +488,72 @@ describe('permissions', () => {
   });
 });
 
+// ─── Per-session control ────────────────────────────────────────────────────
+
+describe('per-session control', () => {
+  test('disabling one session stops only that mirror', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+    expect((await service.getStatus()).activeSessions).toBe(1);
+
+    const res = service.disableForSession('chat-1');
+    expect(res.success).toBe(true);
+    await settle();
+    expect(mockHandle.close).toHaveBeenCalled();
+    expect((await service.getStatus()).activeSessions).toBe(0);
+  });
+
+  test('disabling something never mirrored is a no-op, not an error', async () => {
+    const service = freshService();
+    service.attachToChatService(fakeChatService());
+    expect(service.disableForSession('chat-unknown').success).toBe(true);
+  });
+
+  test('enabling twice does not attach twice', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+    const again = await service.enableForSession('chat-1');
+    expect(again.success).toBe(true);
+    expect((await service.getStatus()).activeSessions).toBe(1);
+  });
+
+  test('reports a session status the tab can paint from', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    expect(service.getSessionStatus('chat-1').mirrored).toBe(false);
+    await startMirror(service, chat);
+    expect(service.getSessionStatus('chat-1').mirrored).toBe(true);
+    service.disableForSession('chat-1');
+    expect(service.getSessionStatus('chat-1').mirrored).toBe(false);
+  });
+
+  test('pushes status to the tab on attach and on teardown', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+
+    const pushed = chat._send.mock.calls.filter(c => c[0] === 'remote-control:session-status-changed');
+    expect(pushed.at(-1)[1]).toEqual({ sessionId: 'chat-1', mirrored: true, lastError: null });
+
+    service.disableForSession('chat-1');
+    const after = chat._send.mock.calls.filter(c => c[0] === 'remote-control:session-status-changed');
+    expect(after.at(-1)[1]).toEqual({ sessionId: 'chat-1', mirrored: false, lastError: null });
+  });
+
+  test('pushes the reason when an attach fails', async () => {
+    mockCredsResult = { terminal: true, reason: 'untrusted_device' };
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+
+    const pushed = chat._send.mock.calls.filter(c => c[0] === 'remote-control:session-status-changed');
+    expect(pushed.at(-1)[1].mirrored).toBe(false);
+    expect(pushed.at(-1)[1].lastError).toMatch(/trusted device/i);
+  });
+});
+
 // ─── Transport lifecycle ────────────────────────────────────────────────────
 
 describe('transport lifecycle', () => {
@@ -512,7 +600,8 @@ describe('transport lifecycle', () => {
     const chat = fakeChatService();
     service.attachToChatService(chat);
     service.attachToChatService(chat);
-    await service.onSessionStarted('chat-1', { cwd: '/repo' });
+    chat.sessions.set('chat-1', { cwd: '/repo' });
+    await service.enableForSession('chat-1');
     await settle();
 
     chat.emit('chat-message', { sessionId: 'chat-1', message: { type: 'assistant' } });

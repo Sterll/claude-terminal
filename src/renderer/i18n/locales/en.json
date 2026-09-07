@@ -2231,7 +2231,7 @@
   },
   "claudeRemote": {
     "enable": "Remote Control (claude.ai)",
-    "enableDesc": "Follow and steer your chat sessions from claude.ai/code or the Claude mobile app.",
+    "enableDesc": "Allow chat tabs to be shared with claude.ai. Nothing is shared until you turn it on in a conversation.",
     "allowDriving": "Allow remote control",
     "drivingOn": "claude.ai can send prompts, interrupt a turn and answer permission prompts. Sessions already open stay read-only until restarted.",
     "drivingOff": "Mirror only: claude.ai shows the transcript but cannot act on this machine.",
@@ -2240,9 +2240,15 @@
     "unsupported": "This build cannot serve Remote Control.",
     "statusUnknown": "Status unavailable.",
     "mirroring": "{count} session(s) mirrored to claude.ai.",
-    "idle": "No session mirrored yet. Open a chat tab to start one.",
+    "idle": "No conversation shared. Use the claude.ai button in a chat tab, or type /remote-control there.",
     "terminals": "Connect terminal tabs too",
-    "terminalsDesc": "Launches the Claude CLI with --rc in terminal tabs, so those sessions reach claude.ai as well."
+    "terminalsDesc": "Launches the Claude CLI with --rc in terminal tabs, so those sessions reach claude.ai as well.",
+    "mirrorOff": "Mirror this conversation to claude.ai",
+    "mirrorOn": "Mirrored to claude.ai — click to stop",
+    "noSession": "Send a message first, then Remote Control has a session to share.",
+    "noticeOn": "This conversation is now on claude.ai, from here on.",
+    "noticeOff": "This conversation is no longer shared with claude.ai.",
+    "noticeFailed": "Could not reach claude.ai."
   },
   "cloud": {
     "tabTitle": "Cloud",

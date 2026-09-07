@@ -217,10 +217,44 @@ class RemoteControlService {
    * @param {string} sessionId
    * @param {Object} meta - { cwd, projectId, accountId, model, title }
    */
-  onSessionStarted(sessionId, meta = {}) {
-    if (!sessionId || this._mirrors.has(sessionId)) return;
-    if (!this.isEnabled() || this.isBlockedByPolicy()) return;
+  /**
+   * Mirror one specific chat session to claude.ai, starting from whatever it
+   * says next — not a replay of what it already said.
+   *
+   * Deliberately per-session and explicit: nothing here is triggered by
+   * ChatService starting a session. A global "mirror everything" switch would
+   * put a user's private local chats on claude.ai the moment they turned the
+   * feature on at all, with no per-conversation say in it. This is the only
+   * entry point that starts a mirror, and it always begins as an action the
+   * user just took in that specific tab (the footer button, or the
+   * `/remote-control` input command) — never as a side effect of settings.
+   *
+   * Session metadata (cwd, project, account, model) is read live off the
+   * ChatService session rather than passed in, since the caller here is a
+   * button click with no reason to know any of that.
+   *
+   * @param {string} sessionId
+   * @returns {Promise<{success: true} | {success: false, error: string}>}
+   */
+  async enableForSession(sessionId) {
+    if (!sessionId) return { success: false, error: 'No session id.' };
+    if (this._mirrors.get(sessionId)?.handle) return { success: true }; // already mirrored
 
+    if (this.isBlockedByPolicy()) {
+      return { success: false, error: 'Remote Control is disabled by your organisation policy.' };
+    }
+    if (!this.isEnabled()) {
+      return { success: false, error: 'Turn on Remote Control in Settings → Connectivity → claude.ai first.' };
+    }
+    const session = this._chatService?.sessions?.get(sessionId);
+    if (!session) {
+      return { success: false, error: 'This tab has no running session yet — send a message first.' };
+    }
+
+    // Registered synchronously, before the first await: building the transport
+    // takes about a second, and a turn already streaming has to land in the
+    // buffer over that window rather than on the floor. Whether the SDK can
+    // serve the bridge at all is checked inside _attach, past this point.
     const mirror = {
       handle: null,
       ccrSessionId: null,
@@ -229,18 +263,51 @@ class RemoteControlService {
       state: null,
       closed: false,
       reconnects: 0,
-      meta,
+      meta: {
+        cwd: session.cwd || null,
+        projectId: session.projectId || null,
+        accountId: session.accountId || null,
+        model: session.model || null,
+      },
       pendingInbound: [],
       permissions: new Map(),
     };
     this._mirrors.set(sessionId, mirror);
 
-    // Returned already-caught, so a caller may await it (tests do) without any
-    // risk of an unhandled rejection for the callers that do not.
-    return this._attach(sessionId).catch(err => {
+    await this._attach(sessionId).catch(err => {
       console.warn(`[RemoteControl] attach failed for ${sessionId}:`, err?.message);
       this._mirrors.delete(sessionId);
+      this._emitStatus(sessionId, false, err?.message || 'Attach failed.');
     });
+
+    const attached = this._mirrors.get(sessionId);
+    return attached?.handle ? { success: true } : { success: false, error: this._lastError || 'Could not attach.' };
+  }
+
+  /** Stop mirroring one session. Always succeeds — disabling an unmirrored session is a no-op. */
+  disableForSession(sessionId) {
+    this._teardown(sessionId, 'user disabled');
+    return { success: true };
+  }
+
+  /** Whether `sessionId` is currently mirrored, for a tab's initial paint. */
+  getSessionStatus(sessionId) {
+    const mirror = this._mirrors.get(sessionId);
+    return { mirrored: !!mirror?.handle, lastError: mirror ? null : this._lastError };
+  }
+
+  /**
+   * Push a session's mirror state to the renderer.
+   *
+   * Reuses ChatService's own event bus (`_send`) rather than opening a second
+   * channel to the window: it already reaches the chat tab (and any remote
+   * PWA listener) keyed by `sessionId`, exactly like `chat-idle` or
+   * `chat-permission-request`. RemoteControlService also receives its own
+   * emission back through `_onChatEvent`, which is harmless — the switch
+   * there has no case for it.
+   */
+  _emitStatus(sessionId, mirrored, lastError = null) {
+    this._chatService?._send?.('remote-control:session-status-changed', { sessionId, mirrored, lastError });
   }
 
   /** A local chat session ended. Flushes what is queued, then lets the handle go. */
@@ -359,7 +426,9 @@ class RemoteControlService {
 
     const bridge = await loadBridge();
     if (!bridge) {
+      this._lastError = getUnavailableReason() || 'This build cannot serve Remote Control.';
       this._mirrors.delete(sessionId);
+      this._emitStatus(sessionId, false, this._lastError);
       return;
     }
 
@@ -368,6 +437,7 @@ class RemoteControlService {
     if (!accessToken) {
       this._lastError = 'No usable Claude login. Run /login in a terminal.';
       this._mirrors.delete(sessionId);
+      this._emitStatus(sessionId, false, this._lastError);
       return;
     }
 
@@ -383,6 +453,7 @@ class RemoteControlService {
       this._lastError = this._describeFailure(created, bridge) || 'Could not create the Remote Control session.';
       console.warn(`[RemoteControl] createCodeSession: ${this._lastError}`);
       this._mirrors.delete(sessionId);
+      this._emitStatus(sessionId, false, this._lastError);
       return;
     }
 
@@ -394,6 +465,7 @@ class RemoteControlService {
       this._lastError = this._describeFailure(creds, bridge) || 'Could not obtain Remote Control credentials.';
       console.warn(`[RemoteControl] fetchRemoteCredentials: ${this._lastError}`);
       this._mirrors.delete(sessionId);
+      this._emitStatus(sessionId, false, this._lastError);
       return;
     }
 
@@ -429,19 +501,8 @@ class RemoteControlService {
       host: 'claude-terminal',
     });
 
-    // The prompt that opened the session is relayed by ChatService before this
-    // mirror is registered, so it never reaches `_onChatEvent`. Written here so
-    // claude.ai shows the question its first answer belongs to.
-    if (typeof meta.initialPrompt === 'string' && meta.initialPrompt.trim()) {
-      this._write(mirror, {
-        type: 'user',
-        message: { role: 'user', content: [{ type: 'text', text: meta.initialPrompt }] },
-        parent_tool_use_id: null,
-        session_id: sessionId,
-      });
-    }
-
     this._flushBuffer(sessionId);
+    this._emitStatus(sessionId, true, null);
   }
 
   /** A readable session title when the caller supplied none. */
@@ -785,7 +846,7 @@ class RemoteControlService {
 
     const delay = RECONNECT_DELAYS_MS[Math.min(mirror.reconnects, RECONNECT_DELAYS_MS.length - 1)];
     if (mirror.reconnects >= RECONNECT_DELAYS_MS.length) {
-      this._teardown(sessionId, `transport closed (${code}), retries exhausted`);
+      this._teardown(sessionId, `transport closed (${code}), retries exhausted`, 'Connection to claude.ai was lost.');
       return;
     }
     mirror.reconnects++;
@@ -814,7 +875,7 @@ class RemoteControlService {
 
     const accessToken = await this._accessToken(mirror.meta.accountId);
     if (!accessToken) {
-      this._teardown(sessionId, 'no usable login for reconnect');
+      this._teardown(sessionId, 'no usable login for reconnect', 'No usable Claude login. Run /login in a terminal.');
       return;
     }
 
@@ -824,7 +885,7 @@ class RemoteControlService {
       mirror.ccrSessionId, baseUrl, accessToken, MINT_TIMEOUT_MS, trustedDeviceToken || undefined,
     );
     if (!creds || typeof creds.worker_jwt !== 'string') {
-      this._teardown(sessionId, 'could not re-mint credentials');
+      this._teardown(sessionId, 'could not re-mint credentials', 'Connection to claude.ai was lost.');
       return;
     }
 
@@ -835,19 +896,34 @@ class RemoteControlService {
         ...(credentialExpired ? { epoch: creds.worker_epoch } : {}),
       });
       mirror.reconnects = 0;
+      this._emitStatus(sessionId, true, null);
     } catch (err) {
       // The SDK is explicit that a failed reconnectTransport means the handle
       // is dead, not retryable.
-      this._teardown(sessionId, `reconnect rejected: ${err?.message}`);
+      this._teardown(sessionId, `reconnect rejected: ${err?.message}`, 'Connection to claude.ai was lost.');
     }
   }
 
-  /** Drain what is queued, close the handle, forget the session. */
-  _teardown(sessionId, reason) {
+  /**
+   * Drain what is queued, close the handle, forget the session.
+   *
+   * Always emits the session's new (unmirrored) status, whether or not a
+   * handle ever existed: this is also what a user's disable click routes
+   * through, and the button needs to hear back even if it clicked disable
+   * while the attach was still in flight.
+   *
+   * @param {string} sessionId
+   * @param {string} [reason] - Logged; not shown to the user.
+   * @param {string|null} [error] - Shown to the user when this teardown is a
+   *   failure (a dead transport) rather than a plain disconnect (the user
+   *   asked, the tab closed).
+   */
+  _teardown(sessionId, reason, error = null) {
     const mirror = this._mirrors.get(sessionId);
     if (!mirror) return;
     mirror.closed = true;
     this._mirrors.delete(sessionId);
+    this._emitStatus(sessionId, false, error);
 
     const handle = mirror.handle;
     if (!handle) return;

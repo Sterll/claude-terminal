@@ -2231,7 +2231,7 @@
   },
   "claudeRemote": {
     "enable": "远程控制 (claude.ai)",
-    "enableDesc": "在 claude.ai/code 或 Claude 移动应用中跟踪并操作你的聊天会话。",
+    "enableDesc": "允许将聊天标签页分享到 claude.ai。在某个对话中开启之前，不会分享任何内容。",
     "allowDriving": "允许远程操作",
     "drivingOn": "claude.ai 可以发送消息、中断当前回合并回应权限请求。已打开的会话在重启前仍为只读。",
     "drivingOff": "仅镜像：claude.ai 显示对话，但无法在本机执行操作。",
@@ -2240,9 +2240,15 @@
     "unsupported": "此版本无法提供远程控制。",
     "statusUnknown": "状态不可用。",
     "mirroring": "已将 {count} 个会话镜像到 claude.ai。",
-    "idle": "尚无镜像会话。打开一个聊天标签页即可开始。",
+    "idle": "尚无分享的对话。在聊天标签页中点击 claude.ai 按钮，或输入 /remote-control。",
     "terminals": "同时连接终端标签页",
-    "terminalsDesc": "在终端标签页中以 --rc 启动 Claude CLI，让这些会话也能到达 claude.ai。"
+    "terminalsDesc": "在终端标签页中以 --rc 启动 Claude CLI，让这些会话也能到达 claude.ai。",
+    "mirrorOff": "将此对话分享到 claude.ai",
+    "mirrorOn": "已分享到 claude.ai — 点击停止",
+    "noSession": "请先发送一条消息，远程控制才有可分享的会话。",
+    "noticeOn": "此对话现已同步到 claude.ai，从此刻开始。",
+    "noticeOff": "此对话已不再分享到 claude.ai。",
+    "noticeFailed": "无法连接 claude.ai。"
   },
   "cloud": {
     "tabTitle": "云",
