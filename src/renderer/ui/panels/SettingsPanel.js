@@ -1329,7 +1329,7 @@ class SettingsPanel extends BasePanel {
                   </label>
                 </div>
                 <div class="settings-toggle-row">
-                  <div class="settings-toggle-info">
+                  <div class="settings-toggle-label">
                     <div>${t('settings.autoClaudeMdUpdate')}</div>
                     <div class="settings-toggle-desc">${t('settings.autoClaudeMdUpdateDesc')}</div>
                   </div>
@@ -1405,7 +1405,7 @@ class SettingsPanel extends BasePanel {
               <div class="settings-group-title">${t('claudeRemote.settingsGroup')}</div>
               <div class="settings-card">
               <div class="settings-toggle-row">
-                <div class="settings-toggle-info">
+                <div class="settings-toggle-label">
                   <div>${t('claudeRemote.enable')}</div>
                   <div class="settings-toggle-desc">${t('claudeRemote.enableDesc')}</div>
                 </div>
@@ -1415,7 +1415,7 @@ class SettingsPanel extends BasePanel {
                 </label>
               </div>
               <div class="settings-toggle-row">
-                <div class="settings-toggle-info">
+                <div class="settings-toggle-label">
                   <div>${t('claudeRemote.allowDriving')}</div>
                   <div class="settings-toggle-desc">${t('claudeRemote.drivingDesc')}</div>
                 </div>
@@ -1425,7 +1425,7 @@ class SettingsPanel extends BasePanel {
                 </label>
               </div>
               <div class="settings-toggle-row">
-                <div class="settings-toggle-info">
+                <div class="settings-toggle-label">
                   <div>${t('claudeRemote.terminals')}</div>
                   <div class="settings-toggle-desc">${t('claudeRemote.terminalsDesc')}</div>
                 </div>
