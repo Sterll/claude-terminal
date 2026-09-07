@@ -6193,6 +6193,25 @@ class ChatView extends BaseComponent {
       .finally(() => { contextUsageBusy = false; });
   }
 
+  /**
+   * Ask the session for its own count of the window where the stream carries
+   * no figure of its own: a compact boundary without `post_tokens`. A frame
+   * that lands while the request is in flight describes a later state and
+   * wins — the ring only moves if nothing else has moved it meanwhile.
+   */
+  function refreshContextGaugeFromSession() {
+    if (!sessionId) return;
+    const before = inputTokens;
+    window.electron_api.chat.getContextUsage({ sessionId })
+      .then(result => {
+        const total = Number(result?.usage?.totalTokens);
+        if (!result?.success || !(total > 0) || inputTokens !== before) return;
+        inputTokens = total;
+        updateStatusInfo();
+      })
+      .catch(() => {});
+  }
+
   function hideContextBreakdown() {
     contextPopover.hidden = true;
   }
@@ -6321,11 +6340,16 @@ class ChatView extends BaseComponent {
           : t('chat.compactedSimple') || 'Conversation compacted';
         appendSystemNotice(notice, 'compact');
         // The window just emptied; without this the ring stays full until the
-        // next turn's first frame reports the new prefix.
-        const postTokens = message.compact_metadata?.post_tokens;
+        // next turn's first frame reports the new prefix. The boundary says
+        // what survived on CLIs new enough to report it. An older one says
+        // nothing, and a manual /compact ends the turn, so no frame would come
+        // along to bring the ring down — ask the session for its count instead.
+        const postTokens = contextTokensFromMessage(message);
         if (postTokens > 0) {
           inputTokens = postTokens;
           updateStatusInfo();
+        } else {
+          refreshContextGaugeFromSession();
         }
         setStreaming(false);
       } else if (message.subtype === 'task_started') {

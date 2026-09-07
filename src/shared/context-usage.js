@@ -17,6 +17,8 @@
 
 'use strict';
 
+const positive = (v) => (typeof v === 'number' && isFinite(v) && v > 0 ? v : 0);
+
 /**
  * @param {object|null|undefined} usage An Anthropic usage object, from either an
  *   SDK result message or a session JSONL line.
@@ -24,10 +26,9 @@
  */
 function contextTokensFromUsage(usage) {
   if (!usage || typeof usage !== 'object') return 0;
-  const n = (v) => (typeof v === 'number' && isFinite(v) && v > 0 ? v : 0);
-  return n(usage.input_tokens)
-    + n(usage.cache_read_input_tokens)
-    + n(usage.cache_creation_input_tokens);
+  return positive(usage.input_tokens)
+    + positive(usage.cache_read_input_tokens)
+    + positive(usage.cache_creation_input_tokens);
 }
 
 /**
@@ -38,6 +39,16 @@ function contextTokensFromUsage(usage) {
  * A turn's total is not: the SDK result message sums every call the turn made,
  * so five tool round-trips over a 300K conversation add up to 1.5M and the
  * gauge reported "1.1M / 1M (109%)" on a window that was never over.
+ *
+ * Two frames measure the window without an API call behind them:
+ *
+ * - A compact boundary says what survived (`post_tokens`, camel-cased in the
+ *   session file) on CLIs new enough to report it. Nothing with a usage follows
+ *   it until the next reply — only the summary and the prompts — so without
+ *   this a resume right after /compact opens on the figure from *before* the
+ *   compaction.
+ * - `/context` answers with a synthetic assistant frame whose usage is all
+ *   zeros; its structured twin carries the CLI's own count of the window.
  *
  * Frames from a subagent or a sidechain carry their own separate window, so
  * they measure someone else's context and are skipped rather than mistaken for
@@ -51,7 +62,12 @@ function contextTokensFromUsage(usage) {
 function contextTokensFromMessage(msg) {
   if (!msg || typeof msg !== 'object') return 0;
   if (msg.parent_tool_use_id || msg.subagent_type || msg.isSidechain) return 0;
-  return contextTokensFromUsage(msg.message?.usage);
+  if (msg.type === 'system' && msg.subtype === 'compact_boundary') {
+    const meta = msg.compact_metadata || msg.compactMetadata || {};
+    return positive(meta.post_tokens) || positive(meta.postTokens);
+  }
+  return positive(msg.context_usage?.total_tokens)
+    || contextTokensFromUsage(msg.message?.usage);
 }
 
 module.exports = { contextTokensFromUsage, contextTokensFromMessage };
