@@ -12,6 +12,8 @@ const { projectsFile } = require('../utils/paths');
 const TODO_REGEX_SLASH = /\/\/\s*(TODO|FIXME|HACK|XXX)[:\s]*(.*)/i;
 const TODO_REGEX_HASH  = /#\s*(TODO|FIXME|HACK|XXX)[:\s]*(.*)/i;
 const TODO_REGEX_LUA   = /--\s*(TODO|FIXME|HACK|XXX)[:\s]*(.*)/i;
+const TODO_REGEX_BLOCK = /\/\*\s*(TODO|FIXME|HACK|XXX)[:\s]*(.*?)(?:\*\/|$)/i;
+const TODO_REGEX_HTML  = /<!--\s*(TODO|FIXME|HACK|XXX)[:\s]*(.*?)(?:-->|$)/i;
 
 /**
  * Register project IPC handlers
@@ -30,7 +32,7 @@ function registerProjectHandlers() {
     }
 
     const todos = [];
-    const extensions = ['.js', '.ts', '.jsx', '.tsx', '.vue', '.py', '.lua', '.go', '.rs', '.java', '.cpp', '.c', '.h'];
+    const extensions = ['.js', '.ts', '.jsx', '.tsx', '.vue', '.py', '.lua', '.go', '.rs', '.java', '.cpp', '.c', '.h', '.html', '.css'];
     const ignoreDirs = ['node_modules', '.git', 'dist', 'build', '__pycache__', '.next', 'vendor'];
 
     async function scanDir(dir, depth = 0) {
@@ -62,7 +64,9 @@ function registerProjectHandlers() {
         lines.forEach((line, i) => {
           const todoMatch = TODO_REGEX_SLASH.exec(line) ||
                             TODO_REGEX_HASH.exec(line) ||
-                            TODO_REGEX_LUA.exec(line);
+                            TODO_REGEX_LUA.exec(line) ||
+                            TODO_REGEX_BLOCK.exec(line) ||
+                            TODO_REGEX_HTML.exec(line);
           if (todoMatch && todos.length < 50) {
             todos.push({
               type: todoMatch[1].toUpperCase(),
