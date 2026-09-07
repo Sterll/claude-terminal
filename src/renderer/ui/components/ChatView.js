@@ -7188,29 +7188,47 @@ class ChatView extends BaseComponent {
       // tab was opened on.
       const realSid = sdkSessionId || resumeSessionId;
       // The binding is read at spawn time, so the restart has to carry the new
-      // account explicitly — lastStartOpts still holds the one that ran out.
-      // Everything that belonged to the turn that opened the tab is dropped: the
-      // restart sends no prompt, so replaying its images, mentions or message
-      // uuid would post the opening message a second time. A fork's truncation
-      // point goes too — it names a message of the session being resumed, not of
-      // the fork that came out of it.
+      // account explicitly — lastStartOpts still holds the one that ran out. A
+      // fork's truncation point goes too: it names a message of the session
+      // being resumed, not of the fork that came out of it.
+      //
+      // Whether the opening turn rides along depends on whether it survived
+      // anywhere. With a session to resume it is already on disk, and sending it
+      // again would post it twice. Without one it exists nowhere but the bubble
+      // on screen — a limit refused before the SDK's init message means no
+      // session file was ever written — so the restart has to carry it or the
+      // prompt dies with the account that refused it. Its uuid goes along to keep
+      // that bubble matching the message that finally gets recorded.
+      const replayOpeningTurn = !realSid;
       const restartOpts = {
         ...lastStartOpts,
         accountId: newId,
-        prompt: '',
-        images: [],
-        mentions: [],
-        userMessageUuid: null,
+        prompt: replayOpeningTurn ? (lastStartOpts.prompt || '') : '',
+        images: replayOpeningTurn ? (lastStartOpts.images || []) : [],
+        mentions: replayOpeningTurn ? (lastStartOpts.mentions || []) : [],
+        userMessageUuid: replayOpeningTurn ? (lastStartOpts.userMessageUuid || null) : null,
         forkSession: false,
         resumeSessionAt: null,
         resumeDropsTurn: null,
         resumeSessionId: realSid || null,
       };
-      appendSystemNotice(realSid
+      // An opening turn that carried nothing leaves the restart with nothing to
+      // send: the session comes up idle, waiting for the user to type.
+      const replayed = replayOpeningTurn && Boolean(
+        (restartOpts.prompt || '').trim() || restartOpts.images.length || restartOpts.mentions.length
+      );
+      const notice = realSid
         ? (t('accounts.switched') || 'Account switched. Resuming…')
-        : (t('accounts.switchedNoResume') || 'Account switched. The previous conversation could not be resumed — continuing without its context.'), 'info');
-      setStreaming(true);
-      appendThinkingIndicator();
+        : replayed
+          ? (t('accounts.switchedResent') || 'Account switched. The previous conversation was never saved, so your message is being sent again on the new account.')
+          : (t('accounts.switchedNoResume') || 'Account switched. The previous conversation could not be resumed — continuing without its context.');
+      appendSystemNotice(notice, 'info');
+      // Only wait on a turn the SDK will actually run: with nothing queued the
+      // spinner would sit there for the life of the tab.
+      if (realSid || replayed) {
+        setStreaming(true);
+        appendThinkingIndicator();
+      }
       const res = await api.chat.start(restartOpts);
       if (!res.success) {
         appendError(res.error || t('chat.errorOccurred'));

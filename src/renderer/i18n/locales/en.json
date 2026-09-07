@@ -3785,6 +3785,7 @@
     "limitReached": "Usage limit reached on the active account.",
     "switched": "Account switched. Resuming…",
     "switchedNoResume": "Account switched. The previous conversation could not be resumed — continuing without its context.",
+    "switchedResent": "Account switched. The previous conversation was never saved, so your message is being sent again on the new account.",
     "removeConfirm": "Remove this saved account? The credentials will be deleted from local storage.",
     "switchError": "Failed to switch account",
     "renameError": "Failed to rename account",
