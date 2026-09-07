@@ -811,6 +811,9 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  /* `.cn-sub-panel-inner` carries no padding — the Local tab supplies its own
+     through `.cn-local-content`, so this screen has to as well. */
+  padding: 16px 20px 20px;
 }
 
 .crp-head {
