@@ -13,6 +13,19 @@ const AccountManager = require('./AccountManager');
 const { isCliFailureText } = require('../../shared/cli-failure-text');
 const { isPermissionMode } = require('../../shared/permission-modes');
 
+/**
+ * Is this assistant message the CLI reporting an API failure rather than
+ * answering — a spend cap, a refusal, an overloaded upstream?
+ *
+ * The CLI carries the flag as `isApiErrorMessage` internally, which is the
+ * spelling written to the ~/.claude/projects transcript, and serialises it to
+ * stream-json as `is_api_error_message`. Which of the two survives to here is
+ * the SDK's business, so both count.
+ */
+function isApiErrorMessage(message) {
+  return message?.isApiErrorMessage === true || message?.is_api_error_message === true;
+}
+
 let sdkPromise = null;
 let resolvedRuntime = null;
 
@@ -1403,6 +1416,10 @@ class ChatService {
     // (streaming input). Tracked so the final lifecycle event reports the
     // session's real outcome; a later successful turn clears it.
     let inbandError = null;
+    // An in-band limit waiting for the turn to settle before it is raised.
+    // Acting on it closes the session, and closing one mid-turn paints an
+    // interrupted marker over the restart the switch is making room for.
+    let pendingAccountLimit = null;
     const session = this.sessions.get(sessionId);
     // Assistant text for the turn in progress. Claude emits one assistant
     // message per text block — several per turn as soon as tools run in
@@ -1414,6 +1431,23 @@ class ChatService {
       const text = replyBuffer.trim();
       replyBuffer = '';
       if (text) this._emitMessage('assistant', text, sessionId);
+    };
+    /** The text blocks of an assistant message, joined. Content may be a bare string. */
+    const assistantText = (message) => {
+      const content = message.message?.content;
+      if (typeof content === 'string') return content.trim();
+      if (!Array.isArray(content)) return '';
+      return content
+        .filter(block => block?.type === 'text' && block.text)
+        .map(block => block.text)
+        .join('\n')
+        .trim();
+    };
+    const raisePendingAccountLimit = async () => {
+      if (!pendingAccountLimit) return;
+      const limit = pendingAccountLimit;
+      pendingAccountLimit = null;
+      await this._emitAccountLimit(sessionId, session, limit);
     };
     try {
       for await (const message of queryStream) {
@@ -1499,6 +1533,24 @@ class ChatService {
         // those, so they are not a session outcome.
         if (message.type === 'assistant' && message.error) {
           inbandError = `API error: ${message.error}`;
+        } else if (message.type === 'assistant') {
+          // The other in-band shape: a refusal handed back as ordinary
+          // assistant text, with no `error` field and no throw — only a flag.
+          // A spend cap arrives this way, and because the stream stays open the
+          // tab keeps its process, which keeps the credentials of the account
+          // that just ran out. Every retry then hits the same wall, which is
+          // why quitting the app used to be the only way through.
+          const text = assistantText(message);
+          if (isApiErrorMessage(message)) {
+            inbandError = text || 'API error';
+            if (this._isUsageLimitError(text)) pendingAccountLimit = text;
+          } else if (this._isCliFailureText(text) && this._isUsageLimitError(text)) {
+            // Same failure, no flag on it. Losing the offer to a renamed field
+            // is how this bug got here, so the CLI's own phrasing gets a second
+            // look — anchored (isCliFailureText), because Claude *discussing* a
+            // spend limit has to stay an ordinary reply.
+            pendingAccountLimit = text;
+          }
         } else if (message.type === 'result') {
           if (message.is_error || message.subtype !== 'success') {
             const errors = Array.isArray(message.errors) ? message.errors.filter(Boolean) : [];
@@ -1523,10 +1575,14 @@ class ChatService {
           }
         } else if (message.type === 'result') {
           flushReply();
+          await raisePendingAccountLimit();
         }
       }
       flushReply();
       this._send('chat-done', { sessionId });
+      // No result closed the turn — the stream itself did. Still the account's
+      // budget, so the offer still stands.
+      await raisePendingAccountLimit();
       if (inbandError) {
         // The stream closed cleanly, but the last turn had failed in-band —
         // the renderer already displayed that error, so lifecycle consumers
@@ -1552,21 +1608,13 @@ class ChatService {
         if (stderrLog && err.message?.includes('exited with code')) {
           errorMsg += `\n\nDetails: ${stderrLog.trim().slice(0, 500)}`;
         }
-        const errorType = this._isUsageLimitError(err.message, stderrLog) ? 'usage_limit' : 'generic';
+        // A limit seen in-band counts even if the stream went on to die of
+        // something else: the account is out of budget either way.
+        const errorType = (pendingAccountLimit || this._isUsageLimitError(err.message, stderrLog))
+          ? 'usage_limit' : 'generic';
         if (errorType === 'usage_limit') {
-          // The limit belongs to whichever account ran this session: its
-          // project's binding, or the default when it has none. The renderer
-          // offers to re-bind the project rather than swap a global account.
-          let activeAccountId = session?.accountId || null;
-          try {
-            if (!activeAccountId) activeAccountId = (await AccountManager.listAccounts()).defaultId;
-          } catch (_) { /* AccountManager not initialized yet */ }
-          this._send('chat-account-limit', {
-            sessionId,
-            error: errorMsg,
-            activeAccountId,
-            projectId: session?.projectId || null
-          });
+          await this._emitAccountLimit(sessionId, session, pendingAccountLimit || errorMsg);
+          pendingAccountLimit = null;
         }
         this._send('chat-error', { sessionId, error: errorMsg, errorType });
         this._emitLifecycle('end', sessionId, { status: 'error', error: errorMsg });
@@ -1596,7 +1644,36 @@ class ChatService {
       || haystack.includes('too many requests')
       || haystack.includes('usage limit')
       || haystack.includes('weekly limit')
-      || haystack.includes('quota');
+      || haystack.includes('quota')
+      // A spend cap reads nothing like a rate limit — "You've hit your
+      // individual spend limit · run /usage-credits … · your session limit
+      // resets 5:20pm" shares not one word with the patterns above — but it
+      // ends the same way: this account cannot run the turn and another one can.
+      || haystack.includes('spend limit')
+      || haystack.includes('session limit')
+      || haystack.includes('usage-credits')
+      || haystack.includes('credit balance');
+  }
+
+  /**
+   * Tell the renderer this session's account is out of budget, so it can offer
+   * the switch.
+   *
+   * The limit belongs to whichever account ran this session: its project's
+   * binding, or the default when it has none. The renderer offers to re-bind
+   * the project rather than swap a global account.
+   */
+  async _emitAccountLimit(sessionId, session, error) {
+    let activeAccountId = session?.accountId || null;
+    try {
+      if (!activeAccountId) activeAccountId = (await AccountManager.listAccounts()).defaultId;
+    } catch (_) { /* AccountManager not initialized yet */ }
+    this._send('chat-account-limit', {
+      sessionId,
+      error,
+      activeAccountId,
+      projectId: session?.projectId || null
+    });
   }
 
   /**

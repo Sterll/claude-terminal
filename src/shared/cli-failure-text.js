@@ -24,6 +24,12 @@ const CLI_FAILURE_TEXT = [
   /\bsession (has )?expired\b/i,
   /\bcredit balance (is )?too low\b/i,
   /\busage limit reached\b/i,
+  // Spend caps: "You've hit your individual spend limit · run /usage-credits
+  // to ask your admin for a higher limit · your session limit resets 5:20pm".
+  // Anchored like the rest — prose *about* a spend limit, up to and including
+  // quoting that sentence back, has to keep going through.
+  /^you\b.{0,6}\bhit your\b[^.]*\blimit\b/i,
+  /\brun \/usage-credits\b/i,
 ];
 
 /**

@@ -7790,6 +7790,12 @@ class ChatView extends BaseComponent {
 
   const unsubDone = api.chat.onDone(({ sessionId: sid, interrupted }) => {
     if (sid !== sessionId) return;
+    // A limit reported in-band leaves the session alive, so the switch has to
+    // close it — and that abort comes back as an interrupted `done` under the
+    // same handle. It is our own doing, not a turn ending: honouring it would
+    // stamp an interrupted marker across the transcript and stop the spinner
+    // the restart has just started.
+    if (switchingAccount) return;
     const wasInterrupted = interrupted || isAborting;
     isAborting = false;
     removeThinkingIndicator();
