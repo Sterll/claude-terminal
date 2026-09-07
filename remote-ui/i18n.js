@@ -100,6 +100,7 @@ const TRANSLATIONS = {
 
     // Permissions
     'perm.resolved': 'Traitée',
+    'perm.expired': 'Expirée',
     'perm.allowed': 'Autorisée',
     'perm.denied': 'Refusée',
 
@@ -209,6 +210,7 @@ const TRANSLATIONS = {
     'chat.notSentReconnecting': 'Not sent — reconnecting. Tap again once connected.',
 
     'perm.resolved': 'Resolved',
+    'perm.expired': 'Expired',
     'perm.allowed': 'Allowed',
     'perm.denied': 'Denied',
 
@@ -315,6 +317,7 @@ const TRANSLATIONS = {
     'chat.notSentReconnecting': 'No enviado \u2014 reconectando. Int\u00e9ntalo de nuevo al conectar.',
 
     'perm.resolved': 'Resuelta',
+    'perm.expired': 'Expirada',
     'perm.allowed': 'Permitida',
     'perm.denied': 'Rechazada',
 
@@ -421,6 +424,7 @@ const TRANSLATIONS = {
     'chat.notSentReconnecting': 'Tidak terkirim — menghubungkan ulang. Ketuk lagi setelah terhubung.',
 
     'perm.resolved': 'Diselesaikan',
+    'perm.expired': 'Kedaluwarsa',
     'perm.allowed': 'Diizinkan',
     'perm.denied': 'Ditolak',
 

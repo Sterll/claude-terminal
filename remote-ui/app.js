@@ -834,6 +834,7 @@ function handleMessage(msg) {
     case 'chat-done':            onChatDone(data); break;
     case 'chat-error':           onChatError(data); break;
     case 'chat-permission-request': onPermissionRequest(data); break;
+    case 'chat-permission-resolved': onPermissionResolved(data); break;
     case 'time:update':          onTimeUpdate(data); break;
     case 'git:status':           onGitStatus(data); break;
     case 'git:pull':             onGitResult('pull', data); break;
@@ -1342,6 +1343,27 @@ function onPermissionRequest(data) {
     `perm-${data.requestId}`
   );
   if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
+}
+
+// The desktop settled a prompt this phone may still be showing: it timed out,
+// the turn was interrupted, or it was answered on another surface. Drop it from
+// the pending set so the inline card re-renders as settled and the session
+// stops sorting as "needs permission".
+function onPermissionResolved(data) {
+  const requestId = data?.requestId;
+  if (!requestId || !state.pendingPermissions.has(requestId)) return;
+  state.pendingPermissions.delete(requestId);
+  const session = data.sessionId ? state.sessions[data.sessionId] : null;
+  if (session) {
+    const msg = session.messages.find(m => m.role === 'permission' && m.permData?.requestId === requestId);
+    if (msg) msg.settled = data.reason || 'answered';
+    if (session.status === 'permission' && data.reason !== 'aborted') {
+      session.status = 'active';
+      session.lastActivity = t('status.claudeWorking');
+    }
+  }
+  _refreshControlIfActive();
+  _renderIfActive(data.sessionId);
 }
 
 // ─── Streaming Helpers ────────────────────────────────────────────────────────
@@ -2146,7 +2168,7 @@ function _renderInlinePermission(m) {
     </div>
     ${desc ? `<pre class="perm-inline-desc">${escHtml(_truncate(desc, 200))}</pre>` : ''}
     ${resolved
-      ? `<div class="perm-inline-resolved">${escHtml(t('perm.resolved'))}</div>`
+      ? `<div class="perm-inline-resolved">${escHtml(t(m.settled === 'timeout' ? 'perm.expired' : 'perm.resolved'))}</div>`
       : `<div class="perm-inline-actions">
           <button class="btn-action btn-allow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> ${t('misc.allow')}</button>
           <button class="btn-action btn-deny"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> ${t('misc.deny')}</button>

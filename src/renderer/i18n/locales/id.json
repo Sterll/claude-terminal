@@ -1742,6 +1742,8 @@
     "initializingRuntime": "Mencari runtime...",
     "interrupted": "Terhenti",
     "permissionWaitingSince": "Menunggu {seconds} detik",
+    "permissionExpired": "Kedaluwarsa: tidak ada jawaban dalam 5 menit",
+    "permissionAnsweredElsewhere": "Dijawab di tempat lain",
     "permissionNotification": "Permintaan izin untuk {tool} sedang menunggu jawaban Anda",
     "resuming": "Melanjutkan percakapan...",
     "conversationResumed": "Percakapan dilanjutkan",

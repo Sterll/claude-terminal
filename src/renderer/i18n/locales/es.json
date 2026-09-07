@@ -1824,6 +1824,8 @@
     "initializingRuntime": "Buscando el runtime...",
     "interrupted": "Interrumpido",
     "permissionWaitingSince": "Esperando desde hace {seconds}s",
+    "permissionExpired": "Expirada: sin respuesta en 5 minutos",
+    "permissionAnsweredElsewhere": "Respondida en otro lugar",
     "permissionNotification": "Un permiso para {tool} espera tu respuesta",
     "denyFeedbackPlaceholder": "Explica por qué (opcional)...",
     "sendFeedback": "Denegar con comentario",

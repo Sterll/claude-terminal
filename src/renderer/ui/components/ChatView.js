@@ -3388,12 +3388,52 @@ class ChatView extends BaseComponent {
 
   // Centralized respond helper: forwards to the SDK and clears the
   // `pendingPermission` marker on the terminal entry so MCP `tab_status`
-  // and `tab_wait` reflect the resolution.
-  function _respondPermission(payload) {
-    try { api.chat.respondPermission(payload); } catch (_) {}
-    if (terminalId) {
-      try { updateTerminal(terminalId, { pendingPermission: null }); } catch (_) {}
+  // and `tab_wait` reflect the resolution. Resolves to false when the main
+  // process had nothing pending under that id any more (timed out, aborted,
+  // or answered from another surface), so the caller can say so on the card.
+  async function _respondPermission(payload) {
+    _clearTerminalPendingPermission();
+    try {
+      const accepted = await api.chat.respondPermission(payload);
+      return accepted !== false;
+    } catch (_) {
+      return false;
     }
+  }
+
+  function _clearTerminalPendingPermission() {
+    if (!terminalId) return;
+    try { updateTerminal(terminalId, { pendingPermission: null }); } catch (_) {}
+  }
+
+  // A prompt this card was showing is settled, and not by this card: it expired,
+  // the turn was interrupted, or another surface (Control Tower, remote PWA,
+  // MCP) answered first. Freeze the card and say which, instead of leaving live
+  // buttons — or an approval that went nowhere.
+  function markCardStale(card, reason = 'expired') {
+    if (!card) return;
+    _clearPermTimers(card.dataset.requestId);
+    card.classList.remove('allowed', 'denied', 'approved', 'rejected');
+    card.classList.add('resolved', 'stale');
+    card.querySelectorAll('button').forEach(b => {
+      b.disabled = true;
+      b.classList.add('disabled');
+      b.classList.remove('chosen');
+    });
+    const header = card.querySelector('.chat-perm-header, .chat-plan-header, .chat-question-header');
+    if (!header) return;
+    let label = card.querySelector('.chat-perm-timer');
+    if (!label) {
+      label = document.createElement('span');
+      label.className = 'chat-perm-timer';
+      header.appendChild(label);
+    }
+    label.classList.add('stale');
+    label.textContent = reason === 'answered'
+      ? (t('chat.permissionAnsweredElsewhere') || 'Answered elsewhere')
+      : reason === 'aborted'
+        ? (t('chat.interrupted') || 'Interrupted')
+        : (t('chat.permissionExpired') || 'Expired: no answer within 5 minutes');
   }
 
   function handlePermissionClick(btn) {
@@ -3425,11 +3465,12 @@ class ChatView extends BaseComponent {
       b.classList.add('disabled');
     });
 
+    let result;
     if (action === 'allow' || action === 'always-allow') {
       btn.classList.add('chosen');
       card.classList.add('resolved', 'allowed');
       const inputData = JSON.parse(card.dataset.toolInput || '{}');
-      const result = { behavior: 'allow', updatedInput: inputData };
+      result = { behavior: 'allow', updatedInput: inputData };
       if (action === 'always-allow') {
         // Use SDK suggestions for granular permissions (e.g. acceptEdits)
         // Fallback to bypassPermissions only if no suggestions available
@@ -3444,30 +3485,30 @@ class ChatView extends BaseComponent {
           }];
         }
       }
-      _respondPermission({ requestId, result });
     } else {
       // deny or deny-send: include feedback message if provided
       const feedbackInput = card.querySelector('.chat-perm-feedback-input');
       const message = feedbackInput?.value?.trim() || 'User denied this action';
       card.querySelector('.chat-perm-btn.deny')?.classList.add('chosen');
       card.classList.add('resolved', 'denied');
-      _respondPermission({
-        requestId,
-        result: { behavior: 'deny', message }
-      });
+      result = { behavior: 'deny', message };
     }
 
-    // Reset status — SDK will continue processing
-    setStatus('thinking', t('chat.thinking'));
+    _respondPermission({ requestId, result }).then((accepted) => {
+      if (!accepted) { markCardStale(card); return; }
 
-    // Collapse card after resolution
-    setTimeout(() => {
-      card.style.maxHeight = card.scrollHeight + 'px';
-      requestAnimationFrame(() => {
-        card.classList.add('collapsing');
-        card.style.maxHeight = '0';
-      });
-    }, 400);
+      // Reset status — SDK will continue processing
+      setStatus('thinking', t('chat.thinking'));
+
+      // Collapse card after resolution
+      setTimeout(() => {
+        card.style.maxHeight = card.scrollHeight + 'px';
+        requestAnimationFrame(() => {
+          card.classList.add('collapsing');
+          card.style.maxHeight = '0';
+        });
+      }, 400);
+    });
   }
 
   // ── Plan handling ──
@@ -3501,56 +3542,55 @@ class ChatView extends BaseComponent {
       b.classList.add('disabled');
     });
 
+    let result;
     if (action === 'allow') {
       btn.classList.add('chosen');
       card.classList.add('resolved', 'approved');
       const inputData = JSON.parse(card.dataset.toolInput || '{}');
-      _respondPermission({
-        requestId,
-        result: { behavior: 'allow', updatedInput: inputData }
-      });
+      result = { behavior: 'allow', updatedInput: inputData };
     } else {
       // deny or deny-send: include feedback if provided
       const feedbackInput = card.querySelector('.chat-plan-feedback-input');
       const message = feedbackInput?.value?.trim() || 'User rejected the plan';
       card.querySelector('.chat-plan-btn.reject')?.classList.add('chosen');
       card.classList.add('resolved', 'rejected');
-      _respondPermission({
-        requestId,
-        result: { behavior: 'deny', message }
-      });
+      result = { behavior: 'deny', message };
     }
 
-    // Reset status - SDK will continue processing
-    setStatus('thinking', t('chat.thinking'));
+    _respondPermission({ requestId, result }).then((accepted) => {
+      if (!accepted) { markCardStale(card); return; }
 
-    // Collapse: if ExitPlanMode with plan content, keep plan visible, only hide buttons
-    const isExitPlan = card.dataset.toolName === 'ExitPlanMode' && card.querySelector('.chat-plan-content');
-    if (isExitPlan) {
-      setTimeout(() => {
-        const actions = card.querySelector('.chat-plan-actions');
-        const feedback = card.querySelector('.chat-plan-feedback');
-        for (const row of [actions, feedback]) {
-          if (!row) continue;
-          row.style.maxHeight = row.scrollHeight + 'px';
-          row.style.overflow = 'hidden';
-          row.style.transition = 'max-height 0.35s ease, opacity 0.3s, padding 0.35s';
+      // Reset status - SDK will continue processing
+      setStatus('thinking', t('chat.thinking'));
+
+      // Collapse: if ExitPlanMode with plan content, keep plan visible, only hide buttons
+      const isExitPlan = card.dataset.toolName === 'ExitPlanMode' && card.querySelector('.chat-plan-content');
+      if (isExitPlan) {
+        setTimeout(() => {
+          const actions = card.querySelector('.chat-plan-actions');
+          const feedback = card.querySelector('.chat-plan-feedback');
+          for (const row of [actions, feedback]) {
+            if (!row) continue;
+            row.style.maxHeight = row.scrollHeight + 'px';
+            row.style.overflow = 'hidden';
+            row.style.transition = 'max-height 0.35s ease, opacity 0.3s, padding 0.35s';
+            requestAnimationFrame(() => {
+              row.style.maxHeight = '0';
+              row.style.opacity = '0';
+              row.style.padding = '0 16px';
+            });
+          }
+        }, 600);
+      } else {
+        setTimeout(() => {
+          card.style.maxHeight = card.scrollHeight + 'px';
           requestAnimationFrame(() => {
-            row.style.maxHeight = '0';
-            row.style.opacity = '0';
-            row.style.padding = '0 16px';
+            card.classList.add('collapsing');
+            card.style.maxHeight = '0';
           });
-        }
-      }, 600);
-    } else {
-      setTimeout(() => {
-        card.style.maxHeight = card.scrollHeight + 'px';
-        requestAnimationFrame(() => {
-          card.classList.add('collapsing');
-          card.style.maxHeight = '0';
-        });
-      }, 600);
-    }
+        }, 600);
+      }
+    });
   }
 
   // ── Tool card expansion ──
@@ -3823,10 +3863,11 @@ class ChatView extends BaseComponent {
         behavior: 'allow',
         updatedInput: { questions: questionsData, answers }
       }
+    }).then((accepted) => {
+      if (!accepted) { markCardStale(card); return; }
+      // Reset status — SDK will continue processing
+      setStatus('thinking', t('chat.thinking'));
     });
-
-    // Reset status — SDK will continue processing
-    setStatus('thinking', t('chat.thinking'));
   }
 
   // ── DOM helpers ──
@@ -7387,6 +7428,30 @@ class ChatView extends BaseComponent {
     _permTimers.set(requestId, { pulseTimer, notifTimer, counterId });
   });
   unsubscribers.push(unsubPerm);
+
+  // ── IPC: Permission settled without this card ──
+  // The main process closed the prompt on its own (timeout, interrupted turn)
+  // or another surface answered it (Control Tower, remote PWA, MCP). Freeze the
+  // card so it cannot be answered twice, and stop its reminder timers.
+  const unsubPermResolved = api.chat.onPermissionResolved((data) => {
+    if (data.sessionId !== sessionId) return;
+    const { requestId, reason } = data;
+    _clearPermTimers(requestId);
+    let card = null;
+    try {
+      const id = CSS.escape(requestId);
+      card = messagesEl.querySelector(
+        `.chat-perm-card[data-request-id="${id}"], .chat-plan-card[data-request-id="${id}"], .chat-question-card[data-request-id="${id}"]`
+      );
+    } catch (_) {}
+    if (!card || card.classList.contains('resolved')) return;
+    _clearTerminalPendingPermission();
+    markCardStale(card, reason);
+    // The SDK carries on after a timeout or an answer; an interrupted turn ends
+    // through chat-done, which sets its own status.
+    if (reason !== 'aborted') setStatus('thinking', t('chat.thinking'));
+  });
+  unsubscribers.push(unsubPermResolved);
 
   // The CLI refused a guarded fork: the discarded range held more than the turn we
   // named — typically a prompt queued mid-turn that this view never rendered. The

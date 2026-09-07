@@ -26,6 +26,7 @@ let _chatDoneUnlistener = null;
 let _chatErrorUnlistener = null;
 let _chatIdleUnlistener = null;
 let _chatPermissionUnlistener = null;
+let _chatPermissionResolvedUnlistener = null;
 let _isLoaded = false;
 
 // Cumulative cost across all sessions this app run
@@ -546,6 +547,19 @@ function _wireChatEvents() {
       _pendingPermissions.set(sessionId, { requestId, toolName, input, data });
       _render();
     }
+  });
+
+  // The prompt was settled elsewhere — chat card, remote PWA, MCP, or the
+  // 5-minute timeout — so the inline approve/deny would answer a request that
+  // no longer exists. Drop it and let the card go back to working.
+  _chatPermissionResolvedUnlistener = api.chat.onPermissionResolved(({ sessionId, requestId, reason }) => {
+    const perm = _pendingPermissions.get(sessionId);
+    if (!perm || perm.requestId !== requestId) return;
+    _pendingPermissions.delete(sessionId);
+    const a = _agents.get(`chat:${sessionId}`);
+    // An interrupted turn ends through chat-done, which sets its own status.
+    if (a && a.status === 'WAITING' && reason !== 'aborted') a.status = 'THINKING';
+    _render();
   });
 }
 
