@@ -542,6 +542,41 @@ describe('per-session control', () => {
     expect(after.at(-1)[1]).toEqual({ sessionId: 'chat-1', mirrored: false, lastError: null });
   });
 
+  test('lists what is shared, for the Connectivity screen', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    chat.sessions.set('chat-1', { cwd: '/repo', projectId: 'proj-1' });
+    service.attachToChatService(chat);
+    await service.enableForSession('chat-1');
+    await settle();
+
+    const [row] = service.listSessions();
+    expect(row).toMatchObject({
+      sessionId: 'chat-1',
+      ccrSessionId: 'cse_abc123',
+      cwd: '/repo',
+      projectId: 'proj-1',
+      state: 'idle',
+    });
+    expect(typeof row.startedAt).toBe('number');
+  });
+
+  test('a session still building its transport is not listed as reachable', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    service.attachToChatService(chat);
+    chat.sessions.set('chat-1', { cwd: '/repo' });
+
+    // Attach in flight: claude.ai does not have it yet, so offering it would
+    // send the user to a session that is not there.
+    const attaching = service.enableForSession('chat-1');
+    expect(service.listSessions()).toHaveLength(0);
+
+    await attaching;
+    await settle();
+    expect(service.listSessions()).toHaveLength(1);
+  });
+
   test('pushes the reason when an attach fails', async () => {
     mockCredsResult = { terminal: true, reason: 'untrusted_device' };
     const service = freshService();

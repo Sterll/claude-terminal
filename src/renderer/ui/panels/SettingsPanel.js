@@ -1401,6 +1401,42 @@ class SettingsPanel extends BasePanel {
               </div>
               </div>
             </div>
+            <div class="settings-group" data-section="remote-control">
+              <div class="settings-group-title">${t('claudeRemote.settingsGroup')}</div>
+              <div class="settings-card">
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-info">
+                  <div>${t('claudeRemote.enable')}</div>
+                  <div class="settings-toggle-desc">${t('claudeRemote.enableDesc')}</div>
+                </div>
+                <label class="settings-toggle">
+                  <input type="checkbox" id="claude-remote-enabled-toggle" ${settings.claudeRemoteControlEnabled ? 'checked' : ''}>
+                  <span class="settings-toggle-slider"></span>
+                </label>
+              </div>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-info">
+                  <div>${t('claudeRemote.allowDriving')}</div>
+                  <div class="settings-toggle-desc">${t('claudeRemote.drivingDesc')}</div>
+                </div>
+                <label class="settings-toggle">
+                  <input type="checkbox" id="claude-remote-drive-toggle" ${settings.claudeRemoteControlDrive !== false ? 'checked' : ''}>
+                  <span class="settings-toggle-slider"></span>
+                </label>
+              </div>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-info">
+                  <div>${t('claudeRemote.terminals')}</div>
+                  <div class="settings-toggle-desc">${t('claudeRemote.terminalsDesc')}</div>
+                </div>
+                <label class="settings-toggle">
+                  <input type="checkbox" id="claude-remote-terminals-toggle" ${settings.claudeRemoteControlTerminals ? 'checked' : ''}>
+                  <span class="settings-toggle-slider"></span>
+                </label>
+              </div>
+              <div class="settings-desc" style="padding: 0 16px 12px;">${t('claudeRemote.settingsHint')}</div>
+              </div>
+            </div>
             <div class="settings-group">
               <div class="settings-group-title">${t('settings.advanced')}</div>
               <div class="settings-card">
@@ -2019,6 +2055,12 @@ class SettingsPanel extends BasePanel {
       const newChromeBridgeEnabled = chromeBridgeToggle ? chromeBridgeToggle.checked : false;
       const hooksToggle = document.getElementById('hooks-enabled-toggle');
       const newHooksEnabled = hooksToggle ? hooksToggle.checked : settings.hooksEnabled;
+      const rcEnabledToggle = document.getElementById('claude-remote-enabled-toggle');
+      const newRcEnabled = rcEnabledToggle ? rcEnabledToggle.checked : settings.claudeRemoteControlEnabled === true;
+      const rcDriveToggle = document.getElementById('claude-remote-drive-toggle');
+      const newRcDrive = rcDriveToggle ? rcDriveToggle.checked : settings.claudeRemoteControlDrive !== false;
+      const rcTerminalsToggle = document.getElementById('claude-remote-terminals-toggle');
+      const newRcTerminals = rcTerminalsToggle ? rcTerminalsToggle.checked : settings.claudeRemoteControlTerminals === true;
       const context1MToggle = document.getElementById('enable-1m-context-toggle');
       const newEnable1MContext = context1MToggle ? context1MToggle.checked : settings.enable1MContext || false;
       const ephemeralChatsToggle = document.getElementById('ephemeral-chats-toggle');
@@ -2076,6 +2118,9 @@ class SettingsPanel extends BasePanel {
         aiCommitMessages: newAiCommitMessages,
         defaultTerminalMode: selectedTerminalMode?.dataset.terminalMode || 'terminal',
         hooksEnabled: newHooksEnabled,
+        claudeRemoteControlEnabled: newRcEnabled,
+        claudeRemoteControlDrive: newRcDrive,
+        claudeRemoteControlTerminals: newRcTerminals,
         enable1MContext: newEnable1MContext,
         ephemeralChats: newEphemeralChats,
         showDotfiles: newShowDotfiles,
@@ -2148,6 +2193,17 @@ class SettingsPanel extends BasePanel {
       self._sideEffectsPending++;
       try {
         const { showError } = require('../components/Toast');
+
+        // Turning Remote Control off has to drop the conversations already
+        // being shared. Leaving them attached would keep streaming transcripts
+        // the user has just withdrawn permission for.
+        if (settings.claudeRemoteControlEnabled === true && newRcEnabled === false) {
+          try {
+            await self.api.remoteControl?.disable?.();
+          } catch (e) {
+            console.error('Error stopping Remote Control mirrors:', e);
+          }
+        }
 
         const launchAtStartupToggle = document.getElementById('launch-at-startup-toggle');
         if (launchAtStartupToggle) {

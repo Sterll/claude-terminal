@@ -63,6 +63,16 @@ function registerRemoteControlHandlers() {
     }
   });
 
+  // Everything currently shared, for the Connectivity screen's list.
+  ipcMain.handle('remote-control:list-sessions', async () => {
+    try {
+      return { success: true, sessions: remoteControlService.listSessions() };
+    } catch (err) {
+      console.error('[remote-control:list-sessions] Error:', err.message);
+      return { success: false, error: err.message };
+    }
+  });
+
   // Lets a tab paint its button correctly right after it is created — the
   // push channel (`remote-control:session-status-changed`) only reaches a
   // listener that already exists at the moment something changes.

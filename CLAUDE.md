@@ -270,7 +270,7 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 | `KanbanPanel` | Kanban board (tasks by column) |
 | `CloudPanel` | Cloud sync with per-entity toggles, project upload/download, diff modal |
 | `ConnectivityPanel` | Unified local remote + cloud connectivity status (Local / Cloud / claude.ai sub-tabs) |
-| `ClaudeRemotePanel` | Claude Remote Control master switch and preferences (remote driving, `--rc` for terminal tabs). Sharing itself is per conversation, from the chat footer |
+| `ClaudeRemotePanel` | Connectivity → claude.ai: the conversations currently shared, with a way back to each tab. Its settings live in Settings → Claude → Remote Control |
 
 ### Features (`src/renderer/features/`)
 

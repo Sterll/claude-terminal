@@ -79,7 +79,7 @@ function setupHandlers(context) {
       });
 
       // The mirror count and the last error go stale while the tab is hidden.
-      if (target === 'claude') ClaudeRemotePanel.refreshStatus(context?.api || window.electron_api);
+      if (target === 'claude') ClaudeRemotePanel.refresh();
     });
   });
 
@@ -91,6 +91,7 @@ function setupHandlers(context) {
 
 function cleanup() {
   CloudPanel.cleanup();
+  ClaudeRemotePanel.cleanup();
 }
 
 module.exports = { buildHtml, setupHandlers, cleanup };

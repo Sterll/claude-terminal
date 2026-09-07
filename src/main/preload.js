@@ -672,6 +672,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     enableSession: (sessionId) => ipcRenderer.invoke('remote-control:enable-session', { sessionId }),
     disableSession: (sessionId) => ipcRenderer.invoke('remote-control:disable-session', { sessionId }),
     getSessionStatus: (sessionId) => ipcRenderer.invoke('remote-control:session-status', { sessionId }),
+    listSessions: () => ipcRenderer.invoke('remote-control:list-sessions'),
     onSessionStatus: createListener('remote-control:session-status-changed'),
   },
 

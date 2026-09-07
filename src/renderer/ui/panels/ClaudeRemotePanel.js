@@ -1,13 +1,16 @@
 /**
  * ClaudeRemotePanel
- * Claude Code's Remote Control — mirror chat sessions to claude.ai and the
- * Claude mobile app, and optionally let them drive the session back.
+ * The conversations currently shared with claude.ai, and a way back to each.
  *
- * This panel does NOT share anything by itself. It holds the master switch
- * that says Remote Control may be used at all, plus the two preferences that
- * apply to whichever conversations are shared. The sharing decision is taken
- * per conversation, in the chat tab's own footer button or with
- * `/remote-control` — never here, and never for every session at once.
+ * This is a screen, not a settings page: the master switch and the two
+ * preferences live in Settings → Claude → Remote Control, because that is
+ * where settings belong. What is worth a screen of its own is the live
+ * answer to "what of mine is on claude.ai right now, and how do I get back
+ * to it".
+ *
+ * Sharing is started from a chat tab (its footer button, or `/remote-control`),
+ * never from here — so with nothing shared this panel explains where to go
+ * rather than offering a switch that would share everything at once.
  *
  * Sibling of RemotePanel, which serves this app's own PWA over the local
  * network. Both live under Connectivity; they are different products that
@@ -15,160 +18,199 @@
  */
 
 const { t } = require('../../i18n');
+const { escapeHtml } = require('../../utils/dom');
 
+const CLAUDE_CODE_URL = 'https://claude.ai/code';
+
+let _sessions = [];
 let _status = null;
-let _statusPending = false;
+let _unsubStatus = null;
+let _ctx = null;
 
-/** Reuses RemotePanel's master-toggle and advanced-row styles (settings.css). */
-function buildHtml(settings) {
-  const enabled = settings.claudeRemoteControlEnabled === true;
-  const driving = settings.claudeRemoteControlDrive !== false;
-  const terminals = settings.claudeRemoteControlTerminals === true;
+/** Human-readable "for 12 min", from the moment the mirror went live. */
+function since(startedAt) {
+  if (!startedAt) return '';
+  const mins = Math.floor((Date.now() - startedAt) / 60000);
+  if (mins < 1) return t('claudeRemote.justNow', 'just now');
+  if (mins < 60) return t('claudeRemote.forMinutes', 'for {n} min').replace('{n}', mins);
+  const hours = Math.floor(mins / 60);
+  return t('claudeRemote.forHours', 'for {n} h').replace('{n}', hours);
+}
 
+/** The project a shared session belongs to, by id first and path second. */
+function projectLabel(session) {
+  try {
+    const { projectsState } = require('../../state/projects.state');
+    const projects = projectsState.get().projects || [];
+    const byId = session.projectId && projects.find(p => p.id === session.projectId);
+    if (byId?.name) return byId.name;
+  } catch (_) { /* fall through to the path */ }
+  if (!session.cwd) return t('claudeRemote.unknownProject', 'Unknown project');
+  const parts = session.cwd.replace(/[\\/]+$/, '').split(/[\\/]/);
+  return parts[parts.length - 1] || session.cwd;
+}
+
+function stateLabel(state) {
+  if (state === 'running') return t('claudeRemote.stateRunning', 'Working');
+  if (state === 'requires_action') return t('claudeRemote.stateAction', 'Waiting for you');
+  return t('claudeRemote.stateIdle', 'Idle');
+}
+
+function buildHtml() {
   return `
-    <div class="rp-master-toggle">
-      <div class="rp-master-toggle-content">
-        <div class="rp-master-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="5" y="2" width="14" height="20" rx="2"/>
-            <line x1="12" y1="18" x2="12.01" y2="18"/>
+    <div class="crp-screen">
+      <div class="crp-head">
+        <div class="crp-head-text">
+          <div class="crp-title">${escapeHtml(t('claudeRemote.screenTitle', 'Shared with claude.ai'))}</div>
+          <div class="crp-subtitle" id="crp-subtitle"></div>
+        </div>
+        <a class="crp-open-link" id="crp-open-claude" href="#">
+          ${escapeHtml(t('claudeRemote.openClaude', 'Open claude.ai/code'))}
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
           </svg>
-        </div>
-        <div class="rp-master-text">
-          <div class="rp-master-title">${t('claudeRemote.enable', 'Remote Control (claude.ai)')}</div>
-          <div class="rp-master-desc">${t('claudeRemote.enableDesc', 'Allow chat tabs to be shared with claude.ai. Nothing is shared until you turn it on in a conversation.')}</div>
-        </div>
+        </a>
       </div>
-      <div class="rp-master-actions">
-        <label class="settings-toggle">
-          <input type="checkbox" id="claude-remote-toggle" ${enabled ? 'checked' : ''}>
-          <span class="settings-toggle-slider"></span>
-        </label>
-      </div>
-    </div>
-
-    <div id="claude-remote-body" style="${enabled ? '' : 'display:none'}">
-      <div class="rp-advanced-row">
-        <div class="rp-advanced-label">${t('claudeRemote.allowDriving', 'Allow remote control')}</div>
-        <label class="settings-toggle">
-          <input type="checkbox" id="claude-remote-drive-toggle" ${driving ? 'checked' : ''}>
-          <span class="settings-toggle-slider"></span>
-        </label>
-      </div>
-      <div class="settings-hint" id="claude-remote-drive-hint">
-        ${driving
-    ? t('claudeRemote.drivingOn', 'claude.ai can send prompts, interrupt a turn and answer permission prompts. Sessions already open stay read-only until restarted.')
-    : t('claudeRemote.drivingOff', 'Mirror only: claude.ai shows the transcript but cannot act on this machine.')}
-      </div>
-
-      <div class="rp-advanced-row">
-        <div class="rp-advanced-label">${t('claudeRemote.terminals', 'Connect terminal tabs too')}</div>
-        <label class="settings-toggle">
-          <input type="checkbox" id="claude-remote-terminals-toggle" ${terminals ? 'checked' : ''}>
-          <span class="settings-toggle-slider"></span>
-        </label>
-      </div>
-      <div class="settings-hint">
-        ${t('claudeRemote.terminalsDesc', 'Launches the Claude CLI with --rc in terminal tabs, so those sessions reach claude.ai as well.')}
-      </div>
-
-      <div class="settings-hint" id="claude-remote-status"></div>
-    </div>
-
-    <div class="settings-hint" style="margin-top:12px">
-      ${t('claudeRemote.privacy', 'Mirrored sessions send their transcript — prompts, file contents and tool output — to claude.ai.')}
+      <div class="crp-list" id="crp-list"></div>
     </div>
   `;
 }
 
-/** Paint the status line from the main process. */
-async function refreshStatus(api) {
-  if (_statusPending) return;
-  _statusPending = true;
+/** The empty state doubles as the only documentation of how to share one. */
+function emptyHtml() {
+  if (_status && !_status.supported) {
+    return `<div class="crp-empty">${escapeHtml(_status.unavailableReason || t('claudeRemote.unsupported'))}</div>`;
+  }
+  if (_status?.blockedByPolicy) {
+    return `<div class="crp-empty">${escapeHtml(t('claudeRemote.blocked'))}</div>`;
+  }
+  if (_status && !_status.enabled) {
+    return `<div class="crp-empty">
+      <div>${escapeHtml(t('claudeRemote.notAllowed', 'Remote Control is turned off.'))}</div>
+      <div class="crp-empty-hint">${escapeHtml(t('claudeRemote.notAllowedHint', 'Allow it in Settings → Claude → Remote Control.'))}</div>
+    </div>`;
+  }
+  return `<div class="crp-empty">
+    <div>${escapeHtml(t('claudeRemote.emptyTitle', 'No conversation is shared right now.'))}</div>
+    <div class="crp-empty-hint">${escapeHtml(t('claudeRemote.emptyHint', 'Open a chat tab and use the claude.ai button in its footer, or type /remote-control.'))}</div>
+  </div>`;
+}
+
+function rowHtml(s) {
+  const stateClass = s.state === 'running' ? 'running' : s.state === 'requires_action' ? 'action' : 'idle';
+  return `
+    <div class="crp-row" data-session-id="${escapeHtml(s.sessionId)}">
+      <span class="crp-dot ${stateClass}"></span>
+      <div class="crp-row-text">
+        <div class="crp-row-title">${escapeHtml(projectLabel(s))}</div>
+        <div class="crp-row-meta">
+          <span>${escapeHtml(stateLabel(s.state))}</span>
+          ${s.branch ? `<span class="crp-sep">·</span><span>${escapeHtml(s.branch)}</span>` : ''}
+          ${s.startedAt ? `<span class="crp-sep">·</span><span>${escapeHtml(since(s.startedAt))}</span>` : ''}
+        </div>
+      </div>
+      <div class="crp-row-actions">
+        <button class="crp-row-btn" data-action="goto" data-session-id="${escapeHtml(s.sessionId)}">${escapeHtml(t('claudeRemote.goToTab', 'Go to tab'))}</button>
+        <button class="crp-row-btn danger" data-action="stop" data-session-id="${escapeHtml(s.sessionId)}">${escapeHtml(t('claudeRemote.stopSharing', 'Stop'))}</button>
+      </div>
+    </div>
+  `;
+}
+
+function render() {
+  const listEl = document.getElementById('crp-list');
+  const subtitleEl = document.getElementById('crp-subtitle');
+  if (!listEl) return;
+
+  listEl.innerHTML = _sessions.length
+    ? _sessions.map(rowHtml).join('')
+    : emptyHtml();
+
+  if (subtitleEl) {
+    subtitleEl.textContent = _sessions.length
+      ? t('claudeRemote.mirroring', '{count} session(s) mirrored to claude.ai.').replace('{count}', _sessions.length)
+      : t('claudeRemote.screenSubtitle', 'Conversations you share appear here while they are live.');
+  }
+}
+
+async function refresh() {
+  const api = _ctx?.api || window.electron_api;
   try {
-    const res = await api?.remoteControl?.getStatus?.();
-    _status = res?.success ? res.status : null;
+    const [list, status] = await Promise.all([
+      api?.remoteControl?.listSessions?.(),
+      api?.remoteControl?.getStatus?.(),
+    ]);
+    _sessions = list?.success ? list.sessions : [];
+    _status = status?.success ? status.status : null;
   } catch (_) {
+    _sessions = [];
     _status = null;
-  } finally {
-    _statusPending = false;
   }
+  render();
+}
 
-  const el = document.getElementById('claude-remote-status');
-  if (!el) return;
-
-  if (!_status) {
-    el.textContent = t('claudeRemote.statusUnknown', 'Status unavailable.');
-    return;
+/**
+ * Bring the tab that owns a shared session to the front.
+ *
+ * A chat tab records its ChatService session id as `claudeSessionId`, which is
+ * the only link between what this screen lists and what the tab bar shows.
+ */
+function goToTab(sessionId) {
+  try {
+    const terminalsState = require('../../state/terminals.state');
+    const TerminalManager = require('../components/TerminalManager');
+    let found = null;
+    terminalsState.get().terminals.forEach((termData, id) => {
+      if (termData.claudeSessionId === sessionId) found = id;
+    });
+    if (found !== null) TerminalManager.setActiveTerminal(found);
+  } catch (err) {
+    console.warn('[ClaudeRemotePanel] could not reach the tab:', err?.message);
   }
-  if (_status.blockedByPolicy) {
-    el.textContent = t('claudeRemote.blocked', 'Remote Control is disabled by your organisation policy.');
-    return;
-  }
-  if (!_status.supported) {
-    el.textContent = _status.unavailableReason
-      || t('claudeRemote.unsupported', 'This build cannot serve Remote Control.');
-    return;
-  }
-  if (_status.lastError) {
-    el.textContent = _status.lastError;
-    return;
-  }
-  const n = _status.activeSessions || 0;
-  el.textContent = n
-    ? t('claudeRemote.mirroring', '{count} session(s) mirrored to claude.ai.').replace('{count}', n)
-    : t('claudeRemote.idle', 'No conversation shared. Use the claude.ai button in a chat tab, or type /remote-control there.');
 }
 
 function setupHandlers(context) {
-  const settingsState = context?.settingsState;
-  const saveSettings = context?.saveSettings;
+  _ctx = context;
   const api = context?.api || window.electron_api;
 
-  const toggle = document.getElementById('claude-remote-toggle');
-  const body = document.getElementById('claude-remote-body');
-  const driveToggle = document.getElementById('claude-remote-drive-toggle');
-  const driveHint = document.getElementById('claude-remote-drive-hint');
-  const terminalsToggle = document.getElementById('claude-remote-terminals-toggle');
-
-  if (toggle) {
-    toggle.addEventListener('change', async () => {
-      const enabled = toggle.checked;
-      settingsState?.setProp('claudeRemoteControlEnabled', enabled);
-      saveSettings?.();
-      if (body) body.style.display = enabled ? '' : 'none';
-      if (!enabled) {
-        // Drop live mirrors at once rather than letting them run to the end of
-        // their sessions: the user just asked to stop sharing.
-        try { await api?.remoteControl?.disable?.(); } catch (_) { /* best effort */ }
-      }
-      refreshStatus(api);
+  const openLink = document.getElementById('crp-open-claude');
+  if (openLink) {
+    openLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      api?.dialog?.openExternal?.(CLAUDE_CODE_URL);
     });
   }
 
-  if (driveToggle) {
-    driveToggle.addEventListener('change', () => {
-      const driving = driveToggle.checked;
-      settingsState?.setProp('claudeRemoteControlDrive', driving);
-      saveSettings?.();
-      if (driveHint) {
-        driveHint.textContent = driving
-          ? t('claudeRemote.drivingOn', 'claude.ai can send prompts, interrupt a turn and answer permission prompts. Sessions already open stay read-only until restarted.')
-          : t('claudeRemote.drivingOff', 'Mirror only: claude.ai shows the transcript but cannot act on this machine.');
+  const listEl = document.getElementById('crp-list');
+  if (listEl) {
+    listEl.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.crp-row-btn');
+      if (!btn) return;
+      const sessionId = btn.dataset.sessionId;
+      if (btn.dataset.action === 'goto') {
+        goToTab(sessionId);
+      } else if (btn.dataset.action === 'stop') {
+        btn.disabled = true;
+        try {
+          await api?.remoteControl?.disableSession?.(sessionId);
+        } finally {
+          refresh();
+        }
       }
     });
   }
 
-  if (terminalsToggle) {
-    terminalsToggle.addEventListener('change', () => {
-      // Only affects the next `claude` spawned in a terminal tab; a CLI already
-      // running keeps whatever flags it started with.
-      settingsState?.setProp('claudeRemoteControlTerminals', terminalsToggle.checked);
-      saveSettings?.();
-    });
-  }
+  // A mirror can start or end from anywhere — a chat tab's button, a dead
+  // transport, an account switch — so the list follows the service.
+  if (_unsubStatus) _unsubStatus();
+  _unsubStatus = api?.remoteControl?.onSessionStatus?.(() => refresh()) || null;
 
-  refreshStatus(api);
+  refresh();
 }
 
-module.exports = { buildHtml, setupHandlers, refreshStatus };
+function cleanup() {
+  if (_unsubStatus) _unsubStatus();
+  _unsubStatus = null;
+}
+
+module.exports = { buildHtml, setupHandlers, refresh, cleanup };

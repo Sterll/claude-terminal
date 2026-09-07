@@ -297,6 +297,32 @@ class RemoteControlService {
   }
 
   /**
+   * Every conversation currently on claude.ai, for the Connectivity screen.
+   *
+   * Only mirrors with a live handle are listed: one still building its
+   * transport is not yet reachable from anywhere, and showing it would offer
+   * the user a session to jump to that claude.ai does not have.
+   *
+   * @returns {Array<{sessionId, ccrSessionId, cwd, projectId, branch, state, startedAt}>}
+   */
+  listSessions() {
+    const out = [];
+    for (const [sessionId, mirror] of this._mirrors) {
+      if (!mirror.handle) continue;
+      out.push({
+        sessionId,
+        ccrSessionId: mirror.ccrSessionId,
+        cwd: mirror.meta?.cwd || null,
+        projectId: mirror.meta?.projectId || null,
+        branch: mirror.branch || null,
+        state: mirror.state || 'idle',
+        startedAt: mirror.startedAt || null,
+      });
+    }
+    return out;
+  }
+
+  /**
    * Push a session's mirror state to the renderer.
    *
    * Reuses ChatService's own event bus (`_send`) rather than opening a second
@@ -493,6 +519,8 @@ class RemoteControlService {
     mirror.handle = handle;
     mirror.ccrSessionId = created;
     mirror.epoch = creds.worker_epoch;
+    mirror.startedAt = Date.now();
+    mirror.branch = gitContext?.branch || null;
     this._lastError = null;
 
     handle.reportMetadata({
