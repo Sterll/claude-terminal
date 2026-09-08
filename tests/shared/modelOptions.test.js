@@ -13,6 +13,8 @@ const {
   hasOneMContext,
   normalizeModelRow,
   orderPrimary,
+  modelFamily,
+  modelTier,
   CLAUDE_MODEL_VALUES,
   LEGACY_MODELS,
   FALLBACK_PRIMARY,
@@ -358,4 +360,26 @@ describe('catalog contents', () => {
     }
   });
 
+});
+
+describe('modelFamily / modelTier', () => {
+  test('reads the family off the resolved id, so the default alias follows its target', () => {
+    expect(modelFamily(CLI_MODELS[0])).toBe('opus');
+    expect(modelFamily('claude-fable-5-1[1m]')).toBe('fable');
+    expect(modelFamily({ value: 'sonnet' })).toBe('sonnet');
+    expect(modelFamily('claude-haiku-4-5-20251001')).toBe('haiku');
+  });
+
+  test('flags Fable as premium in both tiers, everything else as standard', () => {
+    expect(modelTier(CLI_MODELS[2])).toBe('premium');
+    expect(modelTier(LEGACY_MODELS.find(m => m.value === 'claude-fable-5'))).toBe('premium');
+    expect(modelTier(CLI_MODELS[1])).toBe('standard');
+    expect(modelTier('haiku')).toBe('standard');
+  });
+
+  test('an id it cannot place has no family and is never dressed up as costly', () => {
+    expect(modelFamily('gpt-5')).toBe('');
+    expect(modelTier('')).toBe('standard');
+    expect(modelTier(null)).toBe('standard');
+  });
 });

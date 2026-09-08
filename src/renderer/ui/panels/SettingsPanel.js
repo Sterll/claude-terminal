@@ -670,8 +670,10 @@ class SettingsPanel extends BasePanel {
     const self = this;
     const container = document.getElementById('tab-settings');
     const settings = this._ctx.settingsState.get();
-    // Execution mode is a tri-state ('safe' | 'auto' | 'dangerous'). Derive it from
-    // the legacy boolean `skipPermissions` when the new field is absent (back-compat).
+    // Execution mode ('safe' | 'auto' | 'acceptEdits' | 'plan' | 'dangerous') is
+    // the default a new conversation starts from; each chat tab picks its own in
+    // the footer. Derived from the legacy boolean `skipPermissions` when the
+    // field is absent (back-compat).
     const execMode = settings.executionMode || (settings.skipPermissions ? 'dangerous' : 'safe');
 
     let launchAtStartup = false;
@@ -1125,6 +1127,28 @@ class SettingsPanel extends BasePanel {
                     <div class="execution-mode-title">${t('settings.modeAuto')}</div>
                     <div class="execution-mode-desc">${t('settings.modeAutoDesc')}</div>
                     <div class="execution-mode-flag">--permission-mode auto</div>
+                  </div>
+                  <div class="execution-mode-check"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>
+                </div>
+                <div class="execution-mode-card ${execMode === 'acceptEdits' ? 'selected' : ''}" data-mode="acceptEdits">
+                  <div class="execution-mode-icon accept">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                  </div>
+                  <div class="execution-mode-content">
+                    <div class="execution-mode-title">${t('settings.modeAcceptEdits')}</div>
+                    <div class="execution-mode-desc">${t('settings.modeAcceptEditsDesc')}</div>
+                    <div class="execution-mode-flag">--permission-mode acceptEdits</div>
+                  </div>
+                  <div class="execution-mode-check"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>
+                </div>
+                <div class="execution-mode-card ${execMode === 'plan' ? 'selected' : ''}" data-mode="plan">
+                  <div class="execution-mode-icon plan">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+                  </div>
+                  <div class="execution-mode-content">
+                    <div class="execution-mode-title">${t('settings.modePlan')}</div>
+                    <div class="execution-mode-desc">${t('settings.modePlanDesc')}</div>
+                    <div class="execution-mode-flag">--permission-mode plan</div>
                   </div>
                   <div class="execution-mode-check"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>
                 </div>

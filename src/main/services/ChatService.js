@@ -11,6 +11,7 @@ const { execFileSync } = require('child_process');
 const ModelCatalogService = require('./ModelCatalogService');
 const AccountManager = require('./AccountManager');
 const { isCliFailureText } = require('../../shared/cli-failure-text');
+const { isPermissionMode } = require('../../shared/permission-modes');
 
 let sdkPromise = null;
 let resolvedRuntime = null;
@@ -1199,6 +1200,24 @@ class ChatService {
     const effortMap = { low: 1024, medium: 8192, high: null, xhigh: null, max: null };
     const tokens = effort in effortMap ? effortMap[effort] : null;
     await session.queryStream.setMaxThinkingTokens(tokens);
+  }
+
+  /**
+   * Switch the permission mode of a running session (SDK setPermissionMode).
+   *
+   * The app-side auto-approval follows the mode: bypass turns it on, anything
+   * stricter turns it off — including an "always allow" granted earlier in the
+   * session, since being asked again is the whole point of leaving bypass.
+   */
+  async setPermissionMode(sessionId, mode) {
+    if (!isPermissionMode(mode)) throw new Error(`Unknown permission mode: ${mode}`);
+    const session = this.sessions.get(sessionId);
+    if (session?.isCloud) throw new Error('Permission mode changes not supported for cloud sessions');
+    if (!session?.queryStream?.setPermissionMode) {
+      throw new Error('Session not found or permission mode control not available');
+    }
+    await session.queryStream.setPermissionMode(mode);
+    session.alwaysAllow = mode === 'bypassPermissions';
   }
 
 

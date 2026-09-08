@@ -118,7 +118,8 @@ const { getSetting, setSetting, isNotificationsEnabled } = require('../../state/
 const { updateTerminal, getTerminal } = require('../../state/terminals.state');
 const { saveTerminalSessions } = require('../../services/TerminalSessionService');
 
-const { matchModel, resolveModelSelection, hasOneMContext, DEFAULT_ALIAS } = require('../../../shared/model-options');
+const { matchModel, resolveModelSelection, hasOneMContext, DEFAULT_ALIAS, modelFamily, modelTier, PREMIUM_EFFORT_LEVELS } = require('../../../shared/model-options');
+const { PERMISSION_MODES, permissionModeInfo, modeFromSetting, settingFromMode } = require('../../../shared/permission-modes');
 const { contextTokensFromMessage } = require('../../../shared/context-usage');
 const ModelCatalog = require('../../services/ModelCatalogClient');
 
@@ -386,7 +387,7 @@ class ChatView extends BaseComponent {
 
   createChatView(wrapperEl, project, options = {}) {
     const api = this._api;
-  const { terminalId = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, skipPermissions = false, onTabRename = null, onStatusChange = null, onSwitchTerminal = null, onSwitchProject = null, onForkSession = null, initialPrompt = null, initialModel = null, initialEffort = null, initialImages = null, onSessionStart = null, systemPrompt = null, builtinSystemPrompt = null } = options;
+  const { terminalId = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, skipPermissions = false, onTabRename = null, onStatusChange = null, onModelChange = null, onSwitchTerminal = null, onSwitchProject = null, onForkSession = null, initialPrompt = null, initialModel = null, initialEffort = null, initialImages = null, onSessionStart = null, systemPrompt = null, builtinSystemPrompt = null } = options;
   let sessionId = null;
   let isStreaming = false;
   let isAborting = false;
@@ -414,11 +415,31 @@ class ChatView extends BaseComponent {
   // catalog may still be the fallback, so an unresolvable id must not be
   // rewritten yet or a persisted choice would be lost on a slow CLI.
   let selectedModel = initialModel || getSetting('chatModel') || '';
+  // Where the model in play came from:
+  //   'arg'     — the caller chose it (a fork, a per-project override)
+  //   'setting' — inherited from the stored default for new conversations
+  //   'pick'    — chosen from this tab's menu
+  //   'none'    — nothing chosen; the catalog's first row is shown
+  // A pick is scoped to this conversation. The stored default only moves
+  // through the menu's explicit "use for new conversations" row, and only an
+  // inherited selection is ever written back (to adopt the catalog's own id).
+  // That is what stops the last pick in one tab silently becoming the model of
+  // every tab opened after it.
+  let modelSource = initialModel ? 'arg' : (getSetting('chatModel') ? 'setting' : 'none');
   // Whether `selectedModel` is a choice someone made — a stored setting, or a
   // pick from the menu — rather than one the picker derived because nothing was
   // chosen. Only a real choice may be written back; see resolveModelSelection.
-  let modelIsExplicit = !!selectedModel;
+  let modelIsExplicit = modelSource !== 'none';
   let selectedEffort = initialEffort || getSetting('effortLevel') || 'high';
+  // Permission mode, per conversation like the model. The stored
+  // `executionMode` is only the default a new tab starts from; skipPermissions
+  // (cloud tabs, quick actions, per-project override) forces bypass.
+  let selectedMode = skipPermissions ? 'bypassPermissions' : modeFromSetting(getSetting('executionMode'));
+  // The notice above the composer for a premium model nobody chose in this
+  // tab. It retires on the first prompt, on dismiss, and as soon as the model
+  // stops being one the user would be surprised to pay extra for.
+  let premiumNoticeDismissed = false;
+  let hasSentPrompt = false;
   let inputTokens = 0; // drives the context gauge
   const toolCards = new Map(); // content_block index -> element
   const toolInputBuffers = new Map(); // content_block index -> accumulated JSON string
@@ -528,6 +549,17 @@ class ChatView extends BaseComponent {
         <div class="chat-slash-dropdown" style="display:none"></div>
         <div class="chat-followup-suggestions" style="display:none"></div>
         <div class="chat-image-preview" style="display:none"></div>
+        <!-- Shown when a new tab inherits a premium model from the stored
+             default: the one moment the cost can still be avoided. -->
+        <div class="chat-model-notice" role="status" hidden>
+          <svg class="chat-model-notice-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12L13 2z"/></svg>
+          <span class="chat-model-notice-text"></span>
+          <div class="chat-model-notice-actions">
+            <button class="chat-model-notice-switch">${escapeHtml(t('chat.premiumNoticeSwitch'))}</button>
+            <button class="chat-model-notice-forget">${escapeHtml(t('chat.premiumNoticeForget'))}</button>
+          </div>
+          <button class="chat-model-notice-close" aria-label="${escapeHtml(t('common.close') || 'Close')}"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>
+        </div>
         <div class="chat-input-wrapper">
           <button class="chat-attach-btn" title="${escapeHtml(t('chat.attachImage'))}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
@@ -550,6 +582,10 @@ class ChatView extends BaseComponent {
         </div>
         <div class="chat-input-footer">
           <div class="chat-footer-left">
+            <div class="chat-mode-selector">
+              <button class="chat-mode-btn"><span class="chat-mode-label">Manual</span> <span class="chat-mode-arrow">&#9662;</span></button>
+              <div class="chat-mode-dropdown" style="display:none"></div>
+            </div>
             <span class="chat-status-dot"></span>
             ${project.isCloud ? `<span class="chat-status-cloud-badge">${escapeHtml(t('chat.cloudBadge') || 'Cloud')}</span>` : ''}
             <span class="chat-status-text">${escapeHtml(t('chat.ready'))}</span>
@@ -564,13 +600,18 @@ class ChatView extends BaseComponent {
             </button>
           </div>
           <div class="chat-footer-right">
-            <div class="chat-model-selector">
-              <button class="chat-model-btn"><span class="chat-model-label">Sonnet</span> <span class="chat-model-arrow">&#9662;</span></button>
-              <div class="chat-model-dropdown" style="display:none"></div>
-            </div>
-            <div class="chat-effort-selector">
-              <button class="chat-effort-btn"><span class="chat-effort-label">High</span> <span class="chat-effort-arrow">&#9662;</span></button>
-              <div class="chat-effort-dropdown" style="display:none"></div>
+            <!-- One pill for model + effort, so the footer reads "Opus 5 · High"
+                 as a single fact. The family dot and the premium bolt follow
+                 data attributes on .chat-view, set by syncModelTier. -->
+            <div class="chat-model-chip">
+              <div class="chat-model-selector">
+                <button class="chat-model-btn"><span class="chat-model-dot" aria-hidden="true"></span><svg class="chat-model-bolt" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12L13 2z"/></svg><span class="chat-model-label">Sonnet</span> <span class="chat-model-arrow">&#9662;</span></button>
+                <div class="chat-model-dropdown" style="display:none"></div>
+              </div>
+              <div class="chat-effort-selector">
+                <button class="chat-effort-btn"><span class="chat-effort-label">High</span> <span class="chat-effort-arrow">&#9662;</span></button>
+                <div class="chat-effort-dropdown" style="display:none"></div>
+              </div>
             </div>
             <span class="chat-status-tokens" tabindex="0">
               <svg class="chat-ctx-ring" viewBox="0 0 20 20" aria-hidden="true">
@@ -613,6 +654,11 @@ class ChatView extends BaseComponent {
   const effortBtn = chatView.querySelector('.chat-effort-btn');
   const effortLabel = chatView.querySelector('.chat-effort-label');
   const effortDropdown = chatView.querySelector('.chat-effort-dropdown');
+  const modeBtn = chatView.querySelector('.chat-mode-btn');
+  const modeLabel = chatView.querySelector('.chat-mode-label');
+  const modeDropdown = chatView.querySelector('.chat-mode-dropdown');
+  const modelNotice = chatView.querySelector('.chat-model-notice');
+  const modelNoticeText = chatView.querySelector('.chat-model-notice-text');
   const statusTokens = chatView.querySelector('.chat-status-tokens');
   const contextPopover = chatView.querySelector('.chat-context-popover');
   const slashDropdown = chatView.querySelector('.chat-slash-dropdown');
@@ -1155,7 +1201,11 @@ class ChatView extends BaseComponent {
     if (!resolved) return;
     selectedModel = resolved.value;
     modelLabel.textContent = resolved.label;
-    if (resolved.persist) setSetting('chatModel', selectedModel);
+    // Only the inherited default is upgraded in place. A per-project override
+    // or a fork arrives as `initialModel` and must not leak into the global
+    // setting just because the catalog spells its id differently.
+    if (resolved.persist && modelSource === 'setting') setSetting('chatModel', selectedModel);
+    syncModelTier();
   }
 
   /**
@@ -1195,7 +1245,7 @@ class ChatView extends BaseComponent {
     return `
       <div class="chat-model-option${isActive ? ' active' : ''}" data-model="${escapeHtml(m.value)}">
         <div class="chat-model-option-info">
-          <span class="chat-model-option-label">${escapeHtml(m.displayName)}</span>
+          <span class="chat-model-option-label">${escapeHtml(m.displayName)}${modelTier(m) === 'premium' ? `<span class="chat-model-option-badge">${escapeHtml(t('chat.premiumBadge'))}</span>` : ''}</span>
           ${index !== null && m.description ? `<span class="chat-model-option-desc">${escapeHtml(m.description)}</span>` : ''}
         </div>
         ${badge}
@@ -1217,7 +1267,9 @@ class ChatView extends BaseComponent {
         <div class="chat-model-submenu">
           ${legacy.map(m => renderModelRow(m, null)).join('')}
         </div>
-      </div>` : ''}`;
+      </div>` : ''}
+      <div class="chat-model-sep"></div>
+      ${renderDefaultRow('chat-model-default', modelIsStoredDefault(), t('chat.modelIsDefault'), t('chat.modelSetDefault', { model: currentModelLabel() }))}`;
   }
 
   function closeModelDropdown() {
@@ -1251,6 +1303,8 @@ class ChatView extends BaseComponent {
       closeModelDropdown();
       return;
     }
+    closeModeDropdown();
+    effortDropdown.style.display = 'none';
     buildModelDropdown();
     modelDropdown.style.display = '';
     document.addEventListener('keydown', onModelMenuKeydown, true);
@@ -1272,14 +1326,17 @@ class ChatView extends BaseComponent {
     const previousId = selectedModel;
     const previousOption = matchModel(models, previousId);
     const previousExplicit = modelIsExplicit;
+    const previousSource = modelSource;
     selectedModel = option.value;
     modelIsExplicit = true;
+    // Scoped to this conversation: nothing is written to the stored default.
+    modelSource = 'pick';
     modelLabel.textContent = option.displayName;
     closeModelDropdown();
-    setSetting('chatModel', selectedModel);
     // Effort support is per model — switching to Haiku has to retire the
     // control, not leave a stale ladder behind.
     syncEffortVisibility();
+    syncModelTier();
 
     // If session is active, change model mid-session via SDK.
     // `chat-set-model` never rejects — it resolves { success:false, error },
@@ -1291,17 +1348,25 @@ class ChatView extends BaseComponent {
     } catch (err) {
       res = { success: false, error: err?.message || String(err) };
     }
-    if (res && res.success) return;
+    if (res && res.success) {
+      // A restart after an account switch replays lastStartOpts; keep it on
+      // the model actually in use.
+      if (lastStartOpts) lastStartOpts.model = selectedModel;
+      if (previousOption && previousOption.value !== option.value) {
+        appendSystemNotice(t('chat.modelSwitched', { previous: previousOption.displayName, model: option.displayName }), 'model');
+      }
+      return;
+    }
 
     // Switch failed: the session is still running the previous model.
-    // Revert the label + persisted setting so the footer stops lying.
+    // Revert the label so the footer stops lying.
     if (previousOption) {
       selectedModel = previousId;
       modelIsExplicit = previousExplicit;
+      modelSource = previousSource;
       modelLabel.textContent = previousOption.displayName;
-      // Reverting to a model nobody had chosen means clearing the setting, not
-      // writing it back: `null` is how "no explicit choice" is stored.
-      setSetting('chatModel', previousExplicit ? previousId : null);
+      syncEffortVisibility();
+      syncModelTier();
     }
     const Toast = require('./Toast');
     Toast.showToast({
@@ -1328,6 +1393,13 @@ class ChatView extends BaseComponent {
       selectModel(opt.dataset.model).catch(err => console.warn('[ChatView] selectModel failed:', err));
       return;
     }
+    const def = e.target.closest('.chat-model-default');
+    if (def) {
+      // Stays open: the row repaints with a check, which is the confirmation.
+      e.stopPropagation();
+      if (!def.classList.contains('current')) setModelAsDefault();
+      return;
+    }
     const more = e.target.closest('.chat-model-more');
     if (more) {
       e.stopPropagation();
@@ -1342,6 +1414,7 @@ class ChatView extends BaseComponent {
     const current = EFFORT_OPTIONS.find(e => e.id === preferred) || EFFORT_OPTIONS.find(e => e.id === 'high');
     effortLabel.textContent = current.label;
     selectedEffort = current.id;
+    syncModelTier();
   }
 
   /**
@@ -1375,7 +1448,7 @@ class ChatView extends BaseComponent {
       const fallback = efforts.find(e => e.id === 'high') || efforts[0];
       selectedEffort = fallback.id;
       effortLabel.textContent = fallback.label;
-      setSetting('effortLevel', fallback.id);
+      syncModelTier();
     }
   }
 
@@ -1390,7 +1463,9 @@ class ChatView extends BaseComponent {
         </div>
         ${isActive ? '<svg class="chat-effort-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
       </div>`;
-    }).join('');
+    }).join('') + `
+      <div class="chat-model-sep"></div>
+      ${renderDefaultRow('chat-effort-default', effortIsStoredDefault(), t('chat.effortIsDefault'), t('chat.effortSetDefault', { effort: currentEffortLabel() }))}`;
   }
 
   function toggleEffortDropdown() {
@@ -1399,6 +1474,8 @@ class ChatView extends BaseComponent {
     if (visible) {
       effortDropdown.style.display = 'none';
     } else {
+      closeModelDropdown();
+      closeModeDropdown();
       buildEffortDropdown();
       effortDropdown.style.display = '';
     }
@@ -1412,7 +1489,9 @@ class ChatView extends BaseComponent {
     selectedEffort = effortId;
     effortLabel.textContent = option.label;
     effortDropdown.style.display = 'none';
-    setSetting('effortLevel', effortId);
+    // Scoped to this conversation, like the model: the stored default only
+    // moves through the menu's "use for new conversations" row.
+    syncModelTier();
 
     // If session is active, change effort mid-session via SDK.
     // `chat-set-effort` resolves { success:false, error } instead of rejecting.
@@ -1423,14 +1502,20 @@ class ChatView extends BaseComponent {
     } catch (err) {
       res = { success: false, error: err?.message || String(err) };
     }
-    if (res && res.success) return;
+    if (res && res.success) {
+      if (lastStartOpts) lastStartOpts.effort = effortId;
+      if (previousOption && previousId !== effortId) {
+        appendSystemNotice(t('chat.effortSwitched', { previous: previousOption.label, effort: option.label }), 'model');
+      }
+      return;
+    }
 
-    // Switch failed: revert label + persisted setting to the live effort level.
+    // Switch failed: revert the label to the live effort level.
     console.warn('[ChatView] setEffort failed:', res && res.error);
     if (previousOption) {
       selectedEffort = previousId;
       effortLabel.textContent = previousOption.label;
-      setSetting('effortLevel', previousId);
+      syncModelTier();
     }
     const Toast = require('./Toast');
     Toast.showToast({
@@ -1449,21 +1534,307 @@ class ChatView extends BaseComponent {
   });
 
   effortDropdown.addEventListener('click', (e) => {
+    const def = e.target.closest('.chat-effort-default');
+    if (def) {
+      e.stopPropagation();
+      if (!def.classList.contains('current')) setEffortAsDefault();
+      return;
+    }
     const opt = e.target.closest('.chat-effort-option');
     if (opt) selectEffort(opt.dataset.effort).catch(err => console.warn('[ChatView] selectEffort failed:', err));
   });
 
-  // Close dropdowns on outside click. Routed through closeModelDropdown so the
+  // Close dropdowns on outside click. Routed through the close helpers so each
   // menu's keydown listener is torn down with it — setting display directly
   // would leak a handler that swallows digit keys typed into the composer.
   function _closeDropdowns() {
     closeModelDropdown();
+    closeModeDropdown();
     effortDropdown.style.display = 'none';
   }
   document.addEventListener('click', _closeDropdowns);
 
+  // ── Session-scoped defaults ──
+  //
+  // A pick in any footer menu changes this conversation only. The stored
+  // defaults (`chatModel`, `effortLevel`, `executionMode`) are what a new tab
+  // starts from, and each menu ends with one explicit row to move them.
+
+  const PIN_SVG = '<svg class="chat-default-row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76V6h6v4.76l3 2.24v2H6v-2l3-2.24z"/><path d="M8 6h8"/></svg>';
+
+  function showToast(message, type = 'info') {
+    const Toast = require('./Toast');
+    Toast.showToast({ message, type });
+  }
+
+  function renderDefaultRow(cls, isCurrent, currentText, setText) {
+    return `
+      <div class="${cls} chat-default-row${isCurrent ? ' current' : ''}" role="button" tabindex="0">
+        <span class="chat-default-row-label">${escapeHtml(isCurrent ? currentText : setText)}</span>
+        ${isCurrent ? MODEL_CHECK_SVG : PIN_SVG}
+      </div>`;
+  }
+
+  function currentModelLabel() {
+    const row = matchModel(allCatalogModels(), selectedModel);
+    return row ? row.displayName : modelLabel.textContent;
+  }
+
+  function currentEffortLabel() {
+    const opt = EFFORT_OPTIONS.find(e => e.id === selectedEffort);
+    return opt ? opt.label : selectedEffort;
+  }
+
+  function defaultModelRow() {
+    const models = allCatalogModels();
+    return matchModel(models, DEFAULT_ALIAS) || models[0] || null;
+  }
+
+  /**
+   * Whether the model in play is already what new conversations start on.
+   * Compared as catalog rows, so a stored 'claude-opus-5' and a selected
+   * 'opus[1m]' count as the same pick; a stored null means the `default` row.
+   */
+  function modelIsStoredDefault() {
+    const models = allCatalogModels();
+    const stored = getSetting('chatModel') || DEFAULT_ALIAS;
+    const live = selectedModel || DEFAULT_ALIAS;
+    const storedRow = matchModel(models, stored);
+    const liveRow = matchModel(models, live);
+    if (storedRow && liveRow) return storedRow.value === liveRow.value;
+    return stored === live;
+  }
+
+  function effortIsStoredDefault() {
+    return (getSetting('effortLevel') || 'high') === selectedEffort;
+  }
+
+  function setModelAsDefault() {
+    // The alias is stored as null: "no preference" resolves to the same row,
+    // and never pins a choice the CLI may later move.
+    setSetting('chatModel', selectedModel === DEFAULT_ALIAS ? null : selectedModel);
+    buildModelDropdown();
+    showToast(t('chat.defaultModelSaved', { model: currentModelLabel() }), 'success');
+  }
+
+  function setEffortAsDefault() {
+    setSetting('effortLevel', selectedEffort);
+    buildEffortDropdown();
+    showToast(t('chat.defaultEffortSaved', { effort: currentEffortLabel() }), 'success');
+  }
+
+  // ── Model tier: what tells a costly model apart at a glance ──
+
+  /**
+   * Paint everything that tells the model apart at a glance: the family colour
+   * on the chip, the premium treatment (chip, composer border, tab tag,
+   * tooltip), the warning colour on a `max` effort, and the notice above the
+   * composer for a premium model nobody chose in this tab.
+   *
+   * Driven by the selection, not by the stream: after a mid-session switch the
+   * stream keeps naming the old model until the next turn answers, and a chip
+   * that lagged the menu would be exactly the confusion this exists to remove.
+   */
+  function syncModelTier() {
+    const row = matchModel(allCatalogModels(), selectedModel);
+    const subject = row || selectedModel;
+    const family = modelFamily(subject);
+    const tier = modelTier(subject);
+    const label = row ? row.displayName : (selectedModel || '');
+    chatView.dataset.modelFamily = family || 'other';
+    chatView.dataset.modelTier = tier;
+    chatView.dataset.effortCost = PREMIUM_EFFORT_LEVELS.includes(selectedEffort) ? selectedEffort : '';
+    modelBtn.title = tier === 'premium' ? t('chat.premiumModelHint', { model: label }) : label;
+    if (onModelChange) onModelChange({ family, tier, label });
+    syncPremiumNotice(tier, label);
+  }
+
+  function syncPremiumNotice(tier, label) {
+    const show = tier === 'premium'
+      && modelSource === 'setting'
+      && !premiumNoticeDismissed
+      && !hasSentPrompt;
+    modelNotice.hidden = !show;
+    if (!show) return;
+    // The model name is the one thing to read: escape everything, then bold it.
+    const safe = escapeHtml(t('chat.premiumNotice', { model: label, effort: currentEffortLabel() }));
+    const safeLabel = escapeHtml(label);
+    modelNoticeText.innerHTML = safeLabel && safe.includes(safeLabel)
+      ? safe.replace(safeLabel, `<strong>${safeLabel}</strong>`)
+      : safe;
+  }
+
+  async function switchToDefaultModel() {
+    const row = defaultModelRow();
+    if (row) await selectModel(row.value);
+  }
+
+  modelNotice.querySelector('.chat-model-notice-switch').addEventListener('click', () => {
+    switchToDefaultModel().catch(err => console.warn('[ChatView] switch to default failed:', err));
+  });
+  modelNotice.querySelector('.chat-model-notice-forget').addEventListener('click', () => {
+    // Clearing the stored default is the one thing this notice can do for the
+    // next tab; the switch takes care of this one.
+    setSetting('chatModel', null);
+    switchToDefaultModel().catch(err => console.warn('[ChatView] switch to default failed:', err));
+    const row = defaultModelRow();
+    showToast(t('chat.defaultModelSaved', { model: row ? row.displayName : 'Default' }), 'success');
+  });
+  modelNotice.querySelector('.chat-model-notice-close').addEventListener('click', () => {
+    premiumNoticeDismissed = true;
+    syncModelTier();
+  });
+
+  // ── Permission mode selector ──
+  //
+  // Per conversation, as Desktop's picker is: the stored `executionMode` is
+  // the default a new tab starts from, never a lock on the running one. Usable
+  // mid-turn on purpose — switching to "accept edits" while prompts pile up is
+  // the moment it is wanted most.
+
+  function modeInfo(id) {
+    const info = permissionModeInfo(id);
+    return { id: info.id, label: t(info.labelKey), desc: t(info.descKey), danger: !!info.danger };
+  }
+
+  function initModeSelector() {
+    modeLabel.textContent = modeInfo(selectedMode).label;
+    syncModeState();
+  }
+
+  function syncModeState() {
+    chatView.dataset.permissionMode = selectedMode;
+    modeBtn.title = modeInfo(selectedMode).desc;
+  }
+
+  function modeIsStoredDefault() {
+    return modeFromSetting(getSetting('executionMode')) === selectedMode;
+  }
+
+  function setModeAsDefault() {
+    setSetting('executionMode', settingFromMode(selectedMode));
+    // Legacy boolean read by the terminal CLI launch path
+    // (--dangerously-skip-permissions), kept in sync as the Settings panel does.
+    setSetting('skipPermissions', selectedMode === 'bypassPermissions');
+    buildModeDropdown();
+    showToast(t('chat.defaultModeSaved', { mode: modeInfo(selectedMode).label }), 'success');
+  }
+
+  function buildModeDropdown() {
+    const rows = PERMISSION_MODES.map((m, i) => {
+      const info = modeInfo(m.id);
+      const isActive = m.id === selectedMode;
+      const shortcut = info.danger ? '' : String(i + 1);
+      const badge = isActive
+        ? MODEL_CHECK_SVG
+        : (shortcut ? `<span class="chat-model-shortcut">${shortcut}</span>` : '');
+      return `${info.danger ? '<div class="chat-model-sep"></div>' : ''}
+      <div class="chat-mode-option${isActive ? ' active' : ''}${info.danger ? ' danger' : ''}" data-mode="${escapeHtml(m.id)}">
+        <div class="chat-model-option-info">
+          <span class="chat-model-option-label">${escapeHtml(info.label)}</span>
+          <span class="chat-model-option-desc">${escapeHtml(info.desc)}</span>
+        </div>
+        ${badge}
+      </div>`;
+    }).join('');
+    modeDropdown.innerHTML = `
+      <div class="chat-mode-title">${escapeHtml(t('chat.modeTitle'))}</div>
+      ${rows}
+      <div class="chat-model-sep"></div>
+      ${renderDefaultRow('chat-mode-default', modeIsStoredDefault(), t('chat.modeIsDefault'), t('chat.modeSetDefault', { mode: modeInfo(selectedMode).label }))}`;
+  }
+
+  function closeModeDropdown() {
+    modeDropdown.style.display = 'none';
+    document.removeEventListener('keydown', onModeMenuKeydown, true);
+  }
+
+  // Digits address the numbered modes only; bypass stays off the keyboard.
+  function onModeMenuKeydown(e) {
+    if (modeDropdown.style.display === 'none') return;
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      closeModeDropdown();
+      return;
+    }
+    if (!/^[1-9]$/.test(e.key)) return;
+    const target = PERMISSION_MODES.filter(m => !m.danger)[Number(e.key) - 1];
+    if (!target) return;
+    e.preventDefault();
+    e.stopPropagation();
+    selectMode(target.id).catch(err => console.warn('[ChatView] selectMode failed:', err));
+  }
+
+  function toggleModeDropdown() {
+    if (modeDropdown.style.display !== 'none') {
+      closeModeDropdown();
+      return;
+    }
+    closeModelDropdown();
+    effortDropdown.style.display = 'none';
+    buildModeDropdown();
+    modeDropdown.style.display = '';
+    document.addEventListener('keydown', onModeMenuKeydown, true);
+  }
+
+  async function selectMode(modeId) {
+    const next = PERMISSION_MODES.find(m => m.id === modeId);
+    if (!next) return;
+    const previousId = selectedMode;
+    selectedMode = next.id;
+    modeLabel.textContent = modeInfo(next.id).label;
+    closeModeDropdown();
+    syncModeState();
+
+    // Mid-session the SDK switches in place, and ChatService moves the
+    // app-side auto-approval with it. `chat-set-permission-mode` resolves
+    // { success:false, error } instead of rejecting.
+    if (!sessionId) return;
+    let res;
+    try {
+      res = await api.chat.setPermissionMode({ sessionId, mode: selectedMode });
+    } catch (err) {
+      res = { success: false, error: err?.message || String(err) };
+    }
+    if (res && res.success) {
+      if (lastStartOpts) lastStartOpts.permissionMode = selectedMode;
+      if (previousId !== selectedMode) {
+        appendSystemNotice(t('chat.modeSwitched', { previous: modeInfo(previousId).label, mode: modeInfo(selectedMode).label }), 'model');
+      }
+      return;
+    }
+
+    // Switch failed: the session still runs the previous mode.
+    console.warn('[ChatView] setPermissionMode failed:', res && res.error);
+    selectedMode = previousId;
+    modeLabel.textContent = modeInfo(previousId).label;
+    syncModeState();
+    showToast(t('chat.modeSwitchFailed', {
+      mode: modeInfo(next.id).label,
+      previous: modeInfo(previousId).label,
+      error: (res && res.error) || '',
+    }), 'error');
+  }
+
+  modeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleModeDropdown();
+  });
+
+  modeDropdown.addEventListener('click', (e) => {
+    const def = e.target.closest('.chat-mode-default');
+    if (def) {
+      e.stopPropagation();
+      if (!def.classList.contains('current')) setModeAsDefault();
+      return;
+    }
+    const opt = e.target.closest('.chat-mode-option');
+    if (opt) selectMode(opt.dataset.mode).catch(err => console.warn('[ChatView] selectMode failed:', err));
+  });
+
   initModelSelector().catch(err => console.warn('[ChatView] initModelSelector failed:', err));
   initEffortSelector();
+  initModeSelector();
 
   // ── Context suggestions (placeholder rotation before first message) ──
   const contextSuggestions = createContextSuggestions(api, project, inputAdapter, () => t('chat.placeholder'));
@@ -3182,6 +3553,11 @@ class ChatView extends BaseComponent {
     }
 
     sendLock = true;
+    // The first prompt is the moment the premium notice has done its job.
+    if (!hasSentPrompt) {
+      hasSentPrompt = true;
+      modelNotice.hidden = true;
+    }
     // Track user prompt for session recap (first 5 prompts)
     if (text && recapUserPrompts.length < 5) recapUserPrompts.push(text);
     if (project?.id) heartbeat(project.id, 'chat');
@@ -3262,14 +3638,10 @@ class ChatView extends BaseComponent {
           // machine-wide login, which is what keeps `claude /login` capturable.
           accountId: getProjectAccount(project.id),
           prompt: enhancedText || '',
-          // skipPermissions (cloud tabs, quick actions, per-project override) forces full bypass.
-          // Otherwise honor the global execution mode: 'auto' uses SDK classifier checks,
-          // 'dangerous' bypasses everything, anything else asks before each action.
-          permissionMode: skipPermissions
-            ? 'bypassPermissions'
-            : (getSetting('executionMode') === 'auto'
-                ? 'auto'
-                : (getSetting('executionMode') === 'dangerous' ? 'bypassPermissions' : 'default')),
+          // Per conversation: the footer's mode picker owns it. skipPermissions
+          // (cloud tabs, quick actions, per-project override) seeded it with
+          // bypass; the stored executionMode seeded everything else.
+          permissionMode: selectedMode,
           sessionId,
           images: imagesPayload,
           mentions: resolvedMentions,
@@ -3898,12 +4270,27 @@ class ChatView extends BaseComponent {
     scrollToBottom();
   }
 
+  /**
+   * One transcript line per (re)start naming what the session runs on. The
+   * footer says the same, but the transcript is what gets read back later,
+   * and what an export keeps.
+   */
+  function appendSessionModelNotice() {
+    const models = allCatalogModels();
+    const row = (model && matchModel(models, model)) || matchModel(models, selectedModel);
+    const parts = [row ? row.displayName : (model || selectedModel || '')];
+    if (availableEfforts().length) parts.push(t('chat.effortPart', { effort: currentEffortLabel() }));
+    parts.push(t('chat.modePart', { mode: modeInfo(selectedMode).label }));
+    appendSystemNotice(t('chat.sessionStarted', { details: parts.join(' · ') }), 'model');
+  }
+
   function appendSystemNotice(text, icon = 'info') {
     const icons = {
       info: '&#8505;',      // ℹ
       compact: '&#9879;',   // ⚗
       clear: '&#10227;',    // ↻
       command: '&#9889;',   // ⚡
+      model: '&#10022;',    // ✦
     };
     const el = document.createElement('div');
     el.className = 'chat-system-notice';
@@ -6304,6 +6691,7 @@ class ChatView extends BaseComponent {
         if (initIndicator) initIndicator.remove();
         model = message.model || '';
         updateStatusInfo();
+        appendSessionModelNotice();
         // Capture available slash commands for autocomplete
         if (message.slash_commands && Array.isArray(message.slash_commands)) {
           slashCommands = message.slash_commands;

@@ -1089,6 +1089,13 @@
   text-transform: uppercase;
 }
 
+/* Premium-model tag, set from the chat footer (TerminalManager._setChatTabModelTag) */
+.tab-tag-model {
+  color: var(--premium-color);
+  background: rgba(var(--premium-rgb), 0.18);
+  border: 1px solid rgba(var(--premium-rgb), 0.35);
+}
+
 .tab-close {
   width: 18px;
   height: 18px;

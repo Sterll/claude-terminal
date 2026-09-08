@@ -3840,7 +3840,20 @@ hr.chat-plan-separator {
   text-align: right;
 }
 
-/* ── Model selector ── */
+/* ── Model chip (model + effort) ──
+   One pill for both controls, so the footer reads "Opus 5 · High" as a single
+   fact. The family colour on the dot and the premium treatment come from data
+   attributes on .chat-view, set by syncModelTier in ChatView. */
+.chat-model-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border-color, #2d2d2d);
+  border-radius: 999px;
+  background: var(--bg-tertiary, #1a1a1a);
+  padding: 0 2px;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
 .chat-model-selector {
   position: relative;
 }
@@ -3848,20 +3861,43 @@ hr.chat-plan-separator {
 .chat-model-btn {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   background: none;
   border: none;
-  border-radius: 4px;
-  padding: 2px 6px;
+  border-radius: 999px;
+  padding: 3px 8px;
   cursor: pointer;
-  font-family: 'Cascadia Code', 'Fira Code', monospace;
-  font-size: var(--font-2xs);
-  color: var(--accent-color, #d97706);
+  font-family: inherit;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text-primary);
   transition: background 0.15s;
 }
 
 .chat-model-btn:hover {
   background: var(--bg-hover);
+}
+
+/* Family colour: one dot, four hues, so Opus and Sonnet stop looking alike. */
+.chat-model-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--model-family-color, var(--text-muted));
+  flex-shrink: 0;
+}
+
+.chat-view[data-model-family="fable"] { --model-family-color: var(--premium-color); }
+.chat-view[data-model-family="opus"] { --model-family-color: var(--accent-color, #d97706); }
+.chat-view[data-model-family="sonnet"] { --model-family-color: #60a5fa; }
+.chat-view[data-model-family="haiku"] { --model-family-color: #34d399; }
+
+.chat-model-bolt {
+  display: none;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
 }
 
 .chat-model-btn.locked {
@@ -4009,9 +4045,21 @@ hr.chat-plan-separator {
   display: block;
 }
 
-/* ── Effort selector ── */
+/* ── Effort selector (second segment of the chip) ── */
 .chat-effort-selector {
   position: relative;
+}
+
+/* Hairline between the two segments */
+.chat-effort-selector::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 1px;
+  height: 12px;
+  transform: translateY(-50%);
+  background: var(--border-color, #2d2d2d);
 }
 
 .chat-effort-btn {
@@ -4020,17 +4068,24 @@ hr.chat-plan-separator {
   gap: 4px;
   background: none;
   border: none;
-  border-radius: 4px;
-  padding: 2px 6px;
+  border-radius: 999px;
+  padding: 3px 8px 3px 9px;
   cursor: pointer;
-  font-family: 'Cascadia Code', 'Fira Code', monospace;
-  font-size: var(--font-2xs);
-  color: var(--text-secondary, #888);
-  transition: background 0.15s;
+  font-family: inherit;
+  font-size: var(--font-xs);
+  line-height: 1.2;
+  color: var(--text-secondary);
+  transition: background 0.15s, color 0.15s;
 }
 
 .chat-effort-btn:hover {
   background: var(--bg-hover);
+}
+
+/* Max is the costly end of the ladder, whatever the model. */
+.chat-view[data-effort-cost="max"] .chat-effort-btn {
+  color: var(--warning);
+  font-weight: 600;
 }
 
 .chat-effort-btn.locked {
@@ -4108,6 +4163,302 @@ hr.chat-plan-separator {
   height: 16px;
   color: var(--accent-color, #d97706);
   flex-shrink: 0;
+}
+
+/* ── Premium tier ──
+   Fable is billed as extra usage. Violet rather than the accent, so it reads
+   as "this one costs more", not as "selected"; the composer border carries the
+   same hue so the whole input area says it, not just an 11px word. */
+.chat-view[data-model-tier="premium"] .chat-model-chip {
+  border-color: rgba(var(--premium-rgb), 0.45);
+  background: rgba(var(--premium-rgb), 0.12);
+}
+
+.chat-view[data-model-tier="premium"] .chat-model-btn {
+  color: var(--premium-text);
+}
+
+.chat-view[data-model-tier="premium"] .chat-model-dot {
+  display: none;
+}
+
+.chat-view[data-model-tier="premium"] .chat-model-bolt {
+  display: block;
+  color: var(--premium-color);
+}
+
+.chat-view[data-model-tier="premium"] .chat-effort-selector::before {
+  background: rgba(var(--premium-rgb), 0.35);
+}
+
+.chat-view[data-model-tier="premium"] .chat-input-wrapper,
+.chat-view[data-model-tier="premium"] .chat-input-wrapper:focus-within,
+.chat-view.streaming[data-model-tier="premium"] .chat-input-wrapper {
+  border-color: rgba(var(--premium-rgb), 0.5);
+  box-shadow: 0 0 0 3px rgba(var(--premium-rgb), 0.08);
+}
+
+.chat-model-option-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  vertical-align: 1px;
+  color: var(--premium-color);
+  background: rgba(var(--premium-rgb), 0.15);
+  border: 1px solid rgba(var(--premium-rgb), 0.3);
+}
+
+/* ── "Use for new conversations" row, closing each footer menu ── */
+.chat-default-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.chat-default-row:hover {
+  background: var(--bg-tertiary, #1e1e1e);
+  color: var(--text-primary);
+}
+
+.chat-default-row.current {
+  cursor: default;
+  color: var(--text-muted);
+}
+
+.chat-default-row.current:hover {
+  background: none;
+}
+
+.chat-default-row .chat-model-check,
+.chat-default-row-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.chat-default-row-icon {
+  color: var(--text-muted);
+}
+
+/* ── Premium notice above the composer ── */
+.chat-model-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(var(--premium-rgb), 0.08);
+  border: 1px solid rgba(var(--premium-rgb), 0.3);
+  font-size: 12px;
+  color: var(--text-primary);
+  animation: chat-mention-appear 0.2s ease-out;
+}
+
+.chat-model-notice[hidden] {
+  display: none;
+}
+
+.chat-model-notice-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--premium-color);
+  flex-shrink: 0;
+}
+
+.chat-model-notice-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-model-notice-text strong {
+  color: var(--premium-text);
+  font-weight: 600;
+}
+
+.chat-model-notice-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.chat-model-notice-switch,
+.chat-model-notice-forget {
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.chat-model-notice-switch {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.chat-model-notice-switch:hover {
+  background: var(--bg-hover);
+}
+
+.chat-model-notice-forget {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+}
+
+.chat-model-notice-forget:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.chat-model-notice-close {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.chat-model-notice-close svg {
+  width: 10px;
+  height: 10px;
+}
+
+.chat-model-notice-close:hover {
+  color: var(--text-primary);
+}
+
+/* ── Permission mode selector (left of the footer, where Desktop puts it) ── */
+.chat-mode-selector {
+  position: relative;
+}
+
+.chat-mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-tertiary, #1a1a1a);
+  border: 1px solid var(--border-color, #2d2d2d);
+  border-radius: 999px;
+  padding: 3px 8px;
+  margin-right: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text-secondary);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.chat-mode-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.chat-mode-arrow {
+  font-size: 0.5625rem;
+  opacity: 0.75;
+}
+
+/* Each mode wears the hue its consequences deserve. */
+.chat-view[data-permission-mode="auto"] .chat-mode-btn {
+  color: var(--accent-color, #d97706);
+}
+
+.chat-view[data-permission-mode="acceptEdits"] .chat-mode-btn {
+  color: var(--success);
+}
+
+.chat-view[data-permission-mode="plan"] .chat-mode-btn {
+  color: var(--info);
+}
+
+.chat-view[data-permission-mode="bypassPermissions"] .chat-mode-btn {
+  color: var(--danger);
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.chat-mode-dropdown {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: 260px;
+  background: var(--bg-primary, #111);
+  border: 1px solid var(--border-color, #2a2a2a);
+  border-radius: 10px;
+  padding: 4px;
+  z-index: 100;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+.chat-mode-title {
+  padding: 6px 12px 4px;
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.chat-mode-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.chat-mode-option:hover {
+  background: var(--bg-tertiary, #1e1e1e);
+}
+
+.chat-mode-option.active {
+  background: rgba(var(--accent-color-rgb, 217, 119, 6), 0.1);
+}
+
+.chat-mode-option.active .chat-model-option-label {
+  color: var(--accent-color, #d97706);
+}
+
+.chat-mode-option.danger .chat-model-option-label {
+  color: var(--danger);
+}
+
+.chat-mode-option.danger.active {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.chat-mode-option .chat-model-option-desc {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
 }
 
 /* ── Streaming state ── */

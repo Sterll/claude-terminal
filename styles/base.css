@@ -28,6 +28,11 @@
   --accent: #d97706;
   --accent-hover: #f59e0b;
   --accent-dim: rgba(217, 119, 6, 0.15);
+  /* Premium model tier (Fable, billed as extra usage). Violet rather than the
+     accent, so it reads as "this one costs more", never as "selected". */
+  --premium-color: #a78bfa;
+  --premium-text: #c4b5fd;
+  --premium-rgb: 167, 139, 250;
   /* RGB components of --accent, for rgba() usage. Kept in sync by applyAccentColor(). */
   --accent-rgb: 217, 119, 6;
   --success: #22c55e;

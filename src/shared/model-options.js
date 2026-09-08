@@ -331,17 +331,65 @@ function normalizeModelRow(m) {
   };
 }
 
-// Menu order for the primary tier, most capable first. The CLI's own order puts
-// Opus ahead of Fable; we surface the more capable model first instead. Anything
+// ── Families and cost tiers ─────────────────────────────────────────────────
+
+// Model families, most capable first. Menu order for the primary tier follows
+// it — the CLI's own order puts Opus ahead of Fable; we surface the more capable
+// model first — and so does the family colour on the footer chip. Anything
 // unrecognised sorts last in the order the CLI gave it.
-const FAMILY_RANK = ['fable', 'opus', 'sonnet', 'haiku'];
+const MODEL_FAMILIES = ['fable', 'opus', 'sonnet', 'haiku'];
+
+/**
+ * Families billed beyond the plan's included usage.
+ *
+ * Hand-curated: the CLI catalog says nothing about cost on a subscription
+ * account (its descriptions carry prices only when billed per token, and those
+ * are stripped for display anyway). Fable is the model that surprises people
+ * on the bill, so it is the one the chip, the composer border and the tab tag
+ * single out.
+ */
+const PREMIUM_FAMILIES = ['fable'];
+
+/**
+ * Effort levels flagged as costly on the chip whatever the model. Only the top
+ * of the ladder: xhigh is the everyday coding setting for many, and a warning
+ * that is always on is one nobody reads.
+ */
+const PREMIUM_EFFORT_LEVELS = ['max'];
+
+/**
+ * Family of a catalog row or a bare id: one of MODEL_FAMILIES, or '' when
+ * unrecognised. Rows resolve through `resolvedModel` first, so the `default`
+ * alias reports whatever it currently points at.
+ *
+ * @param {object|string|null} rowOrId
+ * @returns {string}
+ */
+function modelFamily(rowOrId) {
+  const id = typeof rowOrId === 'string'
+    ? rowOrId
+    : String(rowOrId?.resolvedModel || rowOrId?.value || '');
+  const lower = id.toLowerCase();
+  return MODEL_FAMILIES.find(f => lower.includes(f)) || '';
+}
+
+/**
+ * 'premium' for a family billed as extra usage, 'standard' for everything
+ * else — including ids we cannot place, which must not be dressed up as costly
+ * on a guess.
+ *
+ * @param {object|string|null} rowOrId
+ * @returns {'premium'|'standard'}
+ */
+function modelTier(rowOrId) {
+  return PREMIUM_FAMILIES.includes(modelFamily(rowOrId)) ? 'premium' : 'standard';
+}
 
 function familyRank(m) {
   // The recommended alias keeps the top slot it holds in the CLI menu.
   if (m?.value === DEFAULT_ALIAS) return -1;
-  const id = String(m?.resolvedModel || m?.value || '').toLowerCase();
-  const i = FAMILY_RANK.findIndex(f => id.includes(f));
-  return i === -1 ? FAMILY_RANK.length : i;
+  const i = MODEL_FAMILIES.indexOf(modelFamily(m));
+  return i === -1 ? MODEL_FAMILIES.length : i;
 }
 
 /**
@@ -396,6 +444,11 @@ module.exports = {
   LEGACY_MODELS,
   FALLBACK_PRIMARY,
   DEFAULT_ALIAS,
+  MODEL_FAMILIES,
+  PREMIUM_FAMILIES,
+  PREMIUM_EFFORT_LEVELS,
+  modelFamily,
+  modelTier,
   baseModelId,
   matchModel,
   resolveModelSelection,
