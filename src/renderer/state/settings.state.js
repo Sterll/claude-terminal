@@ -68,6 +68,7 @@ const defaultSettings = {
   agentColors: {}, // Custom colors per tool/agent name: { 'Grep': '#ff0000', 'my-agent': '#00ff00' }
   enableFollowupSuggestions: true, // Show AI-generated follow-up suggestion chips after Claude responds (uses Haiku)
   enhancePrompts: false, // Opt-in: reformulate prompts via Haiku for better prompt engineering before sending
+  chromeBridgeEnabled: false, // Opt-in: let chat sessions drive Chrome via the Claude browser extension
   // Every tab is pinned by default: the grouped sidebar fits without overflow,
   // so the More menu is now opt-in rather than the default state.
   pinnedTabs: ['claude', 'dashboard', 'files', 'git', 'session-replay', 'tasks', 'control-tower', 'workspace', 'memory', 'timetracking', 'database', 'skills', 'agents', 'plugins', 'mcp', 'workflows', 'errorlog', 'connectivity'],

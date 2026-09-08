@@ -87,6 +87,7 @@ Remote UI (PWA for mobile)
 | `git.ipc.js` | 69 | Status, branches, pull/push/merge/rebase, clone, stash, cherry-pick, revert, tag, blame, worktree, AI commit message, PR description, inline diff |
 | `github.ipc.js` | 26 | OAuth Device Flow, workflow runs, PRs, issues, reviews, GitHub Enterprise, repo search |
 | `chat.ipc.js` | 17 | Agent SDK streaming sessions, permissions, interrupt, model/effort/permission-mode switching, tab name generation, fork/rewind, skill/agent generation, session recap |
+| `chrome.ipc.js` | 4 | Claude in Chrome: status, install/remove native messaging host, open the extension page |
 | `dialog.ipc.js` | 21 | Window controls, file/folder dialogs, open in explorer/editor/browser, notifications, updates, startup, clipboard |
 | `explorer.ipc.js` | 3 | File explorer watcher (start/stop/onChanges) |
 | `mcp.ipc.js` | 2 | Start/stop MCP server processes |
@@ -111,7 +112,7 @@ Remote UI (PWA for mobile)
 | `fivem.ipc.js` | - | Delegated to `src/project-types/fivem/` |
 | `index.js` | - | Orchestrator - registers all handlers |
 
-**Total: 266 IPC handlers across 27 files.**
+**Total: 270 IPC handlers across 27 files.**
 
 ### Services (`src/main/services/`)
 
@@ -126,6 +127,7 @@ Remote UI (PWA for mobile)
 | `McpRegistryService.js` | MCP server registry browsing (`registry.modelcontextprotocol.io/v0.1`), pagination, caching |
 | `PluginService.js` | Read plugin metadata, PTY-based `/plugin install` |
 | `UpdaterService.js` | electron-updater, 30 min periodic checks, stale cache cleanup |
+| `ChromeBridgeService.js` | Claude in Chrome: detects the browser extension, installs the native messaging host (adopting Claude Code's rather than clobbering it), and hands chat sessions the `claude-in-chrome` MCP server |
 | `HooksService.js` | 15 Claude hook types, non-destructive install, auto-backup/repair |
 | `HookEventServer.js` | HTTP server on `127.0.0.1:0`, receives POST from hook handler |
 | `RemoteServer.js` | WebSocket + HTTP for PWA, dynamic port, 6-digit PIN auth, broadcast updates |
@@ -479,6 +481,7 @@ OS credential store (via keytar)       # GitHub token (Windows Credential Manage
 - **Remote control:** WS server with PIN auth, QR code, PWA in `remote-ui/`
 - **Model, effort and permission mode are per conversation:** the chat footer's chip (model · effort, right) and mode picker (left, as Claude Desktop places it) change the current tab only. The stored `chatModel` / `effortLevel` / `executionMode` are the defaults a new tab starts from, moved only through each menu's "Use for new conversations" row — a pick never writes them, so the last choice in one tab cannot silently become every later tab's. The model menu lists models only: the CLI's `default` alias is read for the model it points at (`recommendedModelId`, surfaced as the catalog's `recommended`) and then dropped (`dropDefaultAlias`), so an unpinned tab shows that model **by name** instead of a "Default (recommended)" row that stood for whichever model the CLI favoured that week. `chatModel: null` still means "nothing pinned"; pinning always stores a concrete id. Modes are the SDK's (`default`, `acceptEdits`, `plan`, `bypassPermissions`, `auto`), mapped to the legacy `executionMode` spellings in `src/shared/permission-modes.js`; `ChatService.setPermissionMode` switches mid-session and moves the app-side auto-approval with it. Fable is a hand-curated premium tier (`PREMIUM_FAMILIES` in `src/shared/model-options.js`, hand-curated because the CLI catalog says nothing about it): violet chip and composer border, "Premium" badge in the menu, a tag on the tab, and a dismissible notice above the composer when a new tab inherits it. What the UI says about it is that the family draws on its own usage limit — the model-scoped `limits` entry the usage API returns beside `session` and `weekly_all` — and that this also counts toward overall usage; on a subscription it is not billed on top, so no string may say it is. `max` effort turns the effort segment warning-coloured. Every (re)start and every mid-session switch leaves a line in the transcript
 - **Cloud sync:** self-hosted Docker relay, per-entity toggles, file watcher, conflict diff modal
+- **Claude in Chrome:** opt-in (`chromeBridgeEnabled`). Adds the `claude-in-chrome` MCP server — 22 browser tools — to chat sessions by spawning the bundled SDK binary with `--claude-in-chrome-mcp`; Chrome reaches it through a native messaging host manifest whose name (`com.anthropic.claude_code_browser_extension`) is fixed by the extension and therefore shared with Claude Code, so an existing working manifest is adopted, never overwritten
 - **Parallel tasks:** git worktrees per sub-task, AI merge agent, persisted run state
 - **Workflows:** LiteGraph editor, 21 nodes / 6 trigger types, AI assistant for graph editing, webhook/cron/hook triggers
 - **Workspace:** cross-project KB with advisor chat, concept links, `@workspace` mention

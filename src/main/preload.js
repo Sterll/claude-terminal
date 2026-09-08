@@ -581,6 +581,14 @@ contextBridge.exposeInMainWorld('electron_api', {
   },
 
   // ==================== CHAT (Agent SDK) ====================
+  // Claude in Chrome: drive the user's browser through the official extension.
+  chrome: {
+    status: (params) => ipcRenderer.invoke('chrome-status', params || {}),
+    installHost: () => ipcRenderer.invoke('chrome-install-host'),
+    removeHost: () => ipcRenderer.invoke('chrome-remove-host'),
+    openStore: () => ipcRenderer.invoke('chrome-open-store')
+  },
+
   chat: {
     start: (params) => ipcRenderer.invoke('chat-start', params),
     send: (params) => ipcRenderer.invoke('chat-send', params),

@@ -936,6 +936,20 @@
       "description": "Wawasan real-time dari Claude Code (pelacakan waktu, notifikasi, statistik dasbor)",
       "toggleError": "Gagal memperbarui Smart Hooks."
     },
+    "chrome": {
+      "title": "Claude di Chrome",
+      "enable": "Izinkan Claude menggunakan peramban Anda",
+      "enableDesc": "Sesi obrolan dapat membuka tab, mengeklik, mengetik, membaca halaman, dan memeriksa konsol melalui ekstensi peramban Claude.",
+      "checking": "Memeriksa integrasi peramban…",
+      "connected": "Terhubung — Claude dapat mengendalikan {browser}.",
+      "readyDisabled": "Ekstensi ditemukan di {browser}. Aktifkan agar Claude dapat menggunakannya.",
+      "extensionMissing": "Ekstensi peramban Claude belum terpasang.",
+      "installExtension": "Pasang",
+      "unsupported": "Kendali peramban tidak tersedia di platform ini.",
+      "cliMissing": "Biner Claude Code bawaan tidak ditemukan, sehingga kendali peramban tidak dapat dimulai.",
+      "hostFailed": "Tidak dapat mendaftarkan konektor peramban. Tidak ada peramban yang didukung ditemukan.",
+      "toggleError": "Gagal memperbarui integrasi peramban."
+    },
     "advanced": "Lanjutan",
     "restoreTerminalSessions": "Ingat kondisi terminal terakhir",
     "restoreTerminalSessionsDesc": "Pulihkan tab terminal dan sesi Claude dari sesi sebelumnya saat aplikasi dijalankan",

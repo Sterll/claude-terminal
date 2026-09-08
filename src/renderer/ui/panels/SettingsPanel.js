@@ -552,6 +552,54 @@ class SettingsPanel extends BasePanel {
 
   // ── Agent Colors Panel ──
 
+  /**
+   * Fill in the "Claude in Chrome" status line.
+   *
+   * Three things have to line up for the bridge to work, and each fails
+   * differently, so the line names the one that is missing rather than showing
+   * a generic error: the platform must support native messaging, the browser
+   * extension must be installed, and the native host must be registered.
+   *
+   * @param {boolean} [force] Re-scan for the extension instead of using the
+   *   30s cache — passed after sending the user to the Web Store.
+   */
+  async refreshChromeBridgeStatus(force = false) {
+    const row = document.getElementById('chrome-bridge-status');
+    if (!row) return;
+    const text = row.querySelector('.chrome-bridge-text');
+    const installBtn = document.getElementById('chrome-bridge-install');
+
+    const set = (state, message, showInstall = false) => {
+      // The panel can be re-rendered or closed while the IPC is in flight.
+      if (!document.body.contains(row)) return;
+      row.dataset.state = state;
+      if (text) text.textContent = message;
+      if (installBtn) installBtn.hidden = !showInstall;
+    };
+
+    let res;
+    try {
+      res = await this.api.chrome.status({ force });
+    } catch (e) {
+      set('error', e.message || t('common.errorOccurred'));
+      return;
+    }
+    if (!res?.success) {
+      set('error', res?.error || t('common.errorOccurred'));
+      return;
+    }
+
+    const st = res.status;
+    if (!st.supported) return set('error', t('settings.chrome.unsupported'));
+    if (!st.cliAvailable) return set('error', t('settings.chrome.cliMissing'));
+    if (!st.extensionInstalled) return set('warn', t('settings.chrome.extensionMissing'), true);
+    if (!st.enabled) {
+      return set('idle', t('settings.chrome.readyDisabled', { browser: st.browserLabel || 'Chrome' }));
+    }
+    if (!st.hostInstalled) return set('error', t('settings.chrome.hostFailed'));
+    set('ok', t('settings.chrome.connected', { browser: st.browserLabel || 'Chrome' }));
+  }
+
   async loadAgentsColorPanel() {
     const content = document.getElementById('agent-colors-content');
     if (!content) return;
@@ -1318,6 +1366,26 @@ class SettingsPanel extends BasePanel {
                 <div class="persona-help">${t('settings.personaHelp')}</div>
               </div>
             </div>
+            <div class="settings-group" data-section="chrome">
+              <div class="settings-group-title">${t('settings.chrome.title')}</div>
+              <div class="settings-card">
+                <div class="settings-toggle-row">
+                  <div class="settings-toggle-label">
+                    <div>${t('settings.chrome.enable')}</div>
+                    <div class="settings-toggle-desc">${t('settings.chrome.enableDesc')}</div>
+                  </div>
+                  <label class="settings-toggle">
+                    <input type="checkbox" id="chrome-bridge-toggle" ${settings.chromeBridgeEnabled ? 'checked' : ''}>
+                    <span class="settings-toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="chrome-bridge-status" id="chrome-bridge-status" data-state="loading">
+                  <span class="chrome-bridge-dot"></span>
+                  <span class="chrome-bridge-text">${t('settings.chrome.checking')}</span>
+                  <button class="chrome-bridge-action" id="chrome-bridge-install" hidden>${t('settings.chrome.installExtension')}</button>
+                </div>
+              </div>
+            </div>
             <div class="settings-group">
               <div class="settings-group-title">${t('settings.hooks.title')}</div>
               <div class="settings-card">
@@ -1536,6 +1604,19 @@ class SettingsPanel extends BasePanel {
     });
 
     if (initialTab === 'agents') this.loadAgentsColorPanel();
+
+    // Status needs an IPC round-trip (it stats browser profile dirs), so the
+    // markup renders a "checking" placeholder and this fills it in.
+    this.refreshChromeBridgeStatus();
+    const chromeInstallBtn = document.getElementById('chrome-bridge-install');
+    if (chromeInstallBtn) {
+      chromeInstallBtn.onclick = async () => {
+        await this.api.chrome.openStore();
+        // The user installs in the browser, so we cannot know when it lands.
+        // Re-check on a short delay and skip the cache.
+        setTimeout(() => this.refreshChromeBridgeStatus(true), 3000);
+      };
+    }
 
     this._ctx.ShortcutsManager.setupShortcutsPanelHandlers();
 
@@ -1934,6 +2015,8 @@ class SettingsPanel extends BasePanel {
         : null;
       const autoClaudeMdToggle = document.getElementById('auto-claude-md-toggle');
       const newAutoClaudeMd = autoClaudeMdToggle ? autoClaudeMdToggle.checked : true;
+      const chromeBridgeToggle = document.getElementById('chrome-bridge-toggle');
+      const newChromeBridgeEnabled = chromeBridgeToggle ? chromeBridgeToggle.checked : false;
       const hooksToggle = document.getElementById('hooks-enabled-toggle');
       const newHooksEnabled = hooksToggle ? hooksToggle.checked : settings.hooksEnabled;
       const context1MToggle = document.getElementById('enable-1m-context-toggle');
@@ -2004,6 +2087,7 @@ class SettingsPanel extends BasePanel {
         discordRpcEnabled: newDiscordRpcEnabled,
         discordRpcShowProject: newDiscordRpcShowProject,
         enhancePrompts: newEnhancePrompts,
+        chromeBridgeEnabled: newChromeBridgeEnabled,
         autoClaudeMdUpdate: newAutoClaudeMd,
         maxTurns: newMaxTurns,
         telemetryEnabled: newTelemetryEnabled,
@@ -2078,6 +2162,24 @@ class SettingsPanel extends BasePanel {
             launchAtStartupToggle.checked = !requestedLaunchAtStartup;
             showError(t('settings.launchAtStartupError'), 5000);
           }
+        }
+
+        if (newChromeBridgeEnabled !== settings.chromeBridgeEnabled) {
+          try {
+            // Turning it on installs the native messaging host so Chrome can
+            // reach us; turning it off removes only the manifests we wrote.
+            const result = newChromeBridgeEnabled
+              ? await self.api.chrome.installHost()
+              : await self.api.chrome.removeHost();
+            if (result && result.success === false) {
+              throw new Error(result.error || t('common.errorOccurred'));
+            }
+          } catch (e) {
+            console.error('Error toggling Claude in Chrome:', e);
+            self._sideEffectFailed = true;
+            showError(e.message || t('settings.chrome.toggleError'), 5000);
+          }
+          self.refreshChromeBridgeStatus();
         }
 
         if (newHooksEnabled !== settings.hooksEnabled) {

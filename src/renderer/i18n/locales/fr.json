@@ -1031,6 +1031,20 @@
       "description": "Infos en temps réel de Claude Code (suivi du temps, notifications, stats du dashboard)",
       "toggleError": "Impossible de mettre à jour les hooks intelligents."
     },
+    "chrome": {
+      "title": "Claude dans Chrome",
+      "enable": "Autoriser Claude à utiliser votre navigateur",
+      "enableDesc": "Les sessions de chat peuvent ouvrir des onglets, cliquer, saisir du texte, lire les pages et inspecter la console via l'extension Claude.",
+      "checking": "Vérification de l'intégration navigateur…",
+      "connected": "Connecté — Claude peut piloter {browser}.",
+      "readyDisabled": "Extension détectée dans {browser}. Activez cette option pour que Claude puisse l'utiliser.",
+      "extensionMissing": "L'extension navigateur Claude n'est pas installée.",
+      "installExtension": "Installer",
+      "unsupported": "Le pilotage du navigateur n'est pas disponible sur cette plateforme.",
+      "cliMissing": "Le binaire Claude Code fourni est introuvable : le pilotage du navigateur ne peut pas démarrer.",
+      "hostFailed": "Impossible d'enregistrer le connecteur navigateur. Aucun navigateur compatible n'a été trouvé.",
+      "toggleError": "Échec de la mise à jour de l'intégration navigateur."
+    },
     "advanced": "Avancé",
     "restoreTerminalSessions": "Mémoriser les derniers états des terminaux",
     "restoreTerminalSessionsDesc": "Restaurer les onglets de terminal et les sessions Claude de la session précédente au démarrage",
