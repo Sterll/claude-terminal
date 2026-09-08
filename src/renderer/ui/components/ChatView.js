@@ -4750,7 +4750,7 @@ class ChatView extends BaseComponent {
   artifactHeadEl.addEventListener('click', async (e) => {
     const btn = e.target.closest('.chat-artifact-action');
     if (!btn) return;
-    const artifact = artifactRegistry.get(artifactPaneEl.dataset.artifactId);
+    const artifact = artifactRegistry.get(artifactViewEl.dataset.artifactId);
     if (!artifact) return;
 
     switch (btn.dataset.action) {
