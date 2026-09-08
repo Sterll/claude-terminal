@@ -662,6 +662,20 @@ contextBridge.exposeInMainWorld('electron_api', {
     onUserMessage: createListener('remote:user-message'),
   },
 
+  // ==================== CLAUDE REMOTE CONTROL ====================
+  // Claude Code's Remote Control (claude.ai / mobile app). Distinct from
+  // `remote` above, which is this app's own local-network PWA.
+  remoteControl: {
+    getStatus: () => ipcRenderer.invoke('remote-control:status'),
+    disable: () => ipcRenderer.invoke('remote-control:disable'),
+    // Per-chat-tab control: the footer button and the `/remote-control` command.
+    enableSession: (sessionId) => ipcRenderer.invoke('remote-control:enable-session', { sessionId }),
+    disableSession: (sessionId) => ipcRenderer.invoke('remote-control:disable-session', { sessionId }),
+    getSessionStatus: (sessionId) => ipcRenderer.invoke('remote-control:session-status', { sessionId }),
+    listSessions: () => ipcRenderer.invoke('remote-control:list-sessions'),
+    onSessionStatus: createListener('remote-control:session-status-changed'),
+  },
+
   // ==================== ERROR LOG ====================
   errorLog: {
     getEntries: (filters) => ipcRenderer.invoke('errorlog-get-entries', filters),

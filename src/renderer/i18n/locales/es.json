@@ -1973,7 +1973,8 @@
     "cancel": "Cancelar",
     "tabDocuments": "Documentos",
     "runInBackground": "Ejecutar en segundo plano",
-    "backgroundWorkFailed": "No se pudo pasar el trabajo a segundo plano. {error}"
+    "backgroundWorkFailed": "No se pudo pasar el trabajo a segundo plano. {error}",
+    "slashRemoteControl": "Compartir esta conversación con claude.ai (on / off)"
   },
   "hooks": {
     "consent": {
@@ -2223,7 +2224,44 @@
   "connectivity": {
     "tabTitle": "Conectividad",
     "localTab": "Local",
-    "cloudTab": "Nube"
+    "cloudTab": "Nube",
+    "claudeTab": "claude.ai"
+  },
+  "claudeRemote": {
+    "enable": "Control remoto (claude.ai)",
+    "enableDesc": "Permite compartir conversaciones con claude.ai y la app móvil de Claude.",
+    "allowDriving": "Permitir el control remoto",
+    "blocked": "El control remoto está desactivado por la política de tu organización.",
+    "unsupported": "Esta versión no puede ofrecer el control remoto.",
+    "mirroring": "{count} sesión(es) reflejada(s) en claude.ai.",
+    "terminals": "Conectar también las pestañas de terminal",
+    "terminalsDesc": "Lanza el CLI de Claude con --rc en las pestañas de terminal, para que esas sesiones también lleguen a claude.ai.",
+    "mirrorOff": "Compartir esta conversación con claude.ai",
+    "mirrorOn": "Compartida con claude.ai — haz clic para detener",
+    "noSession": "Envía primero un mensaje: el control remoto necesita una sesión que compartir.",
+    "noticeOn": "Esta conversación está ahora en claude.ai, a partir de este momento.",
+    "noticeOff": "Esta conversación ya no se comparte con claude.ai.",
+    "noticeFailed": "No se pudo conectar con claude.ai.",
+    "settingsGroup": "Control remoto",
+    "drivingDesc": "Deja que claude.ai envíe mensajes, interrumpa un turno y responda a las solicitudes de permiso. Desactivado, solo puede mirar.",
+    "settingsHint": "Una conversación compartida envía su contenido — mensajes, contenido de archivos y salida de herramientas — a claude.ai. No se comparte nada hasta que lo actives en una conversación, desde su botón en el pie o con /remote-control.",
+    "screenTitle": "Compartido con claude.ai",
+    "screenSubtitle": "Las conversaciones que compartes aparecen aquí mientras están activas.",
+    "openClaude": "Abrir claude.ai/code",
+    "emptyTitle": "Ninguna conversación compartida ahora mismo.",
+    "emptyHint": "Abre una pestaña de chat y usa el botón claude.ai en su pie, o escribe /remote-control.",
+    "notAllowed": "El control remoto está desactivado.",
+    "notAllowedHint": "Actívalo en Ajustes → Claude → Control remoto.",
+    "goToTab": "Ir a la pestaña",
+    "tabGone": "Esa pestaña ya no está abierta.",
+    "stopSharing": "Detener",
+    "stateRunning": "Trabajando",
+    "stateIdle": "Inactiva",
+    "stateAction": "Esperándote",
+    "unknownProject": "Proyecto desconocido",
+    "justNow": "ahora mismo",
+    "forMinutes": "desde hace {n} min",
+    "forHours": "desde hace {n} h"
   },
   "cloud": {
     "tabTitle": "Nube",

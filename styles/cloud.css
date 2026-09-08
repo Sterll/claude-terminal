@@ -802,3 +802,155 @@
   border-color: var(--accent) !important;
 }
 
+
+/* ═══════════════════════════════════════════════════════════════
+   Connectivity → claude.ai — conversations currently shared
+   ═══════════════════════════════════════════════════════════════ */
+
+.crp-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  /* `.cn-sub-panel-inner` carries no padding — the Local tab supplies its own
+     through `.cn-local-content`, so this screen has to as well. */
+  padding: 16px 20px 20px;
+}
+
+.crp-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.crp-title {
+  font-size: var(--font-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.crp-subtitle {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+.crp-open-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 6px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.crp-open-link:hover {
+  color: var(--accent-color);
+  border-color: var(--accent-color);
+}
+
+.crp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.crp-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+}
+
+/* Same three states the service reports: idle, working, waiting on the user. */
+.crp-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-muted);
+}
+
+.crp-dot.running { background: var(--success); }
+.crp-dot.action { background: var(--warning); }
+
+.crp-row-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.crp-row-title {
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crp-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.crp-sep { opacity: 0.5; }
+
+.crp-row-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.crp-row-btn {
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-2xs);
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.crp-row-btn:hover {
+  color: var(--accent-color);
+  border-color: var(--accent-color);
+}
+
+.crp-row-btn.danger:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.crp-row-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.crp-empty {
+  padding: 28px 16px;
+  text-align: center;
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius);
+}
+
+.crp-empty-hint {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  margin-top: 6px;
+  line-height: 1.5;
+}

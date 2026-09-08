@@ -62,6 +62,31 @@ function getAssetsDir(dirname) {
   return path.join(process.resourcesPath || dirname, 'assets');
 }
 
+/**
+ * Where Claude Code reads administrator-deployed settings, most specific
+ * first.
+ *
+ * These are not ours to write and not the user's to edit — that is the whole
+ * point of them. Anything enforcing an org policy has to look here rather than
+ * in `settingsFile`, which is this app's own preferences file and belongs to
+ * the user.
+ *
+ * @returns {string[]}
+ */
+function managedSettingsPaths() {
+  if (process.platform === 'win32') {
+    const programData = process.env.ProgramData || 'C:\ProgramData';
+    return [path.join(programData, 'ClaudeCode', 'managed-settings.json')];
+  }
+  if (process.platform === 'darwin') {
+    return [
+      '/Library/Application Support/ClaudeCode/managed-settings.json',
+      '/etc/claude-code/managed-settings.json',
+    ];
+  }
+  return ['/etc/claude-code/managed-settings.json'];
+}
+
 module.exports = {
   homeDir,
   dataDir,
@@ -70,6 +95,7 @@ module.exports = {
   projectsFile,
   windowStateFile,
   machineIdFile,
+  managedSettingsPaths,
   ensureDataDir,
   loadAccentColor,
   getAssetsDir

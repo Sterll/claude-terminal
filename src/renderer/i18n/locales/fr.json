@@ -1976,7 +1976,8 @@
     "cancel": "Annuler",
     "tabDocuments": "Documents",
     "runInBackground": "Passer en arrière-plan",
-    "backgroundWorkFailed": "Impossible de passer le travail en arrière-plan. {error}"
+    "backgroundWorkFailed": "Impossible de passer le travail en arrière-plan. {error}",
+    "slashRemoteControl": "Partager cette conversation avec claude.ai (on / off)"
   },
   "hooks": {
     "consent": {
@@ -2226,7 +2227,44 @@
   "connectivity": {
     "tabTitle": "Connectivite",
     "localTab": "Local",
-    "cloudTab": "Cloud"
+    "cloudTab": "Cloud",
+    "claudeTab": "claude.ai"
+  },
+  "claudeRemote": {
+    "enable": "Contrôle à distance (claude.ai)",
+    "enableDesc": "Autorise le partage de conversations avec claude.ai et l’application mobile Claude.",
+    "allowDriving": "Autoriser le pilotage",
+    "blocked": "Le contrôle à distance est désactivé par la politique de votre organisation.",
+    "unsupported": "Cette version ne peut pas assurer le contrôle à distance.",
+    "mirroring": "{count} session(s) en miroir sur claude.ai.",
+    "terminals": "Connecter aussi les onglets terminal",
+    "terminalsDesc": "Lance le CLI Claude avec --rc dans les onglets terminal, pour que ces sessions arrivent aussi sur claude.ai.",
+    "mirrorOff": "Partager cette conversation avec claude.ai",
+    "mirrorOn": "Partagée avec claude.ai — cliquez pour arrêter",
+    "noSession": "Envoyez d’abord un message : le contrôle à distance a besoin d’une session à partager.",
+    "noticeOn": "Cette conversation est désormais sur claude.ai, à partir de maintenant.",
+    "noticeOff": "Cette conversation n’est plus partagée avec claude.ai.",
+    "noticeFailed": "Impossible de joindre claude.ai.",
+    "settingsGroup": "Contrôle à distance",
+    "drivingDesc": "Permet à claude.ai d’envoyer des messages, d’interrompre un tour et de répondre aux demandes de permission. Désactivé, il ne fait que regarder.",
+    "settingsHint": "Une conversation partagée envoie son contenu — messages, contenu des fichiers et sorties d’outils — vers claude.ai. Rien n’est partagé tant que vous ne l’activez pas dans une conversation, via son bouton en pied de page ou avec /remote-control.",
+    "screenTitle": "Partagé avec claude.ai",
+    "screenSubtitle": "Les conversations que vous partagez apparaissent ici tant qu’elles sont actives.",
+    "openClaude": "Ouvrir claude.ai/code",
+    "emptyTitle": "Aucune conversation partagée pour l’instant.",
+    "emptyHint": "Ouvrez un onglet de chat et utilisez le bouton claude.ai en pied de page, ou tapez /remote-control.",
+    "notAllowed": "Le contrôle à distance est désactivé.",
+    "notAllowedHint": "Autorisez-le dans Réglages → Claude → Contrôle à distance.",
+    "goToTab": "Aller à l’onglet",
+    "tabGone": "Cet onglet n’est plus ouvert.",
+    "stopSharing": "Arrêter",
+    "stateRunning": "En cours",
+    "stateIdle": "Au repos",
+    "stateAction": "Attend une réponse",
+    "unknownProject": "Projet inconnu",
+    "justNow": "à l’instant",
+    "forMinutes": "depuis {n} min",
+    "forHours": "depuis {n} h"
   },
   "cloud": {
     "tabTitle": "Cloud",

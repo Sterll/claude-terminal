@@ -615,6 +615,9 @@ class ChatView extends BaseComponent {
             <button class="chat-export-btn" title="${escapeHtml(t('chat.exportConversation') || 'Export conversation')}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             </button>
+            <button class="chat-remote-btn" title="${escapeHtml(t('claudeRemote.mirrorOff') || 'Mirror this conversation to claude.ai')}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+            </button>
           </div>
           <div class="chat-footer-right">
             <!-- One pill for model + effort, so the footer reads "Opus 5 · High"
@@ -688,6 +691,7 @@ class ChatView extends BaseComponent {
   const mentionDropdown = chatView.querySelector('.chat-mention-dropdown');
   const followupSuggestionsEl = chatView.querySelector('.chat-followup-suggestions');
   const exportBtn = chatView.querySelector('.chat-export-btn');
+  const remoteBtn = chatView.querySelector('.chat-remote-btn');
 
   // ── Transcript search (Ctrl+F) ──
 
@@ -958,6 +962,70 @@ class ChatView extends BaseComponent {
       }, 0);
     });
   }
+
+  // ── Remote Control (claude.ai) for this one conversation ──
+  //
+  // Mirroring is decided per session, never globally: the settings switch only
+  // says the feature may be used at all, and nothing leaves this machine until
+  // the user asks for it in the tab they mean. Both entry points — this button
+  // and the `/remote-control` input command — go through toggleRemoteControl.
+  //
+  // Whatever was said before the mirror is enabled is not backfilled: claude.ai
+  // joins the conversation from that moment on.
+
+  let remoteMirrored = false;
+
+  function paintRemoteBtn(mirrored, error) {
+    remoteMirrored = mirrored;
+    if (!remoteBtn) return;
+    remoteBtn.classList.toggle('active', mirrored);
+    remoteBtn.classList.toggle('error', !!error && !mirrored);
+    remoteBtn.title = error
+      ? error
+      : (mirrored
+        ? (t('claudeRemote.mirrorOn') || 'Mirrored to claude.ai — click to stop')
+        : (t('claudeRemote.mirrorOff') || 'Mirror this conversation to claude.ai'));
+  }
+
+  async function toggleRemoteControl(wantOn) {
+    if (!sessionId) {
+      appendSystemNotice(t('claudeRemote.noSession') || 'Send a message first, then Remote Control has a session to share.', 'command');
+      return;
+    }
+    if (remoteBtn) remoteBtn.disabled = true;
+    try {
+      const res = wantOn
+        ? await api.remoteControl?.enableSession?.(sessionId)
+        : await api.remoteControl?.disableSession?.(sessionId);
+      if (res?.success) {
+        paintRemoteBtn(wantOn, null);
+        appendSystemNotice(wantOn
+          ? (t('claudeRemote.noticeOn') || 'This conversation is now on claude.ai, from here on.')
+          : (t('claudeRemote.noticeOff') || 'This conversation is no longer shared with claude.ai.'), 'command');
+      } else {
+        paintRemoteBtn(false, res?.error || null);
+        appendSystemNotice(res?.error || (t('claudeRemote.noticeFailed') || 'Could not reach claude.ai.'), 'command');
+      }
+    } finally {
+      if (remoteBtn) remoteBtn.disabled = false;
+    }
+  }
+
+  if (remoteBtn) {
+    remoteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleRemoteControl(!remoteMirrored);
+    });
+  }
+
+  // The mirror can also end without the user touching it — a dead transport, a
+  // switched account, the master switch going off — so the button follows the
+  // service rather than only its own last click.
+  const unsubRemoteStatus = api.remoteControl?.onSessionStatus?.(({ sessionId: sid, mirrored, lastError }) => {
+    if (!sid || sid !== sessionId) return;
+    paintRemoteBtn(!!mirrored, lastError || null);
+  });
+  if (unsubRemoteStatus) unsubscribers.push(unsubRemoteStatus);
 
   // ── Attach interactive markdown block handlers (sort, collapse, preview, etc.) ──
   // Delegation is per-container and postProcess() does not set it up, so every
@@ -2384,8 +2452,13 @@ class ChatView extends BaseComponent {
       '/batch', '/simplify', '/debug', '/loop', '/claude-api',
       '/security-review', '/btw', '/review',
       // Claude Terminal own commands
-      '/parallel-task', '/reload-plugins',
+      '/parallel-task', '/reload-plugins', '/remote-control',
     ];
+    // Commands this app handles itself, in handleSend, without ever reaching
+    // the CLI. The session's `slash_commands` cannot know about them, so they
+    // have to be merged in explicitly — otherwise they are listed before a
+    // session starts and vanish the moment one does, while still working.
+    const localCommands = ['/parallel-task', '/reload-plugins', '/remote-control'];
     // Normalize to '/name' lowercase so SDK-provided commands (sometimes without leading '/')
     // match our '/name' skill/builtin entries and don't show up twice.
     const normKey = (c) => ('/' + String(c).replace(/^\//, '')).toLowerCase();
@@ -2403,7 +2476,7 @@ class ChatView extends BaseComponent {
     const allDefaults = dedupe([...builtinDefaults, ...skillCommands]);
     // When session provides slash_commands, merge with skills; otherwise use full defaults
     const available = slashCommands.length > 0
-      ? dedupe([...slashCommands, ...skillCommands])
+      ? dedupe([...slashCommands, ...localCommands, ...skillCommands])
       : allDefaults;
     const filtered = available.filter(cmd => {
       const name = cmd.replace(/^\//, '').toLowerCase();
@@ -2461,6 +2534,7 @@ class ChatView extends BaseComponent {
       // Claude Terminal commands
       '/parallel-task': t('chat.slashParallelTask'),
       '/reload-plugins': t('chat.slashReloadPlugins'),
+      '/remote-control': t('chat.slashRemoteControl'),
     };
     if (descriptions[cmd]) return descriptions[cmd];
     // Check skills for description
@@ -3811,6 +3885,20 @@ class ChatView extends BaseComponent {
     const hasImages = pendingImages.length > 0;
     const hasMentions = pendingMentions.length > 0;
     if ((!text && !hasImages && !hasMentions) || sendLock) return;
+
+    // /remote-control interception: a local command, never sent to the CLI.
+    //
+    // The CLI has no such slash command — `claude remote-control` is a shell
+    // subcommand for its own REPL — so typing it in this app used to reach the
+    // CLI and come back "not available in this environment". It is handled here
+    // instead, doing exactly what the footer button does.
+    if (text === '/remote-control' || text.startsWith('/remote-control ')) {
+      const arg = text.replace(/^\/remote-control\s*/, '').trim().toLowerCase();
+      setInputText('');
+      const wantOn = arg === 'on' ? true : arg === 'off' ? false : !remoteMirrored;
+      await toggleRemoteControl(wantOn);
+      return;
+    }
 
     // /parallel-task interception: strip prefix, set force flag
     if (text === '/parallel-task' || text.startsWith('/parallel-task ')) {
@@ -8062,11 +8150,16 @@ class ChatView extends BaseComponent {
   });
   unsubscribers.push(unsubIdle);
 
-  // ── IPC: Remote user message (sent from mobile PWA) ──
+  // ── IPC: Remote user message (typed on the mobile PWA or on claude.ai) ──
+  //
+  // A prompt that did not go through this composer has no bubble yet: whoever
+  // submitted it on our behalf (RemoteServer for the PWA, RemoteControlService
+  // for claude.ai / the Claude app) says so here, with the uuid it was
+  // submitted under so the bubble's rewind button lands on the right turn.
 
-  const unsubRemoteMsg = api.remote.onUserMessage(({ sessionId: sid, text, images }) => {
+  const unsubRemoteMsg = api.remote.onUserMessage(({ sessionId: sid, text, images, uuid }) => {
     if (sid !== sessionId) return;
-    appendUserMessage(text, images || [], [], isStreaming);
+    appendUserMessage(text, images || [], [], isStreaming, null, uuid || null);
     // Trigger tab rename for remote messages (same logic as _send)
     if (onTabRename && text && !text.startsWith('/') && getSetting('aiTabNaming') !== false && !isTabNameLocked()) {
       const words = text.split(/\s+/).slice(0, 5).join(' ');

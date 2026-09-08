@@ -1976,7 +1976,8 @@
     "cancel": "Cancel",
     "tabDocuments": "Documents",
     "runInBackground": "Run in background",
-    "backgroundWorkFailed": "Could not move the work to the background. {error}"
+    "backgroundWorkFailed": "Could not move the work to the background. {error}",
+    "slashRemoteControl": "Share this conversation with claude.ai (on / off)"
   },
   "hooks": {
     "consent": {
@@ -2226,7 +2227,44 @@
   "connectivity": {
     "tabTitle": "Connectivity",
     "localTab": "Local",
-    "cloudTab": "Cloud"
+    "cloudTab": "Cloud",
+    "claudeTab": "claude.ai"
+  },
+  "claudeRemote": {
+    "enable": "Remote Control (claude.ai)",
+    "enableDesc": "Allow conversations to be shared with claude.ai and the Claude mobile app.",
+    "allowDriving": "Allow remote control",
+    "blocked": "Remote Control is disabled by your organisation policy.",
+    "unsupported": "This build cannot serve Remote Control.",
+    "mirroring": "{count} session(s) mirrored to claude.ai.",
+    "terminals": "Connect terminal tabs too",
+    "terminalsDesc": "Launches the Claude CLI with --rc in terminal tabs, so those sessions reach claude.ai as well.",
+    "mirrorOff": "Mirror this conversation to claude.ai",
+    "mirrorOn": "Mirrored to claude.ai — click to stop",
+    "noSession": "Send a message first, then Remote Control has a session to share.",
+    "noticeOn": "This conversation is now on claude.ai, from here on.",
+    "noticeOff": "This conversation is no longer shared with claude.ai.",
+    "noticeFailed": "Could not reach claude.ai.",
+    "settingsGroup": "Remote Control",
+    "drivingDesc": "Let claude.ai send prompts, interrupt a turn and answer permission prompts. Off means it can only watch.",
+    "settingsHint": "A shared conversation sends its transcript — prompts, file contents and tool output — to claude.ai. Nothing is shared until you turn it on in a conversation, from its footer button or with /remote-control.",
+    "screenTitle": "Shared with claude.ai",
+    "screenSubtitle": "Conversations you share appear here while they are live.",
+    "openClaude": "Open claude.ai/code",
+    "emptyTitle": "No conversation is shared right now.",
+    "emptyHint": "Open a chat tab and use the claude.ai button in its footer, or type /remote-control.",
+    "notAllowed": "Remote Control is turned off.",
+    "notAllowedHint": "Allow it in Settings → Claude → Remote Control.",
+    "goToTab": "Go to tab",
+    "tabGone": "That tab is no longer open.",
+    "stopSharing": "Stop",
+    "stateRunning": "Working",
+    "stateIdle": "Idle",
+    "stateAction": "Waiting for you",
+    "unknownProject": "Unknown project",
+    "justNow": "just now",
+    "forMinutes": "for {n} min",
+    "forHours": "for {n} h"
   },
   "cloud": {
     "tabTitle": "Cloud",

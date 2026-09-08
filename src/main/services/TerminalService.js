@@ -9,6 +9,22 @@ const pty = require('node-pty');
 const { execFileSync } = require('child_process');
 const terminalCapture = require('./TerminalOutputCapture');
 
+/**
+ * Whether a spawned `claude` should carry `--rc`.
+ *
+ * Read through the service rather than from settings.json directly, so the
+ * managed-settings kill switch and the opt-in rules live in exactly one place.
+ * Never throws: a terminal must still open when the setting cannot be read.
+ */
+function _remoteControlEnabled() {
+  try {
+    return require('./RemoteControlService').launchesTerminalsConnected();
+  } catch (_) {
+    return false;
+  }
+}
+
+
 class TerminalService {
   constructor() {
     this.terminals = new Map();
@@ -78,6 +94,11 @@ class TerminalService {
       }
       if (skipPermissions) {
         claudeArgs.push('--dangerously-skip-permissions');
+      }
+      // Connect this CLI to Remote Control, so the terminal tab shows up on
+      // claude.ai alongside the mirrored chat tabs.
+      if (_remoteControlEnabled()) {
+        claudeArgs.push('--rc');
       }
       shellPath = 'cmd.exe';
       shellArgs = ['/c', ...claudeArgs];
@@ -186,6 +207,10 @@ class TerminalService {
         }
         if (skipPermissions) {
           claudeCmd += ' --dangerously-skip-permissions';
+        }
+        // See the Windows branch above.
+        if (_remoteControlEnabled()) {
+          claudeCmd += ' --rc';
         }
         try { ptyProcess.write(claudeCmd + '\r'); } catch (e) {}
       }, 500);
