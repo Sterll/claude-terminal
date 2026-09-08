@@ -901,6 +901,18 @@ class ChatService {
     }
 
     try {
+      // Held until the CLI says it has written this message down. The
+      // account-switch offer leaves the composer usable, so a message can
+      // still be waiting in the queue — or be mid-flight — when the switch
+      // aborts the process, and nothing of it has reached the transcript at
+      // that point; prepareSwitchAccount hands those back to be sent again.
+      //
+      // A list, not a slot: two messages can be typed while the offer is on
+      // screen, and the second overwriting the first is how the first
+      // disappeared.
+      (session.pendingUserMessages ||= []).push({
+        text, images, mentions, userMessageUuid: userMessageUuid || null,
+      });
       session.messageQueue.push({
         type: 'user',
         message: { role: 'user', content: this._buildContent(text, images, mentions, documents) },
@@ -1604,6 +1616,8 @@ class ChatService {
         // flagged `is_error` or carrying an error subtype. Fork-guard refusals
         // never reach this point (`continue` above) — the renderer auto-resumes
         // those, so they are not a session outcome.
+        if (message.type === 'assistant') this._ackUserMessages(session, message);
+
         if (message.type === 'assistant' && (message.error || isApiErrorMessage(message))) {
           // An in-band failure: the CLI answers the turn with an ordinary
           // assistant message reporting the error, and leaves the stream open —
@@ -1635,6 +1649,12 @@ class ChatService {
             pendingAccountLimit = text;
           }
         } else if (message.type === 'result') {
+          // Older producers do not stamp the prompt uuid on their replies, so a
+          // closed turn is the only acknowledgement they give. Sessions that do
+          // stamp are left alone here: a message queued *behind* the turn that
+          // just closed has not been written down yet, and clearing it would
+          // lose it.
+          if (session && !session.stampsUserMessageUuids) session.pendingUserMessages = [];
           if (message.is_error || message.subtype !== 'success') {
             const errors = Array.isArray(message.errors) ? message.errors.filter(Boolean) : [];
             inbandError = errors.join('\n')
@@ -1764,12 +1784,43 @@ class ChatService {
    * it (with `resumeSessionId`) under freshly swapped credentials. Returns the
    * cwd / projectId / model context the caller should reuse.
    */
+  /**
+   * Drop the pending messages the CLI has just acknowledged.
+   *
+   * `user_message_uuid` is stamped on the first reply frame of the turn that
+   * consumed a prompt (and `user_message_uuids` on a batch the host merged into
+   * one turn). That stamp is the one reliable "this is written down": once it
+   * lands the message is in the transcript, a resume brings it back, and
+   * sending it again would post it twice.
+   *
+   * Which is what used to happen. The clear was on the result message, and a
+   * usage limit refused mid-turn throws instead of producing one — so the very
+   * message that caused the limit survived as pending and was replayed on top
+   * of a resume that already held it.
+   */
+  _ackUserMessages(session, message) {
+    if (!session) return;
+    const ids = Array.isArray(message.user_message_uuids) && message.user_message_uuids.length
+      ? message.user_message_uuids
+      : (message.user_message_uuid ? [message.user_message_uuid] : []);
+    if (!ids.length) return;
+    session.stampsUserMessageUuids = true;
+    if (!session.pendingUserMessages?.length) return;
+    session.pendingUserMessages = session.pendingUserMessages
+      .filter(m => !ids.includes(m.userMessageUuid));
+  }
+
   prepareSwitchAccount(sessionId) {
     const session = this.sessions.get(sessionId);
     const ctx = session ? {
       cwd: session.cwd || null,
       projectId: session.projectId || null,
       accountId: session.accountId || null,
+      // Messages still waiting on a turn: closeSession is about to abort the
+      // process out from under them, and the resume that follows only brings
+      // back what the CLI wrote down. Handed to the caller so the restart can
+      // send them rather than let them disappear with the account.
+      pendingUserMessages: session.pendingUserMessages || [],
     } : null;
     this.closeSession(sessionId);
     return ctx;

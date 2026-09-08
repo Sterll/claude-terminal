@@ -3881,6 +3881,7 @@
     "switched": "Akun diganti. Melanjutkan…",
     "switchedNoResume": "Akun diganti. Percakapan sebelumnya tidak bisa dilanjutkan — dilanjutkan tanpa konteksnya.",
     "switchedResent": "Akun diganti. Percakapan sebelumnya tidak pernah tersimpan, jadi pesan Anda dikirim ulang di akun baru.",
+    "switchedQueuedResent": "Akun diganti. Pesan terakhir Anda tidak pernah sampai ke akun sebelumnya, jadi dikirim ulang.",
     "removeConfirm": "Hapus akun tersimpan ini? Kredensialnya akan dihapus dari penyimpanan lokal.",
     "switchError": "Gagal mengganti akun",
     "renameError": "Gagal mengganti nama akun",

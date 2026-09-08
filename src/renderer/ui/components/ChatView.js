@@ -8038,36 +8038,48 @@ class ChatView extends BaseComponent {
       // fork's truncation point goes too: it names a message of the session
       // being resumed, not of the fork that came out of it.
       //
-      // Whether the opening turn rides along depends on whether it survived
-      // anywhere. With a session to resume it is already on disk, and sending it
-      // again would post it twice. Without one it exists nowhere but the bubble
-      // on screen — a limit refused before the SDK's init message means no
-      // session file was ever written — so the restart has to carry it or the
-      // prompt dies with the account that refused it. Its uuid goes along to keep
-      // that bubble matching the message that finally gets recorded.
-      const replayOpeningTurn = !realSid;
+      // Two different things can need re-sending, and only one of them applies
+      // at a time.
+      //
+      // Messages the CLI never wrote down. The offer leaves the composer
+      // usable, so a follow-up can be sent while it is on screen and still be
+      // waiting when the switch aborts the process. Main hands those back — and
+      // only those: anything the CLI acknowledged is in the transcript the
+      // resume brings back, so replaying it would post it twice.
+      //
+      // The opening turn, when there is no session to resume at all. A limit
+      // refused before the SDK's init message means no session file was ever
+      // written, so that turn exists nowhere but the bubble on screen.
+      //
+      // Their uuids ride along so the bubbles already on screen stay matched to
+      // the messages that finally get recorded.
+      const queued = prep.context?.pendingUserMessages || [];
+      const replayOpeningTurn = !realSid && queued.length === 0;
+      const first = queued[0] || (replayOpeningTurn ? lastStartOpts : null);
       const restartOpts = {
         ...lastStartOpts,
         accountId: newId,
-        prompt: replayOpeningTurn ? (lastStartOpts.prompt || '') : '',
-        images: replayOpeningTurn ? (lastStartOpts.images || []) : [],
-        mentions: replayOpeningTurn ? (lastStartOpts.mentions || []) : [],
-        userMessageUuid: replayOpeningTurn ? (lastStartOpts.userMessageUuid || null) : null,
+        prompt: first?.prompt ?? first?.text ?? '',
+        images: first?.images || [],
+        mentions: first?.mentions || [],
+        userMessageUuid: first?.userMessageUuid || null,
         forkSession: false,
         resumeSessionAt: null,
         resumeDropsTurn: null,
         resumeSessionId: realSid || null,
       };
-      // An opening turn that carried nothing leaves the restart with nothing to
-      // send: the session comes up idle, waiting for the user to type.
-      const replayed = replayOpeningTurn && Boolean(
+      // A restart with nothing to send comes up idle, waiting for the user to
+      // type — so nothing should be spinning at it.
+      const replayed = Boolean(
         (restartOpts.prompt || '').trim() || restartOpts.images.length || restartOpts.mentions.length
       );
-      const notice = realSid
-        ? (t('accounts.switched') || 'Account switched. Resuming…')
-        : replayed
-          ? (t('accounts.switchedResent') || 'Account switched. The previous conversation was never saved, so your message is being sent again on the new account.')
-          : (t('accounts.switchedNoResume') || 'Account switched. The previous conversation could not be resumed — continuing without its context.');
+      const notice = queued.length
+        ? (t('accounts.switchedQueuedResent') || 'Account switched. Your last message never reached the previous account, so it is being sent again.')
+        : realSid
+          ? (t('accounts.switched') || 'Account switched. Resuming…')
+          : replayed
+            ? (t('accounts.switchedResent') || 'Account switched. The previous conversation was never saved, so your message is being sent again on the new account.')
+            : (t('accounts.switchedNoResume') || 'Account switched. The previous conversation could not be resumed — continuing without its context.');
       appendSystemNotice(notice, 'info');
       // Only wait on a turn the SDK will actually run: with nothing queued the
       // spinner would sit there for the life of the tab.
@@ -8079,6 +8091,20 @@ class ChatView extends BaseComponent {
       if (!res.success) {
         appendError(res.error || t('chat.errorOccurred'));
         setStreaming(false);
+      } else {
+        // A restart carries one prompt. Anything else that was still queued
+        // goes back on the new session in the order it was typed, rather than
+        // being dropped for being second.
+        for (const m of queued.slice(1)) {
+          const sent = await api.chat.send({
+            sessionId,
+            text: m.text,
+            images: m.images || [],
+            mentions: m.mentions || [],
+            userMessageUuid: m.userMessageUuid || null,
+          });
+          if (!sent.success) appendError(sent.error || t('chat.errorOccurred'));
+        }
       }
     } finally {
       switchingAccount = false;

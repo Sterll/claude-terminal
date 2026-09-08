@@ -3881,6 +3881,7 @@
     "switched": "账号已切换。正在恢复…",
     "switchedNoResume": "账号已切换。无法恢复之前的对话 — 将在缺少其上下文的情况下继续。",
     "switchedResent": "账号已切换。之前的对话从未保存，因此你的消息将在新账号上重新发送。",
+    "switchedQueuedResent": "账号已切换。你的最后一条消息从未发送到之前的账号，因此将重新发送。",
     "removeConfirm": "删除这个已保存的账户吗？凭据将从本地存储中删除。",
     "switchError": "切换账号失败",
     "renameError": "账户重命名失败",
