@@ -268,7 +268,7 @@ function findClaudeTerminalForProject(projectId) {
     const { terminalsState } = require('../state/terminals.state');
     const state = terminalsState.get();
     const terminals = state.terminals;
-    const activeId = state.activeTerminalId;
+    const activeId = state.activeTerminal;
 
     if (activeId && terminals.has(activeId)) {
       const activeTd = terminals.get(activeId);

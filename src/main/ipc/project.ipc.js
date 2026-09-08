@@ -8,12 +8,21 @@ const fs = require('fs');
 const path = require('path');
 const { projectsFile } = require('../utils/paths');
 
-// Pre-compiled regex patterns for TODO scanning (avoid re-allocation per line)
-const TODO_REGEX_SLASH = /\/\/\s*(TODO|FIXME|HACK|XXX)[:\s]*(.*)/i;
-const TODO_REGEX_HASH  = /#\s*(TODO|FIXME|HACK|XXX)[:\s]*(.*)/i;
-const TODO_REGEX_LUA   = /--\s*(TODO|FIXME|HACK|XXX)[:\s]*(.*)/i;
-const TODO_REGEX_BLOCK = /\/\*\s*(TODO|FIXME|HACK|XXX)[:\s]*(.*?)(?:\*\/|$)/i;
-const TODO_REGEX_HTML  = /<!--\s*(TODO|FIXME|HACK|XXX)[:\s]*(.*?)(?:-->|$)/i;
+// Pre-compiled regex patterns for TODO scanning (avoid re-allocation per line).
+//
+// `(?=[:\s(]|$)` after the keyword is what keeps markup and CSS out of the
+// list: the keyword has to be followed by a real separator, so `#todo-list { }`
+// and `href="#todo"` no longer read as HASH comments introducing a TODO whose
+// text is the rest of the line. `(` stays allowed for the `TODO(owner):` form.
+//
+// Order matters below. HTML is tried before LUA because `<!--` contains `--`,
+// so the LUA pattern matches an HTML comment first and keeps the trailing
+// `-->` in the text — which is how the HTML pattern ended up unreachable.
+const TODO_REGEX_HTML  = /<!--\s*(TODO|FIXME|HACK|XXX)(?=[:\s(]|$)[:\s]*(.*?)(?:-->|$)/i;
+const TODO_REGEX_BLOCK = /\/\*\s*(TODO|FIXME|HACK|XXX)(?=[:\s(]|$)[:\s]*(.*?)(?:\*\/|$)/i;
+const TODO_REGEX_SLASH = /\/\/\s*(TODO|FIXME|HACK|XXX)(?=[:\s(]|$)[:\s]*(.*)/i;
+const TODO_REGEX_HASH  = /#\s*(TODO|FIXME|HACK|XXX)(?=[:\s(]|$)[:\s]*(.*)/i;
+const TODO_REGEX_LUA   = /--\s*(TODO|FIXME|HACK|XXX)(?=[:\s(]|$)[:\s]*(.*)/i;
 
 /**
  * Register project IPC handlers
@@ -62,11 +71,11 @@ function registerProjectHandlers() {
         const relativePath = path.relative(basePath, filePath);
 
         lines.forEach((line, i) => {
-          const todoMatch = TODO_REGEX_SLASH.exec(line) ||
-                            TODO_REGEX_HASH.exec(line) ||
-                            TODO_REGEX_LUA.exec(line) ||
+          const todoMatch = TODO_REGEX_HTML.exec(line) ||
                             TODO_REGEX_BLOCK.exec(line) ||
-                            TODO_REGEX_HTML.exec(line);
+                            TODO_REGEX_SLASH.exec(line) ||
+                            TODO_REGEX_HASH.exec(line) ||
+                            TODO_REGEX_LUA.exec(line);
           if (todoMatch && todos.length < 50) {
             todos.push({
               type: todoMatch[1].toUpperCase(),

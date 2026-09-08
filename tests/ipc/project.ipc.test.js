@@ -181,6 +181,57 @@ describe('scan-todos', () => {
     expect(result[0].text).toBe('Needs review');
   });
 
+  test('reads an HTML comment without keeping its closing marker', async () => {
+    // `<!--` contains `--`, so the Lua pattern matches the line first and takes
+    // the text with `-->` still attached unless HTML is tried before it.
+    setupProject('/project', {
+      'index.html': '  <!-- TODO: fix the header -->'
+    });
+
+    const result = await handlers['scan-todos'](mockEvent, '/project');
+
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe('TODO');
+    expect(result[0].text).toBe('fix the header');
+  });
+
+  test('reads a block comment in a stylesheet', async () => {
+    setupProject('/project', {
+      'app.css': '/* FIXME: centre the modal */'
+    });
+
+    const result = await handlers['scan-todos'](mockEvent, '/project');
+
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe('FIXME');
+    expect(result[0].text).toBe('centre the modal');
+  });
+
+  test('keeps the TODO(owner) form', async () => {
+    setupProject('/project', {
+      'app.js': '// TODO(bob): revisit'
+    });
+
+    const result = await handlers['scan-todos'](mockEvent, '/project');
+
+    expect(result[0].text).toBe('(bob): revisit');
+  });
+
+  test('ignores markup and prose that merely contain the keyword', async () => {
+    // Scanning .css and .html brings these within reach: without a required
+    // separator after the keyword, every `#todo` selector or anchor reads as a
+    // hash comment whose "description" is the rest of the line.
+    setupProject('/project', {
+      'app.css': '#todo-list { color: red; }',
+      'index.html': '<a href="#todo">Jump</a>',
+      'notes.js': '// TODOS remaining: 3'
+    });
+
+    const result = await handlers['scan-todos'](mockEvent, '/project');
+
+    expect(result).toEqual([]);
+  });
+
   test('matches case-insensitively', async () => {
     setupProject('/project', {
       'code.js': '// todo: lowercase todo'
