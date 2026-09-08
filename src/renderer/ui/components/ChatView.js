@@ -8149,11 +8149,16 @@ class ChatView extends BaseComponent {
   });
   unsubscribers.push(unsubIdle);
 
-  // ── IPC: Remote user message (sent from mobile PWA) ──
+  // ── IPC: Remote user message (typed on the mobile PWA or on claude.ai) ──
+  //
+  // A prompt that did not go through this composer has no bubble yet: whoever
+  // submitted it on our behalf (RemoteServer for the PWA, RemoteControlService
+  // for claude.ai / the Claude app) says so here, with the uuid it was
+  // submitted under so the bubble's rewind button lands on the right turn.
 
-  const unsubRemoteMsg = api.remote.onUserMessage(({ sessionId: sid, text, images }) => {
+  const unsubRemoteMsg = api.remote.onUserMessage(({ sessionId: sid, text, images, uuid }) => {
     if (sid !== sessionId) return;
-    appendUserMessage(text, images || [], [], isStreaming);
+    appendUserMessage(text, images || [], [], isStreaming, null, uuid || null);
     // Trigger tab rename for remote messages (same logic as _send)
     if (onTabRename && text && !text.startsWith('/') && getSetting('aiTabNaming') !== false && !isTabNameLocked()) {
       const words = text.split(/\s+/).slice(0, 5).join(' ');

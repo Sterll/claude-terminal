@@ -303,6 +303,31 @@ describe('outbound', () => {
     }));
   });
 
+  test('the mirrored prompt carries the uuid the relay needs to spot its own echo', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+
+    chat.emit('chat-user-message', { sessionId: 'chat-1', text: 'hello', uuid: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' });
+    const written = mockHandle.write.mock.calls.find(c => c[0]?.type === 'user')[0];
+    // Without it the relay fans the write back down our own inbound stream as
+    // a fresh prompt, and the same message is submitted to Claude twice.
+    expect(written.uuid).toBe('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee');
+    expect(written.origin).toEqual({ kind: 'human' });
+    expect(written.parent_tool_use_id).toBeNull();
+  });
+
+  test('a prompt with no uuid of its own still gets one', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+
+    chat.emit('chat-user-message', { sessionId: 'chat-1', text: 'hello' });
+    const written = mockHandle.write.mock.calls.find(c => c[0]?.type === 'user')[0];
+    expect(typeof written.uuid).toBe('string');
+    expect(written.uuid.length).toBeGreaterThan(0);
+  });
+
   test('starts from the moment it is enabled, without backfilling the transcript', async () => {
     const service = freshService();
     const chat = fakeChatService();
@@ -381,7 +406,45 @@ describe('inbound', () => {
     await startMirror(service, chat);
 
     mockAttachOpts.onInboundMessage({ message: { role: 'user', content: [{ type: 'text', text: 'ship it' }] } });
-    expect(chat.sendMessage).toHaveBeenCalledWith('chat-1', 'ship it');
+    expect(chat.sendMessage).toHaveBeenCalledWith('chat-1', 'ship it', [], [], expect.any(String));
+  });
+
+  test('a prompt typed on claude.ai is submitted under its own uuid', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+
+    mockAttachOpts.onInboundMessage({
+      uuid: '11111111-2222-3333-4444-555555555555',
+      message: { role: 'user', content: [{ type: 'text', text: 'ship it' }] },
+    });
+    expect(chat.sendMessage).toHaveBeenCalledWith('chat-1', 'ship it', [], [], '11111111-2222-3333-4444-555555555555');
+  });
+
+  test('the desktop tab is told to paint a bubble for a prompt it never composed', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+
+    mockAttachOpts.onInboundMessage({ message: { role: 'user', content: [{ type: 'text', text: 'ship it' }] } });
+
+    const notice = chat._send.mock.calls.find(c => c[0] === 'remote:user-message');
+    expect(notice).toBeDefined();
+    expect(notice[1]).toMatchObject({ sessionId: 'chat-1', text: 'ship it' });
+    // Same uuid the prompt went into the session under, so the bubble's rewind
+    // button points at the turn it actually started.
+    expect(notice[1].uuid).toBe(chat.sendMessage.mock.calls[0][4]);
+  });
+
+  test('a send that fails leaves the tab without a bubble', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+    chat.sendMessage.mockImplementation(() => { throw new Error('session has ended'); });
+
+    mockAttachOpts.onInboundMessage({ message: { role: 'user', content: [{ type: 'text', text: 'ship it' }] } });
+
+    expect(chat._send.mock.calls.some(c => c[0] === 'remote:user-message')).toBe(false);
   });
 
   test('an inbound prompt is not echoed back out', async () => {

@@ -46,6 +46,7 @@
  */
 
 const fs = require('fs');
+const { randomUUID } = require('crypto');
 const { settingsFile } = require('../utils/paths');
 const { loadBridge, getUnavailableReason, getApiBaseUrl } = require('../utils/claudeBridge');
 const {
@@ -626,6 +627,21 @@ class RemoteControlService {
    *
    * A prompt that arrived *from* claude.ai is skipped: it is already on screen
    * there, and writing it back would show it twice.
+   *
+   * WHY THE uuid IS NOT OPTIONAL
+   * ---------------------------
+   * The relay fans every event a worker writes back down that worker's own
+   * inbound stream, and `uuid` is the only thing the SDK's ingress filter has
+   * to tell "this is my own write coming home" from "a human typed this on
+   * claude.ai" (`handle.write` remembers `msg.uuid`; the ingress drops frames
+   * whose uuid it recognises). An unstamped prompt therefore comes back as a
+   * fresh inbound prompt and gets submitted to the local session a second
+   * time. The uuid is the one the renderer already minted for this prompt, so
+   * the mirrored message and the local transcript entry are the same message.
+   *
+   * `origin` is stamped for the same reason the SDK's own typings insist on
+   * it: "a host wrapping keyboard input must stamp {kind:'human'} explicitly —
+   * absent origin is treated as unattributed".
    */
   _writeUserMessage(mirror, sessionId, data) {
     const text = typeof data.text === 'string' ? data.text : '';
@@ -637,10 +653,15 @@ class RemoteControlService {
     if (!text) return;
     this._write(mirror, {
       type: 'user',
+      uuid: data.uuid || randomUUID(),
       message: { role: 'user', content: [{ type: 'text', text }] },
       parent_tool_use_id: null,
+      origin: { kind: 'human' },
       session_id: sessionId,
     });
+    // A prompt is a turn boundary the other way round: claude.ai starts its
+    // spinner here rather than a second later on the first assistant token.
+    this._reportState(mirror, 'running');
   }
 
   _sendResult(mirror) {
@@ -740,7 +761,18 @@ class RemoteControlService {
 
   // ── Inbound: claude.ai -> local chat session ──────────────────────────────
 
-  /** A prompt typed on claude.ai. */
+  /**
+   * A prompt typed on claude.ai.
+   *
+   * Handing it to ChatService submits it, but that alone leaves the desktop
+   * tab showing an answer to a question nobody can see: the chat view paints
+   * the user's bubble from its own composer, and a prompt that never went
+   * through the composer produces none. So the renderer is told separately,
+   * over the channel the mobile PWA already uses for exactly this (see
+   * RemoteServer's `chat:send`), and with the same uuid the prompt is
+   * submitted under — which is what makes the bubble's rewind button point at
+   * the right turn.
+   */
   _onInboundMessage(sessionId, msg) {
     if (!this._chatService || !this.allowsDriving()) return;
     const mirror = this._mirrors.get(sessionId);
@@ -751,13 +783,16 @@ class RemoteControlService {
 
     // Remembered so the echo this send produces is not written back out.
     mirror.pendingInbound.push(text);
+    const uuid = (typeof msg?.uuid === 'string' && msg.uuid) || randomUUID();
     try {
-      this._chatService.sendMessage(sessionId, text);
+      this._chatService.sendMessage(sessionId, text, [], [], uuid);
     } catch (err) {
       const at = mirror.pendingInbound.indexOf(text);
       if (at !== -1) mirror.pendingInbound.splice(at, 1);
       console.warn('[RemoteControl] inbound send failed:', err?.message);
+      return;
     }
+    this._chatService._send?.('remote:user-message', { sessionId, text, images: [], uuid });
   }
 
   /** Plain text of an inbound SDKMessage, ignoring non-text blocks. */

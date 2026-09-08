@@ -694,8 +694,10 @@ class ChatService {
         session_id: sessionId,
         ...(userMessageUuid ? { uuid: userMessageUuid } : {})
       });
-      // Relay initial user message to remote clients
-      this._emitEvent('chat-user-message', { sessionId, text: prompt, images: images.length });
+      // Relay initial user message to remote clients. The uuid travels with it:
+      // it is the transcript identity of this prompt, and the claude.ai mirror
+      // needs it to recognise its own write when the relay echoes it back.
+      this._emitEvent('chat-user-message', { sessionId, text: prompt, images: images.length, uuid: userMessageUuid || null });
     }
 
     const abortController = new AbortController();
@@ -906,8 +908,9 @@ class ChatService {
         session_id: sessionId,
         ...(userMessageUuid ? { uuid: userMessageUuid } : {})
       });
-      // Relay user message to remote clients so mobile sees it
-      this._emitEvent('chat-user-message', { sessionId, text, images: images.length });
+      // Relay user message to remote clients so mobile sees it. See startSession
+      // for why the uuid rides along.
+      this._emitEvent('chat-user-message', { sessionId, text, images: images.length, uuid: userMessageUuid || null });
       // Fire chat_message trigger for user prompts
       if (typeof text === 'string' && text.trim()) {
         this._emitMessage('user', text, sessionId);
