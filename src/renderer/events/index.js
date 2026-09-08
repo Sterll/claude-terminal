@@ -266,7 +266,17 @@ function resolveTerminalId(projectId, sessionId = null) {
 function findClaudeTerminalForProject(projectId) {
   try {
     const { terminalsState } = require('../state/terminals.state');
-    const terminals = terminalsState.get().terminals;
+    const state = terminalsState.get();
+    const terminals = state.terminals;
+    const activeId = state.activeTerminal;
+
+    if (activeId && terminals.has(activeId)) {
+      const activeTd = terminals.get(activeId);
+      if (activeTd.project?.id === projectId && activeTd.mode === 'terminal' && !activeTd.isBasic) {
+        return activeId;
+      }
+    }
+
     let bestId = null;
     let bestNumericId = -1;
     for (const [id, td] of terminals) {
