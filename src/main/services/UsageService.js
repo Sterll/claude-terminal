@@ -100,12 +100,18 @@ function readCredentialsFor(accountId) {
  * macOS Keychain on darwin, ~/.claude/.credentials.json elsewhere.
  *
  * @param {string|null} accountId
+ * @param {boolean} [force] - skip the cache and re-read the store, for the
+ *   explicit "refresh" gesture: a credential change made outside the app
+ *   (`claude /login` in a terminal) leaves the cached token valid but wrong,
+ *   and only a re-read can tell the two apart. Reserved for that gesture —
+ *   on darwin both stores are Keychain entries, so every forced read is a
+ *   password prompt, which is the whole reason the cache above is that long.
  * @returns {Promise<string|null>}
  */
-async function readOAuthToken(accountId) {
+async function readOAuthToken(accountId, force = false) {
   const entry = entryFor(accountId);
   const now = Date.now();
-  if (now < entry.tokenCacheUntil) return entry.tokenCache;
+  if (!force && now < entry.tokenCacheUntil) return entry.tokenCache;
 
   let token = null;
   let expiresAt = null;
@@ -296,16 +302,19 @@ function fetchUsageFromAPI(token) {
  * Fetch usage data from the OAuth API.
  * There is no second source (the PTY fallback was removed), so a failed fetch
  * marks the cached data stale rather than silently passing it off as fresh.
+ * @param {string|null} accountId
+ * @param {boolean} [force] - re-read the credential store instead of trusting
+ *   the cached token; see readOAuthToken().
  * @returns {Promise<Object|null>}
  */
-async function fetchUsage(accountId) {
+async function fetchUsage(accountId, force = false) {
   const entry = entryFor(accountId);
   if (entry.isFetching) return entry.usageData;
   entry.isFetching = true;
 
   try {
     // Try OAuth API first
-    const token = await readOAuthToken(entry.accountId);
+    const token = await readOAuthToken(entry.accountId, force);
     if (token) {
       try {
         const data = await fetchUsageFromAPI(token);
@@ -430,12 +439,19 @@ function getFetchState(accountId) {
 }
 
 /**
- * Force refresh
+ * Force refresh.
+ *
+ * `force` re-reads the credential store rather than trusting the cached
+ * token — without it, this only re-ran the API call, so the explicit refresh
+ * gesture could not notice an account swapped outside the app (`claude
+ * /login` in a terminal for a bound project's own store, or for the
+ * machine-wide one) until the token cache expired on its own, up to 6h later.
  * @param {string|null} [accountId]
+ * @param {boolean} [force]
  * @returns {Promise<Object>}
  */
-function refreshUsage(accountId) {
-  return fetchUsage(accountId);
+function refreshUsage(accountId, force = false) {
+  return fetchUsage(accountId, force);
 }
 
 /**

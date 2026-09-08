@@ -98,8 +98,17 @@ describe('refresh-usage', () => {
 
     const result = await handlers['refresh-usage']({}, 'acct-team');
 
-    expect(mockUsageService.refreshUsage).toHaveBeenCalledWith('acct-team');
+    expect(mockUsageService.refreshUsage).toHaveBeenCalledWith('acct-team', false);
     expect(result).toEqual({ success: true, data: mockData, accountId: 'acct-team' });
+  });
+
+  test('forwards a forced refresh, so a credential swap made outside the app is not hidden by the cached token', async () => {
+    const mockData = { dailyUsage: 12, maxDaily: 100 };
+    mockUsageService.refreshUsage.mockResolvedValue(mockData);
+
+    await handlers['refresh-usage']({}, 'acct-team', true);
+
+    expect(mockUsageService.refreshUsage).toHaveBeenCalledWith('acct-team', true);
   });
 
   test('returns error on service failure', async () => {
