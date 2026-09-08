@@ -129,6 +129,48 @@ describe('spend limit reported in-band', () => {
     expect(sent.find(s => s.ch === 'lifecycle:end').data.status).toBe('success');
   });
 
+  // The shape the current SDK actually sends: a typed code on the frame
+  // (SDKAssistantMessageError), not the flag. Handled in the same branch as the
+  // flag — testing `message.error` first in its own branch is what used to make
+  // the whole detection unreachable for exactly this case.
+  test.each([
+    ['billing_error', 'a spend cap'],
+    ['rate_limit', 'a rate limit'],
+    ['account_on_hold', 'an account on hold'],
+  ])('offers the account switch on the typed %s code', async (code) => {
+    const sent = await drain([assistant(SPEND_LIMIT, { error: code }), okResult]);
+    expect(limits(sent)).toHaveLength(1);
+    expect(limits(sent)[0].data.activeAccountId).toBe('acc-max');
+  });
+
+  test.each([
+    ['invalid_request', 'a malformed request'],
+    ['overloaded', 'an overloaded upstream'],
+  ])('leaves %s alone — another account would not help', async (code) => {
+    // No result: the turn ends on the failure, so the reported outcome is it.
+    const sent = await drain([assistant('API Error: 400', { error: code })]);
+    expect(limits(sent)).toHaveLength(0);
+    expect(sent.find(s => s.ch === 'lifecycle:end').data.error).toBe(`API error: ${code}`);
+  });
+
+  test('leaves an ordinary reply that explains someone else’s rate limit alone', async () => {
+    // Opens exactly like the CLI's banner, but the limit is GitHub's.
+    const sent = await drain([
+      assistant("You've hit your rate limit for the GitHub API — wait 60s before retrying."),
+      okResult,
+    ]);
+    expect(limits(sent)).toHaveLength(0);
+    expect(sent.find(s => s.ch === 'lifecycle:end').data.status).toBe('success');
+  });
+
+  test('leaves a reply that merely mentions /usage-credits alone', async () => {
+    const sent = await drain([
+      assistant('You can run /usage-credits to see what is left on the org plan.'),
+      okResult,
+    ]);
+    expect(limits(sent)).toHaveLength(0);
+  });
+
   test('leaves a plain assistant turn alone', async () => {
     const sent = await drain([assistant('Done — the refactor is in.'), okResult]);
     expect(limits(sent)).toHaveLength(0);

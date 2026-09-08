@@ -7792,10 +7792,23 @@ class ChatView extends BaseComponent {
     if (sid !== sessionId) return;
     // A limit reported in-band leaves the session alive, so the switch has to
     // close it — and that abort comes back as an interrupted `done` under the
-    // same handle. It is our own doing, not a turn ending: honouring it would
-    // stamp an interrupted marker across the transcript and stop the spinner
-    // the restart has just started.
-    if (switchingAccount) return;
+    // same handle. It is our own doing, not a turn ending: the interrupted
+    // marker must not be stamped across the transcript, and the spinner the
+    // restart has just started must not be cleared. The turn's cards are a
+    // different matter — they really are over, and leaving them spinning is
+    // what the plain `return` used to do.
+    if (switchingAccount) {
+      isAborting = false;
+      finalizeStreamBlock();
+      resolveAllPendingCards();
+      for (const [, card] of toolCards) completeToolCard(card);
+      toolCards.clear();
+      for (const [idx, info] of taskToolIndices) {
+        completeSubagentCard(info.card);
+        taskToolIndices.delete(idx);
+      }
+      return;
+    }
     const wasInterrupted = interrupted || isAborting;
     isAborting = false;
     removeThinkingIndicator();

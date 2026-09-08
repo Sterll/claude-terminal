@@ -11,20 +11,15 @@ const { execFileSync } = require('child_process');
 const ModelCatalogService = require('./ModelCatalogService');
 const AccountManager = require('./AccountManager');
 const { isCliFailureText } = require('../../shared/cli-failure-text');
+const { isApiErrorMessage } = require('../../shared/api-error');
 const { isPermissionMode } = require('../../shared/permission-modes');
 
 /**
- * Is this assistant message the CLI reporting an API failure rather than
- * answering — a spend cap, a refusal, an overloaded upstream?
- *
- * The CLI carries the flag as `isApiErrorMessage` internally, which is the
- * spelling written to the ~/.claude/projects transcript, and serialises it to
- * stream-json as `is_api_error_message`. Which of the two survives to here is
- * the SDK's business, so both count.
+ * SDKAssistantMessageError codes that mean *this account* cannot run the turn
+ * and another one could. A refusal, an overloaded upstream or a bad request
+ * are not on the list: switching accounts would not help.
  */
-function isApiErrorMessage(message) {
-  return message?.isApiErrorMessage === true || message?.is_api_error_message === true;
-}
+const ACCOUNT_LIMIT_ERROR_CODES = ['billing_error', 'rate_limit', 'account_on_hold'];
 
 let sdkPromise = null;
 let resolvedRuntime = null;
@@ -1531,24 +1526,34 @@ class ChatService {
         // flagged `is_error` or carrying an error subtype. Fork-guard refusals
         // never reach this point (`continue` above) — the renderer auto-resumes
         // those, so they are not a session outcome.
-        if (message.type === 'assistant' && message.error) {
-          inbandError = `API error: ${message.error}`;
-        } else if (message.type === 'assistant') {
-          // The other in-band shape: a refusal handed back as ordinary
-          // assistant text, with no `error` field and no throw — only a flag.
-          // A spend cap arrives this way, and because the stream stays open the
-          // tab keeps its process, which keeps the credentials of the account
-          // that just ran out. Every retry then hits the same wall, which is
-          // why quitting the app used to be the only way through.
+        if (message.type === 'assistant' && (message.error || isApiErrorMessage(message))) {
+          // An in-band failure: the CLI answers the turn with an ordinary
+          // assistant message reporting the error, and leaves the stream open —
+          // so the tab keeps the process it was spawned with, and that process
+          // keeps the credentials of the account that just ran out. Every retry
+          // then hits the same wall, which is why quitting the app used to be
+          // the only way through a spend cap.
+          //
+          // It arrives two ways and the two must be handled together, not one
+          // in the other's `else`: a typed `error` code on the frame
+          // (SDKAssistantMessageError, what the current SDK sends), or the flag
+          // with the failure as text (what the transcript carries, and what an
+          // older producer sends). Testing the code first and the flag second
+          // in one branch is what keeps the coded case from shadowing the
+          // limit check entirely.
           const text = assistantText(message);
-          if (isApiErrorMessage(message)) {
-            inbandError = text || 'API error';
-            if (this._isUsageLimitError(text)) pendingAccountLimit = text;
-          } else if (this._isCliFailureText(text) && this._isUsageLimitError(text)) {
-            // Same failure, no flag on it. Losing the offer to a renamed field
-            // is how this bug got here, so the CLI's own phrasing gets a second
-            // look — anchored (isCliFailureText), because Claude *discussing* a
-            // spend limit has to stay an ordinary reply.
+          const code = typeof message.error === 'string' ? message.error : '';
+          inbandError = code ? `API error: ${code}` : (text || 'API error');
+          if (ACCOUNT_LIMIT_ERROR_CODES.includes(code) || this._isUsageLimitError(text)) {
+            pendingAccountLimit = text || inbandError;
+          }
+        } else if (message.type === 'assistant') {
+          // The same failure with nothing on it — no code, no flag. The CLI's
+          // own phrasing gets a second look, anchored (isCliFailureText),
+          // because Claude *discussing* a spend limit has to stay an ordinary
+          // reply.
+          const text = assistantText(message);
+          if (this._isCliFailureText(text) && this._isUsageLimitError(text)) {
             pendingAccountLimit = text;
           }
         } else if (message.type === 'result') {
