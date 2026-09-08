@@ -1746,6 +1746,8 @@
     "initializingRuntime": "正在搜索运行时...",
     "interrupted": "被打断",
     "permissionWaitingSince": "等待{seconds}",
+    "permissionExpired": "已过期：5 分钟内未响应",
+    "permissionAnsweredElsewhere": "已在其他位置响应",
     "permissionNotification": "{tool} 的权限请求正在等待您的回复",
     "resuming": "继续谈话...",
     "conversationResumed": "谈话继续",

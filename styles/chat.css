@@ -4607,6 +4607,18 @@ hr.chat-plan-separator {
   white-space: nowrap;
 }
 
+/* A prompt settled without this card — expired, interrupted, or answered from
+   another surface. Keep it readable; just make clear nothing is waiting. */
+.chat-perm-card.resolved.stale,
+.chat-plan-card.resolved.stale,
+.chat-question-card.resolved.stale {
+  border-color: rgba(245, 158, 11, 0.25);
+}
+
+.chat-perm-timer.stale {
+  color: var(--warning);
+}
+
 .chat-perm-card.perm-attention .chat-perm-actions {
   animation: perm-pulse 1.5s ease-in-out 3;
 }

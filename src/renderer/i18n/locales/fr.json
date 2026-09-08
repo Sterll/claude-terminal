@@ -1746,6 +1746,8 @@
     "initializingRuntime": "Recherche du runtime...",
     "interrupted": "Interrompu",
     "permissionWaitingSince": "En attente depuis {seconds}s",
+    "permissionExpired": "Expirée : aucune réponse en 5 minutes",
+    "permissionAnsweredElsewhere": "Répondue ailleurs",
     "permissionNotification": "Une permission pour {tool} attend votre réponse",
     "resuming": "Reprise de la conversation...",
     "conversationResumed": "Conversation reprise",

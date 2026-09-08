@@ -1112,7 +1112,7 @@ function _ensureChatBridge() {
 
   const chatService = require('./ChatService');
   chatService.setRemoteEventCallback((channel, data) => {
-    const relayed = ['chat-message', 'chat-idle', 'chat-done', 'chat-error', 'chat-permission-request', 'chat-user-message', 'session:closed', 'session:tab-renamed'];
+    const relayed = ['chat-message', 'chat-idle', 'chat-done', 'chat-error', 'chat-permission-request', 'chat-permission-resolved', 'chat-user-message', 'session:closed', 'session:tab-renamed'];
     if (!relayed.includes(channel)) return;
     if (channel === 'chat-user-message') {
       console.debug(`[Remote] Bridge received chat-user-message sid=${data?.sessionId} text="${(data?.text || '').slice(0, 50)}"`);
@@ -1130,7 +1130,7 @@ function _ensureChatBridge() {
     // Buffer chat events per session for late-joining clients
     const sid = data?.sessionId;
     if (sid) {
-      const buffered = ['chat-message', 'chat-user-message', 'chat-permission-request', 'chat-idle', 'chat-done'];
+      const buffered = ['chat-message', 'chat-user-message', 'chat-permission-request', 'chat-permission-resolved', 'chat-idle', 'chat-done'];
       if (buffered.includes(channel)) {
         if (!_sessionMessageBuffer.has(sid)) _sessionMessageBuffer.set(sid, []);
         const buf = _sessionMessageBuffer.get(sid);

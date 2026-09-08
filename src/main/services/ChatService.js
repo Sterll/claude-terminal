@@ -343,6 +343,11 @@ function _sameDeltaTarget(a, b, field) {
     && (a.session_id || null) === (b.session_id || null);
 }
 
+// Ordinary tool prompts auto-deny after this long so an unattended session does
+// not block forever. Interactive tools (plan review, questions) are exempt.
+const PERMISSION_TIMEOUT_MS = 5 * 60 * 1000;
+const PERMISSION_TIMEOUT_MESSAGE = 'No answer from the user within 5 minutes. Ask again if the action is still needed.';
+
 class ChatService {
   constructor() {
     /** @type {Map<string, Object>} */
@@ -935,18 +940,25 @@ class ChatService {
     }
 
     const requestId = `perm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const PERMISSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+    // Plan reviews and questions exist to wait for the human — the CLI itself
+    // waits on them indefinitely — so they never time out. Only ordinary tool
+    // prompts auto-deny, so an unattended session does not block forever.
+    const timesOut = !INTERACTIVE_TOOLS.includes(toolName);
 
     return new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        if (this.pendingPermissions.has(requestId)) {
-          this.pendingPermissions.delete(requestId);
-          console.warn(`[ChatService] Permission ${requestId} timed out after 5 minutes, denying`);
-          resolve({ behavior: 'deny' });
-        }
-      }, PERMISSION_TIMEOUT_MS);
+      const timeoutId = timesOut ? setTimeout(() => {
+        if (!this.pendingPermissions.has(requestId)) return;
+        this.pendingPermissions.delete(requestId);
+        console.warn(`[ChatService] Permission ${requestId} (${toolName}) timed out after ${PERMISSION_TIMEOUT_MS / 60000} minutes, denying`);
+        // The CLI validates this shape: a deny without `message` is rejected as
+        // "The canUseTool callback returned an invalid permission result" and
+        // reaches the model as a harness error instead of a denial.
+        resolve({ behavior: 'deny', message: PERMISSION_TIMEOUT_MESSAGE });
+        this._notifyPermissionResolved(sessionId, requestId, toolName, 'timeout');
+      }, PERMISSION_TIMEOUT_MS) : null;
 
-      this.pendingPermissions.set(requestId, { resolve, reject, sessionId, timeoutId });
+      this.pendingPermissions.set(requestId, { resolve, reject, sessionId, toolName, timeoutId });
 
       this._send('chat-permission-request', {
         sessionId,
@@ -975,31 +987,46 @@ class ChatService {
 
       if (options.signal) {
         options.signal.addEventListener('abort', () => {
+          if (!this.pendingPermissions.has(requestId)) return;
           clearTimeout(timeoutId);
           this.pendingPermissions.delete(requestId);
           reject(new Error('Aborted'));
+          this._notifyPermissionResolved(sessionId, requestId, toolName, 'aborted');
         }, { once: true });
       }
     });
   }
 
   /**
-   * Resolve a pending permission request (called from IPC)
+   * Tell every surface that may be showing a prompt (chat card, Control Tower,
+   * remote PWA) that it is settled, so none of them keeps offering an answer
+   * that has nothing left to resolve. `reason` is 'answered' | 'timeout' | 'aborted'.
+   */
+  _notifyPermissionResolved(sessionId, requestId, toolName, reason) {
+    this._send('chat-permission-resolved', { sessionId, requestId, toolName, reason });
+  }
+
+  /**
+   * Resolve a pending permission request (called from IPC, the remote server
+   * and the Control Tower).
+   * @returns {boolean} false when nothing was pending under that id — it timed
+   *   out, was aborted, or another surface already answered it.
    */
   resolvePermission(requestId, result) {
     const pending = this.pendingPermissions.get(requestId);
-    if (pending) {
-      this.pendingPermissions.delete(requestId);
-      clearTimeout(pending.timeoutId);
-      // Check that session is still alive before resolving — the SDK will try to
-      // write the response to ProcessTransport which may already be closed.
-      const session = this.sessions.get(pending.sessionId);
-      if (!session) {
-        console.warn(`[ChatService] Permission ${requestId} resolved but session ${pending.sessionId} already closed, ignoring`);
-        return;
-      }
-      pending.resolve(result);
+    if (!pending) return false;
+    this.pendingPermissions.delete(requestId);
+    clearTimeout(pending.timeoutId);
+    // Check that session is still alive before resolving — the SDK will try to
+    // write the response to ProcessTransport which may already be closed.
+    const session = this.sessions.get(pending.sessionId);
+    if (!session) {
+      console.warn(`[ChatService] Permission ${requestId} resolved but session ${pending.sessionId} already closed, ignoring`);
+      return false;
     }
+    pending.resolve(result);
+    this._notifyPermissionResolved(pending.sessionId, requestId, pending.toolName, 'answered');
+    return true;
   }
 
   /**

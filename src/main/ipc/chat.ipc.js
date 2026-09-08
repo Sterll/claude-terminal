@@ -37,9 +37,11 @@ function registerChatHandlers() {
     chatService.closeSession(sessionId);
   });
 
-  // Permission response from renderer (allow/deny)
-  ipcMain.on('chat-permission-response', (_event, { requestId, result }) => {
-    chatService.resolvePermission(requestId, result);
+  // Permission response from renderer (allow/deny). Resolves to false when the
+  // prompt is no longer pending (timed out, aborted, or answered elsewhere) so
+  // the card can say so instead of showing an approval that went nowhere.
+  ipcMain.handle('chat-permission-response', (_event, { requestId, result }) => {
+    return chatService.resolvePermission(requestId, result);
   });
 
   // Interrupt current turn (stop button)
