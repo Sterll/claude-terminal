@@ -2256,6 +2256,7 @@
     "notAllowed": "Le contrôle à distance est désactivé.",
     "notAllowedHint": "Autorisez-le dans Réglages → Claude → Contrôle à distance.",
     "goToTab": "Aller à l’onglet",
+    "tabGone": "Cet onglet n’est plus ouvert.",
     "stopSharing": "Arrêter",
     "stateRunning": "En cours",
     "stateIdle": "Au repos",

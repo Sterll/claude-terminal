@@ -2253,6 +2253,7 @@
     "notAllowed": "El control remoto está desactivado.",
     "notAllowedHint": "Actívalo en Ajustes → Claude → Control remoto.",
     "goToTab": "Ir a la pestaña",
+    "tabGone": "Esa pestaña ya no está abierta.",
     "stopSharing": "Detener",
     "stateRunning": "Trabajando",
     "stateIdle": "Inactiva",

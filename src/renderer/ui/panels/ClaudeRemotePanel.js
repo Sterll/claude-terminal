@@ -50,6 +50,31 @@ function projectLabel(session) {
   return parts[parts.length - 1] || session.cwd;
 }
 
+/**
+ * The open tab that owns a shared session, or null when there is none.
+ *
+ * The link is the ChatService session id this screen lists, and the chat view
+ * is the only dependable holder of it: `termData.claudeSessionId` starts out
+ * as that id, but ChatView overwrites it with the SDK's own session UUID the
+ * moment the first message lands — so matching on it alone finds nothing for
+ * any conversation old enough to be worth sharing. It is still tried, along
+ * with the tab id, for tabs that have not got that far yet.
+ */
+function findTab(sessionId) {
+  try {
+    const { terminalsState } = require('../../state/terminals.state');
+    for (const [id, td] of terminalsState.get().terminals) {
+      const live = td.chatView?.getSessionId?.();
+      if (live === sessionId || td.claudeSessionId === sessionId || id === sessionId) {
+        return { terminalId: id, name: td.name || null, project: td.project || null };
+      }
+    }
+  } catch (err) {
+    console.warn('[ClaudeRemotePanel] could not read the tab list:', err?.message);
+  }
+  return null;
+}
+
 function stateLabel(state) {
   if (state === 'running') return t('claudeRemote.stateRunning', 'Working');
   if (state === 'requires_action') return t('claudeRemote.stateAction', 'Waiting for you');
@@ -96,21 +121,38 @@ function emptyHtml() {
   </div>`;
 }
 
+/**
+ * One shared conversation.
+ *
+ * Titled by its tab, because that is the name the user gave the conversation
+ * and the thing they are looking for when several are shared at once. The
+ * project keeps its place on the meta line, where it says which of them this
+ * is — but only when it is not already the title, which it is for a tab that
+ * was never renamed.
+ */
 function rowHtml(s) {
   const stateClass = s.state === 'running' ? 'running' : s.state === 'requires_action' ? 'action' : 'idle';
+  const tab = findTab(s.sessionId);
+  const project = projectLabel(s);
+  const title = tab?.name || project;
+  // Nothing to go to: the tab was closed while the mirror was still up.
+  const goneAttrs = tab
+    ? ''
+    : ` disabled title="${escapeHtml(t('claudeRemote.tabGone', 'That tab is no longer open.'))}"`;
   return `
     <div class="crp-row" data-session-id="${escapeHtml(s.sessionId)}">
       <span class="crp-dot ${stateClass}"></span>
       <div class="crp-row-text">
-        <div class="crp-row-title">${escapeHtml(projectLabel(s))}</div>
+        <div class="crp-row-title">${escapeHtml(title)}</div>
         <div class="crp-row-meta">
           <span>${escapeHtml(stateLabel(s.state))}</span>
+          ${project && project !== title ? `<span class="crp-sep">·</span><span>${escapeHtml(project)}</span>` : ''}
           ${s.branch ? `<span class="crp-sep">·</span><span>${escapeHtml(s.branch)}</span>` : ''}
           ${s.startedAt ? `<span class="crp-sep">·</span><span>${escapeHtml(since(s.startedAt))}</span>` : ''}
         </div>
       </div>
       <div class="crp-row-actions">
-        <button class="crp-row-btn" data-action="goto" data-session-id="${escapeHtml(s.sessionId)}">${escapeHtml(t('claudeRemote.goToTab', 'Go to tab'))}</button>
+        <button class="crp-row-btn" data-action="goto" data-session-id="${escapeHtml(s.sessionId)}"${goneAttrs}>${escapeHtml(t('claudeRemote.goToTab', 'Go to tab'))}</button>
         <button class="crp-row-btn danger" data-action="stop" data-session-id="${escapeHtml(s.sessionId)}">${escapeHtml(t('claudeRemote.stopSharing', 'Stop'))}</button>
       </div>
     </div>
@@ -152,18 +194,35 @@ async function refresh() {
 /**
  * Bring the tab that owns a shared session to the front.
  *
- * A chat tab records its ChatService session id as `claudeSessionId`, which is
- * the only link between what this screen lists and what the tab bar shows.
+ * Three steps, none of which is optional: this screen is a panel of its own, so
+ * the Claude view has to come back first; the tab list is filtered per project,
+ * so a tab belonging to another project is not even mounted until the filter
+ * moves; and only then does activating it mean anything. The filter is set
+ * before the activation because `filterByProject` re-activates a project's
+ * last-used tab whenever the current one is filtered out, which would undo the
+ * choice made here. Same sequence as the Control Tower's own jump-to-agent.
  */
 function goToTab(sessionId) {
+  const tab = findTab(sessionId);
+  if (!tab) return;
   try {
-    const terminalsState = require('../../state/terminals.state');
+    const claudeTab = document.querySelector('[data-tab="claude"]');
+    if (claudeTab) claudeTab.click();
+
     const TerminalManager = require('../components/TerminalManager');
-    let found = null;
-    terminalsState.get().terminals.forEach((termData, id) => {
-      if (termData.claudeSessionId === sessionId) found = id;
+    if (tab.project?.id) {
+      const { setSelectedProjectFilter, getProjectIndex } = require('../../state/projects.state');
+      const idx = getProjectIndex(tab.project.id);
+      if (idx >= 0) {
+        setSelectedProjectFilter(idx);
+        TerminalManager.filterByProject(idx);
+      }
+    }
+    TerminalManager.setActiveTerminal(tab.terminalId);
+    // The tab click above defers view work that can re-activate another tab.
+    requestAnimationFrame(() => {
+      try { TerminalManager.setActiveTerminal(tab.terminalId); } catch (_) { /* the tab went away */ }
     });
-    if (found !== null) TerminalManager.setActiveTerminal(found);
   } catch (err) {
     console.warn('[ClaudeRemotePanel] could not reach the tab:', err?.message);
   }

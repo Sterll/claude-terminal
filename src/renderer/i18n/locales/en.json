@@ -2256,6 +2256,7 @@
     "notAllowed": "Remote Control is turned off.",
     "notAllowedHint": "Allow it in Settings → Claude → Remote Control.",
     "goToTab": "Go to tab",
+    "tabGone": "That tab is no longer open.",
     "stopSharing": "Stop",
     "stateRunning": "Working",
     "stateIdle": "Idle",

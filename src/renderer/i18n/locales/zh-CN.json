@@ -2256,6 +2256,7 @@
     "notAllowed": "远程控制已关闭。",
     "notAllowedHint": "请在 设置 → Claude → 远程控制 中开启。",
     "goToTab": "前往标签页",
+    "tabGone": "该标签页已关闭。",
     "stopSharing": "停止",
     "stateRunning": "进行中",
     "stateIdle": "空闲",
