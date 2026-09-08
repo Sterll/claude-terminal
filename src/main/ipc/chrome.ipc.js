@@ -23,6 +23,14 @@ function registerChromeHandlers() {
   // the toggle, so the browser side is ready before the first session needs it.
   ipcMain.handle('chrome-install-host', async () => {
     try {
+      // This is the one handler with a system-level side effect — it writes
+      // native messaging manifests and, on Windows, HKCU keys. It re-reads the
+      // opt-in rather than trusting the caller: the CSP means injected markup
+      // cannot reach IPC today, and this is what keeps that from being the only
+      // thing standing between a chat message and the registry.
+      if (!chromeBridgeService.isEnabled()) {
+        return { success: false, error: 'disabled' };
+      }
       return { success: true, result: await chromeBridgeService.ensureNativeHost(true) };
     } catch (err) {
       console.error('[chrome-install-host] Error:', err.message);

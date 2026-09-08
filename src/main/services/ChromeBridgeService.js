@@ -280,6 +280,17 @@ class ChromeBridgeService {
     }
   }
 
+  /** The manifest the extension reads to find our native host. */
+  _manifestBody(wrapper) {
+    return JSON.stringify({
+      name: HOST_NAME,
+      description: 'Claude Terminal Browser Extension Native Host',
+      path: wrapper,
+      type: 'stdio',
+      allowed_origins: [`chrome-extension://${EXTENSION_ID}/`]
+    }, null, 2);
+  }
+
   /** Write the wrapper that Chrome will exec, pointing at our bundled binary. */
   async _writeWrapper(cli) {
     const wrapper = this._wrapperPath();
@@ -292,17 +303,43 @@ class ChromeBridgeService {
     return wrapper;
   }
 
-  /** Point the installed Windows browsers' registry keys at our manifest. */
-  _registerWindows(manifestPath, browsers) {
-    const jobs = browsers
-      .map(browser => ({ browser, key: BROWSERS[browser]?.win32?.registryKey }))
-      .filter(j => j.key);
-    return Promise.all(jobs.map(({ browser, key }) => new Promise(resolve => {
-      execFile('reg', ['add', `${key}\\${HOST_NAME}`, '/ve', '/t', 'REG_SZ', '/d', manifestPath, '/f'], err => {
-        if (err) console.warn(`[ChromeBridge] Registry registration failed for ${browser}: ${err.message}`);
-        resolve();
+  /**
+   * The manifest a Windows browser is currently pointed at, or '' when it is
+   * pointed at nothing.
+   *
+   * Windows keeps no well-known directory: the registry key IS the
+   * registration, so it is the only thing that can answer "does this browser
+   * already reach a working host". Reading it is what makes adoption possible
+   * here at all — the file check the other platforms use looks in a directory
+   * of ours that Claude Code never writes to, so on Windows it could only ever
+   * answer no, and we would overwrite their key every time.
+   */
+  _readWindowsHostPath(key) {
+    return new Promise(resolve => {
+      execFile('reg', ['query', `${key}\\${HOST_NAME}`, '/ve'], (err, stdout) => {
+        if (err) return resolve('');
+        // "    (Default)    REG_SZ    C:\path\to\manifest.json"
+        const line = String(stdout).split(/\r?\n/).find(l => l.includes('REG_SZ'));
+        resolve(line ? line.slice(line.indexOf('REG_SZ') + 6).trim() : '');
       });
-    })));
+    });
+  }
+
+  /** Point one Windows browser's registry key at our manifest. */
+  _registerWindowsBrowser(key, manifestPath) {
+    return new Promise(resolve => {
+      execFile('reg', ['add', `${key}\\${HOST_NAME}`, '/ve', '/t', 'REG_SZ', '/d', manifestPath, '/f'], err => {
+        if (err) console.warn(`[ChromeBridge] Registry registration failed: ${err.message}`);
+        resolve(!err);
+      });
+    });
+  }
+
+  /** Drop one Windows browser's registry key. An absent key is not an error. */
+  _unregisterWindowsBrowser(key) {
+    return new Promise(resolve => {
+      execFile('reg', ['delete', `${key}\\${HOST_NAME}`, '/f'], () => resolve());
+    });
   }
 
   /**
@@ -353,16 +390,45 @@ class ChromeBridgeService {
     const browsers = await this._installedBrowsers();
     if (browsers.length === 0) return { ...empty, error: 'no-browser-found' };
 
-    // Windows resolves native hosts through the registry, so one manifest in a
-    // directory of ours serves every browser. Elsewhere each browser reads its
-    // own directory, so each needs its own copy.
-    const targets = process.platform === 'win32'
-      ? [{ browser: 'windows', dir: this._windowsManifestDir() }]
-      : this._nativeMessagingDirs().filter(t => browsers.includes(t.browser));
-
     let wrapper = null;
     const installed = [];
     const adopted = [];
+
+    // Windows resolves native hosts through the registry rather than a
+    // well-known directory, so the decision is made per browser by reading the
+    // key — the same per-browser adopt-or-install decision the other platforms
+    // make by reading each browser's manifest, just against the store that
+    // actually governs here.
+    if (process.platform === 'win32') {
+      const manifestPath = path.join(this._windowsManifestDir(), `${HOST_NAME}.json`);
+      for (const browser of browsers) {
+        const key = BROWSERS[browser]?.win32?.registryKey;
+        if (!key) continue;
+        const current = await this._readWindowsHostPath(key);
+        // Already reaching a working host — Claude Code's, or ours from a
+        // previous run. Either speaks the same protocol, so leave it be.
+        if (current && await this._manifestIsUsable(current)) {
+          adopted.push(browser);
+          continue;
+        }
+        try {
+          if (!wrapper) {
+            wrapper = await this._writeWrapper(cli);
+            await fsp.mkdir(path.dirname(manifestPath), { recursive: true });
+            await fsp.writeFile(manifestPath, this._manifestBody(wrapper), 'utf8');
+          }
+          if (await this._registerWindowsBrowser(key, manifestPath)) installed.push(browser);
+        } catch (e) {
+          console.warn(`[ChromeBridge] Could not install native host for ${browser}: ${e.message}`);
+        }
+      }
+      const okWin = installed.length + adopted.length > 0;
+      if (!okWin) return { ...empty, error: 'install-failed' };
+      if (installed.length) console.log(`[ChromeBridge] Installed native host for: ${installed.join(', ')}`);
+      return { ok: okWin, installed, adopted };
+    }
+
+    const targets = this._nativeMessagingDirs().filter(t => browsers.includes(t.browser));
 
     for (const t of targets) {
       const manifestPath = path.join(t.dir, `${HOST_NAME}.json`);
@@ -376,21 +442,11 @@ class ChromeBridgeService {
       try {
         if (!wrapper) wrapper = await this._writeWrapper(cli);
         await fsp.mkdir(t.dir, { recursive: true });
-        await fsp.writeFile(path.join(t.dir, `${HOST_NAME}.json`), JSON.stringify({
-          name: HOST_NAME,
-          description: 'Claude Terminal Browser Extension Native Host',
-          path: wrapper,
-          type: 'stdio',
-          allowed_origins: [`chrome-extension://${EXTENSION_ID}/`]
-        }, null, 2), 'utf8');
+        await fsp.writeFile(path.join(t.dir, `${HOST_NAME}.json`), this._manifestBody(wrapper), 'utf8');
         installed.push(t.browser);
       } catch (e) {
         console.warn(`[ChromeBridge] Could not install manifest for ${t.browser}: ${e.message}`);
       }
-    }
-
-    if (process.platform === 'win32' && installed.length > 0) {
-      await this._registerWindows(path.join(this._windowsManifestDir(), `${HOST_NAME}.json`), browsers);
     }
 
     const ok = installed.length + adopted.length > 0;
@@ -407,11 +463,34 @@ class ChromeBridgeService {
    */
   async removeNativeHost() {
     const wrapper = this._wrapperPath();
-    const targets = process.platform === 'win32'
-      ? [{ browser: 'windows', dir: this._windowsManifestDir() }]
-      : this._nativeMessagingDirs();
     const removed = [];
     const kept = [];
+
+    // Windows: the registration is the key, so it is the key that has to be
+    // checked before anything is deleted. Blanket-deleting every browser's key
+    // is how turning our toggle off used to break a Claude Code install that
+    // had never involved us — the key it deleted was theirs.
+    if (process.platform === 'win32') {
+      const ours = path.join(this._windowsManifestDir(), `${HOST_NAME}.json`);
+      for (const [browser, def] of Object.entries(BROWSERS)) {
+        const key = def.win32?.registryKey;
+        if (!key) continue;
+        const current = await this._readWindowsHostPath(key);
+        if (!current) continue;
+        if (path.normalize(current).toLowerCase() !== path.normalize(ours).toLowerCase()) {
+          kept.push(browser);
+          continue;
+        }
+        await this._unregisterWindowsBrowser(key);
+        removed.push(browser);
+      }
+      // The manifest only mattered to the keys that named it.
+      if (removed.length) await fsp.unlink(ours).catch(() => {});
+      this._hostReady = null;
+      return { removed, kept };
+    }
+
+    const targets = this._nativeMessagingDirs();
     for (const t of targets) {
       const manifestPath = path.join(t.dir, `${HOST_NAME}.json`);
       try {
@@ -421,21 +500,8 @@ class ChromeBridgeService {
         removed.push(t.browser);
       } catch { /* absent or unreadable — nothing to undo */ }
     }
-    // A registry key outliving its manifest points Chrome at a file that is no
-    // longer there, so it goes with the manifest it described.
-    if (process.platform === 'win32' && removed.length > 0) {
-      await this._unregisterWindows();
-    }
     this._hostReady = null;
     return { removed, kept };
-  }
-
-  /** Drop the registry keys we added. Absent keys are not an error. */
-  _unregisterWindows() {
-    const keys = Object.values(BROWSERS).map(def => def.win32?.registryKey).filter(Boolean);
-    return Promise.all(keys.map(key => new Promise(resolve => {
-      execFile('reg', ['delete', `${key}\\${HOST_NAME}`, '/f'], () => resolve());
-    })));
   }
 
   // ── Session wiring ────────────────────────────────────────────────────────
@@ -452,6 +518,14 @@ class ChromeBridgeService {
    */
   getSessionConfig() {
     if (!this.isEnabled() || !this.isSupported()) return null;
+    // A detection that has already run and found nothing is a reason not to
+    // wire this up: every session would spawn an MCP server that cannot reach
+    // a browser, while the appended prompt tells the model it can drive one —
+    // so it calls the tools and burns turns on failures. A detection that has
+    // never run does not block the session; it is kicked off instead, and the
+    // next session gets the benefit.
+    if (this._detection && !this._detection.installed) return null;
+    if (!this._detection) this.detectExtension().catch(() => {});
     const config = this.getMcpServerConfig();
     if (!config) return null;
     this.ensureNativeHost().catch(() => {});

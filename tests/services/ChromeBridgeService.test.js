@@ -314,6 +314,121 @@ describe('ChromeBridgeService — native host installation', () => {
   });
 });
 
+/**
+ * A stand-in for the Windows registry, keyed the way `reg query` addresses it.
+ * The service reads it through execFile, so the mock has to answer in `reg`'s
+ * own output shape — that parse is the whole reason adoption can work here.
+ */
+const registry = {};
+const CHROME_KEY = ['HKCU', 'Software', 'Google', 'Chrome', 'NativeMessagingHosts', HOST_NAME].join('\\');
+
+function ourWindowsManifest() {
+  return path.join(process.env.LOCALAPPDATA, 'Claude Terminal', 'ChromeNativeHost', `${HOST_NAME}.json`);
+}
+
+/** A manifest as Claude Code leaves it: elsewhere on disk, pointing at its own binary. */
+function claudeCodeManifest() {
+  const dir = path.join(mockTmpHome, 'ClaudeCode');
+  fs.mkdirSync(dir, { recursive: true });
+  const exe = path.join(dir, 'claude.exe');
+  fs.writeFileSync(exe, '');
+  const manifest = path.join(dir, `${HOST_NAME}.json`);
+  fs.writeFileSync(manifest, JSON.stringify({
+    name: HOST_NAME,
+    path: exe,
+    type: 'stdio',
+    allowed_origins: [`chrome-extension://${EXTENSION_ID}/`],
+  }));
+  return manifest;
+}
+
+function installWindowsChrome() {
+  process.env.LOCALAPPDATA = path.join(mockTmpHome, 'AppData', 'Local');
+  fs.mkdirSync(path.join(process.env.LOCALAPPDATA, 'Google', 'Chrome', 'User Data'), { recursive: true });
+}
+
+beforeEach(() => {
+  for (const k of Object.keys(registry)) delete registry[k];
+  const { execFile } = require('child_process');
+  execFile.mockImplementation((cmd, args, cb) => {
+    const [verb, key] = args;
+    if (verb === 'query') {
+      const value = registry[key];
+      if (!value) return cb(new Error('ERROR: The system was unable to find the specified registry key'), '', '');
+      return cb(null, `\r\n${key}\r\n    (Default)    REG_SZ    ${value}\r\n\r\n`, '');
+    }
+    if (verb === 'add') registry[key] = args[args.indexOf('/d') + 1];
+    if (verb === 'delete') delete registry[key];
+    cb(null, '', '');
+  });
+});
+
+describe('ChromeBridgeService — Windows adoption', () => {
+  // The case the file check could not see. Windows keeps no well-known
+  // directory: the registry key is the registration, so a Claude Code install
+  // is invisible to a check that looks in a directory of ours. Every enable
+  // then overwrote their key, and every disable deleted it.
+  test('adopts the host a Claude Code install already registered', async () => {
+    const { execFile } = require('child_process');
+    setPlatform('win32');
+    installWindowsChrome();
+    registry[CHROME_KEY] = claudeCodeManifest();
+    execFile.mockClear();
+
+    const res = await service.ensureNativeHost();
+
+    expect(res.ok).toBe(true);
+    expect(res.adopted).toContain('chrome');
+    expect(res.installed).toEqual([]);
+    expect(execFile.mock.calls.filter(c => c[1][0] === 'add')).toHaveLength(0);
+    expect(fs.existsSync(ourWindowsManifest())).toBe(false);
+  });
+
+  test('installs when the key names a manifest whose binary is gone', async () => {
+    // A stale registration left by an uninstall: adopting it would leave the
+    // extension talking to nothing.
+    setPlatform('win32');
+    installWindowsChrome();
+    const stale = path.join(mockTmpHome, 'gone', `${HOST_NAME}.json`);
+    fs.mkdirSync(path.dirname(stale), { recursive: true });
+    fs.writeFileSync(stale, JSON.stringify({
+      name: HOST_NAME,
+      path: path.join(mockTmpHome, 'gone', 'claude.exe'),
+      allowed_origins: [`chrome-extension://${EXTENSION_ID}/`],
+    }));
+    registry[CHROME_KEY] = stale;
+
+    const res = await service.ensureNativeHost();
+
+    expect(res.installed).toContain('chrome');
+    expect(registry[CHROME_KEY]).toBe(ourWindowsManifest());
+  });
+
+  test('installs when nothing is registered at all', async () => {
+    setPlatform('win32');
+    installWindowsChrome();
+
+    const res = await service.ensureNativeHost();
+
+    expect(res.installed).toContain('chrome');
+    expect(res.adopted).toEqual([]);
+    expect(registry[CHROME_KEY]).toBe(ourWindowsManifest());
+    expect(fs.existsSync(ourWindowsManifest())).toBe(true);
+  });
+
+  test('decides per browser, so one adoption does not cover the others', async () => {
+    setPlatform('win32');
+    installWindowsChrome();
+    fs.mkdirSync(path.join(process.env.LOCALAPPDATA, 'BraveSoftware', 'Brave-Browser', 'User Data'), { recursive: true });
+    registry[CHROME_KEY] = claudeCodeManifest();
+
+    const res = await service.ensureNativeHost();
+
+    expect(res.adopted).toContain('chrome');
+    expect(res.installed).toContain('brave');
+  });
+});
+
 describe('ChromeBridgeService — native host removal', () => {
   test('removes a manifest we installed', async () => {
     installChrome();
@@ -343,20 +458,40 @@ describe('ChromeBridgeService — native host removal', () => {
     expect(fs.existsSync(path.join(chromeHostDir(), `${HOST_NAME}.json`))).toBe(true);
   });
 
-  test('drops the Windows registry keys along with the manifest', async () => {
+  test('drops the Windows registry key it owns, along with the manifest', async () => {
     const { execFile } = require('child_process');
     setPlatform('win32');
-    process.env.LOCALAPPDATA = path.join(mockTmpHome, 'AppData', 'Local');
-    fs.mkdirSync(path.join(process.env.LOCALAPPDATA, 'Google', 'Chrome', 'User Data'), { recursive: true });
+    installWindowsChrome();
     await service.ensureNativeHost();
+    // The key now names our manifest, as `reg add` would have left it.
+    registry[CHROME_KEY] = ourWindowsManifest();
     execFile.mockClear();
 
     const res = await service.removeNativeHost();
 
-    expect(res.removed).toContain('windows');
+    expect(res.removed).toContain('chrome');
     // A key outliving its manifest would point Chrome at a missing file.
     const deletes = execFile.mock.calls.filter(c => c[1][0] === 'delete');
     expect(deletes.length).toBeGreaterThan(0);
+    expect(fs.existsSync(ourWindowsManifest())).toBe(false);
+  });
+
+  test('leaves a Windows key that points somewhere else alone', async () => {
+    // The exact shape that used to break a Claude Code install: our toggle goes
+    // off and every browser's key is deleted, including the one we never wrote.
+    const { execFile } = require('child_process');
+    setPlatform('win32');
+    installWindowsChrome();
+    const theirs = claudeCodeManifest();
+    registry[CHROME_KEY] = theirs;
+    execFile.mockClear();
+
+    const res = await service.removeNativeHost();
+
+    expect(res.removed).toEqual([]);
+    expect(res.kept).toContain('chrome');
+    expect(execFile.mock.calls.filter(c => c[1][0] === 'delete')).toHaveLength(0);
+    expect(fs.existsSync(theirs)).toBe(true);
   });
 
   test('is a no-op when nothing is installed', async () => {
