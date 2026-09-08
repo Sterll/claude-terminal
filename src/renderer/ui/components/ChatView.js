@@ -18,9 +18,20 @@ const {
   bgTaskStore,
 } = require('../../utils/toolRegistry');
 const { t } = require('../../i18n');
+const {
+  classifyFile,
+  shouldInlineText,
+  formatBytes,
+  acceptAttribute,
+  MAX_IMAGE_BYTES,
+  MAX_PDF_BYTES,
+} = require('../../utils/attachments');
 const { formatDuration: fmtDur } = require('../../utils/toolRegistry');
 const { heartbeat, skillsAgentsState, getProjectAccount } = require('../../state');
 const { createTranscriptPruner } = require('./TranscriptPruner');
+
+/** Paperclip, for the chip an attached file leaves in the composer. */
+const ATTACHMENT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>';
 
 // ── Background task cards re-render on store update ─────────────────
 // Cards for Monitor/TaskOutput/TaskStop read state from bgTaskStore.
@@ -567,11 +578,11 @@ class ChatView extends BaseComponent {
           <button class="chat-model-notice-close" aria-label="${escapeHtml(t('common.close') || 'Close')}"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>
         </div>
         <div class="chat-input-wrapper">
-          <button class="chat-attach-btn" title="${escapeHtml(t('chat.attachImage'))}">
+          <button class="chat-attach-btn" title="${escapeHtml(t('chat.attachFile'))}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
           </button>
           <div class="chat-input" contenteditable="true" role="textbox" data-placeholder="${escapeHtml(t('chat.placeholder'))}" spellcheck="false"></div>
-          <input type="file" class="chat-file-input" accept="image/png,image/jpeg,image/gif,image/webp" multiple style="display:none" />
+          <input type="file" class="chat-file-input" accept="${acceptAttribute()}" multiple style="display:none" />
           <div class="chat-input-actions">
             <button class="chat-bg-btn" title="${escapeHtml(t('chat.runInBackground') || 'Run in background')}" style="display:none">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -966,12 +977,33 @@ class ChatView extends BaseComponent {
   let conversationCache = null; // { sessions: [], timestamp, projectPath }
   const CONVERSATION_CACHE_TTL = 30 * 1000;
 
-  // ── Image attachments ──
+  // ── File attachments ──
+  //
+  // Three destinations, one per content block the CLI understands: images and
+  // PDFs travel as base64 and get their own payload, while text files reuse
+  // the mention channel — a mention has always been "a label plus some text
+  // resolved at send time", which is exactly what an attached .md is.
 
   const pendingImages = []; // Array of { base64, mediaType, name, dataUrl }
-  const SUPPORTED_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
-  const MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20MB
+  const MAX_IMAGE_SIZE = MAX_IMAGE_BYTES;
   const MAX_PENDING_IMAGES = 5;
+  const MAX_PENDING_DOCUMENTS = 5;
+  const MAX_PENDING_TEXTS = 10;
+  // What all inlined text files together may add to one turn. Ten files at the
+  // 128 KB per-file ceiling is 1.3 MB of context nobody asked to pay for, and
+  // a dropped folder reaches that without the user noticing they dropped one.
+  const MAX_TOTAL_INLINE_TEXT_BYTES = 512 * 1024;
+
+  // Reads are asynchronous, but addFiles() loops synchronously — so a cap
+  // tested against the landed count alone reads zero for every file of a
+  // batch: drop eight images and all eight pass the test, then five land and
+  // three vanish without a word. The reservation is taken in the loop and
+  // released when the read settles, so the count the cap sees is the count
+  // that will exist.
+  let inflightImages = 0;
+  let inflightDocuments = 0;
+  let inflightTexts = 0;
+  let inlinedTextBytes = 0;
 
   // ── Contenteditable helpers ──
 
@@ -1914,26 +1946,149 @@ class ChatView extends BaseComponent {
 
   fileInput.addEventListener('change', () => {
     if (fileInput.files.length) {
-      addImageFiles(fileInput.files);
+      addFiles(fileInput.files);
       fileInput.value = '';
     }
   });
 
-  function addImageFiles(files) {
+  function attachmentToast(message, type = 'warning') {
+    const Toast = require('./Toast');
+    Toast.showToast({ message, type });
+  }
+
+  /**
+   * Route each file to the content block that fits it. Anything we cannot send
+   * now says so out loud — the old code dropped unsupported files in silence,
+   * which read as the composer being broken rather than as a refusal.
+   */
+  function addFiles(files) {
     for (const file of files) {
-      if (pendingImages.length >= MAX_PENDING_IMAGES) break;
-      if (!SUPPORTED_TYPES.includes(file.type)) continue;
-      if (file.size > MAX_IMAGE_SIZE) continue;
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (pendingImages.length >= MAX_PENDING_IMAGES) return;
-        const dataUrl = reader.result;
-        const base64 = dataUrl.split(',')[1];
-        pendingImages.push({ base64, mediaType: file.type, name: file.name, dataUrl });
-        renderImagePreview();
-      };
-      reader.readAsDataURL(file);
+      switch (classifyFile(file)) {
+        case 'image': addImageFile(file); break;
+        case 'pdf': addPdfFile(file); break;
+        case 'text': addTextFile(file); break;
+        case 'secret':
+          attachmentToast(t('chat.attachSecret', { name: file.name }));
+          break;
+        default:
+          attachmentToast(t('chat.attachUnsupported', { name: file.name }));
+      }
     }
+  }
+
+  function addImageFile(file) {
+    if (pendingImages.length + inflightImages >= MAX_PENDING_IMAGES) {
+      attachmentToast(t('chat.attachTooMany', { max: MAX_PENDING_IMAGES }));
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      attachmentToast(t('chat.attachTooLarge', { name: file.name, max: formatBytes(MAX_IMAGE_SIZE) }));
+      return;
+    }
+    inflightImages++;
+    const reader = new FileReader();
+    reader.onload = () => {
+      inflightImages--;
+      const dataUrl = reader.result;
+      const base64 = dataUrl.split(',')[1];
+      pendingImages.push({ base64, mediaType: file.type || 'image/png', name: file.name, dataUrl });
+      renderImagePreview();
+    };
+    reader.onerror = () => {
+      inflightImages--;
+      attachmentToast(t('chat.attachReadFailed', { name: file.name }), 'error');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  /**
+   * PDFs travel as a base64 `document` block — the very shape the Claude Code
+   * binary builds itself when its Read tool opens one. Past the size ceiling we
+   * hand over the path instead, so a 200 MB scan does not become a 270 MB
+   * request that the API would refuse anyway.
+   */
+  function addPdfFile(file) {
+    if (file.size > MAX_PDF_BYTES) {
+      if (file.path) {
+        addPathAttachment(file);
+      } else {
+        attachmentToast(t('chat.attachTooLarge', { name: file.name, max: formatBytes(MAX_PDF_BYTES) }));
+      }
+      return;
+    }
+    if (countPdfAttachments() + inflightDocuments >= MAX_PENDING_DOCUMENTS) {
+      attachmentToast(t('chat.attachTooMany', { max: MAX_PENDING_DOCUMENTS }));
+      return;
+    }
+    inflightDocuments++;
+    const reader = new FileReader();
+    reader.onload = () => {
+      inflightDocuments--;
+      addAttachmentChip(file.name, {
+        kind: 'pdf',
+        name: file.name,
+        base64: String(reader.result).split(',')[1],
+      });
+    };
+    reader.onerror = () => {
+      inflightDocuments--;
+      attachmentToast(t('chat.attachReadFailed', { name: file.name }), 'error');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  /**
+   * Text files ride the mention channel: a chip in the composer, the contents
+   * resolved at send time. Above the inline ceiling only the path is sent and
+   * the agent's Read tool opens it — it can seek and page, where an inlined
+   * blob can only sit in the context being paid for.
+   */
+  function addTextFile(file) {
+    if (!shouldInlineText({ size: file.size, path: file.path })) {
+      addPathAttachment(file);
+      return;
+    }
+    // Images and PDFs were capped; text was not, so a dropped folder inlined
+    // every file in it. A file that would break either ceiling is handed over
+    // as a path when it has one — the agent's Read tool opens it on demand —
+    // and refused out loud when it does not.
+    const overBudget = inlinedTextBytes + file.size > MAX_TOTAL_INLINE_TEXT_BYTES;
+    if (countTextAttachments() + inflightTexts >= MAX_PENDING_TEXTS || overBudget) {
+      if (file.path) {
+        addPathAttachment(file);
+      } else {
+        attachmentToast(t('chat.attachTooMany', { max: MAX_PENDING_TEXTS }));
+      }
+      return;
+    }
+    inflightTexts++;
+    inlinedTextBytes += file.size;
+    const reader = new FileReader();
+    reader.onload = () => {
+      inflightTexts--;
+      addAttachmentChip(file.name, {
+        kind: 'text',
+        name: file.name,
+        path: file.path || '',
+        content: String(reader.result ?? ''),
+      });
+    };
+    reader.onerror = () => {
+      inflightTexts--;
+      inlinedTextBytes -= file.size;
+      attachmentToast(t('chat.attachReadFailed', { name: file.name }), 'error');
+    };
+    reader.readAsText(file);
+  }
+
+  /** Hand the agent a path to read rather than the bytes themselves. */
+  function addPathAttachment(file) {
+    addAttachmentChip(file.name, {
+      kind: 'path',
+      name: file.name,
+      path: file.path,
+      size: file.size,
+    });
   }
 
   function removeImage(index) {
@@ -1979,10 +2134,12 @@ class ChatView extends BaseComponent {
   });
 
   function handleChatDrop(e) {
-    // Priority: image files dropped from OS/explorer
-    const imageFiles = Array.from(e.dataTransfer.files || []).filter(f => SUPPORTED_TYPES.includes(f.type));
-    if (imageFiles.length) {
-      addImageFiles(imageFiles);
+    // Priority: real files dropped from the OS. Routing happens in addFiles,
+    // so a .md from the desktop lands here the same way a screenshot does —
+    // this used to filter on image MIME types and drop everything else.
+    const droppedFiles = Array.from(e.dataTransfer.files || []);
+    if (droppedFiles.length) {
+      addFiles(droppedFiles);
       inputEl.focus();
       return;
     }
@@ -2024,7 +2181,7 @@ class ChatView extends BaseComponent {
     if (imageItems.length > 0) {
       e.preventDefault();
       const files = imageItems.map(i => i.getAsFile()).filter(Boolean);
-      if (files.length) addImageFiles(files);
+      if (files.length) addFiles(files);
       return;
     }
     // Strip HTML formatting, insert as plain text
@@ -2929,6 +3086,33 @@ class ChatView extends BaseComponent {
     insertChipAtCaret(chipEl);
   }
 
+  /**
+   * An attached file, shown as a chip in the composer.
+   *
+   * Attachments are mentions with a different provenance: the user picked a
+   * file instead of typing `@`. Reusing the channel means the chip, its
+   * removal, the send-time snapshot and the tag in the transcript all work
+   * already — only the resolution step below needs to know the difference.
+   */
+  function addAttachmentChip(name, data) {
+    const index = pendingMentions.length;
+    pendingMentions.push({
+      type: 'attachment',
+      label: name,
+      icon: ATTACHMENT_ICON,
+      data,
+    });
+    insertChipAtCaret(createInlineChipElement(pendingMentions[index], index));
+  }
+
+  function countPdfAttachments() {
+    return pendingMentions.filter(m => m.type === 'attachment' && m.data?.kind === 'pdf').length;
+  }
+
+  function countTextAttachments() {
+    return pendingMentions.filter(m => m.type === 'attachment' && m.data?.kind === 'text').length;
+  }
+
   function renderMentionChips() {
     // Legacy: clear all inline chips (used during send)
     clearInlineChips();
@@ -2945,6 +3129,28 @@ class ChatView extends BaseComponent {
       let content = '';
 
       switch (mention.type) {
+        // An attached file. PDFs are skipped here: they leave as a base64
+        // `document` block, collected straight from pendingMentions at send
+        // time, and inlining their bytes as text would be gibberish.
+        case 'attachment': {
+          const { kind, name, path: filePath, content, size } = mention.data || {};
+          if (kind === 'pdf') continue;
+          if (kind === 'path') {
+            resolved.push({
+              label: name,
+              content: `Attached file: ${filePath}\n\n`
+                + `(${formatBytes(size)} — too large to inline. `
+                + `Read it from that path if you need its contents.)`,
+            });
+            continue;
+          }
+          resolved.push({
+            label: name,
+            content: `Attached file: ${filePath || name}\n\n${content ?? ''}`,
+          });
+          continue;
+        }
+
         case 'file': {
           try {
             const raw = await fs.promises.readFile(mention.data.fullPath, 'utf8');
@@ -3689,6 +3895,11 @@ class ChatView extends BaseComponent {
     // Prepare images payload (without dataUrl to reduce IPC size)
     const imagesPayload = images.map(({ base64, mediaType }) => ({ base64, mediaType }));
 
+    // Attached PDFs leave as base64 `document` blocks rather than as text.
+    const documentsPayload = mentions
+      .filter(m => m.type === 'attachment' && m.data?.kind === 'pdf')
+      .map(m => ({ base64: m.data.base64, mediaType: 'application/pdf', name: m.data.name }));
+
     try {
       if (!sessionId) {
         // Assign sessionId BEFORE await to prevent race condition:
@@ -3710,6 +3921,7 @@ class ChatView extends BaseComponent {
           permissionMode: selectedMode,
           sessionId,
           images: imagesPayload,
+          documents: documentsPayload,
           mentions: resolvedMentions,
           model: requestedModel(),
           effort: selectedEffort,
@@ -3792,7 +4004,7 @@ class ChatView extends BaseComponent {
           sendText = forceInstr + sendText;
           _forceParallelTask = false;
         }
-        const result = await api.chat.send({ sessionId, text: sendText, images: imagesPayload, mentions: resolvedMentions, userMessageUuid: userMsgUuid });
+        const result = await api.chat.send({ sessionId, text: sendText, images: imagesPayload, documents: documentsPayload, mentions: resolvedMentions, userMessageUuid: userMsgUuid });
         if (!result.success) {
           appendError(result.error || t('chat.errorOccurred'));
           if (!isStreaming) setStreaming(false);

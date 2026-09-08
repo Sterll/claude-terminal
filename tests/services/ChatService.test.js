@@ -95,6 +95,48 @@ describe('ChatService._buildContent', () => {
     expect(result[0].text).toContain('a.js');
     expect(result[1].text).toContain('b.js');
   });
+
+  test('attached PDFs become base64 document blocks', () => {
+    const result = chatService._buildContent('What does it say?', [], [], [
+      { base64: 'JVBERi0=', mediaType: 'application/pdf', name: 'spec.pdf' }
+    ]);
+    expect(Array.isArray(result)).toBe(true);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({
+      type: 'document',
+      source: { type: 'base64', media_type: 'application/pdf', data: 'JVBERi0=' }
+    });
+    expect(result[1]).toEqual({ type: 'text', text: 'What does it say?' });
+  });
+
+  test('defaults a document to application/pdf when no media type is given', () => {
+    const result = chatService._buildContent('', [], [], [{ base64: 'x' }]);
+    expect(result[0].source.media_type).toBe('application/pdf');
+  });
+
+  test('a document alone is enough to build blocks', () => {
+    const result = chatService._buildContent('', [], [], [
+      { base64: 'x', mediaType: 'application/pdf' }
+    ]);
+    expect(Array.isArray(result)).toBe(true);
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe('document');
+  });
+
+  test('documents lead, then mentions, then text, then images', () => {
+    const result = chatService._buildContent('Question',
+      [{ base64: 'img', mediaType: 'image/png' }],
+      [{ label: 'file.js', content: 'code' }],
+      [{ base64: 'pdf', mediaType: 'application/pdf' }],
+    );
+    expect(result.map(b => b.type)).toEqual(['document', 'text', 'text', 'image']);
+    expect(result[1].text).toContain('[Context:');
+    expect(result[2]).toEqual({ type: 'text', text: 'Question' });
+  });
+
+  test('an omitted documents argument keeps the old behaviour', () => {
+    expect(chatService._buildContent('Hello', [], [])).toBe('Hello');
+  });
 });
 
 // ── _safeSerialize ──
