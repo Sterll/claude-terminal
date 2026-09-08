@@ -4167,6 +4167,32 @@ class ChatView extends BaseComponent {
   /**
    * Collect the answer from the currently visible question group
    */
+  /**
+   * The collapsed body of an answered question card: one row per Q&A pair. The
+   * transcript records the same `{ question: answer }` map the live card
+   * collects, so a replayed card is the card the user left behind.
+   *
+   * @param {Record<string, string|string[]>} answers
+   * @returns {string}
+   */
+  function resolvedQuestionHtml(answers) {
+    const pairsHtml = Object.entries(answers).map(([question, answer]) =>
+      `<div class="chat-qa-pair">
+        <span class="chat-qa-question">${escapeHtml(question)}</span>
+        <span class="chat-qa-answer">${escapeHtml(Array.isArray(answer) ? answer.join(', ') : answer)}</span>
+      </div>`
+    ).join('');
+    return `
+      <div class="chat-question-header resolved">
+        <div class="chat-perm-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+        </div>
+        <span>${escapeHtml(t('chat.questionAnswered') || 'Answered')}</span>
+      </div>
+      <div class="chat-qa-summary">${pairsHtml}</div>
+    `;
+  }
+
   function collectCurrentAnswer(card) {
     const questions = JSON.parse(card.dataset.questions || '[]');
     const step = parseInt(card.dataset.currentStep, 10);
@@ -4235,25 +4261,8 @@ class ChatView extends BaseComponent {
     if (result) answers[result.question] = result.answer;
 
     // Collapse card into compact answered summary showing each Q&A pair
-    const answerEntries = Object.entries(answers);
-
-    const pairsHtml = answerEntries.map(([question, answer]) =>
-      `<div class="chat-qa-pair">
-        <span class="chat-qa-question">${escapeHtml(question)}</span>
-        <span class="chat-qa-answer">${escapeHtml(answer)}</span>
-      </div>`
-    ).join('');
-
     card.classList.add('resolved');
-    card.innerHTML = `
-      <div class="chat-question-header resolved">
-        <div class="chat-perm-icon">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-        </div>
-        <span>${escapeHtml(t('chat.questionAnswered') || 'Answered')}</span>
-      </div>
-      <div class="chat-qa-summary">${pairsHtml}</div>
-    `;
+    card.innerHTML = resolvedQuestionHtml(answers);
 
     _respondPermission({
       requestId,
@@ -4328,6 +4337,28 @@ class ChatView extends BaseComponent {
     scrollToBottom();
   }
 
+  /**
+   * The sentence shown for an API failure code. The transcript records the same
+   * codes as the live stream, so a resumed conversation reads exactly like the
+   * turn did — with the CLI's own wording kept for codes we have no phrasing for.
+   *
+   * @param {string} code - `rate_limit`, `server_error`, ...
+   * @param {string} [recorded] - What the CLI said, when the code is unknown
+   * @returns {string}
+   */
+  function errorTextForCode(code, recorded = '') {
+    const errorMessages = {
+      rate_limit: t('chat.errorRateLimit'),
+      billing_error: t('chat.errorBilling'),
+      authentication_failed: t('chat.errorAuth'),
+      invalid_request: t('chat.errorInvalidRequest'),
+      max_output_tokens: t('chat.errorMaxTokens'),
+      server_error: t('chat.errorServer'),
+      overloaded: t('chat.errorServer'),
+    };
+    return errorMessages[code] || recorded.trim() || t('chat.errorOccurred');
+  }
+
   function appendError(text) {
     const el = document.createElement('div');
     el.className = 'chat-msg chat-msg-error';
@@ -4350,7 +4381,8 @@ class ChatView extends BaseComponent {
     appendSystemNotice(t('chat.sessionStarted', { details: parts.join(' · ') }), 'model');
   }
 
-  function appendSystemNotice(text, icon = 'info') {
+  /** The notice element, built but not placed — replay inserts it into a fragment. */
+  function buildSystemNotice(text, icon = 'info') {
     const icons = {
       info: '&#8505;',      // ℹ
       compact: '&#9879;',   // ⚗
@@ -4361,7 +4393,11 @@ class ChatView extends BaseComponent {
     const el = document.createElement('div');
     el.className = 'chat-system-notice';
     el.innerHTML = `<span class="chat-system-notice-icon">${icons[icon] || icons.info}</span><span class="chat-system-notice-text">${escapeHtml(text)}</span>`;
-    messagesEl.appendChild(el);
+    return el;
+  }
+
+  function appendSystemNotice(text, icon = 'info') {
+    messagesEl.appendChild(buildSystemNotice(text, icon));
     scrollToBottom();
   }
 
@@ -7437,16 +7473,7 @@ class ChatView extends BaseComponent {
 
     // SDK-level errors on the assistant message (rate_limit, billing_error, etc.)
     if (msg.error) {
-      const errorMessages = {
-        rate_limit: t('chat.errorRateLimit'),
-        billing_error: t('chat.errorBilling'),
-        authentication_failed: t('chat.errorAuth'),
-        invalid_request: t('chat.errorInvalidRequest'),
-        max_output_tokens: t('chat.errorMaxTokens'),
-        server_error: t('chat.errorServer'),
-        overloaded: t('chat.errorServer'),
-      };
-      const text = errorMessages[msg.error] || t('chat.errorOccurred');
+      const text = errorTextForCode(msg.error);
       removeThinkingIndicator();
       appendError(text);
       turnErrorShown = true;
@@ -8439,9 +8466,11 @@ class ChatView extends BaseComponent {
 
     // Build a map of tool_use_id -> tool_result output for enriching tool cards
     const toolResults = new Map();
+    const questionAnswers = new Map();
     for (const msg of messages) {
       if (msg.role === 'tool_result' && msg.toolUseId) {
         toolResults.set(msg.toolUseId, msg.output || '');
+        if (msg.answers) questionAnswers.set(msg.toolUseId, msg.answers);
       }
     }
 
@@ -8462,7 +8491,25 @@ class ChatView extends BaseComponent {
           end = Math.min(end + MIN_BATCH, messages.length);
         }
         const msg = messages[idx];
-        if (msg.role === 'user') {
+        if (msg.role === 'error') {
+          // Same box the live turn showed: an API failure is not a reply
+          const el = document.createElement('div');
+          el.className = 'chat-msg chat-msg-error history';
+          el.innerHTML = `<div class="chat-error-content">${escapeHtml(errorTextForCode(msg.errorCode, msg.text || ''))}</div>`;
+          fragment.appendChild(el);
+
+        } else if (msg.role === 'notice') {
+          const text = msg.icon === 'compact'
+            ? (msg.preTokens > 0
+              ? t('chat.compacted', { tokens: msg.preTokens.toLocaleString() })
+              : (t('chat.compactedSimple') || 'Conversation compacted'))
+            : (msg.text || '');
+          if (!text) continue;
+          const el = buildSystemNotice(text, msg.icon || 'info');
+          el.classList.add('history');
+          fragment.appendChild(el);
+
+        } else if (msg.role === 'user') {
           const el = document.createElement('div');
           el.className = 'chat-msg chat-msg-user history';
           let userHtml = '';
@@ -8515,6 +8562,19 @@ class ChatView extends BaseComponent {
 
         } else if (msg.role === 'assistant' && msg.type === 'tool_use') {
           if (msg.toolName === 'TodoWrite' || msg.toolName === 'TaskCreate' || msg.toolName === 'TaskUpdate' || msg.toolName === 'TaskList' || msg.toolName === 'TaskGet') continue;
+
+          // A question was a card, never a tool card — and once answered it
+          // collapsed into its summary, which is what the transcript holds.
+          if (msg.toolName === 'AskUserQuestion') {
+            const answers = questionAnswers.get(msg.toolUseId);
+            if (answers && Object.keys(answers).length) {
+              const el = document.createElement('div');
+              el.className = 'chat-question-card resolved history';
+              el.innerHTML = resolvedQuestionHtml(answers);
+              fragment.appendChild(el);
+            }
+            continue;
+          }
 
           if (msg.toolName === 'Task' || msg.toolName === 'Agent') {
             const input = msg.toolInput || {};

@@ -9,6 +9,7 @@ const path = require('path');
 const os = require('os');
 const readline = require('readline');
 const { contextTokensFromMessage } = require('../../shared/context-usage');
+const { isApiErrorMessage } = require('../../shared/api-error');
 
 /**
  * Encode project path to match Claude's folder naming convention.
@@ -309,6 +310,55 @@ async function getClaudeSessions(projectPath) {
 const DEFAULT_HISTORY_LIMIT = 400;
 
 /**
+ * Lines the live stream never shows as a prompt: the CLI's own plumbing
+ * (caveats, injected skills, hook output) and the summary a compaction writes
+ * back into the conversation. Replayed as-is, a resumed tab opened on a wall of
+ * text the user never typed.
+ *
+ * @param {object} obj - A parsed transcript line
+ * @returns {boolean}
+ */
+function isTranscriptOnlyLine(obj) {
+  return obj.isMeta === true
+    || obj.isVisibleInTranscriptOnly === true
+    || obj.isCompactSummary === true;
+}
+
+const COMMAND_NAME_RE = /<command-name>([\s\S]*?)<\/command-name>/;
+const COMMAND_ARGS_RE = /<command-args>([\s\S]*?)<\/command-args>/;
+const LOCAL_STDOUT_RE = /<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/g;
+// Injected by the CLI around a real prompt, or standing alone as a whole line
+const INJECTED_BLOCK_RE = /<(system-reminder|task-notification|local-command-caveat)>[\s\S]*?<\/\1>/g;
+
+/**
+ * What a user-side transcript line actually was in the chat: a typed prompt, a
+ * slash command, or the output that command printed. The CLI stores the parse
+ * (`<command-name>/model</command-name>...`) rather than the line the user
+ * typed, and its output as another user line — neither is a prompt on screen.
+ *
+ * @param {string} raw
+ * @returns {{kind: 'prompt'|'output'|'skip', text?: string}}
+ */
+function interpretUserText(raw) {
+  const text = (raw || '').trim();
+  if (!text) return { kind: 'skip' };
+
+  const name = text.match(COMMAND_NAME_RE);
+  if (name) {
+    const command = name[1].trim();
+    const args = (text.match(COMMAND_ARGS_RE)?.[1] || '').trim();
+    return { kind: 'prompt', text: args ? `${command} ${args}` : command };
+  }
+
+  const printed = [...text.matchAll(LOCAL_STDOUT_RE)].map(m => m[1].trim()).filter(Boolean);
+  if (printed.length) return { kind: 'output', text: printed.join('\n') };
+
+  const stripped = text.replace(INJECTED_BLOCK_RE, '').trim();
+  if (!stripped) return { kind: 'skip' };
+  return { kind: 'prompt', text: stripped };
+}
+
+/**
  * Load conversation history from a session JSONL file.
  * Returns the last `limit` simplified messages for the chat UI replay.
  * @param {string} projectPath - The project path
@@ -367,12 +417,15 @@ async function loadSessionHistory(projectPath, sessionId, options = {}) {
       try {
         const obj = JSON.parse(line);
 
+        const isAssistantLine = obj.type === 'assistant'
+          || (!obj.type && obj.message?.role === 'assistant');
+
         // Sidechain lines are a subagent's own window, not this conversation's.
         const turnTokens = contextTokensFromMessage(obj);
         if (turnTokens > 0) contextTokens = turnTokens;
 
         // User message
-        if (obj.type === 'user' && obj.message) {
+        if (obj.type === 'user' && obj.message && !isTranscriptOnlyLine(obj)) {
           let text = '';
           const images = [];
           const content = obj.message.content;
@@ -389,8 +442,14 @@ async function loadSessionHistory(projectPath, sessionId, options = {}) {
               }
             }
           }
-          if (text || images.length > 0) {
-            const msg = { role: 'user', text: text || '' };
+          // A slash command reaches the transcript as its parse, and its output as
+          // another user line. On screen the first was a prompt and the second a
+          // notice, so replaying either verbatim showed markup the user never saw.
+          const parsed = interpretUserText(text);
+          if (parsed.kind === 'output') {
+            push({ role: 'notice', icon: 'command', text: parsed.text });
+          } else if (parsed.text || images.length > 0) {
+            const msg = { role: 'user', text: parsed.text || '' };
             if (images.length > 0) msg.images = images;
             // Carried so a fork can name the turn it discards (resumeDropsTurn)
             if (obj.uuid) msg.uuid = obj.uuid;
@@ -398,8 +457,35 @@ async function loadSessionHistory(projectPath, sessionId, options = {}) {
           }
         }
 
+        // The CLI reports an API failure as an ordinary assistant message wearing
+        // a flag. The live renderer turns that into its error box; replayed as
+        // text it came back looking like something Claude had chosen to say.
+        if (isAssistantLine && isApiErrorMessage(obj) && obj.message?.content) {
+          const blocks = Array.isArray(obj.message.content) ? obj.message.content : [];
+          const text = blocks.filter(b => b.type === 'text').map(b => b.text).join('\n');
+          push({
+            role: 'error',
+            errorCode: typeof obj.error === 'string' ? obj.error : '',
+            status: obj.apiErrorStatus || 0,
+            text
+          });
+        }
+
+        // Compaction: the boundary is a notice of its own on screen, and the
+        // summary the CLI writes back is transcript-only (skipped above).
+        if (obj.type === 'system' && obj.subtype === 'compact_boundary') {
+          const meta = obj.compactMetadata || obj.compact_metadata || {};
+          push({ role: 'notice', icon: 'compact', preTokens: meta.preTokens || meta.pre_tokens || 0 });
+        }
+
+        // Newer CLIs record a command's output here rather than as a user line
+        if (obj.type === 'system' && obj.subtype === 'local_command' && typeof obj.content === 'string') {
+          const printed = interpretUserText(obj.content);
+          if (printed.kind === 'output') push({ role: 'notice', icon: 'command', text: printed.text });
+        }
+
         // Assistant message
-        if ((obj.type === 'assistant' || (!obj.type && obj.message?.role === 'assistant')) && obj.message?.content) {
+        if (isAssistantLine && obj.message?.content && !isApiErrorMessage(obj)) {
           const blocks = obj.message.content;
           for (const block of blocks) {
             if (block.type === 'text' && block.text) {
@@ -426,11 +512,17 @@ async function loadSessionHistory(projectPath, sessionId, options = {}) {
               if (block.type === 'tool_result') {
                 const output = typeof block.content === 'string' ? block.content
                   : Array.isArray(block.content) ? block.content.map(b => b.text || '').join('\n') : '';
-                push({
+                const msg = {
                   role: 'tool_result',
                   toolUseId: block.tool_use_id,
                   output: output.slice(0, 2000) // Limit output size for IPC
-                });
+                };
+                // What the user picked in an AskUserQuestion card, question by
+                // question — the card replays as the answered summary it became,
+                // rather than as a tool call named after nothing the user saw.
+                const answers = obj.toolUseResult?.answers;
+                if (answers && typeof answers === 'object' && !Array.isArray(answers)) msg.answers = answers;
+                push(msg);
               }
             }
           }

@@ -870,6 +870,8 @@ mark.chat-search-hit.current {
 .chat-msg.history,
 .chat-tool-card.history,
 .chat-subagent-card.history,
+.chat-system-notice.history,
+.chat-question-card.history,
 .chat-thinking.history {
   --text-primary: #a7a7a7;
   --text-secondary: #969696;
@@ -892,6 +894,30 @@ mark.chat-search-hit.current {
   background: linear-gradient(135deg, rgba(34, 197, 94, 0.05), rgba(34, 197, 94, 0.025));
   border-color: rgba(34, 197, 94, 0.14);
   border-left-color: rgba(34, 197, 94, 0.3);
+}
+
+/* Notices and error boxes state their colours literally too. Same treatment,
+   except the error text, which stops at #d94a4a (4.65:1 on --bg-primary): one
+   notch back from live, still over the AA floor for 12px text. */
+.chat-system-notice.history {
+  background: rgba(var(--accent-color-rgb), 0.03);
+  border-left-color: rgba(var(--accent-color-rgb), 0.2);
+}
+
+.chat-msg-error.history .chat-error-content {
+  background: rgba(239, 68, 68, 0.04);
+  border-left-color: rgba(239, 68, 68, 0.32);
+  color: #d94a4a;
+}
+
+/* An answered question keeps its accent chip and green tick outside the ramp */
+.chat-question-card.history .chat-qa-answer {
+  background: rgba(var(--accent-color-rgb), 0.05);
+  border-color: rgba(var(--accent-color-rgb), 0.1);
+}
+
+.chat-question-card.history .chat-question-header.resolved .chat-perm-icon {
+  color: rgba(34, 197, 94, 0.7);
 }
 
 /* Loading pulse animation for welcome logo */
