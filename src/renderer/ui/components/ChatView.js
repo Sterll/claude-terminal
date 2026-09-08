@@ -7960,6 +7960,11 @@ class ChatView extends BaseComponent {
     if (data.sessionId !== sessionId) return;
     const { requestId, reason } = data;
     _clearPermTimers(requestId);
+    // Before the card lookup: on a long conversation the card may have been
+    // pruned from the DOM, and the terminal entry would then keep a
+    // `pendingPermission` nothing will ever clear — leaving the MCP's
+    // `tab_status` / `tab_wait` waiting on a prompt that is already settled.
+    _clearTerminalPendingPermission();
     let card = null;
     try {
       const id = CSS.escape(requestId);
@@ -7968,7 +7973,6 @@ class ChatView extends BaseComponent {
       );
     } catch (_) {}
     if (!card || card.classList.contains('resolved')) return;
-    _clearTerminalPendingPermission();
     markCardStale(card, reason);
     // The SDK carries on after a timeout or an answer; an interrupted turn ends
     // through chat-done, which sets its own status.

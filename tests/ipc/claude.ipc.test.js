@@ -222,7 +222,7 @@ describe('loadSessionHistory — transcript shapes', () => {
 
     expect(messages).toHaveLength(2);
     expect(messages[1]).toMatchObject({
-      role: 'error', errorCode: 'rate_limit', status: 429, text: 'API Error: 429 rate limit'
+      role: 'error', errorCode: 'rate_limit', text: 'API Error: 429 rate limit'
     });
     // ...and never also as the assistant text it is dressed up as
     expect(messages.some(m => m.role === 'assistant')).toBe(false);

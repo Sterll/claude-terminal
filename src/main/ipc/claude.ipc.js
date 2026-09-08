@@ -466,7 +466,6 @@ async function loadSessionHistory(projectPath, sessionId, options = {}) {
           push({
             role: 'error',
             errorCode: typeof obj.error === 'string' ? obj.error : '',
-            status: obj.apiErrorStatus || 0,
             text
           });
         }
