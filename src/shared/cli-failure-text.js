@@ -24,6 +24,16 @@ const CLI_FAILURE_TEXT = [
   /\bsession (has )?expired\b/i,
   /\bcredit balance (is )?too low\b/i,
   /\busage limit reached\b/i,
+  // Spend caps: "You've hit your individual spend limit · run /usage-credits
+  // to ask your admin for a higher limit · your session limit resets 5:20pm".
+  //
+  // Anchored like the rest, and narrowly: an opening "You've hit your …
+  // limit" alone matches Claude explaining a GitHub rate limit, so the limit
+  // has to be one of the CLI's own. The second pattern wants the CLI's
+  // bullet-separated banner rather than a bare mention, so a reply telling the
+  // user to run /usage-credits stays an ordinary reply.
+  /^you\b.{0,6}\bhit your\b[^.]*\b(spend|usage|session|weekly) limit\b/i,
+  /·\s*run \/usage-credits\b/i,
 ];
 
 /**
