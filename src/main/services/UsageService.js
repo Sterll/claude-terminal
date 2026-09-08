@@ -103,7 +103,9 @@ function readCredentialsFor(accountId) {
  * @param {boolean} [force] - skip the cache and re-read the store, for the
  *   explicit "refresh" gesture: a credential change made outside the app
  *   (`claude /login` in a terminal) leaves the cached token valid but wrong,
- *   and only a disk/Keychain re-read can tell the two apart.
+ *   and only a re-read can tell the two apart. Reserved for that gesture —
+ *   on darwin both stores are Keychain entries, so every forced read is a
+ *   password prompt, which is the whole reason the cache above is that long.
  * @returns {Promise<string|null>}
  */
 async function readOAuthToken(accountId, force = false) {

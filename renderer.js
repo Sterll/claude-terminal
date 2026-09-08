@@ -6834,10 +6834,11 @@ function updateResetEl(el, target) {
  * Fetch and update usage.
  *
  * `force` re-reads the account's credential store instead of trusting the
- * cached OAuth token, so a deliberate refresh (a click, or the bars following
- * a rebind) can notice an account swapped outside the app — a `claude /login`
- * run straight in a terminal — instead of showing the outgoing account's
- * numbers until the token cache expires on its own, up to 6h later.
+ * cached OAuth token, so an explicit refresh can notice an account swapped
+ * outside the app — a `claude /login` run straight in a terminal — instead of
+ * showing the outgoing account's numbers until the token cache expires on its
+ * own, up to 6h later. It costs a Keychain prompt on macOS, so only the chip
+ * click sets it; everything automatic stays on the cached token.
  *
  * @param {boolean} [force]
  */
@@ -6882,6 +6883,12 @@ if (usageElements.container) {
 
   // Click to refresh — forced, so it also recovers from an account swapped
   // outside the app instead of replaying the cached token.
+  //
+  // This is the one place that pays for a store re-read: on macOS that is a
+  // Keychain prompt. It is confined to this gesture because a click is the
+  // user explicitly asking for current numbers, the window is focused so the
+  // prompt appears in front of them rather than behind, and without it there
+  // is no way back from a swapped account short of restarting the app.
   usageElements.container.addEventListener('click', () => {
     refreshUsageDisplay(true);
   });
@@ -6926,10 +6933,14 @@ if (usageElements.container) {
     // the new ones are in flight.
     renderUsageBuckets(PLACEHOLDER_USAGE_BUCKETS);
     api.usage.setFocus(next).catch(() => {});
-    // Forced: the target account may have last been fetched (for another
-    // project bound to it) before its store was swapped outside the app, and
-    // the fetch key changing is itself a deliberate action, not a poll tick.
-    refreshUsageDisplay(true);
+    // Deliberately NOT forced. This runs on every project tab switch, and on
+    // macOS every credential store — the machine-wide one and each account's
+    // namespaced entry alike — is a Keychain read, so forcing here would raise
+    // a password prompt each time the front tab moved between two accounts.
+    // An account fetched for the first time reads its store anyway, so the
+    // only case this misses is one whose numbers were already cached before
+    // its store was swapped outside the app — which the chip click recovers.
+    refreshUsageDisplay();
   };
 
   try {
