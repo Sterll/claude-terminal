@@ -191,6 +191,162 @@ describe('loadSessionHistory', () => {
   });
 });
 
+// What the live stream drew, the replay has to draw too. Everything below is a
+// shape the CLI writes to the transcript and the chat renders as something other
+// than a message bubble — an error box, a notice, or nothing at all.
+describe('loadSessionHistory — transcript shapes', () => {
+  /** Write the given raw transcript lines as this project's session file. */
+  function writeLines(lines) {
+    const dir = sessionsDir();
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, `${SESSION_ID}.jsonl`),
+      lines.map(l => JSON.stringify(l)).join('\n') + '\n'
+    );
+  }
+
+  const prompt = (text, extra = {}) => ({
+    type: 'user', uuid: 'u-1', message: { role: 'user', content: text }, ...extra
+  });
+
+  test('an API failure comes back as an error, not as a reply from Claude', async () => {
+    writeLines([
+      prompt('hello'),
+      {
+        type: 'assistant', uuid: 'a-1', isApiErrorMessage: true,
+        error: 'rate_limit', apiErrorStatus: 429,
+        message: { role: 'assistant', content: [{ type: 'text', text: 'API Error: 429 rate limit' }] }
+      }
+    ]);
+    const { messages } = await loadSessionHistory(PROJECT_PATH, SESSION_ID);
+
+    expect(messages).toHaveLength(2);
+    expect(messages[1]).toMatchObject({
+      role: 'error', errorCode: 'rate_limit', status: 429, text: 'API Error: 429 rate limit'
+    });
+    // ...and never also as the assistant text it is dressed up as
+    expect(messages.some(m => m.role === 'assistant')).toBe(false);
+  });
+
+  test('the stream-json spelling of the flag counts too', async () => {
+    writeLines([{
+      type: 'assistant', uuid: 'a-1', is_api_error_message: true, error: 'server_error',
+      message: { role: 'assistant', content: [{ type: 'text', text: 'API Error: 529' }] }
+    }]);
+    const { messages } = await loadSessionHistory(PROJECT_PATH, SESSION_ID);
+    expect(messages[0]).toMatchObject({ role: 'error', errorCode: 'server_error' });
+  });
+
+  test('a compaction replays as its boundary notice, not as the summary it wrote', async () => {
+    writeLines([
+      prompt('hello'),
+      {
+        type: 'system', subtype: 'compact_boundary', uuid: 's-1',
+        compactMetadata: { trigger: 'auto', preTokens: 935547 }
+      },
+      {
+        type: 'user', uuid: 'u-2', isCompactSummary: true, isVisibleInTranscriptOnly: true,
+        message: { role: 'user', content: 'This session is being continued from a previous conversation...' }
+      },
+      prompt('carry on', { uuid: 'u-3' })
+    ]);
+    const { messages } = await loadSessionHistory(PROJECT_PATH, SESSION_ID);
+
+    expect(messages).toHaveLength(3);
+    expect(messages[1]).toMatchObject({ role: 'notice', icon: 'compact', preTokens: 935547 });
+    expect(messages.some(m => m.text?.startsWith('This session is being continued'))).toBe(false);
+  });
+
+  test('a slash command replays as the line the user typed, then its output', async () => {
+    writeLines([
+      {
+        type: 'user', uuid: 'u-0', isMeta: true,
+        message: { role: 'user', content: '<local-command-caveat>Caveat: ...</local-command-caveat>' }
+      },
+      prompt('<command-name>/model</command-name>\n  <command-message>model</command-message>\n  <command-args>opus[1m]</command-args>'),
+      prompt('<local-command-stdout>Set model to claude-opus-5[1m]</local-command-stdout>', { uuid: 'u-2' })
+    ]);
+    const { messages } = await loadSessionHistory(PROJECT_PATH, SESSION_ID);
+
+    expect(messages).toEqual([
+      { role: 'user', text: '/model opus[1m]', uuid: 'u-1' },
+      { role: 'notice', icon: 'command', text: 'Set model to claude-opus-5[1m]' }
+    ]);
+  });
+
+  test('newer CLIs record the command output as a system line', async () => {
+    writeLines([{
+      type: 'system', subtype: 'local_command', uuid: 's-1',
+      content: '<local-command-stdout>## Context Usage</local-command-stdout>'
+    }]);
+    const { messages } = await loadSessionHistory(PROJECT_PATH, SESSION_ID);
+    expect(messages).toEqual([{ role: 'notice', icon: 'command', text: '## Context Usage' }]);
+  });
+
+  test('injected blocks are stripped, and a line that is only injection is dropped', async () => {
+    writeLines([
+      prompt('<system-reminder>\nThe user started a background task\n</system-reminder>'),
+      prompt('<task-notification>\n<task-id>x</task-id>\n</task-notification>', { uuid: 'u-2' }),
+      prompt('real question <system-reminder>ignore me</system-reminder>', { uuid: 'u-3' })
+    ]);
+    const { messages } = await loadSessionHistory(PROJECT_PATH, SESSION_ID);
+
+    expect(messages).toEqual([{ role: 'user', text: 'real question', uuid: 'u-3' }]);
+  });
+
+  test('an answered question carries its answers to the replay', async () => {
+    writeLines([
+      {
+        type: 'assistant', uuid: 'a-1',
+        message: {
+          role: 'assistant',
+          content: [{
+            type: 'tool_use', id: 'q-1', name: 'AskUserQuestion',
+            input: { questions: [{ question: 'Which base?', options: [{ label: 'main' }] }] }
+          }]
+        }
+      },
+      {
+        type: 'user', uuid: 'r-1',
+        toolUseResult: { answers: { 'Which base?': 'main' } },
+        message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'q-1', content: 'answered' }] }
+      }
+    ]);
+    const { messages } = await loadSessionHistory(PROJECT_PATH, SESSION_ID);
+
+    expect(messages[1]).toMatchObject({
+      role: 'tool_result', toolUseId: 'q-1', answers: { 'Which base?': 'main' }
+    });
+  });
+
+  test('an ordinary tool result carries no answers field', async () => {
+    writeLines([
+      {
+        type: 'assistant', uuid: 'a-1',
+        message: { role: 'assistant', content: [{ type: 'tool_use', id: 't-1', name: 'Bash', input: {} }] }
+      },
+      {
+        type: 'user', uuid: 'r-1', toolUseResult: { stdout: 'hi' },
+        message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't-1', content: 'hi' }] }
+      }
+    ]);
+    const { messages } = await loadSessionHistory(PROJECT_PATH, SESSION_ID);
+    expect(messages[1]).not.toHaveProperty('answers');
+  });
+
+  test('an image-only prompt survives having no text left', async () => {
+    writeLines([{
+      type: 'user', uuid: 'u-1',
+      message: {
+        role: 'user',
+        content: [{ type: 'image', source: { type: 'base64', data: 'abc', media_type: 'image/png' } }]
+      }
+    }]);
+    const { messages } = await loadSessionHistory(PROJECT_PATH, SESSION_ID);
+    expect(messages[0]).toMatchObject({ role: 'user', text: '', images: [{ base64: 'abc' }] });
+  });
+});
+
 describe('parseSessionReplay', () => {
   test('counts the whole session but only ships the first page', async () => {
     writeSession(200); // 200 turns -> prompt + thinking + tool + response each
