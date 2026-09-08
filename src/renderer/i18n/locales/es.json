@@ -3829,6 +3829,7 @@
     "switched": "Cuenta cambiada. Reanudando…",
     "switchedNoResume": "Cuenta cambiada. No se pudo reanudar la conversación anterior — se continúa sin su contexto.",
     "switchedResent": "Cuenta cambiada. La conversación anterior nunca se guardó, así que tu mensaje se envía de nuevo en la cuenta nueva.",
+    "switchedQueuedResent": "Cuenta cambiada. Tu último mensaje nunca llegó a la cuenta anterior, así que se envía de nuevo.",
     "removeConfirm": "¿Eliminar esta cuenta guardada? Las credenciales se borrarán del almacenamiento local.",
     "switchError": "No se pudo cambiar de cuenta",
     "renameError": "No se pudo renombrar la cuenta",

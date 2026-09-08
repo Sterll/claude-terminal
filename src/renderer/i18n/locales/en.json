@@ -3829,6 +3829,7 @@
     "switched": "Account switched. Resuming…",
     "switchedNoResume": "Account switched. The previous conversation could not be resumed — continuing without its context.",
     "switchedResent": "Account switched. The previous conversation was never saved, so your message is being sent again on the new account.",
+    "switchedQueuedResent": "Account switched. Your last message never reached the previous account, so it is being sent again.",
     "removeConfirm": "Remove this saved account? The credentials will be deleted from local storage.",
     "switchError": "Failed to switch account",
     "renameError": "Failed to rename account",
