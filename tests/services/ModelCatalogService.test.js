@@ -45,8 +45,11 @@ const CLI_MODELS = [
 
 // The service rewrites labels and descriptions on the way out (see
 // normalizeModelRow), so assertions compare model identity rather than the
-// whole row — otherwise every label tweak breaks unrelated cache tests.
-const CLI_VALUES = ['default', 'claude-fable-5-1[1m]', 'sonnet'];
+// whole row — otherwise every label tweak breaks unrelated cache tests. The
+// CLI's `default` alias is not among them: it is read for `recommended` and
+// dropped, so no menu offers a row that stands for a model instead of naming
+// one.
+const CLI_VALUES = ['claude-fable-5-1[1m]', 'sonnet'];
 
 function makeService() {
   const svc = new ModelCatalogService();
@@ -76,6 +79,27 @@ describe('fetching', () => {
     expect(catalog.source).toBe('cli');
     expect(catalog.primary.map(m => m.value)).toEqual(CLI_VALUES);
     expect(catalog.stale).toBe(false);
+  });
+
+  test('reports the model the CLI recommends without listing the alias', async () => {
+    const svc = makeService();
+    svc.setFetcher(async () => ({ models: CLI_MODELS }));
+
+    const catalog = await svc.getCatalog();
+
+    // What lets the picker name the model a fresh install runs on, instead of
+    // labelling it "Default (recommended)" and leaving the name to the stream.
+    expect(catalog.recommended).toBe('claude-opus-5[1m]');
+    expect(catalog.primary.find(m => m.value === 'default')).toBeUndefined();
+  });
+
+  test('has no recommendation to report when the CLI advertises no alias', async () => {
+    const svc = makeService();
+    svc.setFetcher(async () => ({ models: [CLI_MODELS[2]] }));
+
+    const catalog = await svc.getCatalog();
+
+    expect(catalog.recommended).toBe('');
   });
 
   test('keeps a superseded model in the legacy tier', async () => {

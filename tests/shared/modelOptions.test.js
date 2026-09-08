@@ -8,6 +8,8 @@
 const {
   baseModelId,
   matchModel,
+  recommendedModelId,
+  dropDefaultAlias,
   resolveModelSelection,
   dedupeLegacy,
   hasOneMContext,
@@ -30,6 +32,11 @@ const CLI_MODELS = [
   { value: 'haiku', resolvedModel: 'claude-haiku-4-5-20251001', displayName: 'Haiku' },
 ];
 
+// What every menu actually renders: the CLI payload minus its `default` alias.
+// Nothing downstream of the catalog ever sees that row, so this — not
+// CLI_MODELS — is the list the matching rules run against.
+const MENU_MODELS = dropDefaultAlias(CLI_MODELS);
+
 describe('baseModelId', () => {
   test('strips a context-variant suffix', () => {
     expect(baseModelId('claude-opus-5[1m]')).toBe('claude-opus-5');
@@ -48,60 +55,58 @@ describe('baseModelId', () => {
 
 describe('matchModel', () => {
   test('matches an exact advertised value', () => {
-    expect(matchModel(CLI_MODELS, 'sonnet').displayName).toBe('Sonnet');
+    expect(matchModel(MENU_MODELS, 'sonnet').displayName).toBe('Sonnet');
   });
 
   test('matches a canonical id via resolvedModel', () => {
-    // What a settings file written before the alias existed would hold.
-    expect(matchModel(CLI_MODELS, 'claude-haiku-4-5-20251001').displayName).toBe('Haiku');
+    // What a settings file written before the CLI advertised builds would hold.
+    expect(matchModel(MENU_MODELS, 'claude-haiku-4-5-20251001').displayName).toBe('Haiku');
   });
 
   test('matches across a context-variant suffix', () => {
     // Persisted 'claude-opus-5' must find the row whose resolvedModel is
     // 'claude-opus-5[1m]' — otherwise a stored choice silently resets.
-    expect(matchModel(CLI_MODELS, 'claude-opus-5')).not.toBeNull();
+    expect(matchModel(MENU_MODELS, 'claude-opus-5')).not.toBeNull();
   });
 
   test('prefers an exact value over a base-id match', () => {
-    // 'default' and 'opus[1m]' both resolve to claude-opus-5; asking for
-    // 'opus[1m]' must not hand back the 'default' alias, whose target can move.
-    expect(matchModel(CLI_MODELS, 'opus[1m]').value).toBe('opus[1m]');
-  });
-
-  test('prefers a concrete row over the default alias', () => {
-    // 'default' sits first in the CLI payload and also covers claude-opus-5.
-    // Resolving onto it would let the next CLI release silently re-point a
-    // stored choice, so the concrete build has to win.
-    expect(matchModel(CLI_MODELS, 'claude-opus-5').value).toBe('opus[1m]');
-  });
-
-  test('still resolves default when it is the only cover', () => {
-    const onlyDefault = [CLI_MODELS[0]];
-    expect(matchModel(onlyDefault, 'claude-opus-5').value).toBe('default');
-  });
-
-  test('prefers a concrete row when the alias shares its exact resolvedModel', () => {
-    // What the CLI's init message reports for a session started on 'opus[1m]':
-    // the id as resolvedModel spells it, suffix included. Both rows carry it
-    // and the alias sits first, so an exact pass that took the first hit made
-    // the footer read "Default (recommended)" from session start until the
-    // first stream event named the bare 'claude-opus-5' and flipped it back.
-    expect(matchModel(CLI_MODELS, 'claude-opus-5[1m]').value).toBe('opus[1m]');
+    expect(matchModel(MENU_MODELS, 'opus[1m]').value).toBe('opus[1m]');
   });
 
   test('the init id and the API id land on the same row', () => {
     // One turn, two spellings of one model. The label must not move between
     // them, whichever order the events arrive in.
-    expect(matchModel(CLI_MODELS, 'claude-opus-5[1m]')).toBe(matchModel(CLI_MODELS, 'claude-opus-5'));
+    expect(matchModel(MENU_MODELS, 'claude-opus-5[1m]')).toBe(matchModel(MENU_MODELS, 'claude-opus-5'));
   });
 
-  test('still resolves default when it alone carries that resolvedModel', () => {
-    const rows = [CLI_MODELS[0], CLI_MODELS[3]];
-    expect(matchModel(rows, 'claude-opus-5[1m]').value).toBe('default');
+  test('no id lands on a row whose target moves between releases', () => {
+    // The alias covered claude-opus-5 too, and sat first. Dropping it upstream
+    // of every menu is what removes the ambiguity for good: the id the init
+    // message reports resolves to the build the user is actually running.
+    expect(MENU_MODELS.find(m => m.value === DEFAULT_ALIAS)).toBeUndefined();
+    expect(matchModel(MENU_MODELS, 'claude-opus-5[1m]').value).toBe('opus[1m]');
+    expect(matchModel(MENU_MODELS, 'claude-opus-5').value).toBe('opus[1m]');
+  });
+});
+
+describe('the CLI default alias', () => {
+  test('names the model it points at', () => {
+    // Read before the row is dropped: it is how the picker can show the model
+    // a fresh install runs on, by name, without offering the alias as a choice.
+    expect(recommendedModelId(CLI_MODELS)).toBe('claude-opus-5[1m]');
   });
 
-  test('an explicit default pick resolves to itself', () => {
-    expect(matchModel(CLI_MODELS, 'default').value).toBe('default');
+  test('reports nothing when no alias row exists', () => {
+    // Offline, and on any CLI that stops advertising one.
+    expect(recommendedModelId(FALLBACK_PRIMARY)).toBe('');
+    expect(recommendedModelId(MENU_MODELS)).toBe('');
+    expect(recommendedModelId(null)).toBe('');
+  });
+
+  test('is dropped without disturbing the other rows', () => {
+    expect(dropDefaultAlias(CLI_MODELS).map(m => m.value))
+      .toEqual(CLI_MODELS.slice(1).map(m => m.value));
+    expect(dropDefaultAlias(null)).toEqual([]);
   });
 });
 
@@ -144,9 +149,10 @@ describe('normalizeModelRow', () => {
     }
   });
 
-  test('keeps the default alias label and its prose', () => {
-    // Its lead segment describes the alias, it does not name the family — so
-    // promoting it would produce the label "Use the default model (…)".
+  test('keeps a row whose lead segment is prose rather than a name', () => {
+    // The CLI's `default` row reads that way. The catalog drops it before this
+    // runs, but the guard is what stops a future row of the same shape being
+    // labelled with its own description.
     const out = normalizeModelRow({
       value: 'default',
       displayName: 'Default (recommended)',
@@ -194,17 +200,17 @@ describe('hasOneMContext', () => {
 
 describe('matchModel — misses and single-row form', () => {
   test('returns null for an unknown id', () => {
-    expect(matchModel(CLI_MODELS, 'gpt-4')).toBeNull();
+    expect(matchModel(MENU_MODELS, 'gpt-4')).toBeNull();
   });
 
   test('returns null on empty input rather than throwing', () => {
-    expect(matchModel(CLI_MODELS, '')).toBeNull();
+    expect(matchModel(MENU_MODELS, '')).toBeNull();
     expect(matchModel(null, 'sonnet')).toBeNull();
   });
 
   test('single-row form answers "does this row cover the selection"', () => {
     // How the renderer marks the active row.
-    const row = CLI_MODELS[1];
+    const row = MENU_MODELS[0];
     expect(matchModel([row], 'claude-opus-5')).toBe(row);
     expect(matchModel([row], 'sonnet')).toBeNull();
   });
@@ -213,17 +219,13 @@ describe('matchModel — misses and single-row form', () => {
 describe('orderPrimary', () => {
   test('puts Fable above Opus, against the CLI order', () => {
     // The CLI ships Opus first; we surface the more capable model first.
-    const ordered = orderPrimary(CLI_MODELS).map(m => m.value);
+    const ordered = orderPrimary(MENU_MODELS).map(m => m.value);
     expect(ordered.indexOf('claude-fable-5-1[1m]')).toBeLessThan(ordered.indexOf('opus[1m]'));
   });
 
-  test('keeps the recommended alias at the top', () => {
-    expect(orderPrimary(CLI_MODELS)[0].value).toBe('default');
-  });
-
   test('orders the families fable → opus → sonnet → haiku', () => {
-    expect(orderPrimary(CLI_MODELS).map(m => m.value)).toEqual([
-      'default', 'claude-fable-5-1[1m]', 'opus[1m]', 'sonnet', 'haiku',
+    expect(orderPrimary(MENU_MODELS).map(m => m.value)).toEqual([
+      'claude-fable-5-1[1m]', 'opus[1m]', 'sonnet', 'haiku',
     ]);
   });
 
@@ -242,9 +244,9 @@ describe('orderPrimary', () => {
   });
 
   test('does not mutate its input', () => {
-    const rows = [...CLI_MODELS];
+    const rows = [...MENU_MODELS];
     orderPrimary(rows);
-    expect(rows).toEqual(CLI_MODELS);
+    expect(rows).toEqual(MENU_MODELS);
   });
 
   test('tolerates a non-array', () => {
@@ -269,7 +271,7 @@ describe('dedupeLegacy', () => {
   });
 
   test('keeps the whole legacy tier when nothing overlaps', () => {
-    expect(dedupeLegacy(CLI_MODELS, LEGACY_MODELS)).toHaveLength(LEGACY_MODELS.length);
+    expect(dedupeLegacy(MENU_MODELS, LEGACY_MODELS)).toHaveLength(LEGACY_MODELS.length);
   });
 
   test('tolerates missing arguments', () => {
@@ -282,18 +284,25 @@ describe('resolveModelSelection', () => {
   // The footer paints twice: once on whatever catalog is loaded, once after the
   // CLI answers. Both passes go through here, so the interesting cases are the
   // ones where the two passes see different catalogs.
-  const FALLBACK = [...FALLBACK_PRIMARY, ...dedupeLegacy(FALLBACK_PRIMARY, LEGACY_MODELS)];
-  const CLI = [...orderPrimary(CLI_MODELS), ...dedupeLegacy(CLI_MODELS, LEGACY_MODELS)];
+  const FALLBACK = [...orderPrimary(FALLBACK_PRIMARY), ...dedupeLegacy(FALLBACK_PRIMARY, LEGACY_MODELS)];
+  const CLI = [...orderPrimary(MENU_MODELS), ...dedupeLegacy(MENU_MODELS, LEGACY_MODELS)];
 
-  test('labels an unchosen model the same on either tier', () => {
-    // The reported glitch: the same fresh install read "Opus 5" when the footer
-    // painted before the catalog IPC landed, and "Default (recommended)" when
-    // it landed first. Which one you got depended on the reload.
+  test('shows the model the CLI recommends, by name', () => {
+    // With nothing chosen the caller passes the CLI's recommendation as the
+    // preference, so the chip names a model instead of reading "Default
+    // (recommended)" for whichever one the CLI happens to favour.
+    const res = resolveModelSelection(CLI, recommendedModelId(CLI_MODELS), false);
+    expect(res.value).toBe('opus[1m]');
+    expect(res.persist).toBe(false);
+  });
+
+  test('never resolves an unchosen state onto a premium model', () => {
+    // Offline there is no recommendation to resolve, and the menu order leads
+    // with Fable — which draws on a usage limit of its own. A state nobody
+    // chose must not be one of those.
     const cold = resolveModelSelection(FALLBACK, '', false);
-    const warm = resolveModelSelection(CLI, '', false);
-    expect(cold.label).toBe(warm.label);
-    expect(cold.value).toBe(DEFAULT_ALIAS);
-    expect(warm.value).toBe(DEFAULT_ALIAS);
+    expect(modelTier(cold.value)).toBe('standard');
+    expect(cold.persist).toBe(false);
   });
 
   test('never persists a selection nobody made', () => {
@@ -333,17 +342,17 @@ describe('resolveModelSelection', () => {
 });
 
 describe('catalog contents', () => {
-  test('both tiers lead with the recommended alias', () => {
-    // What keeps the two passes above agreeing. `orderPrimary` is applied to the
-    // fallback too (ModelCatalogService._shape), so assert it survives ordering.
-    expect(FALLBACK_PRIMARY[0].value).toBe(DEFAULT_ALIAS);
-    expect(orderPrimary(FALLBACK_PRIMARY)[0].value).toBe(DEFAULT_ALIAS);
-    expect(orderPrimary(CLI_MODELS)[0].value).toBe(DEFAULT_ALIAS);
+  test('no tier offers the CLI default alias', () => {
+    // The picker lists models by name; "make this the default for new
+    // conversations" covers what the alias row was there for.
+    expect(FALLBACK_PRIMARY.find(m => m.value === DEFAULT_ALIAS)).toBeUndefined();
+    expect(LEGACY_MODELS.find(m => m.value === DEFAULT_ALIAS)).toBeUndefined();
+    expect(dropDefaultAlias(CLI_MODELS).find(m => m.value === DEFAULT_ALIAS)).toBeUndefined();
   });
 
-  test('the offline alias does not soak up a concrete id', () => {
-    // It carries no resolvedModel, so matchModel must still prefer a real row.
-    expect(matchModel(FALLBACK_PRIMARY, 'claude-opus-5').value).toBe('claude-opus-5');
+  test('the offline tier can still name a standard-tier model', () => {
+    // What `resolveModelSelection` falls back to when no recommendation exists.
+    expect(FALLBACK_PRIMARY.some(m => modelTier(m) === 'standard')).toBe(true);
   });
 
   test('the workflow node accepts the current Fable id', () => {
@@ -363,7 +372,9 @@ describe('catalog contents', () => {
 });
 
 describe('modelFamily / modelTier', () => {
-  test('reads the family off the resolved id, so the default alias follows its target', () => {
+  test('reads the family off the resolved id, not the advertised value', () => {
+    // The CLI's `default` row is the extreme case: its value names no family at
+    // all, and `recommended` is read off exactly this.
     expect(modelFamily(CLI_MODELS[0])).toBe('opus');
     expect(modelFamily('claude-fable-5-1[1m]')).toBe('fable');
     expect(modelFamily({ value: 'sonnet' })).toBe('sonnet');
@@ -374,6 +385,7 @@ describe('modelFamily / modelTier', () => {
     expect(modelTier(CLI_MODELS[2])).toBe('premium');
     expect(modelTier(LEGACY_MODELS.find(m => m.value === 'claude-fable-5'))).toBe('premium');
     expect(modelTier(CLI_MODELS[1])).toBe('standard');
+    expect(modelTier(MENU_MODELS[0])).toBe('standard');
     expect(modelTier('haiku')).toBe('standard');
   });
 

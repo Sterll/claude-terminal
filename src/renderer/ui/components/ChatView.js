@@ -411,21 +411,27 @@ class ChatView extends BaseComponent {
   let currentAssistantMsgEl = null; // tracks the current .chat-msg-assistant wrapper for UUID tagging
   let sdkSessionId = null; // real SDK session UUID (different from our internal sessionId)
   let model = '';
+  // A stored 'default' predates this menu: the CLI's alias was pickable then,
+  // and the per-project select offered it too. It names no model — it stood for
+  // "whichever one the CLI favours" — so it now reads as no preference at all,
+  // and resolves through the same path as an empty setting.
+  const chosenId = (id) => (id && id !== DEFAULT_ALIAS ? id : '');
   // Resolved against the catalog in initModelSelector — at this point the
   // catalog may still be the fallback, so an unresolvable id must not be
   // rewritten yet or a persisted choice would be lost on a slow CLI.
-  let selectedModel = initialModel || getSetting('chatModel') || '';
+  let selectedModel = chosenId(initialModel) || chosenId(getSetting('chatModel')) || '';
   // Where the model in play came from:
   //   'arg'     — the caller chose it (a fork, a per-project override)
   //   'setting' — inherited from the stored default for new conversations
   //   'pick'    — chosen from this tab's menu
-  //   'none'    — nothing chosen; the catalog's first row is shown
+  //   'none'    — nothing chosen; the model the CLI recommends is shown, by
+  //               name, and nothing is written down
   // A pick is scoped to this conversation. The stored default only moves
   // through the menu's explicit "use for new conversations" row, and only an
   // inherited selection is ever written back (to adopt the catalog's own id).
   // That is what stops the last pick in one tab silently becoming the model of
   // every tab opened after it.
-  let modelSource = initialModel ? 'arg' : (getSetting('chatModel') ? 'setting' : 'none');
+  let modelSource = chosenId(initialModel) ? 'arg' : (chosenId(getSetting('chatModel')) ? 'setting' : 'none');
   // Whether `selectedModel` is a choice someone made — a stored setting, or a
   // pick from the menu — rather than one the picker derived because nothing was
   // chosen. Only a real choice may be written back; see resolveModelSelection.
@@ -1186,9 +1192,13 @@ class ChatView extends BaseComponent {
    * Adopts the catalog row's own `value`, which is what upgrades a stored
    * 'claude-opus-5' to the CLI's 'opus[1m]' build — the label already said
    * "Opus (1M context)", so not adopting it left the footer claiming a context
-   * window the request didn't ask for. `matchModel` keeps the `default` alias
-   * out of this path, so a deliberate choice is never re-pointed by a CLI
-   * release; only an explicit pick of "Default (recommended)" stores it.
+   * window the request didn't ask for.
+   *
+   * With nothing stored, the CLI's recommendation stands in as the preference:
+   * the menu no longer carries a "Default (recommended)" row, so this is what
+   * puts a model *name* on the chip instead of a label that could stand for any
+   * of them. It is resolved, never persisted — `modelIsExplicit` is what keeps
+   * the two apart.
    *
    * Runs twice per session — once on the catalog we happen to hold, once after
    * the CLI answers — so it has to be safe to call on the fallback tier. That
@@ -1196,7 +1206,21 @@ class ChatView extends BaseComponent {
    * like a preference to the second, and got saved as one.
    */
   function applyResolvedModel() {
-    const preferred = selectedModel || initialModel || getSetting('chatModel') || '';
+    // A derived selection must not outrank the CLI's answer. The first pass
+    // often runs on the offline fallback, which carries no recommendation and
+    // resolves to a model of its own choosing; letting that feed the second
+    // pass would leave the chip on it for the rest of the session, which is
+    // exactly what the second pass exists to correct. Only a real choice — a
+    // pick, a stored default, a per-project override — takes precedence.
+    const chosen = modelIsExplicit ? selectedModel : '';
+    const preferred = chosen
+      || chosenId(initialModel)
+      || chosenId(getSetting('chatModel'))
+      || ModelCatalog.getCatalog().recommended
+      // Nothing better to show yet: keep what the last pass derived rather than
+      // blanking the chip.
+      || selectedModel
+      || '';
     const resolved = resolveModelSelection(allCatalogModels(), preferred, modelIsExplicit);
     if (!resolved) return;
     selectedModel = resolved.value;
@@ -1585,24 +1609,56 @@ class ChatView extends BaseComponent {
     return opt ? opt.label : selectedEffort;
   }
 
-  function defaultModelRow() {
-    const models = allCatalogModels();
-    return matchModel(models, DEFAULT_ALIAS) || models[0] || null;
+  /** The model the CLI recommends, as a catalog row — null when it hasn't said. */
+  function recommendedModelRow() {
+    return matchModel(allCatalogModels(), ModelCatalog.getCatalog().recommended);
+  }
+
+  /**
+   * Where the premium notice's "switch" lands: the CLI's recommendation, or
+   * failing that the first standard-tier row. Never `models[0]` — the menu
+   * order leads with the premium family, so the escape from a costly model
+   * would have been another one.
+   */
+  function standardModelRow() {
+    return recommendedModelRow()
+      || allCatalogModels().find(m => modelTier(m) === 'standard')
+      || null;
+  }
+
+  /**
+   * The model id a request should carry.
+   *
+   * A real choice always travels. A selection the picker merely derived travels
+   * only when it came from the CLI's own recommendation: otherwise — a cold
+   * launch, an unreachable CLI — the chip is showing a stand-in, and sending it
+   * would start the session on a model nobody picked, off a list the CLI never
+   * answered. `null` leaves that decision where it belongs.
+   */
+  function requestedModel() {
+    if (modelIsExplicit) return selectedModel || null;
+    const row = recommendedModelRow();
+    return row && row.value === selectedModel ? selectedModel : null;
   }
 
   /**
    * Whether the model in play is already what new conversations start on.
    * Compared as catalog rows, so a stored 'claude-opus-5' and a selected
-   * 'opus[1m]' count as the same pick; a stored null means the `default` row.
+   * 'opus[1m]' count as the same pick.
+   *
+   * Nothing stored means nothing is pinned, whatever this tab happens to run:
+   * the row then offers to pin it by name. That is the state the old "Default
+   * (recommended)" entry hid — it showed as chosen while the setting was empty
+   * and the CLI was free to move underneath it.
    */
   function modelIsStoredDefault() {
+    const stored = getSetting('chatModel');
+    if (!stored || !selectedModel) return false;
     const models = allCatalogModels();
-    const stored = getSetting('chatModel') || DEFAULT_ALIAS;
-    const live = selectedModel || DEFAULT_ALIAS;
     const storedRow = matchModel(models, stored);
-    const liveRow = matchModel(models, live);
+    const liveRow = matchModel(models, selectedModel);
     if (storedRow && liveRow) return storedRow.value === liveRow.value;
-    return stored === live;
+    return stored === selectedModel;
   }
 
   function effortIsStoredDefault() {
@@ -1610,9 +1666,10 @@ class ChatView extends BaseComponent {
   }
 
   function setModelAsDefault() {
-    // The alias is stored as null: "no preference" resolves to the same row,
-    // and never pins a choice the CLI may later move.
-    setSetting('chatModel', selectedModel === DEFAULT_ALIAS ? null : selectedModel);
+    // Always a concrete id: pinning is the one place the choice stops moving
+    // with the CLI. Clearing it back to "no preference" is the premium notice's
+    // "forget" action, and setting a per-project override.
+    setSetting('chatModel', selectedModel || null);
     buildModelDropdown();
     showToast(t('chat.defaultModelSaved', { model: currentModelLabel() }), 'success');
   }
@@ -1664,21 +1721,21 @@ class ChatView extends BaseComponent {
       : safe;
   }
 
-  async function switchToDefaultModel() {
-    const row = defaultModelRow();
+  async function switchToRecommendedModel() {
+    const row = standardModelRow();
     if (row) await selectModel(row.value);
   }
 
   modelNotice.querySelector('.chat-model-notice-switch').addEventListener('click', () => {
-    switchToDefaultModel().catch(err => console.warn('[ChatView] switch to default failed:', err));
+    switchToRecommendedModel().catch(err => console.warn('[ChatView] switch to recommended failed:', err));
   });
   modelNotice.querySelector('.chat-model-notice-forget').addEventListener('click', () => {
     // Clearing the stored default is the one thing this notice can do for the
     // next tab; the switch takes care of this one.
     setSetting('chatModel', null);
-    switchToDefaultModel().catch(err => console.warn('[ChatView] switch to default failed:', err));
-    const row = defaultModelRow();
-    showToast(t('chat.defaultModelSaved', { model: row ? row.displayName : 'Default' }), 'success');
+    const row = standardModelRow();
+    switchToRecommendedModel().catch(err => console.warn('[ChatView] switch to recommended failed:', err));
+    if (row) showToast(t('chat.defaultModelSaved', { model: row.displayName }), 'success');
   });
   modelNotice.querySelector('.chat-model-notice-close').addEventListener('click', () => {
     premiumNoticeDismissed = true;
@@ -3645,7 +3702,7 @@ class ChatView extends BaseComponent {
           sessionId,
           images: imagesPayload,
           mentions: resolvedMentions,
-          model: selectedModel,
+          model: requestedModel(),
           effort: selectedEffort,
           enable1MContext: getSetting('enable1MContext') || false,
           maxTurns: getSetting('maxTurns') || null,
@@ -7124,7 +7181,7 @@ class ChatView extends BaseComponent {
       resumeSessionId: realSid,
       resumeSessionAt: messageUuid,
       resumeDropsTurn: dropsTurnUuid || null,
-      model: selectedModel,
+      model: requestedModel(),
       effort: selectedEffort,
       skipPermissions,
     });
