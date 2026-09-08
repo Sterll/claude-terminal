@@ -340,20 +340,26 @@ function normalizeModelRow(m) {
 const MODEL_FAMILIES = ['fable', 'opus', 'sonnet', 'haiku'];
 
 /**
- * Families billed beyond the plan's included usage.
+ * Families the plan meters on their own.
  *
- * Hand-curated: the CLI catalog says nothing about cost on a subscription
- * account (its descriptions carry prices only when billed per token, and those
- * are stripped for display anyway). Fable is the model that surprises people
- * on the bill, so it is the one the chip, the composer border and the tab tag
- * single out.
+ * Not a billing claim: on a subscription these do not cost extra, they draw on
+ * a usage limit of their own — the usage API returns it as a model-scoped
+ * `limits` entry beside `session` and `weekly_all` (see UsageService), and the
+ * app already draws that bar — and that usage also counts toward the overall
+ * limit. So a tab left on one quietly spends a quota the next tab may want.
+ *
+ * Hand-curated, because the CLI catalog says nothing about it: its descriptions
+ * carry per-token prices only, which are stripped for display anyway. Fable is
+ * the family this applies to, so it is the one the chip, the composer border
+ * and the tab tag single out.
  */
 const PREMIUM_FAMILIES = ['fable'];
 
 /**
- * Effort levels flagged as costly on the chip whatever the model. Only the top
- * of the ladder: xhigh is the everyday coding setting for many, and a warning
- * that is always on is one nobody reads.
+ * Effort levels flagged as heavy on the chip whatever the model — they spend
+ * the usage limit faster, on any tier. Only the top of the ladder: xhigh is the
+ * everyday coding setting for many, and a warning that is always on is one
+ * nobody reads.
  */
 const PREMIUM_EFFORT_LEVELS = ['max'];
 
@@ -374,7 +380,7 @@ function modelFamily(rowOrId) {
 }
 
 /**
- * 'premium' for a family billed as extra usage, 'standard' for everything
+ * 'premium' for a family metered on its own limit, 'standard' for everything
  * else — including ids we cannot place, which must not be dressed up as costly
  * on a guess.
  *
