@@ -3785,6 +3785,7 @@
     "limitReached": "Batas penggunaan tercapai pada akun yang aktif.",
     "switched": "Akun diganti. Melanjutkan…",
     "switchedNoResume": "Akun diganti. Percakapan sebelumnya tidak bisa dilanjutkan — dilanjutkan tanpa konteksnya.",
+    "switchedResent": "Akun diganti. Percakapan sebelumnya tidak pernah tersimpan, jadi pesan Anda dikirim ulang di akun baru.",
     "removeConfirm": "Hapus akun tersimpan ini? Kredensialnya akan dihapus dari penyimpanan lokal.",
     "switchError": "Gagal mengganti akun",
     "renameError": "Gagal mengganti nama akun",
