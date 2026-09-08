@@ -332,6 +332,10 @@ function claudeCodeManifest() {
   fs.mkdirSync(dir, { recursive: true });
   const exe = path.join(dir, 'claude.exe');
   fs.writeFileSync(exe, '');
+  // _manifestIsUsable tests X_OK. Windows ignores the bit, POSIX does not, and
+  // a file written at the default 0644 is not executable there — which made
+  // these tests pass locally and fail on the Linux and macOS runners.
+  fs.chmodSync(exe, 0o755);
   const manifest = path.join(dir, `${HOST_NAME}.json`);
   fs.writeFileSync(manifest, JSON.stringify({
     name: HOST_NAME,
