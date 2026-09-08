@@ -1848,7 +1848,7 @@
     "premiumBadge": "Premium",
     "premiumModelHint": "{model} memakai kuota penggunaannya sendiri, yang juga dihitung dalam penggunaan keseluruhan Anda",
     "premiumNotice": "Percakapan ini dimulai dengan {model} · {effort}, model default Anda untuk percakapan baru. Model ini memakai kuota penggunaannya sendiri, yang juga dihitung dalam penggunaan keseluruhan Anda.",
-    "premiumNoticeSwitch": "Kembali ke Default",
+    "premiumNoticeSwitch": "Beralih ke {model}",
     "premiumNoticeForget": "Juga untuk percakapan baru",
     "modelSetDefault": "Gunakan {model} untuk percakapan baru",
     "modelIsDefault": "Default untuk percakapan baru",

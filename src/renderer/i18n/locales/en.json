@@ -1848,7 +1848,7 @@
     "premiumBadge": "Premium",
     "premiumModelHint": "{model} draws on its own usage limit, which also counts toward your overall usage",
     "premiumNotice": "This conversation starts on {model} · {effort}, your default for new conversations. It draws on its own usage limit, which also counts toward your overall usage.",
-    "premiumNoticeSwitch": "Switch to Default",
+    "premiumNoticeSwitch": "Switch to {model}",
     "premiumNoticeForget": "Also for new conversations",
     "modelSetDefault": "Use {model} for new conversations",
     "modelIsDefault": "Default for new conversations",

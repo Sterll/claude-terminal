@@ -561,7 +561,7 @@ class ChatView extends BaseComponent {
           <svg class="chat-model-notice-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12L13 2z"/></svg>
           <span class="chat-model-notice-text"></span>
           <div class="chat-model-notice-actions">
-            <button class="chat-model-notice-switch">${escapeHtml(t('chat.premiumNoticeSwitch'))}</button>
+            <button class="chat-model-notice-switch"></button>
             <button class="chat-model-notice-forget">${escapeHtml(t('chat.premiumNoticeForget'))}</button>
           </div>
           <button class="chat-model-notice-close" aria-label="${escapeHtml(t('common.close') || 'Close')}"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>
@@ -665,6 +665,9 @@ class ChatView extends BaseComponent {
   const modeDropdown = chatView.querySelector('.chat-mode-dropdown');
   const modelNotice = chatView.querySelector('.chat-model-notice');
   const modelNoticeText = chatView.querySelector('.chat-model-notice-text');
+  // Labelled per render: it names the model it switches to, which only the
+  // resolved catalog knows.
+  const modelNoticeSwitch = chatView.querySelector('.chat-model-notice-switch');
   const statusTokens = chatView.querySelector('.chat-status-tokens');
   const contextPopover = chatView.querySelector('.chat-context-popover');
   const slashDropdown = chatView.querySelector('.chat-slash-dropdown');
@@ -1713,6 +1716,12 @@ class ChatView extends BaseComponent {
       && !hasSentPrompt;
     modelNotice.hidden = !show;
     if (!show) return;
+    // "Switch to Default" named a menu row that no longer exists; the button
+    // names the model it lands on instead, and stays hidden while the catalog
+    // has nothing to name.
+    const target = standardModelRow();
+    modelNoticeSwitch.hidden = !target;
+    if (target) modelNoticeSwitch.textContent = t('chat.premiumNoticeSwitch', { model: target.displayName });
     // The model name is the one thing to read: escape everything, then bold it.
     const safe = escapeHtml(t('chat.premiumNotice', { model: label, effort: currentEffortLabel() }));
     const safeLabel = escapeHtml(label);

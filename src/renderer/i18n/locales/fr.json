@@ -1848,7 +1848,7 @@
     "premiumBadge": "Premium",
     "premiumModelHint": "{model} consomme son propre quota d'usage, qui compte aussi dans votre usage global",
     "premiumNotice": "Cette conversation démarre sur {model} · {effort}, votre modèle par défaut pour les nouvelles conversations. Il consomme son propre quota d'usage, qui compte aussi dans votre usage global.",
-    "premiumNoticeSwitch": "Revenir à Default",
+    "premiumNoticeSwitch": "Passer à {model}",
     "premiumNoticeForget": "Aussi pour les nouvelles conversations",
     "modelSetDefault": "Utiliser {model} pour les nouvelles conversations",
     "modelIsDefault": "Par défaut pour les nouvelles conversations",

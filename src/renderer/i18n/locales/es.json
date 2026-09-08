@@ -1827,7 +1827,7 @@
     "premiumBadge": "Premium",
     "premiumModelHint": "{model} consume su propia cuota de uso, que también cuenta en tu uso global",
     "premiumNotice": "Esta conversación empieza con {model} · {effort}, tu modelo por defecto para nuevas conversaciones. Consume su propia cuota de uso, que también cuenta en tu uso global.",
-    "premiumNoticeSwitch": "Volver a Default",
+    "premiumNoticeSwitch": "Cambiar a {model}",
     "premiumNoticeForget": "También para nuevas conversaciones",
     "modelSetDefault": "Usar {model} para nuevas conversaciones",
     "modelIsDefault": "Por defecto para nuevas conversaciones",

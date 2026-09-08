@@ -1848,7 +1848,7 @@
     "premiumBadge": "高级",
     "premiumModelHint": "{model} 消耗自己的独立用量额度，这部分也计入你的总用量",
     "premiumNotice": "本次对话将使用 {model} · {effort}，这是你为新对话设置的默认模型。它消耗自己的独立用量额度，这部分也计入你的总用量。",
-    "premiumNoticeSwitch": "切换到默认模型",
+    "premiumNoticeSwitch": "切换到 {model}",
     "premiumNoticeForget": "新对话也一并切换",
     "modelSetDefault": "新对话使用 {model}",
     "modelIsDefault": "新对话的默认设置",
