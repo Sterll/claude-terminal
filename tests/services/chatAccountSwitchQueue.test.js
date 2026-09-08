@@ -63,7 +63,8 @@ describe('account switch with a message still in flight', () => {
 
     const ctx = chatService.prepareSwitchAccount(SID);
 
-    expect(ctx.pendingUserMessage).toMatchObject({
+    expect(ctx.pendingUserMessages).toHaveLength(1);
+    expect(ctx.pendingUserMessages[0]).toMatchObject({
       text: 'and now the tests', userMessageUuid: 'uuid-1',
     });
   });
@@ -76,20 +77,87 @@ describe('account switch with a message still in flight', () => {
 
     const ctx = chatService.prepareSwitchAccount(SID);
 
-    expect(ctx.pendingUserMessage.images).toEqual(images);
-    expect(ctx.pendingUserMessage.mentions).toEqual(mentions);
+    expect(ctx.pendingUserMessages[0].images).toEqual(images);
+    expect(ctx.pendingUserMessages[0].mentions).toEqual(mentions);
   });
 
-  test('hands back nothing once the turn has reported a result', async () => {
+  // The CLI stamps the prompt's uuid on the turn's first reply frame. That is
+  // the acknowledgement that it has been written down, and it is what a usage
+  // limit refused mid-turn never gets to a result for.
+  test('drops a message the CLI acknowledged by uuid', async () => {
     openSession();
     chatService.sendMessage(SID, 'answered already', [], [], 'uuid-3');
+    await chatService._processStream(SID, (async function* () {
+      yield { type: 'assistant', user_message_uuid: 'uuid-3', message: { role: 'assistant', content: [] } };
+    })());
+
+    expect(chatService.prepareSwitchAccount(SID).pendingUserMessages).toEqual([]);
+  });
+
+  test('drops every member of an acknowledged batch', async () => {
+    openSession();
+    chatService.sendMessage(SID, 'first', [], [], 'uuid-a');
+    chatService.sendMessage(SID, 'second', [], [], 'uuid-b');
+    await chatService._processStream(SID, (async function* () {
+      yield {
+        type: 'assistant', user_message_uuid: 'uuid-b',
+        user_message_uuids: ['uuid-a', 'uuid-b'],
+        message: { role: 'assistant', content: [] },
+      };
+    })());
+
+    expect(chatService.prepareSwitchAccount(SID).pendingUserMessages).toEqual([]);
+  });
+
+  // The bug this file exists for, in its original form: the limit throws, so no
+  // result ever arrives, and the message that caused it used to survive as
+  // pending — then get replayed on top of a resume that already held it.
+  test('does not hand back a message the CLI answered before the stream died', async () => {
+    openSession();
+    chatService.sendMessage(SID, 'refais le tri', [], [], 'uuid-5');
+    await chatService._processStream(SID, (async function* () {
+      yield { type: 'assistant', user_message_uuid: 'uuid-5', message: { role: 'assistant', content: [] } };
+      throw new Error('Claude Code process exited with code 1');
+    })());
+
+    expect(chatService.prepareSwitchAccount(SID).pendingUserMessages).toEqual([]);
+  });
+
+  // Two follow-ups typed while the offer is on screen: the second used to
+  // overwrite the first, which then vanished without a trace.
+  test('keeps both messages when two are queued', () => {
+    openSession();
+    chatService.sendMessage(SID, 'first', [], [], 'uuid-x');
+    chatService.sendMessage(SID, 'second', [], [], 'uuid-y');
+
+    expect(chatService.prepareSwitchAccount(SID).pendingUserMessages.map(m => m.text))
+      .toEqual(['first', 'second']);
+  });
+
+  // A message queued behind the turn that just closed has not been written
+  // down, so a result must not clear it on a session that stamps uuids.
+  test('a result does not clear a message the turn never consumed', async () => {
+    openSession();
+    chatService.sendMessage(SID, 'turn A', [], [], 'uuid-A');
+    chatService.sendMessage(SID, 'turn B', [], [], 'uuid-B');
+    await chatService._processStream(SID, (async function* () {
+      yield { type: 'assistant', user_message_uuid: 'uuid-A', message: { role: 'assistant', content: [] } };
+      yield { type: 'result', subtype: 'success', is_error: false };
+    })());
+
+    expect(chatService.prepareSwitchAccount(SID).pendingUserMessages.map(m => m.text))
+      .toEqual(['turn B']);
+  });
+
+  // An older producer stamps nothing, so a closed turn is all it gives us.
+  test('falls back to the result when the producer stamps no uuid', async () => {
+    openSession();
+    chatService.sendMessage(SID, 'answered already', [], [], 'uuid-6');
     await chatService._processStream(SID, (async function* () {
       yield { type: 'result', subtype: 'success', is_error: false };
     })());
 
-    const ctx = chatService.prepareSwitchAccount(SID);
-
-    expect(ctx.pendingUserMessage).toBeNull();
+    expect(chatService.prepareSwitchAccount(SID).pendingUserMessages).toEqual([]);
   });
 
   // An error result is still an answer: the renderer showed it and the CLI
@@ -103,12 +171,12 @@ describe('account switch with a message still in flight', () => {
 
     const ctx = chatService.prepareSwitchAccount(SID);
 
-    expect(ctx.pendingUserMessage).toBeNull();
+    expect(ctx.pendingUserMessages).toEqual([]);
   });
 
   test('hands back nothing when nothing was ever sent', () => {
     openSession();
-    expect(chatService.prepareSwitchAccount(SID).pendingUserMessage).toBeNull();
+    expect(chatService.prepareSwitchAccount(SID).pendingUserMessages).toEqual([]);
   });
 
   test('still carries the context the restart is spawned with', () => {
