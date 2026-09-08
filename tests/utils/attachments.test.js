@@ -3,6 +3,8 @@ const {
   shouldInlineText,
   extensionOf,
   formatBytes,
+  acceptAttribute,
+  isSecretFile,
   MAX_INLINE_TEXT_BYTES,
 } = require('../../src/renderer/utils/attachments');
 
@@ -49,8 +51,10 @@ describe('classifyFile', () => {
 
   test('accepts dotfiles', () => {
     expect(classifyFile({ name: '.gitignore', type: '' })).toBe('text');
-    expect(classifyFile({ name: '.env', type: '' })).toBe('text');
     expect(classifyFile({ name: '.editorconfig', type: '' })).toBe('text');
+    // .env used to be here. It is a credentials file, and the dotfile rule was
+    // what let it through — see the 'credential files' block below.
+    expect(classifyFile({ name: '.env', type: '' })).toBe('secret');
   });
 
   test('falls back to the media type when the extension is unknown', () => {
@@ -107,5 +111,48 @@ describe('formatBytes', () => {
     expect(formatBytes(512)).toBe('512 B');
     expect(formatBytes(2048)).toBe('2.0 KB');
     expect(formatBytes(5 * 1024 * 1024)).toBe('5.0 MB');
+  });
+});
+
+describe('credential files', () => {
+  // Every one of these classified as text before — `.env` by extension, the
+  // rest by the dotfile rule — so a misaimed drag put live secrets in the
+  // prompt, the transcript on disk, and the request to the API.
+  test.each([
+    '.env', '.env.local', '.env.production', '.npmrc', '.netrc', '.pgpass',
+    'id_rsa', 'id_ed25519', 'server.pem', 'client.key', 'store.p12',
+  ])('refuses %s', (name) => {
+    expect(classifyFile({ name, type: '' })).toBe('secret');
+    expect(isSecretFile(name)).toBe(true);
+  });
+
+  test('leaves ordinary files alone', () => {
+    for (const name of ['.gitignore', '.editorconfig', 'environment.md', 'keyboard.ts', 'README']) {
+      expect(classifyFile({ name, type: '' })).not.toBe('secret');
+    }
+  });
+
+  test('matches on the basename, not the path', () => {
+    expect(isSecretFile('/home/y/project/.env')).toBe(true);
+    expect(isSecretFile(String.raw`C:\Users\y\project\.env.local`)).toBe(true);
+  });
+});
+
+describe('acceptAttribute', () => {
+  // The hand-written list had drifted: a .vue dropped on the composer was
+  // accepted while the same file picked through the button was not selectable.
+  test('offers every extension the drop handler accepts', () => {
+    const accept = acceptAttribute().split(',');
+    for (const name of ['a.vue', 'a.svelte', 'a.astro', 'a.tf', 'a.nix', 'a.prisma', 'a.zsh']) {
+      expect(classifyFile({ name, type: '' })).toBe('text');
+      expect(accept).toContain(`.${name.split('.')[1]}`);
+    }
+  });
+
+  test('keeps the media types the picker needs for images and PDFs', () => {
+    const accept = acceptAttribute();
+    for (const type of ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf']) {
+      expect(accept).toContain(type);
+    }
   });
 });

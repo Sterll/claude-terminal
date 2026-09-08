@@ -1787,6 +1787,7 @@
     "slashReview": "Tinjau sebuah pull request",
     "attachFile": "Lampirkan file",
     "attachUnsupported": "{name} tidak dapat dilampirkan: format tidak didukung",
+    "attachSecret": "{name} tampak seperti berkas kredensial dan tidak dilampirkan",
     "attachTooLarge": "{name} terlalu besar untuk dilampirkan (maks {max})",
     "attachTooMany": "Maksimal {max} file per pesan",
     "attachReadFailed": "Tidak dapat membaca {name}",

@@ -22,6 +22,7 @@ const {
   classifyFile,
   shouldInlineText,
   formatBytes,
+  acceptAttribute,
   MAX_IMAGE_BYTES,
   MAX_PDF_BYTES,
 } = require('../../utils/attachments');
@@ -581,7 +582,7 @@ class ChatView extends BaseComponent {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
           </button>
           <div class="chat-input" contenteditable="true" role="textbox" data-placeholder="${escapeHtml(t('chat.placeholder'))}" spellcheck="false"></div>
-          <input type="file" class="chat-file-input" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/*,.md,.markdown,.mdx,.txt,.csv,.tsv,.json,.jsonc,.yaml,.yml,.toml,.ini,.cfg,.conf,.env,.xml,.html,.css,.scss,.js,.jsx,.mjs,.cjs,.ts,.tsx,.py,.rb,.go,.rs,.java,.kt,.c,.h,.cpp,.cs,.php,.swift,.sh,.bash,.ps1,.sql,.graphql,.proto,.lua,.log,.patch,.diff" multiple style="display:none" />
+          <input type="file" class="chat-file-input" accept="${acceptAttribute()}" multiple style="display:none" />
           <div class="chat-input-actions">
             <button class="chat-bg-btn" title="${escapeHtml(t('chat.runInBackground') || 'Run in background')}" style="display:none">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -987,6 +988,22 @@ class ChatView extends BaseComponent {
   const MAX_IMAGE_SIZE = MAX_IMAGE_BYTES;
   const MAX_PENDING_IMAGES = 5;
   const MAX_PENDING_DOCUMENTS = 5;
+  const MAX_PENDING_TEXTS = 10;
+  // What all inlined text files together may add to one turn. Ten files at the
+  // 128 KB per-file ceiling is 1.3 MB of context nobody asked to pay for, and
+  // a dropped folder reaches that without the user noticing they dropped one.
+  const MAX_TOTAL_INLINE_TEXT_BYTES = 512 * 1024;
+
+  // Reads are asynchronous, but addFiles() loops synchronously — so a cap
+  // tested against the landed count alone reads zero for every file of a
+  // batch: drop eight images and all eight pass the test, then five land and
+  // three vanish without a word. The reservation is taken in the loop and
+  // released when the read settles, so the count the cap sees is the count
+  // that will exist.
+  let inflightImages = 0;
+  let inflightDocuments = 0;
+  let inflightTexts = 0;
+  let inlinedTextBytes = 0;
 
   // ── Contenteditable helpers ──
 
@@ -1950,6 +1967,9 @@ class ChatView extends BaseComponent {
         case 'image': addImageFile(file); break;
         case 'pdf': addPdfFile(file); break;
         case 'text': addTextFile(file); break;
+        case 'secret':
+          attachmentToast(t('chat.attachSecret', { name: file.name }));
+          break;
         default:
           attachmentToast(t('chat.attachUnsupported', { name: file.name }));
       }
@@ -1957,7 +1977,7 @@ class ChatView extends BaseComponent {
   }
 
   function addImageFile(file) {
-    if (pendingImages.length >= MAX_PENDING_IMAGES) {
+    if (pendingImages.length + inflightImages >= MAX_PENDING_IMAGES) {
       attachmentToast(t('chat.attachTooMany', { max: MAX_PENDING_IMAGES }));
       return;
     }
@@ -1965,13 +1985,18 @@ class ChatView extends BaseComponent {
       attachmentToast(t('chat.attachTooLarge', { name: file.name, max: formatBytes(MAX_IMAGE_SIZE) }));
       return;
     }
+    inflightImages++;
     const reader = new FileReader();
     reader.onload = () => {
-      if (pendingImages.length >= MAX_PENDING_IMAGES) return;
+      inflightImages--;
       const dataUrl = reader.result;
       const base64 = dataUrl.split(',')[1];
       pendingImages.push({ base64, mediaType: file.type || 'image/png', name: file.name, dataUrl });
       renderImagePreview();
+    };
+    reader.onerror = () => {
+      inflightImages--;
+      attachmentToast(t('chat.attachReadFailed', { name: file.name }), 'error');
     };
     reader.readAsDataURL(file);
   }
@@ -1991,18 +2016,23 @@ class ChatView extends BaseComponent {
       }
       return;
     }
-    if (countPdfAttachments() >= MAX_PENDING_DOCUMENTS) {
+    if (countPdfAttachments() + inflightDocuments >= MAX_PENDING_DOCUMENTS) {
       attachmentToast(t('chat.attachTooMany', { max: MAX_PENDING_DOCUMENTS }));
       return;
     }
+    inflightDocuments++;
     const reader = new FileReader();
     reader.onload = () => {
-      if (countPdfAttachments() >= MAX_PENDING_DOCUMENTS) return;
+      inflightDocuments--;
       addAttachmentChip(file.name, {
         kind: 'pdf',
         name: file.name,
         base64: String(reader.result).split(',')[1],
       });
+    };
+    reader.onerror = () => {
+      inflightDocuments--;
+      attachmentToast(t('chat.attachReadFailed', { name: file.name }), 'error');
     };
     reader.readAsDataURL(file);
   }
@@ -2018,8 +2048,24 @@ class ChatView extends BaseComponent {
       addPathAttachment(file);
       return;
     }
+    // Images and PDFs were capped; text was not, so a dropped folder inlined
+    // every file in it. A file that would break either ceiling is handed over
+    // as a path when it has one — the agent's Read tool opens it on demand —
+    // and refused out loud when it does not.
+    const overBudget = inlinedTextBytes + file.size > MAX_TOTAL_INLINE_TEXT_BYTES;
+    if (countTextAttachments() + inflightTexts >= MAX_PENDING_TEXTS || overBudget) {
+      if (file.path) {
+        addPathAttachment(file);
+      } else {
+        attachmentToast(t('chat.attachTooMany', { max: MAX_PENDING_TEXTS }));
+      }
+      return;
+    }
+    inflightTexts++;
+    inlinedTextBytes += file.size;
     const reader = new FileReader();
     reader.onload = () => {
+      inflightTexts--;
       addAttachmentChip(file.name, {
         kind: 'text',
         name: file.name,
@@ -2028,6 +2074,8 @@ class ChatView extends BaseComponent {
       });
     };
     reader.onerror = () => {
+      inflightTexts--;
+      inlinedTextBytes -= file.size;
       attachmentToast(t('chat.attachReadFailed', { name: file.name }), 'error');
     };
     reader.readAsText(file);
@@ -3059,6 +3107,10 @@ class ChatView extends BaseComponent {
 
   function countPdfAttachments() {
     return pendingMentions.filter(m => m.type === 'attachment' && m.data?.kind === 'pdf').length;
+  }
+
+  function countTextAttachments() {
+    return pendingMentions.filter(m => m.type === 'attachment' && m.data?.kind === 'text').length;
   }
 
   function renderMentionChips() {

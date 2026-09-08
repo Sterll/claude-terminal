@@ -1777,6 +1777,7 @@
     "slashReview": "Revisar una pull request",
     "attachFile": "Adjuntar un archivo",
     "attachUnsupported": "{name} no se puede adjuntar: formato no admitido",
+    "attachSecret": "{name} parece un archivo de credenciales y no se adjuntó",
     "attachTooLarge": "{name} es demasiado grande para adjuntarlo (máx. {max})",
     "attachTooMany": "Como máximo {max} archivos por mensaje",
     "attachReadFailed": "No se pudo leer {name}",

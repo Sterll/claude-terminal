@@ -35,7 +35,7 @@ const TEXT_EXTENSIONS = new Set([
   // Prose and docs
   'md', 'markdown', 'mdx', 'txt', 'text', 'rst', 'adoc', 'org', 'tex', 'bib',
   // Data and config
-  'json', 'jsonc', 'json5', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'env',
+  'json', 'jsonc', 'json5', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf',
   'properties', 'csv', 'tsv', 'xml', 'plist', 'lock',
   // Web
   'html', 'htm', 'css', 'scss', 'sass', 'less', 'vue', 'svelte', 'astro',
@@ -63,6 +63,33 @@ const TEXT_FILENAMES = new Set([
   'license', 'licence', 'readme', 'changelog', 'authors', 'contributors',
   'notice', 'codeowners', 'jenkinsfile', 'vagrantfile', 'caddyfile',
 ]);
+
+/**
+ * Files whose contents are secret by definition.
+ *
+ * Every one of these would otherwise classify as text — `.env` by extension,
+ * the dotfiles by the no-extension rule below — and inlining one puts live
+ * credentials in the prompt, in the transcript on disk, and in the request to
+ * the API. A drag is easy to misaim, and nothing about a chip reading ".env"
+ * says the whole file went with it, so these are refused with a reason rather
+ * than accepted quietly. A user who means it can still paste the parts they
+ * want.
+ */
+const SECRET_FILENAMES = new Set([
+  '.env', '.npmrc', '.netrc', '_netrc', '.pgpass', '.htpasswd',
+  'id_rsa', 'id_dsa', 'id_ecdsa', 'id_ed25519', 'credentials', '.pypirc',
+]);
+const SECRET_EXTENSIONS = new Set(['pem', 'key', 'p12', 'pfx', 'keystore', 'jks', 'asc', 'gpg']);
+
+/** Is this a file whose contents should not be inlined into a prompt? */
+function isSecretFile(name) {
+  const base = baseNameOf(name);
+  if (SECRET_FILENAMES.has(base)) return true;
+  // `.env.local`, `.env.production`… — the family, not just the bare name.
+  if (base === '.env' || base.startsWith('.env.')) return true;
+  const dot = base.lastIndexOf('.');
+  return dot > 0 && SECRET_EXTENSIONS.has(base.slice(dot + 1));
+}
 
 /**
  * Media types that mean text even when the extension is unknown. The browser
@@ -115,11 +142,17 @@ function baseNameOf(name) {
  *
  * @param {{ name?: string, type?: string }} file - a `File`, or anything
  *   carrying its `name` and MIME `type`.
- * @returns {'image'|'pdf'|'text'|null} null when the format cannot be sent.
+ * @returns {'image'|'pdf'|'text'|'secret'|null} 'secret' for a credential
+ *   file, which is refused on purpose; null when the format cannot be sent.
  */
 function classifyFile(file) {
   const name = file?.name || '';
   const type = (file?.type || '').toLowerCase();
+
+  // Before anything else: a credential file must not be inlined whatever else
+  // it looks like. Its own answer, so the caller can say why rather than
+  // reporting it as an unsupported format.
+  if (isSecretFile(name)) return 'secret';
 
   if (IMAGE_MIME_TYPES.includes(type)) return 'image';
 
@@ -150,6 +183,21 @@ function classifyFile(file) {
 }
 
 /**
+ * The `accept` attribute for the composer's file input.
+ *
+ * Derived from the same sets the drop handler classifies with, because the two
+ * had drifted: a `.vue` dropped on the composer was accepted while the same
+ * file picked through the button was not even selectable, `text/*` covering
+ * none of the extensions the browser leaves untyped.
+ *
+ * @returns {string}
+ */
+function acceptAttribute() {
+  const exts = [...TEXT_EXTENSIONS].map(e => `.${e}`);
+  return ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf', 'text/*', ...exts].join(',');
+}
+
+/**
  * Should this text file be inlined, or handed over as a path for the Read tool?
  * A file with no path on disk (pasted, or produced in memory) has to be
  * inlined — there is nothing for Read to open.
@@ -176,6 +224,8 @@ module.exports = {
   MAX_INLINE_TEXT_BYTES,
   classifyFile,
   shouldInlineText,
+  isSecretFile,
+  acceptAttribute,
   extensionOf,
   formatBytes,
 };
