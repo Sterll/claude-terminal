@@ -6,8 +6,17 @@
 // directions.
 
 let mockSettings = {};
+// null = no managed-settings file on this machine, the ordinary case.
+let mockManagedSettings = null;
+// Runs inside attachBridgeSession, before it resolves.
+let mockDuringAttach = null;
 
-jest.mock('../../src/main/utils/paths', () => ({ settingsFile: '/virtual/settings.json' }));
+jest.mock('../../src/main/utils/paths', () => ({
+  settingsFile: '/virtual/settings.json',
+  // The administrator's file, which the policy check reads *instead of* the
+  // user's — see isBlockedByPolicy.
+  managedSettingsPaths: () => ['/virtual/managed-settings.json'],
+}));
 
 jest.mock('fs', () => {
   const realFs = jest.requireActual('fs');
@@ -15,6 +24,10 @@ jest.mock('fs', () => {
     ...realFs,
     readFileSync: jest.fn((p, enc) => {
       if (p === '/virtual/settings.json') return JSON.stringify(mockSettings);
+      if (p === '/virtual/managed-settings.json') {
+        if (!mockManagedSettings) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+        return JSON.stringify(mockManagedSettings);
+      }
       return realFs.readFileSync(p, enc);
     }),
   };
@@ -51,7 +64,13 @@ jest.mock('../../src/main/utils/claudeBridge', () => ({
   loadBridge: jest.fn(async () => (mockBridgeAvailable ? {
     createCodeSession: jest.fn(async () => mockCreateResult),
     fetchRemoteCredentials: jest.fn(async () => mockCredsResult),
-    attachBridgeSession: jest.fn(async (opts) => { mockAttachOpts = opts; return mockHandle; }),
+    attachBridgeSession: jest.fn(async (opts) => {
+      mockAttachOpts = opts;
+      // A hook for the one thing that has to happen *while* the attach is in
+      // flight: the window in which mirror.handle is still null.
+      if (mockDuringAttach) await mockDuringAttach();
+      return mockHandle;
+    }),
     isCredentialsFailure: r => !!r?.terminal,
     isCredentialsRejection: r => r?.terminal === false,
     isCreateSessionFailure: r => !!r?.terminal,
@@ -84,6 +103,7 @@ function fakeChatService() {
     interrupt: jest.fn(),
     resolvePermission: jest.fn(),
     setModel: jest.fn().mockResolvedValue(undefined),
+    setPermissionMode: jest.fn().mockResolvedValue(undefined),
     stopTask: jest.fn().mockResolvedValue(undefined),
     // The service pushes per-session status back through ChatService's own bus.
     _send: jest.fn(),
@@ -108,6 +128,8 @@ async function startMirror(service, chat, meta = {}) {
 
 beforeEach(() => {
   mockSettings = { claudeRemoteControlEnabled: true };
+  mockManagedSettings = null;
+  mockDuringAttach = null;
   mockHandle = makeHandle();
   mockAttachOpts = null;
   mockCreateResult = 'cse_abc123';
@@ -136,13 +158,38 @@ describe('opt-in gating', () => {
     expect((await service.getStatus()).activeSessions).toBe(0);
   });
 
+  // The kill switch has to be read where an administrator writes it. Reading it
+  // out of the app's own settings.json was no policy at all: that file belongs
+  // to the user and nothing in the app ever sets the key, so the check could
+  // only ever answer "not blocked" while claiming to enforce a policy.
   test('refuses when managed settings forbid Remote Control', async () => {
-    mockSettings = { claudeRemoteControlEnabled: true, disableRemoteControl: true };
+    mockSettings = { claudeRemoteControlEnabled: true };
+    mockManagedSettings = { disableRemoteControl: true };
     const service = freshService();
     const res = await startMirror(service, fakeChatService());
     expect(res.success).toBe(false);
     expect(res.error).toMatch(/organisation policy/i);
     expect(mockAttachOpts).toBeNull();
+  });
+
+  test('a user cannot lift the policy from their own settings', async () => {
+    mockSettings = { claudeRemoteControlEnabled: true, disableRemoteControl: false };
+    mockManagedSettings = { disableRemoteControl: true };
+    const service = freshService();
+    expect(service.isBlockedByPolicy()).toBe(true);
+    expect((await startMirror(service, fakeChatService())).success).toBe(false);
+  });
+
+  test('a user can still opt themselves out locally', async () => {
+    mockSettings = { claudeRemoteControlEnabled: true, disableRemoteControl: true };
+    mockManagedSettings = null;
+    expect(freshService().isBlockedByPolicy()).toBe(true);
+  });
+
+  test('no managed file is not a block', async () => {
+    mockSettings = { claudeRemoteControlEnabled: true };
+    mockManagedSettings = null;
+    expect(freshService().isBlockedByPolicy()).toBe(false);
   });
 
   test('refuses when the SDK ships no bridge', async () => {
@@ -674,6 +721,81 @@ describe('per-session control', () => {
 });
 
 // ─── Transport lifecycle ────────────────────────────────────────────────────
+
+describe('teardown while attaching', () => {
+  // Building the transport takes about a second. Everything that decides
+  // whether a mirror should exist has to survive that window, or the CCR
+  // session outlives the app's handle on it.
+  test('closes a handle that arrives after the mirror was stopped', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    service.attachToChatService(chat);
+    chat.sessions.set('chat-1', { cwd: '/repo' });
+
+    // Stop while the attach is in flight, which is when `mirror.handle` is
+    // still null — the window in which _teardown had nothing to close.
+    mockDuringAttach = () => service.disableForSession('chat-1');
+    await service.enableForSession('chat-1');
+    await settle();
+
+    expect(mockHandle.close).toHaveBeenCalled();
+    expect((await service.getStatus()).activeSessions).toBe(0);
+    expect(service.getSessionStatus('chat-1').mirrored).toBe(false);
+  });
+
+  test('a second enable during the attach does not start a second session', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    service.attachToChatService(chat);
+    chat.sessions.set('chat-1', { cwd: '/repo' });
+
+    const [a, b] = await Promise.all([
+      service.enableForSession('chat-1'),
+      service.enableForSession('chat-1'),
+    ]);
+    await settle();
+
+    expect(a.success && b.success).toBe(true);
+    expect((await service.getStatus()).activeSessions).toBe(1);
+  });
+});
+
+describe('permission mode from claude.ai', () => {
+  // Written when the SDK offered no mid-session control, this used to accept
+  // only bypass and default and set `alwaysAllow` behind the SDK's back — so
+  // the footer chip and the session described different things.
+  test.each(['plan', 'acceptEdits', 'auto', 'default', 'bypassPermissions'])(
+    'forwards %s to the SDK through ChatService', async (mode) => {
+      const service = freshService();
+      const chat = fakeChatService();
+      await startMirror(service, chat);
+
+      await expect(mockAttachOpts.onSetPermissionMode(mode)).resolves.toEqual({ ok: true });
+      expect(chat.setPermissionMode).toHaveBeenCalledWith('chat-1', mode);
+    }
+  );
+
+  test('reports the refusal rather than throwing', async () => {
+    const service = freshService();
+    const chat = fakeChatService();
+    chat.setPermissionMode.mockRejectedValue(new Error('Unknown permission mode: nope'));
+    await startMirror(service, chat);
+
+    await expect(mockAttachOpts.onSetPermissionMode('nope'))
+      .resolves.toEqual({ ok: false, error: 'Unknown permission mode: nope' });
+  });
+
+  test('a read-only mirror changes nothing', async () => {
+    mockSettings = { claudeRemoteControlEnabled: true, claudeRemoteControlDrive: false };
+    const service = freshService();
+    const chat = fakeChatService();
+    await startMirror(service, chat);
+
+    const res = await service._onSetPermissionMode('chat-1', 'plan');
+    expect(res.ok).toBe(false);
+    expect(chat.setPermissionMode).not.toHaveBeenCalled();
+  });
+});
 
 describe('transport lifecycle', () => {
   test('a superseded epoch is not retried', async () => {

@@ -47,7 +47,7 @@
 
 const fs = require('fs');
 const { randomUUID } = require('crypto');
-const { settingsFile } = require('../utils/paths');
+const { settingsFile, managedSettingsPaths } = require('../utils/paths');
 const { loadBridge, getUnavailableReason, getApiBaseUrl } = require('../utils/claudeBridge');
 const {
   readAccessToken,
@@ -155,9 +155,35 @@ class RemoteControlService {
    * `disableRemoteControl` is what an administrator sets to forbid Remote
    * Control org-wide. It governs the CLI's own `--rc`; an app that mirrored
    * sessions anyway would just be a hole in the same policy.
+   *
+   * It has to be read where an administrator actually writes it. Reading it
+   * out of our own settings.json would have been no policy at all: that file
+   * belongs to the user, the renderer rewrites it on every preference change,
+   * and nothing in the app ever sets this key — so the check could only ever
+   * answer "not blocked" while the code claimed to enforce a policy. The
+   * managed file is the CLI's, in a location only an administrator can write,
+   * and it is re-read rather than cached so a policy pushed mid-session takes
+   * effect at the next attach.
+   *
+   * The user's own settings.json is still consulted, so someone can opt
+   * themselves out locally, but it can only add a block, never lift one.
    */
   isBlockedByPolicy() {
+    if (this._managedSettings().disableRemoteControl === true) return true;
     return this._settings().disableRemoteControl === true;
+  }
+
+  /**
+   * Claude Code's managed settings, as an administrator deploys them. Empty
+   * when there is no such file, which is the ordinary case.
+   */
+  _managedSettings() {
+    for (const file of managedSettingsPaths()) {
+      try {
+        return JSON.parse(fs.readFileSync(file, 'utf8'));
+      } catch { /* absent or unreadable — try the next location */ }
+    }
+    return {};
   }
 
   /**
@@ -239,7 +265,11 @@ class RemoteControlService {
    */
   async enableForSession(sessionId) {
     if (!sessionId) return { success: false, error: 'No session id.' };
-    if (this._mirrors.get(sessionId)?.handle) return { success: true }; // already mirrored
+    // `?.handle` alone was not enough: it stays null for the second or so the
+    // attach takes, so two clicks in that window each started one, and the
+    // first became an orphan CCR session nothing could close. An entry in the
+    // map means "mirrored or getting there".
+    if (this._mirrors.has(sessionId)) return { success: true };
 
     if (this.isBlockedByPolicy()) {
       return { success: false, error: 'Remote Control is disabled by your organisation policy.' };
@@ -522,6 +552,16 @@ class RemoteControlService {
       onStopTask: taskId => this._onStopTask(sessionId, taskId),
       onClose: code => this._onTransportClose(sessionId, code),
     });
+
+    // Torn down while the attach was in flight. `_teardown` reads `mirror.handle`
+    // to know what to close, and until this line that was still null — so it
+    // closed nothing, and the CCR session stayed alive on claude.ai with no
+    // handle left in the app to stop it. The check has to be after the await,
+    // not only before it, and the handle we just got has to be closed here.
+    if (mirror.closed || this._mirrors.get(sessionId) !== mirror) {
+      Promise.resolve().then(() => handle.close?.()).catch(() => {});
+      return;
+    }
 
     mirror.handle = handle;
     mirror.ccrSessionId = created;
@@ -865,21 +905,23 @@ class RemoteControlService {
   /**
    * Permission mode from claude.ai.
    *
-   * Only `bypassPermissions` is actionable here: it maps onto the session's
-   * `alwaysAllow` flag, which is the same switch the desktop toggle drives. The
-   * other modes are decided when the query is created and the SDK gives no
-   * mid-session control for them, so they are refused explicitly rather than
-   * accepted and ignored.
+   * Every mode is actionable: `ChatService.setPermissionMode` calls the SDK's
+   * own `setPermissionMode` on the running query and moves the app-side
+   * auto-approval with it, so the footer chip and the session cannot disagree.
+   *
+   * This used to accept only `bypassPermissions` and `default`, and set
+   * `alwaysAllow` directly — written when the SDK offered no mid-session
+   * control. It does now, and setting the flag without telling the SDK would
+   * leave the two describing different sessions.
    */
-  _onSetPermissionMode(sessionId, mode) {
+  async _onSetPermissionMode(sessionId, mode) {
     if (!this.allowsDriving()) return { ok: false, error: 'This session is mirrored read-only.' };
-    const session = this._chatService?.sessions?.get(sessionId);
-    if (!session) return { ok: false, error: 'Session not found.' };
-    if (mode === 'bypassPermissions' || mode === 'default') {
-      session.alwaysAllow = mode === 'bypassPermissions';
+    try {
+      await this._chatService?.setPermissionMode(sessionId, mode);
       return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err?.message || 'Could not change the permission mode.' };
     }
-    return { ok: false, error: `Claude Terminal cannot switch to "${mode}" mid-session.` };
   }
 
   _onRenameSession(sessionId, title) {

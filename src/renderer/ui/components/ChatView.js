@@ -1021,10 +1021,11 @@ class ChatView extends BaseComponent {
   // The mirror can also end without the user touching it — a dead transport, a
   // switched account, the master switch going off — so the button follows the
   // service rather than only its own last click.
-  api.remoteControl?.onSessionStatus?.(({ sessionId: sid, mirrored, lastError }) => {
+  const unsubRemoteStatus = api.remoteControl?.onSessionStatus?.(({ sessionId: sid, mirrored, lastError }) => {
     if (!sid || sid !== sessionId) return;
     paintRemoteBtn(!!mirrored, lastError || null);
   });
+  if (unsubRemoteStatus) unsubscribers.push(unsubRemoteStatus);
 
   // ── Attach interactive markdown block handlers (sort, collapse, preview, etc.) ──
   // Delegation is per-container and postProcess() does not set it up, so every
