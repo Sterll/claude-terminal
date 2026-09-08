@@ -644,7 +644,7 @@ class ChatService {
    * @param {string[]} [params.disallowedTools] - Tools to withhold from the session.
    * @returns {Promise<string>} Session ID
    */
-  async startSession({ cwd, projectId = null, accountId = null, prompt, permissionMode = 'default', resumeSessionId = null, sessionId = null, images = [], mentions = [], model = null, enable1MContext = false, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, effort = null, outputFormat = null, skills = null, systemPrompt = null, settingSources = null, maxTurns = null, cloud = false, cloudProjectName = null, userMessageUuid = null, persistSession = true, allowedTools = null, disallowedTools = null }) {
+  async startSession({ cwd, projectId = null, accountId = null, prompt, permissionMode = 'default', resumeSessionId = null, sessionId = null, images = [], documents = [], mentions = [], model = null, enable1MContext = false, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, effort = null, outputFormat = null, skills = null, systemPrompt = null, settingSources = null, maxTurns = null, cloud = false, cloudProjectName = null, userMessageUuid = null, persistSession = true, allowedTools = null, disallowedTools = null }) {
     if (!sessionId) sessionId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     // Cloud session: delegate to cloud server instead of local SDK
@@ -664,10 +664,11 @@ class ChatService {
     // Always push initial prompt (even for resume — SDK needs a message to process)
     const hasImages = images && images.length > 0;
     const hasMentions = mentions && mentions.length > 0;
-    if (prompt || hasImages || hasMentions) {
+    const hasDocuments = documents && documents.length > 0;
+    if (prompt || hasImages || hasMentions || hasDocuments) {
       messageQueue.push({
         type: 'user',
-        message: { role: 'user', content: this._buildContent(prompt, images, mentions) },
+        message: { role: 'user', content: this._buildContent(prompt, images, mentions, documents) },
         parent_tool_use_id: null,
         session_id: sessionId,
         ...(userMessageUuid ? { uuid: userMessageUuid } : {})
@@ -854,7 +855,7 @@ class ChatService {
   /**
    * Send a follow-up message (push to async iterable queue)
    */
-  sendMessage(sessionId, text, images = [], mentions = [], userMessageUuid = null) {
+  sendMessage(sessionId, text, images = [], mentions = [], userMessageUuid = null, documents = []) {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Session ${sessionId} not found`);
 
@@ -866,7 +867,7 @@ class ChatService {
     try {
       session.messageQueue.push({
         type: 'user',
-        message: { role: 'user', content: this._buildContent(text, images, mentions) },
+        message: { role: 'user', content: this._buildContent(text, images, mentions, documents) },
         parent_tool_use_id: null,
         session_id: sessionId,
         ...(userMessageUuid ? { uuid: userMessageUuid } : {})
@@ -888,19 +889,41 @@ class ChatService {
   }
 
   /**
-   * Build message content: plain string if text-only, content blocks array if images/mentions attached
+   * Build message content: plain string if text-only, content blocks array if
+   * images, documents or mentions are attached.
+   *
+   * Three block types, each one the CLI already understands: `text` for
+   * mentions and attached text files, `image` for base64 images, and
+   * `document` for base64 PDFs — the last being the exact shape the Claude
+   * Code binary builds itself when its Read tool opens a PDF.
+   *
    * @param {string} text
    * @param {Array} images - Array of { base64, mediaType } objects
    * @param {Array} mentions - Array of { label, content } resolved context blocks
+   * @param {Array} documents - Array of { base64, mediaType } PDF attachments
    * @returns {string|Array}
    */
-  _buildContent(text, images, mentions = []) {
+  _buildContent(text, images, mentions = [], documents = []) {
     const hasImages = images && images.length > 0;
     const hasMentions = mentions && mentions.length > 0;
+    const hasDocuments = documents && documents.length > 0;
 
-    if (!hasImages && !hasMentions) return text;
+    if (!hasImages && !hasMentions && !hasDocuments) return text;
 
     const content = [];
+
+    // Documents first, alongside the other context: a PDF is something to read
+    // before the question, not an afterthought appended to it.
+    for (const doc of (documents || [])) {
+      content.push({
+        type: 'document',
+        source: {
+          type: 'base64',
+          media_type: doc.mediaType || 'application/pdf',
+          data: doc.base64
+        }
+      });
+    }
 
     // Context blocks first — so Claude sees the context before the question
     for (const mention of (mentions || [])) {
