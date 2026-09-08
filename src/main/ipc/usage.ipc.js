@@ -37,9 +37,15 @@ function registerUsageHandlers() {
   // resolved promise is NOT proof the numbers are current — ask the service
   // whether the fetch actually succeeded before reporting success. Otherwise an
   // expired OAuth token or a moved endpoint shows the same percentages forever.
-  ipcMain.handle('refresh-usage', async (_event, accountId = null) => {
+  //
+  // `force` re-reads the credential store instead of trusting the cached
+  // token, so the explicit refresh gesture picks up an account swapped
+  // outside the app (a manual `claude /login`) instead of serving the
+  // outgoing account's numbers for up to 6h. Passive polling never sets it,
+  // so it stays exempt from the Keychain-read cost that cache exists to avoid.
+  ipcMain.handle('refresh-usage', async (_event, accountId = null, force = false) => {
     try {
-      const data = await usageService.refreshUsage(accountId);
+      const data = await usageService.refreshUsage(accountId, force);
       const fetchState = typeof usageService.getFetchState === 'function'
         ? usageService.getFetchState(accountId)
         : null;

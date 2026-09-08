@@ -6831,16 +6831,24 @@ function updateResetEl(el, target) {
 }
 
 /**
- * Fetch and update usage
+ * Fetch and update usage.
+ *
+ * `force` re-reads the account's credential store instead of trusting the
+ * cached OAuth token, so a deliberate refresh (a click, or the bars following
+ * a rebind) can notice an account swapped outside the app — a `claude /login`
+ * run straight in a terminal — instead of showing the outgoing account's
+ * numbers until the token cache expires on its own, up to 6h later.
+ *
+ * @param {boolean} [force]
  */
-async function refreshUsageDisplay() {
+async function refreshUsageDisplay(force = false) {
   if (!usageElements.container) return;
 
   usageElements.container.classList.add('loading');
 
   try {
     const requested = usageAccountId;
-    const result = await api.usage.refresh(requested);
+    const result = await api.usage.refresh(requested, force);
     // Tabs can be switched mid-flight; a late answer for the account we left
     // must not repaint the bars.
     if (requested !== usageAccountId) return;
@@ -6872,9 +6880,10 @@ if (usageElements.container) {
   // Bars the API has not described yet, so the titlebar is not empty on boot.
   renderUsageBuckets(PLACEHOLDER_USAGE_BUCKETS);
 
-  // Click to refresh
+  // Click to refresh — forced, so it also recovers from an account swapped
+  // outside the app instead of replaying the cached token.
   usageElements.container.addEventListener('click', () => {
-    refreshUsageDisplay();
+    refreshUsageDisplay(true);
   });
 
   // Start periodic monitoring (every 60 seconds)
@@ -6917,7 +6926,10 @@ if (usageElements.container) {
     // the new ones are in flight.
     renderUsageBuckets(PLACEHOLDER_USAGE_BUCKETS);
     api.usage.setFocus(next).catch(() => {});
-    refreshUsageDisplay();
+    // Forced: the target account may have last been fetched (for another
+    // project bound to it) before its store was swapped outside the app, and
+    // the fetch key changing is itself a deliberate action, not a poll tick.
+    refreshUsageDisplay(true);
   };
 
   try {
