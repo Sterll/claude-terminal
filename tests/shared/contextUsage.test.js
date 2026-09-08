@@ -56,6 +56,36 @@ describe('contextTokensFromMessage', () => {
     expect(contextTokensFromMessage(frame(usage, { isSidechain: true }))).toBe(0);
   });
 
+  test('reads what a compaction left, in either casing', () => {
+    // As the SDK delivers the boundary…
+    expect(contextTokensFromMessage({
+      type: 'system', subtype: 'compact_boundary',
+      compact_metadata: { trigger: 'manual', pre_tokens: 36218, post_tokens: 3356 },
+    })).toBe(3356);
+    // …and as the CLI writes it to the session file.
+    expect(contextTokensFromMessage({
+      type: 'system', subtype: 'compact_boundary', isSidechain: false,
+      compactMetadata: { trigger: 'manual', preTokens: 36218, postTokens: 3356 },
+    })).toBe(3356);
+  });
+
+  test('a boundary that does not say what survived measures nothing', () => {
+    // pre_tokens is the size *before* — the one figure a post-compaction gauge
+    // must not show.
+    expect(contextTokensFromMessage({
+      type: 'system', subtype: 'compact_boundary',
+      compact_metadata: { trigger: 'auto', pre_tokens: 940584 },
+    })).toBe(0);
+  });
+
+  test('takes the CLI’s own count off the /context frame', () => {
+    // Verbatim shape: an all-zero usage, and the structured twin of the table.
+    expect(contextTokensFromMessage(frame(
+      { input_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      { context_usage: { model: 'claude-haiku-4-5-20251001', total_tokens: 11626, raw_max_tokens: 200000, percentage: 6, categories: [] } }
+    ))).toBe(11626);
+  });
+
   test('tolerates junk', () => {
     expect(contextTokensFromMessage(null)).toBe(0);
     expect(contextTokensFromMessage({})).toBe(0);

@@ -153,6 +153,32 @@ describe('loadSessionHistory', () => {
     });
   });
 
+  test('opens on what a compaction left when nothing has been said since', async () => {
+    // A session closed right after /compact. The last frame with a usage is
+    // the big one from before; the boundary says what survived, and only the
+    // summary and prompts follow it until the next reply.
+    const dir = sessionsDir();
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, `${SESSION_ID}.jsonl`), [
+      JSON.stringify({
+        type: 'assistant', uuid: 'a-0', sessionId: SESSION_ID,
+        message: { role: 'assistant', content: [{ type: 'text', text: 'answer 0' }], usage: { input_tokens: 2, cache_read_input_tokens: 36216 } }
+      }),
+      JSON.stringify({
+        type: 'system', subtype: 'compact_boundary', uuid: 's-1', sessionId: SESSION_ID, isSidechain: false,
+        content: 'Conversation compacted',
+        compactMetadata: { trigger: 'manual', preTokens: 36218, postTokens: 3356 }
+      }),
+      JSON.stringify({
+        type: 'user', uuid: 'u-2', sessionId: SESSION_ID, isCompactSummary: true,
+        message: { role: 'user', content: 'This session is being continued from a previous conversation.' }
+      }),
+    ].join('\n') + '\n');
+
+    const result = await loadSessionHistory(PROJECT_PATH, SESSION_ID);
+    expect(result.contextTokens).toBe(3356);
+  });
+
   test('keeps the real tail figure when the replay window is trimmed', async () => {
     // A trimmed replay drops early messages; the gauge must still describe the
     // end of the conversation, not the last message that survived the window.

@@ -335,11 +335,11 @@ async function loadSessionHistory(projectPath, sessionId, options = {}) {
     const maxKept = limit ? limit * 2 : Infinity;
     let total = 0;
     let dropped = 0;
-    // Context occupancy at the last turn read, for the chat's context gauge. A
-    // resumed conversation has no live session to ask until the user sends
-    // something, but the figure is already on disk. Tracked across every line
-    // rather than the returned window, so a trimmed replay still reports the
-    // real tail.
+    // Context occupancy at the last frame that measured it — a reply, or what a
+    // compaction left — for the chat's context gauge. A resumed conversation
+    // has no live session to ask until the user sends something, but the figure
+    // is already on disk. Tracked across every line rather than the returned
+    // window, so a trimmed replay still reports the real tail.
     let contextTokens = 0;
     let done = false;
     const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
