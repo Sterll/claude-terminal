@@ -19,9 +19,12 @@ const {
   dedupeLegacy,
 } = require('../../shared/model-options');
 
+// `recommended` is the model the CLI's `default` row points at — empty offline,
+// because that row is the only thing that knows it. See ModelCatalogService.
 let catalog = {
   primary: FALLBACK_PRIMARY,
   legacy: dedupeLegacy(FALLBACK_PRIMARY, LEGACY_MODELS),
+  recommended: '',
   source: 'fallback',
 };
 let inflight = null;
@@ -53,6 +56,7 @@ function load(api, { refresh = false } = {}) {
         catalog = {
           primary: res.primary,
           legacy: Array.isArray(res.legacy) ? res.legacy : [],
+          recommended: typeof res.recommended === 'string' ? res.recommended : '',
           source: res.source || 'cli',
         };
       }
@@ -69,6 +73,7 @@ function _reset() {
   catalog = {
     primary: FALLBACK_PRIMARY,
     legacy: dedupeLegacy(FALLBACK_PRIMARY, LEGACY_MODELS),
+    recommended: '',
     source: 'fallback',
   };
   inflight = null;

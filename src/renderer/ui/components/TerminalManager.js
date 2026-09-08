@@ -1346,6 +1346,28 @@ class TerminalManager extends BaseComponent {
     }
   }
 
+  /**
+   * A tag on the tab for a premium model, so the costly conversation stands
+   * out in the tab strip too, not only in its own footer. Standard models get
+   * no tag: a chip on every tab would just be noise.
+   */
+  _setChatTabModelTag(id, family, tier) {
+    const tab = document.querySelector(`.terminal-tab[data-id="${id}"]`);
+    if (!tab) return;
+    let tag = tab.querySelector('.tab-tag-model');
+    if (tier !== 'premium') {
+      if (tag) tag.remove();
+      return;
+    }
+    if (!tag) {
+      tag = document.createElement('span');
+      tag.className = 'tab-tag tab-tag-model';
+      const name = tab.querySelector('.tab-name');
+      if (name) name.after(tag); else tab.appendChild(tag);
+    }
+    tag.textContent = family || 'premium';
+  }
+
   _updateChatTerminalStatus(id, status, substatus) {
     if (substatus) {
       this._terminalSubstatus.set(id, substatus);
@@ -4065,6 +4087,7 @@ class TerminalManager extends BaseComponent {
       },
       onTabRename: (name) => self.updateTerminalTabName(id, name),
       onStatusChange: (status, substatus) => self._updateChatTerminalStatus(id, status, substatus),
+      onModelChange: ({ family, tier }) => self._setChatTabModelTag(id, family, tier),
       onSwitchTerminal: (dir) => self._callbacks.onSwitchTerminal?.(dir),
       onSwitchProject: (dir) => self._callbacks.onSwitchProject?.(dir),
       onForkSession: ({ resumeSessionId: forkSid, resumeSessionAt: forkAt, resumeDropsTurn: forkDrops, model: forkModel, effort: forkEffort, skipPermissions: forkSkipPerms }) => {
@@ -4192,6 +4215,7 @@ class TerminalManager extends BaseComponent {
         onSessionStart: (sid) => updateTerminal(id, { claudeSessionId: sid }),
         onTabRename: (name) => self.updateTerminalTabName(id, name),
         onStatusChange: (status, substatus) => self._updateChatTerminalStatus(id, status, substatus),
+        onModelChange: ({ family, tier }) => self._setChatTabModelTag(id, family, tier),
         onSwitchTerminal: (dir) => self._callbacks.onSwitchTerminal?.(dir),
         onSwitchProject: (dir) => self._callbacks.onSwitchProject?.(dir),
       });

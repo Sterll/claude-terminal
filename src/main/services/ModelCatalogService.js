@@ -4,12 +4,16 @@
  * Builds the two-tier model catalog the chat picker renders:
  *
  *   primary — whatever the Claude CLI advertises for this account
- *             (`initializationResult().models`). Follows CLI upgrades on its
- *             own, which is the whole point: hard-coded lists went stale the
- *             day Fable 5.1 shipped.
+ *             (`initializationResult().models`), minus its `default` alias.
+ *             Follows CLI upgrades on its own, which is the whole point:
+ *             hard-coded lists went stale the day Fable 5.1 shipped.
  *   legacy  — the hand-curated `LEGACY_MODELS` list, minus anything the
  *             primary tier already covers. The CLI drops older models from its
  *             menu but still accepts their ids, so these stay usable.
+ *
+ * Alongside them, `recommended` names the model the CLI's `default` row points
+ * at. The picker shows that model by name when nothing has been chosen, rather
+ * than offering the alias as an entry of its own.
  *
  * Three ways the primary tier gets filled, cheapest first:
  *
@@ -36,8 +40,10 @@ const {
   LEGACY_MODELS,
   FALLBACK_PRIMARY,
   dedupeLegacy,
+  dropDefaultAlias,
   normalizeModelRow,
   orderPrimary,
+  recommendedModelId,
 } = require('../../shared/model-options');
 
 const CACHE_FILE = path.join(dataDir, 'model-catalog.json');
@@ -122,15 +128,19 @@ class ModelCatalogService {
    */
   _shape(cache, source) {
     const usingFallback = source === 'fallback' || !cache;
+    const raw = usingFallback ? FALLBACK_PRIMARY : cache.primary;
     // Normalize and order on read, not on write: the cache keeps the CLI's raw
     // rows, so changing a label or the menu order doesn't require busting every
-    // stored catalog.
-    const primary = orderPrimary(
-      (usingFallback ? FALLBACK_PRIMARY : cache.primary).map(normalizeModelRow)
-    );
+    // stored catalog. Reading the recommendation before dropping the CLI's
+    // `default` row is what lets that row inform the picker without being one
+    // of its entries — a menu line reading "Default (recommended)" says less
+    // than the name of the model it stands for.
+    const recommended = recommendedModelId(raw);
+    const primary = orderPrimary(dropDefaultAlias(raw).map(normalizeModelRow));
     return {
       primary,
       legacy: dedupeLegacy(primary, LEGACY_MODELS),
+      recommended,
       fetchedAt: usingFallback ? null : cache.fetchedAt,
       source: usingFallback ? 'fallback' : source,
       stale: !usingFallback && (Date.now() - cache.fetchedAt) >= TTL_MS,

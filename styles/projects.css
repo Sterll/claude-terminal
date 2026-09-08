@@ -2848,6 +2848,16 @@ body.compact-projects .project-item:not(.active):hover {
   color: #f59e0b;
 }
 
+.execution-mode-icon.accept {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--success);
+}
+
+.execution-mode-icon.plan {
+  background: rgba(167, 139, 250, 0.1);
+  color: var(--premium-color);
+}
+
 .execution-mode-content {
   flex: 1;
   min-width: 0;

@@ -136,6 +136,17 @@ function registerChatHandlers() {
     }
   });
 
+  // Change permission mode mid-session (the footer's per-conversation picker)
+  ipcMain.handle('chat-set-permission-mode', async (_event, { sessionId, mode }) => {
+    try {
+      await chatService.setPermissionMode(sessionId, mode);
+      return { success: true };
+    } catch (err) {
+      console.error('[chat-set-permission-mode] Error:', err.message);
+      return { success: false, error: err.message };
+    }
+  });
+
   // Generate a short tab name from user message (persistent haiku session)
   ipcMain.handle('chat-generate-tab-name', async (_event, { userMessage }) => {
     try {

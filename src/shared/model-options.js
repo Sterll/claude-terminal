@@ -72,8 +72,18 @@ const ALL_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 const PRE_4_7_EFFORTS = ['low', 'medium', 'high', 'max'];
 
 /**
- * The CLI's "whatever we currently recommend" row. Treated specially wherever a
- * stored id is resolved, because its target moves between releases.
+ * The CLI's "whatever we currently recommend" row.
+ *
+ * Advertised by the CLI, deliberately **not** offered in the picker. As a menu
+ * entry it read like a model of its own while resolving to whichever model the
+ * CLI favours that week: someone who left it alone expecting Opus was running
+ * Sonnet 5, and the menu said "Default (recommended)" either way. The list of
+ * models plus the "use for new conversations" row already says everything that
+ * entry was there to say, and says it with a name attached.
+ *
+ * The row survives as *data*: `recommendedModelId` reads the model it points
+ * at, which is what the picker shows and pins when nothing has been chosen, and
+ * `dropDefaultAlias` keeps the alias itself out of every menu.
  */
 const DEFAULT_ALIAS = 'default';
 
@@ -128,27 +138,13 @@ const LEGACY_MODELS = [
  * Used only when the CLI cannot be reached (offline, first launch, a spawn
  * that failed). Deliberately short: a stale fallback that pretends to be
  * exhaustive is worse than one that obviously isn't.
+ *
+ * Carries no recommendation, because offline there is none to read: the CLI is
+ * the only thing that knows which model it currently favours. With nothing
+ * stored, `resolveModelSelection` falls back to the first standard-tier row and
+ * never writes it down, so the CLI's answer still gets the last word.
  */
 const FALLBACK_PRIMARY = [
-  {
-    // Leads the tier because the CLI leads its own menu with this row, and the
-    // picker paints `primary[0]` whenever nothing has been chosen. When the two
-    // tiers disagreed about that row the footer read "Opus 5" on a cold start
-    // and "Default (recommended)" once the CLI answered — one state, two
-    // labels, decided by whether an IPC round trip had landed yet.
-    //
-    // It is also the safer id to send while the CLI is unreachable: 'default'
-    // means "you choose", where the pinned 'claude-opus-5' this used to fall
-    // back to froze a choice nobody made.
-    value: DEFAULT_ALIAS,
-    displayName: 'Default (recommended)',
-    // The CLI names its current pick here ("Opus 5 with 1M context · …"); we
-    // can't know it offline, and guessing would be the same lie as before.
-    description: '',
-    supportsEffort: true,
-    supportedEffortLevels: ALL_EFFORTS,
-    supportsAdaptiveThinking: true,
-  },
   {
     value: 'claude-opus-5',
     displayName: 'Opus 5',
@@ -200,22 +196,17 @@ function baseModelId(id) {
  * Find the catalog row covering `id`.
  *
  * A persisted setting can hold any of three things: the exact `value` the CLI
- * advertises ('opus[1m]'), a canonical wire id the alias resolves to
- * ('claude-opus-5'), or a legacy id chosen from the More models submenu. The
- * stream adds a fourth spelling: the CLI's init message names the model it is
- * running the way `resolvedModel` spells it ('claude-opus-5[1m]'), while the
- * API answers with the bare wire id ('claude-opus-5'). Match in that order of
- * specificity so an exact hit always wins over a base-id one.
+ * advertises ('opus[1m]'), a canonical wire id ('claude-opus-5'), or a legacy
+ * id chosen from the More models submenu. The stream adds a fourth spelling:
+ * the CLI's init message names the model it is running the way `resolvedModel`
+ * spells it ('claude-opus-5[1m]'), while the API answers with the bare wire id
+ * ('claude-opus-5'). Match in that order of specificity so an exact hit always
+ * wins over a base-id one — that is what keeps one turn's two spellings of one
+ * model on a single row, instead of moving the label mid-answer.
  *
- * Past the first tier, prefer a concrete row over the `default` alias.
- * `default` points at whatever the CLI currently recommends, so resolving an
- * id onto it would let a later CLI release silently move a deliberate choice —
- * while the concrete row ('opus[1m]') is the same model the user actually
- * picked. The alias also shares its `resolvedModel` with that row and leads
- * the menu, so an exact pass without the preference handed it every id the
- * init message reported: the footer read "Default (recommended)" from session
- * start until the first stream event named the bare wire id and flipped it
- * back to the model that had been picked all along.
+ * Rows reach here already stripped of the CLI's `default` alias
+ * (`dropDefaultAlias`), so nothing has to guard against an id resolving onto a
+ * row whose target moves between releases.
  *
  * @param {Array<object>} models Catalog rows (SDK ModelInfo shape).
  * @param {string} id Persisted or requested model id.
@@ -224,20 +215,41 @@ function baseModelId(id) {
 function matchModel(models, id) {
   if (!Array.isArray(models) || !id) return null;
 
-  // Naming a row's own `value` is the one way to land on the alias: only an
-  // explicit pick of "Default (recommended)" stores 'default'.
   const byValue = models.find(m => m.value === id);
   if (byValue) return byValue;
 
-  const concreteFirst = covers =>
-    models.find(m => m.value !== DEFAULT_ALIAS && covers(m)) || models.find(covers) || null;
-
-  const exact = concreteFirst(m => m.resolvedModel === id);
+  const exact = models.find(m => m.resolvedModel === id);
   if (exact) return exact;
 
   const base = baseModelId(id);
   if (!base) return null;
-  return concreteFirst(m => baseModelId(m.value) === base || baseModelId(m.resolvedModel) === base);
+  return models.find(m => baseModelId(m.value) === base || baseModelId(m.resolvedModel) === base) || null;
+}
+
+/**
+ * The concrete model the CLI's `default` row points at.
+ *
+ * Read before the alias is dropped, which is the whole trick: the row keeps
+ * informing the picker without ever appearing in it. Empty when the catalog
+ * carries no such row — the offline fallback, or a CLI that stopped
+ * advertising one.
+ *
+ * @param {Array<object>} models Raw catalog rows, alias included.
+ * @returns {string} a model id, or ''
+ */
+function recommendedModelId(models) {
+  const alias = Array.isArray(models) ? models.find(m => m?.value === DEFAULT_ALIAS) : null;
+  return alias ? String(alias.resolvedModel || '') : '';
+}
+
+/**
+ * Every row except the CLI's `default` alias — the tier the menus render.
+ *
+ * @param {Array<object>} models
+ * @returns {Array<object>}
+ */
+function dropDefaultAlias(models) {
+  return Array.isArray(models) ? models.filter(m => m?.value !== DEFAULT_ALIAS) : [];
 }
 
 /**
@@ -252,8 +264,9 @@ function matchModel(models, id) {
  * different `primary[0]`, adopted it, and saved it as if the user had picked.
  *
  * @param {Array<object>} models Catalog rows, both tiers, in menu order.
- * @param {string} preferred The id in play — a stored setting, or the one this
- *   view already resolved. '' when nothing has been chosen.
+ * @param {string} preferred The id in play — a stored setting, the one this
+ *   view already resolved, or the CLI's own recommendation when nothing has
+ *   been chosen. '' when even that is unknown.
  * @param {boolean} explicit Whether `preferred` came from a real choice.
  * @returns {{value: string, label: string, persist: boolean}|null} null when
  *   there is nothing to paint: no preference, and no catalog to default to.
@@ -273,9 +286,16 @@ function resolveModelSelection(models, preferred, explicit) {
   }
 
   if (!preferred) {
-    // Nothing chosen: the first row is the recommended default. Both tiers lead
-    // with it, so this label no longer depends on whether the CLI has answered.
-    const first = Array.isArray(models) ? models[0] : null;
+    // Nothing chosen *and* no recommendation to resolve — the offline fallback,
+    // or a CLI that stopped advertising one. (The caller passes the CLI's
+    // recommendation as `preferred` when it has one; see ChatView.)
+    //
+    // Lead with the first standard-tier row rather than `models[0]`: the menu
+    // order puts the premium family first, and a state nobody chose must not
+    // read as one that spends a usage limit of its own. `persist: false`, so
+    // the CLI's answer still overwrites this on the next pass.
+    const rows = Array.isArray(models) ? models : [];
+    const first = rows.find(m => modelTier(m) === 'standard') || rows[0] || null;
     return first ? { value: first.value, label: first.displayName, persist: false } : null;
   }
 
@@ -300,9 +320,11 @@ const CONTEXT_NOTE = /\s*(?:with\s+1M\s+context|\(1M\s+context\))/i;
  *
  * So: promote the versioned name into the label, drop the context note it
  * repeats, and strip pricing from the description. When the description's lead
- * segment isn't a name for this row at all — the `default` alias reads "Use the
- * default model (currently …)" — the label falls back to `displayName` and the
- * segment stays in the description, where it belongs.
+ * segment isn't a name for this row at all, the label falls back to
+ * `displayName` and the segment stays in the description, where it belongs —
+ * the CLI's `default` row reads that way ("Use the default model (currently
+ * …)"), and while the catalog now drops it before this runs, any future row
+ * with prose in that slot must not lose it either.
  *
  * @param {object} m Catalog row (SDK ModelInfo shape).
  * @returns {object} a copy with `displayName`/`description` rewritten
@@ -331,17 +353,69 @@ function normalizeModelRow(m) {
   };
 }
 
-// Menu order for the primary tier, most capable first. The CLI's own order puts
-// Opus ahead of Fable; we surface the more capable model first instead. Anything
+// ── Families and cost tiers ─────────────────────────────────────────────────
+
+// Model families, most capable first. Menu order for the primary tier follows
+// it — the CLI's own order puts Opus ahead of Fable; we surface the more capable
+// model first — and so does the family colour on the footer chip. Anything
 // unrecognised sorts last in the order the CLI gave it.
-const FAMILY_RANK = ['fable', 'opus', 'sonnet', 'haiku'];
+const MODEL_FAMILIES = ['fable', 'opus', 'sonnet', 'haiku'];
+
+/**
+ * Families the plan meters on their own.
+ *
+ * Not a billing claim: on a subscription these do not cost extra, they draw on
+ * a usage limit of their own — the usage API returns it as a model-scoped
+ * `limits` entry beside `session` and `weekly_all` (see UsageService), and the
+ * app already draws that bar — and that usage also counts toward the overall
+ * limit. So a tab left on one quietly spends a quota the next tab may want.
+ *
+ * Hand-curated, because the CLI catalog says nothing about it: its descriptions
+ * carry per-token prices only, which are stripped for display anyway. Fable is
+ * the family this applies to, so it is the one the chip, the composer border
+ * and the tab tag single out.
+ */
+const PREMIUM_FAMILIES = ['fable'];
+
+/**
+ * Effort levels flagged as heavy on the chip whatever the model — they spend
+ * the usage limit faster, on any tier. Only the top of the ladder: xhigh is the
+ * everyday coding setting for many, and a warning that is always on is one
+ * nobody reads.
+ */
+const PREMIUM_EFFORT_LEVELS = ['max'];
+
+/**
+ * Family of a catalog row or a bare id: one of MODEL_FAMILIES, or '' when
+ * unrecognised. Rows resolve through `resolvedModel` first, so the `default`
+ * alias reports whatever it currently points at.
+ *
+ * @param {object|string|null} rowOrId
+ * @returns {string}
+ */
+function modelFamily(rowOrId) {
+  const id = typeof rowOrId === 'string'
+    ? rowOrId
+    : String(rowOrId?.resolvedModel || rowOrId?.value || '');
+  const lower = id.toLowerCase();
+  return MODEL_FAMILIES.find(f => lower.includes(f)) || '';
+}
+
+/**
+ * 'premium' for a family metered on its own limit, 'standard' for everything
+ * else — including ids we cannot place, which must not be dressed up as costly
+ * on a guess.
+ *
+ * @param {object|string|null} rowOrId
+ * @returns {'premium'|'standard'}
+ */
+function modelTier(rowOrId) {
+  return PREMIUM_FAMILIES.includes(modelFamily(rowOrId)) ? 'premium' : 'standard';
+}
 
 function familyRank(m) {
-  // The recommended alias keeps the top slot it holds in the CLI menu.
-  if (m?.value === DEFAULT_ALIAS) return -1;
-  const id = String(m?.resolvedModel || m?.value || '').toLowerCase();
-  const i = FAMILY_RANK.findIndex(f => id.includes(f));
-  return i === -1 ? FAMILY_RANK.length : i;
+  const i = MODEL_FAMILIES.indexOf(modelFamily(m));
+  return i === -1 ? MODEL_FAMILIES.length : i;
 }
 
 /**
@@ -396,8 +470,15 @@ module.exports = {
   LEGACY_MODELS,
   FALLBACK_PRIMARY,
   DEFAULT_ALIAS,
+  MODEL_FAMILIES,
+  PREMIUM_FAMILIES,
+  PREMIUM_EFFORT_LEVELS,
+  modelFamily,
+  modelTier,
   baseModelId,
   matchModel,
+  recommendedModelId,
+  dropDefaultAlias,
   resolveModelSelection,
   dedupeLegacy,
   hasOneMContext,
