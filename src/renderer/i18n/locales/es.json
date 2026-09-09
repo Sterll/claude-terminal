@@ -596,6 +596,7 @@
     "waiting": "Esperando...",
     "pressEscapeToCancel": "Pulsa Escape para cancelar",
     "modifierRequired": "Se requiere un modificador (Ctrl, Alt, Shift)",
+    "unsafeKeyOnLinux": "En Linux esta tecla suele no estar asignada, y vincularla capturaría todo el teclado. Elige otra tecla.",
     "conflictWith": "Conflicto con: {label}",
     "openSettings": "Abrir ajustes",
     "closeTerminal": "Cerrar terminal",

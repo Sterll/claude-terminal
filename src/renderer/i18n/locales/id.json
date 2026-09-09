@@ -596,6 +596,7 @@
     "waiting": "Menunggu...",
     "pressEscapeToCancel": "Tekan Escape untuk membatalkan",
     "modifierRequired": "Diperlukan tombol modifier (Ctrl, Alt, Shift)",
+    "unsafeKeyOnLinux": "Di Linux tombol ini sering tidak terpetakan, dan menetapkannya akan menangkap seluruh papan ketik. Pilih tombol lain.",
     "conflictWith": "Bentrok dengan: {label}",
     "openSettings": "Buka pengaturan",
     "closeTerminal": "Tutup terminal",

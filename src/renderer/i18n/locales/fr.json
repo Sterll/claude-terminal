@@ -691,6 +691,7 @@
     "waiting": "En attente...",
     "pressEscapeToCancel": "Appuyez sur Échap pour annuler",
     "modifierRequired": "Un modificateur (Ctrl, Alt, Shift) est requis",
+    "unsafeKeyOnLinux": "Sous Linux cette touche est souvent non mappée, et l'assigner capturerait le clavier entier. Choisissez une autre touche.",
     "conflictWith": "Conflit avec: {label}",
     "openSettings": "Ouvrir les paramètres",
     "closeTerminal": "Fermer le terminal",

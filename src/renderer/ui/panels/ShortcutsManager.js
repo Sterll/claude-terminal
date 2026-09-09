@@ -12,6 +12,7 @@ const {
   getKeyFromEvent,
   normalizeKey
 } = require('../../features/KeyboardShortcuts');
+const { isUnsafeAccelerator } = require('../../../shared/global-shortcuts');
 
 const DEFAULT_SHORTCUTS = {
   openSettings: { key: 'Ctrl+,', labelKey: 'shortcuts.openSettings' },
@@ -202,6 +203,18 @@ class ShortcutsManager extends BasePanel {
 
       if (['ctrl', 'alt', 'shift', 'meta', 'control'].includes(e.key.toLowerCase())) {
         preview.textContent = this.formatKeyForDisplay(key) + '...';
+        return;
+      }
+
+      // A global shortcut becomes an OS-level key grab. On X11 a key the layout
+      // leaves unmapped grabs the whole keyboard instead of one combination, so
+      // the main process refuses those — say so here rather than storing a
+      // binding that will silently never register.
+      if (GLOBAL_SHORTCUTS[id] && isUnsafeAccelerator(key, window.electron_nodeModules?.process?.platform)) {
+        preview.textContent = this.formatKeyForDisplay(key);
+        conflictDiv.style.display = 'block';
+        conflictDiv.textContent = t('shortcuts.unsafeKeyOnLinux');
+        conflictDiv.className = 'shortcut-capture-conflict warning';
         return;
       }
 
