@@ -4,7 +4,7 @@
  * the DOM is destroyed on the next event.
  */
 
-const { loadPwa } = require('./harness');
+const { loadPwa, teardownPwa } = require('./harness');
 
 let pwa;
 
@@ -25,6 +25,10 @@ beforeEach(() => {
   pwa.state.projects = [{ id: 'p1', name: 'Project One', path: '/tmp/p1' }];
   pwa.state.selectedProjectId = 'p1';
   pwa.switchView('chat');
+});
+
+afterEach(() => {
+  teardownPwa(pwa);
 });
 
 describe('scroll anchoring', () => {

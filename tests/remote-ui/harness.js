@@ -20,7 +20,7 @@ const EXPORTS = [
   '_setThinking', '_makeSession', 'openSession', 'switchView', 'renderChatView',
   'renderChatMessages', 'renderSessionBar', 'sendMessage', 'interruptSession',
   '_renderChatBody', '_getOrCreateSession', 'onSessionStarted', 'onChatIdle',
-  '_startHeartbeat', '_stopHeartbeat', '_dropSocket', '_wakeUp', '_openWS',
+  '_startHeartbeat', '_stopHeartbeat', '_dropSocket', '_wakeUp', '_openWS', '_endReplay',
   'onChatDone', 'onChatError', 'onChatMessage', 'enterProjectHub',
 ];
 
@@ -89,4 +89,19 @@ function thinkingVisible() {
   return !document.getElementById('thinking-indicator').classList.contains('hidden');
 }
 
-module.exports = { loadPwa, interruptVisible, thinkingVisible };
+/**
+ * Stop what the loaded PWA left running.
+ *
+ * It keeps a heartbeat interval, a reconnect timeout and a replay guard alive
+ * by design; without this each suite hands its jest worker a live timer and the
+ * run ends with a force-exit warning.
+ */
+function teardownPwa(pwa) {
+  if (!pwa) return;
+  try { pwa._stopHeartbeat(); } catch (e) {}
+  clearTimeout(pwa.conn.retryTimer);
+  pwa.conn.retryTimer = null;
+  try { pwa._endReplay(); } catch (e) {}
+}
+
+module.exports = { loadPwa, teardownPwa, interruptVisible, thinkingVisible };

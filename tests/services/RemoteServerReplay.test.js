@@ -13,6 +13,13 @@ jest.mock('electron', () => ({
   app: { isPackaged: false, getAppPath: () => '/mock/app' },
 }));
 
+// _sendFullInit defers this to setImmediate. Left real, it resolves after the
+// test has finished — logging into a torn-down suite and keeping the worker
+// alive past its teardown.
+jest.mock('../../src/main/services/ModelCatalogService', () => ({
+  getCatalog: jest.fn().mockResolvedValue({ primary: [], legacy: [] }),
+}));
+
 jest.mock('../../src/main/utils/paths', () => ({
   settingsFile: '/mock/settings.json',
   projectsFile: '/mock/projects.json',
@@ -111,12 +118,22 @@ function textDelta(sessionId, index, text) {
   return streamEvent(sessionId, { type: 'content_block_delta', index, delta: { type: 'text_delta', text } });
 }
 
+/**
+ * _sendFullInit defers its heavy work to setImmediate, so a test that connects
+ * a client and returns leaves that work pending. It then runs against a
+ * torn-down suite and keeps the worker from exiting cleanly.
+ */
+async function flushInit() {
+  for (let i = 0; i < 3; i++) await new Promise(r => setImmediate(r));
+}
+
 beforeEach(() => {
   mockActiveSessions = [];
   remoteServer.start(null, 3712);
 });
 
 afterEach(async () => {
+  await flushInit();
   await remoteServer.stop();
 });
 

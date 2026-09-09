@@ -8,7 +8,7 @@
  * sessions. That is what "you see the old conversation writing" looked like.
  */
 
-const { loadPwa, interruptVisible, thinkingVisible } = require('./harness');
+const { loadPwa, teardownPwa, interruptVisible, thinkingVisible } = require('./harness');
 
 let pwa;
 
@@ -23,6 +23,10 @@ beforeEach(() => {
   pwa.state.projects = [{ id: 'p1', name: 'Project One', path: '/tmp/p1' }];
   pwa.state.selectedProjectId = 'p1';
   pwa.switchView('chat');
+});
+
+afterEach(() => {
+  teardownPwa(pwa);
 });
 
 describe('composer state is per conversation', () => {

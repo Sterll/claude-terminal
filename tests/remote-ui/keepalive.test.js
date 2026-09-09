@@ -5,7 +5,7 @@
  * status dot stays green. Only an unanswered round trip exposes it.
  */
 
-const { loadPwa } = require('./harness');
+const { loadPwa, teardownPwa } = require('./harness');
 
 let pwa;
 let sockets;
@@ -37,6 +37,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  teardownPwa(pwa);
   jest.useRealTimers();
 });
 

@@ -6,7 +6,7 @@
  * tab on the desktop — and only the first two may move the user.
  */
 
-const { loadPwa } = require('./harness');
+const { loadPwa, teardownPwa } = require('./harness');
 
 let pwa;
 
@@ -20,6 +20,10 @@ beforeEach(() => {
     { id: 'p1', name: 'Project One', path: '/tmp/p1' },
     { id: 'p2', name: 'Project Two', path: '/tmp/p2' },
   ];
+});
+
+afterEach(() => {
+  teardownPwa(pwa);
 });
 
 describe('a session opened elsewhere does not steal the screen', () => {
