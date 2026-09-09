@@ -20,10 +20,33 @@ const EXPORTS = [
   '_setThinking', '_makeSession', 'openSession', 'switchView', 'renderChatView',
   'renderChatMessages', 'renderSessionBar', 'sendMessage', 'interruptSession',
   '_renderChatBody', '_getOrCreateSession', 'onSessionStarted', 'onChatIdle',
+  '_startHeartbeat', '_stopHeartbeat', '_dropSocket', '_wakeUp', '_openWS',
   'onChatDone', 'onChatError', 'onChatMessage', 'enterProjectHub',
 ];
 
+// jsdom hands the whole test file one document and one window, so every load
+// would stack another set of the PWA's global listeners on them — and a stale
+// visibilitychange handler still holding its own `conn` would open sockets
+// behind the current test's back. Record what each load attaches so the next
+// one can detach it.
+let _attached = [];
+const _origAdd = new WeakMap();
+
+function _recordListeners(target) {
+  if (!_origAdd.has(target)) _origAdd.set(target, target.addEventListener.bind(target));
+  const add = _origAdd.get(target);
+  target.addEventListener = (type, fn, opts) => {
+    _attached.push({ target, type, fn });
+    add(type, fn, opts);
+  };
+}
+
 function loadPwa({ token = null } = {}) {
+  for (const { target, type, fn } of _attached) target.removeEventListener(type, fn);
+  _attached = [];
+  _recordListeners(document);
+  _recordListeners(window);
+
   // jsdom ships neither of these and the PWA calls both on startup.
   window.matchMedia = window.matchMedia || (() => ({ matches: false, addListener() {}, removeListener() {} }));
   window.fetch = () => Promise.reject(new Error('offline in tests'));

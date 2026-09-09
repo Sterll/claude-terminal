@@ -153,7 +153,17 @@ const conn = {
   clientId: _getClientId(),
   _pinNonce: null,
   _pinTimer: null,
+  // Keepalive. A phone's socket usually dies half-open rather than closed.
+  awaitingPong: false,
+  heartbeatTimer: null,
+  probeTimer: null,
 };
+
+// One unanswered ping per interval is enough to call a socket dead: the server
+// answers synchronously, so a 25s round trip means nothing is getting through.
+const HEARTBEAT_INTERVAL_MS = 25_000;
+// Waking from background is the one moment worth probing faster than that.
+const WAKE_PROBE_TIMEOUT_MS = 8_000;
 
 function connSetState(s) {
   conn.state = s;
@@ -190,6 +200,7 @@ function init() {
   setupPlusMenu();
   _setupImageInputs();
   _setupChatDelegation();
+  _setupLifecycleHandlers();
   _setupMentionChipsDelegation();
 
   // Check for relay mode params in URL: ?mode=relay&url=...&key=...
@@ -561,6 +572,7 @@ function _openWS() {
     _debugLog('[WS] Connected to relay');
     connSetState('connected');
     _requestNotificationPermission();
+    _startHeartbeat();
     _wsFlushQueue();
   };
 
@@ -573,6 +585,7 @@ function _openWS() {
 
   ws.onclose = (e) => {
     _debugLog('[WS] Closed:', e.code, e.reason);
+    _stopHeartbeat();
     conn.ws = null;
     // Auth failure
     if (e.code === 4401 || e.code === 4003) {
@@ -617,7 +630,92 @@ function _openWS() {
   };
 }
 
+// ─── Keepalive & App Lifecycle ────────────────────────────────────────────────
+//
+// The way a phone loses its connection is almost never a clean close: the NAT
+// entry behind it expires and neither end is told. readyState stays OPEN, every
+// wsSend() reports success, and the UI sits there looking connected while
+// nothing arrives. Only an unanswered round trip reveals it.
+
+function _startHeartbeat() {
+  _stopHeartbeat();
+  conn.awaitingPong = false;
+  conn.heartbeatTimer = setInterval(() => {
+    if (!conn.ws || conn.ws.readyState !== 1) return;
+    if (conn.awaitingPong) { _dropSocket('no pong within one heartbeat'); return; }
+    conn.awaitingPong = true;
+    wsSend('ping', {});
+  }, HEARTBEAT_INTERVAL_MS);
+}
+
+function _stopHeartbeat() {
+  clearInterval(conn.heartbeatTimer);
+  clearTimeout(conn.probeTimer);
+  conn.heartbeatTimer = null;
+  conn.probeTimer = null;
+  conn.awaitingPong = false;
+}
+
+/**
+ * Abandon a socket we no longer believe in and reconnect.
+ *
+ * Its handlers are detached first: a half-open socket may take minutes to emit
+ * 'close', long after a replacement is running, and a late onclose would then
+ * schedule a second reconnect on top of it.
+ */
+function _dropSocket(reason) {
+  console.warn('[WS] dropping socket — ' + reason);
+  _stopHeartbeat();
+  const ws = conn.ws;
+  conn.ws = null;
+  if (ws) {
+    ws.onclose = null; ws.onerror = null; ws.onmessage = null; ws.onopen = null;
+    try { ws.close(); } catch (e) {}
+  }
+  conn.retryCount = 0; // this was a working session — come back promptly
+  _scheduleReconnect();
+}
+
+/**
+ * The user is looking at the app again, or the network came back.
+ *
+ * iOS freezes timers in the background, so the reconnect backoff — up to 30s —
+ * does not run while the app is away and only resumes once it returns. Without
+ * this the user stares at stale state for half a minute after every switch.
+ */
+function _wakeUp(reason) {
+  if (conn.state === 'auth') return;
+  _debugLog('[WS] wake-up: ' + reason);
+
+  if (conn.ws && conn.ws.readyState === 1) {
+    // Probably fine, but a socket that slept through a background stretch is
+    // exactly the one likely to be half-open. Prove it before trusting it.
+    conn.awaitingPong = true;
+    wsSend('ping', {});
+    clearTimeout(conn.probeTimer);
+    conn.probeTimer = setTimeout(() => {
+      if (conn.awaitingPong) _dropSocket('no pong after wake-up probe');
+    }, WAKE_PROBE_TIMEOUT_MS);
+    return;
+  }
+
+  if (conn.retryTimer) { clearTimeout(conn.retryTimer); conn.retryTimer = null; }
+  conn.retryCount = 0;
+  _openWS();
+}
+
+function _setupLifecycleHandlers() {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') _wakeUp('app foregrounded');
+  });
+  window.addEventListener('online', () => _wakeUp('network back'));
+  window.addEventListener('offline', () => {
+    if (conn.state === 'connected') connSetState('reconnecting');
+  });
+}
+
 function _scheduleReconnect() {
+  if (conn.retryTimer) return; // already queued — several paths can ask at once
   if (conn.mode === 'relay') {
     if (!conn.cloudUrl || !conn.cloudApiKey) return;
   } else {
@@ -848,7 +946,11 @@ function handleMessage(msg) {
     case 'mention:file-list':    onFileList(data); break;
     case 'sessions:past':        onPastSessions(data); break;
     case 'settings:updated':     break; // ack, nothing to do
-    case 'pong': break;
+    case 'pong':
+      conn.awaitingPong = false;
+      clearTimeout(conn.probeTimer);
+      conn.probeTimer = null;
+      break;
     // Relay session auth (see _submitPinOverRelay)
     case 'auth:result':          _onRelayAuthResult(data); break;
     case 'remote:rejected':      _onRemoteRejected(data); break;
