@@ -3117,6 +3117,7 @@ function setupPlusMenu() {
 }
 
 function _openPlusMenu() {
+  $('plus-menu-btn')?.setAttribute('aria-expanded', 'true');
   const menu = $('plus-menu');
   const btn = $('plus-menu-btn');
   if (!menu) return;
@@ -3126,6 +3127,7 @@ function _openPlusMenu() {
 }
 
 function _closePlusMenu() {
+  $('plus-menu-btn')?.setAttribute('aria-expanded', 'false');
   const menu = $('plus-menu');
   const btn = $('plus-menu-btn');
   if (!menu) return;

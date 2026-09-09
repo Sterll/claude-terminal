@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#09090b">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -27,7 +27,7 @@
         <span id="pwa-install-hint"></span>
       </div>
       <button id="pwa-install-btn" class="pwa-install-btn" data-i18n="misc.install">Install</button>
-      <button id="pwa-install-close" class="pwa-install-close">&times;</button>
+      <button id="pwa-install-close" class="pwa-install-close" data-i18n-aria="a11y.close">&times;</button>
     </div>
   </div>
 
@@ -49,7 +49,7 @@
             <div class="pin-field-wrapper">
               <input id="pin-input" class="pin-input" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="------" autocomplete="one-time-code">
             </div>
-            <button id="pin-submit-btn" class="pin-submit-btn">
+            <button id="pin-submit-btn" class="pin-submit-btn" data-i18n-aria="a11y.submit">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
               </svg>
@@ -64,7 +64,7 @@
           <p class="auth-message" data-i18n="cloud.enterKey"></p>
           <div class="cloud-key-input-row">
             <input id="cloud-key-input" class="cloud-key-input" type="password" placeholder="ctc_..." autocomplete="off" spellcheck="false">
-            <button id="cloud-key-submit-btn" class="pin-submit-btn">
+            <button id="cloud-key-submit-btn" class="pin-submit-btn" data-i18n-aria="a11y.submit">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
               </svg>
@@ -81,7 +81,7 @@
       <!-- Header -->
       <header class="app-header hidden">
         <div class="header-left">
-          <button id="header-back" class="header-back hidden" onclick="backToProjects()">
+          <button id="header-back" class="header-back hidden" data-i18n-aria="a11y.back" onclick="backToProjects()">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="15 18 9 12 15 6"/>
             </svg>
@@ -90,12 +90,12 @@
         </div>
         <div class="header-right">
           <div id="header-git-actions" class="header-git-actions hidden">
-            <button class="header-git-btn" id="btn-git-pull" onclick="gitPull()">
+            <button class="header-git-btn" id="btn-git-pull" data-i18n-aria="a11y.gitPull" onclick="gitPull()">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="M17 11l-5 5-5-5"/></svg>
               <span class="header-git-label" data-i18n="git.pull"></span>
               <span class="header-git-badge behind hidden" id="badge-behind"></span>
             </button>
-            <button class="header-git-btn" id="btn-git-push" onclick="gitPush()">
+            <button class="header-git-btn" id="btn-git-push" data-i18n-aria="a11y.gitPush" onclick="gitPush()">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9"/><path d="M7 14l5-5 5 5"/></svg>
               <span class="header-git-label" data-i18n="git.push"></span>
               <span class="header-git-badge ahead hidden" id="badge-ahead"></span>
@@ -147,10 +147,10 @@
       <div id="view-chat" class="view hidden">
         <div class="view-inner chat-view-inner">
           <div id="session-bar" class="session-bar hidden">
-            <select id="session-select" class="session-select"></select>
+            <select id="session-select" class="session-select" data-i18n-aria="a11y.sessionPicker"></select>
           </div>
-          <div id="chat-messages" class="chat-messages"></div>
-          <button id="scroll-fab" class="scroll-fab hidden" onclick="_scrollToBottomSmooth()">
+          <div id="chat-messages" class="chat-messages" role="log" aria-live="polite" aria-relevant="additions text" data-i18n-aria="a11y.transcript"></div>
+          <button id="scroll-fab" class="scroll-fab hidden" data-i18n-aria="a11y.scrollBottom" onclick="_scrollToBottomSmooth()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
           </button>
           <div id="thinking-indicator" class="thinking-indicator hidden">
@@ -167,7 +167,7 @@
           <div id="autocomplete-dropdown" class="autocomplete-dropdown hidden"></div>
           <div id="mention-chips" class="mention-chips hidden"></div>
           <div class="chat-input-bar">
-            <button id="plus-menu-btn" class="plus-menu-btn">
+            <button id="plus-menu-btn" class="plus-menu-btn" data-i18n-aria="a11y.moreOptions" aria-haspopup="menu" aria-expanded="false">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             </button>
             <!-- Plus menu popup -->
@@ -222,13 +222,13 @@
               </div>
             </div>
             <!-- Hidden file inputs -->
-            <input type="file" id="camera-input" accept="image/*" capture="environment" style="display:none">
-            <input type="file" id="gallery-input" accept="image/*" style="display:none">
+            <input type="file" id="camera-input" accept="image/*" capture="environment" style="display:none" aria-hidden="true" tabindex="-1">
+            <input type="file" id="gallery-input" accept="image/*" style="display:none" aria-hidden="true" tabindex="-1">
             <!-- Image preview bar -->
             <div id="image-preview-bar" class="image-preview-bar hidden">
               <div class="image-preview-thumb" id="image-preview-thumb">
                 <img id="image-preview-img" src="" alt="Preview">
-                <button class="image-preview-remove" onclick="removeImage()">
+                <button class="image-preview-remove" data-i18n-aria="a11y.removeImage" onclick="removeImage()">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </div>
@@ -236,12 +236,12 @@
             <div class="input-wrapper">
               <textarea id="chat-input" class="chat-input" placeholder="Message Claude..." rows="1"></textarea>
             </div>
-            <button id="send-btn" class="send-btn" disabled>
+            <button id="send-btn" class="send-btn" data-i18n-aria="a11y.send" disabled>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M5 12h14"/><path d="M12 5l7 7-7 7"/>
               </svg>
             </button>
-            <button id="interrupt-btn" class="interrupt-btn hidden">
+            <button id="interrupt-btn" class="interrupt-btn hidden" data-i18n-aria="a11y.interrupt">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                 <rect x="6" y="6" width="12" height="12" rx="3"/>
               </svg>
@@ -324,7 +324,7 @@
       <div id="view-sessions" class="view hidden">
         <div class="view-inner">
           <div id="sessions-list" class="sessions-list"></div>
-          <button id="btn-new-session" class="new-session-btn" onclick="createNewSession()">
+          <button id="btn-new-session" class="new-session-btn" data-i18n-aria="a11y.newChat" onclick="createNewSession()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             <span id="new-session-label" data-i18n="session.new"></span>
           </button>
@@ -405,7 +405,7 @@
             </svg>
             <span id="cloud-popup-cta-label" data-i18n="cloud.popupCta"></span>
           </button>
-          <button class="cloud-popup-dismiss" id="cloud-popup-dismiss">&times;</button>
+          <button class="cloud-popup-dismiss" id="cloud-popup-dismiss" data-i18n-aria="a11y.close">&times;</button>
         </div>
       </div>
     </div>

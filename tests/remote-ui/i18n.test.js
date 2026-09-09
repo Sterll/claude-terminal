@@ -56,10 +56,16 @@ describe('PWA translations', () => {
     expect([...used].filter(k => !en.has(k))).toEqual([]);
   });
 
-  test('every data-i18n attribute in index.html exists', () => {
+  test('every data-i18n* attribute in index.html exists', () => {
     const html = fs.readFileSync(path.join(__dirname, '..', '..', 'remote-ui', 'index.html'), 'utf8');
-    const used = new Set([...html.matchAll(/data-i18n="([^"]+)"/g)].map(m => m[1]));
+    const used = new Set([...html.matchAll(/data-i18n(?:-aria|-placeholder|-html)?="([^"]+)"/g)].map(m => m[1]));
     const en = new Set(langs.en);
     expect([...used].filter(k => !en.has(k))).toEqual([]);
+  });
+
+  test('applyDOM handles every data-i18n variant used in the markup', () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', '..', 'remote-ui', 'index.html'), 'utf8');
+    const attrs = new Set([...html.matchAll(/(data-i18n(?:-[a-z]+)?)=/g)].map(m => m[1]));
+    for (const attr of attrs) expect(SRC).toContain(`[${attr}]`);
   });
 });
