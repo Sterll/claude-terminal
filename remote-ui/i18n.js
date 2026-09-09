@@ -120,6 +120,20 @@ const TRANSLATIONS = {
     'misc.thinking': 'Réflexion',
     'misc.noDetails': 'Aucun détail disponible',
 
+    // SDK + turn errors surfaced in the transcript
+    'err.rateLimit': 'Limite d’usage atteinte. Patientez un instant.',
+    'err.billing': 'Erreur de facturation.',
+    'err.auth': 'Échec de l’authentification.',
+    'err.maxOutputTokens': 'Limite de jetons de sortie atteinte.',
+    'err.server': 'Erreur serveur.',
+    'err.maxTurns': 'Nombre maximum de tours atteint.',
+    'err.maxBudget': 'Limite de budget atteinte.',
+    'err.duringExecution': 'Erreur pendant l’exécution.',
+    'err.unknown': 'Erreur inconnue.',
+    'misc.project': 'Projet',
+    'misc.install': 'Installer',
+    'session.messageCount': '{count} messages',
+
     // PWA
     'pwa.addHome': 'Ajouter à l\'écran d\'accueil',
     'pwa.install': 'Installer',
@@ -229,6 +243,20 @@ const TRANSLATIONS = {
     'misc.thinking': 'Thinking',
     'misc.noDetails': 'No details available',
 
+    // SDK + turn errors surfaced in the transcript
+    'err.rateLimit': 'Rate limit reached. Please wait.',
+    'err.billing': 'Billing error.',
+    'err.auth': 'Authentication failed.',
+    'err.maxOutputTokens': 'Max output tokens reached.',
+    'err.server': 'Server error.',
+    'err.maxTurns': 'Max turns reached.',
+    'err.maxBudget': 'Budget limit reached.',
+    'err.duringExecution': 'Error during execution.',
+    'err.unknown': 'Unknown error.',
+    'misc.project': 'Project',
+    'misc.install': 'Install',
+    'session.messageCount': '{count} messages',
+
     'pwa.addHome': 'Add to your home screen',
     'pwa.install': 'Install',
 
@@ -336,6 +364,20 @@ const TRANSLATIONS = {
     'misc.thinking': 'Pensamiento',
     'misc.noDetails': 'Sin detalles disponibles',
 
+    // SDK + turn errors surfaced in the transcript
+    'err.rateLimit': 'Límite de uso alcanzado. Espera un momento.',
+    'err.billing': 'Error de facturación.',
+    'err.auth': 'Fallo de autenticación.',
+    'err.maxOutputTokens': 'Límite de tokens de salida alcanzado.',
+    'err.server': 'Error del servidor.',
+    'err.maxTurns': 'Número máximo de turnos alcanzado.',
+    'err.maxBudget': 'Límite de presupuesto alcanzado.',
+    'err.duringExecution': 'Error durante la ejecución.',
+    'err.unknown': 'Error desconocido.',
+    'misc.project': 'Proyecto',
+    'misc.install': 'Instalar',
+    'session.messageCount': '{count} mensajes',
+
     'pwa.addHome': 'A\u00f1adir a la pantalla de inicio',
     'pwa.install': 'Instalar',
 
@@ -442,6 +484,20 @@ const TRANSLATIONS = {
     'misc.moreModels': 'More models',
     'misc.thinking': 'Pemikiran',
     'misc.noDetails': 'Tidak ada detail tersedia',
+
+    // SDK + turn errors surfaced in the transcript
+    'err.rateLimit': 'Batas penggunaan tercapai. Mohon tunggu.',
+    'err.billing': 'Kesalahan penagihan.',
+    'err.auth': 'Autentikasi gagal.',
+    'err.maxOutputTokens': 'Batas token keluaran tercapai.',
+    'err.server': 'Kesalahan server.',
+    'err.maxTurns': 'Batas giliran tercapai.',
+    'err.maxBudget': 'Batas anggaran tercapai.',
+    'err.duringExecution': 'Kesalahan saat eksekusi.',
+    'err.unknown': 'Kesalahan tidak diketahui.',
+    'misc.project': 'Proyek',
+    'misc.install': 'Pasang',
+    'session.messageCount': '{count} pesan',
 
     'pwa.addHome': 'Tambahkan ke layar utama',
     'pwa.install': 'Pasang',

@@ -1005,7 +1005,7 @@ function onProjectsUpdated({ projects, folders, rootOrder }) {
     const project = state.projects.find(p => p.id === state.selectedProjectId);
     if (project) {
       const title = $('header-title');
-      if (title && title.textContent === 'Project') {
+      if (title && title.textContent === t('misc.project')) {
         title.textContent = project.name;
         title.style.color = project.color || '';
       }
@@ -1318,11 +1318,11 @@ function _handleAssistantMessage(session, sessionId, msg) {
   // SDK-level errors
   if (msg.error) {
     const errorMap = {
-      rate_limit: 'Rate limit reached. Please wait.',
-      billing_error: 'Billing error.',
-      authentication_failed: 'Authentication failed.',
-      max_output_tokens: 'Max output tokens reached.',
-      server_error: 'Server error.',
+      rate_limit: t('err.rateLimit'),
+      billing_error: t('err.billing'),
+      authentication_failed: t('err.auth'),
+      max_output_tokens: t('err.maxOutputTokens'),
+      server_error: t('err.server'),
     };
     session.messages.push({ role: 'error', content: errorMap[msg.error] || msg.error });
     _setThinking(sessionId, false);
@@ -1370,9 +1370,9 @@ function _handleResult(session, sessionId, msg) {
   // SDK error in result
   if (msg.is_error && msg.subtype) {
     const errors = {
-      error_max_turns: 'Max turns reached.',
-      error_max_budget_usd: 'Budget limit reached.',
-      error_during_execution: msg.errors?.join(', ') || 'Error during execution.',
+      error_max_turns: t('err.maxTurns'),
+      error_max_budget_usd: t('err.maxBudget'),
+      error_during_execution: msg.errors?.join(', ') || t('err.duringExecution'),
     };
     const errorMsg = errors[msg.subtype];
     if (errorMsg) session.messages.push({ role: 'error', content: errorMsg });
@@ -1479,7 +1479,7 @@ function onChatError({ sessionId, error }) {
   const session = state.sessions[sessionId];
   if (session) {
     _finalizeStream(session);
-    session.messages.push({ role: 'error', content: error || 'Unknown error' });
+    session.messages.push({ role: 'error', content: error || t('err.unknown') });
     session.status = 'error';
     session.lastActivity = error || 'Error';
     _refreshControlIfActive();
@@ -1716,7 +1716,7 @@ function enterProjectHub(projectId) {
   $('header-back')?.classList.remove('hidden');
   const title = $('header-title');
   if (title) {
-    title.textContent = project?.name || 'Project';
+    title.textContent = project?.name || t('misc.project');
     title.style.color = project?.color || '';
   }
 
@@ -1835,7 +1835,7 @@ function renderSessionsView() {
               <span class="session-tab-name">${escHtml((preview || 'Chat').slice(0, 60))}</span>
               <span class="past-session-time">${escHtml(timeAgo)}</span>
             </div>
-            <div class="session-card-activity">${s.messageCount || 0} messages</div>
+            <div class="session-card-activity">${escHtml(t('session.messageCount', { count: s.messageCount || 0 }))}</div>
           </div>
         </div>`;
     }).join('');
@@ -3860,7 +3860,7 @@ function _handleHeadlessEvent(msg) {
   }
 
   if (msg.type === 'error') {
-    session.messages.push({ role: 'assistant', content: `Error: ${msg.error || 'Unknown error'}` });
+    session.messages.push({ role: 'error', content: msg.error || t('err.unknown') });
     renderChatMessages();
     _saveSessions();
     setInputState(localSessionId, 'idle');
