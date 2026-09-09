@@ -36,6 +36,9 @@ const TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const MAX_POST_BODY = 1024; // 1 KB
 const WS_MAX_PAYLOAD = 5 * 1024 * 1024; // 5 MB
 const MAX_MENTION_FILE_SIZE = 1024 * 1024; // 1 MB
+// Long enough not to wake a sleeping phone's radio for nothing, short enough
+// that a half-open socket is reaped before the user notices the UI has frozen.
+const HEARTBEAT_INTERVAL_MS = 25_000;
 
 // In packaged builds, remote-ui is in extraResources; in dev, relative to project root
 function getPwaDir() {
@@ -413,19 +416,32 @@ function _handleWsUpgrade(request, socket, head) {
     });
     console.debug(`[Remote] WS connected — ${_connectedClients.size} client(s) active`);
 
-    ws.on('message', (raw) => _handleClientMessage(ws, token, raw));
-    ws.on('close', (code) => {
+    // Never unregister on behalf of a socket that already replaced us. `close()`
+    // above fires asynchronously, so the OLD socket's handler runs AFTER the new
+    // one is in the map: deleting by token alone would drop the live client from
+    // _broadcast() and leave the phone silently connected to nothing.
+    const forget = () => {
+      if (_connectedClients.get(token) !== ws) return;
       _connectedClients.delete(token);
       _clientMeta.delete(token);
-      _sessionTokens.delete(token);
+    };
+
+    ws.on('message', (raw) => _handleClientMessage(ws, token, raw));
+    ws.on('close', (code) => {
+      forget();
+      // The token deliberately OUTLIVES the socket. A phone drops its connection
+      // constantly — screen lock, Wi-Fi to cellular, app backgrounded — and
+      // invalidating the token here forced a PIN re-entry every single time.
+      // It stays valid for TOKEN_TTL_MS and is revoked explicitly instead:
+      // disconnectClient(), stop(), or expiry in _isTokenValid().
       console.debug(`[Remote] WS disconnected (code: ${code}) — ${_connectedClients.size} client(s) remaining`);
     });
     ws.on('error', (e) => {
-      _connectedClients.delete(token);
-      _clientMeta.delete(token);
-      _sessionTokens.delete(token);
+      forget();
       console.warn(`[Remote] WS error: ${e.message}`);
     });
+
+    _startHeartbeat(ws);
 
     // Send full init (hello + projects + sessions + time)
     _sendFullInit(ws);
@@ -1017,6 +1033,33 @@ async function _getProjectFiles(cwd, maxFiles = 500) {
 
 function _isMainWindowReady() {
   return mainWindow && !mainWindow.isDestroyed();
+}
+
+/**
+ * Protocol-level keepalive for one client socket.
+ *
+ * The common way a phone dies is not a clean close but a half-open TCP: the NAT
+ * entry expires and neither side is told. Without this, `readyState` stays OPEN
+ * forever on both ends and every broadcast is written into a black hole. The
+ * browser answers a protocol ping automatically, so this needs no client code —
+ * the app-level `ping`/`pong` pair exists for the opposite direction.
+ */
+function _startHeartbeat(ws) {
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+  const timer = setInterval(() => {
+    if (ws.readyState !== 1) { clearInterval(timer); return; }
+    if (!ws.isAlive) {
+      console.warn('[Remote] WS heartbeat timeout — terminating dead socket');
+      clearInterval(timer);
+      try { ws.terminate(); } catch (e) {}
+      return;
+    }
+    ws.isAlive = false;
+    try { ws.ping(); } catch (e) {}
+  }, HEARTBEAT_INTERVAL_MS);
+  timer.unref?.();
+  ws.on('close', () => clearInterval(timer));
 }
 
 function _wsSend(ws, type, data) {
