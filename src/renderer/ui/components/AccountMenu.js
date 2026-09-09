@@ -90,44 +90,82 @@ function dot(color) {
 }
 
 /**
- * Sessions already running for this project, which keep the account they
- * started with.
+ * The project's running sessions, split by whether a re-binding can move them.
+ *
+ * A chat tab can be moved: its CLI is closed and respawned on the new account,
+ * and the conversation resumes. A terminal tab cannot — the account was
+ * resolved when `claude` was launched in it, and only whoever is typing in it
+ * can restart that.
+ *
  * @param {string} projectId
- * @returns {number}
+ * @returns {{chats: Array<Object>, terminals: number}}
  */
-function liveSessionCount(projectId) {
+function liveSessions(projectId) {
   try {
     const { getProjectIndex, getTerminalsForProject } = require('../../state');
     const index = getProjectIndex(projectId);
-    if (index === -1 || index === undefined || index === null) return 0;
-    return (getTerminalsForProject(index) || []).length;
+    if (index === -1 || index === undefined || index === null) return { chats: [], terminals: 0 };
+    const running = getTerminalsForProject(index) || [];
+    // A chat tab that has never sent anything has no CLI to move: its first
+    // message reads the binding fresh, so it is neither a warning nor a restart.
+    const chats = running.filter(term =>
+      typeof term.chatView?.switchAccount === 'function' && term.chatView.getSessionId?.());
+    return { chats, terminals: running.filter(term => term.mode !== 'chat').length };
   } catch (_) {
-    return 0;
+    return { chats: [], terminals: 0 };
   }
 }
 
 /**
- * Apply a binding change, warning first when it cannot take effect yet.
+ * Sessions already running for this project.
+ * @param {string} projectId
+ * @returns {number}
+ */
+function liveSessionCount(projectId) {
+  const { chats, terminals } = liveSessions(projectId);
+  return chats.length + terminals;
+}
+
+/**
+ * Apply a binding change, and carry the running chat tabs over with it.
  *
- * The account is resolved when a CLI is spawned, so a running session keeps
- * the one it started with. Saying so beats letting the user believe a live
- * session just moved — the same reason settings refuses to delete an account
- * that projects still point at instead of silently re-homing them.
+ * The account is resolved when a CLI is spawned, so the binding alone only
+ * decides what the *next* session runs as. This menu used to say so and stop
+ * there — which read as a warning but landed as a dead end: after a spend cap
+ * the whole point of switching is to carry on in the tab that just stopped,
+ * and typing into it went straight back to the account that ran out.
+ *
+ * Terminal tabs still keep what they were launched with; there is nothing to
+ * restart on their behalf.
  *
  * @param {string} projectId
  * @param {string|null} accountId
  * @returns {Promise<boolean>} whether the binding was changed
  */
 async function applyProjectAccount(projectId, accountId) {
-  const live = liveSessionCount(projectId);
-  if (live > 0) {
+  const { chats, terminals } = liveSessions(projectId);
+  if (chats.length || terminals) {
+    const parts = [];
+    if (chats.length) parts.push(t('accounts.switchWhileRunningChats', { count: chats.length }));
+    if (terminals) parts.push(t('accounts.switchWhileRunning', { count: terminals }));
     const ok = await showConfirm({
       title: t('accounts.switchWhileRunningTitle') || 'Sessions are running',
-      message: t('accounts.switchWhileRunning', { count: live })
+      // One paragraph: the confirm dialog escapes its message and does not
+      // honour line breaks.
+      message: parts.join(' ')
     });
     if (!ok) return false;
   }
   setProjectAccount(projectId, accountId);
+  // The binding first, so each restart reads the account it is about to run on
+  // even if the tab rebuilds its own start options.
+  for (const term of chats) {
+    try {
+      await term.chatView.switchAccount(accountId);
+    } catch (err) {
+      console.warn('[AccountMenu] chat tab could not be moved:', err?.message);
+    }
+  }
   return true;
 }
 
@@ -181,6 +219,7 @@ module.exports = {
   showProjectAccountMenu,
   showAccountColorPicker,
   applyProjectAccount,
+  liveSessions,
   liveSessionCount,
   ACCOUNT_COLORS
 };
