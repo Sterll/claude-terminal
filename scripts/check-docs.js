@@ -105,6 +105,35 @@ expect('workflow fields', claim(/# (\d+) custom UI fields/), count('src/renderer
 expect('workflow triggers', claim(/# (\d+) trigger types/), count('src/renderer/workflow-triggers', (f) => f.endsWith('.trigger.js')));
 expect('shared modules', claim(/# (\d+) modules shared between/), count('src/shared', js));
 expect('CSS files', claim(/# (\d+) modular CSS files/), count('styles', (f) => f.endsWith('.css')));
+
+// The same fact is stated twice — once in the architecture tree above, once in
+// the "CSS Architecture" section header — and only the first was checked, so
+// the header sat a full release behind (26 files / 50,700 lines against a tree
+// of 30 / 57,000) while this script reported all green. Any number CLAUDE.md
+// repeats needs checking at every site it appears.
+expect('CSS files (section header)',
+  claim(/## CSS Architecture \(`styles\/` - (\d+) files/),
+  count('styles', (f) => f.endsWith('.css')));
+
+/** Total lines across every stylesheet. */
+const cssLines = fs
+  .readdirSync(path.join(ROOT, 'styles'))
+  .filter((f) => f.endsWith('.css'))
+  .reduce((n, f) => n + fs.readFileSync(path.join(ROOT, 'styles', f), 'utf8').split('\n').length - 1, 0);
+
+// Checked with a tolerance rather than exactly: the header says "~57,000", and
+// a guard that fails on every stylesheet edit is a guard that gets deleted.
+// 5% still catches a claim that has fallen a release behind.
+{
+  const claimed = claim(/## CSS Architecture \(`styles\/` - \d+ files, ~([\d,]+) lines\)/);
+  const claimedNum = claimed === null ? null : Number(claimed.replace(/,/g, ''));
+  const drift = claimedNum === null ? Infinity : Math.abs(claimedNum - cssLines) / cssLines;
+  const ok = drift <= 0.05;
+  checks.push({ name: 'CSS total lines (±5%)', claimed, actual: cssLines, ok });
+  if (!ok) {
+    failures.push(`CSS total lines: CLAUDE.md says ~${claimed}, tree has ${cssLines} (${(drift * 100).toFixed(1)}% off)`);
+  }
+}
 expect('MCP tool modules', claim(/# (\d+) tool modules/), count('resources/mcp-servers/tools', (f) => js(f) && !f.startsWith('_')));
 
 // ── 3. IPC handler total ─────────────────────────────────────────────────────

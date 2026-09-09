@@ -68,7 +68,7 @@ Shared code
 └── src/shared/                      # 10 modules shared between main, renderer and the MCP server
 
 Styles
-└── styles/                          # 30 modular CSS files (~56,760 lines total)
+└── styles/                          # 30 modular CSS files (~57,000 lines total)
 
 MCP Servers (shipped with the app)
 └── resources/mcp-servers/
@@ -304,8 +304,6 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 | `WorkspacePanel` | Workspace KB + advisor chat + concept links |
 | `DatabasePanel` | Multi-driver data browser, SQL editor, Redis tree-view |
 | `KanbanPanel` | Kanban board (tasks by column) |
-
-The dashboard has three sub-views, switched by `_dashViews` and rendered from `DashboardService`: **Overview** (the default), **Kanban** (delegated to `KanbanPanel`) and **Timeline**. The timeline is the only one that loads its own data, through `ProjectTimeline`; it caches the collected events for 30 s so changing the period or a filter chip redraws without six more round trips, and `invalidateCache()` drops that cache alongside the dashboard one.
 | `CloudPanel` | Cloud sync with per-entity toggles, project upload/download, diff modal |
 | `ConnectivityPanel` | Unified local remote + cloud connectivity status (Local / Cloud / claude.ai sub-tabs) |
 | `ClaudeRemotePanel` | Connectivity → claude.ai: the conversations currently shared, with a way back to each tab. Its settings live in Settings → Claude → Remote Control |
@@ -313,6 +311,8 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 | `ArtifactsPanel` | Gallery of **published** artifacts for the current project - the local equivalent of Claude Desktop's artifact list. These come from the SDK's `Artifact` tool, so each has a real title, subtitle, emoji and shareable URL. Deliberately not the extracts the store also holds |
 | `TasksView` | The "simple mode" tab of the workflow panel. A task is a workflow with `mode: 'simple'`; the user edits what / when / where and `src/shared/simple-task.js` compiles the cron expression, graph and steps. It writes the same workflow object the advanced editor writes, through the same `workflow.save` IPC |
 | `ErrorLogPanel` | Error log viewer with level/domain filtering, pattern detection, AI diagnosis and export |
+
+The dashboard has three sub-views, switched by `_dashViews` and rendered from `DashboardService`: **Overview** (the default), **Kanban** (delegated to `KanbanPanel`) and **Timeline**. The timeline is the only one that loads its own data, through `ProjectTimeline`; it caches the collected events for 30 s so changing the period or a filter chip redraws without six more round trips, and `invalidateCache()` drops that cache alongside the dashboard one.
 
 ### Features (`src/renderer/features/`)
 
@@ -379,7 +379,7 @@ Each type typically provides `main/[Type]Service.js`, `main/[type].ipc.js`, `ren
 | `setup-wizard.html` | 1642 | 7-step onboarding with embedded EN/FR translations |
 | `notification.html` | 262 | Custom toast with auto-dismiss progress bar |
 
-## CSS Architecture (`styles/` - 26 files, ~50,700 lines)
+## CSS Architecture (`styles/` - 30 files, ~57,000 lines)
 
 ### CSS Variables (`:root` in `base.css`)
 
@@ -423,8 +423,8 @@ system**: no light mode, no `prefers-color-scheme`, no `data-theme`. `--accent` 
 | `git.css` | 4285 | Git panel, diff view, worktrees, commit graph |
 | `settings.css` | 3166 | Settings forms |
 | `database.css` | 3014 | DB panel, SQL editor, Redis tree |
+| `dashboard.css` | 2695 | Stats cards, heatmap, health badges |
 | `terminal.css` | 2484 | xterm, tabs, loading |
-| `dashboard.css` | 2459 | Stats cards, heatmap, health badges |
 | `markdown-blocks.css` | 2381 | Custom markdown blocks |
 | `modals.css` | 2348 | Modals |
 | `parallel.css` | 2333 | Parallel tasks |
