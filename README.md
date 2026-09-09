@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/downloads/Sterll/claude-terminal/total?color=d97706&label=downloads" alt="Downloads" />
-  <img src="https://img.shields.io/badge/version-1.3.0-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.3.1-orange" alt="Version" />
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-blue" alt="Platform" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="License" />
   <img src="https://img.shields.io/badge/electron-28-purple" alt="Electron" />
@@ -200,6 +200,7 @@ npm install
 ### Files
 - A dedicated Files screen shows every file touched in a session, with per-session diffs rendered GitHub-style
 - Quickly review what Claude changed without leaving the chat context
+- Or keep the project tree docked beside the conversation, the way it was before the Files screen
 
 ### Accounts
 - Bind a separate Claude account to each project, with its own isolated credential store
