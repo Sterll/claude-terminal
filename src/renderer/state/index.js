@@ -49,6 +49,10 @@ const skillsAgentsState = new State({
 async function initializeState() {
   await settingsState.loadSettings();
   await projectsState.loadProjects();
+  // Other processes write projects.json too (MCP kanban tools, worktree
+  // projects), so keep an eye on it rather than trusting the load above
+  // for the whole session.
+  projectsState.startExternalWatch();
   // Project bar tabs: needs both settings (the saved list) and projects (to drop
   // ids that no longer resolve), so it runs after the two loads above.
   projectsState.restoreOpenProjectIds(settingsState.getSetting('openProjectIds'));
