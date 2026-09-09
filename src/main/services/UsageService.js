@@ -50,7 +50,16 @@ function entryFor(accountId) {
       lastLimitNotifiedReset: null,
       tokenCache: null,
       tokenCacheUntil: 0,
-      rejectedToken: null
+      rejectedToken: null,
+      // The store read currently in flight, shared by every caller: on darwin
+      // a read can raise a Keychain dialog, and one pending dialog must not
+      // become one per poll tick.
+      tokenRead: null,
+      fetchStartedAt: 0,
+      // Bumped whenever the account's credentials are invalidated, so a store
+      // read still in flight from before the switch is discarded rather than
+      // writing the outgoing account's token back into the cache.
+      readGeneration: 0
     };
     entries.set(k, entry);
   }
@@ -77,6 +86,28 @@ const OAUTH_BETA_HEADER = 'oauth-2025-04-20';
 const TOKEN_CACHE_MAX = 6 * 60 * 60 * 1000;   // cap for a long-lived token
 const TOKEN_CACHE_BACKOFF = 15 * 60 * 1000;   // no token, or store unreadable
 const TOKEN_EXPIRY_MARGIN = 60 * 1000;        // re-read shortly before expiry
+
+// How long a caller waits for the credential store before giving up on this
+// tick. A Keychain read blocks for as long as its authorization dialog is
+// unanswered, and that dialog is raised behind the window — so an unbounded
+// await wedged the whole service: `isFetching` stayed true, every later tick
+// short-circuited to the cached figures, and because no fetch ever *completed*
+// and failed, nothing was marked stale. The bar then showed hours-old numbers
+// as if they were current until something brought the app to the front and the
+// dialog was answered (clicking the bar, typically). The read is not cancelled
+// here, only stopped being awaited: it stays in flight and fills the cache when
+// it lands, so the next tick fetches with it.
+const TOKEN_READ_TIMEOUT = 8 * 1000;
+
+// A fetch still marked in-flight after this long is assumed wedged rather than
+// slow, and no longer blocks a fresh attempt. Belt and braces now that both
+// awaits inside a fetch are time-boxed.
+const FETCH_WATCHDOG = 45 * 1000;
+
+// Figures older than this are reported stale even when no fetch has failed —
+// polling that quietly stopped happening is exactly as misleading as a fetch
+// that failed, and used to be invisible.
+const DATA_STALE_AFTER = 10 * 60 * 1000;
 
 /**
  * The credentials an account authenticates with: its own store when it is
@@ -111,33 +142,97 @@ function readCredentialsFor(accountId) {
 async function readOAuthToken(accountId, force = false) {
   const entry = entryFor(accountId);
   const now = Date.now();
-  if (!force && now < entry.tokenCacheUntil) return entry.tokenCache;
+  // A read already in flight means the cache is about to be rewritten, so a
+  // cache that still looks valid is not trusted over it.
+  if (!force && !entry.tokenRead && now < entry.tokenCacheUntil) return entry.tokenCache;
 
-  let token = null;
-  let expiresAt = null;
-  try {
-    const creds = await readCredentialsFor(accountId);
-    token = tokenFromCredentials(creds);
-    expiresAt = creds?.claudeAiOauth?.expiresAt ?? null;
-  } catch (e) {
-    // Store unreadable: Keychain access refused, or the file is malformed.
-    // Treated as no token, and backed off, rather than retried on every tick.
-  }
+  // The explicit refresh gesture retries a token the API refused: the whole
+  // point of `force` is to re-examine the store, and a refusal that outlived
+  // its cause (the CLI re-authenticated, the org re-enabled the account) was
+  // otherwise unrecoverable short of restarting the app.
+  if (force) entry.rejectedToken = null;
 
-  if (token !== null && token === entry.rejectedToken) {
-    // The store still holds the token the API just refused. Reading it again
-    // buys nothing until the CLI writes a new one.
-    entry.tokenCache = null;
-    entry.tokenCacheUntil = now + TOKEN_CACHE_BACKOFF;
+  return awaitWithTimeout(startTokenRead(entry), TOKEN_READ_TIMEOUT, () => {
+    entry.lastError = 'Credential store did not answer in time (a Keychain prompt may be waiting)';
+    console.warn('[Usage] Credential store read timed out; still pending in background');
     return null;
-  }
+  });
+}
 
-  entry.rejectedToken = null;
-  entry.tokenCache = token;
-  entry.tokenCacheUntil = token
-    ? Math.min(expiresAt !== null ? expiresAt - TOKEN_EXPIRY_MARGIN : Infinity, now + TOKEN_CACHE_MAX)
-    : now + TOKEN_CACHE_BACKOFF;
-  return entry.tokenCache;
+/**
+ * The credential store read for an account, started if it is not already
+ * running. One read at a time per account: on darwin each miss can raise a
+ * Keychain dialog, and a caller that gave up waiting must not queue another.
+ *
+ * Resolves to the usable token, and updates the cache as a side effect — so a
+ * read whose caller has already timed out still leaves the token behind for the
+ * next tick.
+ *
+ * @param {Object} entry
+ * @returns {Promise<string|null>}
+ */
+function startTokenRead(entry) {
+  if (entry.tokenRead) return entry.tokenRead;
+
+  const generation = entry.readGeneration;
+  const read = (async () => {
+    let token = null;
+    let expiresAt = null;
+    try {
+      const creds = await readCredentialsFor(entry.accountId);
+      token = tokenFromCredentials(creds);
+      expiresAt = creds?.claudeAiOauth?.expiresAt ?? null;
+    } catch (e) {
+      // Store unreadable: Keychain access refused, or the file is malformed.
+      // Treated as no token, and backed off, rather than retried on every tick.
+    }
+
+    // Invalidated while we were reading (an account switch): these are the
+    // outgoing account's credentials, so they are dropped rather than cached.
+    if (entry.readGeneration !== generation) return null;
+
+    const now = Date.now();
+    if (token !== null && token === entry.rejectedToken) {
+      // The store still holds the token the API just refused. Reading it again
+      // buys nothing until the CLI writes a new one.
+      entry.tokenCache = null;
+      entry.tokenCacheUntil = now + TOKEN_CACHE_BACKOFF;
+      return null;
+    }
+
+    entry.rejectedToken = null;
+    entry.tokenCache = token;
+    entry.tokenCacheUntil = token
+      ? Math.min(expiresAt !== null ? expiresAt - TOKEN_EXPIRY_MARGIN : Infinity, now + TOKEN_CACHE_MAX)
+      : now + TOKEN_CACHE_BACKOFF;
+    return entry.tokenCache;
+  })();
+
+  // Cleared however it settles, so one rejection cannot leave the account
+  // permanently believing a read is pending.
+  entry.tokenRead = read;
+  const clear = () => { if (entry.tokenRead === read) entry.tokenRead = null; };
+  read.then(clear, clear);
+  return read;
+}
+
+/**
+ * Await a promise, but only for so long. The promise is left running — this
+ * gives up on the answer, it does not cancel the work.
+ *
+ * @param {Promise<T>} promise
+ * @param {number} ms
+ * @param {Function} onTimeout - supplies the value to resolve with instead
+ * @returns {Promise<T>}
+ * @template T
+ */
+function awaitWithTimeout(promise, ms, onTimeout) {
+  let timer = null;
+  const expiry = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(onTimeout()), ms);
+    if (typeof timer.unref === 'function') timer.unref();
+  });
+  return Promise.race([promise, expiry]).finally(() => clearTimeout(timer));
 }
 
 /**
@@ -155,6 +250,8 @@ function invalidateCredentials(accountId) {
     entry.tokenCache = null;
     entry.tokenCacheUntil = 0;
     entry.rejectedToken = null;
+    entry.readGeneration += 1;
+    entry.tokenRead = null;
     entry.usageData = null;
     entry.lastFetch = null;
     entry.isStale = false;
@@ -309,8 +406,15 @@ function fetchUsageFromAPI(token) {
  */
 async function fetchUsage(accountId, force = false) {
   const entry = entryFor(accountId);
-  if (entry.isFetching) return entry.usageData;
+  // A fetch that has been "in flight" for longer than the watchdog is treated
+  // as wedged rather than slow. Without this, a single await that never
+  // settles froze usage for the rest of the session: every tick returned here.
+  if (entry.isFetching && Date.now() - entry.fetchStartedAt < FETCH_WATCHDOG) {
+    return entry.usageData;
+  }
   entry.isFetching = true;
+  const startedAt = Date.now();
+  entry.fetchStartedAt = startedAt;
 
   try {
     // Try OAuth API first
@@ -337,6 +441,12 @@ async function fetchUsage(accountId, force = false) {
         }
         console.log('[Usage] API request failed:', apiErr.message);
       }
+    } else if (entry.tokenRead) {
+      // The store read outlived our patience and is still pending. Nothing was
+      // attempted, so the figures on hand are of unknown age: say so instead of
+      // letting them pass for current, and leave the next tick to use the token
+      // once the read lands.
+      console.log('[Usage] ' + entry.lastError);
     } else {
       entry.lastError = 'No valid Claude OAuth token (missing or expired — run /login in a terminal)';
       console.log('[Usage] ' + entry.lastError);
@@ -352,7 +462,9 @@ async function fetchUsage(accountId, force = false) {
     console.warn('[Usage] API unavailable and no cached data:', entry.lastError);
     return null;
   } finally {
-    entry.isFetching = false;
+    // Only the newest attempt clears the flag: a wedged predecessor finishing
+    // late must not declare the live one done.
+    if (entry.fetchStartedAt === startedAt) entry.isFetching = false;
   }
 }
 
@@ -420,9 +532,27 @@ function getUsageData(accountId) {
     data: entry.usageData,
     lastFetch: entry.lastFetch ? entry.lastFetch.toISOString() : null,
     isFetching: entry.isFetching,
-    stale: entry.isStale,
+    stale: isEntryStale(entry),
     error: entry.lastError
   };
+}
+
+/**
+ * Whether the figures on hand may be passed off as current.
+ *
+ * A failed fetch is the obvious case, and the one this used to cover. The other
+ * is figures that simply stopped being refreshed — polling gated off, a read
+ * that never came back — which left no error behind and so displayed as fresh
+ * for as long as the app stayed open.
+ *
+ * @param {Object} entry
+ * @returns {boolean}
+ */
+function isEntryStale(entry) {
+  if (entry.isStale) return true;
+  // Never fetched is empty, not stale: there is nothing on screen to mistrust.
+  if (!entry.lastFetch) return false;
+  return Date.now() - entry.lastFetch.getTime() > DATA_STALE_AFTER;
 }
 
 /**
@@ -432,7 +562,7 @@ function getUsageData(accountId) {
 function getFetchState(accountId) {
   const entry = entryFor(accountId);
   return {
-    stale: entry.isStale,
+    stale: isEntryStale(entry),
     error: entry.lastError,
     lastFetch: entry.lastFetch ? entry.lastFetch.toISOString() : null
   };

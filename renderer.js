@@ -6986,6 +6986,14 @@ if (usageElements.container) {
       const data = await api.usage.getData(requested);
       if (data && data.data && requested === usageAccountId) {
         updateUsageDisplay(data);
+        // Figures the main process can no longer vouch for — a failed fetch, or
+        // a refresh that quietly stopped happening — are badged here as well.
+        // This poll reads the cache, so without it the bars could sit frozen
+        // and confident: the stale class was only ever set on the click path.
+        usageElements.container.classList.toggle('stale', !!data.stale);
+        usageElements.container.title = data.stale
+          ? t('usage.stale', { error: data.error || '' })
+          : '';
       }
     } catch (e) {
       // Ignore errors during polling

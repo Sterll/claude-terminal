@@ -308,6 +308,22 @@ function createMainWindow({ isDev = false } = {}) {
     mainWindow = null;
   });
 
+  // The usage poller skips its tick while the window is hidden, so coming back
+  // to a window that was in the tray — or behind everything on another Space —
+  // meant looking at figures from before it went away. showMainWindow() covers
+  // the paths the app drives itself (tray, global shortcut, second instance);
+  // these cover the ones the OS drives, which is how a window usually returns.
+  // onWindowShow() only fetches when the figures are actually old, so the
+  // frequency of 'focus' costs nothing.
+  const refreshUsageOnReturn = () => {
+    try {
+      require('../services/UsageService').onWindowShow();
+    } catch (e) {}
+  };
+  mainWindow.on('show', refreshUsageOnReturn);
+  mainWindow.on('restore', refreshUsageOnReturn);
+  mainWindow.on('focus', refreshUsageOnReturn);
+
   return mainWindow;
 }
 
