@@ -979,6 +979,8 @@ function _makeSession(sessionId, projectId, tabName, messages) {
     streamEl: null,
     hasToolUse: false,
     status: 'idle',        // idle | active | permission | error
+    running: false,        // a turn is in flight → this session wants the interrupt button
+    thinking: false,       // waiting on the first token → this session wants the spinner
     lastActivity: '',      // last action description
     // Tool streaming state
     toolInputBuffers: new Map(),  // blockIdx → accumulated JSON string
@@ -1116,7 +1118,7 @@ function _handleStreamEvent(session, sessionId, event) {
       _finalizeStream(session);
       _setThinking(sessionId, false);
       if (!session.hasToolUse) {
-        setInputState('idle');
+        setInputState(sessionId, 'idle');
       }
       // Update lastActivity with a snippet of the last text
       if (session.streaming || session.messages.length) {
@@ -1144,7 +1146,7 @@ function _handleAssistantMessage(session, sessionId, msg) {
     };
     session.messages.push({ role: 'error', content: errorMap[msg.error] || msg.error });
     _setThinking(sessionId, false);
-    setInputState('idle');
+    setInputState(sessionId, 'idle');
     _renderIfActive(sessionId);
     return;
   }
@@ -1178,7 +1180,7 @@ function _handleAssistantMessage(session, sessionId, msg) {
 function _handleResult(session, sessionId, msg) {
   _finalizeStream(session);
   _setThinking(sessionId, false);
-  setInputState('idle');
+  setInputState(sessionId, 'idle');
 
   // Mark all running tools as complete
   for (const m of session.messages) {
@@ -1277,7 +1279,7 @@ function onChatIdle({ sessionId, projectId }) {
     }
   }
   _setThinking(sessionId, true);
-  setInputState('sending');
+  setInputState(sessionId, 'sending');
 }
 
 function onChatDone({ sessionId }) {
@@ -1288,7 +1290,7 @@ function onChatDone({ sessionId }) {
   session.status = 'idle';
   session.lastActivity = t('status.done');
   _refreshControlIfActive();
-  setInputState('idle');
+  setInputState(sessionId, 'idle');
   _renderIfActive(sessionId);
   _saveSessions();
   if (state.currentView !== 'chat') $('chat-badge')?.classList.remove('hidden');
@@ -1309,7 +1311,7 @@ function onChatError({ sessionId, error }) {
     _refreshControlIfActive();
   }
   _setThinking(sessionId, false);
-  setInputState('idle');
+  setInputState(sessionId, 'idle');
   _renderIfActive(sessionId);
   _saveSessions();
   if (state.currentView !== 'chat') $('chat-badge')?.classList.remove('hidden');
@@ -1410,6 +1412,11 @@ function _finalizeStream(session) {
 }
 
 function _setThinking(sessionId, show) {
+  // Remember it on the session first: the indicator is one shared element, and
+  // a switch away from this conversation must be able to restore the right
+  // state rather than inherit the previous one.
+  const session = sessionId ? state.sessions[sessionId] : null;
+  if (session) session.thinking = !!show;
   if (sessionId !== state.selectedSessionId) return;
   const el = $('thinking-indicator');
   if (el) el.classList.toggle('hidden', !show);
@@ -1646,6 +1653,7 @@ function openSession(sessionId) {
   state.selectedSessionId = sessionId;
   switchView('chat');
 }
+
 
 function createNewSession() {
   state.selectedSessionId = null;
@@ -1958,7 +1966,18 @@ function _setupChatDelegation() {
 
 function renderChatView() {
   renderSessionBar();
+  _renderChatBody();
+}
+
+/**
+ * Everything below the session picker. Split out so switching conversations
+ * from the picker itself does not rebuild the picker underneath the user's
+ * finger, while still refreshing the composer, the spinner and the scroll FAB —
+ * all of which describe the conversation, not the screen.
+ */
+function _renderChatBody() {
   renderChatMessages();
+  _syncChatUiToSession();
   updateSendBtn();
   _updateScrollFab();
 }
@@ -1969,14 +1988,14 @@ function renderSessionBar() {
   const sessions = Object.values(state.sessions).filter(s =>
     !state.selectedProjectId || s.projectId === state.selectedProjectId
   );
-  if (!sessions.length) { bar.classList.add('hidden'); return; }
+  if (!sessions.length) { bar.classList.add('hidden'); select.innerHTML = ''; return; }
   bar.classList.remove('hidden');
   select.innerHTML = sessions.map(s =>
     `<option value="${escHtml(s.sessionId)}" ${s.sessionId === state.selectedSessionId ? 'selected' : ''}>
       ${escHtml(s.tabName || 'Chat')}
     </option>`
   ).join('');
-  select.onchange = () => { state.selectedSessionId = select.value; renderChatMessages(); };
+  select.onchange = () => { state.selectedSessionId = select.value; _renderChatBody(); };
 }
 
 function renderChatMessages() {
@@ -2686,7 +2705,7 @@ function sendMessage() {
     input.style.height = 'auto';
     _clearImageAfterSend();
     _clearMentionsAfterSend();
-    setInputState('sending');
+    setInputState(null, 'sending');
     updateSendBtn();
     return;
   }
@@ -2717,7 +2736,7 @@ function sendMessage() {
   _clearMentionsAfterSend();
   // Only claim a turn is running when one actually is — the spinner-that-never-
   // resolves is exactly the bug this guards.
-  setInputState(sent ? 'sending' : 'idle');
+  setInputState(sessionId, sent ? 'sending' : 'idle');
   if (!sent) _flashSendFailure();
   updateSendBtn();
 }
@@ -2744,7 +2763,7 @@ function _retryFailedSend(retryId) {
   const msg = session?.messages.find(m => m.retryId === retryId);
   if (msg) { msg.failed = false; msg.retryId = null; }
   renderChatMessages();
-  setInputState('sending');
+  setInputState(pending.data.sessionId || null, 'sending');
 }
 
 function _clearMentionsAfterSend() {
@@ -2763,15 +2782,35 @@ function interruptSession() {
   // Only flip back to idle if the interrupt actually reached the desktop —
   // otherwise the turn is still running and the UI would be lying.
   if (wsSend('chat:interrupt', { sessionId: state.selectedSessionId })) {
-    setInputState('idle');
+    setInputState(state.selectedSessionId, 'idle');
   } else {
     _flashSendFailure();
   }
 }
 
-function setInputState(s) {
+/**
+ * Record whether `sessionId`'s turn is running, and reflect it in the composer
+ * when that conversation is the one on screen.
+ *
+ * The composer is a single pair of buttons shared by every conversation, so an
+ * unscoped call let any background session drive it: a finished session flipped
+ * the visible one back to "send" mid-turn, and a starting one showed an
+ * interrupt button that would have interrupted somebody else — interruptSession()
+ * always targets state.selectedSessionId.
+ *
+ * @param {string|null} sessionId - null for a chat:start with no session yet.
+ */
+function setInputState(sessionId, s) {
+  const session = sessionId ? state.sessions[sessionId] : null;
+  if (session) session.running = (s === 'sending');
+  if (sessionId && sessionId !== state.selectedSessionId) return;
+  _applyInputState(s);
+}
+
+function _applyInputState(s) {
   const sendBtn = $('send-btn');
   const interruptBtn = $('interrupt-btn');
+  if (!sendBtn || !interruptBtn) return;
   if (s === 'sending') {
     sendBtn.classList.add('hidden');
     interruptBtn.classList.remove('hidden');
@@ -2780,6 +2819,22 @@ function setInputState(s) {
     sendBtn.classList.remove('hidden');
     updateSendBtn();
   }
+}
+
+/**
+ * Rebuild the chat's shared chrome from the selected conversation.
+ *
+ * The thinking indicator and the composer are single DOM elements, but their
+ * meaning is per conversation. Nothing recomputed them on a switch, so they
+ * simply kept whatever the previously-selected session had left behind — and
+ * since _setThinking() ignores events for unselected sessions, a spinner
+ * inherited that way could never be turned off again.
+ */
+function _syncChatUiToSession() {
+  const session = state.selectedSessionId ? state.sessions[state.selectedSessionId] : null;
+  const el = $('thinking-indicator');
+  if (el) el.classList.toggle('hidden', !session?.thinking);
+  _applyInputState(session?.running ? 'sending' : 'idle');
 }
 
 // ─── Plus Menu (Model & Thinking Switcher) ────────────────────────────────────
@@ -3493,7 +3548,7 @@ async function _startHeadlessSession(projectName, prompt, resumeSessionId) {
 
     // Switch to chat view
     switchView('chat');
-    setInputState('sending');
+    setInputState(localSession.sessionId, 'sending');
 
   } catch (err) {
     _debugLog('[Headless] Failed to create session:', err?.message || err);
@@ -3566,18 +3621,18 @@ function _handleHeadlessEvent(msg) {
   }
 
   if (msg.type === 'idle') {
-    setInputState('idle');
+    setInputState(localSessionId, 'idle');
   }
 
   if (msg.type === 'done') {
-    setInputState('idle');
+    setInputState(localSessionId, 'idle');
   }
 
   if (msg.type === 'error') {
     session.messages.push({ role: 'assistant', content: `Error: ${msg.error || 'Unknown error'}` });
     renderChatMessages();
     _saveSessions();
-    setInputState('idle');
+    setInputState(localSessionId, 'idle');
   }
 }
 
@@ -3597,7 +3652,7 @@ async function _sendHeadlessMessage(text) {
     _saveSessions();
   }
 
-  setInputState('sending');
+  setInputState(localSessionId, 'sending');
 
   try {
     await fetch(`${base}/api/sessions/${encodeURIComponent(state._headlessSessionId)}/send`, {
@@ -3607,7 +3662,7 @@ async function _sendHeadlessMessage(text) {
     });
   } catch (err) {
     console.error('[Headless] Failed to send message:', err);
-    setInputState('idle');
+    setInputState(localSessionId, 'idle');
   }
 }
 
