@@ -21,6 +21,7 @@
     "check:docs": "node scripts/check-docs.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "test:e2e": "node tests/e2e/smoke.js",
     "postinstall": "electron-rebuild -f -w node-pty,keytar,better-sqlite3 || echo rebuild skipped",
     "lab": "node scripts/workflow-lab/run-lab.js",
     "lab:audit": "node scripts/workflow-lab/audit-slots.js"

@@ -56,3 +56,39 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+  # Launches the real Electron app and clicks through every sidebar tab —
+  # the one thing the 125 jsdom suites structurally cannot check.
+  #
+  # continue-on-error while it settles in. It drives a real window under a
+  # virtual display, and neither a flaky Xvfb nor a panel that turns out to log
+  # a benign console error on a blank profile should red-flag an unrelated PR.
+  # Once a few runs have shown what the real-world noise is, drop this.
+  e2e:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+
+      # Full install, unlike the lint job: this one runs the app, so node-pty,
+      # keytar and better-sqlite3 have to be rebuilt against Electron's ABI.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Linux runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2t64 libsecret-1-0
+
+      - name: Build renderer
+        run: npm run build:renderer
+
+      - name: Smoke test
+        run: xvfb-run --auto-servernum npm run test:e2e

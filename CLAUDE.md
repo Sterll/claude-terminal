@@ -27,6 +27,7 @@ npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md has drifted from the tree it describes
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
 npm run lint:fix         # ESLint with --fix
+npm run test:e2e         # Playwright smoke test against the real Electron app
 ```
 
 **Important:** Always run `npm run build:renderer` after modifying anything under `src/renderer/`, `src/project-types/`, or `renderer.js`.
@@ -534,7 +535,7 @@ that difference from `AccountManager`.
 | `esbuild` | ^0.27.2 | Renderer bundling (IIFE, Chrome 120, sourcemaps) |
 | `jest` + jsdom | ^29.7.0 | Unit tests |
 | `eslint` + `@eslint/js` | ^10.10.0 | Flat-config lint over main / renderer / shared / MCP / scripts |
-| `playwright` | ^1.58.2 | Browser automation (marketing screenshots, axe-core a11y) |
+| `playwright` | ^1.58.2 | `_electron` driver for the E2E smoke test, plus marketing screenshots |
 | `axe-core` | - | Accessibility audit (WebApp Live Preview) |
 | `sharp` / `ffmpeg-static` | - | Asset + video processing for marketing scripts |
 
@@ -581,6 +582,7 @@ npm test                    # Run all 125 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file still matches the tree
 npm run lint                # ESLint (see below)
+npm run test:e2e            # Playwright smoke test against the real Electron app
 ```
 
 ### Unit tests (Jest)
@@ -647,13 +649,49 @@ Two documented exceptions, both real:
 - `src/renderer/viewers/**` is ESM, not CommonJS: both viewers are built as separate
   bundles and pulled in with a dynamic `import()`.
 
+### E2E smoke (`tests/e2e/smoke.js`)
+
+All 125 Jest suites run in jsdom against a mocked `window.electron_api`, so nothing
+in the repository asserts that the application actually starts. Every regression of
+the shape "the window opens but panel X throws on first render" has had to be found
+by a human opening the app. This covers that gap and only that.
+
+It uses Playwright's `_electron` driver (no `@playwright/test`; it is a plain Node
+script, run with `node tests/e2e/smoke.js`) and asserts three things:
+
+1. The window opens and the custom titlebar renders.
+2. Every sidebar tab opens without a renderer console error or uncaught page error,
+   attributed to the tab that produced it.
+3. `ErrorLogService` recorded no `critical` entry - which, per that service, means no
+   `uncaughtException` and no `unhandledRejection` in the main process.
+
+Isolation is the fiddly part, and there are three separate reasons for it:
+
+- `HOME` / `USERPROFILE` point at a throwaway directory, so `os.homedir()` relocates
+  **both** `~/.claude-terminal` and `~/.claude`, in the main process and the renderer
+  alike. That is why the env is overridden rather than teaching `paths.js` a
+  `CT_DATA_DIR`: only one of those two directories is this app's data.
+- `--user-data-dir` gives Electron its own profile, which also scopes
+  `app.requestSingleInstanceLock()`. Without it the launch would hit the developer's
+  already-running instance and quit immediately.
+- `settings.json` is seeded with `setupCompleted: true`, because a genuinely
+  first-launch profile opens the setup wizard instead of the main window. Networked
+  and background features are seeded off, so a failure means a panel threw rather
+  than a relay being unreachable.
+
+Kept out of `npm test`: it needs a display (`xvfb-run` on Linux CI) and a built
+renderer bundle. Running it locally also needs the native modules built against
+Electron's ABI (`npm run postinstall`), which on Windows means a Python and MSVC
+toolchain for `node-pty`.
+
 ## CI/CD
 
 **GitHub Actions (`.github/workflows/`):**
 
-- `ci.yml` - triggers on push to `main` and PRs. Two jobs:
+- `ci.yml` - triggers on push to `main` and PRs. Three jobs:
   - `lint` - Ubuntu only, `npm run check:docs` then `npm run lint`, installed with `--ignore-scripts` so no native rebuild is needed. Fast, fails first.
   - `test` - matrix Node 18 + 20 on windows-latest, ubuntu-latest, macos-latest: `npm ci`, `build:renderer`, `test`.
+  - `e2e` - Ubuntu only, under `xvfb-run`. `continue-on-error` while it settles in: it drives a real window under a virtual display, and neither a flaky Xvfb nor a panel that turns out to log a benign console error on a blank profile should red-flag an unrelated PR. Drop that once a few runs have shown what the real noise is.
 - `release.yml` - triggers on `v*` tags. Builds NSIS (Windows x64), DMG (macOS arm64 + x64), AppImage (Linux x64).
 - `i18n-badge.yml` - updates i18n coverage badges (gist `ec1241ea62520261790ef5a411b4b212`).
 
