@@ -5,6 +5,7 @@ const { escapeHtml } = require('../../utils/dom');
 const { formatRelativeTime } = require('../../utils/format');
 const { createModal, showModal, closeModal, showConfirm, showPrompt } = require('../components/Modal');
 const {
+  projectsState,
   getTasks, addTask, updateTask, deleteTask, moveTask,
   getKanbanColumns, addKanbanColumn, updateKanbanColumn, deleteKanbanColumn, reorderKanbanColumns,
   getKanbanLabels, addKanbanLabel, updateKanbanLabel, deleteKanbanLabel,
@@ -55,11 +56,67 @@ function render(container, project, options = {}) {
   if (board && board._kanbanCleanup) {
     board._kanbanCleanup();
   }
+  if (board && board._kanbanUnwatch) {
+    board._kanbanUnwatch();
+  }
 
   migrateTasksToKanban(project.id);
   normalizeKanbanTaskFields(project.id);
   container.innerHTML = buildBoardHtml(project);
   attachEvents(container, project, options);
+  watchBoardState(container, project, options);
+}
+
+// ── Live refresh ─────────────────────────────────────────────
+//
+// The board is not the only writer of its own data: an MCP session
+// (`kanban_add_task`) and ParallelTaskService write projects.json directly,
+// and projects.state reloads the file when another process touches it. The
+// board itself was only ever rebuilt by its own event handlers, so tasks a
+// Claude session had just created sat in state, invisible, until the user
+// navigated away from the dashboard and back. Follow the state instead.
+//
+// Rebuilding on every notification would fight the user (the state fires for
+// unrelated things, several times a second while a project is being dragged),
+// so the rebuild is gated on this project's board actually differing.
+
+/** Everything the board draws, as a comparable value. */
+function boardSignature(projectId) {
+  return JSON.stringify([
+    getTasks(projectId),
+    getKanbanColumns(projectId),
+    getKanbanLabels(projectId),
+  ]);
+}
+
+/**
+ * Rebuild the board when this project's tasks, columns or labels change in
+ * state without going through the board.
+ *
+ * The subscription drops itself once the board leaves the DOM: the dashboard
+ * replaces its container's contents when switching back to Overview, which
+ * never calls the cleanup stored on the board element.
+ */
+function watchBoardState(container, project, options) {
+  const board = container.querySelector('.kanban-board');
+  if (!board) return;
+
+  let signature = boardSignature(project.id);
+
+  const unsubscribe = projectsState.subscribe(() => {
+    if (!board.isConnected) {
+      unsubscribe();
+      return;
+    }
+    const next = boardSignature(project.id);
+    if (next === signature) return;
+    signature = next;
+    // Re-entrant by design: render() disposes this subscription and installs
+    // a fresh one for the board it builds.
+    render(container, project, options);
+  });
+
+  board._kanbanUnwatch = unsubscribe;
 }
 
 // ── HTML builders ────────────────────────────────────────────

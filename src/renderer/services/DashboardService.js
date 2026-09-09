@@ -476,35 +476,63 @@ async function getPullRequests(remoteUrl) {
  * @returns {Promise<Object>}
  */
 async function loadDashboardData(projectPath, { lightweight = false } = {}) {
+  const local = await loadLocalDashboardData(projectPath, { lightweight });
+  const remote = await loadRemoteDashboardData(local.gitInfo);
+  return { ...local, ...remote };
+}
+
+/**
+ * Everything that can be read from the machine itself.
+ *
+ * Kept apart from the GitHub half because that half is a network round-trip:
+ * blocking the first paint on it is what made opening a project feel slow,
+ * while the sections it feeds are a small part of the page.
+ *
+ * @param {string} projectPath
+ * @param {{lightweight?: boolean}} options
+ * @returns {Promise<Object>} dashboard data with empty GitHub sections
+ */
+async function loadLocalDashboardData(projectPath, { lightweight = false } = {}) {
   // The 500-commit history is only consumed by the detailed project view
   // (contribution graph, heatmaps, health). Skip it during the bulk preload
   // to avoid saturating the main process with 8 heavy `git log` in parallel.
-  const [gitInfo, stats, commitHistory30d] = await Promise.all([
+  //
+  // detectProjectType only needs the path, so it joins the batch rather than
+  // waiting behind the git calls as it used to.
+  const [gitInfo, stats, commitHistory30d, projectType] = await Promise.all([
     getGitInfoFull(projectPath),
     getProjectStats(projectPath),
     lightweight
       ? Promise.resolve(null)
-      : api.git.commitHistory({ projectPath, skip: 0, limit: 500 }).catch(() => [])
+      : api.git.commitHistory({ projectPath, skip: 0, limit: 500 }).catch(() => []),
+    detectProjectType(projectPath)
   ]);
-
-  // Detect project type
-  const projectType = await detectProjectType(projectPath);
-
-  // Fetch workflow runs and pull requests if it's a GitHub repo
-  let workflowRuns = { runs: [] };
-  let pullRequests = { pullRequests: [] };
-  if (gitInfo.isGitRepo && gitInfo.remoteUrl) {
-    [workflowRuns, pullRequests] = await Promise.all([
-      getWorkflowRuns(gitInfo.remoteUrl),
-      getPullRequests(gitInfo.remoteUrl)
-    ]);
-  } else {
-    // No git remote, skip GitHub data
-  }
 
   // commitHistory30d === null marks "not loaded yet" (lightweight preload);
   // ensureCommitHistory() fills it lazily when the detail view is opened.
-  return { gitInfo, stats, workflowRuns, pullRequests, projectType, commitHistory30d };
+  return {
+    gitInfo,
+    stats,
+    projectType,
+    commitHistory30d,
+    workflowRuns: { runs: [] },
+    pullRequests: { pullRequests: [] }
+  };
+}
+
+/**
+ * The GitHub half: workflow runs and pull requests.
+ * @param {Object} gitInfo - as returned by getGitInfoFull
+ * @returns {Promise<Object>} empty when the project has no GitHub remote
+ */
+async function loadRemoteDashboardData(gitInfo) {
+  if (!gitInfo?.isGitRepo || !gitInfo.remoteUrl) return null;
+
+  const [workflowRuns, pullRequests] = await Promise.all([
+    getWorkflowRuns(gitInfo.remoteUrl),
+    getPullRequests(gitInfo.remoteUrl)
+  ]);
+  return { workflowRuns, pullRequests };
 }
 
 /**
@@ -2228,14 +2256,29 @@ async function renderDashboard(container, project, options = {}) {
   setCacheLoading(projectId, true);
 
   try {
-    const data = await loadDashboardData(project.path);
-    setCacheData(targetProjectId, data);
+    // Paint as soon as the local data is in. The GitHub sections arrive in a
+    // second pass rather than holding the whole page behind a network call.
+    const local = await loadLocalDashboardData(project.path);
 
     // Discard if user switched to a different project during load
     if (targetProjectId !== projectsState.get().openedProjectId) return;
 
-    await renderDashboardHtml(container, project, data, options, false);
+    await renderDashboardHtml(container, project, local, options, false);
     animateDashboardIn(container);
+
+    const remote = await loadRemoteDashboardData(local.gitInfo);
+    const data = remote ? { ...local, ...remote } : local;
+    // Only the complete payload may be cached: setCacheData resets the TTL,
+    // so caching the local half would keep the GitHub sections empty until it
+    // expired.
+    setCacheData(targetProjectId, data);
+
+    if (!remote) return;
+    if (targetProjectId !== projectsState.get().openedProjectId) return;
+    // Still the same dashboard on screen? Fill in the GitHub sections.
+    if (container.querySelector('#dash-btn-open-folder')) {
+      await renderDashboardHtml(container, project, data, options, false);
+    }
   } catch (e) {
     console.error('Error loading dashboard:', e);
     setCacheLoading(targetProjectId, false);
@@ -2765,6 +2808,8 @@ module.exports = {
   getGitInfoFull,
   getProjectStats,
   loadDashboardData,
+  loadLocalDashboardData,
+  loadRemoteDashboardData,
   gitPull,
   gitPush,
   gitMergeAbort,

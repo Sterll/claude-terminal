@@ -9,6 +9,7 @@ const { fileExists, atomicWriteJSON } = require('../utils/fs-async');
 const fsp = require('../utils/fs-async').fsp;
 const { State } = require('./State');
 const { projectsFile, dataDir } = require('../utils/paths');
+const { mergeProjectsData, snapshot, deepEqual } = require('./projects.merge');
 const { t } = require('../i18n');
 
 // Initial state
@@ -328,6 +329,9 @@ async function loadProjects() {
       }
 
       projectsState.set({ projects, folders, rootOrder });
+      // What we just read IS the disk content, so it is the baseline every
+      // later save merges against.
+      _diskBaseline = snapshot({ projects, folders, rootOrder });
 
       if (needsSave) {
         saveProjects();
@@ -346,6 +350,11 @@ async function loadProjects() {
   }
 }
 
+// The content we last agreed on with the disk. Every save is a three-way merge
+// against it, so a write made by another process (MCP kanban tools, worktree
+// projects) is reconciled instead of being overwritten by our stale copy.
+let _diskBaseline = null;
+
 // Debounce timer for save operations
 let saveDebounceTimer = null;
 const SAVE_DEBOUNCE_MS = 500;
@@ -353,11 +362,16 @@ let saveInProgress = false;
 let pendingSave = false;
 let saveRetryCount = 0;
 const MAX_SAVE_RETRIES = 3;
+// Set while we push a merged result back into state, so adopting the disk's
+// own data cannot be mistaken for a local edit and scheduled as a new save.
+let _suppressSave = false;
 
 /**
  * Save projects to file (debounced, atomic write)
  */
 function saveProjects() {
+  if (_suppressSave) return;
+
   // Clear existing debounce timer
   if (saveDebounceTimer) {
     clearTimeout(saveDebounceTimer);
@@ -385,7 +399,12 @@ async function saveProjectsImmediate() {
   saveInProgress = true;
 
   const { folders, projects, rootOrder } = projectsState.get();
-  const data = { folders, projects, rootOrder };
+  const ours = { folders, projects, rootOrder };
+
+  // Reconcile with whatever is on disk before overwriting it. Another process
+  // may have written since we loaded, and a plain rewrite would destroy it.
+  const theirs = await _readDiskState();
+  const data = mergeProjectsData(_diskBaseline, ours, theirs);
 
   try {
     await atomicWriteJSON(projectsFile, data);
@@ -419,11 +438,128 @@ async function saveProjectsImmediate() {
 
   saveInProgress = false;
   saveRetryCount = 0;
+  _diskBaseline = snapshot(data);
+  // Remember our own write, so the watcher does not reload on it.
+  _statSignature().then(sig => { _lastSeenSignature = sig; });
+
+  // The merge may have brought back data we did not have (tasks added by an
+  // MCP session, a worktree project). Adopt it so the UI stops being stale —
+  // but only when it actually differs, or every save would notify subscribers.
+  _adoptMergedState(ours, data);
 
   // Process queued save
   if (pendingSave) {
     pendingSave = false;
     setTimeout(saveProjectsImmediate, 50);
+  }
+}
+
+// ── External write detection ────────────────────────────────────────────────
+//
+// projects.json is written by other processes too (MCP kanban tools, worktree
+// projects from a parallel run). Merging on save keeps their data alive, but
+// the UI would still show a stale board until the next restart, so we watch
+// the file and reload when someone else touches it.
+//
+// Polled rather than watched: the preload bridge exposes stat but no fs.watch,
+// and the file is replaced by an atomic rename, which several watch backends
+// report inconsistently anyway. One stat every few seconds on a small file is
+// cheap enough.
+const EXTERNAL_WATCH_INTERVAL_MS = 3000;
+let _watchTimer = null;
+let _lastSeenSignature = null;
+
+async function _statSignature() {
+  try {
+    const st = await fsp.stat(projectsFile);
+    return { mtimeMs: new Date(st.mtime).getTime(), size: st.size };
+  } catch {
+    return null;
+  }
+}
+
+function _sameSignature(a, b) {
+  return !!a && !!b && a.mtimeMs === b.mtimeMs && a.size === b.size;
+}
+
+async function _checkExternalWrite() {
+  // Our own write is in flight — whatever we observe now is ours.
+  if (saveInProgress || pendingSave || saveDebounceTimer) return;
+
+  const sig = await _statSignature();
+  if (!sig) return;
+
+  if (!_lastSeenSignature) {
+    _lastSeenSignature = sig;
+    return;
+  }
+  if (_sameSignature(sig, _lastSeenSignature)) return;
+
+  _lastSeenSignature = sig;
+  await loadProjects();
+}
+
+/** Start watching projects.json for writes made by other processes. */
+function startExternalWatch() {
+  if (_watchTimer) return;
+  _statSignature().then(sig => { _lastSeenSignature = sig; });
+  _watchTimer = setInterval(() => {
+    _checkExternalWrite().catch(e => console.warn('projects.json watch:', e.message));
+  }, EXTERNAL_WATCH_INTERVAL_MS);
+}
+
+/** Stop watching (used by tests and teardown). */
+function stopExternalWatch() {
+  if (_watchTimer) {
+    clearInterval(_watchTimer);
+    _watchTimer = null;
+  }
+  _lastSeenSignature = null;
+}
+
+/**
+ * Read the current on-disk state, or null when it is absent or unreadable.
+ * A parse failure must not abort the save: returning null means "nothing to
+ * reconcile against", and the existing corruption handling in loadProjects
+ * still owns the recovery path.
+ */
+async function _readDiskState() {
+  try {
+    if (!(await fileExists(projectsFile))) return null;
+    const raw = await fsp.readFile(projectsFile, 'utf8');
+    if (!raw || !raw.trim()) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return {
+      projects: parsed.projects || [],
+      folders: parsed.folders || [],
+      rootOrder: parsed.rootOrder || [],
+    };
+  } catch (e) {
+    console.warn('Could not read projects.json for merge, writing our copy:', e.message);
+    return null;
+  }
+}
+
+/**
+ * Push a merged result back into state when it differs from what we held.
+ * Guarded so the state change cannot re-enter the save loop.
+ */
+function _adoptMergedState(ours, merged) {
+  const changed = !deepEqual(ours.projects, merged.projects)
+    || !deepEqual(ours.folders, merged.folders)
+    || !deepEqual(ours.rootOrder, merged.rootOrder);
+  if (!changed) return;
+
+  _suppressSave = true;
+  try {
+    projectsState.set({
+      projects: merged.projects,
+      folders: merged.folders,
+      rootOrder: merged.rootOrder,
+    });
+  } finally {
+    _suppressSave = false;
   }
 }
 
@@ -1170,8 +1306,12 @@ function getTasks(projectId) {
 function getKanbanColumns(projectId) {
   const project = getProject(projectId);
   if (!project) return [...DEFAULT_COLUMNS];
+  // A read must not write. This used to persist the defaults, which made
+  // merely OPENING the kanban save the whole file — and a save from a stale
+  // in-memory copy is what wiped a board filled by an MCP session. The
+  // defaults are persisted by the first real mutation instead (every
+  // add/update/delete/reorder writes back the full column array).
   if (!project.kanbanColumns || project.kanbanColumns.length === 0) {
-    updateProject(projectId, { kanbanColumns: [...DEFAULT_COLUMNS] });
     return [...DEFAULT_COLUMNS];
   }
   return [...project.kanbanColumns].sort((a, b) => a.order - b.order);
@@ -1397,13 +1537,17 @@ function migrateTasksToKanban(projectId) {
   const project = getProject(projectId);
   if (!project) return;
   if (project.kanbanColumns && project.kanbanColumns.length > 0) return;
+  // Nothing in the old shape to convert: rendering an empty board is not a
+  // reason to write to disk.
+  const legacyTasks = project.tasks || [];
+  if (legacyTasks.length === 0) return;
   const statusToColumnId = {
     'todo': 'col-todo',
     'in_progress': 'col-inprogress',
     'done': 'col-done',
   };
   const colCounters = {};
-  const tasks = (project.tasks || []).map(t => {
+  const tasks = legacyTasks.map(t => {
     const colId = statusToColumnId[t.status] || 'col-todo';
     if (colCounters[colId] === undefined) colCounters[colId] = 0;
     const order = colCounters[colId]++;
@@ -1673,6 +1817,8 @@ module.exports = {
   loadProjects,
   saveProjects,
   saveProjectsImmediate,
+  startExternalWatch,
+  stopExternalWatch,
   createFolder,
   deleteFolder,
   renameFolder,

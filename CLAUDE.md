@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 127 test files)
+npm test                 # Run Jest tests (jsdom, 135 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md has drifted from the tree it describes
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -49,7 +49,7 @@ Electron Renderer Process (Browser)
 ├── renderer.js                      # Entry point (bundled by esbuild -> dist/renderer.bundle.js)
 ├── src/renderer/index.js            # Module loader & initialization
 ├── src/renderer/core/               # DI container, BaseService/Component/Panel, ApiProvider
-├── src/renderer/state/              # 14 observable state modules
+├── src/renderer/state/              # 15 observable state modules
 ├── src/renderer/services/           # 27 services + modular markdown renderer + mention sources
 ├── src/renderer/ui/components/      # 16 UI components
 ├── src/renderer/ui/panels/          # 25 UI panels
@@ -58,14 +58,14 @@ Electron Renderer Process (Browser)
 ├── src/renderer/workflow-fields/    # 13 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN locales (3627 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN locales (3630 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting
 
 Project Types (Plugin System)
 └── src/project-types/               # general, api, fivem, minecraft, python, webapp, discord
 
 Shared code
-└── src/shared/                      # 10 modules shared between main, renderer and the MCP server
+└── src/shared/                      # 12 modules shared between main, renderer and the MCP server
 
 Styles
 └── styles/                          # 30 modular CSS files (~57,000 lines total)
@@ -226,7 +226,8 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 
 | Module | Key state |
 |--------|-----------|
-| `projects.state.js` | projects[], folders[], rootOrder[], selectedProjectFilter, openedProjectId - CRUD, folder nesting, atomic writes |
+| `projects.state.js` | projects[], folders[], rootOrder[], selectedProjectFilter, openedProjectId - CRUD, folder nesting, atomic writes, three-way merge on save, polled watch for writes from other processes |
+| `projects.merge.js` | Three-way merge (base / ours / theirs) for projects.json, so a kanban board or worktree project written by another process survives a save from this renderer |
 | `terminals.state.js` | terminals Map, activeTerminal, detailTerminal |
 | `settings.state.js` | editor, accentColor, language, defaultTerminalMode, chatModel, pinnedTabs, sidebarOrder, shortcuts |
 | `timeTracking.state.js` | per-session, 15 min idle, midnight rollover, monthly archival |
@@ -347,7 +348,7 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 ### Internationalization (`src/renderer/i18n/locales/`)
 
 - **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`)
-- **Keys:** 3627 per locale, all five in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
+- **Keys:** 3630 per locale, all five in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
 - **Loading:** only `en.json` is bundled eagerly, as the guaranteed-loaded fallback for `t()`; the others are fetched by `initI18n()`
 - **Detection:** auto-detect from `navigator.language`, `DEFAULT_LANGUAGE` is `fr`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`, `data-i18n="..."` for static HTML
@@ -590,7 +591,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 127 test files
+- **Framework:** Jest with jsdom, 135 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
@@ -606,7 +607,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
   - `shared/` - context usage, cron, model options, permission modes, simple-task
   - `smoke/` - every module parses and loads
   - `state/` - State plus each state module
-  - `ui/` - chat account switch, chat limit error, task widget, tasks drawer, ClaudeRemotePanel, navigation mode
+  - `ui/` - chat account switch, chat limit error, task widget, tasks drawer, ClaudeRemotePanel, navigation mode, kanban live refresh
   - `utils/` - attachments, color, commit messages, drop paths, file icons, file lock, format, frontmatter, git, http cache, session search, shell, syntax highlight, tool registry
 
 ### Lint (`eslint.config.js`)

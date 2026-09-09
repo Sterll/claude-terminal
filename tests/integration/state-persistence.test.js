@@ -73,6 +73,13 @@ window.electron_api = {
 // Mock requestAnimationFrame
 global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
 
+// Drain the microtask queue. The save path awaits several times before it
+// writes (it re-reads the file to merge with it), so counting individual
+// `await Promise.resolve()` ticks is too brittle to pin a write on.
+async function flushAsync(rounds = 25) {
+  for (let i = 0; i < rounds; i++) await Promise.resolve();
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   jest.useFakeTimers();
@@ -119,9 +126,7 @@ describe('projects state persistence', () => {
     // Trigger save (debounced 500ms)
     jest.advanceTimersByTime(600);
     // Flush async saveProjectsImmediate
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushAsync();
 
     // Verify file was written (via async fsp.writeFile)
     const { fs } = window.electron_nodeModules;
@@ -151,9 +156,7 @@ describe('projects state persistence', () => {
     projectsModule.moveItemToFolder('project', project.id, folder.id);
 
     jest.advanceTimersByTime(600);
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushAsync();
 
     const { fs } = window.electron_nodeModules;
     const lastWrite = fs.promises.writeFile.mock.calls[fs.promises.writeFile.mock.calls.length - 1];
@@ -177,9 +180,7 @@ describe('projects state persistence', () => {
 
     // Advance past debounce
     jest.advanceTimersByTime(600);
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushAsync();
 
     // Should have written once (the final state)
     const writeCalls = fs.promises.writeFile.mock.calls;
@@ -196,9 +197,7 @@ describe('projects state persistence', () => {
 
     projectsModule.addProject({ name: 'Test', path: '/test' });
     jest.advanceTimersByTime(600);
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushAsync();
 
     // Check that fsp.writeFile was called with .tmp path
     const tmpWrites = fs.promises.writeFile.mock.calls.filter(c => c[0].endsWith('.tmp'));
@@ -220,9 +219,7 @@ describe('projects state persistence', () => {
 
     projectsModule.addProject({ name: 'Test', path: '/test' });
     jest.advanceTimersByTime(600);
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushAsync();
 
     // fsp.copyFile should be called for backup
     expect(fs.promises.copyFile).toHaveBeenCalled();
@@ -256,9 +253,7 @@ describe('projects state persistence', () => {
     });
 
     jest.advanceTimersByTime(600);
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushAsync();
 
     const { fs } = window.electron_nodeModules;
     const lastWrite = fs.promises.writeFile.mock.calls[fs.promises.writeFile.mock.calls.length - 1];
@@ -292,9 +287,7 @@ describe('settings state persistence', () => {
 
     // Run debounce
     jest.advanceTimersByTime(600);
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushAsync();
 
     // Verify write was called
     expect(fs.promises.writeFile).toHaveBeenCalled();
@@ -314,9 +307,7 @@ describe('settings state persistence', () => {
 
     settingsModule.setSetting('accentColor', '#d97706');
     jest.advanceTimersByTime(600);
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushAsync();
 
     const tmpWrites = fs.promises.writeFile.mock.calls.filter(c => c[0].endsWith('.tmp'));
     const parsed = JSON.parse(tmpWrites[tmpWrites.length - 1][1]);
@@ -423,9 +414,7 @@ describe('settings state persistence', () => {
     settingsModule.setSetting('compactProjects', false);
 
     jest.advanceTimersByTime(600);
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushAsync();
 
     const tmpWrites = fs.promises.writeFile.mock.calls.filter(c => c[0].endsWith('.tmp'));
     const parsed = JSON.parse(tmpWrites[tmpWrites.length - 1][1]);
