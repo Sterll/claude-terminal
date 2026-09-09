@@ -466,15 +466,20 @@ function refreshUsage(accountId, force = false) {
  *
  * @param {string|null} accountId
  * @param {number} [maxAgeMs] - 0 forces a fetch
+ * @param {boolean} [force] - also re-read the credential store, for the
+ *   explicit refresh gesture; see readOAuthToken(). Without it, an account
+ *   whose token was missing or refused stays unreadable for the whole backoff
+ *   window (15 min), so refreshing right after `claude /login` on that account
+ *   still showed "usage unavailable".
  * @returns {Promise<Object>} same shape as getUsageData()
  */
-async function usageForAccount(accountId, maxAgeMs = 5 * 60 * 1000) {
+async function usageForAccount(accountId, maxAgeMs = 5 * 60 * 1000, force = false) {
   const entry = entryFor(accountId);
   const age = entry.lastFetch ? Date.now() - entry.lastFetch.getTime() : Infinity;
   // `>=` so that a maxAge of 0 always refetches: figures fetched in the same
   // millisecond are not "younger than 0ms", and the explicit refresh button
   // would otherwise be a no-op on a fast machine.
-  if (age >= maxAgeMs) await fetchUsage(accountId);
+  if (force || age >= maxAgeMs) await fetchUsage(accountId, force);
   return getUsageData(accountId);
 }
 

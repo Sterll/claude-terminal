@@ -31,12 +31,15 @@ const seededStores = new Set();
  *
  * Bounded to one attempt per account because probing a store costs a Keychain
  * read on macOS, and the settings list asks for these figures on every account
- * change — a rename would otherwise re-probe every account.
+ * change — a rename would otherwise re-probe every account. The explicit
+ * refresh gesture lifts the bound: it exists precisely to re-examine stores
+ * that have changed since (a `claude /login` on an account that had none).
  *
  * @param {string} id
+ * @param {boolean} [force]
  */
-async function seedStoreOnce(id) {
-  if (seededStores.has(id)) return;
+async function seedStoreOnce(id, force = false) {
+  if (seededStores.has(id) && !force) return;
   seededStores.add(id);
   try {
     await AccountManager.ensureAccountStore(id);
@@ -64,12 +67,24 @@ function registerAccountsHandlers() {
   //
   // Fetched in parallel: the calls are independent, and a serial sweep would
   // make the whole list wait out one account's five-second API timeout.
-  ipcMain.handle('accounts-usage', (_event, { maxAgeMs } = {}) => wrap(async () => {
+  //
+  // `force` is the explicit refresh button, and it has to reach all the way
+  // down to the credential store: a stale max-age only re-runs the API call
+  // with the token already cached, which cannot notice an account that was
+  // signed in again outside the app.
+  ipcMain.handle('accounts-usage', (_event, { maxAgeMs, force = false } = {}) => wrap(async () => {
     const { accounts } = await AccountManager.listAccounts();
     const usage = {};
     await Promise.all(accounts.map(async (account) => {
-      await seedStoreOnce(account.id);
-      usage[account.id] = await UsageService.usageForAccount(account.id, maxAgeMs);
+      await seedStoreOnce(account.id, force);
+      try {
+        usage[account.id] = await UsageService.usageForAccount(account.id, maxAgeMs, force);
+      } catch (err) {
+        // One unreadable account must not blank the whole list: report it as
+        // an account whose figures failed, and let the others through.
+        console.warn('[accounts.ipc] usage failed for', account.id, '-', err.message);
+        usage[account.id] = { accountId: account.id, data: null, stale: true, error: err.message };
+      }
     }));
     return usage;
   }));
