@@ -4152,5 +4152,51 @@
     "dock": "Anclar junto al chat",
     "undock": "Ocultar la columna",
     "openScreen": "Abrir la pantalla Archivos"
+  },
+  "timeline": {
+    "tab": "Cronología",
+    "title": "Cronología",
+    "subtitle": "Todo lo registrado en este proyecto, en un solo hilo",
+    "empty": "No hay nada registrado para este proyecto en este período.",
+    "emptyHint": "Los commits, sesiones, tiempo registrado, ejecuciones de workflow y paralelas y artifacts aparecen aquí.",
+    "today": "Hoy",
+    "yesterday": "Ayer",
+    "period": "Período",
+    "days": "{count} días",
+    "eventCount": "{count} eventos",
+    "messageCount": "{count} mensajes",
+    "taskCount": "{count} tareas",
+    "workedFor": "Trabajo de {duration}",
+    "filterAll": "Todo",
+    "copyMarkdown": "Copiar como Markdown",
+    "copied": "Cronología copiada al portapapeles",
+    "sourcesFailed": "No se pudo leer: {sources}",
+    "untitledSession": "Sesión sin título",
+    "untitledWorkflow": "Workflow sin nombre",
+    "untitledRun": "Ejecución sin título",
+    "untitledArtifact": "Artifact sin título",
+    "kind": {
+      "commit": "Commit",
+      "session": "Sesión",
+      "time": "Trabajo",
+      "workflow": "Workflow",
+      "parallel": "Ejecución paralela",
+      "artifact": "Artifact"
+    },
+    "status": {
+      "success": "con éxito",
+      "failed": "fallido",
+      "running": "en curso",
+      "pending": "pendiente",
+      "cancelled": "cancelado",
+      "skipped": "omitido",
+      "timeout": "expirado",
+      "interrupted": "interrumpido",
+      "done": "terminado",
+      "merged": "fusionado",
+      "merging": "fusionando",
+      "decomposing": "planificación",
+      "reviewing": "en revisión"
+    }
   }
 }

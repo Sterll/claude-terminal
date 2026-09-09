@@ -2,6 +2,73 @@
 
 All notable changes to Claude Terminal are documented in this file.
 
+## [1.3.1] - 2026-09-09
+
+### Added
+- **Claude Remote Control**: put a chat session on claude.ai and the Claude mobile app, decided per conversation rather than globally (#140)
+- **Claude in Chrome**: let chat sessions drive the browser through the Claude extension, adding the `claude-in-chrome` MCP server and its 22 browser tools (#137)
+- **Chat**: model, effort and permission mode are now per conversation and legible at a glance, with "Use for new conversations" as the only way to change the default (#156)
+- **Chat**: accept text files and PDFs as attachments, not just images (#163)
+- **Accounts**: per-account usage shown in Settings (#138)
+- **Files**: the project tree can sit beside the chat again
+- **Tabs**: confirm before a tab's x closes a session or a project (#139)
+
+### Fixed
+- Account switching: keep the typed message, resume with the CLI session id, resend the opening turn when there is nothing to resume, and offer the switch when a spend cap is reported in-band (#142, #150, #154, #162)
+- Chat: replay a resumed conversation the way it was shown (#165)
+- Chat: read the context gauge and the window frames without extra API calls (#146)
+- Chat: timed-out permission prompts no longer surface as harness errors (#148)
+- Chat: the model label no longer reads "Default" while a turn starts (#144)
+- Chat: artifact action buttons restored (#158)
+- Usage: stop re-reading the credential store on every poll; the topbar refresh gesture re-reads credentials too (#135, #160)
+- Artifacts: hide the screen while it cannot be populated (#136)
+- Tasks: background tasks no longer all read "0m" in the drawer (#133)
+- Tabs: drop login errors that had been saved as session names (#132)
+- Project: scan block and HTML comments for TODOs (#155)
+- Navigation: drop the project bar's empty row in column mode
+- Tests: retry the move-session teardown so Windows cannot fail the run (#152)
+
+## [1.3.0] - 2026-09-05
+
+### Added
+- **Voice**: microphone capture with Groq transcription, a hands-free session profile, verbatim dictation and focused-tab routing. The API key lives in the OS credential store and never reaches the renderer
+- **Accounts**: multiple Claude accounts with per-project binding (#121)
+- **Artifacts**: artifact library and a per-conversation Documents tab (#115)
+- **Files**: a Files screen with per-session diffs rendered like GitHub (#107)
+- **Tasks**: a background tasks drawer, scoped to the session (#120)
+- **Navigation**: choose between a project tab bar and the projects sidebar, chosen once in the setup wizard (#86, #101, #112, #122)
+- **Chat**: model picker built from the CLI catalog instead of a hard-coded list (#117)
+- **Chat**: Ctrl+F search in the conversation transcript, translated into every locale
+- **Sessions**: move a session to another project (#85); real session titles, searchable ids (#84)
+- **Tabs**: lockable custom names, pinned tabs, fixed session ordering (#106)
+- **Sidebar**: navigation grouped by scope so it fits again (#96)
+- **Settings**: the chat turn limit is now exposed
+- **MCP**: cross-project session search and recap, `ui_navigate` and `ui_state`, and project names resolved the way they are spoken
+
+### Fixed
+- Accounts: read Claude credentials from the macOS Keychain; stop switching from rolling back MCP tokens or overwriting the outgoing snapshot (#79)
+- Chat: chat sessions are no longer capped at 100 turns (#80); the applied cap is reported, and unattended hands-free sessions stay bounded
+- Chat: stop reporting "success" after an in-band API error (#103)
+- Chat: the CLI login error no longer becomes a tab name (#129)
+- Chat: mention picker items selectable with the keyboard
+- Chat: background tasks settle from the live set, not just the bookends (#114, #119)
+- Sessions: long sessions no longer freeze the app (#82)
+- Events: hook events routed by session id, not by project (#111)
+- Settings: concurrent writers can no longer wipe settings.json
+- Terminal: keep the session when switching between chat and terminal (#89)
+- Usage: limit bars built from the API rather than a hardcoded Sonnet (#97)
+- Accessibility: replayed chat history dimmed by colour instead of opacity, higher tool-detail contrast (#88)
+- Release: one macOS arch no longer cancels the other; mac sha512 computed from the authenticated asset download (#123, #124)
+
+### Performance
+- Bound the mounted transcript and pause idle animations while the window is unfocused (#105)
+
+## [1.2.1] - [1.2.18]
+
+Eighteen incremental releases between 1.2.0 and 1.3.0, not individually written up
+here. See the tag-to-tag comparison on GitHub for the full list:
+<https://github.com/Sterll/claude-terminal/compare/v1.2.0...v1.2.18>
+
 ## [1.2.0] - 2026-03-15
 
 ### Added

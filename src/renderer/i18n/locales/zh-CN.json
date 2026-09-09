@@ -4152,5 +4152,51 @@
     "dock": "停靠在聊天旁边",
     "undock": "隐藏该列",
     "openScreen": "打开文件页面"
+  },
+  "timeline": {
+    "tab": "时间线",
+    "title": "时间线",
+    "subtitle": "此项目的所有记录，汇成一条线",
+    "empty": "该时段内此项目没有任何记录。",
+    "emptyHint": "提交、会话、计时、工作流与并行运行、以及产物都会在此显示。",
+    "today": "今天",
+    "yesterday": "昨天",
+    "period": "时段",
+    "days": "{count} 天",
+    "eventCount": "{count} 条记录",
+    "messageCount": "{count} 条消息",
+    "taskCount": "{count} 个任务",
+    "workedFor": "工作 {duration}",
+    "filterAll": "全部",
+    "copyMarkdown": "复制为 Markdown",
+    "copied": "时间线已复制到剪贴板",
+    "sourcesFailed": "无法读取：{sources}",
+    "untitledSession": "未命名会话",
+    "untitledWorkflow": "未命名工作流",
+    "untitledRun": "未命名运行",
+    "untitledArtifact": "未命名产物",
+    "kind": {
+      "commit": "提交",
+      "session": "会话",
+      "time": "工作",
+      "workflow": "工作流",
+      "parallel": "并行运行",
+      "artifact": "产物"
+    },
+    "status": {
+      "success": "成功",
+      "failed": "失败",
+      "running": "运行中",
+      "pending": "等待中",
+      "cancelled": "已取消",
+      "skipped": "已跳过",
+      "timeout": "已超时",
+      "interrupted": "已中断",
+      "done": "已完成",
+      "merged": "已合并",
+      "merging": "合并中",
+      "decomposing": "规划中",
+      "reviewing": "审阅中"
+    }
   }
 }

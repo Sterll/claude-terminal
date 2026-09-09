@@ -1235,6 +1235,10 @@ class ChatService {
 
     let openGate;
     const gate = new Promise(resolve => { openGate = resolve; });
+    // Never yields on purpose: the SDK wants an async iterable prompt, and this
+    // one just parks on `gate` so the query opens, reports its catalog, and is
+    // aborted before a turn is ever taken.
+    // eslint-disable-next-line require-yield
     async function* idlePrompt() { await gate; }
 
     const abortController = new AbortController();

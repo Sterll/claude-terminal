@@ -480,7 +480,7 @@ class PluginsPanel extends BasePanel {
       if (homepageBtn) {
         homepageBtn.onclick = (e) => {
           e.stopPropagation();
-          require('electron').shell.openExternal(homepageBtn.dataset.url);
+          this.api.dialog.openExternal(homepageBtn.dataset.url);
         };
       }
       const uninstallBtn = item.querySelector('.btn-plugin-uninstall');
@@ -602,7 +602,7 @@ class PluginsPanel extends BasePanel {
         if (result.success && result.readme) {
           readmeEl.innerHTML = renderReadmeMarkdown(result.readme);
           readmeEl.classList.add('readme-markdown');
-          bindReadmeLinks(readmeEl, (url) => require('electron').shell.openExternal(url));
+          bindReadmeLinks(readmeEl, (url) => this.api.dialog.openExternal(url));
         } else {
           readmeEl.innerHTML = `<em>${t('plugins.noReadme')}</em>`;
         }
@@ -618,7 +618,7 @@ class PluginsPanel extends BasePanel {
     }
     const homepageBtn = document.querySelector('.btn-plugin-homepage-detail');
     if (homepageBtn) {
-      homepageBtn.onclick = () => require('electron').shell.openExternal(homepageBtn.dataset.url);
+      homepageBtn.onclick = () => this.api.dialog.openExternal(homepageBtn.dataset.url);
     }
     const installDetailBtn = document.querySelector('.btn-plugin-install-detail');
     if (installDetailBtn) {

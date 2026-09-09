@@ -14,9 +14,18 @@ const { formatDuration } = require('../utils/format');
 const { t } = require('../i18n');
 const registry = require('../../project-types/registry');
 const KanbanPanel = require('../ui/panels/KanbanPanel');
+const Timeline = require('./ProjectTimeline');
 
-// Per-project active view: 'overview' | 'kanban'
+// Per-project active view: 'overview' | 'kanban' | 'timeline'
 const _dashViews = new Map();
+
+// Per-project timeline preferences, kept in memory only: they are a reading
+// posture rather than a setting, and should not survive a restart the way an
+// accent colour does.
+const _timelineDays = new Map();   // projectId -> 7 | 14 | 30
+const _timelineKinds = new Map();  // projectId -> Set<kind> | null (null = all)
+
+const TIMELINE_RANGES = [7, 14, 30];
 
 // Stored reference to session-recap-updated handler for cleanup
 let _sessionRecapHandler = null;
@@ -25,6 +34,20 @@ let _sessionRecapHandler = null;
 const MAX_CACHE_SIZE = 50; // Max cached projects
 const dashboardCache = new Map(); // projectId -> { data, timestamp, loading }
 const CACHE_TTL = 30000; // 30 seconds cache validity
+
+/**
+ * Collected timeline events, per project. Short-lived and separate from the
+ * dashboard cache: changing the period or a filter chip re-renders from the
+ * same events rather than paying for six round trips again.
+ */
+const _timelineCache = new Map(); // projectId -> { events, failed, at }
+const TIMELINE_TTL = 30000;
+
+/** Drop a project's collected events so the next render refetches. */
+function invalidateTimeline(projectId) {
+  _timelineCache.delete(projectId);
+}
+
 const REFRESH_DEBOUNCE = 2000; // 2 seconds minimum between refreshes
 const DISK_CACHE_FILE = '.claude-terminal';
 
@@ -350,6 +373,9 @@ function setCacheLoading(projectId, loading) {
  */
 function invalidateCache(projectId) {
   dashboardCache.delete(projectId);
+  // The timeline reads five sources the dashboard cache knows nothing about, so
+  // a manual refresh has to drop both or the refreshed view shows stale events.
+  invalidateTimeline(projectId);
 }
 
 /**
@@ -357,6 +383,7 @@ function invalidateCache(projectId) {
  */
 function clearAllCache() {
   dashboardCache.clear();
+  _timelineCache.clear();
 }
 
 /**
@@ -785,8 +812,114 @@ function buildViewTabsHtml(projectId) {
     <div class="dashboard-view-tabs">
       <button class="dashboard-view-tab${view === 'overview' ? ' active' : ''}" data-view="overview">${t('kanban.overview')}</button>
       <button class="dashboard-view-tab${view === 'kanban' ? ' active' : ''}" data-view="kanban">${t('kanban.tab')}</button>
+      <button class="dashboard-view-tab${view === 'timeline' ? ' active' : ''}" data-view="timeline">${t('timeline.tab')}</button>
     </div>
   `;
+}
+
+// ── Timeline view ────────────────────────────────────────────────────────────
+//
+// The dashboard already answers "what is the state of this project". The
+// timeline answers the other half — "what happened to it" — by merging the six
+// per-project record sets the app keeps in separate screens. All of the
+// collection and normalisation lives in ProjectTimeline; this only draws.
+
+/** One inline SVG per source, sized to sit in the 22px gutter dot. */
+const TIMELINE_ICONS = {
+  commit: '<circle cx="12" cy="12" r="4"/><path d="M2 12h6M16 12h6" stroke="currentColor" stroke-width="2" fill="none"/>',
+  session: '<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>',
+  time: '<path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 11h-5v-2h3V6h2z"/>',
+  workflow: '<path d="M4 4h6v6H4zM14 14h6v6h-6zM7 10v4h7" stroke="currentColor" stroke-width="2" fill="none"/>',
+  parallel: '<path d="M4 5h6v4H4zM4 15h6v4H4zM14 10h6v4h-6z"/>',
+  artifact: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6" fill="none" stroke="currentColor" stroke-width="2"/>',
+};
+
+/**
+ * Build the timeline toolbar: period, per-source filter chips, copy button.
+ * @param {string} projectId
+ * @param {Object} counts - output of Timeline.countByKind, over the whole window
+ * @param {number} days
+ * @param {Set<string>|null} activeKinds - null means "all"
+ */
+function buildTimelineToolbarHtml(projectId, counts, days, activeKinds) {
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+
+  const ranges = TIMELINE_RANGES.map(d => `
+    <button class="timeline-range${d === days ? ' active' : ''}" data-days="${d}">${t('timeline.days', { count: d })}</button>
+  `).join('');
+
+  // A source with nothing in the window is shown disabled rather than hidden,
+  // so the set of chips stays stable while the user changes the period.
+  const chips = Timeline.KINDS.map(kind => {
+    const n = counts[kind] || 0;
+    const on = !activeKinds || activeKinds.has(kind);
+    return `
+      <button class="timeline-chip timeline-chip-${kind}${on ? ' active' : ''}${n ? '' : ' empty'}"
+              data-kind="${kind}"${n ? '' : ' disabled'}>
+        <svg viewBox="0 0 24 24" fill="currentColor">${TIMELINE_ICONS[kind]}</svg>
+        <span>${escapeHtml(Timeline.kindLabel(kind))}</span>
+        <b>${n}</b>
+      </button>`;
+  }).join('');
+
+  return `
+    <div class="timeline-toolbar">
+      <div class="timeline-ranges" role="group" aria-label="${escapeHtml(t('timeline.period'))}">${ranges}</div>
+      <div class="timeline-chips">
+        <button class="timeline-chip timeline-chip-all${activeKinds ? '' : ' active'}" data-kind="">
+          <span>${escapeHtml(t('timeline.filterAll'))}</span><b>${total}</b>
+        </button>
+        ${chips}
+      </div>
+      <button class="btn-icon-small timeline-copy" title="${escapeHtml(t('timeline.copyMarkdown'))}" ${total ? '' : 'disabled'}>
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+      </button>
+    </div>`;
+}
+
+/**
+ * Build the grouped event list.
+ * @param {Array} groups - output of Timeline.groupByDay
+ * @param {string[]} failed - sources that could not be read
+ * @param {number} now - injected so the day headings agree with the grouping
+ */
+function buildTimelineListHtml(groups, failed, now) {
+  const warning = failed.length ? `
+    <div class="timeline-warning">
+      ${escapeHtml(t('timeline.sourcesFailed', { sources: failed.map(Timeline.kindLabel).join(', ') }))}
+    </div>` : '';
+
+  if (!groups.length) {
+    return `${warning}
+      <div class="timeline-empty">
+        <p>${escapeHtml(t('timeline.empty'))}</p>
+        <span>${escapeHtml(t('timeline.emptyHint'))}</span>
+      </div>`;
+  }
+
+  const days = groups.map(group => `
+    <section class="timeline-day">
+      <header class="timeline-day-head">
+        <h4>${escapeHtml(Timeline.dayLabel(group.ts, now))}</h4>
+        <span>${escapeHtml(t('timeline.eventCount', { count: group.events.length }))}</span>
+      </header>
+      <ol class="timeline-events">
+        ${group.events.map(e => `
+          <li class="timeline-event kind-${e.kind}${e.tone ? ` tone-${e.tone}` : ''}">
+            <time class="timeline-event-time">${escapeHtml(Timeline.clockTime(e.ts))}</time>
+            <span class="timeline-event-dot" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="currentColor">${TIMELINE_ICONS[e.kind] || ''}</svg>
+            </span>
+            <div class="timeline-event-body">
+              <span class="timeline-event-title">${escapeHtml(e.title)}</span>
+              ${e.subtitle ? `<span class="timeline-event-sub">${escapeHtml(e.subtitle)}</span>` : ''}
+            </div>
+            <span class="timeline-event-kind">${escapeHtml(Timeline.kindLabel(e.kind))}</span>
+          </li>`).join('')}
+      </ol>
+    </section>`).join('');
+
+  return `${warning}<div class="timeline-list">${days}</div>`;
 }
 
 /**
@@ -1582,6 +1715,97 @@ function buildPullRequestsHtml(pullRequestsData) {
  * @param {Object} options
  * @param {boolean} isRefreshing - Show refresh indicator
  */
+/**
+ * Render the timeline view and wire its controls.
+ *
+ * Split out of renderDashboardHtml rather than inlined because it is the only
+ * view that loads its own data; the overview is handed everything it needs.
+ */
+async function renderTimelineView(container, project, data, options, isRefreshing) {
+  const days = _timelineDays.get(project.id) || Timeline.DEFAULT_DAYS;
+  const activeKinds = _timelineKinds.get(project.id) || null;
+
+  const wireViewTabs = () => {
+    container.querySelectorAll('.dashboard-view-tab').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        _dashViews.set(project.id, btn.dataset.view);
+        await renderDashboardHtml(container, project, data, options, isRefreshing);
+      });
+    });
+  };
+
+  /** Redraw the body, re-binding the view tabs that innerHTML just replaced. */
+  const paint = (bodyHtml) => {
+    container.innerHTML = `${buildViewTabsHtml(project.id)}<div class="timeline-view">${bodyHtml}</div>`;
+    wireViewTabs();
+  };
+
+  let cached = _timelineCache.get(project.id);
+  if (!cached || Date.now() - cached.at > TIMELINE_TTL) {
+    paint(`<div class="timeline-loading"><span class="refresh-spinner"></span> ${escapeHtml(t('dashboard.loadingInfo'))}</div>`);
+    // Reuse the 500-commit history the dashboard has already paid for when it
+    // is there; ensureCommitHistory() only fills it for the detailed view.
+    const collected = await Timeline.collect(project, { commitHistory: data?.commitHistory30d });
+    cached = { ...collected, at: Date.now() };
+    _timelineCache.set(project.id, cached);
+
+    // The user may have switched away while the six sources were loading.
+    if ((_dashViews.get(project.id) || 'overview') !== 'timeline') return;
+  }
+
+  const windowed = Timeline.groupByDay(cached.events, { days });
+  const counts = Timeline.countByKind(windowed.flatMap(g => g.events));
+  const groups = activeKinds
+    ? windowed
+      .map(g => ({ ...g, events: g.events.filter(e => activeKinds.has(e.kind)) }))
+      .filter(g => g.events.length)
+    : windowed;
+
+  const now = Date.now();
+  paint(
+    buildTimelineToolbarHtml(project.id, counts, days, activeKinds) +
+    buildTimelineListHtml(groups, cached.failed, now)
+  );
+
+  const rerender = () => renderTimelineView(container, project, data, options, isRefreshing);
+
+  container.querySelectorAll('.timeline-range').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _timelineDays.set(project.id, Number(btn.dataset.days));
+      rerender();
+    });
+  });
+
+  container.querySelectorAll('.timeline-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const kind = btn.dataset.kind;
+      if (!kind) {                       // the "All" chip clears the filter
+        _timelineKinds.delete(project.id);
+        return rerender();
+      }
+      // Start from "everything" so the first click on a chip reads as
+      // "only this one" rather than "all but this one".
+      const next = activeKinds ? new Set(activeKinds) : new Set([kind]);
+      if (activeKinds) {
+        if (next.has(kind)) next.delete(kind); else next.add(kind);
+      }
+      if (!next.size) _timelineKinds.delete(project.id);
+      else _timelineKinds.set(project.id, next);
+      rerender();
+    });
+  });
+
+  container.querySelector('.timeline-copy')?.addEventListener('click', async () => {
+    const { showSuccess, showError } = require('../ui/components/Toast');
+    try {
+      await navigator.clipboard.writeText(Timeline.toMarkdown(groups, project));
+      showSuccess(t('timeline.copied'));
+    } catch (e) {
+      showError(e.message);
+    }
+  });
+}
+
 async function renderDashboardHtml(container, project, data, options, isRefreshing = false) {
   const {
     terminalCount = 0,
@@ -1595,6 +1819,11 @@ async function renderDashboardHtml(container, project, data, options, isRefreshi
   } = options;
 
   const currentView = _dashViews.get(project.id) || 'overview';
+
+  if (currentView === 'timeline') {
+    await renderTimelineView(container, project, data, options, isRefreshing);
+    return;
+  }
 
   if (currentView === 'kanban') {
     container.innerHTML = buildViewTabsHtml(project.id);

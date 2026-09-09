@@ -4152,5 +4152,51 @@
     "dock": "Tambatkan di samping chat",
     "undock": "Sembunyikan kolom",
     "openScreen": "Buka layar Files"
+  },
+  "timeline": {
+    "tab": "Linimasa",
+    "title": "Linimasa",
+    "subtitle": "Semua yang tercatat di proyek ini, dalam satu alur",
+    "empty": "Tidak ada yang tercatat untuk proyek ini pada periode ini.",
+    "emptyHint": "Commit, sesi, waktu terlacak, run workflow dan paralel, serta artifact muncul di sini.",
+    "today": "Hari ini",
+    "yesterday": "Kemarin",
+    "period": "Periode",
+    "days": "{count} hari",
+    "eventCount": "{count} peristiwa",
+    "messageCount": "{count} pesan",
+    "taskCount": "{count} tugas",
+    "workedFor": "Bekerja {duration}",
+    "filterAll": "Semua",
+    "copyMarkdown": "Salin sebagai Markdown",
+    "copied": "Linimasa disalin ke papan klip",
+    "sourcesFailed": "Tidak dapat dibaca: {sources}",
+    "untitledSession": "Sesi tanpa judul",
+    "untitledWorkflow": "Workflow tanpa nama",
+    "untitledRun": "Run tanpa judul",
+    "untitledArtifact": "Artifact tanpa judul",
+    "kind": {
+      "commit": "Commit",
+      "session": "Sesi",
+      "time": "Kerja",
+      "workflow": "Workflow",
+      "parallel": "Run paralel",
+      "artifact": "Artifact"
+    },
+    "status": {
+      "success": "berhasil",
+      "failed": "gagal",
+      "running": "berjalan",
+      "pending": "menunggu",
+      "cancelled": "dibatalkan",
+      "skipped": "dilewati",
+      "timeout": "kehabisan waktu",
+      "interrupted": "terputus",
+      "done": "selesai",
+      "merged": "digabungkan",
+      "merging": "menggabungkan",
+      "decomposing": "perencanaan",
+      "reviewing": "ditinjau"
+    }
   }
 }

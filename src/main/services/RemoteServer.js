@@ -36,6 +36,26 @@ const TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const MAX_POST_BODY = 1024; // 1 KB
 const WS_MAX_PAYLOAD = 5 * 1024 * 1024; // 5 MB
 const MAX_MENTION_FILE_SIZE = 1024 * 1024; // 1 MB
+// Long enough not to wake a sleeping phone's radio for nothing, short enough
+// that a half-open socket is reaped before the user notices the UI has frozen.
+const HEARTBEAT_INTERVAL_MS = 25_000;
+
+// Kept identical to the meta tag in remote-ui/index.html — see the comment
+// there for why each source is allowed.
+const PWA_CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob:",
+  "connect-src 'self' ws: wss: https:",
+  "worker-src 'self'",
+  "manifest-src 'self'",
+  "base-uri 'none'",
+  "object-src 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+].join('; ');
 
 // In packaged builds, remote-ui is in extraResources; in dev, relative to project root
 function getPwaDir() {
@@ -110,8 +130,15 @@ const _sessionTabNames = new Map();
 // Buffer of chat events per session — replayed to late-joining clients
 // Each entry is an array of { channel, data } objects
 const _sessionMessageBuffer = new Map();
-const MAX_BUFFER_PER_SESSION = 500; // cap to prevent memory issues
+// Entries, not packets: consecutive stream deltas are folded together before
+// this applies, so it now measures roughly "messages kept" as intended.
+const MAX_BUFFER_PER_SESSION = 500;
 const BUFFER_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+// How long a finished session's transcript stays replayable. A phone that was
+// asleep when the turn ended must still be able to read it on reconnect.
+const BUFFER_RETENTION_MS = 30 * 60 * 1000; // 30 minutes
+// sessionId → when it stopped being active. Absent while it is running.
+const _sessionIdleSince = new Map();
 let _cleanupTimer = null;
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
@@ -290,6 +317,13 @@ function _handleHttpRequest(req, res) {
   }
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  // Defence in depth for the PWA, which renders model-authored markdown. The
+  // policy also ships as a meta tag in index.html, because the cloud relay
+  // serves the same files from a server this process does not control.
+  res.setHeader('Content-Security-Policy', PWA_CSP);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Frame-Options', 'DENY');
 
   // POST /auth — exchange PIN for session token
   if (req.method === 'POST' && req.url === '/auth') {
@@ -413,19 +447,32 @@ function _handleWsUpgrade(request, socket, head) {
     });
     console.debug(`[Remote] WS connected — ${_connectedClients.size} client(s) active`);
 
-    ws.on('message', (raw) => _handleClientMessage(ws, token, raw));
-    ws.on('close', (code) => {
+    // Never unregister on behalf of a socket that already replaced us. `close()`
+    // above fires asynchronously, so the OLD socket's handler runs AFTER the new
+    // one is in the map: deleting by token alone would drop the live client from
+    // _broadcast() and leave the phone silently connected to nothing.
+    const forget = () => {
+      if (_connectedClients.get(token) !== ws) return;
       _connectedClients.delete(token);
       _clientMeta.delete(token);
-      _sessionTokens.delete(token);
+    };
+
+    ws.on('message', (raw) => _handleClientMessage(ws, token, raw));
+    ws.on('close', (code) => {
+      forget();
+      // The token deliberately OUTLIVES the socket. A phone drops its connection
+      // constantly — screen lock, Wi-Fi to cellular, app backgrounded — and
+      // invalidating the token here forced a PIN re-entry every single time.
+      // It stays valid for TOKEN_TTL_MS and is revoked explicitly instead:
+      // disconnectClient(), stop(), or expiry in _isTokenValid().
       console.debug(`[Remote] WS disconnected (code: ${code}) — ${_connectedClients.size} client(s) remaining`);
     });
     ws.on('error', (e) => {
-      _connectedClients.delete(token);
-      _clientMeta.delete(token);
-      _sessionTokens.delete(token);
+      forget();
       console.warn(`[Remote] WS error: ${e.message}`);
     });
+
+    _startHeartbeat(ws);
 
     // Send full init (hello + projects + sessions + time)
     _sendFullInit(ws);
@@ -541,6 +588,10 @@ async function _sendProjectsAndSessions(ws) {
 
     let totalBuffered = 0;
     console.debug(`[Remote] Sending init data — ${projects.length} project(s), ${sessionsToSend.length} session(s) (${activeSessions.length} active, ${sessionsToSend.length - activeSessions.length} buffered)`);
+    // Bracket the burst. Every event below would otherwise make the client
+    // rebuild its whole transcript, so a few hundred of them froze the phone
+    // for seconds on each reconnect. The client draws once, at replay:end.
+    _wsSend(ws, 'replay:start', { sessions: sessionsToSend.length });
     for (const { sessionId, projectId, tabName } of sessionsToSend) {
       _wsSend(ws, 'session:started', { sessionId, projectId, tabName });
 
@@ -553,10 +604,14 @@ async function _sendProjectsAndSessions(ws) {
         }
       }
     }
+    _wsSend(ws, 'replay:end', {});
     if (totalBuffered > 0) {
       console.debug(`[Remote] Replayed ${totalBuffered} buffered chat event(s)`);
     }
   } catch (e) {
+    // The client holds rendering between replay:start and replay:end, so a
+    // failure partway through must still release it or the phone stays blank.
+    _wsSend(ws, 'replay:end', {});
     console.warn(`[Remote] Failed to send init data: ${e.message}`);
   }
 }
@@ -1019,6 +1074,45 @@ function _isMainWindowReady() {
   return mainWindow && !mainWindow.isDestroyed();
 }
 
+/**
+ * Protocol-level keepalive for one client socket.
+ *
+ * The common way a phone dies is not a clean close but a half-open TCP: the NAT
+ * entry expires and neither side is told. Without this, `readyState` stays OPEN
+ * forever on both ends and every broadcast is written into a black hole. The
+ * browser answers a protocol ping automatically, so this needs no client code —
+ * the app-level `ping`/`pong` pair exists for the opposite direction.
+ */
+const _heartbeatTimers = new Set();
+
+function _startHeartbeat(ws) {
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+  const stop = () => { clearInterval(timer); _heartbeatTimers.delete(timer); };
+  const timer = setInterval(() => {
+    if (ws.readyState !== 1) { stop(); return; }
+    if (!ws.isAlive) {
+      console.warn('[Remote] WS heartbeat timeout — terminating dead socket');
+      stop();
+      try { ws.terminate(); } catch (e) {}
+      return;
+    }
+    ws.isAlive = false;
+    try { ws.ping(); } catch (e) {}
+  }, HEARTBEAT_INTERVAL_MS);
+  timer.unref?.();
+  // Tracked as well as self-cancelling: a socket that never emits 'close' —
+  // because it was force-terminated, or because the server is shutting down —
+  // would otherwise leave its interval running for the life of the process.
+  _heartbeatTimers.add(timer);
+  ws.on('close', stop);
+}
+
+function _stopAllHeartbeats() {
+  for (const timer of _heartbeatTimers) clearInterval(timer);
+  _heartbeatTimers.clear();
+}
+
 function _wsSend(ws, type, data) {
   if (ws.readyState === 1 /* OPEN */) {
     try { ws.send(JSON.stringify({ type, data })); } catch (e) {
@@ -1134,8 +1228,10 @@ function _ensureChatBridge() {
       if (buffered.includes(channel)) {
         if (!_sessionMessageBuffer.has(sid)) _sessionMessageBuffer.set(sid, []);
         const buf = _sessionMessageBuffer.get(sid);
-        buf.push({ channel, data: enriched });
-        if (buf.length > MAX_BUFFER_PER_SESSION) buf.shift();
+        if (!_mergeStreamDelta(buf, channel, enriched)) {
+          buf.push({ channel, data: enriched });
+        }
+        _trimBuffer(buf);
         if (channel !== 'chat-message') {
           console.debug(`[Remote] Buffered ${channel} for session ${sid} (buffer size: ${buf.length})`);
         }
@@ -1145,6 +1241,7 @@ function _ensureChatBridge() {
         _sessionMessageBuffer.delete(sid);
         _sessionProjectMap.delete(sid);
         _sessionTabNames.delete(sid);
+        _sessionIdleSince.delete(sid);
       }
     }
 
@@ -1153,6 +1250,73 @@ function _ensureChatBridge() {
     }
     _broadcast(channel, enriched);
   });
+}
+
+// ─── Replay Buffer Compaction ─────────────────────────────────────────────────
+//
+// Every text fragment the model emits arrives as its own content_block_delta,
+// so a single turn produced several hundred buffer entries and the cap held
+// less than one answer. Consecutive deltas for the same block are folded into
+// one: the client concatenates them either way, so replaying `"hel" + "lo"` as
+// `"hello"` is indistinguishable, and the buffer goes back to measuring
+// conversation rather than packet count.
+
+/** @returns {boolean} true when the entry was folded into the previous one. */
+function _mergeStreamDelta(buf, channel, data) {
+  if (channel !== 'chat-message' || !buf.length) return false;
+  const event = data?.message?.type === 'stream_event' ? data.message.event : null;
+  if (!event || event.type !== 'content_block_delta') return false;
+
+  const prev = buf[buf.length - 1];
+  const prevEvent = prev.channel === 'chat-message' && prev.data?.message?.type === 'stream_event'
+    ? prev.data.message.event
+    : null;
+  if (!prevEvent || prevEvent.type !== 'content_block_delta') return false;
+  if (prevEvent.index !== event.index) return false;
+  if (prevEvent.delta?.type !== event.delta?.type) return false;
+
+  // Rebuild rather than mutate: the same object was already broadcast live and
+  // may still be referenced by the relay's outbound queue.
+  const key = event.delta.type === 'text_delta' ? 'text' : 'partial_json';
+  if (typeof event.delta[key] !== 'string' || typeof prevEvent.delta[key] !== 'string') return false;
+  buf[buf.length - 1] = {
+    channel,
+    data: {
+      ...prev.data,
+      message: {
+        ...prev.data.message,
+        event: {
+          ...prevEvent,
+          delta: { ...prevEvent.delta, [key]: prevEvent.delta[key] + event.delta[key] },
+        },
+      },
+    },
+  };
+  return true;
+}
+
+/** Does replaying from this entry give the client a coherent starting point? */
+function _isTurnBoundary(entry) {
+  if (entry.channel === 'chat-user-message' || entry.channel === 'chat-idle') return true;
+  const event = entry.data?.message?.type === 'stream_event' ? entry.data.message.event : null;
+  return event?.type === 'message_start';
+}
+
+/**
+ * Drop the oldest entries, but only as far as a turn boundary.
+ *
+ * Cutting at an arbitrary offset left the replay starting mid-message, where
+ * the client has no message_start to reset its block state against: tool blocks
+ * could not be matched to their results and rendered as empty cards.
+ */
+function _trimBuffer(buf) {
+  if (buf.length <= MAX_BUFFER_PER_SESSION) return;
+  const target = buf.length - MAX_BUFFER_PER_SESSION;
+  let cut = target;
+  while (cut < buf.length && !_isTurnBoundary(buf[cut])) cut++;
+  // No boundary ahead — the whole tail is one enormous turn. Take the plain cut
+  // rather than throw the entire history away.
+  buf.splice(0, cut < buf.length ? cut : target);
 }
 
 function _teardownChatBridge() {
@@ -1168,28 +1332,37 @@ function _teardownChatBridge() {
 
 // ─── Stale Buffer Cleanup ─────────────────────────────────────────────────────
 
+/**
+ * Age out buffers for sessions that are no longer running.
+ *
+ * This used to delete them the moment a session left getActiveSessions(),
+ * contradicting the "keep buffer for reconnecting clients" intent above: a
+ * conversation that had merely finished vanished from the phone at the next
+ * tick, taking its whole transcript with it. Sessions now get a grace period,
+ * and an explicit session:closed still drops them immediately.
+ */
 function _cleanupStaleBuffers() {
   try {
     const chatService = require('./ChatService');
     const activeSessions = chatService.getActiveSessions();
     const activeIds = new Set(activeSessions.map(s => s.sessionId));
+    const now = Date.now();
     let cleaned = 0;
 
-    for (const sid of _sessionMessageBuffer.keys()) {
-      if (!activeIds.has(sid)) {
-        _sessionMessageBuffer.delete(sid);
-        _sessionProjectMap.delete(sid);
-        _sessionTabNames.delete(sid);
-        cleaned++;
-      }
-    }
-    // Also clean orphan entries in project/tab maps not in buffer or active
-    for (const sid of _sessionProjectMap.keys()) {
-      if (!activeIds.has(sid) && !_sessionMessageBuffer.has(sid)) {
-        _sessionProjectMap.delete(sid);
-        _sessionTabNames.delete(sid);
-        cleaned++;
-      }
+    const forget = (sid) => {
+      _sessionMessageBuffer.delete(sid);
+      _sessionProjectMap.delete(sid);
+      _sessionTabNames.delete(sid);
+      _sessionIdleSince.delete(sid);
+      cleaned++;
+    };
+
+    const known = new Set([..._sessionMessageBuffer.keys(), ..._sessionProjectMap.keys()]);
+    for (const sid of known) {
+      if (activeIds.has(sid)) { _sessionIdleSince.delete(sid); continue; }
+      const since = _sessionIdleSince.get(sid);
+      if (since === undefined) { _sessionIdleSince.set(sid, now); continue; }
+      if (now - since >= BUFFER_RETENTION_MS) forget(sid);
     }
     if (cleaned > 0) {
       console.debug(`[Remote] Cleaned ${cleaned} stale session buffer(s)`);
@@ -1246,6 +1419,7 @@ function start(win, port = 3712) {
 }
 
 async function stop() {
+  _stopAllHeartbeats();
   for (const ws of _connectedClients.values()) {
     try { ws.close(); } catch (e) {}
   }
@@ -1276,6 +1450,7 @@ async function stop() {
     _sessionProjectMap.clear();
     _sessionMessageBuffer.clear();
     _sessionTabNames.clear();
+    _sessionIdleSince.clear();
   }
 
   // Only remove chat bridge if external transport is also disconnected

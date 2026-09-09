@@ -3,8 +3,14 @@
  * PWA with network-first strategy for automatic cache-busting on deploy.
  */
 
-const CACHE_NAME = 'ct-remote-v11';
-const STATIC_ASSETS = ['/', '/app.js', '/i18n.js', '/style.css', '/manifest.json'];
+const CACHE_NAME = 'ct-remote-v12';
+// '/' and '/index.html' are distinct cache entries and the fetch handler can be
+// asked for either, so both are precached. Without the icons a cold offline
+// start rendered the shell with broken images.
+const STATIC_ASSETS = [
+  '/', '/index.html', '/app.js', '/i18n.js', '/style.css', '/manifest.json',
+  '/icon-192.png', '/icon.png',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
