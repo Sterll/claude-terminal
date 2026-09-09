@@ -10,40 +10,11 @@ const os = require('os');
 const readline = require('readline');
 const { contextTokensFromMessage } = require('../../shared/context-usage');
 const { isApiErrorMessage } = require('../../shared/api-error');
-
-/**
- * Encode project path to match Claude's folder naming convention.
- * Uses a broad [^a-zA-Z0-9] class (instead of the old 3-char class)
- * so that dots, spaces, and other special characters are replaced.
- * This fixes session lookup for projects
- * whose paths contain dots or other special chars (e.g. "ConfigHub.Server").
- *
- * @param {string} projectPath - The project path
- * @returns {string} - Encoded path for folder name
- */
-function encodeProjectPath(projectPath) {
-  const MAX_LEN = 200;
-  const encoded = projectPath.replace(/[^a-zA-Z0-9]/g, '-');
-  if (encoded.length <= MAX_LEN) return encoded;
-  // For paths exceeding 200 chars: truncate + append a simple hash
-  // (mirrors Claude Code's hMK hash — DJB2-style string hash in base36)
-  let hash = 0;
-  for (let i = 0; i < projectPath.length; i++) {
-    hash = ((hash << 5) - hash + projectPath.charCodeAt(i)) | 0;
-  }
-  return `${encoded.slice(0, MAX_LEN)}-${Math.abs(hash).toString(36)}`;
-}
-
-/**
- * Get the project sessions directory path
- * @param {string} projectPath - The project path
- * @returns {string} - Path to project sessions directory
- */
-function getProjectSessionsDir(projectPath) {
-  const claudeDir = path.join(os.homedir(), '.claude', 'projects');
-  const encodedPath = encodeProjectPath(projectPath);
-  return path.join(claudeDir, encodedPath);
-}
+const {
+  encodeProjectPath,
+  getProjectSessionsDir,
+  listProjectSessionDirs,
+} = require('../../shared/session-dirs');
 
 /**
  * Extract first user prompt from a .jsonl session file (reads only first few lines)
@@ -168,13 +139,13 @@ async function readSessionTitle(filePath, size) {
 // reads the tail of the fifty it returns. Holding the result briefly collapses
 // those bursts into one scan.
 //
-// A cached listing is only reused while the sessions directory has not been
-// touched: its mtime moves when a transcript is created, renamed or deleted, so
-// a session appearing from anywhere is picked up on the next call rather than up
-// to a timeout later. The time bound is what covers appends to an existing
+// A cached listing is only reused while none of the sessions directories has
+// been touched: an mtime moves when a transcript is created, renamed or deleted,
+// so a session appearing from anywhere is picked up on the next call rather than
+// up to a timeout later. The time bound is what covers appends to an existing
 // transcript, which change the file but not the directory.
 const SESSIONS_CACHE_MS = 5000;
-const _sessionsCache = new Map(); // projectPath -> { at, dirMtimeMs, sessions }
+const _sessionsCache = new Map(); // projectPath -> { at, signature, sessions }
 
 /** Drop a project's cached listing, or every project's when called bare. */
 function invalidateSessionsCache(projectPath) {
@@ -182,91 +153,119 @@ function invalidateSessionsCache(projectPath) {
   else _sessionsCache.clear();
 }
 
-/** mtime of the sessions directory, or null when it cannot be read. */
-async function _sessionsDirMtime(sessionsDir) {
-  try {
-    return (await fs.promises.stat(sessionsDir)).mtimeMs;
-  } catch {
-    return null;
-  }
+/**
+ * A value that changes as soon as any of the project's sessions directories does.
+ * A directory that does not exist counts as absent rather than as a failure, so a
+ * worktree gaining its first transcript also moves the signature.
+ * @param {Array<{dir: string}>} sources
+ * @returns {Promise<string>}
+ */
+async function _sessionsSignature(sources) {
+  const stamps = await Promise.all(sources.map(async ({ dir }) => {
+    try {
+      return `${dir}:${(await fs.promises.stat(dir)).mtimeMs}`;
+    } catch {
+      return `${dir}:-`;
+    }
+  }));
+  return stamps.join('|');
 }
 
 async function getClaudeSessions(projectPath) {
-  const sessionsDirForCache = getProjectSessionsDir(projectPath);
+  // The project's own directory plus one per worktree — a session that moved
+  // into a worktree was re-filed there by the CLI, history and all.
+  const sources = listProjectSessionDirs(projectPath);
   const cached = _sessionsCache.get(projectPath);
   if (cached && Date.now() - cached.at < SESSIONS_CACHE_MS) {
-    const mtime = await _sessionsDirMtime(sessionsDirForCache);
-    if (mtime !== null && mtime === cached.dirMtimeMs) return cached.sessions;
+    if (await _sessionsSignature(sources) === cached.signature) return cached.sessions;
   }
 
   try {
-    const sessionsDir = sessionsDirForCache;
-
-    let files;
-    try {
-      files = await fs.promises.readdir(sessionsDir);
-    } catch {
-      return [];
-    }
-
-    // Filter .jsonl files only
-    const jsonlFiles = files.filter(f => f.endsWith('.jsonl'));
-
-    if (jsonlFiles.length === 0) return [];
-
-    // Get file stats and parse session info in parallel
-    const sessionsPromises = jsonlFiles.map(async (file) => {
-      const filePath = path.join(sessionsDir, file);
+    const perSource = await Promise.all(sources.map(async (source) => {
+      let files;
       try {
-        const [stat, info] = await Promise.all([
-          fs.promises.stat(filePath),
-          extractSessionInfo(filePath)
-        ]);
-
-        // Skip sidechain sessions
-        if (info.isSidechain) return null;
-
-        // Skip files that are too small (empty/aborted sessions)
-        if (stat.size < 200) return null;
-
-        const sessionId = info.sessionId || file.replace('.jsonl', '');
-
-        return {
-          sessionId,
-          summary: '',
-          title: '',
-          customTitle: '',
-          aiTitle: '',
-          firstPrompt: info.firstPrompt || '',
-          messageCount: info.messageCount || 0,
-          modified: stat.mtime.toISOString(),
-          size: stat.size,
-          filePath,
-          gitBranch: info.gitBranch
-        };
+        files = await fs.promises.readdir(source.dir);
       } catch {
-        return null;
+        return []; // a worktree that never ran a session has no directory
       }
-    });
 
-    const allSessions = (await Promise.all(sessionsPromises)).filter(Boolean);
+      const jsonlFiles = files.filter(f => f.endsWith('.jsonl'));
+      if (jsonlFiles.length === 0) return [];
 
-    // Try to enrich with summaries from sessions-index.json
-    try {
-      const indexPath = path.join(sessionsDir, 'sessions-index.json');
-      const rawData = await fs.promises.readFile(indexPath, 'utf8');
-      const data = JSON.parse(rawData);
-      if (data.entries && Array.isArray(data.entries)) {
-        const indexMap = new Map(data.entries.map(e => [e.sessionId, e]));
-        for (const session of allSessions) {
-          const indexed = indexMap.get(session.sessionId);
-          if (indexed) {
-            session.summary = indexed.summary || '';
-            if (indexed.messageCount) session.messageCount = indexed.messageCount;
+      // Get file stats and parse session info in parallel
+      const sessionsPromises = jsonlFiles.map(async (file) => {
+        const filePath = path.join(source.dir, file);
+        try {
+          const [stat, info] = await Promise.all([
+            fs.promises.stat(filePath),
+            extractSessionInfo(filePath)
+          ]);
+
+          // Skip sidechain sessions
+          if (info.isSidechain) return null;
+
+          // Skip files that are too small (empty/aborted sessions)
+          if (stat.size < 200) return null;
+
+          const sessionId = info.sessionId || file.replace('.jsonl', '');
+
+          return {
+            sessionId,
+            summary: '',
+            title: '',
+            customTitle: '',
+            aiTitle: '',
+            firstPrompt: info.firstPrompt || '',
+            messageCount: info.messageCount || 0,
+            modified: stat.mtime.toISOString(),
+            size: stat.size,
+            filePath,
+            gitBranch: info.gitBranch,
+            // Where this session has to be resumed. Left at the project path for
+            // a worktree that no longer exists: its transcript is still readable,
+            // but the checkout it ran in is gone.
+            cwd: source.cwd || projectPath,
+            worktree: source.worktree,
+            worktreeMissing: source.missing,
+          };
+        } catch {
+          return null;
+        }
+      });
+
+      const sessions = (await Promise.all(sessionsPromises)).filter(Boolean);
+
+      // Try to enrich with summaries from sessions-index.json
+      try {
+        const indexPath = path.join(source.dir, 'sessions-index.json');
+        const rawData = await fs.promises.readFile(indexPath, 'utf8');
+        const data = JSON.parse(rawData);
+        if (data.entries && Array.isArray(data.entries)) {
+          const indexMap = new Map(data.entries.map(e => [e.sessionId, e]));
+          for (const session of sessions) {
+            const indexed = indexMap.get(session.sessionId);
+            if (indexed) {
+              session.summary = indexed.summary || '';
+              if (indexed.messageCount) session.messageCount = indexed.messageCount;
+            }
           }
         }
+      } catch { /* index may not exist or be stale, that's ok */ }
+
+      return sessions;
+    }));
+
+    // A session that ran in the project and then in a worktree can have left a
+    // transcript in both. They are two halves of one conversation and only the
+    // last one is live, so the most recent wins and the id appears once.
+    const byId = new Map();
+    for (const session of perSource.flat()) {
+      const existing = byId.get(session.sessionId);
+      if (!existing || new Date(session.modified) > new Date(existing.modified)) {
+        byId.set(session.sessionId, session);
       }
-    } catch { /* index may not exist or be stale, that's ok */ }
+    }
+    const allSessions = [...byId.values()];
 
     // Pre-rank by mtime and read tails only for the head of that ranking: a
     // 128 KB tail read per file is wasted on sessions that can't make the cut.
@@ -293,7 +292,7 @@ async function getClaudeSessions(projectPath) {
     const sessions = top.map(({ size, filePath, ...session }) => session);
     _sessionsCache.set(projectPath, {
       at: Date.now(),
-      dirMtimeMs: await _sessionsDirMtime(sessionsDir),
+      signature: await _sessionsSignature(sources),
       sessions,
     });
     return sessions;
@@ -369,12 +368,11 @@ function interpretUserText(raw) {
  * @returns {Promise<{messages: Array, total: number, truncated: boolean, contextTokens: number}>}
  */
 async function loadSessionHistory(projectPath, sessionId, options = {}) {
-  const sessionsDir = getProjectSessionsDir(projectPath);
   const limit = options.limit === 0 ? 0 : (options.limit || DEFAULT_HISTORY_LIMIT);
   const until = options.until || null;
 
   // Find the JSONL file — uses indexed lookup
-  const filePath = await resolveSessionFile(sessionsDir, sessionId);
+  const filePath = await resolveSessionFileInProject(projectPath, sessionId);
   if (!filePath) return { messages: [], total: 0, truncated: false, contextTokens: 0 };
 
   // Read the JSONL file, keeping only a bounded window of messages in memory
@@ -622,7 +620,6 @@ const MAX_PENDING_TOOLS = 500;
  * @returns {Promise<{steps: Array, summary: object}>}
  */
 async function parseSessionReplay(projectPath, sessionId, options = {}) {
-  const sessionsDir = getProjectSessionsDir(projectPath);
   const offset = Math.max(0, options.offset || 0);
   const limit = options.limit === 0 ? 0 : (options.limit || DEFAULT_REPLAY_LIMIT);
 
@@ -632,7 +629,7 @@ async function parseSessionReplay(projectPath, sessionId, options = {}) {
   });
 
   // Find the JSONL file — uses indexed lookup
-  const filePath = await resolveSessionFile(sessionsDir, sessionId);
+  const filePath = await resolveSessionFileInProject(projectPath, sessionId);
   if (!filePath) return { steps: [], summary: emptySummary() };
 
   // Single streaming pass: summary counters cover the whole file, but only the
@@ -855,10 +852,9 @@ function patchForCreatedFile(content) {
  */
 async function parseSessionFileChanges(projectPath, sessionId, options = {}) {
   const statsOnly = !!options.statsOnly;
-  const sessionsDir = getProjectSessionsDir(projectPath);
   const empty = () => ({ files: [], totals: { files: 0, additions: 0, deletions: 0, edits: 0, truncated: false } });
 
-  const filePath = await resolveSessionFile(sessionsDir, sessionId);
+  const filePath = await resolveSessionFileInProject(projectPath, sessionId);
   if (!filePath) return empty();
 
   return new Promise((resolve) => {
@@ -1037,14 +1033,52 @@ async function resolveSessionFile(sessionsDir, sessionId) {
 }
 
 /**
+ * Resolve a session's transcript anywhere in the project — its own directory or
+ * one of its worktrees'. Every read path uses this, so a session that moved into
+ * a worktree still opens, replays, exports and deletes from the project it
+ * belongs to, without its callers having to know where it ended up.
+ *
+ * @param {string} projectPath
+ * @param {string} sessionId
+ * @returns {Promise<string|null>}
+ */
+async function resolveSessionFileInProject(projectPath, sessionId) {
+  const dirs = listProjectSessionDirs(projectPath).map(source => source.dir);
+
+  // A transcript is normally named after its session, so one `access` per
+  // directory answers this. Worth doing across all of them before any index is
+  // built: `resolveSessionFile` rebuilds a directory's index when it misses,
+  // and paying that for every worktree of a large repository is minutes of I/O
+  // on the path that reports "session not found".
+  for (const dir of dirs) {
+    const direct = path.join(dir, `${sessionId}.jsonl`);
+    try {
+      await fs.promises.access(direct);
+      return direct;
+    } catch { /* keep looking */ }
+  }
+
+  // A renamed or forked transcript only carries the id inside, so fall back to
+  // the index. Each directory is scanned at most once and the result is reused.
+  for (const dir of dirs) {
+    await buildSessionIndex(dir);
+    const cached = _sessionIndex.get(sessionId);
+    if (cached && path.dirname(cached) === dir) return cached;
+  }
+
+  // Still nothing: the session may have been created since the project's own
+  // directory was indexed. Only that one is worth re-reading.
+  return resolveSessionFile(dirs[0], sessionId);
+}
+
+/**
  * Delete a session .jsonl file
  * @param {string} projectPath
  * @param {string} sessionId
  * @returns {Promise<{success: boolean, error?: string}>}
  */
 async function deleteSession(projectPath, sessionId) {
-  const sessionsDir = getProjectSessionsDir(projectPath);
-  const filePath = await resolveSessionFile(sessionsDir, sessionId);
+  const filePath = await resolveSessionFileInProject(projectPath, sessionId);
   if (!filePath) {
     return { success: false, error: 'Session file not found' };
   }
@@ -1134,15 +1168,19 @@ async function moveSession(sessionId, fromProjectPath, toProjectPath) {
     return { success: false, code: 'bad-request', error: 'sessionId, fromProjectPath and toProjectPath are required' };
   }
 
-  const fromDir = getProjectSessionsDir(fromProjectPath);
   const toDir = getProjectSessionsDir(toProjectPath);
-  if (fromDir === toDir) {
-    return { success: false, code: 'same-project', error: 'Source and target project are the same' };
-  }
 
-  const sourceFile = await resolveSessionFile(fromDir, sessionId);
+  // The source is looked up across the project's worktrees too, and the move
+  // starts from wherever the transcript actually is. Moving a session out of a
+  // worktree is the one way to re-attach it to a project for good, so refusing
+  // exactly those would be refusing the useful case.
+  const sourceFile = await resolveSessionFileInProject(fromProjectPath, sessionId);
   if (!sourceFile) {
     return { success: false, code: 'not-found', error: 'Session file not found' };
+  }
+  const fromDir = path.dirname(sourceFile);
+  if (fromDir === toDir) {
+    return { success: false, code: 'same-project', error: 'Source and target project are the same' };
   }
 
   const fileName = path.basename(sourceFile);

@@ -826,6 +826,8 @@
     "rename": "Renommer",
     "renamePlaceholder": "Nom de la session...",
     "untitled": "Session sans titre",
+    "worktreeRan": "S'est déroulée dans le worktree {{name}} — y reprend",
+    "worktreeGone": "S'est déroulée dans le worktree {{name}}, qui n'existe plus",
     "delete": "Supprimer la session",
     "confirmDelete": "Voulez-vous vraiment supprimer cette session ? Cette action est irréversible.",
     "deleted": "Session supprimée",

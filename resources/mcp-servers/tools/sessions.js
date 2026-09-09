@@ -22,9 +22,26 @@ function log(...args) {
   process.stderr.write(`[ct-mcp:sessions] ${args.join(' ')}\n`);
 }
 
-// -- Project path helpers (mirrored from claude.ipc.js) -----------------------
+// -- Project path helpers -----------------------------------------------------
+//
+// Shared with the app rather than mirrored: the app reads a project's sessions
+// out of its own directory AND its worktrees', because the CLI re-files a
+// transcript when the session enters a worktree. A local copy of just the path
+// encoding would put these tools back to seeing a fraction of the history.
+// Same dual-path resolution as artifacts.js: packaged app → dev repo.
+let sessionDirs = null;
+try {
+  sessionDirs = require(path.join(__dirname, '..', 'shared', 'session-dirs'));
+} catch (_) {
+  try {
+    sessionDirs = require(path.join(__dirname, '..', '..', '..', 'src', 'shared', 'session-dirs'));
+  } catch (e) {
+    process.stderr.write(`[ct-mcp:sessions] session-dirs unavailable, worktree sessions hidden: ${e.message}\n`);
+  }
+}
 
 function encodeProjectPath(projectPath) {
+  if (sessionDirs) return sessionDirs.encodeProjectPath(projectPath);
   const MAX_LEN = 200;
   const encoded = projectPath.replace(/[^a-zA-Z0-9]/g, '-');
   if (encoded.length <= MAX_LEN) return encoded;
@@ -37,6 +54,18 @@ function encodeProjectPath(projectPath) {
 
 function getProjectSessionsDir(projectPath) {
   return path.join(os.homedir(), '.claude', 'projects', encodeProjectPath(projectPath));
+}
+
+/**
+ * Every directory this project's sessions can be in: its own, then one per
+ * worktree. Falls back to the project's own directory alone when the shared
+ * module is missing, which is the pre-worktree behaviour.
+ * @param {string} projectPath
+ * @returns {Array<{dir: string, cwd: string|null, worktree: string|null, missing: boolean}>}
+ */
+function projectSessionDirs(projectPath) {
+  if (sessionDirs) return sessionDirs.listProjectSessionDirs(projectPath);
+  return [{ dir: getProjectSessionsDir(projectPath), cwd: projectPath, worktree: null, missing: false }];
 }
 
 // -- Utility: read first N lines of a file (sync-ish via readline) ------------
@@ -62,7 +91,29 @@ function readFirstLines(filePath, n) {
 // -- Session listing (mirrored from getClaudeSessions in claude.ipc.js) -------
 
 async function listSessions(projectPath, limit = 20) {
-  const sessionsDir = getProjectSessionsDir(projectPath);
+  const perSource = await Promise.all(
+    projectSessionDirs(projectPath).map(source => listSessionsIn(source))
+  );
+
+  // A session that ran in the project and then in a worktree left a transcript
+  // in both; only the most recent one is the live conversation.
+  const byId = new Map();
+  for (const session of perSource.flat()) {
+    const seen = byId.get(session.sessionId);
+    if (!seen || new Date(session.modified) > new Date(seen.modified)) byId.set(session.sessionId, session);
+  }
+
+  return [...byId.values()]
+    .sort((a, b) => new Date(b.modified) - new Date(a.modified))
+    .slice(0, limit);
+}
+
+/**
+ * The sessions in one transcript directory, tagged with where they ran.
+ * @param {{dir: string, cwd: string|null, worktree: string|null}} source
+ */
+async function listSessionsIn(source) {
+  const sessionsDir = source.dir;
 
   let files;
   try {
@@ -116,6 +167,9 @@ async function listSessions(projectPath, limit = 20) {
         messageCount,
         modified: stat.mtime.toISOString(),
         gitBranch,
+        // Where it has to be resumed, and under which worktree it was filed.
+        cwd: source.cwd || undefined,
+        worktree: source.worktree || undefined,
       };
     } catch {
       return null;
@@ -138,9 +192,7 @@ async function listSessions(projectPath, limit = 20) {
     }
   } catch (_) {}
 
-  return sessions
-    .sort((a, b) => new Date(b.modified) - new Date(a.modified))
-    .slice(0, limit);
+  return sessions;
 }
 
 // -- Session replay parser (mirrored from parseSessionReplay in claude.ipc.js) -
@@ -165,17 +217,26 @@ function sanitizeInput(input) {
 }
 
 async function parseReplay(projectPath, sessionId) {
-  const sessionsDir = getProjectSessionsDir(projectPath);
-  let filePath = path.join(sessionsDir, `${sessionId}.jsonl`);
+  const searchDirs = projectSessionDirs(projectPath).map(source => source.dir);
+  let filePath = null;
+  for (const dir of searchDirs) {
+    const direct = path.join(dir, `${sessionId}.jsonl`);
+    try {
+      await fs.promises.access(direct);
+      filePath = direct;
+      break;
+    } catch { /* keep looking */ }
+  }
 
   // Fall back to scanning for the sessionId in file headers
-  try {
-    await fs.promises.access(filePath);
-  } catch {
-    const files = (await fs.promises.readdir(sessionsDir).catch(() => []))
-      .filter(f => f.endsWith('.jsonl'));
-    for (const f of files) {
-      const candidate = path.join(sessionsDir, f);
+  if (!filePath) {
+    const files = [];
+    for (const dir of searchDirs) {
+      const names = (await fs.promises.readdir(dir).catch(() => []))
+        .filter(f => f.endsWith('.jsonl'));
+      for (const name of names) files.push(path.join(dir, name));
+    }
+    for (const candidate of files) {
       const head = await readFirstLines(candidate, 5);
       for (const line of head) {
         try {
@@ -184,6 +245,8 @@ async function parseReplay(projectPath, sessionId) {
       }
     }
   }
+
+  if (!filePath) return null;
 
   const rawLines = await new Promise((resolve) => {
     const lines = [];
@@ -502,41 +565,48 @@ async function searchSessions({ query, projectPath, days, limit, maxSnippets }) 
  * recently touched session of the project.
  */
 async function resolveSessionFile(projectPath, sessionId) {
-  const sessionsDir = getProjectSessionsDir(projectPath);
+  // The project's own directory and its worktrees': "the most recent session of
+  // this project" has to mean the same thing here as it does in the app, or a
+  // recap of work done in a worktree answers about some older conversation.
+  const searchDirs = projectSessionDirs(projectPath).map(source => source.dir);
+
+  const jsonlIn = async (dir) => (await fs.promises.readdir(dir).catch(() => []))
+    .filter(f => f.endsWith('.jsonl'))
+    .map(name => path.join(dir, name));
 
   if (sessionId) {
-    const direct = path.join(sessionsDir, `${sessionId}.jsonl`);
-    try {
-      await fs.promises.access(direct);
-      return direct;
-    } catch (_) {}
+    for (const dir of searchDirs) {
+      const direct = path.join(dir, `${sessionId}.jsonl`);
+      try {
+        await fs.promises.access(direct);
+        return direct;
+      } catch (_) {}
+    }
 
-    const names = (await fs.promises.readdir(sessionsDir).catch(() => []))
-      .filter(f => f.endsWith('.jsonl'));
-    for (const name of names) {
-      const candidate = path.join(sessionsDir, name);
-      const head = await readFirstLines(candidate, 5);
-      for (const line of head) {
-        try {
-          if (JSON.parse(line).sessionId === sessionId) return candidate;
-        } catch (_) {}
+    for (const dir of searchDirs) {
+      for (const candidate of await jsonlIn(dir)) {
+        const head = await readFirstLines(candidate, 5);
+        for (const line of head) {
+          try {
+            if (JSON.parse(line).sessionId === sessionId) return candidate;
+          } catch (_) {}
+        }
       }
     }
     return null;
   }
 
-  const names = (await fs.promises.readdir(sessionsDir).catch(() => []))
-    .filter(f => f.endsWith('.jsonl'));
   let newest = null;
-  for (const name of names) {
-    const candidate = path.join(sessionsDir, name);
-    try {
-      const stat = await fs.promises.stat(candidate);
-      if (stat.size < 200) continue;
-      if (!newest || stat.mtimeMs > newest.mtimeMs) {
-        newest = { filePath: candidate, mtimeMs: stat.mtimeMs };
-      }
-    } catch (_) {}
+  for (const dir of searchDirs) {
+    for (const candidate of await jsonlIn(dir)) {
+      try {
+        const stat = await fs.promises.stat(candidate);
+        if (stat.size < 200) continue;
+        if (!newest || stat.mtimeMs > newest.mtimeMs) {
+          newest = { filePath: candidate, mtimeMs: stat.mtimeMs };
+        }
+      } catch (_) {}
+    }
   }
   return newest ? newest.filePath : null;
 }
@@ -765,6 +835,7 @@ async function handle(name, args) {
           `   Date: ${date}`,
           `   Messages: ${s.messageCount}`,
           s.gitBranch ? `   Branch: ${s.gitBranch}` : '',
+          s.worktree ? `   Worktree: ${s.worktree} (resumes in ${s.cwd || 'the project root'})` : '',
           `   Prompt: ${label.slice(0, 120)}`,
         ].filter(Boolean).join('\n');
       });
@@ -895,7 +966,9 @@ async function handle(name, args) {
       if (!args.session_id) return fail('Missing required parameter: session_id');
       if (!projectPath) return fail('No project path provided. Pass project_path or set CT_PROJECT_PATH.');
 
-      const { steps, summary } = await parseReplay(projectPath, args.session_id);
+      const replay = await parseReplay(projectPath, args.session_id);
+      if (!replay) return ok(`Session ${args.session_id} was not found in this project or its worktrees.`);
+      const { steps, summary } = replay;
 
       if (!steps.length) return ok(`No steps found in session ${args.session_id}. The session may be empty or the file could not be read.`);
 

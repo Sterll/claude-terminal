@@ -731,6 +731,8 @@
     "rename": "Ganti nama",
     "renamePlaceholder": "Nama sesi...",
     "untitled": "Sesi tanpa judul",
+    "worktreeRan": "Berjalan di worktree {{name}} — dilanjutkan di sana",
+    "worktreeGone": "Berjalan di worktree {{name}}, yang sudah tidak ada",
     "delete": "Hapus sesi",
     "confirmDelete": "Anda yakin ingin menghapus sesi ini? Tindakan ini tidak dapat dibatalkan.",
     "deleted": "Sesi dihapus",

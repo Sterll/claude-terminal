@@ -731,6 +731,8 @@
     "rename": "重命名",
     "renamePlaceholder": "会话名称...",
     "untitled": "未命名会话",
+    "worktreeRan": "在工作树 {{name}} 中运行，将在此处恢复",
+    "worktreeGone": "在工作树 {{name}} 中运行，该工作树已不存在",
     "delete": "删除会话",
     "confirmDelete": "您确定要删除此会话吗？此操作无法撤消。",
     "deleted": "会话已删除",

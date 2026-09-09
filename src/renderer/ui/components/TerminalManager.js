@@ -403,6 +403,14 @@ function buildSessionCardHtml(s, index) {
   const pinTitle = s.pinned ? (t('sessions.unpin') || 'Unpin') : (t('sessions.pin') || 'Pin');
   const renameTitle = t('sessions.rename') || 'Rename';
   const moveTitle = t('sessions.move.title');
+  // A session the CLI re-filed under a worktree: say where it ran, because it
+  // will resume there and not in the project root.
+  const worktreeTitle = s.worktreeMissing
+    ? t('sessions.worktreeGone', { name: s.worktree })
+    : t('sessions.worktreeRan', { name: s.worktree });
+  const worktreeHtml = s.worktree
+    ? `<span class="session-meta-worktree${s.worktreeMissing ? ' session-meta-worktree--gone' : ''}" title="${escapeHtml(worktreeTitle)}"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="3" cy="3" r="1.5"/><circle cx="8" cy="3" r="1.5"/><circle cx="3" cy="8" r="1.5"/><path d="M3 4.5v3M4.5 3h3M8 4.5v1a2 2 0 01-2 2H4.5"/></svg>${escapeHtml(s.worktree)}</span>`
+    : '';
 
   return `<div class="session-card${freshClass}${pinnedClass}${renamedClass}${animClass}" data-sid="${s.sessionId}" style="--ci:${index < MAX_ANIMATED ? index : 0}">
 <div class="session-card-icon${skillClass}"><svg width="16" height="16"><use href="#${iconId}"/></svg></div>
@@ -414,6 +422,7 @@ ${s.displaySubtitle ? `<span class="session-card-subtitle">${escapeHtml(truncate
 <span class="session-meta-item"><svg width="11" height="11"><use href="#s-msg"/></svg>${s.messageCount}</span>
 <span class="session-meta-item"><svg width="11" height="11"><use href="#s-clock"/></svg>${formatRelativeTime(s.modified)}</span>
 ${s.gitBranch ? `<span class="session-meta-branch"><svg width="10" height="10"><use href="#s-branch"/></svg>${escapeHtml(s.gitBranch)}</span>` : ''}
+${worktreeHtml}
 </div>
 <div class="session-card-actions">
 <button class="session-card-rename" data-rename-sid="${s.sessionId}" title="${escapeHtml(renameTitle)}" aria-label="${escapeHtml(renameTitle)}"><svg width="12" height="12"><use href="#s-rename"/></svg></button>
@@ -2840,7 +2849,7 @@ class TerminalManager extends BaseComponent {
       const freshness = hoursAgo < 1 ? 'hot' : hoursAgo < 24 ? 'warm' : '';
 
       const searchText = (displayTitle + ' ' + displaySubtitle + ' ' + (session.gitBranch || '')
-        + ' ' + customName).toLowerCase();
+        + ' ' + (session.worktree || '') + ' ' + customName).toLowerCase();
 
       const pinned = await this._isSessionPinned(session.sessionId);
       results.push({ ...session, displayTitle, displaySubtitle, isSkill, isRenamed, nameLocked: Boolean(lockedName), freshness, searchText, pinned });
@@ -3082,7 +3091,10 @@ class TerminalManager extends BaseComponent {
         self.resumeSession(project, sessionId, {
           skipPermissions,
           name: tabLabel || null,
-          nameCustom: !!session?.nameLocked
+          nameCustom: !!session?.nameLocked,
+          // The CLI resolves --resume against the cwd it is launched with, so a
+          // session that ran in a worktree only reopens from that worktree.
+          cwd: session?.cwd || null
         });
       });
 
@@ -3143,16 +3155,22 @@ class TerminalManager extends BaseComponent {
   // ── Resume session ──
 
   async resumeSession(project, sessionId, options = {}) {
-    const { skipPermissions = false, name: sessionName = null, nameCustom = false } = options;
+    const { skipPermissions = false, name: sessionName = null, nameCustom = false, cwd: overrideCwd = null } = options;
+    // A worktree session keeps running where it ran; anything else is the project.
+    const resumeCwd = overrideCwd && overrideCwd !== project.path ? overrideCwd : null;
 
     const mode = getSetting('defaultTerminalMode') || 'terminal';
     if (mode === 'chat') {
       console.log(`[TerminalManager] Resuming in chat mode — sessionId: ${sessionId}`);
-      return this._createChatTerminal(project, { skipPermissions, resumeSessionId: sessionId, name: sessionName, nameCustom });
+      const chatProject = resumeCwd ? { ...project, path: resumeCwd } : project;
+      return this._createChatTerminal(chatProject, {
+        skipPermissions, resumeSessionId: sessionId, name: sessionName, nameCustom,
+        parentProjectId: resumeCwd ? project.id : null
+      });
     }
 
     const result = await this._api.terminal.create({
-      cwd: project.path,
+      cwd: resumeCwd || project.path,
       runClaude: true,
       resumeSessionId: sessionId,
       skipPermissions
@@ -3197,9 +3215,11 @@ class TerminalManager extends BaseComponent {
       isBasic: false,
       mode: 'terminal',
       claudeSessionId: sessionId,
+      cwd: resumeCwd || project.path,
       tabId: generateTabId(project.id),
       createdAt: nowIsoResume,
       lastActivityAt: nowIsoResume,
+      ...(resumeCwd ? { parentProjectId: project.id } : {})
     };
 
     addTerminal(id, termData);
@@ -3214,10 +3234,11 @@ class TerminalManager extends BaseComponent {
 
     const tabsContainer = document.getElementById('terminals-tabs');
     const tab = document.createElement('div');
-    tab.className = 'terminal-tab status-working';
+    tab.className = `terminal-tab status-working${resumeCwd ? ' worktree-tab' : ''}`;
     tab.dataset.id = id;
     tab.innerHTML = `
     <span class="status-dot"></span>
+    ${resumeCwd ? `<span class="tab-worktree-icon" title="Worktree"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="4" r="1.5"/><circle cx="12" cy="4" r="1.5"/><circle cx="4" cy="12" r="1.5"/><path d="M4 5.5v5M5.5 4h5M12 5.5v2.5a2 2 0 01-2 2H7"/></svg></span>` : ''}
     <span class="tab-name">${escapeHtml(sessionName || t('terminals.resuming'))}</span>
     <button class="tab-close" aria-label="${escapeHtml(t('common.close'))}"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></button>`;
     tabsContainer.appendChild(tab);
