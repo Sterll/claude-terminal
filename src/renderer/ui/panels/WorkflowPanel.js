@@ -2059,7 +2059,7 @@ async function openEditor(workflowId = null, options = {}) {
 
     // ── Initialize Smart SQL for DB nodes ──
     if (nodeType === 'db') {
-      initSmartSQL(propsEl, node, graphService, schemaCache, _dbConnectionsCache).catch(e => console.warn('[SmartSQL] init error:', e));
+      initSmartSQL(propsEl, node, graphService, schemaCache, window._dbConnectionsCache).catch(e => console.warn('[SmartSQL] init error:', e));
     }
 
     // Delete node button

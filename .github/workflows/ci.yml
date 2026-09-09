@@ -7,9 +7,9 @@ on:
     branches: [main]
 
 jobs:
-  # Cheap and Ubuntu-only, so a stale CLAUDE.md is reported in seconds rather
-  # than after the full 6-way test matrix.
-  docs:
+  # Cheap and Ubuntu-only, so a stale CLAUDE.md or a boundary violation is
+  # reported in seconds rather than after the full 6-way test matrix.
+  lint:
     runs-on: ubuntu-latest
 
     steps:
@@ -19,9 +19,18 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
           node-version: 20
+          cache: npm
 
       - name: Check CLAUDE.md against the tree
         run: node scripts/check-docs.js
+
+      # --ignore-scripts skips the electron-rebuild postinstall: linting needs
+      # no native modules, and rebuilding node-pty here would cost minutes.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: ESLint
+        run: npm run lint
 
   test:
     runs-on: ${{ matrix.os }}

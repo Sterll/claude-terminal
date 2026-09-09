@@ -25,6 +25,8 @@ npm run publish          # Build and publish Windows installer to update server
 npm test                 # Run Jest tests (jsdom, 125 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md has drifted from the tree it describes
+npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
+npm run lint:fix         # ESLint with --fix
 ```
 
 **Important:** Always run `npm run build:renderer` after modifying anything under `src/renderer/`, `src/project-types/`, or `renderer.js`.
@@ -531,6 +533,7 @@ that difference from `AccountManager`.
 | `qrcode` | ^1.5.4 | QR code for remote |
 | `esbuild` | ^0.27.2 | Renderer bundling (IIFE, Chrome 120, sourcemaps) |
 | `jest` + jsdom | ^29.7.0 | Unit tests |
+| `eslint` + `@eslint/js` | ^10.10.0 | Flat-config lint over main / renderer / shared / MCP / scripts |
 | `playwright` | ^1.58.2 | Browser automation (marketing screenshots, axe-core a11y) |
 | `axe-core` | - | Accessibility audit (WebApp Live Preview) |
 | `sharp` / `ffmpeg-static` | - | Asset + video processing for marketing scripts |
@@ -577,6 +580,7 @@ Worker); neither is bundled into the desktop app.
 npm test                    # Run all 125 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file still matches the tree
+npm run lint                # ESLint (see below)
 ```
 
 ### Unit tests (Jest)
@@ -600,12 +604,55 @@ npm run check:docs          # Verify this file still matches the tree
   - `ui/` - chat account switch, task widget, tasks drawer, ClaudeRemotePanel, navigation mode
   - `utils/` - attachments, color, commit messages, drop paths, file icons, file lock, format, frontmatter, git, http cache, session search, shell, syntax highlight, tool registry
 
+### Lint (`eslint.config.js`)
+
+Flat config, ESLint 10. Two things it deliberately does not do:
+
+- **No formatting rules, and no Prettier.** The codebase is hand-formatted and
+  consistently so; a reformatting pass would rewrite most of ~144k lines and bury
+  every `git blame` that currently explains why something is the way it is.
+- **Nothing that would need a mass `eslint-disable` sweep to go green.** A lint run
+  that is red on arrival gets ignored, and then it guards nothing. Rules that fire
+  widely on existing working code are `warn`; `npm run lint` fails on errors only.
+  `require-await` is off outright: async-without-await is a convention here (the MCP
+  tool-module contract, the uniformly-async IPC handlers, test mocks mirroring async
+  signatures), so its 497 hits were all non-actionable.
+
+What it is for is the third thing - the architectural boundaries this file describes
+in prose, which until now were enforced by nobody:
+
+| Boundary | Rule |
+|----------|------|
+| The renderer never gets `child_process`, `fs`, `net`, `electron`... | `no-restricted-syntax` on the `require()` call |
+| The renderer never reaches into `src/main/` | same |
+| The main process never requires `src/renderer/` | same |
+| No `document` / `navigator` / `localStorage` in main | `no-restricted-globals` |
+
+`no-restricted-imports` only understands ESM `import`, and the `no-restricted-modules`
+rule that covered `require()` was removed in ESLint 7, so these are written as esquery
+selectors over the `require()` call shape instead.
+
+These are not hypothetical. The renderer/electron rule was added after five click
+handlers were found calling `require('electron').shell.openExternal(...)` from renderer
+code, which throws under `contextIsolation` - so none of those buttons had ever worked.
+If one of these rules fires, the fix is a new IPC handler, not an `eslint-disable`.
+
+Two documented exceptions, both real:
+
+- `src/main/workflow-nodes/**` may use `document` and `window`. Each `*.node.js` exports
+  both an `execute()` that runs in main and that node's config-panel UI;
+  `workflow.ipc.js` ships the UI half to the renderer as source text (`fn.toString()`)
+  where it is rehydrated with `new Function()`. Those functions only ever run in the
+  renderer.
+- `src/renderer/viewers/**` is ESM, not CommonJS: both viewers are built as separate
+  bundles and pulled in with a dynamic `import()`.
+
 ## CI/CD
 
 **GitHub Actions (`.github/workflows/`):**
 
 - `ci.yml` - triggers on push to `main` and PRs. Two jobs:
-  - `docs` - Ubuntu only, `npm run check:docs`. Fast, fails first.
+  - `lint` - Ubuntu only, `npm run check:docs` then `npm run lint`, installed with `--ignore-scripts` so no native rebuild is needed. Fast, fails first.
   - `test` - matrix Node 18 + 20 on windows-latest, ubuntu-latest, macos-latest: `npm ci`, `build:renderer`, `test`.
 - `release.yml` - triggers on `v*` tags. Builds NSIS (Windows x64), DMG (macOS arm64 + x64), AppImage (Linux x64).
 - `i18n-badge.yml` - updates i18n coverage badges (gist `ec1241ea62520261790ef5a411b4b212`).
@@ -678,4 +725,5 @@ Files prefixed with `_` are shared helpers, not tool modules — the loader igno
 - **Project types:** extend `base-type.js`, register in `registry.js`, provide service + IPC + dashboard + i18n
 - **Markdown:** prefer the rich custom blocks (tree, timeline, compare, metrics, api, tabs, discord-embed, workspace-doc, git-commit, workspace-links...) over plain bullet lists.
 - **Security:** sanitize user-supplied markdown with `dompurify`; never inject untrusted HTML into chat or dashboard panels.
+- **Lint:** `npm run lint` before pushing. The boundary rules encode the main/renderer split described above - if one fires, the fix is a new IPC handler, not an `eslint-disable`.
 - **This file:** `npm run check:docs` verifies the counts and paths above against the actual tree. When you add an IPC file, a service, a panel, a node type or a locale, update the matching table in the same commit. A `CLAUDE.md` that sends the reader to a directory that no longer exists is worse than no `CLAUDE.md`.
