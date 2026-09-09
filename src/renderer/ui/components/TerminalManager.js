@@ -1812,6 +1812,7 @@ class TerminalManager extends BaseComponent {
       ...(resumeSessionId ? { resumeSessionId } : {})
     });
 
+    let id;
     if (result && typeof result === 'object' && 'success' in result) {
       if (!result.success) {
         console.error('Failed to create terminal:', result.error);
@@ -1820,9 +1821,9 @@ class TerminalManager extends BaseComponent {
         }
         return null;
       }
-      var id = result.id;
+      id = result.id;
     } else {
-      var id = result;
+      id = result;
     }
 
     const terminalThemeId = getSetting('terminalTheme') || 'claude';
@@ -3158,6 +3159,7 @@ class TerminalManager extends BaseComponent {
       skipPermissions
     });
 
+    let id;
     if (result && typeof result === 'object' && 'success' in result) {
       if (!result.success) {
         console.error('Failed to resume session:', result.error);
@@ -3166,9 +3168,9 @@ class TerminalManager extends BaseComponent {
         }
         return null;
       }
-      var id = result.id;
+      id = result.id;
     } else {
-      var id = result;
+      id = result;
     }
 
     const terminalThemeId = getSetting('terminalTheme') || 'claude';
@@ -3325,14 +3327,15 @@ class TerminalManager extends BaseComponent {
       skipPermissions: false
     });
 
+    let id;
     if (result && typeof result === 'object' && 'success' in result) {
       if (!result.success) {
         console.error('Failed to create terminal:', result.error);
         return null;
       }
-      var id = result.id;
+      id = result.id;
     } else {
-      var id = result;
+      id = result;
     }
 
     const terminalThemeId = getSetting('terminalTheme') || 'claude';

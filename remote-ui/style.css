@@ -110,6 +110,12 @@ html, body {
   pointer-events: none;
   opacity: 0.025;
   z-index: 9998;
+  /* An feTurbulence filter over the whole viewport is expensive to rasterise.
+     Its output never changes, so promote it to its own layer and let the
+     compositor reuse it instead of repainting under every scroll. */
+  will-change: transform;
+  transform: translateZ(0);
+  contain: strict;
 }
 
 /* ─── Screen System ─────────────────────────────────────────────────────── */

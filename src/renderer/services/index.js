@@ -9,6 +9,7 @@ const DashboardService = require('./DashboardService');
 const SettingsService = require('./SettingsService');
 const TimeTrackingDashboard = require('./TimeTrackingDashboard');
 const GitTabService = require('./GitTabService');
+const ProjectTimeline = require('./ProjectTimeline');
 const MentionSourceRegistry = require('./MentionSourceRegistry');
 
 // Register all built-in @-mention / Command Palette sources at module load.
@@ -23,5 +24,6 @@ module.exports = {
   DashboardService,
   SettingsService,
   TimeTrackingDashboard,
-  GitTabService
+  GitTabService,
+  ProjectTimeline
 };

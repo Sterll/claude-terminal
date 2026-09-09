@@ -84,7 +84,7 @@ function bindSidebarEvents(list, cbs) {
     btn.onclick = (e) => {
       e.stopPropagation();
       const port = btn.dataset.port;
-      if (port) require('electron').shell.openExternal(`http://localhost:${port}`);
+      if (port) window.electron_api.dialog.openExternal(`http://localhost:${port}`);
     };
   });
 }

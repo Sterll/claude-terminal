@@ -74,8 +74,13 @@ const state = {
   currentView: 'projects',
   todayMs: 0,
   _pendingUserMessage: null,
-  selectedModel: 'claude-sonnet-5',
-  selectedEffort: 'high',
+  _followNextSession: false, // a chat:start this device fired — follow its session:started
+  _restoreSessionId: null,   // conversation to reopen once the reconnect replay reaches it
+  // Defaults a NEW conversation starts from, mirroring the desktop's stored
+  // chatModel / effortLevel. A pick made inside a conversation is recorded on
+  // that session, never here — see _selectModel().
+  defaultModel: 'claude-sonnet-5',
+  defaultEffort: 'high',
   // Replaced by `models:catalog` once the desktop answers.
   modelCatalog: { primary: MODEL_OPTIONS, legacy: [] },
   inProjectHub: false,
@@ -99,16 +104,11 @@ const state = {
 // }
 
 // ─── Session Persistence ──────────────────────────────────────────────────────
-// Sessions are fully server-authoritative: on (re)connect the server replays
-// all buffered chat events.  No client-side storage needed.
-
-function _saveSessions() {
-  // No-op — server is the source of truth.
-  // Kept as a callable stub so existing call-sites don't need changes.
-}
+// There is none: the server replays every buffered chat event on connect, so it
+// is the single source of truth. _restoreSessions only clears keys written by
+// versions that did persist locally.
 
 function _restoreSessions() {
-  // Clean up legacy sessionStorage keys from previous versions
   try {
     sessionStorage.removeItem('remote_sessions');
     sessionStorage.removeItem('remote_selected_session');
@@ -151,7 +151,19 @@ const conn = {
   clientId: _getClientId(),
   _pinNonce: null,
   _pinTimer: null,
+  // Keepalive. A phone's socket usually dies half-open rather than closed.
+  awaitingPong: false,
+  heartbeatTimer: null,
+  probeTimer: null,
 };
+
+// One unanswered ping per interval is enough to call a socket dead: the server
+// answers synchronously, so a 25s round trip means nothing is getting through.
+const HEARTBEAT_INTERVAL_MS = 25_000;
+// Waking from background is the one moment worth probing faster than that.
+const WAKE_PROBE_TIMEOUT_MS = 8_000;
+// A replay that never says it finished must not freeze the UI forever.
+const REPLAY_GUARD_MS = 15_000;
 
 function connSetState(s) {
   conn.state = s;
@@ -188,6 +200,9 @@ function init() {
   setupPlusMenu();
   _setupImageInputs();
   _setupChatDelegation();
+  _setupLifecycleHandlers();
+  _setupStaticActions();
+  _enableWebfonts();
   _setupMentionChipsDelegation();
 
   // Check for relay mode params in URL: ?mode=relay&url=...&key=...
@@ -555,10 +570,12 @@ function _openWS() {
   const ws = conn.ws;
 
   ws.onopen = () => {
+    _endReplay();
     conn.retryCount = 0;
     _debugLog('[WS] Connected to relay');
     connSetState('connected');
     _requestNotificationPermission();
+    _startHeartbeat();
     _wsFlushQueue();
   };
 
@@ -571,6 +588,7 @@ function _openWS() {
 
   ws.onclose = (e) => {
     _debugLog('[WS] Closed:', e.code, e.reason);
+    _stopHeartbeat();
     conn.ws = null;
     // Auth failure
     if (e.code === 4401 || e.code === 4003) {
@@ -615,7 +633,118 @@ function _openWS() {
   };
 }
 
+// ─── Keepalive & App Lifecycle ────────────────────────────────────────────────
+//
+// The way a phone loses its connection is almost never a clean close: the NAT
+// entry behind it expires and neither end is told. readyState stays OPEN, every
+// wsSend() reports success, and the UI sits there looking connected while
+// nothing arrives. Only an unanswered round trip reveals it.
+
+function _startHeartbeat() {
+  _stopHeartbeat();
+  conn.awaitingPong = false;
+  conn.heartbeatTimer = setInterval(() => {
+    if (!conn.ws || conn.ws.readyState !== 1) return;
+    if (conn.awaitingPong) { _dropSocket('no pong within one heartbeat'); return; }
+    conn.awaitingPong = true;
+    wsSend('ping', {});
+  }, HEARTBEAT_INTERVAL_MS);
+}
+
+function _stopHeartbeat() {
+  clearInterval(conn.heartbeatTimer);
+  clearTimeout(conn.probeTimer);
+  conn.heartbeatTimer = null;
+  conn.probeTimer = null;
+  conn.awaitingPong = false;
+}
+
+/**
+ * Abandon a socket we no longer believe in and reconnect.
+ *
+ * Its handlers are detached first: a half-open socket may take minutes to emit
+ * 'close', long after a replacement is running, and a late onclose would then
+ * schedule a second reconnect on top of it.
+ */
+function _dropSocket(reason) {
+  console.warn('[WS] dropping socket — ' + reason);
+  _stopHeartbeat();
+  const ws = conn.ws;
+  conn.ws = null;
+  if (ws) {
+    ws.onclose = null; ws.onerror = null; ws.onmessage = null; ws.onopen = null;
+    try { ws.close(); } catch (e) {}
+  }
+  conn.retryCount = 0; // this was a working session — come back promptly
+  _scheduleReconnect();
+}
+
+/**
+ * The user is looking at the app again, or the network came back.
+ *
+ * iOS freezes timers in the background, so the reconnect backoff — up to 30s —
+ * does not run while the app is away and only resumes once it returns. Without
+ * this the user stares at stale state for half a minute after every switch.
+ */
+function _wakeUp(reason) {
+  if (conn.state === 'auth') return;
+  _debugLog('[WS] wake-up: ' + reason);
+
+  if (conn.ws && conn.ws.readyState === 1) {
+    // Probably fine, but a socket that slept through a background stretch is
+    // exactly the one likely to be half-open. Prove it before trusting it.
+    conn.awaitingPong = true;
+    wsSend('ping', {});
+    clearTimeout(conn.probeTimer);
+    conn.probeTimer = setTimeout(() => {
+      if (conn.awaitingPong) _dropSocket('no pong after wake-up probe');
+    }, WAKE_PROBE_TIMEOUT_MS);
+    return;
+  }
+
+  if (conn.retryTimer) { clearTimeout(conn.retryTimer); conn.retryTimer = null; }
+  conn.retryCount = 0;
+  _openWS();
+}
+
+/**
+ * Wire the static controls that used to carry inline onclick attributes.
+ *
+ * Those only worked because the PWA shipped without a Content-Security-Policy.
+ * Now that it has one, script-src 'self' rejects inline handlers outright —
+ * which is the point: this document renders model-authored markdown, so any
+ * HTML that slipped through escaping must not be able to execute.
+ */
+/** Promote the webfont stylesheet off the critical path once we are running. */
+function _enableWebfonts() {
+  const link = $('webfonts');
+  if (link && link.media === 'print') link.media = 'all';
+}
+
+function _setupStaticActions() {
+  const bind = (id, fn) => $(id)?.addEventListener('click', fn);
+  bind('header-back', backToProjects);
+  bind('btn-git-pull', gitPull);
+  bind('btn-git-push', gitPush);
+  bind('scroll-fab', _scrollToBottomSmooth);
+  bind('btn-camera', openCamera);
+  bind('btn-gallery', openGallery);
+  bind('image-preview-remove', removeImage);
+  bind('btn-new-session', createNewSession);
+}
+
+function _setupLifecycleHandlers() {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') _wakeUp('app foregrounded');
+  });
+  window.addEventListener('online', () => _wakeUp('network back'));
+  window.addEventListener('offline', () => {
+    if (conn.state === 'connected') connSetState('reconnecting');
+  });
+}
+
 function _scheduleReconnect() {
+  if (conn.retryTimer) return; // already queued — several paths can ask at once
   if (conn.mode === 'relay') {
     if (!conn.cloudUrl || !conn.cloudApiKey) return;
   } else {
@@ -813,16 +942,22 @@ function handleMessage(msg) {
     case 'hello':
       connSetState('connected');
       // Server is authoritative — clear all local sessions, they'll be
-      // re-created by the session:started + chat-message replay that follows
+      // re-created by the session:started + chat-message replay that follows.
+      // It is NOT authoritative about where the user was looking, though:
+      // remember the open conversation so the replay reopens it instead of
+      // leaving them on whichever session happens to be replayed last.
+      state._restoreSessionId = state.selectedSessionId || state._restoreSessionId;
       state.sessions = {};
       state.selectedSessionId = null;
-      if (data.chatModel) { state.selectedModel = data.chatModel; }
-      if (data.effortLevel) { state.selectedEffort = data.effortLevel; }
+      if (data.chatModel) { state.defaultModel = data.chatModel; }
+      if (data.effortLevel) { state.defaultEffort = data.effortLevel; }
       if (data.accentColor) _applyAccentColor(data.accentColor);
       if (data.language) i18n.setLang(data.language);
       _updatePlusMenuSelection();
       renderSessionBar(); renderChatMessages();
       break;
+    case 'replay:start':         _beginReplay(); break;
+    case 'replay:end':           _endReplay(); break;
     case 'models:catalog':       onModelCatalog(data); break;
     case 'projects:updated':     onProjectsUpdated(data); break;
     case 'session:started':      onSessionStarted(data); break;
@@ -842,7 +977,11 @@ function handleMessage(msg) {
     case 'mention:file-list':    onFileList(data); break;
     case 'sessions:past':        onPastSessions(data); break;
     case 'settings:updated':     break; // ack, nothing to do
-    case 'pong': break;
+    case 'pong':
+      conn.awaitingPong = false;
+      clearTimeout(conn.probeTimer);
+      conn.probeTimer = null;
+      break;
     // Relay session auth (see _submitPinOverRelay)
     case 'auth:result':          _onRelayAuthResult(data); break;
     case 'remote:rejected':      _onRemoteRejected(data); break;
@@ -855,6 +994,7 @@ function handleMessage(msg) {
       _showHeadlessBanner(false);
       _cleanupHeadlessSession();
       // Clear cloud/headless sessions — desktop will resend its own via request:init
+      state._restoreSessionId = state.selectedSessionId || state._restoreSessionId;
       state.sessions = {};
       state.selectedSessionId = null;
       renderSessionBar(); renderChatMessages();
@@ -891,7 +1031,7 @@ function onProjectsUpdated({ projects, folders, rootOrder }) {
     const project = state.projects.find(p => p.id === state.selectedProjectId);
     if (project) {
       const title = $('header-title');
-      if (title && title.textContent === 'Project') {
+      if (title && title.textContent === t('misc.project')) {
         title.textContent = project.name;
         title.style.color = project.color || '';
       }
@@ -901,7 +1041,21 @@ function onProjectsUpdated({ projects, folders, rootOrder }) {
   renderDashboard();
 }
 
+/**
+ * A session appeared: either one this device just asked for, one being replayed
+ * after a reconnect, or one somebody opened on the desktop.
+ *
+ * Only the first deserves to take over the screen. Following every session
+ * started in the current project meant a tab opened on the desktop yanked the
+ * phone out of the conversation it was showing — and on reconnect, where the
+ * server replays one of these per session, it left the user on whichever
+ * happened to be sent last.
+ */
 function onSessionStarted({ sessionId, projectId, tabName }) {
+  const requested = state._followNextSession;
+  state._followNextSession = false;
+  const restoring = !!state._restoreSessionId;
+
   const messages = [];
   if (state._pendingUserMessage) {
     messages.push({ role: 'user', content: state._pendingUserMessage });
@@ -910,21 +1064,49 @@ function onSessionStarted({ sessionId, projectId, tabName }) {
   if (!state.sessions[sessionId]) {
     state.sessions[sessionId] = _makeSession(sessionId, projectId, tabName, messages);
   }
-  if (!state.selectedSessionId || projectId === state.selectedProjectId) {
+
+  const adopt = () => {
     state.selectedSessionId = sessionId;
-    state.selectedProjectId = projectId;
+    if (projectId) state.selectedProjectId = projectId;
+  };
+
+  // The conversation the user was reading before the socket dropped. Reselect
+  // it, but do not navigate: they may well have been on another view.
+  if (state._restoreSessionId === sessionId) {
+    state._restoreSessionId = null;
+    adopt();
+    _renderCurrentViewInPlace();
+    return;
   }
-  if (!state.inProjectHub && projectId) {
-    enterProjectHub(projectId);
-    switchView('chat'); // go straight to chat for new session
-  } else if (state.currentView === 'sessions') {
-    renderSessionsView(); // refresh tabs list
-  } else if (state.currentView !== 'chat') {
-    switchView('chat');
-  } else {
-    renderSessionBar(); renderChatMessages();
+
+  // A chat:start this device fired, or the first session of a cold start.
+  if (requested || (!state.selectedSessionId && !restoring)) {
+    adopt();
+    if (!state.inProjectHub && projectId) {
+      enterProjectHub(projectId);
+      switchView('chat'); // go straight to chat for new session
+    } else if (state.currentView !== 'chat') {
+      switchView('chat');
+    } else {
+      renderChatView();
+    }
+    return;
   }
-  _saveSessions();
+
+  // Mid-replay with a pending restore: keep a selection so the chat is never
+  // empty, but stay put — the restore branch above will correct it.
+  if (!state.selectedSessionId) adopt();
+
+  _renderCurrentViewInPlace();
+  if (state.currentView !== 'chat') $('chat-badge')?.classList.remove('hidden');
+}
+
+/** Refresh whatever the user is looking at, without changing view. */
+function _renderCurrentViewInPlace() {
+  if (_renderSuspended) return;
+  if (state.currentView === 'chat') renderChatView();
+  else if (state.currentView === 'sessions') renderSessionsView();
+  else if (state.currentView === 'control') renderControlView();
 }
 
 function onTabRenamed({ sessionId, tabName }) {
@@ -940,13 +1122,21 @@ function onTabRenamed({ sessionId, tabName }) {
 
 function onSessionClosed({ sessionId }) {
   if (!sessionId || !state.sessions[sessionId]) return;
+  // Prompts belonging to a closed conversation can never be answered — drop
+  // them rather than leave them pending forever in the badge counts.
+  for (const m of state.sessions[sessionId].messages) {
+    if (m.role === 'permission' && m.permData?.requestId) {
+      state.pendingPermissions.delete(m.permData.requestId);
+    }
+  }
+  _initRequestedFor.delete(sessionId);
+  if (state._restoreSessionId === sessionId) state._restoreSessionId = null;
   delete state.sessions[sessionId];
   // If the closed session was selected, pick another or clear
   if (state.selectedSessionId === sessionId) {
     const remaining = Object.values(state.sessions).filter(s => s.projectId === state.selectedProjectId);
     state.selectedSessionId = remaining.length ? remaining[0].sessionId : null;
   }
-  _saveSessions();
   if (state.currentView === 'sessions') renderSessionsView();
   if (state.currentView === 'chat') renderChatView();
   if (state.currentView === 'control') renderControlView();
@@ -959,12 +1149,23 @@ function onTimeUpdate({ todayMs }) {
 
 // ─── Chat Message Handler (mirrors ChatView.js SDK format) ────────────────────
 
+/**
+ * The server sends session:started before any event for that session, so this
+ * only fires on an unexpected ordering. It deliberately does NOT fall back to
+ * state.selectedProjectId: attributing a stray session to whatever project the
+ * user happens to be viewing grafted other projects' conversations onto the
+ * current one. Leave it unattributed and ask the desktop who it belongs to.
+ */
+const _initRequestedFor = new Set();
+
 function _getOrCreateSession(sessionId, projectId) {
   if (!state.sessions[sessionId]) {
-    const pid = projectId || state.selectedProjectId;
-    const project = state.projects.find(p => p.id === pid);
-    state.sessions[sessionId] = _makeSession(sessionId, pid, project?.name || 'Chat', []);
-    _saveSessions();
+    const project = projectId ? state.projects.find(p => p.id === projectId) : null;
+    state.sessions[sessionId] = _makeSession(sessionId, projectId || null, project?.name || 'Chat', []);
+    if (!projectId && !_initRequestedFor.has(sessionId)) {
+      _initRequestedFor.add(sessionId);
+      wsSend('request:init', {});
+    }
   }
   return state.sessions[sessionId];
 }
@@ -979,6 +1180,10 @@ function _makeSession(sessionId, projectId, tabName, messages) {
     streamEl: null,
     hasToolUse: false,
     status: 'idle',        // idle | active | permission | error
+    model: null,           // set once this device switches it mid-session
+    effort: null,
+    running: false,        // a turn is in flight → this session wants the interrupt button
+    thinking: false,       // waiting on the first token → this session wants the spinner
     lastActivity: '',      // last action description
     // Tool streaming state
     toolInputBuffers: new Map(),  // blockIdx → accumulated JSON string
@@ -1116,7 +1321,7 @@ function _handleStreamEvent(session, sessionId, event) {
       _finalizeStream(session);
       _setThinking(sessionId, false);
       if (!session.hasToolUse) {
-        setInputState('idle');
+        setInputState(sessionId, 'idle');
       }
       // Update lastActivity with a snippet of the last text
       if (session.streaming || session.messages.length) {
@@ -1125,7 +1330,6 @@ function _handleStreamEvent(session, sessionId, event) {
         _refreshControlIfActive();
       }
       _renderIfActive(sessionId);
-      _saveSessions();
       break;
   }
 }
@@ -1136,15 +1340,15 @@ function _handleAssistantMessage(session, sessionId, msg) {
   // SDK-level errors
   if (msg.error) {
     const errorMap = {
-      rate_limit: 'Rate limit reached. Please wait.',
-      billing_error: 'Billing error.',
-      authentication_failed: 'Authentication failed.',
-      max_output_tokens: 'Max output tokens reached.',
-      server_error: 'Server error.',
+      rate_limit: t('err.rateLimit'),
+      billing_error: t('err.billing'),
+      authentication_failed: t('err.auth'),
+      max_output_tokens: t('err.maxOutputTokens'),
+      server_error: t('err.server'),
     };
     session.messages.push({ role: 'error', content: errorMap[msg.error] || msg.error });
     _setThinking(sessionId, false);
-    setInputState('idle');
+    setInputState(sessionId, 'idle');
     _renderIfActive(sessionId);
     return;
   }
@@ -1178,7 +1382,7 @@ function _handleAssistantMessage(session, sessionId, msg) {
 function _handleResult(session, sessionId, msg) {
   _finalizeStream(session);
   _setThinking(sessionId, false);
-  setInputState('idle');
+  setInputState(sessionId, 'idle');
 
   // Mark all running tools as complete
   for (const m of session.messages) {
@@ -1188,9 +1392,9 @@ function _handleResult(session, sessionId, msg) {
   // SDK error in result
   if (msg.is_error && msg.subtype) {
     const errors = {
-      error_max_turns: 'Max turns reached.',
-      error_max_budget_usd: 'Budget limit reached.',
-      error_during_execution: msg.errors?.join(', ') || 'Error during execution.',
+      error_max_turns: t('err.maxTurns'),
+      error_max_budget_usd: t('err.maxBudget'),
+      error_during_execution: msg.errors?.join(', ') || t('err.duringExecution'),
     };
     const errorMsg = errors[msg.subtype];
     if (errorMsg) session.messages.push({ role: 'error', content: errorMsg });
@@ -1262,22 +1466,16 @@ function onChatIdle({ sessionId, projectId }) {
   session.status = 'active';
   session.lastActivity = t('status.claudeWorking');
   _refreshControlIfActive();
+  // Adopt an orphan session so the chat is never empty, but never navigate:
+  // a conversation going active on the desktop is not a reason to pull the user
+  // off the view they chose.
   if (!state.selectedSessionId) {
     state.selectedSessionId = sessionId;
     state.selectedProjectId = projectId || state.selectedProjectId;
-    if (!state.inProjectHub && projectId) {
-      enterProjectHub(projectId);
-      switchView('chat');
-    } else if (state.currentView === 'sessions') {
-      renderSessionsView();
-    } else if (state.currentView !== 'chat') {
-      switchView('chat');
-    } else {
-      renderSessionBar();
-    }
+    _renderCurrentViewInPlace();
   }
   _setThinking(sessionId, true);
-  setInputState('sending');
+  setInputState(sessionId, 'sending');
 }
 
 function onChatDone({ sessionId }) {
@@ -1288,9 +1486,8 @@ function onChatDone({ sessionId }) {
   session.status = 'idle';
   session.lastActivity = t('status.done');
   _refreshControlIfActive();
-  setInputState('idle');
+  setInputState(sessionId, 'idle');
   _renderIfActive(sessionId);
-  _saveSessions();
   if (state.currentView !== 'chat') $('chat-badge')?.classList.remove('hidden');
   _showNotification(
     t('status.claudeFinished'),
@@ -1303,15 +1500,14 @@ function onChatError({ sessionId, error }) {
   const session = state.sessions[sessionId];
   if (session) {
     _finalizeStream(session);
-    session.messages.push({ role: 'error', content: error || 'Unknown error' });
+    session.messages.push({ role: 'error', content: error || t('err.unknown') });
     session.status = 'error';
     session.lastActivity = error || 'Error';
     _refreshControlIfActive();
   }
   _setThinking(sessionId, false);
-  setInputState('idle');
+  setInputState(sessionId, 'idle');
   _renderIfActive(sessionId);
-  _saveSessions();
   if (state.currentView !== 'chat') $('chat-badge')?.classList.remove('hidden');
   _showNotification(
     t('status.claudeError'),
@@ -1410,21 +1606,70 @@ function _finalizeStream(session) {
 }
 
 function _setThinking(sessionId, show) {
+  // Remember it on the session first: the indicator is one shared element, and
+  // a switch away from this conversation must be able to restore the right
+  // state rather than inherit the previous one.
+  const session = sessionId ? state.sessions[sessionId] : null;
+  if (session) session.thinking = !!show;
   if (sessionId !== state.selectedSessionId) return;
   const el = $('thinking-indicator');
   if (el) el.classList.toggle('hidden', !show);
 }
 
+// ─── Render Scheduling ────────────────────────────────────────────────────────
+//
+// renderChatMessages() rebuilds the entire transcript. That is cheap enough
+// once per user-visible change and ruinous once per SDK event: a message with
+// five tool results triggered five full rebuilds, and a reconnect replay — up
+// to 500 buffered events per session — froze the phone for seconds.
+//
+// So coalesce: many events in one frame produce one rebuild, and during a
+// replay nothing is drawn at all until the burst is over.
+
+let _renderScheduled = false;
+let _renderSuspended = false;
+let _replayGuardTimer = null;
+
 function _renderIfActive(sessionId) {
-  if (sessionId === state.selectedSessionId && state.currentView === 'chat') {
-    renderChatMessages();
-  }
+  if (sessionId !== state.selectedSessionId || state.currentView !== 'chat') return;
+  if (_renderSuspended || _renderScheduled) return;
+  _renderScheduled = true;
+  requestAnimationFrame(() => {
+    _renderScheduled = false;
+    if (!_renderSuspended) renderChatMessages();
+  });
+}
+
+/**
+ * Hold the UI still while the server replays a session's buffered history.
+ *
+ * The guard timer matters: if the socket dies mid-replay the 'replay:end' never
+ * arrives, and a permanently suspended renderer is a blank app.
+ */
+function _beginReplay() {
+  _renderSuspended = true;
+  clearTimeout(_replayGuardTimer);
+  _replayGuardTimer = setTimeout(() => _endReplay(), REPLAY_GUARD_MS);
+}
+
+function _endReplay() {
+  clearTimeout(_replayGuardTimer);
+  _replayGuardTimer = null;
+  if (!_renderSuspended) return;
+  _renderSuspended = false;
+  renderProjectsList();
+  _renderCurrentViewInPlace();
+}
+
+const SCROLL_STICK_THRESHOLD = 80;
+
+/** Is the user reading the tail, and therefore expecting to follow the stream? */
+function _isNearBottom(container) {
+  return (container.scrollHeight - container.scrollTop - container.clientHeight) < SCROLL_STICK_THRESHOLD;
 }
 
 function _scrollToBottom(container) {
-  const threshold = 80;
-  const nearBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < threshold;
-  if (nearBottom) container.scrollTop = container.scrollHeight;
+  if (_isNearBottom(container)) container.scrollTop = container.scrollHeight;
 }
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
@@ -1491,7 +1736,7 @@ function enterProjectHub(projectId) {
   $('header-back')?.classList.remove('hidden');
   const title = $('header-title');
   if (title) {
-    title.textContent = project?.name || 'Project';
+    title.textContent = project?.name || t('misc.project');
     title.style.color = project?.color || '';
   }
 
@@ -1610,7 +1855,7 @@ function renderSessionsView() {
               <span class="session-tab-name">${escHtml((preview || 'Chat').slice(0, 60))}</span>
               <span class="past-session-time">${escHtml(timeAgo)}</span>
             </div>
-            <div class="session-card-activity">${s.messageCount || 0} messages</div>
+            <div class="session-card-activity">${escHtml(t('session.messageCount', { count: s.messageCount || 0 }))}</div>
           </div>
         </div>`;
     }).join('');
@@ -1646,6 +1891,7 @@ function openSession(sessionId) {
   state.selectedSessionId = sessionId;
   switchView('chat');
 }
+
 
 function createNewSession() {
   state.selectedSessionId = null;
@@ -1730,6 +1976,7 @@ function resumePastSession(sessionId, projectId) {
     _flashSendFailure();
     return;
   }
+  state._followNextSession = true;
   state.selectedSessionId = null;
   switchView('chat');
   renderChatView();
@@ -1880,7 +2127,9 @@ function _renderItem(itemId, depth, visited = new Set()) {
   }
   const project = state.projects.find(p => p.id === itemId);
   if (project) {
-    const color = escHtml(project.color || '#d97706');
+    // Validated, not merely escaped: this is interpolated into a style
+    // attribute, where escaping alone still allows arbitrary CSS through.
+    const color = /^#[0-9a-fA-F]{3,8}$/.test(project.color) ? project.color : '#d97706';
     const iconDisplay = project.icon ? escHtml(project.icon) : escHtml((project.name || project.id).charAt(0).toUpperCase());
     return `<div class="project-card" data-project-id="${escHtml(project.id)}" style="padding-left:${12 + depth * 20}px">
       <div class="project-icon-wrap" style="background:${color}18;color:${color}">
@@ -1958,7 +2207,18 @@ function _setupChatDelegation() {
 
 function renderChatView() {
   renderSessionBar();
+  _renderChatBody();
+}
+
+/**
+ * Everything below the session picker. Split out so switching conversations
+ * from the picker itself does not rebuild the picker underneath the user's
+ * finger, while still refreshing the composer, the spinner and the scroll FAB —
+ * all of which describe the conversation, not the screen.
+ */
+function _renderChatBody() {
   renderChatMessages();
+  _syncChatUiToSession();
   updateSendBtn();
   _updateScrollFab();
 }
@@ -1969,14 +2229,14 @@ function renderSessionBar() {
   const sessions = Object.values(state.sessions).filter(s =>
     !state.selectedProjectId || s.projectId === state.selectedProjectId
   );
-  if (!sessions.length) { bar.classList.add('hidden'); return; }
+  if (!sessions.length) { bar.classList.add('hidden'); select.innerHTML = ''; return; }
   bar.classList.remove('hidden');
   select.innerHTML = sessions.map(s =>
     `<option value="${escHtml(s.sessionId)}" ${s.sessionId === state.selectedSessionId ? 'selected' : ''}>
       ${escHtml(s.tabName || 'Chat')}
     </option>`
   ).join('');
-  select.onchange = () => { state.selectedSessionId = select.value; renderChatMessages(); };
+  select.onchange = () => { state.selectedSessionId = select.value; _renderChatBody(); };
 }
 
 function renderChatMessages() {
@@ -2001,6 +2261,12 @@ function renderChatMessages() {
     return;
   }
 
+  // Sample the anchor BEFORE the rebuild. Replacing innerHTML destroys every
+  // child, which clamps scrollTop to 0, so a check made afterwards always
+  // concludes the user had scrolled up and refuses to follow the stream — the
+  // transcript jumped to the top on every event instead.
+  const stick = _isNearBottom(container);
+
   let html = '';
   for (const m of session.messages) {
     html += _renderMessage(m);
@@ -2018,7 +2284,7 @@ function renderChatMessages() {
 
   // Event delegation is set up once in _setupChatDelegation() — no per-render listeners needed
 
-  _scrollToBottom(container);
+  if (stick) container.scrollTop = container.scrollHeight;
   _updateScrollFab();
 }
 
@@ -2062,6 +2328,10 @@ function _renderMessage(m) {
 
 function _renderToolCard(m) {
   const icon = getToolIcon(m.toolName);
+  // Expansion is a property of the message, not of the DOM node: renderChatMessages
+  // replaces the whole transcript on every event, so a card the user had just
+  // opened used to snap shut under their finger.
+  const expanded = !!m.expanded;
   const detail = m.toolInput ? getToolDisplayInfo(m.toolName, m.toolInput) : '';
   const truncDetail = _truncate(detail, 70);
   const hasDetail = !!m.toolInput;
@@ -2071,14 +2341,14 @@ function _renderToolCard(m) {
       ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'
       : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
 
-  return `<div class="tool-card ${hasDetail ? 'expandable' : ''}" data-tool-id="${escHtml(m.toolId || '')}">
+  return `<div class="tool-card ${hasDetail ? 'expandable' : ''}${expanded ? ' expanded' : ''}" data-tool-id="${escHtml(m.toolId || '')}">
     <div class="tool-card-row">
       <span class="tool-icon">${icon}</span>
       <span class="tool-name">${escHtml(m.toolName || 'Tool')}</span>
       <span class="tool-detail">${escHtml(truncDetail)}</span>
       <span class="tool-status">${statusIcon}</span>
     </div>
-    <div class="tool-expand-content"></div>
+    <div class="tool-expand-content">${expanded ? _formatToolExpandContent(m) : ''}</div>
   </div>`;
 }
 
@@ -2086,18 +2356,19 @@ function _toggleToolExpand(card) {
   const contentEl = card.querySelector('.tool-expand-content');
   if (!contentEl) return;
 
+  const session = state.sessions[state.selectedSessionId];
+  if (!session) return;
+  const toolMsg = _findToolMessage(session, card.dataset.toolId);
+  if (!toolMsg) return;
+
   if (card.classList.contains('expanded')) {
+    toolMsg.expanded = false;
     card.classList.remove('expanded');
     contentEl.innerHTML = '';
     return;
   }
 
-  const toolId = card.dataset.toolId;
-  const session = state.sessions[state.selectedSessionId];
-  if (!session) return;
-  const toolMsg = _findToolMessage(session, toolId);
-  if (!toolMsg) return;
-
+  toolMsg.expanded = true;
   card.classList.add('expanded');
   contentEl.innerHTML = _formatToolExpandContent(toolMsg);
 }
@@ -2232,7 +2503,9 @@ function setupChatInput() {
   // Scroll FAB
   const chatMsgs = $('chat-messages');
   if (chatMsgs) {
-    chatMsgs.addEventListener('scroll', _updateScrollFab);
+    // Passive: this never calls preventDefault, and saying so lets the browser
+    // scroll without waiting on it.
+    chatMsgs.addEventListener('scroll', _updateScrollFab, { passive: true });
   }
 }
 
@@ -2674,19 +2947,20 @@ function sendMessage() {
       prompt: text || '',
       images,
       mentions: mentionsPayload,
-      model: state.selectedModel,
-      effort: state.selectedEffort,
+      model: state.defaultModel,
+      effort: state.defaultEffort,
     });
     if (!started) {
       state._pendingUserMessage = null;
       _flashSendFailure();
       return;
     }
+    state._followNextSession = true;
     input.value = '';
     input.style.height = 'auto';
     _clearImageAfterSend();
     _clearMentionsAfterSend();
-    setInputState('sending');
+    setInputState(null, 'sending');
     updateSendBtn();
     return;
   }
@@ -2709,7 +2983,6 @@ function sendMessage() {
       retryId: sent ? null : _registerFailedSend('chat:send', sendData),
     });
     renderChatMessages();
-    _saveSessions();
   }
   input.value = '';
   input.style.height = 'auto';
@@ -2717,7 +2990,7 @@ function sendMessage() {
   _clearMentionsAfterSend();
   // Only claim a turn is running when one actually is — the spinner-that-never-
   // resolves is exactly the bug this guards.
-  setInputState(sent ? 'sending' : 'idle');
+  setInputState(sessionId, sent ? 'sending' : 'idle');
   if (!sent) _flashSendFailure();
   updateSendBtn();
 }
@@ -2744,7 +3017,7 @@ function _retryFailedSend(retryId) {
   const msg = session?.messages.find(m => m.retryId === retryId);
   if (msg) { msg.failed = false; msg.retryId = null; }
   renderChatMessages();
-  setInputState('sending');
+  setInputState(pending.data.sessionId || null, 'sending');
 }
 
 function _clearMentionsAfterSend() {
@@ -2763,15 +3036,35 @@ function interruptSession() {
   // Only flip back to idle if the interrupt actually reached the desktop —
   // otherwise the turn is still running and the UI would be lying.
   if (wsSend('chat:interrupt', { sessionId: state.selectedSessionId })) {
-    setInputState('idle');
+    setInputState(state.selectedSessionId, 'idle');
   } else {
     _flashSendFailure();
   }
 }
 
-function setInputState(s) {
+/**
+ * Record whether `sessionId`'s turn is running, and reflect it in the composer
+ * when that conversation is the one on screen.
+ *
+ * The composer is a single pair of buttons shared by every conversation, so an
+ * unscoped call let any background session drive it: a finished session flipped
+ * the visible one back to "send" mid-turn, and a starting one showed an
+ * interrupt button that would have interrupted somebody else — interruptSession()
+ * always targets state.selectedSessionId.
+ *
+ * @param {string|null} sessionId - null for a chat:start with no session yet.
+ */
+function setInputState(sessionId, s) {
+  const session = sessionId ? state.sessions[sessionId] : null;
+  if (session) session.running = (s === 'sending');
+  if (sessionId && sessionId !== state.selectedSessionId) return;
+  _applyInputState(s);
+}
+
+function _applyInputState(s) {
   const sendBtn = $('send-btn');
   const interruptBtn = $('interrupt-btn');
+  if (!sendBtn || !interruptBtn) return;
   if (s === 'sending') {
     sendBtn.classList.add('hidden');
     interruptBtn.classList.remove('hidden');
@@ -2780,6 +3073,23 @@ function setInputState(s) {
     sendBtn.classList.remove('hidden');
     updateSendBtn();
   }
+}
+
+/**
+ * Rebuild the chat's shared chrome from the selected conversation.
+ *
+ * The thinking indicator and the composer are single DOM elements, but their
+ * meaning is per conversation. Nothing recomputed them on a switch, so they
+ * simply kept whatever the previously-selected session had left behind — and
+ * since _setThinking() ignores events for unselected sessions, a spinner
+ * inherited that way could never be turned off again.
+ */
+function _syncChatUiToSession() {
+  const session = state.selectedSessionId ? state.sessions[state.selectedSessionId] : null;
+  _updatePlusMenuSelection();
+  const el = $('thinking-indicator');
+  if (el) el.classList.toggle('hidden', !session?.thinking);
+  _applyInputState(session?.running ? 'sending' : 'idle');
 }
 
 // ─── Plus Menu (Model & Thinking Switcher) ────────────────────────────────────
@@ -2831,6 +3141,7 @@ function setupPlusMenu() {
 }
 
 function _openPlusMenu() {
+  $('plus-menu-btn')?.setAttribute('aria-expanded', 'true');
   const menu = $('plus-menu');
   const btn = $('plus-menu-btn');
   if (!menu) return;
@@ -2840,6 +3151,7 @@ function _openPlusMenu() {
 }
 
 function _closePlusMenu() {
+  $('plus-menu-btn')?.setAttribute('aria-expanded', 'false');
   const menu = $('plus-menu');
   const btn = $('plus-menu-btn');
   if (!menu) return;
@@ -2882,49 +3194,70 @@ function _renderModelOptions() {
   _updatePlusMenuSelection();
 }
 
+/**
+ * Model and effort belong to the conversation, not to the app — that is the
+ * desktop's rule and the PWA drives the same sessions. Holding one global pair
+ * meant the menu could claim Opus for a conversation still running Sonnet,
+ * simply because Opus was the last thing picked in a different tab.
+ *
+ * The session's own value wins where this device has set one; otherwise the
+ * default a new conversation would start from.
+ */
+function _currentModel() {
+  const session = state.selectedSessionId ? state.sessions[state.selectedSessionId] : null;
+  return session?.model || state.defaultModel;
+}
+
+function _currentEffort() {
+  const session = state.selectedSessionId ? state.sessions[state.selectedSessionId] : null;
+  return session?.effort || state.defaultEffort;
+}
+
 function _updatePlusMenuSelection() {
-  // Model
+  const model = _currentModel();
+  const effort = _currentEffort();
   $('model-options')?.querySelectorAll('.plus-option').forEach(opt => {
-    const isSelected = opt.dataset.model === state.selectedModel;
-    opt.classList.toggle('selected', isSelected);
+    opt.classList.toggle('selected', opt.dataset.model === model);
   });
-  // Effort
   $('effort-options')?.querySelectorAll('.plus-option').forEach(opt => {
-    const isSelected = opt.dataset.effort === state.selectedEffort;
-    opt.classList.toggle('selected', isSelected);
+    opt.classList.toggle('selected', opt.dataset.effort === effort);
   });
 }
 
 function _selectModel(modelId) {
-  const previous = state.selectedModel;
-  state.selectedModel = modelId;
-  _updatePlusMenuSelection();
-
-  // If there's an active session, update it mid-session
-  if (state.selectedSessionId &&
-      !wsSend('settings:update', { sessionId: state.selectedSessionId, model: modelId })) {
-    // The running session still uses the old model — don't show it as switched.
-    state.selectedModel = previous;
+  const session = state.selectedSessionId ? state.sessions[state.selectedSessionId] : null;
+  if (!session) {
+    // No conversation open: this is the model the next one will start with.
+    state.defaultModel = modelId;
     _updatePlusMenuSelection();
-    _flashSendFailure();
-    return; // leave the menu open on the reverted selection
+    _closePlusMenu();
+    return;
   }
+  // The running session still uses the old model until the desktop takes the
+  // change — don't show it as switched on a send that never left the device.
+  if (!wsSend('settings:update', { sessionId: session.sessionId, model: modelId })) {
+    _flashSendFailure();
+    return; // leave the menu open on the unchanged selection
+  }
+  session.model = modelId;
+  _updatePlusMenuSelection();
   _closePlusMenu();
 }
 
 function _selectEffort(effort) {
-  const previous = state.selectedEffort;
-  state.selectedEffort = effort;
-  _updatePlusMenuSelection();
-
-  // If there's an active session, update it mid-session
-  if (state.selectedSessionId &&
-      !wsSend('settings:update', { sessionId: state.selectedSessionId, effort })) {
-    state.selectedEffort = previous;
+  const session = state.selectedSessionId ? state.sessions[state.selectedSessionId] : null;
+  if (!session) {
+    state.defaultEffort = effort;
     _updatePlusMenuSelection();
+    _closePlusMenu();
+    return;
+  }
+  if (!wsSend('settings:update', { sessionId: session.sessionId, effort })) {
     _flashSendFailure();
     return;
   }
+  session.effort = effort;
+  _updatePlusMenuSelection();
   _closePlusMenu();
 }
 
@@ -2949,6 +3282,16 @@ function _scrollToBottomSmooth() {
 
 let _gitData = null;
 let _gitBusy = null; // 'pull' | 'push' | null
+let _gitTimeout = null;
+// The desktop answers every git:pull / git:push, but only if it is still there
+// to answer. Without a deadline a reply lost to a dropped socket left both
+// buttons disabled for the rest of the session.
+const GIT_REPLY_TIMEOUT_MS = 30_000;
+
+function _armGitTimeout(action) {
+  clearTimeout(_gitTimeout);
+  _gitTimeout = setTimeout(() => onGitResult(action, { success: false }), GIT_REPLY_TIMEOUT_MS);
+}
 
 // _gitBusy is only ever cleared by onGitResult, so a dropped send used to leave
 // both buttons disabled for the rest of the session. Clear it ourselves instead.
@@ -2961,7 +3304,9 @@ function gitPull() {
   if (!wsSend('git:pull', { cwd: project.path })) {
     onGitResult('pull', { success: false });
     _flashSendFailure();
+    return;
   }
+  _armGitTimeout('pull');
 }
 
 function gitPush() {
@@ -2973,10 +3318,14 @@ function gitPush() {
   if (!wsSend('git:push', { cwd: project.path })) {
     onGitResult('push', { success: false });
     _flashSendFailure();
+    return;
   }
+  _armGitTimeout('push');
 }
 
 function onGitResult(action, data) {
+  clearTimeout(_gitTimeout);
+  _gitTimeout = null;
   _gitBusy = null;
   _updateGitBtns();
   const btn = $(action === 'pull' ? 'btn-git-pull' : 'btn-git-push');
@@ -3184,7 +3533,8 @@ function escHtml(str) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
 }
 
 // ─── Syntax Highlighting ──────────────────────────────────────────────────────
@@ -3250,7 +3600,7 @@ function syntaxHighlight(code, langHint) {
   escaped = escaped.replace(/(&quot;(?:[^&]|&(?!quot;))*?&quot;)/g, (_, m) => protect(`<span class="syn-str">${m}</span>`));
   escaped = escaped.replace(/(&#x27;(?:[^&]|&(?!#x27;))*?&#x27;)/g, (_, m) => protect(`<span class="syn-str">${m}</span>`));
   if (lang === 'javascript' || lang === 'typescript') {
-    escaped = escaped.replace(/(&#96;(?:[^&]|&(?!#96;))*?&#96;)/g, (_, m) => protect(`<span class="syn-str">${m}</span>`));
+    escaped = escaped.replace(/(`[^`]*`)/g, (_, m) => protect(`<span class="syn-str">${m}</span>`));
   }
 
   // Numbers
@@ -3281,7 +3631,7 @@ function _synMarkdown(code) {
   let e = escHtml(code);
   e = e.replace(/^(#{1,6}\s.*)$/gm, '<span class="syn-kw">$1</span>');
   e = e.replace(/(\*\*[^*]+\*\*)/g, '<span class="syn-fn">$1</span>');
-  e = e.replace(/(&#96;[^&]+?&#96;)/g, '<span class="syn-str">$1</span>');
+  e = e.replace(/(`[^`]+?`)/g, '<span class="syn-str">$1</span>');
   e = e.replace(/(\[[^\]]+\]\([^)]+\))/g, '<span class="syn-str">$1</span>');
   return e;
 }
@@ -3453,8 +3803,8 @@ async function _startHeadlessSession(projectName, prompt, resumeSessionId) {
     const body = {
       projectName,
       prompt,
-      model: state.selectedModel,
-      effort: state.selectedEffort,
+      model: state.defaultModel,
+      effort: state.defaultEffort,
     };
     if (resumeSessionId) body.resumeSessionId = resumeSessionId;
     const resp = await fetch(`${base}/api/sessions`, {
@@ -3486,14 +3836,11 @@ async function _startHeadlessSession(projectName, prompt, resumeSessionId) {
     state.selectedSessionId = localSession.sessionId;
     renderSessionBar();
     renderChatMessages();
-    _saveSessions();
 
-    // Open WS stream to receive SDK events
-    _openHeadlessStream(sessionId);
 
     // Switch to chat view
     switchView('chat');
-    setInputState('sending');
+    setInputState(localSession.sessionId, 'sending');
 
   } catch (err) {
     _debugLog('[Headless] Failed to create session:', err?.message || err);
@@ -3504,12 +3851,6 @@ async function _startHeadlessSession(projectName, prompt, resumeSessionId) {
       }
     }, 3000);
   }
-}
-
-function _openHeadlessStream(sessionId) {
-  // Stream events are now received via the relay WS (type: 'stream')
-  // No need to open a separate WS connection (which fails on iOS Safari)
-  _debugLog('[Headless] Listening for stream events via relay WS for session:', sessionId);
 }
 
 function _handleHeadlessEvent(msg) {
@@ -3528,7 +3869,6 @@ function _handleHeadlessEvent(msg) {
           // Completed text block
           session.messages.push({ role: 'assistant', content: block.text });
           renderChatMessages();
-          _saveSessions();
         } else if (block.type === 'tool_use') {
           // Tool use
           session.messages.push({
@@ -3540,15 +3880,16 @@ function _handleHeadlessEvent(msg) {
             status: 'running',
           });
           renderChatMessages();
-          _saveSessions();
         } else if (block.type === 'tool_result') {
           // Find matching tool card and update
-          const toolMsg = [...session.messages].reverse().find(m => m.toolId === block.tool_use_id);
+          // Same vocabulary as the streaming path — _renderToolCard only knows
+          // 'running' | 'error' | 'complete', and a failed tool used to be drawn
+          // with a green tick because is_error was ignored.
+          const toolMsg = _findToolMessage(session, block.tool_use_id);
           if (toolMsg) {
-            toolMsg.status = 'done';
+            toolMsg.status = block.is_error ? 'error' : 'complete';
             toolMsg.toolOutput = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
             renderChatMessages();
-            _saveSessions();
           }
         }
       }
@@ -3560,24 +3901,22 @@ function _handleHeadlessEvent(msg) {
       if (text && !session.messages.some(m => m.role === 'assistant' && m.content === text)) {
         session.messages.push({ role: 'assistant', content: text });
         renderChatMessages();
-        _saveSessions();
       }
     }
   }
 
   if (msg.type === 'idle') {
-    setInputState('idle');
+    setInputState(localSessionId, 'idle');
   }
 
   if (msg.type === 'done') {
-    setInputState('idle');
+    setInputState(localSessionId, 'idle');
   }
 
   if (msg.type === 'error') {
-    session.messages.push({ role: 'assistant', content: `Error: ${msg.error || 'Unknown error'}` });
+    session.messages.push({ role: 'error', content: msg.error || t('err.unknown') });
     renderChatMessages();
-    _saveSessions();
-    setInputState('idle');
+    setInputState(localSessionId, 'idle');
   }
 }
 
@@ -3594,24 +3933,36 @@ async function _sendHeadlessMessage(text) {
   if (session) {
     session.messages.push({ role: 'user', content: text });
     renderChatMessages();
-    _saveSessions();
   }
 
-  setInputState('sending');
+  setInputState(localSessionId, 'sending');
 
   try {
-    await fetch(`${base}/api/sessions/${encodeURIComponent(state._headlessSessionId)}/send`, {
+    const resp = await fetch(`${base}/api/sessions/${encodeURIComponent(state._headlessSessionId)}/send`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ message: text }),
     });
+    // fetch only rejects on a transport failure. A 4xx/5xx resolves, so without
+    // this the composer sat on a spinner for a turn that was never accepted.
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   } catch (err) {
     console.error('[Headless] Failed to send message:', err);
-    setInputState('idle');
+    if (session) session.messages.push({ role: 'error', content: t('err.unknown') });
+    renderChatMessages();
+    setInputState(localSessionId, 'idle');
   }
 }
 
 function _cleanupHeadlessSession() {
+  // The mirror session is keyed off the cloud id, so it becomes unreachable the
+  // moment that id is cleared. Drop it rather than leave an orphan in the
+  // picker and the control list.
+  const localSessionId = state._headlessSessionId ? `headless-${state._headlessSessionId}` : null;
+  if (localSessionId && state.sessions[localSessionId]) {
+    delete state.sessions[localSessionId];
+    if (state.selectedSessionId === localSessionId) state.selectedSessionId = null;
+  }
   state.cloudSessionMode = false;
   state._headlessSessionId = null;
 }

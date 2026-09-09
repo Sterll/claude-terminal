@@ -120,6 +120,35 @@ const TRANSLATIONS = {
     'misc.thinking': 'Réflexion',
     'misc.noDetails': 'Aucun détail disponible',
 
+    // SDK + turn errors surfaced in the transcript
+    'err.rateLimit': 'Limite d’usage atteinte. Patientez un instant.',
+    'err.billing': 'Erreur de facturation.',
+    'err.auth': 'Échec de l’authentification.',
+    'err.maxOutputTokens': 'Limite de jetons de sortie atteinte.',
+    'err.server': 'Erreur serveur.',
+    'err.maxTurns': 'Nombre maximum de tours atteint.',
+    'err.maxBudget': 'Limite de budget atteinte.',
+    'err.duringExecution': 'Erreur pendant l’exécution.',
+    'err.unknown': 'Erreur inconnue.',
+    'misc.project': 'Projet',
+    'misc.install': 'Installer',
+    'session.messageCount': '{count} messages',
+
+    // Accessible names for the icon-only controls
+    'a11y.close': 'Fermer',
+    'a11y.submit': 'Valider',
+    'a11y.back': 'Retour',
+    'a11y.gitPull': 'Git pull',
+    'a11y.gitPush': 'Git push',
+    'a11y.scrollBottom': 'Aller en bas',
+    'a11y.moreOptions': 'Plus d’options',
+    'a11y.removeImage': 'Retirer l’image',
+    'a11y.send': 'Envoyer',
+    'a11y.interrupt': 'Interrompre',
+    'a11y.newChat': 'Nouveau chat',
+    'a11y.sessionPicker': 'Conversation',
+    'a11y.transcript': 'Conversation',
+
     // PWA
     'pwa.addHome': 'Ajouter à l\'écran d\'accueil',
     'pwa.install': 'Installer',
@@ -229,6 +258,35 @@ const TRANSLATIONS = {
     'misc.thinking': 'Thinking',
     'misc.noDetails': 'No details available',
 
+    // SDK + turn errors surfaced in the transcript
+    'err.rateLimit': 'Rate limit reached. Please wait.',
+    'err.billing': 'Billing error.',
+    'err.auth': 'Authentication failed.',
+    'err.maxOutputTokens': 'Max output tokens reached.',
+    'err.server': 'Server error.',
+    'err.maxTurns': 'Max turns reached.',
+    'err.maxBudget': 'Budget limit reached.',
+    'err.duringExecution': 'Error during execution.',
+    'err.unknown': 'Unknown error.',
+    'misc.project': 'Project',
+    'misc.install': 'Install',
+    'session.messageCount': '{count} messages',
+
+    // Accessible names for the icon-only controls
+    'a11y.close': 'Close',
+    'a11y.submit': 'Submit',
+    'a11y.back': 'Back',
+    'a11y.gitPull': 'Git pull',
+    'a11y.gitPush': 'Git push',
+    'a11y.scrollBottom': 'Scroll to bottom',
+    'a11y.moreOptions': 'More options',
+    'a11y.removeImage': 'Remove image',
+    'a11y.send': 'Send',
+    'a11y.interrupt': 'Interrupt',
+    'a11y.newChat': 'New chat',
+    'a11y.sessionPicker': 'Conversation',
+    'a11y.transcript': 'Conversation',
+
     'pwa.addHome': 'Add to your home screen',
     'pwa.install': 'Install',
 
@@ -335,6 +393,35 @@ const TRANSLATIONS = {
     'misc.moreModels': 'Más modelos',
     'misc.thinking': 'Pensamiento',
     'misc.noDetails': 'Sin detalles disponibles',
+
+    // SDK + turn errors surfaced in the transcript
+    'err.rateLimit': 'Límite de uso alcanzado. Espera un momento.',
+    'err.billing': 'Error de facturación.',
+    'err.auth': 'Fallo de autenticación.',
+    'err.maxOutputTokens': 'Límite de tokens de salida alcanzado.',
+    'err.server': 'Error del servidor.',
+    'err.maxTurns': 'Número máximo de turnos alcanzado.',
+    'err.maxBudget': 'Límite de presupuesto alcanzado.',
+    'err.duringExecution': 'Error durante la ejecución.',
+    'err.unknown': 'Error desconocido.',
+    'misc.project': 'Proyecto',
+    'misc.install': 'Instalar',
+    'session.messageCount': '{count} mensajes',
+
+    // Accessible names for the icon-only controls
+    'a11y.close': 'Cerrar',
+    'a11y.submit': 'Enviar',
+    'a11y.back': 'Atrás',
+    'a11y.gitPull': 'Git pull',
+    'a11y.gitPush': 'Git push',
+    'a11y.scrollBottom': 'Ir abajo',
+    'a11y.moreOptions': 'Más opciones',
+    'a11y.removeImage': 'Quitar imagen',
+    'a11y.send': 'Enviar',
+    'a11y.interrupt': 'Interrumpir',
+    'a11y.newChat': 'Nuevo chat',
+    'a11y.sessionPicker': 'Conversación',
+    'a11y.transcript': 'Conversación',
 
     'pwa.addHome': 'A\u00f1adir a la pantalla de inicio',
     'pwa.install': 'Instalar',
@@ -443,6 +530,35 @@ const TRANSLATIONS = {
     'misc.thinking': 'Pemikiran',
     'misc.noDetails': 'Tidak ada detail tersedia',
 
+    // SDK + turn errors surfaced in the transcript
+    'err.rateLimit': 'Batas penggunaan tercapai. Mohon tunggu.',
+    'err.billing': 'Kesalahan penagihan.',
+    'err.auth': 'Autentikasi gagal.',
+    'err.maxOutputTokens': 'Batas token keluaran tercapai.',
+    'err.server': 'Kesalahan server.',
+    'err.maxTurns': 'Batas giliran tercapai.',
+    'err.maxBudget': 'Batas anggaran tercapai.',
+    'err.duringExecution': 'Kesalahan saat eksekusi.',
+    'err.unknown': 'Kesalahan tidak diketahui.',
+    'misc.project': 'Proyek',
+    'misc.install': 'Pasang',
+    'session.messageCount': '{count} pesan',
+
+    // Accessible names for the icon-only controls
+    'a11y.close': 'Tutup',
+    'a11y.submit': 'Kirim',
+    'a11y.back': 'Kembali',
+    'a11y.gitPull': 'Git pull',
+    'a11y.gitPush': 'Git push',
+    'a11y.scrollBottom': 'Ke bawah',
+    'a11y.moreOptions': 'Opsi lainnya',
+    'a11y.removeImage': 'Hapus gambar',
+    'a11y.send': 'Kirim',
+    'a11y.interrupt': 'Hentikan',
+    'a11y.newChat': 'Obrolan baru',
+    'a11y.sessionPicker': 'Percakapan',
+    'a11y.transcript': 'Percakapan',
+
     'pwa.addHome': 'Tambahkan ke layar utama',
     'pwa.install': 'Pasang',
 
@@ -514,6 +630,10 @@ function applyDOM() {
   document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
     const key = el.getAttribute('data-i18n-placeholder');
     if (key) el.placeholder = t(key);
+  });
+  document.querySelectorAll('[data-i18n-aria]').forEach(el => {
+    const key = el.getAttribute('data-i18n-aria');
+    if (key) el.setAttribute('aria-label', t(key));
   });
   document.querySelectorAll('[data-i18n-html]').forEach(el => {
     const key = el.getAttribute('data-i18n-html');

@@ -628,6 +628,37 @@ body.platform-darwin .titlebar-drag {
   flex-direction: column;
   padding: 8px 6px;
   gap: 1px;
+  /* The rail owns the leftover height instead of overflowing past the sidebar:
+     with every tab pinned the list is taller than a laptop viewport, and an
+     unscrollable nav pushed the footer — the collapse button included — off
+     screen, so the sidebar could no longer be folded back. */
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Collapsed keeps `overflow: visible`: its labels live in a `::after` tooltip
+   that has to escape the 56px rail, and a scroll container would clip it. */
+.sidebar:not(.collapsed) .nav-tabs {
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
+.sidebar:not(.collapsed) .nav-tabs::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar:not(.collapsed) .nav-tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar:not(.collapsed) .nav-tabs::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 2px;
+}
+
+.sidebar:not(.collapsed) .nav-tabs::-webkit-scrollbar-thumb:hover {
+  background: var(--bg-active);
 }
 
 .nav-separator {
@@ -638,6 +669,11 @@ body.platform-darwin .titlebar-drag {
   letter-spacing: 0.05em;
   color: var(--text-muted);
   user-select: none;
+  /* Same single-line rhythm as the collapsed rail: a wrapped group heading
+     shifted every row below it out of alignment. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .nav-separator--bare {
@@ -660,6 +696,20 @@ body.platform-darwin .titlebar-drag {
   font-weight: 500;
   transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
   text-align: left;
+  /* Every row is one icon tall, expanded or collapsed. Without this the two
+     long labels ("Espaces de travail", "Base de données") wrapped onto a
+     second line at narrow widths and broke the rhythm of the whole rail. */
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+/* Truncate rather than wrap — the full label is already in the `title`. */
+.nav-tab > span:not(.more-tabs-badge) {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .nav-tab > svg {
@@ -871,6 +921,16 @@ body.platform-darwin .titlebar-drag {
 
 .sidebar.collapsed .nav-tabs .nav-tab-drag-handle {
   display: none;
+}
+
+/* Below 1100px the rail is 160px wide and the handle plus its gap costs a
+   quarter of the room left for the label — the reason "Base de données" had
+   to wrap. Drop the inline affordance there; reordering stays available from
+   the customize modal, which drags the same list. */
+@media (max-width: 1100px) {
+  .nav-tabs .nav-tab-drag-handle {
+    display: none;
+  }
 }
 
 .nav-tab--dragging {
@@ -1097,8 +1157,10 @@ body.platform-darwin .titlebar-drag {
     width: var(--projects-panel-width);
   }
 
+  /* A compact window is short as well as narrow: keep the 7px rhythm of the
+     default rail instead of growing rows to 10px, and only trim the sides. */
   .nav-tab {
-    padding: 10px 12px;
+    padding: 7px 10px 7px 6px;
     gap: 8px;
   }
 

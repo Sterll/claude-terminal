@@ -7,6 +7,31 @@ on:
     branches: [main]
 
 jobs:
+  # Cheap and Ubuntu-only, so a stale CLAUDE.md or a boundary violation is
+  # reported in seconds rather than after the full 6-way test matrix.
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Check CLAUDE.md against the tree
+        run: node scripts/check-docs.js
+
+      # --ignore-scripts skips the electron-rebuild postinstall: linting needs
+      # no native modules, and rebuilding node-pty here would cost minutes.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: ESLint
+        run: npm run lint
+
   test:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -31,3 +56,45 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+  # Launches the real Electron app and clicks through every sidebar tab —
+  # the one thing the 126 jsdom suites structurally cannot check, since they
+  # all run against a mocked window.electron_api and never start the process.
+  #
+  # Blocking, deliberately. It shipped `continue-on-error` for one commit and
+  # in that window it failed twice while the run still reported success, so
+  # nobody saw it. A test that cannot fail the build reports nothing. If it
+  # turns out to be flaky under Xvfb, that is worth seeing and fixing rather
+  # than muting.
+  e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+
+      # Full install, unlike the lint job: this one runs the app, so node-pty,
+      # keytar and better-sqlite3 have to be rebuilt against Electron's ABI.
+      - name: Install dependencies
+        run: npm ci
+
+      # Electron is Chromium, so Playwright already knows the exact library set
+      # it needs on this Ubuntu release — better than hand-listing packages that
+      # get renamed between LTS versions (libasound2 -> libasound2t64, and so on).
+      # xvfb provides the display; libsecret is keytar's, not Chromium's, so
+      # neither comes from install-deps.
+      - name: Install Linux runtime libraries
+        run: |
+          sudo npx playwright install-deps chromium
+          sudo apt-get install -y xvfb libsecret-1-0
+
+      - name: Build renderer
+        run: npm run build:renderer
+
+      - name: Smoke test
+        run: xvfb-run --auto-servernum npm run test:e2e
