@@ -4107,8 +4107,12 @@ function _initSidebarDragDrop() {
       indicator.className = 'nav-tab-drop-indicator';
       nav.appendChild(indicator);
     }
+    // The indicator is absolutely positioned inside the rail, so it scrolls
+    // with the content: its offset is measured from the top of the scrolled
+    // content, not from the visible box. Add scrollTop rather than subtract it
+    // — the sign only started to matter now that the rail can scroll.
     const navRect = nav.getBoundingClientRect();
-    indicator.style.top = (after ? rect.bottom : rect.top) - navRect.top - nav.scrollTop + 'px';
+    indicator.style.top = (after ? rect.bottom : rect.top) - navRect.top + nav.scrollTop + 'px';
   });
 
   nav.addEventListener('drop', e => {
