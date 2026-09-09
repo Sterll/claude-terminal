@@ -58,15 +58,16 @@ jobs:
         run: npm test
 
   # Launches the real Electron app and clicks through every sidebar tab —
-  # the one thing the 125 jsdom suites structurally cannot check.
+  # the one thing the 126 jsdom suites structurally cannot check, since they
+  # all run against a mocked window.electron_api and never start the process.
   #
-  # continue-on-error while it settles in. It drives a real window under a
-  # virtual display, and neither a flaky Xvfb nor a panel that turns out to log
-  # a benign console error on a blank profile should red-flag an unrelated PR.
-  # Once a few runs have shown what the real-world noise is, drop this.
+  # Blocking, deliberately. It shipped `continue-on-error` for one commit and
+  # in that window it failed twice while the run still reported success, so
+  # nobody saw it. A test that cannot fail the build reports nothing. If it
+  # turns out to be flaky under Xvfb, that is worth seeing and fixing rather
+  # than muting.
   e2e:
     runs-on: ubuntu-latest
-    continue-on-error: true
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2

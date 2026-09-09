@@ -694,7 +694,7 @@ toolchain for `node-pty`.
 - `ci.yml` - triggers on push to `main` and PRs. Three jobs:
   - `lint` - Ubuntu only, `npm run check:docs` then `npm run lint`, installed with `--ignore-scripts` so no native rebuild is needed. Fast, fails first.
   - `test` - matrix Node 18 + 20 on windows-latest, ubuntu-latest, macos-latest: `npm ci`, `build:renderer`, `test`.
-  - `e2e` - Ubuntu only, under `xvfb-run`. `continue-on-error` while it settles in: it drives a real window under a virtual display, and neither a flaky Xvfb nor a panel that turns out to log a benign console error on a blank profile should red-flag an unrelated PR. Drop that once a few runs have shown what the real noise is.
+  - `e2e` - Ubuntu only, under `xvfb-run`, and **blocking**. It shipped `continue-on-error` for one commit; in that window it failed twice while the run still reported `success`, so nobody saw it. A test that cannot fail the build reports nothing. Flakiness under Xvfb is worth seeing and fixing rather than muting.
 - `release.yml` - triggers on `v*` tags. Builds NSIS (Windows x64), DMG (macOS arm64 + x64), AppImage (Linux x64).
 - `i18n-badge.yml` - updates i18n coverage badges (gist `ec1241ea62520261790ef5a411b4b212`).
 
