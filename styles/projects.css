@@ -1633,6 +1633,46 @@ body.compact-projects .project-item:not(.active):hover {
   flex-shrink: 0;
 }
 
+/* ── Worktree chip ──
+   Marks a session the CLI re-filed under a worktree of this project. It reads
+   as a sibling of the branch chip rather than a warning: the session is not
+   misplaced, it simply resumes somewhere other than the project root, and the
+   chip is the only thing on the card that says so.
+
+   `--gone` is the worktree that has since been removed. Its transcript is still
+   readable, so the chip is dimmed rather than coloured like an error. */
+.session-meta-worktree {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-family: 'Cascadia Code', monospace;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
+.session-meta-worktree svg {
+  width: 10px;
+  height: 10px;
+  max-width: 10px;
+  max-height: 10px;
+  flex-shrink: 0;
+}
+
+.session-meta-worktree--gone {
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+
 /* ── Card action buttons (rename, move, pin) ──
    One rule for the three: they are the same control with a different glyph.
 

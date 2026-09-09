@@ -732,6 +732,8 @@
     "rename": "Rename",
     "renamePlaceholder": "Session name...",
     "untitled": "Untitled session",
+    "worktreeRan": "Ran in the worktree {{name}} — resumes there",
+    "worktreeGone": "Ran in the worktree {{name}}, which no longer exists",
     "delete": "Delete session",
     "confirmDelete": "Are you sure you want to delete this session? This cannot be undone.",
     "deleted": "Session deleted",

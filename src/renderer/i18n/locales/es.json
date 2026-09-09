@@ -729,6 +729,8 @@
     "rename": "Renombrar",
     "renamePlaceholder": "Nombre de sesión...",
     "untitled": "Sesión sin título",
+    "worktreeRan": "Se ejecutó en el worktree {{name}}: se reanuda allí",
+    "worktreeGone": "Se ejecutó en el worktree {{name}}, que ya no existe",
     "delete": "Eliminar sesión",
     "confirmDelete": "¿Realmente desea eliminar esta sesión? Esta acción es irreversible.",
     "deleted": "Sesión eliminada",
