@@ -33,3 +33,7 @@ window.electron_api = {
 
 // Mock requestAnimationFrame (used by State._notify)
 global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
+
+// Give every recursive removal a Windows retry, so a temp-dir teardown cannot
+// fail a suite whose tests all passed. See tests/helpers/fsRemovalRetry.js.
+require('./helpers/fsRemovalRetry').installFsRemovalRetry(require('fs'));
