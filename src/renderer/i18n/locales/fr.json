@@ -4152,5 +4152,51 @@
     "dock": "Ancrer à côté du chat",
     "undock": "Masquer la colonne",
     "openScreen": "Ouvrir l'écran Fichiers"
+  },
+  "timeline": {
+    "tab": "Chronologie",
+    "title": "Chronologie",
+    "subtitle": "Tout ce qui a été enregistré sur ce projet, en un seul fil",
+    "empty": "Rien d'enregistré pour ce projet sur cette période.",
+    "emptyHint": "Les commits, sessions, temps suivi, runs de workflow et parallèles et artifacts apparaissent ici.",
+    "today": "Aujourd'hui",
+    "yesterday": "Hier",
+    "period": "Période",
+    "days": "{count} jours",
+    "eventCount": "{count} événements",
+    "messageCount": "{count} messages",
+    "taskCount": "{count} tâches",
+    "workedFor": "Travail de {duration}",
+    "filterAll": "Tout",
+    "copyMarkdown": "Copier en Markdown",
+    "copied": "Chronologie copiée dans le presse-papiers",
+    "sourcesFailed": "Lecture impossible : {sources}",
+    "untitledSession": "Session sans titre",
+    "untitledWorkflow": "Workflow sans nom",
+    "untitledRun": "Run sans titre",
+    "untitledArtifact": "Artifact sans titre",
+    "kind": {
+      "commit": "Commit",
+      "session": "Session",
+      "time": "Travail",
+      "workflow": "Workflow",
+      "parallel": "Run parallèle",
+      "artifact": "Artifact"
+    },
+    "status": {
+      "success": "réussi",
+      "failed": "échoué",
+      "running": "en cours",
+      "pending": "en attente",
+      "cancelled": "annulé",
+      "skipped": "ignoré",
+      "timeout": "expiré",
+      "interrupted": "interrompu",
+      "done": "terminé",
+      "merged": "fusionné",
+      "merging": "fusion en cours",
+      "decomposing": "planification",
+      "reviewing": "en revue"
+    }
   }
 }

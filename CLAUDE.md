@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 125 test files)
+npm test                 # Run Jest tests (jsdom, 126 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md has drifted from the tree it describes
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -50,7 +50,7 @@ Electron Renderer Process (Browser)
 ├── src/renderer/index.js            # Module loader & initialization
 ├── src/renderer/core/               # DI container, BaseService/Component/Panel, ApiProvider
 ├── src/renderer/state/              # 14 observable state modules
-├── src/renderer/services/           # 26 services + modular markdown renderer + mention sources
+├── src/renderer/services/           # 27 services + modular markdown renderer + mention sources
 ├── src/renderer/ui/components/      # 16 UI components
 ├── src/renderer/ui/panels/          # 25 UI panels
 ├── src/renderer/features/           # Keyboard shortcuts, quick picker, drag-drop
@@ -58,7 +58,7 @@ Electron Renderer Process (Browser)
 ├── src/renderer/workflow-fields/    # 13 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN locales (3584 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN locales (3624 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting
 
 Project Types (Plugin System)
@@ -260,6 +260,7 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 | `MarkdownRenderer.js` | Rich markdown with mermaid, katex, trees, timelines, compare, metrics, discord blocks, workspace blocks, parallel blocks, etc. |
 | `NodeRegistry.js` | Cache workflow node schemas |
 | `WorkflowGraphEngine.js` | Custom canvas graph editor - a zero-dependency Blueprint-style node editor that **replaced LiteGraph.js**. Split into `GraphModel` (nodes, links, typed pins, serialize), `GraphRenderer` (tinted headers, pins, widgets, links) and `GraphInteraction` (pan, zoom, drag, hit testing) |
+| `ProjectTimeline.js` | Merges the six per-project record sets the app keeps in separate screens (commits, sessions, tracked time, workflow runs, parallel runs, artifacts) into one chronological list. Collects nothing new: the work is normalising six record shapes and three spellings of a timestamp onto one `{ ts, kind, title, subtitle }`. Every source loads independently and may fail on its own — a project with no remote, no workflows and no artifacts is the normal case, not an error |
 | `DiffRenderer.js` | Renders a unified diff the way GitHub does: two gutters, hunk headers, syntax highlighting, word-level marks. Input is Claude Code's `structuredPatch`, which every file-editing tool call already carries in the transcript |
 | `ArtifactService.js` | Renderer side of the artifact library |
 | `ModelCatalogClient.js` | Renderer cache over `ModelCatalogService` |
@@ -303,6 +304,8 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 | `WorkspacePanel` | Workspace KB + advisor chat + concept links |
 | `DatabasePanel` | Multi-driver data browser, SQL editor, Redis tree-view |
 | `KanbanPanel` | Kanban board (tasks by column) |
+
+The dashboard has three sub-views, switched by `_dashViews` and rendered from `DashboardService`: **Overview** (the default), **Kanban** (delegated to `KanbanPanel`) and **Timeline**. The timeline is the only one that loads its own data, through `ProjectTimeline`; it caches the collected events for 30 s so changing the period or a filter chip redraws without six more round trips, and `invalidateCache()` drops that cache alongside the dashboard one.
 | `CloudPanel` | Cloud sync with per-entity toggles, project upload/download, diff modal |
 | `ConnectivityPanel` | Unified local remote + cloud connectivity status (Local / Cloud / claude.ai sub-tabs) |
 | `ClaudeRemotePanel` | Connectivity → claude.ai: the conversations currently shared, with a way back to each tab. Its settings live in Settings → Claude → Remote Control |
@@ -344,7 +347,7 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 ### Internationalization (`src/renderer/i18n/locales/`)
 
 - **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`)
-- **Keys:** 3584 per locale, all five in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
+- **Keys:** 3624 per locale, all five in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
 - **Loading:** only `en.json` is bundled eagerly, as the guaranteed-loaded fallback for `t()`; the others are fetched by `initI18n()`
 - **Detection:** auto-detect from `navigator.language`, `DEFAULT_LANGUAGE` is `fr`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`, `data-i18n="..."` for static HTML
@@ -578,7 +581,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 125 unit test files (jsdom environment)
+npm test                    # Run all 126 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file still matches the tree
 npm run lint                # ESLint (see below)
@@ -587,7 +590,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 125 test files
+- **Framework:** Jest with jsdom, 126 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
@@ -651,7 +654,7 @@ Two documented exceptions, both real:
 
 ### E2E smoke (`tests/e2e/smoke.js`)
 
-All 125 Jest suites run in jsdom against a mocked `window.electron_api`, so nothing
+All 126 Jest suites run in jsdom against a mocked `window.electron_api`, so nothing
 in the repository asserts that the application actually starts. Every regression of
 the shape "the window opens but panel X throws on first render" has had to be found
 by a human opening the app. This covers that gap and only that.

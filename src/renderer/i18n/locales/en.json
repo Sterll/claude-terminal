@@ -4152,5 +4152,51 @@
     "dock": "Dock beside the chat",
     "undock": "Hide the column",
     "openScreen": "Open the Files screen"
+  },
+  "timeline": {
+    "tab": "Timeline",
+    "title": "Timeline",
+    "subtitle": "Everything recorded on this project, in one thread",
+    "empty": "Nothing recorded for this project over this period.",
+    "emptyHint": "Commits, sessions, tracked time, workflow and parallel runs and artifacts all show up here.",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "period": "Period",
+    "days": "{count} days",
+    "eventCount": "{count} events",
+    "messageCount": "{count} messages",
+    "taskCount": "{count} tasks",
+    "workedFor": "Worked {duration}",
+    "filterAll": "All",
+    "copyMarkdown": "Copy as Markdown",
+    "copied": "Timeline copied to the clipboard",
+    "sourcesFailed": "Could not be read: {sources}",
+    "untitledSession": "Untitled session",
+    "untitledWorkflow": "Untitled workflow",
+    "untitledRun": "Untitled run",
+    "untitledArtifact": "Untitled artifact",
+    "kind": {
+      "commit": "Commit",
+      "session": "Session",
+      "time": "Work",
+      "workflow": "Workflow",
+      "parallel": "Parallel run",
+      "artifact": "Artifact"
+    },
+    "status": {
+      "success": "succeeded",
+      "failed": "failed",
+      "running": "running",
+      "pending": "pending",
+      "cancelled": "cancelled",
+      "skipped": "skipped",
+      "timeout": "timed out",
+      "interrupted": "interrupted",
+      "done": "done",
+      "merged": "merged",
+      "merging": "merging",
+      "decomposing": "planning",
+      "reviewing": "under review"
+    }
   }
 }
