@@ -22,6 +22,8 @@ const EXPORTS = [
   '_renderChatBody', '_getOrCreateSession', 'onSessionStarted', 'onChatIdle',
   '_startHeartbeat', '_stopHeartbeat', '_dropSocket', '_wakeUp', '_openWS', '_endReplay',
   'onChatDone', 'onChatError', 'onChatMessage', 'enterProjectHub',
+  '_selectModel', '_selectEffort', '_currentModel', '_currentEffort',
+  '_handleHeadlessEvent', '_cleanupHeadlessSession', '_findToolMessage',
 ];
 
 // jsdom hands the whole test file one document and one window, so every load

@@ -76,8 +76,11 @@ const state = {
   _pendingUserMessage: null,
   _followNextSession: false, // a chat:start this device fired — follow its session:started
   _restoreSessionId: null,   // conversation to reopen once the reconnect replay reaches it
-  selectedModel: 'claude-sonnet-5',
-  selectedEffort: 'high',
+  // Defaults a NEW conversation starts from, mirroring the desktop's stored
+  // chatModel / effortLevel. A pick made inside a conversation is recorded on
+  // that session, never here — see _selectModel().
+  defaultModel: 'claude-sonnet-5',
+  defaultEffort: 'high',
   // Replaced by `models:catalog` once the desktop answers.
   modelCatalog: { primary: MODEL_OPTIONS, legacy: [] },
   inProjectHub: false,
@@ -951,8 +954,8 @@ function handleMessage(msg) {
       state._restoreSessionId = state.selectedSessionId || state._restoreSessionId;
       state.sessions = {};
       state.selectedSessionId = null;
-      if (data.chatModel) { state.selectedModel = data.chatModel; }
-      if (data.effortLevel) { state.selectedEffort = data.effortLevel; }
+      if (data.chatModel) { state.defaultModel = data.chatModel; }
+      if (data.effortLevel) { state.defaultEffort = data.effortLevel; }
       if (data.accentColor) _applyAccentColor(data.accentColor);
       if (data.language) i18n.setLang(data.language);
       _updatePlusMenuSelection();
@@ -1187,6 +1190,8 @@ function _makeSession(sessionId, projectId, tabName, messages) {
     streamEl: null,
     hasToolUse: false,
     status: 'idle',        // idle | active | permission | error
+    model: null,           // set once this device switches it mid-session
+    effort: null,
     running: false,        // a turn is in flight → this session wants the interrupt button
     thinking: false,       // waiting on the first token → this session wants the spinner
     lastActivity: '',      // last action description
@@ -2951,8 +2956,8 @@ function sendMessage() {
       prompt: text || '',
       images,
       mentions: mentionsPayload,
-      model: state.selectedModel,
-      effort: state.selectedEffort,
+      model: state.defaultModel,
+      effort: state.defaultEffort,
     });
     if (!started) {
       state._pendingUserMessage = null;
@@ -3091,6 +3096,7 @@ function _applyInputState(s) {
  */
 function _syncChatUiToSession() {
   const session = state.selectedSessionId ? state.sessions[state.selectedSessionId] : null;
+  _updatePlusMenuSelection();
   const el = $('thinking-indicator');
   if (el) el.classList.toggle('hidden', !session?.thinking);
   _applyInputState(session?.running ? 'sending' : 'idle');
@@ -3198,49 +3204,70 @@ function _renderModelOptions() {
   _updatePlusMenuSelection();
 }
 
+/**
+ * Model and effort belong to the conversation, not to the app — that is the
+ * desktop's rule and the PWA drives the same sessions. Holding one global pair
+ * meant the menu could claim Opus for a conversation still running Sonnet,
+ * simply because Opus was the last thing picked in a different tab.
+ *
+ * The session's own value wins where this device has set one; otherwise the
+ * default a new conversation would start from.
+ */
+function _currentModel() {
+  const session = state.selectedSessionId ? state.sessions[state.selectedSessionId] : null;
+  return session?.model || state.defaultModel;
+}
+
+function _currentEffort() {
+  const session = state.selectedSessionId ? state.sessions[state.selectedSessionId] : null;
+  return session?.effort || state.defaultEffort;
+}
+
 function _updatePlusMenuSelection() {
-  // Model
+  const model = _currentModel();
+  const effort = _currentEffort();
   $('model-options')?.querySelectorAll('.plus-option').forEach(opt => {
-    const isSelected = opt.dataset.model === state.selectedModel;
-    opt.classList.toggle('selected', isSelected);
+    opt.classList.toggle('selected', opt.dataset.model === model);
   });
-  // Effort
   $('effort-options')?.querySelectorAll('.plus-option').forEach(opt => {
-    const isSelected = opt.dataset.effort === state.selectedEffort;
-    opt.classList.toggle('selected', isSelected);
+    opt.classList.toggle('selected', opt.dataset.effort === effort);
   });
 }
 
 function _selectModel(modelId) {
-  const previous = state.selectedModel;
-  state.selectedModel = modelId;
-  _updatePlusMenuSelection();
-
-  // If there's an active session, update it mid-session
-  if (state.selectedSessionId &&
-      !wsSend('settings:update', { sessionId: state.selectedSessionId, model: modelId })) {
-    // The running session still uses the old model — don't show it as switched.
-    state.selectedModel = previous;
+  const session = state.selectedSessionId ? state.sessions[state.selectedSessionId] : null;
+  if (!session) {
+    // No conversation open: this is the model the next one will start with.
+    state.defaultModel = modelId;
     _updatePlusMenuSelection();
-    _flashSendFailure();
-    return; // leave the menu open on the reverted selection
+    _closePlusMenu();
+    return;
   }
+  // The running session still uses the old model until the desktop takes the
+  // change — don't show it as switched on a send that never left the device.
+  if (!wsSend('settings:update', { sessionId: session.sessionId, model: modelId })) {
+    _flashSendFailure();
+    return; // leave the menu open on the unchanged selection
+  }
+  session.model = modelId;
+  _updatePlusMenuSelection();
   _closePlusMenu();
 }
 
 function _selectEffort(effort) {
-  const previous = state.selectedEffort;
-  state.selectedEffort = effort;
-  _updatePlusMenuSelection();
-
-  // If there's an active session, update it mid-session
-  if (state.selectedSessionId &&
-      !wsSend('settings:update', { sessionId: state.selectedSessionId, effort })) {
-    state.selectedEffort = previous;
+  const session = state.selectedSessionId ? state.sessions[state.selectedSessionId] : null;
+  if (!session) {
+    state.defaultEffort = effort;
     _updatePlusMenuSelection();
+    _closePlusMenu();
+    return;
+  }
+  if (!wsSend('settings:update', { sessionId: session.sessionId, effort })) {
     _flashSendFailure();
     return;
   }
+  session.effort = effort;
+  _updatePlusMenuSelection();
   _closePlusMenu();
 }
 
@@ -3769,8 +3796,8 @@ async function _startHeadlessSession(projectName, prompt, resumeSessionId) {
     const body = {
       projectName,
       prompt,
-      model: state.selectedModel,
-      effort: state.selectedEffort,
+      model: state.defaultModel,
+      effort: state.defaultEffort,
     };
     if (resumeSessionId) body.resumeSessionId = resumeSessionId;
     const resp = await fetch(`${base}/api/sessions`, {
@@ -3804,8 +3831,6 @@ async function _startHeadlessSession(projectName, prompt, resumeSessionId) {
     renderChatMessages();
     _saveSessions();
 
-    // Open WS stream to receive SDK events
-    _openHeadlessStream(sessionId);
 
     // Switch to chat view
     switchView('chat');
@@ -3820,12 +3845,6 @@ async function _startHeadlessSession(projectName, prompt, resumeSessionId) {
       }
     }, 3000);
   }
-}
-
-function _openHeadlessStream(sessionId) {
-  // Stream events are now received via the relay WS (type: 'stream')
-  // No need to open a separate WS connection (which fails on iOS Safari)
-  _debugLog('[Headless] Listening for stream events via relay WS for session:', sessionId);
 }
 
 function _handleHeadlessEvent(msg) {
@@ -3859,9 +3878,12 @@ function _handleHeadlessEvent(msg) {
           _saveSessions();
         } else if (block.type === 'tool_result') {
           // Find matching tool card and update
-          const toolMsg = [...session.messages].reverse().find(m => m.toolId === block.tool_use_id);
+          // Same vocabulary as the streaming path — _renderToolCard only knows
+          // 'running' | 'error' | 'complete', and a failed tool used to be drawn
+          // with a green tick because is_error was ignored.
+          const toolMsg = _findToolMessage(session, block.tool_use_id);
           if (toolMsg) {
-            toolMsg.status = 'done';
+            toolMsg.status = block.is_error ? 'error' : 'complete';
             toolMsg.toolOutput = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
             renderChatMessages();
             _saveSessions();
@@ -3916,18 +3938,31 @@ async function _sendHeadlessMessage(text) {
   setInputState(localSessionId, 'sending');
 
   try {
-    await fetch(`${base}/api/sessions/${encodeURIComponent(state._headlessSessionId)}/send`, {
+    const resp = await fetch(`${base}/api/sessions/${encodeURIComponent(state._headlessSessionId)}/send`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ message: text }),
     });
+    // fetch only rejects on a transport failure. A 4xx/5xx resolves, so without
+    // this the composer sat on a spinner for a turn that was never accepted.
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   } catch (err) {
     console.error('[Headless] Failed to send message:', err);
+    if (session) session.messages.push({ role: 'error', content: t('err.unknown') });
+    renderChatMessages();
     setInputState(localSessionId, 'idle');
   }
 }
 
 function _cleanupHeadlessSession() {
+  // The mirror session is keyed off the cloud id, so it becomes unreachable the
+  // moment that id is cleared. Drop it rather than leave an orphan in the
+  // picker and the control list.
+  const localSessionId = state._headlessSessionId ? `headless-${state._headlessSessionId}` : null;
+  if (localSessionId && state.sessions[localSessionId]) {
+    delete state.sessions[localSessionId];
+    if (state.selectedSessionId === localSessionId) state.selectedSessionId = null;
+  }
   state.cloudSessionMode = false;
   state._headlessSessionId = null;
 }
