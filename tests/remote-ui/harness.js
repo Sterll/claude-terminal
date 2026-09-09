@@ -47,15 +47,14 @@ function loadPwa({ token = null } = {}) {
     `return { ${EXPORTS.join(', ')} };`,
   ].join('\n');
 
-  // The PWA logs its whole startup; useful on a phone, noise in a test run.
-  const log = console.log;
+  // The PWA narrates its startup and every send on a closed socket. Useful on a
+  // phone, pure noise here — and it drowns the actual assertion failures.
   console.log = () => {};
-  try {
-    // eslint-disable-next-line no-new-func
-    return new Function(sources)();
-  } finally {
-    console.log = log;
-  }
+  console.warn = () => {};
+  console.debug = () => {};
+
+  // eslint-disable-next-line no-new-func
+  return new Function(sources)();
 }
 
 /** Is the interrupt button (rather than send) the one on screen? */

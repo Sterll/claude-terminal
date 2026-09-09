@@ -74,6 +74,8 @@ const state = {
   currentView: 'projects',
   todayMs: 0,
   _pendingUserMessage: null,
+  _followNextSession: false, // a chat:start this device fired — follow its session:started
+  _restoreSessionId: null,   // conversation to reopen once the reconnect replay reaches it
   selectedModel: 'claude-sonnet-5',
   selectedEffort: 'high',
   // Replaced by `models:catalog` once the desktop answers.
@@ -813,7 +815,11 @@ function handleMessage(msg) {
     case 'hello':
       connSetState('connected');
       // Server is authoritative — clear all local sessions, they'll be
-      // re-created by the session:started + chat-message replay that follows
+      // re-created by the session:started + chat-message replay that follows.
+      // It is NOT authoritative about where the user was looking, though:
+      // remember the open conversation so the replay reopens it instead of
+      // leaving them on whichever session happens to be replayed last.
+      state._restoreSessionId = state.selectedSessionId || state._restoreSessionId;
       state.sessions = {};
       state.selectedSessionId = null;
       if (data.chatModel) { state.selectedModel = data.chatModel; }
@@ -855,6 +861,7 @@ function handleMessage(msg) {
       _showHeadlessBanner(false);
       _cleanupHeadlessSession();
       // Clear cloud/headless sessions — desktop will resend its own via request:init
+      state._restoreSessionId = state.selectedSessionId || state._restoreSessionId;
       state.sessions = {};
       state.selectedSessionId = null;
       renderSessionBar(); renderChatMessages();
@@ -901,7 +908,21 @@ function onProjectsUpdated({ projects, folders, rootOrder }) {
   renderDashboard();
 }
 
+/**
+ * A session appeared: either one this device just asked for, one being replayed
+ * after a reconnect, or one somebody opened on the desktop.
+ *
+ * Only the first deserves to take over the screen. Following every session
+ * started in the current project meant a tab opened on the desktop yanked the
+ * phone out of the conversation it was showing — and on reconnect, where the
+ * server replays one of these per session, it left the user on whichever
+ * happened to be sent last.
+ */
 function onSessionStarted({ sessionId, projectId, tabName }) {
+  const requested = state._followNextSession;
+  state._followNextSession = false;
+  const restoring = !!state._restoreSessionId;
+
   const messages = [];
   if (state._pendingUserMessage) {
     messages.push({ role: 'user', content: state._pendingUserMessage });
@@ -910,21 +931,51 @@ function onSessionStarted({ sessionId, projectId, tabName }) {
   if (!state.sessions[sessionId]) {
     state.sessions[sessionId] = _makeSession(sessionId, projectId, tabName, messages);
   }
-  if (!state.selectedSessionId || projectId === state.selectedProjectId) {
+
+  const adopt = () => {
     state.selectedSessionId = sessionId;
-    state.selectedProjectId = projectId;
+    if (projectId) state.selectedProjectId = projectId;
+  };
+
+  // The conversation the user was reading before the socket dropped. Reselect
+  // it, but do not navigate: they may well have been on another view.
+  if (state._restoreSessionId === sessionId) {
+    state._restoreSessionId = null;
+    adopt();
+    _renderCurrentViewInPlace();
+    _saveSessions();
+    return;
   }
-  if (!state.inProjectHub && projectId) {
-    enterProjectHub(projectId);
-    switchView('chat'); // go straight to chat for new session
-  } else if (state.currentView === 'sessions') {
-    renderSessionsView(); // refresh tabs list
-  } else if (state.currentView !== 'chat') {
-    switchView('chat');
-  } else {
-    renderSessionBar(); renderChatMessages();
+
+  // A chat:start this device fired, or the first session of a cold start.
+  if (requested || (!state.selectedSessionId && !restoring)) {
+    adopt();
+    if (!state.inProjectHub && projectId) {
+      enterProjectHub(projectId);
+      switchView('chat'); // go straight to chat for new session
+    } else if (state.currentView !== 'chat') {
+      switchView('chat');
+    } else {
+      renderChatView();
+    }
+    _saveSessions();
+    return;
   }
+
+  // Mid-replay with a pending restore: keep a selection so the chat is never
+  // empty, but stay put — the restore branch above will correct it.
+  if (!state.selectedSessionId) adopt();
+
+  _renderCurrentViewInPlace();
+  if (state.currentView !== 'chat') $('chat-badge')?.classList.remove('hidden');
   _saveSessions();
+}
+
+/** Refresh whatever the user is looking at, without changing view. */
+function _renderCurrentViewInPlace() {
+  if (state.currentView === 'chat') renderChatView();
+  else if (state.currentView === 'sessions') renderSessionsView();
+  else if (state.currentView === 'control') renderControlView();
 }
 
 function onTabRenamed({ sessionId, tabName }) {
@@ -940,6 +991,15 @@ function onTabRenamed({ sessionId, tabName }) {
 
 function onSessionClosed({ sessionId }) {
   if (!sessionId || !state.sessions[sessionId]) return;
+  // Prompts belonging to a closed conversation can never be answered — drop
+  // them rather than leave them pending forever in the badge counts.
+  for (const m of state.sessions[sessionId].messages) {
+    if (m.role === 'permission' && m.permData?.requestId) {
+      state.pendingPermissions.delete(m.permData.requestId);
+    }
+  }
+  _initRequestedFor.delete(sessionId);
+  if (state._restoreSessionId === sessionId) state._restoreSessionId = null;
   delete state.sessions[sessionId];
   // If the closed session was selected, pick another or clear
   if (state.selectedSessionId === sessionId) {
@@ -959,11 +1019,23 @@ function onTimeUpdate({ todayMs }) {
 
 // ─── Chat Message Handler (mirrors ChatView.js SDK format) ────────────────────
 
+/**
+ * The server sends session:started before any event for that session, so this
+ * only fires on an unexpected ordering. It deliberately does NOT fall back to
+ * state.selectedProjectId: attributing a stray session to whatever project the
+ * user happens to be viewing grafted other projects' conversations onto the
+ * current one. Leave it unattributed and ask the desktop who it belongs to.
+ */
+const _initRequestedFor = new Set();
+
 function _getOrCreateSession(sessionId, projectId) {
   if (!state.sessions[sessionId]) {
-    const pid = projectId || state.selectedProjectId;
-    const project = state.projects.find(p => p.id === pid);
-    state.sessions[sessionId] = _makeSession(sessionId, pid, project?.name || 'Chat', []);
+    const project = projectId ? state.projects.find(p => p.id === projectId) : null;
+    state.sessions[sessionId] = _makeSession(sessionId, projectId || null, project?.name || 'Chat', []);
+    if (!projectId && !_initRequestedFor.has(sessionId)) {
+      _initRequestedFor.add(sessionId);
+      wsSend('request:init', {});
+    }
     _saveSessions();
   }
   return state.sessions[sessionId];
@@ -1264,19 +1336,13 @@ function onChatIdle({ sessionId, projectId }) {
   session.status = 'active';
   session.lastActivity = t('status.claudeWorking');
   _refreshControlIfActive();
+  // Adopt an orphan session so the chat is never empty, but never navigate:
+  // a conversation going active on the desktop is not a reason to pull the user
+  // off the view they chose.
   if (!state.selectedSessionId) {
     state.selectedSessionId = sessionId;
     state.selectedProjectId = projectId || state.selectedProjectId;
-    if (!state.inProjectHub && projectId) {
-      enterProjectHub(projectId);
-      switchView('chat');
-    } else if (state.currentView === 'sessions') {
-      renderSessionsView();
-    } else if (state.currentView !== 'chat') {
-      switchView('chat');
-    } else {
-      renderSessionBar();
-    }
+    _renderCurrentViewInPlace();
   }
   _setThinking(sessionId, true);
   setInputState(sessionId, 'sending');
@@ -1738,6 +1804,7 @@ function resumePastSession(sessionId, projectId) {
     _flashSendFailure();
     return;
   }
+  state._followNextSession = true;
   state.selectedSessionId = null;
   switchView('chat');
   renderChatView();
@@ -2701,6 +2768,7 @@ function sendMessage() {
       _flashSendFailure();
       return;
     }
+    state._followNextSession = true;
     input.value = '';
     input.style.height = 'auto';
     _clearImageAfterSend();
