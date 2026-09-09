@@ -845,6 +845,8 @@
     "appearance": "Appearance",
     "system": "System",
     "explorerGroup": "Explorer",
+    "filesDockedInChat": "File tree beside the chat",
+    "filesDockedInChatDesc": "Keep the project tree docked next to the conversation. The Files screen keeps the viewer and the session diffs.",
     "showDotfiles": "Show dotfiles",
     "showDotfilesDesc": "Show hidden files and folders (starting with a dot) in the file explorer",
     "explorerIgnorePatterns": "Ignore patterns",
@@ -4146,6 +4148,9 @@
     "linesTruncated": "… {count} more lines",
     "sessionCaption": "Session",
     "noSession": "None",
-    "noSessionHint": "browse the whole tree"
+    "noSessionHint": "browse the whole tree",
+    "dock": "Dock beside the chat",
+    "undock": "Hide the column",
+    "openScreen": "Open the Files screen"
   }
 }

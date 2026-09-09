@@ -936,6 +936,16 @@ class SettingsPanel extends BasePanel {
               <div class="settings-card">
                 <div class="settings-toggle-row">
                   <div class="settings-toggle-label">
+                    <div>${t('settings.filesDockedInChat')}</div>
+                    <div class="settings-toggle-desc">${t('settings.filesDockedInChatDesc')}</div>
+                  </div>
+                  <label class="settings-toggle">
+                    <input type="checkbox" id="files-docked-toggle" ${settings.filesDockedInChat ? 'checked' : ''}>
+                    <span class="settings-toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="settings-toggle-row">
+                  <div class="settings-toggle-label">
                     <div>${t('settings.showDotfiles')}</div>
                     <div class="settings-toggle-desc">${t('settings.showDotfilesDesc')}</div>
                   </div>
@@ -2065,6 +2075,8 @@ class SettingsPanel extends BasePanel {
       const newEnable1MContext = context1MToggle ? context1MToggle.checked : settings.enable1MContext || false;
       const ephemeralChatsToggle = document.getElementById('ephemeral-chats-toggle');
       const newEphemeralChats = ephemeralChatsToggle ? ephemeralChatsToggle.checked : settings.ephemeralChats || false;
+      const filesDockedToggle = document.getElementById('files-docked-toggle');
+      const newFilesDockedInChat = filesDockedToggle ? filesDockedToggle.checked : settings.filesDockedInChat === true;
       const showDotfilesToggle = document.getElementById('show-dotfiles-toggle');
       const newShowDotfiles = showDotfilesToggle ? showDotfilesToggle.checked : true;
       const ignorePatternsInput = document.getElementById('explorer-ignore-patterns');
@@ -2124,6 +2136,7 @@ class SettingsPanel extends BasePanel {
         enable1MContext: newEnable1MContext,
         ephemeralChats: newEphemeralChats,
         showDotfiles: newShowDotfiles,
+        filesDockedInChat: newFilesDockedInChat,
         explorerIgnorePatterns: newIgnorePatterns,
         showTabModeToggle: newShowTabModeToggle,
         tabRenameOnSlashCommand: newTabRenameOnSlashCommand,
@@ -2175,6 +2188,12 @@ class SettingsPanel extends BasePanel {
       const pickedNav = navDropdown?.dataset.value;
       if (pickedNav && pickedNav !== (settings.navigationMode === 'sidebar' ? 'sidebar' : 'tabs')) {
         document.dispatchEvent(new CustomEvent('navigation-mode-change', { detail: pickedNav }));
+      }
+
+      // The docked file column is mounted by the renderer (it borrows the Files
+      // screen's tree), so the switch is applied there rather than here.
+      if (newFilesDockedInChat !== (settings.filesDockedInChat === true)) {
+        document.dispatchEvent(new CustomEvent('files-dock-change', { detail: newFilesDockedInChat }));
       }
 
       document.body.classList.toggle('compact-projects', newCompactProjects);

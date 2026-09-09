@@ -940,6 +940,8 @@
     "appearance": "Apparence",
     "system": "Système",
     "explorerGroup": "Explorateur",
+    "filesDockedInChat": "Arborescence à côté du chat",
+    "filesDockedInChatDesc": "Garde l'arborescence du projet ancrée à côté de la conversation. L'écran Fichiers conserve la visionneuse et les diffs de session.",
     "showDotfiles": "Afficher les dotfiles",
     "showDotfilesDesc": "Afficher les fichiers et dossiers cachés (commençant par un point) dans l'explorateur de fichiers",
     "explorerIgnorePatterns": "Patterns à ignorer",
@@ -4146,6 +4148,9 @@
     "linesTruncated": "… {count} lignes de plus",
     "sessionCaption": "Session",
     "noSession": "Aucune",
-    "noSessionHint": "parcourir toute l’arborescence"
+    "noSessionHint": "parcourir toute l’arborescence",
+    "dock": "Ancrer à côté du chat",
+    "undock": "Masquer la colonne",
+    "openScreen": "Ouvrir l'écran Fichiers"
   }
 }

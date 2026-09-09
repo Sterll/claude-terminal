@@ -479,8 +479,10 @@
           </button>
           <!-- In sidebar mode the projects host is moved in here and docked as a
                column; in tab-bar mode it stays a popover above the content. -->
-          <!-- The file explorer used to be docked here as a third column. It is
-               its own screen now (#tab-files), reached from the project menu. -->
+          <!-- The file explorer is its own screen now (#tab-files), but it can
+               still be docked here as a column: the Files screen lends its tree
+               to this host while Claude is on screen (settings > filesDockedInChat). -->
+          <div class="claude-files-dock" id="claude-files-dock" hidden></div>
 
           <!-- Terminals Panel -->
           <div class="terminals-panel">

@@ -1875,6 +1875,11 @@ class FileExplorer extends BaseComponent {
     const panel = document.getElementById('file-explorer-panel');
     if (!resizer || !panel) return;
 
+    // The tree is mounted in two places with two natural widths — the Files
+    // screen's left pane and the column docked beside the chat — so each host
+    // names the setting its width is stored under.
+    const widthKey = panel.dataset.widthKey || 'fileExplorerWidth';
+
     let startX, startWidth;
 
     resizer.addEventListener('mousedown', (e) => {
@@ -1898,7 +1903,7 @@ class FileExplorer extends BaseComponent {
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
         const { settingsState, saveSettingsImmediate } = require('../../state/settings.state');
-        settingsState.setProp('fileExplorerWidth', panel.offsetWidth);
+        settingsState.setProp(widthKey, panel.offsetWidth);
         saveSettingsImmediate();
       };
 
@@ -1907,8 +1912,8 @@ class FileExplorer extends BaseComponent {
     });
 
     const { getSetting: getSettingForWidth, settingsState: ss, saveSettings: saveSett } = require('../../state/settings.state');
-    let savedWidth = getSettingForWidth('fileExplorerWidth');
-    if (!savedWidth) {
+    let savedWidth = getSettingForWidth(widthKey);
+    if (!savedWidth && widthKey === 'fileExplorerWidth') {
       const legacyWidth = localStorage.getItem('file-explorer-width');
       if (legacyWidth) {
         savedWidth = parseInt(legacyWidth);
@@ -1926,6 +1931,21 @@ class FileExplorer extends BaseComponent {
   init() {
     this._initResizer();
     this._attachListeners();
+  }
+
+  /**
+   * Forget which listeners are attached, because the markup they are attached
+   * to is gone.
+   *
+   * Most of _attachListeners() is `onclick =` assignments, which survive a
+   * rebuild by being re-applied. The drag and content-match listeners are
+   * addEventListener() guarded by a flag, so once the tree element is replaced
+   * — switching project, or moving the tree between the Files screen and the
+   * docked column — the flag would keep them from ever being bound again.
+   */
+  resetDomBindings() {
+    this._dragListenersAttached = false;
+    this._contentMatchListenerAttached = false;
   }
 
   reloadIgnorePatterns() {
@@ -1970,6 +1990,7 @@ module.exports = {
   revealPaths: (paths) => _getInstance().revealPaths(paths),
   toggleDotfiles: () => _getInstance().toggleDotfiles(),
   init: () => _getInstance().init(),
+  resetDomBindings: () => _getInstance().resetDomBindings(),
   applyWatcherChanges: (changes) => _getInstance().applyWatcherChanges(changes),
   setSortMode: (mode) => _getInstance().setSortMode(mode),
   reloadIgnorePatterns: () => _getInstance().reloadIgnorePatterns()

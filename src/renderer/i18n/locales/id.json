@@ -845,6 +845,8 @@
     "appearance": "Tampilan",
     "system": "Sistem",
     "explorerGroup": "Penjelajah",
+    "filesDockedInChat": "Pohon file di samping chat",
+    "filesDockedInChatDesc": "Menambatkan pohon proyek di samping percakapan. Layar Files tetap memegang penampil dan diff sesi.",
     "showDotfiles": "Tampilkan dotfile",
     "showDotfilesDesc": "Tampilkan file dan folder tersembunyi (diawali titik) di penjelajah file",
     "explorerIgnorePatterns": "Pola yang diabaikan",
@@ -4146,6 +4148,9 @@
     "linesTruncated": "… {count} baris lagi",
     "sessionCaption": "Sesi",
     "noSession": "Tidak ada",
-    "noSessionHint": "jelajahi seluruh pohon"
+    "noSessionHint": "jelajahi seluruh pohon",
+    "dock": "Tambatkan di samping chat",
+    "undock": "Sembunyikan kolom",
+    "openScreen": "Buka layar Files"
   }
 }

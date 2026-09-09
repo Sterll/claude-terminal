@@ -845,6 +845,8 @@
     "appearance": "外观",
     "system": "系统",
     "explorerGroup": "文件资源管理器",
+    "filesDockedInChat": "聊天旁的文件树",
+    "filesDockedInChatDesc": "把项目文件树停靠在对话旁边。文件页面仍然负责查看器和会话差异。",
     "showDotfiles": "显示点文件",
     "showDotfilesDesc": "在文件资源管理器中显示隐藏的文件和文件夹（以点开头）",
     "explorerIgnorePatterns": "忽略模式",
@@ -4146,6 +4148,9 @@
     "linesTruncated": "… 还有 {count} 行",
     "sessionCaption": "会话",
     "noSession": "无",
-    "noSessionHint": "浏览整个文件树"
+    "noSessionHint": "浏览整个文件树",
+    "dock": "停靠在聊天旁边",
+    "undock": "隐藏该列",
+    "openScreen": "打开文件页面"
   }
 }

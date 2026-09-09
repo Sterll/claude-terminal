@@ -47,6 +47,11 @@ const defaultSettings = {
   remotePersistentPin: false, // Use a fixed PIN that never expires
   remotePersistentPinValue: '', // The custom 6-digit PIN value
   showDotfiles: true, // true = show dotfiles in file explorer (default), false = hide them
+  // Keep the project tree docked beside the chat, the way it was before the
+  // Files screen. The screen still owns the viewer and the session diffs; this
+  // only borrows its tree while Claude is on screen.
+  filesDockedInChat: false,
+  filesDockWidth: null, // Width of that docked column, kept apart from the screen's pane
   explorerIgnorePatterns: [], // Additional ignore patterns for file explorer (user-configured)
   showTabModeToggle: true, // Show Chat/Terminal mode-switch button on terminal tabs
   tabRenameOnSlashCommand: false, // Rename terminal tab to slash command text when submitted

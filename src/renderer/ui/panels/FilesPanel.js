@@ -28,6 +28,14 @@ const api = window.electron_api;
 let _root = null;
 let _project = null;
 let _mounted = false;
+// Where the tree currently lives. 'screen' = the Files screen's left pane,
+// 'dock' = the column beside the chat. FileExplorer binds to fixed ids, so only
+// one of the two can hold the markup at a time — moving between them rebuilds
+// it in the new host and empties the old one.
+let _mode = 'screen';
+// Carried across a move between the two hosts, so the tree comes back where it
+// was rather than at the top.
+let _treeScrollTop = 0;
 // 'project' = the active project's tree. 'overview' = every open project at
 // once, the same scope split the Dashboard has.
 let _scope = 'project';
@@ -53,6 +61,8 @@ const ICONS = {
   folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>',
   history: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 106 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>',
   diff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M5 8h14M5 16h14"/></svg>',
+  dock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>',
+  expand: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14L21 3"/><path d="M21 14v5a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h5"/></svg>',
 };
 
 /** "il y a 3 h" style label, so the session order is visible in the menu. */
@@ -88,6 +98,8 @@ function _screenHtml() {
         <div class="files-toolbar-spacer"></div>
         <button class="btn-icon" id="btn-collapse-explorer" title="${escapeHtml(t('ui.collapseAll'))}">${ICONS.collapse}</button>
         <button class="btn-icon" id="btn-refresh-explorer" title="${escapeHtml(t('common.refresh'))}">${ICONS.refresh}</button>
+        <!-- Where the docked column is discovered: the screen it comes from. -->
+        <button class="btn-icon" id="btn-dock-explorer" title="${escapeHtml(t('files.dock'))}">${ICONS.dock}</button>
       </div>
 
       <div class="files-body">
@@ -107,6 +119,37 @@ function _screenHtml() {
         </div>
         <div class="files-viewer-pane" id="files-viewer"></div>
       </div>
+    </div>`;
+}
+
+/**
+ * The same tree, as a column docked beside the chat.
+ *
+ * No session picker and no viewer: those are the screen's, and a 280px column
+ * has no room to render a diff. A file opens in a tab, the way it did when the
+ * explorer was a column and not a screen.
+ */
+function _dockHtml() {
+  return `
+    <div class="files-tree-pane files-dock" id="file-explorer-panel" data-width-key="filesDockWidth">
+      <div class="files-dock-header">
+        <h2>${escapeHtml(t('fileExplorer.title'))}</h2>
+        <div class="files-dock-actions">
+          <button class="btn-icon" id="btn-collapse-explorer" title="${escapeHtml(t('ui.collapseAll'))}">${ICONS.collapse}</button>
+          <button class="btn-icon" id="btn-refresh-explorer" title="${escapeHtml(t('common.refresh'))}">${ICONS.refresh}</button>
+          <button class="btn-icon" id="btn-expand-explorer" title="${escapeHtml(t('files.openScreen'))}">${ICONS.expand}</button>
+          <button class="btn-icon" id="btn-undock-explorer" title="${escapeHtml(t('files.undock'))}">${ICONS.close}</button>
+        </div>
+      </div>
+      <div class="fe-search-container" id="fe-search-container">
+        <span class="fe-search-icon">${ICONS.search}</span>
+        <input type="text" id="fe-search-input" class="fe-search-input" placeholder="${escapeHtml(t('fileExplorer.searchPlaceholder'))}">
+        <button class="fe-content-search-toggle" id="fe-content-search-toggle" title="${escapeHtml(t('fileExplorer.searchContentToggle'))}">${ICONS.file}</button>
+        <button class="fe-sort-btn" id="fe-sort-btn" title="${escapeHtml(t('fileExplorer.sortFiles'))}">${ICONS.sort}</button>
+        <button class="fe-search-clear" id="fe-search-clear" title="${escapeHtml(t('ui.clearSearch'))}" style="display: none;">${ICONS.close}</button>
+      </div>
+      <div class="file-explorer-tree" id="file-explorer-tree"></div>
+      <div class="panel-resizer" id="file-explorer-resizer"></div>
     </div>`;
 }
 
@@ -229,6 +272,12 @@ function _renderViewerPlaceholder() {
 }
 
 async function openFile(filePath) {
+  // Docked, there is no viewer pane to draw into: the file opens as a tab, the
+  // behaviour the column had before the Files screen existed.
+  if (_mode === 'dock') {
+    _hostCallbacks.onOpenFileTab?.(filePath);
+    return;
+  }
   const pane = document.getElementById('files-viewer');
   if (!pane) return;
   _selectedPath = filePath;
@@ -244,9 +293,10 @@ async function openFile(filePath) {
 
 // ── Mount / lifecycle ────────────────────────────────────────────────────────
 
-// Two actions need the host: opening a folder as a terminal, and mentioning a
-// file in the active chat. Everything else the panel handles itself.
-const _hostCallbacks = { onOpenInTerminal: null, onAddToChat: null };
+// Two actions need the host in both modes; the docked column adds a third,
+// because a file it opens lands in a session tab rather than in a viewer it
+// does not have.
+const _hostCallbacks = { onOpenInTerminal: null, onAddToChat: null, onOpenFileTab: null, onDock: null, onUndock: null, onOpenScreen: null };
 function setCallbacks(cbs) { Object.assign(_hostCallbacks, cbs); }
 
 function _closeMenus() {
@@ -310,6 +360,8 @@ function _wireModifiedFilter() {
 function _wireToolbar() {
   _wireSessionPicker();
   _wireModifiedFilter();
+  const dock = document.getElementById('btn-dock-explorer');
+  if (dock) dock.onclick = () => _hostCallbacks.onDock?.();
 }
 
 /**
@@ -325,7 +377,9 @@ function setScope(scope) {
   const next = scope === 'overview' ? 'overview' : 'project';
   if (next === _scope) return;
   _scope = next;
-  if (!_mounted) return;
+  // The docked column always shows the active project; it keeps the scope for
+  // the screen to pick up on its next activate.
+  if (!_mounted || _mode === 'dock') return;
 
   document.getElementById('files-session')?.toggleAttribute('hidden', _scope === 'overview');
   if (_scope === 'overview') {
@@ -353,25 +407,51 @@ document.addEventListener('click', (e) => {
   _closeMenus();
 });
 
+/** Wire the buttons only the docked column has. */
+function _wireDock() {
+  const undock = document.getElementById('btn-undock-explorer');
+  if (undock) undock.onclick = () => _hostCallbacks.onUndock?.();
+  const expand = document.getElementById('btn-expand-explorer');
+  if (expand) expand.onclick = () => _hostCallbacks.onOpenScreen?.();
+}
+
 /**
- * Build the screen and hand the tree over to FileExplorer. Safe to call on
- * every activate: it only rebuilds when the project changed.
+ * Build the tree in `root` and hand it over to FileExplorer.
+ *
+ * Safe to call on every activate: it only rebuilds when something about the
+ * mounting changed — the project, the host element, or which of the two hosts
+ * is asking. A rebuild carries the tree's scroll position across, since moving
+ * between the screen and the column is a move, not a fresh open.
+ *
+ * @param {HTMLElement} root
+ * @param {Object|null} project
+ * @param {'screen'|'dock'} mode
  */
-function loadPanel(root, project) {
-  _root = root;
+function _mount(root, project, mode) {
   const changedProject = !_project || !project || _project.path !== project.path;
+  const changedHost = _root !== root || _mode !== mode;
+  // Leaving a host behind means emptying it: two copies of the markup would be
+  // two elements answering to `file-explorer-tree`.
+  if (changedHost && _root && _root !== root) _root.innerHTML = '';
+  _root = root;
+  _mode = mode;
   _project = project || null;
 
   if (!_project) {
-    root.innerHTML = _noProjectHtml();
+    root.innerHTML = mode === 'dock' ? '' : _noProjectHtml();
     _mounted = false;
     return;
   }
 
-  if (!_mounted || changedProject) {
-    root.innerHTML = _screenHtml();
+  if (!_mounted || changedProject || changedHost) {
+    const scrollTop = document.getElementById('file-explorer-tree')?.scrollTop || _treeScrollTop;
+    root.innerHTML = mode === 'dock' ? _dockHtml() : _screenHtml();
     _mounted = true;
-    _wireToolbar();
+    if (mode === 'dock') {
+      _wireDock();
+    } else {
+      _wireToolbar();
+    }
     if (changedProject) {
       _sessionId = null;
       _sessionLabel = '';
@@ -380,28 +460,83 @@ function loadPanel(root, project) {
       _modifiedOnly = false;
       _selectedPath = null;
     }
-    _renderViewerPlaceholder();
+    if (mode !== 'dock') _renderViewerPlaceholder();
     // The tree markup exists now, so FileExplorer can bind to it. Clicking a
-    // file lands in this screen's viewer rather than opening a session tab.
+    // file lands in this screen's viewer, or in a session tab when docked.
     FileExplorer.setCallbacks({
       onOpenFile: openFile,
       onOpenInTerminal: (p) => _hostCallbacks.onOpenInTerminal?.(p),
       onAddToChat: (rel, full) => _hostCallbacks.onAddToChat?.(rel, full),
     });
+    // The markup its flag-guarded listeners were bound to has just been
+    // replaced, so those flags have to be cleared or drag & drop and the
+    // content-search hits would go dead in the new host.
+    FileExplorer.resetDomBindings();
     FileExplorer.init();
+    _treeScrollTop = scrollTop;
   }
 
-  const sessionLabel = document.getElementById('files-session-label');
-  if (sessionLabel) sessionLabel.textContent = _sessionId ? _sessionLabel : t('files.noSession');
-  document.getElementById('files-session')?.toggleAttribute('hidden', _scope === 'overview');
+  if (mode !== 'dock') {
+    const sessionLabel = document.getElementById('files-session-label');
+    if (sessionLabel) sessionLabel.textContent = _sessionId ? _sessionLabel : t('files.noSession');
+    document.getElementById('files-session')?.toggleAttribute('hidden', _scope === 'overview');
+  }
 
-  _pushOverlay();
+  // The session overlay belongs to the screen: the column has no picker to
+  // turn it off with, so it always shows the plain tree.
+  if (mode === 'dock') {
+    FileExplorer.setSessionOverlay({ files: null, modifiedOnly: false });
+  } else {
+    _pushOverlay();
+  }
   // _rootPath stays the active project even in Overview: it is what the path
   // guards and the git poll measure against.
   FileExplorer.setRootPath(_project.path);
-  _applyRoots();
+  // Overview is the screen's split; the column follows the active project.
+  if (mode === 'dock') {
+    FileExplorer.setExtraRoots([]);
+  } else {
+    _applyRoots();
+  }
   FileExplorer.show();
   FileExplorer.render();
+  // After the render, not after the innerHTML: the tree has no height to scroll
+  // until its nodes are in.
+  if (_treeScrollTop) {
+    const target = _treeScrollTop;
+    _treeScrollTop = 0;
+    requestAnimationFrame(() => {
+      const tree = document.getElementById('file-explorer-tree');
+      if (tree) tree.scrollTop = target;
+    });
+  }
+}
+
+/** Mount the Files screen. */
+function loadPanel(root, project) {
+  _mount(root, project, 'screen');
+}
+
+/** Mount the tree as the column docked beside the chat. */
+function mountDock(host, project) {
+  _mount(host, project, 'dock');
+}
+
+/**
+ * Take the docked column down. The screen rebuilds itself on its next activate,
+ * so nothing has to be handed back here.
+ */
+function unmountDock() {
+  if (_mode !== 'dock') return;
+  _treeScrollTop = document.getElementById('file-explorer-tree')?.scrollTop || 0;
+  FileExplorer.hide();
+  if (_root) _root.innerHTML = '';
+  _root = null;
+  _mounted = false;
+}
+
+function isDocked() {
+  return _mode === 'dock' && _mounted;
 }
 
 function onDeactivate() {
@@ -415,6 +550,9 @@ function cleanup() {
 
 module.exports = {
   loadPanel,
+  mountDock,
+  unmountDock,
+  isDocked,
   setCallbacks,
   setScope,
   onDeactivate,

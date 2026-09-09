@@ -391,3 +391,60 @@
   cursor: pointer;
 }
 .fv-handoff:hover { background: var(--bg-hover); border-color: var(--accent); }
+
+/* ── The same tree, docked beside the chat ───────────────────────────────────
+   The Files screen is the explorer's home, but it lends its tree to a column
+   in the Claude layout when `filesDockedInChat` is on. One markup, moved — so
+   these rules dress the screen's own pane rather than duplicating it. ── */
+.claude-files-dock {
+  display: flex;
+  flex-shrink: 0;
+  min-height: 0;
+}
+/* `display: flex` above would otherwise win over the hidden attribute. */
+.claude-files-dock[hidden] { display: none; }
+
+.files-tree-pane.files-dock {
+  width: 280px;
+  max-width: 500px;
+  border-right: 1px solid var(--border-color);
+}
+
+.files-dock-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  /* Matches .terminals-tabs-row next to it — 40px plus its border — so the two
+     panels start their content on one line rather than a step. */
+  min-height: 41px;
+  padding: 0 6px 0 14px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+.files-dock-header h2 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.files-dock-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* Same responsive steps the column had before it became a screen. */
+@media (max-width: 1366px) {
+  .files-tree-pane.files-dock { width: 240px; min-width: 180px; }
+}
+@media (max-width: 900px) {
+  .files-tree-pane.files-dock { width: 200px; min-width: 160px; }
+}

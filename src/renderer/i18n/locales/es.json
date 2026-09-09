@@ -842,6 +842,8 @@
     "appearance": "Apariencia",
     "system": "Sistema",
     "explorerGroup": "Explorador",
+    "filesDockedInChat": "Árbol de archivos junto al chat",
+    "filesDockedInChatDesc": "Mantiene el árbol del proyecto anclado junto a la conversación. La pantalla Archivos conserva el visor y los diffs de sesión.",
     "showDotfiles": "Mostrar archivos ocultos",
     "showDotfilesDesc": "Mostrar archivos y carpetas ocultos (que empiezan con punto) en el explorador",
     "explorerIgnorePatterns": "Patrones a ignorar",
@@ -4146,6 +4148,9 @@
     "linesTruncated": "… {count} líneas más",
     "sessionCaption": "Sesión",
     "noSession": "Ninguna",
-    "noSessionHint": "explorar todo el árbol"
+    "noSessionHint": "explorar todo el árbol",
+    "dock": "Anclar junto al chat",
+    "undock": "Ocultar la columna",
+    "openScreen": "Abrir la pantalla Archivos"
   }
 }

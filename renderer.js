@@ -229,6 +229,7 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
   // screen-scoped bits of the docked column.
   document.body.dataset.activeTab = document.body.dataset.activeTab || 'claude';
   syncOverviewEntry();
+  syncFilesDock();
 
   // Initialize Claude event bus and provider (hooks or scraping)
   initClaudeEvents();
@@ -3064,6 +3065,9 @@ function applyProjectsPanelWidth() {
 
 // Changing it from Settings goes through the same path as the first-launch card
 document.addEventListener('navigation-mode-change', (e) => setNavigationMode(e.detail));
+// Settings only writes the flag; mounting the column is the renderer's, since
+// it is the Files screen's tree that gets moved.
+document.addEventListener('files-dock-change', () => syncFilesDock());
 
 function isProjectsPopoverOpen() {
   const popover = document.getElementById('projects-popover');
@@ -3306,8 +3310,65 @@ FilesPanel.setCallbacks({
       termData.chatView.addMentionChip('file', { path: relativePath, fullPath });
       document.querySelector('[data-tab="claude"]')?.click();
     }
-  }
+  },
+  // Docked, the column has no viewer of its own, so a file opens as a tab —
+  // which is also what it did back when the explorer was only a column.
+  onOpenFileTab: (filePath) => {
+    const selectedFilter = projectsState.get().selectedProjectFilter;
+    const projects = projectsState.get().projects;
+    const project = selectedFilter !== null ? projects[selectedFilter] : null;
+    TerminalManager.openFileTab(filePath, project);
+  },
+  // Docking from the screen goes back to Claude: the point of the column is
+  // having the tree while you are in the conversation.
+  onDock: () => {
+    setSetting('filesDockedInChat', true);
+    document.querySelector('.nav-tab[data-tab="claude"]')?.click();
+  },
+  onUndock: () => setFilesDocked(false),
+  onOpenScreen: () => document.querySelector('.nav-tab[data-tab="files"]')?.click()
 });
+
+// ========== FILE EXPLORER DOCKED BESIDE THE CHAT ==========
+// The Files screen is the explorer's home, but it can lend its tree to a column
+// in the Claude layout for people who work with the project in view. Only one
+// host can hold the markup — FileExplorer binds to fixed ids — so the column is
+// mounted while Claude is on screen and handed back when the screen is opened.
+
+/** Take the column down and give the tree back, whoever asked. */
+function hideFilesDock() {
+  if (FilesPanel.isDocked()) FilesPanel.unmountDock();
+  const host = document.getElementById('claude-files-dock');
+  if (host) host.hidden = true;
+}
+
+/** Mount or unmount the docked column to match the setting and the active tab. */
+function syncFilesDock() {
+  const host = document.getElementById('claude-files-dock');
+  if (!host) return;
+  // Claude's own screen only. Settings is reached without a nav tab and tears
+  // the outgoing screen down before it marks itself active, so the class on the
+  // panel is the reliable answer here, not the body marker.
+  const onClaude = document.getElementById('tab-claude')?.classList.contains('active');
+  const project = getCurrentProjectFromBar();
+  // No project means nothing to point the tree at: an empty column would only
+  // eat width.
+  if (getSetting('filesDockedInChat') !== true || !onClaude || !project) {
+    hideFilesDock();
+    return;
+  }
+  host.hidden = false;
+  FilesPanel.mountDock(host, project);
+}
+
+/**
+ * Turn the docked column on or off and apply it right away.
+ * @param {boolean} docked
+ */
+function setFilesDocked(docked) {
+  setSetting('filesDockedInChat', !!docked);
+  syncFilesDock();
+}
 
 /**
  * Show the Files screen for a project. Entry points are the project menu's
@@ -3396,9 +3457,14 @@ projectsState.subscribe(() => {
     api.explorer.watchDir(projects[selectedFilter].path);
     if (document.body.dataset.activeTab === 'files') {
       FilesPanel.loadPanel(document.getElementById('tab-files'), projects[selectedFilter]);
+    } else {
+      // Repoints the docked column at the new project, or mounts it if this is
+      // the first project to open.
+      syncFilesDock();
     }
   } else {
     FileExplorer.hide();
+    hideFilesDock();
     api.explorer.stopWatch();
   }
 });
@@ -3622,11 +3688,15 @@ function _restoreScrollPositions(tabId) {
 const _TAB_LIFECYCLE = {
   claude: {
     activate: () => {
+      // Before the fit: mounting the column takes width off the terminal.
+      syncFilesDock();
       const activeId = terminalsState.get().activeTerminal;
       if (!activeId) return;
       const termData = terminalsState.get().terminals.get(activeId);
       if (termData?.fitAddon) termData.fitAddon.fit();
-    }
+    },
+    // Hand the tree back: the Files screen and the column cannot both hold it.
+    deactivate: () => hideFilesDock()
   },
   git: {
     activate: () => {
@@ -3683,6 +3753,9 @@ const _TAB_LIFECYCLE = {
     activate: () => {
       const container = document.getElementById('tab-files');
       if (!container) return;
+      // Claude's deactivate has already unmounted the column, but a boot
+      // straight onto this screen never ran it.
+      syncFilesDock();
       FilesPanel.loadPanel(container, getCurrentProjectFromBar());
       FilesPanel.setScope(localState.filesScope);
     },
