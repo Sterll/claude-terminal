@@ -2630,11 +2630,21 @@ class SettingsPanel extends BasePanel {
     const listEl = document.getElementById('claude-accounts-list');
     if (!listEl?.isConnected) return;
     if (!force && !listEl.closest('.settings-panel')?.classList.contains('active')) return;
-    if (this._accountsUsageInFlight) return;
+    // The explicit gesture is never swallowed: a background sweep already in
+    // flight would otherwise make the button re-enable itself having done
+    // nothing at all.
+    if (this._accountsUsageInFlight && !force) return;
+
+    if (force) {
+      // Say that every row is being re-read, rather than leaving the previous
+      // figures up for the seconds the sweep takes and looking inert.
+      this._accountsUsage = {};
+      this._paintAccountsUsage(listEl);
+    }
 
     this._accountsUsageInFlight = true;
     try {
-      const res = await this.api.accounts.usage(force ? 0 : undefined);
+      const res = await this.api.accounts.usage(force ? 0 : undefined, force);
       if (res?.success) this._accountsUsage = res.data || {};
     } catch (err) {
       console.warn('[SettingsPanel] account usage failed:', err?.message);

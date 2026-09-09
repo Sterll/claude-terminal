@@ -85,7 +85,38 @@ describe('accounts-usage', () => {
   test('passes the requested max age through, so refresh can force a fetch', async () => {
     await handlers['accounts-usage']({}, { maxAgeMs: 0 });
 
-    expect(mockUsageService.usageForAccount).toHaveBeenCalledWith('acct-max', 0);
+    expect(mockUsageService.usageForAccount).toHaveBeenCalledWith('acct-max', 0, false);
+  });
+
+  test('the explicit refresh forces every account, not just the focused one', async () => {
+    await handlers['accounts-usage']({}, { maxAgeMs: 0, force: true });
+
+    // Without force the fetch trusts the cached token, so an account signed in
+    // again outside the app keeps reporting itself signed out.
+    expect(mockUsageService.usageForAccount).toHaveBeenCalledWith('acct-max', 0, true);
+    expect(mockUsageService.usageForAccount).toHaveBeenCalledWith('acct-team', 0, true);
+  });
+
+  test('the explicit refresh re-seeds stores the once-per-run bound had skipped', async () => {
+    await handlers['accounts-usage']({}, {});
+    mockAccountManager.ensureAccountStore.mockClear();
+
+    await handlers['accounts-usage']({}, { maxAgeMs: 0, force: true });
+
+    expect(mockAccountManager.ensureAccountStore).toHaveBeenCalledTimes(2);
+  });
+
+  test('an account whose fetch throws does not blank the others', async () => {
+    mockUsageService.usageForAccount.mockImplementation(async (id) => {
+      if (id === 'acct-team') throw new Error('keychain denied');
+      return { accountId: id, data: { buckets: [] }, stale: false, error: null };
+    });
+
+    const res = await handlers['accounts-usage']({}, { maxAgeMs: 0, force: true });
+
+    expect(res.success).toBe(true);
+    expect(res.data['acct-max']).toBeTruthy();
+    expect(res.data['acct-team'].error).toBe('keychain denied');
   });
 
   test('bootstraps each credential store once, not on every call', async () => {
