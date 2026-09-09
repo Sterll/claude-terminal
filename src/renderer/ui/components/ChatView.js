@@ -410,6 +410,11 @@ class ChatView extends BaseComponent {
   let pendingDropsTurn = resumeDropsTurn || null;
   let lastStartOpts = null; // cached so we can re-launch the SDK after an account switch
   let switchingAccount = false; // suppress error UI while we hot-swap credentials
+  // A limit refused the turn that was running, so a switch has to ask for that
+  // turn back instead of resuming into a session that answers nothing. Cleared
+  // as soon as a turn runs again, so a later switch from the account menu on an
+  // idle tab stays a plain move.
+  let turnCutByLimit = false;
   let tabNamePending = false; // avoid concurrent tab name requests
   // True when the tab carries a user-chosen name that auto naming must not touch
   const isTabNameLocked = () => {
@@ -4672,12 +4677,26 @@ class ChatView extends BaseComponent {
   }
 
   /**
+   * Codes the CLI describes better than we can.
+   *
+   * One code covers several walls — `rate_limit` is the 429 for a five-hour
+   * limit, a weekly limit and a spend cap alike — and only the CLI's own
+   * sentence says which one was hit and when it lifts: "You've hit your
+   * individual spend limit · run /usage-credits to ask your admin for a higher
+   * limit · your session limit resets 3:10pm". Our phrasing for that code
+   * ("wait a moment before sending another message") is advice that does
+   * nothing for a spend cap, and it hid the reset time and the way out.
+   */
+  const CLI_WORDED_ERROR_CODES = ['rate_limit', 'billing_error', 'account_on_hold'];
+
+  /**
    * The sentence shown for an API failure code. The transcript records the same
    * codes as the live stream, so a resumed conversation reads exactly like the
-   * turn did — with the CLI's own wording kept for codes we have no phrasing for.
+   * turn did — with the CLI's own wording kept for codes we have no phrasing
+   * for, and for the ones it words better.
    *
    * @param {string} code - `rate_limit`, `server_error`, ...
-   * @param {string} [recorded] - What the CLI said, when the code is unknown
+   * @param {string} [recorded] - What the CLI said
    * @returns {string}
    */
   function errorTextForCode(code, recorded = '') {
@@ -4690,15 +4709,66 @@ class ChatView extends BaseComponent {
       server_error: t('chat.errorServer'),
       overloaded: t('chat.errorServer'),
     };
-    return errorMessages[code] || recorded.trim() || t('chat.errorOccurred');
+    const said = (recorded || '').trim();
+    if (said && CLI_WORDED_ERROR_CODES.includes(code)) return said;
+    return errorMessages[code] || said || t('chat.errorOccurred');
   }
 
-  function appendError(text) {
+  /**
+   * @param {string} text
+   * @param {{label: string, onClick: Function}} [action] - a way out offered
+   *   next to the message, for failures the user can actually do something
+   *   about
+   * @returns {HTMLElement}
+   */
+  function appendError(text, action = null) {
     const el = document.createElement('div');
     el.className = 'chat-msg chat-msg-error';
     el.innerHTML = `<div class="chat-error-content">${escapeHtml(text)}</div>`;
+    if (action) attachErrorAction(el, action);
     messagesEl.appendChild(el);
     scrollToBottom();
+    return el;
+  }
+
+  /** @param {HTMLElement} el @param {{label: string, onClick: Function}} action */
+  function attachErrorAction(el, action) {
+    const btn = document.createElement('button');
+    btn.className = 'chat-error-action';
+    btn.textContent = action.label;
+    btn.addEventListener('click', () => {
+      btn.disabled = true;
+      Promise.resolve(action.onClick()).finally(() => { btn.disabled = false; });
+    });
+    el.appendChild(btn);
+  }
+
+  /**
+   * The limit banner, with its way out.
+   *
+   * A limit reaches the transcript twice: the CLI answers the turn with an
+   * assistant message tagged `rate_limit`, whose own sentence we print because
+   * it is the only thing naming which limit was hit and when it lifts, and the
+   * main process then raises that same sentence again as an account limit so
+   * the switch can be offered. Two identical walls were printed, the button
+   * under the second. Reuse the line already sitting there when it says the
+   * same thing and just give it the button.
+   *
+   * @param {string} text
+   * @param {{label: string, onClick: Function}} action
+   * @returns {HTMLElement}
+   */
+  function appendLimitError(text, action) {
+    const last = messagesEl.lastElementChild;
+    if (last
+      && last.classList.contains('chat-msg-error')
+      && !last.querySelector('.chat-error-action')
+      && (last.querySelector('.chat-error-content')?.textContent || '').trim() === (text || '').trim()) {
+      attachErrorAction(last, action);
+      scrollToBottom();
+      return last;
+    }
+    return appendError(text, action);
   }
 
   /**
@@ -7361,6 +7431,8 @@ class ChatView extends BaseComponent {
       case 'message_start':
         if (!isStreaming) setStreaming(true);
         setStatus('thinking', t('chat.thinking'));
+        // A turn is running again, so there is no cut-off turn left to ask for.
+        turnCutByLimit = false;
         blockIndex = 0;
         currentMsgHasToolUse = false;
         turnHadAssistantContent = false;
@@ -7807,7 +7879,13 @@ class ChatView extends BaseComponent {
 
     // SDK-level errors on the assistant message (rate_limit, billing_error, etc.)
     if (msg.error) {
-      const text = errorTextForCode(msg.error);
+      // The CLI puts the failure in the message body, and for a limit that
+      // body is the only thing that names which limit and when it resets.
+      const content = msg.message?.content;
+      const recorded = Array.isArray(content)
+        ? content.filter(b => b?.type === 'text' && b.text).map(b => b.text).join('\n')
+        : '';
+      const text = errorTextForCode(msg.error, recorded);
       removeThinkingIndicator();
       appendError(text);
       turnErrorShown = true;
@@ -7984,124 +8062,209 @@ class ChatView extends BaseComponent {
   });
   unsubscribers.push(unsubError);
 
-  // ── IPC: Usage / rate limit reached → propose account switch ──
+  // ── Account switching (a limit was hit, or the account menu asked for it) ──
 
-  const unsubAccountLimit = api.chat.onAccountLimit(async ({ sessionId: sid, error, activeAccountId, projectId }) => {
-    if (sid !== sessionId) return;
-    if (switchingAccount) return;
+  /**
+   * The prompt sent to pick a cut-off turn back up.
+   *
+   * The CLI's own words for the same thing, and English on purpose: this is a
+   * prompt to the model, not a line of UI.
+   */
+  const RESUME_TURN_PROMPT = 'Continue from where you left off.';
+
+  /**
+   * Re-launch this tab under `newId`, without the guard.
+   *
+   * The account is resolved when the CLI is spawned, so nothing short of a
+   * restart moves a live tab: the process that ran out of budget keeps the
+   * credentials it started with, and every retry hits the same wall.
+   *
+   * @param {string} newId - the account to run as
+   * @param {boolean} resumeTurn - whether a turn was cut off mid-flight
+   * @returns {Promise<boolean>} whether the tab is now on `newId`
+   */
+  async function restartOnAccount(newId, resumeTurn) {
+    // Tell main to close the SDK process so the new credentials take effect
+    const prep = await api.chat.prepareSwitchAccount({ sessionId });
+    if (!prep.success) {
+      appendError(prep.error || 'Failed to prepare session for account switch.');
+      return false;
+    }
+    // Re-launch the same session with the new account
+    if (!lastStartOpts) {
+      appendSystemNotice(t('accounts.switched') || 'Account switched. Send a message to continue.', 'info');
+      sessionId = null;
+      return true;
+    }
+    // `resume` only accepts the CLI's own session UUID. Our `sessionId` is an
+    // app-local `chat-…` handle the CLI has never heard of: handing it over
+    // makes the CLI refuse the resume outright, and the tab carries on with an
+    // empty context while the whole transcript is still on screen.
+    // Before the SDK's init message there is nothing to resume but the id this
+    // tab was opened on.
+    const realSid = sdkSessionId || resumeSessionId;
+    // The binding is read at spawn time, so the restart has to carry the new
+    // account explicitly — lastStartOpts still holds the one that ran out. A
+    // fork's truncation point goes too: it names a message of the session
+    // being resumed, not of the fork that came out of it.
+    //
+    // Three different things can need sending, and only one of them applies
+    // at a time.
+    //
+    // Messages the CLI never wrote down. The offer leaves the composer
+    // usable, so a follow-up can be sent while it is on screen and still be
+    // waiting when the switch aborts the process. Main hands those back — and
+    // only those: anything the CLI acknowledged is in the transcript the
+    // resume brings back, so replaying it would post it twice.
+    //
+    // The opening turn, when there is no session to resume at all. A limit
+    // refused before the SDK's init message means no session file was ever
+    // written, so that turn exists nowhere but the bubble on screen.
+    //
+    // Otherwise, a request to carry on. A resume answers nothing by itself:
+    // the CLI comes back up on a transcript whose last turn was refused and
+    // then waits for a prompt. That is what "Resuming…" used to sit on top of
+    // — a thinking indicator over a session doing nothing, until the user
+    // typed "continue" by hand. Only when a turn really was cut off: a switch
+    // asked for from the account menu on an idle tab has nothing to resume.
+    //
+    // Their uuids ride along so the bubbles already on screen stay matched to
+    // the messages that finally get recorded.
+    const queued = prep.context?.pendingUserMessages || [];
+    const replayOpeningTurn = !realSid && queued.length === 0;
+    const first = queued[0] || (replayOpeningTurn ? lastStartOpts : null);
+    const continueTurn = !first && Boolean(realSid) && resumeTurn;
+    const restartOpts = {
+      ...lastStartOpts,
+      accountId: newId ?? null,
+      prompt: first?.prompt ?? first?.text ?? (continueTurn ? RESUME_TURN_PROMPT : ''),
+      images: first?.images || [],
+      mentions: first?.mentions || [],
+      userMessageUuid: first?.userMessageUuid || null,
+      forkSession: false,
+      resumeSessionAt: null,
+      resumeDropsTurn: null,
+      resumeSessionId: realSid || null,
+    };
+    // A restart with nothing to send comes up idle, waiting for the user to
+    // type — so nothing should be spinning at it.
+    const replayed = Boolean(
+      (restartOpts.prompt || '').trim() || restartOpts.images.length || restartOpts.mentions.length
+    );
+    const notice = queued.length
+      ? (t('accounts.switchedQueuedResent') || 'Account switched. Your last message never reached the previous account, so it is being sent again.')
+      : continueTurn
+        ? (t('accounts.switchedResumed') || 'Account switched. Picking the interrupted turn back up.')
+        : realSid
+          ? (t('accounts.switched') || 'Account switched. Send a message to continue.')
+          : replayed
+            ? (t('accounts.switchedResent') || 'Account switched. The previous conversation was never saved, so your message is being sent again on the new account.')
+            : (t('accounts.switchedNoResume') || 'Account switched. The previous conversation could not be resumed — continuing without its context.');
+    appendSystemNotice(notice, 'info');
+    // Only wait on a turn the SDK will actually run: with nothing to send the
+    // spinner would sit there for the life of the tab.
+    if (replayed) {
+      setStreaming(true);
+      appendThinkingIndicator();
+    }
+    turnCutByLimit = false;
+    const res = await api.chat.start(restartOpts);
+    if (!res.success) {
+      appendError(res.error || t('chat.errorOccurred'));
+      setStreaming(false);
+      return false;
+    }
+    // A restart carries one prompt. Anything else that was still queued
+    // goes back on the new session in the order it was typed, rather than
+    // being dropped for being second.
+    for (const m of queued.slice(1)) {
+      const sent = await api.chat.send({
+        sessionId,
+        text: m.text,
+        images: m.images || [],
+        mentions: m.mentions || [],
+        userMessageUuid: m.userMessageUuid || null,
+      });
+      if (!sent.success) appendError(sent.error || t('chat.errorOccurred'));
+    }
+    return true;
+  }
+
+  /**
+   * Move this tab to `accountId`, one switch at a time.
+   *
+   * @param {string} accountId
+   * @param {Object} [opts]
+   * @param {boolean} [opts.resumeTurn] - ask the model to carry on after the
+   *   restart; defaults to whether a limit cut the last turn short.
+   * @returns {Promise<boolean>}
+   */
+  async function switchAccountAndRestart(accountId, { resumeTurn = turnCutByLimit } = {}) {
+    // `null` is a target of its own — the project following the default account
+    // rather than pinning one — so only an absent argument is refused.
+    if (accountId === undefined || switchingAccount) return false;
+    switchingAccount = true;
+    try {
+      return await restartOnAccount(accountId, resumeTurn);
+    } finally {
+      switchingAccount = false;
+    }
+  }
+
+  /**
+   * Put the switch offer on screen and act on the answer.
+   *
+   * The flag goes up before the modal, not after it: while the offer is open
+   * the stream is still ending under it, and the error banner and the
+   * interrupted marker both have to stay off.
+   *
+   * @param {{error: string, activeAccountId: string|null, projectId: string|null}} ctx
+   * @returns {Promise<boolean>} whether an account was picked and applied
+   */
+  async function offerAccountSwitch(ctx) {
+    if (switchingAccount) return false;
     switchingAccount = true;
     try {
       const { showAccountSwitchModal } = require('./AccountSwitchModal');
       // The modal re-binds this project rather than swapping a global account:
       // a limit hit here is no reason to move every other tab.
-      const limitedProject = projectId
-        ? require('../../state').getProject(projectId)
+      const limitedProject = ctx.projectId
+        ? require('../../state').getProject(ctx.projectId)
         : null;
       const newId = await showAccountSwitchModal({
-        reason: error || t('accounts.limitReached') || 'Usage limit reached on the active account.',
-        activeAccountId,
-        projectId: projectId || null,
+        reason: ctx.error || t('accounts.limitReached') || 'Usage limit reached on the active account.',
+        activeAccountId: ctx.activeAccountId,
+        projectId: ctx.projectId || null,
         projectName: limitedProject?.name || ''
       });
-      if (!newId) {
-        appendError(error || t('chat.errorOccurred'));
-        return;
-      }
-      // Tell main to close the SDK process so the new credentials take effect
-      const prep = await api.chat.prepareSwitchAccount({ sessionId });
-      if (!prep.success) {
-        appendError(prep.error || 'Failed to prepare session for account switch.');
-        return;
-      }
-      // Re-launch the same session with the new account
-      if (!lastStartOpts) {
-        appendSystemNotice(t('accounts.switched') || 'Account switched. Send a new message to continue.', 'info');
-        sessionId = null;
-        return;
-      }
-      // `resume` only accepts the CLI's own session UUID. Our `sessionId` is an
-      // app-local `chat-…` handle the CLI has never heard of: handing it over
-      // makes the CLI refuse the resume outright, and the tab carries on with an
-      // empty context while the whole transcript is still on screen.
-      // Before the SDK's init message there is nothing to resume but the id this
-      // tab was opened on.
-      const realSid = sdkSessionId || resumeSessionId;
-      // The binding is read at spawn time, so the restart has to carry the new
-      // account explicitly — lastStartOpts still holds the one that ran out. A
-      // fork's truncation point goes too: it names a message of the session
-      // being resumed, not of the fork that came out of it.
-      //
-      // Two different things can need re-sending, and only one of them applies
-      // at a time.
-      //
-      // Messages the CLI never wrote down. The offer leaves the composer
-      // usable, so a follow-up can be sent while it is on screen and still be
-      // waiting when the switch aborts the process. Main hands those back — and
-      // only those: anything the CLI acknowledged is in the transcript the
-      // resume brings back, so replaying it would post it twice.
-      //
-      // The opening turn, when there is no session to resume at all. A limit
-      // refused before the SDK's init message means no session file was ever
-      // written, so that turn exists nowhere but the bubble on screen.
-      //
-      // Their uuids ride along so the bubbles already on screen stay matched to
-      // the messages that finally get recorded.
-      const queued = prep.context?.pendingUserMessages || [];
-      const replayOpeningTurn = !realSid && queued.length === 0;
-      const first = queued[0] || (replayOpeningTurn ? lastStartOpts : null);
-      const restartOpts = {
-        ...lastStartOpts,
-        accountId: newId,
-        prompt: first?.prompt ?? first?.text ?? '',
-        images: first?.images || [],
-        mentions: first?.mentions || [],
-        userMessageUuid: first?.userMessageUuid || null,
-        forkSession: false,
-        resumeSessionAt: null,
-        resumeDropsTurn: null,
-        resumeSessionId: realSid || null,
-      };
-      // A restart with nothing to send comes up idle, waiting for the user to
-      // type — so nothing should be spinning at it.
-      const replayed = Boolean(
-        (restartOpts.prompt || '').trim() || restartOpts.images.length || restartOpts.mentions.length
-      );
-      const notice = queued.length
-        ? (t('accounts.switchedQueuedResent') || 'Account switched. Your last message never reached the previous account, so it is being sent again.')
-        : realSid
-          ? (t('accounts.switched') || 'Account switched. Resuming…')
-          : replayed
-            ? (t('accounts.switchedResent') || 'Account switched. The previous conversation was never saved, so your message is being sent again on the new account.')
-            : (t('accounts.switchedNoResume') || 'Account switched. The previous conversation could not be resumed — continuing without its context.');
-      appendSystemNotice(notice, 'info');
-      // Only wait on a turn the SDK will actually run: with nothing queued the
-      // spinner would sit there for the life of the tab.
-      if (realSid || replayed) {
-        setStreaming(true);
-        appendThinkingIndicator();
-      }
-      const res = await api.chat.start(restartOpts);
-      if (!res.success) {
-        appendError(res.error || t('chat.errorOccurred'));
-        setStreaming(false);
-      } else {
-        // A restart carries one prompt. Anything else that was still queued
-        // goes back on the new session in the order it was typed, rather than
-        // being dropped for being second.
-        for (const m of queued.slice(1)) {
-          const sent = await api.chat.send({
-            sessionId,
-            text: m.text,
-            images: m.images || [],
-            mentions: m.mentions || [],
-            userMessageUuid: m.userMessageUuid || null,
-          });
-          if (!sent.success) appendError(sent.error || t('chat.errorOccurred'));
-        }
-      }
+      if (!newId) return false;
+      return await restartOnAccount(newId, true);
     } finally {
       switchingAccount = false;
     }
+  }
+
+  // ── IPC: Usage / rate limit reached → propose account switch ──
+
+  const unsubAccountLimit = api.chat.onAccountLimit(async ({ sessionId: sid, error, activeAccountId, projectId }) => {
+    if (sid !== sessionId) return;
+    // A limit only ever lands mid-turn, so whatever was running was cut short:
+    // a switch from here — or from the account menu right after — has to ask
+    // for that turn back rather than resume into silence.
+    turnCutByLimit = true;
+    // A switch already under way owns the tab. Without this, the limit the
+    // outgoing account reports on its way out would put a second offer — and
+    // then a second banner — on top of the one being acted on.
+    if (switchingAccount) return;
+    const ctx = { error, activeAccountId, projectId };
+    if (await offerAccountSwitch(ctx)) return;
+    // Closing the offer used to be a dead end: the banner said what went wrong
+    // and the only way back to the switch was to spend another turn hitting
+    // the same wall.
+    appendLimitError(error || t('chat.errorOccurred'), {
+      label: t('accounts.switchCta') || 'Switch account',
+      onClick: () => offerAccountSwitch(ctx),
+    });
   });
   unsubscribers.push(unsubAccountLimit);
 
@@ -9265,6 +9428,19 @@ class ChatView extends BaseComponent {
     },
     getSessionId() {
       return sessionId;
+    },
+    /**
+     * Move this tab to another Claude account.
+     *
+     * The account menu re-binds the project, which only decides what the *next*
+     * CLI is spawned with — a live tab keeps the credentials its process was
+     * started with. This is what actually moves it.
+     *
+     * @param {string} accountId
+     * @returns {Promise<boolean>}
+     */
+    switchAccount(accountId) {
+      return switchAccountAndRestart(accountId);
     },
     focus() {
       inputEl?.focus();

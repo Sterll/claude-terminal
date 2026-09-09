@@ -15,6 +15,11 @@
  * Once a real session id exists the opposite holds for anything acknowledged:
  * it is already on disk, and sending it again would post the same message
  * twice.
+ *
+ * Which leaves the resume with nothing to send — and a resume answers nothing
+ * by itself. The CLI comes back up on a transcript whose last turn was refused
+ * and then waits, so a limit-driven switch asks for that turn back. A switch
+ * asked for from the account menu on an idle tab has no turn to ask for.
  */
 
 jest.mock('../../src/renderer/ui/components/AccountSwitchModal', () => ({
@@ -92,7 +97,7 @@ describe('chat account switch', () => {
     try { view?.destroy?.(); } catch (_) { /* teardown is best effort */ }
   });
 
-  it('resumes without resending once the SDK has given a session id', async () => {
+  it('resumes and asks for the cut-off turn back, without resending it', async () => {
     giveSessionId();
 
     await hitLimit();
@@ -100,8 +105,41 @@ describe('chat account switch', () => {
     const restart = lastStart();
     expect(restart.accountId).toBe('acc-team');
     expect(restart.resumeSessionId).toBe('real-uuid-1');
-    // The resumed transcript already holds it; sending it again would double it.
+    // Not the message itself: the resumed transcript already holds it, and
+    // sending it again would double it. A request to carry on instead — without
+    // one the tab comes back up idle under a "Resuming…" that resumes nothing,
+    // which is what left the user typing "continue" by hand.
+    expect(restart.prompt).toBe('Continue from where you left off.');
+    expect(restart.userMessageUuid).toBeNull();
+  });
+
+  it('moves an idle tab from the account menu without asking anything of it', async () => {
+    giveSessionId();
+    // No limit, so no turn was cut short — the tab is simply being re-homed.
+    await view.switchAccount('acc-team');
+    await flush();
+
+    const restart = lastStart();
+    expect(restart.accountId).toBe('acc-team');
+    expect(restart.resumeSessionId).toBe('real-uuid-1');
     expect(restart.prompt).toBe('');
+  });
+
+  it('stops asking for the turn back once one has run', async () => {
+    giveSessionId();
+    await hitLimit();
+    // The restart's own turn gets going: nothing is hanging any more.
+    listeners.onMessage({
+      sessionId: view.getSessionId(),
+      message: { type: 'stream_event', event: { type: 'message_start', message: { model: 'claude-opus-5' } } },
+    });
+    await flush();
+
+    await view.switchAccount('acc-perso');
+    await flush();
+
+    expect(lastStart().accountId).toBe('acc-perso');
+    expect(lastStart().prompt).toBe('');
   });
 
   it('resends a message that never got its turn, alongside the resume', async () => {

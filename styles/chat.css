@@ -742,6 +742,32 @@ mark.chat-search-hit.current {
   border-left: 3px solid rgba(239, 68, 68, 0.5);
 }
 
+/* The way out, for a failure the user can act on — an exhausted account being
+   the one that matters. Sits under the sentence rather than beside it, so a
+   long CLI banner (a spend cap names its reset time) never squeezes it. */
+.chat-error-action {
+  margin: 6px 0 0 3px;
+  padding: 5px 12px;
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.chat-error-action:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.6);
+}
+
+.chat-error-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* System message (resume notice, etc.) */
 .chat-msg-system {
   padding: 0;
