@@ -557,6 +557,10 @@ async function _sendProjectsAndSessions(ws) {
 
     let totalBuffered = 0;
     console.debug(`[Remote] Sending init data — ${projects.length} project(s), ${sessionsToSend.length} session(s) (${activeSessions.length} active, ${sessionsToSend.length - activeSessions.length} buffered)`);
+    // Bracket the burst. Every event below would otherwise make the client
+    // rebuild its whole transcript, so a few hundred of them froze the phone
+    // for seconds on each reconnect. The client draws once, at replay:end.
+    _wsSend(ws, 'replay:start', { sessions: sessionsToSend.length });
     for (const { sessionId, projectId, tabName } of sessionsToSend) {
       _wsSend(ws, 'session:started', { sessionId, projectId, tabName });
 
@@ -569,10 +573,14 @@ async function _sendProjectsAndSessions(ws) {
         }
       }
     }
+    _wsSend(ws, 'replay:end', {});
     if (totalBuffered > 0) {
       console.debug(`[Remote] Replayed ${totalBuffered} buffered chat event(s)`);
     }
   } catch (e) {
+    // The client holds rendering between replay:start and replay:end, so a
+    // failure partway through must still release it or the phone stays blank.
+    _wsSend(ws, 'replay:end', {});
     console.warn(`[Remote] Failed to send init data: ${e.message}`);
   }
 }

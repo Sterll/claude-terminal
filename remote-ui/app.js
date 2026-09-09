@@ -164,6 +164,8 @@ const conn = {
 const HEARTBEAT_INTERVAL_MS = 25_000;
 // Waking from background is the one moment worth probing faster than that.
 const WAKE_PROBE_TIMEOUT_MS = 8_000;
+// A replay that never says it finished must not freeze the UI forever.
+const REPLAY_GUARD_MS = 15_000;
 
 function connSetState(s) {
   conn.state = s;
@@ -568,6 +570,7 @@ function _openWS() {
   const ws = conn.ws;
 
   ws.onopen = () => {
+    _endReplay();
     conn.retryCount = 0;
     _debugLog('[WS] Connected to relay');
     connSetState('connected');
@@ -927,6 +930,8 @@ function handleMessage(msg) {
       _updatePlusMenuSelection();
       renderSessionBar(); renderChatMessages();
       break;
+    case 'replay:start':         _beginReplay(); break;
+    case 'replay:end':           _endReplay(); break;
     case 'models:catalog':       onModelCatalog(data); break;
     case 'projects:updated':     onProjectsUpdated(data); break;
     case 'session:started':      onSessionStarted(data); break;
@@ -1075,6 +1080,7 @@ function onSessionStarted({ sessionId, projectId, tabName }) {
 
 /** Refresh whatever the user is looking at, without changing view. */
 function _renderCurrentViewInPlace() {
+  if (_renderSuspended) return;
   if (state.currentView === 'chat') renderChatView();
   else if (state.currentView === 'sessions') renderSessionsView();
   else if (state.currentView === 'control') renderControlView();
@@ -1590,16 +1596,60 @@ function _setThinking(sessionId, show) {
   if (el) el.classList.toggle('hidden', !show);
 }
 
+// ─── Render Scheduling ────────────────────────────────────────────────────────
+//
+// renderChatMessages() rebuilds the entire transcript. That is cheap enough
+// once per user-visible change and ruinous once per SDK event: a message with
+// five tool results triggered five full rebuilds, and a reconnect replay — up
+// to 500 buffered events per session — froze the phone for seconds.
+//
+// So coalesce: many events in one frame produce one rebuild, and during a
+// replay nothing is drawn at all until the burst is over.
+
+let _renderScheduled = false;
+let _renderSuspended = false;
+let _replayGuardTimer = null;
+
 function _renderIfActive(sessionId) {
-  if (sessionId === state.selectedSessionId && state.currentView === 'chat') {
-    renderChatMessages();
-  }
+  if (sessionId !== state.selectedSessionId || state.currentView !== 'chat') return;
+  if (_renderSuspended || _renderScheduled) return;
+  _renderScheduled = true;
+  requestAnimationFrame(() => {
+    _renderScheduled = false;
+    if (!_renderSuspended) renderChatMessages();
+  });
+}
+
+/**
+ * Hold the UI still while the server replays a session's buffered history.
+ *
+ * The guard timer matters: if the socket dies mid-replay the 'replay:end' never
+ * arrives, and a permanently suspended renderer is a blank app.
+ */
+function _beginReplay() {
+  _renderSuspended = true;
+  clearTimeout(_replayGuardTimer);
+  _replayGuardTimer = setTimeout(() => _endReplay(), REPLAY_GUARD_MS);
+}
+
+function _endReplay() {
+  clearTimeout(_replayGuardTimer);
+  _replayGuardTimer = null;
+  if (!_renderSuspended) return;
+  _renderSuspended = false;
+  renderProjectsList();
+  _renderCurrentViewInPlace();
+}
+
+const SCROLL_STICK_THRESHOLD = 80;
+
+/** Is the user reading the tail, and therefore expecting to follow the stream? */
+function _isNearBottom(container) {
+  return (container.scrollHeight - container.scrollTop - container.clientHeight) < SCROLL_STICK_THRESHOLD;
 }
 
 function _scrollToBottom(container) {
-  const threshold = 80;
-  const nearBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < threshold;
-  if (nearBottom) container.scrollTop = container.scrollHeight;
+  if (_isNearBottom(container)) container.scrollTop = container.scrollHeight;
 }
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
@@ -2189,6 +2239,12 @@ function renderChatMessages() {
     return;
   }
 
+  // Sample the anchor BEFORE the rebuild. Replacing innerHTML destroys every
+  // child, which clamps scrollTop to 0, so a check made afterwards always
+  // concludes the user had scrolled up and refuses to follow the stream — the
+  // transcript jumped to the top on every event instead.
+  const stick = _isNearBottom(container);
+
   let html = '';
   for (const m of session.messages) {
     html += _renderMessage(m);
@@ -2206,7 +2262,7 @@ function renderChatMessages() {
 
   // Event delegation is set up once in _setupChatDelegation() — no per-render listeners needed
 
-  _scrollToBottom(container);
+  if (stick) container.scrollTop = container.scrollHeight;
   _updateScrollFab();
 }
 
@@ -2250,6 +2306,10 @@ function _renderMessage(m) {
 
 function _renderToolCard(m) {
   const icon = getToolIcon(m.toolName);
+  // Expansion is a property of the message, not of the DOM node: renderChatMessages
+  // replaces the whole transcript on every event, so a card the user had just
+  // opened used to snap shut under their finger.
+  const expanded = !!m.expanded;
   const detail = m.toolInput ? getToolDisplayInfo(m.toolName, m.toolInput) : '';
   const truncDetail = _truncate(detail, 70);
   const hasDetail = !!m.toolInput;
@@ -2259,14 +2319,14 @@ function _renderToolCard(m) {
       ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'
       : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
 
-  return `<div class="tool-card ${hasDetail ? 'expandable' : ''}" data-tool-id="${escHtml(m.toolId || '')}">
+  return `<div class="tool-card ${hasDetail ? 'expandable' : ''}${expanded ? ' expanded' : ''}" data-tool-id="${escHtml(m.toolId || '')}">
     <div class="tool-card-row">
       <span class="tool-icon">${icon}</span>
       <span class="tool-name">${escHtml(m.toolName || 'Tool')}</span>
       <span class="tool-detail">${escHtml(truncDetail)}</span>
       <span class="tool-status">${statusIcon}</span>
     </div>
-    <div class="tool-expand-content"></div>
+    <div class="tool-expand-content">${expanded ? _formatToolExpandContent(m) : ''}</div>
   </div>`;
 }
 
@@ -2274,18 +2334,19 @@ function _toggleToolExpand(card) {
   const contentEl = card.querySelector('.tool-expand-content');
   if (!contentEl) return;
 
+  const session = state.sessions[state.selectedSessionId];
+  if (!session) return;
+  const toolMsg = _findToolMessage(session, card.dataset.toolId);
+  if (!toolMsg) return;
+
   if (card.classList.contains('expanded')) {
+    toolMsg.expanded = false;
     card.classList.remove('expanded');
     contentEl.innerHTML = '';
     return;
   }
 
-  const toolId = card.dataset.toolId;
-  const session = state.sessions[state.selectedSessionId];
-  if (!session) return;
-  const toolMsg = _findToolMessage(session, toolId);
-  if (!toolMsg) return;
-
+  toolMsg.expanded = true;
   card.classList.add('expanded');
   contentEl.innerHTML = _formatToolExpandContent(toolMsg);
 }
