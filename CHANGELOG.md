@@ -2,6 +2,23 @@
 
 All notable changes to Claude Terminal are documented in this file.
 
+## [1.3.2] - 2026-09-09
+
+### Added
+- **Updates**: a "What's new" panel appears after restarting into a new version, leading with anything that moved and following with the full release notes
+- **Dashboard**: a project timeline merging every record the app already keeps, so "what happened to this project" has one screen instead of six
+
+### Fixed
+- Remote control (claude.ai / mobile): fully translated PWA, ships with a content-security-policy, accessible icon buttons, a replayed transcript that survives more than one turn, correct conversation scoping for the composer and spinner, faster updates, and no more dropped or mixed-up phone connections
+- Accounts: "refresh usage" now re-reads every account's credential store, and a usage-limit switch keeps the conversation going
+- Projects: stop losing `projects.json` data written by other processes
+- Usage: the usage bar no longer freezes on a pending Keychain prompt
+- Sessions: a session that enters a worktree stays attached to its project
+- Shortcuts: the default push-to-talk shortcut no longer freezes the keyboard on Linux
+- Chat: Enter and Tab now select an @mention instead of throwing an error
+- Sidebar: the expanded rail no longer overflows the window
+- Links opened from chat or the dashboard now open in the browser again
+
 ## [1.3.1] - 2026-09-09
 
 ### Added
