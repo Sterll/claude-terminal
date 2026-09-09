@@ -14,6 +14,7 @@ window.electron_nodeModules = {
       readFile: jest.fn(),
       writeFile: jest.fn(),
       access: jest.fn(),
+      stat: jest.fn(),
       mkdir: jest.fn(),
       copyFile: jest.fn(),
       rename: jest.fn(),
