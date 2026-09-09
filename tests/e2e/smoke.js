@@ -42,6 +42,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { spawn } = require('child_process');
 const { _electron: electron } = require('playwright');
 
 const ROOT = path.join(__dirname, '..', '..');
@@ -81,6 +82,13 @@ function makeProfile() {
     JSON.stringify({
       setupCompleted: true,
       language: 'en',
+      // `navigationMode: null` means "never chosen, ask once on the next
+      // launch", and skipping the wizard leaves it null — so without this the
+      // "Choose your navigation" modal opens over the app a second or two in
+      // and swallows every subsequent click. Pinning it is not hiding a bug:
+      // the prompt is correct behaviour for a profile that never ran the
+      // wizard, and this profile never will.
+      navigationMode: 'sidebar',
       // Everything that would reach the network, spawn a server or ask the user
       // a question stays off. A smoke test should fail because a panel threw,
       // not because a relay was unreachable.
@@ -121,6 +129,67 @@ function makeProfile() {
   };
 }
 
+// ── Page helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * Title of the modal currently covering the app, or null when none is open.
+ *
+ * The overlay element is always in the DOM and only gains `.active` when a
+ * modal is up, so presence alone means nothing.
+ *
+ * @param {import('playwright').Page} win
+ * @returns {Promise<string|null>}
+ */
+function openModalTitle(win) {
+  return win.evaluate(() => {
+    const overlay = document.getElementById('modal-overlay');
+    if (!overlay || !overlay.classList.contains('active')) return null;
+    const title = document.getElementById('modal-title');
+    return (title?.textContent || overlay.innerText || 'untitled').trim().slice(0, 120);
+  });
+}
+
+// ── Launch diagnostics ───────────────────────────────────────────────────────
+
+/**
+ * Playwright reports a failed Electron launch as a bare "Process failed to
+ * launch!" and swallows the process's own stderr, which is where the actual
+ * reason lives — a missing shared library, or a sandbox the kernel refused.
+ * That message cost a full CI round trip to diagnose the first time.
+ *
+ * So on failure we start the same binary ourselves, with the same flags, and
+ * print what it says. `--version` makes it exit immediately: a binary that
+ * cannot even print its version has a environment problem, not an app problem.
+ *
+ * @returns {Promise<string>} whatever the binary emitted, or a note that it ran fine
+ */
+function diagnoseLaunch(env) {
+  return new Promise((resolve) => {
+    let binary;
+    try {
+      binary = require('electron');
+    } catch (e) {
+      return resolve(`could not resolve the electron package: ${e.message}`);
+    }
+    if (typeof binary !== 'string') {
+      return resolve('the electron package did not resolve to a binary path (run `node node_modules/electron/install.js`)');
+    }
+    if (!fs.existsSync(binary)) {
+      return resolve(`the electron binary is missing at ${binary} (run \`node node_modules/electron/install.js\`)`);
+    }
+
+    const child = spawn(binary, ['--no-sandbox', '--version'], { env, timeout: 20_000 });
+    let out = '';
+    child.stdout?.on('data', (d) => { out += d; });
+    child.stderr?.on('data', (d) => { out += d; });
+    child.on('error', (e) => resolve(`could not spawn ${binary}: ${e.message}`));
+    child.on('close', (code) => resolve(
+      out.trim() ? `\`${binary} --version\` (exit ${code}) said:\n${out.trim()}`
+        : `\`${binary} --version\` exited ${code} silently`
+    ));
+  });
+}
+
 // ── Test ─────────────────────────────────────────────────────────────────────
 
 async function run() {
@@ -137,21 +206,35 @@ async function run() {
   const consoleErrors = [];
   let currentTab = 'startup';
 
+  const env = {
+    ...process.env,
+    HOME: profile.home,
+    USERPROFILE: profile.home,
+    // Electron reads this on Windows for some path lookups, and leaving the
+    // developer's value would leak the real profile back in.
+    APPDATA: path.join(profile.home, 'AppData', 'Roaming'),
+    LOCALAPPDATA: path.join(profile.home, 'AppData', 'Local'),
+    CT_DATA_DIR: path.join(profile.home, '.claude-terminal'),
+    CT_E2E: '1',
+  };
+
   try {
     app = await electron.launch({
-      args: [ROOT, `--user-data-dir=${profile.userData}`],
+      args: [
+        ROOT,
+        `--user-data-dir=${profile.userData}`,
+        // Chromium's sandbox needs unprivileged user namespaces, which Ubuntu
+        // 24.04 restricts by default and CI containers usually deny outright.
+        // Without this the process dies before printing anything and Playwright
+        // reports only "Process failed to launch!". Safe here specifically
+        // because this profile is a throwaway directory loading local files.
+        '--no-sandbox',
+        // Xvfb has no GPU; leaving this out costs a few seconds of probing and
+        // a wall of driver warnings on every run.
+        '--disable-gpu',
+      ],
       cwd: ROOT,
-      env: {
-        ...process.env,
-        HOME: profile.home,
-        USERPROFILE: profile.home,
-        // Electron reads this on Windows for some path lookups, and leaving the
-        // developer's value would leak the real profile back in.
-        APPDATA: path.join(profile.home, 'AppData', 'Roaming'),
-        LOCALAPPDATA: path.join(profile.home, 'AppData', 'Local'),
-        CT_DATA_DIR: path.join(profile.home, '.claude-terminal'),
-        CT_E2E: '1',
-      },
+      env,
       timeout: 60_000,
     });
 
@@ -184,7 +267,17 @@ async function run() {
       currentTab = tab;
       const before = consoleErrors.length;
 
-      await win.click(`.nav-tab[data-tab="${tab}"]`);
+      // A modal overlay swallows pointer events, so a click on a covered tab
+      // burns the full Playwright timeout and then reports a wall of retry
+      // logs that never names the modal. Checking first turns 30 wasted
+      // seconds into one line saying what is in the way.
+      const blocking = await openModalTitle(win);
+      if (blocking !== null) {
+        check(`tab "${tab}" opens cleanly`, false, `blocked by an open modal: "${blocking}"`);
+        break;
+      }
+
+      await win.click(`.nav-tab[data-tab="${tab}"]`, { timeout: 10_000 });
       await win.waitForTimeout(TAB_SETTLE_MS);
 
       const produced = consoleErrors.slice(before);
@@ -221,6 +314,16 @@ async function run() {
       // sudden jump is worth a human look.
       console.log(`\n     (main process warnings during the run: ${stats?.warning ?? 0})`);
     }
+  } catch (err) {
+    // A launch failure is the one error worth explaining rather than rethrowing:
+    // Playwright's message names no cause, and the cause is almost always in the
+    // environment rather than in the app.
+    if (/failed to launch/i.test(String(err && err.message))) {
+      console.error('\nElectron did not start. Playwright reports no reason, so here is the binary itself:\n');
+      console.error(await diagnoseLaunch(env));
+      console.error('\nOn Linux this is usually a missing shared library — `npx playwright install-deps chromium` installs the set Chromium needs.');
+    }
+    throw err;
   } finally {
     if (app) await app.close().catch(() => {});
     profile.cleanup();

@@ -82,10 +82,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Electron is Chromium, so Playwright already knows the exact library set
+      # it needs on this Ubuntu release — better than hand-listing packages that
+      # get renamed between LTS versions (libasound2 -> libasound2t64, and so on).
+      # xvfb provides the display; libsecret is keytar's, not Chromium's, so
+      # neither comes from install-deps.
       - name: Install Linux runtime libraries
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2t64 libsecret-1-0
+          sudo npx playwright install-deps chromium
+          sudo apt-get install -y xvfb libsecret-1-0
 
       - name: Build renderer
         run: npm run build:renderer
