@@ -4732,19 +4732,50 @@ class ChatView extends BaseComponent {
     const el = document.createElement('div');
     el.className = 'chat-msg chat-msg-error';
     el.innerHTML = `<div class="chat-error-content">${escapeHtml(text)}</div>`;
-    if (action) {
-      const btn = document.createElement('button');
-      btn.className = 'chat-error-action';
-      btn.textContent = action.label;
-      btn.addEventListener('click', () => {
-        btn.disabled = true;
-        Promise.resolve(action.onClick()).finally(() => { btn.disabled = false; });
-      });
-      el.appendChild(btn);
-    }
+    if (action) attachErrorAction(el, action);
     messagesEl.appendChild(el);
     scrollToBottom();
     return el;
+  }
+
+  /** @param {HTMLElement} el @param {{label: string, onClick: Function}} action */
+  function attachErrorAction(el, action) {
+    const btn = document.createElement('button');
+    btn.className = 'chat-error-action';
+    btn.textContent = action.label;
+    btn.addEventListener('click', () => {
+      btn.disabled = true;
+      Promise.resolve(action.onClick()).finally(() => { btn.disabled = false; });
+    });
+    el.appendChild(btn);
+  }
+
+  /**
+   * The limit banner, with its way out.
+   *
+   * A limit reaches the transcript twice: the CLI answers the turn with an
+   * assistant message tagged `rate_limit`, whose own sentence we print because
+   * it is the only thing naming which limit was hit and when it lifts, and the
+   * main process then raises that same sentence again as an account limit so
+   * the switch can be offered. Two identical walls were printed, the button
+   * under the second. Reuse the line already sitting there when it says the
+   * same thing and just give it the button.
+   *
+   * @param {string} text
+   * @param {{label: string, onClick: Function}} action
+   * @returns {HTMLElement}
+   */
+  function appendLimitError(text, action) {
+    const last = messagesEl.lastElementChild;
+    if (last
+      && last.classList.contains('chat-msg-error')
+      && !last.querySelector('.chat-error-action')
+      && (last.querySelector('.chat-error-content')?.textContent || '').trim() === (text || '').trim()) {
+      attachErrorAction(last, action);
+      scrollToBottom();
+      return last;
+    }
+    return appendError(text, action);
   }
 
   /**
@@ -8237,7 +8268,7 @@ class ChatView extends BaseComponent {
     // Closing the offer used to be a dead end: the banner said what went wrong
     // and the only way back to the switch was to spend another turn hitting
     // the same wall.
-    appendError(error || t('chat.errorOccurred'), {
+    appendLimitError(error || t('chat.errorOccurred'), {
       label: t('accounts.switchCta') || 'Switch account',
       onClick: () => offerAccountSwitch(ctx),
     });
