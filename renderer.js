@@ -116,6 +116,7 @@ const {
 const registry = require('./src/project-types/registry');
 const { mergeTranslations } = require('./src/renderer/i18n');
 const ModalComponent = require('./src/renderer/ui/components/Modal');
+const WhatsNew = require('./src/renderer/ui/components/WhatsNew');
 const { MemoryEditor, GitChangesPanel, ShortcutsManager, SettingsPanel, SkillsAgentsPanel, PluginsPanel, MarketplacePanel, McpPanel, WorkflowPanel, DatabasePanel, CloudPanel, ConnectivityPanel, ControlTowerPanel, SessionReplayPanel, ParallelTaskPanel, WorkspacePanel, ErrorLogPanel, FilesPanel, ArtifactsPanel } = require('./src/renderer/ui/panels');
 // Not re-exported by the panels index: ConnectivityPanel embeds it as a sub-tab,
 // but its polling lifecycle is driven from the tab registry below.
@@ -230,6 +231,28 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
   document.body.dataset.activeTab = document.body.dataset.activeTab || 'claude';
   syncOverviewEntry();
   syncFilesDock();
+
+  // First launch on a new version: say what moved, since the update banner's
+  // "What's new" was only ever shown before the restart. A profile with no
+  // projects is a fresh install and has nothing to catch up on.
+  WhatsNew.setCallbacks({
+    onOpenTab: (tab) => document.querySelector(`.nav-tab[data-tab="${tab}"]`)?.click(),
+    onOpenSetting: (key) => {
+      // The button says "turn it on", so it turns it on rather than dropping
+      // the user in Settings to find the switch themselves.
+      if (key === 'filesDockedInChat') {
+        setFilesDocked(true);
+        document.querySelector('.nav-tab[data-tab="claude"]')?.click();
+        return;
+      }
+      _switchToSettingsTab();
+    }
+  });
+  WhatsNew.maybeShow({
+    showModal,
+    closeModal,
+    hasHistory: (projectsState.get().projects || []).length > 0,
+  }).catch(() => {});
 
   // Initialize Claude event bus and provider (hooks or scraping)
   initClaudeEvents();

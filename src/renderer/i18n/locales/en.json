@@ -4204,5 +4204,24 @@
       "decomposing": "planning",
       "reviewing": "under review"
     }
+  },
+  "whatsNew": {
+    "title": "What's new in v{version}",
+    "movedTitle": "What moved",
+    "notesTitle": "Release notes",
+    "notesUnavailable": "Release notes could not be loaded — check the changelog online.",
+    "showMe": "Show me",
+    "turnItOn": "Turn it on",
+    "gotIt": "Got it",
+    "moves": {
+      "filesScreen": {
+        "title": "The file explorer became its own screen",
+        "body": "It used to be a column in the Claude layout, behind a small side-panel button. It is now the Files screen, in the Project group, and it also renders what each past session changed."
+      },
+      "filesDock": {
+        "title": "The file tree can sit beside the chat again",
+        "body": "If you worked with the tree in view, it can be docked back as a column next to the conversation. Off by default; the Files screen keeps the viewer and the session diffs."
+      }
+    }
   }
 }

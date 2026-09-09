@@ -4204,5 +4204,24 @@
       "decomposing": "perencanaan",
       "reviewing": "ditinjau"
     }
+  },
+  "whatsNew": {
+    "title": "Yang baru di v{version}",
+    "movedTitle": "Yang berpindah",
+    "notesTitle": "Catatan rilis",
+    "notesUnavailable": "Catatan rilis tidak dapat dimuat — lihat changelog secara daring.",
+    "showMe": "Tunjukkan",
+    "turnItOn": "Aktifkan",
+    "gotIt": "Mengerti",
+    "moves": {
+      "filesScreen": {
+        "title": "Penjelajah file kini menjadi layar tersendiri",
+        "body": "Dulu berupa kolom di tata letak Claude, di balik tombol panel samping kecil. Sekarang menjadi layar Files, di grup Project, dan juga menampilkan apa yang diubah setiap sesi sebelumnya."
+      },
+      "filesDock": {
+        "title": "Pohon file bisa kembali berada di samping chat",
+        "body": "Jika Anda bekerja dengan pohon file terlihat, kini bisa ditambatkan lagi sebagai kolom di samping percakapan. Nonaktif secara bawaan; layar Files tetap memegang penampil dan diff sesi."
+      }
+    }
   }
 }

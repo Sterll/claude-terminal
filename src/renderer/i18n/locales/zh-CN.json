@@ -4204,5 +4204,24 @@
       "decomposing": "规划中",
       "reviewing": "审阅中"
     }
+  },
+  "whatsNew": {
+    "title": "v{version} 有什么新变化",
+    "movedTitle": "位置变动",
+    "notesTitle": "发行说明",
+    "notesUnavailable": "无法加载发行说明 — 请在线查看更新日志。",
+    "showMe": "带我去看",
+    "turnItOn": "开启",
+    "gotIt": "知道了",
+    "moves": {
+      "filesScreen": {
+        "title": "文件浏览器变成了独立页面",
+        "body": "它以前是 Claude 布局中的一列，藏在一个不起眼的侧栏按钮后面。现在它是「项目」分组下的文件页面，还能显示每个历史会话改动了什么。"
+      },
+      "filesDock": {
+        "title": "文件树可以重新停靠在聊天旁边",
+        "body": "如果你习惯让文件树一直可见，它可以重新以一列的形式停靠在对话旁边。默认关闭；文件页面仍然负责查看器和会话差异。"
+      }
+    }
   }
 }

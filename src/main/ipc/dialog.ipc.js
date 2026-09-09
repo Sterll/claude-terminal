@@ -243,6 +243,16 @@ function registerDialogHandlers() {
     return app.getVersion();
   });
 
+  // Release notes for a version already installed. The updater fetches these
+  // before an install to fill the banner's "What's new"; asking again after the
+  // restart is what lets the app say what changed once you are actually in it.
+  ipcMain.handle('get-release-notes', async (event, version) => {
+    if (!version || typeof version !== 'string') return null;
+    // No initialize() here: this is a plain GitHub read, and arming the
+    // auto-updater as a side effect of asking what changed would be a surprise.
+    return updaterService.fetchReleaseNotes(version);
+  });
+
   // Install update and restart
   ipcMain.on('update-install', () => {
     updaterService.quitAndInstall();

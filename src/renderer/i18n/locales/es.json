@@ -4204,5 +4204,24 @@
       "decomposing": "planificación",
       "reviewing": "en revisión"
     }
+  },
+  "whatsNew": {
+    "title": "Novedades de la v{version}",
+    "movedTitle": "Lo que cambió de sitio",
+    "notesTitle": "Notas de la versión",
+    "notesUnavailable": "No se pudieron cargar las notas de la versión — consulta el changelog en línea.",
+    "showMe": "Muéstrame",
+    "turnItOn": "Activar",
+    "gotIt": "Entendido",
+    "moves": {
+      "filesScreen": {
+        "title": "El explorador de archivos ahora es una pantalla propia",
+        "body": "Antes era una columna del diseño de Claude, detrás de un pequeño botón de panel lateral. Ahora es la pantalla Archivos, en el grupo Proyecto, y también muestra lo que cambió cada sesión anterior."
+      },
+      "filesDock": {
+        "title": "El árbol de archivos puede volver a estar junto al chat",
+        "body": "Si trabajabas con el árbol a la vista, puede anclarse de nuevo como columna junto a la conversación. Desactivado por defecto; la pantalla Archivos conserva el visor y los diffs de sesión."
+      }
+    }
   }
 }

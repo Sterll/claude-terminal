@@ -2346,3 +2346,85 @@ mark.qp-hl {
   gap: 8px;
   justify-content: flex-end;
 }
+
+/* ========== WHAT'S NEW ==========
+   Shown once per version, at launch. "What moved" leads because it is the part
+   people are looking for; the release notes are the reading material below it. */
+.whats-new {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.whats-new-section-title {
+  margin: 0 0 10px;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+.whats-new-move {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+.whats-new-move-text { flex: 1; min-width: 0; }
+
+.whats-new-move-title {
+  font-size: var(--font-base);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.whats-new-move-body {
+  font-size: var(--font-sm);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* The point of the panel: not being told a thing moved, but being taken there. */
+.whats-new-move-action {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 6px 14px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.whats-new-move-action:hover { background: var(--accent-hover); }
+
+.whats-new-notes {
+  font-size: var(--font-sm);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.whats-new-notes h1,
+.whats-new-notes h2 { font-size: var(--font-md); margin: 16px 0 8px; color: var(--text-primary); }
+.whats-new-notes h3 { font-size: var(--font-base); margin: 12px 0 6px; color: var(--text-primary); }
+.whats-new-notes img { max-height: 20px; vertical-align: middle; }
+.whats-new-notes table { font-size: var(--font-xs); }
+
+.whats-new-offline {
+  padding: 12px 16px;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+}

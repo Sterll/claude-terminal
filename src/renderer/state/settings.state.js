@@ -87,6 +87,10 @@ const defaultSettings = {
   // so the More menu is now opt-in rather than the default state.
   pinnedTabs: ['claude', 'dashboard', 'files', 'git', 'session-replay', 'tasks', 'control-tower', 'workspace', 'memory', 'timetracking', 'database', 'skills', 'agents', 'plugins', 'mcp', 'workflows', 'errorlog', 'connectivity'],
   activeTab: 'claude', // Last active sidebar tab (restored on restart)
+  // Version this profile last ran. Null on a profile older than the What's new
+  // panel, which is why an existing project list is what tells an upgrade from
+  // a fresh install — see WhatsNew.shouldShow.
+  lastSeenVersion: null,
   openProjectIds: [], // Projects with a tab in the project bar, in tab order (restored on restart)
   navigationMode: null, // 'tabs' | 'sidebar' | null = never chosen, ask once on next launch
   tabsOrder: null, // null = canonical order, otherwise array of all tabIds in custom order

@@ -4204,5 +4204,24 @@
       "decomposing": "planification",
       "reviewing": "en revue"
     }
+  },
+  "whatsNew": {
+    "title": "Nouveautés de la v{version}",
+    "movedTitle": "Ce qui a changé de place",
+    "notesTitle": "Notes de version",
+    "notesUnavailable": "Les notes de version n'ont pas pu être chargées — consultez le changelog en ligne.",
+    "showMe": "Montre-moi",
+    "turnItOn": "Activer",
+    "gotIt": "Compris",
+    "moves": {
+      "filesScreen": {
+        "title": "L'explorateur de fichiers est devenu un écran à part entière",
+        "body": "C'était une colonne du layout Claude, derrière un petit bouton de panneau latéral. C'est maintenant l'écran Fichiers, dans le groupe Projet, et il affiche aussi ce que chaque session passée a modifié."
+      },
+      "filesDock": {
+        "title": "L'arborescence peut de nouveau s'afficher à côté du chat",
+        "body": "Si vous travailliez avec l'arborescence sous les yeux, elle peut être réancrée en colonne à côté de la conversation. Désactivé par défaut ; l'écran Fichiers conserve la visionneuse et les diffs de session."
+      }
+    }
   }
 }
