@@ -23,6 +23,8 @@ const EXPORTS = [
   '_startHeartbeat', '_stopHeartbeat', '_dropSocket', '_wakeUp', '_openWS', '_endReplay',
   'onChatDone', 'onChatError', 'onChatMessage', 'enterProjectHub',
   '_selectModel', '_selectEffort', '_currentModel', '_currentEffort',
+  'escHtml', 'renderMarkdown', 'syntaxHighlight', 'gitPull', 'onGitResult',
+  'renderProjectsList',
   '_handleHeadlessEvent', '_cleanupHeadlessSession', '_findToolMessage',
 ];
 

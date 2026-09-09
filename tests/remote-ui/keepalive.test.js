@@ -119,3 +119,30 @@ describe('waking from the background', () => {
     expect(sockets.length).toBe(0);
   });
 });
+
+describe('git actions cannot hang forever', () => {
+  test('a reply that never comes re-enables the buttons', () => {
+    pwa.state.projects = [{ id: 'p1', name: 'P', path: '/tmp/p1' }];
+    pwa.state.selectedProjectId = 'p1';
+    pwa.conn.ws = { readyState: 1, send() {}, close() {} };
+
+    pwa.gitPull();
+    expect(document.getElementById('btn-git-pull').classList.contains('busy')).toBe(true);
+
+    jest.advanceTimersByTime(30_000);
+
+    expect(document.getElementById('btn-git-pull').classList.contains('busy')).toBe(false);
+  });
+
+  test('a reply that does come cancels the deadline', () => {
+    pwa.state.projects = [{ id: 'p1', name: 'P', path: '/tmp/p1' }];
+    pwa.state.selectedProjectId = 'p1';
+    pwa.conn.ws = { readyState: 1, send() {}, close() {} };
+
+    pwa.gitPull();
+    pwa.onGitResult('pull', { success: true });
+    jest.advanceTimersByTime(60_000);
+
+    expect(document.getElementById('btn-git-pull').classList.contains('busy')).toBe(false);
+  });
+});

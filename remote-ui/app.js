@@ -104,16 +104,11 @@ const state = {
 // }
 
 // ─── Session Persistence ──────────────────────────────────────────────────────
-// Sessions are fully server-authoritative: on (re)connect the server replays
-// all buffered chat events.  No client-side storage needed.
-
-function _saveSessions() {
-  // No-op — server is the source of truth.
-  // Kept as a callable stub so existing call-sites don't need changes.
-}
+// There is none: the server replays every buffered chat event on connect, so it
+// is the single source of truth. _restoreSessions only clears keys written by
+// versions that did persist locally.
 
 function _restoreSessions() {
-  // Clean up legacy sessionStorage keys from previous versions
   try {
     sessionStorage.removeItem('remote_sessions');
     sessionStorage.removeItem('remote_selected_session');
@@ -1081,7 +1076,6 @@ function onSessionStarted({ sessionId, projectId, tabName }) {
     state._restoreSessionId = null;
     adopt();
     _renderCurrentViewInPlace();
-    _saveSessions();
     return;
   }
 
@@ -1096,7 +1090,6 @@ function onSessionStarted({ sessionId, projectId, tabName }) {
     } else {
       renderChatView();
     }
-    _saveSessions();
     return;
   }
 
@@ -1106,7 +1099,6 @@ function onSessionStarted({ sessionId, projectId, tabName }) {
 
   _renderCurrentViewInPlace();
   if (state.currentView !== 'chat') $('chat-badge')?.classList.remove('hidden');
-  _saveSessions();
 }
 
 /** Refresh whatever the user is looking at, without changing view. */
@@ -1145,7 +1137,6 @@ function onSessionClosed({ sessionId }) {
     const remaining = Object.values(state.sessions).filter(s => s.projectId === state.selectedProjectId);
     state.selectedSessionId = remaining.length ? remaining[0].sessionId : null;
   }
-  _saveSessions();
   if (state.currentView === 'sessions') renderSessionsView();
   if (state.currentView === 'chat') renderChatView();
   if (state.currentView === 'control') renderControlView();
@@ -1175,7 +1166,6 @@ function _getOrCreateSession(sessionId, projectId) {
       _initRequestedFor.add(sessionId);
       wsSend('request:init', {});
     }
-    _saveSessions();
   }
   return state.sessions[sessionId];
 }
@@ -1340,7 +1330,6 @@ function _handleStreamEvent(session, sessionId, event) {
         _refreshControlIfActive();
       }
       _renderIfActive(sessionId);
-      _saveSessions();
       break;
   }
 }
@@ -1499,7 +1488,6 @@ function onChatDone({ sessionId }) {
   _refreshControlIfActive();
   setInputState(sessionId, 'idle');
   _renderIfActive(sessionId);
-  _saveSessions();
   if (state.currentView !== 'chat') $('chat-badge')?.classList.remove('hidden');
   _showNotification(
     t('status.claudeFinished'),
@@ -1520,7 +1508,6 @@ function onChatError({ sessionId, error }) {
   _setThinking(sessionId, false);
   setInputState(sessionId, 'idle');
   _renderIfActive(sessionId);
-  _saveSessions();
   if (state.currentView !== 'chat') $('chat-badge')?.classList.remove('hidden');
   _showNotification(
     t('status.claudeError'),
@@ -2140,7 +2127,9 @@ function _renderItem(itemId, depth, visited = new Set()) {
   }
   const project = state.projects.find(p => p.id === itemId);
   if (project) {
-    const color = escHtml(project.color || '#d97706');
+    // Validated, not merely escaped: this is interpolated into a style
+    // attribute, where escaping alone still allows arbitrary CSS through.
+    const color = /^#[0-9a-fA-F]{3,8}$/.test(project.color) ? project.color : '#d97706';
     const iconDisplay = project.icon ? escHtml(project.icon) : escHtml((project.name || project.id).charAt(0).toUpperCase());
     return `<div class="project-card" data-project-id="${escHtml(project.id)}" style="padding-left:${12 + depth * 20}px">
       <div class="project-icon-wrap" style="background:${color}18;color:${color}">
@@ -2514,7 +2503,9 @@ function setupChatInput() {
   // Scroll FAB
   const chatMsgs = $('chat-messages');
   if (chatMsgs) {
-    chatMsgs.addEventListener('scroll', _updateScrollFab);
+    // Passive: this never calls preventDefault, and saying so lets the browser
+    // scroll without waiting on it.
+    chatMsgs.addEventListener('scroll', _updateScrollFab, { passive: true });
   }
 }
 
@@ -2992,7 +2983,6 @@ function sendMessage() {
       retryId: sent ? null : _registerFailedSend('chat:send', sendData),
     });
     renderChatMessages();
-    _saveSessions();
   }
   input.value = '';
   input.style.height = 'auto';
@@ -3292,6 +3282,16 @@ function _scrollToBottomSmooth() {
 
 let _gitData = null;
 let _gitBusy = null; // 'pull' | 'push' | null
+let _gitTimeout = null;
+// The desktop answers every git:pull / git:push, but only if it is still there
+// to answer. Without a deadline a reply lost to a dropped socket left both
+// buttons disabled for the rest of the session.
+const GIT_REPLY_TIMEOUT_MS = 30_000;
+
+function _armGitTimeout(action) {
+  clearTimeout(_gitTimeout);
+  _gitTimeout = setTimeout(() => onGitResult(action, { success: false }), GIT_REPLY_TIMEOUT_MS);
+}
 
 // _gitBusy is only ever cleared by onGitResult, so a dropped send used to leave
 // both buttons disabled for the rest of the session. Clear it ourselves instead.
@@ -3304,7 +3304,9 @@ function gitPull() {
   if (!wsSend('git:pull', { cwd: project.path })) {
     onGitResult('pull', { success: false });
     _flashSendFailure();
+    return;
   }
+  _armGitTimeout('pull');
 }
 
 function gitPush() {
@@ -3316,10 +3318,14 @@ function gitPush() {
   if (!wsSend('git:push', { cwd: project.path })) {
     onGitResult('push', { success: false });
     _flashSendFailure();
+    return;
   }
+  _armGitTimeout('push');
 }
 
 function onGitResult(action, data) {
+  clearTimeout(_gitTimeout);
+  _gitTimeout = null;
   _gitBusy = null;
   _updateGitBtns();
   const btn = $(action === 'pull' ? 'btn-git-pull' : 'btn-git-push');
@@ -3527,7 +3533,8 @@ function escHtml(str) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
 }
 
 // ─── Syntax Highlighting ──────────────────────────────────────────────────────
@@ -3593,7 +3600,7 @@ function syntaxHighlight(code, langHint) {
   escaped = escaped.replace(/(&quot;(?:[^&]|&(?!quot;))*?&quot;)/g, (_, m) => protect(`<span class="syn-str">${m}</span>`));
   escaped = escaped.replace(/(&#x27;(?:[^&]|&(?!#x27;))*?&#x27;)/g, (_, m) => protect(`<span class="syn-str">${m}</span>`));
   if (lang === 'javascript' || lang === 'typescript') {
-    escaped = escaped.replace(/(&#96;(?:[^&]|&(?!#96;))*?&#96;)/g, (_, m) => protect(`<span class="syn-str">${m}</span>`));
+    escaped = escaped.replace(/(`[^`]*`)/g, (_, m) => protect(`<span class="syn-str">${m}</span>`));
   }
 
   // Numbers
@@ -3624,7 +3631,7 @@ function _synMarkdown(code) {
   let e = escHtml(code);
   e = e.replace(/^(#{1,6}\s.*)$/gm, '<span class="syn-kw">$1</span>');
   e = e.replace(/(\*\*[^*]+\*\*)/g, '<span class="syn-fn">$1</span>');
-  e = e.replace(/(&#96;[^&]+?&#96;)/g, '<span class="syn-str">$1</span>');
+  e = e.replace(/(`[^`]+?`)/g, '<span class="syn-str">$1</span>');
   e = e.replace(/(\[[^\]]+\]\([^)]+\))/g, '<span class="syn-str">$1</span>');
   return e;
 }
@@ -3829,7 +3836,6 @@ async function _startHeadlessSession(projectName, prompt, resumeSessionId) {
     state.selectedSessionId = localSession.sessionId;
     renderSessionBar();
     renderChatMessages();
-    _saveSessions();
 
 
     // Switch to chat view
@@ -3863,7 +3869,6 @@ function _handleHeadlessEvent(msg) {
           // Completed text block
           session.messages.push({ role: 'assistant', content: block.text });
           renderChatMessages();
-          _saveSessions();
         } else if (block.type === 'tool_use') {
           // Tool use
           session.messages.push({
@@ -3875,7 +3880,6 @@ function _handleHeadlessEvent(msg) {
             status: 'running',
           });
           renderChatMessages();
-          _saveSessions();
         } else if (block.type === 'tool_result') {
           // Find matching tool card and update
           // Same vocabulary as the streaming path — _renderToolCard only knows
@@ -3886,7 +3890,6 @@ function _handleHeadlessEvent(msg) {
             toolMsg.status = block.is_error ? 'error' : 'complete';
             toolMsg.toolOutput = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
             renderChatMessages();
-            _saveSessions();
           }
         }
       }
@@ -3898,7 +3901,6 @@ function _handleHeadlessEvent(msg) {
       if (text && !session.messages.some(m => m.role === 'assistant' && m.content === text)) {
         session.messages.push({ role: 'assistant', content: text });
         renderChatMessages();
-        _saveSessions();
       }
     }
   }
@@ -3914,7 +3916,6 @@ function _handleHeadlessEvent(msg) {
   if (msg.type === 'error') {
     session.messages.push({ role: 'error', content: msg.error || t('err.unknown') });
     renderChatMessages();
-    _saveSessions();
     setInputState(localSessionId, 'idle');
   }
 }
@@ -3932,7 +3933,6 @@ async function _sendHeadlessMessage(text) {
   if (session) {
     session.messages.push({ role: 'user', content: text });
     renderChatMessages();
-    _saveSessions();
   }
 
   setInputState(localSessionId, 'sending');
