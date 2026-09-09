@@ -596,6 +596,7 @@
     "waiting": "等待...",
     "pressEscapeToCancel": "按 Esc 键取消",
     "modifierRequired": "需要修饰键（Ctrl、Alt、Shift）",
+    "unsafeKeyOnLinux": "在 Linux 上此键通常未映射，绑定它会捕获整个键盘。请另选一个按键。",
     "conflictWith": "冲突：{label}",
     "openSettings": "打开设置",
     "closeTerminal": "关闭终端",

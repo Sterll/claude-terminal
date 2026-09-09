@@ -596,6 +596,7 @@
     "waiting": "Waiting...",
     "pressEscapeToCancel": "Press Escape to cancel",
     "modifierRequired": "A modifier (Ctrl, Alt, Shift) is required",
+    "unsafeKeyOnLinux": "On Linux this key is often unmapped, and binding it would capture the entire keyboard. Pick another key.",
     "conflictWith": "Conflict with: {label}",
     "openSettings": "Open settings",
     "closeTerminal": "Close terminal",

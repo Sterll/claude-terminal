@@ -66,6 +66,7 @@ function bootstrapApp() {
 
   const fs = require('fs');
   const { loadAccentColor, settingsFile } = require('./src/main/utils/paths');
+  const { resolveGlobalShortcuts } = require('./src/shared/global-shortcuts');
   const { initializeServices, cleanupServices, hookEventServer } = require('./src/main/services');
   const { registerAllHandlers } = require('./src/main/ipc');
   const {
@@ -179,25 +180,16 @@ function bootstrapApp() {
   });
 
   /**
-   * Default global shortcut keybindings
-   */
-  const GLOBAL_SHORTCUT_DEFAULTS = {
-    globalQuickPicker: 'CommandOrControl+Shift+P',
-    globalNewTerminal: 'CommandOrControl+Shift+T',
-    globalNewWorktree: 'CommandOrControl+Shift+W',
-    // F13 by default: no game binds it, and any gaming mouse can map a side
-    // button to it — so it can be pressed mid-game without freeing a hand.
-    globalPushToTalk: 'F13'
-  };
-
-  /**
    * Global shortcut action handlers
    */
   const GLOBAL_SHORTCUT_ACTIONS = {
     /**
-     * Push-to-talk. Unlike every other global action this must NOT call
-     * showMainWindow(): the whole point is to dictate while a fullscreen game
-     * holds focus, and raising the window would minimise the game.
+     * Push-to-talk. Unbound by default — the user has to pick a key, see
+     * GLOBAL_SHORTCUT_DEFAULTS in src/shared/global-shortcuts.js.
+     *
+     * Unlike every other global action this must NOT call showMainWindow():
+     * the whole point is to dictate while a fullscreen game holds focus, and
+     * raising the window would minimise the game.
      *
      * It toggles rather than holds because globalShortcut only reports the key
      * press — Electron exposes no key-release event — so the renderer stops on
@@ -240,15 +232,6 @@ function bootstrapApp() {
   };
 
   /**
-   * Convert renderer-style key string (Ctrl+Shift+P) to Electron accelerator format
-   */
-  function toElectronAccelerator(key) {
-    if (!key) return null;
-    return key.replace(/Ctrl/gi, 'CommandOrControl')
-      .replace(/Meta/gi, 'CommandOrControl');
-  }
-
-  /**
    * Load global shortcut overrides from settings.json
    */
   function loadGlobalShortcutSettings() {
@@ -280,19 +263,20 @@ function bootstrapApp() {
     registeredAccelerators.clear();
 
     const config = overrides || loadGlobalShortcutSettings();
-    if (!config.enabled) return;
+    const { resolved, rejected } = resolveGlobalShortcuts(config);
 
-    for (const [id, defaultKey] of Object.entries(GLOBAL_SHORTCUT_DEFAULTS)) {
-      const customKey = config.overrides[id];
-      const accelerator = customKey ? toElectronAccelerator(customKey) : defaultKey;
+    for (const { id, accelerator, reason } of rejected) {
+      console.warn(`[GlobalShortcuts] Refusing to register ${id} (${accelerator}): ${reason}`);
+    }
+
+    for (const { id, accelerator } of resolved) {
       const action = GLOBAL_SHORTCUT_ACTIONS[id];
-      if (accelerator && action) {
-        try {
-          globalShortcut.register(accelerator, action);
-          registeredAccelerators.add(accelerator);
-        } catch (e) {
-          console.error(`[GlobalShortcuts] Failed to register ${id} (${accelerator}):`, e);
-        }
+      if (!action) continue;
+      try {
+        globalShortcut.register(accelerator, action);
+        registeredAccelerators.add(accelerator);
+      } catch (e) {
+        console.error(`[GlobalShortcuts] Failed to register ${id} (${accelerator}):`, e);
       }
     }
   }
