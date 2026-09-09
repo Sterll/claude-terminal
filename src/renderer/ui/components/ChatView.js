@@ -2317,21 +2317,14 @@ class ChatView extends BaseComponent {
       if ((e.key === 'Enter' || e.key === 'Tab') && mentionSelectedIndex >= 0 && items[mentionSelectedIndex]) {
         e.preventDefault();
         const item = items[mentionSelectedIndex];
-        if (mentionMode === 'file') {
-          selectMentionFile(item.dataset.path, item.dataset.fullpath);
-        } else if (mentionMode === 'projects') {
-          selectMentionProject(item.dataset.projectid, item.dataset.projectname, item.dataset.projectpath);
-        } else if (mentionMode === 'context') {
-          selectContextPack(item.dataset.packid, item.dataset.packname);
-        } else if (mentionMode === 'prompt') {
-          selectPromptTemplate(item.dataset.promptid, item.dataset.promptname);
-        } else {
-          // Any other picker mode (conversations, tabs, workspace, registry sources...)
-          // has no data-type on its items — delegate to the picker's own onSelect.
-          const cfg = Object.values(PICKER_CONFIGS).find(c => c.mode === mentionMode);
-          if (cfg) cfg.onSelect(item);
-          else selectMentionType(item.dataset.type);
-        }
+        // Every picker mode carries its own onSelect, and the click path
+        // (mousedown, below) has always gone straight through it. Keyboard
+        // selection does the same, so Enter and Tab land exactly where a click
+        // would. The fallback covers the type list itself, whose items have no
+        // picker mode of their own.
+        const cfg = Object.values(PICKER_CONFIGS).find(c => c.mode === mentionMode);
+        if (cfg) cfg.onSelect(item);
+        else selectMentionType(item.dataset.type);
         return;
       }
       if (e.key === 'Escape') {
