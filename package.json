@@ -18,6 +18,7 @@
     "generate-assets": "node build-assets/generate-installer-images.js",
     "test": "jest",
     "test:watch": "jest --watch",
+    "check:docs": "node scripts/check-docs.js",
     "postinstall": "electron-rebuild -f -w node-pty,keytar,better-sqlite3 || echo rebuild skipped",
     "lab": "node scripts/workflow-lab/run-lab.js",
     "lab:audit": "node scripts/workflow-lab/audit-slots.js"
