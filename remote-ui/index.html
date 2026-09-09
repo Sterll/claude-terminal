@@ -2,6 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <!--
+    The chat renders markdown written by a model. Escaping is the first line of
+    defence; this is the second, and the one that holds if escaping ever misses
+    a case: with no 'unsafe-inline' in script-src, injected HTML cannot execute.
+    Mirrors the policy index.html uses in the desktop app.
+
+    style-src does allow inline styles: project colours and tree indentation are
+    set through style attributes, and an inline style cannot run script.
+    connect-src stays broad because relay mode talks to a user-supplied cloud
+    origin over both wss: and https:.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' ws: wss: https:; worker-src 'self'; manifest-src 'self'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#09090b">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -11,7 +23,11 @@
   <link rel="apple-touch-icon" href="/icon-192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <!-- media="print" keeps this off the critical path; app.js flips it to "all"
+       once loaded. The PWA is usually served from a LAN with no route to the
+       internet, where a render-blocking stylesheet costs a DNS timeout of blank
+       screen. The CSS font stacks fall back to system faces meanwhile. -->
+  <link id="webfonts" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" media="print">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -81,7 +97,7 @@
       <!-- Header -->
       <header class="app-header hidden">
         <div class="header-left">
-          <button id="header-back" class="header-back hidden" data-i18n-aria="a11y.back" onclick="backToProjects()">
+          <button id="header-back" class="header-back hidden" data-i18n-aria="a11y.back">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="15 18 9 12 15 6"/>
             </svg>
@@ -90,12 +106,12 @@
         </div>
         <div class="header-right">
           <div id="header-git-actions" class="header-git-actions hidden">
-            <button class="header-git-btn" id="btn-git-pull" data-i18n-aria="a11y.gitPull" onclick="gitPull()">
+            <button class="header-git-btn" id="btn-git-pull" data-i18n-aria="a11y.gitPull">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="M17 11l-5 5-5-5"/></svg>
               <span class="header-git-label" data-i18n="git.pull"></span>
               <span class="header-git-badge behind hidden" id="badge-behind"></span>
             </button>
-            <button class="header-git-btn" id="btn-git-push" data-i18n-aria="a11y.gitPush" onclick="gitPush()">
+            <button class="header-git-btn" id="btn-git-push" data-i18n-aria="a11y.gitPush">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9"/><path d="M7 14l5-5 5 5"/></svg>
               <span class="header-git-label" data-i18n="git.push"></span>
               <span class="header-git-badge ahead hidden" id="badge-ahead"></span>
@@ -150,7 +166,7 @@
             <select id="session-select" class="session-select" data-i18n-aria="a11y.sessionPicker"></select>
           </div>
           <div id="chat-messages" class="chat-messages" role="log" aria-live="polite" aria-relevant="additions text" data-i18n-aria="a11y.transcript"></div>
-          <button id="scroll-fab" class="scroll-fab hidden" data-i18n-aria="a11y.scrollBottom" onclick="_scrollToBottomSmooth()">
+          <button id="scroll-fab" class="scroll-fab hidden" data-i18n-aria="a11y.scrollBottom">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
           </button>
           <div id="thinking-indicator" class="thinking-indicator hidden">
@@ -211,11 +227,11 @@
               </div>
               <div class="plus-menu-divider"></div>
               <div class="plus-menu-section">
-                <button class="plus-action-btn" id="btn-camera" onclick="openCamera()">
+                <button class="plus-action-btn" id="btn-camera">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
                   <span data-i18n="misc.camera"></span>
                 </button>
-                <button class="plus-action-btn" id="btn-gallery" onclick="openGallery()">
+                <button class="plus-action-btn" id="btn-gallery">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                   <span data-i18n="misc.gallery"></span>
                 </button>
@@ -228,7 +244,7 @@
             <div id="image-preview-bar" class="image-preview-bar hidden">
               <div class="image-preview-thumb" id="image-preview-thumb">
                 <img id="image-preview-img" src="" alt="Preview">
-                <button class="image-preview-remove" data-i18n-aria="a11y.removeImage" onclick="removeImage()">
+                <button class="image-preview-remove" id="image-preview-remove" data-i18n-aria="a11y.removeImage">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </div>
@@ -324,7 +340,7 @@
       <div id="view-sessions" class="view hidden">
         <div class="view-inner">
           <div id="sessions-list" class="sessions-list"></div>
-          <button id="btn-new-session" class="new-session-btn" data-i18n-aria="a11y.newChat" onclick="createNewSession()">
+          <button id="btn-new-session" class="new-session-btn" data-i18n-aria="a11y.newChat">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             <span id="new-session-label" data-i18n="session.new"></span>
           </button>

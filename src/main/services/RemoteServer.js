@@ -40,6 +40,23 @@ const MAX_MENTION_FILE_SIZE = 1024 * 1024; // 1 MB
 // that a half-open socket is reaped before the user notices the UI has frozen.
 const HEARTBEAT_INTERVAL_MS = 25_000;
 
+// Kept identical to the meta tag in remote-ui/index.html — see the comment
+// there for why each source is allowed.
+const PWA_CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob:",
+  "connect-src 'self' ws: wss: https:",
+  "worker-src 'self'",
+  "manifest-src 'self'",
+  "base-uri 'none'",
+  "object-src 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+].join('; ');
+
 // In packaged builds, remote-ui is in extraResources; in dev, relative to project root
 function getPwaDir() {
   if (app && app.isPackaged) {
@@ -300,6 +317,13 @@ function _handleHttpRequest(req, res) {
   }
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  // Defence in depth for the PWA, which renders model-authored markdown. The
+  // policy also ships as a meta tag in index.html, because the cloud relay
+  // serves the same files from a server this process does not control.
+  res.setHeader('Content-Security-Policy', PWA_CSP);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Frame-Options', 'DENY');
 
   // POST /auth — exchange PIN for session token
   if (req.method === 'POST' && req.url === '/auth') {

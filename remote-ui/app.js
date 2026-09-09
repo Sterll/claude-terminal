@@ -203,6 +203,8 @@ function init() {
   _setupImageInputs();
   _setupChatDelegation();
   _setupLifecycleHandlers();
+  _setupStaticActions();
+  _enableWebfonts();
   _setupMentionChipsDelegation();
 
   // Check for relay mode params in URL: ?mode=relay&url=...&key=...
@@ -705,6 +707,32 @@ function _wakeUp(reason) {
   if (conn.retryTimer) { clearTimeout(conn.retryTimer); conn.retryTimer = null; }
   conn.retryCount = 0;
   _openWS();
+}
+
+/**
+ * Wire the static controls that used to carry inline onclick attributes.
+ *
+ * Those only worked because the PWA shipped without a Content-Security-Policy.
+ * Now that it has one, script-src 'self' rejects inline handlers outright —
+ * which is the point: this document renders model-authored markdown, so any
+ * HTML that slipped through escaping must not be able to execute.
+ */
+/** Promote the webfont stylesheet off the critical path once we are running. */
+function _enableWebfonts() {
+  const link = $('webfonts');
+  if (link && link.media === 'print') link.media = 'all';
+}
+
+function _setupStaticActions() {
+  const bind = (id, fn) => $(id)?.addEventListener('click', fn);
+  bind('header-back', backToProjects);
+  bind('btn-git-pull', gitPull);
+  bind('btn-git-push', gitPush);
+  bind('scroll-fab', _scrollToBottomSmooth);
+  bind('btn-camera', openCamera);
+  bind('btn-gallery', openGallery);
+  bind('image-preview-remove', removeImage);
+  bind('btn-new-session', createNewSession);
 }
 
 function _setupLifecycleHandlers() {
