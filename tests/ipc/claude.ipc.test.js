@@ -59,7 +59,12 @@ function writeSession(turns) {
 }
 
 afterAll(() => {
-  fs.rmSync(TMP_HOME, { recursive: true, force: true });
+  // Retries because of Windows: the loader closes its transcript with
+  // `stream.destroy()`, which releases the fd asynchronously, so this can run
+  // while the handle is still open. Deleting an open file is fine on POSIX;
+  // on Windows it fails the whole suite with ENOTEMPTY even though every test
+  // passed. `force` alone does not retry — only maxRetries does.
+  fs.rmSync(TMP_HOME, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 });
 
 describe('loadSessionHistory', () => {
