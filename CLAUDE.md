@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 126 test files)
+npm test                 # Run Jest tests (jsdom, 130 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md has drifted from the tree it describes
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -49,7 +49,7 @@ Electron Renderer Process (Browser)
 ├── renderer.js                      # Entry point (bundled by esbuild -> dist/renderer.bundle.js)
 ├── src/renderer/index.js            # Module loader & initialization
 ├── src/renderer/core/               # DI container, BaseService/Component/Panel, ApiProvider
-├── src/renderer/state/              # 14 observable state modules
+├── src/renderer/state/              # 15 observable state modules
 ├── src/renderer/services/           # 27 services + modular markdown renderer + mention sources
 ├── src/renderer/ui/components/      # 16 UI components
 ├── src/renderer/ui/panels/          # 25 UI panels
@@ -226,7 +226,8 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 
 | Module | Key state |
 |--------|-----------|
-| `projects.state.js` | projects[], folders[], rootOrder[], selectedProjectFilter, openedProjectId - CRUD, folder nesting, atomic writes |
+| `projects.state.js` | projects[], folders[], rootOrder[], selectedProjectFilter, openedProjectId - CRUD, folder nesting, atomic writes, three-way merge on save, polled watch for writes from other processes |
+| `projects.merge.js` | Three-way merge (base / ours / theirs) for projects.json, so a kanban board or worktree project written by another process survives a save from this renderer |
 | `terminals.state.js` | terminals Map, activeTerminal, detailTerminal |
 | `settings.state.js` | editor, accentColor, language, defaultTerminalMode, chatModel, pinnedTabs, sidebarOrder, shortcuts |
 | `timeTracking.state.js` | per-session, 15 min idle, midnight rollover, monthly archival |
@@ -590,7 +591,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 126 test files
+- **Framework:** Jest with jsdom, 130 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
@@ -606,7 +607,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
   - `shared/` - context usage, cron, model options, permission modes, simple-task
   - `smoke/` - every module parses and loads
   - `state/` - State plus each state module
-  - `ui/` - chat account switch, task widget, tasks drawer, ClaudeRemotePanel, navigation mode
+  - `ui/` - chat account switch, task widget, tasks drawer, ClaudeRemotePanel, navigation mode, kanban live refresh
   - `utils/` - attachments, color, commit messages, drop paths, file icons, file lock, format, frontmatter, git, http cache, session search, shell, syntax highlight, tool registry
 
 ### Lint (`eslint.config.js`)
