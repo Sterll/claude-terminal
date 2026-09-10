@@ -194,6 +194,15 @@ function createMainWindow({ isDev = false } = {}) {
       contextIsolation: true,
       sandbox: false,
       webviewTag: true,
+      // Chromium suspends requestAnimationFrame and throttles timers to 1/s
+      // (1/min after five minutes) in a hidden window. The renderer is not just
+      // a view here: it owns the MCP tab orchestration loop — state
+      // notifications are batched through rAF (State._notify), `tabs.json` is
+      // republished on a timer, and `tab_wait` resolves from a state
+      // subscription. Throttled, an orchestration run left in the tray stalls
+      // until each wait times out. The cost is a background window that keeps
+      // ticking, which is what a terminal app is for.
+      backgroundThrottling: false,
       preload: path.join(__dirname, '..', 'preload.js')
     }
   };
