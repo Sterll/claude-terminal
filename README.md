@@ -91,11 +91,11 @@
 
 | Language | Coverage | Keys |
 | --- | --- | --- |
-| 🇺🇸 English (base) | ![100%][i18n-en-badge] | ~800 / ~800 |
-| 🇫🇷 French | ![i18n fr][i18n-fr-badge] | ~800 / ~800 |
-| 🇪🇸 Spanish | ![i18n es][i18n-es-badge] | ~800 / ~800 |
-| 🇮🇩 Indonesian | ![i18n id][i18n-id-badge] | ~800 / ~800 |
-| 🇨🇳 Simplified Chinese | ![i18n zh-CN][i18n-zh-cn-badge] | ~800 / ~800 |
+| 🇺🇸 English (base) | ![100%][i18n-en-badge] | 3641 / 3641 |
+| 🇫🇷 French | ![i18n fr][i18n-fr-badge] | 3641 / 3641 |
+| 🇪🇸 Spanish | ![i18n es][i18n-es-badge] | 3641 / 3641 |
+| 🇮🇩 Indonesian | ![i18n id][i18n-id-badge] | 3641 / 3641 |
+| 🇨🇳 Simplified Chinese | ![i18n zh-CN][i18n-zh-cn-badge] | 3641 / 3641 |
 
 > Coverage badges are updated automatically on every push to locale files.
 > See [`.github/i18n-coverage.md`](.github/i18n-coverage.md) for details and
@@ -111,13 +111,16 @@
 
 ## Table of Contents
 
+- [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Features](#features)
 - [Usage](#usage)
 - [Building](#building)
+- [Testing](#testing)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [Architecture](#architecture)
 - [Contributing](#contributing)
+- [Security](#security)
 
 ---
 
@@ -163,15 +166,18 @@ npm install
 - **Tool cards**: collapsible cards showing tool execution with formatted details, including MCP tool refresh, feedback submission, and skill proposal actions
 - **Subagent visualization**: nested task tracking for spawned agents, with each subagent's summary showing its git worktree branch and any mid-run model switch
 - **Todo widget**: persistent task list above the input, auto-dismisses on completion
-- **Image attachments**: paste, drag-drop, or pick PNG/JPEG/GIF/WebP images (up to 20MB)
+- **Attachments**: paste, drag-drop, or pick PNG/JPEG/GIF/WebP images (up to 20MB), plus text files and PDFs
 - **Slash commands**: auto-completing commands (/compact, /clear, /help, custom skills)
 - **Inline @mentions**: rich contenteditable input field lets you type @mentions inline without leaving the message composition area
 - **File rewind**: revert chat context to an earlier file state via SDK checkpointing — useful for undoing unwanted edits mid-session
 - **Cost tracking**: model name, token count, and USD cost in the status bar
 - **1M context window**: extended context for larger codebases (API mode only)
 - **Dynamic model and effort switching**: the model picker is built live from the Claude CLI's own catalog, so newly released models (e.g. Fable 5.1) show up automatically; switch model and effort level (low, medium, high, xhigh) mid-conversation without starting a new session
+- **Per-conversation model, effort and permission mode**: every tab keeps its own settings, so a pick in one conversation never leaks into the next. The stored values are only the defaults a new tab starts from, changed through each menu's "Use for new conversations" row
+- **Permission modes**: switch between default, accept edits, plan and bypass permissions from the composer, mid-session
+- **Premium model tier**: models in the Fable family are flagged in violet with a "Premium" badge, a tag on the tab, and a notice when a new tab inherits one, because the family draws on its own usage limit
 - **Background tasks drawer**: a collapsible drawer scoped to the current session shows work Claude is running in the background, so you can keep chatting while it finishes
-- **Artifacts library & Documents tab**: files and snippets Claude generates are saved to a reusable artifact library and also surface in a per-conversation Documents tab for quick access
+- **Artifacts library & Documents tab**: files and snippets Claude generates are saved to a reusable artifact library and also surface in a per-conversation Documents tab for quick access, with a dedicated Artifacts panel listing everything published for the project
 - **Conversation search**: press Ctrl+F to search across the current conversation transcript
 - **Pin conversations**: keep important sessions at the top of the list
 - **Fork sessions**: branch from any message to explore alternative paths; Claude Terminal warns instead of discarding if a queued turn would be lost
@@ -205,6 +211,20 @@ npm install
 ### Accounts
 - Bind a separate Claude account to each project, with its own isolated credential store
 - Switch projects without switching accounts by hand, and without one project's login affecting another's
+- Per-account usage shown in Settings, and a usage-limit switch that carries the conversation over
+
+### Claude Remote Control (claude.ai & mobile)
+- Put a chat session on [claude.ai/code](https://claude.ai/code) and the Claude mobile app, so you can follow it or drive it from your phone
+- Decided **per conversation**, never globally: a session joins when you ask for it in that tab, via the footer button or the `/remote-control` command
+- Read-only mirror or full driving, your choice; prompts, interrupts and permission answers all route back to the desktop
+- Optional `--rc` in terminal tabs so CLI sessions join too
+- A **Connectivity → claude.ai** tab lists every shared conversation with a way back to each tab
+- Honours Claude Code's `disableRemoteControl` managed-settings kill switch, so an org policy can't be lifted from the app
+
+### Claude in Chrome
+- Let chat sessions drive your browser through the Claude Chrome extension
+- Adds the `claude-in-chrome` MCP server and its 22 browser tools to the session
+- Opt-in, and it adopts Claude Code's existing native messaging host instead of overwriting it
 
 ### Voice
 - Dictate messages to the chat input by microphone (Groq transcription)
@@ -217,7 +237,7 @@ npm install
 - Customize each project with colors and emoji icons
 - Quick Actions toolbar: configurable one-click commands per project (build, test, deploy, custom scripts...)
 - Built-in file explorer with tree view, multi-select, search, git status indicators, and inline rename; right-click any file to attach it as context in the current chat
-- Modular project type system (standard, FiveM, webapp, Python, API, Minecraft)
+- Modular project type system (standard, FiveM, webapp, Python, API, Minecraft, Discord bot)
 - Per-project settings modal
 
 ### Git Integration
@@ -269,10 +289,12 @@ npm install
 - Q&A cards highlight question-and-answer exchanges for easy review
 
 ### Dashboard
-- Per-project overview: current branch, commits ahead/behind, recent commits, contributors
+- Three sub-views: **Overview**, **Kanban** and **Timeline**
+- Overview: current branch, commits ahead/behind, recent commits, contributors
 - Code statistics: lines of code by language, file count, commit count
 - Active terminals count
 - Claude API usage monitoring with auto-refresh
+- **Project timeline**: every record the app already keeps, merged into one chronological view — commits, Claude sessions, tracked time, workflow runs, parallel runs and artifacts — filterable by period and by kind, so "what happened to this project" is one screen instead of six
 
 ### Time Tracking
 - Automatic session detection per project (15-min idle timeout, sleep/wake detection)
@@ -328,9 +350,25 @@ npm install
 - **Move a session to another project**: relocate a conversation without losing its history
 - Custom tab names are locked and no longer get silently overwritten by auto-naming
 
-### Memory
+### Memory & Global Knowledge
 - Edit global, settings and project-specific CLAUDE.md files
 - Template insertion for common patterns
+- **Global Knowledge**: a cross-project store of facts, conventions and preferences, one markdown entry each, available in every session
+- Pin, enable/disable and search entries; enabled ones are synced into a marked block in `~/.claude/CLAUDE.md`, with a preview of the block before it's written
+- MCP tools (`knowledge_list`, `knowledge_write`, `knowledge_search`...) so Claude can read and write them itself
+
+### Kanban
+- A kanban board per project, with custom columns, drag-and-drop between them, and archiving
+- Priority levels, due dates, tags and assignees on cards
+- Filter, search and per-column stats
+- Full MCP tool set, so Claude can create and move cards while it works, and a `kanban_create_card` workflow node
+
+### Error Log
+- Centralized log of every error the app catches: IPC failures, service errors, uncaught exceptions and rejections
+- Filter by level and by domain, with automatic pattern detection to group repeated failures
+- **AI diagnosis** of an entry, and export for a bug report
+- `critical` means the app actually broke (an uncaught exception or rejection), not merely that something logged
+- MCP tools so Claude can read the log while debugging
 
 ### Settings
 - Accent color theming (preset palettes + custom hex)
@@ -341,20 +379,21 @@ npm install
 - Desktop notification preferences
 - Close behavior (ask, minimize to tray, or quit)
 - Launch at startup toggle
-- Auto-updates with background download and install banner
+- Auto-updates with background download and install banner, followed by a **What's new** panel on the next start that leads with anything that moved and then gives the full release notes
 - **Discord Rich Presence**: show the project you're working on in your Discord status (VSCode-style), with an option to hide the project name for privacy; toggle on/off in Settings
+- **Telemetry is opt-in and off by default**: nothing anonymous or otherwise is collected unless you turn it on in Settings
 
 ### Workflow Automation
 - **Automations**: a simple, no-graph mode for common tasks — describe what Claude should do and when in a plain form, no node editor or cron syntax required, with six starter presets
 - Automations can trigger on events instead of a schedule: git activity, a file change, a command finishing, a Claude session ending, Claude replying (with an optional text filter), or opening a project — each event watches its own chosen project, independent of where Claude runs
 - Visual node-based workflow editor with custom canvas engine (Blueprint-style)
-- 20+ node types: shell, git, HTTP, Claude (prompt/agent/skill), condition, loop, transform, switch, subworkflow, database, file, project, time, variable, trigger, code (run a JavaScript snippet), template (build strings from variables), terminal, quick action
+- **31 node types**: shell, git, HTTP, Claude (prompt/agent/skill), condition, loop, transform, switch, subworkflow, database, file, project, time, variable, get variable, trigger, code (run a JavaScript snippet), template (build strings from variables), terminal, quick action, notify, Discord notify, log, wait, retry, error handler, webhook, parallel spawn, session recap, kanban card, workspace doc
 - Typed data pins with visual data flow between nodes
 - AI assistant panel for real-time graph editing and node creation
 - Undo/redo, copy/paste, snap-to-grid, minimap, comments
 - Run history with live loop progress and step output inspection
 - Workflow community hub for sharing and importing workflows
-- Cron, hook, webhook, and event-based triggers
+- **12 trigger types**: manual, cron, hook, webhook, on-workflow, chat message, file change, git event, project opened, terminal exit code, Claude session start, Claude session end
 - MCP tools for full workflow control from Claude Code
 
 ### Connectivity (Remote & Cloud)
@@ -370,7 +409,7 @@ npm install
 - Automated install script with Docker, reverse proxy, and SSL setup
 
 ### Database Panel
-- Multi-driver support: SQLite, MySQL, PostgreSQL, MongoDB
+- Multi-driver support: SQLite, MySQL, MariaDB, PostgreSQL, MongoDB
 - **Redis browser**: tree-view key explorer with type-aware value inspection
 - Split-pane data browser with inline editing
 - SQL query editor with syntax highlighting, templates, and multi-statement execution
@@ -379,19 +418,41 @@ npm install
 - Connection pooling with idle eviction
 
 ### Workspace
-- Project-level knowledge base for storing persistent context, documentation snippets, and notes
+- **Cross-project** knowledge hubs: group related projects together with a shared knowledge base, so context that spans several repos has somewhere to live
+- Markdown KB documents with tags and full-text search across the whole workspace
+- **Concept links**: record relationships between entities (`Web App depends-on API Service`) and see them as a graph
 - **Advisor chat**: ask questions about your workspace and get answers based on your knowledge base content
 - **@workspace mention**: type @workspace in chat to inject your workspace knowledge base as context
 - MCP tools for reading and writing workspace content from Claude Code
 
 ### MCP Server (claude-terminal)
-- Unified MCP server exposing all Claude Terminal features to Claude Code
-- Workflow tools: create, edit, trigger, diagnose, variables, run logs
-- Automation tools: list, view, create, update, enable/disable, and delete Automations directly
-- Database tools: query, export, full schema, stats
-- Project and time tracking tools
-- Quick action triggers with polling
-- FiveM and WebApp project tools
+
+A unified MCP server, auto-configured by the app, exposing Claude Terminal itself to Claude Code. **23 tool modules**, loaded dynamically — dropping a new `.js` file into `resources/mcp-servers/tools/` registers it.
+
+| Module | What it gives Claude |
+| --- | --- |
+| `projects` | List projects, project info, TODO/FIXME scanning |
+| `timetracking` | Today, this week, per-project and summary stats |
+| `sessions` | List, replay, cross-project keyword search, session recap |
+| `workflow` | Create, edit, run, cancel, diagnose, run logs, variables |
+| `automation` | List, view, create, update, enable/disable, delete Automations |
+| `parallel` | Start, list, inspect, cancel, merge and clean up parallel runs |
+| `kanban` | Columns and cards: add, move, update, filter, stats |
+| `knowledge` | Cross-project facts: list, get, search, write, delete |
+| `workspace` | List, info, read/write KB docs, search, concept links |
+| `artifacts` | List, get, search, versions, stats, delete |
+| `database` | Query, list/describe tables, full schema, stats, export |
+| `terminal` | Create, list, send a command, read output, close |
+| `tabs` | Tab orchestration with permission control |
+| `sidebar` | `ui_navigate` and `ui_state` to drive and read the visible panel |
+| `control-tower` | List active agents, interrupt one remotely |
+| `errorlog` | Entries, stats, patterns, export, clear |
+| `usage` | Read and refresh Claude usage |
+| `settings` | Get and set app settings |
+| `marketplace` / `plugins` | Search, install and uninstall skills and plugins |
+| `webapp` / `fivem` / `discord` | Per-project-type tools |
+
+A specialized `database-mcp-server.js` is also shipped for database-only use.
 
 ### WebApp Preview
 - Live preview with Chromium webview (replaces iframe)
@@ -401,11 +462,15 @@ npm install
 - Ruler spacing measurement tool
 - Accessibility audit panel with axe-core
 
-### Remote Control
-- Mobile PWA for remote control from phone or browser
-- Cloud relay for access anywhere (via self-hosted server)
+### Remote Control (self-hosted PWA)
+- Mobile PWA for remote control from phone or browser, served by the app itself
+- Cloud relay for access outside your local network (via self-hosted server)
 - Real-time session monitoring, chat interaction, and project switching
 - 6-digit PIN authentication with QR code
+- Fully translated, ships with its own content-security-policy, and its transcript survives more than one turn
+
+> [!NOTE]
+> This is the **self-hosted** remote, distinct from [Claude Remote Control](#claude-remote-control-claudeai--mobile), which puts a session on claude.ai and the official Claude mobile app. You can use either, or both.
 
 ### Sidebar Customization
 - Drag and drop sidebar tabs to reorder them to your workflow
@@ -477,12 +542,31 @@ The installer will be generated in the `build/` directory.
 ## Testing
 
 ```bash
-# Run the test suite
+# Run the test suite (136 Jest suites, jsdom)
 npm test
 
 # Watch tests during development
 npm run test:watch
+
+# ESLint over main, renderer, shared, MCP servers and scripts
+npm run lint
+npm run lint:fix
+
+# Fail if CLAUDE.md has drifted from the tree it describes
+npm run check:docs
+
+# Playwright smoke test against the real Electron app
+npm run test:e2e
 ```
+
+CI runs three jobs on every push and PR: `lint` (fast, fails first), `test` (Node 18
+and 20 across Windows, Linux and macOS) and `e2e` (Ubuntu under `xvfb-run`). The E2E
+job is **blocking**: it opens the real app, walks every sidebar tab, and fails on any
+renderer console error or main-process crash.
+
+`npm run test:e2e` is kept out of `npm test` because it needs a display and a built
+renderer bundle. Running it locally also needs the native modules built against
+Electron's ABI (`npm run postinstall`).
 
 ---
 
@@ -492,9 +576,12 @@ npm run test:watch
 | --- | --- |
 | `Ctrl+Shift+P` | Quick project picker (global) |
 | `Ctrl+Shift+T` | New terminal in current project (global) |
+| `Ctrl+Shift+W` | New worktree (global) |
 | `Ctrl+Shift+E` | Sessions panel |
 | `Ctrl+T` | Create terminal |
 | `Ctrl+W` | Close terminal |
+| `Ctrl+N` | New project |
+| `Ctrl+E` | Toggle file explorer |
 | `Ctrl+P` | Quick picker |
 | `Ctrl+,` | Settings |
 | `Ctrl+←` / `Ctrl+→` | Switch terminal (left/right) |
@@ -508,136 +595,107 @@ Shortcuts are customizable in Settings.
 
 ## Architecture
 
+Claude Terminal is plain CommonJS JavaScript with JSDoc types. No TypeScript, no
+frontend framework: the renderer is bundled by esbuild into a single IIFE.
+
 ```
 claude-terminal/
-├── main.js                    # Electron entry point
-├── renderer.js                # Main renderer logic (bundled to dist/)
-├── index.html                 # Main window UI
-├── notification.html          # Custom toast notification window
-├── quick-picker.html          # Quick picker window
-├── setup-wizard.html          # First-launch wizard
-├── styles/                    # Modular application styles
+├── main.js                          # Electron entry point, lifecycle, single-instance lock
+├── renderer.js                      # Renderer entry (bundled to dist/renderer.bundle.js)
+├── index.html                       # Main window UI
+├── notification.html                # Custom toast notification window
+├── quick-picker.html                # Command palette window
+├── setup-wizard.html                # First-launch wizard
+├── styles/                          # 30 modular CSS files, @imported by index.css
 ├── src/
-│   ├── main/                  # Main process
-│   │   ├── index.js           # Bootstrap & lifecycle
-│   │   ├── preload.js         # Context bridge API
-│   │   ├── ipc/               # IPC handlers
-│   │   │   ├── terminal.ipc.js
-│   │   │   ├── git.ipc.js
-│   │   │   ├── github.ipc.js
-│   │   │   ├── chat.ipc.js       # Chat UI / Agent SDK handlers
-│   │   │   ├── claude.ipc.js
-│   │   │   ├── usage.ipc.js
-│   │   │   ├── mcp.ipc.js
-│   │   │   ├── mcpRegistry.ipc.js
-│   │   │   ├── plugin.ipc.js
-│   │   │   ├── marketplace.ipc.js
-│   │   │   ├── project.ipc.js
-│   │   │   └── dialog.ipc.js
-│   │   ├── services/
-│   │   │   ├── TerminalService.js
-│   │   │   ├── ChatService.js        # Claude Agent SDK wrapper
-│   │   │   ├── PluginService.js
-│   │   │   ├── MarketplaceService.js
-│   │   │   ├── GitHubAuthService.js
-│   │   │   ├── UsageService.js
-│   │   │   ├── McpService.js
-│   │   │   ├── McpRegistryService.js
-│   │   │   ├── HookEventServer.js    # HTTP server for hook events
-│   │   │   ├── FivemService.js
-│   │   │   └── UpdaterService.js
-│   │   ├── windows/
-│   │   │   ├── MainWindow.js
-│   │   │   ├── NotificationWindow.js  # Custom toast notifications
-│   │   │   ├── QuickPickerWindow.js
-│   │   │   ├── SetupWizardWindow.js
-│   │   │   └── TrayManager.js
-│   │   └── utils/
-│   │       ├── paths.js
-│   │       ├── git.js
-│   │       └── commitMessageGenerator.js
-│   ├── renderer/              # Renderer process
-│   │   ├── services/
-│   │   │   ├── ProjectService.js
-│   │   │   ├── TerminalService.js
-│   │   │   ├── SettingsService.js
-│   │   │   ├── DashboardService.js
-│   │   │   ├── GitTabService.js
-│   │   │   ├── TimeTrackingDashboard.js
-│   │   │   ├── ArchiveService.js      # Monthly time-tracking archives
-│   │   │   ├── SkillService.js
-│   │   │   ├── AgentService.js
-│   │   │   └── McpService.js
-│   │   ├── state/
-│   │   │   ├── State.js           # Base observable class
-│   │   │   ├── projects.state.js
-│   │   │   ├── terminals.state.js
-│   │   │   ├── settings.state.js
-│   │   │   ├── git.state.js
-│   │   │   ├── mcp.state.js
-│   │   │   └── timeTracking.state.js
+│   ├── main/                        # ── Main process (Node.js) ──
+│   │   ├── preload.js               # Context bridge (window.electron_api)
+│   │   ├── preload-quickpicker.js   # Preload for the quick picker window
+│   │   ├── ipc/                     # 34 IPC files, 322 handlers
+│   │   │   ├── index.js             #   Orchestrator, registers every handler
+│   │   │   ├── git.ipc.js           #   69 handlers, the largest
+│   │   │   ├── chat.ipc.js          #   Agent SDK streaming sessions
+│   │   │   ├── github.ipc.js        #   OAuth device flow, PRs, CI runs
+│   │   │   └── ...                  #   terminal, dialog, workflow, remote, database,
+│   │   │                            #   accounts, knowledge, artifacts, workspace,
+│   │   │                            #   parallel, cloud-*, errorLog, voice, chrome...
+│   │   ├── services/                # 35 services
+│   │   │   ├── ChatService.js       #   Claude Agent SDK bridge
+│   │   │   ├── TerminalService.js   #   node-pty, adaptive output batching
+│   │   │   ├── AccountManager.js    #   Multiple Claude accounts
+│   │   │   ├── RemoteControlService.js  # claude.ai / mobile bridge
+│   │   │   ├── ChromeBridgeService.js   # Claude in Chrome
+│   │   │   ├── WorkflowService.js   #   + Runner, Scheduler, Storage
+│   │   │   ├── ParallelTaskService.js   # Worktree-per-subtask orchestration
+│   │   │   ├── KnowledgeService.js  #   Global knowledge base
+│   │   │   ├── ErrorLogService.js   #   Centralized error collection
+│   │   │   └── ...
+│   │   ├── windows/                 # MainWindow, QuickPicker, SetupWizard, Tray, Notification
+│   │   ├── utils/                   # paths, git, shell, fileLock, claudeBridge, sdkCli...
+│   │   └── workflow-nodes/          # 31 node types, one *.node.js each, auto-registered
+│   ├── renderer/                    # ── Renderer process (Browser) ──
+│   │   ├── index.js                 # Module loader & init sequence
+│   │   ├── core/                    # DI container, BaseService/Component/Panel, ApiProvider
+│   │   ├── state/                   # 17 observable state modules (State.js base class)
+│   │   ├── services/                # 28 services
+│   │   │   ├── MarkdownRenderer.js  #   + markdown/ subsystem (configure, streaming,
+│   │   │   │                        #     postProcess, interactivity, blocks)
+│   │   │   ├── WorkflowGraphEngine.js   # Custom canvas node editor (no LiteGraph)
+│   │   │   ├── DiffRenderer.js      #   GitHub-style unified diffs
+│   │   │   ├── ProjectTimeline.js   #   Merges six record sets into one timeline
+│   │   │   ├── VoiceCaptureService.js
+│   │   │   └── mention-sources/     #   Pluggable @mention and palette sources
 │   │   ├── ui/
-│   │   │   ├── components/
-│   │   │   │   ├── ProjectList.js
-│   │   │   │   ├── TerminalManager.js
-│   │   │   │   ├── ChatView.js        # Chat UI component
-│   │   │   │   ├── FileExplorer.js
-│   │   │   │   ├── Modal.js
-│   │   │   │   ├── Toast.js
-│   │   │   │   ├── ContextMenu.js
-│   │   │   │   ├── Tab.js
-│   │   │   │   ├── CustomizePicker.js
-│   │   │   │   └── QuickActions.js
-│   │   │   └── themes/
-│   │   │       └── terminal-themes.js
-│   │   ├── features/
-│   │   │   ├── QuickPicker.js
-│   │   │   ├── KeyboardShortcuts.js
-│   │   │   └── DragDrop.js
-│   │   ├── events/
-│   │   │   ├── ClaudeEventBus.js      # Unified event system
-│   │   │   ├── HooksProvider.js       # Hook events normalization
-│   │   │   └── ScrapingProvider.js    # Fallback terminal scraping
-│   │   ├── i18n/
-│   │   │   └── locales/
-│   │   │       ├── en.json
-│   │   │       └── fr.json
-│   │   └── utils/
-│   │       ├── dom.js
-│   │       ├── color.js
-│   │       ├── format.js
-│   │       ├── paths.js
-│   │       ├── fileIcons.js
-│   │       └── syntaxHighlight.js
-│   └── project-types/         # Modular project type system
-│       ├── registry.js        # Type registry & discovery
-│       ├── base-type.js       # Base class for project types
-│       ├── general/           # Standard project type
-│       ├── fivem/             # FiveM server projects
-│       │   ├── main/          # IPC & service
-│       │   ├── renderer/      # Dashboard, state, terminal panel, wizard
-│       │   └── i18n/          # en.json, fr.json, es.json
-│       ├── webapp/            # Web app projects
-│       │   ├── main/          # IPC & service
-│       │   ├── renderer/      # Dashboard, state, terminal panel, wizard
-│       │   └── i18n/          # en.json, fr.json, es.json
-│       ├── python/            # Python projects (detection only)
-│       │   ├── main/          # Detection service
-│       │   ├── renderer/      # Dashboard, state, wizard
-│       │   └── i18n/          # en.json, fr.json, es.json
-│       ├── minecraft/          # Minecraft Java plugin projects
-│       │   ├── main/          # Detection service, plugin generator
-│       │   ├── renderer/      # Dashboard, state, wizard
-│       │   └── i18n/          # en.json, fr.json, es.json
-│       └── api/               # API/backend projects
-│           ├── main/          # PTY service, route detection
-│           ├── renderer/      # Dashboard, state, terminal panel, route tester, wizard
-│           └── i18n/          # en.json, fr.json, es.json
-├── scripts/
-│   └── build-renderer.js     # esbuild bundler
-└── resources/
-    └── bundled-skills/        # Built-in skills
+│   │   │   ├── components/          # 18 components (ChatView, TerminalManager,
+│   │   │   │                        #   FileExplorer, ProjectList, ProjectBar, Modal...)
+│   │   │   ├── panels/              # 25 panels (Settings, GitChanges, ControlTower,
+│   │   │   │                        #   ParallelTask, Workspace, Database, Kanban,
+│   │   │   │                        #   ErrorLog, Files, Artifacts, Connectivity...)
+│   │   │   └── themes/              # terminal-themes.js
+│   │   ├── features/                # KeyboardShortcuts, QuickPicker, DragDrop
+│   │   ├── events/                  # ClaudeEventBus + Hooks / Scraping providers
+│   │   ├── workflow-fields/         # 13 custom UI fields for workflow nodes
+│   │   ├── workflow-triggers/       # 12 trigger types (definition + configurator)
+│   │   ├── viewers/                 # PDF viewer, 3D viewer (three.js) — ESM, lazy-loaded
+│   │   ├── i18n/locales/            # en, fr, es, id, zh-CN (3641 keys each, kept in sync)
+│   │   └── utils/                   # dom, color, format, paths, fileIcons, syntaxHighlight
+│   ├── shared/                      # 12 modules shared by main, renderer and the MCP server
+│   │   ├── artifact-store.js        #   Used verbatim by the MCP server process
+│   │   ├── model-options.js         #   Premium tier definition
+│   │   ├── permission-modes.js      #   SDK modes <-> legacy executionMode spellings
+│   │   └── simple-task.js           #   Compiles an Automation into a workflow graph
+│   └── project-types/               # Pluggable type system (base-type.js + registry.js)
+│       ├── general/  api/  webapp/  python/  minecraft/  fivem/  discord/
+│       └── ...                      # each: main/ service+ipc, renderer/ dashboard+wizard, i18n/
+├── resources/
+│   ├── mcp-servers/                 # Shipped MCP servers
+│   │   ├── claude-terminal-mcp.js   #   Unified server
+│   │   ├── database-mcp-server.js   #   Database-only server
+│   │   └── tools/                   #   23 auto-registered tool modules
+│   ├── bundled-skills/              # create-skill, create-agents
+│   └── hooks/                       # Hook handler script, POSTs events over HTTP
+├── remote-ui/                       # Mobile PWA, bundled as extraResources
+├── tests/                           # 136 Jest suites + a Playwright E2E smoke test
+├── scripts/build-renderer.js        # esbuild bundler
+└── website/                         # Landing page, changelog, legal
 ```
+
+> `cloud/` (the relay) and `hub-worker/` (a Cloudflare Worker) are separate packages
+> with their own `package.json`. Neither is bundled into the desktop app.
+
+### Boundaries
+
+The main/renderer split is enforced by ESLint, not just by convention:
+
+- The renderer never gets `child_process`, `fs`, `net` or `electron` directly. It talks
+  to main through `window.electron_api` only. **`child_process` is deliberately never
+  exposed** — the renderer displays model-authored markdown, so a bridge to process
+  spawning would turn any HTML injection into code execution.
+- `contextIsolation: true` and `nodeIntegration: false` in all five windows.
+- The CSP in `index.html` has no `'unsafe-inline'`, so HTML injected into the chat
+  cannot execute script. All user-rendered markdown goes through `dompurify`.
+
+If a boundary rule fires, the fix is a new IPC handler, not an `eslint-disable`.
 
 ---
 
