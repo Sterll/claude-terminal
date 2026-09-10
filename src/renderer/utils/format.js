@@ -94,9 +94,36 @@ function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
+/**
+ * Strip credentials out of a URL before it is displayed.
+ *
+ * A git remote can carry them: `https://<token>@github.com/owner/repo.git` is
+ * what `git remote add` writes when the URL was pasted with a token in it, and
+ * `remote get-url` hands that back verbatim. Anything that renders a remote URL
+ * has to go through here, or the token ends up on screen — and from there into
+ * every screenshot, screen share and bug report.
+ *
+ * Only the userinfo part is removed; the rest of the URL is left alone, so the
+ * caller still sees which host and repository it points at.
+ *
+ * @param {string} url - Any URL, or something that is not one
+ * @returns {string} The URL with `user:password@` removed
+ */
+function redactUrlCredentials(url) {
+  if (!url || typeof url !== 'string') return '';
+
+  // Deliberately a regex rather than `new URL()`: a remote can be an scp-style
+  // address (`git@github.com:owner/repo.git`) which `URL` rejects outright, and
+  // a value that fails to parse must still come back redacted rather than raw.
+  // `git@host` is the ordinary SSH form and carries no secret, so a userinfo
+  // section is only dropped when it sits after a scheme.
+  return url.replace(/^([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^/@]*@/, '$1');
+}
+
 module.exports = {
   formatRelativeTime,
   formatDuration,
   formatDurationLarge,
-  capitalize
+  capitalize,
+  redactUrlCredentials
 };

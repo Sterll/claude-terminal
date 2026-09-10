@@ -1,4 +1,4 @@
-const { formatRelativeTime, formatDuration, formatDurationLarge, capitalize } = require('../../src/renderer/utils/format');
+const { formatRelativeTime, formatDuration, formatDurationLarge, capitalize, redactUrlCredentials } = require('../../src/renderer/utils/format');
 
 describe('formatRelativeTime', () => {
   test('returns "just now" for current time', () => {
@@ -154,5 +154,52 @@ describe('capitalize', () => {
 
   test('single char "a" returns "A"', () => {
     expect(capitalize('a')).toBe('A');
+  });
+});
+
+describe('redactUrlCredentials', () => {
+  // The bug this exists for: the dashboard printed a remote URL after
+  // stripping only the scheme, so a token embedded in the remote was rendered
+  // in full - and ended up in a screenshot.
+  test('removes a token used as the userinfo part', () => {
+    expect(redactUrlCredentials('https://github_pat_ABC123@github.com/owner/repo.git'))
+      .toBe('https://github.com/owner/repo.git');
+  });
+
+  test('removes a user:password pair', () => {
+    expect(redactUrlCredentials('https://alice:s3cret@example.com/repo.git'))
+      .toBe('https://example.com/repo.git');
+  });
+
+  test('leaves a clean https remote untouched', () => {
+    expect(redactUrlCredentials('https://github.com/owner/repo.git'))
+      .toBe('https://github.com/owner/repo.git');
+  });
+
+  test('leaves an scp-style ssh remote untouched', () => {
+    // git@host is the ordinary SSH form, not a credential, and it has no
+    // scheme, so nothing should be dropped.
+    expect(redactUrlCredentials('git@github.com:owner/repo.git'))
+      .toBe('git@github.com:owner/repo.git');
+  });
+
+  test('handles an ssh:// URL with a user', () => {
+    expect(redactUrlCredentials('ssh://git@github.com/owner/repo.git'))
+      .toBe('ssh://github.com/owner/repo.git');
+  });
+
+  test('only strips the first userinfo section, not a path containing @', () => {
+    expect(redactUrlCredentials('https://github.com/owner/repo@2x.git'))
+      .toBe('https://github.com/owner/repo@2x.git');
+  });
+
+  test('empty, null and undefined return ""', () => {
+    expect(redactUrlCredentials('')).toBe('');
+    expect(redactUrlCredentials(null)).toBe('');
+    expect(redactUrlCredentials(undefined)).toBe('');
+  });
+
+  test('a non-string returns ""', () => {
+    expect(redactUrlCredentials({ url: 'https://x@y.z' })).toBe('');
   });
 });
