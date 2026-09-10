@@ -117,10 +117,177 @@ const registry = require('./src/project-types/registry');
 const { mergeTranslations } = require('./src/renderer/i18n');
 const ModalComponent = require('./src/renderer/ui/components/Modal');
 const WhatsNew = require('./src/renderer/ui/components/WhatsNew');
-const { MemoryEditor, GitChangesPanel, ShortcutsManager, SettingsPanel, SkillsAgentsPanel, PluginsPanel, MarketplacePanel, McpPanel, WorkflowPanel, DatabasePanel, CloudPanel, ConnectivityPanel, ControlTowerPanel, SessionReplayPanel, ParallelTaskPanel, WorkspacePanel, ErrorLogPanel, FilesPanel, ArtifactsPanel } = require('./src/renderer/ui/panels');
+const { MemoryEditor, GitChangesPanel, ShortcutsManager, SettingsPanel, SkillsAgentsPanel, PluginsPanel, MarketplacePanel, McpPanel, CloudPanel, ConnectivityPanel, WorkspacePanel, ErrorLogPanel, FilesPanel, ArtifactsPanel } = require('./src/renderer/ui/panels');
 // Not re-exported by the panels index: ConnectivityPanel embeds it as a sub-tab,
 // but its polling lifecycle is driven from the tab registry below.
 const RemotePanel = require('./src/renderer/ui/panels/RemotePanel');
+
+// ========== LAZILY-SPLIT PANELS ==========
+//
+// The five heaviest panels are kept out of the startup bundle. esbuild code
+// splitting (`splitting: true` + `format: 'esm'` in scripts/build-renderer.js)
+// gives each import() below a chunk of its own in dist/, fetched the first
+// time its tab is opened. Together that is ~12k lines — DatabasePanel,
+// WorkflowPanel (which drags in the graph engine, the 13 workflow fields and
+// the 12 trigger types behind it), ControlTowerPanel, SessionReplayPanel and
+// ParallelTaskPanel — that every session used to parse and evaluate at boot,
+// including the sessions that never open any of those tabs.
+//
+// These are dynamic imports INSIDE the single esbuild graph rather than a
+// standalone bundle per panel, and that distinction is the whole design. Each
+// panel reaches src/renderer/state/*, the DI container and i18n transitively;
+// bundling it on its own would hand every one of those a second live copy, so
+// a subscription would fire on one copy while the UI reads the other.
+// Splitting hoists the shared modules into shared chunks, evaluated once.
+//
+// They are dropped from src/renderer/ui/panels/index.js for the same reason a
+// lazy require() would not have been enough: that index is CommonJS, so the
+// require() is a side effect esbuild cannot shake out and the panel ships
+// eagerly whether or not anything reads the binding.
+const _LAZY_PANELS = {
+  DatabasePanel: {
+    root: 'database-content',
+    load: () => import('./src/renderer/ui/panels/DatabasePanel'),
+    init: (P) => P.init({ api, showModal, closeModal, showToast, projectsState, path, fs })
+  },
+  WorkflowPanel: {
+    root: 'workflow-panel',
+    load: () => import('./src/renderer/ui/panels/WorkflowPanel'),
+    init: (P) => P.init({ api, showToast, path, fs })
+  },
+  ControlTowerPanel: {
+    root: 'ct-panel-root',
+    load: () => import('./src/renderer/ui/panels/ControlTowerPanel')
+  },
+  SessionReplayPanel: {
+    root: 'tab-session-replay',
+    load: () => import('./src/renderer/ui/panels/SessionReplayPanel')
+  },
+  ParallelTaskPanel: {
+    root: 'tab-tasks',
+    load: () => import('./src/renderer/ui/panels/ParallelTaskPanel'),
+    init: (P) => P.init({
+      api,
+      showToast,
+      showModal,
+      closeModal,
+      projectsState,
+      openTerminalAtPath: (worktreePath) => {
+        // Switch to Claude tab and open a terminal at the worktree path
+        document.querySelector('[data-tab="claude"]')?.click();
+        const openedId = projectsState.get().openedProjectId;
+        const project = projectsState.get().projects.find(p => p.id === openedId)
+          || projectsState.get().projects[0];
+        if (project) {
+          TerminalManager.createTerminal(project, { cwd: worktreePath, runClaude: false });
+        }
+      }
+    })
+  }
+};
+
+/** name -> the panel module, once its chunk has arrived. */
+const _lazyPanelModules = new Map();
+/** name -> the in-flight import, so a chunk is fetched at most once. */
+const _lazyPanelPending = new Map();
+/** Tabs whose chunk is on its way, so a second click is inert rather than a second mount. */
+const _lazyPanelActivating = new Set();
+
+/**
+ * The panel module if its chunk is already in memory, else null. Never starts
+ * a fetch: for the callers that only refresh a panel already on screen.
+ * @param {string} name
+ * @returns {object|null}
+ */
+function lazyPanelIfLoaded(name) {
+  return _lazyPanelModules.get(name) || null;
+}
+
+/**
+ * Fetch a split panel chunk (once) and run the one-time init() that used to
+ * happen at startup. Resolves to null instead of rejecting when the chunk
+ * cannot be loaded, so a missing file costs one tab rather than the app.
+ * @param {string} name
+ * @returns {Promise<object|null>}
+ */
+function loadLazyPanel(name) {
+  const loaded = _lazyPanelModules.get(name);
+  if (loaded) return Promise.resolve(loaded);
+  const pending = _lazyPanelPending.get(name);
+  if (pending) return pending;
+  const entry = _LAZY_PANELS[name];
+  const promise = entry.load().then((mod) => {
+    // esbuild exposes a CommonJS module's exports as the default export.
+    const panel = mod.default || mod;
+    try {
+      entry.init?.(panel);
+    } catch (err) {
+      // The panel is still mountable; only its context injection failed.
+      console.error(`[panels] init failed for "${name}":`, err);
+    }
+    _lazyPanelModules.set(name, panel);
+    return panel;
+  }).catch((err) => {
+    console.error(`[panels] failed to load "${name}":`, err);
+    _lazyPanelPending.delete(name); // a later click may still succeed
+    return null;
+  });
+  _lazyPanelPending.set(name, promise);
+  return promise;
+}
+
+/**
+ * Spinner in the root the panel is about to fill, so a tab waiting on its
+ * chunk reads as loading rather than as broken. Drawn inside the panel root
+ * rather than over the whole tab so the screen's own header stays put, and
+ * wiped by the panel's first render.
+ * @param {string} name
+ */
+function _showLazyPanelLoading(name) {
+  const root = document.getElementById(_LAZY_PANELS[name]?.root);
+  if (!root || root.querySelector('.lazy-panel-loading')) return;
+  const el = document.createElement('div');
+  el.className = 'lazy-panel-loading';
+  el.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;flex:1 1 auto;min-height:200px;color:var(--text-muted);font-size:var(--font-sm)';
+  el.innerHTML = `<div class="loading-spinner"></div><div>${escapeHtml(t('common.loading'))}</div>`;
+  root.appendChild(el);
+}
+
+/** @param {string} name */
+function _clearLazyPanelLoading(name) {
+  document.getElementById(_LAZY_PANELS[name]?.root)?.querySelector('.lazy-panel-loading')?.remove();
+}
+
+/**
+ * Run `use` with a split panel, fetching its chunk first when needed.
+ *
+ * Three things this has to get right, all of which exist only because opening
+ * these tabs became asynchronous: a blank tab while the chunk is in flight
+ * reads as a broken tab; a second click during the fetch must not mount the
+ * panel twice; and a chunk that never arrives must leave the app usable.
+ * @param {string} name
+ * @param {string} tabId
+ * @param {(panel: object) => void} use
+ */
+function withLazyPanel(name, tabId, use) {
+  const loaded = lazyPanelIfLoaded(name);
+  if (loaded) return use(loaded); // warm: the same synchronous path as before
+  if (_lazyPanelActivating.has(tabId)) return; // already on its way
+  _lazyPanelActivating.add(tabId);
+  _showLazyPanelLoading(name);
+  return loadLazyPanel(name).then((panel) => {
+    _lazyPanelActivating.delete(tabId);
+    _clearLazyPanelLoading(name);
+    if (!panel) {
+      showToast({ type: 'error', title: t('common.errorOccurred'), message: name });
+      return;
+    }
+    // The user may have moved on while the chunk loaded; mounting into a tab
+    // nobody is looking at would start its timers behind their back.
+    if (_currentTabId !== tabId) return;
+    use(panel);
+  });
+}
 
 // ========== LOCAL MODAL FUNCTIONS ==========
 // These work with the existing HTML modal elements in index.html
@@ -342,6 +509,13 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
   registry.loadAllTranslations(mergeTranslations);
   registry.injectAllStyles();
 
+  // Third-party project types, if the user has opted in. Deliberately not
+  // awaited: extensions are cosmetic (an icon, a name, a colour in the wizard)
+  // and boot must not wait on a disk scan for a feature that is off by default.
+  // loadExtensions() is written never to reject — see the file's header.
+  require('./src/renderer/services/ProjectTypeExtensionLoader')
+    .loadExtensions({ mergeTranslations });
+
   // Preload dashboard data in background at startup
   DashboardService.loadAllDiskCaches().then(() => {
     setTimeout(() => DashboardService.preloadAllProjects(), 1000);
@@ -403,30 +577,11 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
     projectsState, path, fs
   });
 
-  WorkflowPanel.init({ api, showToast, path, fs });
-
-  ParallelTaskPanel.init({
-    api,
-    showToast,
-    showModal,
-    closeModal,
-    projectsState,
-    openTerminalAtPath: (worktreePath) => {
-      // Switch to Claude tab and open a terminal at the worktree path
-      document.querySelector('[data-tab="claude"]')?.click();
-      const openedId = projectsState.get().openedProjectId;
-      const project = projectsState.get().projects.find(p => p.id === openedId)
-        || projectsState.get().projects[0];
-      if (project) {
-        TerminalManager.createTerminal(project, { cwd: worktreePath, runClaude: false });
-      }
-    }
-  });
-
-  DatabasePanel.init({
-    api, showModal, closeModal, showToast,
-    projectsState, path, fs
-  });
+  // WorkflowPanel, ParallelTaskPanel and DatabasePanel are split out of the
+  // startup bundle: their init() moved into _LAZY_PANELS and runs the first
+  // time their tab is opened. Each one only stored a context object and
+  // subscribed to language changes behind an "am I rendered yet" guard, so
+  // nothing here had to happen at boot.
 
   // Share notification fn with event bus consumer so hooks use the same logic
   setNotificationFn(showNotification);
@@ -2800,9 +2955,9 @@ function applyProjectContext(projectIndex) {
   } else if (activeTab === 'dashboard') {
     renderDashboardForScope();
   } else if (activeTab === 'session-replay') {
-    SessionReplayPanel.setProject();
+    lazyPanelIfLoaded('SessionReplayPanel')?.setProject();
   } else if (activeTab === 'tasks') {
-    ParallelTaskPanel.onProjectChanged?.();
+    lazyPanelIfLoaded('ParallelTaskPanel')?.onProjectChanged?.();
   } else if (activeTab === 'artifacts') {
     ArtifactsPanel.setProject(project);
   }
@@ -3746,19 +3901,20 @@ const _TAB_LIFECYCLE = {
       if (project) GitTabService.selectProject(project.id);
     }
   },
-  database: { activate: () => DatabasePanel.loadPanel() },
+  database: { activate: () => withLazyPanel('DatabasePanel', 'database', (P) => P.loadPanel()) },
   mcp: { activate: () => McpPanel.loadMcps() },
   plugins: { activate: () => PluginsPanel.loadPlugins() },
   skills: { activate: () => SkillsAgentsPanel.loadSkills() },
   agents: { activate: () => SkillsAgentsPanel.loadAgents() },
-  workflows: { activate: () => WorkflowPanel.load() },
-  tasks: { activate: () => ParallelTaskPanel.load() },
+  workflows: { activate: () => withLazyPanel('WorkflowPanel', 'workflows', (P) => P.load()) },
+  tasks: { activate: () => withLazyPanel('ParallelTaskPanel', 'tasks', (P) => P.load()) },
   'control-tower': {
-    activate: () => {
+    activate: () => withLazyPanel('ControlTowerPanel', 'control-tower', (P) => {
       const root = document.getElementById('ct-panel-root');
-      if (root) ControlTowerPanel.loadPanel(root);
-    },
-    deactivate: () => ControlTowerPanel.cleanup()
+      if (root) P.loadPanel(root);
+    }),
+    // A panel whose chunk was never fetched has nothing to tear down.
+    deactivate: () => lazyPanelIfLoaded('ControlTowerPanel')?.cleanup()
   },
   dashboard: {
     activate: () => renderDashboardForScope(),
@@ -3774,20 +3930,20 @@ const _TAB_LIFECYCLE = {
     deactivate: () => TimeTrackingDashboard.cleanup()
   },
   'session-replay': {
-    activate: () => {
+    activate: () => withLazyPanel('SessionReplayPanel', 'session-replay', (P) => {
       const container = document.getElementById('tab-session-replay');
       if (container && !container.dataset.initialized) {
-        SessionReplayPanel.init(container, { projectsState, openedProjectId: projectsState.get().openedProjectId });
+        P.init(container, { projectsState, openedProjectId: projectsState.get().openedProjectId });
         container.dataset.initialized = 'true';
       }
       // The project bar may have moved to another project while this tab was
       // hidden; setProject() is a no-op when it did not.
-      SessionReplayPanel.setProject();
-      SessionReplayPanel.onActivate();
-    },
+      P.setProject();
+      P.onActivate();
+    }),
     // Pauses the replay clock only — a full cleanup() would destroy the custom
     // <select> widgets that init() builds exactly once.
-    deactivate: () => SessionReplayPanel.onDeactivate()
+    deactivate: () => lazyPanelIfLoaded('SessionReplayPanel')?.onDeactivate()
   },
   files: {
     activate: () => {
@@ -3856,7 +4012,12 @@ function _runTabHook(tabId, hook) {
   const fn = _TAB_LIFECYCLE[tabId]?.[hook];
   if (!fn) return;
   try {
-    fn();
+    const result = fn();
+    // Panels behind a split chunk make activate() asynchronous. Without this,
+    // one that fails to mount would surface only as an unhandled rejection.
+    if (result && typeof result.then === 'function') {
+      result.catch((e) => console.error(`[tabs] ${hook} failed for "${tabId}":`, e));
+    }
   } catch (e) {
     // One panel throwing must never strand the app mid-switch.
     console.error(`[tabs] ${hook} failed for "${tabId}":`, e);

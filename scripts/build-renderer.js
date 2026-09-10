@@ -1,6 +1,10 @@
 /**
  * Build script for renderer process
- * Bundles renderer.js and all its dependencies into a single file
+ *
+ * renderer.js and everything it reaches become dist/renderer.bundle.js plus a
+ * set of dist/chunk-*.js, then the handful of standalone ESM bundles below
+ * (mermaid, KaTeX, the PDF viewer, the 3D viewer) that are fetched only when
+ * something on screen needs them.
  */
 
 const esbuild = require('esbuild');
@@ -9,13 +13,31 @@ const path = require('path');
 
 const isWatch = process.argv.includes('--watch');
 
+// Renderer bundle. ESM with code splitting rather than one IIFE, so the five
+// heaviest panels (see _LAZY_PANELS in renderer.js) can be import()ed the
+// first time their tab is opened instead of being parsed and evaluated at
+// every startup. Splitting is what keeps that safe: a standalone bundle per
+// panel would carry its own copy of the observable state modules, the DI
+// container and i18n, and a subscription would then fire on one copy while
+// the UI reads the other. One graph means one instance of each shared module,
+// hoisted into the shared chunks esbuild emits.
+//
+// index.html loads the entry as <script type="module">, which the CSP already
+// allows (script-src 'self'). Nothing about the CSP changes for this.
+//
+// chunkNames stays flat in dist/ on purpose: dynamic imports resolve against
+// the importing chunk's own URL, and the lazy mermaid/KaTeX loaders in
+// src/renderer/services/markdown/postProcess.js ask for './mermaid.bundle.js'
+// relative to it. A chunks/ subdirectory would silently 404 both of them.
 const buildOptions = {
-  entryPoints: [path.join(__dirname, '..', 'renderer.js')],
+  entryPoints: [{ in: path.join(__dirname, '..', 'renderer.js'), out: 'renderer.bundle' }],
   bundle: true,
-  outfile: path.join(__dirname, '..', 'dist', 'renderer.bundle.js'),
+  outdir: path.join(__dirname, '..', 'dist'),
+  splitting: true,
+  chunkNames: 'chunk-[hash]',
   platform: 'browser',
   target: 'chrome120', // Electron uses Chromium
-  format: 'iife',
+  format: 'esm',
   sourcemap: true,
   minify: true,
   // Don't bundle electron - it's provided by the runtime
@@ -91,6 +113,19 @@ const cssBuildOptions = {
 // English, because readLocaleFile() finds nothing in dist/locales/.
 const LAZY_LOCALES = ['fr', 'es', 'id', 'zh-CN'];
 
+/**
+ * Drop the previous build's chunks. Their names are content-hashed, so
+ * without this every edit leaves another orphan behind in dist/ — and
+ * electron-builder ships dist/**\/* wholesale into the installer.
+ */
+function cleanStaleChunks() {
+  const dist = path.join(__dirname, '..', 'dist');
+  if (!fs.existsSync(dist)) return;
+  for (const name of fs.readdirSync(dist)) {
+    if (/^chunk-[A-Z0-9]+\.js(\.map)?$/.test(name)) fs.rmSync(path.join(dist, name), { force: true });
+  }
+}
+
 function copyLazyLocales() {
   const srcDir = path.join(__dirname, '..', 'src', 'renderer', 'i18n', 'locales');
   const destDir = path.join(__dirname, '..', 'dist', 'locales');
@@ -103,6 +138,9 @@ function copyLazyLocales() {
 async function build() {
   try {
     if (isWatch) {
+      // Once, not per rebuild: esbuild rewrites the chunks it still needs, and
+      // a stale one in a dev session costs disk, not correctness.
+      cleanStaleChunks();
       copyLazyLocales();
       const [jsCtx, cssCtx] = await Promise.all([
         esbuild.context(buildOptions),
@@ -111,6 +149,7 @@ async function build() {
       await Promise.all([jsCtx.watch(), cssCtx.watch()]);
       console.log('Watching for changes...');
     } else {
+      cleanStaleChunks();
       await Promise.all([
         esbuild.build(buildOptions),
         esbuild.build(mermaidBuildOptions),
@@ -126,7 +165,7 @@ async function build() {
 
       copyLazyLocales();
 
-      console.log('Build complete: dist/renderer.bundle.js + dist/mermaid.bundle.js + dist/katex.bundle.js + dist/pdf-viewer.bundle.js + dist/three-viewer.bundle.js + dist/styles.bundle.css + dist/pdf.worker.min.mjs + dist/locales/{' + LAZY_LOCALES.join(',') + '}.json');
+      console.log('Build complete: dist/renderer.bundle.js + dist/chunk-*.js + dist/mermaid.bundle.js + dist/katex.bundle.js + dist/pdf-viewer.bundle.js + dist/three-viewer.bundle.js + dist/styles.bundle.css + dist/pdf.worker.min.mjs + dist/locales/{' + LAZY_LOCALES.join(',') + '}.json');
     }
   } catch (error) {
     console.error('Build failed:', error);

@@ -11,17 +11,19 @@ const SkillsAgentsPanel = require('./SkillsAgentsPanel');
 const PluginsPanel = require('./PluginsPanel');
 const MarketplacePanel = require('./MarketplacePanel');
 const McpPanel = require('./McpPanel');
-const WorkflowPanel = require('./WorkflowPanel');
-const DatabasePanel = require('./DatabasePanel');
 const CloudPanel = require('./CloudPanel');
 const ConnectivityPanel = require('./ConnectivityPanel');
-const ControlTowerPanel = require('./ControlTowerPanel');
-const SessionReplayPanel = require('./SessionReplayPanel');
-const ParallelTaskPanel = require('./ParallelTaskPanel');
 const WorkspacePanel = require('./WorkspacePanel');
 const ErrorLogPanel = require('./ErrorLogPanel');
 const FilesPanel = require('./FilesPanel');
 const ArtifactsPanel = require('./ArtifactsPanel');
+
+// WorkflowPanel, DatabasePanel, ControlTowerPanel, SessionReplayPanel and
+// ParallelTaskPanel are deliberately absent: they are code-split and reached
+// through the _LAZY_PANELS map in renderer.js, which import()s them the first
+// time their tab is opened. Naming one here would put it back in the startup
+// bundle — this index is CommonJS, so a require() is a side effect esbuild
+// cannot shake out even when nothing reads the binding.
 
 module.exports = {
   FilesPanel,
@@ -33,13 +35,8 @@ module.exports = {
   PluginsPanel,
   MarketplacePanel,
   McpPanel,
-  WorkflowPanel,
-  DatabasePanel,
   CloudPanel,
   ConnectivityPanel,
-  ControlTowerPanel,
-  SessionReplayPanel,
-  ParallelTaskPanel,
   WorkspacePanel,
   ErrorLogPanel,
   ArtifactsPanel,
