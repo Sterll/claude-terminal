@@ -3448,28 +3448,6 @@ select.wf-step-edit-input {
 .wfm-publish-submit:hover { background: var(--accent-hover); box-shadow: 0 4px 16px rgba(217,119,6,.25); }
 .wfm-publish-submit:disabled { opacity: .4; cursor: not-allowed; }
 
-/* ── Toast ───────────────────────────────────────────────────────────────── */
-
-.wfm-toast {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  padding: 10px 16px;
-  border-radius: 8px;
-  font-size: var(--font-xs);
-  font-weight: 500;
-  z-index: 9999;
-  pointer-events: none;
-  opacity: 0;
-  transform: translateY(8px);
-  transition: opacity .3s var(--wf-ease), transform .3s var(--wf-ease);
-  max-width: 320px;
-}
-.wfm-toast--in { opacity: 1; transform: translateY(0); }
-.wfm-toast--success { background: rgba(74,222,128,.1); color: var(--wf-success); border: 1px solid rgba(74,222,128,.2); }
-.wfm-toast--error   { background: rgba(239,68,68,.1);  color: #f87171;           border: 1px solid rgba(239,68,68,.2); }
-.wfm-toast--info    { background: rgba(255,255,255,.05); color: var(--text-secondary); border: 1px solid var(--wf-border); }
-
 /* ═══════════════════════════════════════════════════════════════════════════════
    NODE GRAPH EDITOR
    ═══════════════════════════════════════════════════════════════════════════════ */

@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 136 test files)
+npm test                 # Run Jest tests (jsdom, 137 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md has drifted from the tree it describes
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -582,7 +582,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 127 unit test files (jsdom environment)
+npm test                    # Run all 137 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file still matches the tree
 npm run lint                # ESLint (see below)
@@ -591,7 +591,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 136 test files
+- **Framework:** Jest with jsdom, 137 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
@@ -607,7 +607,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
   - `shared/` - context usage, cron, model options, permission modes, simple-task
   - `smoke/` - every module parses and loads
   - `state/` - State plus each state module
-  - `ui/` - chat account switch, chat limit error, task widget, tasks drawer, ClaudeRemotePanel, navigation mode, kanban live refresh
+  - `ui/` - chat account switch, chat limit error, task widget, tasks drawer, ClaudeRemotePanel, navigation mode, kanban live refresh, toast
   - `utils/` - attachments, color, commit messages, drop paths, file icons, file lock, format, frontmatter, git, http cache, session search, shell, syntax highlight, tool registry
 
 ### Lint (`eslint.config.js`)
@@ -655,7 +655,7 @@ Two documented exceptions, both real:
 
 ### E2E smoke (`tests/e2e/smoke.js`)
 
-All 127 Jest suites run in jsdom against a mocked `window.electron_api`, so nothing
+All 137 Jest suites run in jsdom against a mocked `window.electron_api`, so nothing
 in the repository asserts that the application actually starts. Every regression of
 the shape "the window opens but panel X throws on first render" has had to be found
 by a human opening the app. This covers that gap and only that.

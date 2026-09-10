@@ -1416,191 +1416,225 @@ mark.qp-hl {
   font-size: var(--font-xs);
 }
 
-/* Toast Notifications */
+/* ══════════════════════════════════════════════════════════════════════════
+   TOAST NOTIFICATIONS
+   Rendered by src/renderer/ui/components/Toast.js — the one in-app toast.
+   Shape: [icon] [content] [count?] [action?] [close]  + progress bar
+   Only .toast-content flexes, which is what pins the close button to the
+   right edge instead of leaving dead space after it.
+   ══════════════════════════════════════════════════════════════════════════ */
+
 .toast-container {
   position: fixed;
-  top: 50px;
-  right: 20px;
+  top: 46px;
+  right: 16px;
   z-index: 10000;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  align-items: flex-end;
+  gap: 8px;
   pointer-events: none;
+  /* Pinned, not shrink-to-fit: a fit-content container takes the width of its
+     widest live toast, so every arrival and expiry resized the whole stack. */
+  width: min(420px, calc(100vw - 32px));
 }
 
 .toast {
+  --toast-accent: var(--accent);
   display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 14px 18px;
-  background: linear-gradient(145deg, var(--bg-secondary) 0%, rgba(30, 30, 35, 0.98) 100%);
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 12px 12px 16px;
+  background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 12px 40px rgba(0, 0, 0, 0.35);
-  min-width: 300px;
-  max-width: 420px;
+  border-radius: var(--radius);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 28px rgba(0, 0, 0, 0.45);
   pointer-events: auto;
-  animation: toast-slide-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
   overflow: hidden;
+  opacity: 0;
+  transform: translateX(calc(100% + 24px));
+  transition: opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.toast.toast-exit {
-  animation: toast-slide-out 0.3s ease forwards;
-}
-
-/* Toast component (ui/components/Toast.js) toggles .show / .hide instead of .toast-exit */
 .toast.show {
-  transform: translateX(0);
   opacity: 1;
+  transform: translateX(0);
 }
 
 .toast.hide {
-  animation: toast-slide-out 0.3s ease forwards;
+  opacity: 0;
+  transform: translateX(calc(100% + 24px));
+  transition-duration: 0.2s, 0.24s;
 }
 
-/* Color accent stripe on left */
-.toast.toast-success { border-left: 3px solid var(--success); }
-.toast.toast-error { border-left: 3px solid var(--danger); }
-.toast.toast-warning { border-left: 3px solid var(--warning); }
-.toast.toast-info { border-left: 3px solid var(--accent); }
+/* Type accent — every coloured part of the toast derives from this one value */
+.toast.toast-success { --toast-accent: var(--success); }
+.toast.toast-error { --toast-accent: var(--danger); }
+.toast.toast-warning { --toast-accent: var(--warning); }
+.toast.toast-info { --toast-accent: var(--info); }
 
-/* Subtle color wash background */
-.toast.toast-success::before,
-.toast.toast-error::before,
-.toast.toast-warning::before,
-.toast.toast-info::before {
+/* Left accent stripe: a pill inset from the corners, so it reads as a marker
+   rather than as a border bent around the radius. */
+.toast::before {
   content: '';
   position: absolute;
-  top: 0;
   left: 0;
-  right: 0;
-  height: 100%;
-  pointer-events: none;
-}
-
-.toast.toast-success::before { background: linear-gradient(90deg, rgba(34, 197, 94, 0.06) 0%, transparent 50%); }
-.toast.toast-error::before { background: linear-gradient(90deg, rgba(239, 68, 68, 0.06) 0%, transparent 50%); }
-.toast.toast-warning::before { background: linear-gradient(90deg, rgba(245, 158, 11, 0.06) 0%, transparent 50%); }
-.toast.toast-info::before { background: linear-gradient(90deg, rgba(217, 119, 6, 0.06) 0%, transparent 50%); }
-
-@keyframes toast-slide-in {
-  from { transform: translateX(calc(100% + 24px)); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
-}
-
-@keyframes toast-slide-out {
-  from { transform: translateX(0); opacity: 1; }
-  to { transform: translateX(calc(100% + 24px)); opacity: 0; }
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--toast-accent);
 }
 
 .toast-icon {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  position: relative;
-  z-index: 1;
+  color: var(--toast-accent);
+  background: color-mix(in srgb, var(--toast-accent) 16%, transparent);
 }
 
 .toast-icon svg {
-  width: 18px;
-  height: 18px;
+  width: 13px;
+  height: 13px;
 }
 
-.toast.toast-success .toast-icon { color: var(--success); background: rgba(34, 197, 94, 0.12); }
-.toast.toast-error .toast-icon { color: var(--danger); background: rgba(239, 68, 68, 0.12); }
-.toast.toast-warning .toast-icon { color: var(--warning); background: rgba(245, 158, 11, 0.12); }
-.toast.toast-info .toast-icon { color: var(--accent); background: rgba(217, 119, 6, 0.12); }
-
+/* The only flexible child — takes every spare pixel so nothing after it drifts */
 .toast-content {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
-  position: relative;
-  z-index: 1;
 }
 
 .toast-title {
+  font-size: var(--font-sm);
   font-weight: 600;
-  font-size: 14px;
   color: var(--text-primary);
-  margin-bottom: 2px;
+  line-height: 1.35;
   letter-spacing: -0.01em;
+  word-break: break-word;
 }
 
 .toast-message {
-  font-size: 13px;
+  font-size: var(--font-sm);
   color: var(--text-secondary);
   line-height: 1.4;
   word-break: break-word;
 }
 
-.toast-action {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  padding: 4px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--accent);
-  cursor: pointer;
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
-  white-space: nowrap;
+/* A title on its own is the toast's whole message — read it as one */
+.toast-title:only-child {
+  font-weight: 500;
+}
+
+.toast-title + .toast-message {
+  margin-top: 2px;
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+}
+
+/* Repeat counter, shown when an identical toast is coalesced */
+.toast-count {
   flex-shrink: 0;
-  position: relative;
-  z-index: 1;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+
+.toast-action {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  color: var(--toast-accent);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s, border-color 0.15s;
 }
 
 .toast-action:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: var(--accent);
+  background: var(--bg-active);
+  border-color: var(--toast-accent);
 }
 
 .toast-close {
-  background: none;
-  border: none;
-  padding: 4px;
-  cursor: pointer;
-  color: var(--text-muted);
-  border-radius: 6px;
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
   flex-shrink: 0;
-  position: relative;
-  z-index: 1;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
 }
 
 .toast-close:hover {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-hover);
 }
 
 .toast-close svg {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
 }
 
+.toast-action:focus-visible,
+.toast-close:focus-visible {
+  outline: 2px solid var(--toast-accent);
+  outline-offset: 1px;
+}
+
+/* Driven by Toast.js so the countdown can pause on hover — transform only,
+   which keeps it off the layout path. */
 .toast-progress {
   position: absolute;
   bottom: 0;
   left: 0;
-  height: 3px;
-  border-radius: 0 0 12px 12px;
-  animation: toast-progress linear forwards;
-  opacity: 0.4;
+  right: 0;
+  height: 2px;
+  background: var(--toast-accent);
+  opacity: 0.35;
+  transform: scaleX(1);
+  transform-origin: left center;
 }
 
-.toast.toast-success .toast-progress { background: var(--success); }
-.toast.toast-error .toast-progress { background: var(--danger); }
-.toast.toast-warning .toast-progress { background: var(--warning); }
-.toast.toast-info .toast-progress,
-.toast-progress { background: var(--accent); }
+/* Repeat of a toast already on screen */
+.toast-pulse {
+  animation: toast-pulse 0.4s ease;
+}
 
-@keyframes toast-progress {
-  from { width: 100%; }
-  to { width: 0%; }
+@keyframes toast-pulse {
+  0% { transform: translateX(0) scale(1); }
+  40% { transform: translateX(0) scale(1.015); }
+  100% { transform: translateX(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    transition-duration: 0.01ms;
+    transform: none;
+  }
+  .toast.hide { transform: none; }
+  .toast-pulse { animation: none; }
+  .toast-progress { transition: none !important; }
 }
 
 /* ========== CONFIRM DIALOG ========== */
