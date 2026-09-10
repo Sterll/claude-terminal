@@ -24,7 +24,7 @@ npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
 npm test                 # Run Jest tests (jsdom, 137 test files)
 npm run test:watch       # Jest in watch mode
-npm run check:docs       # Fail if CLAUDE.md has drifted from the tree it describes
+npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
 npm run lint:fix         # ESLint with --fix
 npm run test:e2e         # Playwright smoke test against the real Electron app
@@ -584,7 +584,7 @@ Worker); neither is bundled into the desktop app.
 ```bash
 npm test                    # Run all 137 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
-npm run check:docs          # Verify this file still matches the tree
+npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
 npm run test:e2e            # Playwright smoke test against the real Electron app
 ```
@@ -769,3 +769,4 @@ Files prefixed with `_` are shared helpers, not tool modules — the loader igno
 - **Security:** sanitize user-supplied markdown with `dompurify`; never inject untrusted HTML into chat or dashboard panels.
 - **Lint:** `npm run lint` before pushing. The boundary rules encode the main/renderer split described above - if one fires, the fix is a new IPC handler, not an `eslint-disable`.
 - **This file:** `npm run check:docs` verifies the counts and paths above against the actual tree. When you add an IPC file, a service, a panel, a node type or a locale, update the matching table in the same commit. A `CLAUDE.md` that sends the reader to a directory that no longer exists is worse than no `CLAUDE.md`.
+- **README:** it ships in the app's five locales — `README.md` (English, the base GitHub renders) plus `README.{fr,es,id,zh-CN}.md`. The same `check:docs` run compares the four translations against the English one: identical heading structure, a language switcher reaching every other file, and internal anchors that resolve. Only the *shape* is checked, never the prose. A section added on one side only fails the build, so add or remove a section in all five at once. Anchors are generated from the translated heading text, so a cross-reference cannot be copied verbatim from the English file.

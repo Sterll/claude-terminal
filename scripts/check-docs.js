@@ -12,8 +12,10 @@
  * It deliberately checks only what a machine can check without judgement:
  *
  *   1. numbers CLAUDE.md states about the tree (file counts, handler counts,
- *      locale key counts), and
- *   2. that every repo path it mentions actually exists.
+ *      locale key counts),
+ *   2. that every repo path it mentions actually exists, and
+ *   3. that the four README translations still mirror the English one — same
+ *      section structure, a complete language switcher, working anchors.
  *
  * Prose is left alone. The point is not to generate the documentation — a
  * generated CLAUDE.md would lose the "why" that makes it worth reading — but to
@@ -211,6 +213,109 @@ if (uniqueMissing.length) {
   failures.push(`referenced paths do not exist: ${uniqueMissing.join(', ')}`);
 }
 
+// ── 7. README translations ───────────────────────────────────────────────────
+//
+// The README ships in the same five languages as the app. Nothing forces the
+// four translations to follow the English one, so the failure mode is a section
+// added on one side only — which is invisible until a reader of that language
+// goes looking for something the English README promises.
+//
+// Prose is not compared, only shape: the sequence of heading levels. That
+// catches a section added, removed or moved without caring how it was worded,
+// which is the only part of a translation a machine has any business judging.
+
+const README_LOCALES = ['fr', 'es', 'id', 'zh-CN'];
+const readmeFile = (loc) => (loc === 'en' ? 'README.md' : `README.${loc}.md`);
+const ALL_READMES = ['en', ...README_LOCALES];
+
+/**
+ * GitHub's heading-anchor algorithm: lowercase, drop everything that is not a
+ * letter, digit, space or hyphen, then turn spaces into hyphens. Unicode
+ * letters survive, which is why `#prérequis` and `#环境要求` are valid anchors.
+ */
+function slugify(heading) {
+  return heading
+    .toLowerCase()
+    .trim()
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/\s/g, '-');
+}
+
+/** The sequence of heading levels in a markdown file, e.g. "2333233..." */
+function headingShape(text) {
+  return [...text.matchAll(/^(#{2,3})\s+\S/gm)].map((m) => m[1].length).join('');
+}
+
+const readmes = new Map();
+for (const loc of ALL_READMES) {
+  const file = readmeFile(loc);
+  const full = path.join(ROOT, file);
+  if (!fs.existsSync(full)) {
+    checks.push({ name: `${file} exists`, claimed: 'present', actual: 'missing', ok: false });
+    failures.push(`${file} is missing — every locale the app ships needs its README, or drop it from README_LOCALES`);
+    continue;
+  }
+  readmes.set(loc, fs.readFileSync(full, 'utf8'));
+}
+
+const baseShape = readmes.has('en') ? headingShape(readmes.get('en')) : null;
+
+for (const [loc, text] of readmes) {
+  const file = readmeFile(loc);
+
+  // 7a. Same section structure as the English base.
+  if (loc !== 'en' && baseShape !== null) {
+    const shape = headingShape(text);
+    const ok = shape === baseShape;
+    checks.push({
+      name: `${file} section structure`,
+      claimed: `${baseShape.length} headings`,
+      actual: `${shape.length} headings`,
+      ok
+    });
+    if (!ok) {
+      failures.push(
+        `${file} no longer mirrors README.md: ${shape.length} headings against ${baseShape.length}. ` +
+          'A section was added, removed or moved on one side only.'
+      );
+    }
+  }
+
+  // 7b. The language switcher reaches every other translation, and marks itself.
+  const unreachable = ALL_READMES.filter((o) => o !== loc && !text.includes(`href="${readmeFile(o)}"`));
+  const marksItself = /<b>[^<]+<\/b>/.test(text.slice(0, 2000));
+  const switcherOk = unreachable.length === 0 && marksItself;
+  checks.push({
+    name: `${file} language switcher`,
+    claimed: `${ALL_READMES.length - 1} links + self`,
+    actual: switcherOk ? 'complete' : `missing ${unreachable.map(readmeFile).join(', ') || 'self marker'}`,
+    ok: switcherOk
+  });
+  if (!switcherOk) {
+    failures.push(
+      unreachable.length
+        ? `${file} does not link to ${unreachable.map(readmeFile).join(', ')} — a reader lands there with no way back`
+        : `${file} does not mark its own language in the switcher`
+    );
+  }
+
+  // 7c. Internal anchors resolve. Anchors are generated from the *translated*
+  // heading text, so a cross-reference copied verbatim from English silently
+  // points at nothing.
+  const anchors = new Set([...text.matchAll(/^#{2,3}\s+(.+)$/gm)].map((m) => slugify(m[1])));
+  const broken = [...text.matchAll(/\]\(#([^)]+)\)/g)].map((m) => m[1]).filter((a) => !anchors.has(a));
+  const uniqueBroken = [...new Set(broken)];
+  checks.push({
+    name: `${file} internal anchors`,
+    claimed: 'all resolve',
+    actual: uniqueBroken.length ? `${uniqueBroken.length} broken` : 'all resolve',
+    ok: !uniqueBroken.length
+  });
+  if (uniqueBroken.length) {
+    failures.push(`${file} links to headings that do not exist: ${uniqueBroken.map((a) => `#${a}`).join(', ')}`);
+  }
+}
+
 // ── Report ───────────────────────────────────────────────────────────────────
 
 const pad = Math.max(...checks.map((c) => c.name.length));
@@ -220,10 +325,10 @@ for (const c of checks) {
 }
 
 if (failures.length) {
-  console.error(`\n${failures.length} CLAUDE.md claim(s) no longer match the repository:\n`);
+  console.error(`\n${failures.length} documentation claim(s) no longer match the repository:\n`);
   for (const f of failures) console.error(`  - ${f}`);
-  console.error('\nUpdate CLAUDE.md in the same commit as the change that invalidated it.');
+  console.error('\nUpdate the documentation in the same commit as the change that invalidated it.');
   process.exit(1);
 }
 
-console.log(`\nCLAUDE.md matches the tree (${checks.length} checks).`);
+console.log(`\nCLAUDE.md and the READMEs match the tree (${checks.length} checks).`);
