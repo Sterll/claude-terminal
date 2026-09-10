@@ -817,6 +817,61 @@ function buildViewTabsHtml(projectId) {
   `;
 }
 
+/**
+ * Placeholder painted while the dashboard's first data load is in flight.
+ *
+ * It mirrors the real overview - header, stat chips, path bar, two columns of
+ * cards - so the page keeps its shape and nothing jumps when the data lands.
+ * The tabs are the real ones, minus their handlers: they cost nothing to draw
+ * and their absence would be the one visible shift left.
+ *
+ * @param {string} projectId
+ * @returns {string}
+ */
+function buildDashboardSkeletonHtml(projectId) {
+  const bar = (w, cls = '') => `<span class="sk-bar ${cls}" style="width:${w}"></span>`;
+  const chip = (w) => `<span class="sk-chip" style="width:${w}"></span>`;
+  const card = (rows) => `
+    <div class="sk-card">
+      <div class="sk-card-header">${bar('40%', 'sk-bar--title')}${bar('54px')}</div>
+      ${rows.map(w => `<div class="sk-row">${bar('18px', 'sk-dot')}${bar(w)}</div>`).join('')}
+    </div>
+  `;
+
+  return `
+    <div class="dashboard-skeleton" aria-busy="true" aria-label="${escapeHtml(t('dashboard.loadingInfo'))}">
+      ${buildViewTabsHtml(projectId)}
+      <div class="sk-header">
+        <div class="sk-header-title">
+          ${bar('180px', 'sk-bar--h2')}
+          ${bar('90px', 'sk-bar--badge')}
+        </div>
+        <div class="sk-header-actions">
+          ${bar('120px', 'sk-bar--btn')}
+          ${bar('86px', 'sk-bar--btn')}
+          ${bar('140px', 'sk-bar--btn')}
+        </div>
+      </div>
+      <div class="sk-stats">${chip('120px')}${chip('150px')}${chip('110px')}${chip('190px')}</div>
+      ${bar('100%', 'sk-bar--path')}
+      <div class="sk-grid">
+        <div class="sk-col">
+          ${card(['72%', '58%', '80%'])}
+          ${card(['64%', '76%'])}
+        </div>
+        <div class="sk-col">
+          ${card(['84%', '52%'])}
+          ${card(['70%', '66%', '48%'])}
+        </div>
+      </div>
+      <div class="sk-card sk-card--wide">
+        <div class="sk-card-header">${bar('26%', 'sk-bar--title')}${bar('80px')}</div>
+        ${bar('100%', 'sk-bar--graph')}
+      </div>
+    </div>
+  `;
+}
+
 // ── Timeline view ────────────────────────────────────────────────────────────
 //
 // The dashboard already answers "what is the state of this project". The
@@ -2246,12 +2301,7 @@ async function renderDashboard(container, project, options = {}) {
 
   // Case 2: No cache - show loading and fetch
   const targetProjectId = projectId;
-  container.innerHTML = `
-    <div class="dashboard-loading">
-      <div class="loading-spinner"></div>
-      <p>${t('dashboard.loadingInfo')}</p>
-    </div>
-  `;
+  container.innerHTML = buildDashboardSkeletonHtml(projectId);
 
   setCacheLoading(projectId, true);
 

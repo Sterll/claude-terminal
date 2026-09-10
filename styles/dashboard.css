@@ -709,33 +709,7 @@
   color: var(--text-muted);
 }
 
-/* Loading state */
-.dashboard-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--text-muted);
-}
-
-.dashboard-loading svg {
-  width: 40px;
-  height: 40px;
-  animation: spin 1s linear infinite;
-}
-
 /* ========== ENHANCED DASHBOARD STYLES ========== */
-
-/* Loading spinner */
-.dashboard-loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  gap: 16px;
-  color: var(--text-muted);
-}
 
 .loading-spinner {
   width: 40px;
@@ -744,6 +718,138 @@
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 1s linear infinite;
+}
+
+/* ── First-load skeleton ──────────────────────────────────────────────────
+   Drawn by buildDashboardSkeletonHtml() instead of a centred spinner: the
+   dashboard has a fixed shape, so showing that shape greyed out reads as
+   "almost there" rather than "nothing yet", and the real content lands
+   without moving anything. */
+@keyframes dash-shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+.dashboard-skeleton {
+  pointer-events: none;
+  user-select: none;
+}
+
+.dashboard-skeleton .sk-bar,
+.dashboard-skeleton .sk-chip,
+.dashboard-skeleton .sk-card {
+  background: linear-gradient(90deg, var(--bg-tertiary) 25%, var(--bg-active) 50%, var(--bg-tertiary) 75%);
+  background-size: 200% 100%;
+  animation: dash-shimmer 1.4s ease-in-out infinite;
+}
+
+.dashboard-skeleton .sk-bar {
+  display: inline-block;
+  height: 11px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.dashboard-skeleton .sk-bar--h2 { height: 22px; margin: 5px 0; border-radius: 5px; }
+.dashboard-skeleton .sk-bar--badge { height: 18px; margin: 3px 0; border-radius: 9px; }
+.dashboard-skeleton .sk-bar--btn { height: 37px; border-radius: var(--radius-sm); }
+.dashboard-skeleton .sk-bar--title { height: 13px; }
+.dashboard-skeleton .sk-bar--path {
+  display: block;
+  height: 35px;
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+}
+.dashboard-skeleton .sk-dot { height: 14px; border-radius: 50%; }
+.dashboard-skeleton .sk-bar--graph {
+  display: block;
+  height: 96px;
+  border-radius: var(--radius-sm);
+}
+
+/* Header: title + badge on the left, action buttons on the right. */
+.dashboard-skeleton .sk-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.dashboard-skeleton .sk-header-title {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.dashboard-skeleton .sk-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Quick-stat chips. */
+.dashboard-skeleton .sk-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.dashboard-skeleton .sk-chip {
+  height: 35px;
+  border-radius: var(--radius);
+}
+
+/* Two columns of cards, same grid as the real overview. */
+.dashboard-skeleton .sk-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.dashboard-skeleton .sk-col {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.dashboard-skeleton .sk-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 20px;
+  animation: none;
+}
+
+.dashboard-skeleton .sk-card--wide {
+  margin-top: 20px;
+}
+
+.dashboard-skeleton .sk-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.dashboard-skeleton .sk-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.dashboard-skeleton .sk-row:last-child { margin-bottom: 0; }
+
+/* The bars inside a card sit on bg-secondary, so they need the lighter ramp
+   to stay visible. */
+.dashboard-skeleton .sk-card .sk-bar {
+  background: linear-gradient(90deg, var(--bg-hover) 25%, var(--bg-active) 50%, var(--bg-hover) 75%);
+  background-size: 200% 100%;
 }
 
 /* Dashboard refresh indicator */
