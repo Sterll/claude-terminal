@@ -3,6 +3,14 @@
 </p>
 
 <p align="center">
+  <b>English</b> &bull;
+  <a href="README.fr.md">Français</a> &bull;
+  <a href="README.es.md">Español</a> &bull;
+  <a href="README.id.md">Bahasa Indonesia</a> &bull;
+  <a href="README.zh-CN.md">简体中文</a>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/github/downloads/Sterll/claude-terminal/total?color=d97706&label=downloads" alt="Downloads" />
   <img src="https://img.shields.io/badge/version-1.3.2-orange" alt="Version" />
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-blue" alt="Platform" />
