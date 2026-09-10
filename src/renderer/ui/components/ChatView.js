@@ -3827,6 +3827,40 @@ class ChatView extends BaseComponent {
       return;
     }
 
+    // Image lightbox — checked before the tool card / group toggles below,
+    // because these images live *inside* an expandable tool card: matching the
+    // card first meant clicking the preview collapsed the card instead of
+    // enlarging the image.
+    const clickedImage = e.target.closest('.chat-msg-image');
+    if (clickedImage) {
+      e.stopPropagation();
+      const container = clickedImage.closest('.chat-msg-images');
+      if (container) {
+        const allImages = Array.from(container.querySelectorAll('.chat-msg-image'));
+        const srcs = allImages.map(img => img.src);
+        const index = allImages.indexOf(clickedImage);
+        openLightbox(srcs, Math.max(0, index));
+      } else {
+        openLightbox([clickedImage.src], 0);
+      }
+      return;
+    }
+
+    // Inline image lightbox. The wrapper is matched too: it carries the border
+    // and the pointer cursor, so a click landing on that 1px edge must not fall
+    // through to the tool card toggle either.
+    const inlineWrap = e.target.closest('.chat-inline-img-wrap');
+    const inlineImg = e.target.closest('.chat-inline-img') || inlineWrap?.querySelector('.chat-inline-img');
+    if (inlineImg) {
+      e.stopPropagation();
+      const container = inlineImg.closest('.chat-inline-images');
+      const allImgs = container ? Array.from(container.querySelectorAll('.chat-inline-img')) : [inlineImg];
+      const srcs = allImgs.map(i => i.src);
+      const index = allImgs.indexOf(inlineImg);
+      openLightbox(srcs, Math.max(0, index));
+      return;
+    }
+
     // Tool group toggle
     const groupHeader = e.target.closest('.chat-tool-group-header');
     if (groupHeader && !e.target.closest('.chat-tool-card')) {
@@ -3843,30 +3877,6 @@ class ChatView extends BaseComponent {
     const toolCard = e.target.closest('.chat-tool-card.expandable');
     if (toolCard) {
       toggleToolCard(toolCard);
-      return;
-    }
-
-    // Image lightbox
-    const clickedImage = e.target.closest('.chat-msg-image');
-    if (clickedImage) {
-      const container = clickedImage.closest('.chat-msg-images');
-      if (container) {
-        const allImages = Array.from(container.querySelectorAll('.chat-msg-image'));
-        const srcs = allImages.map(img => img.src);
-        const index = allImages.indexOf(clickedImage);
-        openLightbox(srcs, Math.max(0, index));
-      }
-      return;
-    }
-
-    // Inline image lightbox
-    const inlineImg = e.target.closest('.chat-inline-img');
-    if (inlineImg) {
-      const container = inlineImg.closest('.chat-inline-images');
-      const allImgs = container ? Array.from(container.querySelectorAll('.chat-inline-img')) : [inlineImg];
-      const srcs = allImgs.map(i => i.src);
-      const index = allImgs.indexOf(inlineImg);
-      openLightbox(srcs, Math.max(0, index));
       return;
     }
   });
