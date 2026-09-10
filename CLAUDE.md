@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 137 test files)
+npm test                 # Run Jest tests (jsdom, 149 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -39,8 +39,8 @@ Electron Main Process (Node.js)
 ├── main.js                          # Bootstrap, lifecycle, single-instance lock, global shortcuts
 ├── src/main/preload.js              # IPC bridge (window.electron_api)
 ├── src/main/preload-quickpicker.js  # Preload for Quick Picker window
-├── src/main/ipc/                    # 35 IPC files, 322 handlers total
-├── src/main/services/               # 34 services
+├── src/main/ipc/                    # 36 IPC files, 324 handlers total
+├── src/main/services/               # 35 services
 ├── src/main/windows/                # 5 window managers
 ├── src/main/utils/                  # 13 utilities
 └── src/main/workflow-nodes/         # 31 workflow node types (*.node.js)
@@ -50,7 +50,7 @@ Electron Renderer Process (Browser)
 ├── src/renderer/index.js            # Module loader & initialization
 ├── src/renderer/core/               # DI container, BaseService/Component/Panel, ApiProvider
 ├── src/renderer/state/              # 15 observable state modules
-├── src/renderer/services/           # 27 services + modular markdown renderer + mention sources
+├── src/renderer/services/           # 28 services + modular markdown renderer + mention sources
 ├── src/renderer/ui/components/      # 17 UI components
 ├── src/renderer/ui/panels/          # 25 UI panels
 ├── src/renderer/features/           # Keyboard shortcuts, quick picker, drag-drop
@@ -58,14 +58,14 @@ Electron Renderer Process (Browser)
 ├── src/renderer/workflow-fields/    # 13 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN locales (3641 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN locales (3673 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting
 
 Project Types (Plugin System)
 └── src/project-types/               # general, api, fivem, minecraft, python, webapp, discord
 
 Shared code
-└── src/shared/                      # 12 modules shared between main, renderer and the MCP server
+└── src/shared/                      # 13 modules shared between main, renderer and the MCP server
 
 Styles
 └── styles/                          # 30 modular CSS files (~57,000 lines total)
@@ -119,11 +119,12 @@ Remote UI (PWA for mobile)
 | `time.ipc.js` | 1 | Time tracking snapshot |
 | `telemetry.ipc.js` | 1 | Opt-in anonymous telemetry |
 | `preview.ipc.js` | 1 | Serves ```html markdown blocks over the `ct-preview://` scheme (see below) |
+| `project-types.ipc.js` | 2 | List declarative project-type extensions from `~/.claude-terminal/project-types/`, create that directory |
 | `fivem.ipc.js` | - | Delegated to `src/project-types/fivem/` |
 | `cloud-shared.js` | - | Helpers shared by the three cloud IPC files |
 | `index.js` | - | Orchestrator - registers all handlers |
 
-**Total: 322 IPC handlers across 35 files.**
+**Total: 324 IPC handlers across 36 files.**
 
 ### Services (`src/main/services/`)
 
@@ -162,6 +163,7 @@ Remote UI (PWA for mobile)
 | `CloudRelayClient.js` | WSS client to self-hosted cloud relay |
 | `SyncEngine.js` | Bidirectional desktop <-> cloud sync, conflict resolution, file watcher, per-entity toggles |
 | `TelemetryService.js` | Opt-in anonymous telemetry |
+| `ProjectTypeExtensionService.js` | Discovers third-party project types in `~/.claude-terminal/project-types/`. Reads and validates a declarative manifest and hands the renderer inert JSON — it never `require()`s what it finds, in either process. Off by default, per-extension opt-in on top, and it never rejects: a broken extension yields one entry in `problems[]` and nothing else. Design note: `design/project-type-extensions.md` |
 | `FivemService.js` | Re-export (delegated to `src/project-types/fivem`) |
 
 ### Windows (`src/main/windows/`)
@@ -271,6 +273,7 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 | `IdleAnimationPauser.js` | Pauses every infinite CSS animation while the window is unfocused. A composited animation forces a compositor frame per vsync and the cost grows with document size - on a 68k-node transcript a single 13px spinner cost ~30% of a core. All perpetual animations here are "still working" indicators, so freezing them while the user is elsewhere changes nothing actionable |
 | `WorkflowSchemaCache.js` | Workflow schema cache |
 | `SessionRecapService.js` | Auto-generated session summaries |
+| `ProjectTypeExtensionLoader.js` | Renderer side of third-party project types. Returns before the IPC call when `projectTypeExtensionsEnabled` is false, so a machine that has never opted in never looks at the directory, and folds every load failure into one Toast rather than a stack of them. Written not to reject: it runs on the boot path |
 | `TerminalSessionService.js` | Session naming, pins, history |
 | `BuiltinSystemPrompts.js` | Built-in system prompts |
 | `markdown/` | Modular renderer subsystem (configure, streaming, postProcess, interactivity, blocks) |
@@ -279,7 +282,7 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 
 `ProjectList`, `ProjectBar`, `TerminalManager`, `ChatView`, `FileExplorer`, `FileViewer`, `Modal`, `CustomizePicker`, `QuickActions`, `ContextMenu`, `Tab`, `Toast`, `ClaudeMdSuggestionModal`, `AccountMenu`, `AccountSwitchModal`, `TranscriptPruner`, `WhatsNew`.
 
-> `ChatView.js` is 9,300 lines and `TerminalManager.js` 4,800 - by far the two largest files in the repo. Both have accumulated well past the point where they should be split; `src/renderer/services/markdown/` is the in-repo precedent for how to do it. Prefer adding new chat behaviour as a sibling module over growing `ChatView.js` further.
+> `ChatView.js` is 9,489 lines, `renderer.js` 7,615 and `TerminalManager.js` 4,823 - the three largest files in the repo, 21,900 lines between them. All three have accumulated well past the point where they should be split; `src/renderer/services/markdown/` is the in-repo precedent for how to do it. Prefer adding new chat behaviour as a sibling module over growing `ChatView.js` further.
 
 `ProjectBar` vs `ProjectList` is the `navigationMode` setting: a horizontal project tab bar, or the classic projects sidebar column.
 
@@ -361,6 +364,16 @@ Pluggable type system: `base-type.js` + `registry.js`. Types: `general`, `api`, 
 Each type typically provides `main/[Type]Service.js`, `main/[type].ipc.js`, `renderer/[Type]Dashboard.js`, `renderer/[Type]ProjectList.js`, `renderer/[Type]RendererService.js`, `renderer/[Type]State.js`, `renderer/[Type]TerminalPanel.js`, `renderer/[Type]Wizard.js`, `i18n/{en,fr,es}.json`.
 
 **Discord** also ships a code generator, embed builder, and component builder for visual Discord bot development.
+
+### Third-party extensions
+
+The registry also loads types from `~/.claude-terminal/project-types/<name>/`, and they are **declarative only**: a `project-type.json` manifest plus optional `i18n/<lang>.json` files. No third-party JavaScript runs, in either process. `src/project-types/external-type.js` builds the descriptor out of the manifest using first-party code, so an extension contributes strings, a colour and detection markers — never behaviour.
+
+That restriction is the design, not a stage of it. The renderer half of a project type would hold the whole `electron_api` surface and the main half unrestricted Node; and because the CSP here is `script-src 'self' 'unsafe-eval'`, a `new Function(source)` loader would *work*, which is what makes the wrong implementation the easy one. The full argument, including what it would take to open the main half later, is in **`design/project-type-extensions.md`** — read it before widening this.
+
+Two consent gates, both required: `projectTypeExtensionsEnabled` (off by default) and the per-extension `enabledProjectTypeExtensions` allowlist. The gate is checked in the renderer *and* re-checked in `ProjectTypeExtensionService`, so a renderer bug is not enough to turn the feature on. Nothing is ever fetched — an extension is a folder the user put there.
+
+Ids are registered as `ext-<id>` so an extension cannot shadow a built-in, and its translations are namespaced `ext.<id>.name` / `ext.<id>.description` so it cannot reword a first-party string. A worked example lives at `src/project-types/examples/rust/` and is validated by the test suite; it is documentation, not a migration. `registerAllMainHandlers()`, `initializeAll()`, `cleanupAll()` and `getAllPreloadBridges()` in `registry.js` remain **dead code** — every built-in's main half is still wired by hand in `src/main/ipc/index.js`.
 
 ## Remote Control & Cloud
 
@@ -464,7 +477,7 @@ system**: no light mode, no `prefers-color-scheme`, no `data-theme`. `--accent` 
 
 Exposes API namespaces on `window.electron_api`:
 
-`terminal` | `git` (69 methods) | `github` | `chat` | `claude` | `accounts` | `mcp` | `mcpRegistry` | `mcpTerminal` | `mcpTab` | `marketplace` | `plugins` | `dialog` | `explorer` | `window` | `app` | `notification` | `usage` | `project` | `hooks` | `updates` | `setupWizard` | `lifecycle` | `quickPicker` | `tray` | `fivem` | `webapp` | `api` | `python` | `minecraft` | `discord` | `discordRpc` | `remote` | `remoteControl` | `workspace` | `workflow` | `parallel` | `database` | `time` | `telemetry` | `cloud` | `knowledge` | `artifacts` | `chrome` | `errorLog` | `voice` | `preview` | `controlTower`
+`terminal` | `git` (69 methods) | `github` | `chat` | `claude` | `accounts` | `mcp` | `mcpRegistry` | `mcpTerminal` | `mcpTab` | `marketplace` | `plugins` | `dialog` | `explorer` | `window` | `app` | `notification` | `usage` | `project` | `hooks` | `updates` | `setupWizard` | `lifecycle` | `quickPicker` | `tray` | `fivem` | `webapp` | `api` | `python` | `minecraft` | `discord` | `discordRpc` | `remote` | `remoteControl` | `workspace` | `workflow` | `parallel` | `database` | `time` | `telemetry` | `cloud` | `knowledge` | `artifacts` | `chrome` | `errorLog` | `voice` | `preview` | `controlTower` | `projectTypes`
 
 Also exposes `window.electron_nodeModules`: `path`, `fs` (sync + promises, guarded by a system-path blocklist in `preload.js`), `os.homedir()`, a small allowlist of `process.env` vars, and `__dirname`.
 
@@ -536,7 +549,7 @@ that difference from `AccountManager`.
 | `electron-updater` | ^6.1.7 | Auto-update |
 | `ws` | ^8.19.0 | WebSocket (remote + cloud relay) |
 | `qrcode` | ^1.5.4 | QR code for remote |
-| `esbuild` | ^0.27.2 | Renderer bundling (IIFE, Chrome 120, sourcemaps) |
+| `esbuild` | ^0.27.2 | Renderer bundling (ESM + code splitting, Chrome 120, sourcemaps) |
 | `jest` + jsdom | ^29.7.0 | Unit tests |
 | `eslint` + `@eslint/js` | ^10.10.0 | Flat-config lint over main / renderer / shared / MCP / scripts |
 | `playwright` | ^1.58.2 | `_electron` driver for the E2E smoke test, plus marketing screenshots |
@@ -561,7 +574,7 @@ Worker); neither is bundled into the desktop app.
 - **AI commits / PR descriptions:** GitHub Models API (`gpt-4o-mini`, free tier) with heuristic fallback
 - **Hooks:** 15 hook types into `~/.claude/settings.json`, HTTP event server for real-time events
 - **Time tracking:** 15 min idle timeout, 2 min output idle, 30 min session merge, midnight rollover, monthly archival
-- **Renderer bundling:** esbuild IIFE -> `dist/renderer.bundle.js` with sourcemaps, target `chrome120`
+- **Renderer bundling:** esbuild ESM with code splitting -> `dist/renderer.bundle.js` + shared `dist/chunk-*.js`, sourcemaps, target `chrome120`. The five heaviest panels are `import()`ed on first tab open via `_LAZY_PANELS` in `renderer.js`; splitting rather than standalone per-panel bundles is what keeps a single instance of each observable state module
 - **Persistence:** atomic writes (temp + rename), `.bak` backup files, corruption recovery
 - **Updates:** generic provider, 30 min periodic checks, differential packages
 - **Remote control (local):** WS server with PIN auth, QR code, PWA in `remote-ui/`
@@ -582,7 +595,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 137 unit test files (jsdom environment)
+npm test                    # Run all 149 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -591,7 +604,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 137 test files
+- **Framework:** Jest with jsdom, 149 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
@@ -655,7 +668,7 @@ Two documented exceptions, both real:
 
 ### E2E smoke (`tests/e2e/smoke.js`)
 
-All 137 Jest suites run in jsdom against a mocked `window.electron_api`, so nothing
+All 149 Jest suites run in jsdom against a mocked `window.electron_api`, so nothing
 in the repository asserts that the application actually starts. Every regression of
 the shape "the window opens but panel X throws on first render" has had to be found
 by a human opening the app. This covers that gap and only that.

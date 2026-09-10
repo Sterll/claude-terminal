@@ -549,7 +549,7 @@ Installer dihasilkan di direktori `build/`.
 ## Pengujian
 
 ```bash
-# Jalankan seluruh pengujian (136 suite Jest, jsdom)
+# Jalankan seluruh pengujian (149 suite Jest, jsdom)
 npm test
 
 # Pengujian mode watch selama pengembangan
@@ -604,7 +604,7 @@ Pintasan dapat disesuaikan di Pengaturan.
 ## Arsitektur
 
 Claude Terminal adalah JavaScript CommonJS biasa dengan tipe lewat JSDoc. Tanpa
-TypeScript, tanpa framework frontend: renderer dibundel esbuild menjadi satu IIFE.
+TypeScript, tanpa framework frontend: renderer dibundel esbuild menjadi ESM dengan code splitting.
 
 ```
 claude-terminal/
@@ -683,7 +683,7 @@ claude-terminal/
 │   ├── bundled-skills/              # create-skill, create-agents
 │   └── hooks/                       # Skrip hook, mengirim peristiwa lewat HTTP
 ├── remote-ui/                       # PWA seluler, disertakan sebagai extraResources
-├── tests/                           # 136 suite Jest + satu uji asap Playwright
+├── tests/                           # 149 suite Jest + satu uji asap Playwright
 ├── scripts/build-renderer.js        # Bundler esbuild
 └── website/                         # Halaman depan, changelog, informasi hukum
 ```

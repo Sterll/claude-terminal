@@ -548,7 +548,7 @@ npm run build:linux   # Linux（AppImage）
 ## 测试
 
 ```bash
-# 运行测试套件（136 个 Jest 套件，jsdom）
+# 运行测试套件（149 个 Jest 套件，jsdom）
 npm test
 
 # 开发期间以 watch 模式运行测试
@@ -601,7 +601,7 @@ CI 在每次推送和每个 PR 上运行三个 job：`lint`（最快，最先失
 ## 架构
 
 Claude Terminal 是纯 CommonJS JavaScript，用 JSDoc 标注类型。没有 TypeScript，也没有
-前端框架：renderer 由 esbuild 打包成单个 IIFE。
+前端框架：renderer 由 esbuild 打包为带代码分割的 ESM。
 
 ```
 claude-terminal/
@@ -680,7 +680,7 @@ claude-terminal/
 │   ├── bundled-skills/              # create-skill、create-agents
 │   └── hooks/                       # hook 处理脚本，通过 HTTP 上报事件
 ├── remote-ui/                       # 移动端 PWA，作为 extraResources 打包
-├── tests/                           # 136 个 Jest 套件 + 一个 Playwright 冒烟测试
+├── tests/                           # 149 个 Jest 套件 + 一个 Playwright 冒烟测试
 ├── scripts/build-renderer.js        # esbuild 打包脚本
 └── website/                         # 官网首页、更新日志、法律声明
 ```

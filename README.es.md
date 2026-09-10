@@ -549,7 +549,7 @@ El instalador se genera en el directorio `build/`.
 ## Pruebas
 
 ```bash
-# Ejecutar la suite de pruebas (136 suites de Jest, jsdom)
+# Ejecutar la suite de pruebas (149 suites de Jest, jsdom)
 npm test
 
 # Pruebas en modo watch durante el desarrollo
@@ -604,7 +604,7 @@ Los atajos se pueden personalizar en Ajustes.
 ## Arquitectura
 
 Claude Terminal es JavaScript CommonJS sin más, tipado con JSDoc. Sin TypeScript y sin
-framework de frontend: el renderer lo empaqueta esbuild en una única IIFE.
+framework de frontend: el renderer lo empaqueta esbuild en ESM con code splitting.
 
 ```
 claude-terminal/
@@ -683,7 +683,7 @@ claude-terminal/
 │   ├── bundled-skills/              # create-skill, create-agents
 │   └── hooks/                       # Script de hook, envía los eventos por HTTP
 ├── remote-ui/                       # PWA móvil, incluida como extraResources
-├── tests/                           # 136 suites de Jest + una prueba de humo con Playwright
+├── tests/                           # 149 suites de Jest + una prueba de humo con Playwright
 ├── scripts/build-renderer.js        # Empaquetador esbuild
 └── website/                         # Página de inicio, changelog, avisos legales
 ```
