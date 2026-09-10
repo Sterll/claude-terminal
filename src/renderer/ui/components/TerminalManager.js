@@ -1311,6 +1311,11 @@ class TerminalManager extends BaseComponent {
     const termData = getTerminal(id);
     if (termData && termData.status !== status) {
       const previousStatus = termData.status;
+      // The turn a pending MCP send was waiting for has visibly begun (or died),
+      // so `idle` is meaningful again from here on.
+      if (status === 'working' || status === 'loading' || status === 'error') {
+        require('../../state/terminals.state').clearTabSend(termData);
+      }
       updateTerminal(id, { status });
       const tab = document.querySelector(`.terminal-tab[data-id="${id}"]`);
       if (tab) {
@@ -4452,6 +4457,7 @@ class TerminalManager extends BaseComponent {
   }
 
   sendToTab(tabId, content) {
+    const { markTabSend } = require('../../state/terminals.state');
     const found = getTerminalByTabId(tabId);
     if (!found) return { ok: false, error: `Tab not found: ${tabId}` };
     const { id, data } = found;
@@ -4476,6 +4482,8 @@ class TerminalManager extends BaseComponent {
         return { ok: false, error: e.message };
       }
       data.lastActivityAt = new Date().toISOString();
+      // The turn starts asynchronously — see markTabSend / tabWaitMatches.
+      markTabSend(data);
       return { ok: true, tabId, mode: 'chat' };
     }
 
@@ -4487,6 +4495,7 @@ class TerminalManager extends BaseComponent {
       }
       data.lastCommand = text;
       data.lastActivityAt = new Date().toISOString();
+      markTabSend(data);
       return { ok: true, tabId, mode: 'terminal' };
     }
 
@@ -4568,89 +4577,15 @@ class TerminalManager extends BaseComponent {
   }
 
   // Wait for a tab to reach any of the target statuses (subscribe-based, no polling).
-  // Resolves with the final status snapshot (or { ok: false } on timeout / missing tab).
-  waitForTab(tabId, { targetStatuses = ['idle', 'awaiting_permission', 'error'], timeoutMs = 60000 } = {}) {
-    const { deriveTabStatus } = require('../../state/terminals.state');
-    return new Promise((resolve) => {
-      const found = getTerminalByTabId(tabId);
-      if (!found) return resolve({ ok: false, error: `Tab not found: ${tabId}`, tabId });
-
-      const matches = (data) => {
-        const s = deriveTabStatus(data);
-        return Array.isArray(targetStatuses) && targetStatuses.includes(s);
-      };
-
-      // Fast path: already matches
-      if (matches(found.data)) {
-        return resolve({ ok: true, tabId, status: deriveTabStatus(found.data), timedOut: false });
-      }
-
-      let done = false;
-      let timer = null;
-      const unsubscribe = terminalsState.subscribe(() => {
-        if (done) return;
-        const current = getTerminalByTabId(tabId);
-        if (!current) {
-          done = true; clearTimeout(timer); unsubscribe();
-          return resolve({ ok: false, error: `Tab closed while waiting: ${tabId}`, tabId });
-        }
-        if (matches(current.data)) {
-          done = true; clearTimeout(timer); unsubscribe();
-          resolve({ ok: true, tabId, status: deriveTabStatus(current.data), timedOut: false });
-        }
-      });
-
-      timer = setTimeout(() => {
-        if (done) return;
-        done = true; unsubscribe();
-        const current = getTerminalByTabId(tabId);
-        resolve({
-          ok: true,
-          tabId,
-          status: current ? deriveTabStatus(current.data) : 'done',
-          timedOut: true,
-        });
-      }, Math.max(500, Math.min(Number(timeoutMs) || 60000, 10 * 60 * 1000)));
-    });
+  // The loop itself lives in terminals.state.js, next to the status derivation it
+  // depends on, so it can be tested without standing up a whole TerminalManager.
+  waitForTab(tabId, opts) {
+    return require('../../state/terminals.state').waitForTabStatus(tabId, opts);
   }
 
   // Wait for any of the given tabs to reach a target status.
-  // Resolves with { ok, tabId, status, timedOut }.
-  waitForAny(tabIds, { targetStatuses = ['idle', 'awaiting_permission', 'error'], timeoutMs = 60000 } = {}) {
-    const { deriveTabStatus } = require('../../state/terminals.state');
-    const ids = Array.isArray(tabIds) ? tabIds.filter(Boolean) : [];
-    return new Promise((resolve) => {
-      if (!ids.length) return resolve({ ok: false, error: 'No tabIds provided' });
-
-      const matches = (data) => Array.isArray(targetStatuses) && targetStatuses.includes(deriveTabStatus(data));
-
-      // Fast path
-      for (const tid of ids) {
-        const f = getTerminalByTabId(tid);
-        if (f && matches(f.data)) {
-          return resolve({ ok: true, tabId: tid, status: deriveTabStatus(f.data), timedOut: false });
-        }
-      }
-
-      let done = false;
-      let timer = null;
-      const unsubscribe = terminalsState.subscribe(() => {
-        if (done) return;
-        for (const tid of ids) {
-          const f = getTerminalByTabId(tid);
-          if (f && matches(f.data)) {
-            done = true; clearTimeout(timer); unsubscribe();
-            return resolve({ ok: true, tabId: tid, status: deriveTabStatus(f.data), timedOut: false });
-          }
-        }
-      });
-
-      timer = setTimeout(() => {
-        if (done) return;
-        done = true; unsubscribe();
-        resolve({ ok: true, timedOut: true, status: null, tabId: null });
-      }, Math.max(500, Math.min(Number(timeoutMs) || 60000, 10 * 60 * 1000)));
-    });
+  waitForAny(tabIds, opts) {
+    return require('../../state/terminals.state').waitForAnyTabStatus(tabIds, opts);
   }
 
   // Read the buffered output (or chat message log) for a tab.

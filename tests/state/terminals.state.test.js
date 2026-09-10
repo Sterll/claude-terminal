@@ -20,6 +20,12 @@ const {
   updateTerminalByTabId,
   touchTerminalActivity,
   deriveTabStatus,
+  SEND_GRACE_MS,
+  markTabSend,
+  clearTabSend,
+  tabWaitMatches,
+  waitForTabStatus: waitForTab,
+  waitForAnyTabStatus: waitForAny,
   appendTerminalOutput,
   appendChatMessage,
 } = require('../../src/renderer/state/terminals.state');
@@ -518,6 +524,61 @@ describe('deriveTabStatus', () => {
   });
 });
 
+describe('tabWaitMatches', () => {
+  const TARGETS = ['idle', 'awaiting_permission', 'error'];
+
+  test('matches a target status when no send is pending', () => {
+    const td = { mode: 'chat', status: 'ready' };
+    expect(tabWaitMatches(td, TARGETS)).toEqual({ matched: true, status: 'idle', settleAt: null });
+  });
+
+  test('does not match a status outside the targets', () => {
+    const td = { mode: 'chat', status: 'working' };
+    expect(tabWaitMatches(td, TARGETS).matched).toBe(false);
+  });
+
+  test('holds back idle while a send has not started its turn', () => {
+    const td = { mode: 'chat', status: 'ready' };
+    markTabSend(td);
+    const res = tabWaitMatches(td, TARGETS);
+    expect(res.matched).toBe(false);
+    expect(res.status).toBe('idle');
+    expect(res.settleAt).toBe(td.pendingSendAt + SEND_GRACE_MS);
+  });
+
+  test('releases idle once the grace window has expired', () => {
+    const td = { mode: 'chat', status: 'ready' };
+    markTabSend(td);
+    const after = td.pendingSendAt + SEND_GRACE_MS + 1;
+    expect(tabWaitMatches(td, TARGETS, after).matched).toBe(true);
+  });
+
+  test('a pending send never holds back a non-idle target status', () => {
+    const td = { mode: 'chat', status: 'ready', pendingPermission: { tool: 'Bash' } };
+    markTabSend(td);
+    expect(tabWaitMatches(td, TARGETS)).toMatchObject({ matched: true, status: 'awaiting_permission' });
+
+    const errored = { mode: 'chat', status: 'error' };
+    markTabSend(errored);
+    expect(tabWaitMatches(errored, TARGETS)).toMatchObject({ matched: true, status: 'error' });
+  });
+
+  test('clearTabSend makes idle meaningful again immediately', () => {
+    const td = { mode: 'chat', status: 'ready' };
+    markTabSend(td);
+    expect(tabWaitMatches(td, TARGETS).matched).toBe(false);
+    clearTabSend(td);
+    expect(tabWaitMatches(td, TARGETS).matched).toBe(true);
+  });
+
+  test('tolerates missing data and missing targets', () => {
+    expect(tabWaitMatches(undefined, TARGETS)).toEqual({ matched: false, status: 'done', settleAt: null });
+    expect(tabWaitMatches({ mode: 'chat', status: 'ready' }, undefined).matched).toBe(false);
+    expect(() => markTabSend(undefined)).not.toThrow();
+    expect(() => clearTabSend(undefined)).not.toThrow();
+  });
+});
+
 describe('appendTerminalOutput', () => {
   test('strips ANSI and appends with a cursor', () => {
     const td = {};
@@ -576,37 +637,12 @@ describe('appendChatMessage', () => {
 });
 
 // ── Phase 2 patterns: wait + read_output cursor semantics ──
-// These tests exercise the exact primitives used by TerminalManager's
-// waitForTab / waitForAny / readOutputForTab methods (without pulling in
-// xterm and the full component tree).
+// waitForTabStatus / waitForAnyTabStatus are the real implementations that
+// TerminalManager.waitForTab / waitForAny delegate to, so these drive the
+// shipping code. Only readOutputForTab is still mirrored below: it lives in the
+// component, which cannot be loaded here without xterm and the whole tree.
 
 describe('phase 2 — subscribe-based wait (single tab)', () => {
-  function waitForTab(tabId, { targetStatuses = ['idle', 'awaiting_permission', 'error'], timeoutMs = 500 } = {}) {
-    return new Promise((resolve) => {
-      const found = getTerminalByTabId(tabId);
-      if (!found) return resolve({ ok: false, error: 'not found' });
-      const matches = (d) => targetStatuses.includes(deriveTabStatus(d));
-      if (matches(found.data)) {
-        return resolve({ ok: true, tabId, status: deriveTabStatus(found.data), timedOut: false });
-      }
-      let done = false;
-      const unsub = terminalsState.subscribe(() => {
-        if (done) return;
-        const cur = getTerminalByTabId(tabId);
-        if (cur && matches(cur.data)) {
-          done = true; clearTimeout(timer); unsub();
-          resolve({ ok: true, tabId, status: deriveTabStatus(cur.data), timedOut: false });
-        }
-      });
-      const timer = setTimeout(() => {
-        if (done) return;
-        done = true; unsub();
-        const cur = getTerminalByTabId(tabId);
-        resolve({ ok: true, tabId, status: cur ? deriveTabStatus(cur.data) : 'done', timedOut: true });
-      }, timeoutMs);
-    });
-  }
-
   test('resolves immediately when tab already idle', async () => {
     addTerminal(1, { tabId: 'tab_x', status: 'ready', mode: 'terminal' });
     const r = await waitForTab('tab_x', { timeoutMs: 200 });
@@ -635,36 +671,43 @@ describe('phase 2 — subscribe-based wait (single tab)', () => {
     const r = await waitForTab('tab_missing', { timeoutMs: 60 });
     expect(r.ok).toBe(false);
   });
+
+  // The regression this guards: tab_send is followed immediately by tab_wait,
+  // but ChatView.handleSend() only flips the tab to `working` a few ticks later.
+  // Matching the interim `idle` reported the work finished before it started.
+  test('does not report idle for a send whose turn has not started', async () => {
+    addTerminal(1, { tabId: 'tab_x', status: 'ready', mode: 'chat' });
+    markTabSend(getTerminalByTabId('tab_x').data);
+
+    const p = waitForTab('tab_x', { timeoutMs: 800 });
+    setTimeout(() => updateTerminal(1, { status: 'working' }), 30);
+    setTimeout(() => updateTerminal(1, { status: 'ready' }), 90);
+
+    const r = await p;
+    expect(r.status).toBe('idle');
+    expect(r.timedOut).toBe(false);
+    // Resolved on the real end of turn, not on the pre-send idle.
+    expect(getTerminal(1).status).toBe('ready');
+  });
+
+  test('a stalled send still resolves at the end of the grace window', async () => {
+    addTerminal(1, { tabId: 'tab_x', status: 'ready', mode: 'terminal' });
+    const td = getTerminalByTabId('tab_x').data;
+    markTabSend(td);
+    // A command that finished between two output batches never reports
+    // `working`, so nothing will ever wake the subscription: the grace window
+    // has to expire on its own rather than hold until the caller's timeout.
+    td.pendingSendAt = Date.now() - SEND_GRACE_MS + 40;
+
+    const started = Date.now();
+    const r = await waitForTab('tab_x', { timeoutMs: 5000 });
+    expect(r.status).toBe('idle');
+    expect(r.timedOut).toBe(false);
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
 });
 
 describe('phase 2 — subscribe-based wait (any)', () => {
-  function waitForAny(tabIds, { targetStatuses = ['idle', 'awaiting_permission', 'error'], timeoutMs = 500 } = {}) {
-    return new Promise((resolve) => {
-      if (!tabIds.length) return resolve({ ok: false, error: 'empty' });
-      const matches = (d) => targetStatuses.includes(deriveTabStatus(d));
-      for (const tid of tabIds) {
-        const f = getTerminalByTabId(tid);
-        if (f && matches(f.data)) return resolve({ ok: true, tabId: tid, status: deriveTabStatus(f.data), timedOut: false });
-      }
-      let done = false;
-      const unsub = terminalsState.subscribe(() => {
-        if (done) return;
-        for (const tid of tabIds) {
-          const f = getTerminalByTabId(tid);
-          if (f && matches(f.data)) {
-            done = true; clearTimeout(timer); unsub();
-            return resolve({ ok: true, tabId: tid, status: deriveTabStatus(f.data), timedOut: false });
-          }
-        }
-      });
-      const timer = setTimeout(() => {
-        if (done) return;
-        done = true; unsub();
-        resolve({ ok: true, timedOut: true, tabId: null });
-      }, timeoutMs);
-    });
-  }
-
   test('resolves with first matching tab', async () => {
     addTerminal(1, { tabId: 'tab_a', status: 'working', mode: 'chat' });
     addTerminal(2, { tabId: 'tab_b', status: 'working', mode: 'chat' });

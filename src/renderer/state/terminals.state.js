@@ -237,6 +237,184 @@ function deriveTabStatus(td) {
 }
 
 /**
+ * Grace window after an MCP send during which `idle` is not treated as a
+ * completion. `ChatView.handleSend()` is async and may await (prompt
+ * enhancement, mention resolution) before it flips the tab to `working`, so
+ * for a few hundred milliseconds a tab that was just given work still reads
+ * `idle` — indistinguishable from a tab that has finished it.
+ */
+const SEND_GRACE_MS = 3000;
+
+/**
+ * Record that content was just pushed to a tab. Read by `tabWaitMatches`.
+ * @param {Object|undefined} td Terminal entry data.
+ */
+function markTabSend(td) {
+  if (td) td.pendingSendAt = Date.now();
+}
+
+/**
+ * Forget a pending send once the tab has actually started (or failed) its turn.
+ * @param {Object|undefined} td Terminal entry data.
+ */
+function clearTabSend(td) {
+  if (td) td.pendingSendAt = null;
+}
+
+/**
+ * Decide whether a tab satisfies a `tab_wait` on `targetStatuses`.
+ *
+ * Only `idle` is held back during the grace window: every other status is a
+ * real transition and can be reported immediately. The window is capped rather
+ * than waiting for a `running` sighting because a terminal tab may never report
+ * one at all — a command that finishes between two output batches never leaves
+ * `ready`.
+ *
+ * @param {Object|undefined} td Terminal entry data.
+ * @param {string[]} targetStatuses Statuses that resolve the wait.
+ * @param {number} [now] Injectable clock, for tests.
+ * @returns {{ matched: boolean, status: string, settleAt: number|null }}
+ *          `settleAt` is the timestamp at which a held-back `idle` becomes a
+ *          match, so the caller can re-evaluate instead of waiting for its
+ *          full timeout.
+ */
+function tabWaitMatches(td, targetStatuses, now = Date.now()) {
+  const status = deriveTabStatus(td);
+  const wanted = Array.isArray(targetStatuses) && targetStatuses.includes(status);
+  if (!wanted) return { matched: false, status, settleAt: null };
+
+  if (status === 'idle' && td && td.pendingSendAt) {
+    const settleAt = td.pendingSendAt + SEND_GRACE_MS;
+    if (now < settleAt) return { matched: false, status, settleAt };
+  }
+  return { matched: true, status, settleAt: null };
+}
+
+/**
+ * Block until a tab reaches one of `targetStatuses` (subscribe-based, no poll).
+ *
+ * A held-back `idle` schedules its own re-evaluation at the end of the grace
+ * window, so a tab whose status never changes again still resolves promptly
+ * instead of sitting until the caller's timeout.
+ *
+ * @param {string} tabId
+ * @param {{ targetStatuses?: string[], timeoutMs?: number }} [opts]
+ * @returns {Promise<{ ok: boolean, tabId: string, status?: string, timedOut?: boolean, error?: string }>}
+ */
+function waitForTabStatus(tabId, { targetStatuses = ['idle', 'awaiting_permission', 'error'], timeoutMs = 60000 } = {}) {
+  return new Promise((resolve) => {
+    if (!getTerminalByTabId(tabId)) {
+      return resolve({ ok: false, error: `Tab not found: ${tabId}`, tabId });
+    }
+
+    let done = false;
+    let timer = null;
+    let graceTimer = null;
+    let unsubscribe = null;
+
+    const finish = (payload) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      clearTimeout(graceTimer);
+      if (unsubscribe) unsubscribe();
+      resolve(payload);
+    };
+
+    const evaluate = () => {
+      if (done) return true;
+      const current = getTerminalByTabId(tabId);
+      if (!current) {
+        finish({ ok: false, error: `Tab closed while waiting: ${tabId}`, tabId });
+        return true;
+      }
+      const m = tabWaitMatches(current.data, targetStatuses);
+      // Any status but `idle` means the turn is visibly under way, whichever
+      // code path wrote it: the send is no longer pending and the next `idle`
+      // is a real end of turn.
+      if (m.status !== 'idle') clearTabSend(current.data);
+      if (m.matched) {
+        finish({ ok: true, tabId, status: m.status, timedOut: false });
+        return true;
+      }
+      if (m.settleAt && !graceTimer) {
+        graceTimer = setTimeout(() => { graceTimer = null; evaluate(); }, Math.max(1, m.settleAt - Date.now()));
+      }
+      return false;
+    };
+
+    if (evaluate()) return;
+
+    unsubscribe = terminalsState.subscribe(() => { evaluate(); });
+
+    timer = setTimeout(() => {
+      const current = getTerminalByTabId(tabId);
+      finish({
+        ok: true,
+        tabId,
+        status: current ? deriveTabStatus(current.data) : 'done',
+        timedOut: true,
+      });
+    }, Math.max(500, Math.min(Number(timeoutMs) || 60000, 10 * 60 * 1000)));
+  });
+}
+
+/**
+ * Block until ANY of `tabIds` reaches one of `targetStatuses`. First match wins.
+ * @param {string[]} tabIds
+ * @param {{ targetStatuses?: string[], timeoutMs?: number }} [opts]
+ * @returns {Promise<{ ok: boolean, tabId: string|null, status: string|null, timedOut?: boolean, error?: string }>}
+ */
+function waitForAnyTabStatus(tabIds, { targetStatuses = ['idle', 'awaiting_permission', 'error'], timeoutMs = 60000 } = {}) {
+  const ids = Array.isArray(tabIds) ? tabIds.filter(Boolean) : [];
+  return new Promise((resolve) => {
+    if (!ids.length) return resolve({ ok: false, error: 'No tabIds provided' });
+
+    let done = false;
+    let timer = null;
+    let graceTimer = null;
+    let unsubscribe = null;
+
+    const finish = (payload) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      clearTimeout(graceTimer);
+      if (unsubscribe) unsubscribe();
+      resolve(payload);
+    };
+
+    const evaluate = () => {
+      if (done) return true;
+      let nextSettleAt = null;
+      for (const tid of ids) {
+        const f = getTerminalByTabId(tid);
+        if (!f) continue;
+        const m = tabWaitMatches(f.data, targetStatuses);
+        if (m.status !== 'idle') clearTabSend(f.data);
+        if (m.matched) {
+          finish({ ok: true, tabId: tid, status: m.status, timedOut: false });
+          return true;
+        }
+        if (m.settleAt && (nextSettleAt === null || m.settleAt < nextSettleAt)) nextSettleAt = m.settleAt;
+      }
+      if (nextSettleAt && !graceTimer) {
+        graceTimer = setTimeout(() => { graceTimer = null; evaluate(); }, Math.max(1, nextSettleAt - Date.now()));
+      }
+      return false;
+    };
+
+    if (evaluate()) return;
+
+    unsubscribe = terminalsState.subscribe(() => { evaluate(); });
+
+    timer = setTimeout(() => {
+      finish({ ok: true, timedOut: true, status: null, tabId: null });
+    }, Math.max(500, Math.min(Number(timeoutMs) || 60000, 10 * 60 * 1000)));
+  });
+}
+
+/**
  * Append a line to the in-memory output ring buffer for a terminal.
  * Stores stripped (no ANSI) content with a timestamp cursor.
  * Caps at `maxBytes` (default 500KB) by dropping oldest chunks.
@@ -353,6 +531,12 @@ module.exports = {
   updateTerminalByTabId,
   touchTerminalActivity,
   deriveTabStatus,
+  SEND_GRACE_MS,
+  markTabSend,
+  clearTabSend,
+  tabWaitMatches,
+  waitForTabStatus,
+  waitForAnyTabStatus,
   appendTerminalOutput,
   appendChatMessage,
 };
