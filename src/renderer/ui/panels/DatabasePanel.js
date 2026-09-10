@@ -2973,6 +2973,186 @@ function importDetected(jsonStr) {
   } catch (e) { /* ignore */ }
 }
 
+// ==================== Custom Select ====================
+// A native <select> opens an OS-drawn list — white background, system-blue
+// highlight on Windows — in the middle of an otherwise fully themed modal.
+// These rebuild the control from divs so it matches the rest of the panel,
+// and reuse `.database-type-badge` so a type reads the same colour here as it
+// does on the connection card it will produce.
+
+const DB_TYPE_OPTIONS = [
+  { value: 'sqlite', label: 'SQLite', dot: 'sqlite' },
+  { value: 'mysql', label: 'MySQL', dot: 'mysql' },
+  { value: 'mariadb', label: 'MariaDB', dot: 'mariadb' },
+  { value: 'postgresql', label: 'PostgreSQL', dot: 'postgresql' },
+  { value: 'mongodb', label: 'MongoDB', dot: 'mongodb' },
+  { value: 'redis', label: 'Redis', dot: 'redis' }
+];
+
+function buildCustomSelectBody(opt) {
+  return `<span class="db-select-body">${opt.dot
+    ? `<span class="db-select-dot ${escapeHtml(opt.dot)}"></span>`
+    : ''}<span class="db-select-label">${escapeHtml(opt.label)}</span></span>`;
+}
+
+function buildCustomSelect(id, value, options) {
+  const current = options.find(o => o.value === value) || options[0];
+  return `
+    <div class="db-select" id="${id}" data-value="${escapeHtml(current.value)}">
+      <button type="button" class="db-select-trigger" aria-haspopup="listbox" aria-expanded="false">
+        <span class="db-select-current">${buildCustomSelectBody(current)}</span>
+        <svg class="db-select-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="db-select-menu" role="listbox">
+        ${options.map(o => `
+          <div class="db-select-option ${o.value === current.value ? 'selected' : ''}" role="option" aria-selected="${o.value === current.value}" data-value="${escapeHtml(o.value)}">
+            ${buildCustomSelectBody(o)}
+            <svg class="db-select-check" viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+function customSelectValue(id) {
+  const el = document.getElementById(id);
+  return el ? (el.dataset.value || '') : '';
+}
+
+/** close() of the currently open custom select, so opening one shuts the other. */
+let openCustomSelect = null;
+
+function bindCustomSelect(id, onChange) {
+  const root = document.getElementById(id);
+  if (!root) return;
+  const trigger = root.querySelector('.db-select-trigger');
+  const menu = root.querySelector('.db-select-menu');
+  const options = Array.from(menu.querySelectorAll('.db-select-option'));
+
+  const close = () => {
+    root.classList.remove('open');
+    trigger.setAttribute('aria-expanded', 'false');
+    options.forEach(o => o.classList.remove('active'));
+    menu.classList.remove('open');
+    if (menu.parentNode !== root) root.appendChild(menu);
+    if (openCustomSelect === close) openCustomSelect = null;
+  };
+
+  const open = () => {
+    if (openCustomSelect && openCustomSelect !== close) openCustomSelect();
+    // Two reasons the menu is fixed and parented to <body> rather than sitting
+    // absolutely inside .db-select: .modal-body scrolls, so it would be
+    // clipped there, and .modal keeps the end frame of its entry animation, so
+    // its identity transform still makes it the containing block for any fixed
+    // descendant — viewport coordinates would land offset by the modal box.
+    document.body.appendChild(menu);
+    const rect = trigger.getBoundingClientRect();
+    menu.style.left = `${rect.left}px`;
+    menu.style.minWidth = `${rect.width}px`;
+    const below = window.innerHeight - rect.bottom;
+    if (below < 220 && rect.top > below) {
+      menu.style.top = 'auto';
+      menu.style.bottom = `${window.innerHeight - rect.top + 4}px`;
+      menu.style.maxHeight = `${Math.max(120, rect.top - 12)}px`;
+    } else {
+      menu.style.bottom = 'auto';
+      menu.style.top = `${rect.bottom + 4}px`;
+      menu.style.maxHeight = `${Math.max(120, below - 12)}px`;
+    }
+    root.classList.add('open');
+    menu.classList.add('open');
+    trigger.setAttribute('aria-expanded', 'true');
+    openCustomSelect = close;
+    const sel = menu.querySelector('.db-select-option.selected') || options[0];
+    if (sel) { sel.classList.add('active'); sel.scrollIntoView({ block: 'nearest' }); }
+  };
+
+  const commit = (opt) => {
+    const value = opt.dataset.value;
+    close();
+    trigger.focus();
+    if (value === root.dataset.value) return;
+    root.dataset.value = value;
+    options.forEach(o => {
+      const on = o === opt;
+      o.classList.toggle('selected', on);
+      o.setAttribute('aria-selected', String(on));
+    });
+    root.querySelector('.db-select-current').innerHTML = opt.querySelector('.db-select-body').outerHTML;
+    if (onChange) onChange(value);
+  };
+
+  trigger.onclick = (e) => {
+    e.stopPropagation();
+    if (root.classList.contains('open')) close(); else open();
+  };
+
+  trigger.onkeydown = (e) => {
+    const isOpen = root.classList.contains('open');
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!isOpen) { open(); return; }
+      const cur = options.findIndex(o => o.classList.contains('active'));
+      const next = e.key === 'ArrowDown'
+        ? Math.min(options.length - 1, cur + 1)
+        : Math.max(0, cur - 1);
+      options.forEach(o => o.classList.remove('active'));
+      options[next].classList.add('active');
+      options[next].scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (!isOpen) { open(); return; }
+      const active = options.find(o => o.classList.contains('active'));
+      if (active) commit(active);
+    }
+  };
+
+  options.forEach(opt => {
+    opt.onmouseenter = () => {
+      options.forEach(o => o.classList.remove('active'));
+      opt.classList.add('active');
+    };
+    opt.onclick = (e) => { e.stopPropagation(); commit(opt); };
+  });
+
+  // Self-detaching: the modal is destroyed wholesale, so these listeners drop
+  // themselves the first time they fire after the select left the document.
+  const detach = () => {
+    // The modal was torn down while the menu was portaled out to <body>; it
+    // would otherwise stay behind there forever.
+    menu.remove();
+    if (openCustomSelect === close) openCustomSelect = null;
+    document.removeEventListener('click', dismiss);
+    document.removeEventListener('scroll', dismiss, true);
+    document.removeEventListener('keydown', dismissKey, true);
+  };
+
+  function dismiss(e) {
+    if (!document.body.contains(root)) { detach(); return; }
+    if (e.type === 'click' && (root.contains(e.target) || menu.contains(e.target))) return;
+    close();
+  }
+
+  // Capture phase, on document: Escape has to reach this before the modal's
+  // own bubble-phase handler, whatever holds focus. Stopping it in capture
+  // skips the bubble phase entirely, so one Escape closes the menu and not
+  // the form under it.
+  function dismissKey(e) {
+    if (e.key !== 'Escape') return;
+    if (!document.body.contains(root)) { detach(); return; }
+    if (!root.classList.contains('open')) return;
+    e.stopPropagation();
+    e.preventDefault();
+    close();
+    trigger.focus();
+  }
+
+  document.addEventListener('click', dismiss);
+  document.addEventListener('scroll', dismiss, true);
+  document.addEventListener('keydown', dismissKey, true);
+}
+
 // ==================== Connection Form ====================
 
 function showConnectionForm(editId, prefill) {
@@ -2981,6 +3161,8 @@ function showConnectionForm(editId, prefill) {
   const data = existing || prefill || {};
 
   const projects = (state.projectsState || ctx.projectsState).get().projects || [];
+  const projectOptions = [{ value: '', label: t('database.noProject') }]
+    .concat(projects.map(p => ({ value: p.id, label: p.name || p.path })));
 
   const html = `
     <div class="database-form">
@@ -2991,23 +3173,13 @@ function showConnectionForm(editId, prefill) {
         </div>
         <div class="database-form-group">
           <label class="database-form-label">${t('database.type')}</label>
-          <select class="database-form-select" id="db-form-type">
-            <option value="sqlite"     ${data.type === 'sqlite'     ? 'selected' : ''}>SQLite</option>
-            <option value="mysql"      ${data.type === 'mysql'      ? 'selected' : ''}>MySQL</option>
-            <option value="mariadb"    ${data.type === 'mariadb'    ? 'selected' : ''}>MariaDB</option>
-            <option value="postgresql" ${data.type === 'postgresql' ? 'selected' : ''}>PostgreSQL</option>
-            <option value="mongodb"    ${data.type === 'mongodb'    ? 'selected' : ''}>MongoDB</option>
-            <option value="redis"      ${data.type === 'redis'      ? 'selected' : ''}>Redis</option>
-          </select>
+          ${buildCustomSelect('db-form-type', data.type, DB_TYPE_OPTIONS)}
         </div>
       </div>
       <div id="db-form-fields"></div>
       <div class="database-form-group">
         <label class="database-form-label">${t('database.linkToProject')}</label>
-        <select class="database-form-select" id="db-form-project">
-          <option value="">${t('database.noProject')}</option>
-          ${projects.map(p => `<option value="${escapeHtml(p.id)}" ${data.projectId === p.id ? 'selected' : ''}>${escapeHtml(p.name || p.path)}</option>`).join('')}
-        </select>
+        ${buildCustomSelect('db-form-project', data.projectId || '', projectOptions)}
       </div>
       <div class="database-form-test-section">
         <button class="database-form-test-btn" id="db-form-test">
@@ -3025,9 +3197,9 @@ function showConnectionForm(editId, prefill) {
   ctx.showModal(editId ? t('database.editConnection') : t('database.addConnection'), html, footer);
 
   // Setup type-dependent fields
-  const typeSelect = document.getElementById('db-form-type');
-  const updateFields = () => renderFormFields(data, typeSelect.value);
-  typeSelect.onchange = () => updateFields();
+  const updateFields = () => renderFormFields(data, customSelectValue('db-form-type'));
+  bindCustomSelect('db-form-type', () => updateFields());
+  bindCustomSelect('db-form-project');
   updateFields();
 
   // Test button
@@ -3230,9 +3402,9 @@ function renderFormFields(data, type) {
 }
 
 function collectFormData() {
-  const type = document.getElementById('db-form-type').value;
+  const type = customSelectValue('db-form-type');
   const name = document.getElementById('db-form-name').value.trim();
-  const projectId = document.getElementById('db-form-project').value || null;
+  const projectId = customSelectValue('db-form-project') || null;
 
   const config = { type, name, projectId };
 
