@@ -108,14 +108,20 @@ module.exports = {
       return;
     }
     if (consumer === 'palette') {
-      const kanbanTab = document.querySelector('[data-tab="kanban"]');
-      kanbanTab?.click();
-      setTimeout(() => {
-        const card = document.querySelector(`[data-task-id="${item.id}"]`);
-        card?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        card?.classList.add('kanban-card-focus');
-        setTimeout(() => card?.classList.remove('kanban-card-focus'), 1600);
-      }, 120);
+      // The board is a dashboard sub-view, not a sidebar tab: there is no
+      // [data-tab="kanban"] to click. Open the dashboard, then its Kanban tab —
+      // which only exists once the dashboard's async data has landed, hence the
+      // waits rather than a guessed delay.
+      const nav = require('./_navigate');
+      (async () => {
+        // The board is per-project and cards are indexed across all of them, so
+        // the card's own project has to be selected before the jump means anything.
+        nav.selectProject(item.projectId);
+        const viewTab = await nav.openTab('dashboard', '.dashboard-view-tab[data-view="kanban"]');
+        if (!viewTab) return;
+        viewTab.click();
+        nav.reveal(await nav.waitForByData('.kanban-card', 'taskId', item.id), 'kanban-card-focus');
+      })();
     }
   },
 };

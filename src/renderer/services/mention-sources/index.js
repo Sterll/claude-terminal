@@ -11,6 +11,8 @@ const parallelSource     = require('./parallel.source');
 const sessionSource      = require('./session.source');
 const skillSource        = require('./skill.source');
 const workspaceDocSource = require('./workspace-doc.source');
+const knowledgeSource    = require('./knowledge.source');
+const settingsSource     = require('./settings.source');
 
 let _bootstrapped = false;
 
@@ -22,6 +24,8 @@ function bootstrap() {
   registry.register(sessionSource);
   registry.register(skillSource);
   registry.register(workspaceDocSource);
+  registry.register(knowledgeSource);
+  registry.register(settingsSource);
   _bootstrapped = true;
 }
 

@@ -77,17 +77,84 @@ function byPrefix(prefix) {
   return getAll().find(s => s.prefix === prefix) || null;
 }
 
+// ── Diacritic-insensitive folding ────────────────────────────────────────────
+//
+// Every matcher in the app searches strings the user reads, and those strings
+// are translated into five locales — two of which (fr, es) are full of accents.
+// Typing "reglage" must find "Réglage" and "telemetrie" must find "Télémétrie",
+// otherwise search only works for people who type accents on the first try.
+//
+// Folding is done per source character rather than on the whole string so the
+// match indices can be mapped back onto the *original* text for highlighting.
+// A precomposed "é" folds to one char; the decomposed form ("e" + U+0301) folds
+// to one char too, with the combining mark contributing nothing — either way the
+// returned indices still point into the string the caller is about to render.
+
+const COMBINING_MARKS = /[̀-ͯ]/g;
+
+/**
+ * Fold one character: strip its diacritics and lowercase it.
+ * May return '' (a bare combining mark) or more than one char (rare ligatures).
+ */
+function foldChar(ch) {
+  return ch.normalize('NFD').replace(COMBINING_MARKS, '').toLowerCase();
+}
+
+/**
+ * Fold a string for comparison. Index alignment with the input is NOT preserved.
+ * @returns {string}
+ */
+function foldForSearch(str) {
+  return String(str == null ? '' : str).normalize('NFD').replace(COMBINING_MARKS, '').toLowerCase();
+}
+
+/**
+ * Fold a string, keeping a folded-index → original-index map.
+ * @returns {{ folded: string, map: number[] }}
+ */
+function foldWithMap(str) {
+  const src = String(str == null ? '' : str);
+  let folded = '';
+  const map = [];
+  for (let i = 0; i < src.length; i++) {
+    const f = foldChar(src[i]);
+    for (let k = 0; k < f.length; k++) { folded += f[k]; map.push(i); }
+  }
+  return { folded, map };
+}
+
+/**
+ * Case- and diacritic-insensitive substring match.
+ * @returns {{ match: boolean, index: number, indices: number[] }}
+ *   `indices` are positions in the ORIGINAL string, ready for highlighting.
+ */
+function substringMatch(query, str) {
+  const q = foldForSearch(query).trim();
+  if (!q) return { match: true, index: 0, indices: [] };
+  const { folded, map } = foldWithMap(str);
+  const at = folded.indexOf(q);
+  if (at === -1) return { match: false, index: -1, indices: [] };
+
+  // Map the folded range back onto original character positions. Any original
+  // char whose folded output falls inside the range is part of the match.
+  const first = map[at];
+  const last = map[at + q.length - 1];
+  const indices = [];
+  for (let i = first; i <= last; i++) indices.push(i);
+  return { match: true, index: first, indices };
+}
+
 // ── Shared fuzzy matcher (kept identical to QuickPicker.js to preserve UX) ──
 function fuzzyMatch(query, str) {
   if (!query) return { match: true, score: 0, indices: [] };
-  const q = query.toLowerCase();
-  const s = (str || '').toLowerCase();
+  const q = foldForSearch(query);
+  const { folded: s, map } = foldWithMap(str);
   const indices = [];
   let qi = 0, score = 0, consecutive = 0;
 
   for (let si = 0; si < s.length && qi < q.length; si++) {
     if (q[qi] === s[si]) {
-      indices.push(si);
+      indices.push(map[si]);
       consecutive++;
       score += consecutive * 2;
       if (si === 0 || /[\s\-_/\\.]/.test(s[si - 1])) score += 8;
@@ -128,14 +195,64 @@ function defaultFilter(items, query) {
 async function query(sourceId, ctx = {}, opts = {}) {
   const src = get(sourceId);
   if (!src) return [];
-  const raw = await Promise.resolve(src.getData(ctx)).catch(() => []);
+  try { return await runOne(src, ctx, opts.max ?? 40); }
+  catch { return []; }
+}
+
+/**
+ * Run one source end-to-end. Never throws: a source that blows up — in getData,
+ * in its own filter, or in render — degrades to zero results for its own group
+ * rather than taking down the surface that asked for it.
+ */
+async function runOne(src, ctx, max) {
+  // getData may throw synchronously (a bad destructure on ctx) as easily as it
+  // may reject, so the call itself is inside the try, not just its promise.
+  const raw = await Promise.resolve().then(() => src.getData(ctx));
+  const items = Array.isArray(raw) ? raw : [];
   const filter = src.filter || defaultFilter;
-  const filtered = filter(raw.map(r => ({ ...r, render: () => src.render(r) })), ctx.query);
-  const max = opts.max ?? 40;
-  return filtered.slice(0, max).map(item => ({
+  const decorated = items.map(r => ({ ...r, render: () => src.render(r) }));
+  return filter(decorated, ctx.query).slice(0, max).map(item => ({
     raw: item,
     ...src.render(item),
   }));
+}
+
+/**
+ * Fan out over every source of a surface, streaming each one's results back as
+ * soon as it resolves.
+ *
+ * Two properties the palette depends on:
+ *  - a slow source never delays a fast one (each is awaited independently, and
+ *    `onSource` fires per source rather than once at the end);
+ *  - the whole run is cancellable, so results from a query the user has already
+ *    typed past are dropped instead of repainting the list underneath them.
+ *
+ * @param {string} surface 'palette' | 'mention'
+ * @param {object} ctx     { project, workspace, query }
+ * @param {object} opts    { onSource(src, items, error), max, filterSource(src) }
+ * @returns {{ sources: object[], done: Promise<void>, cancel: () => void }}
+ */
+function runSources(surface, ctx = {}, opts = {}) {
+  const { onSource, max = 40, filterSource } = opts;
+  let cancelled = false;
+
+  const sources = forSurface(surface).filter(s => {
+    try { return filterSource ? filterSource(s) : true; } catch { return false; }
+  });
+
+  const done = Promise.all(sources.map(async (src) => {
+    let items, error = null;
+    try {
+      items = await runOne(src, ctx, max);
+    } catch (err) {
+      error = err;
+      items = [];
+    }
+    if (cancelled) return;
+    try { onSource?.(src, items, error); } catch { /* a consumer bug is not a source bug */ }
+  })).then(() => {});
+
+  return { sources, done, cancel() { cancelled = true; } };
 }
 
 module.exports = {
@@ -147,6 +264,10 @@ module.exports = {
   byKeyword,
   byPrefix,
   query,
+  runSources,
   fuzzyMatch,
+  substringMatch,
+  foldForSearch,
+  foldWithMap,
   defaultFilter,
 };

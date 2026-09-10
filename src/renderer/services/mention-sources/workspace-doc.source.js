@@ -23,11 +23,12 @@ module.exports = {
   },
   icon: ICON,
 
-  getData() {
+  async getData(ctx = {}) {
     const state = workspaceState.get();
     const activeId = state.activeWorkspaceId;
     if (!activeId) return [];
-    return (state.docs || []).map(d => ({
+
+    const local = (state.docs || []).map(d => ({
       id: d.id,
       title: d.title || d.id,
       summary: d.summary || '',
@@ -36,6 +37,57 @@ module.exports = {
       workspaceId: activeId,
       updatedAt: d.updatedAt || 0,
     }));
+
+    const q = String(ctx.query || '').trim();
+    if (!q) return local;
+
+    // The loaded index carries titles and summaries only. A query also gets the
+    // full-text pass over doc *bodies*, which is where most of a KB actually
+    // lives — merged in by id so a doc matching both ways appears once.
+    let matches = [];
+    try {
+      const res = await window.electron_api?.workspace?.searchDocs({ workspaceId: activeId, query: q });
+      if (res?.success && Array.isArray(res.results)) matches = res.results;
+    } catch {
+      // Search is an enhancement over the in-memory index, never a precondition.
+    }
+
+    const byId = new Map(local.map(d => [d.id, d]));
+    for (const m of matches) {
+      const id = m.id || m.docId;
+      if (!id) continue;
+      const existing = byId.get(id);
+      if (existing) {
+        if (!existing.summary && m.snippet) existing.summary = m.snippet;
+      } else {
+        byId.set(id, {
+          id,
+          title: m.title || id,
+          summary: m.snippet || '',
+          tags: m.tags || [],
+          icon: m.icon || '📄',
+          workspaceId: activeId,
+          updatedAt: m.updatedAt || 0,
+        });
+      }
+    }
+    return [...byId.values()];
+  },
+
+  /**
+   * A body-only hit has nothing matching in its title or summary, so the default
+   * label filter would drop exactly the rows full-text search just earned.
+   * Title matches are kept ahead of body-only ones.
+   */
+  filter(items, query) {
+    const q = String(query || '').trim();
+    if (!q) return items;
+    const registry = require('../MentionSourceRegistry');
+    return [...items].sort((a, b) => {
+      const am = registry.fuzzyMatch(q, a.title).match ? 1 : 0;
+      const bm = registry.fuzzyMatch(q, b.title).match ? 1 : 0;
+      return bm - am;
+    });
   },
 
   render(item) {
@@ -62,10 +114,13 @@ module.exports = {
       api.closeDropdown?.();
       return;
     }
-    document.querySelector('[data-tab="workspace"]')?.click();
-    setTimeout(() => {
-      const el = document.querySelector(`[data-doc-id="${item.id}"]`);
+    const nav = require('./_navigate');
+    (async () => {
+      document.querySelector('[data-tab="workspace"]')?.click();
+      // WorkspacePanel writes `data-docid` (one word), read back as dataset.docid.
+      const el = await nav.waitForByData('.workspace-doc-item', 'docid', item.id);
+      nav.reveal(el);
       el?.click();
-    }, 150);
+    })();
   },
 };

@@ -52,12 +52,29 @@ module.exports = {
     const sessions = await loadSessions(ctx.project?.path);
     return sessions.slice(0, 60).map(s => ({
       id: s.sessionId,
+      sessionId: s.sessionId,
       firstPrompt: s.title || s.firstPrompt || s.summary || s.sessionId?.slice(0, 8) || '?',
       summary: s.summary || '',
       modified: s.modified,
       messageCount: s.messageCount || 0,
       projectPath: ctx.project?.path,
+      // The haystack matchesSessionQuery expects: everything the card shows,
+      // pre-lowercased once here rather than per keystroke.
+      searchText: [s.title, s.firstPrompt, s.summary].filter(Boolean).join(' ').toLowerCase(),
     }));
+  },
+
+  /**
+   * Sessions are matched by the same helper the "Resume a conversation" modal
+   * and the Sessions panel use, so a query that finds a session in one place
+   * finds it in all three — including the "paste a session id" case, which no
+   * generic label matcher handles.
+   */
+  filter(items, query) {
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) return items;
+    const { matchesSessionQuery } = require('../../utils/sessionSearch');
+    return items.filter(item => matchesSessionQuery(item, q));
   },
 
   render(item) {
@@ -86,10 +103,12 @@ module.exports = {
       api.closeDropdown?.();
       return;
     }
-    document.querySelector('[data-tab="session-replay"]')?.click();
-    setTimeout(() => {
-      const el = document.querySelector(`[data-session-id="${item.id}"]`);
+    const nav = require('./_navigate');
+    (async () => {
+      document.querySelector('[data-tab="session-replay"]')?.click();
+      const el = await nav.waitForByData('[data-session-id]', 'sessionId', item.id);
+      nav.reveal(el);
       el?.click();
-    }, 150);
+    })();
   },
 };

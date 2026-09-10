@@ -7,6 +7,9 @@ const { escapeHtml, debounce } = require('../utils/dom');
 const { projectsState, mcpState } = require('../state');
 const { t } = require('../i18n');
 const registry = require('../../project-types/registry');
+// Dependency-free module: safe to require eagerly, and it owns the one matcher
+// both this palette and the Settings filter score against.
+const sourceRegistry = require('../services/MentionSourceRegistry');
 
 // ── Icons ──────────────────────────────────────────────────────────────────
 const ICON = {
@@ -52,7 +55,20 @@ const quickPickerState = {
     branchesError: false,
     sessionsError: false,
   },
+  /**
+   * Results of the pluggable MentionSourceRegistry sources, keyed by source id:
+   *   { items: [], loading: bool, error: bool, everLoaded: bool }
+   * Kept across keystrokes on purpose — a source that is re-querying keeps
+   * showing its previous rows instead of collapsing into a skeleton, so the
+   * list does not flash on every character typed.
+   */
+  sourceResults: {},
+  /** Monotonic token: results carrying an older one are stale and dropped. */
+  sourceToken: 0,
 };
+
+/** In-flight registry fan-out, so a superseded query can be cancelled. */
+let _sourceRun = null;
 
 // ── Async loaders ─────────────────────────────────────────────────────────
 async function loadBranches(projectPath, onDone) {
@@ -96,6 +112,98 @@ async function loadSessions(projectPath, onDone) {
   onDone();
 }
 
+// ── Pluggable sources (MentionSourceRegistry, surface 'palette') ───────────
+
+/**
+ * Is this source worth querying for the current query mode / project context?
+ */
+function isSourceEligible(source, mode, currentProject) {
+  if (mode !== 'all' && mode !== source.id) return false;
+  if (source.scope === 'project' && !currentProject) return false;
+  return true;
+}
+
+/**
+ * Kick off (or re-kick) the registry fan-out for the current query.
+ *
+ * Every source is lazy — nothing is fetched until a query pass asks for it —
+ * and the whole pass is cancelled the moment the next keystroke starts one,
+ * so a slow source answering late cannot repaint the list under a newer query.
+ * `onUpdate` fires once per source, as it resolves, never once at the end.
+ */
+function refreshPaletteSources(query, mode, currentProject, onUpdate) {
+  _sourceRun?.cancel();
+  const token = ++quickPickerState.sourceToken;
+
+  const eligible = (s) => isSourceEligible(s, mode, currentProject);
+  const previous = quickPickerState.sourceResults;
+  const next = {};
+  for (const source of sourceRegistry.forSurface('palette')) {
+    if (!eligible(source)) continue;
+    const prev = previous[source.id];
+    next[source.id] = {
+      items: prev?.items || [],
+      loading: true,
+      error: false,
+      everLoaded: !!prev?.everLoaded,
+    };
+  }
+  quickPickerState.sourceResults = next;
+
+  _sourceRun = sourceRegistry.runSources('palette', { project: currentProject, query }, {
+    filterSource: eligible,
+    onSource: (source, items, error) => {
+      if (token !== quickPickerState.sourceToken) return; // stale pass
+      quickPickerState.sourceResults[source.id] = {
+        items, loading: false, error: !!error, everLoaded: true,
+      };
+      if (error) console.warn(`[QuickPicker] source "${source.id}" failed:`, error);
+      onUpdate();
+    },
+  });
+}
+
+/**
+ * Turn the resolved registry results into palette sections.
+ * The source already applied its own filter, so nothing is dropped here — the
+ * query is only re-run against the label to know what to highlight. A source
+ * matching on hidden text (a session transcript, a KB doc body) keeps its rows.
+ */
+function buildSourceSections(q, mode, currentProject) {
+  const sections = [];
+  for (const source of sourceRegistry.forSurface('palette')) {
+    if (!isSourceEligible(source, mode, currentProject)) continue;
+    const result = quickPickerState.sourceResults[source.id];
+    if (!result) continue;
+
+    let label;
+    try { label = source.label(); } catch { label = source.id; }
+
+    if (result.loading && !result.everLoaded) {
+      sections.push({ key: source.id, label, loading: true, items: [] });
+      continue;
+    }
+    if (result.error && result.items.length === 0) continue; // degrade silently
+
+    const items = result.items.map(v => {
+      const lm = q ? fuzzyMatch(q, v.label || '') : { match: false, indices: [] };
+      return {
+        type: source.id,
+        id: `${source.id}-${v.raw?.id ?? v.label}`,
+        label: v.label,
+        labelHtml: lm.match ? highlightStr(v.label || '', lm.indices) : null,
+        sublabel: v.sublabel || '',
+        badge: v.badge || null,
+        icon: v.icon || source.icon,
+        score: 0,
+        data: { _source: source, _item: v.raw },
+      };
+    });
+    if (items.length > 0) sections.push({ key: source.id, label, items });
+  }
+  return sections;
+}
+
 // ── Built-in commands ─────────────────────────────────────────────────────
 function getBuiltinCommands() {
   return [
@@ -104,7 +212,8 @@ function getBuiltinCommands() {
       label: t('quickPicker.cmd.settings'),
       hint: 'Ctrl+,',
       icon: ICON.settings,
-      action: () => document.querySelector('[data-tab="settings"]')?.click(),
+      // Settings is a footer button, not a sidebar nav-tab: it has no data-tab.
+      action: () => document.getElementById('btn-settings')?.click(),
     },
     {
       id: 'cmd-new-project',
@@ -164,32 +273,12 @@ function getBuiltinCommands() {
 /**
  * Fuzzy match query against a string.
  * Returns { match, score, indices } where indices are matched char positions in str.
+ *
+ * Lives in MentionSourceRegistry (which requires nothing) so the palette, the
+ * @-mention dropdown and the Settings filter cannot drift apart on what counts
+ * as a match — accents included.
  */
-function fuzzyMatch(query, str) {
-  if (!query) return { match: true, score: 0, indices: [] };
-  const q = query.toLowerCase();
-  const s = str.toLowerCase();
-  const indices = [];
-  let qi = 0, score = 0, consecutive = 0;
-
-  for (let si = 0; si < s.length && qi < q.length; si++) {
-    if (q[qi] === s[si]) {
-      indices.push(si);
-      consecutive++;
-      score += consecutive * 2;
-      // word-boundary bonus (space, dash, slash, dot, underscore)
-      if (si === 0 || /[\s\-_/\\.]/.test(s[si - 1])) score += 8;
-      qi++;
-    } else {
-      consecutive = 0;
-    }
-  }
-
-  if (qi < q.length) return { match: false, score: 0, indices: [] };
-  if (indices[0] === 0) score += 15; // starts-with bonus
-  score -= (indices[indices.length - 1] || 0) * 0.3; // penalty for late matches
-  return { match: true, score, indices };
-}
+const fuzzyMatch = sourceRegistry.fuzzyMatch;
 
 /**
  * Wrap matched character positions with <mark class="qp-hl">.
@@ -370,37 +459,10 @@ function buildSections(query, mode, currentProject) {
   }
 
   // — Pluggable sources (MentionSourceRegistry, surface 'palette') —
-  // Kanban cards, workflows, parallel runs, sessions, skills, workspace docs, ...
+  // Settings, global knowledge, workspace KB docs, kanban cards, sessions, ...
+  // Already resolved by refreshPaletteSources(); this only lays them out.
   try {
-    const registry = require('../services/MentionSourceRegistry');
-    for (const source of registry.forSurface('palette')) {
-      if (mode !== 'all' && mode !== source.id) continue;
-      if (source.scope === 'project' && !currentProject) continue;
-
-      const raw = source.getData({ project: currentProject, query });
-      const rawPromise = Promise.resolve(raw);
-      // If async and not yet cached, skip this render pass — the source is expected
-      // to populate its own state which triggers a re-render on its own. For the
-      // initial simple case (kanban reads projectsState synchronously), raw is an array.
-      if (!Array.isArray(raw)) continue;
-
-      const decorated = raw.map(r => ({ ...r, render: () => source.render(r) }));
-      const filtered = registry.defaultFilter(decorated, q).slice(0, 40);
-      const items = filtered.map(item => {
-        const v = source.render(item);
-        const { match, score, labelHtml } = scoreItem(q, v.label, v.sublabel);
-        if (!match) return null;
-        return {
-          type: source.id, id: `${source.id}-${item.id}`,
-          label: v.label, labelHtml,
-          sublabel: v.sublabel || '',
-          badge: v.badge || null,
-          icon: v.icon || source.icon, score,
-          data: { _source: source, _item: item },
-        };
-      }).filter(Boolean);
-      if (items.length > 0) sections.push({ key: source.id, label: source.label(), items });
-    }
+    sections.push(...buildSourceSections(q, mode, currentProject));
   } catch (err) {
     console.warn('[QuickPicker] registry merge failed:', err);
   }
@@ -600,6 +662,10 @@ function openQuickPicker(container, optionsOrOnSelect) {
     branchesError: false,
     sessionsError: false,
   };
+  _sourceRun?.cancel();
+  _sourceRun = null;
+  quickPickerState.sourceResults = {};
+  quickPickerState.sourceToken++;
 
   const picker = document.createElement('div');
   picker.className = 'quick-picker-overlay';
@@ -628,6 +694,14 @@ function openQuickPicker(container, optionsOrOnSelect) {
   const input = picker.querySelector('.quick-picker-input');
   const list = picker.querySelector('.quick-picker-list');
   const rerender = () => renderList(list, handlers, picker, currentProject);
+  /** Re-query the pluggable sources for whatever is typed right now. */
+  const refreshSources = () => {
+    const { mode, query } = detectMode(quickPickerState.query);
+    refreshPaletteSources(query, mode, currentProject, () => {
+      if (!quickPickerState.isOpen) return;
+      rerender();
+    });
+  };
 
   // Event delegation on the list container (attached once, not per render)
   list.addEventListener('mouseenter', (e) => {
@@ -651,6 +725,7 @@ function openQuickPicker(container, optionsOrOnSelect) {
       input.value = prefix;
       quickPickerState.query = prefix;
       quickPickerState.selectedIndex = 0;
+      refreshSources();
       rerender();
       input.focus();
     });
@@ -662,11 +737,14 @@ function openQuickPicker(container, optionsOrOnSelect) {
     loadSessions(currentProject.path, rerender);
   }
 
+  refreshSources();
   rerender();
 
-  // Debounced search to avoid flicker with many items
+  // Debounced search to avoid flicker with many items — and, now that sources
+  // hit IPC, to avoid a round trip per character.
   const debouncedRerender = debounce(() => {
     quickPickerState.selectedIndex = 0;
+    refreshSources();
     rerender();
   }, 150);
 
@@ -712,6 +790,8 @@ function openQuickPicker(container, optionsOrOnSelect) {
 // ── Close ─────────────────────────────────────────────────────────────────
 function closeQuickPicker(picker) {
   quickPickerState.isOpen = false;
+  _sourceRun?.cancel();
+  _sourceRun = null;
   picker.classList.remove('active');
   setTimeout(() => picker.parentNode?.removeChild(picker), 200);
 }
@@ -720,4 +800,17 @@ function isQuickPickerOpen() {
   return quickPickerState.isOpen;
 }
 
-module.exports = { openQuickPicker, closeQuickPicker, isQuickPickerOpen, quickPickerState };
+module.exports = {
+  openQuickPicker,
+  closeQuickPicker,
+  isQuickPickerOpen,
+  quickPickerState,
+  // Exposed so other surfaces highlight matches exactly the way the palette
+  // does — the Settings filter reuses highlightStr rather than growing a second
+  // <mark> writer that drifts from this one.
+  highlightStr,
+  fuzzyMatch,
+  scoreItem,
+  refreshPaletteSources,
+  buildSourceSections,
+};

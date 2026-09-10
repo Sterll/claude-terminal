@@ -1992,7 +1992,8 @@
     "tabDocuments": "Dokumen",
     "runInBackground": "Jalankan di latar belakang",
     "backgroundWorkFailed": "Tidak dapat memindahkan pekerjaan ke latar belakang. {error}",
-    "slashRemoteControl": "Bagikan percakapan ini ke claude.ai (on / off)"
+    "slashRemoteControl": "Bagikan percakapan ini ke claude.ai (on / off)",
+    "mentionKnowledge": "Pengetahuan global"
   },
   "hooks": {
     "consent": {

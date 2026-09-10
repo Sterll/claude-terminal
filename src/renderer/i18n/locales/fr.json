@@ -1992,7 +1992,8 @@
     "tabDocuments": "Documents",
     "runInBackground": "Passer en arrière-plan",
     "backgroundWorkFailed": "Impossible de passer le travail en arrière-plan. {error}",
-    "slashRemoteControl": "Partager cette conversation avec claude.ai (on / off)"
+    "slashRemoteControl": "Partager cette conversation avec claude.ai (on / off)",
+    "mentionKnowledge": "Connaissances globales"
   },
   "hooks": {
     "consent": {
