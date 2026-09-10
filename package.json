@@ -24,7 +24,8 @@
     "test:e2e": "node tests/e2e/smoke.js",
     "postinstall": "electron-rebuild -f -w node-pty,keytar,better-sqlite3 || echo rebuild skipped",
     "lab": "node scripts/workflow-lab/run-lab.js",
-    "lab:audit": "node scripts/workflow-lab/audit-slots.js"
+    "lab:audit": "node scripts/workflow-lab/audit-slots.js",
+    "test:coverage": "jest --coverage"
   },
   "keywords": [
     "claude",
@@ -68,6 +69,59 @@
     ],
     "moduleNameMapper": {
       "^marked$": "<rootDir>/node_modules/marked/lib/marked.umd.js"
+    },
+    "collectCoverageFrom": [
+      "src/**/*.js",
+      "main.js",
+      "renderer.js",
+      "resources/mcp-servers/**/*.js",
+      "!**/node_modules/**"
+    ],
+    "coveragePathIgnorePatterns": [
+      "/node_modules/",
+      "/dist/",
+      "/build/",
+      "/tests/",
+      "src/renderer/i18n/locales/"
+    ],
+    "coverageReporters": [
+      "text-summary",
+      "json-summary",
+      "lcov"
+    ],
+    "coverageDirectory": "coverage",
+    "testTimeout": 30000,
+    "coverageThreshold": {
+      "global": {
+        "statements": 10,
+        "branches": 8,
+        "functions": 9,
+        "lines": 10
+      },
+      "./src/shared/": {
+        "statements": 88,
+        "branches": 80,
+        "functions": 88,
+        "lines": 90
+      },
+      "./src/main/services/": {
+        "statements": 26,
+        "branches": 24,
+        "functions": 27,
+        "lines": 27
+      },
+      "./src/renderer/utils/": {
+        "statements": 72,
+        "branches": 62,
+        "functions": 52,
+        "lines": 73
+      },
+      "./src/renderer/state/": {
+        "statements": 56,
+        "branches": 46,
+        "functions": 58,
+        "lines": 57
+      }
     }
   },
   "dependencies": {
