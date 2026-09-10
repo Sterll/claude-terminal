@@ -3598,17 +3598,33 @@ document.getElementById('btn-settings').onclick = () => {
 // Sidebar collapse toggle
 const sidebarEl = document.querySelector('.sidebar');
 const btnCollapseSidebar = document.getElementById('btn-collapse-sidebar');
-if (localStorage.getItem('sidebar-collapsed') === 'true') {
-  sidebarEl.classList.add('collapsed');
+
+/**
+ * Below 768 CSS px there is no room for labels, but there is no second compact
+ * mode either: the rail gets the same `.collapsed` class the toggle sets, so
+ * the footer, the tooltips and the scrolling behave identically. The user's own
+ * preference is kept in localStorage and restored when the window grows back.
+ */
+const _narrowRail = window.matchMedia('(max-width: 768px)');
+
+function _applyRailMode() {
+  const collapsed = _narrowRail.matches || localStorage.getItem('sidebar-collapsed') === 'true';
+  sidebarEl.classList.toggle('collapsed', collapsed);
+  // Hidden below 768px (see layout.css): there is nothing to unfold into, and
+  // a visible control that no-ops on click is worse than an absent one.
+  btnCollapseSidebar.disabled = _narrowRail.matches;
+  _applySidebarTooltips(collapsed);
 }
+
+_narrowRail.addEventListener('change', _applyRailMode);
+
 btnCollapseSidebar.onclick = () => {
-  sidebarEl.classList.toggle('collapsed');
-  const isCollapsed = sidebarEl.classList.contains('collapsed');
-  localStorage.setItem('sidebar-collapsed', isCollapsed);
-  _applySidebarTooltips(isCollapsed);
+  if (_narrowRail.matches) return;
+  localStorage.setItem('sidebar-collapsed', String(!sidebarEl.classList.contains('collapsed')));
+  _applyRailMode();
 };
 
-// Toggle title ↔ data-tooltip for CSS tooltips in collapsed sidebar
+// Toggle title ↔ data-tooltip for the portal tooltips of the collapsed rail
 function _applySidebarTooltips(isCollapsed) {
   const sidebar = document.querySelector('.sidebar');
   if (!sidebar) return;
@@ -3627,7 +3643,51 @@ function _applySidebarTooltips(isCollapsed) {
       }
     }
   });
+  if (!isCollapsed) _hideRailTooltip();
 }
+
+// ── Collapsed rail tooltips ───────────────────────────────────────────────
+// A single body-level node, not an `::after` on each item: the rail is a
+// scroll container, and it clips any pseudo-element reaching past its 56px.
+let _railTooltipEl = null;
+
+function _railTooltip() {
+  if (!_railTooltipEl) {
+    _railTooltipEl = document.createElement('div');
+    _railTooltipEl.className = 'rail-tooltip';
+    document.body.appendChild(_railTooltipEl);
+  }
+  return _railTooltipEl;
+}
+
+function _showRailTooltip(el) {
+  const label = el.dataset.tooltip;
+  if (!label) return;
+  const tip = _railTooltip();
+  tip.textContent = label;
+  const r = el.getBoundingClientRect();
+  tip.style.left = `${Math.round(r.right + 8)}px`;
+  tip.style.top = `${Math.round(r.top + r.height / 2)}px`;
+  tip.classList.add('visible');
+}
+
+function _hideRailTooltip() {
+  if (_railTooltipEl) _railTooltipEl.classList.remove('visible');
+}
+
+sidebarEl.addEventListener('mouseover', e => {
+  const el = e.target.closest?.('[data-tooltip]');
+  if (el && sidebarEl.contains(el)) _showRailTooltip(el);
+  else _hideRailTooltip();
+});
+sidebarEl.addEventListener('mouseleave', _hideRailTooltip);
+// The rail scrolls under a pinned tooltip otherwise, and a click usually means
+// the pointer is about to leave the item anyway.
+sidebarEl.addEventListener('scroll', _hideRailTooltip, true);
+sidebarEl.addEventListener('click', _hideRailTooltip, true);
+
+// Last: _applyRailMode reaches _hideRailTooltip, whose `let` is declared above.
+_applyRailMode();
 
 // ========== TAB NAVIGATION ==========
 // Scroll position preservation across tab switches.

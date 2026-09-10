@@ -9,12 +9,16 @@
  * That is the gap this covers, and only that: it is a smoke test, not a
  * feature suite.
  *
- * Three assertions:
+ * Four assertions:
  *
  *   1. The window opens and the custom titlebar renders.
  *   2. Every sidebar tab can be opened without a renderer console error or an
  *      uncaught page error.
- *   3. ErrorLogService recorded no `critical` entry during the run — which, per
+ *   3. At the minimum window size the collapsed sidebar rail keeps its icons
+ *      inside itself instead of painting them over its own footer, and a rail
+ *      icon still names itself on hover. Layout that only breaks at a size
+ *      nobody develops at, and that throws nothing when it does.
+ *   4. ErrorLogService recorded no `critical` entry during the run — which, per
  *      that service, means no uncaughtException and no unhandledRejection in
  *      the main process.
  *
@@ -288,9 +292,78 @@ async function run() {
       );
     }
 
+    // ── 3. The collapsed rail stays inside the sidebar ──────────────────────
+    //
+    // With every tab pinned the icons-only rail is ~750px tall, well past the
+    // 600px minimum window height. It used to keep `overflow: visible` so its
+    // tooltips could escape the 56px rail, so the overflowing icons were
+    // painted straight over the footer and past the bottom of the sidebar —
+    // the bell, the gear and the version string all on top of each other. This
+    // is geometry no unit test can see and no panel throws over.
+
+    currentTab = 'sidebar-rail';
+    // At the default 1400x900 the rail only just overflows; check it at the
+    // window's own minimum, where it overflows by a third of its height.
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1000, 600));
+    await win.waitForTimeout(400);
+    await win.click('#btn-collapse-sidebar', { timeout: 10_000 });
+    await win.waitForTimeout(400);
+
+    // Asked of the compositor, not of the boxes: a scrolled-away icon still
+    // reports a rect below the rail, and the whole question here is whether it
+    // is clipped there or drawn. `elementFromPoint` answers what is on screen.
+    const rail = await win.evaluate(() => {
+      const sidebar = document.querySelector('.sidebar');
+      const nav = document.querySelector('.nav-tabs');
+      const footer = document.querySelector('.sidebar-footer');
+      const box = footer.getBoundingClientRect();
+      const x = box.left + box.width / 2;
+      const intruders = new Set();
+      for (let y = box.top + 2; y < box.bottom - 2; y += 4) {
+        const hit = document.elementFromPoint(x, y);
+        if (hit && !footer.contains(hit) && hit !== footer) {
+          intruders.add(hit.closest('.nav-tab')?.dataset.tab || hit.tagName.toLowerCase());
+        }
+      }
+      return {
+        collapsed: sidebar.classList.contains('collapsed'),
+        overflowing: nav.scrollHeight > nav.clientHeight + 1,
+        intruders: [...intruders],
+      };
+    });
+
+    check('collapse toggle folds the sidebar into a rail', rail.collapsed);
+    check(
+      'collapsed rail keeps its icons out of the footer',
+      rail.overflowing && rail.intruders.length === 0,
+      rail.overflowing
+        ? `drawn over the footer: ${rail.intruders.join(', ')}`
+        : 'the rail did not overflow at all, so this proves nothing — check the window size'
+    );
+
+    // Hovering a rail icon must still name it: the label moved out of the item
+    // (an `::after` the scroll container would now clip) into a body portal.
+    await win.hover('.nav-tab[data-tab="git"]');
+    await win.waitForTimeout(300);
+    const tooltip = await win.evaluate(() => {
+      const tip = document.querySelector('.rail-tooltip');
+      if (!tip || !tip.classList.contains('visible')) return null;
+      const box = tip.getBoundingClientRect();
+      const item = document.querySelector('.nav-tab[data-tab="git"]').getBoundingClientRect();
+      return { text: tip.textContent.trim(), clear: box.left >= item.right, inView: box.right < window.innerWidth };
+    });
+    check(
+      'a collapsed rail icon still names itself on hover',
+      !!tooltip && tooltip.text.length > 0 && tooltip.clear && tooltip.inView,
+      JSON.stringify(tooltip)
+    );
+
+    await win.click('#btn-collapse-sidebar', { timeout: 10_000 });
+    await win.waitForTimeout(400);
+
     currentTab = 'teardown';
 
-    // ── 3. The main process logged nothing critical ─────────────────────────
+    // ── 4. The main process logged nothing critical ─────────────────────────
 
     const stats = await win.evaluate(async () => {
       try {

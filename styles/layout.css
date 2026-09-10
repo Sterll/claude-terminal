@@ -636,29 +636,43 @@ body.platform-darwin .titlebar-drag {
   min-height: 0;
 }
 
-/* Collapsed keeps `overflow: visible`: its labels live in a `::after` tooltip
-   that has to escape the 56px rail, and a scroll container would clip it. */
-.sidebar:not(.collapsed) .nav-tabs {
+/* The rail scrolls in *both* states. Collapsed used to keep `overflow: visible`
+   so its `::after` tooltips could escape the 56px rail — but with every tab
+   pinned the collapsed list is ~745px tall, so on any window shorter than that
+   (minHeight is 600) the last icons were painted straight over the footer and
+   past the bottom of the sidebar. The tooltips now live in a body-level portal
+   (`_railTooltip` in renderer.js), so nothing has to escape a clipping box. */
+.nav-tabs {
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
 }
 
-.sidebar:not(.collapsed) .nav-tabs::-webkit-scrollbar {
+.nav-tabs::-webkit-scrollbar {
   width: 4px;
 }
 
-.sidebar:not(.collapsed) .nav-tabs::-webkit-scrollbar-track {
+.nav-tabs::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.sidebar:not(.collapsed) .nav-tabs::-webkit-scrollbar-thumb {
+.nav-tabs::-webkit-scrollbar-thumb {
   background: var(--border-color);
   border-radius: 2px;
 }
 
-.sidebar:not(.collapsed) .nav-tabs::-webkit-scrollbar-thumb:hover {
+.nav-tabs::-webkit-scrollbar-thumb:hover {
   background: var(--bg-active);
+}
+
+/* 4px of gutter taken off a 56px rail visibly decentres every icon, and the
+   row clipped at the bottom edge already says the list continues. */
+.sidebar.collapsed .nav-tabs {
+  scrollbar-width: none;
+}
+
+.sidebar.collapsed .nav-tabs::-webkit-scrollbar {
+  width: 0;
 }
 
 .nav-separator {
@@ -786,6 +800,21 @@ body.platform-darwin .titlebar-drag {
   transform: rotate(180deg);
 }
 
+/* Same 32px box as the bell and the gear it now sits above: at full width its
+   hover background was twice as wide as theirs in the stacked footer. */
+.sidebar.collapsed .sidebar-collapse-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+/* Below 768px the rail is locked to icons-only, so the toggle has nothing to
+   unfold into; `_applyRailMode()` disables it and it drops out of the footer. */
+.sidebar-collapse-btn:disabled {
+  display: none;
+}
+
 /* Sidebar collapsed state */
 .sidebar {
   transition: width 0.2s ease;
@@ -831,14 +860,14 @@ body.platform-darwin .titlebar-drag {
   position: relative;
 }
 
-/* Tooltip on hover when sidebar is collapsed */
-.sidebar.collapsed .nav-tabs .nav-tab[data-tooltip]::after,
-.sidebar.collapsed .settings-btn[data-tooltip]::after,
-.sidebar.collapsed .notification-toggle[data-tooltip]::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  left: calc(100% + 8px);
-  top: 50%;
+/* Label of a collapsed rail item, on hover. A body-level portal rather than an
+   `::after` on the item: the rail is a scroll container now, and it would clip
+   any pseudo-element trying to reach past its 56px. Positioned by
+   `_showRailTooltip` in renderer.js. */
+.rail-tooltip {
+  position: fixed;
+  left: -9999px;
+  top: -9999px;
   transform: translateY(-50%);
   background: var(--bg-tertiary);
   color: var(--text-primary);
@@ -854,17 +883,15 @@ body.platform-darwin .titlebar-drag {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-.sidebar.collapsed .nav-tabs .nav-tab[data-tooltip]:hover::after,
-.sidebar.collapsed .settings-btn[data-tooltip]:hover::after,
-.sidebar.collapsed .notification-toggle[data-tooltip]:hover::after {
+.rail-tooltip.visible {
   opacity: 1;
 }
 
 /* 56px cannot hold the footer row — stack it back up when collapsed. */
 .sidebar.collapsed .sidebar-footer {
-  padding: 8px;
+  padding: 6px;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
 }
 
 .sidebar.collapsed .sidebar-footer .version {
@@ -877,10 +904,15 @@ body.platform-darwin .titlebar-drag {
   display: none;
 }
 
+/* `padding: 10px` on the 30x30 box the footer row hands these buttons left a
+   10px content box holding an 18px icon, so the glyph spilled out of its own
+   hover background. The box is the whole target here. */
 .sidebar.collapsed .notification-toggle,
 .sidebar.collapsed .settings-btn {
+  width: 32px;
+  height: 32px;
   justify-content: center;
-  padding: 10px;
+  padding: 0;
   position: relative;
 }
 
@@ -1032,6 +1064,10 @@ body.platform-darwin .titlebar-drag {
   flex-direction: row;
   align-items: center;
   gap: 4px;
+  /* The nav above is `flex: 1 1 auto`; without this the footer is what gives
+     way in a short window, and the collapse button — the only way back out of
+     the rail — is the first thing to be squeezed out of reach. */
+  flex-shrink: 0;
 }
 
 /* Icon-only in the footer row; the label lives in the tooltip. */
@@ -1142,8 +1178,13 @@ body.platform-darwin .titlebar-drag {
    Electron window adaptation (800px - 3840px)
    ============================================ */
 
-/* Compact window (< 900px width) */
-@media (max-width: 900px) {
+/* The `--sidebar-width` ladder below is written as non-overlapping ranges on
+   purpose. It used to read `max-width: 900`, then `max-width: 768`, then
+   `max-width: 1100` — so at 700px all three matched and the *last* one won,
+   which is why the "very compact" 56px rail never actually applied. */
+
+/* Compact window (769px - 900px) */
+@media (min-width: 769px) and (max-width: 900px) {
   :root {
     --sidebar-width: 160px;
     --projects-panel-width: 280px;
@@ -1177,44 +1218,14 @@ body.platform-darwin .titlebar-drag {
   }
 }
 
-/* Very compact window (< 768px width) */
+/* Very compact window (< 768px width).
+   The rail itself is not styled here: below this width `_applyRailMode()` adds
+   the same `.collapsed` class the toggle uses, so the icons-only rail, its
+   footer and its tooltips are one code path instead of a second, subtly
+   different copy that also had to fight `.sidebar { min-width: 160px }`. */
 @media (max-width: 768px) {
   :root {
-    --sidebar-width: 56px;
     --projects-panel-width: 250px;
-  }
-
-  .sidebar {
-    width: var(--sidebar-width);
-  }
-
-  /* Hide text in sidebar, show only icons */
-  .nav-tab span {
-    display: none;
-  }
-
-  .nav-tab {
-    justify-content: center;
-    padding: 12px;
-  }
-
-  .sidebar-footer {
-    padding: 8px;
-  }
-
-  .notification-toggle span,
-  .settings-btn span {
-    display: none;
-  }
-
-  .notification-toggle,
-  .settings-btn {
-    justify-content: center;
-    padding: 10px;
-  }
-
-  .version {
-    font-size: var(--font-2xs);
   }
 
   /* Reduce projects panel padding */
@@ -1227,13 +1238,16 @@ body.platform-darwin .titlebar-drag {
   }
 }
 
-/* Tight window (1000px - 1100px) — near Electron minimum */
-@media (max-width: 1100px) {
+/* Tight window (901px - 1100px) — near the 1000px Electron minimum */
+@media (min-width: 901px) and (max-width: 1100px) {
   :root {
     --sidebar-width: 160px;
     --projects-panel-width: 280px;
   }
+}
 
+/* Titlebar crowding starts well before the sidebar does — all the way down. */
+@media (max-width: 1100px) {
   .titlebar-usage {
     gap: 0;
   }
