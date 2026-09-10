@@ -4234,5 +4234,34 @@
         "body": "Si trabajabas con el árbol a la vista, puede anclarse de nuevo como columna junto a la conversación. Desactivado por defecto; la pantalla Archivos conserva el visor y los diffs de sesión."
       }
     }
+  },
+  "projectTypes": {
+    "title": "Extensiones de tipos de proyecto",
+    "description": "Cargar tipos de proyecto declarativos desde ~/.claude-terminal/project-types/. Una extensión es un manifiesto, no código: nada de lo que contiene se ejecuta.",
+    "enable": "Activar extensiones de tipos de proyecto",
+    "openFolder": "Abrir la carpeta de extensiones",
+    "none": "No se encontraron extensiones",
+    "status": {
+      "enabled": "Activada",
+      "disabled": "Desactivada",
+      "incompatible": "Incompatible"
+    },
+    "problem": {
+      "title": "Algunas extensiones de tipos de proyecto no se pudieron cargar",
+      "andMore": "y {count} más",
+      "no-manifest": "no hay project-type.json en esta carpeta",
+      "unreadable": "no se pudo leer project-type.json",
+      "not-an-object": "project-type.json no es un objeto JSON",
+      "bad-manifest-version": "versión de manifiesto no admitida",
+      "bad-id": "identificador no válido",
+      "bad-name": "nombre no válido",
+      "incompatible": "creada para otra versión de Claude Terminal",
+      "duplicate-id": "otra extensión ya usa este identificador",
+      "unreadable-dir": "no se pudo leer la carpeta de extensiones",
+      "too-many": "demasiadas extensiones; las demás se ignoraron",
+      "threw": "la extensión falló al cargarse",
+      "register-failed": "no se pudo registrar la extensión",
+      "loader-failed": "el cargador de extensiones falló"
+    }
   }
 }

@@ -517,6 +517,14 @@ contextBridge.exposeInMainWorld('electron_api', {
     deleteDoc: (params) => ipcRenderer.invoke('workspace-delete-doc', params),
   },
 
+  // ==================== PROJECT TYPE EXTENSIONS ====================
+  // Declarative only — an extension is data this bridge carries, never code it
+  // loads. See design/project-type-extensions.md.
+  projectTypes: {
+    listExtensions: () => ipcRenderer.invoke('project-types:list-extensions'),
+    ensureDir: () => ipcRenderer.invoke('project-types:ensure-dir'),
+  },
+
   // ==================== KNOWLEDGE (global memory) ====================
   knowledge: {
     list: () => ipcRenderer.invoke('knowledge-list'),

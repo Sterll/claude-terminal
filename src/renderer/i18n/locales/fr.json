@@ -4234,5 +4234,34 @@
         "body": "Si vous travailliez avec l'arborescence sous les yeux, elle peut être réancrée en colonne à côté de la conversation. Désactivé par défaut ; l'écran Fichiers conserve la visionneuse et les diffs de session."
       }
     }
+  },
+  "projectTypes": {
+    "title": "Extensions de types de projet",
+    "description": "Charger des types de projet déclaratifs depuis ~/.claude-terminal/project-types/. Une extension est un manifeste, pas du code : rien de ce qu'elle contient n'est exécuté.",
+    "enable": "Activer les extensions de types de projet",
+    "openFolder": "Ouvrir le dossier des extensions",
+    "none": "Aucune extension trouvée",
+    "status": {
+      "enabled": "Activée",
+      "disabled": "Désactivée",
+      "incompatible": "Incompatible"
+    },
+    "problem": {
+      "title": "Certaines extensions de types de projet n'ont pas pu être chargées",
+      "andMore": "et {count} de plus",
+      "no-manifest": "aucun project-type.json dans ce dossier",
+      "unreadable": "project-type.json illisible",
+      "not-an-object": "project-type.json n'est pas un objet JSON",
+      "bad-manifest-version": "version de manifeste non prise en charge",
+      "bad-id": "identifiant invalide",
+      "bad-name": "nom invalide",
+      "incompatible": "conçue pour une autre version de Claude Terminal",
+      "duplicate-id": "une autre extension utilise déjà cet identifiant",
+      "unreadable-dir": "le dossier des extensions est illisible",
+      "too-many": "trop d’extensions ; les autres ont été ignorées",
+      "threw": "le chargement de l'extension a échoué",
+      "register-failed": "l'extension n'a pas pu être enregistrée",
+      "loader-failed": "le chargeur d’extensions a échoué"
+    }
   }
 }

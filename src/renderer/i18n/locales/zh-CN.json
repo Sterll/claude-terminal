@@ -4234,5 +4234,34 @@
         "body": "如果你习惯让文件树一直可见，它可以重新以一列的形式停靠在对话旁边。默认关闭；文件页面仍然负责查看器和会话差异。"
       }
     }
+  },
+  "projectTypes": {
+    "title": "项目类型扩展",
+    "description": "从 ~/.claude-terminal/project-types/ 加载声明式项目类型。扩展是清单文件而非代码：其中的内容不会被执行。",
+    "enable": "启用项目类型扩展",
+    "openFolder": "打开扩展文件夹",
+    "none": "未找到扩展",
+    "status": {
+      "enabled": "已启用",
+      "disabled": "已禁用",
+      "incompatible": "不兼容"
+    },
+    "problem": {
+      "title": "部分项目类型扩展无法加载",
+      "andMore": "另有 {count} 个",
+      "no-manifest": "此文件夹中没有 project-type.json",
+      "unreadable": "无法读取 project-type.json",
+      "not-an-object": "project-type.json 不是 JSON 对象",
+      "bad-manifest-version": "不支持的清单版本",
+      "bad-id": "无效的 id",
+      "bad-name": "无效的名称",
+      "incompatible": "为其他版本的 Claude Terminal 构建",
+      "duplicate-id": "另一个扩展已使用该 id",
+      "unreadable-dir": "无法读取扩展文件夹",
+      "too-many": "扩展过多，其余已被忽略",
+      "threw": "扩展加载失败",
+      "register-failed": "无法注册该扩展",
+      "loader-failed": "扩展加载器失败"
+    }
   }
 }

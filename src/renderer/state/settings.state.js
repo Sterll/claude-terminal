@@ -75,6 +75,13 @@ const defaultSettings = {
   globalShortcuts: {}, // Custom global shortcut overrides: { globalQuickPicker: 'Ctrl+Shift+X', ... }
   globalShortcutsEnabled: true, // Master toggle for OS-level global shortcuts
   terminalShortcuts: {}, // Terminal shortcut toggles (empty = all enabled by default)
+  // Third-party project types from ~/.claude-terminal/project-types/. Off by
+  // default and per-extension opt-in on top: the master switch only says the
+  // feature may be used, an extension loads when its id is in the allowlist.
+  // Extensions are declarative manifests — no third-party code runs in either
+  // process. See design/project-type-extensions.md.
+  projectTypeExtensionsEnabled: false,
+  enabledProjectTypeExtensions: [], // Ids of extensions the user has opted into
   telemetryEnabled: false, // Opt-in anonymous telemetry
   telemetryUuid: null, // Random UUID for anonymous tracking
   telemetryCategories: { app: true, features: true, errors: true }, // Granular event categories

@@ -4234,5 +4234,34 @@
         "body": "If you worked with the tree in view, it can be docked back as a column next to the conversation. Off by default; the Files screen keeps the viewer and the session diffs."
       }
     }
+  },
+  "projectTypes": {
+    "title": "Project type extensions",
+    "description": "Load declarative project types from ~/.claude-terminal/project-types/. Extensions are manifests, not code: nothing they contain is executed.",
+    "enable": "Enable project type extensions",
+    "openFolder": "Open extensions folder",
+    "none": "No extensions found",
+    "status": {
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "incompatible": "Incompatible"
+    },
+    "problem": {
+      "title": "Some project type extensions could not be loaded",
+      "andMore": "and {count} more",
+      "no-manifest": "no project-type.json in this folder",
+      "unreadable": "project-type.json could not be read",
+      "not-an-object": "project-type.json is not a JSON object",
+      "bad-manifest-version": "unsupported manifest version",
+      "bad-id": "invalid id",
+      "bad-name": "invalid name",
+      "incompatible": "built for a different version of Claude Terminal",
+      "duplicate-id": "another extension already uses this id",
+      "unreadable-dir": "the extensions folder could not be read",
+      "too-many": "too many extensions; the rest were ignored",
+      "threw": "the extension failed to load",
+      "register-failed": "the extension could not be registered",
+      "loader-failed": "the extension loader failed"
+    }
   }
 }

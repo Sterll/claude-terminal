@@ -4234,5 +4234,34 @@
         "body": "Jika Anda bekerja dengan pohon file terlihat, kini bisa ditambatkan lagi sebagai kolom di samping percakapan. Nonaktif secara bawaan; layar Files tetap memegang penampil dan diff sesi."
       }
     }
+  },
+  "projectTypes": {
+    "title": "Ekstensi tipe proyek",
+    "description": "Muat tipe proyek deklaratif dari ~/.claude-terminal/project-types/. Ekstensi adalah manifes, bukan kode: tidak ada isinya yang dieksekusi.",
+    "enable": "Aktifkan ekstensi tipe proyek",
+    "openFolder": "Buka folder ekstensi",
+    "none": "Tidak ada ekstensi ditemukan",
+    "status": {
+      "enabled": "Aktif",
+      "disabled": "Nonaktif",
+      "incompatible": "Tidak kompatibel"
+    },
+    "problem": {
+      "title": "Beberapa ekstensi tipe proyek gagal dimuat",
+      "andMore": "dan {count} lainnya",
+      "no-manifest": "tidak ada project-type.json di folder ini",
+      "unreadable": "project-type.json tidak dapat dibaca",
+      "not-an-object": "project-type.json bukan objek JSON",
+      "bad-manifest-version": "versi manifes tidak didukung",
+      "bad-id": "id tidak valid",
+      "bad-name": "nama tidak valid",
+      "incompatible": "dibuat untuk versi Claude Terminal yang berbeda",
+      "duplicate-id": "ekstensi lain sudah memakai id ini",
+      "unreadable-dir": "folder ekstensi tidak dapat dibaca",
+      "too-many": "terlalu banyak ekstensi; sisanya diabaikan",
+      "threw": "ekstensi gagal dimuat",
+      "register-failed": "ekstensi tidak dapat didaftarkan",
+      "loader-failed": "pemuat ekstensi gagal"
+    }
   }
 }

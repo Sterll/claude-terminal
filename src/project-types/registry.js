@@ -4,9 +4,15 @@
  */
 
 const { BASE_TYPE } = require('./base-type');
+const { createExternalType } = require('./external-type');
 
 // Registered project types
 const types = new Map();
+
+// Ids of the types that came from ~/.claude-terminal/project-types/ rather than
+// from this repo. Tracked separately so external types can be replaced on a
+// reload without disturbing the built-ins, and so the UI can tell them apart.
+const externalIds = new Set();
 
 // Categories for wizard grouping
 const categories = [
@@ -34,6 +40,7 @@ function register(typeDescriptor) {
 function discoverAll() {
   // Clear previous registrations
   types.clear();
+  externalIds.clear();
 
   // Require known types
   register(require('./general'));
@@ -69,6 +76,126 @@ function discoverAll() {
   }
 
   console.debug(`[Registry] Discovered ${types.size} project type(s): ${[...types.keys()].join(', ')}`);
+}
+
+// ── External (extension) types ───────────────────────────────────────────────
+//
+// Third-party project types, loaded from ~/.claude-terminal/project-types/ and
+// off by default. What arrives here is *data* — a validated manifest, already
+// checked by the main process — and the descriptor is built out of it by
+// first-party code in `external-type.js`. No extension code is required, eval'd
+// or otherwise executed, in this process or any other. The reasoning is in
+// `design/project-type-extensions.md`; the short version is that a renderer
+// module would hold the whole `electron_api` surface, so v1 does not load one.
+
+/**
+ * Drop every external type, leaving the built-ins alone.
+ *
+ * Also removes their injected stylesheets, so disabling an extension takes its
+ * colours with it rather than leaving them applied to nothing.
+ */
+function clearExternal() {
+  for (const id of externalIds) {
+    types.delete(id);
+    if (typeof document !== 'undefined') {
+      const tag = document.querySelector(`style[data-project-type="${id}"]`);
+      if (tag) tag.remove();
+    }
+  }
+  externalIds.clear();
+}
+
+/**
+ * Register the extensions returned by `electron_api.projectTypes.listExtensions()`.
+ *
+ * Only entries with `status === 'enabled'` are registered — the main process has
+ * already applied both consent gates (the master switch and the per-extension
+ * allowlist), and this re-checks the result rather than re-deriving it.
+ *
+ * Never throws. Each descriptor is built inside its own try/catch, so a manifest
+ * that slips past validation and breaks the builder removes exactly itself. The
+ * caller is the renderer's boot path; an exception here would be a blank window.
+ *
+ * @param {Array<Object>} entries - validated manifests from the main process
+ * @param {Object} [options]
+ * @param {Function} [options.mergeTranslations] - (lang, translations) => void
+ * @returns {{registered: string[], failed: Array<{id: string, error: string}>}}
+ */
+function registerExternal(entries, options = {}) {
+  clearExternal();
+
+  const registered = [];
+  const failed = [];
+  if (!Array.isArray(entries)) return { registered, failed };
+
+  for (const entry of entries) {
+    try {
+      if (!entry || entry.status !== 'enabled') continue;
+
+      const type = createExternalType(entry);
+      if (types.has(type.id)) {
+        // A built-in already owns this id. Cannot happen while ids are
+        // `ext-`-prefixed, but the prefix is a convention enforced elsewhere and
+        // shadowing a built-in type is not a failure mode worth allowing back in
+        // by accident.
+        failed.push({ id: entry.id, error: `id "${type.id}" is already registered` });
+        continue;
+      }
+
+      types.set(type.id, type);
+      externalIds.add(type.id);
+      registered.push(type.id);
+
+      if (typeof options.mergeTranslations === 'function') {
+        const bundle = type.getTranslations();
+        if (bundle) {
+          for (const lang of Object.keys(bundle)) {
+            try {
+              options.mergeTranslations(lang, bundle[lang]);
+            } catch (e) {
+              // A locale that will not merge costs this extension its name in
+              // that language, and nothing else.
+              console.warn(`[Registry] Extension "${entry.id}" translations failed for ${lang}:`, e.message);
+            }
+          }
+        }
+      }
+
+      if (typeof document !== 'undefined') {
+        const css = type.getStyles();
+        if (css) {
+          const existing = document.querySelector(`style[data-project-type="${type.id}"]`);
+          if (existing) existing.remove();
+          const style = document.createElement('style');
+          style.setAttribute('data-project-type', type.id);
+          style.textContent = css;
+          document.head.appendChild(style);
+        }
+      }
+    } catch (e) {
+      failed.push({ id: (entry && entry.id) || null, error: e && e.message ? e.message : String(e) });
+      console.warn(`[Registry] Failed to register extension "${entry && entry.id}":`, e && e.message);
+    }
+  }
+
+  return { registered, failed };
+}
+
+/**
+ * Ids of the currently registered external types.
+ * @returns {string[]}
+ */
+function getExternalIds() {
+  return [...externalIds];
+}
+
+/**
+ * Is this type id one that came from an extension?
+ * @param {string} typeId
+ * @returns {boolean}
+ */
+function isExternal(typeId) {
+  return externalIds.has(typeId);
 }
 
 /**
@@ -231,6 +358,10 @@ function collectAllSettingsFields() {
 module.exports = {
   register,
   discoverAll,
+  registerExternal,
+  clearExternal,
+  getExternalIds,
+  isExternal,
   get,
   getAll,
   getByCategory,
