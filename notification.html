@@ -5,81 +5,124 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; style-src 'self' 'unsafe-inline'; navigate-to 'none'">
   <title>Notification</title>
   <style>
+    /* Mirrors the in-app toast (styles/modals.css) so a desktop notification and
+       an in-app one read as the same object. This window cannot import the app's
+       stylesheet — it is a standalone BrowserWindow — so the handful of tokens it
+       needs are restated here and nowhere else in this file. */
+    :root {
+      --bg: #1a1a1a;
+      --border: #2d2d2d;
+      --text-primary: #e0e0e0;
+      --text-secondary: #a7a7a7;
+      --text-muted: #858585;
+      --hover: #252525;
+      --accent: #d97706;
+      --type-accent: var(--accent);
+      --radius: 8px;
+      --radius-sm: 4px;
+    }
+
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
       font-family: 'Segoe UI', system-ui, sans-serif;
-      background: #161616;
+      background: transparent;
       overflow: hidden;
       -webkit-app-region: no-drag;
+      padding: 2px;
     }
 
+    /* Same shape as .toast: [icon] [content] [close], only the content flexes */
     .notification {
       position: relative;
-      background: #161616;
       display: flex;
+      align-items: flex-start;
       gap: 12px;
-      padding: 14px;
+      height: calc(100vh - 4px);
+      padding: 12px 12px 12px 16px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 28px rgba(0, 0, 0, 0.45);
       overflow: hidden;
-      height: 100vh;
     }
 
+    /* Type accent stripe, inset from the corners like the in-app toast */
+    .notification::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 10px;
+      bottom: 10px;
+      width: 3px;
+      border-radius: 0 3px 3px 0;
+      background: var(--type-accent);
+    }
+
+    .notification.type-question { --type-accent: #a855f7; }
+    /* Permission prompts stay on the user's accent — they are the app asking, not a status */
+    .notification.type-permission { --type-accent: var(--accent); }
+    .notification.type-plan { --type-accent: #3b82f6; }
+    .notification.type-info { --type-accent: #3b82f6; }
+    .notification.type-done { --type-accent: #22c55e; }
+
     .notif-icon {
-      width: 28px;
-      height: 28px;
+      width: 22px;
+      height: 22px;
       flex-shrink: 0;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-top: 1px;
-      color: var(--accent, #d97706);
+      border-radius: 50%;
+      color: var(--type-accent);
+      background: color-mix(in srgb, var(--type-accent) 16%, transparent);
     }
-    .notif-icon svg { width: 17px; height: 17px; }
+    .notif-icon svg { width: 13px; height: 13px; }
 
     .notif-content {
-      flex: 1;
+      flex: 1 1 auto;
       min-width: 0;
-      position: relative;
     }
 
     .notif-title {
-      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 600;
-      color: #e8e8e8;
-      margin-bottom: 2px;
+      color: var(--text-primary);
+      line-height: 1.35;
+      letter-spacing: -0.01em;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      padding-right: 20px;
     }
 
     .notif-body {
+      margin-top: 2px;
       font-size: 11.5px;
-      color: #707070;
+      color: var(--text-muted);
       line-height: 1.4;
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
+    .notif-body:empty { display: none; }
 
     .notif-actions {
       display: flex;
       flex-wrap: wrap;
-      gap: 5px;
+      gap: 6px;
       margin-top: 8px;
     }
 
     .btn {
-      padding: 4px 12px;
-      border: none;
-      border-radius: 4px;
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
       font-size: 11px;
       font-weight: 600;
-      cursor: pointer;
       font-family: inherit;
-      transition: background 0.15s, color 0.15s, filter 0.15s;
+      cursor: pointer;
+      transition: background-color 0.15s, color 0.15s, border-color 0.15s;
       white-space: nowrap;
       max-width: 160px;
       overflow: hidden;
@@ -88,54 +131,54 @@
     .btn:active { opacity: 0.75; }
 
     .btn-primary {
-      background: var(--accent, #d97706);
+      background: var(--type-accent);
+      border-color: var(--type-accent);
       color: #0a0a0a;
     }
     .btn-primary:hover { filter: brightness(1.1); }
 
     .btn-secondary {
-      background: #252525;
-      color: #999;
-      border: 1px solid #2f2f2f;
+      background: var(--hover);
+      color: var(--text-secondary);
     }
-    .btn-secondary:hover { background: #2f2f2f; color: #bbb; }
+    .btn-secondary:hover { background: #2f2f2f; color: var(--text-primary); }
 
     .btn-danger {
       background: transparent;
       color: #ef4444;
-      border: 1px solid #3d1515;
+      border-color: #3d1515;
     }
     .btn-danger:hover { background: #1f0a0a; }
 
     .btn-ghost {
       background: transparent;
-      color: #666;
-      border: 1px solid transparent;
+      color: var(--text-muted);
+      border-color: transparent;
       font-weight: 500;
     }
-    .btn-ghost:hover { color: #999; border-color: #2f2f2f; }
+    .btn-ghost:hover { color: var(--text-secondary); border-color: var(--border); }
 
+    /* Same 22px hit target as the in-app toast close, and always visible: a
+       control that only appears on hover is a control the user has to hunt for. */
     .notif-close {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      width: 18px;
-      height: 18px;
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
       display: flex;
       align-items: center;
       justify-content: center;
+      padding: 0;
       border: none;
+      border-radius: var(--radius-sm);
       background: transparent;
-      color: #333;
+      color: var(--text-muted);
       cursor: pointer;
-      border-radius: 3px;
-      font-size: 13px;
       z-index: 2;
-      transition: color 0.15s;
-      opacity: 0;
+      transition: background-color 0.15s, color 0.15s;
     }
-    .notification:hover .notif-close { opacity: 1; }
-    .notif-close:hover { color: #999; }
+    .notif-close svg { width: 13px; height: 13px; }
+    .notif-close:hover { color: var(--text-primary); background: var(--hover); }
+    .notif-close:focus-visible { outline: 2px solid var(--type-accent); outline-offset: 1px; }
 
     .notif-progress {
       position: absolute;
@@ -143,21 +186,20 @@
       left: 0;
       right: 0;
       height: 2px;
-      background: #1a1a1a;
       overflow: hidden;
-      border-radius: 0 0 8px 8px;
     }
 
     .notif-progress-bar {
       height: 100%;
-      background: var(--accent, #d97706);
-      opacity: 0.5;
+      background: var(--type-accent);
+      opacity: 0.35;
+      transform-origin: left center;
       animation: progress-shrink var(--dismiss-time, 8000ms) linear forwards;
     }
 
     @keyframes progress-shrink {
-      from { width: 100%; }
-      to { width: 0%; }
+      from { transform: scaleX(1); }
+      to { transform: scaleX(0); }
     }
   </style>
 </head>
@@ -171,7 +213,9 @@
       <div class="notif-body" id="body"></div>
       <div class="notif-actions" id="notif-actions"></div>
     </div>
-    <button class="notif-close" id="closeBtn">&times;</button>
+    <button class="notif-close" id="closeBtn" aria-label="Close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
   </div>
 
   <script>
@@ -203,20 +247,21 @@
     document.getElementById('title').textContent = title || '';
     document.getElementById('body').textContent = body || '';
 
-    // Set icon based on notification type (passed via meta.type or inferred from buttons)
-    const notifType = (meta && meta.notifType) || 'done';
-    const iconEl = document.getElementById('notif-icon');
-    if (notifType === 'question') {
-      iconEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
-    } else if (notifType === 'permission') {
-      iconEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>';
-      iconEl.style.color = 'var(--accent, #f59e0b)';
-    } else if (notifType === 'plan') {
-      iconEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>';
-    } else if (notifType === 'info') {
-      iconEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
-      iconEl.style.color = '#3b82f6';  // info blue — no CSS var equivalent in notification scope
-    }
+    // Icon + accent come from the notification type. The colour is set once, as a
+    // class on the root, so the stripe, the icon disc, the primary button and the
+    // progress bar all derive from the same value — as they do for in-app toasts.
+    var NOTIF_ICONS = {
+      done: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
+      question: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+      permission: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+      plan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>',
+      info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'
+    };
+
+    var notifType = (meta && meta.notifType) || 'done';
+    if (!NOTIF_ICONS[notifType]) notifType = 'done';
+    document.getElementById('notif-icon').innerHTML = NOTIF_ICONS[notifType];
+    document.getElementById('notification').classList.add('type-' + notifType);
 
     // Render buttons
     var actionsDiv = document.getElementById('notif-actions');
