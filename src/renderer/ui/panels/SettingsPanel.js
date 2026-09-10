@@ -14,6 +14,192 @@ const { t, setLanguage, getCurrentLanguage, getAvailableLanguages } = require('.
 const { BUILTIN_TOOLS } = require('../../utils/toolRegistry');
 const { getProjectsForAccount } = require('../../state/projects.state');
 
+// ── Settings search ──
+//
+// Nine groups over seven sub-tabs, and the only way to find anything was to
+// scroll. The filter matches the *rendered* text of every row — its label and
+// its help line — rather than a parallel keyword table, so it works in all five
+// locales for free and cannot drift from what the panel actually says.
+//
+// Matching is case- and diacritic-insensitive (`substringMatch`), and the
+// highlighter is the palette's own `highlightStr`, so a match looks the same
+// wherever the user finds it.
+
+/** Rows the filter operates on. Everything else is group-level furniture. */
+const SETTINGS_ROW_SELECTOR = '.settings-row, .settings-toggle-row';
+
+/** Attribute holding a node's pre-highlight text, so highlighting is reversible. */
+const ORIGINAL_TEXT_ATTR = 'settingsSearchText';
+
+function _searchApi() {
+  return require('../../services/MentionSourceRegistry');
+}
+
+/**
+ * Read the two strings a settings row is searchable by.
+ * A row with neither (a bare control) falls back to everything it renders, so
+ * it stays findable instead of silently never matching.
+ * @returns {{ labelEl: Element|null, descEl: Element|null, label: string, desc: string, fallback: string }}
+ */
+function readSettingRow(row) {
+  const labelEl = row.querySelector('.settings-label > div:first-child, .settings-toggle-label > div:first-child');
+  const descEl = row.querySelector('.settings-desc, .settings-toggle-desc');
+  const label = labelEl ? labelEl.textContent.trim() : '';
+  const desc = descEl ? descEl.textContent.trim() : '';
+  return {
+    labelEl,
+    descEl,
+    label,
+    desc,
+    fallback: (!label && !desc) ? row.textContent.trim() : '',
+  };
+}
+
+/**
+ * Does a row match the query? Pure — takes the strings, not the DOM.
+ * @param {{label?: string, desc?: string, fallback?: string}} parts
+ * @param {string} query
+ * @returns {boolean}
+ */
+function settingMatches(parts, query) {
+  const q = String(query || '').trim();
+  if (!q) return true;
+  const { substringMatch } = _searchApi();
+  return substringMatch(q, parts.label || '').match
+    || substringMatch(q, parts.desc || '').match
+    || (!!parts.fallback && substringMatch(q, parts.fallback).match);
+}
+
+/**
+ * Is this node safe to rewrite as highlighted HTML?
+ * Only nodes that are pure text, or that we highlighted ourselves on an earlier
+ * pass — anything with real markup inside (a badge, an icon) is left alone
+ * rather than being flattened into its own textContent.
+ */
+function isHighlightable(el) {
+  if (!el) return false;
+  if (el.dataset[ORIGINAL_TEXT_ATTR] !== undefined) return true;
+  return el.childNodes.length > 0 && [...el.childNodes].every(n => n.nodeType === 3);
+}
+
+/**
+ * Wrap the matched substring of `el` in the palette's <mark>, or restore the
+ * node's original text when `query` is empty / does not match.
+ */
+function highlightSettingText(el, query) {
+  if (!isHighlightable(el)) return;
+  const original = el.dataset[ORIGINAL_TEXT_ATTR] ?? el.textContent;
+  const q = String(query || '').trim();
+
+  if (!q) {
+    if (el.dataset[ORIGINAL_TEXT_ATTR] !== undefined) {
+      el.textContent = original;
+      delete el.dataset[ORIGINAL_TEXT_ATTR];
+    }
+    return;
+  }
+
+  const { match, indices } = _searchApi().substringMatch(q, original);
+  if (!match) {
+    if (el.dataset[ORIGINAL_TEXT_ATTR] !== undefined) {
+      el.textContent = original;
+      delete el.dataset[ORIGINAL_TEXT_ATTR];
+    }
+    return;
+  }
+
+  el.dataset[ORIGINAL_TEXT_ATTR] = original;
+  // highlightStr escapes every character it copies, so this is not an injection
+  // point even though `original` is a translated string.
+  const { highlightStr } = require('../../features/QuickPicker');
+  el.innerHTML = highlightStr(original, indices);
+}
+
+/** The group's own title node — not a nested group's. */
+function groupTitleEl(group) {
+  return group.querySelector(':scope > .settings-group-title')
+    || group.querySelector(':scope > .settings-group-header .settings-group-title');
+}
+
+/**
+ * Everything in a group that is neither its title nor a searchable row: colour
+ * pickers, mode-card grids, standalone hints. When a group survives only because
+ * one of its rows matched, this furniture is hidden with the rows around it.
+ */
+function groupExtras(group) {
+  const extras = [];
+  group.querySelectorAll(':scope > .settings-card').forEach(card => {
+    for (const child of card.children) {
+      if (!child.matches(SETTINGS_ROW_SELECTOR)) extras.push(child);
+    }
+  });
+  for (const child of group.children) {
+    if (child.matches('.settings-group-title, .settings-group-header, .settings-card')) continue;
+    extras.push(child);
+  }
+  return extras;
+}
+
+/**
+ * Apply the filter to a rendered settings container.
+ *
+ * While a query is active every sub-tab is searched, not just the visible one —
+ * "which tab is `showDotfiles` under?" is exactly the question the filter exists
+ * to remove. Panels that keep at least one group are shown side by side, each
+ * under its tab's name.
+ *
+ * @returns {{ rows: number, groups: number, panels: number }} what survived
+ */
+function applySettingsFilter(container, rawQuery) {
+  if (!container) return { rows: 0, groups: 0, panels: 0 };
+  const query = String(rawQuery || '').trim();
+  const active = query.length > 0;
+  const { substringMatch } = _searchApi();
+
+  const wrapper = container.querySelector('.settings-inline-wrapper') || container;
+  wrapper.classList.toggle('settings-search-active', active);
+
+  let rows = 0, groups = 0, panels = 0;
+
+  container.querySelectorAll('.settings-panel').forEach(panel => {
+    let panelGroups = 0;
+
+    panel.querySelectorAll('.settings-group').forEach(group => {
+      const titleEl = groupTitleEl(group);
+      const titleMatches = active && !!titleEl && substringMatch(query, titleEl.textContent).match;
+      highlightSettingText(titleEl, titleMatches ? query : '');
+
+      // A group whose *title* matches keeps all of its content: the user asked
+      // for the section, not for one line inside it.
+      const rowQuery = titleMatches ? '' : query;
+      let groupRows = 0;
+
+      group.querySelectorAll(SETTINGS_ROW_SELECTOR).forEach(row => {
+        const parts = readSettingRow(row);
+        const show = !active || titleMatches || settingMatches(parts, query);
+        row.classList.toggle('settings-search-hidden', !show);
+        highlightSettingText(parts.labelEl, show ? rowQuery : '');
+        highlightSettingText(parts.descEl, show ? rowQuery : '');
+        if (show) groupRows++;
+      });
+
+      const hideExtras = active && !titleMatches;
+      groupExtras(group).forEach(el => el.classList.toggle('settings-search-hidden', hideExtras));
+
+      // Rowless groups (execution modes, themes, the accounts list) are reachable
+      // by their title only — there is no row text to match them on.
+      const groupVisible = !active || titleMatches || groupRows > 0;
+      group.classList.toggle('settings-search-hidden', !groupVisible);
+      if (groupVisible && active) { groups++; panelGroups++; rows += groupRows; }
+    });
+
+    panel.classList.toggle('settings-search-match', active && panelGroups > 0);
+    if (active && panelGroups > 0) panels++;
+  });
+
+  return { rows, groups, panels };
+}
+
 // ── Module-level pure helpers ──
 
 function hexToRgbParts(hex) {
@@ -241,6 +427,8 @@ class SettingsPanel extends BasePanel {
     this._deferredSaveSuccess = false;
     /** @type {boolean} a side effect failed — suppress the "settings saved" toast */
     this._sideEffectFailed = false;
+    /** @type {Function|null} document-level Escape guard for the search field */
+    this._escapeHandler = null;
   }
 
   // ── Save feedback helpers ──
@@ -709,7 +897,127 @@ class SettingsPanel extends BasePanel {
     // bar stays up over a screen that has no project context at all.
     document.body.dataset.activeTab = 'settings';
     this._ctx?.TimeTrackingDashboard?.cleanup();
-    this.renderSettingsTab(initialSubTab);
+    // Returned so callers that need the rendered DOM (focusSetting) can await it.
+    return this.renderSettingsTab(initialSubTab);
+  }
+
+  // ── Settings search ──
+
+  /**
+   * Label each panel with the tab it belongs to.
+   * Only meaningful in search mode, where several panels are on screen at once
+   * and "Enable hooks" alone does not say where the user just landed.
+   */
+  _labelSearchPanels(container) {
+    container.querySelectorAll('.settings-panel').forEach(panel => {
+      if (panel.querySelector(':scope > .settings-search-panel-label')) return;
+      const tabId = panel.dataset.panel;
+      const tabBtn = [...container.querySelectorAll('.settings-tab')]
+        .find(btn => btn.dataset.tab === tabId);
+      const label = document.createElement('div');
+      label.className = 'settings-search-panel-label';
+      label.textContent = tabBtn?.textContent?.trim() || tabId || '';
+      panel.insertBefore(label, panel.firstChild);
+    });
+  }
+
+  /** Run the filter and update the status line / empty state around it. */
+  _applySearch(container, query) {
+    const result = applySettingsFilter(container, query);
+    const q = String(query || '').trim();
+
+    const clearBtn = container.querySelector('#settings-search-clear');
+    if (clearBtn) clearBtn.hidden = q.length === 0;
+
+    const status = container.querySelector('#settings-search-status');
+    if (status) {
+      status.textContent = q
+        ? t(result.rows === 1 ? 'settings.search.results' : 'settings.search.resultsPlural', { count: result.rows })
+        : '';
+    }
+
+    const empty = container.querySelector('#settings-search-empty');
+    if (empty) {
+      const nothing = q.length > 0 && result.panels === 0;
+      empty.hidden = !nothing;
+      const title = empty.querySelector('.settings-search-empty-title');
+      if (title) title.textContent = nothing ? t('settings.search.empty', { query: q }) : '';
+    }
+    return result;
+  }
+
+  /** Set the field and the filter together, from code rather than typing. */
+  _setSearchQuery(container, query) {
+    const input = container.querySelector('#settings-search-input');
+    if (input) input.value = query || '';
+    return this._applySearch(container, query || '');
+  }
+
+  _wireSettingsSearch(container) {
+    const input = container.querySelector('#settings-search-input');
+    if (!input) return;
+    this._labelSearchPanels(container);
+
+    // Filtering is a synchronous DOM pass over a few hundred nodes; debouncing
+    // it would only add lag between the keystroke and the list settling.
+    input.oninput = () => this._applySearch(container, input.value);
+
+    // Escape is handled on document, in the capture phase, rather than on the
+    // input: an app-level capture listener already calls stopPropagation() on
+    // every Escape, so a keydown handler bound to the field would never run.
+    // Listeners on the same node still fire after a stopPropagation(), so this
+    // one does — and it stays scoped to the field by checking e.target.
+    if (this._escapeHandler) {
+      document.removeEventListener('keydown', this._escapeHandler, true);
+    }
+    this._escapeHandler = (e) => {
+      if (e.key !== 'Escape' || e.target !== input) return;
+      // Only swallow Escape when there is something to clear, so an empty field
+      // still lets the global handler close whatever is open.
+      if (!input.value) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this._setSearchQuery(container, '');
+    };
+    document.addEventListener('keydown', this._escapeHandler, true);
+    this._cleanups.push(() => {
+      document.removeEventListener('keydown', this._escapeHandler, true);
+      this._escapeHandler = null;
+    });
+
+    const clearBtn = container.querySelector('#settings-search-clear');
+    if (clearBtn) {
+      clearBtn.onclick = () => {
+        this._setSearchQuery(container, '');
+        input.focus();
+      };
+    }
+  }
+
+  /**
+   * Deep link from the command palette: open Settings on `tab`, pre-fill the
+   * filter with `query`, and bring the matching row into view.
+   * @param {{ tab?: string, query?: string, anchor?: string|null }} target
+   */
+  async focusSetting(target = {}) {
+    const { tab = 'general', query = '', anchor = null } = target;
+    await this.switchToSettingsTab(tab);
+
+    const container = document.getElementById('tab-settings');
+    if (!container) return;
+
+    if (query) this._setSearchQuery(container, query);
+
+    const control = anchor ? container.querySelector(`#${anchor}`) : null;
+    const row = control?.closest(SETTINGS_ROW_SELECTOR)
+      || control
+      || container.querySelector('.settings-panel.settings-search-match .settings-group:not(.settings-search-hidden)')
+      || container.querySelector('.settings-panel.active .settings-group');
+
+    if (!row) return;
+    row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    row.classList.add('settings-row-focus');
+    setTimeout(() => row.classList.remove('settings-row-focus'), 1800);
   }
 
   // ── Main render ──
@@ -752,6 +1060,24 @@ class SettingsPanel extends BasePanel {
 
     container.innerHTML = `
       <div class="settings-inline-wrapper">
+        <div class="settings-search" role="search">
+          <svg class="settings-search-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+          <input type="text" role="searchbox" id="settings-search-input" class="settings-search-input"
+                 placeholder="${escapeHtml(t('settings.search.placeholder'))}"
+                 aria-label="${escapeHtml(t('settings.search.ariaLabel'))}"
+                 aria-describedby="settings-search-status"
+                 autocomplete="off" autocorrect="off" spellcheck="false">
+          <button type="button" class="settings-search-clear" id="settings-search-clear"
+                  aria-label="${escapeHtml(t('settings.search.clear'))}" title="${escapeHtml(t('settings.search.clear'))}" hidden>
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </button>
+          <span class="settings-search-status" id="settings-search-status" role="status" aria-live="polite"></span>
+        </div>
+        <div class="settings-search-empty" id="settings-search-empty" hidden>
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+          <p class="settings-search-empty-title"></p>
+          <p class="settings-search-empty-hint">${escapeHtml(t('settings.search.emptyHint'))}</p>
+        </div>
         <div class="settings-tabs">
           <button class="settings-tab ${initialTab === 'general' ? 'active' : ''}" data-tab="general">${t('settings.tabGeneral')}</button>
           <button class="settings-tab ${initialTab === 'claude' ? 'active' : ''}" data-tab="claude">${t('settings.tabClaude')}</button>
@@ -1638,6 +1964,9 @@ class SettingsPanel extends BasePanel {
     // Tab switching
     container.querySelectorAll('.settings-tab').forEach(tab => {
       tab.onclick = () => {
+        // Search mode shows every panel at once; picking a tab means the user
+        // is done searching, so the filter is dropped rather than fought with.
+        this._setSearchQuery(container, '');
         container.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
         container.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'));
         tab.classList.add('active');
@@ -1964,6 +2293,11 @@ class SettingsPanel extends BasePanel {
 
     // Issue 7: centralized cleanup — tear down previous listeners before registering new ones
     this._runCleanups();
+
+    // Wired after the teardown above, not with the rest of the markup: it
+    // registers a document-level listener and pushes its own cleanup, both of
+    // which _runCleanups() would undo if this ran first.
+    this._wireSettingsSearch(container);
 
     const closeDropdowns = () => container.querySelectorAll('.settings-dropdown.open').forEach(d => d.classList.remove('open'));
     document.addEventListener('click', closeDropdowns);
@@ -2688,15 +3022,33 @@ function init(context) {
 }
 
 function switchToSettingsTab(initialSubTab = 'general') {
-  _instance?.switchToSettingsTab(initialSubTab);
+  return _instance?.switchToSettingsTab(initialSubTab);
 }
 
 function renderSettingsTab(initialTab = 'general') {
-  _instance?.renderSettingsTab(initialTab);
+  return _instance?.renderSettingsTab(initialTab);
+}
+
+/** Palette deep link — see SettingsPanel#focusSetting. */
+function focusSetting(target) {
+  return _instance?.focusSetting(target);
 }
 
 function cleanup() {
   _instance?._runCleanups();
 }
 
-module.exports = { SettingsPanel, init, switchToSettingsTab, renderSettingsTab, cleanup };
+module.exports = {
+  SettingsPanel,
+  init,
+  switchToSettingsTab,
+  renderSettingsTab,
+  focusSetting,
+  cleanup,
+  // Pure search helpers, exported for the tests that cover the matching rules
+  // (accent folding in particular) without standing up the whole panel.
+  applySettingsFilter,
+  settingMatches,
+  readSettingRow,
+  highlightSettingText,
+};

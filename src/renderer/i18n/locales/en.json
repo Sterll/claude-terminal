@@ -993,7 +993,17 @@
     "aboutGroup": "About",
     "rerunSetup": "Setup wizard",
     "rerunSetupDesc": "Change language, accent color, editor, and hooks settings",
-    "rerunSetupBtn": "Re-run"
+    "rerunSetupBtn": "Re-run",
+    "search": {
+      "placeholder": "Search settings…",
+      "ariaLabel": "Search settings",
+      "clear": "Clear search",
+      "results": "{count} result",
+      "empty": "No setting matches \"{query}\"",
+      "emptyHint": "Try a shorter word, or part of the description under a setting.",
+      "sourceLabel": "Settings",
+      "resultsPlural": "{count} results"
+    }
   },
   "ui": {
     "notifications": "Notifications",

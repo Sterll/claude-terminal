@@ -1088,7 +1088,17 @@
     "aboutGroup": "À propos",
     "rerunSetup": "Assistant de configuration",
     "rerunSetupDesc": "Modifier la langue, couleur, éditeur et configuration des hooks",
-    "rerunSetupBtn": "Relancer"
+    "rerunSetupBtn": "Relancer",
+    "search": {
+      "placeholder": "Rechercher un réglage…",
+      "ariaLabel": "Rechercher un réglage",
+      "clear": "Effacer la recherche",
+      "results": "{count} résultat",
+      "empty": "Aucun réglage ne correspond à « {query} »",
+      "emptyHint": "Essayez un mot plus court, ou un bout de la description sous un réglage.",
+      "sourceLabel": "Réglages",
+      "resultsPlural": "{count} résultats"
+    }
   },
   "ui": {
     "notifications": "Notifications",

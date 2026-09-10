@@ -993,7 +993,17 @@
     "aboutGroup": "Tentang",
     "rerunSetup": "Panduan penyiapan",
     "rerunSetupDesc": "Ubah bahasa, warna aksen, editor, dan pengaturan hooks",
-    "rerunSetupBtn": "Jalankan ulang"
+    "rerunSetupBtn": "Jalankan ulang",
+    "search": {
+      "placeholder": "Cari pengaturan…",
+      "ariaLabel": "Cari pengaturan",
+      "clear": "Hapus pencarian",
+      "results": "{count} hasil",
+      "empty": "Tidak ada pengaturan yang cocok dengan \"{query}\"",
+      "emptyHint": "Coba kata yang lebih pendek, atau sebagian dari keterangan di bawah pengaturan.",
+      "sourceLabel": "Pengaturan",
+      "resultsPlural": "{count} hasil"
+    }
   },
   "ui": {
     "notifications": "Notifikasi",

@@ -3164,3 +3164,161 @@
 }
 
 .chrome-bridge-action[hidden] { display: none; }
+
+/* ==========================================
+   Settings Search
+   Sticky filter over every settings sub-tab.
+   ========================================== */
+
+.settings-search {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Bleed into the wrapper's padding so the sticky bar covers the full width
+     of the scroller instead of letting rows slide past beside it. */
+  margin: -24px -32px 16px;
+  padding: 20px 32px 14px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.settings-search-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.settings-search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-base);
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.settings-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.settings-search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
+
+.settings-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.settings-search-clear svg {
+  width: 14px;
+  height: 14px;
+}
+
+.settings-search-clear:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.settings-search-clear:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.settings-search-clear[hidden] { display: none; }
+
+.settings-search-status {
+  flex-shrink: 0;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  white-space: nowrap;
+}
+
+/* ── Filtered-out content ──
+   !important because several rows and panels carry an inline display. */
+.settings-search-hidden { display: none !important; }
+
+/* ── Search mode: every sub-tab at once ──
+   Which tab a setting lives under is the question the filter exists to remove,
+   so while a query is active the panels that still have matches are all shown,
+   each under its tab's name. */
+.settings-search-panel-label { display: none; }
+
+.settings-search-active .settings-panel { display: none; }
+
+.settings-search-active .settings-panel.settings-search-match { display: block; }
+
+.settings-search-active .settings-search-panel-label {
+  display: block;
+  margin-bottom: 14px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--accent);
+  font-size: var(--font-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.settings-search-active .settings-tabs {
+  opacity: 0.45;
+}
+
+/* ── Empty state ── */
+.settings-search-empty {
+  padding: 44px 20px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.settings-search-empty[hidden] { display: none; }
+
+.settings-search-empty svg {
+  width: 40px;
+  height: 40px;
+  opacity: 0.35;
+  margin-bottom: 10px;
+}
+
+.settings-search-empty-title {
+  margin: 0 0 6px;
+  color: var(--text-secondary);
+  font-size: var(--font-base);
+}
+
+.settings-search-empty-hint {
+  margin: 0;
+  font-size: var(--font-xs);
+}
+
+/* ── Deep-linked row, flashed once on arrival from the command palette ── */
+.settings-row-focus {
+  animation: settings-row-flash 1.8s ease-out 1;
+  border-radius: var(--radius-sm);
+}
+
+@keyframes settings-row-flash {
+  0%, 55% { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-dim); }
+  100%    { box-shadow: inset 0 0 0 2px transparent; background: transparent; }
+}

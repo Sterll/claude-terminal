@@ -993,7 +993,17 @@
     "aboutGroup": "关于",
     "rerunSetup": "设置向导",
     "rerunSetupDesc": "更改语言、强调色、编辑器和钩子设置",
-    "rerunSetupBtn": "重新运行"
+    "rerunSetupBtn": "重新运行",
+    "search": {
+      "placeholder": "搜索设置…",
+      "ariaLabel": "搜索设置",
+      "clear": "清除搜索",
+      "results": "{count} 条结果",
+      "empty": "没有设置匹配「{query}」",
+      "emptyHint": "试试更短的词，或者设置说明里的一部分。",
+      "sourceLabel": "设置",
+      "resultsPlural": "{count} 条结果"
+    }
   },
   "ui": {
     "notifications": "通知",
