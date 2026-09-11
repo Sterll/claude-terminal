@@ -4,8 +4,10 @@
  */
 
 const api = window.electron_api;
-const { Terminal } = require('@xterm/xterm');
-const { FitAddon } = require('@xterm/addon-fit');
+// Loaded on demand — see src/renderer/services/xtermLoader.js. Requiring the
+// emulator here made every startup carry it, including startups that never open
+// a Minecraft console.
+const { loadXterm } = require('../../../renderer/services/xtermLoader');
 const {
   getMinecraftServer,
   setMinecraftServerStatus,
@@ -86,7 +88,8 @@ async function stopMinecraftServer(projectIndex) {
  * @param {number} projectIndex
  * @returns {Object} { terminal, fitAddon }
  */
-function createMinecraftTerminal(projectIndex) {
+async function createMinecraftTerminal(projectIndex) {
+  const { Terminal, FitAddon } = await loadXterm();
   const terminal = new Terminal({
     theme: MINECRAFT_TERMINAL_THEME,
     fontSize: 13,
@@ -113,7 +116,7 @@ function createMinecraftTerminal(projectIndex) {
  * @param {number} projectIndex
  * @returns {Object}
  */
-function getMinecraftTerminal(projectIndex) {
+async function getMinecraftTerminal(projectIndex) {
   if (!minecraftTerminals.has(projectIndex)) {
     return createMinecraftTerminal(projectIndex);
   }
@@ -125,8 +128,8 @@ function getMinecraftTerminal(projectIndex) {
  * @param {number} projectIndex
  * @param {HTMLElement} container
  */
-function mountMinecraftTerminal(projectIndex, container) {
-  const { terminal, fitAddon } = getMinecraftTerminal(projectIndex);
+async function mountMinecraftTerminal(projectIndex, container) {
+  const { terminal, fitAddon } = await getMinecraftTerminal(projectIndex);
 
   terminal.open(container);
   fitAddon.fit();

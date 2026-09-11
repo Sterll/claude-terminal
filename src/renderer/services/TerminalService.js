@@ -5,8 +5,10 @@
 
 // Use preload API instead of direct ipcRenderer
 const api = window.electron_api;
-const { Terminal } = require('@xterm/xterm');
-const { FitAddon } = require('@xterm/addon-fit');
+// Loaded on demand rather than at module scope — see xtermLoader.js. That
+// require() alone put 719 KB of emulator into every startup, including the ones
+// that never mount a terminal.
+const { loadXterm } = require('./xtermLoader');
 const {
   terminalsState,
   addTerminal,
@@ -71,7 +73,16 @@ async function createTerminal(project, { runClaude = true, resumeSessionId = nul
     ...(resumeSessionId ? { resumeSessionId } : {})
   });
 
-  // Create xterm instance
+  // Create xterm instance. The PTY is already running by now, so a failed
+  // emulator load has to take it down rather than leave it with no window.
+  let Terminal, FitAddon;
+  try {
+    ({ Terminal, FitAddon } = await loadXterm());
+  } catch (err) {
+    api.terminal.kill({ id });
+    throw err;
+  }
+
   const terminal = new Terminal({
     theme: TERMINAL_THEME,
     fontSize: 14,

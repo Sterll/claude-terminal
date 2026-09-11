@@ -5,8 +5,10 @@
 
 // Use preload API instead of direct ipcRenderer
 const api = window.electron_api;
-const { Terminal } = require('@xterm/xterm');
-const { FitAddon } = require('@xterm/addon-fit');
+// Loaded on demand — see src/renderer/services/xtermLoader.js. Requiring the
+// emulator here made every startup carry it, including startups that never open
+// a Fivem console.
+const { loadXterm } = require('../../../renderer/services/xtermLoader');
 const {
   getFivemServer,
   setFivemServerStatus,
@@ -111,7 +113,8 @@ async function stopFivemServer(projectIndex) {
  * @param {number} projectIndex
  * @returns {Object} - Terminal and fitAddon
  */
-function createFivemTerminal(projectIndex) {
+async function createFivemTerminal(projectIndex) {
+  const { Terminal, FitAddon } = await loadXterm();
   const terminal = new Terminal({
     theme: FIVEM_TERMINAL_THEME,
     fontSize: 13,
@@ -139,7 +142,7 @@ function createFivemTerminal(projectIndex) {
  * @param {number} projectIndex
  * @returns {Object}
  */
-function getFivemTerminal(projectIndex) {
+async function getFivemTerminal(projectIndex) {
   if (!fivemTerminals.has(projectIndex)) {
     return createFivemTerminal(projectIndex);
   }
@@ -151,8 +154,8 @@ function getFivemTerminal(projectIndex) {
  * @param {number} projectIndex
  * @param {HTMLElement} container
  */
-function mountFivemTerminal(projectIndex, container) {
-  const { terminal, fitAddon } = getFivemTerminal(projectIndex);
+async function mountFivemTerminal(projectIndex, container) {
+  const { terminal, fitAddon } = await getFivemTerminal(projectIndex);
 
   terminal.open(container);
   fitAddon.fit();

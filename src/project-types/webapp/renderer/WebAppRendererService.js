@@ -4,8 +4,10 @@
  */
 
 const api = window.electron_api;
-const { Terminal } = require('@xterm/xterm');
-const { FitAddon } = require('@xterm/addon-fit');
+// Loaded on demand — see src/renderer/services/xtermLoader.js. Requiring the
+// emulator here made every startup carry it, including startups that never open
+// a WebApp console.
+const { loadXterm } = require('../../../renderer/services/xtermLoader');
 const {
   getWebAppServer,
   setWebAppServerStatus,
@@ -72,7 +74,8 @@ async function stopDevServer(projectIndex) {
   }
 }
 
-function createWebAppTerminal(projectIndex) {
+async function createWebAppTerminal(projectIndex) {
+  const { Terminal, FitAddon } = await loadXterm();
   const terminal = new Terminal({
     theme: WEBAPP_TERMINAL_THEME,
     fontSize: 13,
@@ -93,15 +96,15 @@ function createWebAppTerminal(projectIndex) {
   return { terminal, fitAddon };
 }
 
-function getWebAppTerminal(projectIndex) {
+async function getWebAppTerminal(projectIndex) {
   if (!webappTerminals.has(projectIndex)) {
     return createWebAppTerminal(projectIndex);
   }
   return webappTerminals.get(projectIndex);
 }
 
-function mountWebAppTerminal(projectIndex, container) {
-  const { terminal, fitAddon } = getWebAppTerminal(projectIndex);
+async function mountWebAppTerminal(projectIndex, container) {
+  const { terminal, fitAddon } = await getWebAppTerminal(projectIndex);
   terminal.open(container);
   fitAddon.fit();
 

@@ -9,9 +9,10 @@ const { matchesSessionQuery } = require('../../utils/sessionSearch');
 const { isCliFailureText } = require('../../../shared/cli-failure-text');
 const { isSidebarNavigation } = require('../navigationMode');
 
-const { Terminal } = require('@xterm/xterm');
-const { FitAddon } = require('@xterm/addon-fit');
-const { WebglAddon } = require('@xterm/addon-webgl');
+// xterm is loaded on demand — see src/renderer/services/xtermLoader.js. Every
+// `new Terminal(...)` below is preceded by an `await loadXterm()`, which is why
+// each of those functions is async.
+const { loadXterm, attachWebglAddon } = require('../../services/xtermLoader');
 const {
   terminalsState,
   addTerminal,
@@ -110,18 +111,6 @@ const SESSION_SVG_DEFS = `<svg style="display:none" xmlns="http://www.w3.org/200
 </svg>`;
 
 // ── Pure helper functions (module-level, no mutable state) ──
-
-function loadWebglAddon(terminal) {
-  try {
-    const webgl = new WebglAddon();
-    webgl.onContextLoss(() => {
-      webgl.dispose();
-    });
-    terminal.loadAddon(webgl);
-  } catch (e) {
-    console.warn('WebGL addon failed to load, using DOM renderer:', e.message);
-  }
-}
 
 // OSC 52 lets apps inside the PTY (Claude Code, tmux, remote SSH sessions)
 // push text to the system clipboard. xterm.js does not implement it, so
@@ -522,6 +511,10 @@ class TerminalManager extends BaseComponent {
     this._apiConsoleIds = new Map();
     this._errorOverlays = new Map();
     this._typeConsoleIds = new Map();
+    // In-flight createTypeConsole() calls, keyed like _typeConsoleIds. Opening
+    // a console now straddles an await (the emulator chunk), so two clicks on
+    // the same button would otherwise each build their own console.
+    this._typeConsolePending = new Map();
     this._lastPasteTime = 0;
     this._lastArrowTime = 0;
     this._draggedTab = null;
@@ -1807,6 +1800,41 @@ class TerminalManager extends BaseComponent {
     if (this._callbacks.onRenderProjects) this._callbacks.onRenderProjects();
   }
 
+  /**
+   * Resolve the lazily-loaded emulator, or degrade.
+   *
+   * A load that fails leaves nothing able to draw a terminal, so the caller has
+   * to bail out — and if it already spawned a PTY, that PTY has to go with it
+   * rather than linger with no window attached to it. The user is told once,
+   * through a toast rather than a desktop notification: this happens while they
+   * are looking at the app, and showNotification() suppresses itself when the
+   * window has focus.
+   *
+   * @param {Promise<{Terminal: Function, FitAddon: Function}>} promise
+   * @param {number|string|null} [ptyId] - PTY to kill if the load failed
+   * @returns {Promise<{Terminal: Function, FitAddon: Function}|null>}
+   */
+  async _awaitXterm(promise, ptyId = null) {
+    try {
+      return await promise;
+    } catch (err) {
+      console.error('Failed to load the terminal emulator:', err);
+      if (ptyId !== null && ptyId !== undefined) {
+        try {
+          this._api.terminal.kill({ id: ptyId });
+        } catch (e) {
+          // Already gone, or main refused it — nothing left to clean up here.
+        }
+      }
+      try {
+        require('./Toast').showError(t('terminals.createError'));
+      } catch (e) {
+        // A toast that cannot be raised must not take the caller down with it.
+      }
+      return null;
+    }
+  }
+
   // ── Create terminal ──
 
   async createTerminal(project, options = {}) {
@@ -1818,6 +1846,10 @@ class TerminalManager extends BaseComponent {
       const chatProject = overrideCwd ? { ...project, path: overrideCwd } : project;
       return this._createChatTerminal(chatProject, { skipPermissions, name: customName, nameCustom, parentProjectId: overrideCwd ? project.id : null, resumeSessionId, initialPrompt, initialImages, initialModel, initialEffort, onSessionStart, systemPrompt, tabTag });
     }
+
+    // Started before the PTY spawn rather than after it: on the first terminal
+    // of a session both take a few hundred ms and neither needs the other.
+    const xtermPromise = loadXterm();
 
     const result = await this._api.terminal.create({
       cwd: overrideCwd || project.path,
@@ -1839,6 +1871,10 @@ class TerminalManager extends BaseComponent {
     } else {
       id = result;
     }
+
+    const xterm = await this._awaitXterm(xtermPromise, id);
+    if (!xterm) return null;
+    const { Terminal, FitAddon } = xterm;
 
     const terminalThemeId = getSetting('terminalTheme') || 'claude';
     const terminal = new Terminal({
@@ -1931,7 +1967,7 @@ class TerminalManager extends BaseComponent {
     document.getElementById('empty-terminals').style.display = 'none';
 
     terminal.open(wrapper);
-    loadWebglAddon(terminal);
+    attachWebglAddon(terminal);
     registerOsc52Handler(terminal);
     setTimeout(() => {
       const fitContainer = wrapper.closest('.terminal-wrapper') || wrapper;
@@ -2141,19 +2177,63 @@ class TerminalManager extends BaseComponent {
     };
   }
 
+  /**
+   * Open (or focus) the console tab of a type-specific project — the FiveM
+   * server, the webapp dev server, the API, the Discord bot.
+   *
+   * Async since the emulator became lazy. Every call site ignores the return
+   * value, but it still resolves to the console id so the contract is unchanged
+   * for anything that starts reading it.
+   *
+   * @returns {Promise<string|null>}
+   */
   createTypeConsole(project, projectIndex) {
     const typeHandler = registry.get(project.type);
     const config = typeHandler.getConsoleConfig(project, projectIndex);
-    if (!config) return null;
+    if (!config) return Promise.resolve(null);
 
-    const { typeId, tabIcon, tabClass, dotClass, wrapperClass, consoleViewSelector, ipcNamespace, scrollback, disableStdin } = config;
-
-    const mapKey = `${typeId}-${projectIndex}`;
+    const mapKey = `${config.typeId}-${projectIndex}`;
     const existingId = this._typeConsoleIds.get(mapKey);
     if (existingId && getTerminal(existingId)) {
       this.setActiveTerminal(existingId);
-      return existingId;
+      return Promise.resolve(existingId);
     }
+
+    const inFlight = this._typeConsolePending.get(mapKey);
+    if (inFlight) return inFlight;
+
+    const self = this;
+    const build = (async () => {
+      try {
+        return await self._buildTypeConsole(project, projectIndex, typeHandler, config);
+      } catch (err) {
+        // The console is one tab; a throw in here must not escape into the
+        // click handler that opened it.
+        console.error('[TerminalManager] Failed to open the type console:', err);
+        return null;
+      } finally {
+        self._typeConsolePending.delete(mapKey);
+      }
+    })();
+
+    this._typeConsolePending.set(mapKey, build);
+    return build;
+  }
+
+  /**
+   * The body of createTypeConsole(), past the dedup checks.
+   * @returns {Promise<string|null>}
+   */
+  async _buildTypeConsole(project, projectIndex, typeHandler, config) {
+    const { typeId, tabIcon, tabClass, dotClass, wrapperClass, consoleViewSelector, ipcNamespace, scrollback, disableStdin } = config;
+
+    const mapKey = `${typeId}-${projectIndex}`;
+
+    // No PTY of ours to unwind here — the server process this console mirrors
+    // is owned by the project type and keeps running either way.
+    const xterm = await this._awaitXterm(loadXterm());
+    if (!xterm) return null;
+    const { Terminal, FitAddon } = xterm;
 
     const id = `${typeId}-${projectIndex}-${Date.now()}`;
 
@@ -2220,7 +2300,7 @@ class TerminalManager extends BaseComponent {
 
     const consoleView = wrapper.querySelector(consoleViewSelector);
     terminal.open(consoleView);
-    loadWebglAddon(terminal);
+    attachWebglAddon(terminal);
     // No OSC 52 here on purpose — see registerOsc52Handler: this console pipes
     // a project server's output, which must not reach the system clipboard.
     setTimeout(() => {
@@ -3175,6 +3255,8 @@ class TerminalManager extends BaseComponent {
       });
     }
 
+    const xtermPromise = loadXterm();
+
     const result = await this._api.terminal.create({
       cwd: resumeCwd || project.path,
       runClaude: true,
@@ -3195,6 +3277,10 @@ class TerminalManager extends BaseComponent {
     } else {
       id = result;
     }
+
+    const xterm = await this._awaitXterm(xtermPromise, id);
+    if (!xterm) return null;
+    const { Terminal, FitAddon } = xterm;
 
     const terminalThemeId = getSetting('terminalTheme') || 'claude';
     const terminal = new Terminal({
@@ -3259,7 +3345,7 @@ class TerminalManager extends BaseComponent {
     document.getElementById('empty-terminals').style.display = 'none';
 
     terminal.open(wrapper);
-    loadWebglAddon(terminal);
+    attachWebglAddon(terminal);
     registerOsc52Handler(terminal);
     setTimeout(() => {
       const fitContainer = wrapper.closest('.terminal-wrapper') || wrapper;
@@ -3347,6 +3433,8 @@ class TerminalManager extends BaseComponent {
   // ── Create terminal with prompt ──
 
   async _createTerminalWithPrompt(project, prompt) {
+    const xtermPromise = loadXterm();
+
     const result = await this._api.terminal.create({
       cwd: project.path,
       runClaude: true,
@@ -3363,6 +3451,10 @@ class TerminalManager extends BaseComponent {
     } else {
       id = result;
     }
+
+    const xterm = await this._awaitXterm(xtermPromise, id);
+    if (!xterm) return null;
+    const { Terminal, FitAddon } = xterm;
 
     const terminalThemeId = getSetting('terminalTheme') || 'claude';
     const terminal = new Terminal({
@@ -3415,7 +3507,7 @@ class TerminalManager extends BaseComponent {
     document.getElementById('empty-terminals').style.display = 'none';
 
     terminal.open(wrapper);
-    loadWebglAddon(terminal);
+    attachWebglAddon(terminal);
     registerOsc52Handler(terminal);
     setTimeout(() => {
       const fitContainer = wrapper.closest('.terminal-wrapper') || wrapper;
@@ -4264,6 +4356,28 @@ class TerminalManager extends BaseComponent {
       wrapper.classList.remove('chat-wrapper');
       tab.classList.remove('chat-mode');
 
+      // Raised before the awaits below, not after them. The chat view is
+      // already destroyed and the wrapper emptied, so anything awaited from
+      // here on is time the user spends looking at a blank rectangle — and
+      // fetching the emulator chunk is now one of those things.
+      const overlay = document.createElement('div');
+      overlay.className = 'terminal-loading-overlay';
+      overlay.innerHTML = `
+      <div class="terminal-loading-spinner"></div>
+      <div class="terminal-loading-text">${escapeHtml(t('terminals.loading'))}</div>
+      <div class="terminal-loading-hint">${escapeHtml(t('terminals.loadingHint'))}</div>`;
+      wrapper.appendChild(overlay);
+
+      const xterm = await this._awaitXterm(loadXterm());
+      if (!xterm) {
+        // No PTY was spawned yet, so there is nothing to kill; the tab just
+        // stays where the switch left it, as an error rather than a blank.
+        wrapper.innerHTML = `<div class="terminal-error-state"><p>${escapeHtml(t('terminals.createError'))}</p></div>`;
+        updateTerminal(id, { mode: 'terminal', chatView: null, terminal: null, fitAddon: null, ptyId: null, status: 'error' });
+        return;
+      }
+      const { Terminal, FitAddon } = xterm;
+
       const terminalThemeId = getSetting('terminalTheme') || 'claude';
       const terminal = new Terminal({
         theme: getTerminalTheme(terminalThemeId),
@@ -4301,7 +4415,7 @@ class TerminalManager extends BaseComponent {
       const ptyId = (result && typeof result === 'object') ? result.id : result;
 
       terminal.open(wrapper);
-      loadWebglAddon(terminal);
+      attachWebglAddon(terminal);
       registerOsc52Handler(terminal);
 
       updateTerminal(id, {
@@ -4313,12 +4427,9 @@ class TerminalManager extends BaseComponent {
         status: 'loading'
       });
 
-      const overlay = document.createElement('div');
-      overlay.className = 'terminal-loading-overlay';
-      overlay.innerHTML = `
-      <div class="terminal-loading-spinner"></div>
-      <div class="terminal-loading-text">${escapeHtml(t('terminals.loading'))}</div>
-      <div class="terminal-loading-hint">${escapeHtml(t('terminals.loadingHint'))}</div>`;
+      // Re-append rather than create: terminal.open() has just added the
+      // emulator's own DOM to the wrapper, and the overlay has to stay the last
+      // child, which is where it sat when it only ever covered the PTY spawn.
       wrapper.appendChild(overlay);
       this._loadingTimeouts.set(id, setTimeout(() => {
         self._loadingTimeouts.delete(id);
