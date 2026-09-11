@@ -6,11 +6,8 @@
 const { createType } = require('../base-type');
 
 module.exports = createType({
-  id: 'api',
-  nameKey: 'newProject.types.api',
-  descKey: 'newProject.types.apiDesc',
-  category: 'general',
-  icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 1h16a2 2 0 012 2v3a2 2 0 01-2 2H4a2 2 0 01-2-2V3a2 2 0 012-2zm0 8h16a2 2 0 012 2v3a2 2 0 01-2 2H4a2 2 0 01-2-2v-3a2 2 0 012-2zm0 8h16a2 2 0 012 2v3a2 2 0 01-2 2H4a2 2 0 01-2-2v-3a2 2 0 012-2zm1-13v1h2V4H5zm0 8v1h2v-1H5zm0 8v1h2v-1H5z"/></svg>',
+  ...require('./meta'),
+
 
   // Main process (registered via src/main/ipc/index.js, not via registry)
   mainModule: () => null,

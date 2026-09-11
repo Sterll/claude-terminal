@@ -236,6 +236,48 @@ function loadLazyPanel(name) {
   return promise;
 }
 
+// ── Renderer halves of the project types ────────────────────────────────────
+//
+// Same reasoning as _LAZY_PANELS above, and the same mechanism. These modules
+// are the FiveM/webapp/API/Discord side of the app: 362 KB that only a user who
+// owns that kind of project ever needs, and that every user used to parse at
+// startup because a require() inside a function body is still a static edge as
+// far as esbuild is concerned.
+//
+// Code splitting (not a bundle per type) is what keeps this safe: ApiState and
+// DiscordState are observable state modules, and they are reached both from
+// here and from their type's own index.js. One module graph means esbuild
+// hoists each into a single shared chunk, so both importers see one instance
+// and a subscription cannot fire on a copy the UI is not reading.
+const _typeModules = new Map();
+
+/**
+ * Load a project-type renderer module once, memoized by name.
+ * Resolves to null rather than rejecting: the caller is usually an IPC handler
+ * for a server that is already running, and an unhandled rejection there is a
+ * worse outcome than a dropped log line.
+ * @param {string} name
+ * @param {() => Promise<any>} loader
+ * @returns {Promise<any|null>}
+ */
+function _typeModule(name, loader) {
+  if (!_typeModules.has(name)) {
+    _typeModules.set(name, loader().then((mod) => mod.default || mod).catch((err) => {
+      console.error(`[project-types] failed to load "${name}":`, err);
+      _typeModules.delete(name); // a later call may still succeed
+      return null;
+    }));
+  }
+  return _typeModules.get(name);
+}
+
+const _webappService = () => _typeModule('webapp/RendererService', () => import('./src/project-types/webapp/renderer/WebAppRendererService'));
+const _webappPanel = () => _typeModule('webapp/TerminalPanel', () => import('./src/project-types/webapp/renderer/WebAppTerminalPanel'));
+const _apiService = () => _typeModule('api/RendererService', () => import('./src/project-types/api/renderer/ApiRendererService'));
+const _apiState = () => _typeModule('api/State', () => import('./src/project-types/api/renderer/ApiState'));
+const _discordService = () => _typeModule('discord/RendererService', () => import('./src/project-types/discord/renderer/DiscordRendererService'));
+const _discordState = () => _typeModule('discord/State', () => import('./src/project-types/discord/renderer/DiscordState'));
+
 /**
  * Spinner in the root the panel is about to fill, so a tab waiting on its
  * chunk reads as loading rather than as broken. Drawn inside the panel root
@@ -504,10 +546,31 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
     if (firstOpen) selectProjectFromBar(getProjectIndex(firstOpen.id));
   }
 
-  // Initialize project types registry
+  // Initialize project types registry. discoverAll() registers seven identities
+  // and no behaviour; the hooks arrive with ensureLoadedMany() below.
   registry.discoverAll();
   registry.loadAllTranslations(mergeTranslations);
   registry.injectAllStyles();
+
+  // The behaviour half of every type the user actually owns, awaited here so
+  // that every registry.get(project.type) from the first render onwards finds a
+  // fully-formed type. A machine with only plain projects never fetches the
+  // FiveM, Minecraft, Discord or API renderers at all — which is the whole
+  // point — and the wizard and the settings panel load the rest on demand.
+  await registry.ensureLoadedMany(projectsState.get().projects.map(p => p.type));
+
+  // A project of a type nothing has loaded yet can turn up at any moment: the
+  // new-project wizard is only one way in, and drag-drop, the MCP
+  // project_create tool, a cloud sync pull and the three-way merge with
+  // another process are the others. Watching the list covers all of them at
+  // once, and the repaint is what makes the type's own sidebar buttons appear
+  // with it rather than at the next launch. ensureLoadedMany() resolves to the
+  // empty array when there is nothing new, which is the case every other time
+  // this fires.
+  projectsState.subscribe((state) => {
+    registry.ensureLoadedMany(state.projects.map(p => p.type))
+      .then(loaded => { if (loaded.length) ProjectList.render(); });
+  });
 
   // Third-party project types, if the user has opted in. Deliberately not
   // awaited: extensions are cosmetic (an icon, a name, a colour in the wizard)
@@ -1148,14 +1211,16 @@ async function startWebAppServer(projectIndex) {
   const project = projects[projectIndex];
   if (!project) return;
 
-  const { startDevServer } = require('./src/project-types/webapp/renderer/WebAppRendererService');
-  await startDevServer(projectIndex);
+  const mod = await _webappService();
+  if (!mod) return;
+  await mod.startDevServer(projectIndex);
   ProjectList.render();
 }
 
 async function stopWebAppServer(projectIndex) {
-  const { stopDevServer } = require('./src/project-types/webapp/renderer/WebAppRendererService');
-  await stopDevServer(projectIndex);
+  const mod = await _webappService();
+  if (!mod) return;
+  await mod.stopDevServer(projectIndex);
   ProjectList.render();
 }
 
@@ -1178,8 +1243,9 @@ function refreshWebAppInfoPanel(projectIndex) {
       const projects = projectsState.get().projects;
       const project = projects[projectIndex];
       if (project) {
-        const { renderInfoView } = require('./src/project-types/webapp/renderer/WebAppTerminalPanel');
-        renderInfoView(wrapper, projectIndex, project, { t });
+        // The panel is on screen already, so redrawing one of its views a tick
+        // later is invisible; what must not happen is throwing at it.
+        _webappPanel().then(mod => mod && mod.renderInfoView(wrapper, projectIndex, project, { t }));
       }
     }
   });
@@ -1650,14 +1716,16 @@ async function startApiServer(projectIndex) {
   const project = projects[projectIndex];
   if (!project) return;
 
-  const { startApiServer: doStart } = require('./src/project-types/api/renderer/ApiRendererService');
-  await doStart(projectIndex);
+  const mod = await _apiService();
+  if (!mod) return;
+  await mod.startApiServer(projectIndex);
   ProjectList.render();
 }
 
 async function stopApiServer(projectIndex) {
-  const { stopApiServer: doStop } = require('./src/project-types/api/renderer/ApiRendererService');
-  await doStop(projectIndex);
+  const mod = await _apiService();
+  if (!mod) return;
+  await mod.stopApiServer(projectIndex);
   ProjectList.render();
 }
 
@@ -1671,23 +1739,26 @@ function openApiConsole(projectIndex) {
 
 // Register API listeners - state + TerminalManager console
 api.api.onData(({ projectIndex, data }) => {
-  const { addApiLog } = require('./src/project-types/api/renderer/ApiState');
-  addApiLog(projectIndex, data);
+  _apiState().then(mod => mod && mod.addApiLog(projectIndex, data));
   TerminalManager.writeTypeConsole(projectIndex, 'api', data);
 });
 
 api.api.onExit(({ projectIndex, code }) => {
-  const { setApiServerStatus, setApiPort } = require('./src/project-types/api/renderer/ApiState');
-  setApiServerStatus(projectIndex, 'stopped');
-  setApiPort(projectIndex, null);
+  _apiState().then(mod => {
+    if (!mod) return;
+    mod.setApiServerStatus(projectIndex, 'stopped');
+    mod.setApiPort(projectIndex, null);
+    ProjectList.render();
+  });
   TerminalManager.writeTypeConsole(projectIndex, 'api', `\r\n[API server exited with code ${code}]\r\n`);
-  ProjectList.render();
 });
 
 api.api.onPortDetected(({ projectIndex, port }) => {
-  const { setApiPort } = require('./src/project-types/api/renderer/ApiState');
-  setApiPort(projectIndex, port);
-  ProjectList.render();
+  _apiState().then(mod => {
+    if (!mod) return;
+    mod.setApiPort(projectIndex, port);
+    ProjectList.render();
+  });
 });
 
 // ========== DISCORD ==========
@@ -1696,14 +1767,16 @@ async function startDiscordBot(projectIndex) {
   const project = projects[projectIndex];
   if (!project) return;
 
-  const { startBot } = require('./src/project-types/discord/renderer/DiscordRendererService');
-  await startBot(projectIndex);
+  const mod = await _discordService();
+  if (!mod) return;
+  await mod.startBot(projectIndex);
   ProjectList.render();
 }
 
 async function stopDiscordBot(projectIndex) {
-  const { stopBot } = require('./src/project-types/discord/renderer/DiscordRendererService');
-  await stopBot(projectIndex);
+  const mod = await _discordService();
+  if (!mod) return;
+  await mod.stopBot(projectIndex);
   ProjectList.render();
 }
 
@@ -1716,32 +1789,39 @@ function openDiscordConsole(projectIndex) {
 }
 
 async function scanDiscordCommands(projectIndex) {
-  const { scanCommands } = require('./src/project-types/discord/renderer/DiscordRendererService');
-  await scanCommands(projectIndex);
+  const mod = await _discordService();
+  if (!mod) return;
+  await mod.scanCommands(projectIndex);
 }
 
 // Register Discord listeners - write to TerminalManager's Discord console
 api.discord.onData(({ projectIndex, data }) => {
-  const { addDiscordLog, setDiscordServerStatus } = require('./src/project-types/discord/renderer/DiscordState');
-  addDiscordLog(projectIndex, data);
-  setDiscordServerStatus(projectIndex, 'running');
+  _discordState().then(mod => {
+    if (!mod) return;
+    mod.addDiscordLog(projectIndex, data);
+    mod.setDiscordServerStatus(projectIndex, 'running');
+  });
   TerminalManager.writeTypeConsole(projectIndex, 'discord', data);
 });
 
 api.discord.onExit(({ projectIndex, code }) => {
-  const { setDiscordServerStatus } = require('./src/project-types/discord/renderer/DiscordState');
-  setDiscordServerStatus(projectIndex, 'stopped');
+  _discordState().then(mod => {
+    if (!mod) return;
+    mod.setDiscordServerStatus(projectIndex, 'stopped');
+    ProjectList.render();
+  });
   TerminalManager.writeTypeConsole(projectIndex, 'discord', `\r\n[Bot exited with code ${code}]\r\n`);
-  ProjectList.render();
 });
 
 api.discord.onStatusChange(({ projectIndex, status, botName, guildCount }) => {
-  const { setDiscordServerStatus, setDiscordBotInfo } = require('./src/project-types/discord/renderer/DiscordState');
-  if (status) setDiscordServerStatus(projectIndex, status);
-  if (botName !== undefined || guildCount !== undefined) {
-    setDiscordBotInfo(projectIndex, { botName, guildCount });
-  }
-  ProjectList.render();
+  _discordState().then(mod => {
+    if (!mod) return;
+    if (status) mod.setDiscordServerStatus(projectIndex, status);
+    if (botName !== undefined || guildCount !== undefined) {
+      mod.setDiscordBotInfo(projectIndex, { botName, guildCount });
+    }
+    ProjectList.render();
+  });
 });
 
 // ========== DELETE PROJECT ==========
@@ -3697,7 +3777,10 @@ document.getElementById('btn-notifications').onclick = () => {
  */
 function _switchToSettingsTab(...args) {
   _leaveCurrentTab('settings');
-  SettingsPanel.switchToSettingsTab(...args);
+  // Settings builds a tab per type that contributes settings fields, so it is
+  // the second surface (with the new-project wizard) that needs every type's
+  // behaviour half. Awaited before the panel renders, not after.
+  registry.ensureAllLoaded().then(() => SettingsPanel.switchToSettingsTab(...args));
 }
 
 document.getElementById('btn-settings').onclick = () => {
@@ -4953,7 +5036,11 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('.wizard-account-field')) panel.hidden = true;
 });
 
-document.getElementById('btn-new-project').onclick = () => {
+document.getElementById('btn-new-project').onclick = async () => {
+  // The wizard draws a card per type and then asks the selected one for its
+  // fields, so this is one of the two places that needs all of them.
+  await registry.ensureAllLoaded();
+
   const projectTypes = registry.getAll();
   const categoriesGrouped = registry.getByCategory();
 
