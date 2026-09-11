@@ -299,6 +299,8 @@
     "confirmRemoveWorktree": "¿Eliminar este worktree? El directorio será eliminado.",
     "forceRemoveWorktree": "Forzar eliminación de Worktree",
     "confirmForceRemoveWorktree": "Este worktree tiene cambios sin confirmar. ¿Forzar eliminación?",
+    "confirmForceRemoveLockedWorktree": "Este worktree está bloqueado. ¿Eliminarlo de todos modos?",
+    "confirmForceRemoveLockedWorktreeReason": "Este worktree está bloqueado (motivo: {reason}). ¿Eliminarlo de todos modos?",
     "forceRemove": "Forzar eliminación",
     "existingBranch": "Rama existente",
     "worktreeNewBranch": "Nueva rama",
@@ -437,6 +439,7 @@
     "mergeConflict": "Conflictos de fusión detectados. Resuélvelos antes de continuar.",
     "unrelatedHistories": "No se pueden fusionar historiales sin ancestro común.",
     "lockFailed": "No se puede bloquear la referencia. Otra operación git puede estar en curso.",
+    "worktreeLocked": "Este worktree está bloqueado. Desbloquéalo o fuerza la eliminación.",
     "alreadyExists": "Este elemento ya existe. Elige otro nombre.",
     "nothingToCommit": "Nada que commitear. El árbol de trabajo está limpio."
   },

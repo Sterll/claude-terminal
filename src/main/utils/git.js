@@ -1270,6 +1270,12 @@ async function gitStashSave(projectPath, message) {
 // ========== WORKTREES ==========
 
 /**
+ * `force` value for removeWorktree() that also overrides a worktree lock,
+ * i.e. `git worktree remove -f -f`.
+ */
+const FORCE_UNLOCK = 2;
+
+/**
  * Parse git worktree list --porcelain output
  * @param {string} output - Porcelain output from git worktree list
  * @returns {Array} - List of worktree objects
@@ -1358,15 +1364,22 @@ function createWorktree(projectPath, worktreePath, options = {}) {
 
 /**
  * Remove a worktree
+ *
+ * git wants one `--force` to remove a worktree with uncommitted changes and a
+ * *second* one to override a lock (`worktree remove -f -f`). That lock is not
+ * always the user's: `worktree add` locks the new worktree with the reason
+ * "initializing" while it sets it up, so an add that was interrupted leaves the
+ * lock behind - a worktree nothing can remove until someone passes -f -f.
  * @param {string} projectPath - Path to the main repo
  * @param {string} worktreePath - Path of the worktree to remove
- * @param {boolean} force - Force remove even if dirty
+ * @param {boolean|number} force - true for a dirty worktree, FORCE_UNLOCK to also override a lock
  * @returns {Promise<Object>}
  */
 function removeWorktree(projectPath, worktreePath, force = false) {
   return new Promise((resolve) => {
+    const level = Math.min(force === true ? 1 : Math.max(0, Math.floor(Number(force) || 0)), FORCE_UNLOCK);
     const args = ['worktree', 'remove'];
-    if (force) args.push('--force');
+    for (let i = 0; i < level; i++) args.push('--force');
     args.push(worktreePath);
     const fullArgs = [...safeDirArgs(projectPath), ...args];
     execFile('git', fullArgs, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
@@ -1973,6 +1986,7 @@ module.exports = {
   getWorktrees,
   createWorktree,
   removeWorktree,
+  FORCE_UNLOCK,
   lockWorktree,
   unlockWorktree,
   pruneWorktrees,

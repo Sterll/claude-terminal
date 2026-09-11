@@ -45,6 +45,7 @@ const GIT_ERROR_PATTERNS = [
   { pattern: /conflict.*merge/i, key: 'gitErrors.mergeConflict' },
   { pattern: /fatal: refusing to merge unrelated histories/i, key: 'gitErrors.unrelatedHistories' },
   { pattern: /fatal: cannot lock ref/i, key: 'gitErrors.lockFailed' },
+  { pattern: /cannot remove a locked working tree/i, key: 'gitErrors.worktreeLocked' },
   { pattern: /already exists/i, key: 'gitErrors.alreadyExists' },
   { pattern: /nothing to commit/i, key: 'gitErrors.nothingToCommit' },
 ];
@@ -640,7 +641,10 @@ function renderWorktrees() {
     const isCurrent = wt.path.replace(/\\/g, '/') === selectedProject?.path?.replace(/\\/g, '/');
     const shortPath = wt.path.replace(/\\/g, '/').split('/').slice(-2).join('/');
     const branchName = wt.detached ? `(${wt.head?.substring(0, 7)})` : (wt.branch || 'unknown');
-    const lockIcon = wt.locked ? '<span class="git-wt-lock" title="Locked">&#128274;</span>' : '';
+    const lockTitle = wt.lockReason
+      ? `${t('gitTab.worktreeLocked')}: ${wt.lockReason}`
+      : t('gitTab.worktreeLocked');
+    const lockIcon = wt.locked ? `<span class="git-wt-lock" title="${escapeAttr(lockTitle)}">&#128274;</span>` : '';
 
     html += `<div class="git-worktree-item ${isCurrent ? 'current' : ''} ${isMain ? 'main' : ''}" data-wt-path="${escapeAttr(wt.path)}" data-wt-branch="${escapeAttr(wt.branch || '')}">
       <div class="git-worktree-info">
@@ -928,6 +932,28 @@ async function handleUnlockWorktree(wtPath) {
   });
 }
 
+/**
+ * Why git just refused to remove a worktree, when the answer is "pass --force".
+ *
+ * The two refusals are not interchangeable: uncommitted changes need one
+ * --force, a lock needs two (`remove -f -f`), and the lock is often git's own -
+ * `worktree add` holds one with reason "initializing" while it works, and an
+ * interrupted add never releases it.
+ * @param {string} error - stderr from git worktree remove
+ * @returns {{ kind: 'locked'|'dirty', reason: string }|null}
+ */
+function worktreeRemoveBlocker(error) {
+  if (!error) return null;
+  if (/locked working tree|worktree is locked/i.test(error)) {
+    const match = error.match(/lock reason:\s*([^\r\n]+)/i);
+    return { kind: 'locked', reason: match ? match[1].trim() : '' };
+  }
+  if (/contains modified or untracked files|is dirty|not empty/i.test(error)) {
+    return { kind: 'dirty', reason: '' };
+  }
+  return null;
+}
+
 async function handleRemoveWorktree(wtPath) {
   const confirmed = await showConfirm({
     title: t('gitTab.removeWorktree'),
@@ -939,16 +965,27 @@ async function handleRemoveWorktree(wtPath) {
 
   await withLock(async () => {
     let result = await api.git.worktreeRemove({ projectPath: selectedProject.path, worktreePath: wtPath });
-    if (!result.success && result.error?.includes('dirty')) {
+    const blocker = result.success ? null : worktreeRemoveBlocker(result.error);
+    if (blocker) {
+      const locked = blocker.kind === 'locked';
+      const message = !locked
+        ? t('gitTab.confirmForceRemoveWorktree')
+        : blocker.reason
+          ? t('gitTab.confirmForceRemoveLockedWorktreeReason', { reason: blocker.reason })
+          : t('gitTab.confirmForceRemoveLockedWorktree');
       const forceConfirmed = await showConfirm({
         title: t('gitTab.forceRemoveWorktree'),
-        message: t('gitTab.confirmForceRemoveWorktree'),
+        message,
         confirmLabel: t('gitTab.forceRemove'),
         danger: true
       });
-      if (forceConfirmed) {
-        result = await api.git.worktreeRemove({ projectPath: selectedProject.path, worktreePath: wtPath, force: true });
-      }
+      if (!forceConfirmed) return;
+      result = await api.git.worktreeRemove({
+        projectPath: selectedProject.path,
+        worktreePath: wtPath,
+        force: true,
+        overrideLock: locked
+      });
     }
     if (result.success) {
       showToast(t('gitTab.worktreeRemoved'), 'success');

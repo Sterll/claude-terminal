@@ -299,6 +299,8 @@
     "confirmRemoveWorktree": "Hapus worktree ini? Direktorinya akan dihapus.",
     "forceRemoveWorktree": "Hapus Paksa Worktree",
     "confirmForceRemoveWorktree": "Worktree ini memiliki perubahan yang belum di-commit. Hapus paksa?",
+    "confirmForceRemoveLockedWorktree": "Worktree ini terkunci. Tetap hapus?",
+    "confirmForceRemoveLockedWorktreeReason": "Worktree ini terkunci (alasan: {reason}). Tetap hapus?",
     "forceRemove": "Hapus Paksa",
     "existingBranch": "Branch yang ada",
     "worktreeNewBranch": "Branch baru",
@@ -437,6 +439,7 @@
     "mergeConflict": "Terdeteksi konflik merge. Selesaikan sebelum melanjutkan.",
     "unrelatedHistories": "Tidak dapat me-merge riwayat yang tidak berkaitan. Branch tidak memiliki leluhur bersama.",
     "lockFailed": "Tidak dapat mengunci referensi. Mungkin ada operasi git lain yang sedang berjalan.",
+    "worktreeLocked": "Worktree ini terkunci. Buka kuncinya, atau paksa penghapusan.",
     "alreadyExists": "Ini sudah ada. Pilih nama lain.",
     "nothingToCommit": "Tidak ada yang di-commit. Working tree bersih."
   },

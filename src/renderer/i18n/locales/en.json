@@ -299,6 +299,8 @@
     "confirmRemoveWorktree": "Remove this worktree? The directory will be deleted.",
     "forceRemoveWorktree": "Force Remove Worktree",
     "confirmForceRemoveWorktree": "This worktree has uncommitted changes. Force remove?",
+    "confirmForceRemoveLockedWorktree": "This worktree is locked. Remove it anyway?",
+    "confirmForceRemoveLockedWorktreeReason": "This worktree is locked (reason: {reason}). Remove it anyway?",
     "forceRemove": "Force Remove",
     "existingBranch": "Existing branch",
     "worktreeNewBranch": "New branch",
@@ -437,6 +439,7 @@
     "mergeConflict": "Merge conflicts detected. Resolve them before continuing.",
     "unrelatedHistories": "Cannot merge unrelated histories. The branches have no common ancestor.",
     "lockFailed": "Cannot lock the reference. Another git operation may be in progress.",
+    "worktreeLocked": "This worktree is locked. Unlock it, or force the removal.",
     "alreadyExists": "This already exists. Choose a different name.",
     "nothingToCommit": "Nothing to commit. The working tree is clean."
   },

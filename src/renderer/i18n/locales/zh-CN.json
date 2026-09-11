@@ -299,6 +299,8 @@
     "confirmRemoveWorktree": "移除此工作树？对应目录也会被删除。",
     "forceRemoveWorktree": "强制移除工作树",
     "confirmForceRemoveWorktree": "此工作树存在未提交的更改。仍要强制移除吗？",
+    "confirmForceRemoveLockedWorktree": "此工作树已锁定。仍要移除吗？",
+    "confirmForceRemoveLockedWorktreeReason": "此工作树已锁定（原因：{reason}）。仍要移除吗？",
     "forceRemove": "强制删除",
     "existingBranch": "现有分支",
     "worktreeNewBranch": "新建分支",
@@ -437,6 +439,7 @@
     "mergeConflict": "检测到合并冲突。在继续之前解决它们。",
     "unrelatedHistories": "无法合并不相关的历史记录。这些分支没有共同的祖先。",
     "lockFailed": "无法锁定参考。另一个 Git 操作可能正在进行中。",
+    "worktreeLocked": "此工作树已锁定。请先解锁，或强制移除。",
     "alreadyExists": "这已经存在了。选择不同的名称。",
     "nothingToCommit": "没有需要提交的更改。工作树是干净的。"
   },

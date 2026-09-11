@@ -10,7 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
-const { createWorktree, removeWorktree, gitMerge, gitMergeAbort, gitMergeContinue, getMergeConflicts, checkoutBranch, createBranch, isMergeInProgress, execGit } = require('../utils/git');
+const { createWorktree, removeWorktree, FORCE_UNLOCK, gitMerge, gitMergeAbort, gitMergeContinue, getMergeConflicts, checkoutBranch, createBranch, isMergeInProgress, execGit } = require('../utils/git');
 const chatService = require('./ChatService');
 
 /**
@@ -155,7 +155,7 @@ class ParallelTaskService {
         const entries = fs.readdirSync(worktreeBase);
         for (const entry of entries) {
           const worktreePath = path.join(worktreeBase, entry);
-          await removeWorktree(projectPath, worktreePath, true).catch(() => {});
+          await removeWorktree(projectPath, worktreePath, FORCE_UNLOCK).catch(() => {});
         }
         fs.rmSync(worktreeBase, { recursive: true, force: true });
       }
@@ -732,7 +732,7 @@ class ParallelTaskService {
       }
 
       // Clean up the merge worktree (branch persists in the repo)
-      await removeWorktree(projectPath, mergeWorktreePath, true).catch(err => {
+      await removeWorktree(projectPath, mergeWorktreePath, FORCE_UNLOCK).catch(err => {
         console.warn('[ParallelTask] Failed to remove merge worktree:', err.message || err);
       });
 
@@ -748,7 +748,7 @@ class ParallelTaskService {
       return { success: true, mergeBranch, merged: merged.length, skipped };
     } catch (err) {
       // Clean up worktree on error
-      await removeWorktree(projectPath, mergeWorktreePath, true).catch(() => {});
+      await removeWorktree(projectPath, mergeWorktreePath, FORCE_UNLOCK).catch(() => {});
       this._send('parallel-run-status', { runId, phase: 'done', error: `Merge failed: ${err.message}` });
       return { success: false, error: err.message };
     }
@@ -768,7 +768,7 @@ class ParallelTaskService {
     try {
       // Remove merge worktree if it still exists (normally cleaned up after mergeRun)
       const mergeWorktreePath = path.join(this._worktreeBase(runId), '_merge');
-      await removeWorktree(projectPath, mergeWorktreePath, true).catch(() => {});
+      await removeWorktree(projectPath, mergeWorktreePath, FORCE_UNLOCK).catch(() => {});
 
       // Delete merge branch — safe since merge happens in worktree, not on main checkout
       if (mergeBranch) {

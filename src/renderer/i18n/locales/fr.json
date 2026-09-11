@@ -394,6 +394,8 @@
     "confirmRemoveWorktree": "Supprimer ce worktree ? Le dossier sera supprimé.",
     "forceRemoveWorktree": "Forcer la suppression",
     "confirmForceRemoveWorktree": "Ce worktree contient des modifications non committées. Forcer la suppression ?",
+    "confirmForceRemoveLockedWorktree": "Ce worktree est verrouillé. Le supprimer quand même ?",
+    "confirmForceRemoveLockedWorktreeReason": "Ce worktree est verrouillé (raison : {reason}). Le supprimer quand même ?",
     "forceRemove": "Forcer",
     "existingBranch": "Branche existante",
     "worktreeNewBranch": "Nouvelle branche",
@@ -532,6 +534,7 @@
     "mergeConflict": "Conflits de fusion détectés. Résolvez-les avant de continuer.",
     "unrelatedHistories": "Impossible de fusionner des historiques sans ancêtre commun.",
     "lockFailed": "Impossible de verrouiller la référence. Une autre opération git est peut-être en cours.",
+    "worktreeLocked": "Ce worktree est verrouillé. Déverrouillez-le ou forcez la suppression.",
     "alreadyExists": "Cet élément existe déjà. Choisissez un autre nom.",
     "nothingToCommit": "Rien à commiter. L'arbre de travail est propre."
   },
