@@ -403,6 +403,10 @@ class ChatView extends BaseComponent {
   let isStreaming = false;
   let isAborting = false;
   let pendingResumeId = resumeSessionId || null;
+  // The transcript this tab replayed, kept after `pendingResumeId` is cleared by
+  // the first turn: an expanded tool card fetches its full output from that file,
+  // and it is not the session the SDK goes on to write.
+  const historySessionId = resumeSessionId || null;
   let pendingForkSession = forkSession || false;
   let pendingResumeAt = resumeSessionAt || null;
   // Prompt UUID of the turn a pending fork discards — arms the CLI fork guard.
@@ -4341,6 +4345,48 @@ class ChatView extends BaseComponent {
 
   // ── Tool card expansion ──
 
+  // Full tool outputs pulled back from the transcript, one per card. Kept off
+  // the DOM on purpose: a single result reaches megabytes, and a dataset entry
+  // would park all of it in an HTML attribute for the rest of the session.
+  // Keyed by the card element, so it goes away when the card does.
+  const fullToolOutputs = new WeakMap();
+
+  /**
+   * The complete output of a replayed tool card, fetched once.
+   *
+   * Replay only carries a 2 KB preview of each result — the rest never crossed
+   * IPC — so a resumed conversation had no way to show what a tool actually
+   * printed. This reads it back out of the session file the tab replayed.
+   *
+   * @param {HTMLElement} card
+   * @returns {Promise<string|null>} - null when there is nothing more to fetch
+   * @throws when the result could not be read back
+   */
+  async function fetchFullToolOutput(card) {
+    if (fullToolOutputs.has(card)) return fullToolOutputs.get(card);
+    const toolUseId = card.dataset.toolUseId;
+    if (!toolUseId || !historySessionId || !api.chat?.loadToolOutput) return null;
+
+    const res = await api.chat.loadToolOutput({
+      projectPath: project.path,
+      sessionId: historySessionId,
+      toolUseId
+    });
+    if (!res?.success || typeof res.output !== 'string') {
+      throw new Error(res?.error || 'tool output unavailable');
+    }
+    fullToolOutputs.set(card, res.output);
+    // `truncated` here means the result was larger than the main process is
+    // willing to send at once — the card stays marked so it keeps saying so.
+    if (!res.truncated) delete card.dataset.toolOutputTruncated;
+    return res.output;
+  }
+
+  /** A one-line notice above an expanded tool card's content. */
+  function toolOutputNotice(text, modifier = '') {
+    return `<div class="chat-tool-output-notice${modifier}">${escapeHtml(text)}</div>`;
+  }
+
   async function toggleToolCard(card) {
     const existing = card.querySelector('.chat-tool-content');
     if (existing) {
@@ -4350,16 +4396,42 @@ class ChatView extends BaseComponent {
 
     const inputStr = card.dataset.toolInput;
     if (!inputStr) return;
+    // A second click while the full output is on its way must not ask again
+    if (card.dataset.toolOutputState === 'loading') return;
 
     try {
       const toolInput = JSON.parse(inputStr);
       const toolName = card.dataset.toolName || card.querySelector('.chat-tool-name')?.textContent || '';
-      const output = card.dataset.toolOutput || '';
       const contentEl = document.createElement('div');
       contentEl.className = 'chat-tool-content';
-      contentEl.innerHTML = await formatToolContent(toolName, toolInput, output);
       card.appendChild(contentEl);
       card.classList.add('expanded');
+
+      let output = fullToolOutputs.has(card) ? fullToolOutputs.get(card) : (card.dataset.toolOutput || '');
+      let notice = '';
+
+      if (card.dataset.toolOutputTruncated === '1' && !fullToolOutputs.has(card)) {
+        card.dataset.toolOutputState = 'loading';
+        contentEl.innerHTML = `<div class="chat-tool-output-loading"><span class="chat-tool-spinner"></span><span>${escapeHtml(t('chat.toolOutputLoading') || 'Loading full output…')}</span></div>`;
+        scrollToBottom();
+        try {
+          const full = await fetchFullToolOutput(card);
+          if (full !== null) output = full;
+        } catch {
+          // The preview is still worth showing — say what is missing and why,
+          // rather than replacing a usable card with an error.
+          notice = toolOutputNotice(t('chat.toolOutputFailed') || 'Could not load the full output — showing the stored preview.', ' error');
+        } finally {
+          delete card.dataset.toolOutputState;
+        }
+        if (!notice && card.dataset.toolOutputTruncated === '1') {
+          notice = toolOutputNotice(t('chat.toolOutputClipped') || 'Output too large to display in full.');
+        }
+        // The card is gone (a re-render, a closed tab) — nothing to fill in
+        if (!contentEl.isConnected) return;
+      }
+
+      contentEl.innerHTML = notice + await formatToolContent(toolName, toolInput, output);
       scrollToBottom();
     } catch (e) { /* ignore */ }
   }
@@ -8908,17 +8980,23 @@ class ChatView extends BaseComponent {
         historyTopEl = document.createElement('div');
         historyTopEl.className = 'chat-history-top';
       }
-      const hidden = Math.max(0, (result.total || 0) - shown);
-      historyTopEl.dataset.hidden = String(hidden);
+      // `total` is null when the main process read the tail backwards, which is
+      // the normal path: counting the rest of the file is exactly the work that
+      // read exists to skip. The marker then says there is more, without a
+      // number it would have to invent.
+      const hidden = result.total == null ? null : Math.max(0, result.total - shown);
+      historyTopEl.dataset.hidden = hidden == null ? '' : String(hidden);
       setHistoryTopIdle();
       messagesEl.prepend(historyTopEl);
     }
 
     function setHistoryTopIdle() {
       if (!historyTopEl) return;
-      const hidden = Number(historyTopEl.dataset.hidden || 0);
+      const hidden = historyTopEl.dataset.hidden;
       historyTopEl.classList.remove('loading');
-      historyTopEl.textContent = t('chat.olderMessages', { count: hidden });
+      historyTopEl.textContent = hidden === ''
+        ? (t('chat.olderMessagesUnknown') || 'Earlier messages')
+        : t('chat.olderMessages', { count: Number(hidden) });
     }
 
     function setHistoryTopLoading() {
@@ -9051,10 +9129,14 @@ class ChatView extends BaseComponent {
 
     // Build a map of tool_use_id -> tool_result output for enriching tool cards
     const toolResults = new Map();
+    // Results the main process could only send a preview of, by tool_use id.
+    // The card carries the real size so it can be fetched in full on expand.
+    const clippedResults = new Map();
     const questionAnswers = new Map();
     for (const msg of messages) {
       if (msg.role === 'tool_result' && msg.toolUseId) {
         toolResults.set(msg.toolUseId, msg.output || '');
+        if (msg.outputTruncated) clippedResults.set(msg.toolUseId, msg.outputLength || 0);
         if (msg.answers) questionAnswers.set(msg.toolUseId, msg.answers);
       }
     }
@@ -9223,6 +9305,12 @@ class ChatView extends BaseComponent {
           }
           if (msg.toolUseId && toolResults.has(msg.toolUseId)) {
             el.dataset.toolOutput = toolResults.get(msg.toolUseId);
+            if (clippedResults.has(msg.toolUseId)) {
+              // Expanding the card fetches the rest from the transcript
+              el.dataset.toolOutputTruncated = '1';
+              el.dataset.toolOutputLength = String(clippedResults.get(msg.toolUseId));
+              el.classList.add('expandable');
+            }
             // History carries results too, so a replayed publish recovers its
             // URL exactly like a live one.
             resolveArtifactPublish(msg.toolUseId, toolResults.get(msg.toolUseId));

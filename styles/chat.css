@@ -1272,6 +1272,27 @@ mark.chat-search-hit.current {
   font-style: italic;
 }
 
+/* A replayed card whose result was stored as a preview: the rest is read back
+   from the transcript when the card is expanded. */
+.chat-tool-output-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: var(--font-xs);
+  color: var(--text-tertiary);
+}
+
+.chat-tool-output-notice {
+  padding: 4px 0 6px;
+  font-size: var(--font-xs);
+  color: var(--text-tertiary);
+}
+
+.chat-tool-output-notice.error {
+  color: var(--warning);
+}
+
 .chat-tool-content-path {
   font-size: 11px;
   color: var(--text-tertiary);

@@ -620,6 +620,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     onForkRejected: createListener('chat-fork-rejected'),
     generateTabName: (params) => ipcRenderer.invoke('chat-generate-tab-name', params),
     loadHistory: (params) => ipcRenderer.invoke('chat-load-history', params),
+    loadToolOutput: (params) => ipcRenderer.invoke('chat-tool-output', params),
     generateSkillAgent: (params) => ipcRenderer.invoke('chat-generate-skill-agent', params),
     cancelGeneration: (params) => ipcRenderer.send('chat-cancel-generation', params),
     onGenerationProgress: createListener('chat-generation-progress'),

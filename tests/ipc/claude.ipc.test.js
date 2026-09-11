@@ -83,7 +83,9 @@ describe('loadSessionHistory', () => {
     writeSession(200); // 1000 messages
     const { messages, total, truncated } = await loadSessionHistory(PROJECT_PATH, SESSION_ID, { limit: 50 });
 
-    expect(total).toBe(1000);
+    // A truncated tail is read backwards and never sees the rest of the file,
+    // so the whole-file count is reported as unknown rather than guessed.
+    expect(total).toBeNull();
     expect(truncated).toBe(true);
     expect(messages.length).toBeLessThanOrEqual(50);
     // The tail is realigned onto a user turn, never mid tool-run
@@ -93,13 +95,13 @@ describe('loadSessionHistory', () => {
   });
 
   test('realigns even when the sliding window ends exactly on a trim', async () => {
-    // 15 messages against limit 7: the buffer is trimmed back to exactly 7 on the
-    // very last push, so the tail is left starting mid-turn unless the realignment
-    // also triggers on a trim that already happened.
+    // 15 messages against limit 7: the window ends exactly on a turn boundary,
+    // so the tail is left starting mid-turn unless the realignment also triggers
+    // when nothing had to be trimmed to get there.
     writeSession(3);
     const { messages, total, truncated } = await loadSessionHistory(PROJECT_PATH, SESSION_ID, { limit: 7 });
 
-    expect(total).toBe(15);
+    expect(total).toBeNull();
     expect(truncated).toBe(true);
     expect(messages[0]).toMatchObject({ role: 'user', text: 'prompt 2' });
     expect(messages[messages.length - 1]).toMatchObject({ role: 'tool_result', output: 'out 2' });

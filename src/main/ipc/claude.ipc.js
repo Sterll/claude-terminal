@@ -357,25 +357,347 @@ function interpretUserText(raw) {
   return { kind: 'prompt', text: stripped };
 }
 
+// Tool output crosses IPC as a preview. A single result reaches megabytes — a
+// Read of a large file, a chatty test run — and a replayed window holds hundreds
+// of them, so shipping every one in full would put the whole transcript back on
+// the wire. The complete text stays on disk and is fetched per card, on expand,
+// by `loadToolResultOutput`.
+const TOOL_OUTPUT_PREVIEW = 2000;
+
 /**
- * Load conversation history from a session JSONL file.
- * Returns the last `limit` simplified messages for the chat UI replay.
- * @param {string} projectPath - The project path
- * @param {string} sessionId - The session ID (UUID)
- * @param {object} [options]
- * @param {number} [options.limit] - Max messages to return (tail). 0 = no limit.
- * @param {string} [options.until] - Stop reading after this message uuid (fork point).
+ * The text a tool_result block carries, whichever shape the CLI wrote it in.
+ * @param {object} block
+ * @returns {string}
+ */
+function toolResultText(block) {
+  if (typeof block.content === 'string') return block.content;
+  if (Array.isArray(block.content)) return block.content.map(b => b.text || '').join('\n');
+  return '';
+}
+
+/**
+ * The simplified chat messages one transcript line becomes, in order.
+ *
+ * Split out of the reader so the sequential and the tail-first paths below
+ * produce identical messages: the two disagree about *which* lines they visit,
+ * never about what a line means.
+ *
+ * @param {object} obj - A parsed transcript line
+ * @returns {Array<object>} - Zero or more chat messages
+ */
+function collectLineMessages(obj) {
+  const out = [];
+  const push = (msg) => out.push(msg);
+
+  const isAssistantLine = obj.type === 'assistant'
+    || (!obj.type && obj.message?.role === 'assistant');
+
+  // User message
+  if (obj.type === 'user' && obj.message && !isTranscriptOnlyLine(obj)) {
+    let text = '';
+    const images = [];
+    const content = obj.message.content;
+    if (typeof content === 'string') {
+      text = content;
+    } else if (Array.isArray(content)) {
+      text = content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+      for (const block of content) {
+        if (block.type === 'image' && block.source?.type === 'base64') {
+          images.push({
+            base64: block.source.data,
+            mediaType: block.source.media_type || 'image/png'
+          });
+        }
+      }
+    }
+    // A slash command reaches the transcript as its parse, and its output as
+    // another user line. On screen the first was a prompt and the second a
+    // notice, so replaying either verbatim showed markup the user never saw.
+    const parsed = interpretUserText(text);
+    if (parsed.kind === 'output') {
+      push({ role: 'notice', icon: 'command', text: parsed.text });
+    } else if (parsed.text || images.length > 0) {
+      const msg = { role: 'user', text: parsed.text || '' };
+      if (images.length > 0) msg.images = images;
+      // Carried so a fork can name the turn it discards (resumeDropsTurn)
+      if (obj.uuid) msg.uuid = obj.uuid;
+      push(msg);
+    }
+  }
+
+  // The CLI reports an API failure as an ordinary assistant message wearing
+  // a flag. The live renderer turns that into its error box; replayed as
+  // text it came back looking like something Claude had chosen to say.
+  if (isAssistantLine && isApiErrorMessage(obj) && obj.message?.content) {
+    const blocks = Array.isArray(obj.message.content) ? obj.message.content : [];
+    const text = blocks.filter(b => b.type === 'text').map(b => b.text).join('\n');
+    push({
+      role: 'error',
+      errorCode: typeof obj.error === 'string' ? obj.error : '',
+      text
+    });
+  }
+
+  // Compaction: the boundary is a notice of its own on screen, and the
+  // summary the CLI writes back is transcript-only (skipped above).
+  if (obj.type === 'system' && obj.subtype === 'compact_boundary') {
+    const meta = obj.compactMetadata || obj.compact_metadata || {};
+    push({ role: 'notice', icon: 'compact', preTokens: meta.preTokens || meta.pre_tokens || 0 });
+  }
+
+  // Newer CLIs record a command's output here rather than as a user line
+  if (obj.type === 'system' && obj.subtype === 'local_command' && typeof obj.content === 'string') {
+    const printed = interpretUserText(obj.content);
+    if (printed.kind === 'output') push({ role: 'notice', icon: 'command', text: printed.text });
+  }
+
+  // Assistant message
+  if (isAssistantLine && obj.message?.content && !isApiErrorMessage(obj)) {
+    const blocks = obj.message.content;
+    for (const block of blocks) {
+      if (block.type === 'text' && block.text) {
+        push({ role: 'assistant', type: 'text', text: block.text, ...(obj.uuid ? { uuid: obj.uuid } : {}) });
+      } else if (block.type === 'tool_use') {
+        push({
+          role: 'assistant',
+          type: 'tool_use',
+          toolName: block.name,
+          toolInput: block.input,
+          toolUseId: block.id
+        });
+      } else if (block.type === 'thinking' && block.thinking) {
+        push({ role: 'assistant', type: 'thinking', text: block.thinking });
+      }
+    }
+  }
+
+  // Tool result
+  if (obj.type === 'tool_result' || (obj.message?.role === 'user' && Array.isArray(obj.message?.content))) {
+    const content = obj.message?.content;
+    if (Array.isArray(content)) {
+      for (const block of content) {
+        if (block.type === 'tool_result') {
+          const output = toolResultText(block);
+          const msg = {
+            role: 'tool_result',
+            toolUseId: block.tool_use_id,
+            output: output.slice(0, TOOL_OUTPUT_PREVIEW)
+          };
+          // Named as clipped, with the real size, so the card can say so and
+          // ask for the rest instead of quietly showing the first 2 KB as if
+          // that were the whole result.
+          if (output.length > TOOL_OUTPUT_PREVIEW) {
+            msg.outputTruncated = true;
+            msg.outputLength = output.length;
+          }
+          // What the user picked in an AskUserQuestion card, question by
+          // question — the card replays as the answered summary it became,
+          // rather than as a tool call named after nothing the user saw.
+          const answers = obj.toolUseResult?.answers;
+          if (answers && typeof answers === 'object' && !Array.isArray(answers)) msg.answers = answers;
+          push(msg);
+        }
+      }
+    }
+  }
+
+  return out;
+}
+
+// How much of the transcript is pulled in per step when walking it backwards.
+// Big enough that a normal 400-message tail comes back in a handful of reads,
+// small enough that opening a session on a 200 MB file never allocates more
+// than this plus whatever one oversized line needs.
+const REVERSE_BLOCK_BYTES = 256 * 1024;
+
+/**
+ * Walk a file's lines from the end, newest first.
+ *
+ * Lines here are not small: a 28 MB transcript in this repository holds 1239 of
+ * them and single messages reach 1.2 MB, so a fixed read block lands mid-line
+ * constantly. The leftover head of a block is carried into the next read and
+ * only joined once its start is found, which is also why the callback receives
+ * a Buffer rather than a string — decoding at a block boundary would cut a
+ * multi-byte character in half. `\n` cannot appear inside one, so splitting on
+ * it and decoding whole lines is safe.
+ *
+ * @param {string} filePath
+ * @param {(line: Buffer) => boolean} onLine - Return true to stop the walk
+ * @returns {Promise<void>}
+ */
+async function forEachLineFromEnd(filePath, onLine) {
+  let handle;
+  try {
+    handle = await fs.promises.open(filePath, 'r');
+    const { size } = await handle.stat();
+    let position = size;
+    // Head of an already-read block whose line starts further back, in file order
+    let pending = [];
+    let pendingLen = 0;
+
+    while (position > 0) {
+      const length = Math.min(REVERSE_BLOCK_BYTES, position);
+      position -= length;
+      const block = Buffer.alloc(length);
+      await handle.read(block, 0, length, position);
+
+      let end = length; // exclusive end of the stretch not yet handed out
+      let idx = block.lastIndexOf(0x0A, end - 1);
+      while (idx !== -1) {
+        const tail = block.subarray(idx + 1, end);
+        let line = tail;
+        if (pendingLen > 0) {
+          line = Buffer.concat([tail, ...pending], tail.length + pendingLen);
+          pending = [];
+          pendingLen = 0;
+        }
+        if (line.length > 0 && onLine(line) === true) return;
+        end = idx;
+        idx = end > 0 ? block.lastIndexOf(0x0A, end - 1) : -1;
+      }
+      if (end > 0) {
+        pending.unshift(block.subarray(0, end));
+        pendingLen += end;
+      }
+    }
+
+    // Whatever is left once the start of the file is reached is its first line
+    if (pendingLen > 0) {
+      const line = pending.length === 1 ? pending[0] : Buffer.concat(pending, pendingLen);
+      if (line.length > 0) onLine(line);
+    }
+  } catch { /* an unreadable transcript reads as an empty one */ } finally {
+    await handle?.close().catch(() => {});
+  }
+}
+
+/**
+ * A transcript line, decoded. `readline` with `crlfDelay: Infinity` drops the
+ * `\r` of a CRLF break, so this does too — otherwise a transcript written on
+ * Windows would parse differently depending on which reader saw it.
+ * @param {Buffer} buf
+ * @returns {string}
+ */
+function decodeLine(buf) {
+  const end = buf.length > 0 && buf[buf.length - 1] === 0x0D ? buf.length - 1 : buf.length;
+  return buf.toString('utf8', 0, end);
+}
+
+// Substrings a line must contain before it can possibly measure the context
+// window (see contextTokensFromMessage: a usage block, a compact boundary's
+// post-tokens, or the CLI's own count). Matched against the raw bytes, so a
+// tail with no measurement in it is skipped without decoding or parsing.
+const CONTEXT_HINTS = ['"usage"', 'ostTokens', 'ost_tokens', '"context_usage"'].map(s => Buffer.from(s));
+
+/**
+ * @param {Buffer} line
+ * @returns {boolean} - Whether the line is worth parsing for context occupancy
+ */
+function mayMeasureContext(line) {
+  for (const hint of CONTEXT_HINTS) {
+    if (line.indexOf(hint) !== -1) return true;
+  }
+  return false;
+}
+
+/**
+ * Load the tail of a transcript by reading it backwards.
+ *
+ * The window the chat replays is the last `limit` messages, so the cost of
+ * opening a conversation should not depend on how long that conversation is.
+ * Reading forward it did: the previous implementation streamed and JSON.parsed
+ * all 28 MB of this repository's own session to keep the last 400 messages.
+ *
+ * Two things are read past the window, both bounded in practice:
+ *
+ * - one message more than `limit`, which is what tells truncation from a file
+ *   that simply ends there. A line before the window that yields no message at
+ *   all (CLI plumbing, a compaction summary) must not count as hidden history.
+ * - the context occupancy, if the window happens not to contain a frame that
+ *   measures it — a tail of subagent lines, or a session that ended on prompts.
+ *   That keeps walking backwards on the byte pre-filter above, never parsing.
+ *
+ * @param {string} filePath
+ * @param {number} limit - Max messages to return; always > 0 here
+ * @returns {Promise<{messages: Array, total: number|null, truncated: boolean, contextTokens: number}>}
+ */
+async function loadHistoryTail(filePath, limit) {
+  const pages = []; // messages per line, newest line first
+  let collected = 0;
+  let contextTokens = 0;
+
+  await forEachLineFromEnd(filePath, (raw) => {
+    const wantMessages = collected <= limit;
+    if (!wantMessages) {
+      if (contextTokens > 0) return true;
+      if (!mayMeasureContext(raw)) return false;
+    }
+    let obj;
+    try {
+      obj = JSON.parse(decodeLine(raw));
+    } catch {
+      return false; // skip malformed lines
+    }
+    // Nearest measurement to the end of the file wins, which walking backwards
+    // makes the first one found. Sidechain frames measure someone else's
+    // window and are rejected by contextTokensFromMessage.
+    if (contextTokens === 0) {
+      const turnTokens = contextTokensFromMessage(obj);
+      if (turnTokens > 0) contextTokens = turnTokens;
+    }
+    if (wantMessages) {
+      const msgs = collectLineMessages(obj);
+      if (msgs.length > 0) {
+        pages.push(msgs);
+        collected += msgs.length;
+      }
+    }
+    return false;
+  });
+
+  const messages = [];
+  for (let i = pages.length - 1; i >= 0; i--) {
+    for (const msg of pages[i]) messages.push(msg);
+  }
+
+  // Realign the tail onto a user turn so the replay never opens mid tool-run.
+  // More messages than `limit` here means the walk stopped early, which it only
+  // does once it has seen one message beyond the window — so this is exactly
+  // the condition the forward reader expressed as `dropped > 0`.
+  let window = messages;
+  let truncated = false;
+  if (messages.length > limit) {
+    let start = messages.length - limit;
+    for (let i = start; i < messages.length; i++) {
+      if (messages[i].role === 'user') { start = i; break; }
+    }
+    window = messages.slice(start);
+    truncated = true;
+  }
+
+  // `total` is the whole file's message count, and reading backwards never
+  // learns it: counting would mean parsing every line, which is the cost this
+  // path exists to avoid. It is reported as null — not as a guess — whenever
+  // the walk stopped early, and the chat labels its "earlier messages" marker
+  // without a count in that case. When the session fits in the window the walk
+  // reached the start of the file, so the count is exact.
+  return { messages: window, total: truncated ? null : messages.length, truncated, contextTokens };
+}
+
+/**
+ * Load a transcript by streaming it forward, keeping a bounded window.
+ *
+ * Still the path for the two cases the tail-first read cannot serve: `limit 0`
+ * (the whole conversation) and `until` (a fork), whose stop condition is an
+ * uuid somewhere in the middle — walking backwards would have to find it before
+ * knowing which messages precede it, which is the forward read again.
+ *
+ * @param {string} filePath
+ * @param {number} limit - Max messages to return (tail). 0 = no limit.
+ * @param {string|null} until - Stop reading after this message uuid
  * @returns {Promise<{messages: Array, total: number, truncated: boolean, contextTokens: number}>}
  */
-async function loadSessionHistory(projectPath, sessionId, options = {}) {
-  const limit = options.limit === 0 ? 0 : (options.limit || DEFAULT_HISTORY_LIMIT);
-  const until = options.until || null;
-
-  // Find the JSONL file — uses indexed lookup
-  const filePath = await resolveSessionFileInProject(projectPath, sessionId);
-  if (!filePath) return { messages: [], total: 0, truncated: false, contextTokens: 0 };
-
-  // Read the JSONL file, keeping only a bounded window of messages in memory
+function loadHistorySequential(filePath, limit, until) {
   return new Promise((resolve) => {
     const messages = [];
     // Keep some slack above `limit` so the tail can be realigned onto a user-turn
@@ -393,16 +715,6 @@ async function loadSessionHistory(projectPath, sessionId, options = {}) {
     const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
-    const push = (msg) => {
-      total++;
-      messages.push(msg);
-      if (messages.length > maxKept) {
-        const excess = messages.length - limit;
-        messages.splice(0, excess);
-        dropped += excess;
-      }
-    };
-
     const finish = () => {
       if (done) return;
       done = true;
@@ -415,113 +727,17 @@ async function loadSessionHistory(projectPath, sessionId, options = {}) {
       try {
         const obj = JSON.parse(line);
 
-        const isAssistantLine = obj.type === 'assistant'
-          || (!obj.type && obj.message?.role === 'assistant');
-
         // Sidechain lines are a subagent's own window, not this conversation's.
         const turnTokens = contextTokensFromMessage(obj);
         if (turnTokens > 0) contextTokens = turnTokens;
 
-        // User message
-        if (obj.type === 'user' && obj.message && !isTranscriptOnlyLine(obj)) {
-          let text = '';
-          const images = [];
-          const content = obj.message.content;
-          if (typeof content === 'string') {
-            text = content;
-          } else if (Array.isArray(content)) {
-            text = content.filter(b => b.type === 'text').map(b => b.text).join('\n');
-            for (const block of content) {
-              if (block.type === 'image' && block.source?.type === 'base64') {
-                images.push({
-                  base64: block.source.data,
-                  mediaType: block.source.media_type || 'image/png'
-                });
-              }
-            }
-          }
-          // A slash command reaches the transcript as its parse, and its output as
-          // another user line. On screen the first was a prompt and the second a
-          // notice, so replaying either verbatim showed markup the user never saw.
-          const parsed = interpretUserText(text);
-          if (parsed.kind === 'output') {
-            push({ role: 'notice', icon: 'command', text: parsed.text });
-          } else if (parsed.text || images.length > 0) {
-            const msg = { role: 'user', text: parsed.text || '' };
-            if (images.length > 0) msg.images = images;
-            // Carried so a fork can name the turn it discards (resumeDropsTurn)
-            if (obj.uuid) msg.uuid = obj.uuid;
-            push(msg);
-          }
-        }
-
-        // The CLI reports an API failure as an ordinary assistant message wearing
-        // a flag. The live renderer turns that into its error box; replayed as
-        // text it came back looking like something Claude had chosen to say.
-        if (isAssistantLine && isApiErrorMessage(obj) && obj.message?.content) {
-          const blocks = Array.isArray(obj.message.content) ? obj.message.content : [];
-          const text = blocks.filter(b => b.type === 'text').map(b => b.text).join('\n');
-          push({
-            role: 'error',
-            errorCode: typeof obj.error === 'string' ? obj.error : '',
-            text
-          });
-        }
-
-        // Compaction: the boundary is a notice of its own on screen, and the
-        // summary the CLI writes back is transcript-only (skipped above).
-        if (obj.type === 'system' && obj.subtype === 'compact_boundary') {
-          const meta = obj.compactMetadata || obj.compact_metadata || {};
-          push({ role: 'notice', icon: 'compact', preTokens: meta.preTokens || meta.pre_tokens || 0 });
-        }
-
-        // Newer CLIs record a command's output here rather than as a user line
-        if (obj.type === 'system' && obj.subtype === 'local_command' && typeof obj.content === 'string') {
-          const printed = interpretUserText(obj.content);
-          if (printed.kind === 'output') push({ role: 'notice', icon: 'command', text: printed.text });
-        }
-
-        // Assistant message
-        if (isAssistantLine && obj.message?.content && !isApiErrorMessage(obj)) {
-          const blocks = obj.message.content;
-          for (const block of blocks) {
-            if (block.type === 'text' && block.text) {
-              push({ role: 'assistant', type: 'text', text: block.text, ...(obj.uuid ? { uuid: obj.uuid } : {}) });
-            } else if (block.type === 'tool_use') {
-              push({
-                role: 'assistant',
-                type: 'tool_use',
-                toolName: block.name,
-                toolInput: block.input,
-                toolUseId: block.id
-              });
-            } else if (block.type === 'thinking' && block.thinking) {
-              push({ role: 'assistant', type: 'thinking', text: block.thinking });
-            }
-          }
-        }
-
-        // Tool result
-        if (obj.type === 'tool_result' || (obj.message?.role === 'user' && Array.isArray(obj.message?.content))) {
-          const content = obj.message?.content;
-          if (Array.isArray(content)) {
-            for (const block of content) {
-              if (block.type === 'tool_result') {
-                const output = typeof block.content === 'string' ? block.content
-                  : Array.isArray(block.content) ? block.content.map(b => b.text || '').join('\n') : '';
-                const msg = {
-                  role: 'tool_result',
-                  toolUseId: block.tool_use_id,
-                  output: output.slice(0, 2000) // Limit output size for IPC
-                };
-                // What the user picked in an AskUserQuestion card, question by
-                // question — the card replays as the answered summary it became,
-                // rather than as a tool call named after nothing the user saw.
-                const answers = obj.toolUseResult?.answers;
-                if (answers && typeof answers === 'object' && !Array.isArray(answers)) msg.answers = answers;
-                push(msg);
-              }
-            }
+        for (const msg of collectLineMessages(obj)) {
+          total++;
+          messages.push(msg);
+          if (messages.length > maxKept) {
+            const excess = messages.length - limit;
+            messages.splice(0, excess);
+            dropped += excess;
           }
         }
 
@@ -548,6 +764,90 @@ async function loadSessionHistory(projectPath, sessionId, options = {}) {
     });
     rl.on('error', () => resolve({ messages: [], total: 0, truncated: false, contextTokens: 0 }));
   });
+}
+
+/**
+ * Load conversation history from a session JSONL file.
+ * Returns the last `limit` simplified messages for the chat UI replay.
+ * @param {string} projectPath - The project path
+ * @param {string} sessionId - The session ID (UUID)
+ * @param {object} [options]
+ * @param {number} [options.limit] - Max messages to return (tail). 0 = no limit.
+ * @param {string} [options.until] - Stop reading after this message uuid (fork point).
+ * @returns {Promise<{messages: Array, total: number|null, truncated: boolean, contextTokens: number}>}
+ *   `total` counts the whole file and is null when a truncated tail was read
+ *   backwards, which never learns it — see loadHistoryTail.
+ */
+async function loadSessionHistory(projectPath, sessionId, options = {}) {
+  const limit = options.limit === 0 ? 0 : (options.limit || DEFAULT_HISTORY_LIMIT);
+  const until = options.until || null;
+
+  // Find the JSONL file — uses indexed lookup
+  const filePath = await resolveSessionFileInProject(projectPath, sessionId);
+  if (!filePath) return { messages: [], total: 0, truncated: false, contextTokens: 0 };
+
+  if (limit && !until) return loadHistoryTail(filePath, limit);
+  return loadHistorySequential(filePath, limit, until);
+}
+
+// A single result can be far larger than anything worth putting on screen at
+// once — a Read of a generated bundle, a test run that printed a megabyte. The
+// card asks for the full text, not for an unbounded one.
+const MAX_TOOL_OUTPUT_BYTES = 4 * 1024 * 1024;
+
+/**
+ * The complete output of one tool_result, straight from the transcript.
+ *
+ * Replay ships a 2 KB preview per result (TOOL_OUTPUT_PREVIEW); this is how a
+ * card gets the rest when the user expands it. The search runs backwards
+ * because the results a user expands are the ones on screen, and those are the
+ * tail — a card in the visible window is found in the first block or two,
+ * without the file size mattering.
+ *
+ * @param {string} projectPath
+ * @param {string} sessionId
+ * @param {string} toolUseId
+ * @returns {Promise<{success: boolean, output?: string, length?: number, truncated?: boolean, error?: string}>}
+ */
+async function loadToolResultOutput(projectPath, sessionId, toolUseId) {
+  if (!toolUseId || typeof toolUseId !== 'string') return { success: false, error: 'Missing tool use id' };
+
+  const filePath = await resolveSessionFileInProject(projectPath, sessionId);
+  if (!filePath) return { success: false, error: 'Session not found' };
+
+  const needle = Buffer.from(toolUseId, 'utf8');
+  let found = null;
+
+  await forEachLineFromEnd(filePath, (raw) => {
+    // The id is a literal in the line it belongs to, so this rejects almost
+    // every line for the cost of a memory scan — no decode, no parse.
+    if (raw.indexOf(needle) === -1) return false;
+    let obj;
+    try {
+      obj = JSON.parse(decodeLine(raw));
+    } catch {
+      return false;
+    }
+    const content = obj.message?.content;
+    if (!Array.isArray(content)) return false;
+    for (const block of content) {
+      if (block.type === 'tool_result' && block.tool_use_id === toolUseId) {
+        found = toolResultText(block);
+        return true;
+      }
+    }
+    return false;
+  });
+
+  if (found === null) return { success: false, error: 'Tool result not found' };
+  const length = found.length;
+  const clipped = length > MAX_TOOL_OUTPUT_BYTES;
+  return {
+    success: true,
+    output: clipped ? found.slice(0, MAX_TOOL_OUTPUT_BYTES) : found,
+    length,
+    truncated: clipped
+  };
 }
 
 /**
@@ -1396,6 +1696,18 @@ function registerClaudeHandlers() {
     }
   });
 
+  // The full text of one tool result, for a replayed card the user expanded.
+  // History only carries a preview of each; without this the rest of a tool's
+  // output was simply unreachable in a resumed conversation.
+  ipcMain.handle('chat-tool-output', async (event, { projectPath, sessionId, toolUseId }) => {
+    try {
+      return await loadToolResultOutput(projectPath, sessionId, toolUseId);
+    } catch (err) {
+      console.error('[chat-tool-output] Error:', err.message);
+      return { success: false, error: err.message };
+    }
+  });
+
   // Parse a session JSONL into ordered replay steps for the Session Replay panel
   ipcMain.handle('claude-session-replay', async (event, { projectPath, sessionId, offset, limit }) => {
     try {
@@ -1447,4 +1759,4 @@ function registerClaudeHandlers() {
   });
 }
 
-module.exports = { registerClaudeHandlers, getClaudeSessions, loadSessionHistory, parseSessionReplay, parseSessionFileChanges, moveSession, findStraySidecars, readSessionTitle, invalidateSessionsCache };
+module.exports = { registerClaudeHandlers, getClaudeSessions, loadSessionHistory, loadToolResultOutput, parseSessionReplay, parseSessionFileChanges, moveSession, findStraySidecars, readSessionTitle, invalidateSessionsCache };
