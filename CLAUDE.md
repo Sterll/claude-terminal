@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 149 test files)
+npm test                 # Run Jest tests (jsdom, 154 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -39,7 +39,7 @@ Electron Main Process (Node.js)
 ├── main.js                          # Bootstrap, lifecycle, single-instance lock, global shortcuts
 ├── src/main/preload.js              # IPC bridge (window.electron_api)
 ├── src/main/preload-quickpicker.js  # Preload for Quick Picker window
-├── src/main/ipc/                    # 36 IPC files, 324 handlers total
+├── src/main/ipc/                    # 36 IPC files, 325 handlers total
 ├── src/main/services/               # 35 services
 ├── src/main/windows/                # 5 window managers
 ├── src/main/utils/                  # 13 utilities
@@ -50,7 +50,7 @@ Electron Renderer Process (Browser)
 ├── src/renderer/index.js            # Module loader & initialization
 ├── src/renderer/core/               # DI container, BaseService/Component/Panel, ApiProvider
 ├── src/renderer/state/              # 15 observable state modules
-├── src/renderer/services/           # 28 services + modular markdown renderer + mention sources
+├── src/renderer/services/           # 29 services + modular markdown renderer + mention sources
 ├── src/renderer/ui/components/      # 17 UI components
 ├── src/renderer/ui/panels/          # 25 UI panels
 ├── src/renderer/features/           # Keyboard shortcuts, quick picker, drag-drop
@@ -58,7 +58,7 @@ Electron Renderer Process (Browser)
 ├── src/renderer/workflow-fields/    # 13 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN locales (3673 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN locales (3677 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting
 
 Project Types (Plugin System)
@@ -103,7 +103,7 @@ Remote UI (PWA for mobile)
 | `artifacts.ipc.js` | 8 | Artifact library: list, get, versions, search, stats, delete |
 | `workspace.ipc.js` | 7 | Workspace list/overview/search/read/write docs/concept links |
 | `marketplace.ipc.js` | 7 | Skills search/featured/readme/install/uninstall from `skills.sh` |
-| `claude.ipc.js` | 7 | Session listing, conversation history, move session, Control Tower agent supervision |
+| `claude.ipc.js` | 8 | Session listing, conversation history (tail-first read), full tool output, move session, Control Tower agent supervision |
 | `voice.ipc.js` | 6 | Groq transcription, API key in the OS credential store, model selection |
 | `remote-control.ipc.js` | 6 | Claude Remote Control (claude.ai bridge): status, enable/disable per session |
 | `errorLog.ipc.js` | 6 | Error log entries, stats, patterns, export, clear |
@@ -124,7 +124,7 @@ Remote UI (PWA for mobile)
 | `cloud-shared.js` | - | Helpers shared by the three cloud IPC files |
 | `index.js` | - | Orchestrator - registers all handlers |
 
-**Total: 324 IPC handlers across 36 files.**
+**Total: 325 IPC handlers across 36 files.**
 
 ### Services (`src/main/services/`)
 
@@ -249,6 +249,7 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 | Service | Purpose |
 |---------|---------|
 | `TerminalService.js` | xterm.js + WebGL (10k scrollback), mount, fit, IPC wrappers |
+| `xtermLoader.js` | The one place `@xterm/*` is loaded. 719 KB of emulator that used to be in the startup bundle because five files require()d it at the top level, now fetched when a terminal is actually mounted. The core must be awaited before `new Terminal()`; the WebGL addon is attached afterwards, fire-and-forget, and is not fetched at all when the machine has no WebGL2 context — it has a DOM-renderer fallback, the core does not |
 | `ProjectService.js` | Add/delete/open projects, editor integration, git status check |
 | `SettingsService.js` | Accent color DOM application, notification permissions, window title |
 | `DashboardService.js` | `buildXxxHtml()` helpers, data caching (30s TTL), disk cache |
@@ -360,6 +361,18 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 ## Project Types (`src/project-types/`)
 
 Pluggable type system: `base-type.js` + `registry.js`. Types: `general`, `api`, `fivem`, `minecraft`, `python`, `webapp`, `discord`.
+
+Each type is split in two. `<type>/meta.js` is its **identity** — id, nameKey, descKey,
+category, icon — required eagerly by `discoverAll()`, because the wizard and the sidebar
+draw from it at boot. `<type>/index.js` is its **behaviour**, and it is `import()`ed by
+`ensureLoaded()` only when something needs it: the boot path loads the types present in
+`projects.json`, the new-project wizard and the settings panel load all of them, and a
+`projectsState` subscription catches a type that arrives later (drag-drop, the MCP
+`project_create` tool, a cloud pull, the three-way merge). A type that is not loaded
+answers every hook with the BASE_TYPE no-op, so anything that can reach a hook must have
+awaited the load first — the three caller shapes and why each is safe are documented in
+the header of `registry.js`. `index.js` spreads its own `meta.js` so the identity has one
+source of truth.
 
 Each type typically provides `main/[Type]Service.js`, `main/[type].ipc.js`, `renderer/[Type]Dashboard.js`, `renderer/[Type]ProjectList.js`, `renderer/[Type]RendererService.js`, `renderer/[Type]State.js`, `renderer/[Type]TerminalPanel.js`, `renderer/[Type]Wizard.js`, `i18n/{en,fr,es}.json`.
 
@@ -574,7 +587,7 @@ Worker); neither is bundled into the desktop app.
 - **AI commits / PR descriptions:** GitHub Models API (`gpt-4o-mini`, free tier) with heuristic fallback
 - **Hooks:** 15 hook types into `~/.claude/settings.json`, HTTP event server for real-time events
 - **Time tracking:** 15 min idle timeout, 2 min output idle, 30 min session merge, midnight rollover, monthly archival
-- **Renderer bundling:** esbuild ESM with code splitting -> `dist/renderer.bundle.js` + shared `dist/chunk-*.js`, sourcemaps, target `chrome120`. The five heaviest panels are `import()`ed on first tab open via `_LAZY_PANELS` in `renderer.js`; splitting rather than standalone per-panel bundles is what keeps a single instance of each observable state module
+- **Renderer bundling:** esbuild ESM with code splitting -> `dist/renderer.bundle.js` + shared `dist/chunk-*.js`, sourcemaps, target `chrome120`. Three things are deliberately kept out of the startup graph and `import()`ed on demand: the five heaviest panels, on first tab open (`_LAZY_PANELS` in `renderer.js`); `@xterm/*`, when a terminal is first mounted (`src/renderer/services/xtermLoader.js`); and the renderer half of each project type, when a project of that type is opened (`ensureLoaded()` in `src/project-types/registry.js`, plus `_typeModule()` in `renderer.js` for the handful of type modules `renderer.js` reaches directly). Together that is ~1 MB, a third of what every startup used to parse. Splitting rather than standalone per-feature bundles is what keeps a single instance of each observable state module: `ApiState` and `DiscordState` are reached both from `renderer.js` and from their own type, and one module graph means esbuild hoists each into one shared chunk. Note a `require()` inside a function body is still a static edge to esbuild, so making something lazy means an actual `import()`
 - **Persistence:** atomic writes (temp + rename), `.bak` backup files, corruption recovery
 - **Updates:** generic provider, 30 min periodic checks, differential packages
 - **Remote control (local):** WS server with PIN auth, QR code, PWA in `remote-ui/`
@@ -595,7 +608,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 149 unit test files (jsdom environment)
+npm test                    # Run all 154 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -604,7 +617,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 149 test files
+- **Framework:** Jest with jsdom, 154 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
@@ -616,11 +629,11 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
   - `ipc/` - accounts usage, claude, hooks, project, usage, workflow save
   - `remote-ui/` - hierarchy
   - `security/` - security tests
-  - `services/` - ChatService, AccountManager, ArtifactService, DatabaseService, DashboardService, DiffRenderer, HooksService, KnowledgeService, MarkdownRenderer, ModelCatalogService, RemoteServer, RemoteControlService, UsageService, VoiceService, WorkflowRunner and the workflow engine suite
+  - `services/` - ChatService, AccountManager, ArtifactService, DatabaseService, DashboardService, DiffRenderer, HooksService, KnowledgeService, MarkdownRenderer, ModelCatalogService, RemoteServer, RemoteControlService, UsageService, VoiceService, WorkflowRunner, the workflow engine suite, the lazy `xtermLoader` and the lazy project-type registry
   - `shared/` - context usage, cron, model options, permission modes, simple-task
   - `smoke/` - every module parses and loads
   - `state/` - State plus each state module
-  - `ui/` - chat account switch, chat limit error, task widget, tasks drawer, ClaudeRemotePanel, navigation mode, kanban live refresh, toast
+  - `ui/` - chat account switch, chat limit error, replayed tool output, task widget, tasks drawer, ClaudeRemotePanel, navigation mode, kanban live refresh, toast
   - `utils/` - attachments, color, commit messages, drop paths, file icons, file lock, format, frontmatter, git, http cache, session search, shell, syntax highlight, tool registry
 
 ### Lint (`eslint.config.js`)
@@ -668,7 +681,7 @@ Two documented exceptions, both real:
 
 ### E2E smoke (`tests/e2e/smoke.js`)
 
-All 149 Jest suites run in jsdom against a mocked `window.electron_api`, so nothing
+All 154 Jest suites run in jsdom against a mocked `window.electron_api`, so nothing
 in the repository asserts that the application actually starts. Every regression of
 the shape "the window opens but panel X throws on first render" has had to be found
 by a human opening the app. This covers that gap and only that.
