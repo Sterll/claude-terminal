@@ -874,6 +874,8 @@
     "accentColorDesc": "Personnalisez la couleur principale de l'interface",
     "terminalTheme": "Thème du terminal",
     "terminalThemeDesc": "Changez les couleurs du terminal",
+    "terminalFontSize": "Taille de police du terminal",
+    "terminalFontSizeDesc": "Ajustez la taille de police utilisée dans les onglets du terminal",
     "theme": "Thème du terminal",
     "notifications": "Notifications",
     "closeAction": "Action à la fermeture",

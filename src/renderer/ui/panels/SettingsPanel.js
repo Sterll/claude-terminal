@@ -1146,6 +1146,13 @@ class SettingsPanel extends BasePanel {
                     ${this._ctx.TERMINAL_THEMES[settings.terminalTheme || 'claude']?.name || 'Claude'}
                   </button>
                 </div>
+                <div class="settings-row">
+                  <div class="settings-label">
+                    <label for="terminal-font-size-input">${t('settings.terminalFontSize')}</label>
+                    <div class="settings-desc" id="terminal-font-size-desc">${t('settings.terminalFontSizeDesc')}</div>
+                  </div>
+                  <input type="number" class="form-input" id="terminal-font-size-input" aria-describedby="terminal-font-size-desc" value="${settings.terminalFontSize || 14}" min="10" max="24" step="1" style="width: 70px; text-align: center;">
+                </div>
               </div>
             </div>
             <div class="settings-group" data-section="behavior">
@@ -2357,6 +2364,18 @@ class SettingsPanel extends BasePanel {
       const languageDropdown = document.getElementById('language-dropdown');
       const newTerminalTheme = selectedThemeCard?.dataset.themeId || 'claude';
       const newLanguage = languageDropdown?.dataset.value || getCurrentLanguage();
+      const fontSizeInput = document.getElementById('terminal-font-size-input');
+      const newTerminalFontSize = fontSizeInput
+        ? Math.min(24, Math.max(10, parseInt(fontSizeInput.value, 10) || 14))
+        : (settings.terminalFontSize || 14);
+      // Echo the clamped value so the field never shows a size that was not applied.
+      if (fontSizeInput && fontSizeInput.value !== String(newTerminalFontSize)) {
+        fontSizeInput.value = String(newTerminalFontSize);
+      }
+      // Read from live state, not the render-time `settings` snapshot: the panel
+      // autosaves repeatedly without re-rendering, so 14 -> 16 -> 14 must still
+      // apply the second change to open terminals.
+      const prevTerminalFontSize = self._ctx.settingsState.get().terminalFontSize;
 
       let accentColor = settings.accentColor;
       const selectedSwatch = container.querySelector('.color-swatch.selected');
@@ -2457,6 +2476,7 @@ class SettingsPanel extends BasePanel {
         accentColor,
         closeAction: closeActionDropdown?.dataset.value || 'ask',
         terminalTheme: newTerminalTheme,
+        terminalFontSize: newTerminalFontSize,
         language: newLanguage,
         compactProjects: newCompactProjects,
         restoreTerminalSessions: newRestoreTerminalSessions,
@@ -2537,6 +2557,10 @@ class SettingsPanel extends BasePanel {
 
       if (newTerminalTheme !== settings.terminalTheme) {
         self._ctx.TerminalManager.updateAllTerminalsTheme(newTerminalTheme);
+      }
+
+      if (newTerminalFontSize !== prevTerminalFontSize) {
+        self._ctx.TerminalManager.updateAllTerminalsFontSize(newTerminalFontSize);
       }
 
       // Toggles below have side effects outside settings.json (OS login item,
@@ -2666,6 +2690,12 @@ class SettingsPanel extends BasePanel {
     // Save on blur for the column text input
     const parallelColumnInput = document.getElementById('parallel-auto-kanban-column');
     if (parallelColumnInput) parallelColumnInput.addEventListener('blur', autoSave);
+
+    // Save + live-apply font size on change
+    const fontSizeEl = document.getElementById('terminal-font-size-input');
+    if (fontSizeEl) {
+      fontSizeEl.addEventListener('change', autoSave);
+    }
 
     // Issue 4: Re-run setup wizard
     const btnRerunSetup = document.getElementById('btn-rerun-setup');

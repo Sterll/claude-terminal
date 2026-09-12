@@ -380,6 +380,7 @@ npm install
 
 ### Settings
 - Accent color theming (preset palettes + custom hex)
+- Terminal font size (10 to 24 px), applied live to open terminals
 - Per-agent and per-tool color customization for chat tool cards
 - Language: English, French, Spanish, Indonesian, and Simplified Chinese with auto-detection
 - Editor integration: VS Code, Cursor, WebStorm, IntelliJ IDEA

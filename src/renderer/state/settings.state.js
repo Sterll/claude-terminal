@@ -18,6 +18,7 @@ const defaultSettings = {
   skipPermissions: false,
   executionMode: 'safe', // 'safe' (default), 'auto' (SDK classifier), 'dangerous' (bypassPermissions)
   accentColor: '#d97706',
+  terminalFontSize: 14, // Terminal font size in px (10-24)
   notificationsEnabled: true,
   closeAction: 'ask', // 'ask', 'minimize', 'quit'
   shortcuts: {}, // Custom keyboard shortcuts overrides
