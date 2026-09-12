@@ -71,9 +71,31 @@ async function typeFontSize(value) {
 test('renders the input at the saved size with an associated label', () => {
   const input = fontSizeInput();
   expect(input.value).toBe('14');
-  expect(document.querySelector('label[for="terminal-font-size-input"]')).not.toBeNull();
+  // Named via aria-labelledby rather than a <label for>: the row title has to
+  // stay a plain <div> (see the filter test below), and a <label> wrapping that
+  // div would be the only such row in the panel.
+  expect(input.getAttribute('aria-labelledby')).toBe('terminal-font-size-label');
+  expect(document.getElementById('terminal-font-size-label').textContent.trim()).not.toBe('');
   expect(input.getAttribute('aria-describedby')).toBe('terminal-font-size-desc');
   expect(document.getElementById('terminal-font-size-desc')).not.toBeNull();
+});
+
+/**
+ * The in-panel filter reads `.settings-label > div:first-child`, and
+ * `styles/settings.css` sizes the row title through that same selector. A
+ * `<label>` there satisfies neither: the row rendered at the 16px UA default and
+ * searching its own title hid it, because `readSettingRow()` saw an empty label
+ * and `substringMatch` is a contiguous match that the description does not
+ * satisfy.
+ */
+test('the row title is findable by the settings filter', () => {
+  const { readSettingRow, settingMatches } = require('../../src/renderer/ui/panels/SettingsPanel');
+  const row = fontSizeInput().closest('.settings-row');
+  const parts = readSettingRow(row);
+
+  expect(parts.labelEl).not.toBeNull();
+  expect(parts.label).toBe('Terminal font size');
+  expect(settingMatches(parts, 'terminal font')).toBe(true);
 });
 
 test('14 → 16 → 14 applies both changes without re-rendering the tab', async () => {

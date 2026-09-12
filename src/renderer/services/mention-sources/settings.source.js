@@ -30,6 +30,7 @@ const CATALOG = [
   { id: 'language', tab: 'general', labelKey: 'settings.language', descKey: 'settings.languageDesc', anchor: 'language-dropdown' },
   { id: 'accentColor', tab: 'general', labelKey: 'settings.accentColor', descKey: 'settings.accentColorDesc', anchor: 'custom-color-input' },
   { id: 'terminalTheme', tab: 'general', labelKey: 'settings.terminalTheme', descKey: 'settings.terminalThemeDesc', anchor: 'btn-go-themes' },
+  { id: 'terminalFontSize', tab: 'general', labelKey: 'settings.terminalFontSize', descKey: 'settings.terminalFontSizeDesc', anchor: 'terminal-font-size-input' },
   { id: 'launchAtStartup', tab: 'general', labelKey: 'settings.launchAtStartup', descKey: 'settings.launchAtStartupDesc', anchor: 'launch-at-startup-toggle' },
   { id: 'navigationMode', tab: 'general', labelKey: 'navigationMode.settingsLabel', descKey: 'navigationMode.settingsHint', anchor: 'navigation-mode-dropdown' },
   { id: 'compactProjects', tab: 'general', labelKey: 'settings.compactProjects', descKey: 'settings.compactProjectsDesc', anchor: 'compact-projects-toggle' },

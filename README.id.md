@@ -379,6 +379,7 @@ npm install
 
 ### Pengaturan
 - Warna aksen (palet siap pakai + hex kustom)
+- Ukuran font terminal (10 sampai 24 px), diterapkan langsung ke terminal yang terbuka
 - Penyesuaian warna per agen dan per alat untuk kartu alat di chat
 - Bahasa: Inggris, Prancis, Spanyol, Indonesia, dan Tionghoa Sederhana, dengan deteksi otomatis
 - Integrasi editor: VS Code, Cursor, WebStorm, IntelliJ IDEA

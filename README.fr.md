@@ -379,6 +379,7 @@ npm install
 
 ### Paramètres
 - Couleur d'accentuation (palettes prédéfinies + hex personnalisé)
+- Taille de police du terminal (10 à 24 px), appliquée à chaud aux terminaux ouverts
 - Personnalisation des couleurs par agent et par outil pour les cartes d'outils du chat
 - Langue : anglais, français, espagnol, indonésien et chinois simplifié, avec détection automatique
 - Intégration éditeur : VS Code, Cursor, WebStorm, IntelliJ IDEA

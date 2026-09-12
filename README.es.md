@@ -379,6 +379,7 @@ npm install
 
 ### Ajustes
 - Color de acento (paletas predefinidas + hex personalizado)
+- Tamaño de fuente de la terminal (10 a 24 px), aplicado en vivo a las terminales abiertas
 - Personalización de colores por agente y por herramienta en las tarjetas de herramientas del chat
 - Idioma: inglés, francés, español, indonesio y chino simplificado, con detección automática
 - Integración con editores: VS Code, Cursor, WebStorm, IntelliJ IDEA

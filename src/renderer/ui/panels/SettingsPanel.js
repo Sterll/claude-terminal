@@ -1148,10 +1148,10 @@ class SettingsPanel extends BasePanel {
                 </div>
                 <div class="settings-row">
                   <div class="settings-label">
-                    <label for="terminal-font-size-input">${t('settings.terminalFontSize')}</label>
+                    <div id="terminal-font-size-label">${t('settings.terminalFontSize')}</div>
                     <div class="settings-desc" id="terminal-font-size-desc">${t('settings.terminalFontSizeDesc')}</div>
                   </div>
-                  <input type="number" class="form-input" id="terminal-font-size-input" aria-describedby="terminal-font-size-desc" value="${settings.terminalFontSize || 14}" min="10" max="24" step="1" style="width: 70px; text-align: center;">
+                  <input type="number" class="settings-input-sm" id="terminal-font-size-input" aria-labelledby="terminal-font-size-label" aria-describedby="terminal-font-size-desc" value="${settings.terminalFontSize || 14}" min="10" max="24" step="1" style="width: 70px; flex: 0 0 auto; text-align: center;">
                 </div>
               </div>
             </div>
