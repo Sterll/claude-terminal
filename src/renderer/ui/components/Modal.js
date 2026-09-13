@@ -224,15 +224,22 @@ function closeModalById(id) {
 
 /**
  * Show a confirmation dialog
+ *
+ * With `rememberLabel` the dialog grows a "remember my choice" checkbox and the
+ * promise resolves `{ confirmed, remember }` instead of a bare boolean — the
+ * caller decides what remembering means, since a remembered *cancel* is rarely
+ * the same thing as a remembered confirm.
+ *
  * @param {Object} options
  * @param {string} options.title
  * @param {string} options.message
  * @param {string} options.confirmLabel
  * @param {string} options.cancelLabel
  * @param {boolean} options.danger
- * @returns {Promise<boolean>}
+ * @param {string|null} options.rememberLabel - Label of the opt-out checkbox (null = no checkbox)
+ * @returns {Promise<boolean|{confirmed: boolean, remember: boolean}>}
  */
-function showConfirm({ title, message, confirmLabel = null, cancelLabel = null, danger = false }) {
+function showConfirm({ title, message, confirmLabel = null, cancelLabel = null, danger = false, rememberLabel = null }) {
   confirmLabel = confirmLabel || t('common.confirm');
   cancelLabel = cancelLabel || t('common.cancel');
 
@@ -241,11 +248,12 @@ function showConfirm({ title, message, confirmLabel = null, cancelLabel = null, 
     const finish = (value) => {
       if (resolved) return;
       resolved = true;
+      const remember = !!overlay.querySelector('.confirm-remember-input')?.checked;
       cleanupModal(overlay);
       overlay.classList.remove('active');
       setTimeout(() => overlay.remove(), 200);
       document.removeEventListener('keydown', keyHandler);
-      resolve(value);
+      resolve(rememberLabel ? { confirmed: value, remember } : value);
     };
 
     const overlay = document.createElement('div');
@@ -266,11 +274,19 @@ function showConfirm({ title, message, confirmLabel = null, cancelLabel = null, 
     const okBtn = `<button class="confirm-btn-ok">${escapeHtml(confirmLabel)}</button>`;
     const buttonsHtml = isWindows ? `${okBtn}${cancelBtn}` : `${cancelBtn}${okBtn}`;
 
+    const rememberHtml = rememberLabel
+      ? `<label class="confirm-remember">
+           <input type="checkbox" class="confirm-remember-input">
+           <span>${escapeHtml(rememberLabel)}</span>
+         </label>`
+      : '';
+
     overlay.innerHTML = `
       <div class="confirm-dialog${danger ? ' confirm-danger' : ''}" role="alertdialog" aria-modal="true" aria-label="${escapeHtml(title)}">
         <div class="confirm-icon">${iconSvg}</div>
         <div class="confirm-title">${escapeHtml(title)}</div>
         <div class="confirm-message">${escapeHtml(message)}</div>
+        ${rememberHtml}
         <div class="confirm-actions">
           ${buttonsHtml}
         </div>

@@ -56,6 +56,7 @@ const defaultSettings = {
   explorerIgnorePatterns: [], // Additional ignore patterns for file explorer (user-configured)
   showTabModeToggle: true, // Show Chat/Terminal mode-switch button on terminal tabs
   tabRenameOnSlashCommand: false, // Rename terminal tab to slash command text when submitted
+  confirmCloseTab: true, // Ask before a tab's × closes a running session (the dialog can turn this off)
   aiTabNaming: true, // Use AI (Haiku) to generate short tab names from messages
   cloudServerUrl: '', // Cloud relay server URL (e.g. 'https://cloud.example.com')
   cloudApiKey: '', // Cloud API key (e.g. 'ctc_abc123...')

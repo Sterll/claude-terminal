@@ -1674,10 +1674,19 @@ class TerminalManager extends BaseComponent {
    * once for the whole batch, so putting the prompt in closeTerminal() would
    * fire it twice (or N times) for a single decision.
    *
+   * The dialog carries a "remember my choice" checkbox, which only takes effect
+   * on confirm: remembering a *cancel* would mean a × that never closes
+   * anything. Turning it back on lives in Settings → Claude → Terminal.
+   *
    * @param {string} id - Terminal id
    * @param {Function} close - Performs the real close once confirmed
    */
   async _confirmCloseTab(id, close) {
+    if (getSetting('confirmCloseTab') === false) {
+      close();
+      return;
+    }
+
     // The dialog is modal, so a × click on another tab while it is up would
     // stack a second overlay that Escape/Enter then answers at the same time.
     if (this._closeConfirmOpen) return;
@@ -1690,16 +1699,22 @@ class TerminalManager extends BaseComponent {
 
     this._closeConfirmOpen = true;
     let confirmed = false;
+    let remember = false;
     try {
-      confirmed = await showConfirm({
+      const answer = await showConfirm({
         title: t('tabs.closeTabTitle', { name: tabName }),
         message: t('tabs.closeTabMessage'),
         confirmLabel: t('tabs.close'),
+        rememberLabel: t('tabs.closeTabRemember'),
         danger: true
       });
+      confirmed = answer.confirmed;
+      remember = answer.remember;
     } finally {
       this._closeConfirmOpen = false;
     }
+
+    if (confirmed && remember) setSetting('confirmCloseTab', false);
 
     if (!confirmed) return;
     // The tab can be gone by the time the user answers (PTY exit, project close).

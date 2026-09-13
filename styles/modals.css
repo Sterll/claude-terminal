@@ -1712,6 +1712,34 @@ mark.qp-hl {
   margin-bottom: 24px;
 }
 
+.confirm-dialog:has(.confirm-remember) .confirm-message {
+  margin-bottom: 14px;
+}
+
+.confirm-remember {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.confirm-remember:hover {
+  color: var(--text-secondary);
+}
+
+.confirm-remember input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  margin: 0;
+}
+
 .confirm-actions {
   display: flex;
   gap: 10px;

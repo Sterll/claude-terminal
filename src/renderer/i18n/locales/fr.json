@@ -1022,6 +1022,8 @@
     "terminalGroup": "Terminal",
     "tabRenameOnSlashCommand": "Renommer l'onglet sur commande slash",
     "tabRenameOnSlashCommandDesc": "Renomme automatiquement l'onglet terminal avec la dernière commande slash exécutée (ex. /gsd:verify-work 12)",
+    "confirmCloseTab": "Confirmer avant de fermer un onglet",
+    "confirmCloseTabDesc": "Demander confirmation quand le × d'un onglet met fin à une session en cours",
     "aiTabNaming": "Nommage IA des onglets",
     "aiTabNamingDesc": "Utiliser l'IA pour générer des noms courts pour les onglets à partir des messages",
     "enableFollowupSuggestions": "Suggestions de suivi",
@@ -2573,6 +2575,7 @@
     "closeToRight": "Fermer les onglets à droite",
     "closeTabTitle": "Fermer {name} ?",
     "closeTabMessage": "Cet onglet va être fermé. Toute session en cours y sera terminée.",
+    "closeTabRemember": "Mémoriser mon choix",
     "closeAll": "Tout fermer"
   },
   "telemetry": {

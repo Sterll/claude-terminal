@@ -1623,6 +1623,16 @@ class SettingsPanel extends BasePanel {
                 </div>
                 <div class="settings-toggle-row">
                   <div class="settings-toggle-label">
+                    <div>${t('settings.confirmCloseTab')}</div>
+                    <div class="settings-toggle-desc">${t('settings.confirmCloseTabDesc')}</div>
+                  </div>
+                  <label class="settings-toggle">
+                    <input type="checkbox" id="confirm-close-tab-toggle" ${settings.confirmCloseTab !== false ? 'checked' : ''}>
+                    <span class="settings-toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="settings-toggle-row">
+                  <div class="settings-toggle-label">
                     <div>${t('settings.aiTabNaming')}</div>
                     <div class="settings-toggle-desc">${t('settings.aiTabNamingDesc')}</div>
                   </div>
@@ -2396,6 +2406,8 @@ class SettingsPanel extends BasePanel {
       const newAiCommitMessages = aiCommitToggle ? aiCommitToggle.checked : true;
       const tabRenameSlashToggle = document.getElementById('tab-rename-slash-toggle');
       const newTabRenameOnSlashCommand = tabRenameSlashToggle ? tabRenameSlashToggle.checked : false;
+      const confirmCloseTabToggle = document.getElementById('confirm-close-tab-toggle');
+      const newConfirmCloseTab = confirmCloseTabToggle ? confirmCloseTabToggle.checked : true;
       const aiTabNamingToggle = document.getElementById('ai-tab-naming-toggle');
       const newAiTabNaming = aiTabNamingToggle ? aiTabNamingToggle.checked : true;
       const followupSuggestionsToggle = document.getElementById('followup-suggestions-toggle');
@@ -2494,6 +2506,7 @@ class SettingsPanel extends BasePanel {
         explorerIgnorePatterns: newIgnorePatterns,
         showTabModeToggle: newShowTabModeToggle,
         tabRenameOnSlashCommand: newTabRenameOnSlashCommand,
+        confirmCloseTab: newConfirmCloseTab,
         aiTabNaming: newAiTabNaming,
         enableFollowupSuggestions: newEnableFollowupSuggestions,
         discordRpcEnabled: newDiscordRpcEnabled,

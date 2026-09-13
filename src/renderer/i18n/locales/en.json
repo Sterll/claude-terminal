@@ -927,6 +927,8 @@
     "terminalGroup": "Terminal",
     "tabRenameOnSlashCommand": "Rename tab on slash command",
     "tabRenameOnSlashCommandDesc": "Automatically rename the terminal tab to the last slash command executed (e.g. /gsd:verify-work 12)",
+    "confirmCloseTab": "Confirm before closing a tab",
+    "confirmCloseTabDesc": "Ask for confirmation when the tab's × would end a running session",
     "aiTabNaming": "AI tab naming",
     "aiTabNamingDesc": "Use AI to generate short tab names from messages",
     "enableFollowupSuggestions": "Follow-up suggestions",
@@ -2573,6 +2575,7 @@
     "closeToRight": "Close Tabs to Right",
     "closeTabTitle": "Close {name}?",
     "closeTabMessage": "This tab will be closed. Any session running in it ends.",
+    "closeTabRemember": "Remember my choice",
     "closeAll": "Close All"
   },
   "telemetry": {

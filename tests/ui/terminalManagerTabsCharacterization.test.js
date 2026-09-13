@@ -24,9 +24,14 @@
 const confirmAnswers = [];
 const confirmCalls = [];
 jest.mock('../../src/renderer/ui/components/Modal', () => ({
+  // A queued answer may be a bare boolean or `{ confirmed, remember }`; the real
+  // showConfirm resolves the object shape only when asked for a remember box.
   showConfirm: (opts) => {
     confirmCalls.push(opts);
-    return Promise.resolve(confirmAnswers.length ? confirmAnswers.shift() : false);
+    const answer = confirmAnswers.length ? confirmAnswers.shift() : false;
+    const confirmed = typeof answer === 'object' ? !!answer.confirmed : !!answer;
+    const remember = typeof answer === 'object' ? !!answer.remember : false;
+    return Promise.resolve(opts.rememberLabel ? { confirmed, remember } : confirmed);
   },
   showModal: () => {},
   showPrompt: () => Promise.resolve(null),
@@ -228,6 +233,39 @@ describe('TerminalManager tabs (characterization)', () => {
 
       expect(confirmCalls).toHaveLength(1);
       expect(confirmCalls[0].danger).toBe(true);
+      expect(close).toHaveBeenCalledTimes(1);
+    });
+
+    it('remembers the choice only when the user confirms', async () => {
+      const settings = require('../../src/renderer/state/settings.state');
+      seedTab('t1');
+
+      confirmAnswers.push({ confirmed: true, remember: true });
+      await manager._confirmCloseTab('t1', jest.fn());
+
+      expect(confirmCalls[0].rememberLabel).toBeTruthy();
+      expect(settings.getSetting('confirmCloseTab')).toBe(false);
+    });
+
+    it('does not remember a cancel — a × that never closes anything', async () => {
+      const settings = require('../../src/renderer/state/settings.state');
+      seedTab('t1');
+
+      confirmAnswers.push({ confirmed: false, remember: true });
+      await manager._confirmCloseTab('t1', jest.fn());
+
+      expect(settings.getSetting('confirmCloseTab')).not.toBe(false);
+    });
+
+    it('closes straight away once the choice is remembered', async () => {
+      const settings = require('../../src/renderer/state/settings.state');
+      settings.setSetting('confirmCloseTab', false);
+      seedTab('t1');
+      const close = jest.fn();
+
+      await manager._confirmCloseTab('t1', close);
+
+      expect(confirmCalls).toHaveLength(0);
       expect(close).toHaveBeenCalledTimes(1);
     });
 

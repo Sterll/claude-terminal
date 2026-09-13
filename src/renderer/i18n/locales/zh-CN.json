@@ -927,6 +927,8 @@
     "terminalGroup": "终端",
     "tabRenameOnSlashCommand": "重命名斜杠命令上的选项卡",
     "tabRenameOnSlashCommandDesc": "自动将终端选项卡重命名为最后执行的斜杠命令（例如 /gsd:verify-work 12）",
+    "confirmCloseTab": "关闭标签页前确认",
+    "confirmCloseTabDesc": "当标签页的 × 会结束正在运行的会话时要求确认",
     "aiTabNaming": "AI选项卡命名",
     "aiTabNamingDesc": "使用 AI 从消息中生成简短的选项卡名称",
     "enableFollowupSuggestions": "后续建议",
@@ -2573,6 +2575,7 @@
     "closeToRight": "关闭右侧选项卡",
     "closeTabTitle": "关闭 {name}？",
     "closeTabMessage": "此标签页将被关闭，其中正在运行的会话也会结束。",
+    "closeTabRemember": "记住我的选择",
     "closeAll": "关闭全部"
   },
   "telemetry": {

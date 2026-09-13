@@ -49,6 +49,7 @@ const CATALOG = [
   { id: 'restoreSessions', tab: 'claude', labelKey: 'settings.restoreTerminalSessions', descKey: 'settings.restoreTerminalSessionsDesc', anchor: 'restore-sessions-toggle' },
   { id: 'showTabModeToggle', tab: 'claude', labelKey: 'settings.showTabModeToggle', descKey: 'settings.showTabModeToggleDesc', anchor: 'show-tab-mode-toggle' },
   { id: 'tabRenameOnSlashCommand', tab: 'claude', labelKey: 'settings.tabRenameOnSlashCommand', descKey: 'settings.tabRenameOnSlashCommandDesc', anchor: 'tab-rename-slash-toggle' },
+  { id: 'confirmCloseTab', tab: 'claude', labelKey: 'settings.confirmCloseTab', descKey: 'settings.confirmCloseTabDesc', anchor: 'confirm-close-tab-toggle' },
   { id: 'aiTabNaming', tab: 'claude', labelKey: 'settings.aiTabNaming', descKey: 'settings.aiTabNamingDesc', anchor: 'ai-tab-naming-toggle' },
   { id: 'followupSuggestions', tab: 'claude', labelKey: 'settings.enableFollowupSuggestions', descKey: 'settings.enableFollowupSuggestionsDesc', anchor: 'followup-suggestions-toggle' },
   { id: 'discordRpc', tab: 'claude', labelKey: 'settings.discordRpc', descKey: 'settings.discordRpcDesc', anchor: 'discord-rpc-toggle' },

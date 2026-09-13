@@ -924,6 +924,8 @@
     "terminalGroup": "Terminal",
     "tabRenameOnSlashCommand": "Renombrar pestaña con slash command",
     "tabRenameOnSlashCommandDesc": "Renombrar automáticamente la pestaña con el último slash command ejecutado (ej: /gsd:verify-work 12)",
+    "confirmCloseTab": "Confirmar antes de cerrar una pestaña",
+    "confirmCloseTabDesc": "Pedir confirmación cuando la × de una pestaña termina una sesión en curso",
     "aiTabNaming": "Nombres de pestaña con IA",
     "aiTabNamingDesc": "Usar IA para generar nombres cortos de pestaña a partir de mensajes",
     "enableFollowupSuggestions": "Sugerencias de seguimiento",
@@ -2570,6 +2572,7 @@
     "closeToRight": "Cerrar pestañas a la derecha",
     "closeTabTitle": "¿Cerrar {name}?",
     "closeTabMessage": "Se cerrará esta pestaña. Cualquier sesión en curso finalizará.",
+    "closeTabRemember": "Recordar mi elección",
     "closeAll": "Cerrar todo"
   },
   "telemetry": {

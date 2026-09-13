@@ -927,6 +927,8 @@
     "terminalGroup": "Terminal",
     "tabRenameOnSlashCommand": "Ganti nama tab pada slash command",
     "tabRenameOnSlashCommandDesc": "Otomatis mengganti nama tab terminal menjadi slash command terakhir yang dijalankan (mis. /gsd:verify-work 12)",
+    "confirmCloseTab": "Konfirmasi sebelum menutup tab",
+    "confirmCloseTabDesc": "Minta konfirmasi ketika tombol × tab mengakhiri sesi yang sedang berjalan",
     "aiTabNaming": "Penamaan tab dengan AI",
     "aiTabNamingDesc": "Gunakan AI untuk membuat nama tab singkat dari pesan",
     "enableFollowupSuggestions": "Saran lanjutan",
@@ -2573,6 +2575,7 @@
     "closeToRight": "Tutup Tab di Sebelah Kanan",
     "closeTabTitle": "Tutup {name}?",
     "closeTabMessage": "Tab ini akan ditutup. Sesi apa pun yang berjalan di dalamnya akan berakhir.",
+    "closeTabRemember": "Ingat pilihan saya",
     "closeAll": "Tutup Semua"
   },
   "telemetry": {
