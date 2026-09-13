@@ -31,6 +31,7 @@
 
 const { t } = require('../../i18n');
 const { escapeHtml } = require('../../utils');
+const { copyText } = require('../../utils/clipboard');
 const MarkdownRenderer = require('../../services/MarkdownRenderer');
 
 const api = window.electron_api;
@@ -284,11 +285,10 @@ async function _runAction(action, artifact) {
   const Toast = require('../components/Toast');
   switch (action) {
     case 'copy':
-      try {
-        await navigator.clipboard.writeText(artifact.source);
+      if (await copyText(artifact.source)) {
         Toast.showToast({ message: t('common.copied') || 'Copied', type: 'success' });
-      } catch (e) {
-        Toast.showToast({ message: _errorText(e), type: 'error' });
+      } else {
+        Toast.showToast({ message: t('common.copyFailed'), type: 'error' });
       }
       break;
     case 'save': {

@@ -11,6 +11,7 @@ const { showConfirm, createModal, showModal, closeModal } = require('../ui/compo
 const { escapeHtml } = require('../utils');
 const { sanitizeColor } = require('../utils/color');
 const { formatDuration, redactUrlCredentials } = require('../utils/format');
+const { copyText } = require('../utils/clipboard');
 const { t } = require('../i18n');
 const registry = require('../../project-types/registry');
 const KanbanPanel = require('../ui/panels/KanbanPanel');
@@ -1853,7 +1854,7 @@ async function renderTimelineView(container, project, data, options, isRefreshin
   container.querySelector('.timeline-copy')?.addEventListener('click', async () => {
     const { showSuccess, showError } = require('../ui/components/Toast');
     try {
-      await navigator.clipboard.writeText(Timeline.toMarkdown(groups, project));
+      await copyText(Timeline.toMarkdown(groups, project));
       showSuccess(t('timeline.copied'));
     } catch (e) {
       showError(e.message);
@@ -2104,7 +2105,7 @@ async function renderDashboardHtml(container, project, data, options, isRefreshi
   });
 
   container.querySelector('.btn-copy-path')?.addEventListener('click', () => {
-    navigator.clipboard.writeText(project.path);
+    copyText(project.path);
     if (onCopyPath) onCopyPath(project.path);
   });
 

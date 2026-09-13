@@ -4,6 +4,7 @@
  */
 
 const { t } = require('../../i18n');
+const { copyText } = require('../../utils/clipboard');
 
 const COLLAPSE_THRESHOLD = 30;
 
@@ -108,24 +109,14 @@ function attachInteractivity(container) {
         } else if (action === 'dc-copy-json') {
           const rawEl = preview.querySelector('.dc-chat-raw');
           if (rawEl) {
-            const text = rawEl.textContent;
-            if (window.electron_api?.app?.clipboardWrite) {
-              window.electron_api.app.clipboardWrite(text);
-            } else {
-              navigator.clipboard.writeText(text).catch(() => {});
-            }
+            copyText(rawEl.textContent);
             target.textContent = 'Copied!';
             setTimeout(() => { target.textContent = 'Copy JSON'; }, 1500);
           }
         } else if (action === 'dc-copy-code') {
           const rawEl = preview.querySelector('.dc-chat-raw-djs');
           if (rawEl) {
-            const text = rawEl.textContent;
-            if (window.electron_api?.app?.clipboardWrite) {
-              window.electron_api.app.clipboardWrite(text);
-            } else {
-              navigator.clipboard.writeText(text).catch(() => {});
-            }
+            copyText(rawEl.textContent);
             target.textContent = 'Copied!';
             setTimeout(() => { target.textContent = 'Copy as discord.js'; }, 1500);
           }
@@ -324,8 +315,8 @@ function handleCopyClick(btn) {
   if (!block) return;
   const code = block.querySelector('pre code, pre.diff-pre');
   if (!code) return;
-  const text = code.textContent;
-  navigator.clipboard.writeText(text).then(() => {
+  copyText(code.textContent).then((ok) => {
+    if (!ok) return;
     btn.classList.add('copied');
     setTimeout(() => btn.classList.remove('copied'), 1500);
   });

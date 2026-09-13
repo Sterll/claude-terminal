@@ -9,6 +9,7 @@
  */
 const { escapeHtml, escapeAttr } = require('./_registry');
 const { t } = require('../i18n');
+const { copyText } = require('../utils/clipboard');
 
 /**
  * Minimal 5-field cron validator (min hour dom month dow).
@@ -408,15 +409,11 @@ function _bindWebhookCopyBtn(root) {
   root.querySelectorAll('.wf-webhook-copy-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const url = btn.dataset.url;
-      if (url && navigator.clipboard) {
-        navigator.clipboard.writeText(url).then(() => {
-          btn.textContent = t('workflow.webhook.copied');
-          setTimeout(() => { btn.textContent = t('workflow.webhook.copyBtn'); }, 2000);
-        }).catch(() => {
-          btn.textContent = t('workflow.webhook.copyFailed');
-          setTimeout(() => { btn.textContent = t('workflow.webhook.copyBtn'); }, 2000);
-        });
-      }
+      if (!url) return;
+      copyText(url).then((ok) => {
+        btn.textContent = ok ? t('workflow.webhook.copied') : t('workflow.webhook.copyFailed');
+        setTimeout(() => { btn.textContent = t('workflow.webhook.copyBtn'); }, 2000);
+      });
     });
   });
 }

@@ -45,6 +45,7 @@ const {
 } = require('../../state');
 const { Marked } = require('marked');
 const { escapeHtml, getFileIcon, highlight } = require('../../utils');
+const { copyText, readText: readClipboardText } = require('../../utils/clipboard');
 const { t, getCurrentLanguage } = require('../../i18n');
 const {
   CLAUDE_TERMINAL_THEME,
@@ -137,11 +138,7 @@ function registerOsc52Handler(terminal) {
     try {
       const bytes = Uint8Array.from(atob(payload), (c) => c.charCodeAt(0));
       const text = new TextDecoder().decode(bytes);
-      if (window.electron_api?.app?.clipboardWrite) {
-        window.electron_api.app.clipboardWrite(text);
-      } else {
-        navigator.clipboard.writeText(text).catch(() => {});
-      }
+      copyText(text);
     } catch (e) {
       console.warn('OSC 52 clipboard decode failed:', e.message);
     }
@@ -830,11 +827,7 @@ class TerminalManager extends BaseComponent {
       }
     };
     const tryImagePaste = () => this._relayImagePaste(terminalId, inputChannel);
-    navigator.clipboard.readText()
-      .then((text) => (text ? sendPaste(text) : tryImagePaste()))
-      .catch(() => api.app.clipboardRead()
-        .then((text) => (text ? sendPaste(text) : tryImagePaste()))
-        .catch(() => tryImagePaste()));
+    readClipboardText().then((text) => (text ? sendPaste(text) : tryImagePaste()));
   }
 
   // No text in the clipboard usually means an image. We swallow Ctrl+V to run
@@ -871,7 +864,7 @@ class TerminalManager extends BaseComponent {
         if (selection) {
           e.preventDefault();
           e.stopImmediatePropagation();
-          navigator.clipboard.writeText(selection).catch(() => self._api.app.clipboardWrite(selection));
+          copyText(selection);
           terminal.clearSelection();
         }
       }
@@ -896,8 +889,7 @@ class TerminalManager extends BaseComponent {
       if (ts.rightClickCopyPaste?.enabled) {
         const selection = terminal.getSelection();
         if (selection) {
-          navigator.clipboard.writeText(selection)
-            .catch(() => self._api.app.clipboardWrite(selection));
+          copyText(selection);
           terminal.clearSelection();
         } else {
           self._performPaste(terminalId, inputChannel);
@@ -923,8 +915,7 @@ class TerminalManager extends BaseComponent {
               disabled: !selection,
               onClick: () => {
                 if (selection) {
-                  navigator.clipboard.writeText(selection)
-                    .catch(() => self._api.app.clipboardWrite(selection));
+                  copyText(selection);
                   terminal.clearSelection();
                 }
               }
@@ -989,8 +980,7 @@ class TerminalManager extends BaseComponent {
           if (eventKey === normalizeStoredKey(ctrlCCustomKey) && ts.ctrlC?.enabled !== false) {
             const selection = getCopySelection();
             if (selection) {
-              navigator.clipboard.writeText(selection)
-                .catch(() => self._api.app.clipboardWrite(selection));
+              copyText(selection);
               consumeSelection();
               return false;
             }
@@ -1063,8 +1053,7 @@ class TerminalManager extends BaseComponent {
             }
             const selection = getCopySelection();
             if (selection) {
-              navigator.clipboard.writeText(selection)
-                .catch(() => self._api.app.clipboardWrite(selection));
+              copyText(selection);
               consumeSelection();
               return false;
             }
@@ -1124,7 +1113,7 @@ class TerminalManager extends BaseComponent {
       if (e.ctrlKey && e.shiftKey && e.key === 'C' && e.type === 'keydown') {
         const selection = terminal.getSelection();
         if (selection) {
-          navigator.clipboard.writeText(selection).catch(() => self._api.app.clipboardWrite(selection));
+          copyText(selection);
           terminal.clearSelection();
         }
         return false;
@@ -2344,7 +2333,7 @@ class TerminalManager extends BaseComponent {
           if (selection) {
             e.preventDefault();
             e.stopImmediatePropagation();
-            navigator.clipboard.writeText(selection).catch(() => self._api.app.clipboardWrite(selection));
+            copyText(selection);
             terminal.clearSelection();
           }
         } else if (e.key === 'v' || e.key === 'V') {
@@ -3852,7 +3841,7 @@ class TerminalManager extends BaseComponent {
         if (copyBtn) {
           const code = copyBtn.closest('.chat-code-block')?.querySelector('code')?.textContent;
           if (code) {
-            navigator.clipboard.writeText(code);
+            copyText(code);
             copyBtn.classList.add('copied');
             setTimeout(() => copyBtn.classList.remove('copied'), 1500);
           }

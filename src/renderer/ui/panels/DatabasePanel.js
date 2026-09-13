@@ -5,6 +5,7 @@
  */
 
 const { escapeHtml } = require('../../utils');
+const { copyText } = require('../../utils/clipboard');
 const { highlight } = require('../../utils/syntaxHighlight');
 const { t } = require('../../i18n');
 const { showConfirm, createModal, showModal, closeModal } = require('../components/Modal');
@@ -3503,7 +3504,7 @@ function showCellViewerModal(value, columnName, dataType) {
     size: 'medium',
     buttons: [
       { label: t('database.cellCopy'), action: 'copy', onClick: () => {
-        navigator.clipboard.writeText(strVal);
+        copyText(strVal);
         ctx.showToast({ type: 'success', title: t('database.cellCopied') });
       }},
       { label: t('database.close') || 'Close', action: 'close', primary: true, onClick: (m) => closeModal(m) }

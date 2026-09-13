@@ -315,11 +315,18 @@ function bootstrapApp() {
     // an allowlist, not a passthrough, because the renderer displays
     // model-authored content and must not be able to ask for geolocation,
     // notifications or anything else on its own.
+    //
+    // 'clipboard-sanitized-write' is on the list because leaving it off broke
+    // every copy button in the app: navigator.clipboard.writeText() runs this
+    // check and its promise rejects when it is denied, silently. Writing text
+    // the user just clicked "copy" on is not a capability worth withholding —
+    // reading the clipboard still is, so it stays denied.
+    const ALLOWED_PERMISSIONS = new Set(['media', 'clipboard-sanitized-write']);
     session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-      callback(permission === 'media');
+      callback(ALLOWED_PERMISSIONS.has(permission));
     });
     session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
-      return permission === 'media';
+      return ALLOWED_PERMISSIONS.has(permission);
     });
 
     // Content Security Policy - allow only local file:// resources

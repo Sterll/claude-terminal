@@ -6,6 +6,7 @@
 
 const { BasePanel } = require('../../core/BasePanel');
 const { escapeHtml } = require('../../utils');
+const { copyText } = require('../../utils/clipboard');
 const { t } = require('../../i18n');
 const { getSetting } = require('../../state');
 const { createModal, showModal, closeModal } = require('../components/Modal');
@@ -1207,15 +1208,10 @@ class GitChangesPanel extends BasePanel {
     modal.querySelector('[data-action="copy"]').onclick = async () => {
       const { title: t1, body: b1 } = getValues();
       const text = t1 ? `${t1}\n\n${b1}` : b1;
-      try {
-        if (this.api.app && this.api.app.clipboardWrite) {
-          await this.api.app.clipboardWrite(text);
-        } else {
-          await navigator.clipboard.writeText(text);
-        }
+      if (await copyText(text)) {
         this._showToast({ type: 'success', message: t('git.generatePr.copy'), duration: 2000 });
-      } catch (e) {
-        this._showToast({ type: 'error', message: e.message, duration: 3000 });
+      } else {
+        this._showToast({ type: 'error', message: t('common.copyFailed'), duration: 3000 });
       }
     };
 

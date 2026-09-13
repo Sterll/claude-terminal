@@ -33,6 +33,7 @@
     "remove": "Quitar",
     "ignore": "Ignorar",
     "copied": "¡Copiado!",
+    "copyFailed": "Error al copiar",
     "justNow": "Ahora mismo",
     "add": "Añadir",
     "yesterday": "Ayer"

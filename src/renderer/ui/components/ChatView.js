@@ -8,6 +8,7 @@ const { BaseComponent } = require('../../core/BaseComponent');
 const { escapeHtml, highlight } = require('../../utils');
 const { BackgroundTaskReconciler } = require('../../services/BackgroundTaskReconciler');
 const { sanitizeColor } = require('../../utils/color');
+const { copyText } = require('../../utils/clipboard');
 const {
   getToolIcon,
   getToolDisplayInfo,
@@ -3745,10 +3746,11 @@ class ChatView extends BaseComponent {
       let text = '';
       try { text = b64 ? decodeURIComponent(escape(window.atob(b64))) : ''; } catch (_) { text = ''; }
       if (text) {
-        navigator.clipboard.writeText(text).then(() => {
+        copyText(text).then((ok) => {
+          if (!ok) return;
           copyBtn.classList.add('copied');
           setTimeout(() => copyBtn.classList.remove('copied'), 1200);
-        }).catch(() => {});
+        });
       }
       return;
     }
@@ -5730,11 +5732,10 @@ class ChatView extends BaseComponent {
 
     switch (btn.dataset.action) {
       case 'copy':
-        try {
-          await navigator.clipboard.writeText(artifact.source);
+        if (await copyText(artifact.source)) {
           require('./Toast').showToast({ message: t('common.copied') || 'Copied', type: 'success' });
-        } catch (err) {
-          console.warn('[ChatView] artifact copy failed:', err.message);
+        } else {
+          console.warn('[ChatView] artifact copy failed');
         }
         break;
       case 'save': {

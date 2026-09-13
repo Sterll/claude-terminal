@@ -5,6 +5,7 @@
 
 const { t } = require('../../i18n');
 const { escapeHtml } = require('../../utils');
+const { copyText } = require('../../utils/clipboard');
 
 let _container = null;
 let _unsubscribers = [];
@@ -444,7 +445,7 @@ function _bindEvents() {
         const id = parseInt(copyBtn.dataset.copyId, 10);
         const entry = _state.errorLogState.get().entries.find(en => en.id === id);
         if (entry?.stack) {
-          navigator.clipboard.writeText(entry.stack);
+          copyText(entry.stack);
           copyBtn.textContent = t('common.copied') || 'Copied!';
           setTimeout(() => { copyBtn.textContent = t('errorLog.copyStack'); }, 2000);
         }
@@ -471,7 +472,7 @@ async function _diagnoseWithClaude(entryId) {
   ].filter(Boolean).join('\n');
 
   // Copy to clipboard and switch to Claude tab for now
-  await navigator.clipboard.writeText(prompt);
+  await copyText(prompt);
 
   // Switch to Claude tab
   const claudeTab = document.querySelector('[data-tab="claude"]');

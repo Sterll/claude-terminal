@@ -33,6 +33,7 @@
     "remove": "移除",
     "ignore": "忽略",
     "copied": "已复制！",
+    "copyFailed": "复制失败",
     "justNow": "刚刚",
     "add": "添加",
     "yesterday": "昨天"
