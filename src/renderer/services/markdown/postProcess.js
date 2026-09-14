@@ -174,6 +174,11 @@ function initMermaidBlocks(blocks) {
         render.innerHTML = svg;
         if (loading) loading.style.display = 'none';
       } catch (err) {
+        // mermaid renders into a temp div appended to <body> and removes it only
+        // on the way out. suppressErrorRendering covers its own error paths; this
+        // covers anything that throws before it gets that far.
+        document.getElementById('d' + block.dataset.mermaidId)?.remove();
+        document.getElementById(block.dataset.mermaidId)?.remove();
         if (loading) loading.style.display = 'none';
         if (error) {
           error.style.display = '';
@@ -204,6 +209,11 @@ async function loadMermaid() {
         tertiaryColor: '#252525',
       },
       securityLevel: 'strict',
+      // Without this, a diagram that fails to parse leaves mermaid's own
+      // "Syntax error in text" bomb SVG stranded at the bottom of <body>:
+      // render() throws the parse exception one line *before* it removes its
+      // temp element. The block's own error card is what should be shown.
+      suppressErrorRendering: true,
     });
     return mermaid;
   } catch (err) {
