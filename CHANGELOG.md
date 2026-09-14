@@ -2,6 +2,33 @@
 
 All notable changes to Claude Terminal are documented in this file.
 
+## [1.3.3] - 2026-09-14
+
+### Added
+- **Settings**: a terminal font size setting, applied live to every open terminal (#181)
+- **Settings**: a search field, so a setting can be found by name instead of by memory
+- **Command palette**: Ctrl+P now searches settings, knowledge entries, workspace docs, kanban cards and past sessions, not just projects and commands
+- **Project types**: a third-party project type can be added as a folder in `~/.claude-terminal/project-types/` — a manifest and its translations, opt-in twice, with no third-party code ever running
+- **Tabs**: the close confirmation can remember your answer, reversible from Settings → Claude → Terminal
+- **Database**: the Add Connection picker is themed instead of drawn by the OS, with a colour per driver and keyboard navigation
+- **Notifications**: desktop notifications now match the in-app toasts
+- **Dashboard**: the first load draws the page greyed out instead of a spinner, so nothing jumps when the data lands
+
+### Performance
+- Opening a stored conversation reads it from its end: about three times faster on a large transcript, and tool output is no longer cut short
+- The five heaviest panels, the terminal emulator and each project type's code now load the first time they are used, taking roughly 1 MB out of every startup
+
+### Fixed
+- The project overview no longer prints a token embedded in a git remote URL
+- Copy buttons work again everywhere in the app
+- Minimising to the tray no longer stalls a running orchestration
+- A tab told to wait after a message no longer reports finished before the turn has started
+- A locked worktree can be removed
+- Chat: a diagram that fails to parse no longer leaves its error graphic floating over the window
+- Chat: clicking an image in a tool card opens it instead of collapsing the card
+- The collapsed sidebar no longer paints its icons over the footer
+- A notification's close button stays at its right edge
+
 ## [1.3.2] - 2026-09-09
 
 ### Added

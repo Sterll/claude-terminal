@@ -12,7 +12,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/downloads/Sterll/claude-terminal/total?color=d97706&label=unduhan" alt="Unduhan" />
-  <img src="https://img.shields.io/badge/version-1.3.2-orange" alt="Versi" />
+  <img src="https://img.shields.io/badge/version-1.3.3-orange" alt="Versi" />
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-blue" alt="Platform" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="Lisensi" />
   <img src="https://img.shields.io/badge/electron-28-purple" alt="Electron" />
