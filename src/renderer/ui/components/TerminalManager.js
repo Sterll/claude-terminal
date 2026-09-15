@@ -43,10 +43,9 @@ const {
   appendTerminalOutput,
   appendChatMessage,
 } = require('../../state');
-const { Marked } = require('marked');
 const { escapeHtml, getFileIcon, highlight } = require('../../utils');
 const { copyText, readText: readClipboardText } = require('../../utils/clipboard');
-const { t, getCurrentLanguage } = require('../../i18n');
+const { t } = require('../../i18n');
 const {
   CLAUDE_TERMINAL_THEME,
   TERMINAL_FONTS,
@@ -57,10 +56,23 @@ const { createChatView } = require('./ChatView');
 const { showContextMenu } = require('./ContextMenu');
 const { showConfirm } = require('./Modal');
 const ContextPromptService = require('../../services/ContextPromptService');
+const { registerOsc52Handler } = require('./terminal/osc52');
+const {
+  detectCompletionSignal,
+  parseClaudeTitle,
+  extractTitleFromInput,
+  BRAILLE_SPINNER_RE,
+} = require('./terminal/claudeSignals');
+const { normalizeStoredKey, eventToNormalizedKey } = require('./terminal/keyBindings');
+const {
+  truncateText,
+  cleanSessionText,
+  groupSessionsByTime,
+  buildSessionCardHtml,
+  SESSION_SVG_DEFS,
+} = require('./terminal/sessionCards');
+const { createMdRenderer, buildMdToc } = require('./terminal/markdownViewer');
 const { getBuiltinSystemPrompt } = require('../../services/BuiltinSystemPrompts');
-
-// BCP 47 tags used for date formatting, one per supported UI language.
-const DATE_LOCALES = { en: 'en-US', fr: 'fr-FR', es: 'es-ES' };
 
 // Lazy require to avoid circular dependency
 let QuickActions = null;
@@ -84,67 +96,8 @@ const POST_TOOL_DEBOUNCE_MS = 4000;
 const POST_THINKING_DEBOUNCE_MS = 1500;
 const SILENCE_THRESHOLD_MS = 1000;
 const RECHECK_DELAY_MS = 1000;
-const BRAILLE_SPINNER_RE = /[\u2801-\u28FF]/;
-
-const { BUILTIN_TOOLS } = require('../../utils/toolRegistry');
-const CLAUDE_TOOLS = new Set([...BUILTIN_TOOLS, 'TodoRead', 'Notebook']);
-
-const TITLE_STOP_WORDS = new Set([
-  'le', 'la', 'les', 'un', 'une', 'des', 'du', 'de', 'et', 'ou', 'a', 'a', 'en', 'dans', 'sur', 'pour', 'par', 'avec',
-  'the', 'a', 'an', 'and', 'or', 'in', 'on', 'for', 'with', 'to', 'of', 'is', 'are', 'it', 'this', 'that',
-  'me', 'moi', 'mon', 'ma', 'mes', 'ce', 'cette', 'ces', 'je', 'tu', 'il', 'elle', 'nous', 'vous', 'ils', 'elles',
-  'can', 'you', 'please', 'help', 'want', 'need', 'like', 'would', 'could', 'should',
-  'peux', 'veux', 'fais', 'fait', 'faire', 'est', 'sont', 'ai', 'as', 'avez', 'ont'
-]);
-
-const SESSION_SVG_DEFS = `<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
-  <symbol id="s-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></symbol>
-  <symbol id="s-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></symbol>
-  <symbol id="s-msg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
-  <symbol id="s-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
-  <symbol id="s-branch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
-  <symbol id="s-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></symbol>
-  <symbol id="s-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></symbol>
-  <symbol id="s-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
-  <symbol id="s-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 11V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v7"/><path d="M5 17h14"/><path d="M7 11l-2 6h14l-2-6"/></symbol>
-  <symbol id="s-rename" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></symbol>
-  <symbol id="s-move" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h5a2 2 0 0 0 2-2V6a2 2 0 0 1 2-2h7"/><polyline points="17 1 21 5 17 9"/></symbol>
-</svg>`;
 
 // ── Pure helper functions (module-level, no mutable state) ──
-
-// OSC 52 lets apps inside the PTY (Claude Code, tmux, remote SSH sessions)
-// push text to the system clipboard. xterm.js does not implement it, so
-// without this handler those copies are silently dropped while the inner
-// app still reports success.
-//
-// Only register this on PTY-backed terminals the user drives themselves. Any
-// byte stream reaching a terminal can trigger it, so it is deliberately NOT
-// registered on project-type consoles (fivem/webapp/api/minecraft), which pipe
-// output from a server process that has no business writing the clipboard.
-// Reads are refused for the same reason: they would let that output exfiltrate
-// whatever the user last copied.
-const OSC52_MAX_PAYLOAD = 1_000_000;
-
-function registerOsc52Handler(terminal) {
-  terminal.parser.registerOscHandler(52, (data) => {
-    const semi = data.indexOf(';');
-    if (semi === -1) return true;
-    const payload = data.slice(semi + 1);
-    if (!payload || payload === '?') return true; // clipboard reads not supported
-    // xterm allows up to 10 MB per sequence; cap what we will decode and hand
-    // to the OS clipboard so a runaway app cannot push megabytes into it.
-    if (payload.length > OSC52_MAX_PAYLOAD) return true;
-    try {
-      const bytes = Uint8Array.from(atob(payload), (c) => c.charCodeAt(0));
-      const text = new TextDecoder().decode(bytes);
-      copyText(text);
-    } catch (e) {
-      console.warn('OSC 52 clipboard decode failed:', e.message);
-    }
-    return true;
-  });
-}
 
 function resetOutputSilenceTimer(_id) { /* no-op */ }
 function clearOutputSilenceTimer(_id) { /* no-op */ }
@@ -165,323 +118,6 @@ function clearOutputSilenceTimer(_id) { /* no-op */ }
  */
 function ptyIdOf(termData, tabId) {
   return termData?.ptyId ?? tabId;
-}
-
-function detectCompletionSignal(terminal) {
-  if (!terminal?.buffer?.active) return null;
-  const buf = terminal.buffer.active;
-  const totalLines = buf.baseY + buf.cursorY;
-  const scanLimit = Math.max(0, totalLines - 10);
-  const lines = [];
-
-  for (let i = totalLines; i >= scanLimit; i--) {
-    const row = buf.getLine(i);
-    if (!row) continue;
-    const text = row.translateToString(true).trim();
-    if (!text || BRAILLE_SPINNER_RE.test(text) || /^[✳❯>$%#\s]*$/.test(text)) continue;
-    lines.push(text);
-    if (lines.length >= 5) break;
-  }
-
-  if (lines.length === 0) return null;
-  const block = lines.join('\n');
-
-  const doneMatch = block.match(/✳\s+\S+\s+for\s+((?:\d+h\s+)?(?:\d+m\s+)?\d+s)/);
-  if (doneMatch) return { signal: 'done', duration: doneMatch[1] };
-
-  if (/·\s+\S+…/.test(block)) return { signal: 'working' };
-
-  if (/\b(Allow|Approve|yes\/no|y\/n)\b/i.test(block)) return { signal: 'permission' };
-
-  if (lines[0].includes('⎿')) return { signal: 'tool_result' };
-
-  return null;
-}
-
-function parseClaudeTitle(title) {
-  const brailleMatch = title.match(/[\u2801-\u28FF]\s+(.*)/);
-  const readyMatch = title.match(/\u2733\s+(.*)/);
-  const content = (brailleMatch || readyMatch)?.[1]?.trim();
-  const state = brailleMatch ? 'working' : readyMatch ? 'ready' : 'unknown';
-  if (!content || content === 'Claude Code') return { state };
-  const firstWord = content.split(/\s/)[0];
-  if (CLAUDE_TOOLS.has(firstWord)) {
-    return { state, tool: firstWord, toolArgs: content.substring(firstWord.length).trim() };
-  }
-  return { state, taskName: content };
-}
-
-function extractTitleFromInput(input) {
-  let text = input.trim();
-  if (text.startsWith('/') || text.length < 5) return null;
-  const words = text.toLowerCase().replace(/[^\w\sàâäéèêëïîôùûüç-]/g, ' ').split(/\s+/)
-    .filter(word => word.length > 2 && !TITLE_STOP_WORDS.has(word));
-  if (words.length === 0) return null;
-  const titleWords = words.slice(0, 4).map(w => w.charAt(0).toUpperCase() + w.slice(1));
-  return titleWords.join(' ');
-}
-
-function extractTerminalContext(terminal) {
-  if (!terminal?.buffer?.active) return null;
-  const buf = terminal.buffer.active;
-  const totalLines = buf.baseY + buf.cursorY;
-  const scanLimit = Math.max(0, totalLines - 30);
-
-  const lines = [];
-  for (let i = totalLines; i >= scanLimit; i--) {
-    const row = buf.getLine(i);
-    if (!row) continue;
-    const text = row.translateToString(true).trim();
-    if (!text) continue;
-    if (BRAILLE_SPINNER_RE.test(text)) continue;
-    if (/^[✳❯>\$%#\s]*$/.test(text)) continue;
-    lines.unshift(text);
-    if (lines.length >= 6) break;
-  }
-
-  if (lines.length === 0) return null;
-
-  const block = lines.join('\n');
-  const lastLine = lines[lines.length - 1];
-
-  const questionMatch = block.match(/^(.+\?)\s*$/m);
-  if (questionMatch) {
-    const q = questionMatch[1].trim();
-    if (q.length > 10 && q.length <= 200) return { type: 'question', text: q };
-  }
-
-  if (/\b(allow|approve|permit|yes\/no|y\/n)\b/i.test(block) ||
-      /\b(Run|Execute|Edit|Write|Read|Delete|Bash)\b.*\?/.test(block)) {
-    return { type: 'permission', text: lastLine.length <= 120 ? lastLine : null };
-  }
-
-  return { type: 'done', text: null };
-}
-
-function normalizeStoredKey(key) {
-  if (!key) return '';
-  return key
-    .toLowerCase()
-    .replace(/\s+/g, '')
-    .split('+')
-    .sort((a, b) => {
-      const order = ['ctrl', 'alt', 'shift', 'meta'];
-      const ai = order.indexOf(a);
-      const bi = order.indexOf(b);
-      if (ai !== -1 && bi !== -1) return ai - bi;
-      if (ai !== -1) return -1;
-      if (bi !== -1) return 1;
-      return 0;
-    })
-    .join('+');
-}
-
-function eventToNormalizedKey(e) {
-  const parts = [];
-  if (e.ctrlKey) parts.push('ctrl');
-  if (e.altKey) parts.push('alt');
-  if (e.shiftKey) parts.push('shift');
-  if (e.metaKey) parts.push('meta');
-  let key = e.key.toLowerCase();
-  if (key === ' ') key = 'space';
-  if (key === 'arrowup') key = 'up';
-  if (key === 'arrowdown') key = 'down';
-  if (key === 'arrowleft') key = 'left';
-  if (key === 'arrowright') key = 'right';
-  if (!['ctrl', 'alt', 'shift', 'meta', 'control'].includes(key)) {
-    parts.push(key);
-  }
-  return parts.join('+');
-}
-
-function formatRelativeTime(dateString) {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now - date;
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return t('time.justNow');
-  if (diffMins < 60) return t('time.minutesAgo', { count: diffMins });
-  if (diffHours < 24) return t('time.hoursAgo', { count: diffHours });
-  if (diffDays < 7) return t('time.daysAgo', { count: diffDays });
-  const locale = DATE_LOCALES[getCurrentLanguage()] || DATE_LOCALES.en;
-  return date.toLocaleDateString(locale, { day: 'numeric', month: 'short' });
-}
-
-function truncateText(text, maxLength) {
-  if (!text) return '';
-  if (text.length <= maxLength) return text;
-  return text.slice(0, maxLength) + '...';
-}
-
-function cleanSessionText(text) {
-  if (!text) return { text: '', skillName: '' };
-
-  let skillName = '';
-
-  const cmdNameMatch = text.match(/<command-name>\/?([^<]+)<\/command-name>/);
-  if (cmdNameMatch) {
-    skillName = cmdNameMatch[1].trim().replace(/^\//, '');
-  }
-
-  const argsMatch = text.match(/<command-args>([^<]+)<\/command-args>/);
-  const argsText = argsMatch ? argsMatch[1].trim() : '';
-
-  let cleaned = text.replace(/<[^>]+>[^<]*<\/[^>]+>/g, '');
-  cleaned = cleaned.replace(/<[^>]+>/g, '');
-  cleaned = cleaned.replace(/\[Request interrupted[^\]]*\]/g, '');
-  cleaned = cleaned.replace(/\s+/g, ' ').trim();
-
-  if (!cleaned && argsText) {
-    cleaned = argsText;
-  }
-
-  return { text: cleaned, skillName };
-}
-
-function getSessionGroup(dateString) {
-  const date = new Date(dateString);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const weekAgo = new Date(today);
-  weekAgo.setDate(weekAgo.getDate() - 7);
-
-  if (date >= today) return 'today';
-  if (date >= yesterday) return 'yesterday';
-  if (date >= weekAgo) return 'thisWeek';
-  return 'older';
-}
-
-function groupSessionsByTime(sessions) {
-  const groups = {
-    pinned: { key: 'pinned', label: t('sessions.pinned'), sessions: [] },
-    today: { key: 'today', label: t('sessions.today'), sessions: [] },
-    yesterday: { key: 'yesterday', label: t('sessions.yesterday'), sessions: [] },
-    thisWeek: { key: 'thisWeek', label: t('sessions.thisWeek'), sessions: [] },
-    older: { key: 'older', label: t('sessions.older'), sessions: [] }
-  };
-
-  sessions.forEach(session => {
-    if (session.pinned) {
-      groups.pinned.sessions.push(session);
-    } else {
-      const group = getSessionGroup(session.modified);
-      groups[group].sessions.push(session);
-    }
-  });
-
-  return Object.values(groups).filter(g => g.sessions.length > 0);
-}
-
-function buildSessionCardHtml(s, index) {
-  const MAX_ANIMATED = 10;
-  const animClass = index < MAX_ANIMATED ? ' session-card--anim' : ' session-card--instant';
-  const freshClass = s.freshness ? ` session-card--${s.freshness}` : '';
-  const pinnedClass = s.pinned ? ' session-card--pinned' : '';
-  const renamedClass = s.isRenamed ? ' session-card--renamed' : '';
-  const skillClass = s.isSkill ? ' session-card-icon--skill' : '';
-  const titleSkillClass = s.isSkill ? ' session-card-title--skill' : '';
-  const iconId = s.isSkill ? 's-bolt' : 's-chat';
-  const pinTitle = s.pinned ? (t('sessions.unpin') || 'Unpin') : (t('sessions.pin') || 'Pin');
-  const renameTitle = t('sessions.rename') || 'Rename';
-  const moveTitle = t('sessions.move.title');
-  // A session the CLI re-filed under a worktree: say where it ran, because it
-  // will resume there and not in the project root.
-  const worktreeTitle = s.worktreeMissing
-    ? t('sessions.worktreeGone', { name: s.worktree })
-    : t('sessions.worktreeRan', { name: s.worktree });
-  const worktreeHtml = s.worktree
-    ? `<span class="session-meta-worktree${s.worktreeMissing ? ' session-meta-worktree--gone' : ''}" title="${escapeHtml(worktreeTitle)}"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="3" cy="3" r="1.5"/><circle cx="8" cy="3" r="1.5"/><circle cx="3" cy="8" r="1.5"/><path d="M3 4.5v3M4.5 3h3M8 4.5v1a2 2 0 01-2 2H4.5"/></svg>${escapeHtml(s.worktree)}</span>`
-    : '';
-
-  return `<div class="session-card${freshClass}${pinnedClass}${renamedClass}${animClass}" data-sid="${s.sessionId}" style="--ci:${index < MAX_ANIMATED ? index : 0}">
-<div class="session-card-icon${skillClass}"><svg width="16" height="16"><use href="#${iconId}"/></svg></div>
-<div class="session-card-body">
-<span class="session-card-title${titleSkillClass}">${escapeHtml(truncateText(s.displayTitle, 80))}</span>
-${s.displaySubtitle ? `<span class="session-card-subtitle">${escapeHtml(truncateText(s.displaySubtitle, 120))}</span>` : ''}
-</div>
-<div class="session-card-meta">
-<span class="session-meta-item"><svg width="11" height="11"><use href="#s-msg"/></svg>${s.messageCount}</span>
-<span class="session-meta-item"><svg width="11" height="11"><use href="#s-clock"/></svg>${formatRelativeTime(s.modified)}</span>
-${s.gitBranch ? `<span class="session-meta-branch"><svg width="10" height="10"><use href="#s-branch"/></svg>${escapeHtml(s.gitBranch)}</span>` : ''}
-${worktreeHtml}
-</div>
-<div class="session-card-actions">
-<button class="session-card-rename" data-rename-sid="${s.sessionId}" title="${escapeHtml(renameTitle)}" aria-label="${escapeHtml(renameTitle)}"><svg width="12" height="12"><use href="#s-rename"/></svg></button>
-<button class="session-card-move" data-move-sid="${s.sessionId}" title="${escapeHtml(moveTitle)}" aria-label="${escapeHtml(moveTitle)}"><svg width="13" height="13"><use href="#s-move"/></svg></button>
-<button class="session-card-pin" data-pin-sid="${s.sessionId}" title="${escapeHtml(pinTitle)}" aria-label="${escapeHtml(pinTitle)}"><svg width="13" height="13"><use href="#s-pin"/></svg></button>
-</div>
-<div class="session-card-arrow"><svg width="12" height="12"><use href="#s-arrow"/></svg></div>
-</div>`;
-}
-
-function createMdRenderer(basePath) {
-  const path = window.electron_nodeModules.path;
-  const md = new Marked();
-  md.use({
-    renderer: {
-      code({ text, lang }) {
-        const decoded = (text || '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
-        const highlighted = lang ? highlight(decoded, lang) : escapeHtml(decoded);
-        return `<div class="chat-code-block"><div class="chat-code-header"><span class="chat-code-lang">${escapeHtml(lang || 'text')}</span><button class="chat-code-copy" title="${t('common.copy')}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></div><pre><code>${highlighted}</code></pre></div>`;
-      },
-      codespan({ text }) {
-        return `<code class="chat-inline-code">${escapeHtml(text)}</code>`;
-      },
-      table({ header, rows }) {
-        const safeAlign = (a) => ['left', 'center', 'right'].includes(a) ? a : 'left';
-        const headerHtml = header.map(h => `<th style="text-align:${safeAlign(h.align)}">${escapeHtml(typeof h.text === 'string' ? h.text : String(h.text || ''))}</th>`).join('');
-        const rowsHtml = rows.map(row =>
-          `<tr>${row.map(cell => `<td style="text-align:${safeAlign(cell.align)}">${escapeHtml(typeof cell.text === 'string' ? cell.text : String(cell.text || ''))}</td>`).join('')}</tr>`
-        ).join('');
-        return `<div class="chat-table-wrapper"><table class="chat-table"><thead><tr>${headerHtml}</tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
-      },
-      link({ href, text }) {
-        const safeHref = escapeHtml((href || '').trim());
-        return `<a class="md-viewer-link" data-md-link="${safeHref}" title="${t('mdViewer.ctrlClickToOpen')}">${text || safeHref}</a>`;
-      },
-      image({ href, title, text }) {
-        const src = (href || '').startsWith('http') ? href
-          : `file:///${path.resolve(basePath, href || '').replace(/\\/g, '/')}`;
-        return `<img src="${src}" alt="${escapeHtml(text || '')}" title="${escapeHtml(title || '')}" class="md-viewer-img" />`;
-      },
-      heading({ tokens, depth }) {
-        const text = tokens.map(tok => tok.raw || tok.text || '').join('');
-        const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-        return `<h${depth} id="md-h-${id}" class="md-viewer-heading">${this.parser.parseInline(tokens)}</h${depth}>`;
-      },
-      html() { return ''; }
-    },
-    tokenizer: {
-      html() { return undefined; }
-    },
-    gfm: true,
-    breaks: false
-  });
-  return md;
-}
-
-function buildMdToc(content) {
-  const md = new Marked();
-  const tokens = md.lexer(content);
-  const headings = tokens
-    .filter(tok => tok.type === 'heading')
-    .map(tok => {
-      const text = tok.text || '';
-      const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-      return { depth: tok.depth, text, id: `md-h-${id}` };
-    });
-  if (headings.length === 0) return '';
-  return `<nav class="md-toc-nav">
-    <div class="md-toc-title">${t('mdViewer.tableOfContents')}</div>
-    <ul class="md-toc-list">${headings.map(h =>
-      `<li class="md-toc-item md-toc-depth-${h.depth}"><a href="#${h.id}" data-toc-link="${h.id}">${escapeHtml(h.text)}</a></li>`
-    ).join('')}</ul>
-  </nav>`;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
