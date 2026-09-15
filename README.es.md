@@ -166,6 +166,7 @@ npm install
 
 ### Interfaz de chat (Claude Agent SDK)
 - Interfaz de chat integrada, impulsada por el Claude Agent SDK, con respuestas en streaming
+- Cerrar una pestaña de chat cancela su inicio pendiente y cierra su sesión SDK; los prompts diferidos no pueden reiniciar una pestaña cerrada.
 - **Renderizado markdown enriquecido**: diagramas mermaid, fórmulas KaTeX, código con resaltado de sintaxis, árboles de archivos, tableros kanban, bloques de diff, vistas previas HTML y más
 - **Tarjetas de permiso**: Permitir, Permitir siempre o Denegar las solicitudes de uso de herramientas; cuando es una de tus propias reglas `permissions.ask` la que dispara la solicitud, la tarjeta nombra esa regla y oculta «Permitir siempre» para que no se pueda saltar de un clic
 - **Modo plan**: revisa y aprueba o rechaza los planes del agente antes de ejecutarlos

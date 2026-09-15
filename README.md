@@ -167,6 +167,7 @@ npm install
 
 ### Chat UI (Claude Agent SDK)
 - Built-in chat interface powered by the Claude Agent SDK with streaming responses
+- Closing a chat tab cancels pending startup and closes its SDK session; delayed prompts cannot restart a closed tab.
 - **Rich markdown rendering**: mermaid diagrams, KaTeX math, syntax-highlighted code, file trees, kanban boards, diff blocks, HTML previews, and more
 - **Permission cards**: Allow, Always Allow, or Deny tool use requests; when one of your own `permissions.ask` rules triggers the prompt, the card names that rule and hides Always Allow so it can't be one-clicked away
 - **Plan mode**: review and approve/reject agent plans before execution

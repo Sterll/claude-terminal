@@ -116,7 +116,7 @@ async function loadSDK() {
  * - env is a fresh copy of process.env with the runtime's dir prepended to PATH
  *
  * Detection result is cached, but env is rebuilt each call so callers
- * can safely mutate process.env beforehand (e.g. removing CLAUDECODE).
+ * can safely customize the child environment without changing process.env.
  *
  * Priority: bun > deno > node (bun spawns fastest, deno second).
  * On macOS/Linux, apps launched from Finder don't inherit shell PATH,
@@ -673,14 +673,18 @@ class ChatService {
       return this._startCloudSession({ sessionId, prompt, cloudProjectName, model, effort });
     }
 
-    // Notify renderer that session is initializing (runtime resolution can take a few seconds)
+    // Register before any await so closing the tab also cancels its startup.
+    // A retry under the same handle must release the previous query first.
+    this.closeSession(sessionId);
+    const abortController = new AbortController();
+    const session = { abortController, cwd, projectId };
+    this.sessions.set(sessionId, session);
     this._send('chat-initializing', { sessionId });
 
-    const sdk = await loadSDK();
-
     const messageQueue = createMessageQueue(() => {
-      this._send('chat-idle', { sessionId });
+      if (this.sessions.get(sessionId) === session) this._send('chat-idle', { sessionId });
     });
+    session.messageQueue = messageQueue;
 
     // Always push initial prompt (even for resume — SDK needs a message to process)
     const hasImages = images && images.length > 0;
@@ -700,20 +704,19 @@ class ChatService {
       this._emitEvent('chat-user-message', { sessionId, text: prompt, images: images.length, uuid: userMessageUuid || null });
     }
 
-    const abortController = new AbortController();
-
-    // Remove CLAUDECODE env to avoid nested session detection
-    const prevClaudeCode = process.env.CLAUDECODE;
-    delete process.env.CLAUDECODE;
-
     try {
+      const sdk = await loadSDK();
+      abortController.signal.throwIfAborted();
       const runtime = resolveRuntime();
       // A project pinned to an account authenticates as that account: the
       // overlay points the CLI's credential store at the account's own
       // directory, leaving everything else in ~/.claude shared. Unbound
       // projects keep reading the machine-wide login.
       const accountOverlay = await AccountManager.accountEnv(accountId);
+      abortController.signal.throwIfAborted();
       if (accountOverlay) runtime.env = { ...runtime.env, ...accountOverlay };
+      // Only the child environment changes; other startups may be awaiting SDK/account data.
+      delete runtime.env.CLAUDECODE;
       const effectiveCwd = cwd || require('os').homedir();
       // An allowlist is what makes a session hands-free, so it is also what
       // marks it unattended. An empty array is not a restriction.
@@ -745,18 +748,20 @@ class ChatService {
         ...(allowedTools?.length ? { allowedTools } : {}),
         ...(disallowedTools?.length ? { disallowedTools } : {}),
         canUseTool: async (toolName, input, opts) => {
+          abortController.signal.throwIfAborted();
           return this._handlePermission(sessionId, toolName, input, opts);
         },
         // MCP elicitation: a server requests structured input (form) or browser auth (url).
         // Forwarded to the renderer, which renders a form from the JSON schema.
         onElicitation: async (request, opts) => {
+          abortController.signal.throwIfAborted();
           return this._handleElicitation(sessionId, request, opts);
         },
         stderr: (data) => {
           console.error(`[ChatService][stderr] ${data}`);
           // Accumulate stderr per session for better error diagnostics
           const s = this.sessions.get(sessionId);
-          if (s) {
+          if (s === session) {
             s._stderr = (s._stderr || '') + data;
             // Cap at 4 KB to avoid memory leaks
             if (s._stderr.length > 4096) s._stderr = s._stderr.slice(-4096);
@@ -845,7 +850,7 @@ class ChatService {
         options,
       });
 
-      this.sessions.set(sessionId, {
+      Object.assign(session, {
         abortController,
         messageQueue,
         queryStream,
@@ -877,14 +882,12 @@ class ChatService {
       this._processStream(sessionId, queryStream);
       return sessionId;
     } catch (err) {
-      console.error(`[ChatService] startSession error (cwd: ${cwd}, perm: ${permissionMode}):`, err.message, err.stack);
-      this.sessions.delete(sessionId);
+      if (this.sessions.get(sessionId) === session) {
+        this.closeSession(sessionId);
+        console.error(`[ChatService] startSession error (cwd: ${cwd}, perm: ${permissionMode}):`, err.message, err.stack);
+      }
       const humanized = this._humanizeError(err.message);
       throw humanized === err.message ? err : new Error(humanized);
-    } finally {
-      if (prevClaudeCode) {
-        process.env.CLAUDECODE = prevClaudeCode;
-      }
     }
   }
 
@@ -1470,6 +1473,7 @@ class ChatService {
     for (const [id, pending] of this.pendingPermissions) {
       if (pending.sessionId === sessionId) {
         this.pendingPermissions.delete(id);
+        clearTimeout(pending.timeoutId);
         // Swallow unhandled rejection before rejecting — the promise may not
         // have a .catch() handler attached yet, which would crash on Node 18+.
         pending.promise?.catch?.(() => {});
@@ -1540,6 +1544,7 @@ class ChatService {
     };
     try {
       for await (const message of queryStream) {
+        if (this.sessions.get(sessionId) !== session) break;
         msgCount++;
         // Forward native SDK prompt suggestions as a dedicated event
         if (message.type === 'prompt_suggestion') {
@@ -1685,11 +1690,13 @@ class ChatService {
           await raisePendingAccountLimit();
         }
       }
+      if (this.sessions.get(sessionId) !== session) return;
       flushReply();
       this._send('chat-done', { sessionId });
       // No result closed the turn — the stream itself did. Still the account's
       // budget, so the offer still stands.
       await raisePendingAccountLimit();
+      if (this.sessions.get(sessionId) !== session) return;
       if (inbandError) {
         // The stream closed cleanly, but the last turn had failed in-band —
         // the renderer already displayed that error, so lifecycle consumers
@@ -1700,6 +1707,7 @@ class ChatService {
         this._emitLifecycle('end', sessionId, { status: 'success' });
       }
     } catch (err) {
+      if (this.sessions.get(sessionId) !== session) return;
       const wasInterrupted = session?.interrupting
         || err.name === 'AbortError'
         || err.message === 'Aborted'
@@ -1723,16 +1731,16 @@ class ChatService {
           await this._emitAccountLimit(sessionId, session, pendingAccountLimit || errorMsg);
           pendingAccountLimit = null;
         }
+        if (this.sessions.get(sessionId) !== session) return;
         this._send('chat-error', { sessionId, error: errorMsg, errorType });
         this._emitLifecycle('end', sessionId, { status: 'error', error: errorMsg });
       }
     } finally {
-      if (session) session.interrupting = false;
-      this._rejectPendingPermissions(sessionId, 'Stream ended');
-      // Mark session as stream-ended so closeSession won't emit duplicate session:closed
-      if (session) session._streamEnded = true;
-      // Notify remote clients that this session's stream has ended
-      {
+      // A closed/replaced query must not clear the new query's prompts or activity.
+      if (this.sessions.get(sessionId) === session) {
+        if (session) session.interrupting = false;
+        this._rejectPendingPermissions(sessionId, 'Stream ended');
+        if (session) session._streamEnded = true;
         this._emitEvent('session:closed', { sessionId });
       }
     }
@@ -1775,6 +1783,7 @@ class ChatService {
     try {
       if (!activeAccountId) activeAccountId = (await AccountManager.listAccounts()).defaultId;
     } catch (_) { /* AccountManager not initialized yet */ }
+    if (this.sessions.get(sessionId) !== session) return;
     this._send('chat-account-limit', {
       sessionId,
       error,
@@ -2514,19 +2523,17 @@ class ChatService {
       return;
     }
 
+    if (session.queryStream && !session._streamEnded) {
+      this._emitLifecycle('end', sessionId, { status: 'interrupted' });
+    }
+    this.sessions.delete(sessionId);
     if (session.abortController) session.abortController.abort();
     if (session.queryStream?.close) session.queryStream.close();
     if (session.messageQueue) session.messageQueue.close();
     // Reject pending permissions for this session (wrap in try/catch
     // to prevent unhandled rejections if the SDK transport is gone)
-    for (const [id, pending] of this.pendingPermissions) {
-      if (pending.sessionId === sessionId) {
-        this.pendingPermissions.delete(id);
-        try { pending.reject(new Error('Session closed')); } catch (_) {}
-      }
-    }
+    this._rejectPendingPermissions(sessionId, 'Session closed');
     const alreadyNotified = session._streamEnded;
-    this.sessions.delete(sessionId);
     remoteControlService.onSessionClosed(sessionId);
     // Notify remote clients (skip if _processStream already sent session:closed)
     if (!alreadyNotified) {
