@@ -26,7 +26,8 @@
     "lab": "node scripts/workflow-lab/run-lab.js",
     "lab:audit": "node scripts/workflow-lab/audit-slots.js",
     "test:coverage": "jest --coverage",
-    "test:runtime": "node scripts/run-runtime-smoke.cjs"
+    "test:runtime": "node scripts/run-runtime-smoke.cjs",
+    "test:upgrade": "node scripts/run-runtime-smoke.cjs --upgrade"
   },
   "keywords": [
     "claude",

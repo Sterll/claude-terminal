@@ -545,6 +545,7 @@ function bindRoutesViewEvents(routesView, wrapper, projectIndex, project, deps, 
 function openTester(routesView, projectIndex, method, url, deps) {
   const { t } = deps;
   const panel = routesView.querySelector('.api-tester-panel');
+  if (panel.dataset.requestId) apiElectron.api.cancelRequest(panel.dataset.requestId);
   const needsBody = ['POST', 'PUT', 'PATCH'].includes(method);
 
   const methodColor = METHOD_COLORS[method] || '#8b949e';
@@ -557,6 +558,7 @@ function openTester(routesView, projectIndex, method, url, deps) {
           ).join('')}
         </select>
         <input type="text" class="api-tester-url" value="${escapeHtml(url)}" spellcheck="false" />
+        <label class="api-tester-save"><input type="checkbox" class="api-tester-save-disk"> ${t('api.saveToDisk')}</label>
         <button class="api-tester-send-btn">
           <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
           <span>${t('api.send')}</span>
@@ -699,6 +701,7 @@ async function sendRequest(panel, projectIndex, deps) {
 
   const bodyEl = panel.querySelector('.api-tester-body');
   const body = bodyEl ? bodyEl.value : '';
+  const saveToDisk = panel.querySelector('.api-tester-save-disk').checked;
 
   const sendBtn = panel.querySelector('.api-tester-send-btn');
   const responseDiv = panel.querySelector('.api-tester-response');
@@ -708,8 +711,13 @@ async function sendRequest(panel, projectIndex, deps) {
   sendBtn.innerHTML = `<div class="api-loading-dots"><span></span><span></span><span></span></div><span>${t('common.cancel')}</span>`;
   responseDiv.innerHTML = '<div class="api-tester-response-placeholder"><div class="api-loading-dots" style="opacity:0.6"><span></span><span></span><span></span></div></div>';
 
+  const unsubscribe = apiElectron.api.onRequestProgress(({ requestId: id, size, total }) => {
+    if (id !== requestId || panel.dataset.requestId !== id) return;
+    responseDiv.textContent = total ? `${formatSize(size)} / ${formatSize(total)}` : formatSize(size);
+  });
   try {
-    const result = await apiElectron.api.testRequest({ url, method, headers, body, requestId });
+    const result = await apiElectron.api.testRequest({ url, method, headers, body, requestId, saveToDisk });
+    if (panel.dataset.requestId !== requestId) return;
     addApiHistoryEntry(projectIndex, {
       request: { method, url, headers, body },
       response: result,
@@ -721,8 +729,10 @@ async function sendRequest(panel, projectIndex, deps) {
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
       <span>${escapeHtml(e.message)}</span>
     </div>`;
-  }
+  } finally { unsubscribe?.(); }
 
+
+  if (panel.dataset.requestId !== requestId) return;
   delete panel.dataset.requestId;
   sendBtn.disabled = false;
   sendBtn.classList.remove('sending');
@@ -757,6 +767,7 @@ function renderResponse(container, result, t) {
 
   const headerCount = Object.keys(result.headers || {}).length;
   container.innerHTML = `
+    ${result.savedPath ? `<div class="api-response-saved">${escapeHtml(t('api.savedToDisk'))}: ${escapeHtml(result.savedPath)}${result.previewTruncated ? `<br>${escapeHtml(t('api.previewTruncated'))}` : ''}</div>` : ''}
     <div class="api-response-status-bar">
       <div class="api-response-status">
         <span class="api-response-status-code" style="--status-color:${sColor}">${result.status}</span>
@@ -804,6 +815,11 @@ function renderResponse(container, result, t) {
 }
 
 function cleanup(wrapper) {
+  const panel = wrapper.querySelector('.api-tester-panel');
+  if (panel?.dataset.requestId) {
+    apiElectron.api.cancelRequest(panel.dataset.requestId).catch(() => {});
+    delete panel.dataset.requestId;
+  }
   clearPollTimer(wrapper);
 }
 

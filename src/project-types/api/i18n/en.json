@@ -64,7 +64,10 @@
     "routeCountPlural": "{count} routes",
     "filterPlaceholder": "Filter...",
     "noHeaders": "No headers",
-    "updateBtn": "Update"
+    "updateBtn": "Update",
+    "saveToDisk": "Save to disk",
+    "savedToDisk": "Response saved",
+    "previewTruncated": "Preview limited to 64 KiB; the file contains the complete response."
   },
   "newProject": {
     "types": {

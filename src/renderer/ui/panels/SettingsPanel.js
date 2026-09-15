@@ -1300,6 +1300,16 @@ class SettingsPanel extends BasePanel {
                 </div>
               </div>
             </div>
+            <div class="settings-group" data-section="secret-backups">
+              <div class="settings-group-title">${t('settings.secretBackups')}</div>
+              <div class="settings-card"><div class="settings-row">
+                <div class="settings-label"><div>${t('settings.secureBackups')}</div><div class="settings-desc">${t('settings.secureBackupsDesc')}</div></div>
+                <button class="btn-outline" id="settings-secure-backups">${t('settings.secureBackupsAction')}</button>
+              </div><div class="settings-row">
+                <div class="settings-label"><div>${t('settings.recoverBackup')}</div><div class="settings-desc">${t('settings.recoverBackupDesc')}</div></div>
+                <button class="btn-outline" id="settings-recover-backup">${t('settings.recoverBackupAction')}</button>
+              </div><p id="settings-backup-status" role="status" style="padding: 12px; white-space: pre-wrap"></p></div>
+            </div>
             <div class="settings-group" data-section="telemetry">
               <div class="settings-group-title">${t('settings.telemetryGroup')}</div>
               <div class="settings-card">
@@ -1994,6 +2004,26 @@ class SettingsPanel extends BasePanel {
         if (tab.dataset.tab === 'claude') self._loadAccountsUsage();
       };
     });
+
+    const backupStatus = container.querySelector('#settings-backup-status');
+    const renderBackupStatus = result => {
+      if (!backupStatus.isConnected) return;
+      backupStatus.textContent = result.success === false ? result.error : t('settings.backupMigrationResult', { count: result.secured || 0 });
+      if (result.errors?.length) backupStatus.textContent += '\n' + result.errors.map(item => `${item.file}: ${item.error}`).join('\n');
+    };
+    this.api.database.backupStatus().then(renderBackupStatus).catch(error => { backupStatus.textContent = error.message; });
+    container.querySelector('#settings-secure-backups').onclick = async event => {
+      const button = event.currentTarget; button.disabled = true;
+      try { renderBackupStatus(await this.api.database.secureBackups()); }
+      catch (error) { backupStatus.textContent = error.message; }
+      finally { button.disabled = false; }
+    };
+    container.querySelector('#settings-recover-backup').onclick = async event => {
+      const button = event.currentTarget; button.disabled = true;
+      try { const result = await this.api.database.recoverBackup(); if (result.success) backupStatus.textContent = t('settings.backupRecovered'); }
+      catch (error) { backupStatus.textContent = error.message; }
+      finally { button.disabled = false; }
+    };
 
     if (initialTab === 'agents') this.loadAgentsColorPanel();
 

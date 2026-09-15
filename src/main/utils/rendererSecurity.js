@@ -53,6 +53,15 @@ function canonical(file) {
   }
 }
 const grants = [];
+const applicationRoots = [];
+const systemRoots = (process.platform === 'win32'
+  ? [process.env.SystemRoot || 'C:\\Windows', process.env.ProgramFiles || 'C:\\Program Files', process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', process.env.ProgramData || 'C:\\ProgramData']
+  : ['/etc', '/bin', '/sbin', '/usr', '/sys', '/proc', '/dev', ...(process.platform === 'darwin' ? ['/Library/System', '/System'] : ['/boot', '/lib', '/lib64'])])
+  .map(root => { try { return canonical(root); } catch { return path.resolve(root); } });
+const inside = (file, root) => {
+  if (process.platform === 'win32') { file = file.toLowerCase(); root = root.toLowerCase(); }
+  return file === root || file.startsWith(root + path.sep);
+};
 function grant(file, { write = true, directory = true } = {}) {
   if (typeof file !== 'string' || !path.isAbsolute(file) || file.includes('\0')) return;
   const root = canonical(file);
@@ -62,6 +71,21 @@ function permitted(file, write = false) {
   if (typeof file !== 'string' || !path.isAbsolute(file) || file.includes('\0')) return false;
   try {
     const target = canonical(file);
+    if (process.platform === 'win32' && file.startsWith('\\\\')) return false;
+    // Keep the system-directory protection; packaged application resources are
+    // the only read exception (e.g. an installation under Program Files).
+    if (systemRoots.some(root => inside(target, root)) && (write || !applicationRoots.some(root => inside(target, root)))) return false;
+    // Keep upstream's credential/startup guards when moving I/O into main.
+    // A project or dialog grant must not override these boundaries.
+    const home = os.homedir();
+    const blocked = ['.ssh', '.aws', '.gnupg', '.claude/.credentials.json'].map(name => path.join(home, name));
+    if (write) {
+      blocked.push(...['.bashrc', '.bash_profile', '.zshrc', '.zshenv', '.profile', '.claude.json'].map(name => path.join(home, name)));
+      if (process.platform === 'win32' && process.env.APPDATA) blocked.push(path.join(process.env.APPDATA, 'Microsoft/Windows/Start Menu/Programs/Startup'));
+      else if (process.platform === 'darwin') blocked.push(path.join(home, 'Library/LaunchAgents'));
+      else blocked.push(path.join(home, '.config/autostart'));
+    }
+    if (blocked.some(file => inside(target, canonical(file)))) return false;
     return grants.some(item => (!write || item.write) && (target === item.root || item.directory && target.startsWith(item.root + path.sep)));
   } catch { return false; }
 }
@@ -90,8 +114,9 @@ function install(ipcMain) {
   const home = os.homedir(), data = path.join(home, '.claude-terminal');
   grant(data); grant(path.join(home, '.claude'));
   grant(path.join(home, '.claude.json'), { directory: false, write: false });
-  grant(path.resolve(__dirname, '../../..'), { write: false });
-  if (process.resourcesPath) grant(process.resourcesPath, { write: false });
+  const appRoot = path.resolve(__dirname, '../../..');
+  grant(appRoot, { write: false }); applicationRoots.push(canonical(appRoot));
+  if (process.resourcesPath) { grant(process.resourcesPath, { write: false }); applicationRoots.push(canonical(process.resourcesPath)); }
   try {
     const projects = JSON.parse(fs.readFileSync(path.join(data, 'projects.json'), 'utf8'));
     for (const project of projects.projects || []) {
@@ -99,6 +124,7 @@ function install(ipcMain) {
       for (const worktree of project.worktrees || []) grant(worktree.path);
     }
   } catch { /* New installations have no projects yet. */ }
+  require('./rendererFiles').install(ipcMain, permitted);
   ipcMain.on('fs-authorize', (event, file, write) => { event.returnValue = permitted(file, !!write); });
   ipcMain.on('window-read-data', (event, kind) => {
     const files = { projects: 'projects.json', workflows: 'workflows/definitions.json', settings: 'settings.json' };

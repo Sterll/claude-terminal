@@ -1011,7 +1011,16 @@
       "emptyHint": "Prueba con una palabra más corta o con parte de la descripción de un ajuste.",
       "sourceLabel": "Ajustes",
       "resultsPlural": "{count} resultados"
-    }
+    },
+    "secretBackups": "Copias antiguas con secretos",
+    "secureBackups": "Proteger las copias antiguas",
+    "secureBackupsDesc": "Cifrar una copia recuperable antes de retirar contraseñas antiguas de bases de datos. La clave queda en el llavero de este equipo.",
+    "secureBackupsAction": "Comprobar y proteger",
+    "recoverBackup": "Recuperar una copia cifrada",
+    "recoverBackupDesc": "Guardar el contenido original en un archivo separado sin cifrar en este equipo.",
+    "recoverBackupAction": "Recuperar…",
+    "backupMigrationResult": "{count} copias protegidas en la última comprobación.",
+    "backupRecovered": "Copia recuperada en el archivo seleccionado."
   },
   "ui": {
     "notifications": "Notificaciones",
@@ -1608,7 +1617,8 @@
     "types": {
       "standalone": "Independiente",
       "standaloneDesc": "Terminal Claude clásica"
-    }
+    },
+    "creationCancelled": "Operación cancelada. Pulsa Crear para reintentar con las mismas opciones."
   },
   "plugins": {
     "title": "Plugins",
@@ -2076,7 +2086,14 @@
     "backToGrid": "Volver a la vista general",
     "newSession": "Nueva sesión",
     "renameSession": "Renombrar la sesión",
-    "openInClaude": "Abrir en la vista Claude"
+    "openInClaude": "Abrir en la vista Claude",
+    "incidentsTitle": "Pendientes · todos los proyectos ({count})",
+    "incident_trigger": "Disparador no disponible",
+    "incident_run": "La última ejecución del flujo falló",
+    "incident_sync": "Conflicto de sincronización",
+    "incidentOpen": "Abrir",
+    "incidentRetry": "Reintentar",
+    "incidentsUnavailable": "No se pudieron cargar las alertas"
   },
   "remote": {
     "tabTitle": "Remoto",
@@ -2540,7 +2557,9 @@
     "redisMember": "Miembro",
     "redisScore": "Puntuación",
     "redisBytes": "{count} bytes",
-    "redisItems": "{count} elementos"
+    "redisItems": "{count} elementos",
+    "exportCancelled": "Exportación cancelada. Reintentar comienza desde el principio con los mismos datos.",
+    "exportRetry": "Reintentar exportación"
   },
   "mdViewer": {
     "tableOfContents": "Tabla de contenidos",
@@ -3218,9 +3237,9 @@
         "minutesAgo": "hace {n} min",
         "hoursAgo": "hace {n}h",
         "yesterdayAt": "Ayer {time}",
-    "unitDayShort": "d",
-    "unitHourShort": "h",
-    "unitMinuteShort": "min",
+        "unitDayShort": "d",
+        "unitHourShort": "h",
+        "unitMinuteShort": "min",
         "daysAgo": "hace {n}d"
       },
       "autocomplete": {

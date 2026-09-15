@@ -181,7 +181,8 @@ function _logGitFailure(cwd, argsArray, reason, error) {
  * @param {number} timeout - Timeout in ms (default: 10000)
  * @returns {Promise<{ok: boolean, output: string, reason: 'enoent'|'timeout'|'exit'|'nodir'|null, error: string|null}>}
  */
-function execGitResult(cwd, args, timeout = 10000) {
+function execGitResult(cwd, args, timeout = 10000, signal) {
+  if (signal?.aborted) return Promise.resolve({ ok: false, output: '', reason: 'cancelled', error: 'Operation cancelled' });
   // The string form splits naively on spaces. Quotes are NOT honoured: they stay
   // inside the argv entry, and any value containing a space becomes several
   // arguments. It is kept only for fixed commands with no interpolation
@@ -215,7 +216,7 @@ function execGitResult(cwd, args, timeout = 10000) {
     };
 
     const fullArgs = [...safeDirArgs(cwd), ...HARDENING_ARGS, ...argsArray];
-    const child = execFile('git', fullArgs, { cwd, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+    const child = execFile('git', fullArgs, { cwd, encoding: 'utf8', maxBuffer: 1024 * 1024, ...(signal ? { signal } : {}) }, (error, stdout, stderr) => {
       if (timer) clearTimeout(timer);
       _activeProcesses.delete(child);
       if (error) {
@@ -255,8 +256,8 @@ function execGitResult(cwd, args, timeout = 10000) {
  * @param {number} timeout - Timeout in ms (default: 10000)
  * @returns {Promise<string|null>} - Command output or null on error
  */
-function execGit(cwd, args, timeout = 10000) {
-  return execGitResult(cwd, args, timeout).then(result => (result.ok ? result.output : null));
+function execGit(cwd, args, timeout = 10000, signal) {
+  return execGitResult(cwd, args, timeout, signal).then(result => (result.ok ? result.output : null));
 }
 
 /**
@@ -765,56 +766,8 @@ async function isMergeInProgress(projectPath) {
  * @returns {Promise<Object>} - Result object with success/error
  */
 function gitClone(repoUrl, targetPath, options = {}) {
-  return new Promise((resolve) => {
-    const { token, onProgress } = options;
-
-    // Ensure target directory exists
-    const parentDir = path.dirname(targetPath);
-    if (!fs.existsSync(parentDir)) {
-      fs.mkdirSync(parentDir, { recursive: true });
-    }
-
-    // Inject token into HTTPS URL if provided
-    let cloneUrl = repoUrl;
-    if (token && repoUrl.startsWith('https://github.com/')) {
-      cloneUrl = repoUrl.replace('https://github.com/', `https://${token}@github.com/`);
-    } else if (token && repoUrl.startsWith('https://')) {
-      // Generic HTTPS URL with token
-      cloneUrl = repoUrl.replace('https://', `https://${token}@`);
-    }
-
-    const cloneProcess = execFile(
-      'git',
-      [...HARDENING_ARGS, 'clone', '--progress', cloneUrl, targetPath],
-      { encoding: 'utf8', maxBuffer: 1024 * 1024 * 10, timeout: 300000 }, // 5 min timeout
-      (error, stdout, stderr) => {
-        _activeProcesses.delete(cloneProcess);
-        if (error) {
-          // Check common errors
-          if (stderr.includes('already exists')) {
-            resolve({ success: false, error: 'Folder already exists' });
-          } else if (stderr.includes('not found') || stderr.includes('Could not resolve')) {
-            resolve({ success: false, error: 'Repository not found' });
-          } else if (stderr.includes('Authentication failed') || stderr.includes('could not read Username')) {
-            resolve({ success: false, error: 'Authentication failed. Connect to GitHub.' });
-          } else {
-            resolve({ success: false, error: stderr || error.message });
-          }
-        } else {
-          resolve({ success: true, output: 'Clone successful', path: targetPath });
-        }
-      }
-    );
-
-    _activeProcesses.add(cloneProcess);
-
-    // Handle progress if callback provided
-    if (onProgress && cloneProcess.stderr) {
-      cloneProcess.stderr.on('data', (data) => {
-        onProgress(data.toString());
-      });
-    }
-  });
+  return require('./projectCreation').clone(repoUrl, targetPath, options)
+    .catch(error => ({ success: false, cancelled: !!options.signal?.aborted, error: options.signal?.aborted ? 'Operation cancelled' : error.message }));
 }
 
 /**

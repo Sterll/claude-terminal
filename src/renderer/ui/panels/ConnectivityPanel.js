@@ -94,4 +94,11 @@ function cleanup() {
   ClaudeRemotePanel.cleanup();
 }
 
-module.exports = { buildHtml, setupHandlers, cleanup };
+function openCloudConflicts() {
+  _activeSubTab = 'cloud';
+  document.querySelector('.nav-tab[data-tab="connectivity"]')?.click();
+  document.querySelector('[data-cn-tab="cloud"]')?.click();
+  document.querySelector('#cp-conflicts')?.scrollIntoView?.({ block: 'center' });
+}
+
+module.exports = { openCloudConflicts, buildHtml, setupHandlers, cleanup };

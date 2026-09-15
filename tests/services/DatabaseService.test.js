@@ -1,3 +1,4 @@
+/** @jest-environment node */
 // DatabaseService unit tests — focus on pure/testable methods
 // Tests detection parsers, persistence, MCP provisioning logic
 
@@ -433,10 +434,10 @@ describe('DatabaseService persistence', () => {
     expect(loaded).toEqual([]);
   });
 
-  test('loadConnections returns empty array on corrupted file', async () => {
+  test('loadConnections rejects corrupted files without changing them', async () => {
     fs.writeFileSync(dbFile, 'not-json{{{', 'utf8');
-    const loaded = await databaseService.loadConnections();
-    expect(loaded).toEqual([]);
+    await expect(databaseService.loadConnections()).rejects.toThrow(/Invalid database configuration/);
+    expect(fs.readFileSync(dbFile, 'utf8')).toBe('not-json{{{');
   });
 });
 
