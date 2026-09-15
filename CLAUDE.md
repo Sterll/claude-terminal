@@ -11,7 +11,7 @@ Claude Terminal is a cross-platform Electron desktop application (**v1.3.3**) fo
 ## Build & Development Commands
 
 ```bash
-npm install              # Install dependencies (Node >=18, runs electron-rebuild for node-pty, keytar, better-sqlite3)
+npm install              # Install dependencies (Node >=24.15, runs electron-rebuild for node-pty, keytar, better-sqlite3)
 npm start                # Build renderer + run app
 npm run start:dev        # Run with DevTools enabled
 npm run start:inspect    # Run with remote debugging port 9222
@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 173 test files)
+npm test                 # Run Jest tests (jsdom, 174 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -65,7 +65,7 @@ Project Types (Plugin System)
 └── src/project-types/               # general, api, fivem, minecraft, python, webapp, discord
 
 Shared code
-└── src/shared/                      # 14 modules shared between main, renderer and the MCP server
+└── src/shared/                      # 17 modules shared between main, renderer and the MCP server
 
 Styles
 └── styles/                          # 30 modular CSS files (~57,000 lines total)
@@ -628,7 +628,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 173 test files
+- **Framework:** Jest with jsdom, 174 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**

@@ -20,58 +20,8 @@ jest.mock('../../src/shared/workflow-schema', () => ({
   getOutputKeyForSlot: jest.fn(() => 'output'),
 }));
 
-// We need to extract the pure functions. WorkflowRunner exports a class,
-// but resolveVars/resolveDeep/evalCondition are module-level functions.
-// We'll test them via a small wrapper that creates a runner and exposes helpers.
-
-// Since these functions are not exported, we read the source and extract them.
-const fs = require('fs');
-const path = require('path');
-
-// Load the module source to extract the pure functions
-const modulePath = path.resolve(__dirname, '../../src/main/services/WorkflowRunner.js');
-const moduleSource = fs.readFileSync(modulePath, 'utf-8');
-
-// Extract and eval the pure functions in an isolated scope
-const extractedFunctions = (() => {
-  // Build a minimal sandbox with the functions we need
-  const sandbox = {};
-
-  // Extract resolveVars function
-  const resolveVarsMatch = moduleSource.match(
-    /function resolveVars\(value, vars\) \{[\s\S]*?^}/m
-  );
-
-  // Extract resolveDeep function
-  const resolveDeepMatch = moduleSource.match(
-    /function resolveDeep\(obj, vars\) \{[\s\S]*?^}/m
-  );
-
-  // Extract evalCondition function
-  const evalConditionMatch = moduleSource.match(
-    /function evalCondition\(condition, vars\) \{[\s\S]*?^}/m
-  );
-
-  if (!resolveVarsMatch || !resolveDeepMatch || !evalConditionMatch) {
-    throw new Error('Could not extract functions from WorkflowRunner.js');
-  }
-
-  // Build executable code
-  const code = `
-    ${resolveVarsMatch[0]}
-    ${resolveDeepMatch[0]}
-    ${evalConditionMatch[0]}
-    module.exports = { resolveVars, resolveDeep, evalCondition };
-  `;
-
-  const mod = { exports: {} };
-  // eslint-disable-next-line no-new-func
-  const fn = new Function('module', 'exports', 'require', code);
-  fn(mod, mod.exports, require);
-  return mod.exports;
-})();
-
-const { resolveVars, resolveDeep, evalCondition } = extractedFunctions;
+const { resolveVars, resolveDeep } = require('../../src/shared/workflow-variables');
+const { evalCondition } = require('../../src/shared/workflow-condition');
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -263,327 +213,327 @@ describe('resolveDeep', () => {
 
 describe('evalCondition', () => {
   describe('basic behavior', () => {
-    test('returns true for empty condition', () => {
+    test('returns true for empty condition', async () => {
       const vars = new Map();
-      expect(evalCondition('', vars)).toBe(true);
+      expect(await evalCondition('', vars)).toBe(true);
     });
 
-    test('returns true for null condition', () => {
+    test('returns true for null condition', async () => {
       const vars = new Map();
-      expect(evalCondition(null, vars)).toBe(true);
+      expect(await evalCondition(null, vars)).toBe(true);
     });
 
-    test('returns true for whitespace-only condition', () => {
+    test('returns true for whitespace-only condition', async () => {
       const vars = new Map();
-      expect(evalCondition('   ', vars)).toBe(true);
+      expect(await evalCondition('   ', vars)).toBe(true);
     });
   });
 
   describe('boolean literals', () => {
-    test('"true" literal returns true', () => {
+    test('"true" literal returns true', async () => {
       const vars = new Map();
-      expect(evalCondition('true', vars)).toBe(true);
+      expect(await evalCondition('true', vars)).toBe(true);
     });
 
-    test('"false" literal returns false', () => {
+    test('"false" literal returns false', async () => {
       const vars = new Map();
-      expect(evalCondition('false', vars)).toBe(false);
+      expect(await evalCondition('false', vars)).toBe(false);
     });
 
-    test('variable resolving to "true" returns true', () => {
+    test('variable resolving to "true" returns true', async () => {
       const vars = new Map([['flag', 'true']]);
-      expect(evalCondition('$flag', vars)).toBe(true);
+      expect(await evalCondition('$flag', vars)).toBe(true);
     });
 
-    test('variable resolving to "false" returns false', () => {
+    test('variable resolving to "false" returns false', async () => {
       const vars = new Map([['flag', 'false']]);
-      expect(evalCondition('$flag', vars)).toBe(false);
+      expect(await evalCondition('$flag', vars)).toBe(false);
     });
   });
 
   describe('== operator', () => {
-    test('string equality', () => {
+    test('string equality', async () => {
       const vars = new Map();
-      expect(evalCondition('hello == hello', vars)).toBe(true);
+      expect(await evalCondition('hello == hello', vars)).toBe(true);
     });
 
-    test('string inequality', () => {
+    test('string inequality', async () => {
       const vars = new Map();
-      expect(evalCondition('hello == world', vars)).toBe(false);
+      expect(await evalCondition('hello == world', vars)).toBe(false);
     });
 
-    test('numeric equality with strings', () => {
+    test('numeric equality with strings', async () => {
       const vars = new Map();
-      expect(evalCondition('5 == 5', vars)).toBe(true);
+      expect(await evalCondition('5 == 5', vars)).toBe(true);
     });
 
-    test('numeric equality different representations', () => {
+    test('numeric equality different representations', async () => {
       const vars = new Map();
-      expect(evalCondition('5.0 == 5', vars)).toBe(true);
+      expect(await evalCondition('5.0 == 5', vars)).toBe(true);
     });
 
-    test('with resolved variables', () => {
+    test('with resolved variables', async () => {
       const vars = new Map([['status', 'ok']]);
-      expect(evalCondition('$status == ok', vars)).toBe(true);
+      expect(await evalCondition('$status == ok', vars)).toBe(true);
     });
   });
 
   describe('!= operator', () => {
-    test('string inequality returns true', () => {
+    test('string inequality returns true', async () => {
       const vars = new Map();
-      expect(evalCondition('hello != world', vars)).toBe(true);
+      expect(await evalCondition('hello != world', vars)).toBe(true);
     });
 
-    test('string equality returns false', () => {
+    test('string equality returns false', async () => {
       const vars = new Map();
-      expect(evalCondition('hello != hello', vars)).toBe(false);
+      expect(await evalCondition('hello != hello', vars)).toBe(false);
     });
 
-    test('numeric inequality', () => {
+    test('numeric inequality', async () => {
       const vars = new Map();
-      expect(evalCondition('3 != 5', vars)).toBe(true);
+      expect(await evalCondition('3 != 5', vars)).toBe(true);
     });
   });
 
   describe('> operator', () => {
-    test('greater than with numbers', () => {
+    test('greater than with numbers', async () => {
       const vars = new Map();
-      expect(evalCondition('10 > 5', vars)).toBe(true);
+      expect(await evalCondition('10 > 5', vars)).toBe(true);
     });
 
-    test('not greater than', () => {
+    test('not greater than', async () => {
       const vars = new Map();
-      expect(evalCondition('3 > 5', vars)).toBe(false);
+      expect(await evalCondition('3 > 5', vars)).toBe(false);
     });
 
-    test('equal values return false', () => {
+    test('equal values return false', async () => {
       const vars = new Map();
-      expect(evalCondition('5 > 5', vars)).toBe(false);
+      expect(await evalCondition('5 > 5', vars)).toBe(false);
     });
 
-    test('non-numeric strings return false', () => {
+    test('non-numeric strings return false', async () => {
       const vars = new Map();
-      expect(evalCondition('abc > xyz', vars)).toBe(false);
+      expect(await evalCondition('abc > xyz', vars)).toBe(false);
     });
   });
 
   describe('< operator', () => {
-    test('less than with numbers', () => {
+    test('less than with numbers', async () => {
       const vars = new Map();
-      expect(evalCondition('3 < 10', vars)).toBe(true);
+      expect(await evalCondition('3 < 10', vars)).toBe(true);
     });
 
-    test('not less than', () => {
+    test('not less than', async () => {
       const vars = new Map();
-      expect(evalCondition('10 < 3', vars)).toBe(false);
+      expect(await evalCondition('10 < 3', vars)).toBe(false);
     });
   });
 
   describe('>= operator', () => {
-    test('greater than or equal when greater', () => {
+    test('greater than or equal when greater', async () => {
       const vars = new Map();
-      expect(evalCondition('10 >= 5', vars)).toBe(true);
+      expect(await evalCondition('10 >= 5', vars)).toBe(true);
     });
 
-    test('greater than or equal when equal', () => {
+    test('greater than or equal when equal', async () => {
       const vars = new Map();
-      expect(evalCondition('5 >= 5', vars)).toBe(true);
+      expect(await evalCondition('5 >= 5', vars)).toBe(true);
     });
 
-    test('not greater than or equal', () => {
+    test('not greater than or equal', async () => {
       const vars = new Map();
-      expect(evalCondition('3 >= 5', vars)).toBe(false);
+      expect(await evalCondition('3 >= 5', vars)).toBe(false);
     });
   });
 
   describe('<= operator', () => {
-    test('less than or equal when less', () => {
+    test('less than or equal when less', async () => {
       const vars = new Map();
-      expect(evalCondition('3 <= 5', vars)).toBe(true);
+      expect(await evalCondition('3 <= 5', vars)).toBe(true);
     });
 
-    test('less than or equal when equal', () => {
+    test('less than or equal when equal', async () => {
       const vars = new Map();
-      expect(evalCondition('5 <= 5', vars)).toBe(true);
+      expect(await evalCondition('5 <= 5', vars)).toBe(true);
     });
 
-    test('not less than or equal', () => {
+    test('not less than or equal', async () => {
       const vars = new Map();
-      expect(evalCondition('10 <= 5', vars)).toBe(false);
+      expect(await evalCondition('10 <= 5', vars)).toBe(false);
     });
   });
 
   describe('contains operator', () => {
-    test('string contains substring', () => {
+    test('string contains substring', async () => {
       const vars = new Map();
-      expect(evalCondition('hello world contains world', vars)).toBe(true);
+      expect(await evalCondition('hello world contains world', vars)).toBe(true);
     });
 
-    test('string does not contain substring', () => {
+    test('string does not contain substring', async () => {
       const vars = new Map();
-      expect(evalCondition('hello contains xyz', vars)).toBe(false);
+      expect(await evalCondition('hello contains xyz', vars)).toBe(false);
     });
 
-    test('contains is case-sensitive', () => {
+    test('contains is case-sensitive', async () => {
       const vars = new Map();
-      expect(evalCondition('Hello contains hello', vars)).toBe(false);
+      expect(await evalCondition('Hello contains hello', vars)).toBe(false);
     });
   });
 
   describe('starts_with operator', () => {
-    test('string starts with prefix', () => {
+    test('string starts with prefix', async () => {
       const vars = new Map();
-      expect(evalCondition('hello world starts_with hello', vars)).toBe(true);
+      expect(await evalCondition('hello world starts_with hello', vars)).toBe(true);
     });
 
-    test('string does not start with prefix', () => {
+    test('string does not start with prefix', async () => {
       const vars = new Map();
-      expect(evalCondition('hello starts_with world', vars)).toBe(false);
+      expect(await evalCondition('hello starts_with world', vars)).toBe(false);
     });
   });
 
   describe('ends_with operator', () => {
-    test('string ends with suffix', () => {
+    test('string ends with suffix', async () => {
       const vars = new Map();
-      expect(evalCondition('hello world ends_with world', vars)).toBe(true);
+      expect(await evalCondition('hello world ends_with world', vars)).toBe(true);
     });
 
-    test('string does not end with suffix', () => {
+    test('string does not end with suffix', async () => {
       const vars = new Map();
-      expect(evalCondition('hello ends_with world', vars)).toBe(false);
+      expect(await evalCondition('hello ends_with world', vars)).toBe(false);
     });
   });
 
   describe('matches operator (regex)', () => {
-    test('matches valid regex', () => {
+    test('matches valid regex', async () => {
       const vars = new Map();
-      expect(evalCondition('abc123 matches [a-z]+\\d+', vars)).toBe(true);
+      expect(await evalCondition('abc123 matches [a-z]+\\d+', vars)).toBe(true);
     });
 
-    test('does not match regex', () => {
+    test('does not match regex', async () => {
       const vars = new Map();
-      expect(evalCondition('hello matches ^\\d+$', vars)).toBe(false);
+      expect(await evalCondition('hello matches ^\\d+$', vars)).toBe(false);
     });
 
-    test('invalid regex does not throw, returns false', () => {
+    test('invalid regex does not throw, returns false', async () => {
       const vars = new Map();
-      expect(evalCondition('test matches [invalid(', vars)).toBe(false);
+      expect(await evalCondition('test matches [invalid(', vars)).toBe(false);
     });
 
-    test('ReDoS protection: very long input returns false', () => {
+    test('ReDoS protection: very long input returns false', async () => {
       const vars = new Map();
       const longStr = 'a'.repeat(20000);
-      expect(evalCondition(`${longStr} matches a+`, vars)).toBe(false);
+      expect(await evalCondition(`${longStr} matches a+`, vars)).toBe(false);
     });
 
-    test('input at exactly 10000 chars is allowed (limit is >10000)', () => {
+    test('input at exactly 10000 chars is allowed (limit is >10000)', async () => {
       const vars = new Map();
       const str10k = 'a'.repeat(10000);
       // Code checks left.length > 10_000 (strict), so exactly 10000 passes through
-      expect(evalCondition(`${str10k} matches a+`, vars)).toBe(true);
+      expect(await evalCondition(`${str10k} matches a+`, vars)).toBe(true);
     });
   });
 
   describe('is_empty / is_not_empty operators', () => {
-    test('empty string is_empty returns true', () => {
+    test('empty string is_empty returns true', async () => {
       const vars = new Map([['val', '']]);
-      expect(evalCondition('$val is_empty', vars)).toBe(true);
+      expect(await evalCondition('$val is_empty', vars)).toBe(true);
     });
 
-    test('"null" string is_empty returns true', () => {
+    test('"null" string is_empty returns true', async () => {
       const vars = new Map();
-      expect(evalCondition('null is_empty', vars)).toBe(true);
+      expect(await evalCondition('null is_empty', vars)).toBe(true);
     });
 
-    test('"undefined" string is_empty returns true', () => {
+    test('"undefined" string is_empty returns true', async () => {
       const vars = new Map();
-      expect(evalCondition('undefined is_empty', vars)).toBe(true);
+      expect(await evalCondition('undefined is_empty', vars)).toBe(true);
     });
 
-    test('"[]" is_empty returns true', () => {
+    test('"[]" is_empty returns true', async () => {
       const vars = new Map();
-      expect(evalCondition('[] is_empty', vars)).toBe(true);
+      expect(await evalCondition('[] is_empty', vars)).toBe(true);
     });
 
-    test('"{}" is_empty returns true', () => {
+    test('"{}" is_empty returns true', async () => {
       const vars = new Map();
-      expect(evalCondition('{} is_empty', vars)).toBe(true);
+      expect(await evalCondition('{} is_empty', vars)).toBe(true);
     });
 
-    test('non-empty value is_empty returns false', () => {
+    test('non-empty value is_empty returns false', async () => {
       const vars = new Map();
-      expect(evalCondition('hello is_empty', vars)).toBe(false);
+      expect(await evalCondition('hello is_empty', vars)).toBe(false);
     });
 
-    test('non-empty value is_not_empty returns true', () => {
+    test('non-empty value is_not_empty returns true', async () => {
       const vars = new Map();
-      expect(evalCondition('hello is_not_empty', vars)).toBe(true);
+      expect(await evalCondition('hello is_not_empty', vars)).toBe(true);
     });
 
-    test('non-empty value is_not_empty with variable returns true', () => {
+    test('non-empty value is_not_empty with variable returns true', async () => {
       const vars = new Map([['val', 'data']]);
-      expect(evalCondition('$val is_not_empty', vars)).toBe(true);
+      expect(await evalCondition('$val is_not_empty', vars)).toBe(true);
     });
 
-    test('null literal is_not_empty returns false', () => {
+    test('null literal is_not_empty returns false', async () => {
       const vars = new Map();
-      expect(evalCondition('null is_not_empty', vars)).toBe(false);
+      expect(await evalCondition('null is_not_empty', vars)).toBe(false);
     });
   });
 
   describe('truthy check (no operator)', () => {
-    test('non-empty string is truthy', () => {
+    test('non-empty string is truthy', async () => {
       const vars = new Map();
-      expect(evalCondition('hello', vars)).toBe(true);
+      expect(await evalCondition('hello', vars)).toBe(true);
     });
 
-    test('"0" is falsy', () => {
+    test('"0" is falsy', async () => {
       const vars = new Map();
-      expect(evalCondition('0', vars)).toBe(false);
+      expect(await evalCondition('0', vars)).toBe(false);
     });
 
-    test('"null" is falsy', () => {
+    test('"null" is falsy', async () => {
       const vars = new Map();
-      expect(evalCondition('null', vars)).toBe(false);
+      expect(await evalCondition('null', vars)).toBe(false);
     });
 
-    test('"undefined" is falsy', () => {
+    test('"undefined" is falsy', async () => {
       const vars = new Map();
-      expect(evalCondition('undefined', vars)).toBe(false);
+      expect(await evalCondition('undefined', vars)).toBe(false);
     });
 
-    test('resolved variable truthy', () => {
+    test('resolved variable truthy', async () => {
       const vars = new Map([['val', 'something']]);
-      expect(evalCondition('$val', vars)).toBe(true);
+      expect(await evalCondition('$val', vars)).toBe(true);
     });
   });
 
   describe('edge cases', () => {
-    test('unrecognized operator defaults to false (via truthy for no-match)', () => {
+    test('unrecognized operator defaults to false (via truthy for no-match)', async () => {
       // "a XYZOP b" - won't match binary regex, falls through to truthy
       // "a XYZOP b" is non-empty and not 0/null/undefined -> truthy
       const vars = new Map();
-      expect(evalCondition('a XYZOP b', vars)).toBe(true);
+      expect(await evalCondition('a XYZOP b', vars)).toBe(true);
     });
 
-    test('numeric comparison: string "5" vs number 5', () => {
+    test('numeric comparison: string "5" vs number 5', async () => {
       const vars = new Map([['num', 5]]);
-      expect(evalCondition('$num == 5', vars)).toBe(true);
+      expect(await evalCondition('$num == 5', vars)).toBe(true);
     });
 
-    test('comparison with variables on both sides', () => {
+    test('comparison with variables on both sides', async () => {
       const vars = new Map([['a', 'hello'], ['b', 'hello']]);
-      expect(evalCondition('$a == $b', vars)).toBe(true);
+      expect(await evalCondition('$a == $b', vars)).toBe(true);
     });
 
-    test('float comparison', () => {
+    test('float comparison', async () => {
       const vars = new Map();
-      expect(evalCondition('3.14 > 2.71', vars)).toBe(true);
+      expect(await evalCondition('3.14 > 2.71', vars)).toBe(true);
     });
 
-    test('negative number comparison', () => {
+    test('negative number comparison', async () => {
       const vars = new Map();
-      expect(evalCondition('-1 < 0', vars)).toBe(true);
+      expect(await evalCondition('-1 < 0', vars)).toBe(true);
     });
   });
 });
