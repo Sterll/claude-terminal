@@ -719,3 +719,5 @@ main 与 renderer 的分离由 ESLint 强制执行，而不只是约定：
 ## 许可证
 
 [GPL-3.0](LICENSE)
+
+有关部署要求和验证命令，请参阅[运行环境、数据保护与恢复说明](RUNTIME_RELIABILITY.md)（英文）。
