@@ -332,7 +332,18 @@ class UpdaterService {
     try {
       const { setQuitting } = require('../windows/MainWindow');
       setQuitting(true);
-      autoUpdater.quitAndInstall();
+      // Both arguments matter, and the defaults are wrong for us.
+      //
+      // isSilent=false (the default) makes electron-updater omit /S, so the
+      // NSIS assisted wizard is shown after the app has already quit — the
+      // user gets an installer they did not ask for, and closing it midway
+      // leaves the old version already removed (the install section runs
+      // uninstallOldVersion before extracting) with nothing in its place.
+      //
+      // isForceRunAfter only reaches the installer as --force-run, and
+      // installSection.nsh restarts the app on `${isForceRun} && ${Silent}`.
+      // So without isSilent the app never comes back on its own either.
+      autoUpdater.quitAndInstall(true, true);
     } catch (err) {
       console.error('quitAndInstall failed:', err);
       const { setQuitting } = require('../windows/MainWindow');

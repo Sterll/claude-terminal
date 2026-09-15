@@ -28,17 +28,47 @@
 ; ============================================
 
 !macro customInit
-  ; Custom initialization
-  SetSilent normal
+  ; Deliberately empty.
+  ;
+  ; This used to be `SetSilent normal`, which was actively harmful. customInit
+  ; runs from .onInit, before anything else, so it cancelled the /S that
+  ; electron-updater passes when installing an update. The result was an
+  ; assisted wizard popping up after the app had already quit for the update,
+  ; and installSection.nsh only relaunches the app on ${isForceRun} && ${Silent}
+  ; - so it never came back either. A user who closed that unexpected window
+  ; after the install section had reached uninstallOldVersion was left with no
+  ; $INSTDIR and no shortcuts.
+  ;
+  ; Someone launching Setup.exe by hand is already non-silent; this macro only
+  ; ever affected the update path, and only by breaking it.
 !macroend
 
 !macro customInstall
-  ; Safety-net: recreate the desktop shortcut if it was deleted by the old uninstaller
-  ; during a transition update (old uninstaller had no ${isUpdated} guard).
-  ; This ensures the shortcut always exists after install, regardless of upgrade path.
-  ${ifNot} ${FileExists} "$DESKTOP\Claude Terminal.lnk"
-    CreateShortCut "$DESKTOP\Claude Terminal.lnk" "$INSTDIR\Claude Terminal.exe"
+  ; Safety-net: recreate the shortcuts if they were deleted by the old
+  ; uninstaller during a transition update (old uninstaller had no ${isUpdated}
+  ; guard, and --keep-shortcuts is only passed when the previous install wrote
+  ; KeepShortcuts=true). electron-builder's own addDesktopLink/addStartMenuLink
+  ; skip recreation entirely when $keepShortcuts is "true", which is exactly the
+  ; upgrade path - so when the link is genuinely missing, nothing restores it.
+  ;
+  ; $newDesktopLink / $newStartMenuLink are set by setLinkVars at the top of
+  ; installSection.nsh, so they already carry the MENU_FILENAME and
+  ; SHORTCUT_NAME this build actually uses. SetLnkAUMI matters: a .lnk without
+  ; the app id does not group with the running window and cannot hold a pin.
+  ${ifNot} ${FileExists} "$newDesktopLink"
+    CreateShortCut "$newDesktopLink" "$appExe" "" "$appExe" 0 "" "" "${APP_DESCRIPTION}"
+    ClearErrors
+    WinShell::SetLnkAUMI "$newDesktopLink" "${APP_ID}"
   ${endIf}
+
+  ${ifNot} ${FileExists} "$newStartMenuLink"
+    !insertmacro createMenuDirectory
+    CreateShortCut "$newStartMenuLink" "$appExe" "" "$appExe" 0 "" "" "${APP_DESCRIPTION}"
+    ClearErrors
+    WinShell::SetLnkAUMI "$newStartMenuLink" "${APP_ID}"
+  ${endIf}
+
+  System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
 !macroend
 
 !macro customUnInstall
