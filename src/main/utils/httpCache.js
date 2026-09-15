@@ -3,8 +3,6 @@
  * Shared HTTPS GET + in-memory TTL cache for main process services
  */
 
-const https = require('https');
-
 /**
  * Create a new cache instance (each service gets its own Map to avoid key collisions)
  * @returns {{ getCached, setCache, invalidateCache }}
@@ -37,35 +35,27 @@ function createCache() {
  * @param {string} urlString
  * @returns {Promise<{ status: number, data: * }>}
  */
-function httpsGet(urlString) {
-  return new Promise((resolve, reject) => {
-    const url = new URL(urlString);
-    const options = {
-      hostname: url.hostname,
-      path: url.pathname + url.search,
-      method: 'GET',
+async function httpsGet(urlString) {
+  const url = new URL(urlString);
+  if (url.protocol !== 'https:') throw new Error('HTTPS URL required');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    // Chromium uses the system's trusted certificates and proxy configuration.
+    // Keep certificate verification enabled, including for managed networks.
+    const response = await require('electron').net.fetch(url.href, {
       headers: { 'User-Agent': 'ClaudeTerminal' },
-      timeout: 15000
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          resolve({ status: res.statusCode, data: JSON.parse(data) });
-        } catch (e) {
-          resolve({ status: res.statusCode, data: data });
-        }
-      });
+      credentials: 'omit', cache: 'no-store', redirect: 'error',
+      signal: controller.signal
     });
-    req.setTimeout(15000, () => {
-      req.destroy();
-      reject(new Error('Request timeout'));
-    });
-    req.on('error', reject);
-    req.end();
-  });
+    const text = await response.text();
+    let data = text;
+    try { data = JSON.parse(text); } catch { /* Preserve non-JSON error bodies. */ }
+    return { status: response.status, data };
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('Request timeout');
+    throw error;
+  } finally { clearTimeout(timer); }
 }
 
 module.exports = { createCache, httpsGet };

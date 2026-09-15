@@ -214,9 +214,11 @@ describe('per-account credential store', () => {
 
     // The CLI refreshes and writes to its namespaced entry.
     mockKeychain.set(namespacedKey(dir), JSON.stringify(creds('tok-max-v2')));
+    require('keytar').getPassword.mockClear();
     await AccountManager.ensureAccountStore(max.id);
 
     expect(fs.existsSync(seedPath(max.id))).toBe(false);
+    expect(require('keytar').getPassword).toHaveBeenCalledTimes(1);
   });
 
   test('a refresh in a bound account leaves the machine-wide store alone', async () => {
@@ -272,4 +274,14 @@ describe('file store platforms', () => {
     // No keychain to take over, so the seed has to stay.
     expect(fs.existsSync(seedPath(max.id))).toBe(true);
   });
+});
+
+
+test('listing IDs for usage does not access the unrelated machine-wide Keychain item', async () => {
+  const max = await capture('Max', 'tok-max');
+  require('keytar').getPassword.mockClear();
+  const list = await AccountManager.listAccounts({ includeCredentials: false });
+  expect(list.accounts.map(account => account.id)).toEqual([max.id]);
+  expect(list.hasCredentials).toBeNull();
+  expect(require('keytar').getPassword).not.toHaveBeenCalled();
 });

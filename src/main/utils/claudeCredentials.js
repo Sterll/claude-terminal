@@ -37,6 +37,21 @@ function keychainAccount() {
   return os.userInfo().username;
 }
 
+// Several callers can need the same item while macOS is showing its access
+// dialog. Share that pending read; do not cache secrets after it settles, since
+// the CLI can refresh or replace them outside this process.
+const pendingReads = new Map();
+function readKeychain(service) {
+  const account = keychainAccount();
+  const id = JSON.stringify([service, account]);
+  if (pendingReads.has(id)) return pendingReads.get(id);
+  const read = Promise.resolve().then(() => keytar.getPassword(service, account));
+  pendingReads.set(id, read);
+  const clear = () => { if (pendingReads.get(id) === read) pendingReads.delete(id); };
+  read.then(clear, clear);
+  return read;
+}
+
 function readCredentialsFile() {
   const credPath = getCredentialsPath();
   if (!fs.existsSync(credPath)) return null;
@@ -65,7 +80,7 @@ function writeCredentialsFile(payload) {
 async function readCredentials() {
   if (useKeychain()) {
     try {
-      const raw = await keytar.getPassword(KEYCHAIN_SERVICE, keychainAccount());
+      const raw = await readKeychain(KEYCHAIN_SERVICE);
       if (raw) return JSON.parse(raw);
     } catch (_) {
       // Keychain access denied or entry unreadable — fall through to the file.
@@ -83,6 +98,7 @@ async function writeCredentials(payload) {
   let wrote = false;
   if (useKeychain()) {
     await keytar.setPassword(KEYCHAIN_SERVICE, keychainAccount(), payload);
+    pendingReads.delete(JSON.stringify([KEYCHAIN_SERVICE, keychainAccount()]));
     wrote = true;
   }
   // Only touch the file if it already exists (or if it is the only store) —
@@ -151,13 +167,21 @@ function seedPathForDir(dir) {
  * @param {string} dir
  * @returns {Promise<Object|null>}
  */
-async function readCredentialsForDir(dir) {
+async function readCredentialsForDir(dir, { pruneSeed = false } = {}) {
   if (useKeychain()) {
+    let credentials;
     try {
-      const raw = await keytar.getPassword(keychainServiceForDir(dir), keychainAccount());
-      if (raw) return JSON.parse(raw);
+      const raw = await readKeychain(keychainServiceForDir(dir));
+      if (raw) credentials = JSON.parse(raw);
     } catch (_) {
       // Denied or unreadable — the seed below may still bootstrap the account.
+    }
+    if (credentials) {
+      // The successful read already proves the vault took over; probing it
+      // again solely to remove the seed can raise a second access dialog.
+      // A cleanup error must not fall back to stale seed credentials.
+      if (pruneSeed) fs.rmSync(seedPathForDir(dir), { force: true });
+      return credentials;
     }
   }
   try {
@@ -181,26 +205,6 @@ function writeSeedForDir(dir, creds) {
 }
 
 /**
- * Drop the plaintext seed once the Keychain entry has taken over, so a stale
- * copy of the tokens does not linger on disk.
- * @param {string} dir
- * @returns {Promise<boolean>} true when the seed was removed
- */
-async function pruneSeedForDir(dir) {
-  if (!useKeychain()) return false;
-  const seed = seedPathForDir(dir);
-  if (!fs.existsSync(seed)) return false;
-  try {
-    const raw = await keytar.getPassword(keychainServiceForDir(dir), keychainAccount());
-    if (!raw) return false;
-  } catch (_) {
-    return false;
-  }
-  fs.unlinkSync(seed);
-  return true;
-}
-
-/**
  * Forget a credential directory entirely — Keychain entry and seed.
  * @param {string} dir
  */
@@ -208,6 +212,7 @@ async function deleteCredentialsForDir(dir) {
   if (useKeychain()) {
     try {
       await keytar.deletePassword(keychainServiceForDir(dir), keychainAccount());
+      pendingReads.delete(JSON.stringify([keychainServiceForDir(dir), keychainAccount()]));
     } catch (_) {
       // Nothing stored, or the Keychain refused — the directory still goes.
     }
@@ -276,6 +281,5 @@ module.exports = {
   keychainServiceForDir,
   readCredentialsForDir,
   writeSeedForDir,
-  pruneSeedForDir,
   deleteCredentialsForDir,
 };

@@ -6262,6 +6262,7 @@ class ChatView extends BaseComponent {
 
   let userHasScrolled = false;
   let hasNewMessages = false;
+  let lastScrollHeight = 0, lastViewportHeight = 0;
   // Set by the resume path: pulls in older history as the user scrolls up
   let onNearHistoryTop = null;
 
@@ -6290,11 +6291,20 @@ class ChatView extends BaseComponent {
 
   // Detect when user manually scrolls
   messagesEl.addEventListener('scroll', () => {
+    if (!messagesEl.clientHeight) return; // Hidden restored tabs have no scroll geometry.
     const isAtBottom = messagesEl.scrollTop + messagesEl.clientHeight >= messagesEl.scrollHeight - 50;
-    userHasScrolled = !isAtBottom && messagesEl.scrollHeight > messagesEl.clientHeight;
+    const layoutChanged = messagesEl.scrollHeight !== lastScrollHeight || messagesEl.clientHeight !== lastViewportHeight;
+    // A reveal, image/diagram load or resize is not an instruction to stop
+    // following the tail. Only a scroll in the same layout changes that intent.
+    if (!layoutChanged || isAtBottom) userHasScrolled = !isAtBottom;
+    lastScrollHeight = messagesEl.scrollHeight;
+    lastViewportHeight = messagesEl.clientHeight;
+    if (layoutChanged && !userHasScrolled) scrollToBottom();
 
-    if (onNearHistoryTop) onNearHistoryTop();
-    transcriptPruner?.onScroll();
+    if (!layoutChanged || userHasScrolled || isAtBottom) {
+      if (onNearHistoryTop) onNearHistoryTop();
+      transcriptPruner?.onScroll();
+    }
 
     if (isAtBottom) {
       userHasScrolled = false;
@@ -6310,7 +6320,10 @@ class ChatView extends BaseComponent {
       if (!_scrollRafId) {
         _scrollRafId = requestAnimationFrame(() => {
           _scrollRafId = null;
+          if (userHasScrolled || !messagesEl.clientHeight) return;
           transcriptPruner?.drainBelow();
+          lastScrollHeight = messagesEl.scrollHeight;
+          lastViewportHeight = messagesEl.clientHeight;
           messagesEl.scrollTop = messagesEl.scrollHeight;
         });
       }
@@ -6320,6 +6333,25 @@ class ChatView extends BaseComponent {
       scrollButton.style.display = '';
     }
   }
+
+  // Follow late markdown layout and tabs restored while hidden. Observe direct
+  // message boxes, since the scroller's own height does not grow with its content.
+  const scrollResizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
+    if (!userHasScrolled) scrollToBottom();
+  }) : null;
+  scrollResizeObserver?.observe(messagesEl);
+  for (const child of messagesEl.children) scrollResizeObserver?.observe(child);
+  const scrollChildrenObserver = new MutationObserver(records => {
+    for (const record of records) {
+      for (const node of record.removedNodes) if (node.nodeType === 1) scrollResizeObserver?.unobserve(node);
+      for (const node of record.addedNodes) if (node.nodeType === 1) scrollResizeObserver?.observe(node);
+    }
+  });
+  scrollChildrenObserver.observe(messagesEl, { childList: true });
+  // Upward wheel intent wins even if an asynchronous layout lands in this frame.
+  messagesEl.addEventListener('wheel', event => {
+    if (event.deltaY < 0 && messagesEl.scrollHeight > messagesEl.clientHeight) userHasScrolled = true;
+  }, { passive: true });
 
   // Reset scroll detection when user sends a new message
   function resetScrollDetection() {
@@ -8075,7 +8107,10 @@ class ChatView extends BaseComponent {
 
     /** Called on every scroll: pull the next page in once the top is in reach. */
     function maybeLoadEarlier() {
-      if (loadingEarlier || historyExhausted || !historyTopEl) return;
+      if (loadingEarlier || historyExhausted || !historyTopEl || !messagesEl.clientHeight) return;
+      // A revealed tab can still be at zero until its queued tail scroll runs.
+      // While pinned, only prefetch if the tail itself is close to the top.
+      if (!userHasScrolled && messagesEl.scrollHeight - messagesEl.clientHeight > HISTORY_PREFETCH_PX) return;
       if (messagesEl.scrollTop > HISTORY_PREFETCH_PX) return;
       loadEarlier();
     }
@@ -8439,7 +8474,7 @@ class ChatView extends BaseComponent {
 
   // Focus input
   setTimeout(() => {
-    inputEl.focus();
+    inputEl.focus({ preventScroll: true });
     // Auto-submit si un prompt initial est fourni (ex: depuis Remote Control)
     if (initialPrompt) {
       // Inject initial images if provided (from Remote Control camera)
@@ -8474,6 +8509,8 @@ class ChatView extends BaseComponent {
       // Persist whatever the debounce was still holding, before the view goes.
       artifactRegistry.flush();
       transcriptPruner?.destroy();
+      scrollResizeObserver?.disconnect();
+      scrollChildrenObserver.disconnect();
       contextSuggestions.reset();
       followupChips.clear();
       // Clear permission reminder timers
@@ -8605,7 +8642,8 @@ class ChatView extends BaseComponent {
       return switchAccountAndRestart(accountId);
     },
     focus() {
-      inputEl?.focus();
+      inputEl?.focus({ preventScroll: true });
+      if (!userHasScrolled) scrollToBottom();
     },
     sendMessage(text, images = [], mentions = []) {
       for (const img of images) {
