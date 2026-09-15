@@ -13,6 +13,14 @@ const {
 const { claudeConfigFile, legacyMcpsFile } = require('../utils/paths');
 
 class McpService extends BaseService {
+  /**
+   * Ids of the global servers this panel is responsible for, as of the last
+   * load or save. saveMcps() only deletes from ~/.claude.json what is in here,
+   * so a server added to the file by someone else is never our deletion.
+   * @type {Set<string>}
+   */
+  _knownIds = new Set();
+
   async loadMcps() {
     let mcps = [];
     const fsp = this.api.fs.promises;
@@ -63,11 +71,27 @@ class McpService extends BaseService {
       console.error('Error loading MCPs:', e);
     }
 
+    this._knownIds = new Set(mcps.filter(mcp => mcp.scope !== 'project').map(mcp => mcp.id));
+
     setMcps(mcps);
     mcps.forEach(mcp => initMcpProcess(mcp.id));
     return mcps;
   }
 
+  /**
+   * Write the global MCP servers back to ~/.claude.json.
+   *
+   * `mcps` is the full global set as the panel knows it, so an entry that is
+   * gone from the list is a deletion and has to be removed from the file. But
+   * the file is not ours: the CLI owns it and writes it continuously, and
+   * `config.mcpServers = {}` used to mean any server that appeared between
+   * loadMcps() and this save — installed by `claude mcp add`, pulled from the
+   * cloud, written by another window — was silently dropped.
+   *
+   * So the deletions are computed against what is on disk *now* rather than
+   * against what was on disk when the panel loaded: remove the ids we manage
+   * and no longer have, keep everything else verbatim.
+   */
   async saveMcps(mcps) {
     const fsp = this.api.fs.promises;
     try {
@@ -77,19 +101,38 @@ class McpService extends BaseService {
       } catch (e) {
         if (e.code !== 'ENOENT') throw e;
       }
+      if (!config || typeof config !== 'object' || Array.isArray(config)) {
+        throw new Error('~/.claude.json is not a JSON object');
+      }
 
-      config.mcpServers = {};
-      mcps.filter(mcp => mcp.scope !== 'project').forEach(mcp => {
+      const globalMcps = mcps.filter(mcp => mcp.scope !== 'project');
+      const keptIds = new Set(globalMcps.map(mcp => mcp.id));
+
+      const existing = (config.mcpServers && typeof config.mcpServers === 'object')
+        ? config.mcpServers
+        : {};
+      const next = {};
+      for (const [id, serverConfig] of Object.entries(existing)) {
+        // Entries the panel showed and the user removed go; the rest stays.
+        if (!keptIds.has(id) && this._knownIds.has(id)) continue;
+        next[id] = serverConfig;
+      }
+
+      globalMcps.forEach(mcp => {
         if (mcp.type === 'http') {
-          config.mcpServers[mcp.id] = { type: 'http', url: mcp.url };
+          next[mcp.id] = { type: 'http', url: mcp.url };
         } else {
-          config.mcpServers[mcp.id] = { type: 'stdio', command: mcp.command, args: mcp.args || [], env: mcp.env || {} };
+          next[mcp.id] = { type: 'stdio', command: mcp.command, args: mcp.args || [], env: mcp.env || {} };
         }
       });
+
+      config.mcpServers = next;
 
       const tmpFile = claudeConfigFile + '.tmp';
       await fsp.writeFile(tmpFile, JSON.stringify(config, null, 2));
       await fsp.rename(tmpFile, claudeConfigFile);
+
+      this._knownIds = keptIds;
     } catch (e) {
       console.error('Error saving MCPs:', e);
     }

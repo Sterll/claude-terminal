@@ -521,14 +521,36 @@ describe('DatabaseService MCP provisioning', () => {
     expect(fs.existsSync(claudeFile)).toBe(true);
   });
 
-  test('provisionGlobalMcp handles corrupted claude.json', async () => {
+  test('provisionGlobalMcp leaves an unparseable claude.json untouched', async () => {
+    // ~/.claude.json belongs to the CLI: projects, oauthAccount, per-project
+    // mcpServers. Provisioning must give up rather than rewrite it from {},
+    // which is what a truncated read (the CLI writing concurrently) would
+    // otherwise turn into total config loss.
     const claudeFile = path.join(tmpHome, '.claude.json');
     fs.writeFileSync(claudeFile, '{not valid json!!!', 'utf8');
+
+    const result = await databaseService.provisionGlobalMcp();
+    expect(result.success).toBe(false);
+    expect(result.error).toBeTruthy();
+
+    expect(fs.readFileSync(claudeFile, 'utf8')).toBe('{not valid json!!!');
+  });
+
+  test('provisionGlobalMcp preserves unrelated top-level keys', async () => {
+    const claudeFile = path.join(tmpHome, '.claude.json');
+    fs.writeFileSync(claudeFile, JSON.stringify({
+      oauthAccount: { emailAddress: 'someone@example.com' },
+      projects: { '/some/path': { mcpServers: { local: { command: 'x' } } } },
+      mcpServers: { other: { command: 'keep-me' } }
+    }), 'utf8');
 
     const result = await databaseService.provisionGlobalMcp();
     expect(result.success).toBe(true);
 
     const config = JSON.parse(fs.readFileSync(claudeFile, 'utf8'));
+    expect(config.oauthAccount.emailAddress).toBe('someone@example.com');
+    expect(config.projects['/some/path'].mcpServers.local.command).toBe('x');
+    expect(config.mcpServers.other.command).toBe('keep-me');
     expect(config.mcpServers['claude-terminal']).toBeDefined();
   });
 

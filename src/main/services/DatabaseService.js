@@ -374,11 +374,18 @@ class DatabaseService {
       const homeDir = require('os').homedir();
       const claudeFile = path.join(homeDir, '.claude.json');
 
+      // A parse failure must abort, never "start fresh". ~/.claude.json is the
+      // CLI's own config: it holds the projects map, oauthAccount, per-project
+      // mcpServers and history. Rewriting it from {} destroys all of that, and
+      // this runs at every startup — while the CLI writes the same file, so a
+      // read landing mid-write is enough to produce the truncated JSON.
+      // Same reasoning as SyncEngine's readJsonForMerge().
       let config = {};
       if (fs.existsSync(claudeFile)) {
-        try {
-          config = JSON.parse(fs.readFileSync(claudeFile, 'utf8'));
-        } catch (e) { /* start fresh */ }
+        config = JSON.parse(fs.readFileSync(claudeFile, 'utf8'));
+        if (!config || typeof config !== 'object' || Array.isArray(config)) {
+          throw new Error('~/.claude.json is not a JSON object');
+        }
       }
 
       if (!config.mcpServers) config.mcpServers = {};
