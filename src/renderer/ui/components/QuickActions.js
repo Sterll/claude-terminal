@@ -313,8 +313,13 @@ class QuickActions extends BaseComponent {
     // "Terminer le programme de commandes (O/N) ?" prompt and the next command
     // ends up swallowed by it; closing the tab avoids that and prevents stale
     // output from mixing into the new run.
+    //
+    // Restarting is a close plus a create, and a create appends: without the
+    // slot the tab would walk to the end of the bar on every relaunch.
+    let slot = null;
     if (existing && existing.projectId === project.id) {
       this._actionTerminals.delete(actionId);
+      slot = this._terminalManager()?.captureTabSlot(existing.terminalId) || null;
       await this._closeAndWait(existing.terminalId);
     }
 
@@ -326,6 +331,8 @@ class QuickActions extends BaseComponent {
           name: action.name,
           actionCommand: action.command
         });
+
+        this._terminalManager()?.restoreTabSlot(terminalId, slot);
 
         this._actionTerminals.set(actionId, { terminalId, projectId: project.id });
 
@@ -350,6 +357,16 @@ class QuickActions extends BaseComponent {
     }
   }
 
+  // Required lazily: TerminalManager requires this module back, and resolving
+  // that cycle at load time gives one of the two an empty exports object.
+  _terminalManager() {
+    try {
+      return require('./TerminalManager');
+    } catch (_) {
+      return null;
+    }
+  }
+
   _closeAndWait(terminalId, timeoutMs = 1500) {
     return new Promise((resolve) => {
       let done = false;
@@ -368,7 +385,7 @@ class QuickActions extends BaseComponent {
       const safety = setTimeout(finish, timeoutMs);
 
       try {
-        const TerminalManager = require('./TerminalManager');
+        const TerminalManager = this._terminalManager();
         if (TerminalManager && typeof TerminalManager.closeTerminal === 'function') {
           TerminalManager.closeTerminal(terminalId);
         } else {

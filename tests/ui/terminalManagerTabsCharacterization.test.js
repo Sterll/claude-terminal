@@ -428,6 +428,82 @@ describe('TerminalManager tabs (characterization)', () => {
     });
   });
 
+  // ── Putting a restarted tab back where it was ──
+
+  describe("restoring a tab's slot", () => {
+    // What a quick-action restart does: close the tab, create a fresh one —
+    // which appends — then put it back in the slot captured beforehand.
+    const restart = (oldId, newId) => {
+      const slot = manager.captureTabSlot(oldId);
+      document.querySelector(`.terminal-tab[data-id="${oldId}"]`).remove();
+      state.removeTerminal(oldId);
+      seedTab(newId, { name: 'A' });
+      manager.restoreTabSlot(newId, slot);
+      return slot;
+    };
+
+    beforeEach(() => {
+      seedTab('t1', { name: 'A' });
+      seedTab('t2', { name: 'B' });
+      seedTab('t3', { name: 'C' });
+    });
+
+    it('captures the tab a tab follows, not its index', () => {
+      expect(manager.captureTabSlot('t2')).toEqual({ afterId: 't1', pinned: false });
+    });
+
+    it('captures the first tab as following nothing', () => {
+      expect(manager.captureTabSlot('t1')).toEqual({ afterId: null, pinned: false });
+    });
+
+    it('has no slot for a tab that is not there', () => {
+      expect(manager.captureTabSlot('nope')).toBeNull();
+    });
+
+    it('puts a replacement back in the middle instead of at the end', () => {
+      restart('t2', 't2b');
+
+      expect(tabIdsInOrder()).toEqual(['t1', 't2b', 't3']);
+    });
+
+    it('puts a replacement of the first tab back in front', () => {
+      restart('t1', 't1b');
+
+      expect(tabIdsInOrder()).toEqual(['t1b', 't2', 't3']);
+    });
+
+    it('leaves the replacement appended when the tab it followed is gone', () => {
+      const slot = manager.captureTabSlot('t3');
+      ['t2', 't3'].forEach(id => {
+        document.querySelector(`.terminal-tab[data-id="${id}"]`).remove();
+        state.removeTerminal(id);
+      });
+      seedTab('t3b', { name: 'C' });
+
+      manager.restoreTabSlot('t3b', slot);
+
+      expect(tabIdsInOrder()).toEqual(['t1', 't3b']);
+    });
+
+    it('does nothing without a slot, or for a tab that is not there', () => {
+      manager.restoreTabSlot('t3', null);
+      manager.restoreTabSlot('nope', { afterId: null, pinned: false });
+
+      expect(tabIdsInOrder()).toEqual(['t1', 't2', 't3']);
+    });
+
+    it('re-pins the replacement of a pinned tab, so the pinned zone stays a block', () => {
+      manager.setTabPinned('t1', true);
+      manager.setTabPinned('t2', true);
+
+      restart('t2', 't2b');
+
+      const replacement = document.querySelector('.terminal-tab[data-id="t2b"]');
+      expect(replacement.classList.contains('pinned-tab')).toBe(true);
+      expect(tabIdsInOrder()).toEqual(['t1', 't2b', 't3']);
+    });
+  });
+
   // ── Terminal / chat toggle ──
 
   describe('switching a tab between terminal and chat', () => {

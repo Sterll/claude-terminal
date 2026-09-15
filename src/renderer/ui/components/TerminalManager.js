@@ -1113,6 +1113,44 @@ class TerminalManager extends BaseComponent {
     TerminalSessionService.saveTerminalSessions();
   }
 
+  /**
+   * Where a tab sits, as the tab it follows — `null` means "first".
+   * Deliberately not a DOM index: the caller captures this to put a
+   * *replacement* tab back, so every tab after this one shifts by the time the
+   * slot is used and an index would land one place off.
+   */
+  captureTabSlot(id) {
+    const tab = document.querySelector(`.terminal-tab[data-id="${id}"]`);
+    if (!tab) return null;
+    return {
+      afterId: tab.previousElementSibling?.dataset.id || null,
+      pinned: tab.classList.contains('pinned-tab'),
+    };
+  }
+
+  /** Move a tab back into a slot returned by captureTabSlot(). */
+  restoreTabSlot(id, slot) {
+    if (!slot) return;
+    const tabsContainer = document.getElementById('terminals-tabs');
+    const tab = tabsContainer?.querySelector(`.terminal-tab[data-id="${id}"]`);
+    if (!tab) return;
+
+    // The pinned zone is a cluster at the head of the bar, so an unpinned tab
+    // dropped inside it would break that invariant — and setTabPinned() anchors
+    // on the last pinned tab, so it would mis-place the next pin too. Re-pin
+    // first, then place: setTabPinned() only moves the tab to the end of the
+    // zone, the insert below puts it back in its own slot.
+    if (slot.pinned && !tab.classList.contains('pinned-tab')) this.setTabPinned(id, true);
+
+    const anchor = slot.afterId
+      ? tabsContainer.querySelector(`.terminal-tab[data-id="${slot.afterId}"]`)
+      : null;
+    // The tab it followed is gone: leave the new tab where it was appended
+    // rather than guessing at a slot that no longer exists.
+    if (slot.afterId && !anchor) return;
+    tabsContainer.insertBefore(tab, anchor ? anchor.nextSibling : tabsContainer.firstChild);
+  }
+
   _showTabContextMenu(e, id) {
     const self = this;
     e.preventDefault();
@@ -4484,6 +4522,8 @@ module.exports = {
   TerminalManager,
   createTerminal: (project, options) => _getInstance().createTerminal(project, options),
   closeTerminal: (id) => _getInstance().closeTerminal(id),
+  captureTabSlot: (id) => _getInstance().captureTabSlot(id),
+  restoreTabSlot: (id, slot) => _getInstance().restoreTabSlot(id, slot),
   setActiveTerminal: (id) => _getInstance().setActiveTerminal(id),
   filterByProject: (projectIndex) => _getInstance().filterByProject(projectIndex),
   countTerminalsForProject: (projectIndex) => _getInstance().countTerminalsForProject(projectIndex),
