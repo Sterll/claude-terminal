@@ -387,6 +387,25 @@ async function installPlugin(marketplace, pluginName) {
     const key = `${pluginName}@${marketplace}`;
     const installPath = assertWithin(cacheDir, path.join(cacheDir, key));
 
+    // Read the manifest before touching the filesystem.
+    // A parse failure must abort the install, not reset the manifest: every
+    // other plugin the user has installed lives in this file, and rewriting it
+    // from { plugins: {} } uninstalls all of them as far as the CLI can tell.
+    // Reading first also means a bad manifest leaves no half-copied install
+    // directory behind.
+    let installed = { plugins: {} };
+    if (fs.existsSync(installedFile)) {
+      try {
+        installed = JSON.parse(fs.readFileSync(installedFile, 'utf8'));
+      } catch (e) {
+        return { success: false, error: `Failed to parse installed_plugins.json: ${e.message}` };
+      }
+      if (!installed || typeof installed !== 'object' || Array.isArray(installed)) {
+        return { success: false, error: 'installed_plugins.json is not a JSON object' };
+      }
+    }
+    if (!installed.plugins) installed.plugins = {};
+
     if (!fs.existsSync(cacheDir)) {
       fs.mkdirSync(cacheDir, { recursive: true });
     }
@@ -396,13 +415,6 @@ async function installPlugin(marketplace, pluginName) {
       fs.rmSync(installPath, { recursive: true, force: true });
     }
     fs.cpSync(sourcePath, installPath, { recursive: true });
-
-    // Update installed_plugins.json atomically
-    let installed = { plugins: {} };
-    if (fs.existsSync(installedFile)) {
-      try { installed = JSON.parse(fs.readFileSync(installedFile, 'utf8')); } catch { /* ignore */ }
-    }
-    if (!installed.plugins) installed.plugins = {};
 
     const now = new Date().toISOString();
     const existingEntry = installed.plugins[key]?.[0];
