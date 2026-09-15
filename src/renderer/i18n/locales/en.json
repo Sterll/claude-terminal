@@ -1791,6 +1791,7 @@
     "loadingHistory": "Loading conversation...",
     "olderMessages": "{count} earlier messages",
     "olderMessagesUnknown": "Earlier messages",
+    "newerMessages": "{count} newer messages",
     "toolOutputLoading": "Loading the full output…",
     "toolOutputFailed": "Could not load the full output — showing the stored preview.",
     "toolOutputClipped": "Output too large to display in full.",

@@ -1791,6 +1791,7 @@
     "loadingHistory": "Memuat percakapan...",
     "olderMessages": "{count} pesan sebelumnya",
     "olderMessagesUnknown": "Pesan sebelumnya",
+    "newerMessages": "{count} pesan lebih baru",
     "toolOutputLoading": "Memuat keluaran lengkap…",
     "toolOutputFailed": "Tidak dapat memuat keluaran lengkap — menampilkan pratinjau tersimpan.",
     "toolOutputClipped": "Keluaran terlalu besar untuk ditampilkan seluruhnya.",

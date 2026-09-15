@@ -1781,6 +1781,7 @@
     "loadingHistory": "Cargando conversación...",
     "olderMessages": "{count} mensajes anteriores",
     "olderMessagesUnknown": "Mensajes anteriores",
+    "newerMessages": "{count} mensajes más recientes",
     "toolOutputLoading": "Cargando la salida completa…",
     "toolOutputFailed": "No se pudo cargar la salida completa: se muestra la vista previa guardada.",
     "toolOutputClipped": "La salida es demasiado grande para mostrarse completa.",

@@ -1791,6 +1791,7 @@
     "loadingHistory": "Chargement de la conversation...",
     "olderMessages": "{count} messages plus anciens",
     "olderMessagesUnknown": "Messages plus anciens",
+    "newerMessages": "{count} messages plus récents",
     "toolOutputLoading": "Chargement de la sortie complète…",
     "toolOutputFailed": "Impossible de charger la sortie complète — aperçu enregistré affiché.",
     "toolOutputClipped": "Sortie trop volumineuse pour être affichée en entier.",

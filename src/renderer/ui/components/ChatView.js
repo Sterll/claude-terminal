@@ -7219,6 +7219,9 @@ class ChatView extends BaseComponent {
     hasNewMessages = false;
     scrollButton.classList.remove('has-new-messages');
     scrollButton.style.display = 'none';
+    // Whatever streamed in while the reader was scrolled up is detached below;
+    // without this the jump lands on the pruner's marker, not on the newest turn.
+    transcriptPruner?.drainBelow();
     messagesEl.scrollTop = messagesEl.scrollHeight;
   });
 
@@ -7244,6 +7247,7 @@ class ChatView extends BaseComponent {
       if (!_scrollRafId) {
         _scrollRafId = requestAnimationFrame(() => {
           _scrollRafId = null;
+          transcriptPruner?.drainBelow();
           messagesEl.scrollTop = messagesEl.scrollHeight;
         });
       }

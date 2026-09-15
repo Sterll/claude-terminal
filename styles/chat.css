@@ -885,6 +885,11 @@ mark.chat-search-hit.current {
 .chat-history-top.loading {
   color: var(--text-secondary);
 }
+/* The pruner's lower boundary: same row, mirrored spacing, since what it
+   stands for sits below it rather than above. */
+.chat-history-top.chat-pruned-bottom {
+  margin: 14px 0 4px;
+}
 
 /* History messages: dimmed one notch down the text ramp so replayed turns read
    as past. This used to be `opacity: 0.7` on the container, but that multiplies

@@ -1791,6 +1791,7 @@
     "loadingHistory": "正在加载对话...",
     "olderMessages": "更早的 {count} 条消息",
     "olderMessagesUnknown": "更早的消息",
+    "newerMessages": "更新的 {count} 条消息",
     "toolOutputLoading": "正在加载完整输出…",
     "toolOutputFailed": "无法加载完整输出 — 显示已保存的预览。",
     "toolOutputClipped": "输出过大，无法完整显示。",
