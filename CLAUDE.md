@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 171 test files)
+npm test                 # Run Jest tests (jsdom, 172 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -628,13 +628,13 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 171 test files
+- **Framework:** Jest with jsdom, 172 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
   - `core/` - BaseComponent, BasePanel, ApiProvider, ServiceContainer
   - `events/` - hook session routing, permission-notification suppression by permission mode
-  - `features/` - shortcuts, control tower grid, files dock, setup wizard, tab focus, ui_navigate
+  - `features/` - shortcuts, control tower grid, files dock, setup wizard, tab focus, ui_navigate, and the account binding + project attribution every `terminal.create` call has to send
   - `i18n/` - i18n, coherence across the 5 locales, unused/missing key usage
   - `integration/` - state persistence
   - `ipc/` - accounts usage, claude, hooks, project, usage, workflow save

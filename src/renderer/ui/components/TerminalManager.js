@@ -1537,6 +1537,11 @@ class TerminalManager extends BaseComponent {
       // Only an explicit binding is sent: unbound projects run against the
       // machine-wide login, which is what keeps `claude /login` capturable.
       accountId: getProjectAccount(project.id),
+      // Attribution for the output capture and the terminal_exit_code triggers.
+      // A worktree tab keeps the parent's id — that is the project the capture
+      // log is keyed by and the one a trigger is scoped to.
+      projectId: project.id,
+      projectPath: project.path,
       ...(resumeSessionId ? { resumeSessionId } : {})
     });
 
@@ -2946,7 +2951,10 @@ class TerminalManager extends BaseComponent {
       runClaude: true,
       resumeSessionId: sessionId,
       skipPermissions,
-      accountId: getProjectAccount(project.id)
+      accountId: getProjectAccount(project.id),
+      // Attribution for the output capture and the terminal_exit_code triggers.
+      projectId: project.id,
+      projectPath: project.path
     });
 
     let id;
@@ -3124,7 +3132,10 @@ class TerminalManager extends BaseComponent {
       cwd: project.path,
       runClaude: true,
       skipPermissions: false,
-      accountId: getProjectAccount(project.id)
+      accountId: getProjectAccount(project.id),
+      // Attribution for the output capture and the terminal_exit_code triggers.
+      projectId: project.id,
+      projectPath: project.path
     });
 
     let id;
