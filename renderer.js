@@ -6788,6 +6788,14 @@ const PLACEHOLDER_USAGE_BUCKETS = [
   { id: 'weekly',  type: 'weekly',  label: null, labelKey: 'ui.weekly',  utilization: null, resetsAt: null }
 ];
 
+// Building a bar, painting a percentage and spelling a countdown do not need
+// the chip's own state, so they live apart and are tested there.
+const {
+  createUsageBucketEl,
+  updateUsageBar,
+  updateResetEl,
+} = require('./src/renderer/ui/components/usageChip');
+
 /** bucket id -> its rendered nodes */
 const usageBucketEls = new Map();
 /** bucket id -> reset Date, for the once-a-minute countdown */
@@ -6951,40 +6959,6 @@ function renderUsageAccountLabel() {
  * @param {Object} bucket
  * @returns {{item: Element, label: Element, bar: Element, percent: Element, reset: Element}}
  */
-function createUsageBucketEl(bucket) {
-  const item = document.createElement('div');
-  item.className = 'usage-item';
-  item.dataset.type = bucket.type;
-
-  const header = document.createElement('div');
-  header.className = 'usage-header';
-
-  const label = document.createElement('span');
-  label.className = 'usage-label';
-  if (bucket.labelKey) label.dataset.i18n = bucket.labelKey;
-
-  const value = document.createElement('span');
-  value.className = 'usage-value';
-  const percent = document.createElement('span');
-  percent.className = 'usage-percent';
-  percent.textContent = '--';
-  const reset = document.createElement('span');
-  reset.className = 'usage-reset';
-  value.append(percent, reset);
-
-  header.append(label, value);
-
-  const barContainer = document.createElement('div');
-  barContainer.className = 'usage-bar-container';
-  const bar = document.createElement('div');
-  bar.className = 'usage-bar';
-  bar.style.width = '0%';
-  barContainer.appendChild(bar);
-
-  item.append(header, barContainer);
-  return { item, label, bar, percent, reset };
-}
-
 /**
  * Reconcile the rendered bars against a bucket list, keyed by bucket id, so a
  * limit the API stops sending takes its bar with it instead of freezing on its
@@ -7032,29 +7006,6 @@ function renderUsageBuckets(buckets) {
 /**
  * Update a single usage bar
  */
-function updateUsageBar(elements, percent) {
-  if (!elements.bar || !elements.percent) return;
-
-  if (percent === null || percent === undefined) {
-    elements.percent.textContent = '--';
-    elements.bar.style.width = '0%';
-    elements.bar.classList.remove('warning', 'danger');
-    return;
-  }
-
-  const roundedPercent = Math.round(percent);
-  elements.percent.textContent = `${roundedPercent}%`;
-  elements.bar.style.width = `${Math.min(roundedPercent, 100)}%`;
-
-  // Set color based on usage level
-  elements.bar.classList.remove('warning', 'danger');
-  if (roundedPercent >= 90) {
-    elements.bar.classList.add('danger');
-  } else if (roundedPercent >= 70) {
-    elements.bar.classList.add('warning');
-  }
-}
-
 /**
  * Update extra usage display (paid tokens beyond plan)
  * extraUsage from API: { cost_usd: number } or null
@@ -7125,25 +7076,6 @@ function startResetCountdown() {
 function updateAllResets() {
   for (const [id, els] of usageBucketEls) {
     updateResetEl(els.reset, usageResetTargets.get(id) || null);
-  }
-}
-
-function updateResetEl(el, target) {
-  if (!el) return;
-  if (!target) { el.textContent = ''; return; }
-  const remaining = target.getTime() - Date.now();
-  if (remaining <= 0) { el.textContent = ''; return; }
-  const lang = getCurrentLanguage();
-  const d = Math.floor(remaining / 86400000);
-  const h = Math.floor((remaining % 86400000) / 3600000);
-  const m = Math.floor((remaining % 3600000) / 60000);
-  const dU = lang === 'fr' ? 'j' : 'd';
-  if (d > 0) {
-    el.textContent = `${d}${dU} ${h}h`;
-  } else if (h > 0) {
-    el.textContent = `${h}h ${String(m).padStart(2, '0')}min`;
-  } else {
-    el.textContent = `${m}min`;
   }
 }
 

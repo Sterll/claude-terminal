@@ -864,6 +864,9 @@
     "minutesAgo": "il y a {count}min",
     "hoursAgo": "il y a {count}h",
     "yesterday": "Hier",
+    "unitDayShort": "j",
+    "unitHourShort": "h",
+    "unitMinuteShort": "min",
     "daysAgo": "il y a {count}j"
   },
   "settings": {
@@ -3218,6 +3221,9 @@
         "minutesAgo": "Il y a {n} min",
         "hoursAgo": "Il y a {n}h",
         "yesterdayAt": "Hier {time}",
+    "unitDayShort": "j",
+    "unitHourShort": "h",
+    "unitMinuteShort": "min",
         "daysAgo": "Il y a {n}j"
       },
       "autocomplete": {

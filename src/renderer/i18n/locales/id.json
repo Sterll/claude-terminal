@@ -769,6 +769,9 @@
     "minutesAgo": "{count} menit lalu",
     "hoursAgo": "{count} jam lalu",
     "yesterday": "Kemarin",
+    "unitDayShort": "h",
+    "unitHourShort": "j",
+    "unitMinuteShort": "mnt",
     "daysAgo": "{count} hari lalu"
   },
   "settings": {
@@ -3218,6 +3221,9 @@
         "minutesAgo": "{n} menit lalu",
         "hoursAgo": "{n} jam lalu",
         "yesterdayAt": "Kemarin {time}",
+    "unitDayShort": "h",
+    "unitHourShort": "j",
+    "unitMinuteShort": "mnt",
         "daysAgo": "{n} hari lalu"
       },
       "autocomplete": {

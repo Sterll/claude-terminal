@@ -769,6 +769,9 @@
     "minutesAgo": "{count} 分钟前",
     "hoursAgo": "{count}h 前",
     "yesterday": "昨天",
+    "unitDayShort": "天",
+    "unitHourShort": "小时",
+    "unitMinuteShort": "分",
     "daysAgo": "{count}d 前"
   },
   "settings": {
@@ -3218,6 +3221,9 @@
         "minutesAgo": "{n} 分钟前",
         "hoursAgo": "{n}h 前",
         "yesterdayAt": "昨天 {time}",
+    "unitDayShort": "天",
+    "unitHourShort": "小时",
+    "unitMinuteShort": "分",
         "daysAgo": "{n}d 前"
       },
       "autocomplete": {

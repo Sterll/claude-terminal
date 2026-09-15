@@ -766,6 +766,9 @@
     "minutesAgo": "hace {count}min",
     "hoursAgo": "hace {count}h",
     "yesterday": "Ayer",
+    "unitDayShort": "d",
+    "unitHourShort": "h",
+    "unitMinuteShort": "min",
     "daysAgo": "hace {count}d"
   },
   "settings": {
@@ -3215,6 +3218,9 @@
         "minutesAgo": "hace {n} min",
         "hoursAgo": "hace {n}h",
         "yesterdayAt": "Ayer {time}",
+    "unitDayShort": "d",
+    "unitHourShort": "h",
+    "unitMinuteShort": "min",
         "daysAgo": "hace {n}d"
       },
       "autocomplete": {
