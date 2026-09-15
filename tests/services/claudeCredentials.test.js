@@ -125,3 +125,31 @@ describe('token validity', () => {
     expect(await credentials.readAccessToken()).toBeNull();
   });
 });
+
+
+describe('concurrent Keychain readers', () => {
+  beforeEach(() => { setPlatform('darwin'); require('keytar').getPassword.mockClear(); });
+
+  test('shares one pending access dialog, then reads fresh credentials on the next call', async () => {
+    let finish;
+    require('keytar').getPassword.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const first = credentials.readCredentials();
+    const second = credentials.readAccessToken();
+    await Promise.resolve();
+    expect(require('keytar').getPassword).toHaveBeenCalledTimes(1);
+    finish(JSON.stringify(oauth('old')));
+    expect((await first).claudeAiOauth.accessToken).toBe('old');
+    expect(await second).toBe('old');
+    mockKeychain.set(KEY, JSON.stringify(oauth('refreshed-elsewhere')));
+    expect(await credentials.readAccessToken()).toBe('refreshed-elsewhere');
+    expect(require('keytar').getPassword).toHaveBeenCalledTimes(2);
+  });
+
+  test('a denied read settles all callers and permits an explicit subsequent retry', async () => {
+    require('keytar').getPassword.mockRejectedValueOnce(new Error('Access denied'));
+    await expect(Promise.all([credentials.readCredentials(), credentials.readAccessToken()])).resolves.toEqual([null, null]);
+    expect(require('keytar').getPassword).toHaveBeenCalledTimes(1);
+    mockKeychain.set(KEY, JSON.stringify(oauth('allowed')));
+    expect(await credentials.readAccessToken()).toBe('allowed');
+  });
+});

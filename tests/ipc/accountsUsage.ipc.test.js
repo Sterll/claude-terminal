@@ -78,6 +78,7 @@ describe('accounts-usage', () => {
     const res = await handlers['accounts-usage']({}, {});
 
     expect(res.success).toBe(true);
+    expect(mockAccountManager.listAccounts).toHaveBeenCalledWith({ includeCredentials: false });
     expect(Object.keys(res.data).sort()).toEqual(['acct-max', 'acct-team']);
     expect(res.data['acct-team'].accountId).toBe('acct-team');
   });
