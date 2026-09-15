@@ -276,15 +276,37 @@ describe('getStats', () => {
 });
 
 describe('resilience', () => {
-  it('starts empty rather than throwing when index.json is corrupt', async () => {
+  it('refuses to read a corrupt index instead of reporting an empty store', async () => {
+    // "You have no artifacts" and "the index is unreadable" are different
+    // answers, and only one of them is true. Reporting the first is also what
+    // let the next write rewrite index.json with a single entry.
     const indexFile = path.join(tmpDir, 'artifacts', 'index.json');
     fs.mkdirSync(path.dirname(indexFile), { recursive: true });
     fs.writeFileSync(indexFile, '{ not json', 'utf8');
-    jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(store.listArtifacts({})).rejects.toThrow(/unparseable/i);
+  });
+
+  it('leaves a corrupt index untouched when a save is attempted', async () => {
+    // The MCP tools write index.json from another process, so a read landing
+    // mid-write is the realistic way this file goes bad. Saving must not turn
+    // that transient state into permanent loss of every blob's metadata.
+    const indexFile = path.join(tmpDir, 'artifacts', 'index.json');
+    fs.mkdirSync(path.dirname(indexFile), { recursive: true });
+    fs.writeFileSync(indexFile, '{ not json', 'utf8');
+
+    await expect(
+      store.saveArtifact({ projectId: 'p1', kind: 'code', title: 'a.js', source: 'x' })
+    ).rejects.toThrow(/unparseable/i);
+
+    expect(fs.readFileSync(indexFile, 'utf8')).toBe('{ not json');
+  });
+
+  it('still treats a missing index as an empty store', async () => {
+    const indexFile = path.join(tmpDir, 'artifacts', 'index.json');
+    fs.rmSync(indexFile, { force: true });
 
     await expect(store.listArtifacts({})).resolves.toEqual({ artifacts: [], total: 0 });
-
-    console.error.mockRestore();
   });
 
   it('serializes concurrent writes instead of losing updates', async () => {

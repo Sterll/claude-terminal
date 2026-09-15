@@ -151,20 +151,48 @@ function publishedFields(input) {
 
 const EMPTY_INDEX = { version: 1, artifacts: [] };
 
+/**
+ * Read index.json.
+ *
+ * Absent is legitimate and yields an empty index. Anything else throws, and
+ * deliberately so: every mutating call here is loadIndex -> mutate ->
+ * saveIndex, so "starting empty" on a bad read meant the next published
+ * artifact rewrote the index with itself alone and orphaned every blob under
+ * artifacts/<id>/.
+ *
+ * This file has the highest chance of that in the whole app, because it has a
+ * writer outside this process - the MCP tools write index.json directly, which
+ * is why ArtifactService polls it. Reading while that other process writes is
+ * exactly how truncated JSON gets here.
+ *
+ * Read paths throw too. "The index is unreadable" is a more honest answer for
+ * a caller than "you have no artifacts".
+ *
+ * @throws {Error} when index.json exists but cannot be used
+ */
 async function loadIndex() {
+  let raw;
   try {
-    const raw = await fsp.readFile(INDEX_FILE, 'utf8');
-    const parsed = JSON.parse(raw);
-    return {
-      version: parsed.version || 1,
-      artifacts: Array.isArray(parsed.artifacts) ? parsed.artifacts : [],
-    };
+    raw = await fsp.readFile(INDEX_FILE, 'utf8');
   } catch (e) {
-    if (e.code !== 'ENOENT') {
-      console.error('[Artifacts] index.json unreadable, starting empty:', e.message);
-    }
-    return { ...EMPTY_INDEX, artifacts: [] };
+    if (e.code === 'ENOENT') return { ...EMPTY_INDEX, artifacts: [] };
+    throw e;
   }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    throw new Error(`Refusing to use artifacts/index.json - it is unparseable (${e.message})`);
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Refusing to use artifacts/index.json - it is not a JSON object');
+  }
+
+  return {
+    version: parsed.version || 1,
+    artifacts: Array.isArray(parsed.artifacts) ? parsed.artifacts : [],
+  };
 }
 
 async function saveIndex(index) {
