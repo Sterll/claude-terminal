@@ -15,8 +15,7 @@ const path = require('path');
 
 // Point the data dir at a throwaway home BEFORE the module resolves its paths.
 const FAKE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'tcap-'));
-process.env.USERPROFILE = FAKE_HOME;
-process.env.HOME        = FAKE_HOME;
+const homedirSpy = jest.spyOn(os, 'homedir').mockReturnValue(FAKE_HOME);
 
 const capture = require('../../src/main/services/TerminalOutputCapture');
 
@@ -31,6 +30,7 @@ afterEach(() => {
 });
 
 afterAll(() => {
+  homedirSpy.mockRestore();
   try { fs.rmSync(FAKE_HOME, { recursive: true, force: true }); } catch { /* best effort */ }
 });
 

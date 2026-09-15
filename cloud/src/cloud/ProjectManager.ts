@@ -1,7 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import extractZip from 'extract-zip';
-import { store, UserData } from '../store/store';
+import { store, validateName } from '../store/store';
+import { withKeyLock } from '../store/locks';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { config } from '../config';
 
 export class ProjectManager {
@@ -21,59 +24,45 @@ export class ProjectManager {
   }
 
   async createFromZip(userName: string, projectName: string, zipPath: string, displayName?: string): Promise<string> {
-    this.validateProjectName(projectName);
-    await this.checkProjectLimit(userName);
-
-    const projectPath = await store.createProjectDir(userName, projectName);
-
     try {
-      await extractZip(zipPath, { dir: projectPath });
-    } catch (err: any) {
-      await store.deleteProjectDir(userName, projectName);
-      throw new Error(`Failed to extract zip: ${err.message}`);
-    } finally {
-      // Clean up uploaded zip
-      await fs.promises.unlink(zipPath).catch(() => {});
-    }
-
-    // Verify no files escaped the project directory (path traversal protection)
-    const extractedFiles = await this._walkDirFlat(projectPath);
-    for (const f of extractedFiles) {
-      const resolved = path.resolve(projectPath, f);
-      if (!resolved.startsWith(projectPath)) {
-        await store.deleteProjectDir(userName, projectName);
-        throw new Error('Zip contains files with path traversal');
-      }
-    }
-
-    // Update user.json
-    const user = await store.getUser(userName);
-    if (user) {
-      const existing = user.projects.findIndex(p => p.name === projectName);
-      const entry = { name: projectName, displayName: displayName || projectName, createdAt: Date.now(), lastActivity: null };
-      if (existing >= 0) {
-        user.projects[existing] = entry;
-      } else {
-        user.projects.push(entry);
-      }
-      await store.saveUser(userName, user);
-    }
-
-    return projectPath;
+      return await this.createProject(userName, projectName, displayName, async temporary => {
+        let bytes = 0;
+        let entries = 0;
+        await extractZip(zipPath, { dir: temporary, onEntry: entry => {
+          const name = entry.fileName.replace(/\\/g, '/');
+          const kind = (entry.externalFileAttributes >>> 16) & 0xf000;
+          bytes += entry.uncompressedSize;
+          if (++entries > 10000 || bytes > config.maxExpandedBytes) throw new Error('Archive exceeds extraction limits');
+          if (name.startsWith('/') || /^[a-z]:/i.test(name) || name.split('/').includes('..') || name.includes('\0')) throw new Error('Invalid archive path');
+          if (kind && kind !== 0x8000 && kind !== 0x4000) throw new Error('Archive links and special files are not supported');
+        } });
+      });
+    } finally { await fs.promises.unlink(zipPath).catch(() => {}); }
   }
 
-  private async _walkDirFlat(dir: string, base: string = ''): Promise<string[]> {
-    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
-    const results: string[] = [];
-    for (const entry of entries) {
-      const rel = base ? `${base}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) {
-        results.push(...await this._walkDirFlat(path.join(dir, entry.name), rel));
-      } else {
-        results.push(rel);
-      }
-    }
-    return results;
+  async createFromClone(userName: string, name: string, cloneUrl: string, displayName?: string): Promise<string> {
+    if (typeof cloneUrl !== 'string' || !/^https:\/\//i.test(cloneUrl)) throw new Error('Only HTTPS clone URLs are allowed');
+    return this.createProject(userName, name, displayName, async temporary => {
+      await promisify(execFile)('git', ['-c', 'protocol.ext.allow=never', '-c', 'protocol.file.allow=never', 'clone', '--depth=1', '--', cloneUrl, temporary], { timeout: 5 * 60 * 1000 });
+    });
+  }
+
+  private async createProject(userName: string, name: string, displayName: string | undefined, populate: (dir: string) => Promise<void>): Promise<string> {
+    const destination = store.getProjectPath(userName, name);
+    return withKeyLock(`projects:${userName}`, async () => {
+      await this.checkProjectLimit(userName);
+      if (await this.projectExists(userName, name)) throw Object.assign(new Error('Project already exists'), { status: 409 });
+      const temporary = await fs.promises.mkdtemp(path.join(path.dirname(destination), '.import-'));
+      try {
+        await populate(temporary);
+        if (await this.projectExists(userName, name)) throw Object.assign(new Error('Project already exists'), { status: 409 });
+        await fs.promises.rename(temporary, destination);
+      } finally { await fs.promises.rm(temporary, { recursive: true, force: true }); }
+      await store.updateUser(userName, user => {
+        user.projects.push({ name, displayName: displayName || name, createdAt: Date.now(), lastActivity: null });
+      });
+      return destination;
+    });
   }
 
   // For downloads: exclude large/generated directories but keep .git
@@ -84,43 +73,41 @@ export class ProjectManager {
   ]);
 
   async deleteProject(userName: string, projectName: string): Promise<void> {
-    await store.deleteProjectDir(userName, projectName);
-    const user = await store.getUser(userName);
-    if (user) {
-      user.projects = user.projects.filter(p => p.name !== projectName);
-      await store.saveUser(userName, user);
-    }
+    await withKeyLock(`projects:${userName}`, async () => {
+      await store.deleteProjectDir(userName, projectName);
+      await store.updateUser(userName, user => { user.projects = user.projects.filter(p => p.name !== projectName); });
+    });
   }
 
   async renameProject(userName: string, oldName: string, newName: string): Promise<void> {
-    this.validateProjectName(newName);
-    const oldPath = store.getProjectPath(userName, oldName);
-    const newPath = store.getProjectPath(userName, newName);
+    await withKeyLock(`projects:${userName}`, async () => {
+      this.validateProjectName(newName);
+      const oldPath = store.getProjectPath(userName, oldName);
+      const newPath = store.getProjectPath(userName, newName);
 
-    const oldExists = await this.projectExists(userName, oldName);
-    if (!oldExists) throw new Error(`Project "${oldName}" does not exist`);
+      const oldExists = await this.projectExists(userName, oldName);
+      if (!oldExists) throw new Error(`Project "${oldName}" does not exist`);
 
-    const newExists = await this.projectExists(userName, newName);
-    if (newExists) throw new Error(`Project "${newName}" already exists`);
+      const newExists = await this.projectExists(userName, newName);
+      if (newExists) throw new Error(`Project "${newName}" already exists`);
 
-    await fs.promises.rename(oldPath, newPath);
+      await fs.promises.rename(oldPath, newPath);
 
-    const user = await store.getUser(userName);
-    if (user) {
-      const project = user.projects.find(p => p.name === oldName);
-      if (project) project.name = newName;
-      await store.saveUser(userName, user);
-    }
+      await store.updateUser(userName, user => {
+        const project = user.projects.find(p => p.name === oldName);
+        if (project) project.name = newName;
+    });
+    });
   }
 
   async updateDisplayName(userName: string, projectName: string, displayName: string): Promise<void> {
-    const user = await store.getUser(userName);
-    if (!user) return;
+    store.getProjectPath(userName, projectName);
+    await store.updateUser(userName, user => {
     const project = user.projects.find(p => p.name === projectName);
     if (project) {
       project.displayName = displayName;
-      await store.saveUser(userName, user);
     }
+    });
   }
 
   async projectExists(userName: string, projectName: string): Promise<boolean> {
@@ -134,13 +121,13 @@ export class ProjectManager {
   }
 
   async touchProject(userName: string, projectName: string): Promise<void> {
-    const user = await store.getUser(userName);
-    if (!user) return;
+    store.getProjectPath(userName, projectName);
+    await store.updateUser(userName, user => {
     const project = user.projects.find(p => p.name === projectName);
     if (project) {
       project.lastActivity = Date.now();
-      await store.saveUser(userName, user);
     }
+    });
   }
 
   /**
@@ -167,19 +154,14 @@ export class ProjectManager {
       const relPath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
       if (entry.isDirectory()) {
         await this._archiveDir(archive, baseDir, fullPath);
-      } else {
+      } else if (entry.isFile()) {
         archive.file(fullPath, { name: relPath });
       }
     }
   }
 
   validateProjectName(name: string): void {
-    if (!name || !/^[a-zA-Z0-9_.-]+$/.test(name)) {
-      throw new Error('Project name must be alphanumeric (a-z, 0-9, _, ., -)');
-    }
-    if (name.startsWith('.') || name.includes('..')) {
-      throw new Error('Project name cannot start with dot or contain ".."');
-    }
+    validateName(name);
   }
 
   async checkProjectLimit(userName: string): Promise<void> {

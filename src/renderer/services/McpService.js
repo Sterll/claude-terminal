@@ -93,46 +93,16 @@ class McpService extends BaseService {
    * and no longer have, keep everything else verbatim.
    */
   async saveMcps(mcps) {
-    const fsp = this.api.fs.promises;
     try {
-      let config = {};
-      try {
-        config = JSON.parse(await fsp.readFile(claudeConfigFile, 'utf8'));
-      } catch (e) {
-        if (e.code !== 'ENOENT') throw e;
-      }
-      if (!config || typeof config !== 'object' || Array.isArray(config)) {
-        throw new Error('~/.claude.json is not a JSON object');
-      }
-
       const globalMcps = mcps.filter(mcp => mcp.scope !== 'project');
-      const keptIds = new Set(globalMcps.map(mcp => mcp.id));
-
-      const existing = (config.mcpServers && typeof config.mcpServers === 'object')
-        ? config.mcpServers
-        : {};
-      const next = {};
-      for (const [id, serverConfig] of Object.entries(existing)) {
-        // Entries the panel showed and the user removed go; the rest stays.
-        if (!keptIds.has(id) && this._knownIds.has(id)) continue;
-        next[id] = serverConfig;
+      const servers = {};
+      for (const mcp of globalMcps) {
+        servers[mcp.id] = mcp.type === 'http'
+          ? { type: 'http', url: mcp.url }
+          : { type: 'stdio', command: mcp.command, args: mcp.args || [], env: mcp.env || {} };
       }
-
-      globalMcps.forEach(mcp => {
-        if (mcp.type === 'http') {
-          next[mcp.id] = { type: 'http', url: mcp.url };
-        } else {
-          next[mcp.id] = { type: 'stdio', command: mcp.command, args: mcp.args || [], env: mcp.env || {} };
-        }
-      });
-
-      config.mcpServers = next;
-
-      const tmpFile = claudeConfigFile + '.tmp';
-      await fsp.writeFile(tmpFile, JSON.stringify(config, null, 2));
-      await fsp.rename(tmpFile, claudeConfigFile);
-
-      this._knownIds = keptIds;
+      await this.api.mcp.saveConfig(servers, [...this._knownIds]);
+      this._knownIds = new Set(globalMcps.map(mcp => mcp.id));
     } catch (e) {
       console.error('Error saving MCPs:', e);
     }

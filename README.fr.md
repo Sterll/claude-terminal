@@ -724,3 +724,5 @@ Voir [SECURITY.md](SECURITY.md) pour signaler une vulnérabilité.
 ## Licence
 
 [GPL-3.0](LICENSE)
+
+Consultez les [notes sur le runtime, la protection des données et la récupération](RUNTIME_RELIABILITY.md) (en anglais) pour les contraintes de déploiement et les commandes de validation.

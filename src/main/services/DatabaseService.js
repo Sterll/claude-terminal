@@ -1,3 +1,5 @@
+const { splitConnectionSecrets } = require('../../shared/database-credentials');
+const { updateClaudeConfig } = require('../utils/claudeConfig');
 /**
  * Database Service
  * Manages database connections, queries, schema, detection and MCP provisioning
@@ -291,11 +293,15 @@ class DatabaseService {
     const dir = path.dirname(DATABASES_FILE);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-    // Strip passwords before saving
-    const safe = connections.map(c => {
-      const { password, ...rest } = c;
-      return rest;
-    });
+    const safe = [];
+    for (const connection of connections) {
+      const { config, password } = splitConnectionSecrets(connection);
+      if (password) {
+        const saved = await this.setCredential(connection.id, password);
+        if (!saved.success) throw new Error('Cannot save database secret in the keychain');
+      }
+      safe.push(config);
+    }
 
     const tmpFile = DATABASES_FILE + '.tmp';
     fs.writeFileSync(tmpFile, JSON.stringify(safe, null, 2), 'utf8');
@@ -309,7 +315,10 @@ class DatabaseService {
   async loadConnections() {
     try {
       if (fs.existsSync(DATABASES_FILE)) {
-        return JSON.parse(fs.readFileSync(DATABASES_FILE, 'utf8'));
+        const connections = JSON.parse(fs.readFileSync(DATABASES_FILE, 'utf8'));
+        const safe = connections.map(c => splitConnectionSecrets(c).config);
+        if (JSON.stringify(safe) !== JSON.stringify(connections)) await this.saveConnections(connections);
+        return safe;
       }
     } catch (e) {
       console.error('[Database] Error loading connections:', e);
@@ -366,47 +375,18 @@ class DatabaseService {
   /**
    * Provision the unified claude-terminal MCP in global ~/.claude.json.
    * Called once at app startup. The MCP server reads databases.json itself,
-   * so we only need to pass CT_DATA_DIR, NODE_PATH, and DB passwords.
+   * so only local paths are persisted; the server resolves secrets from the keychain.
    * @returns {Object} { success }
    */
   async provisionGlobalMcp() {
     try {
       const homeDir = require('os').homedir();
-      const claudeFile = path.join(homeDir, '.claude.json');
 
-      // A parse failure must abort, never "start fresh". ~/.claude.json is the
-      // CLI's own config: it holds the projects map, oauthAccount, per-project
-      // mcpServers and history. Rewriting it from {} destroys all of that, and
-      // this runs at every startup — while the CLI writes the same file, so a
-      // read landing mid-write is enough to produce the truncated JSON.
-      // Same reasoning as SyncEngine's readJsonForMerge().
-      let config = {};
-      if (fs.existsSync(claudeFile)) {
-        config = JSON.parse(fs.readFileSync(claudeFile, 'utf8'));
-        if (!config || typeof config !== 'object' || Array.isArray(config)) {
-          throw new Error('~/.claude.json is not a JSON object');
-        }
-      }
-
+      // Migrate legacy connection URIs before updating the MCP definition.
+      await this.loadConnections();
+      const env = { CT_DATA_DIR: dataDir, NODE_PATH: this._getNodeModulesPath() };
+      await updateClaudeConfig(config => {
       if (!config.mcpServers) config.mcpServers = {};
-
-      // Build env vars
-      const env = {
-        CT_DATA_DIR: dataDir,
-        NODE_PATH: this._getNodeModulesPath(),
-      };
-
-      // Add password env vars for all connections
-      const connections = await this.loadConnections();
-      for (const conn of connections) {
-        if (conn.type !== 'sqlite' && conn.type !== 'mongodb') {
-          const cred = await this.getCredential(conn.id);
-          if (cred.success && cred.password) {
-            env[`CT_DB_PASS_${conn.id}`] = cred.password;
-          }
-        }
-      }
-
       config.mcpServers['claude-terminal'] = {
         type: 'stdio',
         command: 'node',
@@ -421,9 +401,7 @@ class DatabaseService {
         }
       }
 
-      const tmpFile = claudeFile + '.tmp';
-      fs.writeFileSync(tmpFile, JSON.stringify(config, null, 2), 'utf8');
-      fs.renameSync(tmpFile, claudeFile);
+      });
 
       // Cleanup: remove stale entries from ~/.claude/settings.json (migration)
       this._cleanupSettingsJson(homeDir);
@@ -493,9 +471,12 @@ class DatabaseService {
 
   async _createMongoClient(config) {
     const { MongoClient } = require('mongodb');
-    const uri = config.connectionString ||
-      `mongodb://${config.username ? `${config.username}:${config.password}@` : ''}${config.host || 'localhost'}:${config.port || 27017}/${config.database || ''}`;
-    const client = new MongoClient(uri, { connectTimeoutMS: 10000, serverSelectionTimeoutMS: 10000 });
+    const { config: safe, password } = splitConnectionSecrets(config);
+    const uri = safe.connectionString || `mongodb://${safe.host || 'localhost'}:${safe.port || 27017}/${safe.database || ''}`;
+    const client = new MongoClient(uri, {
+      connectTimeoutMS: 10000, serverSelectionTimeoutMS: 10000,
+      ...(safe.username ? { auth: { username: safe.username, password: password || '' } } : {})
+    });
     await client.connect();
     return client;
   }

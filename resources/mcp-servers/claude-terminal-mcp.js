@@ -11,7 +11,6 @@
  *   CT_DATA_DIR      - Path to ~/.claude-terminal/ (app data)
  *   CT_PROJECT_PATH  - Current project path
  *   NODE_PATH        - Path to node_modules with native drivers
- *   CT_DB_PASS_{id}  - Database passwords (per connection)
  */
 
 const readline = require('readline');
