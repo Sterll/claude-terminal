@@ -473,7 +473,7 @@ describe('DatabaseService MCP provisioning', () => {
 
     const serverConfig = config.mcpServers['claude-terminal'];
     expect(serverConfig.type).toBe('stdio');
-    expect(serverConfig.command).toBe('node');
+    expect(serverConfig.command).toBe(process.execPath);
     expect(serverConfig.env.CT_DATA_DIR).toBeTruthy();
     expect(serverConfig.env.NODE_PATH).toBeTruthy();
   });
@@ -578,7 +578,7 @@ describe('DatabaseService MCP provisioning', () => {
     await databaseService.provisionGlobalMcp();
 
     const config = JSON.parse(fs.readFileSync(claudeFile, 'utf8'));
-    expect(config.mcpServers['claude-terminal'].command).toBe('node');
+    expect(config.mcpServers['claude-terminal'].command).toBe(process.execPath);
     expect(config.mcpServers['claude-terminal'].args[0]).not.toBe('old');
   });
 

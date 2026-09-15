@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 174 test files)
+npm test                 # Run Jest tests (jsdom, 178 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -39,10 +39,10 @@ Electron Main Process (Node.js)
 ├── main.js                          # Bootstrap, lifecycle, single-instance lock, global shortcuts
 ├── src/main/preload.js              # IPC bridge (window.electron_api)
 ├── src/main/preload-quickpicker.js  # Preload for Quick Picker window
-├── src/main/ipc/                    # 36 IPC files, 326 handlers total
+├── src/main/ipc/                    # 36 IPC files, 327 handlers total
 ├── src/main/services/               # 35 services
 ├── src/main/windows/                # 5 window managers
-├── src/main/utils/                  # 14 utilities
+├── src/main/utils/                  # 16 utilities
 └── src/main/workflow-nodes/         # 31 workflow node types (*.node.js)
 
 Electron Renderer Process (Browser)
@@ -124,7 +124,7 @@ Remote UI (PWA for mobile)
 | `cloud-shared.js` | - | Helpers shared by the three cloud IPC files |
 | `index.js` | - | Orchestrator - registers all handlers |
 
-**Total: 326 IPC handlers across 36 files.**
+**Total: 327 IPC handlers across 36 files.**
 
 ### Services (`src/main/services/`)
 
@@ -628,7 +628,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 174 test files
+- **Framework:** Jest with jsdom, 178 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**

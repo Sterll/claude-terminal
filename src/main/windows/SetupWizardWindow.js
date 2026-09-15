@@ -48,6 +48,7 @@ function createSetupWizardWindow({ onComplete, onSkip }) {
   });
 
   const htmlPath = path.join(__dirname, '..', '..', '..', 'setup-wizard.html');
+  require('../utils/rendererSecurity').guardWindow(setupWizardWindow, htmlPath);
   setupWizardWindow.loadFile(htmlPath);
 
   setupWizardWindow.once('ready-to-show', () => {

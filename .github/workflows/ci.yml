@@ -85,6 +85,19 @@ jobs:
           npm ci --prefix cloud
           npm test --prefix cloud
 
+      - name: Hub regressions
+        if: runner.os == 'Linux'
+        run: |
+          npm ci --prefix hub-worker
+          npm test --prefix hub-worker
+
+      - name: Build and check packaged application
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          npm run build -- --dir --publish never
+          node scripts/check-package.cjs
+
   # Coverage, deliberately off the test matrix.
   #
   # Instrumenting ChatView.js and TerminalManager.js roughly triples the suite's

@@ -1,6 +1,6 @@
 name = "claude-terminal-hub"
 main = "src/index.js"
-compatibility_date = "2024-01-01"
+compatibility_date = "2026-09-15"
 
 kv_namespaces = [
   { binding = "WORKFLOWS_HUB", id = "e5febb5e1d29440eae9293eb3f356eb7" }
@@ -8,3 +8,13 @@ kv_namespaces = [
 
 # ADMIN_SECRET is stored as a Cloudflare Secret (wrangler secret put ADMIN_SECRET)
 # Do NOT add it here — secrets and vars cannot share the same name.
+
+[durable_objects]
+bindings = [{ name = "HUB_COUNTERS", class_name = "HubCounter" }]
+
+[[migrations]]
+tag = "hub-counters-v1"
+new_sqlite_classes = ["HubCounter"]
+
+[observability]
+enabled = true

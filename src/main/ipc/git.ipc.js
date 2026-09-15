@@ -521,6 +521,8 @@ function registerGitHandlers() {
   ipcMain.handle('git-worktree-list', async (event, { projectPath }) => {
     try {
       const worktrees = await getWorktrees(projectPath);
+      const { permitted, grant } = require('../utils/rendererSecurity');
+      if (permitted(projectPath)) for (const tree of worktrees) grant(tree.path);
       return { success: true, worktrees };
     } catch (err) {
       return { success: false, error: err.message };

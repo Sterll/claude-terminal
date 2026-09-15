@@ -200,6 +200,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev
       - run: npm ci
       - run: npm run build:renderer
       - run: npm test
