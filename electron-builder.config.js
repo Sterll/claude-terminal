@@ -40,6 +40,10 @@ module.exports = {
     "notification.html",
     "styles/**/*",
     "dist/**/*",
+    // Sourcemaps are a build artefact, not a shipped one: 51 files and 11 MB of
+    // the 22 MB dist/, carrying the full renderer source. esbuild still emits
+    // them for local debugging, they just do not go in app.asar.
+    "!dist/**/*.map",
     "src/main/**/*",
     "src/shared/**/*",
     "src/project-types/**/*",
