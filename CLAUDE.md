@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 162 test files)
+npm test                 # Run Jest tests (jsdom, 164 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -589,7 +589,10 @@ Worker); neither is bundled into the desktop app.
 - **Time tracking:** 15 min idle timeout, 2 min output idle, 30 min session merge, midnight rollover, monthly archival
 - **Renderer bundling:** esbuild ESM with code splitting -> `dist/renderer.bundle.js` + shared `dist/chunk-*.js`, sourcemaps, target `chrome120`. Three things are deliberately kept out of the startup graph and `import()`ed on demand: the five heaviest panels, on first tab open (`_LAZY_PANELS` in `renderer.js`); `@xterm/*`, when a terminal is first mounted (`src/renderer/services/xtermLoader.js`); and the renderer half of each project type, when a project of that type is opened (`ensureLoaded()` in `src/project-types/registry.js`, plus `_typeModule()` in `renderer.js` for the handful of type modules `renderer.js` reaches directly). Together that is ~1 MB, a third of what every startup used to parse. Splitting rather than standalone per-feature bundles is what keeps a single instance of each observable state module: `ApiState` and `DiscordState` are reached both from `renderer.js` and from their own type, and one module graph means esbuild hoists each into one shared chunk. Note a `require()` inside a function body is still a static edge to esbuild, so making something lazy means an actual `import()`
 - **Persistence:** atomic writes (temp + rename), `.bak` backup files, corruption recovery
-- **Files that are not ours:** `~/.claude.json` and `~/.claude/plugins/installed_plugins.json` belong to the Claude CLI and hold far more than the keys this app edits — the projects map, `oauthAccount`, per-project MCP servers, every installed plugin. Every writer here is a read-modify-write with no cross-process lock, against a file the CLI rewrites continuously, so **a parse failure must abort, never "start fresh"**: a read landing mid-write is enough to produce truncated JSON, and rewriting from `{}` then destroys the user's whole Claude Code setup. `SyncEngine`'s `readJsonForMerge()` is the reference shape. For the same reason `McpService.saveMcps` diffs against what is on disk *now* rather than rebuilding `mcpServers` wholesale — a server added by `claude mcp add` between load and save is not ours to delete
+- **A parse failure must abort, never "start fresh".** Every JSON store in the app is a read-modify-write of the whole collection, so answering an unreadable file with `{}` or `[]` means the next edit rewrites it with that one edit alone and drops everything else. There is no cross-process lock anywhere, and several of these files have a second writer — the Claude CLI rewrites `~/.claude.json` continuously, the MCP tools write `artifacts/index.json` directly — so a read landing mid-write produces truncated JSON on its own, without anything being corrupt. Distinguish **absent** (legitimate, start empty) from **unreadable** (throw, leave the file alone). Reference shapes: `SyncEngine.readJsonForMerge()`, `HooksService.readClaudeSettings()` (`SETTINGS_UNREADABLE`), `WorkflowStorage` / `_workflowStore.js` ("Refusing to mutate…"). This is not hypothetical — `~/.claude.json` (projects map, `oauthAccount`, per-project MCP servers), `installed_plugins.json`, `marketplace.json`, `knowledge/index.json`, `artifacts/index.json` and the workspace `docs-index.json` / `links.json` each shipped a version that wiped itself this way.
+  - `timetracking.json` is the one store whose contents exist nowhere else, so refusing to write is not enough: `timeTracking.state.js` latches `loadFailed` on an unreadable load and blocks every save for the session, because there the destruction happens in `save()`, not in `loadData()`. It also copies the file aside as `.corrupted.<ts>` and raises the same critical notification `projects.state.js` uses — the transient `.bak` cannot help, it is unlinked as soon as a write succeeds.
+  - `McpService.saveMcps` diffs against what is on disk *now* rather than rebuilding `mcpServers` wholesale: a server added by `claude mcp add` between load and save is not ours to delete.
+  - Read the manifest **before** the destructive step. `installPlugin` and `addMarketplace` both copy or clone first and record second; reading first means a bad manifest leaves no orphan directory behind.
 - **Updates:** generic provider, 30 min periodic checks, differential packages. The install is silent (`quitAndInstall(true, true)`) and `customInit` in `build-assets/installer-custom.nsh` is deliberately empty — it used to `SetSilent normal`, which ran from `.onInit` and cancelled electron-updater's `/S`, turning every auto-update into a wizard that appeared after the app had quit. NSIS removes the old version (`RMDir /r $INSTDIR` plus the shortcuts) *before* extracting the new one, so an update the user can interrupt is an update that can leave no app installed at all. `customInstall` restores the desktop **and** Start Menu links, because electron-builder skips recreating either when `$keepShortcuts` is true, which is exactly the upgrade path
 - **Remote control (local):** WS server with PIN auth, QR code, PWA in `remote-ui/`
 - **Remote Control (claude.ai):** decided per conversation, never globally. `claudeRemoteControlEnabled` only says the feature may be used; a session reaches claude.ai when the user asks for it in that tab, via the footer button or the local `/remote-control` command (`enableForSession` / `disableForSession`). Nothing is backfilled: claude.ai joins from the moment it is enabled. Attaches the session to `@anthropic-ai/claude-agent-sdk/bridge` so it appears at claude.ai/code and in the Claude mobile app. The bridge export is ESM-only and `@alpha` — loaded through `src/main/utils/claudeBridge.js`, which resolves it out of `app.asar.unpacked` and feature-detects every function it uses. `claudeRemoteControlDrive` decides between a read-only mirror (`outboundOnly`) and full driving; `claudeRemoteControlTerminals` adds `--rc` to the CLI in terminal tabs. Honours the `disableRemoteControl` kill switch, read from Claude Code's own managed-settings file (`managedSettingsPaths()` in `src/main/utils/paths.js`) rather than from this app's user-writable settings.json, so a user cannot lift an org policy
@@ -609,7 +612,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 162 unit test files (jsdom environment)
+npm test                    # Run all 164 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -618,7 +621,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 162 test files
+- **Framework:** Jest with jsdom, 164 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
@@ -630,10 +633,10 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
   - `ipc/` - accounts usage, claude, hooks, project, usage, workflow save
   - `remote-ui/` - hierarchy
   - `security/` - security tests
-  - `services/` - ChatService, AccountManager, ArtifactService, DatabaseService, DashboardService, DiffRenderer, HooksService, KnowledgeService, MarkdownRenderer, ModelCatalogService, RemoteServer, RemoteControlService, UsageService, VoiceService, WorkflowRunner, the workflow engine suite, the lazy `xtermLoader`, the lazy project-type registry, the `~/.claude.json` merge in `McpService.saveMcps`, the plugin-manifest guard in `PluginService.installPlugin` and the silent-install arguments in `UpdaterService.quitAndInstall`
+  - `services/` - ChatService, AccountManager, ArtifactService, DatabaseService, DashboardService, DiffRenderer, HooksService, KnowledgeService, MarkdownRenderer, ModelCatalogService, RemoteServer, RemoteControlService, UsageService, VoiceService, WorkflowRunner, the workflow engine suite, the lazy `xtermLoader`, the lazy project-type registry, the `~/.claude.json` merge in `McpService.saveMcps`, the plugin-manifest guard in `PluginService.installPlugin`, the silent-install arguments in `UpdaterService.quitAndInstall` and the corruption guards shared by `MarketplaceService`, `WorkspaceService` and `KnowledgeService`
   - `shared/` - context usage, cron, model options, permission modes, simple-task
   - `smoke/` - every module parses and loads
-  - `state/` - State plus each state module
+  - `state/` - State plus each state module, including the latched save block `timeTracking.state.js` applies to an unreadable `timetracking.json`
   - `ui/` - chat account switch, chat limit error, replayed tool output, task widget, tasks drawer, ClaudeRemotePanel, navigation mode, kanban live refresh, toast
   - `utils/` - attachments, color, commit messages, drop paths, file icons, file lock, format, frontmatter, git, http cache, session search, shell, syntax highlight, tool registry
 
