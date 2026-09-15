@@ -570,11 +570,8 @@ class WorkflowScheduler {
       return;
     }
 
-    const targetPattern = cfg.patterns
-      ? path.join(cfg.watchPath, cfg.patterns).replace(/\\/g, '/')
-      : cfg.watchPath;
-
-    const watcher = chokidar.watch(targetPattern, {
+    // Chokidar 5 watches directories; glob filtering is performed on events.
+    const watcher = chokidar.watch(cfg.watchPath, {
       ignoreInitial: true,
       ignored: /(^|[\/\\])(\.git|node_modules|dist|build|\.next|\.nuxt|target|\.DS_Store)/,
       awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
@@ -611,6 +608,8 @@ class WorkflowScheduler {
 
     const onEvent = (eventType) => (filePath) => {
       if (!acceptedEvents.has(eventType)) return;
+      const relative = path.relative(cfg.watchPath, filePath).replace(/\\/g, '/');
+      if (cfg.patterns && !path.matchesGlob(relative, cfg.patterns.replace(/\\/g, '/'))) return;
       lastEventType = eventType;
       pendingPaths.add(filePath);
       fireDebounced();

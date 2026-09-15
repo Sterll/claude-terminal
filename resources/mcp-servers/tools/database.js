@@ -4,13 +4,16 @@
  * Database Tools Module for Claude Terminal MCP
  *
  * Provides database access tools. Reads connection configs from
- * CT_DATA_DIR/databases.json and passwords from CT_DB_PASS_{id} env vars.
+ * CT_DATA_DIR/databases.json and passwords from the OS keychain at connection time.
  *
  * Supports: SQLite, MySQL, MariaDB, PostgreSQL, MongoDB, Redis
  */
 
 const fs = require('fs');
 const path = require('path');
+
+const credentialsPath = path.join(__dirname, '..', 'shared', 'database-credentials.js');
+const { splitConnectionSecrets } = require(fs.existsSync(credentialsPath) ? credentialsPath : '../../../src/shared/database-credentials');
 
 const MAX_ROWS = 100;
 
@@ -78,10 +81,16 @@ function loadConnectionConfigs() {
   return [];
 }
 
-function saveConnectionConfigs(configs) {
+async function saveConnectionConfigs(configs) {
+  const safe = [];
+  for (const connection of configs) {
+    const { config, password } = splitConnectionSecrets(connection);
+    if (password) await require('keytar').setPassword('claude-terminal-db', `db-${connection.id}`, password);
+    safe.push(config);
+  }
   const dbFile = path.join(getDataDir(), 'databases.json');
   const tmpFile = dbFile + '.tmp';
-  fs.writeFileSync(tmpFile, JSON.stringify(configs, null, 2), 'utf8');
+  fs.writeFileSync(tmpFile, JSON.stringify(safe, null, 2), 'utf8');
   fs.renameSync(tmpFile, dbFile);
 }
 
@@ -89,10 +98,8 @@ function generateId() {
   return 'db-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
 }
 
-function getPassword(id) {
-  // Env var format: CT_DB_PASS_{id} with dots/hyphens replaced
-  const envKey = `CT_DB_PASS_${id}`;
-  return process.env[envKey] || '';
+async function getPassword(id) {
+  return await require('keytar').getPassword('claude-terminal-db', `db-${id}`) || '';
 }
 
 function findConnection(nameOrId) {
@@ -150,7 +157,7 @@ async function getClient(nameOrId) {
   }
 
   // Create new connection
-  const password = getPassword(config.id);
+  const password = config.type === 'sqlite' ? '' : await getPassword(config.id);
   const client = await createClient(config, password);
   connections.set(config.id, { client, type: config.type });
   log(`Connected to ${config.type}: ${config.name}`);
@@ -196,7 +203,7 @@ async function createClient(config, password) {
     const { MongoClient } = require('mongodb');
     const uri = config.connectionString;
     if (!uri) throw new Error('MongoDB connection missing connectionString');
-    const mongoClient = new MongoClient(uri);
+    const mongoClient = new MongoClient(uri, config.username ? { auth: { username: config.username, password } } : {});
     await mongoClient.connect();
     const dbName = config.database || new URL(uri).pathname.slice(1) || 'test';
     return { mongoClient, db: mongoClient.db(dbName) };
@@ -1159,7 +1166,7 @@ async function handle(name, args) {
       }
 
       configs.push(newConfig);
-      saveConnectionConfigs(configs);
+      await saveConnectionConfigs(configs);
       log(`Added connection: ${newConfig.name} (${newConfig.type})`);
 
       return ok(`Connection "${newConfig.name}" (${newConfig.type}) added successfully with ID: ${newConfig.id}`);
@@ -1182,7 +1189,7 @@ async function handle(name, args) {
       await closeClient(removed.id);
 
       configs.splice(idx, 1);
-      saveConnectionConfigs(configs);
+      await saveConnectionConfigs(configs);
       log(`Removed connection: ${removed.name} (${removed.type})`);
 
       return ok(`Connection "${removed.name}" (${removed.type}) removed successfully.`);
@@ -1213,7 +1220,7 @@ async function handle(name, args) {
       await closeClient(config.id);
 
       // Open fresh connection
-      const password = getPassword(config.id);
+      const password = config.type === 'sqlite' ? '' : await getPassword(config.id);
       const client = await createClient(config, password);
       connections.set(config.id, { client, type: config.type });
 

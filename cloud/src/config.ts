@@ -25,6 +25,7 @@ export const config = {
 
   claudeCredentialsPath: process.env.CLAUDE_CREDENTIALS_PATH || path.join(process.env.HOME || '~', '.claude', '.credentials.json'),
 
+  maxExpandedBytes: parseBytes(process.env.MAX_EXPANDED_SIZE || '1gb'),
   maxUploadSize: process.env.MAX_UPLOAD_SIZE || '100mb',
   maxUploadBytes: parseBytes(process.env.MAX_UPLOAD_SIZE || '100mb'),
   sessionTimeoutHours: parseInt(process.env.SESSION_TIMEOUT_HOURS || '24', 10),
