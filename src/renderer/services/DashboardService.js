@@ -19,6 +19,10 @@ const Timeline = require('./ProjectTimeline');
 
 // Per-project active view: 'overview' | 'kanban' | 'timeline'
 const _dashViews = new Map();
+// Async results belong to a render, not to the legacy project-detail selection.
+const _dashboardRenders = new WeakMap();
+const _dashboardLoads = new Map();
+const _commitHistoryLoads = new WeakMap();
 
 // Per-project timeline preferences, kept in memory only: they are a reading
 // posture rather than a setting, and should not survive a restart the way an
@@ -49,7 +53,6 @@ function invalidateTimeline(projectId) {
   _timelineCache.delete(projectId);
 }
 
-const REFRESH_DEBOUNCE = 2000; // 2 seconds minimum between refreshes
 const DISK_CACHE_FILE = '.claude-terminal';
 
 /**
@@ -282,7 +285,7 @@ async function loadAllDiskCaches() {
     }));
 
     for (const result of results) {
-      if (result) {
+      if (result && !getCachedData(result.id)) {
         dashboardCache.set(result.id, {
           data: result.data,
           timestamp: result.timestamp,
@@ -319,16 +322,6 @@ function isCacheValid(projectId) {
   const cached = dashboardCache.get(projectId);
   if (!cached) return false;
   return Date.now() - cached.timestamp < CACHE_TTL;
-}
-
-/**
- * Check if a refresh is already in progress
- * @param {string} projectId
- * @returns {boolean}
- */
-function isRefreshing(projectId) {
-  const cached = dashboardCache.get(projectId);
-  return cached?.loading === true;
 }
 
 /**
@@ -377,6 +370,7 @@ function invalidateCache(projectId) {
   // The timeline reads five sources the dashboard cache knows nothing about, so
   // a manual refresh has to drop both or the refreshed view shows stale events.
   invalidateTimeline(projectId);
+  _dashboardLoads.delete(projectId);
 }
 
 /**
@@ -385,6 +379,7 @@ function invalidateCache(projectId) {
 function clearAllCache() {
   dashboardCache.clear();
   _timelineCache.clear();
+  _dashboardLoads.clear();
 }
 
 /**
@@ -538,31 +533,73 @@ async function loadRemoteDashboardData(gitInfo) {
 
 /**
  * Lazily load the 500-commit history for the detailed view if it was skipped
- * during the lightweight preload. Patches and persists the cache in place.
+ * during the lightweight preload. Enriches the shared cache object in place.
  * @param {Object} project - { id, path }
  * @param {Object} data - Cached dashboard data
  * @returns {Promise<Object>} data enriched with commitHistory30d (always an array)
  */
 async function ensureCommitHistory(project, data) {
-  if (!data) return data;
-  if (Array.isArray(data.commitHistory30d)) return data; // already loaded
-
+  if (!data || Array.isArray(data.commitHistory30d)) return data;
+  if (_commitHistoryLoads.has(data)) return _commitHistoryLoads.get(data);
   if (!data.gitInfo?.isGitRepo) {
     data.commitHistory30d = [];
     return data;
   }
 
+  const loading = (async () => {
+    try {
+      const history = await api.git.commitHistory({ projectPath: project.path, skip: 0, limit: 500 });
+      data.commitHistory30d = Array.isArray(history) ? history : [];
+    } catch (e) {
+      console.error('[Dashboard] Failed to load commit history:', e);
+      data.commitHistory30d = [];
+    }
+    return data;
+  })();
+  _commitHistoryLoads.set(data, loading);
   try {
-    const history = await api.git.commitHistory({ projectPath: project.path, skip: 0, limit: 500 });
-    data.commitHistory30d = Array.isArray(history) ? history : [];
-  } catch (e) {
-    console.error('[Dashboard] Failed to load commit history:', e);
-    data.commitHistory30d = [];
+    return await loading;
+  } finally {
+    _commitHistoryLoads.delete(data);
   }
+}
 
-  // `data` is the live cache reference (getCachedData returns it directly), so
-  // mutating in place enriches the in-memory cache without resetting its TTL.
-  return data;
+/** Share local scans and GitHub requests between preloading and the open view. */
+function loadProjectDashboard(project) {
+  if (_dashboardLoads.has(project.id)) return _dashboardLoads.get(project.id);
+  const load = {};
+  _dashboardLoads.set(project.id, load);
+  setCacheLoading(project.id, true);
+  const isCurrent = () => _dashboardLoads.get(project.id) === load;
+  const data = {
+    gitInfo: {}, stats: null, commitHistory30d: null,
+    workflowRuns: { runs: [] }, pullRequests: { pullRequests: [] },
+    ...getCachedData(project.id)
+  };
+  load.git = Promise.all([getGitInfoFull(project.path), detectProjectType(project.path)]).then(([gitInfo, projectType]) => {
+    Object.assign(data, { gitInfo, projectType, commitHistory30d: null });
+    // Keep partial data usable while GitHub responds, without marking it fresh.
+    if (isCurrent()) dashboardCache.set(project.id, { data, timestamp: 0, loading: true });
+    return data;
+  });
+  // Counting lines reads every source file; it must not hold up the Git panel.
+  load.stats = getProjectStats(project.path).then(stats => {
+    data.stats = stats;
+    return data;
+  });
+  const remote = load.git.then(async () => {
+    Object.assign(data, await loadRemoteDashboardData(data.gitInfo));
+  });
+  load.complete = Promise.all([load.git, load.stats, remote]).then(() => {
+    if (isCurrent()) setCacheData(project.id, data);
+    return data;
+  }).finally(() => {
+    if (isCurrent()) {
+      _dashboardLoads.delete(project.id);
+      setCacheLoading(project.id, false);
+    }
+  });
+  return load;
 }
 
 /**
@@ -814,61 +851,6 @@ function buildViewTabsHtml(projectId) {
       <button class="dashboard-view-tab${view === 'overview' ? ' active' : ''}" data-view="overview">${t('kanban.overview')}</button>
       <button class="dashboard-view-tab${view === 'kanban' ? ' active' : ''}" data-view="kanban">${t('kanban.tab')}</button>
       <button class="dashboard-view-tab${view === 'timeline' ? ' active' : ''}" data-view="timeline">${t('timeline.tab')}</button>
-    </div>
-  `;
-}
-
-/**
- * Placeholder painted while the dashboard's first data load is in flight.
- *
- * It mirrors the real overview - header, stat chips, path bar, two columns of
- * cards - so the page keeps its shape and nothing jumps when the data lands.
- * The tabs are the real ones, minus their handlers: they cost nothing to draw
- * and their absence would be the one visible shift left.
- *
- * @param {string} projectId
- * @returns {string}
- */
-function buildDashboardSkeletonHtml(projectId) {
-  const bar = (w, cls = '') => `<span class="sk-bar ${cls}" style="width:${w}"></span>`;
-  const chip = (w) => `<span class="sk-chip" style="width:${w}"></span>`;
-  const card = (rows) => `
-    <div class="sk-card">
-      <div class="sk-card-header">${bar('40%', 'sk-bar--title')}${bar('54px')}</div>
-      ${rows.map(w => `<div class="sk-row">${bar('18px', 'sk-dot')}${bar(w)}</div>`).join('')}
-    </div>
-  `;
-
-  return `
-    <div class="dashboard-skeleton" aria-busy="true" aria-label="${escapeHtml(t('dashboard.loadingInfo'))}">
-      ${buildViewTabsHtml(projectId)}
-      <div class="sk-header">
-        <div class="sk-header-title">
-          ${bar('180px', 'sk-bar--h2')}
-          ${bar('90px', 'sk-bar--badge')}
-        </div>
-        <div class="sk-header-actions">
-          ${bar('120px', 'sk-bar--btn')}
-          ${bar('86px', 'sk-bar--btn')}
-          ${bar('140px', 'sk-bar--btn')}
-        </div>
-      </div>
-      <div class="sk-stats">${chip('120px')}${chip('150px')}${chip('110px')}${chip('190px')}</div>
-      ${bar('100%', 'sk-bar--path')}
-      <div class="sk-grid">
-        <div class="sk-col">
-          ${card(['72%', '58%', '80%'])}
-          ${card(['64%', '76%'])}
-        </div>
-        <div class="sk-col">
-          ${card(['84%', '52%'])}
-          ${card(['70%', '66%', '48%'])}
-        </div>
-      </div>
-      <div class="sk-card sk-card--wide">
-        <div class="sk-card-header">${bar('26%', 'sk-bar--title')}${bar('80px')}</div>
-        ${bar('100%', 'sk-bar--graph')}
-      </div>
     </div>
   `;
 }
@@ -1777,7 +1759,7 @@ function buildPullRequestsHtml(pullRequestsData) {
  * Split out of renderDashboardHtml rather than inlined because it is the only
  * view that loads its own data; the overview is handed everything it needs.
  */
-async function renderTimelineView(container, project, data, options, isRefreshing) {
+async function renderTimelineView(container, project, data, options, isRefreshing, isCurrent) {
   const days = _timelineDays.get(project.id) || Timeline.DEFAULT_DAYS;
   const activeKinds = _timelineKinds.get(project.id) || null;
 
@@ -1785,13 +1767,14 @@ async function renderTimelineView(container, project, data, options, isRefreshin
     container.querySelectorAll('.dashboard-view-tab').forEach(btn => {
       btn.addEventListener('click', async () => {
         _dashViews.set(project.id, btn.dataset.view);
-        await renderDashboardHtml(container, project, data, options, isRefreshing);
+        await renderDashboard(container, project, options);
       });
     });
   };
 
   /** Redraw the body, re-binding the view tabs that innerHTML just replaced. */
   const paint = (bodyHtml) => {
+    if (!isCurrent()) return;
     container.innerHTML = `${buildViewTabsHtml(project.id)}<div class="timeline-view">${bodyHtml}</div>`;
     wireViewTabs();
   };
@@ -1806,7 +1789,7 @@ async function renderTimelineView(container, project, data, options, isRefreshin
     _timelineCache.set(project.id, cached);
 
     // The user may have switched away while the six sources were loading.
-    if ((_dashViews.get(project.id) || 'overview') !== 'timeline') return;
+    if (!isCurrent() || (_dashViews.get(project.id) || 'overview') !== 'timeline') return;
   }
 
   const windowed = Timeline.groupByDay(cached.events, { days });
@@ -1823,7 +1806,7 @@ async function renderTimelineView(container, project, data, options, isRefreshin
     buildTimelineListHtml(groups, cached.failed, now)
   );
 
-  const rerender = () => renderTimelineView(container, project, data, options, isRefreshing);
+  const rerender = () => renderTimelineView(container, project, data, options, isRefreshing, isCurrent);
 
   container.querySelectorAll('.timeline-range').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1862,7 +1845,7 @@ async function renderTimelineView(container, project, data, options, isRefreshin
   });
 }
 
-async function renderDashboardHtml(container, project, data, options, isRefreshing = false) {
+function renderDashboardHtml(container, project, data, options, isRefreshing = false, isCurrent = () => true) {
   const {
     terminalCount = 0,
     fivemStatus = 'stopped',
@@ -1877,7 +1860,11 @@ async function renderDashboardHtml(container, project, data, options, isRefreshi
   const currentView = _dashViews.get(project.id) || 'overview';
 
   if (currentView === 'timeline') {
-    await renderTimelineView(container, project, data, options, isRefreshing);
+    void renderTimelineView(container, project, data, options, isRefreshing, isCurrent).catch(error => {
+      console.error('Error loading dashboard timeline:', error);
+      const view = container.querySelector('.timeline-view');
+      if (isCurrent() && view) view.textContent = t('dashboard.loadError');
+    });
     return;
   }
 
@@ -1892,13 +1879,13 @@ async function renderDashboardHtml(container, project, data, options, isRefreshi
     container.querySelectorAll('.dashboard-view-tab').forEach(btn => {
       btn.addEventListener('click', async () => {
         _dashViews.set(project.id, btn.dataset.view);
-        await renderDashboardHtml(container, project, data, options, isRefreshing);
+        await renderDashboard(container, project, options);
       });
     });
     return;
   }
 
-  const { gitInfo, stats, workflowRuns, pullRequests, commitHistory30d } = data;
+  const { gitInfo = {}, stats, workflowRuns, pullRequests } = data;
   const typeHandler = registry.get(project.type);
   const dashboardBadge = typeHandler.getDashboardBadge(project);
   const gitOps = getGitOperation(project.id);
@@ -1984,12 +1971,12 @@ async function renderDashboardHtml(container, project, data, options, isRefreshi
 
     <div class="dashboard-grid" data-animate="3">
       <div class="dashboard-col">
-        ${buildGitStatusHtml(gitInfo)}
+        ${gitInfo.isGitRepo === undefined ? '' : buildGitStatusHtml(gitInfo)}
         ${buildWorkflowRunsHtml(workflowRuns)}
         ${buildPullRequestsHtml(pullRequests)}
       </div>
       <div class="dashboard-col">
-        ${await buildSessionRecapsHtml(project.id)}
+        <div class="dashboard-session-recaps" hidden></div>
         ${buildStatsHtml(stats, gitInfo)}
         ${buildClaudeActivityHtml()}
         ${gitInfo.isGitRepo ? buildContributorsHtml(gitInfo.contributors) : ''}
@@ -1999,27 +1986,27 @@ async function renderDashboardHtml(container, project, data, options, isRefreshi
     ${buildProjectInsightsHtml(data, project.id)}
   `;
 
-  // Live-update session recaps section when a new recap arrives
-  // Remove previous listener to prevent accumulation across re-renders
-  if (_sessionRecapHandler) {
-    window.removeEventListener('session-recap-updated', _sessionRecapHandler);
-  }
-  _sessionRecapHandler = async (e) => {
-    if (e.detail?.projectId !== project.id) return;
-    const existing = container.querySelector('.session-recaps-section');
-    const newHtml = await buildSessionRecapsHtml(project.id);
-    if (!newHtml) return;
-    const tmp = document.createElement('div');
-    tmp.innerHTML = newHtml;
-    const newSection = tmp.firstElementChild;
-    if (existing) {
-      existing.replaceWith(newSection);
-    } else {
-      const statsSection = container.querySelector('.dashboard-col:last-child');
-      if (statsSection) statsSection.prepend(newSection);
-    }
+  // A refresh must display final values too (entrance animations only run once).
+  container.querySelectorAll('[data-count-to]').forEach(el => {
+    el.textContent = formatNumber(Number(el.dataset.countTo));
+  });
+  container.querySelectorAll('[data-bar-width]').forEach(el => { el.style.width = el.dataset.barWidth; });
+  container.querySelectorAll('[data-bar-height]').forEach(el => { el.style.height = el.dataset.barHeight; });
+
+  // Session recaps must not delay the rest of the page or update a newer view.
+  const recapSlot = container.querySelector('.dashboard-session-recaps');
+  const updateRecaps = async () => {
+    const html = await buildSessionRecapsHtml(project.id);
+    if (!isCurrent() || container.querySelector('.dashboard-session-recaps') !== recapSlot) return;
+    recapSlot.innerHTML = html;
+    recapSlot.hidden = !html;
+  };
+  if (_sessionRecapHandler) window.removeEventListener('session-recap-updated', _sessionRecapHandler);
+  _sessionRecapHandler = e => {
+    if (e.detail?.projectId === project.id) void updateRecaps();
   };
   window.addEventListener('session-recap-updated', _sessionRecapHandler);
+  void updateRecaps();
 
   // Attach click handlers for workflow runs
   container.querySelectorAll('.workflow-run-item').forEach(item => {
@@ -2079,7 +2066,7 @@ async function renderDashboardHtml(container, project, data, options, isRefreshi
     if (onGitPull) await onGitPull(project.id);
     // Invalidate cache and re-render
     invalidateCache(project.id);
-    renderDashboard(container, project, options);
+    if (isCurrent()) renderDashboard(container, project, options);
   });
 
   container.querySelector('#dash-btn-git-push')?.addEventListener('click', async () => {
@@ -2090,7 +2077,7 @@ async function renderDashboardHtml(container, project, data, options, isRefreshi
     if (onGitPush) await onGitPush(project.id);
     // Invalidate cache and re-render
     invalidateCache(project.id);
-    renderDashboard(container, project, options);
+    if (isCurrent()) renderDashboard(container, project, options);
   });
 
   container.querySelector('#dash-btn-merge-abort')?.addEventListener('click', async () => {
@@ -2101,7 +2088,7 @@ async function renderDashboardHtml(container, project, data, options, isRefreshi
     if (onMergeAbort) await onMergeAbort(project.id);
     // Invalidate cache and re-render
     invalidateCache(project.id);
-    renderDashboard(container, project, options);
+    if (isCurrent()) renderDashboard(container, project, options);
   });
 
   container.querySelector('.btn-copy-path')?.addEventListener('click', () => {
@@ -2113,7 +2100,7 @@ async function renderDashboardHtml(container, project, data, options, isRefreshi
   container.querySelectorAll('.dashboard-view-tab').forEach(btn => {
     btn.addEventListener('click', async () => {
       _dashViews.set(project.id, btn.dataset.view);
-      await renderDashboardHtml(container, project, data, options, isRefreshing);
+      await renderDashboard(container, project, options);
     });
   });
 }
@@ -2196,154 +2183,85 @@ function animateDashboardIn(container) {
   }, 400);
 }
 
-/**
- * Transition between old and new dashboard content with cross-fade
- * @param {HTMLElement} container - Dashboard container
- * @param {Object} project - Project data
- * @param {Object} data - Dashboard data
- * @param {Object} options - Render options
- * @param {boolean} isRefreshing - Show refresh indicator
- */
-async function transitionDashboard(container, project, data, options, isRefreshing = false) {
-  const hasExistingContent = container.querySelector('.dashboard-project-header');
-
-  if (!hasExistingContent) {
-    // No existing content - render directly with entrance animations
-    await renderDashboardHtml(container, project, data, options, isRefreshing);
-    animateDashboardIn(container);
-    return;
-  }
-
-  // Cross-fade: wrap old content, create new content, fade
-  const wrapper = document.createElement('div');
-  wrapper.className = 'dashboard-transition-wrapper';
-  wrapper.style.position = 'relative';
-
-  // Capture old content
-  const outgoing = document.createElement('div');
-  outgoing.className = 'dashboard-outgoing';
-  outgoing.innerHTML = container.innerHTML;
-  wrapper.appendChild(outgoing);
-
-  // Create incoming content (hidden)
-  const incoming = document.createElement('div');
-  incoming.className = 'dashboard-incoming';
-  wrapper.appendChild(incoming);
-
-  // Replace container with wrapper
-  container.innerHTML = '';
-  container.appendChild(wrapper);
-
-  // Render new content into incoming (just for visual)
-  await renderDashboardHtml(incoming, project, data, options, isRefreshing);
-
-  // Trigger cross-fade
-  requestAnimationFrame(() => {
-    outgoing.classList.add('fade-out');
-    incoming.classList.add('fade-in');
-  });
-
-  // After fade completes, move the already-rendered nodes into the container
-  setTimeout(() => {
-    container.innerHTML = '';
-    while (incoming.firstChild) container.appendChild(incoming.firstChild);
-    animateDashboardIn(container);
-  }, 220);
-}
-
-/**
- * Render dashboard content for a project (with caching)
- * @param {HTMLElement} container - Container element
- * @param {Object} project - Project data
- * @param {Object} options - Render options
- * @returns {Promise<void>}
- */
+/** Render immediately, then fill local, history and GitHub data as they arrive. */
 async function renderDashboard(container, project, options = {}) {
-  const projectId = project.id;
-  const cachedData = getCachedData(projectId);
-  const cacheValid = isCacheValid(projectId);
-  const alreadyRefreshing = isRefreshing(projectId);
+  const render = {};
+  _dashboardRenders.set(container, render);
+  const isCurrent = () => _dashboardRenders.get(container) === render;
+  stopWorkflowPolling();
 
-  // Case 1: We have cached data - show it immediately
-  if (cachedData) {
-    // The bulk preload skips the 500-commit history (lightweight); load it now
-    // so the insights section (graph/heatmaps) has its data for this project.
-    await ensureCommitHistory(project, cachedData);
+  let data = getCachedData(project.id) || {};
+  const cacheValid = isCacheValid(project.id) && !!data.gitInfo && !!data.stats && !_dashboardLoads.has(project.id);
+  let pending = cacheValid ? (Array.isArray(data.commitHistory30d) ? 0 : 1) : 3;
+  let painted = false;
+  const paint = () => {
+    if (!isCurrent()) return;
+    // Do not rebuild an active sub-view when background dashboard data arrives.
+    if (painted && (_dashViews.get(project.id) || 'overview') !== 'overview') return;
+    renderDashboardHtml(container, project, data, options, pending > 0, isCurrent);
+    if (!painted) animateDashboardIn(container);
+    painted = true;
+  };
 
-    // Use cross-fade transition when switching projects (existing content visible)
-    await transitionDashboard(container, project, cachedData, options, !cacheValid && !alreadyRefreshing);
-
-    // If cache is still valid or already refreshing, we're done
-    if (cacheValid || alreadyRefreshing) {
+  try {
+    // Includes type-only disk caches and cold starts: header/actions need no IPC.
+    paint();
+    // The timeline collects its own sources; overview scans would duplicate them.
+    if (_dashViews.get(project.id) === 'timeline') return;
+    if (cacheValid) {
+      if (pending) {
+        await ensureCommitHistory(project, data);
+        pending = 0;
+        paint();
+      }
       return;
     }
 
-    // Start background refresh
-    const targetProjectId = projectId;
-    setCacheLoading(projectId, true);
-
-    try {
-      const newData = await loadDashboardData(project.path);
-      setCacheData(targetProjectId, newData);
-
-      // Discard if user switched to a different project during refresh
-      if (targetProjectId !== projectsState.get().openedProjectId) return;
-
-      // Only update UI if this project is still displayed — discrete refresh, no animation
-      if (container.querySelector('#dash-btn-open-folder')) {
-        await renderDashboardHtml(container, project, newData, options, false);
-      }
-    } catch (e) {
-      console.error('Error refreshing dashboard:', e);
-      setCacheLoading(targetProjectId, false);
-    }
-    return;
-  }
-
-  // Case 2: No cache - show loading and fetch
-  const targetProjectId = projectId;
-  container.innerHTML = buildDashboardSkeletonHtml(projectId);
-
-  setCacheLoading(projectId, true);
-
-  try {
-    // Paint as soon as the local data is in. The GitHub sections arrive in a
-    // second pass rather than holding the whole page behind a network call.
-    const local = await loadLocalDashboardData(project.path);
-
-    // Discard if user switched to a different project during load
-    if (targetProjectId !== projectsState.get().openedProjectId) return;
-
-    await renderDashboardHtml(container, project, local, options, false);
-    animateDashboardIn(container);
-
-    const remote = await loadRemoteDashboardData(local.gitInfo);
-    const data = remote ? { ...local, ...remote } : local;
-    // Only the complete payload may be cached: setCacheData resets the TTL,
-    // so caching the local half would keep the GitHub sections empty until it
-    // expired.
-    setCacheData(targetProjectId, data);
-
-    if (!remote) return;
-    if (targetProjectId !== projectsState.get().openedProjectId) return;
-    // Still the same dashboard on screen? Fill in the GitHub sections.
-    if (container.querySelector('#dash-btn-open-folder')) {
-      await renderDashboardHtml(container, project, data, options, false);
-    }
+    const load = loadProjectDashboard(project);
+    await Promise.all([
+      load.git.then(async local => {
+        data = local;
+        paint();
+        await ensureCommitHistory(project, local);
+        pending--;
+        paint();
+      }),
+      load.stats.then(local => {
+        data = local;
+        pending--;
+        paint();
+      }),
+      load.complete.then(complete => {
+        data = complete;
+        pending--;
+        paint();
+      })
+    ]);
+    if (getCachedData(project.id) === data) writeDiskCache(project.path, data);
   } catch (e) {
     console.error('Error loading dashboard:', e);
-    setCacheLoading(targetProjectId, false);
+    if (!isCurrent()) return;
+    // Keep project actions available; retry this view rather than reload the app.
+    container.querySelector('.dashboard-refresh-indicator')?.remove();
+    const error = document.createElement('div');
+    error.className = 'dashboard-error';
+    error.innerHTML = `<p>${escapeHtml(t('dashboard.loadError'))}</p>
+      <button class="btn-secondary dashboard-retry-btn">${escapeHtml(t('dashboard.retry'))}</button>`;
+    container.prepend(error);
+    error.querySelector('button').addEventListener('click', () => {
+      invalidateCache(project.id);
+      renderDashboard(container, project, options);
+    });
+  }
+}
 
-    // Don't show error UI if user already switched away
-    if (targetProjectId !== projectsState.get().openedProjectId) return;
-
-    container.innerHTML = `
-      <div class="dashboard-error">
-        <p>${escapeHtml(t('dashboard.loadError'))}</p>
-        <button class="btn-secondary dashboard-retry-btn">${escapeHtml(t('dashboard.retry'))}</button>
-      </div>
-    `;
-    container.querySelector('.dashboard-retry-btn')?.addEventListener('click', () => location.reload());
+/** Leave the view while allowing in-flight requests to finish warming the cache. */
+function cancelRender(container) {
+  _dashboardRenders.delete(container);
+  stopWorkflowPolling();
+  if (_sessionRecapHandler) {
+    window.removeEventListener('session-recap-updated', _sessionRecapHandler);
+    _sessionRecapHandler = null;
   }
 }
 
@@ -2383,10 +2301,11 @@ async function _preloadAllProjectsInner() {
   const PROJECT_TIMEOUT = 15000; // 15s max per project (reduced from 20s)
 
   function withTimeout(promise, ms, name) {
+    let timer;
     return Promise.race([
       promise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout after ${ms}ms for ${name}`)), ms))
-    ]);
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Timeout after ${ms}ms for ${name}`)), ms); })
+    ]).finally(() => clearTimeout(timer));
   }
 
   // Yield to the event loop between batches so UI stays responsive
@@ -2409,21 +2328,13 @@ async function _preloadAllProjectsInner() {
       if (project.path && !nodeFs.existsSync(project.path)) return;
 
       try {
-        setCacheLoading(project.id, true);
-        const data = await withTimeout(
-          loadDashboardData(project.path, { lightweight: true }),
+        await withTimeout(
+          loadProjectDashboard(project).complete,
           PROJECT_TIMEOUT,
           project.name
         );
-        setCacheData(project.id, data);
       } catch (e) {
         console.error(`[Dashboard] Failed to preload ${project.name}:`, e.message);
-        // Store minimal data (project type) so it's not stuck as "no data"
-        const projectType = await detectProjectType(project.path);
-        if (projectType) {
-          setCacheData(project.id, { projectType, gitInfo: {}, stats: {}, workflowRuns: { runs: [] }, pullRequests: { pullRequests: [] } });
-        }
-        setCacheLoading(project.id, false);
       }
     }));
 
@@ -2660,6 +2571,7 @@ function buildOverviewHtml(projects, options = {}) {
  * @param {Object} options - { dataMap, timesMap, onCardClick }
  */
 function renderOverview(container, projects, options = {}) {
+  cancelRender(container);
   const { onCardClick } = options;
 
   container.innerHTML = buildOverviewHtml(projects, options);
@@ -2869,6 +2781,7 @@ module.exports = {
   getGitStatusQuick,
   getDashboardProjects,
   renderDashboard,
+  cancelRender,
   renderOverview,
   formatNumber,
   getGitOperation,
