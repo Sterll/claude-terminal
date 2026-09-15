@@ -16,6 +16,7 @@ const { fs, path } = window.electron_nodeModules;
 const { fileExists } = require('../utils/fs-async');
 const fsp = require('../utils/fs-async').fsp;
 const { State } = require('./State');
+const { t } = require('../i18n');
 const { timeTrackingFile, projectsFile } = require('../utils/paths');
 const ArchiveService = require('../services/ArchiveService');
 
@@ -58,16 +59,35 @@ let saveDebounceTimer = null;
 let saveInProgress = false;
 let pendingSave = false;
 let dirty = false;
+// Latched when timetracking.json exists but cannot be parsed. Blocks every
+// save for the rest of the session — see loadData().
+let loadFailed = false;
 
 // ============================================================
 // PERSISTENCE
 // ============================================================
 
+/**
+ * Load the persisted dataset.
+ *
+ * A failure here cannot just be logged. dataState would stay at its defaults -
+ * an empty dataset - and the next heartbeat schedules a save that writes that
+ * emptiness over the file. The `.bak` is no help: saveImmediate() creates it
+ * during the write and unlinks it as soon as the write succeeds, so by the time
+ * it would be needed it is already gone. Months of tracked time, and nothing
+ * else on disk holds a copy.
+ *
+ * So an unreadable file latches `loadFailed`, which blocks every later save.
+ * Tracking keeps running in memory for the session; nothing is persisted, and
+ * nothing is destroyed. Empty content counts as unreadable: saveImmediate only
+ * ever writes a complete JSON document, so a zero-length file is a truncated
+ * write, not a legitimate state.
+ */
 async function loadData() {
   try {
     if (!await fileExists(timeTrackingFile)) return;
     const content = await fsp.readFile(timeTrackingFile, 'utf8');
-    if (!content || !content.trim()) return;
+    if (!content || !content.trim()) throw new Error('file is empty');
     const data = JSON.parse(content);
     dataState.set({
       version: data.version || 2,
@@ -76,8 +96,42 @@ async function loadData() {
       projects: data.projects || {}
     });
   } catch (e) {
-    console.warn('[TimeTracking] Failed to load:', e.message);
+    loadFailed = true;
+    console.error('[TimeTracking] Data file unreadable, saving is now disabled:', e.message);
+
+    const backupPath = await createCorruptedBackup(timeTrackingFile);
+
+    // Critical system alert - same treatment projects.state.js gives a corrupt
+    // projects.json, and shown regardless of the notifications setting.
+    try {
+      window.electron_api.notification.show({
+        title: t('errors.corruptedFile'),
+        body: backupPath
+          ? t('errors.backupCreated', { filename: path.basename(backupPath) })
+          : t('errors.backupFailed')
+      });
+    } catch (_) {
+      console.error('[TimeTracking] Could not notify user of corruption');
+    }
   }
+}
+
+/**
+ * Copy a file that failed to parse aside before anything can overwrite it.
+ * @param {string} filePath
+ * @returns {Promise<string|null>} the backup path, or null if it could not be made
+ */
+async function createCorruptedBackup(filePath) {
+  try {
+    if (await fileExists(filePath)) {
+      const backupPath = `${filePath}.corrupted.${Date.now()}`;
+      await fsp.copyFile(filePath, backupPath);
+      return backupPath;
+    }
+  } catch (e) {
+    console.error('[TimeTracking] Failed to back up the corrupted file:', e.message);
+  }
+  return null;
 }
 
 function save() {
@@ -90,6 +144,9 @@ function save() {
 }
 
 async function saveImmediate() {
+  // The file exists but could not be read, so what is in memory is not the
+  // user's data - it is the empty default. Writing it would be the data loss.
+  if (loadFailed) return;
   if (saveInProgress) { pendingSave = true; return; }
   saveInProgress = true;
 
