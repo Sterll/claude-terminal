@@ -67,3 +67,13 @@ test('a failed initial pull retains its error state', async () => {
   await engine.start('https://example.test', 'test-key');
   expect(engine.getStatus().status).toBe('error');
 });
+
+test('the managed MCP keeps its local executable and native module paths', async () => {
+  const file = path.join(mockDir, '.claude.json');
+  const local = { command: '/local/electron', args: ['/local/mcp.js'], env: { NODE_PATH: '/local/native' } };
+  fs.writeFileSync(file, JSON.stringify({ mcpServers: { 'claude-terminal': local } }));
+  const handler = engine._handlers.mcp;
+  expect(await handler.read()).toEqual({});
+  await handler.write({ 'claude-terminal': { command: '/other/machine' }, user: { command: 'custom' } });
+  expect(JSON.parse(fs.readFileSync(file)).mcpServers['claude-terminal']).toEqual(local);
+});

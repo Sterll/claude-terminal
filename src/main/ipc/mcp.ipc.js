@@ -12,6 +12,10 @@ const { sendFeaturePing } = require('../services/TelemetryService');
  * Register MCP IPC handlers
  */
 function registerMcpHandlers() {
+  ipcMain.handle('mcp-save-server', async (_event, { name, config }) => {
+    if (typeof name !== 'string' || !name || !config || typeof config !== 'object' || Array.isArray(config)) throw new Error('Invalid MCP server');
+    await updateClaudeConfig(full => { full.mcpServers = { ...full.mcpServers, [name]: config }; });
+  });
   ipcMain.handle('mcp-save-config', async (_event, servers, knownIds = []) => {
     if (!servers || typeof servers !== 'object' || Array.isArray(servers)) throw new Error('Invalid MCP configuration');
     if (!Array.isArray(knownIds) || knownIds.some(id => typeof id !== 'string')) throw new Error('Invalid MCP server ids');

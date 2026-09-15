@@ -96,6 +96,41 @@ app.whenReady().then(async () => {
   window.destroy(); window = null;
   console.log('PASS shipped PDF viewer: open, pages, zoom, close');
 
+  const security = require('../src/main/utils/rendererSecurity');
+  const { ipcMain } = require('electron');
+  security.install(ipcMain);
+  const dataDir = path.join(temporary, '.claude-terminal');
+  fs.mkdirSync(dataDir, { recursive: true });
+  fs.writeFileSync(path.join(dataDir, 'allowed.txt'), 'allowed');
+  fs.writeFileSync(path.join(temporary, 'private.txt'), 'private');
+  const fixture = path.join(temporary, 'index.html'); fs.writeFileSync(fixture, '<p>Boundary smoke</p>');
+  window = new BrowserWindow({ show: false, webPreferences: { contextIsolation: true, sandbox: false, nodeIntegration: false, preload: path.resolve(__dirname, '../src/main/preload.js') } });
+  security.guardWindow(window, fixture);
+  await window.loadFile(fixture);
+  console.log('Boundary fixture:', window.webContents.getURL(), 'permitted:', security.permitted(path.join(dataDir, 'allowed.txt')));
+  const boundary = await window.webContents.executeJavaScript(`(() => {
+    try {
+    const fs = window.electron_nodeModules.fs;
+    const result = { allowed: fs.readFileSync(${JSON.stringify(path.join(dataDir, 'allowed.txt'))}, 'utf8') };
+    try { fs.readFileSync(${JSON.stringify(path.join(temporary, 'private.txt'))}, 'utf8'); } catch { result.denied = true; }
+    try { fs.writeFileSync(${JSON.stringify(path.resolve(__dirname, '../package.json'))}, 'blocked'); } catch { result.appWriteDenied = true; }
+    return result;
+    } catch (error) { return { error: error.message }; }
+  })()`);
+  assert.deepEqual(boundary, { allowed: 'allowed', denied: true, appWriteDenied: true });
+  window.destroy(); window = null;
+  for (const [htmlName, preload, apiName, read] of [
+    ['quick-picker.html', 'preload-quickpicker.js', 'pickerAPI', 'readProjects'],
+    ['notification.html', 'preload-notification.js', 'notifAPI', 'readSettingsAccentColor'],
+  ]) {
+    const page = path.join(temporary, htmlName); fs.writeFileSync(page, '<p>Sandbox smoke</p>');
+    window = new BrowserWindow({ show: false, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, preload: path.resolve(__dirname, '../src/main', preload) } });
+    security.guardWindow(window, page); await window.loadFile(page);
+    await window.webContents.executeJavaScript(`window.${apiName}.${read}()`);
+    window.destroy(); window = null;
+  }
+  console.log('PASS real preload path grants, read-only app files and sandboxed secondary preloads');
+
   // Stub only unrelated chat/catalog work; HTTP, WS, token and socket lifecycles are real.
   const Module = require('node:module'); const originalLoad = Module._load;
   Module._load = function(request, parent, isMain) {

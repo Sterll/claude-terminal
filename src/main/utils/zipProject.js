@@ -5,7 +5,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const { settingsFile } = require('./paths');
 
 // ── Sensitive file filter (inline) ──
@@ -19,7 +19,7 @@ const SENSITIVE_NAMES = new Set([
 const SENSITIVE_EXTENSIONS = new Set(['.pem', '.key', '.p12', '.pfx', '.jks', '.keystore', '.truststore']);
 
 function _isSensitiveFile(relativePath) {
-  const basename = relativePath.split('/').pop();
+  const basename = relativePath.replace(/\\/g, '/').split('/').pop();
   if (!basename) return false;
   if (SENSITIVE_NAMES.has(basename) || SENSITIVE_NAMES.has(basename.toLowerCase())) return true;
   if (SENSITIVE_EXTENSIONS.has(path.extname(basename).toLowerCase())) return true;
@@ -70,12 +70,11 @@ function getProjectFiles(projectPath, options = {}) {
 
   try {
     // Try git ls-files (respects .gitignore automatically)
-    const output = execSync(
-      'git ls-files --cached --others --exclude-standard',
+    const output = execFileSync(
+      'git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'],
       { cwd: projectPath, encoding: 'utf-8', timeout: 15000, maxBuffer: 10 * 1024 * 1024 }
     );
-    files = output.trim().split('\n').filter(Boolean);
-    if (files.length === 0) files = walkDir(projectPath, projectPath);
+    files = [...new Set(output.split('\0').filter(Boolean))];
   } catch {
     // Not a git repo or git not available — fall back to walk
     files = walkDir(projectPath, projectPath);
@@ -174,7 +173,10 @@ async function zipProject(projectPath, zipPath, onProgress, options = {}) {
     });
 
     output.on('close', () => resolve(zipPath));
-    archive.on('error', reject);
+    const fail = error => { archive.abort(); output.destroy(); reject(error); };
+    output.on('error', fail);
+    archive.on('error', fail);
+    archive.on('warning', fail);
     archive.pipe(output);
 
     for (const file of files) {
@@ -184,10 +186,13 @@ async function zipProject(projectPath, zipPath, onProgress, options = {}) {
       archive.file(absPath, {
         name: file.replace(/\\/g, '/'),
         store: STORE_EXTENSIONS.has(ext),
+        // A non-ASCII comment makes the ZIP writer explicitly mark UTF-8.
+        // Otherwise some readers decode ASCII control bytes as CP437 glyphs.
+        comment: 'UTF‑8',
       });
     }
 
-    archive.finalize();
+    archive.finalize().catch(fail);
   });
 }
 
