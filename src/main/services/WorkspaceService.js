@@ -72,16 +72,30 @@ async function getWorkspace(id) {
   return workspaces.find(w => w.id === id) || workspaces.find(w => w.name.toLowerCase() === id.toLowerCase());
 }
 
+/**
+ * The workspace's document index.
+ *
+ * Absent is legitimate and means no documents yet. A parse failure throws:
+ * writeDoc() and deleteDoc() both read this, push their change and write the
+ * whole array back, so returning [] would rewrite the index with one entry and
+ * lose every other document. The .md files themselves survive on disk, but
+ * nothing would point at them any more.
+ *
+ * @throws {Error} when docs-index.json exists but cannot be parsed
+ */
 async function getWorkspaceDocsIndex(workspaceId) {
   const indexPath = workspaceFile(workspaceId, 'docs-index.json');
+  let raw;
   try {
-    const raw = await fs.promises.readFile(indexPath, 'utf8');
+    raw = await fs.promises.readFile(indexPath, 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT') return [];
+    throw e;
+  }
+  try {
     return JSON.parse(raw).docs || [];
   } catch (e) {
-    if (e.code !== 'ENOENT') {
-      console.error('[WorkspaceService] Error reading docs index:', e.message);
-    }
-    return [];
+    throw new Error(`Refusing to use the docs index for '${workspaceId}' - it is unparseable (${e.message})`);
   }
 }
 
@@ -213,13 +227,26 @@ async function searchDocs(workspaceId, query) {
   return results;
 }
 
+/**
+ * The workspace's concept links. Same contract as the docs index: absent means
+ * none, unparseable throws rather than letting addLink() rewrite the file with
+ * the single link it was given.
+ *
+ * @throws {Error} when links.json exists but cannot be parsed
+ */
 async function getWorkspaceLinks(workspaceId) {
   const linksPath = workspaceFile(workspaceId, 'links.json');
+  let raw;
   try {
-    const raw = await fs.promises.readFile(linksPath, 'utf8');
+    raw = await fs.promises.readFile(linksPath, 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT') return [];
+    throw e;
+  }
+  try {
     return JSON.parse(raw).links || [];
-  } catch {
-    return [];
+  } catch (e) {
+    throw new Error(`Refusing to use the links index for '${workspaceId}' - it is unparseable (${e.message})`);
   }
 }
 

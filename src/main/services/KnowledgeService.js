@@ -73,21 +73,42 @@ function normalizeList(value) {
 
 const EMPTY_INDEX = { version: 1, enabled: true, entries: [] };
 
+/**
+ * Read the knowledge index.
+ *
+ * Absent is legitimate. A parse failure throws: writeEntry(), deleteEntry(),
+ * setPinned() and setEnabled() all go loadIndex -> mutate -> saveIndex, so
+ * "starting empty" meant the next edit rewrote index.json with a single entry.
+ * The entry bodies survive under entries/, but nothing lists them any more -
+ * and buildContextBlock() would then empty the managed block out of
+ * ~/.claude/CLAUDE.md, so the loss reaches a file the user hand-edits.
+ *
+ * @throws {Error} when index.json exists but cannot be used
+ */
 async function loadIndex() {
+  let raw;
   try {
-    const raw = await fsp.readFile(INDEX_FILE, 'utf8');
-    const parsed = JSON.parse(raw);
-    return {
-      version: parsed.version || 1,
-      enabled: parsed.enabled !== false,
-      entries: Array.isArray(parsed.entries) ? parsed.entries : []
-    };
+    raw = await fsp.readFile(INDEX_FILE, 'utf8');
   } catch (e) {
-    if (e.code !== 'ENOENT') {
-      console.error('[Knowledge] index.json unreadable, starting empty:', e.message);
-    }
-    return { ...EMPTY_INDEX, entries: [] };
+    if (e.code === 'ENOENT') return { ...EMPTY_INDEX, entries: [] };
+    throw e;
   }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    throw new Error(`Refusing to use knowledge/index.json - it is unparseable (${e.message})`);
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Refusing to use knowledge/index.json - it is not a JSON object');
+  }
+
+  return {
+    version: parsed.version || 1,
+    enabled: parsed.enabled !== false,
+    entries: Array.isArray(parsed.entries) ? parsed.entries : []
+  };
 }
 
 async function saveIndex(index) {

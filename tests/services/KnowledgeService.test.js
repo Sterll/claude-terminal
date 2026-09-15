@@ -150,3 +150,41 @@ describe('CLAUDE.md injection', () => {
     expect(claudeMd()).toContain('body');
   });
 });
+
+describe('a corrupt index.json', () => {
+  // writeEntry/deleteEntry/setPinned/setEnabled all go loadIndex -> mutate ->
+  // saveIndex. Returning an empty index on a parse failure meant the next edit
+  // rewrote the file with one entry and orphaned every entries/*.md - and then
+  // buildContextBlock emptied the managed block out of the user's CLAUDE.md
+  // as well.
+  const indexFile = () => path.join(dataDir, 'knowledge', 'index.json');
+
+  test('is refused rather than replaced', async () => {
+    await KnowledgeService.writeEntry({ title: 'Existing', content: 'body', pinned: true });
+    fs.writeFileSync(indexFile(), '{not valid json!!!', 'utf8');
+
+    await expect(
+      KnowledgeService.writeEntry({ title: 'New', content: 'other' })
+    ).rejects.toThrow(/unparseable/i);
+
+    expect(fs.readFileSync(indexFile(), 'utf8')).toBe('{not valid json!!!');
+  });
+
+  test('does not empty the managed block in CLAUDE.md', async () => {
+    await KnowledgeService.writeEntry({ title: 'Existing', content: 'body', pinned: true });
+    const before = claudeMd();
+    expect(before).toContain('Existing');
+
+    fs.writeFileSync(indexFile(), '{not valid json!!!', 'utf8');
+    await expect(KnowledgeService.syncToClaudeMd()).rejects.toThrow(/unparseable/i);
+
+    expect(claudeMd()).toBe(before);
+  });
+
+  test('an absent index is still a legitimate empty base', async () => {
+    fs.rmSync(indexFile(), { force: true });
+    await expect(KnowledgeService.listEntries()).resolves.toEqual(
+      expect.objectContaining({ entries: [] })
+    );
+  });
+});

@@ -411,18 +411,32 @@ function getInstalled() {
 /**
  * Load marketplace manifest
  */
+/**
+ * Read the installed-skills manifest.
+ *
+ * Absent is legitimate. Unparseable throws: installSkill() and
+ * uninstallSkill() both do loadManifest -> mutate -> saveManifest, so
+ * returning { installed: {} } meant installing one skill dropped the record of
+ * every other. The skill directories under ~/.claude/skills survive, but the
+ * app stops listing them and offers no way back.
+ *
+ * @throws {Error} when marketplace.json exists but cannot be used
+ */
 function loadManifest() {
+  if (!fs.existsSync(manifestFile)) return { installed: {} };
+
+  let manifest;
   try {
-    if (fs.existsSync(manifestFile)) {
-      const data = fs.readFileSync(manifestFile, 'utf8');
-      const manifest = JSON.parse(data);
-      if (!manifest.installed) manifest.installed = {};
-      return manifest;
-    }
+    manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
   } catch (e) {
-    console.error('[Marketplace] Error loading manifest:', e);
+    throw new Error(`Refusing to use marketplace.json - it is unparseable (${e.message})`);
   }
-  return { installed: {} };
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    throw new Error('Refusing to use marketplace.json - it is not a JSON object');
+  }
+
+  if (!manifest.installed) manifest.installed = {};
+  return manifest;
 }
 
 /**
