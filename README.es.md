@@ -723,3 +723,5 @@ Consulta [SECURITY.md](SECURITY.md) para informar de una vulnerabilidad.
 ## Licencia
 
 [GPL-3.0](LICENSE)
+
+Consulte las [notas de ejecución, protección de datos y recuperación](RUNTIME_RELIABILITY.md) (en inglés) para conocer las condiciones de despliegue y los comandos de validación.

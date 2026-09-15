@@ -724,3 +724,5 @@ Lihat [SECURITY.md](SECURITY.md) untuk melaporkan kerentanan.
 ## Lisensi
 
 [GPL-3.0](LICENSE)
+
+Lihat [catatan runtime, perlindungan data, dan pemulihan](RUNTIME_RELIABILITY.md) (bahasa Inggris) untuk persyaratan penerapan dan perintah validasi.

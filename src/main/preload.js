@@ -471,6 +471,7 @@ contextBridge.exposeInMainWorld('electron_api', {
 
   // ==================== MCP ====================
   mcp: {
+    saveConfig: (servers, knownIds) => ipcRenderer.invoke('mcp-save-config', servers, knownIds),
     start: (params) => ipcRenderer.invoke('mcp-start', params),
     stop: (params) => ipcRenderer.invoke('mcp-stop', params),
     onOutput: createListener('mcp-output'),

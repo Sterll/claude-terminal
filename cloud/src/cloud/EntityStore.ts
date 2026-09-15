@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { config } from '../config';
+import { store } from '../store/store';
+import { withKeyLock } from '../store/locks';
 
 const ALLOWED_ENTITIES = [
   'settings', 'projects', 'timetracking', 'mcp',
@@ -40,8 +41,9 @@ async function readJson<T>(filePath: string): Promise<T | null> {
   try {
     const raw = await fs.promises.readFile(filePath, 'utf-8');
     return JSON.parse(raw) as T;
-  } catch {
-    return null;
+  } catch (error: any) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
   }
 }
 
@@ -51,11 +53,12 @@ class EntityStore {
   }
 
   private entityDir(userName: string): string {
-    return path.join(config.usersDir, userName, 'entities');
+    return store.userStoragePath(userName, 'entities');
   }
 
   private entityPath(userName: string, type: EntityType): string {
-    return path.join(this.entityDir(userName), `${type}.json`);
+    if (!this.isValidType(type)) throw new Error('Invalid entity type');
+    return store.userStoragePath(userName, 'entities', `${type}.json`);
   }
 
   async getEntity(userName: string, type: EntityType): Promise<EntityEnvelope | null> {
@@ -63,34 +66,37 @@ class EntityStore {
   }
 
   async putEntity(userName: string, type: EntityType, data: any, clientHash?: string): Promise<PutResult> {
-    const dir = this.entityDir(userName);
-    await fs.promises.mkdir(dir, { recursive: true });
+    if (!this.isValidType(type)) throw new Error('Invalid entity type');
+    return withKeyLock(`entity:${userName}:${type}`, async () => {
+      const dir = this.entityDir(userName);
+      await fs.promises.mkdir(dir, { recursive: true });
 
-    const filePath = this.entityPath(userName, type);
-    const existing = await readJson<EntityEnvelope>(filePath);
+      const filePath = this.entityPath(userName, type);
+      const existing = await readJson<EntityEnvelope>(filePath);
 
-    // Conflict check: if client provides a hash expectation and it doesn't match server
-    if (clientHash && existing && existing.hash !== clientHash) {
-      return { ok: false, conflict: true, serverData: existing };
-    }
+      // Conflict check: if client provides a hash expectation and it doesn't match server
+      if (clientHash !== undefined && existing?.hash !== clientHash) {
+        return { ok: false, conflict: true, serverData: existing || undefined };
+      }
 
-    const hash = computeHash(data);
-    const envelope: EntityEnvelope = {
-      data,
-      updatedAt: Date.now(),
-      hash,
-    };
+      const hash = computeHash(data);
+      const envelope: EntityEnvelope = {
+        data,
+        updatedAt: Date.now(),
+        hash,
+      };
 
-    await writeAtomic(filePath, JSON.stringify(envelope, null, 2));
-    return { ok: true, updatedAt: envelope.updatedAt, hash };
+      await writeAtomic(filePath, JSON.stringify(envelope, null, 2));
+      return { ok: true, updatedAt: envelope.updatedAt, hash };
+    });
   }
 
   async deleteEntity(userName: string, type: EntityType): Promise<void> {
-    try {
-      await fs.promises.unlink(this.entityPath(userName, type));
-    } catch {
-      // File doesn't exist, that's fine
-    }
+    if (!this.isValidType(type)) throw new Error('Invalid entity type');
+    await withKeyLock(`entity:${userName}:${type}`, async () => {
+      try { await fs.promises.unlink(this.entityPath(userName, type)); }
+      catch (err: any) { if (err.code !== 'ENOENT') throw err; }
+    });
   }
 
   async getManifest(userName: string): Promise<EntityManifest> {

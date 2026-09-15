@@ -239,7 +239,9 @@ describe('focus', () => {
     await new Promise(r => setTimeout(r, 10));
     expect(mockRequestedTokens).toContain('tok-acct-team');
 
+    mockBodyByToken.set('tok-machine', usageBody(0.20));
     UsageService.setFocusedAccount(null);
     expect(UsageService.getFocusedAccount()).toBeNull();
+    await new Promise(r => setTimeout(r, 10));
   });
 });

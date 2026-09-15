@@ -46,8 +46,10 @@ async function _doBuildKeyIndex(): Promise<void> {
       const hash = hashApiKey(user.apiKey);
       user.apiKeyHash = hash;
       delete (user as any).apiKey;
-      await store.saveUser(userName, user);
-      index.set(hash, user.name);
+      const current = await store.updateUser(userName, data => {
+        if (!data.apiKeyHash) { data.apiKeyHash = hash; delete data.apiKey; }
+      });
+      if (current) index.set(current.apiKeyHash, current.name);
       console.log(`[Auth] Migrated API key to hash for user "${userName}"`);
     }
   }
