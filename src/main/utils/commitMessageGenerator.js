@@ -11,11 +11,12 @@ const { formatDuration } = require('./formatDuration');
  * loadable in tests and in any context without the SDK.
  * @returns {Promise<string|null>}
  */
-async function callHaiku({ system, user, timeoutMs }) {
+async function callHaiku({ system, user, timeoutMs, signal }) {
   try {
     const ChatService = require('../services/ChatService');
-    return await ChatService.runHaikuPrompt({ systemPrompt: system, prompt: user, timeoutMs });
+    return await ChatService.runHaikuPrompt({ systemPrompt: system, prompt: user, timeoutMs, signal });
   } catch (err) {
+    signal?.throwIfAborted();
     console.warn('[commitMessageGenerator] Haiku unavailable:', err.message);
     return null;
   }
@@ -57,11 +58,11 @@ function buildPrompt(files, diffContent) {
  * @param {number} [timeoutMs=45000] - Generous: the SDK spawns a CLI process (~10-15s)
  * @returns {Promise<string|null>}
  */
-async function generateWithAi(files, diffContent, timeoutMs = 45000) {
+async function generateWithAi(files, diffContent, timeoutMs = 45000, signal) {
   const content = await callHaiku({
     system: SYSTEM_PROMPT,
     user: buildPrompt(files, diffContent),
-    timeoutMs
+    timeoutMs, signal
   });
   if (!content) return null;
 
@@ -207,6 +208,7 @@ function generateSessionRecapHeuristic(ctx) {
  * @returns {Promise<{ summary: string, source: 'ai'|'heuristic' }>}
  */
 async function generateSessionRecap(ctx, options, timeoutMs = 30000) {
+  options?.signal?.throwIfAborted();
   if (!ctx) return { summary: '', source: 'heuristic' };
 
   const isRich = ctx.toolCount > 10 || (ctx.prompts && ctx.prompts.length > 2);
@@ -226,7 +228,7 @@ async function generateSessionRecap(ctx, options, timeoutMs = 30000) {
     const result = await callHaiku({
       system: systemPrompt,
       user: userMessage,
-      timeoutMs
+      timeoutMs, signal: options?.signal
     });
     if (result) return { summary: result, source: 'ai' };
   }
@@ -262,6 +264,7 @@ function groupFiles(files) {
  * @param {{ useAi?: boolean }} [options] - Set useAi to true to enable AI generation
  */
 async function generateCommitMessage(files, diffContent, options) {
+  options?.signal?.throwIfAborted();
   if (!files || files.length === 0) {
     return { message: '', source: 'heuristic', groups: [] };
   }
@@ -269,7 +272,7 @@ async function generateCommitMessage(files, diffContent, options) {
   const groups = groupFiles(files);
 
   if (options?.useAi) {
-    const aiMessage = await generateWithAi(files, diffContent);
+    const aiMessage = await generateWithAi(files, diffContent, 45000, options?.signal);
     if (aiMessage) {
       return { message: aiMessage, source: 'ai', groups };
     }
@@ -288,6 +291,7 @@ async function generateCommitMessage(files, diffContent, options) {
  * @param {{ useAi?: boolean }} [options] - Set useAi to true to enable AI generation
  */
 async function generateMultiCommitMessages(files, diffs, options) {
+  options?.signal?.throwIfAborted();
   if (!files || files.length === 0) return [];
 
   const groups = groupFiles(files);
@@ -302,7 +306,7 @@ async function generateMultiCommitMessages(files, diffs, options) {
   const results = await Promise.all(groups.map(async (g) => {
     const diff = diffs[g.name] || '';
     if (options?.useAi) {
-      const aiMessage = await generateWithAi(g.files, diff);
+      const aiMessage = await generateWithAi(g.files, diff, 45000, options?.signal);
       if (aiMessage) return { group: g.name, files: g.files, message: aiMessage, source: 'ai' };
     }
     const message = generateHeuristicMessage(g.files, diff);

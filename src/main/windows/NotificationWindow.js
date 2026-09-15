@@ -60,7 +60,7 @@ function showNotification({ title, body, terminalId, autoDismiss = 8000, labels,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false,
+      sandbox: true,
       preload: path.join(__dirname, '..', 'preload-notification.js')
     }
   });
@@ -68,6 +68,7 @@ function showNotification({ title, body, terminalId, autoDismiss = 8000, labels,
   const notifMeta = Object.assign({}, meta || {});
   const data = encodeURIComponent(JSON.stringify({ title, body, terminalId, notifId, autoDismiss, buttons: normalizedButtons, meta: notifMeta }));
   const htmlPath = path.join(__dirname, '..', '..', '..', 'notification.html');
+  require('../utils/rendererSecurity').guardWindow(win, htmlPath);
   win.loadFile(htmlPath, { search: `data=${data}` });
 
   win.once('ready-to-show', () => {

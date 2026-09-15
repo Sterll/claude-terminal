@@ -945,3 +945,11 @@
 }
 
 .ct-maximized-title-input:focus { outline: none; }
+
+.ct-incidents { padding: 12px 20px; border-bottom: 1px solid var(--border-color); max-height: 35vh; overflow: auto; }
+.ct-incidents[hidden] { display: none; }
+.ct-incidents h3 { font-size: 13px; margin: 0 0 8px; }
+.ct-incident { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; }
+.ct-incident span { display: block; color: var(--text-secondary); font-size: 12px; }
+.ct-incident p { margin: 4px 0; font-size: 12px; overflow-wrap: anywhere; }
+.ct-incident-actions { display: flex; gap: 6px; flex-shrink: 0; }

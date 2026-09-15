@@ -42,12 +42,13 @@ function createSetupWizardWindow({ onComplete, onSkip }) {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false,
+      sandbox: true,
       preload: path.join(__dirname, '..', 'preload.js')
     }
   });
 
   const htmlPath = path.join(__dirname, '..', '..', '..', 'setup-wizard.html');
+  require('../utils/rendererSecurity').guardWindow(setupWizardWindow, htmlPath);
   setupWizardWindow.loadFile(htmlPath);
 
   setupWizardWindow.once('ready-to-show', () => {

@@ -198,6 +198,8 @@ function init(context) {
   });
 }
 
+let _pendingIncident = null;
+
 async function load() {
   const inEditor = !!document.querySelector('#workflow-panel .wf-editor');
 
@@ -207,6 +209,7 @@ async function load() {
     await refreshData();
     renderContent();
     registerLiveListeners();
+    await revealIncident();
     return;
   }
 
@@ -217,6 +220,7 @@ async function load() {
   if (!inEditor) {
     renderContent();
   }
+  await revealIncident();
 }
 
 const api = window.electron_api?.workflow;
@@ -3412,4 +3416,24 @@ async function duplicateWorkflow(id) {
 }
 
 
-module.exports = { init, load };
+function openIncident(workflowId, runId) {
+  _pendingIncident = { workflowId, runId };
+  const tab = document.querySelector('.nav-tab[data-tab="workflows"]');
+  if (tab?.classList.contains('active')) load(); else tab?.click();
+}
+async function revealIncident() {
+  const target = _pendingIncident; _pendingIncident = null;
+  if (!target) return;
+  if (target.runId) {
+    if (_editorDirty && !(await showConfirm({ title: t('workflow.unsavedTitle'), message: t('workflow.unsavedMessage'), confirmLabel: t('workflow.discardChanges'), danger: true }))) return;
+    teardownEditorRef?.();
+    const result = await api.getRun(target.runId);
+    if (!result?.success) { toast(result?.error || t('workflow.toast.runFailed'), 'error'); return; }
+    if (!state.runs.some(run => run.id === result.run.id)) state.runs.unshift(result.run);
+    state.activeTab = 'runs'; renderPanel(); renderContent();
+    renderRunDetailInCol(document.querySelector('#wf-detail-col'), result.run);
+  } else if (state.workflows.some(wf => wf.id === target.workflowId)) {
+    openDetail(target.workflowId);
+  }
+}
+module.exports = { init, load, openIncident };

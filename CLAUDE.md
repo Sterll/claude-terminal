@@ -11,7 +11,7 @@ Claude Terminal is a cross-platform Electron desktop application (**v1.3.3**) fo
 ## Build & Development Commands
 
 ```bash
-npm install              # Install dependencies (Node >=18, runs electron-rebuild for node-pty, keytar, better-sqlite3)
+npm install              # Install dependencies (Node >=24.15, runs electron-rebuild for node-pty, keytar, better-sqlite3)
 npm start                # Build renderer + run app
 npm run start:dev        # Run with DevTools enabled
 npm run start:inspect    # Run with remote debugging port 9222
@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 172 test files)
+npm test                 # Run Jest tests (jsdom, 186 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -39,10 +39,10 @@ Electron Main Process (Node.js)
 ├── main.js                          # Bootstrap, lifecycle, single-instance lock, global shortcuts
 ├── src/main/preload.js              # IPC bridge (window.electron_api)
 ├── src/main/preload-quickpicker.js  # Preload for Quick Picker window
-├── src/main/ipc/                    # 36 IPC files, 325 handlers total
+├── src/main/ipc/                    # 36 IPC files, 329 handlers total
 ├── src/main/services/               # 35 services
 ├── src/main/windows/                # 5 window managers
-├── src/main/utils/                  # 13 utilities
+├── src/main/utils/                  # 22 utilities
 └── src/main/workflow-nodes/         # 31 workflow node types (*.node.js)
 
 Electron Renderer Process (Browser)
@@ -51,21 +51,21 @@ Electron Renderer Process (Browser)
 ├── src/renderer/core/               # DI container, BaseService/Component/Panel, ApiProvider
 ├── src/renderer/state/              # 15 observable state modules
 ├── src/renderer/services/           # 29 services + modular markdown renderer + mention sources
-├── src/renderer/ui/components/      # 18 UI components
+├── src/renderer/ui/components/      # 19 UI components
 ├── src/renderer/ui/panels/          # 25 UI panels
 ├── src/renderer/features/           # Keyboard shortcuts, quick picker, drag-drop
 ├── src/renderer/events/             # Claude event bus (hook + scraping providers)
 ├── src/renderer/workflow-fields/    # 13 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN locales (3693 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN locales (3712 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting
 
 Project Types (Plugin System)
 └── src/project-types/               # general, api, fivem, minecraft, python, webapp, discord
 
 Shared code
-└── src/shared/                      # 13 modules shared between main, renderer and the MCP server
+└── src/shared/                      # 18 modules shared between main, renderer and the MCP server
 
 Styles
 └── styles/                          # 30 modular CSS files (~57,000 lines total)
@@ -124,7 +124,7 @@ Remote UI (PWA for mobile)
 | `cloud-shared.js` | - | Helpers shared by the three cloud IPC files |
 | `index.js` | - | Orchestrator - registers all handlers |
 
-**Total: 325 IPC handlers across 36 files.**
+**Total: 329 IPC handlers across 36 files.**
 
 ### Services (`src/main/services/`)
 
@@ -628,7 +628,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 172 test files
+- **Framework:** Jest with jsdom, 186 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**

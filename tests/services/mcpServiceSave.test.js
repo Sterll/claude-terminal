@@ -13,6 +13,10 @@ const path = require('path');
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-mcp-save-'));
 const mockClaudeConfigFile = path.join(tmpDir, '.claude.json');
 const mockLegacyMcpsFile = path.join(tmpDir, 'mcps.json');
+const mockHandlers = new Map();
+jest.mock('electron', () => ({ ipcMain: { handle: (name, handler) => mockHandlers.set(name, handler) } }), { virtual: true });
+jest.mock('../../src/main/services/McpService', () => ({}));
+jest.mock('../../src/main/services/TelemetryService', () => ({ sendFeaturePing: jest.fn() }));
 
 jest.mock('../../src/renderer/utils/paths', () => ({
   claudeConfigFile: mockClaudeConfigFile,
@@ -21,10 +25,11 @@ jest.mock('../../src/renderer/utils/paths', () => ({
 
 const { McpService } = require('../../src/renderer/services/McpService');
 const { ApiProvider } = require('../../src/renderer/core/ApiProvider');
+require('../../src/main/ipc/mcp.ipc').registerMcpHandlers();
 
 function makeService() {
   const api = new ApiProvider(
-    { mcp: {} },
+    { mcp: { saveConfig: (...args) => mockHandlers.get('mcp-save-config')({}, ...args) } },
     { fs: { promises: fs.promises }, path, os, process }
   );
   return new McpService(api);
@@ -39,10 +44,12 @@ function readConfig() {
 }
 
 beforeEach(() => {
+  jest.spyOn(os, 'homedir').mockReturnValue(tmpDir);
   for (const name of fs.readdirSync(tmpDir)) {
     fs.rmSync(path.join(tmpDir, name), { recursive: true, force: true });
   }
 });
+afterEach(() => jest.restoreAllMocks());
 
 afterAll(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });

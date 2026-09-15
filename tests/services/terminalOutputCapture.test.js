@@ -15,8 +15,7 @@ const path = require('path');
 
 // Point the data dir at a throwaway home BEFORE the module resolves its paths.
 const FAKE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'tcap-'));
-process.env.USERPROFILE = FAKE_HOME;
-process.env.HOME        = FAKE_HOME;
+const homedirSpy = jest.spyOn(os, 'homedir').mockReturnValue(FAKE_HOME);
 
 const capture = require('../../src/main/services/TerminalOutputCapture');
 
@@ -31,6 +30,7 @@ afterEach(() => {
 });
 
 afterAll(() => {
+  homedirSpy.mockRestore();
   try { fs.rmSync(FAKE_HOME, { recursive: true, force: true }); } catch { /* best effort */ }
 });
 
@@ -144,5 +144,20 @@ describe('clear', () => {
 
   it('clearing a project that never wrote anything is a no-op', () => {
     expect(() => capture.clear('never-existed')).not.toThrow();
+  });
+});
+
+describe('byte bounds and split escapes', () => {
+  test.each(['é', '😀'])('caps %s output at the byte limit with valid UTF-8', character => {
+    capture.record('big', character.repeat(capture.MAX_FILE_BYTES)); capture.flush();
+    const data = fs.readFileSync(capture.logFileFor('big'));
+    expect(data.length).toBeLessThanOrEqual(capture.MAX_FILE_BYTES);
+    expect(data.toString('utf8')).not.toContain('\ufffd');
+  });
+  test('removes an ANSI escape split across records and flushes', () => {
+    capture.record('noise', '\x1b['); capture.flush();
+    capture.record('noise', '31mred\x1b[0'); capture.flush();
+    capture.record('noise', 'm end'); capture.flush();
+    expect(readLog('noise')).toBe('red end');
   });
 });

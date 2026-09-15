@@ -64,7 +64,10 @@
     "routeCountPlural": "{count} 个路由",
     "filterPlaceholder": "筛选...",
     "noHeaders": "无请求头",
-    "updateBtn": "更新"
+    "updateBtn": "更新",
+    "saveToDisk": "保存到磁盘",
+    "savedToDisk": "响应已保存",
+    "previewTruncated": "预览仅显示 64 KiB；文件包含完整响应。"
   },
   "newProject": {
     "types": {

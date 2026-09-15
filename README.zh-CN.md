@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/version-1.3.3-orange" alt="版本" />
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-blue" alt="平台" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="许可证" />
-  <img src="https://img.shields.io/badge/electron-28-purple" alt="Electron" />
+  <img src="https://img.shields.io/badge/electron-43-purple" alt="Electron" />
   <img src="https://img.shields.io/github/actions/workflow/status/Sterll/claude-terminal/ci.yml?branch=main&label=CI" alt="CI 状态" />
   <img src="https://img.shields.io/github/contributors/Sterll/claude-terminal" alt="贡献者" />
   <img
@@ -718,3 +718,5 @@ main 与 renderer 的分离由 ESLint 强制执行，而不只是约定：
 ## 许可证
 
 [GPL-3.0](LICENSE)
+
+有关部署要求和验证命令，请参阅[运行环境、数据保护与恢复说明](RUNTIME_RELIABILITY.md)（英文）。

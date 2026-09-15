@@ -3,13 +3,35 @@
  * Handles database-related IPC communication
  */
 
-const { ipcMain } = require('electron');
+const { ipcMain, dialog, BrowserWindow } = require('electron');
+const operations = require('../utils/cancellableOperation');
 const databaseService = require('../services/DatabaseService');
 
 /**
  * Register Database IPC handlers
  */
 function registerDatabaseHandlers() {
+  ipcMain.handle('database-secure-backups', async () => {
+    const result = await databaseService.provisionGlobalMcp();
+    return { ...result, ...(databaseService._backupMigration || { secured: 0, errors: [] }) };
+  });
+  ipcMain.handle('database-backup-status', () => databaseService._backupMigration || { secured: 0, errors: [] });
+  ipcMain.handle('database-recover-backup', async event => {
+    const backups = require('../utils/secretBackups');
+    const parent = BrowserWindow.fromWebContents(event.sender);
+    const choice = await dialog.showOpenDialog(parent, { defaultPath: backups.directory(), properties: ['openFile'], filters: [{ name: 'Encrypted backup', extensions: ['ctbackup'] }] });
+    if (choice.canceled || !choice.filePaths[0]) return { cancelled: true };
+    const restored = await backups.readArchive(choice.filePaths[0]);
+    const output = await dialog.showSaveDialog(parent, { title: 'Recover decrypted backup to a file', defaultPath: require('path').basename(restored.file) + '.recovered.json' });
+    if (output.canceled || !output.filePath) return { cancelled: true };
+    await require('fs').promises.writeFile(output.filePath, restored.original, { mode: 0o600 });
+    await require('fs').promises.chmod(output.filePath, 0o600);
+    return { success: true };
+  });
+  operations.handle(ipcMain, 'database-export', async (_event, params, signal, progress) => {
+    if (!require('../utils/rendererSecurity').permitted(params.filePath, true)) throw new Error('Export destination is not authorized');
+    return require('../utils/exportTable').exportTable({ ...params, signal, progress });
+  });
   ipcMain.handle('database-test-connection', async (event, config) => {
     try {
       return await databaseService.testConnection(config);

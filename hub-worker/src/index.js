@@ -1,3 +1,5 @@
+export { HubCounter } from './Counter.js';
+
 /**
  * Claude Terminal — Workflow Hub Worker
  *
@@ -110,18 +112,10 @@ async function listWorkflows(request, env) {
 async function getWorkflow(id, env) {
   const wf = await env.WORKFLOWS_HUB.get(`wf:${id}`, 'json');
   if (!wf) return json({ error: 'Not found' }, 404);
-  return json(wf);
+  return json({ ...wf, imports: await env.HUB_COUNTERS.getByName('imports:' + id).value(wf.imports || 0) });
 }
 
 async function submitWorkflow(request, env) {
-  // Rate limit: max 5 submissions per IP per hour (stored in KV with TTL)
-  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-  const rateLimitKey = `rl:${ip}:${Math.floor(Date.now() / 3_600_000)}`;
-  const count = parseInt(await env.WORKFLOWS_HUB.get(rateLimitKey) || '0', 10);
-  if (count >= 5) {
-    return json({ error: 'Rate limit exceeded. Max 5 submissions per hour.' }, 429);
-  }
-
   let body;
   try {
     body = await request.json();
@@ -144,7 +138,12 @@ async function submitWorkflow(request, env) {
     return json({ error: 'Description is required (max 500 chars)' }, 400);
   }
 
-  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const ipHash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ip))), byte => byte.toString(16).padStart(2, '0')).join('');
+  const accepted = await env.HUB_COUNTERS.getByName('quota:' + ipHash).consume(5, 0, String(Math.floor(Date.now() / 3600000)));
+  if (accepted === null) return json({ error: 'Rate limit exceeded. Max 5 submissions per hour.' }, 429);
+
+  const id = crypto.randomUUID();
   const workflow = {
     id,
     name,
@@ -160,9 +159,6 @@ async function submitWorkflow(request, env) {
 
   await env.WORKFLOWS_HUB.put(`wf:${id}`, JSON.stringify(workflow));
 
-  // Increment rate limit counter (TTL: 2h to cover the hour boundary)
-  await env.WORKFLOWS_HUB.put(rateLimitKey, String(count + 1), { expirationTtl: 7200 });
-
   // Invalidate index cache
   await env.WORKFLOWS_HUB.delete('index:all');
 
@@ -172,11 +168,10 @@ async function submitWorkflow(request, env) {
 async function incrementImport(id, env) {
   const wf = await env.WORKFLOWS_HUB.get(`wf:${id}`, 'json');
   if (!wf) return json({ error: 'Not found' }, 404);
-  wf.imports = (wf.imports || 0) + 1;
-  await env.WORKFLOWS_HUB.put(`wf:${id}`, JSON.stringify(wf));
+  const imports = await env.HUB_COUNTERS.getByName('imports:' + id).consume(Number.MAX_SAFE_INTEGER, wf.imports || 0);
   // Invalidate index cache so import count stays fresh
   await env.WORKFLOWS_HUB.delete('index:all');
-  return json({ success: true, imports: wf.imports });
+  return json({ success: true, imports });
 }
 
 async function adminUpdate(request, id, env) {
@@ -188,7 +183,7 @@ async function adminUpdate(request, id, env) {
   let body;
   try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }
 
-  const updated = { ...wf, ...body, id }; // id is immutable
+  const updated = { ...wf, ...body, id, imports: wf.imports }; // id is immutable
   await env.WORKFLOWS_HUB.put(`wf:${id}`, JSON.stringify(updated));
   await env.WORKFLOWS_HUB.delete('index:all');
   return json({ success: true, workflow: updated });
@@ -213,26 +208,23 @@ async function getIndex(env) {
   const cached = await env.WORKFLOWS_HUB.get('index:all', 'json');
   if (cached) return cached;
 
-  // Rebuild from all wf: keys
-  const list = await env.WORKFLOWS_HUB.list({ prefix: 'wf:' });
+  // Empty pages can still have a cursor; only list_complete ends pagination.
   const summaries = [];
-
-  for (const key of list.keys) {
-    const wf = await env.WORKFLOWS_HUB.get(key.name, 'json');
-    if (!wf) continue;
-    // Only store summary fields in index (not full workflowJson)
-    summaries.push({
-      id:          wf.id,
-      name:        wf.name,
-      description: wf.description,
-      author:      wf.author,
-      authorId:    wf.authorId || '',
-      tags:        wf.tags,
-      verified:    wf.verified,
-      imports:     wf.imports,
-      createdAt:   wf.createdAt,
-    });
-  }
+  let cursor;
+  do {
+    const page = await env.WORKFLOWS_HUB.list({ prefix: 'wf:', cursor, limit: 100 });
+    for (let offset = 0; offset < page.keys.length; offset += 10) {
+      const workflows = await Promise.all(page.keys.slice(offset, offset + 10).map(key => env.WORKFLOWS_HUB.get(key.name, 'json')));
+      summaries.push(...await Promise.all(workflows.filter(Boolean).map(async wf => ({
+        id: wf.id, name: wf.name, description: wf.description, author: wf.author,
+        authorId: wf.authorId || '', tags: wf.tags, verified: wf.verified,
+        imports: await env.HUB_COUNTERS.getByName('imports:' + wf.id).value(wf.imports || 0), createdAt: wf.createdAt,
+      }))));
+    }
+    if (page.list_complete) break;
+    if (!page.cursor || page.cursor === cursor) throw new Error('Invalid KV pagination cursor');
+    cursor = page.cursor;
+  } while (true);
 
   // Cache for 60 seconds
   await env.WORKFLOWS_HUB.put('index:all', JSON.stringify(summaries), { expirationTtl: 60 });

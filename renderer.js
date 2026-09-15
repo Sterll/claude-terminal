@@ -343,6 +343,8 @@ function showModal(title, content, footer = '') {
 }
 
 function closeModal() {
+  const pendingCreation = document.getElementById('form-project')?.dataset.operationId;
+  if (pendingCreation) api.operations.cancel(pendingCreation);
   document.getElementById('modal-overlay').classList.remove('active');
   document.getElementById('modal')?.classList.remove('modal--sessions');
 }
@@ -5396,6 +5398,9 @@ document.getElementById('btn-new-project').onclick = async () => {
 
     if (!name || !projPath) return;
 
+    const form = e.currentTarget;
+    if (form.dataset.operationId) { await api.operations.cancel(form.dataset.operationId); return; }
+
     // Disable submit button to prevent double-click (BUG 5)
     const submitBtn = document.getElementById('btn-create-project');
     submitBtn.disabled = true;
@@ -5431,9 +5436,8 @@ document.getElementById('btn-new-project').onclick = async () => {
 
         // Init git repo if checked
         if (document.getElementById('chk-init-git')?.checked) {
-          const { execSync } = window.electron_nodeModules.child_process;
           try {
-            execSync('git init', { cwd: projPath, stdio: 'ignore' });
+            await api.project.initGit({ projectPath: projPath });
             await fsp.writeFile(path.join(projPath, '.gitignore'), [
               'node_modules/',
               'dist/',
@@ -5456,75 +5460,35 @@ document.getElementById('btn-new-project').onclick = async () => {
       }
     }
 
-    // If cloning, append project name to path and clone
-    if (selectedSource === 'clone' && repoUrl) {
+    // Clone/scaffold in a main-process staging directory. Cancel/retry keeps
+    // the form values; failures never remove an existing destination folder.
+    if ((selectedSource === 'clone' && repoUrl) || (selectedSource === 'scaffold' && selectedTemplate)) {
       projPath = path.join(projPath, name);
-
-      // Show progress
-      const cloneStatus = document.querySelector('.clone-status');
-      submitBtn.innerHTML = `<span class="btn-spinner"></span> ${t('newProject.cloning')}`;
-      cloneStatus.style.display = 'block';
-
+      const operationId = crypto.randomUUID(); form.dataset.operationId = operationId;
+      const blockChanges = event => { if (!submitBtn.contains(event.target)) { event.preventDefault(); event.stopImmediatePropagation(); } };
+      form.addEventListener('click', blockChanges, true);
+      const controls = [...form.querySelectorAll('input, select, textarea, button')].filter(control => control !== submitBtn).map(control => [control, control.disabled]);
+      controls.forEach(([control]) => { control.disabled = true; });
+      submitBtn.disabled = false; submitBtn.type = 'button'; submitBtn.textContent = t('common.cancel');
+      submitBtn.onclick = () => api.operations.cancel(operationId);
+      const status = form.querySelector('.clone-status'); status.style.display = 'block';
+      status.textContent = selectedSource === 'clone' ? t('newProject.cloning') : t('newProject.scaffolding');
+      const unsubscribe = api.operations.onProgress(progress => {
+        if (progress.operationId === operationId && progress.message) status.textContent = progress.message.slice(-500);
+      });
       try {
-        const result = await api.git.clone({ repoUrl, targetPath: projPath });
-
-        if (!result.success) {
-          // Clean up partial clone directory (BUG 3)
-          try { if (await fileExists(projPath)) await fsp.rm(projPath, { recursive: true, force: true }); } catch (_) {}
-          cloneStatus.innerHTML = `<div class="clone-error">${result.error}</div>`;
-          submitBtn.disabled = false;
-          submitBtn.textContent = t('newProject.create');
-          return;
-        }
+        const result = selectedSource === 'clone'
+          ? await api.git.clone({ operationId, repoUrl, targetPath: projPath })
+          : await api.project.scaffold({ operationId, template: selectedTemplate, targetPath: projPath });
+        if (!result.success) { status.textContent = result.cancelled ? t('newProject.creationCancelled') : result.error; return; }
         createdDir = projPath;
-      } catch (err) {
-        // Clean up partial clone directory (BUG 3)
-        try { if (await fileExists(projPath)) await fsp.rm(projPath, { recursive: true, force: true }); } catch (_) {}
-        cloneStatus.innerHTML = `<div class="clone-error">${err.message}</div>`;
-        submitBtn.disabled = false;
-        submitBtn.textContent = t('newProject.create');
-        return;
-      }
-    }
-
-    // If scaffolding, run the scaffold command
-    if (selectedSource === 'scaffold' && selectedTemplate) {
-      projPath = path.join(projPath, name);
-      submitBtn.innerHTML = `<span class="btn-spinner"></span> ${t('newProject.scaffolding')}`;
-
-      try {
-        if (await fileExists(projPath)) {
-          showToast(t('newProject.folderAlreadyExists'), 'error');
-          submitBtn.disabled = false;
-          submitBtn.textContent = t('newProject.create');
-          return;
-        }
-        const webappType = registry.get('webapp');
-        const templates = webappType.getScaffoldTemplates ? webappType.getScaffoldTemplates() : [];
-        const tpl = templates.find(t => t.id === selectedTemplate);
-        if (!tpl) {
-          showToast({ type: 'error', title: t('newProject.unknownTemplate', { id: selectedTemplate }) });
-          submitBtn.disabled = false;
-          submitBtn.textContent = t('newProject.create');
-          return;
-        }
-        const { execSync } = window.electron_nodeModules.child_process;
-        execSync(tpl.cmd(name), {
-          cwd: path.dirname(projPath),
-          stdio: 'ignore',
-          timeout: 120000,
-          env: { ...process.env, npm_config_yes: 'true' }
-        });
-        createdDir = projPath;
-        // Force type to webapp for scaffold
-        selectedType = 'webapp';
-      } catch (err) {
-        // Clean up partial scaffold directory
-        try { if (await fileExists(projPath)) await fsp.rm(projPath, { recursive: true, force: true }); } catch (_) {}
-        showToast(t('newProject.scaffoldError', { error: err.message }), 'error');
-        submitBtn.disabled = false;
-        submitBtn.textContent = t('newProject.create');
-        return;
+        if (selectedSource === 'scaffold') selectedType = 'webapp';
+        if (!form.isConnected || !document.getElementById('modal-overlay').classList.contains('active')) return;
+      } catch (error) { status.textContent = error.message; return; }
+      finally {
+        unsubscribe(); delete form.dataset.operationId; form.removeEventListener('click', blockChanges, true);
+        controls.forEach(([control, disabled]) => { control.disabled = disabled; });
+        submitBtn.type = 'submit'; submitBtn.onclick = null; submitBtn.disabled = false; submitBtn.textContent = t('newProject.create');
       }
     }
 

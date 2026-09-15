@@ -8,7 +8,7 @@
  * that makes that safe lives here and only here:
  *
  *   - the cross-process lock, which must stay protocol-compatible with
- *     src/main/utils/fileLock.js (same lock path, same staleness rules);
+ *     src/main/utils/fileLock.js (same lock path, fail-closed acquisition);
  *   - read-modify-write under that lock, aborting rather than starting from []
  *     when the file is unreadable — a fresh [] would erase every other workflow;
  *   - the trigger-file signals the main process polls to reload its scheduler.
@@ -43,50 +43,12 @@ function log(...args) {
 
 // -- Cross-process lock (definitions.json) ------------------------------------
 
-const LOCK_STALE_MS = 15000;
-const LOCK_GIVE_UP_MS = 30000;
-const LOCK_STEP_MS = 25;
+const sharedLock = path.join(__dirname, '..', 'shared', 'file-lock.js');
+const { withCrossProcessLockSync } = require(fs.existsSync(sharedLock)
+  ? sharedLock : path.join(__dirname, '../../../src/shared/file-lock.js'));
 
-function _sleepSync(ms) {
-  // Real synchronous sleep without a busy CPU spin.
-  try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); }
-  catch { const end = Date.now() + ms; while (Date.now() < end) { /* spin fallback */ } }
-}
-
-/**
- * Run `fn` while holding the shared definitions.json lock.
- * Best-effort: never hangs — breaks a stale/abandoned lock and proceeds as a
- * last resort, since a permanently stuck lock would wedge every tool.
- */
 function withDefsLock(fn) {
-  const lockPath = definitionsFile() + '.lock';
-  const start = Date.now();
-  let fd = null;
-  for (;;) {
-    try {
-      fd = fs.openSync(lockPath, 'wx');
-      try { fs.writeSync(fd, `${process.pid} ${Date.now()}`); } catch (_) {}
-      break;
-    } catch (e) {
-      if (e.code !== 'EEXIST') throw e;
-      let ageMs = 0;
-      try { ageMs = Date.now() - fs.statSync(lockPath).mtimeMs; }
-      catch (_) { continue; } // vanished — retry
-      if (ageMs > LOCK_STALE_MS) { try { fs.unlinkSync(lockPath); } catch (_) {} continue; }
-      if (Date.now() - start > LOCK_GIVE_UP_MS) {
-        try { fs.unlinkSync(lockPath); } catch (_) {}
-        try { fd = fs.openSync(lockPath, 'wx'); } catch (_) { fd = null; }
-        break;
-      }
-      _sleepSync(LOCK_STEP_MS);
-    }
-  }
-  try {
-    return fn();
-  } finally {
-    if (fd != null) { try { fs.closeSync(fd); } catch (_) {} }
-    try { fs.unlinkSync(lockPath); } catch (_) {}
-  }
+  return withCrossProcessLockSync(definitionsFile() + '.lock', fn);
 }
 
 // -- Definitions I/O ----------------------------------------------------------

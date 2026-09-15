@@ -1,4 +1,4 @@
-import { v4 as uuid } from 'uuid';
+import { randomUUID } from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import { WebSocket } from 'ws';
@@ -118,6 +118,8 @@ export class SessionManager {
   }
 
   async createSession(userName: string, projectName: string, prompt: string, model?: string, effort?: string, resumeSessionId?: string): Promise<string> {
+    if (!config.cloudEnabled) throw new Error('Cloud execution is disabled');
+    await store.assertCloudIsolation();
     // Check project exists
     const exists = await projectManager.projectExists(userName, projectName);
     if (!exists) throw new Error(`Project "${projectName}" does not exist`);
@@ -136,7 +138,7 @@ export class SessionManager {
     }
 
     const sdk = await this.loadSDK();
-    const sessionId = uuid();
+    const sessionId = randomUUID();
     const cwd = store.getProjectPath(userName, projectName);
 
     const messageQueue = createMessageQueue(() => {
@@ -184,7 +186,7 @@ export class SessionManager {
       systemPrompt: { type: 'preset', preset: 'claude_code' },
       stderr: (data: string) => { console.error(`[Session ${sessionId}] ${data}`); },
       env: {
-        ...process.env,
+        ...Object.fromEntries(['PATH', 'LANG', 'LC_ALL', 'TZ', 'TERM', 'TMPDIR', 'TEMP', 'TMP', 'SystemRoot', 'WINDIR', 'PATHEXT'].filter(key => process.env[key] !== undefined).map(key => [key, process.env[key]])),
         HOME: userHome,
         GIT_CONFIG_GLOBAL: path.join(userHome, '.gitconfig'),
       },
@@ -260,11 +262,9 @@ export class SessionManager {
     }
 
     // Update user.json before removing from map so session reference is still valid
-    const user = await store.getUser(session.userName);
-    if (user) {
+    await store.updateUser(session.userName, user => {
       user.sessions = user.sessions.filter(s => s.id !== sessionId);
-      await store.saveUser(session.userName, user);
-    }
+    });
 
     this.sessions.delete(sessionId);
   }
@@ -508,8 +508,7 @@ export class SessionManager {
   }
 
   private async persistSessionMeta(userName: string, sessionId: string, projectName: string, status: string, model?: string): Promise<void> {
-    const user = await store.getUser(userName);
-    if (!user) return;
+    await store.updateUser(userName, user => {
 
     const existing = user.sessions.findIndex(s => s.id === sessionId);
     const entry: UserSession = {
@@ -526,7 +525,7 @@ export class SessionManager {
     } else {
       user.sessions.push(entry);
     }
-    await store.saveUser(userName, user);
+    });
   }
 }
 

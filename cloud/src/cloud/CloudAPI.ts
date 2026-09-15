@@ -74,6 +74,10 @@ export function createCloudRouter(): Router {
   const router = Router();
 
   router.use(authMiddleware as any);
+  router.param('name', (req: AuthRequest, res: Response, next: Function, name: string) => {
+    try { store.getProjectPath(req.userName!, name); next(); }
+    catch (err: any) { res.status(400).json({ error: err.message }); }
+  });
 
   // General rate limit (per user)
   router.use((req: AuthRequest, res: Response, next: Function) => {
@@ -125,7 +129,10 @@ export function createCloudRouter(): Router {
         }
         user.gitEmail = gitEmail;
       }
-      await store.saveUser(req.userName!, user);
+      await store.updateUser(req.userName!, current => {
+        if (gitName !== undefined) current.gitName = gitName;
+        if (gitEmail !== undefined) current.gitEmail = gitEmail;
+      });
 
       // Write .gitconfig file in user's home
       if (user.gitName && user.gitEmail) {
@@ -169,42 +176,11 @@ export function createCloudRouter(): Router {
         return;
       }
 
-      projectManager.validateProjectName(name);
-      await projectManager.checkProjectLimit(req.userName!);
-
-      const projectPath = await store.createProjectDir(req.userName!, name);
-      const { execFile } = require('child_process');
-      const { promisify } = require('util');
-      const execFileAsync = promisify(execFile);
-
-      // Clone into a tmp dir then move contents so folder name = project name
-      const tmpDest = projectPath + '__clone_tmp';
-      try {
-        await execFileAsync('git', ['clone', '--depth=1', cloneUrl, tmpDest], { timeout: 5 * 60 * 1000 });
-        const entries = await fs.promises.readdir(tmpDest);
-        for (const entry of entries) {
-          await fs.promises.rename(path.join(tmpDest, entry), path.join(projectPath, entry));
-        }
-      } catch (err: any) {
-        await store.deleteProjectDir(req.userName!, name);
-        throw new Error(`Clone failed: ${err.message}`);
-      } finally {
-        await fs.promises.rm(tmpDest, { recursive: true, force: true }).catch(() => {});
-      }
-
-      // Register in user.json
-      const user = await store.getUser(req.userName!);
-      if (user) {
-        const existing = user.projects.findIndex((p: any) => p.name === name);
-        const entry = { name, displayName: displayName || name, createdAt: Date.now(), lastActivity: null };
-        if (existing >= 0) user.projects[existing] = entry;
-        else user.projects.push(entry);
-        await store.saveUser(req.userName!, user);
-      }
+      const projectPath = await projectManager.createFromClone(req.userName!, name, cloneUrl, displayName);
 
       res.status(201).json({ name, displayName: displayName || name, path: projectPath });
     } catch (err: any) {
-      res.status(400).json({ error: err.message });
+      res.status(err.status || 400).json({ error: err.message });
     }
   });
 
@@ -226,7 +202,7 @@ export function createCloudRouter(): Router {
       const projectPath = await projectManager.createFromZip(req.userName!, name, req.file.path, displayName);
       res.status(201).json({ name, displayName, path: projectPath });
     } catch (err: any) {
-      res.status(400).json({ error: err.message });
+      res.status(err.status || 400).json({ error: err.message });
     }
   });
 
@@ -267,7 +243,7 @@ export function createCloudRouter(): Router {
       await projectManager.renameProject(req.userName!, name, newName);
       res.json({ ok: true, newName });
     } catch (err: any) {
-      res.status(400).json({ error: err.message });
+      res.status(err.status || 400).json({ error: err.message });
     }
   });
 
@@ -277,7 +253,7 @@ export function createCloudRouter(): Router {
       await projectManager.deleteProject(req.userName!, name);
       res.json({ ok: true });
     } catch (err: any) {
-      res.status(400).json({ error: err.message });
+      res.status(err.status || 400).json({ error: err.message });
     }
   });
 
@@ -446,7 +422,7 @@ export function createCloudRouter(): Router {
       console.log(`[API] Session created: ${sessionId}`);
       res.status(201).json({ sessionId });
     } catch (err: any) {
-      res.status(400).json({ error: err.message });
+      res.status(err.status || 400).json({ error: err.message });
     }
   });
 
@@ -475,7 +451,7 @@ export function createCloudRouter(): Router {
       await sessionManager.sendMessage(id, message);
       res.json({ ok: true });
     } catch (err: any) {
-      res.status(400).json({ error: err.message });
+      res.status(err.status || 400).json({ error: err.message });
     }
   });
 
@@ -489,7 +465,7 @@ export function createCloudRouter(): Router {
       await sessionManager.interruptSession(id);
       res.json({ ok: true });
     } catch (err: any) {
-      res.status(400).json({ error: err.message });
+      res.status(err.status || 400).json({ error: err.message });
     }
   });
 
@@ -503,7 +479,7 @@ export function createCloudRouter(): Router {
       await sessionManager.closeSession(id);
       res.json({ ok: true });
     } catch (err: any) {
-      res.status(400).json({ error: err.message });
+      res.status(err.status || 400).json({ error: err.message });
     }
   });
 

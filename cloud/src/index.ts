@@ -43,6 +43,7 @@ console.error = (...args: any[]) => { captureLog('ERROR', ...args); _origErr(...
 
 export async function startServer(): Promise<void> {
   await store.ensureDataDirs();
+  await store.assertCloudIsolation();
   await store.getServerData(); // Init server.json if needed
   await buildKeyIndex(); // Build hash->user index + migrate plaintext keys
 

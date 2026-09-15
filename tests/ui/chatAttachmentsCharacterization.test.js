@@ -28,7 +28,7 @@ function makeApiMock(listeners) {
       return Promise.resolve({ success: true, messages: [] });
     }
   });
-  return new Proxy({}, { get: () => ns() });
+  return new Proxy({}, { get: (_target, key) => key === 'getPathForFile' ? file => file.nativePath || '' : ns() });
 }
 
 let uuidSeq = 0;

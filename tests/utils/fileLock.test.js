@@ -4,7 +4,7 @@ const fs   = require('fs');
 const os   = require('os');
 const path = require('path');
 
-const { withCrossProcessLock } = require('../../src/main/utils/fileLock');
+const { withCrossProcessLock, withCrossProcessLockSync } = require('../../src/main/utils/fileLock');
 
 describe('withCrossProcessLock', () => {
   let dir;
@@ -55,14 +55,43 @@ describe('withCrossProcessLock', () => {
     ]);
   });
 
-  it('breaks a stale lock left behind by a crashed holder', async () => {
-    // Simulate an abandoned lock whose mtime is well past the staleness window.
-    fs.writeFileSync(lockPath, '9999 0');
+  it('never breaks an old lock or enters without ownership', async () => {
+    fs.writeFileSync(lockPath, 'another owner');
     const oldTime = new Date(Date.now() - 60_000);
     fs.utimesSync(lockPath, oldTime, oldTime);
-
-    const out = await withCrossProcessLock(lockPath, () => 'recovered');
-    expect(out).toBe('recovered');
-    expect(fs.existsSync(lockPath)).toBe(false);
+    const action = jest.fn();
+    await expect(withCrossProcessLock(lockPath, action, { timeoutMs: 30 })).rejects.toMatchObject({ code: 'ELOCKED' });
+    expect(() => withCrossProcessLockSync(lockPath, action, { timeoutMs: 0 })).toThrow(/lock is busy/);
+    expect(action).not.toHaveBeenCalled();
+    expect(fs.readFileSync(lockPath, 'utf8')).toBe('another owner');
   });
+
+  it('does not unlink a replacement lock when releasing', async () => {
+    await withCrossProcessLock(lockPath, () => {
+      fs.unlinkSync(lockPath);
+      fs.writeFileSync(lockPath, 'replacement owner');
+    });
+    expect(fs.readFileSync(lockPath, 'utf8')).toBe('replacement owner');
+  });
+});
+
+it('serializes an external synchronous MCP writer behind an asynchronous desktop writer', async () => {
+  const { spawn } = require('node:child_process');
+  const { once } = require('node:events');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-lock-process-'));
+  const file = path.join(dir, 'shared.lock'), marker = path.join(dir, 'written');
+  let child;
+  try {
+    let completion;
+    await withCrossProcessLock(file, async () => {
+      child = spawn(process.execPath, ['-e', `const fs = require('fs'); const { withCrossProcessLockSync } = require(${JSON.stringify(path.resolve(__dirname, '../../src/shared/file-lock.js'))}); process.stdout.write('ready'); withCrossProcessLockSync(${JSON.stringify(file)}, () => fs.writeFileSync(${JSON.stringify(marker)}, 'child'), { timeoutMs: 2000 });`], { stdio: ['ignore', 'pipe', 'pipe'] });
+      completion = once(child, 'exit');
+      await once(child.stdout, 'data');
+      await new Promise(resolve => setTimeout(resolve, 50));
+      expect(fs.existsSync(marker)).toBe(false);
+    });
+    expect((await completion)[0]).toBe(0);
+    expect(fs.readFileSync(marker, 'utf8')).toBe('child');
+    expect(fs.existsSync(file)).toBe(false);
+  } finally { child?.kill(); fs.rmSync(dir, { recursive: true, force: true }); }
 });

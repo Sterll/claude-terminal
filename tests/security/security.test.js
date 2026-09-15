@@ -6,74 +6,18 @@
 // the exact logic here to verify the security properties.
 
 describe('evalCondition ReDoS protection', () => {
-  // If evalCondition isn't directly exported, we test the logic pattern
-  // The `matches` operator has a 10_000 char limit
-
-  test('matches operator handles basic regex', () => {
-    const testRegex = (left, right) => {
-      try {
-        if (left.length > 10_000) return false;
-        return new RegExp(right).test(left);
-      } catch { return false; }
-    };
-
-    expect(testRegex('hello world', 'hello')).toBe(true);
-    expect(testRegex('test', '^test$')).toBe(true);
-    expect(testRegex('foo', 'bar')).toBe(false);
+  const { matches } = require('../../src/shared/workflow-condition');
+  test('matches valid patterns and rejects invalid ones', async () => {
+    expect(await matches('abc123', '[a-z]+\\d+')).toBe(true);
+    expect(await matches('test', '[invalid(')).toBe(false);
   });
-
-  test('rejects strings longer than 10000 characters', () => {
-    const longString = 'a'.repeat(10_001);
-
-    // Simulating the ReDoS protection from WorkflowRunner
-    const testMatchesWithLimit = (left, right) => {
-      try {
-        if (left.length > 10_000) return false;
-        return new RegExp(right).test(left);
-      } catch { return false; }
-    };
-
-    expect(testMatchesWithLimit(longString, 'a')).toBe(false);
-  });
-
-  test('string at exactly 10000 chars is allowed', () => {
-    const exactString = 'a'.repeat(10_000);
-
-    const testMatchesWithLimit = (left, right) => {
-      try {
-        if (left.length > 10_000) return false;
-        return new RegExp(right).test(left);
-      } catch { return false; }
-    };
-
-    expect(testMatchesWithLimit(exactString, '^a+$')).toBe(true);
-  });
-
-  test('invalid regex pattern returns false without throwing', () => {
-    const testMatchesWithLimit = (left, right) => {
-      try {
-        if (left.length > 10_000) return false;
-        return new RegExp(right).test(left);
-      } catch { return false; }
-    };
-
-    expect(testMatchesWithLimit('test', '[invalid(')).toBe(false);
-    expect(testMatchesWithLimit('test', '*invalid')).toBe(false);
-  });
-
-  test('catastrophic backtracking pattern is handled by length limit', () => {
-    // (a+)+b against "aaaa...a" would cause ReDoS without length limit
-    const maliciousInput = 'a'.repeat(10_001);
-
-    const testMatchesWithLimit = (left, right) => {
-      try {
-        if (left.length > 10_000) return false;
-        return new RegExp(right).test(left);
-      } catch { return false; }
-    };
-
-    // Should be rejected by length check before regex runs
-    expect(testMatchesWithLimit(maliciousInput, '(a+)+b')).toBe(false);
+  test('terminates a catastrophic regex without blocking timers', async () => {
+    let ticks = 0;
+    const timer = setInterval(() => ticks++, 20);
+    try {
+      expect(await matches('a'.repeat(35), '(a+)+b')).toBe(false);
+      expect(ticks).toBeGreaterThan(1);
+    } finally { clearInterval(timer); }
   });
 });
 
