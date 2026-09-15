@@ -19,7 +19,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 
 const SKIP_DIRS = new Set([
   'node_modules', '.venv', 'venv', 'env', '__pycache__', '.git',
@@ -146,6 +146,28 @@ class ApiRouteDetector {
     }
   }
 
+  /**
+   * Run a binary with an argv array and no shell.
+   *
+   * _exec() below goes through a shell, which is fine for the fixed command
+   * strings it is given but not for anything built from a path: _findPython()
+   * derives its result from the project directory, and a directory name may
+   * legally contain a double quote on macOS and Linux. Quoting it into a shell
+   * string was therefore a command injection reachable by any project this app
+   * did not create itself - a cloud pull, the MCP project_create tool, a
+   * drag-drop.
+   */
+  _execFile(file, args, cwd, extraEnv = {}) {
+    return execFileSync(file, args, {
+      cwd,
+      timeout: 15000,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', ...extraEnv },
+      windowsHide: true
+    });
+  }
+
   _exec(cmd, cwd) {
     return execSync(cmd, {
       cwd,
@@ -181,12 +203,7 @@ class ApiRouteDetector {
 
     // Determine python command
     const pythonCmd = this._findPython(projectPath);
-    const env = { ...process.env, FLASK_APP: flaskApp, PYTHONDONTWRITEBYTECODE: '1' };
-
-    const output = execSync(`${pythonCmd} -m flask routes`, {
-      cwd: projectPath, timeout: 15000, encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe'], env, windowsHide: true
-    });
+    const output = this._execFile(pythonCmd, ['-m', 'flask', 'routes'], projectPath, { FLASK_APP: flaskApp });
 
     return this._parseFlaskOutput(output);
   }
@@ -227,7 +244,7 @@ class ApiRouteDetector {
 
     const pythonCmd = this._findPython(projectPath);
     try {
-      const output = this._exec(`${pythonCmd} manage.py show_urls --format=aligned`, projectPath);
+      const output = this._execFile(pythonCmd, ['manage.py', 'show_urls', '--format=aligned'], projectPath);
       return this._parseDjangoOutput(output);
     } catch (_) {
       // django-extensions not installed, fallback to static
@@ -340,7 +357,8 @@ class ApiRouteDetector {
     // Check for venv
     for (const venvDir of ['.venv', 'venv', 'env']) {
       const venvPython = path.join(projectPath, venvDir, process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
-      if (fs.existsSync(venvPython)) return `"${venvPython}"`;
+      // Returned unquoted: every caller passes it through _execFile as argv[0].
+      if (fs.existsSync(venvPython)) return venvPython;
     }
     return 'python';
   }
