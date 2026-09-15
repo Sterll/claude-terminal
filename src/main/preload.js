@@ -3,7 +3,7 @@
  * Exposes IPC API to renderer with context isolation
  */
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -308,6 +308,7 @@ function createListener(channel) {
 
 // Expose protected API to renderer
 contextBridge.exposeInMainWorld('electron_api', {
+  getPathForFile: file => webUtils.getPathForFile(file),
   // ==================== TERMINAL ====================
   terminal: {
     create: (params) => ipcRenderer.invoke('terminal-create', params),

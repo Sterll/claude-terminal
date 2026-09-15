@@ -7,7 +7,7 @@
     "ct-cloud": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node ../scripts/copy-cloud-shared.js",
     "dev": "tsc -w",
     "start": "node dist/index.js",
     "cli": "node dist/cli.js",
@@ -15,23 +15,26 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.42",
-    "express": "^4.21.0",
-    "ws": "^8.18.0",
-    "multer": "^1.4.5-lts.1",
-    "extract-zip": "^2.0.1",
     "archiver": "^7.0.0",
     "dotenv": "^16.4.5",
-    "uuid": "^10.0.0"
+    "express": "^4.21.0",
+    "multer": "^2.4.0",
+    "ws": "^8.18.0",
+    "yauzl": "^3.4.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
-    "@types/ws": "^8.5.13",
     "@types/multer": "^1.4.12",
-    "@types/uuid": "^10.0.0",
     "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.13",
     "typescript": "^5.6.0"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=24.15.0"
+  },
+  "overrides": {
+    "express": {
+      "qs": "^6.16.0"
+    }
   }
 }

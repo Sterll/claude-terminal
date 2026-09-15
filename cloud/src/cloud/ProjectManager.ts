@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import extractZip from 'extract-zip';
+const extractZip = require('../shared/extractZip');
 import { store, validateName } from '../store/store';
 import { withKeyLock } from '../store/locks';
 import { execFile } from 'child_process';
@@ -26,16 +26,7 @@ export class ProjectManager {
   async createFromZip(userName: string, projectName: string, zipPath: string, displayName?: string): Promise<string> {
     try {
       return await this.createProject(userName, projectName, displayName, async temporary => {
-        let bytes = 0;
-        let entries = 0;
-        await extractZip(zipPath, { dir: temporary, onEntry: entry => {
-          const name = entry.fileName.replace(/\\/g, '/');
-          const kind = (entry.externalFileAttributes >>> 16) & 0xf000;
-          bytes += entry.uncompressedSize;
-          if (++entries > 10000 || bytes > config.maxExpandedBytes) throw new Error('Archive exceeds extraction limits');
-          if (name.startsWith('/') || /^[a-z]:/i.test(name) || name.split('/').includes('..') || name.includes('\0')) throw new Error('Invalid archive path');
-          if (kind && kind !== 0x8000 && kind !== 0x4000) throw new Error('Archive links and special files are not supported');
-        } });
+        await extractZip(zipPath, { dir: temporary, maxBytes: config.maxExpandedBytes });
       });
     } finally { await fs.promises.unlink(zipPath).catch(() => {}); }
   }

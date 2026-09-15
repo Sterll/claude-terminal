@@ -30,157 +30,12 @@ const path          = require('path');
  * @param {Map<string, any>} vars  - step outputs + ctx
  * @returns {string}
  */
-function resolveVars(value, vars) {
-  if (typeof value !== 'string') return value;
-
-  // Fast path: entire string is a single $variable — return raw value (object, array, etc.)
-  const singleVarMatch = value.match(/^\$([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)$/);
-  if (singleVarMatch) {
-    const parts = singleVarMatch[1].split('.');
-    if (vars.has(parts[0])) {
-      let cur = vars.get(parts[0]);
-      // Walk the property chain.
-      //   - null/undefined intermediate → unresolvable, leave verbatim (fall through)
-      //   - primitive (non-object) intermediate with remaining parts → the suffix is
-      //     literal text (e.g. $today.md) → fall through to mixed-path handler
-      //   - OBJECT parent whose leaf property is missing → '' (don't serialize parent)
-      let fellThrough = false;
-      for (let i = 1; i < parts.length; i++) {
-        if (cur == null) { fellThrough = true; break; }
-        if (typeof cur !== 'object') { fellThrough = true; break; }
-        if (!(parts[i] in cur)) return '';
-        cur = cur[parts[i]];
-      }
-      if (!fellThrough) {
-        if (cur == null) return ''; // leaf resolved to null/undefined → empty string
-        // Trailing-only CR/LF trim for strings (shell outputs commonly append one).
-        // Anchored to the end, so internal newlines in multi-line content are kept.
-        return typeof cur === 'string' ? cur.replace(/[\r\n]+$/, '') : cur;
-      }
-      // fell through → handled by mixed-path replacement below
-    }
-  }
-
-  // Mixed text with variables: interpolate as strings
-  return value.replace(/\$([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)/g, (match, key) => {
-    const parts = key.split('.');
-    if (!vars.has(parts[0])) return match; // unknown root → leave verbatim
-    // Try resolving from longest path down to root variable
-    // e.g. $today.md → try "today.md" (fails) → try "today" + suffix ".md"
-    for (let take = parts.length; take >= 1; take--) {
-      let cur = vars.get(parts[0]);
-      for (let i = 1; i < take && cur != null; i++) cur = cur[parts[i]];
-      if (cur != null && (take === parts.length || typeof cur !== 'object')) {
-        // Trailing-only CR/LF trim (anchored to end; internal newlines preserved).
-        const resolved = typeof cur === 'object' ? JSON.stringify(cur) : String(cur).replace(/[\r\n]+$/, '');
-        const suffix = take < parts.length ? '.' + parts.slice(take).join('.') : '';
-        return resolved + suffix;
-      }
-    }
-    return match; // nothing resolved
-  });
-}
-
-/**
- * Deep-resolve all string leaves of an object.
- * @param {any} obj
- * @param {Map<string, any>} vars
- * @returns {any}
- */
-function resolveDeep(obj, vars) {
-  if (typeof obj === 'string') return resolveVars(obj, vars);
-  if (Array.isArray(obj))     return obj.map(v => resolveDeep(v, vars));
-  if (obj && typeof obj === 'object') {
-    const out = {};
-    for (const [k, v] of Object.entries(obj)) out[k] = resolveDeep(v, vars);
-    return out;
-  }
-  return obj;
-}
+const { resolveVars, resolveDeep } = require('../../shared/workflow-variables');
 
 // ─── Data pin output schemas (shared source of truth) ────────────────────────
 const { getOutputKeyForSlot } = require('../../shared/workflow-schema');
 
-// ─── Safe condition evaluation ────────────────────────────────────────────────
-
-/**
- * Evaluate a condition string against resolved variables.
- * Supports: ==, !=, >, <, >=, <=, true/false literals.
- * No eval() — purely regex-based.
- * @param {string} condition
- * @param {Map<string, any>} vars
- * @returns {boolean}
- */
-function evalCondition(condition, vars) {
-  if (!condition || condition.trim() === '') return true;
-
-  const resolved = resolveVars(condition, vars);
-
-  // Boolean literals
-  if (resolved === 'true')  return true;
-  if (resolved === 'false') return false;
-
-  // Unary operators: "value is_empty" / "value is_not_empty"
-  const unaryMatch = resolved.match(/^(.+?)\s+(is_empty|is_not_empty)$/);
-  if (unaryMatch) {
-    const val = unaryMatch[1].trim();
-    const isEmpty = val === '' || val === 'null' || val === 'undefined' || val === '[]' || val === '{}';
-    return unaryMatch[2] === 'is_empty' ? isEmpty : !isEmpty;
-  }
-
-  // Binary operators (left OP right)
-  const match = resolved.match(/^(.+?)\s*(==|!=|>=|<=|>|<|contains|starts_with|ends_with|matches)\s+(.+)$/);
-  if (!match) {
-    // Truthy check (non-empty string / non-zero number)
-    const val = resolved.trim();
-    if (val === '' || val === '0' || val === 'null' || val === 'undefined') return false;
-    return true;
-  }
-
-  const [, leftRaw, op, rightRaw] = match;
-  const left  = leftRaw.trim();
-  const right = rightRaw.trim();
-
-  // Try numeric comparison
-  const ln = parseFloat(left);
-  const rn = parseFloat(right);
-  const numeric = !isNaN(ln) && !isNaN(rn);
-
-  switch (op) {
-    case '==': return numeric ? ln === rn : left === right;
-    case '!=': return numeric ? ln !== rn : left !== right;
-    case '>':  return numeric && ln > rn;
-    case '<':  return numeric && ln < rn;
-    case '>=': return numeric && ln >= rn;
-    case '<=': return numeric && ln <= rn;
-    case 'contains':    return left.includes(right);
-    case 'starts_with': return left.startsWith(right);
-    case 'ends_with':   return left.endsWith(right);
-    case 'matches': {
-      try {
-        if (left.length > 10_000) return false; // ReDoS protection: skip huge strings
-        return new RegExp(right).test(left);
-      } catch { return false; }
-    }
-    default:   return false;
-  }
-}
-
-// ─── Condition step ───────────────────────────────────────────────────────────
-
-function runConditionStep(config, vars) {
-  // Build expression from structured fields (variable + operator + value) if no explicit expression
-  let expression = config.expression;
-  if (!expression && config.variable) {
-    const variable = config.variable || '';
-    const operator = config.operator || '==';
-    const isUnary  = operator === 'is_empty' || operator === 'is_not_empty';
-    const value    = config.value ?? '';
-    expression = isUnary ? `${variable} ${operator}` : `${variable} ${operator} ${value}`;
-  }
-  const result = evalCondition(resolveVars(expression || 'true', vars), vars);
-  return { result, value: result };
-}
+const { evalCondition, runConditionStep } = require('../../shared/workflow-condition');
 
 // ─── Agent step ───────────────────────────────────────────────────────────────
 
@@ -1097,7 +952,7 @@ class WorkflowRunner {
           break;
         case 'transform': output = runTransformStep(step, vars); break;
         case 'switch':    output = runSwitchStep(step, vars); break;
-        case 'condition': output = runConditionStep(step, vars); break;
+        case 'condition': output = await runConditionStep(step, vars); break;
         case 'time':      output = await runTimeStep(step, vars); break;
         default:          return null;
       }
@@ -1528,7 +1383,7 @@ class WorkflowRunner {
       if (signal.aborted) throw new Error('Cancelled');
 
       // Evaluate condition
-      if (step.condition && !evalCondition(resolveVars(step.condition, vars), vars)) {
+      if (step.condition && !(await evalCondition(step.condition, vars))) {
         this._emitStep(runId, step, 'skipped', null);
         continue;
       }

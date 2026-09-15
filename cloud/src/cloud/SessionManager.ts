@@ -1,4 +1,4 @@
-import { v4 as uuid } from 'uuid';
+import { randomUUID } from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import { WebSocket } from 'ws';
@@ -138,7 +138,7 @@ export class SessionManager {
     }
 
     const sdk = await this.loadSDK();
-    const sessionId = uuid();
+    const sessionId = randomUUID();
     const cwd = store.getProjectPath(userName, projectName);
 
     const messageQueue = createMessageQueue(() => {
