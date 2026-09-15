@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 164 test files)
+npm test                 # Run Jest tests (jsdom, 169 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -58,7 +58,7 @@ Electron Renderer Process (Browser)
 ├── src/renderer/workflow-fields/    # 13 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN locales (3686 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN locales (3687 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting
 
 Project Types (Plugin System)
@@ -283,7 +283,13 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 
 `ProjectList`, `ProjectBar`, `TerminalManager`, `ChatView`, `FileExplorer`, `FileViewer`, `Modal`, `CustomizePicker`, `QuickActions`, `ContextMenu`, `Tab`, `Toast`, `ClaudeMdSuggestionModal`, `AccountMenu`, `AccountSwitchModal`, `TranscriptPruner`, `WhatsNew`.
 
-> `ChatView.js` is 9,489 lines, `renderer.js` 7,615 and `TerminalManager.js` 4,823 - the three largest files in the repo, 21,900 lines between them. All three have accumulated well past the point where they should be split; `src/renderer/services/markdown/` is the in-repo precedent for how to do it. Prefer adding new chat behaviour as a sibling module over growing `ChatView.js` further.
+> `ChatView.js` is 8,641 lines, `renderer.js` 7,654 and `TerminalManager.js` 4,539 - still the three largest files in the repo, ~20,800 lines between them, and still past the point where they should be split. Splitting is underway and has its own conventions, below. Prefer adding new chat behaviour as a sibling module over growing `ChatView.js` further.
+
+**`components/chat/` and `components/terminal/`** hold what has been lifted out so far, following `src/renderer/services/markdown/`: `chat/` has `liveCards`, `resultParsing`, `contextSuggestions`, `followupChips`, `lightbox`, `exportConversation`, `contextUsage`, `transcriptSearch` and `attachmentTray`; `terminal/` has `osc52`, `claudeSignals`, `keyBindings`, `sessionCards` and `markdownViewer`.
+
+Two things make this harder than it looks and set the shape of the modules. `ChatView.js`'s body is a single ~8,600-line closure, so every helper in it closes over the same mutable session state; a unit only comes out as a `createXxx(deps)` factory taking its dependencies explicitly, reading late-bound ones (`getPruner`, `getInputEl`, `getProject`) through getters, and owning its own `destroy()` rather than leaving listeners for `createChatView`'s to remember. And the units have real couplings worth naming rather than hiding: `attachmentTray` reaches the mention rail because an attached file *is* a chip there, and `transcriptSearch` has to suspend the pruner because it walks the mounted tree.
+
+The tests are the point, not the line count. Everything listed above was unreachable from a test while it sat mid-closure, and `sessionCards` is what that costs: `renderer.js` held a second copy of four of its functions, and that copy's date formatter knew only French, so the sessions modal showed Spanish, Indonesian and Chinese users their dates in en-US. Extract with cover, or the next copy drifts the same way.
 
 `ProjectBar` vs `ProjectList` is the `navigationMode` setting: a horizontal project tab bar, or the classic projects sidebar column.
 
@@ -352,7 +358,7 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 ### Internationalization (`src/renderer/i18n/locales/`)
 
 - **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`)
-- **Keys:** 3686 per locale, all five in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
+- **Keys:** 3687 per locale, all five in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
 - **Loading:** only `en.json` is bundled eagerly, as the guaranteed-loaded fallback for `t()`; the others are fetched by `initI18n()`
 - **Detection:** auto-detect from `navigator.language`, `DEFAULT_LANGUAGE` is `fr`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`, `data-i18n="..."` for static HTML
@@ -606,13 +612,14 @@ Worker); neither is bundled into the desktop app.
 - **Voice:** the renderer captures the mic and sends raw PCM to main; the Groq key stays in the OS credential store and never crosses to the renderer. Transcription output goes to the screen only, routed to the focused tab
 - **Artifacts:** `src/shared/artifact-store.js` is shared verbatim with the MCP server process, which writes `index.json` directly. Since an out-of-process writer cannot reach a BrowserWindow, `ArtifactService` polls the file and broadcasts `artifacts-changed`
 - **Error log:** every `console.error`/`console.warn` in main is mirrored into `ErrorLogService`, but as `warning`. `critical` is reserved for `uncaughtException` and `unhandledRejection`, so the panel's critical count means "the app broke", not "something logged"
+- **Transcript virtualisation:** `TranscriptPruner` keeps a two-sided window over the mounted transcript, because interaction latency in the chat scales with the number of mounted elements rather than with what is visible (measured: ~1.4 s to reveal a 68k-node pane, ~1 s per keystroke; 149 ms / 29 ms at ~5k). Entries more than a buffer above the viewport go to an `above` store and those below to a `below` store, both remounting before the reader reaches them, and what streams in while they read history is absorbed rather than left to grow the tail. Three things this needs and the earlier one-sided version did not: geometry, which a hidden pane does not have (`clientHeight === 0` falls back to the original count-based, pinned-only rule rather than detaching everything); scroll compensation on prune, measured across the marker row since that is inserted above the viewport too; and remounting the *deficit* rather than a fixed chunk, since a fixed batch is inserted at the boundary, pushes the viewport further from it, and is handed straight back to the next prune. Both boundaries carry a marker row that doubles as the insertion anchor, which is what lets this compose with the disk-history pager instead of fighting it. `drainBelow()` exists for the scroll-to-bottom affordance: without it the jump lands on a marker rather than the newest turn
 - **Idle animation pausing:** all infinite CSS animations stop while the window is unfocused. On a large transcript a single composited spinner measured ~30% of a core, and every perpetual animation in the app is a "still working" indicator, so freezing them costs the user nothing
 - **Security:** `dompurify` for all user-rendered markdown; never inject untrusted HTML into chat/dashboard
 
 ## Testing
 
 ```bash
-npm test                    # Run all 164 unit test files (jsdom environment)
+npm test                    # Run all 166 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -621,7 +628,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 164 test files
+- **Framework:** Jest with jsdom, 169 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
@@ -632,13 +639,13 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
   - `integration/` - state persistence
   - `ipc/` - accounts usage, claude, hooks, project, usage, workflow save
   - `remote-ui/` - hierarchy
-  - `security/` - security tests
+  - `security/` - security tests, including the renderer fs bridge denylist
   - `services/` - ChatService, AccountManager, ArtifactService, DatabaseService, DashboardService, DiffRenderer, HooksService, KnowledgeService, MarkdownRenderer, ModelCatalogService, RemoteServer, RemoteControlService, UsageService, VoiceService, WorkflowRunner, the workflow engine suite, the lazy `xtermLoader`, the lazy project-type registry, the `~/.claude.json` merge in `McpService.saveMcps`, the plugin-manifest guard in `PluginService.installPlugin`, the silent-install arguments in `UpdaterService.quitAndInstall` and the corruption guards shared by `MarketplaceService`, `WorkspaceService` and `KnowledgeService`
   - `shared/` - context usage, cron, model options, permission modes, simple-task
   - `smoke/` - every module parses and loads
   - `state/` - State plus each state module, including the latched save block `timeTracking.state.js` applies to an unreadable `timetracking.json`
   - `ui/` - chat account switch, chat limit error, replayed tool output, task widget, tasks drawer, ClaudeRemotePanel, navigation mode, kanban live refresh, toast
-  - `utils/` - attachments, color, commit messages, drop paths, file icons, file lock, format, frontmatter, git, http cache, session search, shell, syntax highlight, tool registry
+  - `utils/` - attachments, color, commit messages, drop paths, file icons, file lock, format, frontmatter, git (including the argv shape of every command built from a path or a tag name), http cache, session search, shell, syntax highlight, tool registry
 
 ### Lint (`eslint.config.js`)
 

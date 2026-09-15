@@ -2100,40 +2100,15 @@ const MODAL_SVG_DEFS = `<svg style="display:none" xmlns="http://www.w3.org/2000/
   <symbol id="sm-move" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h5a2 2 0 0 0 2-2V6a2 2 0 0 1 2-2h7"/><polyline points="17 1 21 5 17 9"/></symbol>
 </svg>`;
 
-function _cleanModalSessionText(text) {
-  if (!text) return { text: '', skillName: '' };
-  let skillName = '';
-  const cmdMatch = text.match(/<command-name>\/?([^<]+)<\/command-name>/);
-  if (cmdMatch) skillName = cmdMatch[1].trim().replace(/^\//, '');
-  const argsMatch = text.match(/<command-args>([^<]+)<\/command-args>/);
-  const argsText = argsMatch ? argsMatch[1].trim() : '';
-  let cleaned = text.replace(/<[^>]+>[^<]*<\/[^>]+>/g, '');
-  cleaned = cleaned.replace(/<[^>]+>/g, '');
-  cleaned = cleaned.replace(/\[Request interrupted[^\]]*\]/g, '');
-  cleaned = cleaned.replace(/\s+/g, ' ').trim();
-  if (!cleaned && argsText) cleaned = argsText;
-  return { text: cleaned, skillName };
-}
-
-function _formatModalTime(dateString) {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now - date;
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-  if (diffMins < 1) return t('time.justNow');
-  if (diffMins < 60) return t('time.minutesAgo', { count: diffMins });
-  if (diffHours < 24) return t('time.hoursAgo', { count: diffHours });
-  if (diffDays < 7) return t('time.daysAgo', { count: diffDays });
-  const locale = getCurrentLanguage() === 'fr' ? 'fr-FR' : 'en-US';
-  return date.toLocaleDateString(locale, { day: 'numeric', month: 'short' });
-}
-
-function _truncateModalText(text, max) {
-  if (!text) return '';
-  return text.length <= max ? text : text.slice(0, max) + '...';
-}
+// The sessions modal shows the same records as the Sessions panel, so it
+// reads them with the same code. It used to carry its own copy of all four
+// of these, and the copy had drifted: its date formatter knew only French.
+const {
+  cleanSessionText: _cleanModalSessionText,
+  formatRelativeTime: _formatModalTime,
+  truncateText: _truncateModalText,
+  groupSessionsByTime: _groupModalSessions,
+} = require('./src/renderer/ui/components/terminal/sessionCards');
 
 async function _preprocessModalSessions(sessions) {
   const now = Date.now();
@@ -2165,29 +2140,6 @@ async function _preprocessModalSessions(sessions) {
     const pinned = !!pins[session.sessionId];
     return { ...session, displayTitle, displaySubtitle, isSkill, nameLocked: Boolean(lockedName), freshness, searchText, pinned };
   });
-}
-
-function _groupModalSessions(sessions) {
-  const groups = {
-    pinned: { key: 'pinned', label: t('sessions.pinned'), sessions: [] },
-    today: { key: 'today', label: t('sessions.today'), sessions: [] },
-    yesterday: { key: 'yesterday', label: t('sessions.yesterday'), sessions: [] },
-    thisWeek: { key: 'thisWeek', label: t('sessions.thisWeek'), sessions: [] },
-    older: { key: 'older', label: t('sessions.older'), sessions: [] }
-  };
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
-  const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
-  sessions.forEach(s => {
-    if (s.pinned) { groups.pinned.sessions.push(s); return; }
-    const d = new Date(s.modified);
-    if (d >= today) groups.today.sessions.push(s);
-    else if (d >= yesterday) groups.yesterday.sessions.push(s);
-    else if (d >= weekAgo) groups.thisWeek.sessions.push(s);
-    else groups.older.sessions.push(s);
-  });
-  return Object.values(groups).filter(g => g.sessions.length > 0);
 }
 
 // ── Moving a session to another project ──────────────────────────────────────

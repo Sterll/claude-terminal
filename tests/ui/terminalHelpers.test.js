@@ -217,4 +217,24 @@ describe('session cards', () => {
     expect(typeof formatRelativeTime(new Date().toISOString())).toBe('string');
     expect(formatRelativeTime(new Date().toISOString())).not.toBe('');
   });
+
+  test('an old date is formatted in the active language, for all five of them', () => {
+    // The sessions modal carried a second copy of this that read
+    // `lang === 'fr' ? 'fr-FR' : 'en-US'`, so Spanish, Indonesian and Chinese
+    // users read their session dates in en-US. Both callers now share one
+    // implementation; this pins the table it reads.
+    const i18n = require('../../src/renderer/i18n');
+    const old = new Date(Date.now() - 60 * 86_400_000).toISOString();
+    const spelling = {};
+
+    for (const lang of ['en', 'fr', 'es', 'id', 'zh-CN']) {
+      i18n.setLanguage(lang);
+      spelling[lang] = formatRelativeTime(old);
+    }
+    i18n.setLanguage('en');
+
+    // Each locale renders "day month" its own way, so no two of these agree.
+    // en-US is "Jul 17", fr-FR "17 juil.", zh-CN "7月17日".
+    expect(new Set(Object.values(spelling)).size).toBe(5);
+  });
 });
