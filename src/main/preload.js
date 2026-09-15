@@ -25,6 +25,57 @@ function buildBlockedPrefixes() {
 
 const SYSTEM_BLOCKED_PREFIXES = buildBlockedPrefixes();
 
+// The list above only covers directories the renderer could not write to
+// without elevation anyway. What an attacker reaching this bridge would
+// actually want is all under the user's own home, and was not covered at all.
+//
+// Two separate lists, because the two risks call for different answers:
+//
+//   SECRET_PATHS      denied for reading *and* writing. The renderer has no
+//                     legitimate reason to touch live credential material - it
+//                     reads ~/.claude/settings.json, ~/.claude.json, skills,
+//                     agents and ~/.claude-terminal, nothing else. Account
+//                     switching reads the credential store from the main
+//                     process, never from here.
+//
+//   WRITE_ONLY_PATHS  denied for writing only. Writing into a startup folder,
+//                     LaunchAgents, autostart or a shell rc file is code
+//                     execution on the next login or the next shell. Reading
+//                     them stays allowed on purpose: browsing a dotfiles
+//                     repository in the file explorer is a real thing to do,
+//                     and blocking the read would break it for no gain.
+//
+// This is defence in depth, not a patch for a live hole: the CSP has no
+// 'unsafe-inline', so markdown injected into the chat cannot execute, and the
+// renderer's only new Function() path (NodeRegistry) is fed by the bundled
+// *.node.js definitions rather than by any imported or remote content.
+function homeRelative(...segments) {
+  const home = require('os').homedir();
+  return segments.map(seg => path.join(home, seg));
+}
+
+const SECRET_PATHS = homeRelative(
+  '.ssh',
+  '.aws',
+  '.gnupg',
+  path.join('.claude', '.credentials.json'),
+);
+
+const WRITE_ONLY_BLOCKED_PATHS = (() => {
+  const paths = homeRelative('.bashrc', '.bash_profile', '.zshrc', '.zshenv', '.profile');
+  if (process.platform === 'win32') {
+    const appData = process.env.APPDATA;
+    if (appData) {
+      paths.push(path.join(appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup'));
+    }
+  } else if (process.platform === 'darwin') {
+    paths.push(...homeRelative(path.join('Library', 'LaunchAgents')));
+  } else {
+    paths.push(...homeRelative(path.join('.config', 'autostart')));
+  }
+  return paths;
+})();
+
 /**
  * Résout un chemin en suivant les symlinks si le chemin existe,
  * sinon retombe sur path.resolve() (pour les opérations d'écriture sur chemins non existants).
@@ -38,8 +89,28 @@ function safeResolve(p) {
 }
 
 /**
+ * True when `resolved` is `prefix` itself or sits underneath it.
+ *
+ * A bare startsWith() is wrong in both directions here. It over-blocks - /usr
+ * matched /usrdata, C:\Program Files matched C:\Program FilesX - and for a
+ * denylist that is a bug even though it errs safe: a legitimate project folder
+ * whose name happens to share a prefix becomes unreadable.
+ */
+function isWithin(resolved, prefix) {
+  const a = resolved.toLowerCase();
+  const b = prefix.toLowerCase();
+  return a === b || a.startsWith(b.endsWith(path.sep) ? b : b + path.sep);
+}
+
+/**
  * Vérifie si un chemin cible un répertoire système critique.
  * Bloque : null bytes, chemins UNC/Device Windows (\\), chemins système.
+ *
+ * NOTE: safeResolve() follows symlinks for the check while the fs call below
+ * uses the original path, so a link swapped between the two would slip past.
+ * Closing that properly means doing the open and the check on the same handle,
+ * which this bridge cannot do - it is an argument for moving these operations
+ * behind IPC, not something to paper over here.
  */
 function isSystemPath(p) {
   if (!p || typeof p !== 'string') return true;
@@ -47,14 +118,28 @@ function isSystemPath(p) {
   // Bloquer les chemins UNC (\\server\share) et Device Paths (\\.\PhysicalDrive0) sur Windows
   if (process.platform === 'win32' && p.startsWith('\\\\')) return true;
   const resolved = safeResolve(p);
-  return SYSTEM_BLOCKED_PREFIXES.some(prefix =>
-    resolved.toLowerCase().startsWith(prefix.toLowerCase())
-  );
+  if (SECRET_PATHS.some(prefix => isWithin(resolved, prefix))) return true;
+  return SYSTEM_BLOCKED_PREFIXES.some(prefix => isWithin(resolved, prefix));
+}
+
+/** Paths that may be read but never written through this bridge. */
+function isWriteProtectedPath(p) {
+  if (!p || typeof p !== 'string') return true;
+  const resolved = safeResolve(p);
+  return WRITE_ONLY_BLOCKED_PATHS.some(prefix => isWithin(resolved, prefix));
 }
 
 function throwIfBlocked(p) {
   if (isSystemPath(p)) {
     throw new Error(`Access denied: system path is protected: ${p}`);
+  }
+}
+
+/** Guard for any call that creates, modifies, moves or deletes a path. */
+function throwIfBlockedWrite(p) {
+  throwIfBlocked(p);
+  if (isWriteProtectedPath(p)) {
+    throw new Error(`Access denied: writing here would run code at login: ${p}`);
   }
 }
 
@@ -95,7 +180,7 @@ contextBridge.exposeInMainWorld('electron_nodeModules', {
       return fs.readFileSync(p, options);
     },
     writeFileSync: (p, data, options) => {
-      throwIfBlocked(p);
+      throwIfBlockedWrite(p);
       fs.writeFileSync(p, data, options);
     },
     readdirSync: (p, options) => {
@@ -121,25 +206,25 @@ contextBridge.exposeInMainWorld('electron_nodeModules', {
       };
     },
     mkdirSync: (p, options) => {
-      throwIfBlocked(p);
+      throwIfBlockedWrite(p);
       fs.mkdirSync(p, options);
     },
     rmSync: (p, options) => {
-      throwIfBlocked(p);
+      throwIfBlockedWrite(p);
       fs.rmSync(p, options);
     },
     copyFileSync: (src, dest) => {
       throwIfBlocked(src);
-      throwIfBlocked(dest);
+      throwIfBlockedWrite(dest);
       fs.copyFileSync(src, dest);
     },
     unlinkSync: (p) => {
-      throwIfBlocked(p);
+      throwIfBlockedWrite(p);
       fs.unlinkSync(p);
     },
     renameSync: (oldPath, newPath) => {
-      throwIfBlocked(oldPath);
-      throwIfBlocked(newPath);
+      throwIfBlockedWrite(oldPath);
+      throwIfBlockedWrite(newPath);
       fs.renameSync(oldPath, newPath);
     },
     promises: {
@@ -173,25 +258,25 @@ contextBridge.exposeInMainWorld('electron_nodeModules', {
         }));
       },
       mkdir: (p, options) => {
-        throwIfBlocked(p);
+        throwIfBlockedWrite(p);
         return fs.promises.mkdir(p, options);
       },
       writeFile: (p, data, options) => {
-        throwIfBlocked(p);
+        throwIfBlockedWrite(p);
         return fs.promises.writeFile(p, data, options);
       },
       rename: (oldPath, newPath) => {
-        throwIfBlocked(oldPath);
-        throwIfBlocked(newPath);
+        throwIfBlockedWrite(oldPath);
+        throwIfBlockedWrite(newPath);
         return fs.promises.rename(oldPath, newPath);
       },
       unlink: (p) => {
-        throwIfBlocked(p);
+        throwIfBlockedWrite(p);
         return fs.promises.unlink(p);
       },
       copyFile: (src, dest) => {
         throwIfBlocked(src);
-        throwIfBlocked(dest);
+        throwIfBlockedWrite(dest);
         return fs.promises.copyFile(src, dest);
       }
     }
