@@ -77,10 +77,18 @@ class WorkflowService {
     this._waitCallbacks = new Map();
 
     this._scheduler = new WorkflowScheduler();
-    this._scheduler.dispatch = (workflowId, triggerData) => {
-      this.trigger(workflowId, { triggerData, source: triggerData.source }).catch(err =>
-        console.error(`[WorkflowService] Auto-trigger ${workflowId} failed:`, err.message)
-      );
+    this._scheduler.onStatusChanged = () => this._send('workflow-trigger-status');
+    this._dispatchErrors = new Map();
+    this._scheduler.dispatch = async (workflowId, triggerData) => {
+      try {
+        const result = await this.trigger(workflowId, { triggerData, source: triggerData.source });
+        if (result?.success === false && !result.skipped) throw new Error(result.error || 'Automatic trigger failed');
+        if (this._dispatchErrors.delete(workflowId)) this._send('workflow-trigger-status');
+      } catch (error) {
+        this._dispatchErrors.set(workflowId, error.message);
+        this._send('workflow-trigger-status');
+        console.error(`[WorkflowService] Auto-trigger ${workflowId} failed:`, error.message);
+      }
     };
     // Scheduler needs to resolve projectId → absolute path for file_change watchers
     this._scheduler.resolveProjectPath = (projectId) => {
@@ -100,6 +108,14 @@ class WorkflowService {
   }
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────────
+
+  getTriggerStatuses() {
+    const statuses = this._scheduler.getTriggerStatuses();
+    for (const id of this._dispatchErrors.keys()) if (!statuses.some(item => item.workflowId === id)) this._dispatchErrors.delete(id);
+    return statuses.map(item => this._dispatchErrors.has(item.workflowId)
+      ? { ...item, status: 'error', error: this._dispatchErrors.get(item.workflowId) } : item);
+  }
+  retryTrigger(id) { this._dispatchErrors.delete(id); return this._scheduler.retryTrigger(id); }
 
   setMainWindow(win) {
     this.mainWindow = win;

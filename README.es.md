@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/version-1.3.3-orange" alt="Versión" />
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-blue" alt="Plataformas" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="Licencia" />
-  <img src="https://img.shields.io/badge/electron-28-purple" alt="Electron" />
+  <img src="https://img.shields.io/badge/electron-43-purple" alt="Electron" />
   <img src="https://img.shields.io/github/actions/workflow/status/Sterll/claude-terminal/ci.yml?branch=main&label=CI" alt="Estado de CI" />
   <img src="https://img.shields.io/github/contributors/Sterll/claude-terminal" alt="Colaboradores" />
   <img
@@ -723,3 +723,5 @@ Consulta [SECURITY.md](SECURITY.md) para informar de una vulnerabilidad.
 ## Licencia
 
 [GPL-3.0](LICENSE)
+
+Consulte las [notas de ejecución, protección de datos y recuperación](RUNTIME_RELIABILITY.md) (en inglés) para conocer las condiciones de despliegue y los comandos de validación.

@@ -73,7 +73,9 @@ function registerAccountsHandlers() {
   // with the token already cached, which cannot notice an account that was
   // signed in again outside the app.
   ipcMain.handle('accounts-usage', (_event, { maxAgeMs, force = false } = {}) => wrap(async () => {
-    const { accounts } = await AccountManager.listAccounts();
+    // Only the saved IDs are needed; reading the machine-wide login here
+    // adds an unrelated Keychain prompt before the per-account reads below.
+    const { accounts } = await AccountManager.listAccounts({ includeCredentials: false });
     const usage = {};
     await Promise.all(accounts.map(async (account) => {
       await seedStoreOnce(account.id, force);

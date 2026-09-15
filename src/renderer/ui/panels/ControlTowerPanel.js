@@ -16,6 +16,7 @@ const { createModal, showModal, closeModal } = require('../components/Modal');
 const _agents = new Map();
 
 let _refreshTimer = null;
+let _incidentCleanup = null;
 // Root element of the currently rendered panel. The refresh timer watches it so it
 // can stop itself if the panel is torn down through a path that never calls
 // cleanup() (e.g. Ctrl+, jumping straight into Settings).
@@ -2084,6 +2085,7 @@ function loadPanel(container) {
       </div>
 
       <!-- Agent cards -->
+      <section id="ct-incidents" class="ct-incidents" aria-live="polite" hidden></section>
       <div class="ct-agents-container" id="ct-agents-container"></div>
 
       <!-- Maximized session (fills the panel; grid hidden while open) -->
@@ -2112,6 +2114,8 @@ function loadPanel(container) {
   `;
 
   _panelRootEl = container.querySelector('.ct-panel');
+  _incidentCleanup?.();
+  _incidentCleanup = require('../components/ControlTowerIncidents').mount(container.querySelector('#ct-incidents'));
 
   document.getElementById('ct-spawn-btn').onclick = _openSpawnModal;
   document.getElementById('ct-maximize-back').onclick = _closeMaximized;
@@ -2215,6 +2219,7 @@ function _isPanelLive() {
 }
 
 function cleanup() {
+  _incidentCleanup?.(); _incidentCleanup = null;
   // Never leave a live terminal wrapper stranded in the maximized host
   if (_overlayRestore) _closeMaximized();
   if (_refreshTimer) {

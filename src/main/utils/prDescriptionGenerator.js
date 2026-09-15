@@ -14,11 +14,12 @@
  * loadable in tests and in any context without the SDK.
  * @returns {Promise<string|null>}
  */
-async function callHaiku({ system, user, timeoutMs }) {
+async function callHaiku({ system, user, timeoutMs, signal }) {
   try {
     const ChatService = require('../services/ChatService');
-    return await ChatService.runHaikuPrompt({ systemPrompt: system, prompt: user, timeoutMs });
+    return await ChatService.runHaikuPrompt({ systemPrompt: system, prompt: user, timeoutMs, signal });
   } catch (err) {
+    signal?.throwIfAborted();
     console.warn('[prDescriptionGenerator] Haiku unavailable:', err.message);
     return null;
   }
@@ -69,11 +70,11 @@ Diff (branch vs base):
 ${diff}`;
 }
 
-async function generateWithAi(context, timeoutMs = 60000) {
+async function generateWithAi(context, timeoutMs = 60000, signal) {
   const content = await callHaiku({
     system: SYSTEM_PROMPT,
     user: buildPrompt(context),
-    timeoutMs
+    timeoutMs, signal
   });
   if (!content) return null;
 
@@ -173,6 +174,7 @@ function generateHeuristic(context) {
  * @returns {Promise<{ title: string, body: string, source: 'ai'|'heuristic' }>}
  */
 async function generatePrDescription(context, options) {
+  options?.signal?.throwIfAborted();
   const ctx = {
     branch: context.branch || '',
     baseBranch: context.baseBranch || 'main',
@@ -182,7 +184,7 @@ async function generatePrDescription(context, options) {
   };
 
   if (options?.useAi) {
-    const result = await generateWithAi(ctx);
+    const result = await generateWithAi(ctx, 60000, options?.signal);
     if (result) return { ...result, source: 'ai' };
   }
 

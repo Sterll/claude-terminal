@@ -84,7 +84,9 @@ const OAUTH_BETA_HEADER = 'oauth-2025-04-20';
 // A token is therefore held until it actually expires, and an absent or
 // unreadable one is cached too, so a refusal is not retried a minute later.
 const TOKEN_CACHE_MAX = 6 * 60 * 60 * 1000;   // cap for a long-lived token
-const TOKEN_CACHE_BACKOFF = 15 * 60 * 1000;   // no token, or store unreadable
+// A refusal or missing login needs an explicit refresh/login, not another
+// system password dialog when a timer fires or the user returns to the app.
+const TOKEN_CACHE_BACKOFF = Infinity;
 const TOKEN_EXPIRY_MARGIN = 60 * 1000;        // re-read shortly before expiry
 
 // How long a caller waits for the credential store before giving up on this
@@ -207,8 +209,15 @@ function startTokenRead(entry) {
 
     entry.rejectedToken = null;
     entry.tokenCache = token;
+    // During the last minute the CLI may not have rotated the token yet.
+    // Caching to expiresAt - margin would already be in the past and re-open
+    // the Keychain on every tab switch. Keep that token until its real expiry.
+    const expiry = Number(expiresAt);
+    const refreshAt = Number.isFinite(expiry) && expiry > now
+      ? (expiry > now + TOKEN_EXPIRY_MARGIN ? expiry - TOKEN_EXPIRY_MARGIN : expiry)
+      : Infinity;
     entry.tokenCacheUntil = token
-      ? Math.min(expiresAt !== null ? expiresAt - TOKEN_EXPIRY_MARGIN : Infinity, now + TOKEN_CACHE_MAX)
+      ? Math.min(refreshAt, now + TOKEN_CACHE_MAX)
       : now + TOKEN_CACHE_BACKOFF;
     return entry.tokenCache;
   })();
@@ -603,9 +612,8 @@ function refreshUsage(accountId, force = false) {
  * @param {number} [maxAgeMs] - 0 forces a fetch
  * @param {boolean} [force] - also re-read the credential store, for the
  *   explicit refresh gesture; see readOAuthToken(). Without it, an account
- *   whose token was missing or refused stays unreadable for the whole backoff
- *   window (15 min), so refreshing right after `claude /login` on that account
- *   still showed "usage unavailable".
+ *   whose token was missing or refused stays unreadable until this gesture
+ *   retries it after `claude /login` or an earlier Keychain refusal.
  * @returns {Promise<Object>} same shape as getUsageData()
  */
 async function usageForAccount(accountId, maxAgeMs = 5 * 60 * 1000, force = false) {

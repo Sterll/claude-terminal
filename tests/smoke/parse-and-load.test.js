@@ -293,7 +293,7 @@ describe('CHECK 4 - IPC channel symmetry', () => {
     );
     const handled = collectChannels(
       MAIN_SIDE_FILES,
-      /ipcMain\.(?:handle|on)\(\s*['"`]([^'"`]+)['"`]/
+      /(?:ipcMain\.(?:handle|on)\(|operations\.handle\(ipcMain,)\s*['"`]([^'"`]+)['"`]/
     );
 
     expect(invoked.size).toBeGreaterThan(100);

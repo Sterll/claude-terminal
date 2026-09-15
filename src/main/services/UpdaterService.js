@@ -8,6 +8,7 @@ const { app, Notification } = require('electron');
 const https = require('https');
 const path = require('path');
 const fs = require('fs');
+const semver = require('semver');
 
 // Check interval: 30 minutes
 const CHECK_INTERVAL_MS = 30 * 60 * 1000;
@@ -54,13 +55,13 @@ class UpdaterService {
 
       const info = JSON.parse(fs.readFileSync(infoPath, 'utf-8'));
       const cachedFileName = info.fileName || '';
-      const versionMatch = cachedFileName.match(/(\d+\.\d+\.\d+)/);
-      if (!versionMatch) return;
-
-      const cachedVersion = versionMatch[1];
+      const stem = cachedFileName.replace(/\.(?:exe|dmg|zip|AppImage|deb|rpm)$/i, '').replace(/[-_](?:x64|arm64|ia32|universal)$/i, '');
+      const versionMatch = stem.match(/(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/);
+      const cachedVersion = semver.valid(info.version) || semver.valid(versionMatch?.[1]);
+      if (!cachedVersion) return;
       const currentVersion = app.getVersion();
 
-      if (currentVersion >= cachedVersion) {
+      if (semver.valid(currentVersion) && semver.gte(currentVersion, cachedVersion)) {
         console.debug(`Clearing stale updater cache (cached: ${cachedVersion}, current: ${currentVersion})`);
         const files = fs.readdirSync(cacheDir);
         for (const file of files) {

@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { config } from '../config';
+import { withKeyLock } from './locks';
 
 export interface UserProject {
   name: string;
@@ -46,9 +47,31 @@ async function readJson<T>(filePath: string): Promise<T | null> {
   try {
     const raw = await fs.promises.readFile(filePath, 'utf-8');
     return JSON.parse(raw) as T;
-  } catch {
-    return null;
+  } catch (error: any) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
   }
+}
+
+export function validateName(name: string): void {
+  if (typeof name !== 'string' || name.length > 128 || !/^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$/.test(name) || name.includes('..')) {
+    throw Object.assign(new Error('Invalid user or project name'), { status: 400 });
+  }
+}
+
+/** Reject links in every existing path component, including the user directory. */
+function confinedPath(...parts: string[]): string {
+  let current = path.resolve(config.usersDir);
+  for (const part of parts) {
+    validateName(part);
+    current = path.join(current, part);
+    try {
+      if (fs.lstatSync(current).isSymbolicLink()) throw Object.assign(new Error('Symbolic links are not allowed in storage paths'), { status: 400 });
+    } catch (err: any) { if (err.code !== 'ENOENT') throw err; }
+  }
+  const relative = path.relative(path.resolve(config.usersDir), current);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Path outside user storage');
+  return current;
 }
 
 class Store {
@@ -57,19 +80,23 @@ class Store {
   }
 
   private userDir(name: string): string {
-    return path.join(config.usersDir, name);
+    return confinedPath(name);
   }
 
   private userJsonPath(name: string): string {
-    return path.join(this.userDir(name), 'user.json');
+    return confinedPath(name, 'user.json');
   }
 
   private userProjectsDir(name: string): string {
-    return path.join(this.userDir(name), 'projects');
+    return confinedPath(name, 'projects');
+  }
+
+  userStoragePath(name: string, ...parts: string[]): string {
+    return confinedPath(name, ...parts);
   }
 
   userHomePath(name: string): string {
-    return path.join(this.userDir(name), 'home');
+    return confinedPath(name, 'home');
   }
 
   async ensureUserHome(name: string): Promise<void> {
@@ -152,7 +179,7 @@ class Store {
   async listUsers(): Promise<string[]> {
     try {
       const entries = await fs.promises.readdir(config.usersDir, { withFileTypes: true });
-      return entries.filter(e => e.isDirectory()).map(e => e.name);
+      return entries.filter(e => e.isDirectory() && !e.name.startsWith('.')).map(e => e.name);
     } catch {
       return [];
     }
@@ -171,26 +198,47 @@ class Store {
     }
   }
 
-  async createUser(name: string, apiKey: string): Promise<UserData> {
-    const userDir = this.userDir(name);
-    await fs.promises.mkdir(userDir, { recursive: true });
-    await fs.promises.mkdir(this.userProjectsDir(name), { recursive: true });
-    await this.ensureUserHome(name);
+  async assertCloudIsolation(): Promise<void> {
+    if (config.cloudEnabled && (await this.listUsers()).length > 1) {
+      throw new Error('Cloud execution supports one user per instance. Use separate containers and volumes, or disable CLOUD_ENABLED for relay/sync only.');
+    }
+  }
 
-    const userData: UserData = {
-      id: crypto.randomUUID(),
-      name,
-      apiKeyHash: crypto.createHash('sha256').update(apiKey).digest('hex'),
-      createdAt: Date.now(),
-      projects: [],
-      sessions: [],
-    };
-    await writeAtomic(this.userJsonPath(name), JSON.stringify(userData, null, 2));
-    return userData;
+  async createUser(name: string, apiKey: string): Promise<UserData> {
+    validateName(name);
+    return withKeyLock('users', async () => {
+      if (await this.userExists(name)) throw new Error('User already exists');
+      if (config.cloudEnabled && (await this.listUsers()).length) throw new Error('Cloud execution supports one user per instance');
+      const userDir = this.userDir(name);
+      await fs.promises.mkdir(userDir, { recursive: true });
+      await fs.promises.mkdir(this.userProjectsDir(name), { recursive: true });
+      await this.ensureUserHome(name);
+
+      const userData: UserData = {
+        id: crypto.randomUUID(),
+        name,
+        apiKeyHash: crypto.createHash('sha256').update(apiKey).digest('hex'),
+        createdAt: Date.now(),
+        projects: [],
+        sessions: [],
+      };
+      await writeAtomic(this.userJsonPath(name), JSON.stringify(userData, null, 2));
+      return userData;
+    });
   }
 
   async saveUser(name: string, data: UserData): Promise<void> {
-    await writeAtomic(this.userJsonPath(name), JSON.stringify(data, null, 2));
+    await withKeyLock(`user:${name}`, () => writeAtomic(this.userJsonPath(name), JSON.stringify(data, null, 2)));
+  }
+
+  async updateUser(name: string, mutate: (user: UserData) => void): Promise<UserData | null> {
+    return withKeyLock(`user:${name}`, async () => {
+      const user = await this.getUser(name);
+      if (!user) return null;
+      mutate(user);
+      await writeAtomic(this.userJsonPath(name), JSON.stringify(user, null, 2));
+      return user;
+    });
   }
 
   async deleteUser(name: string): Promise<void> {
@@ -210,13 +258,13 @@ class Store {
   // ── Projects ──
 
   getProjectPath(userName: string, projectName: string): string {
-    return path.join(this.userProjectsDir(userName), projectName);
+    return confinedPath(userName, 'projects', projectName);
   }
 
   async listProjectDirs(userName: string): Promise<string[]> {
     try {
       const entries = await fs.promises.readdir(this.userProjectsDir(userName), { withFileTypes: true });
-      return entries.filter(e => e.isDirectory()).map(e => e.name);
+      return entries.filter(e => e.isDirectory() && !e.name.startsWith('.')).map(e => e.name);
     } catch {
       return [];
     }

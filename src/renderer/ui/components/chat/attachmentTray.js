@@ -122,7 +122,7 @@ function createAttachmentTray({
    */
   function addPdfFile(file) {
     if (file.size > MAX_PDF_BYTES) {
-      if (file.path) {
+      if ((file.path || window.electron_api.getPathForFile?.(file))) {
         addPathAttachment(file);
       } else {
         attachmentToast(t('chat.attachTooLarge', { name: file.name, max: formatBytes(MAX_PDF_BYTES) }));
@@ -157,7 +157,7 @@ function createAttachmentTray({
    * blob can only sit in the context being paid for.
    */
   function addTextFile(file) {
-    if (!shouldInlineText({ size: file.size, path: file.path })) {
+    if (!shouldInlineText({ size: file.size, path: (file.path || window.electron_api.getPathForFile?.(file)) })) {
       addPathAttachment(file);
       return;
     }
@@ -167,7 +167,7 @@ function createAttachmentTray({
     // and refused out loud when it does not.
     const overBudget = inlinedTextBytes + file.size > MAX_TOTAL_INLINE_TEXT_BYTES;
     if (countTextAttachments() + inflightTexts >= MAX_PENDING_TEXTS || overBudget) {
-      if (file.path) {
+      if ((file.path || window.electron_api.getPathForFile?.(file))) {
         addPathAttachment(file);
       } else {
         attachmentToast(t('chat.attachTooMany', { max: MAX_PENDING_TEXTS }));
@@ -182,7 +182,7 @@ function createAttachmentTray({
       onAttachmentChip(file.name, {
         kind: 'text',
         name: file.name,
-        path: file.path || '',
+        path: (file.path || window.electron_api.getPathForFile?.(file)) || '',
         content: String(reader.result ?? ''),
       });
     };
@@ -199,7 +199,7 @@ function createAttachmentTray({
     onAttachmentChip(file.name, {
       kind: 'path',
       name: file.name,
-      path: file.path,
+      path: (file.path || window.electron_api.getPathForFile?.(file)),
       size: file.size,
     });
   }

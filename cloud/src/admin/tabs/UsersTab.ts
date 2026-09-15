@@ -250,7 +250,7 @@ export class UsersTab {
       const newKey = generateApiKey();
       user.apiKeyHash = hashApiKey(newKey);
       delete (user as any).apiKey;
-      await store.saveUser(name, user);
+      await store.updateUser(name, current => { current.apiKeyHash = user.apiKeyHash; delete current.apiKey; });
       invalidateKeyIndex();
       this.modal = { type: 'show-key', data: { name, key: newKey } };
       await this.load();

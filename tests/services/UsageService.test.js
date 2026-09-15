@@ -195,6 +195,34 @@ describe('OAuth token cache', () => {
     expect(httpsGet).not.toHaveBeenCalled();
   });
 
+  test('tab/focus refreshes do not keep opening the store for a nearly expired token', async () => {
+    const usage = load();
+    readCredentials.mockResolvedValue({ claudeAiOauth: { accessToken: 'still-valid', expiresAt: Date.now() + 30000 } });
+    await usage.fetchUsage();
+    await usage.refreshUsage();
+    await usage.refreshUsage();
+    expect(readCredentials).toHaveBeenCalledTimes(1);
+  });
+
+  test('an unreadable store stays quiet after returning hours later, until explicit refresh', async () => {
+    const usage = load();
+    const start = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+    try {
+      readCredentials.mockResolvedValue(null);
+      await usage.fetchUsage();
+      clock.mockReturnValue(start + 12 * HOUR);
+      usage.onWindowShow();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      await usage.refreshUsage();
+      expect(readCredentials).toHaveBeenCalledTimes(1);
+      readCredentials.mockResolvedValue(validCreds('signed-in-again'));
+      await usage.refreshUsage(null, true);
+      expect(readCredentials).toHaveBeenCalledTimes(2);
+      expect(httpsGet.mock.calls.at(-1)[0].headers.Authorization).toBe('Bearer signed-in-again');
+    } finally { clock.mockRestore(); }
+  });
+
   test('re-reads once when the API refuses the token, then stops', async () => {
     const usage = load([401]);
     readCredentials.mockResolvedValue(validCreds());

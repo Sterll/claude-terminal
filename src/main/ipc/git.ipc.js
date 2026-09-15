@@ -6,6 +6,7 @@
 const { ipcMain } = require('electron');
 const { execGit, getGitInfo, getGitInfoFull, getGitStatusQuick, getGitStatusDetailed, gitPull, gitPush, gitPushBranch, gitMerge, gitMergeAbort, gitMergeContinue, getMergeConflicts, isMergeInProgress, gitClone, gitStageFiles, gitCommit, getProjectStats, getBranches, getCurrentBranch, checkoutBranch, createBranch, deleteBranch, getCommitHistory, getFileDiffResult, getCommitDetailResult, cherryPick, revertCommit, gitUnstageFiles, stashApply, stashDrop, gitStashSave, getWorktrees, createWorktree, removeWorktree, FORCE_UNLOCK, lockWorktree, unlockWorktree, pruneWorktrees, detectWorktree, diffWorktreeBranches, diffWorktreeBranchesWithStats, deleteRemoteBranch, gitFetch, renameBranch, gitRebase, gitRebaseAbort, gitRebaseContinue, getFileHistory, getCommitFileDiffs, getCommitFileDiff, gitBlame, getTags, createTag, deleteTag, pushTag, pushAllTags, getRemotes, resolveConflict, getBranchOrphanCommitCount, gitDiscardFiles, stashPop, stashShow, gitAmendCommit, isRebaseInProgress, gitReset, searchCommitHistory, addRemote, removeRemote } = require('../utils/git');
 const { generateCommitMessage, generateMultiCommitMessages, generateSessionRecap, groupFiles } = require('../utils/commitMessageGenerator');
+const operations = require('../utils/cancellableOperation');
 const { generatePrDescription } = require('../utils/prDescriptionGenerator');
 const GitHubAuthService = require('../services/GitHubAuthService');
 const { sendFeaturePing } = require('../services/TelemetryService');
@@ -177,15 +178,16 @@ function registerGitHandlers() {
   });
 
   // Git clone (auto-uses GitHub token if available)
-  ipcMain.handle('git-clone', async (event, { repoUrl, targetPath }) => {
+  operations.handle(ipcMain, 'git-clone', async (event, { repoUrl, targetPath }, signal, progress) => {
+    if (!require('../utils/rendererSecurity').permitted(targetPath, true)) throw new Error('Project destination is not authorized');
     // Validate URL scheme to prevent file:// or other dangerous protocols
     if (!repoUrl || typeof repoUrl !== 'string') return { success: false, error: 'Invalid repository URL' };
     const allowed = /^(https?:\/\/|git@[\w.-]+:)/i;
     if (!allowed.test(repoUrl.trim())) return { success: false, error: 'Only https:// and git@ URLs are allowed' };
     try {
       // Get GitHub token if available
-      const token = await GitHubAuthService.getTokenForGit();
-      return await gitClone(repoUrl, targetPath, { token });
+      const token = repoUrl.startsWith('https://') && GitHubAuthService.parseGitHubRemote(repoUrl) ? await GitHubAuthService.getTokenForGit() : null;
+      return await gitClone(repoUrl, targetPath, { token, signal, onProgress: message => progress({ message }) });
     } catch (err) {
       return { success: false, error: err.message };
     }
@@ -333,7 +335,8 @@ function registerGitHandlers() {
   });
 
   // Generate commit message from file statuses and diff
-  ipcMain.handle('git-generate-commit-message', async (event, { projectPath, files, useAi }) => {
+  operations.handle(ipcMain, 'git-generate-commit-message', async (event, { projectPath, files, useAi }, signal) => {
+    const execGit = (...args) => require('../utils/git').execGit(args[0], args[1], args[2], signal);
     try {
       const path = require('path');
       const fs = require('fs');
@@ -369,7 +372,7 @@ function registerGitHandlers() {
       }));
 
       const diffContent = diffParts.join('\n\n');
-      const result = await generateCommitMessage(files, diffContent, { useAi: useAi !== false });
+      const result = await generateCommitMessage(files, diffContent, { useAi: useAi !== false, signal });
       return { success: true, ...result };
     } catch (e) {
       return { success: false, error: e.message };
@@ -377,7 +380,8 @@ function registerGitHandlers() {
   });
 
   // Generate multi-commit messages (one per file group)
-  ipcMain.handle('git-generate-multi-commit', async (event, { projectPath, files, useAi }) => {
+  operations.handle(ipcMain, 'git-generate-multi-commit', async (event, { projectPath, files, useAi }, signal) => {
+    const execGit = (...args) => require('../utils/git').execGit(args[0], args[1], args[2], signal);
     try {
       const path = require('path');
       const fs = require('fs');
@@ -415,7 +419,7 @@ function registerGitHandlers() {
         diffs[g.name] = diffParts.join('\n\n');
       }
 
-      const results = await generateMultiCommitMessages(files, diffs, { useAi: useAi !== false });
+      const results = await generateMultiCommitMessages(files, diffs, { useAi: useAi !== false, signal });
       return { success: true, commits: results };
     } catch (e) {
       return { success: false, error: e.message };
@@ -423,7 +427,8 @@ function registerGitHandlers() {
   });
 
   // Generate PR description (title + body) from branch diff, commits and session recap
-  ipcMain.handle('git-generate-pr-description', async (_event, { projectPath, baseBranch, sessionSummary }) => {
+  operations.handle(ipcMain, 'git-generate-pr-description', async (_event, { projectPath, baseBranch, sessionSummary }, signal) => {
+    const execGit = (...args) => require('../utils/git').execGit(args[0], args[1], args[2], signal);
     try {
       sendFeaturePing('git:generate-pr');
       const base = (baseBranch && typeof baseBranch === 'string' && isValidBranchName(baseBranch)) ? baseBranch : 'main';
@@ -478,7 +483,7 @@ function registerGitHandlers() {
         commits,
         diffContent,
         sessionSummary: sessionSummary || ''
-      }, { useAi: true });
+      }, { useAi: true, signal });
 
       // Build the compare URL if we can detect the owner/repo
       let compareUrl = null;
@@ -507,9 +512,10 @@ function registerGitHandlers() {
   });
 
   // Generate session recap via Claude Haiku
-  ipcMain.handle('git-generate-session-recap', async (_event, context) => {
+  operations.handle(ipcMain, 'git-generate-session-recap', async (_event, context, signal) => {
+    const execGit = (...args) => require('../utils/git').execGit(args[0], args[1], args[2], signal);
     try {
-      return await generateSessionRecap(context, { useAi: true });
+      return await generateSessionRecap(context, { useAi: true, signal });
     } catch (e) {
       return { summary: null, source: 'error' };
     }
@@ -521,6 +527,8 @@ function registerGitHandlers() {
   ipcMain.handle('git-worktree-list', async (event, { projectPath }) => {
     try {
       const worktrees = await getWorktrees(projectPath);
+      const { permitted, grant } = require('../utils/rendererSecurity');
+      if (permitted(projectPath)) for (const tree of worktrees) grant(tree.path);
       return { success: true, worktrees };
     } catch (err) {
       return { success: false, error: err.message };

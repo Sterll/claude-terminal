@@ -22,7 +22,6 @@ const {
   writeCredentials,
   readCredentialsForDir,
   writeSeedForDir,
-  pruneSeedForDir,
   deleteCredentialsForDir,
   SECURESTORAGE_ENV,
 } = require('../utils/claudeCredentials');
@@ -246,9 +245,9 @@ function summarize(account) {
  * which account the machine-wide login belongs to, since that is the one
  * `claude /login` last wrote and the one a capture would pick up.
  */
-async function listAccounts() {
+async function listAccounts({ includeCredentials = true } = {}) {
   const index = readIndex();
-  const currentFp = fingerprintCredentials(await readCurrentCredentials());
+  const currentFp = includeCredentials ? fingerprintCredentials(await readCurrentCredentials()) : null;
   const live = currentFp ? index.accounts.find(a => a.fingerprint === currentFp) : null;
   return {
     accounts: index.accounts.map(summarize),
@@ -256,7 +255,7 @@ async function listAccounts() {
     // Fall back to the stored pointer: a refresh moves the access token the
     // fingerprint hashes, and that alone should not orphan the live account.
     liveId: live?.id ?? index.liveId ?? null,
-    hasCredentials: currentFp !== null
+    hasCredentials: includeCredentials ? currentFp !== null : null
   };
 }
 
@@ -298,10 +297,8 @@ async function ensureAccountStore(id) {
   if (!index.accounts.some(a => a.id === id)) return null;
   const dir = accountConfigDir(id);
 
-  const current = await readCredentialsForDir(dir);
+  const current = await readCredentialsForDir(dir, { pruneSeed: true });
   if (isUsableStore(current)) {
-    // Already provisioned; drop the seed if the Keychain has taken over.
-    await pruneSeedForDir(dir);
     // The CLI refreshes inside this store, so it — not the snapshot — is the
     // record of where the account's tokens are now. Copy it back, or the backup
     // rots exactly the way the machine-wide one did.

@@ -1,143 +1,77 @@
-/**
- * API Tester
- * Executes HTTP requests and returns structured results with timing.
- */
-
-const http = require('http');
-const https = require('https');
-const { URL } = require('url');
+/** HTTP tester: bounded preview, cancellable streaming and atomic disk output. */
+const http = require('node:http');
+const https = require('node:https');
+const fs = require('node:fs');
+const path = require('node:path');
+const { randomUUID } = require('node:crypto');
+const { Transform, Writable } = require('node:stream');
+const { pipeline } = require('node:stream/promises');
+const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
+const DISK_PREVIEW_BYTES = 64 * 1024;
 
 class ApiTester {
-  /**
-   * Send an HTTP request
-   * @param {Object} params
-   * @param {string} params.url - Full URL
-   * @param {string} params.method - HTTP method
-   * @param {Object} params.headers - Request headers
-   * @param {string} params.body - Request body (string)
-   * @returns {Promise<Object>} { status, statusText, headers, body, time, size }
-   */
-  async sendRequest({ url, method, headers = {}, body = '' }) {
-    return new Promise((resolve) => {
-      const startTime = Date.now();
-      let settled = false;
-      const settle = (result) => {
-        if (settled) return;
-        settled = true;
-        resolve(result);
-      };
-
-      let parsed;
-      try {
-        parsed = new URL(url);
-      } catch (e) {
-        settle({ error: `Invalid URL: ${url}`, status: 0, time: 0 });
-        return;
-      }
-
-      const isHttps = parsed.protocol === 'https:';
-      const transport = isHttps ? https : http;
-
-      const options = {
-        hostname: parsed.hostname,
-        port: parsed.port || (isHttps ? 443 : 80),
-        path: parsed.pathname + parsed.search,
-        method: method.toUpperCase(),
-        headers: { ...headers },
-        timeout: 30000
-      };
-
-      // Set content-length for body
-      if (body && ['POST', 'PUT', 'PATCH'].includes(options.method)) {
-        const bodyBuf = Buffer.from(body, 'utf8');
-        options.headers['Content-Length'] = bodyBuf.length;
-        if (!options.headers['Content-Type']) {
-          try {
-            JSON.parse(body);
-            options.headers['Content-Type'] = 'application/json';
-          } catch (e) {
-            options.headers['Content-Type'] = 'text/plain';
-          }
+  async sendRequest({ url, method = 'GET', headers = {}, body = '', signal, timeoutMs, maxBytes = MAX_RESPONSE_BYTES, saveToPath, onProgress }) {
+    const start = Date.now();
+    const deadline = new AbortController();
+    const combined = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
+    const maximum = saveToPath ? 30 * 60 * 1000 : 30000;
+    const timer = setTimeout(() => deadline.abort(), Math.min(maximum, Math.max(1, Number(timeoutMs) || maximum)));
+    let temporary, req, response, size = 0;
+    try {
+      combined.throwIfAborted();
+      const parsed = new URL(url);
+      if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Only HTTP and HTTPS URLs are supported');
+      const verb = method.toUpperCase(), requestHeaders = { ...headers };
+      const hasBody = body && ['POST', 'PUT', 'PATCH'].includes(verb);
+      if (hasBody) {
+        requestHeaders['Content-Length'] = Buffer.byteLength(body);
+        if (!Object.keys(requestHeaders).some(key => key.toLowerCase() === 'content-type')) {
+          try { JSON.parse(body); requestHeaders['Content-Type'] = 'application/json'; }
+          catch { requestHeaders['Content-Type'] = 'text/plain'; }
         }
       }
-
-      const req = transport.request(options, (res) => {
-        const chunks = [];
-
-        res.on('data', chunk => chunks.push(chunk));
-
-        res.on('end', () => {
-          const elapsed = Date.now() - startTime;
-          const rawBody = Buffer.concat(chunks);
-          const bodyStr = rawBody.toString('utf8');
-
-          const resHeaders = {};
-          const rawHeaders = res.rawHeaders || [];
-          for (let i = 0; i < rawHeaders.length; i += 2) {
-            const key = rawHeaders[i];
-            const val = rawHeaders[i + 1];
-            if (resHeaders[key]) {
-              resHeaders[key] += ', ' + val;
-            } else {
-              resHeaders[key] = val;
-            }
-          }
-
-          settle({
-            status: res.statusCode,
-            statusText: res.statusMessage || '',
-            headers: resHeaders,
-            body: bodyStr,
-            time: elapsed,
-            size: rawBody.length
-          });
-        });
-
-        res.on('aborted', () => {
-          settle({
-            error: 'Connection aborted by server',
-            status: 0,
-            statusText: 'Aborted',
-            headers: {},
-            body: '',
-            time: Date.now() - startTime,
-            size: 0
-          });
-        });
+      response = await new Promise((resolve, reject) => {
+        req = (parsed.protocol === 'https:' ? https : http).request(parsed, { method: verb, headers: requestHeaders, signal: combined }, resolve);
+        req.on('error', reject);
+        req.end(hasBody ? body : undefined);
       });
-
-      req.on('error', (err) => {
-        settle({
-          error: err.message,
-          status: 0,
-          statusText: 'Error',
-          headers: {},
-          body: '',
-          time: Date.now() - startTime,
-          size: 0
-        });
-      });
-
-      req.on('timeout', () => {
-        req.destroy();
-        settle({
-          error: 'Request timed out (30s)',
-          status: 0,
-          statusText: 'Timeout',
-          headers: {},
-          body: '',
-          time: Date.now() - startTime,
-          size: 0
-        });
-      });
-
-      if (body && ['POST', 'PUT', 'PATCH'].includes(options.method)) {
-        req.write(body);
+      const preview = [], limit = saveToPath ? DISK_PREVIEW_BYTES : Math.min(MAX_RESPONSE_BYTES, Math.max(1, maxBytes));
+      let previewSize = 0, lastProgress = 0;
+      const total = Number(response.headers['content-length']) || null;
+      const measure = new Transform({ transform(chunk, _encoding, callback) {
+        size += chunk.length;
+        if (!saveToPath && size > limit) { callback(new Error('Response exceeds display size limit (5 MiB maximum); save the response to disk')); return; }
+        if (previewSize < limit) {
+          const part = Buffer.from(chunk.subarray(0, limit - previewSize)); preview.push(part); previewSize += part.length;
+        }
+        if (Date.now() - lastProgress >= 150) { onProgress?.({ size, total }); lastProgress = Date.now(); }
+        callback(null, chunk);
+      } });
+      let output;
+      if (saveToPath) {
+        temporary = path.join(path.dirname(saveToPath), `.ct-http-${randomUUID()}.tmp`);
+        output = fs.createWriteStream(temporary, { flags: 'wx', mode: 0o600 });
+      } else output = new Writable({ write(_chunk, _encoding, done) { done(); } });
+      await pipeline(response, measure, output, { signal: combined });
+      combined.throwIfAborted();
+      if (saveToPath) { await fs.promises.rename(temporary, saveToPath); temporary = null; }
+      onProgress?.({ size, total });
+      const responseHeaders = {};
+      for (let i = 0; i < response.rawHeaders.length; i += 2) {
+        const name = response.rawHeaders[i], value = response.rawHeaders[i + 1];
+        responseHeaders[name] = responseHeaders[name] ? responseHeaders[name] + ', ' + value : value;
       }
-
-      req.end();
-    });
+      return { status: response.statusCode, statusText: response.statusMessage || '', headers: responseHeaders,
+        body: Buffer.concat(preview).toString('utf8'), size, time: Date.now() - start,
+        ...(saveToPath ? { savedPath: saveToPath, previewTruncated: size > previewSize } : {}) };
+    } catch (error) {
+      req?.destroy(); response?.destroy();
+      return { status: 0, statusText: '', headers: {}, body: '', size, time: Date.now() - start,
+        cancelled: !!signal?.aborted, error: signal?.aborted ? 'Request cancelled' : deadline.signal.aborted ? 'Request exceeded total time limit' : error.message };
+    } finally {
+      clearTimeout(timer);
+      if (temporary) await fs.promises.rm(temporary, { force: true });
+    }
   }
 }
-
 module.exports = new ApiTester();

@@ -298,10 +298,11 @@ function registerCloudProjectsHandlers() {
 
   ipcMain.handle('cloud:import-project', async (_event, { projectName, displayName }) => {
     const { url, key } = _getCloudConfig();
-    const extractZip = require('extract-zip');
+    const extractZip = require('../../shared/extractZip');
     const { dialog } = require('electron');
 
     const folderName = displayName || projectName;
+    if (typeof folderName !== 'string' || !folderName || folderName === '.' || folderName === '..' || /[\\/\x00-\x1f:]/.test(folderName)) throw new Error('Invalid project folder name');
 
     // Ask user where to import the project
     const { canceled, filePaths } = await dialog.showOpenDialog({
@@ -313,7 +314,10 @@ function registerCloudProjectsHandlers() {
 
     const parentFolder = filePaths[0];
     const destFolder = path.join(parentFolder, folderName);
-    const tmpZip = path.join(os.tmpdir(), `ct-import-${Date.now()}.zip`);
+    if (fs.existsSync(destFolder)) throw new Error('Project folder already exists');
+    const temporary = await fs.promises.mkdtemp(path.join(parentFolder, '.ct-import-'));
+    const tmpZip = path.join(temporary, 'upload.zip');
+    const staging = path.join(temporary, 'project');
 
     try {
       // Download zip (5 min timeout for large projects)
@@ -324,16 +328,20 @@ function registerCloudProjectsHandlers() {
       );
       if (!resp.ok) throw new Error(await resp.text());
 
-      const buffer = Buffer.from(await resp.arrayBuffer());
-      await fs.promises.writeFile(tmpZip, buffer);
-
-      // Extract to destination
-      await fs.promises.mkdir(destFolder, { recursive: true });
-      await extractZip(tmpZip, { dir: destFolder });
+      const { pipeline } = require('node:stream/promises');
+      const { Transform } = require('node:stream');
+      let bytes = 0;
+      await pipeline(resp.body, new Transform({ transform(chunk, encoding, done) {
+        bytes += chunk.length;
+        done(bytes > 1024 ** 3 ? new Error('Project download exceeds size limit') : null, chunk);
+      } }), fs.createWriteStream(tmpZip, { flags: 'wx' }), { signal: AbortSignal.timeout(300000) });
+      await extractZip(tmpZip, { dir: staging });
+      if (fs.existsSync(destFolder)) throw new Error('Project folder already exists');
+      await fs.promises.rename(staging, destFolder);
 
       return { projectPath: destFolder, projectName: folderName, cloudProjectId: projectName };
     } finally {
-      await fs.promises.unlink(tmpZip).catch(() => {});
+      await fs.promises.rm(temporary, { recursive: true, force: true });
     }
   });
 }
