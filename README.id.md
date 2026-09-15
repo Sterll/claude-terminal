@@ -166,6 +166,7 @@ npm install
 
 ### Antarmuka chat (Claude Agent SDK)
 - Antarmuka chat bawaan yang ditenagai Claude Agent SDK, dengan respons streaming
+- Menutup tab chat membatalkan proses awal yang tertunda dan menutup sesi SDK-nya; prompt tertunda tidak dapat memulai ulang tab yang telah ditutup.
 - **Rendering markdown kaya**: diagram mermaid, rumus KaTeX, kode dengan penyorotan sintaks, pohon berkas, papan kanban, blok diff, pratinjau HTML, dan lainnya
 - **Kartu izin**: Izinkan, Selalu izinkan, atau Tolak permintaan penggunaan alat; saat aturan `permissions.ask` milik Anda sendiri yang memicu permintaan itu, kartunya menyebut aturan tersebut dan menyembunyikan "Selalu izinkan" agar tidak bisa dilewati dengan satu klik
 - **Mode rencana**: tinjau lalu setujui atau tolak rencana agen sebelum dijalankan
