@@ -172,7 +172,11 @@ function handleHookEvent(raw) {
       eventBus.emit(EVENT_TYPES.CLAUDE_PERMISSION, {
         tool: stdin.tool_name || stdin.tool || null,
         toolInput: stdin.tool_input || null,
-        requestId: stdin._requestId || null
+        requestId: stdin._requestId || null,
+        // The hook fires before the CLI applies the session's permission mode, so
+        // it also fires in modes that never prompt. Forwarded so the consumer can
+        // tell a real prompt from one the CLI is about to answer by itself.
+        permissionMode: stdin.permission_mode || null
       }, meta);
       break;
 

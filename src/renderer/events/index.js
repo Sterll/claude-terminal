@@ -333,6 +333,29 @@ function wireAttentionConsumer() {
     return true;
   }
 
+  // Tools `acceptEdits` answers on its own — everything else still prompts in that mode.
+  const AUTO_ACCEPTED_EDIT_TOOLS = new Set([
+    'edit', 'write', 'multiedit', 'notebookedit', 'applypatch'
+  ]);
+
+  /**
+   * True when the session's permission mode means the CLI will never put a prompt
+   * on screen for this tool — so the notification would ask the user to decide
+   * something that has already been decided.
+   *
+   * The PermissionRequest hook is an extension point, not the prompt itself: it
+   * fires on every permission decision, including the ones the mode short-circuits.
+   * `plan` and `auto` are deliberately left out — both can still end up asking.
+   *
+   * @param {string|null} mode - `permission_mode` from the hook payload
+   * @param {string|null} tool - Tool being requested
+   */
+  function modeAnswersItself(mode, tool) {
+    if (mode === 'bypassPermissions' || mode === 'dontAsk') return true;
+    if (mode === 'acceptEdits') return AUTO_ACCEPTED_EDIT_TOOLS.has(String(tool || '').toLowerCase());
+    return false;
+  }
+
   consumerUnsubscribers.push(
     // AskUserQuestion / ExitPlanMode → Claude needs user attention
     eventBus.on(EVENT_TYPES.TOOL_START, (e) => {
@@ -381,24 +404,39 @@ function wireAttentionConsumer() {
     eventBus.on(EVENT_TYPES.CLAUDE_PERMISSION, (e) => {
       if (e.source !== 'hooks' || !e.projectId) return;
       const requestId = e.data?.requestId || null;
+      const tool = e.data?.tool || null;
+
+      // Resolve to 'allow' when no notification is shown — otherwise the hook handler
+      // blocks for ~30s waiting for a response that will never come. 'allow' here is
+      // the handler's exit 0, i.e. "this hook has no opinion", not an approval: it
+      // hands the decision back to the CLI rather than overriding the mode.
+      const autoAllow = () => {
+        if (!requestId) return;
+        try {
+          window.electron_api.hooks.resolvePermission(requestId, 'allow');
+        } catch (err) {
+          console.error('[Events] Failed to auto-resolve permission:', err);
+        }
+      };
+
+      // The session's mode answers this one on its own — no prompt will ever appear,
+      // so a notification would ask the user to decide an already-decided call.
+      // Checked before shouldNotify(), which would otherwise burn the project's
+      // dedup slot and swallow a real request arriving right after.
+      if (modeAnswersItself(e.data?.permissionMode || null, tool)) {
+        autoAllow();
+        return;
+      }
 
       if (!shouldNotify(e.projectId)) {
         // Deduped: a question/plan notification was recently shown for this project.
-        // Auto-allow the permission immediately so the hook handler isn't blocked for 30 seconds.
         // (The user is already responding via the question notification or the terminal.)
-        if (requestId) {
-          try {
-            window.electron_api.hooks.resolvePermission(requestId, 'allow');
-          } catch (err) {
-            console.error('[Events] Failed to auto-resolve deduped permission:', err);
-          }
-        }
+        autoAllow();
         return;
       }
 
       const projectName = resolveProjectName(e.projectId);
       const terminalId = resolveTerminalId(e.projectId, e.sessionId);
-      const tool = e.data?.tool || null;
 
       const body = tool
         ? `${t('terminals.notifPermission')} — ${tool}`
@@ -408,18 +446,6 @@ function wireAttentionConsumer() {
         { label: t('terminals.notifBtnAllow'), action: 'allow', style: 'primary' },
         { label: t('terminals.notifBtnDeny'),  action: 'deny',  style: 'danger'  }
       ];
-
-      // Resolve to 'allow' if the notification can't be shown — otherwise the hook handler
-      // blocks for ~30s waiting for a response that will never come (notifications disabled,
-      // window focused on the terminal, or notificationFn missing). Mirrors the deduped path above.
-      const autoAllow = () => {
-        if (!requestId) return;
-        try {
-          window.electron_api.hooks.resolvePermission(requestId, 'allow');
-        } catch (err) {
-          console.error('[Events] Failed to auto-resolve unshown permission:', err);
-        }
-      };
 
       if (notificationFn) {
         const shown = notificationFn('permission', projectName || 'Claude Terminal', body, terminalId, {
