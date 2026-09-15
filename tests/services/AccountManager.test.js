@@ -42,21 +42,29 @@ const setPlatform = (value) => {
 
 // `login` identifies the /login session the tokens came from. Passing it
 // explicitly models the CLI refreshing an account in place; omitting it yields
-// a brand new, unrelated account. Mirrors the real payload: the access and
-// refresh tokens both rotate, `refreshTokenExpiresAt` stays anchored to the
-// original login.
+// a brand new, unrelated account. Separate logins are spread hours apart, which
+// is what distinguishes them: each one re-anchors `refreshTokenExpiresAt` to
+// its own 30-day window.
 const loginStamp = (login) => 1900000000000
-  + [...login].reduce((sum, c) => sum + c.charCodeAt(0), 0);
+  + [...login].reduce((sum, c) => sum + c.charCodeAt(0), 0) * 3600 * 1000;
 
-const creds = (accessToken, subscriptionType = 'max', login = accessToken) => ({
+// `driftMs` is the part the original fixture got wrong. The CLI recomputes
+// `refreshTokenExpiresAt` on every refresh as `Date.now() + expires_in`, so a
+// rotation of the *same* login lands a round-trip later rather than
+// byte-identical. Modelling it as frozen is what let an exact-equality match
+// ship: it passed here and matched nothing in production.
+const creds = (accessToken, subscriptionType = 'max', login = accessToken, driftMs = 0) => ({
   claudeAiOauth: {
     accessToken,
     refreshToken: `refresh-${accessToken}`,
     expiresAt: 1893456000000,
-    refreshTokenExpiresAt: loginStamp(login),
+    refreshTokenExpiresAt: loginStamp(login) + driftMs,
     subscriptionType
   }
 });
+
+const snapshotPath = (id) => path.join(paths.dataDir, 'accounts', `${id}.json`);
+const snapshotOf = (id) => JSON.parse(fs.readFileSync(snapshotPath(id), 'utf8'));
 
 const credentialsFile = () => path.join(paths._root, 'claude-config', '.credentials.json');
 const readCredentialsFile = () => JSON.parse(fs.readFileSync(credentialsFile(), 'utf8'));
@@ -263,16 +271,134 @@ describe('syncActiveFromDisk', () => {
     expect(await AccountManager.syncActiveFromDisk()).toBeNull();
   });
 
+  test('follows a rotation whose refresh-token anchor drifted', async () => {
+    mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-team', 'team')));
+    const team = await AccountManager.captureCurrent('Team');
+
+    // Both tokens rotate and the anchor is recomputed a round-trip later. This
+    // is the production shape: 874 ms of drift signed the account out, because
+    // the fallback demanded the anchor be identical to the millisecond.
+    mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-team-v2', 'team', 'tok-team', 874)));
+
+    expect((await AccountManager.syncActiveFromDisk()).id).toBe(team.id);
+    expect(snapshotOf(team.id).claudeAiOauth.accessToken).toBe('tok-team-v2');
+  });
+
+  test('does not rewrite anything when the store has not moved', async () => {
+    mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-team', 'team')));
+    const team = await AccountManager.captureCurrent('Team');
+    const before = fs.statSync(snapshotPath(team.id)).mtimeMs;
+
+    // The watcher ticks every five minutes against a token that refreshes every
+    // eight hours, so the overwhelmingly common case must touch no files.
+    expect((await AccountManager.syncActiveFromDisk()).id).toBe(team.id);
+    expect(fs.statSync(snapshotPath(team.id)).mtimeMs).toBe(before);
+  });
+
   test('is a no-op when no credentials exist at all', async () => {
     expect(await AccountManager.syncActiveFromDisk()).toBeNull();
   });
 });
 
-describe('snapshot integrity across a switch', () => {
-  const snapshotOf = (id) => JSON.parse(
-    fs.readFileSync(path.join(paths.dataDir, 'accounts', `${id}.json`), 'utf8')
-  );
+describe('per-account credential stores', () => {
+  beforeEach(() => setPlatform('linux'));
 
+  const storeFile = (id) => path.join(
+    paths.dataDir, 'accounts', 'config', id, '.credentials.json'
+  );
+  const storeOf = (id) => JSON.parse(fs.readFileSync(storeFile(id), 'utf8'));
+
+  const writeLive = (payload) => {
+    fs.mkdirSync(path.dirname(credentialsFile()), { recursive: true });
+    fs.writeFileSync(credentialsFile(), JSON.stringify(payload));
+  };
+
+  // What the CLI leaves behind when the server refuses a refresh: the payload
+  // is still a well-formed object, which is why "did the read return
+  // something" was the wrong question to ask of it.
+  const signedOut = () => ({
+    claudeAiOauth: {
+      accessToken: '', refreshToken: '', expiresAt: 0,
+      refreshTokenExpiresAt: loginStamp('tok-a'), subscriptionType: 'max'
+    }
+  });
+
+  test('the live account runs on the machine-wide store, not a private copy', async () => {
+    writeLive(creds('tok-a'));
+    const a = await AccountManager.captureCurrent('Account A');
+
+    // Two stores refreshing one OAuth grant is the shape that signs the user
+    // out: whichever rotates second invalidates the other's refresh token.
+    expect(await AccountManager.accountEnv(a.id)).toBeNull();
+  });
+
+  test('an account that is not live still gets its own store', async () => {
+    writeLive(creds('tok-a'));
+    const a = await AccountManager.captureCurrent('Account A');
+    writeLive(creds('tok-b', 'team'));
+    await AccountManager.captureCurrent('Account B');
+
+    const env = await AccountManager.accountEnv(a.id);
+    expect(env).toEqual({ CLAUDE_SECURESTORAGE_CONFIG_DIR: AccountManager.accountConfigDir(a.id) });
+  });
+
+  test('re-seeds a store the CLI blanked after a refused refresh', async () => {
+    writeLive(creds('tok-a'));
+    const a = await AccountManager.captureCurrent('Account A');
+    writeLive(creds('tok-b', 'team'));
+    await AccountManager.captureCurrent('Account B');
+    await AccountManager.ensureAccountStore(a.id);
+
+    fs.writeFileSync(storeFile(a.id), JSON.stringify(signedOut()));
+
+    // The old check accepted the blanked payload as "already provisioned" and
+    // handed the dead directory back on every later call, forever.
+    expect(await AccountManager.ensureAccountStore(a.id)).toBe(AccountManager.accountConfigDir(a.id));
+    expect(storeOf(a.id).claudeAiOauth.accessToken).toBe('tok-a');
+  });
+
+  test('copies a store the CLI refreshed back into the snapshot', async () => {
+    writeLive(creds('tok-a'));
+    const a = await AccountManager.captureCurrent('Account A');
+    writeLive(creds('tok-b', 'team'));
+    await AccountManager.captureCurrent('Account B');
+    await AccountManager.ensureAccountStore(a.id);
+
+    // A bound project runs; the CLI rotates A's tokens inside A's own store.
+    fs.writeFileSync(storeFile(a.id), JSON.stringify(creds('tok-a-v2', 'max', 'tok-a', 501)));
+    await AccountManager.ensureAccountStore(a.id);
+
+    expect(snapshotOf(a.id).claudeAiOauth.accessToken).toBe('tok-a-v2');
+  });
+
+  test('will not copy a stranger in that store over the snapshot', async () => {
+    writeLive(creds('tok-a'));
+    const a = await AccountManager.captureCurrent('Account A');
+    writeLive(creds('tok-b', 'team'));
+    await AccountManager.captureCurrent('Account B');
+    await AccountManager.ensureAccountStore(a.id);
+
+    // `claude /login` run inside A's directory, onto a different account.
+    fs.writeFileSync(storeFile(a.id), JSON.stringify(creds('tok-stranger', 'pro')));
+    await AccountManager.ensureAccountStore(a.id);
+
+    expect(snapshotOf(a.id).claudeAiOauth.accessToken).toBe('tok-a');
+  });
+
+  test('usage for the live account reads the store it actually uses', async () => {
+    writeLive(creds('tok-a'));
+    const a = await AccountManager.captureCurrent('Account A');
+    await AccountManager.ensureAccountStore(a.id);
+    fs.writeFileSync(storeFile(a.id), JSON.stringify(signedOut()));
+
+    // The blanked private store is what made a signed-in account report
+    // "usage unavailable — run claude /login on this account".
+    const resolved = await AccountManager.credentialsForAccount(a.id);
+    expect(resolved.claudeAiOauth.accessToken).toBe('tok-a');
+  });
+});
+
+describe('snapshot integrity across a switch', () => {
   test('switching away after an uncaptured /login leaves the outgoing snapshot intact', async () => {
     mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-a')));
     const a = await AccountManager.captureCurrent('Account A');
@@ -319,10 +445,6 @@ describe('MCP server tokens', () => {
     ...creds(accessToken),
     mcpOAuth: { [`${server}|abc123`]: { serverName: server, accessToken: `mcp-${server}` } }
   });
-
-  const snapshotOf = (id) => JSON.parse(
-    fs.readFileSync(path.join(paths.dataDir, 'accounts', `${id}.json`), 'utf8')
-  );
 
   test('switching keeps the MCP tokens the CLI currently holds', async () => {
     mockKeychain.set(MOCK_KEY, JSON.stringify(withMcp('tok-a', 'notion')));

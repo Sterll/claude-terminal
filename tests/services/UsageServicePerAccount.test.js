@@ -41,8 +41,15 @@ jest.mock('../../src/main/utils/claudeCredentials', () => ({
   tokenFromCredentials: jest.fn((creds) => creds?.claudeAiOauth?.accessToken ?? null)
 }));
 
+// Which store an account authenticates from is AccountManager's decision, not
+// UsageService's: an account that holds the machine-wide login reads from
+// there, and only a bound one reads its own directory. None of the accounts
+// below hold it, so each resolves to its own directory — which is what these
+// tests are about. The live-account case is pinned in AccountManager.test.js.
 jest.mock('../../src/main/services/AccountManager', () => ({
-  accountConfigDir: (id) => `/tmp/accounts/config/${id}`
+  accountConfigDir: (id) => `/tmp/accounts/config/${id}`,
+  credentialsForAccount: async (id) => require('../../src/main/utils/claudeCredentials')
+    .readCredentialsForDir(`/tmp/accounts/config/${id}`)
 }));
 
 jest.mock('../../src/main/windows/MainWindow', () => ({ isMainWindowVisible: () => true }), { virtual: true });

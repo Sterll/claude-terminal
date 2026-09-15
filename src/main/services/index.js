@@ -44,6 +44,16 @@ function initializeServices(mainWindow) {
   // Discord Rich Presence (reads its own enabled/showProject prefs from settings.json)
   try { discordRpcService.start(); } catch (e) { console.warn('[Services] DiscordRPC start failed:', e.message); }
 
+  // Track the CLI's own token refreshes on the machine-wide store, so the
+  // account snapshot this app would restore from never falls behind a
+  // refresh-token rotation. Required lazily, like the watchers below, to keep
+  // this module free of an accounts dependency at load time.
+  try {
+    require('./AccountManager').startCredentialWatch();
+  } catch (e) {
+    console.warn('[Services] Credential watch start failed:', e.message);
+  }
+
   // Provision unified MCP in global Claude settings
   databaseService.provisionGlobalMcp().catch(() => {});
 
@@ -359,6 +369,7 @@ function cleanupServices() {
   remoteServer.stop();
   workflowService.destroy();
   discordRpcService.destroy();
+  try { require('./AccountManager').stopCredentialWatch(); } catch (_) { /* non-critical */ }
   databaseService.disconnectAll().catch(() => {});
   _stopMcpTriggerPolling();
   // fs.watch on the artifacts index. Required lazily (same pattern as the

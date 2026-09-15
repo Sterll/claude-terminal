@@ -145,12 +145,27 @@ function readSnapshot(id) {
 }
 
 /**
+ * How far `refreshTokenExpiresAt` may move between two rotations of one login
+ * and still be recognised as that login.
+ *
+ * The field is not the fixed anchor it looks like: the CLI recomputes it on
+ * every refresh as `Date.now() + expires_in`, so each rotation lands a network
+ * round-trip later than the last rather than byte-identical. Requiring exact
+ * equality therefore never matched a real rotation — 874 ms apart in the case
+ * that produced this constant — which silently froze every snapshot at capture
+ * time. A separate `/login` re-anchors the whole 30-day window instead, putting
+ * it hours or days away. A minute sits far outside the drift and far inside the
+ * gap.
+ */
+const ROTATION_DRIFT_MS = 60 * 1000;
+
+/**
  * Decide whether live credentials are the same account as a stored snapshot
  * whose access token no longer matches — i.e. the CLI refreshed it in place.
  *
  * The access token is what the fingerprint hashes, so it is useless here. The
  * refresh token survives an access-token refresh, and `refreshTokenExpiresAt`
- * is anchored to the original login, so it survives a refresh-token rotation
+ * tracks the original login closely enough to survive a refresh-token rotation
  * too. Both are per-login values: a different account never matches.
  *
  * Returning false is always safe — the caller then leaves the snapshot alone.
@@ -160,8 +175,52 @@ function isRotationOf(live, snapshot) {
   const b = snapshot?.claudeAiOauth || snapshot;
   if (!a || !b) return false;
   if (a.refreshToken && a.refreshToken === b.refreshToken) return true;
-  if (a.refreshTokenExpiresAt && a.refreshTokenExpiresAt === b.refreshTokenExpiresAt) return true;
+  if (a.refreshTokenExpiresAt && b.refreshTokenExpiresAt
+      && Math.abs(a.refreshTokenExpiresAt - b.refreshTokenExpiresAt) <= ROTATION_DRIFT_MS) {
+    return true;
+  }
   return false;
+}
+
+/**
+ * Which stored account the machine-wide store currently holds, or null when it
+ * holds nobody this app has captured.
+ *
+ * The fingerprint is exact when it hits, but it hashes the access token, so it
+ * stops matching the moment the CLI refreshes. `liveId` — the account last
+ * written to that store — is the fallback, taken only when the live credentials
+ * are provably a rotation of that account's snapshot. Without that check a
+ * manual `claude /login` onto a never-captured account would be attributed to
+ * the previous one.
+ *
+ * @param {Object} index
+ * @param {Object|null} creds
+ */
+function matchLiveAccount(index, creds) {
+  const fp = fingerprintCredentials(creds);
+  if (!fp) return null;
+  const exact = index.accounts.find(a => a.fingerprint === fp);
+  if (exact) return exact;
+  const live = index.accounts.find(a => a.id === index.liveId);
+  if (live && isRotationOf(creds, readSnapshot(live.id))) return live;
+  return null;
+}
+
+/**
+ * Whether a credential payload can still authenticate, or at least renew.
+ *
+ * The CLI blanks its own store — `accessToken: ''`, `refreshToken: ''`,
+ * `expiresAt: 0` — when a refresh is refused, which is what a signed-out
+ * account looks like on disk. That payload parses as a perfectly good object,
+ * so "did the read return something" is not the question worth asking of it.
+ *
+ * @param {Object|null} creds
+ */
+function isUsableStore(creds) {
+  const oauth = creds?.claudeAiOauth || creds;
+  if (!oauth || typeof oauth !== 'object') return false;
+  if (oauth.refreshToken) return true;
+  return Boolean(oauth.accessToken) && (!oauth.expiresAt || Date.now() < oauth.expiresAt);
 }
 
 function generateId() {
@@ -239,16 +298,84 @@ async function ensureAccountStore(id) {
   if (!index.accounts.some(a => a.id === id)) return null;
   const dir = accountConfigDir(id);
 
-  if (await readCredentialsForDir(dir)) {
+  const current = await readCredentialsForDir(dir);
+  if (isUsableStore(current)) {
     // Already provisioned; drop the seed if the Keychain has taken over.
     await pruneSeedForDir(dir);
+    // The CLI refreshes inside this store, so it — not the snapshot — is the
+    // record of where the account's tokens are now. Copy it back, or the backup
+    // rots exactly the way the machine-wide one did.
+    snapshotFromStore(id, current);
     return dir;
   }
 
+  // Either never provisioned, or the CLI emptied it after a refresh the server
+  // refused. Both want the same thing, and the second used to be indistinguishable
+  // from the first only because a blanked payload still reads as an object:
+  // the dead store was handed back untouched, forever.
   const snapshot = readSnapshot(id);
-  if (!snapshot) return null;
+  if (!isUsableStore(snapshot)) return null;
   writeSeedForDir(dir, snapshot);
   return dir;
+}
+
+/**
+ * Refresh an account's snapshot from its own credential store.
+ *
+ * Only when the store still holds the account the snapshot describes: a
+ * `claude /login` run inside that directory could have put a stranger there,
+ * and overwriting a good snapshot with one is unrecoverable. Skipping the
+ * refresh is not.
+ *
+ * @param {string} id
+ * @param {Object} creds - what the store currently holds
+ */
+function snapshotFromStore(id, creds) {
+  const snapshot = readSnapshot(id);
+  if (!snapshot) return;
+  const fp = fingerprintCredentials(creds);
+  if (!fp) return;
+  if (fp !== fingerprintCredentials(snapshot) && !isRotationOf(creds, snapshot)) return;
+
+  const stored = accountCredentials(creds);
+  if (JSON.stringify(stored) === JSON.stringify(snapshot)) return;
+  fs.writeFileSync(accountFile(id), JSON.stringify(stored, null, 2), { mode: 0o600 });
+
+  const index = readIndex();
+  const account = index.accounts.find(a => a.id === id);
+  if (!account) return;
+  account.fingerprint = fp;
+  writeIndex(index);
+}
+
+/**
+ * Whether an account is the one the machine-wide store currently holds.
+ * @param {string} id
+ * @returns {Promise<boolean>}
+ */
+async function ownsLiveStore(id) {
+  const index = readIndex();
+  if (!index.accounts.some(a => a.id === id)) return false;
+  return matchLiveAccount(index, await readCurrentCredentials())?.id === id;
+}
+
+/**
+ * The credentials an account authenticates with — its own store, or the
+ * machine-wide one when it is the account that store holds.
+ *
+ * One account, two stores refreshing the same OAuth grant, is the shape that
+ * breaks: rotation invalidates whichever refresh token the other one still
+ * holds, and the loser is signed out. So the live account has exactly one
+ * store, and it is the machine-wide one.
+ *
+ * @param {string|null} id
+ * @returns {Promise<Object|null>}
+ */
+async function credentialsForAccount(id) {
+  if (!id) return readCurrentCredentials();
+  if (await ownsLiveStore(id)) return readCurrentCredentials();
+  const dir = await ensureAccountStore(id);
+  return dir ? readCredentialsForDir(dir) : null;
 }
 
 /**
@@ -260,11 +387,19 @@ async function ensureAccountStore(id) {
  * capturing a new account — behaving as it always has. setDefault() is what
  * makes the default real, by putting it in that store.
  *
+ * Nor does the account that already owns the machine-wide store get a private
+ * one: pointing a spawn at a second copy of the same OAuth grant is what signs
+ * the account out. Both stores refresh on their own schedule, each rotation
+ * invalidates the other's refresh token server-side, and the CLI blanks
+ * whichever store loses the race. The default account is the usual victim,
+ * because it is the one most likely to be live and bound at once.
+ *
  * @param {string|null} accountId - The project's binding, if any
  * @returns {Promise<Object|null>} Env overlay, or null
  */
 async function accountEnv(accountId) {
   if (!accountId) return null;
+  if (await ownsLiveStore(accountId)) return null;
   const dir = await ensureAccountStore(accountId);
   if (!dir) return null;
   return { [SECURESTORAGE_ENV]: dir };
@@ -362,7 +497,7 @@ async function switchTo(id) {
  * stranger's tokens. Bailing out instead just skips the refresh.
  *
  * Bound accounts do not go through here: the CLI refreshes them inside their
- * own store, which stays authoritative on its own.
+ * own store, which `ensureAccountStore()` copies back instead.
  */
 async function syncActiveFromDisk() {
   const creds = await readCurrentCredentials();
@@ -371,19 +506,53 @@ async function syncActiveFromDisk() {
   if (!fp) return null;
 
   const index = readIndex();
-  let match = index.accounts.find(a => a.fingerprint === fp);
-  if (!match) {
-    const live = index.accounts.find(a => a.id === index.liveId);
-    if (live && isRotationOf(creds, readSnapshot(live.id))) match = live;
-  }
+  const match = matchLiveAccount(index, creds);
   if (!match) return null;
 
-  fs.writeFileSync(accountFile(match.id), JSON.stringify(accountCredentials(creds), null, 2), { mode: 0o600 });
+  const stored = accountCredentials(creds);
+  // This runs on a timer, and a refresh is an eight-hourly event: without the
+  // early-out every tick would rewrite two files and move `lastUsedAt`, which
+  // is supposed to mean "last used", not "last polled".
+  if (match.fingerprint === fp
+      && index.liveId === match.id
+      && JSON.stringify(readSnapshot(match.id)) === JSON.stringify(stored)) {
+    return summarize(match);
+  }
+
+  fs.writeFileSync(accountFile(match.id), JSON.stringify(stored, null, 2), { mode: 0o600 });
   match.fingerprint = fp;
   match.lastUsedAt = new Date().toISOString();
   index.liveId = match.id;
   writeIndex(index);
   return summarize(match);
+}
+
+/**
+ * Keep the machine-wide store's snapshot current while the app runs.
+ *
+ * The CLI refreshes that store on its own schedule, rotating the refresh token
+ * as it goes — and a rotation invalidates the previous one server-side. A
+ * snapshot taken before the rotation is therefore not merely old, it is dead:
+ * restoring it signs the account out. Syncing only at switch time left that
+ * window open for however long the user went without switching, which in
+ * practice was forever.
+ */
+const SYNC_INTERVAL_MS = 5 * 60 * 1000;
+let syncTimer = null;
+
+function startCredentialWatch() {
+  if (syncTimer) return;
+  const tick = () => syncActiveFromDisk()
+    .catch(err => console.warn('[AccountManager] credential sync failed:', err.message));
+  tick();
+  syncTimer = setInterval(tick, SYNC_INTERVAL_MS);
+  if (syncTimer.unref) syncTimer.unref();
+}
+
+function stopCredentialWatch() {
+  if (!syncTimer) return;
+  clearInterval(syncTimer);
+  syncTimer = null;
 }
 
 /**
@@ -433,10 +602,14 @@ module.exports = {
   switchTo,
   setDefault,
   syncActiveFromDisk,
+  startCredentialWatch,
+  stopCredentialWatch,
   updateAccount,
   renameAccount,
   removeAccount,
   accountConfigDir,
   ensureAccountStore,
+  credentialsForAccount,
+  ownsLiveStore,
   accountEnv
 };

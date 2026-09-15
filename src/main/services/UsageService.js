@@ -4,7 +4,7 @@
  */
 
 const https = require('https');
-const { readCredentials, readCredentialsForDir, tokenFromCredentials } = require('../utils/claudeCredentials');
+const { readCredentials, tokenFromCredentials } = require('../utils/claudeCredentials');
 
 // Per-account state.
 //
@@ -113,13 +113,18 @@ const DATA_STALE_AFTER = 10 * 60 * 1000;
  * The credentials an account authenticates with: its own store when it is
  * bound to one, the machine-wide login otherwise.
  *
+ * Delegated to AccountManager rather than reading the per-account directory
+ * outright, because "its own store" is not unconditional: the account that
+ * currently holds the machine-wide login authenticates from there, and reading
+ * a private directory it does not use is how a perfectly signed-in account
+ * came to report "usage unavailable — run claude /login".
+ *
  * @param {string|null} accountId
  * @returns {Promise<Object|null>}
  */
 function readCredentialsFor(accountId) {
   if (!accountId) return readCredentials();
-  const { accountConfigDir } = require('./AccountManager');
-  return readCredentialsForDir(accountConfigDir(accountId));
+  return require('./AccountManager').credentialsForAccount(accountId);
 }
 
 /**

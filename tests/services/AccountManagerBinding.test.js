@@ -161,9 +161,21 @@ describe('per-account credential store', () => {
 
   test('accountEnv points a spawn at that directory', async () => {
     const max = await capture('Max 20x', 'tok-max');
+    // Capturing Team moves the machine-wide store off Max, which is what gives
+    // Max a private store to be pointed at in the first place.
+    await capture('Team', 'tok-team', 'team');
 
     const env = await AccountManager.accountEnv(max.id);
     expect(env[SECURESTORAGE_ENV]).toBe(AccountManager.accountConfigDir(max.id));
+  });
+
+  test('the account holding the machine-wide store gets no overlay', async () => {
+    const max = await capture('Max 20x', 'tok-max');
+
+    // One account, two stores, one OAuth grant: each store refreshes on its own
+    // schedule and the rotation invalidates the other's refresh token, so the
+    // CLI blanks whichever loses. The live account keeps a single store.
+    expect(await AccountManager.accountEnv(max.id)).toBeNull();
   });
 
   test('each account gets a distinct directory, and so a distinct keychain entry', async () => {
@@ -250,6 +262,10 @@ describe('file store platforms', () => {
     fs.writeFileSync(credPath, JSON.stringify(creds('tok-max')));
 
     const max = await AccountManager.captureCurrent('Max 20x');
+    // Move the machine-wide store off Max, so Max is the bound-account case.
+    fs.writeFileSync(credPath, JSON.stringify(creds('tok-team', 'team')));
+    await AccountManager.captureCurrent('Team');
+
     const env = await AccountManager.accountEnv(max.id);
 
     expect(env[SECURESTORAGE_ENV]).toBe(AccountManager.accountConfigDir(max.id));
