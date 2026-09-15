@@ -74,6 +74,7 @@ const GIT_FAILURE_MESSAGES = {
   enoent: 'Git is not installed or not available on PATH',
   timeout: 'Git command timed out',
   nodir: 'Directory not found',
+  badargs: 'Git command was built incorrectly',
 };
 
 /** Failures caused by the environment rather than by the repository state. */
@@ -181,9 +182,21 @@ function _logGitFailure(cwd, argsArray, reason, error) {
  * @returns {Promise<{ok: boolean, output: string, reason: 'enoent'|'timeout'|'exit'|'nodir'|null, error: string|null}>}
  */
 function execGitResult(cwd, args, timeout = 10000) {
-  // WARNING: the string form splits naively on spaces - quotes are NOT honoured (they stay
-  // literal in the argv entry) and any value containing a space becomes several arguments.
-  // Pass an array whenever an argument is user-controlled or may contain spaces.
+  // The string form splits naively on spaces. Quotes are NOT honoured: they stay
+  // inside the argv entry, and any value containing a space becomes several
+  // arguments. It is kept only for fixed commands with no interpolation
+  // ('status --porcelain'); pass an array for anything else.
+  //
+  // A quote in the string form is always a bug, and used to be a silent one -
+  // `blame --porcelain "${filePath}"` sent git a path that literally began with
+  // a quote, so blame, file history and per-file commit diffs returned nothing
+  // for every file, and tag creation failed outright on Windows because `"` is
+  // not a legal filename character there. Refuse it loudly instead.
+  if (typeof args === 'string' && /["']/.test(args)) {
+    const error = `git args contain a quote in the string form, which is not honoured: ${args}. Pass an array.`;
+    console.error('[git]', error);
+    return Promise.resolve({ ok: false, output: '', reason: 'badargs', error });
+  }
   const argsArray = Array.isArray(args) ? args : args.split(' ');
 
   return new Promise((resolve) => {
@@ -363,7 +376,7 @@ async function getAheadBehind(projectPath, branch, skipFetch = false) {
   }
 
   // Get the upstream tracking branch
-  const upstream = await execGit(projectPath, `rev-parse --abbrev-ref ${branch}@{upstream}`);
+  const upstream = await execGit(projectPath, ['rev-parse', '--abbrev-ref', `${branch}@{upstream}`]);
   if (!upstream) {
     // No upstream set, check if remote origin exists
     const remoteUrl = await execGit(projectPath, 'remote get-url origin');
@@ -375,7 +388,7 @@ async function getAheadBehind(projectPath, branch, skipFetch = false) {
   }
 
   // Get ahead/behind counts
-  const counts = await execGit(projectPath, `rev-list --left-right --count ${branch}...${upstream}`);
+  const counts = await execGit(projectPath, ['rev-list', '--left-right', '--count', `${branch}...${upstream}`]);
   if (!counts) {
     return { ahead: 0, behind: 0, remote: upstream, hasRemote: true };
   }
@@ -459,8 +472,8 @@ async function getLatestTag(projectPath) {
   const tag = await execGit(projectPath, 'describe --tags --abbrev=0');
   if (!tag) return null;
 
-  const tagDate = await execGit(projectPath, `log -1 --format="%ar" ${tag}`);
-  const commitsBehind = await execGit(projectPath, `rev-list ${tag}..HEAD --count`);
+  const tagDate = await execGit(projectPath, ['log', '-1', '--format=%ar', tag]);
+  const commitsBehind = await execGit(projectPath, ['rev-list', `${tag}..HEAD`, '--count']);
 
   return {
     name: tag,
@@ -476,7 +489,7 @@ async function getLatestTag(projectPath) {
  * @returns {Promise<Array>} - List of commits
  */
 async function getRecentCommits(projectPath, count = 5) {
-  const output = await execGit(projectPath, `log -${count} --format="%h|%s|%an|%ar"`);
+  const output = await execGit(projectPath, ['log', `-${count}`, '--format=%h|%s|%an|%ar']);
   if (!output) return [];
   return output.split('\n').filter(l => l.trim()).map(line => {
     const [hash, message, author, date] = line.split('|');
@@ -520,7 +533,7 @@ async function getGitInfo(projectPath) {
   if (!branchResult.ok || !branchResult.output) return notAGitRepo(branchResult);
   const branch = branchResult.output;
 
-  const lastCommit = await execGit(projectPath, 'log -1 --format="%H|%s|%an|%ar"');
+  const lastCommit = await execGit(projectPath, ['log', '-1', '--format=%H|%s|%an|%ar']);
   const status = await execGit(projectPath, 'status --porcelain');
 
   let commit = null;
@@ -555,7 +568,7 @@ async function getGitInfoFull(projectPath, options = {}) {
     remoteUrl,
     totalCommits
   ] = (await Promise.allSettled([
-    execGit(projectPath, 'log -1 --format="%H|%s|%an|%ar"'),
+    execGit(projectPath, ['log', '-1', '--format=%H|%s|%an|%ar']),
     execGit(projectPath, 'status --porcelain'),
     execGit(projectPath, 'remote get-url origin'),
     getTotalCommits(projectPath)
@@ -1124,9 +1137,11 @@ async function deleteBranch(projectPath, branch, force = false) {
 async function getCommitHistory(projectPath, { skip = 0, limit = 30, branch = '', allBranches = false } = {}) {
   const RS = '%x1e'; // Record Separator to avoid conflicts with commit messages
   const format = `%H${RS}%h${RS}%s${RS}%an${RS}%ae${RS}%ar${RS}%aI${RS}%P${RS}%D`;
-  const allFlag = allBranches ? ' --all' : '';
-  const branchArg = branch ? ` ${branch}` : '';
-  const output = await execGit(projectPath, `log --skip=${skip} -${limit} --format="${format}"${allFlag}${branchArg}`, 15000);
+  const output = await execGit(projectPath, [
+    'log', `--skip=${skip}`, `-${limit}`, `--format=${format}`,
+    ...(allBranches ? ['--all'] : []),
+    ...(branch ? [branch] : []),
+  ], 15000);
   if (!output) return [];
   return output.split('\n').filter(l => l.trim()).map(line => {
     const parts = line.split('\x1e');
@@ -1501,8 +1516,8 @@ async function diffWorktreeBranches(projectPath, branch1, branch2, filePath = ''
  */
 async function diffWorktreeBranchesWithStats(projectPath, branch1, branch2) {
   const [numstatRaw, nameStatusRaw] = await Promise.all([
-    execGit(projectPath, `diff --numstat ${branch1}...${branch2}`, 15000),
-    execGit(projectPath, `diff --name-status ${branch1}...${branch2}`, 15000),
+    execGit(projectPath, ['diff', '--numstat', `${branch1}...${branch2}`], 15000),
+    execGit(projectPath, ['diff', '--name-status', `${branch1}...${branch2}`], 15000),
   ]);
 
   const numstat = parseDiffNumstat(numstatRaw);
@@ -1585,25 +1600,25 @@ function killAllGitProcesses() {
 // ── Delete remote branch ──
 
 async function deleteRemoteBranch(projectPath, branch, remote = 'origin') {
-  return execGit(projectPath, `push ${remote} --delete ${branch}`, 30000);
+  return execGit(projectPath, ['push', remote, '--delete', branch], 30000);
 }
 
 // ── Dedicated fetch ──
 
 async function gitFetch(projectPath, remote = 'origin') {
-  return execGit(projectPath, `fetch ${remote} --prune`, 30000);
+  return execGit(projectPath, ['fetch', remote, '--prune'], 30000);
 }
 
 // ── Branch rename ──
 
 async function renameBranch(projectPath, oldName, newName) {
-  return execGit(projectPath, `branch -m ${oldName} ${newName}`);
+  return execGit(projectPath, ['branch', '-m', oldName, newName]);
 }
 
 // ── Rebase ──
 
 async function gitRebase(projectPath, branch) {
-  return execGit(projectPath, `rebase ${branch}`, 60000);
+  return execGit(projectPath, ['rebase', branch], 60000);
 }
 
 async function gitRebaseAbort(projectPath) {
@@ -1618,10 +1633,13 @@ async function gitRebaseContinue(projectPath) {
 
 async function getFileHistory(projectPath, filePath, options = {}) {
   const { skip = 0, limit = 30 } = options;
-  const output = await execGit(projectPath, `log --skip=${skip} -n ${limit} --pretty=format:"%H|%an|%aI|%s" -- "${filePath}"`, 15000);
+  const output = await execGit(projectPath, ['log', `--skip=${skip}`, '-n', String(limit), '--pretty=format:%H|%an|%aI|%s', '--', filePath], 15000);
   if (!output) return [];
   return output.split('\n').filter(Boolean).map(line => {
-    const parts = line.replace(/^"|"$/g, '').split('|');
+    // No quote stripping here any more. It used to compensate for the literal
+    // quotes --pretty=format:"..." left in the output, and would now eat a real
+    // trailing quote off a commit subject, which is the last field.
+    const parts = line.split('|');
     return { hash: parts[0], author: parts[1], date: parts[2], message: parts.slice(3).join('|') };
   });
 }
@@ -1630,7 +1648,7 @@ async function getFileHistory(projectPath, filePath, options = {}) {
 
 async function getCommitFileDiffs(projectPath, commitHash) {
   // Get list of changed files with stats
-  const statsOutput = await execGit(projectPath, `diff-tree --no-commit-id -r --numstat ${commitHash}`, 15000);
+  const statsOutput = await execGit(projectPath, ['diff-tree', '--no-commit-id', '-r', '--numstat', commitHash], 15000);
   const files = [];
   if (statsOutput) {
     for (const line of statsOutput.split('\n').filter(Boolean)) {
@@ -1648,14 +1666,14 @@ async function getCommitFileDiffs(projectPath, commitHash) {
 }
 
 async function getCommitFileDiff(projectPath, commitHash, filePath) {
-  const output = await execGit(projectPath, `diff ${commitHash}~1 ${commitHash} -- "${filePath}"`, 15000);
+  const output = await execGit(projectPath, ['diff', `${commitHash}~1`, commitHash, '--', filePath], 15000);
   return output || '';
 }
 
 // ── Git blame ──
 
 async function gitBlame(projectPath, filePath) {
-  const output = await execGit(projectPath, `blame --porcelain "${filePath}"`, 30000);
+  const output = await execGit(projectPath, ['blame', '--porcelain', '--', filePath], 30000);
   if (!output) return [];
   const lines = [];
   let current = null;
@@ -1698,21 +1716,21 @@ async function getTags(projectPath) {
 
 async function createTag(projectPath, name, message, commitHash) {
   if (message) {
-    return execGit(projectPath, `tag -a "${name}" -m "${message}"${commitHash ? ' ' + commitHash : ''}`);
+    return execGit(projectPath, ['tag', '-a', name, '-m', message, ...(commitHash ? [commitHash] : [])]);
   }
-  return execGit(projectPath, `tag "${name}"${commitHash ? ' ' + commitHash : ''}`);
+  return execGit(projectPath, ['tag', name, ...(commitHash ? [commitHash] : [])]);
 }
 
 async function deleteTag(projectPath, name) {
-  return execGit(projectPath, `tag -d "${name}"`);
+  return execGit(projectPath, ['tag', '-d', name]);
 }
 
 async function pushTag(projectPath, name, remote = 'origin') {
-  return execGit(projectPath, `push ${remote} "${name}"`, 30000);
+  return execGit(projectPath, ['push', remote, name], 30000);
 }
 
 async function pushAllTags(projectPath, remote = 'origin') {
-  return execGit(projectPath, `push ${remote} --tags`, 30000);
+  return execGit(projectPath, ['push', remote, '--tags'], 30000);
 }
 
 // ── Discard file changes (git restore) ──
@@ -1723,24 +1741,50 @@ async function pushAllTags(projectPath, remote = 'origin') {
  * @param {string[]} files - List of file paths to discard
  * @returns {Promise<Object>} - Result object
  */
+/**
+ * Split `git status --porcelain -z` output into tracked and untracked paths.
+ *
+ * -z is what makes this correct, not a stylistic choice. Without it git quotes
+ * and C-escapes any path that is not plain ASCII (core.quotePath is on by
+ * default), so reading the path as `line.substring(3)` handed back something
+ * wrapped in literal quotes; the stat that followed failed, the error was
+ * swallowed, and the file was silently not discarded. -z also removes the
+ * trailing-space guesswork and makes a newline inside a filename harmless.
+ *
+ * Records are NUL-terminated as "XY <path>". A rename or copy emits a second,
+ * bare record holding the original path, with no status prefix - it has to be
+ * consumed here rather than read as another entry, or its first two characters
+ * would be taken for a status code.
+ *
+ * @param {string|null} statusOutput
+ * @returns {{tracked: string[], untracked: string[]}}
+ */
+function parsePorcelainZ(statusOutput) {
+  const untracked = [];
+  const tracked = [];
+  if (!statusOutput) return { tracked, untracked };
+
+  const records = statusOutput.split('\0');
+  for (let i = 0; i < records.length; i++) {
+    const record = records[i];
+    if (!record || record.length < 4) continue;
+    const status = record.substring(0, 2);
+    const filePath = record.substring(3);
+    if (status[0] === 'R' || status[0] === 'C') i++; // skip the original path
+    if (status === '??') {
+      untracked.push(filePath);
+    } else {
+      tracked.push(filePath);
+    }
+  }
+  return { tracked, untracked };
+}
+
 async function gitDiscardFiles(projectPath, files) {
   if (!files || files.length === 0) return { success: false, error: 'No files specified' };
 
-  // Separate tracked vs untracked files
-  const statusOutput = await execGit(projectPath, ['status', '--porcelain', '--', ...files]);
-  const untrackedFiles = [];
-  const trackedFiles = [];
-  if (statusOutput) {
-    for (const line of statusOutput.split('\n').filter(Boolean)) {
-      const status = line.substring(0, 2);
-      const filePath = line.substring(3).trim();
-      if (status === '??') {
-        untrackedFiles.push(filePath);
-      } else {
-        trackedFiles.push(filePath);
-      }
-    }
-  }
+  const statusOutput = await execGit(projectPath, ['status', '--porcelain', '-z', '--', ...files]);
+  const { tracked: trackedFiles, untracked: untrackedFiles } = parsePorcelainZ(statusOutput);
 
   // Discard tracked file changes with git restore
   if (trackedFiles.length > 0) {
@@ -1983,6 +2027,7 @@ module.exports = {
   stashDrop,
   gitStashSave,
   parseWorktreeListOutput,
+  parsePorcelainZ,
   getWorktrees,
   createWorktree,
   removeWorktree,

@@ -229,3 +229,62 @@ branch refs/heads/main`;
     expect(result[0].path).toBe('/path');
   });
 });
+
+// ── parsePorcelainZ ──
+
+describe('parsePorcelainZ', () => {
+  const { parsePorcelainZ } = require('../../src/main/utils/git');
+
+  test('returns empty lists for null and empty input', () => {
+    expect(parsePorcelainZ(null)).toEqual({ tracked: [], untracked: [] });
+    expect(parsePorcelainZ('')).toEqual({ tracked: [], untracked: [] });
+  });
+
+  test('separates tracked from untracked', () => {
+    const out = 'M  src/index.js\0?? notes.txt\0 D old.js\0';
+    expect(parsePorcelainZ(out)).toEqual({
+      tracked: ['src/index.js', 'old.js'],
+      untracked: ['notes.txt'],
+    });
+  });
+
+  test('keeps a path containing spaces whole', () => {
+    // The old line-based parser split on newlines and trimmed, which was fine
+    // here, but git would have quoted this path without -z.
+    const out = '?? dir with space/my file.txt\0';
+    expect(parsePorcelainZ(out).untracked).toEqual(['dir with space/my file.txt']);
+  });
+
+  test('keeps a non-ASCII path verbatim, with no quoting to undo', () => {
+    const out = '?? café/résumé.txt\0';
+    expect(parsePorcelainZ(out).untracked).toEqual(['café/résumé.txt']);
+  });
+
+  test('keeps a trailing space, which trim() used to eat', () => {
+    const out = '?? trailing \0';
+    expect(parsePorcelainZ(out).untracked).toEqual(['trailing ']);
+  });
+
+  test('survives a newline inside a filename', () => {
+    const out = '?? weird\nname.txt\0M  src/index.js\0';
+    expect(parsePorcelainZ(out)).toEqual({
+      tracked: ['src/index.js'],
+      untracked: ['weird\nname.txt'],
+    });
+  });
+
+  test('consumes the original path of a rename instead of reading it as a record', () => {
+    // "R  new\0old\0" - the bare second record has no status prefix, and its
+    // first two characters would otherwise be mistaken for one.
+    const out = 'R  src/new-name.js\0src/old-name.js\0M  other.js\0';
+    expect(parsePorcelainZ(out)).toEqual({
+      tracked: ['src/new-name.js', 'other.js'],
+      untracked: [],
+    });
+  });
+
+  test('does the same for a copy', () => {
+    const out = 'C  copy.js\0source.js\0';
+    expect(parsePorcelainZ(out)).toEqual({ tracked: ['copy.js'], untracked: [] });
+  });
+});
