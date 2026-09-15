@@ -98,3 +98,30 @@ describe('installPlugin', () => {
     expect(installed.plugins['widget@acme'][0].version).toBe('1.0.0');
   });
 });
+
+describe('addMarketplace', () => {
+  // The `!marketplaces[name]` guard exists to make this idempotent, but it is
+  // always true on an empty object - so falling back to {} on a parse failure
+  // rewrote known_marketplaces.json with the new entry alone.
+  test('refuses to run against an unreadable known_marketplaces.json', async () => {
+    fs.writeFileSync(marketplacesFile, '{not valid json!!!', 'utf8');
+
+    const result = await pluginService.addMarketplace('https://example.com/other.git');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/known_marketplaces\.json/);
+    expect(fs.readFileSync(marketplacesFile, 'utf8')).toBe('{not valid json!!!');
+  });
+
+  test('keeps the marketplaces already registered', async () => {
+    // 'acme' is seeded by seedMarketplace(); adding it again must be a no-op
+    // that leaves the file intact rather than a rewrite.
+    const before = fs.readFileSync(marketplacesFile, 'utf8');
+
+    await pluginService.addMarketplace('https://example.com/acme.git');
+
+    const after = JSON.parse(fs.readFileSync(marketplacesFile, 'utf8'));
+    expect(after.acme).toBeDefined();
+    expect(JSON.parse(before).acme.installLocation).toBe(after.acme.installLocation);
+  });
+});

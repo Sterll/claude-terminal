@@ -666,15 +666,30 @@ async function addMarketplace(url) {
       return { success: true };
     }
 
+    // Read known_marketplaces.json before cloning anything.
+    //
+    // The `!marketplaces[name]` guard further down is meant to make this
+    // idempotent, but it is always true on an empty object - so falling back to
+    // {} on a parse failure rewrote the file with this marketplace alone and
+    // dropped every other one the user had added.
+    //
+    // Reading first also means a bad manifest does not leave a cloned repo
+    // behind that nothing references, the same ordering installPlugin uses.
+    let marketplaces = {};
+    if (fs.existsSync(marketplacesFile)) {
+      try {
+        marketplaces = JSON.parse(fs.readFileSync(marketplacesFile, 'utf8'));
+      } catch (e) {
+        return { success: false, error: `Failed to parse known_marketplaces.json: ${e.message}` };
+      }
+      if (!marketplaces || typeof marketplaces !== 'object' || Array.isArray(marketplaces)) {
+        return { success: false, error: 'known_marketplaces.json is not a JSON object' };
+      }
+    }
+
     // Clone the repo (with optional branch) — argv array, never a shell string
     const cloneArgs = ['clone', ...(branch ? ['--branch', branch] : []), cloneUrl, targetDir];
     await execFileAsync('git', cloneArgs, { timeout: 120000 });
-
-    // Update known_marketplaces.json atomically
-    let marketplaces = {};
-    if (fs.existsSync(marketplacesFile)) {
-      try { marketplaces = JSON.parse(fs.readFileSync(marketplacesFile, 'utf8')); } catch { /* ignore */ }
-    }
 
     if (!marketplaces[name]) {
       marketplaces[name] = {
