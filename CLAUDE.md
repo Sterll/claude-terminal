@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 158 test files)
+npm test                 # Run Jest tests (jsdom, 161 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -146,7 +146,7 @@ Remote UI (PWA for mobile)
 | `MarketplaceService.js` | Skill marketplace (`skills.sh/api/search`), git clone install, caching (5-30 min TTL) |
 | `McpRegistryService.js` | MCP server registry browsing (`registry.modelcontextprotocol.io/v0.1`), pagination, caching |
 | `PluginService.js` | Read plugin metadata, PTY-based `/plugin install` |
-| `UpdaterService.js` | electron-updater, 30 min periodic checks, stale cache cleanup |
+| `UpdaterService.js` | electron-updater, 30 min periodic checks, stale cache cleanup. `quitAndInstall(true, true)`, never the bare call: electron-updater defaults `isSilent` to false, which drops the `/S` and pops the NSIS wizard after the app has already quit — and the installer only relaunches the app on `${isForceRun} && ${Silent}`. See the note under `build-assets/installer-custom.nsh` |
 | `ChromeBridgeService.js` | Claude in Chrome: detects the browser extension, installs the native messaging host (adopting Claude Code's rather than clobbering it), and hands chat sessions the `claude-in-chrome` MCP server |
 | `HooksService.js` | 15 Claude hook types, non-destructive install, auto-backup/repair |
 | `HookEventServer.js` | HTTP server on `127.0.0.1:0`, receives POST from hook handler |
@@ -589,7 +589,8 @@ Worker); neither is bundled into the desktop app.
 - **Time tracking:** 15 min idle timeout, 2 min output idle, 30 min session merge, midnight rollover, monthly archival
 - **Renderer bundling:** esbuild ESM with code splitting -> `dist/renderer.bundle.js` + shared `dist/chunk-*.js`, sourcemaps, target `chrome120`. Three things are deliberately kept out of the startup graph and `import()`ed on demand: the five heaviest panels, on first tab open (`_LAZY_PANELS` in `renderer.js`); `@xterm/*`, when a terminal is first mounted (`src/renderer/services/xtermLoader.js`); and the renderer half of each project type, when a project of that type is opened (`ensureLoaded()` in `src/project-types/registry.js`, plus `_typeModule()` in `renderer.js` for the handful of type modules `renderer.js` reaches directly). Together that is ~1 MB, a third of what every startup used to parse. Splitting rather than standalone per-feature bundles is what keeps a single instance of each observable state module: `ApiState` and `DiscordState` are reached both from `renderer.js` and from their own type, and one module graph means esbuild hoists each into one shared chunk. Note a `require()` inside a function body is still a static edge to esbuild, so making something lazy means an actual `import()`
 - **Persistence:** atomic writes (temp + rename), `.bak` backup files, corruption recovery
-- **Updates:** generic provider, 30 min periodic checks, differential packages
+- **Files that are not ours:** `~/.claude.json` and `~/.claude/plugins/installed_plugins.json` belong to the Claude CLI and hold far more than the keys this app edits — the projects map, `oauthAccount`, per-project MCP servers, every installed plugin. Every writer here is a read-modify-write with no cross-process lock, against a file the CLI rewrites continuously, so **a parse failure must abort, never "start fresh"**: a read landing mid-write is enough to produce truncated JSON, and rewriting from `{}` then destroys the user's whole Claude Code setup. `SyncEngine`'s `readJsonForMerge()` is the reference shape. For the same reason `McpService.saveMcps` diffs against what is on disk *now* rather than rebuilding `mcpServers` wholesale — a server added by `claude mcp add` between load and save is not ours to delete
+- **Updates:** generic provider, 30 min periodic checks, differential packages. The install is silent (`quitAndInstall(true, true)`) and `customInit` in `build-assets/installer-custom.nsh` is deliberately empty — it used to `SetSilent normal`, which ran from `.onInit` and cancelled electron-updater's `/S`, turning every auto-update into a wizard that appeared after the app had quit. NSIS removes the old version (`RMDir /r $INSTDIR` plus the shortcuts) *before* extracting the new one, so an update the user can interrupt is an update that can leave no app installed at all. `customInstall` restores the desktop **and** Start Menu links, because electron-builder skips recreating either when `$keepShortcuts` is true, which is exactly the upgrade path
 - **Remote control (local):** WS server with PIN auth, QR code, PWA in `remote-ui/`
 - **Remote Control (claude.ai):** decided per conversation, never globally. `claudeRemoteControlEnabled` only says the feature may be used; a session reaches claude.ai when the user asks for it in that tab, via the footer button or the local `/remote-control` command (`enableForSession` / `disableForSession`). Nothing is backfilled: claude.ai joins from the moment it is enabled. Attaches the session to `@anthropic-ai/claude-agent-sdk/bridge` so it appears at claude.ai/code and in the Claude mobile app. The bridge export is ESM-only and `@alpha` — loaded through `src/main/utils/claudeBridge.js`, which resolves it out of `app.asar.unpacked` and feature-detects every function it uses. `claudeRemoteControlDrive` decides between a read-only mirror (`outboundOnly`) and full driving; `claudeRemoteControlTerminals` adds `--rc` to the CLI in terminal tabs. Honours the `disableRemoteControl` kill switch, read from Claude Code's own managed-settings file (`managedSettingsPaths()` in `src/main/utils/paths.js`) rather than from this app's user-writable settings.json, so a user cannot lift an org policy
 - **Model, effort and permission mode are per conversation:** the chat footer's chip (model · effort, right) and mode picker (left, as Claude Desktop places it) change the current tab only. The stored `chatModel` / `effortLevel` / `executionMode` are the defaults a new tab starts from, moved only through each menu's "Use for new conversations" row — a pick never writes them, so the last choice in one tab cannot silently become every later tab's. The model menu lists models only: the CLI's `default` alias is read for the model it points at (`recommendedModelId`, surfaced as the catalog's `recommended`) and then dropped (`dropDefaultAlias`), so an unpinned tab shows that model **by name** instead of a "Default (recommended)" row that stood for whichever model the CLI favoured that week. `chatModel: null` still means "nothing pinned"; pinning always stores a concrete id. Modes are the SDK's (`default`, `acceptEdits`, `plan`, `bypassPermissions`, `auto`), mapped to the legacy `executionMode` spellings in `src/shared/permission-modes.js`; `ChatService.setPermissionMode` switches mid-session and moves the app-side auto-approval with it. Fable is a hand-curated premium tier (`PREMIUM_FAMILIES` in `src/shared/model-options.js`, hand-curated because the CLI catalog says nothing about it): violet chip and composer border, "Premium" badge in the menu, a tag on the tab, and a dismissible notice above the composer when a new tab inherits it. What the UI says about it is that the family draws on its own usage limit — the model-scoped `limits` entry the usage API returns beside `session` and `weekly_all` — and that this also counts toward overall usage; on a subscription it is not billed on top, so no string may say it is. `max` effort turns the effort segment warning-coloured. Every (re)start and every mid-session switch leaves a line in the transcript
@@ -608,7 +609,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 158 unit test files (jsdom environment)
+npm test                    # Run all 161 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -617,7 +618,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 158 test files
+- **Framework:** Jest with jsdom, 161 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
@@ -629,7 +630,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
   - `ipc/` - accounts usage, claude, hooks, project, usage, workflow save
   - `remote-ui/` - hierarchy
   - `security/` - security tests
-  - `services/` - ChatService, AccountManager, ArtifactService, DatabaseService, DashboardService, DiffRenderer, HooksService, KnowledgeService, MarkdownRenderer, ModelCatalogService, RemoteServer, RemoteControlService, UsageService, VoiceService, WorkflowRunner, the workflow engine suite, the lazy `xtermLoader` and the lazy project-type registry
+  - `services/` - ChatService, AccountManager, ArtifactService, DatabaseService, DashboardService, DiffRenderer, HooksService, KnowledgeService, MarkdownRenderer, ModelCatalogService, RemoteServer, RemoteControlService, UsageService, VoiceService, WorkflowRunner, the workflow engine suite, the lazy `xtermLoader`, the lazy project-type registry, the `~/.claude.json` merge in `McpService.saveMcps`, the plugin-manifest guard in `PluginService.installPlugin` and the silent-install arguments in `UpdaterService.quitAndInstall`
   - `shared/` - context usage, cron, model options, permission modes, simple-task
   - `smoke/` - every module parses and loads
   - `state/` - State plus each state module
