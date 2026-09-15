@@ -56,12 +56,13 @@ function createQuickPickerWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false,
+      sandbox: true,
       preload: path.join(__dirname, '..', 'preload-quickpicker.js')
     }
   });
 
   const htmlPath = path.join(__dirname, '..', '..', '..', 'quick-picker.html');
+  require('../utils/rendererSecurity').guardWindow(quickPickerWindow, htmlPath);
   quickPickerWindow.loadFile(htmlPath);
 
   quickPickerWindow.once('ready-to-show', () => {

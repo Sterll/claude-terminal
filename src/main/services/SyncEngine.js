@@ -8,6 +8,8 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { dataDir, settingsFile, projectsFile, claudeDir } = require('../utils/paths');
+const { bundleHandler } = require('../utils/syncBundles');
+const { updateClaudeConfig } = require('../utils/claudeConfig');
 
 const SYNC_META_FILE = path.join(dataDir, 'sync-meta.json');
 const PUSH_DEBOUNCE_MS = 2000;
@@ -65,6 +67,8 @@ class SyncEngine {
     this._pullTimer = null;
     this._pulling = false;
     this._pushing = false;
+    this._pushPromise = null;
+    this._pushFailed = false;
     this._suppressPaths = new Set();
     this._status = 'idle';
     this._conflicts = [];
@@ -252,119 +256,36 @@ class SyncEngine {
             throw err;
           }
           const full = JSON.parse(raw);
-          return full.mcpServers || {};
+          return Object.fromEntries(Object.entries(full.mcpServers || {}).filter(([name]) => name !== 'claude-terminal'));
         },
         write: async (data) => {
-          // Throws if ~/.claude.json exists but cannot be parsed — rewriting it
-          // from an empty object would wipe every other Claude Code setting
-          const full = (await readJsonForMerge(claudeJsonPath)) || {};
-          full.mcpServers = data;
-          await this._atomicWrite(claudeJsonPath, JSON.stringify(full, null, 2));
-        },
-        sanitize: (data) => {
-          // Strip env vars that might contain secrets
-          const cleaned = {};
-          for (const [name, cfg] of Object.entries(data)) {
-            const c = { ...cfg };
-            if (c.env) {
-              const safeEnv = {};
-              for (const [k, v] of Object.entries(c.env)) {
-                // Keep env vars but redact values that look like secrets
-                if (/token|secret|key|password|credential/i.test(k)) {
-                  safeEnv[k] = '***REDACTED***';
-                } else {
-                  safeEnv[k] = v;
-                }
+          await updateClaudeConfig(full => {
+            const local = full.mcpServers || {};
+            full.mcpServers = Object.fromEntries(Object.entries(data).filter(([name]) => name !== 'claude-terminal').map(([name, config]) => {
+              const merged = { ...config };
+              // Environment and authorization headers belong to this machine.
+              // Never install a redacted placeholder or a legacy cloud secret.
+              for (const field of ['env', 'headers']) {
+                if (config[field] || local[name]?.[field]) merged[field] = { ...local[name]?.[field] };
               }
-              c.env = safeEnv;
-            }
-            cleaned[name] = c;
-          }
-          return cleaned;
+              return [name, merged];
+            }));
+            if (local['claude-terminal']) full.mcpServers['claude-terminal'] = local['claude-terminal'];
+          });
         },
+        sanitize: (data) => Object.fromEntries(Object.entries(data).filter(([name]) => name !== 'claude-terminal').map(([name, config]) => {
+          const safe = { ...config };
+          for (const field of ['env', 'headers']) {
+            if (safe[field]) safe[field] = Object.fromEntries(Object.keys(safe[field]).map(key => [key, '***REDACTED***']));
+          }
+          return [name, safe];
+        })),
       },
 
-      skills: {
-        settingKey: 'cloudSyncSkills',
-        path: skillsDir,
-        isDir: true,
-        read: async () => {
-          let entries;
-          try {
-            entries = await fs.promises.readdir(skillsDir, { withFileTypes: true });
-          } catch (err) {
-            if (isMissingError(err)) return MISSING;
-            throw err;
-          }
-          const skills = [];
-          for (const entry of entries) {
-            if (!entry.isDirectory()) continue;
-            const skillFile = path.join(skillsDir, entry.name, 'SKILL.md');
-            try {
-              const content = await fs.promises.readFile(skillFile, 'utf8');
-              skills.push({ name: entry.name, content });
-            } catch (err) {
-              // Skip skills without SKILL.md, but surface real read failures:
-              // a partial listing must never be treated as the full local state
-              if (!isMissingError(err)) throw err;
-            }
-          }
-          return skills;
-        },
-        write: async (data) => {
-          if (!Array.isArray(data)) return;
-          await fs.promises.mkdir(skillsDir, { recursive: true });
-          for (const skill of data) {
-            if (!skill.name || !skill.content) continue;
-            // Validate skill name to prevent path traversal
-            if (/[\/\\]/.test(skill.name) || skill.name === '..' || skill.name === '.') continue;
-            const dir = path.join(skillsDir, skill.name);
-            await fs.promises.mkdir(dir, { recursive: true });
-            await this._atomicWrite(path.join(dir, 'SKILL.md'), skill.content);
-          }
-        },
-        sanitize: (data) => data,
-      },
-
-      agents: {
-        settingKey: 'cloudSyncSkills', // Shared toggle with skills
-        path: agentsDir,
-        isDir: true,
-        read: async () => {
-          let entries;
-          try {
-            entries = await fs.promises.readdir(agentsDir, { withFileTypes: true });
-          } catch (err) {
-            if (isMissingError(err)) return MISSING;
-            throw err;
-          }
-          const agents = [];
-          for (const entry of entries) {
-            if (!entry.isDirectory()) continue;
-            const agentFile = path.join(agentsDir, entry.name, 'AGENT.md');
-            try {
-              const content = await fs.promises.readFile(agentFile, 'utf8');
-              agents.push({ name: entry.name, content });
-            } catch (err) {
-              // Skip dirs without AGENT.md, but surface real read failures
-              if (!isMissingError(err)) throw err;
-            }
-          }
-          return agents;
-        },
-        write: async (data) => {
-          if (!Array.isArray(data)) return;
-          await fs.promises.mkdir(agentsDir, { recursive: true });
-          for (const agent of data) {
-            if (!agent.name || !agent.content) continue;
-            if (/[\/\\]/.test(agent.name) || agent.name === '..' || agent.name === '.') continue;
-            const dir = path.join(agentsDir, agent.name);
-            await fs.promises.mkdir(dir, { recursive: true });
-            await this._atomicWrite(path.join(dir, 'AGENT.md'), agent.content);
-          }
-        },
-        sanitize: (data) => data,
-      },
+      ...Object.fromEntries([['skills', skillsDir], ['agents', agentsDir]].map(([kind, root]) => [kind, bundleHandler({
+        root, kind, previous: () => this._syncMeta[kind]?.bundleEntries || [],
+        atomicWrite: (file, content) => this._atomicWrite(file, content),
+      })])),
 
       memory: {
         settingKey: 'cloudSyncMemory',
@@ -447,7 +368,6 @@ class SyncEngine {
     // Initial pull
     try {
       await this.pullAll();
-      this._setStatus('idle');
     } catch (err) {
       console.error('[SyncEngine] Initial pull failed:', err.message);
       this._setStatus('error');
@@ -559,25 +479,45 @@ class SyncEngine {
   }
 
   async _flushPushQueue() {
-    if (!this._started || this._pushing || this._pushQueue.size === 0) return;
+    if (this._pushPromise) return this._pushPromise;
+    if (!this._started || this._pushQueue.size === 0) return;
+    this._pushPromise = this._drainPushQueue();
+    try { await this._pushPromise; }
+    finally { this._pushPromise = null; }
+  }
+
+  async _drainPushQueue() {
     this._pushing = true;
+    this._pushFailed = false;
     this._setStatus('syncing');
-
-    const types = [...this._pushQueue];
-    this._pushQueue.clear();
-
-    for (const type of types) {
-      try {
-        await this._pushEntity(type);
-      } catch (err) {
-        console.error(`[SyncEngine] Push ${type} failed:`, err.message);
+    try {
+      while (this._started && this._pushQueue.size) {
+        const types = [...this._pushQueue];
+        for (const type of types) {
+          if (!this._started) break;
+          this._pushQueue.delete(type);
+          try { await this._pushEntity(type); }
+          catch (err) {
+            this._pushQueue.add(type);
+            this._pushFailed = true;
+            console.error(`[SyncEngine] Push ${type} failed:`, err.message);
+          }
+        }
+        // Keep failed entries for the next attempt instead of spinning offline.
+        if (this._pushFailed) break;
+      }
+    } finally {
+      this._pushing = false;
+      this._saveSyncMeta();
+      if (this._started) {
+        if (!this._pushQueue.size && !this._pushFailed && !this._conflicts.length) this._lastSyncAt = Date.now();
+        this._setStatus(this._conflicts.length ? 'conflict' : this._pushFailed ? 'error' : this._pushQueue.size || this._pulling ? 'syncing' : 'idle');
+        if (this._pushQueue.size) {
+          if (this._pushTimer) clearTimeout(this._pushTimer);
+          this._pushTimer = setTimeout(() => this._flushPushQueue(), PUSH_DEBOUNCE_MS);
+        }
       }
     }
-
-    this._pushing = false;
-    this._saveSyncMeta();
-    this._lastSyncAt = Date.now();
-    this._setStatus(this._conflicts.length > 0 ? 'conflict' : 'idle');
   }
 
   async _pushEntity(type) {
@@ -618,6 +558,7 @@ class SyncEngine {
 
     const result = await resp.json();
     this._syncMeta[type] = {
+      ...handler.syncMeta?.(data),
       lastSyncedHash: result.hash || hash,
       lastSyncedAt: result.updatedAt || Date.now(),
     };
@@ -642,6 +583,7 @@ class SyncEngine {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const result = await resp.json();
     this._syncMeta[type] = {
+      ...handler.syncMeta?.(data),
       lastSyncedHash: result.hash || computeHash(sanitized),
       lastSyncedAt: result.updatedAt || Date.now(),
     };
@@ -674,7 +616,7 @@ class SyncEngine {
 
       this._lastSyncAt = Date.now();
       this._saveSyncMeta();
-      this._setStatus(this._conflicts.length > 0 ? 'conflict' : 'idle');
+      this._setStatus(this._conflicts.length ? 'conflict' : this._pushFailed ? 'error' : this._pushing || this._pushQueue.size ? 'syncing' : 'idle');
     } catch (err) {
       console.error('[SyncEngine] Pull failed:', err.message);
       this._setStatus('error');
@@ -705,7 +647,7 @@ class SyncEngine {
         `[SyncEngine] Aborting pull for ${type}: could not read local data (${err.message}). ` +
         `Cloud data was NOT applied — local files are left untouched. Will retry on the next pull.`
       );
-      return;
+      throw err;
     }
 
     if (localData !== MISSING && meta) {
@@ -728,10 +670,11 @@ class SyncEngine {
       console.error(
         `[SyncEngine] Aborting pull for ${type}: write failed (${err.message}). Sync meta left unchanged.`
       );
-      return;
+      throw err;
     }
 
     this._syncMeta[type] = {
+      ...handler.syncMeta?.(envelope.data),
       lastSyncedHash: envelope.hash,
       lastSyncedAt: envelope.updatedAt,
     };
@@ -755,15 +698,10 @@ class SyncEngine {
     if (!this._started) throw new Error('Sync engine not started');
     this._setStatus('syncing');
 
-    // Push all enabled entities first
     for (const type of ENTITY_TYPES) {
-      if (!this._isEntityEnabled(type)) continue;
-      try {
-        await this._pushEntity(type);
-      } catch (err) {
-        console.error(`[SyncEngine] Force push ${type} failed:`, err.message);
-      }
+      if (this._isEntityEnabled(type)) this._pushQueue.add(type);
     }
+    await this._flushPushQueue();
 
     // Then pull
     await this.pullAll();
@@ -800,7 +738,7 @@ class SyncEngine {
       await handler.write(conflict.cloudData);
       // Update meta to match cloud
       const hash = computeHash(conflict.cloudData);
-      this._syncMeta[entityType] = { lastSyncedHash: hash, lastSyncedAt: Date.now() };
+      this._syncMeta[entityType] = { ...handler.syncMeta?.(conflict.cloudData), lastSyncedHash: hash, lastSyncedAt: Date.now() };
       this._saveSyncMeta();
     }
 

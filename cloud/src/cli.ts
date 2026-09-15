@@ -151,7 +151,7 @@ async function userSetup(name: string): Promise<void> {
   if (gitName && gitEmail) {
     user.gitName = gitName;
     user.gitEmail = gitEmail;
-    await store.saveUser(name, user);
+    await store.updateUser(name, current => { current.gitName = gitName; current.gitEmail = gitEmail; });
 
     const gitconfigPath = path.join(userHome, '.gitconfig');
     fs.writeFileSync(gitconfigPath, `[user]\n\tname = ${gitName}\n\temail = ${gitEmail}\n`, 'utf-8');
@@ -252,7 +252,7 @@ async function userResetKey(name: string): Promise<void> {
   const newKey = generateApiKey();
   user.apiKeyHash = hashApiKey(newKey);
   delete (user as any).apiKey; // Remove legacy plaintext if present
-  await store.saveUser(name, user);
+  await store.updateUser(name, current => { current.apiKeyHash = user.apiKeyHash; delete current.apiKey; });
 
   console.log(`\n  API key for "${name}" regenerated`);
   console.log(`  New API Key: ${newKey}`);

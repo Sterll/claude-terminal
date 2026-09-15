@@ -18,7 +18,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Check CLAUDE.md against the tree
@@ -35,9 +35,10 @@ jobs:
   test:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
-        node-version: [18, 20]
+        node-version: [24]
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
@@ -48,6 +49,10 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
 
+      - name: Install Linux native dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev
+
       - name: Install dependencies
         run: npm ci
 
@@ -56,6 +61,42 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: Workflow laboratory
+        run: npm run lab
+
+      - name: Configure Chromium sandbox on Linux runner
+        if: runner.os == 'Linux'
+        run: |
+          sudo chown root:root node_modules/electron/dist/chrome-sandbox
+          sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+
+      - name: Electron runtime smoke (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:runtime
+
+      - name: Electron runtime smoke (macOS and Windows)
+        if: runner.os != 'Linux'
+        run: npm run test:runtime
+
+      - name: Cloud regressions
+        if: runner.os == 'Linux'
+        run: |
+          npm ci --prefix cloud
+          npm test --prefix cloud
+
+      - name: Hub regressions
+        if: runner.os == 'Linux'
+        run: |
+          npm ci --prefix hub-worker
+          npm test --prefix hub-worker
+
+      - name: Build and check packaged application
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          npm run build -- --dir --publish never
+          node scripts/check-package.cjs
 
   # Coverage, deliberately off the test matrix.
   #
@@ -81,7 +122,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       # --ignore-scripts as in the lint job: the jsdom suites run against a
@@ -111,8 +152,11 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
+
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev
 
       # Full install, unlike the lint job: this one runs the app, so node-pty,
       # keytar and better-sqlite3 have to be rebuilt against Electron's ABI.

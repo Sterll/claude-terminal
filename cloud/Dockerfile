@@ -1,4 +1,4 @@
-FROM node:22-slim AS build
+FROM node:24-slim AS build
 
 WORKDIR /app
 
@@ -7,9 +7,10 @@ RUN npm ci 2>/dev/null || npm install
 
 COPY cloud/tsconfig.json ./
 COPY cloud/src/ ./src/
-RUN npx tsc
+COPY src/shared/extractZip.js /src/shared/extractZip.js
+RUN npx tsc && mkdir -p dist/shared && cp /src/shared/extractZip.js dist/shared/
 
-FROM node:22-slim
+FROM node:24-slim
 
 WORKDIR /app
 

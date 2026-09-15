@@ -3,7 +3,7 @@
  * Exposes IPC API to renderer with context isolation
  */
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -129,7 +129,8 @@ function isWriteProtectedPath(p) {
   return WRITE_ONLY_BLOCKED_PATHS.some(prefix => isWithin(resolved, prefix));
 }
 
-function throwIfBlocked(p) {
+function throwIfBlocked(p, write = false) {
+  if (!ipcRenderer.sendSync('fs-authorize', p, write)) throw new Error(`Access denied: path is outside authorized project/app data: ${p}`);
   if (isSystemPath(p)) {
     throw new Error(`Access denied: system path is protected: ${p}`);
   }
@@ -137,7 +138,7 @@ function throwIfBlocked(p) {
 
 /** Guard for any call that creates, modifies, moves or deletes a path. */
 function throwIfBlockedWrite(p) {
-  throwIfBlocked(p);
+  throwIfBlocked(p, true);
   if (isWriteProtectedPath(p)) {
     throw new Error(`Access denied: writing here would run code at login: ${p}`);
   }
@@ -308,6 +309,7 @@ function createListener(channel) {
 
 // Expose protected API to renderer
 contextBridge.exposeInMainWorld('electron_api', {
+  getPathForFile: file => webUtils.getPathForFile(file),
   // ==================== TERMINAL ====================
   terminal: {
     create: (params) => ipcRenderer.invoke('terminal-create', params),
@@ -463,6 +465,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     detectFramework: (params) => ipcRenderer.invoke('api-detect-framework', params),
     getPort: (params) => ipcRenderer.invoke('api-get-port', params),
     detectRoutes: (params) => ipcRenderer.invoke('api-detect-routes', params),
+    cancelRequest: (requestId) => ipcRenderer.invoke('api-cancel-request', requestId),
     testRequest: (params) => ipcRenderer.invoke('api-test-request', params),
     onData: createListener('api-data'),
     onExit: createListener('api-exit'),
@@ -471,6 +474,8 @@ contextBridge.exposeInMainWorld('electron_api', {
 
   // ==================== MCP ====================
   mcp: {
+    saveServer: (name, config) => ipcRenderer.invoke('mcp-save-server', { name, config }),
+    saveConfig: (servers, knownIds) => ipcRenderer.invoke('mcp-save-config', servers, knownIds),
     start: (params) => ipcRenderer.invoke('mcp-start', params),
     stop: (params) => ipcRenderer.invoke('mcp-stop', params),
     onOutput: createListener('mcp-output'),
