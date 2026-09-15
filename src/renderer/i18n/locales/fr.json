@@ -1111,7 +1111,16 @@
       "emptyHint": "Essayez un mot plus court, ou un bout de la description sous un réglage.",
       "sourceLabel": "Réglages",
       "resultsPlural": "{count} résultats"
-    }
+    },
+    "secretBackups": "Anciennes sauvegardes sensibles",
+    "secureBackups": "Sécuriser les anciennes sauvegardes",
+    "secureBackupsDesc": "Chiffrer une copie récupérable avant de retirer les anciens mots de passe de bases de données. La clé reste dans le trousseau de cet ordinateur.",
+    "secureBackupsAction": "Vérifier et sécuriser",
+    "recoverBackup": "Récupérer une sauvegarde chiffrée",
+    "recoverBackupDesc": "Enregistrer le contenu original dans un fichier séparé, en clair, sur cet ordinateur.",
+    "recoverBackupAction": "Récupérer…",
+    "backupMigrationResult": "{count} sauvegardes sécurisées lors de la dernière vérification.",
+    "backupRecovered": "Sauvegarde récupérée dans le fichier choisi."
   },
   "ui": {
     "notifications": "Notifications",
@@ -1613,7 +1622,8 @@
     "types": {
       "standalone": "Standalone",
       "standaloneDesc": "Terminal Claude classique"
-    }
+    },
+    "creationCancelled": "Opération annulée. Cliquer sur Créer permet de réessayer avec les mêmes choix."
   },
   "plugins": {
     "title": "Plugins",
@@ -2082,7 +2092,14 @@
     "backToGrid": "Retour à la vue d'ensemble",
     "newSession": "Nouvelle session",
     "renameSession": "Renommer la session",
-    "openInClaude": "Ouvrir dans la vue Claude"
+    "openInClaude": "Ouvrir dans la vue Claude",
+    "incidentsTitle": "À traiter · tous les projets ({count})",
+    "incident_trigger": "Déclencheur indisponible",
+    "incident_run": "Dernière exécution du workflow en échec",
+    "incident_sync": "Conflit de synchronisation",
+    "incidentOpen": "Ouvrir",
+    "incidentRetry": "Réessayer",
+    "incidentsUnavailable": "Impossible de charger les alertes"
   },
   "remote": {
     "tabTitle": "Télécommande",
@@ -2546,7 +2563,9 @@
     "redisMember": "Membre",
     "redisScore": "Score",
     "redisBytes": "{count} octets",
-    "redisItems": "{count} éléments"
+    "redisItems": "{count} éléments",
+    "exportCancelled": "Export annulé. Réessayer repart du début avec les mêmes données.",
+    "exportRetry": "Relancer l’export"
   },
   "mdViewer": {
     "tableOfContents": "Table des matières",
@@ -3224,9 +3243,9 @@
         "minutesAgo": "Il y a {n} min",
         "hoursAgo": "Il y a {n}h",
         "yesterdayAt": "Hier {time}",
-    "unitDayShort": "j",
-    "unitHourShort": "h",
-    "unitMinuteShort": "min",
+        "unitDayShort": "j",
+        "unitHourShort": "h",
+        "unitMinuteShort": "min",
         "daysAgo": "Il y a {n}j"
       },
       "autocomplete": {

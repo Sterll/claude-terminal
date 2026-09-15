@@ -151,6 +151,10 @@ class GitChangesPanel extends BasePanel {
 
     // Generate commit message
     this._btnGenerateCommit.onclick = async () => {
+      if (this._btnGenerateCommit.dataset.operationId) {
+        this._btnGenerateCommit.dataset.cancelled = 'true';
+        await this.api.operations.cancel(this._btnGenerateCommit.dataset.operationId); return;
+      }
       if (this._state.selectedFiles.size === 0) {
         this._showToast({ type: 'warning', title: t('gitChanges.filesRequired'), message: t('gitChanges.selectAtLeastOne'), duration: 3000 });
         return;
@@ -160,17 +164,20 @@ class GitChangesPanel extends BasePanel {
         .map(i => this._state.files[i])
         .filter(Boolean);
 
-      this._btnGenerateCommit.disabled = true;
+      const operationId = crypto.randomUUID(), projectPath = this._state.projectPath;
+      this._btnGenerateCommit.dataset.operationId = operationId;
+      delete this._btnGenerateCommit.dataset.cancelled;
       const btnSpan = this._btnGenerateCommit.querySelector('span');
       const originalText = btnSpan.textContent;
-      btnSpan.textContent = '...';
+      btnSpan.textContent = t('common.cancel');
 
       try {
         const result = await this.api.git.generateCommitMessage({
-          projectPath: this._state.projectPath,
+          operationId, projectPath,
           files: selectedFiles,
           useAi: getSetting('aiCommitMessages') !== false
         });
+        if (result.cancelled || this._btnGenerateCommit.dataset.cancelled || this._state.projectPath !== projectPath) return;
 
         if (result.success && result.message) {
           this._gitCommitMessage.value = result.message;
@@ -199,6 +206,8 @@ class GitChangesPanel extends BasePanel {
       } catch (e) {
         this._showToast({ type: 'error', title: t('gitChanges.errorGenerate'), message: e.message, duration: 3000 });
       } finally {
+        delete this._btnGenerateCommit.dataset.operationId;
+        delete this._btnGenerateCommit.dataset.cancelled;
         this._btnGenerateCommit.disabled = false;
         btnSpan.textContent = originalText;
       }
@@ -206,6 +215,10 @@ class GitChangesPanel extends BasePanel {
 
     // Smart Commit - generate multi-commit messages and show modal
     this._btnSmartCommit.onclick = async () => {
+      if (this._btnSmartCommit.dataset.operationId) {
+        this._btnSmartCommit.dataset.cancelled = 'true';
+        await this.api.operations.cancel(this._btnSmartCommit.dataset.operationId); return;
+      }
       if (this._state.selectedFiles.size === 0) {
         this._showToast({ type: 'warning', title: t('gitChanges.filesRequired'), message: t('gitChanges.selectAtLeastOne'), duration: 3000 });
         return;
@@ -215,17 +228,20 @@ class GitChangesPanel extends BasePanel {
         .map(i => this._state.files[i])
         .filter(Boolean);
 
-      this._btnSmartCommit.disabled = true;
+      const operationId = crypto.randomUUID(), projectPath = this._state.projectPath;
+      this._btnSmartCommit.dataset.operationId = operationId;
+      delete this._btnSmartCommit.dataset.cancelled;
       const btnSpan = this._btnSmartCommit.querySelector('span');
       const origText = btnSpan.textContent;
-      btnSpan.textContent = t('gitChanges.generating');
+      btnSpan.textContent = t('common.cancel');
 
       try {
         const result = await this.api.git.generateMultiCommit({
-          projectPath: this._state.projectPath,
+          operationId, projectPath,
           files: selectedFiles,
           useAi: getSetting('aiCommitMessages') !== false
         });
+        if (result.cancelled || this._btnSmartCommit.dataset.cancelled || this._state.projectPath !== projectPath) return;
 
         if (!result.success || !result.commits || result.commits.length <= 1) {
           // Only one group — use normal flow
@@ -241,6 +257,8 @@ class GitChangesPanel extends BasePanel {
       } catch (e) {
         this._showToast({ type: 'error', title: t('gitChanges.errorGenerate'), message: e.message, duration: 3000 });
       } finally {
+        delete this._btnSmartCommit.dataset.operationId;
+        delete this._btnSmartCommit.dataset.cancelled;
         this._btnSmartCommit.disabled = false;
         btnSpan.textContent = origText;
       }
@@ -1114,6 +1132,10 @@ class GitChangesPanel extends BasePanel {
 
   async _handleGeneratePr() {
     if (!this._btnGeneratePr) return;
+    if (this._btnGeneratePr.dataset.operationId) {
+      this._btnGeneratePr.dataset.cancelled = 'true';
+      await this.api.operations.cancel(this._btnGeneratePr.dataset.operationId); return;
+    }
     if (!this._state.projectPath) {
       this._showToast({ type: 'warning', message: t('git.generatePr.error'), duration: 3000 });
       return;
@@ -1122,8 +1144,9 @@ class GitChangesPanel extends BasePanel {
     const btn = this._btnGeneratePr;
     const span = btn.querySelector('span');
     const originalText = span ? span.textContent : '';
-    btn.disabled = true;
-    if (span) span.textContent = t('git.generatePr.generating');
+    const operationId = crypto.randomUUID(), projectPath = this._state.projectPath;
+    btn.dataset.operationId = operationId; delete btn.dataset.cancelled;
+    if (span) span.textContent = t('common.cancel');
 
     try {
       // Collect the latest session recaps for this project (if any)
@@ -1140,11 +1163,13 @@ class GitChangesPanel extends BasePanel {
         // Recaps are optional — ignore failures
       }
 
+      if (btn.dataset.cancelled) return;
       const result = await this.api.git.generatePrDescription({
-        projectPath: this._state.projectPath,
+        operationId, projectPath,
         baseBranch: 'main',
         sessionSummary
       });
+      if (result.cancelled || btn.dataset.cancelled || this._state.projectPath !== projectPath) return;
 
       if (!result || !result.success) {
         this._showToast({
@@ -1160,6 +1185,7 @@ class GitChangesPanel extends BasePanel {
     } catch (e) {
       this._showToast({ type: 'error', title: t('git.generatePr.error'), message: e.message, duration: 4000 });
     } finally {
+      delete btn.dataset.operationId; delete btn.dataset.cancelled;
       btn.disabled = false;
       if (span) span.textContent = originalText;
     }

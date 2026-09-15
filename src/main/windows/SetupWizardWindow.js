@@ -42,7 +42,7 @@ function createSetupWizardWindow({ onComplete, onSkip }) {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false,
+      sandbox: true,
       preload: path.join(__dirname, '..', 'preload.js')
     }
   });

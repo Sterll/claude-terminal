@@ -104,20 +104,27 @@ app.whenReady().then(async () => {
   fs.writeFileSync(path.join(dataDir, 'allowed.txt'), 'allowed');
   fs.writeFileSync(path.join(temporary, 'private.txt'), 'private');
   const fixture = path.join(temporary, 'index.html'); fs.writeFileSync(fixture, '<p>Boundary smoke</p>');
-  window = new BrowserWindow({ show: false, webPreferences: { contextIsolation: true, sandbox: false, nodeIntegration: false, preload: path.resolve(__dirname, '../src/main/preload.js') } });
+  window = new BrowserWindow({ show: false, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, preload: path.resolve(__dirname, '../src/main/preload.js') } });
   security.guardWindow(window, fixture);
   await window.loadFile(fixture);
   console.log('Boundary fixture:', window.webContents.getURL(), 'permitted:', security.permitted(path.join(dataDir, 'allowed.txt')));
-  const boundary = await window.webContents.executeJavaScript(`(() => {
+  const boundary = await window.webContents.executeJavaScript(`(async () => {
     try {
     const fs = window.electron_nodeModules.fs;
     const result = { allowed: fs.readFileSync(${JSON.stringify(path.join(dataDir, 'allowed.txt'))}, 'utf8') };
     try { fs.readFileSync(${JSON.stringify(path.join(temporary, 'private.txt'))}, 'utf8'); } catch { result.denied = true; }
     try { fs.writeFileSync(${JSON.stringify(path.resolve(__dirname, '../package.json'))}, 'blocked'); } catch { result.appWriteDenied = true; }
+    const target = ${JSON.stringify(path.join(dataDir, 'async.txt'))};
+    await fs.promises.writeFile(target, 'sandbox');
+    result.asyncRead = await fs.promises.readFile(target, 'utf8');
+    result.file = (await fs.promises.stat(target)).isFile();
+    result.nativePath = window.electron_nodeModules.path.join('one', 'two');
+    result.nodeUnavailable = typeof require === 'undefined' && typeof process === 'undefined';
     return result;
     } catch (error) { return { error: error.message }; }
   })()`);
-  assert.deepEqual(boundary, { allowed: 'allowed', denied: true, appWriteDenied: true });
+  assert.deepEqual(boundary, { allowed: 'allowed', denied: true, appWriteDenied: true, asyncRead: 'sandbox', file: true, nativePath: path.join('one', 'two'), nodeUnavailable: true });
+  assert.equal(window.webContents.getLastWebPreferences().sandbox, true);
   window.destroy(); window = null;
   for (const [htmlName, preload, apiName, read] of [
     ['quick-picker.html', 'preload-quickpicker.js', 'pickerAPI', 'readProjects'],

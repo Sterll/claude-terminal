@@ -64,7 +64,10 @@
     "routeCountPlural": "{count} routes",
     "filterPlaceholder": "Filtrer...",
     "noHeaders": "Aucun en-tete",
-    "updateBtn": "Mettre a jour"
+    "updateBtn": "Mettre a jour",
+    "saveToDisk": "Enregistrer sur disque",
+    "savedToDisk": "Réponse enregistrée",
+    "previewTruncated": "Aperçu limité à 64 Kio ; le fichier contient la réponse complète."
   },
   "newProject": {
     "types": {

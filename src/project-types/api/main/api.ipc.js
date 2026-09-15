@@ -2,7 +2,7 @@
  * API IPC Handlers
  */
 
-const { ipcMain } = require('electron');
+const { ipcMain, dialog, BrowserWindow } = require('electron');
 const apiService = require('./ApiService');
 const routeDetector = require('./ApiRouteDetector');
 const apiTester = require('./ApiTester');
@@ -38,13 +38,26 @@ function registerHandlers() {
     return routeDetector.detectRoutes(projectPath);
   });
 
-  ipcMain.handle('api-test-request', async (event, { url, method, headers, body, requestId }) => {
+  ipcMain.handle('api-test-request', async (event, { url, method, headers, body, requestId, saveToDisk }) => {
     const key = `${event.sender.id}:${requestId}`;
     pendingRequests.get(key)?.abort();
     const controller = new AbortController();
     pendingRequests.set(key, controller);
-    try { return await apiTester.sendRequest({ url, method, headers, body, signal: controller.signal }); }
-    finally { if (pendingRequests.get(key) === controller) pendingRequests.delete(key); }
+    const destroyed = () => controller.abort();
+    event.sender.once('destroyed', destroyed);
+    try {
+      let saveToPath;
+      if (saveToDisk) {
+        const choice = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), { defaultPath: 'response.bin' });
+        if (choice.canceled || !choice.filePath) return { cancelled: true, error: 'Request cancelled', status: 0 };
+        saveToPath = choice.filePath;
+      }
+      return await apiTester.sendRequest({ url, method, headers, body, saveToPath, signal: controller.signal,
+        onProgress: progress => { if (!event.sender.isDestroyed()) event.sender.send('api-request-progress', { requestId, ...progress }); } });
+    } finally {
+      event.sender.removeListener('destroyed', destroyed);
+      if (pendingRequests.get(key) === controller) pendingRequests.delete(key);
+    }
   });
   ipcMain.handle('api-cancel-request', (event, requestId) => {
     pendingRequests.get(`${event.sender.id}:${requestId}`)?.abort();

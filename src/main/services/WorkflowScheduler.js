@@ -123,6 +123,8 @@ class WorkflowScheduler {
     this._gitWatchers  = new Map();
     /** Loaded workflow definitions — refreshed on every reload() call */
     this._workflows    = [];
+    this._watcherErrors = new Map();
+    this.onStatusChanged = null;
     /** Max on_workflow chain depth before we cut the chain (recursion guard) */
     this._maxChainDepth = 10;
     /** Pre-compiled chat_message regexes — Map<workflowId, { re: RegExp|null, pattern, mode }> */
@@ -153,6 +155,55 @@ class WorkflowScheduler {
     this._rebuildFileWatchers();
     this._rebuildGitWatchers();
     this._rebuildChatRegexes();
+    for (const key of this._watcherErrors.keys()) {
+      if (!this._workflows.some(wf => wf.enabled && wf.id === keyWorkflowId(key))) this._watcherErrors.delete(key);
+    }
+    this.onStatusChanged?.();
+  }
+
+  getTriggerStatuses() {
+    const result = [];
+    for (const wf of this._workflows) {
+      if (!wf.enabled) continue;
+      const trigger = wf.trigger || {};
+      const base = { workflowId: wf.id, name: wf.name, type: trigger.type };
+      if (['file_change', 'git_event'].includes(trigger.type)) {
+        const ids = trigger.type === 'file_change' && trigger.watchPath?.trim() ? [''] : triggerProjectIds(trigger);
+        for (const projectId of ids.length ? ids : ['']) {
+          const key = watcherKey(wf.id, projectId);
+          const entry = (trigger.type === 'file_change' ? this._fileWatchers : this._gitWatchers).get(key);
+          const target = projectId ? this.resolveProjectPath?.(projectId) : trigger.watchPath;
+          let error = this._watcherErrors.get(key);
+          if (!error) {
+            try {
+              if (!target || !fs.statSync(target).isDirectory()) throw new Error('Project directory is unavailable');
+              if (trigger.type === 'git_event') fs.accessSync(path.join(resolveGitDir(target), 'HEAD'));
+            } catch (err) { error = err.message; }
+          }
+          result.push({ ...base, projectId, status: error || !entry ? 'error' : entry.ready ? 'ready' : 'starting', error: error || (!entry ? 'No watcher configured' : null) });
+        }
+      } else {
+        let error = null;
+        if (trigger.type === 'cron' && !this._cronJobs.has(wf.id)) error = 'Invalid cron expression';
+        if (trigger.type === 'chat_message' && trigger.pattern && trigger.matchMode === 'regex' && !this._chatRegexes.get(wf.id)?.re) error = 'Invalid message regular expression';
+        result.push({ ...base, status: error ? 'error' : 'ready', error });
+      }
+    }
+    return result;
+  }
+
+  retryTrigger(workflowId) {
+    if (!this._workflows.some(wf => wf.id === workflowId && wf.enabled)) throw new Error('Workflow is missing or disabled');
+    for (const key of this._fileWatchers.keys()) if (keyWorkflowId(key) === workflowId) this._teardownFileWatcher(key);
+    for (const key of this._gitWatchers.keys()) if (keyWorkflowId(key) === workflowId) this._teardownGitWatcher(key);
+    for (const key of this._watcherErrors.keys()) if (keyWorkflowId(key) === workflowId) this._watcherErrors.delete(key);
+    this.reload(this._workflows);
+    return this.getTriggerStatuses().filter(item => item.workflowId === workflowId);
+  }
+
+  _watcherFailed(key, error) {
+    this._watcherErrors.set(key, error.message);
+    this.onStatusChanged?.();
   }
 
   /**
@@ -556,17 +607,19 @@ class WorkflowScheduler {
     // Set up new/updated watchers
     for (const [key, cfg] of desired) {
       if (this._fileWatchers.has(key)) continue; // still alive with same config
-      this._setupFileWatcher(key, cfg);
+      try { this._setupFileWatcher(key, cfg); } catch (error) { this._watcherFailed(key, error); }
     }
   }
 
   _setupFileWatcher(key, cfg) {
+    this._watcherErrors.delete(key);
     const wfId = keyWorkflowId(key);
     let chokidar;
     try {
       chokidar = require('chokidar');
     } catch (err) {
       console.warn(`[WorkflowScheduler] chokidar unavailable — file_change disabled: ${err.message}`);
+      this._watcherFailed(key, err);
       return;
     }
 
@@ -619,7 +672,16 @@ class WorkflowScheduler {
     watcher.on('change', onEvent('change'));
     watcher.on('unlink', onEvent('unlink'));
     watcher.on('error',  (err) => {
+      if (this._fileWatchers.get(key)?.watcher !== watcher) return;
       console.warn(`[WorkflowScheduler] file watcher error (${key}):`, err.message);
+      this._watcherFailed(key, err);
+    });
+
+    watcher.on('ready', () => {
+      const entry = this._fileWatchers.get(key);
+      if (entry?.watcher !== watcher) return;
+      entry.ready = true;
+      this.onStatusChanged?.();
     });
 
     this._fileWatchers.set(key, {
@@ -682,22 +744,27 @@ class WorkflowScheduler {
     // Set up new watchers
     for (const [key, cfg] of desired) {
       if (this._gitWatchers.has(key)) continue;
-      this._setupGitWatcher(key, cfg);
+      try { this._setupGitWatcher(key, cfg); } catch (error) { this._watcherFailed(key, error); }
     }
   }
 
   _setupGitWatcher(key, cfg) {
+    this._watcherErrors.delete(key);
     const wfId = keyWorkflowId(key);
     let chokidar;
     try {
       chokidar = require('chokidar');
     } catch (err) {
       console.warn(`[WorkflowScheduler] chokidar unavailable — git_event disabled: ${err.message}`);
+      this._watcherFailed(key, err);
       return;
     }
 
-    const headLog = path.join(cfg.repoPath, '.git', 'logs', 'HEAD');
-    const remotesDir = path.join(cfg.repoPath, '.git', 'logs', 'refs', 'remotes');
+    const gitDir = resolveGitDir(cfg.repoPath);
+    const headLog = path.join(gitDir, 'logs', 'HEAD');
+    let commonDir = gitDir;
+    try { commonDir = path.resolve(gitDir, fs.readFileSync(path.join(gitDir, 'commondir'), 'utf8').trim()); } catch { /* regular repository */ }
+    const remotesDir = path.join(commonDir, 'logs', 'refs', 'remotes');
 
     let lastOffset = 0;
     try { lastOffset = fs.statSync(headLog).size; } catch (_) { /* repo without log yet */ }
@@ -796,7 +863,16 @@ class WorkflowScheduler {
       if (p.includes(`${path.sep}remotes${path.sep}`)) handlePush(p);
     });
     watcher.on('error', (err) => {
+      if (this._gitWatchers.get(key)?.watcher !== watcher) return;
       console.warn(`[WorkflowScheduler] git watcher error (${key}):`, err.message);
+      this._watcherFailed(key, err);
+    });
+
+    watcher.on('ready', () => {
+      const entry = this._gitWatchers.get(key);
+      if (entry?.watcher !== watcher) return;
+      entry.ready = true;
+      this.onStatusChanged?.();
     });
 
     this._gitWatchers.set(key, {
@@ -946,9 +1022,18 @@ function escapeRe(s) {
  * Read the current branch of a git repo (best-effort, sync).
  * Returns null if the HEAD file is missing or unreadable.
  */
+function resolveGitDir(repoPath) {
+  const git = path.join(repoPath, '.git');
+  try {
+    const link = fs.readFileSync(git, 'utf8').trim().match(/^gitdir:\s*(.+)$/);
+    if (link) return path.resolve(repoPath, link[1]);
+  } catch { /* normal .git directory */ }
+  return git;
+}
+
 function readCurrentBranch(repoPath) {
   try {
-    const head = fs.readFileSync(path.join(repoPath, '.git', 'HEAD'), 'utf8').trim();
+    const head = fs.readFileSync(path.join(resolveGitDir(repoPath), 'HEAD'), 'utf8').trim();
     const m = head.match(/^ref:\s+refs\/heads\/(.+)$/);
     return m ? m[1] : head.slice(0, 12); // detached HEAD → short SHA
   } catch (_) {

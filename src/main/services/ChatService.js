@@ -2444,9 +2444,11 @@ class ChatService {
    * @param {number} [opts.timeoutMs=20000]
    * @returns {Promise<string|null>} - Trimmed assistant text, or null
    */
-  async runHaikuPrompt({ systemPrompt, prompt, timeoutMs = 20000 }) {
+  async runHaikuPrompt({ systemPrompt, prompt, timeoutMs = 20000, signal }) {
     const abortController = new AbortController();
     const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
+    const cancel = () => abortController.abort();
+    signal?.addEventListener('abort', cancel, { once: true });
 
     // Remove CLAUDECODE env to avoid nested session detection
     const prevClaudeCode = process.env.CLAUDECODE;
@@ -2456,7 +2458,9 @@ class ChatService {
     let sessionId = null;
 
     try {
+      signal?.throwIfAborted();
       const sdk = await loadSDK();
+      signal?.throwIfAborted();
       const runtime = resolveRuntime();
 
       const stream = sdk.query({
@@ -2488,13 +2492,16 @@ class ChatService {
 
       // Null on a CLI failure so callers (commit message, PR description) drop
       // to their heuristic fallback instead of committing the error text.
+      signal?.throwIfAborted();
       const out = text.trim();
       return out && !this._isCliFailureText(out) ? out : null;
     } catch (err) {
+      signal?.throwIfAborted();
       console.warn('[ChatService] runHaikuPrompt failed:', err.message);
       return null;
     } finally {
       clearTimeout(timeoutId);
+      signal?.removeEventListener('abort', cancel);
       if (prevClaudeCode) process.env.CLAUDECODE = prevClaudeCode;
       // One-shot helper: drop the session file so it never shows up in "Resume"
       if (sessionId) _deleteWorkflowSession(cwd, sessionId);

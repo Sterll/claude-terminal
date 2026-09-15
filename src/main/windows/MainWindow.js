@@ -192,7 +192,7 @@ function createMainWindow({ isDev = false } = {}) {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false,
+      sandbox: true,
       webviewTag: true,
       // Chromium suspends requestAnimationFrame and throttles timers to 1/s
       // (1/min after five minutes) in a hidden window. The renderer is not just

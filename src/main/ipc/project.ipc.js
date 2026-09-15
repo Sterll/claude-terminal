@@ -6,6 +6,7 @@
 const { ipcMain } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const operations = require('../utils/cancellableOperation');
 const { projectsFile } = require('../utils/paths');
 
 // Pre-compiled regex patterns for TODO scanning (avoid re-allocation per line).
@@ -28,6 +29,16 @@ const TODO_REGEX_LUA   = /--\s*(TODO|FIXME|HACK|XXX)(?=[:\s(]|$)[:\s]*(.*)/i;
  * Register project IPC handlers
  */
 function registerProjectHandlers() {
+  ipcMain.handle('project-init-git', async (_event, { projectPath }) => {
+    if (!require('../utils/rendererSecurity').permitted(projectPath, true)) throw new Error('Project destination is not authorized');
+    const result = await require('../utils/git').execGitResult(projectPath, ['init']);
+    if (!result.ok) throw new Error(result.error);
+    return { success: true };
+  });
+  operations.handle(ipcMain, 'project-scaffold', async (_event, { template, targetPath }, signal, progress) => {
+    if (!require('../utils/rendererSecurity').permitted(targetPath, true)) throw new Error('Project destination is not authorized');
+    return require('../utils/projectCreation').scaffold(template, targetPath, { signal, onProgress: message => progress({ message }) });
+  });
   // Scan TODO/FIXME in project
   ipcMain.handle('scan-todos', async (event, projectPath) => {
     // Validate projectPath to prevent path traversal

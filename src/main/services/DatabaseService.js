@@ -289,10 +289,12 @@ class DatabaseService {
    * Save connections config to disk (without passwords)
    * @param {Array} connections
    */
-  async saveConnections(connections) {
+  async saveConnections(connections, expected) {
     const dir = path.dirname(DATABASES_FILE);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
+    return require('../utils/fileLock').withCrossProcessLock(DATABASES_FILE + '.lock', async () => {
+    if (expected !== undefined && await fs.promises.readFile(DATABASES_FILE, 'utf8') !== expected) throw new Error('Database configuration changed; retry migration');
     const safe = [];
     for (const connection of connections) {
       const { config, password } = splitConnectionSecrets(connection);
@@ -303,9 +305,13 @@ class DatabaseService {
       safe.push(config);
     }
 
-    const tmpFile = DATABASES_FILE + '.tmp';
-    fs.writeFileSync(tmpFile, JSON.stringify(safe, null, 2), 'utf8');
-    fs.renameSync(tmpFile, DATABASES_FILE);
+    const tmpFile = DATABASES_FILE + '.tmp.' + require('crypto').randomUUID();
+    if (expected !== undefined && await fs.promises.readFile(DATABASES_FILE, 'utf8') !== expected) throw new Error('Database configuration changed; retry migration');
+    try {
+      await fs.promises.writeFile(tmpFile, JSON.stringify(safe, null, 2), { flag: 'wx', mode: 0o600 });
+      await fs.promises.rename(tmpFile, DATABASES_FILE);
+    } finally { await fs.promises.rm(tmpFile, { force: true }); }
+    });
   }
 
   /**
@@ -313,17 +319,24 @@ class DatabaseService {
    * @returns {Array}
    */
   async loadConnections() {
-    try {
-      if (fs.existsSync(DATABASES_FILE)) {
-        const connections = JSON.parse(fs.readFileSync(DATABASES_FILE, 'utf8'));
-        const safe = connections.map(c => splitConnectionSecrets(c).config);
-        if (JSON.stringify(safe) !== JSON.stringify(connections)) await this.saveConnections(connections);
-        return safe;
-      }
-    } catch (e) {
-      console.error('[Database] Error loading connections:', e);
+    let original;
+    try { original = await fs.promises.readFile(DATABASES_FILE, 'utf8'); }
+    catch (error) { if (error.code === 'ENOENT') return []; throw error; }
+    let connections;
+    try { connections = JSON.parse(original); } catch { throw new Error('Invalid database configuration; file preserved'); }
+    if (!Array.isArray(connections)) throw new Error('Invalid database configuration; file preserved');
+    const safe = connections.map(c => splitConnectionSecrets(c).config);
+    if (JSON.stringify(safe) !== JSON.stringify(connections)) {
+      await require('../utils/secretBackups').archive(DATABASES_FILE, original);
+      await this.saveConnections(connections, original);
     }
-    return [];
+    return safe;
+  }
+
+  async secureLegacyBackups() {
+    const report = await require('../utils/secretBackups').migrate(require('os').homedir(), dataDir);
+    this._backupMigration = report;
+    return report;
   }
 
   // ==================== Credential Storage ====================
@@ -383,7 +396,29 @@ class DatabaseService {
       const homeDir = require('os').homedir();
 
       // Migrate legacy connection URIs before updating the MCP definition.
-      await this.loadConnections();
+      const connections = await this.loadConnections();
+      // Some old installations only kept passwords in the managed MCP env.
+      // Adopt those for known connections before retiring the old definition.
+      for (const source of [path.join(homeDir, '.claude.json'), path.join(homeDir, '.claude', 'settings.json')]) {
+        let config;
+        try { config = JSON.parse(await fs.promises.readFile(source, 'utf8')); }
+        catch (error) { if (error.code === 'ENOENT') continue; throw new Error('Cannot read legacy MCP configuration; file preserved'); }
+        for (const scope of [config, ...Object.values(config.projects || {})]) {
+          for (const [name, server] of Object.entries(scope.mcpServers || {})) {
+            if (name !== 'claude-terminal' && !name.startsWith('claude-terminal-db-')) continue;
+            for (const [key, password] of Object.entries(server.env || {})) {
+              const match = key.match(/^CT_DB_PASS(?:WORD)?(?:_(.+))?$/);
+              if (!match || typeof password !== 'string' || !password) continue;
+              const id = match[1] || name.slice('claude-terminal-db-'.length);
+              if (!connections.some(connection => connection.id === id)) continue;
+              const credential = await this.getCredential(id);
+              if (!credential.success) throw new Error('Cannot read database keychain; legacy configuration preserved');
+              if (!credential.password && !(await this.setCredential(id, password)).success) throw new Error('Cannot migrate database password to keychain');
+            }
+          }
+        }
+      }
+      await this.secureLegacyBackups();
       const env = { CT_DATA_DIR: dataDir, NODE_PATH: this._getNodeModulesPath(), ELECTRON_RUN_AS_NODE: '1' };
       await updateClaudeConfig(config => {
       if (!config.mcpServers) config.mcpServers = {};
@@ -404,11 +439,13 @@ class DatabaseService {
       });
 
       // Cleanup: remove stale entries from ~/.claude/settings.json (migration)
+      await require('../utils/secretBackups').secureFile(path.join(homeDir, '.claude', 'settings.json'), 'claude');
       this._cleanupSettingsJson(homeDir);
 
       console.log('[Database] Global MCP provisioned in ~/.claude.json');
       return { success: true };
     } catch (error) {
+      this._backupMigration = { ...(this._backupMigration || { secured: 0, errors: [] }), success: false, error: error.message };
       console.error('[Database] Failed to provision global MCP:', error.message);
       return { success: false, error: error.message };
     }

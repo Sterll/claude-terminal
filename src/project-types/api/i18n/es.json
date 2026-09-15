@@ -64,7 +64,10 @@
     "routeCountPlural": "{count} rutas",
     "filterPlaceholder": "Filtrar...",
     "noHeaders": "Sin cabeceras",
-    "updateBtn": "Actualizar"
+    "updateBtn": "Actualizar",
+    "saveToDisk": "Guardar en disco",
+    "savedToDisk": "Respuesta guardada",
+    "previewTruncated": "Vista previa limitada a 64 KiB; el archivo contiene la respuesta completa."
   },
   "newProject": {
     "types": {
