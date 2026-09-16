@@ -3955,7 +3955,7 @@ const _TAB_LIFECYCLE = {
     activate: () => renderDashboardForScope(),
     // 30s GitHub Actions poll started by the dashboard cards; it used to keep
     // hitting the API from a tab nobody was looking at.
-    deactivate: () => DashboardService.stopWorkflowPolling()
+    deactivate: () => DashboardService.cancelRender(document.getElementById('dashboard-content'))
   },
   timetracking: {
     activate: () => {
