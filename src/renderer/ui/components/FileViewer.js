@@ -140,6 +140,18 @@ async function _bodyHtml(filePath, change, mode, diffMode) {
 }
 
 function _wire(container, project) {
+  // The copy button, the line-numbers toggle and the block collapsers that
+  // MarkdownRenderer emits are inert markup on their own: they all rely on the
+  // delegated handler this installs. The pane painted them without it, so they
+  // were visible, hoverable and dead.
+  // Guarded because _wire() runs for every file opened in the pane and
+  // attachInteractivity() adds a listener rather than replacing one: stacked
+  // handlers would copy once per file previously viewed there.
+  if (!container.dataset.interactivityAttached) {
+    container.dataset.interactivityAttached = 'true';
+    MarkdownRenderer.attachInteractivity(container);
+  }
+
   container.onclick = async (e) => {
     const btn = e.target.closest('[data-mode], [data-action]');
     if (!btn || !_state) return;
@@ -182,7 +194,10 @@ async function _paint(container, project) {
   // A different file may have been picked while we read this one.
   if (_state.filePath !== filePath || _state.mode !== mode) return;
   const bodyEl = container.querySelector('.fv-body');
-  if (bodyEl) bodyEl.innerHTML = body;
+  if (!bodyEl) return;
+  bodyEl.innerHTML = body;
+  // Mermaid diagrams, math and HTML previews are placeholders until this runs.
+  MarkdownRenderer.postProcess(bodyEl);
 }
 
 /**
