@@ -34,6 +34,7 @@ const { ensureBgTaskSubscription, ensureWakeupTicker } = require('./chat/liveCar
 const { extractResultText, parseResultJson, parseCreatedTaskId } = require('./chat/resultParsing');
 const { createContextSuggestions } = require('./chat/contextSuggestions');
 const { createFollowupChips } = require('./chat/followupChips');
+const { createElapsedTimer } = require('./chat/elapsedTimer');
 const { createLightbox } = require('./chat/lightbox');
 const { attachExportMenu } = require('./chat/exportConversation');
 const { createTranscriptSearch } = require('./chat/transcriptSearch');
@@ -307,6 +308,7 @@ class ChatView extends BaseComponent {
             <span class="chat-status-dot"></span>
             ${project.isCloud ? `<span class="chat-status-cloud-badge">${escapeHtml(t('chat.cloudBadge') || 'Cloud')}</span>` : ''}
             <span class="chat-status-text">${escapeHtml(t('chat.ready'))}</span>
+            <span class="chat-status-elapsed" title="${escapeHtml(t('chat.elapsedTitle') || 'Time spent on this turn')}" hidden></span>
             <button class="chat-search-btn" title="${escapeHtml(t('chat.searchConversation') || 'Search in conversation')}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             </button>
@@ -369,6 +371,7 @@ class ChatView extends BaseComponent {
   const tasksBtn = chatView.querySelector('.chat-tasks-btn');
   const statusDot = chatView.querySelector('.chat-status-dot');
   const statusTextEl = chatView.querySelector('.chat-status-text');
+  const statusElapsedEl = chatView.querySelector('.chat-status-elapsed');
   const modelBtn = chatView.querySelector('.chat-model-btn');
   const modelLabel = chatView.querySelector('.chat-model-label');
   const modelDropdown = chatView.querySelector('.chat-model-dropdown');
@@ -1441,6 +1444,9 @@ class ChatView extends BaseComponent {
 
   // ── Follow-up suggestion chips (shown after Claude responds) ──
   const followupChips = createFollowupChips(api, followupSuggestionsEl, inputAdapter, project);
+
+  // ── Turn elapsed time (the footer's wall clock) ──
+  const elapsedTimer = createElapsedTimer(statusElapsedEl);
 
   attachBtn.addEventListener('click', () => fileInput.click());
 
@@ -6096,9 +6102,13 @@ class ChatView extends BaseComponent {
     }
 
     if (streaming) {
+      elapsedTimer.start();
       inputEl.dataset.placeholder = t('chat.queuePlaceholder') || 'Queue a follow-up message...';
       setStatus('thinking', t('chat.thinking'));
     } else {
+      // Leave the total on screen: the turn's duration is the answer the user
+      // was counting for, and the next send clears it.
+      elapsedTimer.stop();
       // Refresh contextual suggestions (placeholder rotation) after streaming ends
       contextSuggestions.setPostStreamTimer(setTimeout(() => contextSuggestions.refresh(), 300));
       // Flush SDK prompt suggestions accumulated during the turn
@@ -8476,6 +8486,7 @@ class ChatView extends BaseComponent {
       transcriptPruner?.destroy();
       contextSuggestions.reset();
       followupChips.clear();
+      elapsedTimer.destroy();
       // Clear permission reminder timers
       for (const [id] of _permTimers) _clearPermTimers(id);
       if (_initSecondaryTimer) { clearTimeout(_initSecondaryTimer); _initSecondaryTimer = null; }

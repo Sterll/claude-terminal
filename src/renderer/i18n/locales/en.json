@@ -1756,6 +1756,7 @@
     "streaming": "Writing...",
     "stopped": "Stopped",
     "ready": "Ready",
+    "elapsedTitle": "Time spent on this turn",
     "openFile": "Open file",
     "binaryFile": "binary file",
     "cloudBadge": "Cloud",

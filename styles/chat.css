@@ -3791,6 +3791,27 @@ hr.chat-plan-separator {
   color: var(--text-muted);
 }
 
+/* The turn's wall clock. Tabular figures because it reprints every second
+   and a proportional '1' would shift the whole footer left on each tick.
+   .done is the total left behind once the turn ends. */
+.chat-status-elapsed {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  white-space: nowrap;
+}
+
+.chat-status-elapsed::before {
+  content: '·';
+  margin: 0 4px 0 2px;
+  color: var(--text-muted);
+}
+
+.chat-status-elapsed.done {
+  color: var(--text-muted);
+}
+
 /* No opacity on this element: it is the popover's offset parent, and group
    opacity would dim .chat-context-popover along with it (see #109). The rested
    dim lives on the ring SVG below, which the popover does not inherit. */

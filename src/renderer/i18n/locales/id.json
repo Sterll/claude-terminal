@@ -1756,6 +1756,7 @@
     "streaming": "Menulis...",
     "stopped": "Dihentikan",
     "ready": "Siap",
+    "elapsedTitle": "Waktu yang dihabiskan pada giliran ini",
     "openFile": "Buka file",
     "binaryFile": "file biner",
     "cloudBadge": "Cloud",

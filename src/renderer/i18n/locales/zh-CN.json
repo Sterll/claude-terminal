@@ -1756,6 +1756,7 @@
     "streaming": "写作...",
     "stopped": "已停止",
     "ready": "准备好了",
+    "elapsedTitle": "本轮已用时",
     "openFile": "打开文件",
     "binaryFile": "二进制文件",
     "cloudBadge": "云",

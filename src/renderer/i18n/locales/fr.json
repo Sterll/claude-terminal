@@ -1756,6 +1756,7 @@
     "streaming": "En cours d'écriture...",
     "stopped": "Arrêté",
     "ready": "Prêt",
+    "elapsedTitle": "Temps écoulé sur ce tour",
     "openFile": "Ouvrir le fichier",
     "binaryFile": "fichier binaire",
     "cloudBadge": "Cloud",
