@@ -884,6 +884,8 @@
     "parallelWorkspaceNone": "无",
     "launchAtStartup": "启动时启动",
     "launchAtStartupDesc": "随 Windows 自动启动",
+    "orphanReaper": "终止 Claude 会话遗留的失控进程",
+    "orphanReaperDesc": "每分钟检查一次：终止已结束的 Claude 命令遗留下仍在空转的 shell 循环，以及会话结束后仍在占用 CPU 的废弃工具 shell。开发服务器等空闲残留进程绝不会被触碰。",
     "launchAtStartupError": "无法更改启动时启动设置。",
     "compactProjects": "紧凑项目视图",
     "compactProjectsDesc": "仅显示未选定项目的名称",
@@ -4157,6 +4159,10 @@
       "watchMultiHint": "选择一个或多个项目。 “任何项目”还包括您以后添加的项目。",
       "watchMultiPickHint": "按仓库进行监视，因此请至少选择一个项目。"
     }
+  },
+  "orphanReaper": {
+    "toastOne": "已终止 1 个 Claude 会话遗留的失控进程（约 {cpu}% CPU）",
+    "toastMany": "已终止 {count} 个 Claude 会话遗留的失控进程（约 {cpu}% CPU）"
   },
   "navigationMode": {
     "title": "选择你的导航方式",

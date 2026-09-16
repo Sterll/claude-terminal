@@ -884,6 +884,8 @@
     "parallelWorkspaceNone": "None",
     "launchAtStartup": "Launch at startup",
     "launchAtStartupDesc": "Start automatically with Windows",
+    "orphanReaper": "Stop runaway processes left by Claude sessions",
+    "orphanReaperDesc": "Every minute, terminates shell loops a finished Claude command left spinning, and abandoned tool shells still burning CPU after their session died. Idle leftovers such as a dev server are never touched.",
     "launchAtStartupError": "Failed to change the launch at startup setting.",
     "compactProjects": "Compact projects view",
     "compactProjectsDesc": "Show only the name of unselected projects",
@@ -4157,6 +4159,10 @@
       "watchMultiHint": "Pick one or more projects. \"Any project\" also covers ones you add later.",
       "watchMultiPickHint": "Watched per repository, so pick at least one project."
     }
+  },
+  "orphanReaper": {
+    "toastOne": "Stopped 1 runaway process left behind by a Claude session (~{cpu}% CPU)",
+    "toastMany": "Stopped {count} runaway processes left behind by a Claude session (~{cpu}% CPU)"
   },
   "navigationMode": {
     "title": "Choose your navigation",

@@ -19,6 +19,7 @@ const workflowService = require('./WorkflowService');
 const databaseService = require('./DatabaseService');
 const parallelTaskService = require('./ParallelTaskService');
 const discordRpcService = require('./DiscordRpcService');
+const orphanReaper = require('./OrphanReaper');
 
 /**
  * Initialize all services with main window reference
@@ -43,6 +44,12 @@ function initializeServices(mainWindow) {
 
   // Discord Rich Presence (reads its own enabled/showProject prefs from settings.json)
   try { discordRpcService.start(); } catch (e) { console.warn('[Services] DiscordRPC start failed:', e.message); }
+
+  // Stops the CPU-hungry leftovers of Claude sessions (busy loops a finished
+  // Bash command backgrounded, tool shells whose CLI died). Reads its own
+  // switch from settings.json on every sweep; POSIX only.
+  orphanReaper.setMainWindow(mainWindow);
+  orphanReaper.start();
 
   // Track the CLI's own token refreshes on the machine-wide store, so the
   // account snapshot this app would restore from never falls behind a
@@ -369,6 +376,7 @@ function cleanupServices() {
   remoteServer.stop();
   workflowService.destroy();
   discordRpcService.destroy();
+  orphanReaper.stop();
   try { require('./AccountManager').stopCredentialWatch(); } catch (_) { /* non-critical */ }
   databaseService.disconnectAll().catch(() => {});
   _stopMcpTriggerPolling();

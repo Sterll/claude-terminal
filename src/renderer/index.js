@@ -56,6 +56,7 @@ if (_api?.chat?.modelCatalog) {
 // is closed and reopened does not lose the work it started, and so the two CLI
 // feeds are reconciled in exactly one place.
 _registerBackgroundTaskListeners(_api);
+_registerOrphanReaperListener(_api);
 
 // ── Cloud event handlers ──────────────────────────────────────────────────
 
@@ -81,6 +82,21 @@ function _registerBackgroundTaskListeners(api) {
   // The level feed is what settles a task whose end bookend never arrived.
   api.chat.onBackgroundTasks?.((data) => {
     if (data?.sessionId) store.syncLive(data.sessionId, data.tasks);
+  });
+}
+
+// Main kills what a Claude session left spinning (see OrphanReaper); the user
+// hears about it here, since a process vanishing without a word would read as
+// a crash of whatever it was.
+function _registerOrphanReaperListener(api) {
+  if (!api?.lifecycle?.onOrphansReaped) return;
+  const Toast = require('./ui/components/Toast');
+  api.lifecycle.onOrphansReaped((report) => {
+    const count = report?.items?.length || 0;
+    if (!count) return;
+    const params = { count, cpu: Math.round(report.totalCpu || 0) };
+    const key = count === 1 ? 'orphanReaper.toastOne' : 'orphanReaper.toastMany';
+    Toast.show(i18n.t(key, params), 'warning', 8000);
   });
 }
 

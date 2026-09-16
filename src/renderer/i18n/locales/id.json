@@ -884,6 +884,8 @@
     "parallelWorkspaceNone": "Tidak ada",
     "launchAtStartup": "Jalankan saat startup",
     "launchAtStartupDesc": "Jalankan otomatis bersama Windows",
+    "orphanReaper": "Hentikan proses liar yang ditinggalkan sesi Claude",
+    "orphanReaperDesc": "Setiap menit, menghentikan loop shell yang dibiarkan berputar oleh perintah Claude yang sudah selesai, serta shell alat terbengkalai yang masih membakar CPU setelah sesinya mati. Sisa yang menganggur, seperti server dev, tidak pernah disentuh.",
     "launchAtStartupError": "Gagal mengubah pengaturan jalankan saat startup.",
     "compactProjects": "Tampilan proyek ringkas",
     "compactProjectsDesc": "Tampilkan hanya nama proyek yang tidak dipilih",
@@ -4157,6 +4159,10 @@
       "watchMultiHint": "Pilih satu atau beberapa proyek. \"Proyek apa pun\" juga mencakup proyek yang Anda tambahkan nanti.",
       "watchMultiPickHint": "Dipantau per repositori, jadi pilih setidaknya satu proyek."
     }
+  },
+  "orphanReaper": {
+    "toastOne": "Menghentikan 1 proses liar yang ditinggalkan sesi Claude (~{cpu}% CPU)",
+    "toastMany": "Menghentikan {count} proses liar yang ditinggalkan sesi Claude (~{cpu}% CPU)"
   },
   "navigationMode": {
     "title": "Pilih navigasi Anda",
