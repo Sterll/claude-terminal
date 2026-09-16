@@ -408,13 +408,15 @@ npm install
 - MCP tools for full workflow control from Claude Code
 
 ### Connectivity (Remote & Cloud)
+- Database secrets stay in the OS keychain. MCP environment variables and authorization headers remain local to each machine during sync.
+- Imports and clones reject existing projects, prepare content in temporary directories, and enforce archive extraction limits.
 - Unified **Connectivity tab** combining local remote access and cloud sync in one place
 - Self-hosted Docker relay server for remote project access
 - Project upload and auto-sync with file watcher and conflict resolution
 - **Per-entity sync toggles**: choose exactly which data syncs (projects, settings, skills, agents, MCP configs, keybindings, memory, hooks, archives)
 - **Session resume from cloud**: pick up any session from another machine
 - **Cross-machine notifications**: get notified on your desktop when a cloud session finishes
-- Headless Claude sessions running in the cloud
+- Headless Claude sessions running in a personal cloud instance (one user per container and dedicated volumes); disable `CLOUD_ENABLED` for a multi-user relay/sync without agent execution
 - Diff modal for local vs cloud file comparison
 - User profiles and session management
 - Automated install script with Docker, reverse proxy, and SSL setup
@@ -724,3 +726,5 @@ See [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
 ## License
 
 [GPL-3.0](LICENSE)
+
+See [runtime, data protection and recovery notes](RUNTIME_RELIABILITY.md) for deployment constraints and validation commands.

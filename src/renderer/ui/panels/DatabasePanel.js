@@ -3450,7 +3450,7 @@ async function saveConnections() {
   const state = require('../../state');
   const connections = state.getDatabaseConnections();
   await ctx.api.database.saveConnections({ connections });
-  // Refresh global MCP config (passwords env vars, connection list)
+  // Refresh the global MCP definition (local paths only)
   await ctx.api.database.refreshMcp().catch(() => {});
 }
 
