@@ -118,4 +118,47 @@ describe('background tasks drawer', () => {
     expect(timeOf('other')).toBeUndefined();
     expect(timeOf('t1')).toBe('0s');
   });
+
+  it('gives a reopened tab back the history it ran before', async () => {
+    // What the tab comes back on is the CLI's id, and the work it did last
+    // time was filed under that. A drawer keyed on the per-view handle would
+    // show an empty list next to a transcript full of finished tasks.
+    store.claimSession('uuid-a', 'uuid-a');
+    store.taskStarted({ taskId: 'earlier', sessionId: 'uuid-a', description: 'ran before' });
+    store.taskEnded({ taskId: 'earlier', sessionId: 'uuid-a', status: 'completed' });
+
+    const reopened = document.createElement('div');
+    document.body.appendChild(reopened);
+    const { createChatView } = require('../../src/renderer/ui/components/ChatView');
+    const view2 = createChatView(reopened, { id: 'p1', name: 'Test', path: '/tmp/test' }, { resumeSessionId: 'uuid-a' });
+    try {
+      reopened.querySelector('.chat-tasks-btn').click();
+      expect(reopened.querySelector('.chat-task-row[data-task-id="earlier"]')).not.toBeNull();
+    } finally {
+      view2?.destroy?.();
+    }
+  });
+
+  it('clears the finished list without dropping live work', async () => {
+    await start('done');
+    store.taskEnded({ taskId: 'done', sessionId, status: 'completed' });
+    await start('live');
+
+    wrapper.querySelector('.chat-tasks-clear').click();
+    await flush();
+
+    expect(timeOf('done')).toBeUndefined();
+    // A clear that stopped reporting running tasks would be a lie.
+    expect(timeOf('live')).toBe('0s');
+  });
+
+  it('offers the clear only once something has finished', async () => {
+    await start('t1');
+    expect(wrapper.querySelector('.chat-tasks-clear').hidden).toBe(true);
+
+    store.taskEnded({ taskId: 't1', sessionId, status: 'completed' });
+    await flush();
+
+    expect(wrapper.querySelector('.chat-tasks-clear').hidden).toBe(false);
+  });
 });

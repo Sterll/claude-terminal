@@ -60,8 +60,16 @@ _registerBackgroundTaskListeners(_api);
 // ── Cloud event handlers ──────────────────────────────────────────────────
 
 function _registerBackgroundTaskListeners(api) {
-  if (!api?.chat?.onTaskUpdate) return;
   const store = require('./state/backgroundTasks.state');
+
+  // Read last run's history back. Detached: the registry merges whatever the
+  // tabs claim in the meantime, so nothing here has to wait for the file.
+  store.load().catch(e => console.error('Error loading background tasks:', e));
+  // A debounced save has up to half a second of history in flight; unload is
+  // the one moment that would drop it.
+  window.addEventListener('beforeunload', () => store.flushSync());
+
+  if (!api?.chat?.onTaskUpdate) return;
 
   api.chat.onTaskUpdate((data) => {
     // Ambient housekeeping never belongs in a user-facing task list.

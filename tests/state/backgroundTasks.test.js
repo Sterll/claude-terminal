@@ -7,7 +7,8 @@
 
 const store = require('../../src/renderer/state/backgroundTasks.state');
 const {
-  taskStarted, taskEnded, syncLive, listTasks, getTask, reset, MAX_FINISHED,
+  taskStarted, taskEnded, syncLive, claimSession, resolveOwner, listTasks,
+  listTasksForOwner, clearFinished, getTask, load, flushSync, reset, MAX_FINISHED,
 } = store;
 
 beforeEach(() => reset());
@@ -146,3 +147,241 @@ describe('pruning', () => {
   });
 });
 
+
+describe('owners', () => {
+  test('files a task under the owner its session was claimed by', () => {
+    claimSession('tab-1', 's1');
+    taskStarted({ taskId: 't1', sessionId: 's1' });
+
+    expect(listTasksForOwner('tab-1').map(t => t.taskId)).toEqual(['t1']);
+  });
+
+  test('re-stamps tasks when the link lands after them', () => {
+    // The CLI can report a task before the tab has linked the id it used.
+    taskStarted({ taskId: 't1', sessionId: 's1' });
+    claimSession('tab-1', 's1');
+
+    expect(listTasksForOwner('tab-1').map(t => t.taskId)).toEqual(['t1']);
+  });
+
+  test('keeps a tab whole across the ids it runs under', () => {
+    // A handle per ChatView, a uuid from the CLI, another handle after an
+    // account switch — one history all the same.
+    claimSession('tab-1', 'chat-a');
+    taskStarted({ taskId: 't1', sessionId: 'chat-a' });
+    claimSession('tab-1', 'uuid-a');
+    taskStarted({ taskId: 't2', sessionId: 'uuid-a' });
+    claimSession('tab-1', 'chat-b');
+    taskStarted({ taskId: 't3', sessionId: 'chat-b' });
+
+    expect(listTasksForOwner('tab-1').map(t => t.taskId).sort()).toEqual(['t1', 't2', 't3']);
+  });
+
+  test('merges two owners that turn out to be the same tab', () => {
+    // Claiming ahead of the file, then discovering the id already had a home.
+    taskStarted({ taskId: 'old', sessionId: 'uuid-a' });
+    claimSession('uuid-a', 'uuid-a');
+    claimSession('tab-1', 'uuid-a');
+
+    expect(listTasksForOwner('tab-1').map(t => t.taskId)).toEqual(['old']);
+    expect(listTasksForOwner('uuid-a')).toEqual([]);
+  });
+
+  test('answers the owner a session is already known by', () => {
+    claimSession('tab-1', 's1');
+
+    expect(resolveOwner('s1')).toBe('tab-1');
+    // An id nobody claimed must read as unknown, so a caller mints its own.
+    expect(resolveOwner('s2')).toBeNull();
+  });
+
+  test('keeps one tab out of another tab\'s list', () => {
+    claimSession('tab-1', 's1');
+    claimSession('tab-2', 's2');
+    taskStarted({ taskId: 't1', sessionId: 's1' });
+    taskStarted({ taskId: 't2', sessionId: 's2' });
+
+    expect(listTasksForOwner('tab-1').map(t => t.taskId)).toEqual(['t1']);
+    expect(listTasksForOwner('tab-2').map(t => t.taskId)).toEqual(['t2']);
+  });
+
+  test('carries the owner through the end bookend', () => {
+    claimSession('tab-1', 's1');
+    taskStarted({ taskId: 't1', sessionId: 's1' });
+    taskEnded({ taskId: 't1', sessionId: 's1', status: 'completed' });
+
+    expect(listTasksForOwner('tab-1').map(t => t.taskId)).toEqual(['t1']);
+  });
+});
+
+describe('clearFinished', () => {
+  test('drops finished tasks and keeps running ones', () => {
+    claimSession('tab-1', 's1');
+    taskStarted({ taskId: 'done', sessionId: 's1' });
+    taskEnded({ taskId: 'done', sessionId: 's1', status: 'completed' });
+    taskStarted({ taskId: 'live', sessionId: 's1' });
+
+    expect(clearFinished('tab-1')).toBe(1);
+    // A clear that stopped reporting live work would be a lie, not a tidy-up.
+    expect(listTasksForOwner('tab-1').map(t => t.taskId)).toEqual(['live']);
+  });
+
+  test('leaves another tab\'s history alone', () => {
+    claimSession('tab-1', 's1');
+    claimSession('tab-2', 's2');
+    taskEnded({ taskId: 'mine', sessionId: 's1', status: 'completed' });
+    taskEnded({ taskId: 'theirs', sessionId: 's2', status: 'completed' });
+
+    clearFinished('tab-1');
+
+    expect(getTask('mine')).toBeNull();
+    expect(getTask('theirs')).not.toBeNull();
+  });
+
+  test('clears every tab when no owner is named', () => {
+    taskEnded({ taskId: 'a', sessionId: 's1', status: 'completed' });
+    taskEnded({ taskId: 'b', sessionId: 's2', status: 'completed' });
+
+    expect(clearFinished()).toBe(2);
+    expect(listTasks()).toHaveLength(0);
+  });
+});
+
+describe('persistence', () => {
+  const FILE = '/mock/home/.claude-terminal/background-tasks.json';
+  const fsMock = window.electron_nodeModules.fs;
+  const written = () => {
+    const call = fsMock.promises.writeFile.mock.calls.at(-1)
+      || fsMock.writeFileSync.mock.calls.at(-1);
+    return call ? JSON.parse(call[1]) : null;
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    fsMock.promises.readFile.mockResolvedValue('');
+    fsMock.promises.mkdir.mockResolvedValue();
+    fsMock.promises.writeFile.mockResolvedValue();
+    fsMock.promises.rename.mockResolvedValue();
+    fsMock.promises.copyFile.mockResolvedValue();
+  });
+
+  const onDisk = (data) => fsMock.promises.readFile.mockResolvedValue(JSON.stringify(data));
+
+  test('writes the registry after a task is recorded', async () => {
+    claimSession('tab-1', 's1');
+    taskStarted({ taskId: 't1', sessionId: 's1', description: 'npm test' });
+
+    await new Promise(r => setTimeout(r, 700)); // past the save debounce
+
+    const saved = written();
+    expect(saved.tasks.map(t => t.taskId)).toEqual(['t1']);
+    expect(saved.owners).toEqual({ s1: 'tab-1' });
+  });
+
+  test('flushSync writes through a temp file, not over the real one', () => {
+    claimSession('tab-1', 's1');
+    taskStarted({ taskId: 't1', sessionId: 's1' });
+
+    flushSync();
+
+    // A half-written registry would be worse than a slightly stale one.
+    const [tmpPath] = fsMock.writeFileSync.mock.calls.at(-1);
+    expect(tmpPath).toMatch(/\.tmp$/);
+    expect(fsMock.renameSync).toHaveBeenCalledWith(tmpPath, FILE);
+  });
+
+  test('reads last run\'s history back', async () => {
+    onDisk({
+      version: 1,
+      savedAt: new Date(1_700_000_000_000).toISOString(),
+      tasks: [{ taskId: 'old', sessionId: 's1', ownerKey: 'tab-1', status: 'completed', startedAt: 1, endedAt: 2 }],
+      owners: { s1: 'tab-1' },
+    });
+
+    await load();
+
+    expect(listTasksForOwner('tab-1').map(t => t.taskId)).toEqual(['old']);
+  });
+
+  test('settles a task the file still shows as running', async () => {
+    const savedAt = 1_700_000_000_000;
+    onDisk({
+      version: 1,
+      savedAt: new Date(savedAt).toISOString(),
+      tasks: [{ taskId: 'zombie', sessionId: 's1', ownerKey: 'tab-1', status: 'running', startedAt: savedAt - 5000, endedAt: null }],
+      owners: { s1: 'tab-1' },
+    });
+
+    await load();
+
+    // Nothing survives the process that ran it, and nobody recorded how it
+    // went — so it ended, with an unknown outcome, when the app went away.
+    expect(getTask('zombie')).toMatchObject({ status: 'ended', endedAt: savedAt });
+  });
+
+  test('lets this run\'s record win over the file', async () => {
+    taskStarted({ taskId: 't1', sessionId: 's1', description: 'live' });
+    onDisk({
+      version: 1,
+      savedAt: new Date().toISOString(),
+      tasks: [{ taskId: 't1', sessionId: 's1', ownerKey: 's1', status: 'completed', description: 'stale', startedAt: 1, endedAt: 2 }],
+      owners: {},
+    });
+
+    await load();
+
+    expect(getTask('t1')).toMatchObject({ status: 'running', description: 'live' });
+  });
+
+  test('gives a tab back the history it had under an older id', async () => {
+    onDisk({
+      version: 1,
+      savedAt: new Date().toISOString(),
+      tasks: [{ taskId: 'old', sessionId: 'chat-a', ownerKey: 'chat-a', status: 'completed', startedAt: 1, endedAt: 2 }],
+      owners: { 'chat-a': 'chat-a', 'uuid-a': 'chat-a' },
+    });
+
+    await load();
+    // What a restored tab resumes on is the CLI uuid, never the old handle.
+    const owner = resolveOwner('uuid-a');
+
+    expect(owner).toBe('chat-a');
+    expect(listTasksForOwner(owner).map(t => t.taskId)).toEqual(['old']);
+  });
+
+  test('merges the file into an owner a tab claimed before it landed', async () => {
+    // The tab does not wait for the read, so it mints its own owner first.
+    claimSession('uuid-a', 'uuid-a');
+    onDisk({
+      version: 1,
+      savedAt: new Date().toISOString(),
+      tasks: [{ taskId: 'old', sessionId: 'chat-a', ownerKey: 'chat-a', status: 'completed', startedAt: 1, endedAt: 2 }],
+      owners: { 'chat-a': 'chat-a', 'uuid-a': 'chat-a' },
+    });
+
+    await load();
+
+    // One tab, one history, whichever way the race went.
+    expect(listTasksForOwner('uuid-a').map(t => t.taskId)).toEqual(['old']);
+    expect(listTasksForOwner('chat-a')).toEqual([]);
+  });
+
+  test('ignores a file it cannot vouch for', async () => {
+    onDisk({ version: 99, tasks: [{ taskId: 'x', status: 'completed' }] });
+
+    await load();
+
+    expect(listTasks()).toHaveLength(0);
+  });
+
+  test('forgets aliases whose owner no longer holds a task', async () => {
+    claimSession('tab-1', 's1');
+    taskEnded({ taskId: 't1', sessionId: 's1', status: 'completed' });
+    claimSession('tab-2', 's2');
+
+    flushSync();
+
+    // Otherwise the map is the one thing in here with no bound at all.
+    expect(written().owners).toEqual({ s1: 'tab-1' });
+  });
+});

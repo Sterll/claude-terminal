@@ -512,6 +512,7 @@ Also exposes `window.electron_nodeModules`: `path`, `fs` (sync + promises, guard
 ├── timetracking.json                  # Time tracking data (v2 format)
 ├── marketplace.json                   # Installed skills manifest
 ├── session-names.json                 # Session display names
+├── background-tasks.json              # Background task history, keyed by tab (owner), survives restarts
 ├── knowledge/
 │   ├── index.json                     # Global knowledge entry metadata
 │   └── entries/<slug>.md              # One markdown file per entry
