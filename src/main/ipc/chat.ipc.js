@@ -15,6 +15,7 @@ function registerChatHandlers() {
       const sessionId = await chatService.startSession(params);
       return { success: true, sessionId };
     } catch (err) {
+      if (err.name === 'AbortError') return { success: false, cancelled: true };
       console.error('[chat-start] Error:', err.message);
       return { success: false, error: err.message };
     }

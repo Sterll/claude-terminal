@@ -166,6 +166,7 @@ npm install
 
 ### Interface de chat (Claude Agent SDK)
 - Interface de chat intégrée propulsée par le Claude Agent SDK, avec réponses en streaming
+- Fermer un onglet de chat annule son démarrage en attente et ferme sa session SDK ; un prompt différé ne peut pas relancer un onglet fermé.
 - **Rendu markdown enrichi** : diagrammes mermaid, formules KaTeX, code coloré syntaxiquement, arborescences de fichiers, tableaux kanban, blocs de diff, aperçus HTML, et plus
 - **Cartes de permission** : Autoriser, Toujours autoriser ou Refuser les demandes d'outils ; quand c'est une de vos propres règles `permissions.ask` qui déclenche la demande, la carte nomme cette règle et masque « Toujours autoriser » pour qu'on ne puisse pas la contourner d'un clic
 - **Mode plan** : relire et approuver ou rejeter les plans de l'agent avant exécution

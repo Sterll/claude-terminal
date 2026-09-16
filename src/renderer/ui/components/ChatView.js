@@ -96,6 +96,19 @@ class ChatView extends BaseComponent {
     const api = this._api;
   const { terminalId = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, skipPermissions = false, onTabRename = null, onStatusChange = null, onModelChange = null, onSwitchTerminal = null, onSwitchProject = null, onForkSession = null, initialPrompt = null, initialModel = null, initialEffort = null, initialImages = null, onSessionStart = null, systemPrompt = null, builtinSystemPrompt = null } = options;
   let sessionId = null;
+  let destroyed = false;
+
+  // All starts (first prompt, account switch, fork retry) share tab ownership.
+  async function startChatSession(params) {
+    if (destroyed) return null;
+    const result = await api.chat.start(params);
+    if (destroyed) {
+      if (result.success) api.chat.close({ sessionId: result.sessionId || params.sessionId });
+      return null;
+    }
+    if (result.cancelled) return null;
+    return result;
+  }
   let isStreaming = false;
   let isAborting = false;
   let pendingResumeId = resumeSessionId || null;
@@ -3022,6 +3035,7 @@ class ChatView extends BaseComponent {
   let _forceParallelTask = false;
 
   async function handleSend() {
+    if (destroyed) return;
     const text = getInputText().trim();
     const hasImages = attachments.count() > 0;
     const hasMentions = pendingMentions.length > 0;
@@ -3092,6 +3106,7 @@ class ChatView extends BaseComponent {
       try {
         const enhanceNotice = appendSystemNotice(t('settings.enhancingPrompt') || 'Enhancing prompt...', 'command');
         const res = await api.chat.enhancePrompt({ text });
+        if (destroyed) return;
         // Remove the notice
         const noticeEl = messagesEl.querySelector('.chat-system-notice:last-of-type');
         if (noticeEl) noticeEl.remove();
@@ -3101,6 +3116,8 @@ class ChatView extends BaseComponent {
         }
       } catch (_) { /* fallback to original */ }
     }
+
+    if (destroyed) return;
 
     const isQueued = isStreaming && sessionId;
     const userMsgUuid = crypto.randomUUID();
@@ -3119,6 +3136,7 @@ class ChatView extends BaseComponent {
 
     // Resolve mentions to text content
     const resolvedMentions = mentions.length > 0 ? await resolveMentions(mentions) : [];
+    if (destroyed) return;
 
     // Prepare images payload (without dataUrl to reduce IPC size)
     const imagesPayload = images.map(({ base64, mediaType }) => ({ base64, mediaType }));
@@ -3218,7 +3236,8 @@ class ChatView extends BaseComponent {
         }
         // Stash for potential account-switch restart (preserve cwd/model/effort/etc.)
         lastStartOpts = { ...startOpts };
-        const result = await api.chat.start(startOpts);
+        const result = await startChatSession(startOpts);
+        if (!result) return;
         if (!result.success) {
           sessionId = null;
           appendError(result.error || t('chat.errorOccurred'));
@@ -3233,17 +3252,21 @@ class ChatView extends BaseComponent {
           _forceParallelTask = false;
         }
         const result = await api.chat.send({ sessionId, text: sendText, images: imagesPayload, documents: documentsPayload, mentions: resolvedMentions, userMessageUuid: userMsgUuid });
+        if (destroyed) return;
         if (!result.success) {
           appendError(result.error || t('chat.errorOccurred'));
           if (!isStreaming) setStreaming(false);
         }
       }
     } catch (err) {
+      if (destroyed) return;
       appendError(err.message);
       if (!isStreaming) setStreaming(false);
     } finally {
       sendLock = false;
     }
+
+    if (destroyed) return;
 
     // Tab rename: instant truncation + async haiku polish.
     // A tab whose name was chosen by the user (rename, custom title) is locked:
@@ -3256,7 +3279,7 @@ class ChatView extends BaseComponent {
       if (!tabNamePending) {
         tabNamePending = true;
         api.chat.generateTabName({ userMessage: text }).then(res => {
-          if (res?.success && res.name) onTabRename(res.name);
+          if (!destroyed && res?.success && res.name) onTabRename(res.name);
         }).catch(() => {}).finally(() => { tabNamePending = false; });
       }
     }
@@ -7244,8 +7267,10 @@ class ChatView extends BaseComponent {
    * @returns {Promise<boolean>} whether the tab is now on `newId`
    */
   async function restartOnAccount(newId, resumeTurn) {
+    if (destroyed) return false;
     // Tell main to close the SDK process so the new credentials take effect
     const prep = await api.chat.prepareSwitchAccount({ sessionId });
+    if (destroyed) return false;
     if (!prep.success) {
       appendError(prep.error || 'Failed to prepare session for account switch.');
       return false;
@@ -7328,7 +7353,8 @@ class ChatView extends BaseComponent {
       appendThinkingIndicator();
     }
     turnCutByLimit = false;
-    const res = await api.chat.start(restartOpts);
+    const res = await startChatSession(restartOpts);
+    if (!res) return false;
     if (!res.success) {
       appendError(res.error || t('chat.errorOccurred'));
       setStreaming(false);
@@ -7345,6 +7371,7 @@ class ChatView extends BaseComponent {
         mentions: m.mentions || [],
         userMessageUuid: m.userMessageUuid || null,
       });
+      if (destroyed) return false;
       if (!sent.success) appendError(sent.error || t('chat.errorOccurred'));
     }
     return true;
@@ -7362,7 +7389,7 @@ class ChatView extends BaseComponent {
   async function switchAccountAndRestart(accountId, { resumeTurn = turnCutByLimit } = {}) {
     // `null` is a target of its own — the project following the default account
     // rather than pinning one — so only an absent argument is refused.
-    if (accountId === undefined || switchingAccount) return false;
+    if (destroyed || accountId === undefined || switchingAccount) return false;
     switchingAccount = true;
     try {
       return await restartOnAccount(accountId, resumeTurn);
@@ -7382,7 +7409,7 @@ class ChatView extends BaseComponent {
    * @returns {Promise<boolean>} whether an account was picked and applied
    */
   async function offerAccountSwitch(ctx) {
-    if (switchingAccount) return false;
+    if (destroyed || switchingAccount) return false;
     switchingAccount = true;
     try {
       const { showAccountSwitchModal } = require('./AccountSwitchModal');
@@ -7397,7 +7424,7 @@ class ChatView extends BaseComponent {
         projectId: ctx.projectId || null,
         projectName: limitedProject?.name || ''
       });
-      if (!newId) return false;
+      if (destroyed || !newId) return false;
       return await restartOnAccount(newId, true);
     } finally {
       switchingAccount = false;
@@ -7651,7 +7678,7 @@ class ChatView extends BaseComponent {
   // refusal is deterministic, so retry once WITHOUT the guard rather than re-sending
   // the same request, and tell the user what the fork is about to drop.
   const unsubForkRejected = api.chat.onForkRejected(async ({ sessionId: sid, resumeSessionId: rsid, resumeSessionAt: rat }) => {
-    if (sid !== sessionId) return;
+    if (destroyed || sid !== sessionId) return;
     removeThinkingIndicator();
     if (!rsid || !rat || !lastStartOpts) {
       setStreaming(false);
@@ -7668,7 +7695,8 @@ class ChatView extends BaseComponent {
     delete retryOpts.resumeDropsTurn; // unarmed: the guard already told us what it drops
     setStreaming(true);
     appendThinkingIndicator();
-    const res = await api.chat.start(retryOpts);
+    const res = await startChatSession(retryOpts);
+    if (!res) return;
     if (!res.success) {
       appendError(res.error || t('chat.errorOccurred'));
       setStreaming(false);
@@ -8095,6 +8123,7 @@ class ChatView extends BaseComponent {
       setHistoryTopLoading();
       const nextLimit = historyLimit + HISTORY_PAGE;
       fetchHistory(nextLimit).then(result => {
+        if (destroyed) return;
         historyLimit = nextLimit;
         const msgs = result?.messages || [];
         // The window grows from the end, so the new messages are its prefix
@@ -8138,6 +8167,7 @@ class ChatView extends BaseComponent {
     }
 
     fetchHistory(historyLimit).then(result => {
+      if (destroyed) return;
       if (welcomeEl) welcomeEl.remove();
 
       const rawMsgs = (result?.success && result.messages) || [];
@@ -8226,6 +8256,7 @@ class ChatView extends BaseComponent {
     let idx = 0;
 
     function renderBatch() {
+      if (destroyed) return;
       const fragment = document.createDocumentFragment();
       const deadline = Date.now() + BATCH_BUDGET_MS;
       let end = Math.min(idx + MIN_BATCH, messages.length);
@@ -8448,7 +8479,8 @@ class ChatView extends BaseComponent {
   }
 
   // Focus input
-  setTimeout(() => {
+  const initialSubmitTimer = setTimeout(() => {
+    if (destroyed) return;
     inputEl.focus();
     // Auto-submit si un prompt initial est fourni (ex: depuis Remote Control)
     if (initialPrompt) {
@@ -8467,6 +8499,9 @@ class ChatView extends BaseComponent {
 
   return {
     destroy() {
+      if (destroyed) return;
+      destroyed = true;
+      clearTimeout(initialSubmitTimer);
       // Emit session recap event before closing (chat-mode sessions only)
       if (recapToolCount >= 2 && project?.id) {
         try {
