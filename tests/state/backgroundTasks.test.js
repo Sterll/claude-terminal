@@ -248,7 +248,9 @@ describe('clearFinished', () => {
 });
 
 describe('persistence', () => {
-  const FILE = '/mock/home/.claude-terminal/background-tasks.json';
+  // Built the same way the store builds it: hardcoding a posix path reads as
+  // a rename to the wrong file on Windows, where `path.join` uses backslashes.
+  const { backgroundTasksFile: FILE } = require('../../src/renderer/utils/paths');
   const fsMock = window.electron_nodeModules.fs;
   const written = () => {
     const call = fsMock.promises.writeFile.mock.calls.at(-1)
