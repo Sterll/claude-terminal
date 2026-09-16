@@ -252,30 +252,42 @@ describe('OrphanReaper.sweep', () => {
   });
 });
 
+// `start()` branches on the platform, so both branches are pinned to a stubbed
+// one: read off the runner instead, each assertion would only ever exercise the
+// half that runner happens to be — and the Windows leg of CI would run the
+// POSIX expectations against a real win32 no-op.
+function withPlatform(platform, fn) {
+  const original = Object.getOwnPropertyDescriptor(process, 'platform');
+  Object.defineProperty(process, 'platform', { value: platform, configurable: true });
+  try {
+    fn();
+  } finally {
+    Object.defineProperty(process, 'platform', original);
+  }
+}
+
 describe('OrphanReaper.start', () => {
   test('is a no-op on Windows', () => {
-    const original = Object.getOwnPropertyDescriptor(process, 'platform');
-    Object.defineProperty(process, 'platform', { value: 'win32' });
-    try {
+    withPlatform('win32', () => {
       const reaper = new OrphanReaper({ listProcesses: async () => [] });
       reaper.start();
       expect(reaper._timer).toBeNull();
       expect(reaper._firstTimer).toBeNull();
       reaper.stop();
-    } finally {
-      Object.defineProperty(process, 'platform', original);
-    }
+    });
   });
 
-  test('arms the first sweep and stop() disarms it', () => {
+  test('arms the first sweep on POSIX, and stop() disarms it', () => {
     jest.useFakeTimers();
     try {
-      const reaper = new OrphanReaper({ listProcesses: async () => [] });
-      reaper.start();
-      expect(reaper._firstTimer).not.toBeNull();
-      reaper.stop();
-      expect(reaper._firstTimer).toBeNull();
-      expect(reaper._timer).toBeNull();
+      withPlatform('darwin', () => {
+        const reaper = new OrphanReaper({ listProcesses: async () => [] });
+        reaper.start();
+        expect(reaper._firstTimer).not.toBeNull();
+        reaper.stop();
+        expect(reaper._firstTimer).toBeNull();
+        expect(reaper._timer).toBeNull();
+      });
     } finally {
       jest.useRealTimers();
     }
