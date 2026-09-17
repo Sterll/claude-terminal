@@ -145,50 +145,91 @@ function postProcess(target) {
 
 let _mermaidPromise = null;
 
+/**
+ * Options handed to mermaid.initialize().
+ *
+ * `suppressErrorRendering` is load-bearing, not cosmetic: mermaid's render()
+ * always draws into a temp div appended to <body>, and on a parse failure it
+ * throws the exception one line *before* removing that div. Without the flag,
+ * every diagram that failed to parse - including the partial ones produced
+ * while a message is still streaming - left mermaid's full-size "Syntax error
+ * in text" graphic stranded at the bottom of the window, outside the chat and
+ * impossible to dismiss. The block renders its own error card instead.
+ *
+ * Exported so a test can pin that flag: nothing in the app looks different when
+ * it goes missing until a diagram fails, which is how it went unnoticed once.
+ */
+const MERMAID_CONFIG = Object.freeze({
+  startOnLoad: false,
+  theme: 'dark',
+  themeVariables: {
+    darkMode: true,
+    background: '#151515',
+    primaryColor: '#d97706',
+    primaryTextColor: '#e0e0e0',
+    lineColor: '#555',
+    secondaryColor: '#1a1a1a',
+    tertiaryColor: '#252525',
+  },
+  securityLevel: 'strict',
+  suppressErrorRendering: true,
+});
+
+/**
+ * Render one block with an already-loaded mermaid.
+ *
+ * Split out of initMermaidBlocks() so it can be driven with a stub: the real
+ * loader goes through a dynamic import(), which does not resolve under Jest.
+ *
+ * @param {Object} mermaid - the loaded mermaid module
+ * @param {HTMLElement} block - a .chat-mermaid-block
+ */
+async function drawMermaidBlock(mermaid, block) {
+  if (block.dataset.rendered) return;
+  block.dataset.rendered = 'true';
+  const source = block.querySelector('.chat-mermaid-source')?.textContent;
+  if (!source) return;
+  const loading = block.querySelector('.chat-mermaid-loading');
+  const render = block.querySelector('.chat-mermaid-render');
+  const error = block.querySelector('.chat-mermaid-error');
+
+  // Check cache first
+  const cached = getCachedMermaid(source);
+  if (cached) {
+    render.innerHTML = cached;
+    if (loading) loading.style.display = 'none';
+    return;
+  }
+
+  try {
+    const { svg } = await mermaid.render(block.dataset.mermaidId, source);
+    setCachedMermaid(source, svg);
+    render.innerHTML = svg;
+    if (loading) loading.style.display = 'none';
+  } catch (err) {
+    // mermaid renders into a temp div appended to <body> and removes it only
+    // on the way out. suppressErrorRendering covers its own error paths; this
+    // covers anything that throws before it gets that far.
+    document.getElementById('d' + block.dataset.mermaidId)?.remove();
+    document.getElementById(block.dataset.mermaidId)?.remove();
+    if (loading) loading.style.display = 'none';
+    if (error) {
+      error.style.display = '';
+      error.innerHTML = `<div class="chat-mermaid-error-msg">${escapeHtml(t('chat.mermaid.error') || 'Diagram render failed')}</div>`
+        + `<details class="chat-mermaid-error-details"><summary>${escapeHtml(t('chat.mermaid.showSource') || 'Show source')}</summary>`
+        + `<pre><code>${escapeHtml(source)}</code></pre></details>`;
+    }
+    render.innerHTML = '';
+  }
+}
+
 function initMermaidBlocks(blocks) {
   if (!_mermaidPromise) {
     _mermaidPromise = loadMermaid();
   }
   _mermaidPromise.then(mermaid => {
     if (!mermaid) return;
-    blocks.forEach(async block => {
-      if (block.dataset.rendered) return;
-      block.dataset.rendered = 'true';
-      const source = block.querySelector('.chat-mermaid-source')?.textContent;
-      if (!source) return;
-      const loading = block.querySelector('.chat-mermaid-loading');
-      const render = block.querySelector('.chat-mermaid-render');
-      const error = block.querySelector('.chat-mermaid-error');
-
-      // Check cache first
-      const cached = getCachedMermaid(source);
-      if (cached) {
-        render.innerHTML = cached;
-        if (loading) loading.style.display = 'none';
-        return;
-      }
-
-      try {
-        const { svg } = await mermaid.render(block.dataset.mermaidId, source);
-        setCachedMermaid(source, svg);
-        render.innerHTML = svg;
-        if (loading) loading.style.display = 'none';
-      } catch (err) {
-        // mermaid renders into a temp div appended to <body> and removes it only
-        // on the way out. suppressErrorRendering covers its own error paths; this
-        // covers anything that throws before it gets that far.
-        document.getElementById('d' + block.dataset.mermaidId)?.remove();
-        document.getElementById(block.dataset.mermaidId)?.remove();
-        if (loading) loading.style.display = 'none';
-        if (error) {
-          error.style.display = '';
-          error.innerHTML = `<div class="chat-mermaid-error-msg">${escapeHtml(t('chat.mermaid.error') || 'Diagram render failed')}</div>`
-            + `<details class="chat-mermaid-error-details"><summary>${escapeHtml(t('chat.mermaid.showSource') || 'Show source')}</summary>`
-            + `<pre><code>${escapeHtml(source)}</code></pre></details>`;
-        }
-        render.innerHTML = '';
-      }
-    });
+    blocks.forEach(block => drawMermaidBlock(mermaid, block));
   });
 }
 
@@ -196,31 +237,14 @@ async function loadMermaid() {
   try {
     const mod = await import('./mermaid.bundle.js');
     const mermaid = mod.default;
-    mermaid.initialize({
-      startOnLoad: false,
-      theme: 'dark',
-      themeVariables: {
-        darkMode: true,
-        background: '#151515',
-        primaryColor: '#d97706',
-        primaryTextColor: '#e0e0e0',
-        lineColor: '#555',
-        secondaryColor: '#1a1a1a',
-        tertiaryColor: '#252525',
-      },
-      securityLevel: 'strict',
-      // Without this, a diagram that fails to parse leaves mermaid's own
-      // "Syntax error in text" bomb SVG stranded at the bottom of <body>:
-      // render() throws the parse exception one line *before* it removes its
-      // temp element. The block's own error card is what should be shown.
-      suppressErrorRendering: true,
-    });
+    mermaid.initialize(MERMAID_CONFIG);
     return mermaid;
   } catch (err) {
     console.warn('[MarkdownRenderer] Mermaid not available:', err.message);
     return null;
   }
 }
+
 
 // ── Lazy-loaded KaTeX ──
 
@@ -307,4 +331,7 @@ function initInlineMath(elements) {
 
 module.exports = {
   postProcess,
+  // Test seams - see tests/services/mermaidLeak.test.js.
+  MERMAID_CONFIG,
+  drawMermaidBlock,
 };
