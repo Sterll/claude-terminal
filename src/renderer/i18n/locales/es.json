@@ -3673,6 +3673,7 @@
     "running": "En curso",
     "finished": "Terminadas",
     "noneRunning": "Nada en curso.",
+    "clearFinished": "Borrar las tareas terminadas",
     "empty": "Aún no hay tareas en segundo plano.",
     "clear": "Borrar",
     "typeAgent": "Agente",

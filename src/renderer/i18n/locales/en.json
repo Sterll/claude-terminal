@@ -3676,6 +3676,7 @@
     "running": "Running",
     "finished": "Finished",
     "noneRunning": "Nothing running.",
+    "clearFinished": "Clear finished tasks",
     "empty": "No background tasks yet.",
     "clear": "Clear",
     "typeAgent": "Agent",

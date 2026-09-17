@@ -109,6 +109,19 @@ class ChatView extends BaseComponent {
     if (result.cancelled) return null;
     return result;
   }
+  // ── This tab's background-task history ──
+  //
+  // `sessionId` below is minted per ChatView, and the CLI's own uuid changes
+  // under it too, so neither can name a history that is supposed to outlive a
+  // reopened tab or a restart. `taskOwnerKey` is that name: every id this tab
+  // uses is linked to it, and the registry files the tasks under it.
+  //
+  // A tab resuming on an id it already used reads its own history back. A fork
+  // deliberately does not: the parent's work is not this conversation's.
+  const tasksStore = require('../../state/backgroundTasks.state');
+  let taskOwnerKey = (resumeSessionId && !forkSession)
+    ? tasksStore.claimSession(tasksStore.resolveOwner(resumeSessionId) || resumeSessionId, resumeSessionId)
+    : null;
   let isStreaming = false;
   let isAborting = false;
   let pendingResumeId = resumeSessionId || null;
@@ -252,6 +265,9 @@ class ChatView extends BaseComponent {
         <aside class="chat-tasks-drawer" hidden>
           <div class="chat-tasks-head">
             <span class="chat-tasks-title">${escapeHtml(t('tasks.navTitle') || 'Background tasks')}</span>
+            <button class="chat-tasks-clear" title="${escapeHtml(t('tasks.clearFinished') || 'Clear finished tasks')}" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg>
+            </button>
             <button class="chat-tasks-close" title="${escapeHtml(t('common.close') || 'Close')}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
             </button>
@@ -382,6 +398,7 @@ class ChatView extends BaseComponent {
   const tasksDrawerEl = chatView.querySelector('.chat-tasks-drawer');
   const tasksBodyEl = chatView.querySelector('.chat-tasks-body');
   const tasksBtn = chatView.querySelector('.chat-tasks-btn');
+  const tasksClearEl = chatView.querySelector('.chat-tasks-clear');
   const statusDot = chatView.querySelector('.chat-status-dot');
   const statusTextEl = chatView.querySelector('.chat-status-text');
   const statusElapsedEl = chatView.querySelector('.chat-status-elapsed');
@@ -3151,6 +3168,9 @@ class ChatView extends BaseComponent {
         // Assign sessionId BEFORE await to prevent race condition:
         // _processStream fires events immediately, but await returns later.
         sessionId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        // The registry files tasks under whichever id the CLI reports, so the
+        // handle has to be linked before the first task can arrive under it.
+        taskOwnerKey = tasksStore.claimSession(taskOwnerKey || sessionId, sessionId);
         if (onSessionStart) onSessionStart(sessionId);
         // Model and effort selectors stay interactive during the session
         // Changes are applied mid-session via SDK setModel/setMaxThinkingTokens
@@ -7082,6 +7102,9 @@ class ChatView extends BaseComponent {
     // Capture real SDK session UUID (needed for fork/resume)
     if (msg.session_id && msg.session_id !== sdkSessionId) {
       sdkSessionId = msg.session_id;
+      // The CLI's id is what a restored tab resumes on, so it has to name this
+      // tab's task history too — that is the link the next run reads.
+      taskOwnerKey = tasksStore.claimSession(taskOwnerKey || msg.session_id, msg.session_id);
       // Propagate new session ID to termData for persistence (fixes /clear not saving new ID)
       if (terminalId) {
         updateTerminal(terminalId, { claudeSessionId: msg.session_id });
@@ -7766,22 +7789,22 @@ class ChatView extends BaseComponent {
   unsubscribers.push(unsubElicit);
 
 
-  // ── Background tasks drawer (this session only) ──
+  // ── Background tasks drawer (this tab only) ──
   //
-  // Reads the shared registry but shows only this session's work: the drawer
-  // sits next to the conversation that produced it, so anything from another
-  // tab would just be noise here.
+  // Reads the shared registry but shows only this tab's work: the drawer sits
+  // next to the conversation that produced it, so anything from another tab
+  // would just be noise here. Keyed on the owner rather than on the current
+  // session id, so the history survives the ids rotating under it.
 
-  const { backgroundTasksState, listTasks: listAllTasks, getTask: getStoredTask } =
-    require('../../state/backgroundTasks.state');
+  const { backgroundTasksState, listTasksForOwner, getTask: getStoredTask } = tasksStore;
 
   let tasksTicker = null;
   // Tasks already announced to the user, so the drawer opens on the moment a
   // task starts and not again on every later change to it.
   const announcedTaskIds = new Set();
 
-  function sessionTasks() {
-    return sessionId ? listAllTasks().filter(task => task.sessionId === sessionId) : [];
+  function tabTasks() {
+    return listTasksForOwner(taskOwnerKey);
   }
 
   function taskTypeLabel(task) {
@@ -7799,12 +7822,14 @@ class ChatView extends BaseComponent {
   }
 
   function renderTasksDrawer() {
-    const tasks = sessionTasks();
+    const tasks = tabTasks();
     const running = tasks.filter(task => task.status === 'running');
 
-    // The toggle only earns its place once this session has produced a task.
+    // The toggle only earns its place once this tab has produced a task.
     tasksBtn.hidden = tasks.length === 0;
     tasksBtn.classList.toggle('has-running', running.length > 0);
+    // Nothing finished to forget, nothing to offer.
+    tasksClearEl.hidden = tasks.length === running.length;
     if (!tasks.length) tasksDrawerEl.hidden = true;
     if (tasksDrawerEl.hidden) return;
 
@@ -7852,7 +7877,7 @@ class ChatView extends BaseComponent {
     // drawer is shut — and a ticker on a hidden panel is pure waste.
     if (open && !tasksTicker) {
       tasksTicker = setInterval(() => {
-        if (!tasksDrawerEl.hidden && sessionTasks().some(task => task.status === 'running')) renderTasksDrawer();
+        if (!tasksDrawerEl.hidden && tabTasks().some(task => task.status === 'running')) renderTasksDrawer();
       }, 1000);
     } else if (!open && tasksTicker) {
       clearInterval(tasksTicker);
@@ -7863,6 +7888,19 @@ class ChatView extends BaseComponent {
 
   tasksBtn.addEventListener('click', () => toggleTasksDrawer());
   tasksDrawerEl.querySelector('.chat-tasks-close').addEventListener('click', () => toggleTasksDrawer(false));
+  // Clearing forgets this tab's finished tasks only: another conversation's
+  // history is not this drawer's to throw away, and running work is never
+  // dropped. Announced ids go with them, so a task id the CLI reuses can open
+  // the drawer again rather than being taken for one already seen.
+  tasksClearEl.addEventListener('click', () => {
+    const dropped = tabTasks().filter(task => task.status !== 'running').map(task => task.taskId);
+    if (!tasksStore.clearFinished(taskOwnerKey)) return;
+    for (const taskId of dropped) announcedTaskIds.delete(taskId);
+    // A drawer left open on an empty list reads as broken, so it closes with
+    // the last row when nothing is still running.
+    if (!tabTasks().length) toggleTasksDrawer(false);
+    else renderTasksDrawer();
+  });
   /**
    * Where a task lives in the transcript.
    *
@@ -7926,7 +7964,7 @@ class ChatView extends BaseComponent {
    * re-open a drawer the user just closed, on the next duration tick.
    */
   function onTasksChanged() {
-    const fresh = sessionTasks().filter(task => !announcedTaskIds.has(task.taskId));
+    const fresh = tabTasks().filter(task => !announcedTaskIds.has(task.taskId));
     for (const task of fresh) announcedTaskIds.add(task.taskId);
     if (tasksDrawerEl.hidden && fresh.some(task => task.status === 'running')) {
       toggleTasksDrawer(true); // renders on the way through

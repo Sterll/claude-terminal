@@ -5484,8 +5484,11 @@ input.chat-elicit-input[type="checkbox"] {
   color: var(--text-secondary);
 }
 
-.chat-tasks-close {
+.chat-tasks-close,
+.chat-tasks-clear {
   display: flex;
+  align-items: center;
+  justify-content: center;
   width: 20px;
   height: 20px;
   padding: 0;
@@ -5496,8 +5499,15 @@ input.chat-elicit-input[type="checkbox"] {
   cursor: pointer;
 }
 
+.chat-tasks-close[hidden],
+.chat-tasks-clear[hidden] { display: none; }
+
 .chat-tasks-close:hover { background: var(--bg-hover); color: var(--text-primary); }
 .chat-tasks-close svg { width: 13px; height: 13px; }
+
+/* Destructive, so it says so on hover rather than only in its tooltip. */
+.chat-tasks-clear:hover { background: var(--bg-hover); color: var(--danger); }
+.chat-tasks-clear svg { width: 13px; height: 13px; }
 
 .chat-tasks-body { flex: 1; overflow-y: auto; padding: 8px; }
 

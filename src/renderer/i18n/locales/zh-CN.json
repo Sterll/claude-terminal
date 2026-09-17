@@ -3676,6 +3676,7 @@
     "running": "进行中",
     "finished": "已完成",
     "noneRunning": "没有正在运行的任务。",
+    "clearFinished": "清除已完成的任务",
     "empty": "暂无后台任务。",
     "clear": "清除",
     "typeAgent": "代理",

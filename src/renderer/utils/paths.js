@@ -24,6 +24,7 @@ const promptTemplatesFile = path.join(dataDir, 'prompt-templates.json');
 const queryHistoryFile = path.join(dataDir, 'query-history.json');
 const savedQueriesFile = path.join(dataDir, 'saved-queries.json');
 const workspacesFile = path.join(dataDir, 'workspaces.json');
+const backgroundTasksFile = path.join(dataDir, 'background-tasks.json');
 const workspacesDir = path.join(dataDir, 'workspaces');
 
 // Claude configuration files
@@ -72,6 +73,7 @@ module.exports = {
   savedQueriesFile,
   workspacesFile,
   workspacesDir,
+  backgroundTasksFile,
   claudeSettingsFile,
   claudeConfigFile,
   skillsDir,

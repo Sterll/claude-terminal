@@ -3676,6 +3676,7 @@
     "running": "En cours",
     "finished": "Terminé",
     "noneRunning": "Rien en cours.",
+    "clearFinished": "Effacer les tâches terminées",
     "empty": "Aucune tâche de fond pour l'instant.",
     "clear": "Effacer",
     "typeAgent": "Agent",
