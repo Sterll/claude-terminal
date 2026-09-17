@@ -84,6 +84,10 @@ const defaultSettings = {
   // process. See design/project-type-extensions.md.
   projectTypeExtensionsEnabled: false,
   enabledProjectTypeExtensions: [], // Ids of extensions the user has opted into
+  // Main kills the CPU-hungry processes a Claude session leaves behind (busy
+  // loops a finished Bash command backgrounded, tool shells whose CLI died).
+  // Read by the main-process OrphanReaper straight from settings.json.
+  orphanReaperEnabled: true,
   telemetryEnabled: false, // Opt-in anonymous telemetry
   telemetryUuid: null, // Random UUID for anonymous tracking
   telemetryCategories: { app: true, features: true, errors: true }, // Granular event categories

@@ -979,6 +979,8 @@
     "parallelWorkspaceNone": "Aucun",
     "launchAtStartup": "Lancer au démarrage",
     "launchAtStartupDesc": "Démarrer automatiquement avec Windows",
+    "orphanReaper": "Arrêter les processus emballés laissés par les sessions Claude",
+    "orphanReaperDesc": "Chaque minute, termine les boucles shell qu'une commande Claude terminée a laissées tourner, et les shells d'outil abandonnés qui consomment encore du CPU après la mort de leur session. Les restes inactifs, comme un serveur de dev, ne sont jamais touchés.",
     "launchAtStartupError": "Impossible de modifier le lancement au démarrage.",
     "compactProjects": "Vue compacte des projets",
     "compactProjectsDesc": "Afficher uniquement le nom des projets non sélectionnés",
@@ -4157,6 +4159,10 @@
       "watchMultiHint": "Choisissez un ou plusieurs projets. « N'importe quel projet » couvre aussi ceux ajoutés plus tard.",
       "watchMultiPickHint": "Surveillé par dépôt : choisissez au moins un projet."
     }
+  },
+  "orphanReaper": {
+    "toastOne": "1 processus emballé laissé par une session Claude a été arrêté (~{cpu} % CPU)",
+    "toastMany": "{count} processus emballés laissés par une session Claude ont été arrêtés (~{cpu} % CPU)"
   },
   "navigationMode": {
     "title": "Choisis ta navigation",
