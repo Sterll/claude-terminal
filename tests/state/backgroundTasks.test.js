@@ -269,6 +269,36 @@ describe('persistence', () => {
 
   const onDisk = (data) => fsMock.promises.readFile.mockResolvedValue(JSON.stringify(data));
 
+  test('an unreadable registry is never overwritten', async () => {
+    // Absent is a legitimate first run. Truncated or corrupt is not: the store
+    // is a read-modify-write of the whole collection, so answering it with an
+    // empty registry would rewrite the file with this run alone.
+    fsMock.promises.readFile.mockResolvedValue('{"version":1,"tasks":[{"taskId"');
+
+    await load();
+
+    claimSession('tab-1', 's1');
+    taskStarted({ taskId: 't1', sessionId: 's1' });
+    await new Promise(r => setTimeout(r, 700));
+    flushSync();
+
+    expect(fsMock.promises.writeFile).not.toHaveBeenCalled();
+    expect(fsMock.writeFileSync).not.toHaveBeenCalled();
+    expect(fsMock.promises.rename).not.toHaveBeenCalled();
+  });
+
+  test('an empty registry file counts as unreadable, not as absent', async () => {
+    // A save only ever writes a complete document, so zero bytes is a
+    // truncated write rather than a legitimate empty state.
+    fsMock.promises.readFile.mockResolvedValue('');
+
+    await load();
+    taskStarted({ taskId: 't1', sessionId: 's1' });
+    await new Promise(r => setTimeout(r, 700));
+
+    expect(fsMock.promises.writeFile).not.toHaveBeenCalled();
+  });
+
   test('writes the registry after a task is recorded', async () => {
     claimSession('tab-1', 's1');
     taskStarted({ taskId: 't1', sessionId: 's1', description: 'npm test' });

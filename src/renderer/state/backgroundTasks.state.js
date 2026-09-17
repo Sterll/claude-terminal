@@ -62,6 +62,12 @@ let _saveTimer = null;
 let _pendingSave = null;
 let _loading = null;
 let _loaded = false;
+// Latched when background-tasks.json exists but cannot be parsed. Blocks every
+// save for the rest of the session - see load(). The registry is a
+// read-modify-write of the whole collection, so treating an unreadable file as
+// an absent one would rewrite it with this run alone and drop the history the
+// file still holds. Absent is legitimate and starts empty; unreadable is not.
+let _loadFailed = false;
 
 /** Broadcast a new Map so subscribers comparing references actually re-render. */
 function _commit(tasks) {
@@ -130,6 +136,7 @@ function _snapshot() {
 function _saveNow() {
   clearTimeout(_saveTimer);
   _saveTimer = null;
+  if (_loadFailed) return Promise.resolve();
   const prev = _pendingSave;
   const flush = (async () => {
     if (prev) { try { await prev; } catch (_) { /* a failed save must not block the next */ } }
@@ -159,13 +166,24 @@ function _save() {
 function load() {
   if (_loading) return _loading;
   _loading = (async () => {
-    const { safeReadJSON } = require('../utils/fs-async');
+    const { fileExists, safeReadFile } = require('../utils/fs-async');
     const { backgroundTasksFile } = require('../utils/paths');
     let data = null;
     try {
-      data = await safeReadJSON(backgroundTasksFile);
-    } catch (_) {
-      data = null;
+      // Absent is the normal first run. Present but unparseable is not, and it
+      // must not be answered by starting empty: the next save would rewrite the
+      // file with this run alone. Empty content counts as unreadable too, since
+      // a save only ever writes a complete document.
+      if (await fileExists(backgroundTasksFile)) {
+        const raw = await safeReadFile(backgroundTasksFile);
+        if (!raw || !raw.trim()) throw new Error('file is empty');
+        data = JSON.parse(raw);
+      }
+    } catch (e) {
+      _loadFailed = true;
+      _loaded = true;
+      console.error('[BackgroundTasks] Registry unreadable, saving is now disabled:', e.message);
+      return;
     }
     _loaded = true;
     if (!data || data.version !== STORE_VERSION || !Array.isArray(data.tasks)) return;
@@ -218,7 +236,7 @@ function load() {
  * Still tmp-then-rename: a truncated file is worse than a slightly stale one.
  */
 function flushSync() {
-  if (!_saveTimer) return;
+  if (!_saveTimer || _loadFailed) return;
   clearTimeout(_saveTimer);
   _saveTimer = null;
   try {
@@ -427,6 +445,7 @@ function reset() {
   _pendingSave = null;
   _loading = null;
   _loaded = false;
+  _loadFailed = false;
   owners = new Map();
   backgroundTasksState.setProp('tasks', new Map());
 }
