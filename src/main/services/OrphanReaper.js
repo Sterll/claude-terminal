@@ -37,6 +37,14 @@
  * on consecutive sweeps, so a shell caught in the milliseconds between its
  * CLI's exit and its own is never touched.
  *
+ * "Burning CPU" is measured between those two sweeps, from the TIME column,
+ * not from %CPU. The two platforms do not mean the same thing by %CPU: macOS
+ * reports a decaying recent average, Linux the average over the whole life of
+ * the process. On Linux that makes a process which burned a core early and has
+ * been idle since read as hot for hours, which is exactly the process this
+ * must not kill. The difference between two cumulative readings is a real
+ * rate, and it is the same question on both.
+ *
  * POSIX only. Windows tool shells are not re-parented the same way and `ps`
  * is not there to read; `start()` is a no-op on win32.
  */
@@ -71,24 +79,41 @@ const RULE_LEFTOVER_LOOP = 'leftover-loop';
 const RULE_ABANDONED_SHELL = 'abandoned-shell';
 
 /**
- * Parse `ps -Aww -o pid=,ppid=,pgid=,pcpu=,args=`.
+ * Cumulative CPU time, in seconds, out of the TIME column.
+ *
+ * The platforms disagree on this column as well as on what %CPU means: Linux
+ * prints `[dd-]hh:mm:ss`, macOS prints `mm:ss.cc`. Both are read here, because
+ * the difference between two readings is what actually decides a kill.
  *
  * @param {string} text
- * @returns {Array<{pid:number, ppid:number, pgid:number, cpu:number, args:string}>}
+ * @returns {number|null} null when the column is unreadable
+ */
+function parseCpuSeconds(text) {
+  const m = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+(?:\.\d+)?)$/.exec(String(text || '').trim());
+  if (!m) return null;
+  return Number(m[1] || 0) * 86400 + Number(m[2] || 0) * 3600 + Number(m[3]) * 60 + Number(m[4]);
+}
+
+/**
+ * Parse `ps -Aww -o pid=,ppid=,pgid=,pcpu=,time=,args=`.
+ *
+ * @param {string} text
+ * @returns {Array<{pid:number, ppid:number, pgid:number, cpu:number, cpuSeconds:number|null, args:string}>}
  */
 function parsePsOutput(text) {
   const rows = [];
   for (const raw of String(text || '').split('\n')) {
     const line = raw.trim();
     if (!line) continue;
-    const m = /^(\d+)\s+(\d+)\s+(\d+)\s+([\d.]+)\s+(.*)$/.exec(line);
+    const m = /^(\d+)\s+(\d+)\s+(\d+)\s+([\d.]+)\s+([\d:.-]+)\s+(.*)$/.exec(line);
     if (!m) continue;
     rows.push({
       pid: Number(m[1]),
       ppid: Number(m[2]),
       pgid: Number(m[3]),
       cpu: Number(m[4]),
-      args: m[5],
+      cpuSeconds: parseCpuSeconds(m[5]),
+      args: m[6],
     });
   }
   return rows;
@@ -147,7 +172,7 @@ function classify(rows, { cpuThreshold = CPU_THRESHOLD_PERCENT } = {}) {
 /** Read the process table. Rejects when `ps` is unavailable. */
 function listProcesses() {
   return new Promise((resolve, reject) => {
-    execFile('ps', ['-Aww', '-o', 'pid=,ppid=,pgid=,pcpu=,args='], { maxBuffer: 32 * 1024 * 1024 }, (err, stdout) => {
+    execFile('ps', ['-Aww', '-o', 'pid=,ppid=,pgid=,pcpu=,time=,args='], { maxBuffer: 32 * 1024 * 1024 }, (err, stdout) => {
       if (err) return reject(err);
       resolve(parsePsOutput(stdout));
     });
@@ -187,6 +212,7 @@ class OrphanReaper {
    * @param {(pid:number) => boolean} [deps.isAlive]
    * @param {() => boolean} [deps.isEnabled]
    * @param {(ms:number) => Promise<void>} [deps.delay]
+   * @param {() => number} [deps.now]
    * @param {number} [deps.cpuThreshold]
    * @param {number} [deps.confirmations]
    */
@@ -196,6 +222,7 @@ class OrphanReaper {
     this._isAlive = deps.isAlive || defaultIsAlive;
     this._isEnabled = deps.isEnabled || readEnabledSetting;
     this._delay = deps.delay || (ms => new Promise(r => setTimeout(r, ms)));
+    this._now = deps.now || (() => Date.now());
     this._cpuThreshold = deps.cpuThreshold ?? CPU_THRESHOLD_PERCENT;
     this._confirmations = deps.confirmations ?? CONFIRMATIONS;
 
@@ -237,6 +264,27 @@ class OrphanReaper {
     this._suspects.clear();
   }
 
+  /**
+   * Did this pid actually burn CPU between the two sightings?
+   *
+   * Unreadable TIME on either sighting means no rate can be computed. That
+   * falls back to the `pcpu` verdict `classify()` already reached, which is
+   * what this shipped as: a missing column must not make the reaper blind,
+   * and must not make it trigger-happy either — the shape tests and the two
+   * sightings still stand.
+   *
+   * @param {{cpuSeconds?:number|null, at?:number}|undefined} prev
+   * @param {number|null|undefined} cpuSeconds
+   * @param {number} now
+   */
+  _burnedSince(prev, cpuSeconds, now) {
+    if (typeof cpuSeconds !== 'number' || typeof prev?.cpuSeconds !== 'number') return true;
+    const elapsedMs = now - (prev.at || 0);
+    if (!(elapsedMs > 0)) return true;
+    const percent = ((cpuSeconds - prev.cpuSeconds) / (elapsedMs / 1000)) * 100;
+    return percent >= this._cpuThreshold;
+  }
+
   _tick() {
     if (this._sweeping) return;
     this._sweeping = true;
@@ -258,15 +306,34 @@ class OrphanReaper {
 
     const rows = await this._listProcesses();
     const candidates = classify(rows, { cpuThreshold: this._cpuThreshold });
+    const now = this._now();
+    const cpuSecondsByPid = new Map(rows.map(r => [r.pid, r.cpuSeconds]));
 
     // Same pid, same rule, on consecutive sweeps — anything else starts over.
+    //
+    // The second sighting is also what makes the CPU test mean the same thing
+    // on both platforms. `pcpu` does not: macOS reports a decaying recent
+    // average, Linux the average over the whole life of the process, so on
+    // Linux a process that burned a core early and has been idle since keeps a
+    // high `pcpu` for hours and would be killed for work it is no longer
+    // doing. Comparing the *cumulative* CPU time of the two sightings gives
+    // the rate over that interval, which is the question actually being asked.
+    // `pcpu` stays as the first-pass filter: cheap, and on both platforms a
+    // process that has never burned CPU scores low on it.
     const next = new Map();
     const confirmed = [];
     for (const c of candidates) {
+      const cpuSeconds = cpuSecondsByPid.get(c.pid);
       const prev = this._suspects.get(c.pid);
       const sightings = prev && prev.rule === c.rule ? prev.sightings + 1 : 1;
-      if (sightings >= this._confirmations) confirmed.push(c);
-      else next.set(c.pid, { rule: c.rule, sightings });
+      if (sightings >= this._confirmations && this._burnedSince(prev, cpuSeconds, now)) {
+        confirmed.push(c);
+      } else {
+        // Keep the sighting count but re-baseline: a candidate held back for
+        // being idle must not be killed on the next sweep for CPU it burned
+        // before this one.
+        next.set(c.pid, { rule: c.rule, sightings, cpuSeconds, at: now });
+      }
     }
     this._suspects = next;
 
@@ -325,6 +392,7 @@ const orphanReaper = new OrphanReaper();
 module.exports = orphanReaper;
 module.exports.OrphanReaper = OrphanReaper;
 module.exports.parsePsOutput = parsePsOutput;
+module.exports.parseCpuSeconds = parseCpuSeconds;
 module.exports.classify = classify;
 module.exports.describeCommand = describeCommand;
 module.exports._internals = {

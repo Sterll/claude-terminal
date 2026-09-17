@@ -4,6 +4,7 @@
 const {
   OrphanReaper,
   parsePsOutput,
+  parseCpuSeconds,
   classify,
   describeCommand,
   _internals,
@@ -21,8 +22,11 @@ function toolShellArgs(command, cwdFile = '/tmp/claude-684c-cwd') {
 
 const STRESS_CMD = "cd /tmp/narvi-mut && for i in $(seq 1 $((nproc*3))); do (while :; do :; done) & done; go test -race -count=40 -run 'TestPumpOnce$' ./internal/app/automerge/ 2>&1 | tail -20; kill $(jobs -p) 2>/dev/null";
 
-function row(pid, ppid, pgid, cpu, args) {
-  return { pid, ppid, pgid, cpu, args };
+// `cpuSeconds` is the TIME column. Left undefined by default so the
+// classification cases below stay about shape and %CPU; the sweep cases that
+// care about the rate between two readings pass it explicitly.
+function row(pid, ppid, pgid, cpu, args, cpuSeconds) {
+  return { pid, ppid, pgid, cpu, args, cpuSeconds };
 }
 
 const LAUNCHD = row(1, 0, 1, 0.1, '/sbin/launchd');
@@ -34,19 +38,39 @@ const CLI = row(600, 500, 500, 0.5, '/Applications/Claude Terminal.app/Contents/
 describe('parsePsOutput', () => {
   test('reads the right-aligned numeric columns and keeps args whole', () => {
     const text = [
-      '    1     0     1   0.4 /sbin/launchd',
-      '78078     1 78071  20.7 ' + toolShellArgs(STRESS_CMD),
+      '    1     0     1   0.4    0:12.30 /sbin/launchd',
+      '78078     1 78071  20.7 1:04:11 ' + toolShellArgs(STRESS_CMD),
       '',
     ].join('\n');
     const rows = parsePsOutput(text);
     expect(rows).toHaveLength(2);
-    expect(rows[1]).toMatchObject({ pid: 78078, ppid: 1, pgid: 78071, cpu: 20.7 });
+    expect(rows[1]).toMatchObject({ pid: 78078, ppid: 1, pgid: 78071, cpu: 20.7, cpuSeconds: 3851 });
     expect(rows[1].args.startsWith('/bin/zsh -c source ')).toBe(true);
     expect(rows[1].args.endsWith('/tmp/claude-684c-cwd')).toBe(true);
   });
 
   test('skips lines that do not look like a process row', () => {
-    expect(parsePsOutput('  PID  PPID  PGID %CPU ARGS\ngarbage\n')).toEqual([]);
+    expect(parsePsOutput('  PID  PPID  PGID %CPU     TIME ARGS\ngarbage\n')).toEqual([]);
+  });
+});
+
+// ── parseCpuSeconds ───────────────────────────────────────────────────────
+
+describe('parseCpuSeconds', () => {
+  test('reads the macOS mm:ss.cc form', () => {
+    expect(parseCpuSeconds('0:00.03')).toBeCloseTo(0.03);
+    expect(parseCpuSeconds('12:34.56')).toBeCloseTo(754.56);
+  });
+
+  test('reads the Linux [dd-]hh:mm:ss form', () => {
+    expect(parseCpuSeconds('00:01:23')).toBe(83);
+    expect(parseCpuSeconds('1-02:03:04')).toBe(93784);
+  });
+
+  test('returns null for a column it cannot read', () => {
+    expect(parseCpuSeconds('-')).toBeNull();
+    expect(parseCpuSeconds('')).toBeNull();
+    expect(parseCpuSeconds(undefined)).toBeNull();
   });
 });
 
@@ -172,6 +196,58 @@ describe('OrphanReaper.sweep', () => {
     expect(kills).toEqual([[78100, 'SIGTERM']]);
     expect(second.reaped).toEqual([expect.objectContaining({ pid: 78100, rule: RULE_LEFTOVER_LOOP, cpu: 40 })]);
     expect(second.reaped[0]).not.toHaveProperty('target');
+  });
+
+  // %CPU does not mean the same thing on the two platforms: macOS reports a
+  // decaying recent average, Linux the average over the whole life of the
+  // process. So on Linux an orphan that burned a core early and has been idle
+  // since keeps a high %CPU for hours. What decides a kill is the CPU time it
+  // actually accumulated between the two sightings.
+  describe('the rate between two sightings, not %CPU', () => {
+    const hot = (cpuSeconds) => [LAUNCHD, APP, CLI, row(78100, 1, 78071, 40, toolShellArgs(STRESS_CMD), cpuSeconds)];
+
+    test('an idle orphan with a high lifetime %CPU is spared', async () => {
+      let now = 1_000_000;
+      // 3600 s of CPU behind it, and not one millisecond more since.
+      const { reaper, kills } = makeReaper([hot(3600), hot(3600)], { now: () => now });
+      await reaper.sweep();
+      now += 60_000;
+      const second = await reaper.sweep();
+      expect(kills).toEqual([]);
+      expect(second.reaped).toEqual([]);
+    });
+
+    test('an orphan still burning is killed', async () => {
+      let now = 1_000_000;
+      // 24 s of CPU over a 60 s interval is 40%, well over the 5% bar.
+      const { reaper, kills } = makeReaper([hot(3600), hot(3624)], { now: () => now });
+      await reaper.sweep();
+      now += 60_000;
+      await reaper.sweep();
+      expect(kills).toEqual([[78100, 'SIGTERM']]);
+    });
+
+    test('a spared suspect is re-baselined rather than killed on the next sweep', async () => {
+      let now = 1_000_000;
+      // Idle across the first interval, idle across the second: the CPU time
+      // it accumulated before ever being seen must never come due.
+      const { reaper, kills } = makeReaper([hot(3600), hot(3600), hot(3600)], { now: () => now });
+      await reaper.sweep();
+      now += 60_000;
+      await reaper.sweep();
+      now += 60_000;
+      await reaper.sweep();
+      expect(kills).toEqual([]);
+    });
+
+    test('an unreadable TIME column falls back to the %CPU verdict', async () => {
+      // A missing column must not make the reaper blind; the shape tests and
+      // the two sightings still stand.
+      const { reaper, kills } = makeReaper([hot(null), hot(null)]);
+      await reaper.sweep();
+      await reaper.sweep();
+      expect(kills).toEqual([[78100, 'SIGTERM']]);
+    });
   });
 
   test('a suspect that vanished between sweeps starts over', async () => {
