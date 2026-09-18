@@ -11,7 +11,7 @@ Claude Terminal is a cross-platform Electron desktop application (**v1.3.3**) fo
 ## Build & Development Commands
 
 ```bash
-npm install              # Install dependencies (Node >=18, runs electron-rebuild for node-pty, keytar, better-sqlite3)
+npm install              # Install dependencies (Node >=24.15, runs electron-rebuild for node-pty, keytar, better-sqlite3)
 npm start                # Build renderer + run app
 npm run start:dev        # Run with DevTools enabled
 npm run start:inspect    # Run with remote debugging port 9222
@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 180 test files)
+npm test                 # Run Jest tests (jsdom, 181 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -65,7 +65,7 @@ Project Types (Plugin System)
 └── src/project-types/               # general, api, fivem, minecraft, python, webapp, discord
 
 Shared code
-└── src/shared/                      # 14 modules shared between main, renderer and the MCP server
+└── src/shared/                      # 17 modules shared between main, renderer and the MCP server
 
 Styles
 └── styles/                          # 30 modular CSS files (~57,000 lines total)
@@ -552,12 +552,12 @@ that difference from `AccountManager`.
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `electron` | ^28.0.0 | Desktop framework (Chromium 120) |
+| `electron` | ^43.7.0 | Desktop framework (Chromium ~140) |
 | `@anthropic-ai/claude-agent-sdk` | ^0.3.260 | Claude Code streaming chat |
 | `@xterm/xterm` + addons | ^6.0.0 | Terminal emulator (WebGL, fit) |
 | `node-pty` | ^1.1.0 | PTY process management |
 | `keytar` | ^7.9.0 | OS credential storage |
-| `better-sqlite3` | ^11.0.0 | SQLite driver |
+| `better-sqlite3` | ^13.0.3 | SQLite driver |
 | `mysql2` / `pg` / `mongodb` / `ioredis` | - | DB drivers |
 | `marked` | ^17.0.3 | Markdown |
 | `mermaid` | ^11.13.0 | Diagrams in chat markdown |
@@ -622,7 +622,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 180 unit test files (jsdom environment)
+npm test                    # Run all 181 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -631,7 +631,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 180 test files
+- **Framework:** Jest with jsdom, 181 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
