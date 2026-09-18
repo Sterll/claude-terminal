@@ -66,6 +66,18 @@ function permitted(file, write = false) {
   } catch { return false; }
 }
 function install(ipcMain) {
+  // Deliberate: `ipcMain.handle` and `ipcMain.on` are wrapped once, here, so
+  // every one of the app's handlers is gated without any of them opting in.
+  // Adding the check to each registration site instead would mean a new
+  // handler is unguarded by default, which is the wrong way round for a
+  // privilege boundary.
+  //
+  // The cost is that this one function decides reachability for all of them,
+  // and a handler that legitimately needs a different sender will fail with a
+  // confusing "Untrusted IPC sender" far from its own code. There is no opt-out
+  // flag on purpose: if you hit that, register the extra frame through
+  // `guardWindow()` so it becomes a trusted document, rather than punching a
+  // hole through here.
   if (installed) return; installed = true;
   const wrappers = new WeakMap();
   for (const method of ['handle', 'on']) {

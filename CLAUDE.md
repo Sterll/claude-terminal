@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 181 test files)
+npm test                 # Run Jest tests (jsdom, 185 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -39,10 +39,10 @@ Electron Main Process (Node.js)
 ├── main.js                          # Bootstrap, lifecycle, single-instance lock, global shortcuts
 ├── src/main/preload.js              # IPC bridge (window.electron_api)
 ├── src/main/preload-quickpicker.js  # Preload for Quick Picker window
-├── src/main/ipc/                    # 36 IPC files, 326 handlers total
+├── src/main/ipc/                    # 36 IPC files, 327 handlers total
 ├── src/main/services/               # 36 services
 ├── src/main/windows/                # 5 window managers
-├── src/main/utils/                  # 14 utilities
+├── src/main/utils/                  # 16 utilities
 └── src/main/workflow-nodes/         # 31 workflow node types (*.node.js)
 
 Electron Renderer Process (Browser)
@@ -124,7 +124,7 @@ Remote UI (PWA for mobile)
 | `cloud-shared.js` | - | Helpers shared by the three cloud IPC files |
 | `index.js` | - | Orchestrator - registers all handlers |
 
-**Total: 326 IPC handlers across 36 files.**
+**Total: 327 IPC handlers across 36 files.**
 
 ### Services (`src/main/services/`)
 
@@ -187,6 +187,8 @@ Remote UI (PWA for mobile)
 | `claudeConfig.js` | Single guarded read/modify/write boundary for `~/.claude.json`, under a cross-process lock. Refuses to write when the file changed underneath, since the Claude CLI rewrites it continuously |
 | `sdkCli.js` | Locates the bundled Agent SDK CLI binary, including inside `app.asar.unpacked` |
 | `fileLock.js` | Cross-process advisory lock, used by the workflow store and by concurrent settings writers |
+| `rendererSecurity.js` | The privilege boundary for the sandboxed windows. Wraps `ipcMain.handle`/`on` once so every handler answers only the registered main frame at its expected document URL, denies navigation and `window.open`, and gates renderer filesystem access behind an allowlist whose `canonical()` resolves existing ancestors so a new child under a symlink cannot escape. Keeps the credential and startup denials (`.ssh`, `.aws`, `.gnupg`, `.credentials.json`, shell rc files, autostart) above any grant |
+| `syncBundles.js` | Builds and validates the bounded bundles `SyncEngine` exchanges: resource files, both agent formats and deletion markers |
 | `git.js` | 20+ git operations via `execGit()`, status parsing, safe.directory, 15s timeout, worktree support |
 | `commitMessageGenerator.js` | AI commit via GitHub Models API (gpt-4o-mini), heuristic fallback |
 | `prDescriptionGenerator.js` | AI-generated PR descriptions |
@@ -585,7 +587,8 @@ Worker); neither is bundled into the desktop app.
 
 ## Key Implementation Details
 
-- **Context isolation is ON:** `contextIsolation: true` + `nodeIntegration: false` in all 5 windows, with the `electron_api` bridge exposed via `contextBridge`
+- **Context isolation is ON:** `contextIsolation: true` + `nodeIntegration: false` in all 5 windows, with the `electron_api` bridge exposed via `contextBridge`. The two secondary windows (Quick Picker, Notification) also run `sandbox: true`; the main and setup windows follow in the next step of that migration, which is what the preload rewrite is for
+- **Navigation is blocked in main, not by the CSP.** `index.html` and `quick-picker.html` used to carry `navigate-to 'none'`, a directive Chromium never implemented, so it protected nothing. `rendererSecurity.guardWindow()` denies `will-navigate`, `will-redirect` and `window.open` against the window's own expected document URL instead. Same intent, somewhere it actually runs
 - **CSP:** `index.html` sets `script-src 'self' 'unsafe-eval'` with **no** `'unsafe-inline'`. This is the app's most important control — it means HTML injected into the chat cannot execute script. Do not relax it.
 - **HTML preview scheme:** ```` ```html ```` markdown blocks are served over a dedicated `ct-preview://` scheme, not a `blob:` URL. `blob:`, `data:` and `srcdoc` documents inherit the creating page's CSP, so a blob preview was either blocked outright or rendered with its inline scripts stripped. The custom scheme gives the preview its own origin and its own (permissive) CSP without touching the renderer's.
 - **Single instance:** `app.requestSingleInstanceLock()` prevents multiple instances
@@ -622,7 +625,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 181 unit test files (jsdom environment)
+npm test                    # Run all 185 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -631,7 +634,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 181 test files
+- **Framework:** Jest with jsdom, 185 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
