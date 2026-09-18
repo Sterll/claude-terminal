@@ -224,6 +224,61 @@ async function createCorruptedBackup(filePath) {
 }
 
 /**
+ * Re-root anything whose parent chain is broken or circular.
+ *
+ * A folder that ends up as its own ancestor is rendered nowhere: it is missing
+ * from rootOrder and the tree walk never reaches it through a parent, so it
+ * looks deleted while still sitting in the file. The drop handlers refuse to
+ * create that state, but a file written by an older build - or by another
+ * process - can still hold it, so the load path repairs it instead of
+ * inheriting it. Nesting is lost for the folders involved; their contents are
+ * not.
+ * @param {Array} folders
+ * @param {Array} projects
+ * @param {Array} rootOrder - mutated in place
+ * @returns {boolean} true when something was repaired
+ */
+function repairBrokenParents(folders, projects, rootOrder) {
+  let repaired = false;
+  const byId = new Map(folders.map(f => [f.id, f]));
+
+  // Reads live objects, so a folder repaired earlier in the pass counts as a
+  // valid parent for the ones checked after it.
+  const reachesRoot = (folder) => {
+    const seen = new Set([folder.id]);
+    let parentId = folder.parentId;
+    while (parentId) {
+      if (seen.has(parentId)) return false;
+      const parent = byId.get(parentId);
+      if (!parent) return false;
+      seen.add(parentId);
+      parentId = parent.parentId;
+    }
+    return true;
+  };
+
+  const reroot = (item, key) => {
+    item[key] = null;
+    if (!rootOrder.includes(item.id)) rootOrder.push(item.id);
+    repaired = true;
+  };
+
+  folders.forEach(folder => {
+    if (folder.children && folder.children.includes(folder.id)) {
+      folder.children = folder.children.filter(id => id !== folder.id);
+      repaired = true;
+    }
+    if (folder.parentId && !reachesRoot(folder)) reroot(folder, 'parentId');
+  });
+
+  projects.forEach(project => {
+    if (project.folderId && !byId.has(project.folderId)) reroot(project, 'folderId');
+  });
+
+  return repaired;
+}
+
+/**
  * Load projects from file
  */
 async function loadProjects() {
@@ -328,10 +383,18 @@ async function loadProjects() {
         });
       }
 
-      projectsState.set({ projects, folders, rootOrder });
       // What we just read IS the disk content, so it is the baseline every
-      // later save merges against.
-      _diskBaseline = snapshot({ projects, folders, rootOrder });
+      // later save merges against — taken *before* the repair, so a re-rooted
+      // folder reads as a local edit. Baselined after, the merge would see no
+      // change of ours and take the broken parent back off the disk.
+      const diskState = snapshot({ projects, folders, rootOrder });
+
+      if (repairBrokenParents(folders, projects, rootOrder)) {
+        needsSave = true;
+      }
+
+      projectsState.set({ projects, folders, rootOrder });
+      _diskBaseline = diskState;
 
       if (needsSave) {
         saveProjects();
@@ -975,8 +1038,11 @@ function reorderItem(itemType, itemId, targetId, position) {
   if (!sourceFolder && !sourceProject) return;
   if (!targetFolder && !targetProject) return;
 
-  // Prevent folder from being moved into its descendants
-  if (sourceFolder && targetFolder && isDescendantOf(targetId, itemId)) return;
+  // Prevent a folder from landing inside itself. Reordering drops the item next
+  // to the target, so what matters is the target's *parent*, not the target: a
+  // folder dropped beside one of its own projects would otherwise become its own
+  // parent and disappear from the tree entirely.
+  if (sourceFolder && (targetParentId === itemId || isDescendantOf(targetParentId, itemId))) return;
 
   const sourceParentId = sourceFolder ? sourceFolder.parentId : (sourceProject ? sourceProject.folderId : null);
 

@@ -2244,7 +2244,13 @@ body.compact-projects .project-item:not(.active):hover {
   pointer-events: none;
 }
 
-.folder-header.drop-invalid-hover {
+.drag-active .project-item.drop-invalid {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.folder-header.drop-invalid-hover,
+.project-item.drop-invalid-hover {
   background: rgba(239, 68, 68, 0.1) !important;
   border-color: var(--danger) !important;
   border-style: dashed !important;

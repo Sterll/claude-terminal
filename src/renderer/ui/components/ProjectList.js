@@ -93,6 +93,22 @@ function clearDropIndicators(list) {
   });
 }
 
+/**
+ * Does this project live inside the given folder's subtree?
+ *
+ * A reorder drop lands the dragged item beside the target, i.e. inside the
+ * target's parent - so dropping a folder next to one of its own projects is
+ * the same circular nesting the folder rows already refuse.
+ * @param {string} projectId
+ * @param {string} folderId
+ * @returns {boolean}
+ */
+function isProjectInsideFolder(projectId, folderId) {
+  const project = getProject(projectId);
+  if (!project || !project.folderId) return false;
+  return project.folderId === folderId || isDescendantOf(project.folderId, folderId);
+}
+
 class ProjectList extends BaseComponent {
   constructor() {
     super(null);
@@ -725,10 +741,18 @@ class ProjectList extends BaseComponent {
       // Mark list as drag-active and flag invalid drop targets
       list.classList.add('drag-active');
       if (self._dragState.dragging.type === 'folder') {
+        const draggedId = self._dragState.dragging.id;
         list.querySelectorAll('.folder-item').forEach(f => {
           const fId = f.dataset.folderId;
-          if (fId === self._dragState.dragging.id || isDescendantOf(fId, self._dragState.dragging.id)) {
+          if (fId === draggedId || isDescendantOf(fId, draggedId)) {
             f.classList.add('drop-invalid');
+          }
+        });
+        // The projects inside that subtree are invalid targets too - reordering
+        // against one of them would reparent the folder under itself.
+        list.querySelectorAll('.project-item').forEach(p => {
+          if (isProjectInsideFolder(p.dataset.projectId, draggedId)) {
+            p.classList.add('drop-invalid');
           }
         });
       }
@@ -790,6 +814,14 @@ class ProjectList extends BaseComponent {
           e.dataTransfer.dropEffect = 'none';
           return;
         }
+        if (self._dragState.dragging.type === 'folder'
+            && isProjectInsideFolder(projectId, self._dragState.dragging.id)) {
+          e.dataTransfer.dropEffect = 'none';
+          clearDropIndicators(list);
+          project.classList.add('drop-invalid-hover');
+          self._dragState.dropTarget = { type: 'project', id: projectId, position: 'invalid' };
+          return;
+        }
         e.dataTransfer.dropEffect = 'move';
         clearDropIndicators(list);
         const position = getDropPosition(e, project, false);
@@ -817,7 +849,7 @@ class ProjectList extends BaseComponent {
       }
       const project = e.target.closest('.project-item');
       if (project && !project.contains(e.relatedTarget)) {
-        project.classList.remove('drop-before', 'drop-after');
+        project.classList.remove('drop-before', 'drop-after', 'drop-invalid-hover');
         return;
       }
       const rootZone = e.target.closest('.drop-zone-root');

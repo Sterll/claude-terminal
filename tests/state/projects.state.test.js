@@ -23,6 +23,7 @@ const {
   updateProject,
   deleteProject,
   moveItemToFolder,
+  reorderItem,
   getQuickActions,
   addQuickAction,
   updateQuickAction,
@@ -546,6 +547,74 @@ describe('moveItemToFolder', () => {
   });
 });
 
+describe('reorderItem', () => {
+  test('reorders two root folders', () => {
+    resetState({
+      folders: [
+        { id: 'f1', name: 'A', parentId: null, collapsed: false, children: [] },
+        { id: 'f2', name: 'B', parentId: null, collapsed: false, children: [] },
+      ],
+      rootOrder: ['f1', 'f2'],
+    });
+    reorderItem('folder', 'f2', 'f1', 'before');
+    expect(projectsState.get().rootOrder).toEqual(['f2', 'f1']);
+  });
+
+  test('refuses to drop a folder beside a project it contains', () => {
+    resetState({
+      folders: [{ id: 'f1', name: 'F', parentId: null, collapsed: false, children: ['p1'] }],
+      projects: [{ id: 'p1', name: 'A', path: '/a', folderId: 'f1' }],
+      rootOrder: ['f1'],
+    });
+    reorderItem('folder', 'f1', 'p1', 'before');
+    const state = projectsState.get();
+    expect(getFolder('f1').parentId).toBeNull();
+    expect(getFolder('f1').children).not.toContain('f1');
+    expect(state.rootOrder).toContain('f1');
+  });
+
+  test('refuses to drop a folder beside a project nested deeper inside it', () => {
+    resetState({
+      folders: [
+        { id: 'f1', name: 'A', parentId: null, collapsed: false, children: ['f2'] },
+        { id: 'f2', name: 'B', parentId: 'f1', collapsed: false, children: ['p1'] },
+      ],
+      projects: [{ id: 'p1', name: 'P', path: '/p', folderId: 'f2' }],
+      rootOrder: ['f1'],
+    });
+    reorderItem('folder', 'f1', 'p1', 'after');
+    expect(getFolder('f1').parentId).toBeNull();
+    expect(projectsState.get().rootOrder).toContain('f1');
+  });
+
+  test('refuses to drop a folder beside one of its own subfolders', () => {
+    resetState({
+      folders: [
+        { id: 'f1', name: 'A', parentId: null, collapsed: false, children: ['f2'] },
+        { id: 'f2', name: 'B', parentId: 'f1', collapsed: false, children: [] },
+      ],
+      rootOrder: ['f1'],
+    });
+    reorderItem('folder', 'f1', 'f2', 'before');
+    expect(getFolder('f1').parentId).toBeNull();
+    expect(projectsState.get().rootOrder).toContain('f1');
+  });
+
+  test('moves a project into the target folder when reordered against its content', () => {
+    resetState({
+      folders: [{ id: 'f1', name: 'F', parentId: null, collapsed: false, children: ['p1'] }],
+      projects: [
+        { id: 'p1', name: 'A', path: '/a', folderId: 'f1' },
+        { id: 'p2', name: 'B', path: '/b', folderId: null },
+      ],
+      rootOrder: ['f1', 'p2'],
+    });
+    reorderItem('project', 'p2', 'p1', 'after');
+    expect(getProject('p2').folderId).toBe('f1');
+    expect(getFolder('f1').children).toEqual(['p1', 'p2']);
+  });
+});
+
 // ── Quick Actions ──
 
 describe('quick actions', () => {
@@ -689,6 +758,78 @@ describe('loadProjects', () => {
     await loadProjects();
     const state = projectsState.get();
     expect(state.projects).toEqual([]);
+  });
+
+  test('re-roots a folder that is its own parent', async () => {
+    window.electron_nodeModules.fs.promises.access.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.mkdir.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.readFile.mockResolvedValue(
+      JSON.stringify({
+        projects: [{ id: 'p1', name: 'Test', path: '/test', type: 'standalone', folderId: 'f1' }],
+        folders: [{ id: 'f1', name: 'Lost', parentId: 'f1', children: ['f1', 'p1'] }],
+        rootOrder: [],
+      })
+    );
+    await loadProjects();
+    const state = projectsState.get();
+    expect(state.folders[0].parentId).toBeNull();
+    expect(state.folders[0].children).toEqual(['p1']);
+    expect(state.rootOrder).toContain('f1');
+  });
+
+  test('breaks a two-folder parent cycle', async () => {
+    window.electron_nodeModules.fs.promises.access.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.mkdir.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.readFile.mockResolvedValue(
+      JSON.stringify({
+        projects: [],
+        folders: [
+          { id: 'f1', name: 'A', parentId: 'f2', children: ['f2'] },
+          { id: 'f2', name: 'B', parentId: 'f1', children: ['f1'] },
+        ],
+        rootOrder: [],
+      })
+    );
+    await loadProjects();
+    const state = projectsState.get();
+    expect(state.folders.every(f => f.parentId === null || state.folders.some(o => o.id === f.parentId))).toBe(true);
+    expect(state.rootOrder).toContain('f1');
+    expect(state.folders).toHaveLength(2);
+  });
+
+  test('re-roots a project pointing at a folder that no longer exists', async () => {
+    window.electron_nodeModules.fs.promises.access.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.mkdir.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.readFile.mockResolvedValue(
+      JSON.stringify({
+        projects: [{ id: 'p1', name: 'Test', path: '/test', type: 'standalone', folderId: 'gone' }],
+        folders: [],
+        rootOrder: [],
+      })
+    );
+    await loadProjects();
+    const state = projectsState.get();
+    expect(state.projects[0].folderId).toBeNull();
+    expect(state.rootOrder).toContain('p1');
+  });
+
+  test('leaves a healthy tree alone', async () => {
+    window.electron_nodeModules.fs.promises.access.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.mkdir.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.readFile.mockResolvedValue(
+      JSON.stringify({
+        projects: [{ id: 'p1', name: 'Test', path: '/test', type: 'standalone', folderId: 'f2' }],
+        folders: [
+          { id: 'f1', name: 'A', parentId: null, children: ['f2'] },
+          { id: 'f2', name: 'B', parentId: 'f1', children: ['p1'] },
+        ],
+        rootOrder: ['f1'],
+      })
+    );
+    await loadProjects();
+    const state = projectsState.get();
+    expect(state.folders.find(f => f.id === 'f2').parentId).toBe('f1');
+    expect(state.rootOrder).toEqual(['f1']);
   });
 });
 
