@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/version-1.3.3-orange" alt="版本" />
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-blue" alt="平台" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="许可证" />
-  <img src="https://img.shields.io/badge/electron-28-purple" alt="Electron" />
+  <img src="https://img.shields.io/badge/electron-43-purple" alt="Electron" />
   <img src="https://img.shields.io/github/actions/workflow/status/Sterll/claude-terminal/ci.yml?branch=main&label=CI" alt="CI 状态" />
   <img src="https://img.shields.io/github/contributors/Sterll/claude-terminal" alt="贡献者" />
   <img

@@ -202,88 +202,9 @@ module.exports = {
   },
 
   run(config, vars) {
-    const resolveVars = (value, vars) => {
-      if (typeof value !== 'string') return value;
-      const singleMatch = value.match(/^\$([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)$/);
-      if (singleMatch) {
-        const parts = singleMatch[1].split('.');
-        let cur = vars instanceof Map ? vars.get(parts[0]) : vars[parts[0]];
-        for (let i = 1; i < parts.length && cur != null; i++) cur = cur[parts[i]];
-        if (cur != null) return typeof cur === 'string' ? cur.replace(/[\r\n]+$/, '') : cur;
-      }
-      return value.replace(/\$([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)/g, (match, key) => {
-        const parts = key.split('.');
-        let cur = vars instanceof Map ? vars.get(parts[0]) : vars[parts[0]];
-        for (let i = 1; i < parts.length && cur != null; i++) cur = cur[parts[i]];
-        return cur != null ? String(cur).replace(/[\r\n]+$/, '') : match;
-      });
-    };
-
-    const evalCondition = (condition, vars) => {
-      if (!condition || condition.trim() === '') return true;
-      const resolved = resolveVars(condition, vars);
-      if (resolved === 'true')  return true;
-      if (resolved === 'false') return false;
-
-      const unaryMatch = resolved.match(/^(.+?)\s+(is_empty|is_not_empty)$/);
-      if (unaryMatch) {
-        const val = unaryMatch[1].trim();
-        const isEmpty = val === '' || val === 'null' || val === 'undefined' || val === '[]' || val === '{}';
-        return unaryMatch[2] === 'is_empty' ? isEmpty : !isEmpty;
-      }
-
-      // Symbol operators may omit spaces (e.g. "x==5"); word operators require
-      // whitespace boundaries so they are not mistaken for substrings of an
-      // operand. Try the symbol form first, then the word form.
-      let match = resolved.match(/^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$/);
-      if (!match) {
-        match = resolved.match(/^(.+?)\s+(contains|starts_with|ends_with|matches)\s+(.+)$/);
-      }
-      if (!match) {
-        const val = resolved.trim();
-        if (val === '' || val === '0' || val === 'null' || val === 'undefined') return false;
-        return true;
-      }
-
-      const [, leftRaw, op, rightRaw] = match;
-      const left  = leftRaw.trim();
-      const right = rightRaw.trim();
-      const ln    = parseFloat(left);
-      const rn    = parseFloat(right);
-      const numeric = !isNaN(ln) && !isNaN(rn);
-
-      switch (op) {
-        case '==': return numeric ? ln === rn : left === right;
-        case '!=': return numeric ? ln !== rn : left !== right;
-        // Order comparisons: numeric when both parse as numbers, otherwise fall
-        // back to lexicographic string comparison instead of always false.
-        case '>':  return numeric ? ln > rn  : left > right;
-        case '<':  return numeric ? ln < rn  : left < right;
-        case '>=': return numeric ? ln >= rn : left >= right;
-        case '<=': return numeric ? ln <= rn : left <= right;
-        case 'contains':    return left.includes(right);
-        case 'starts_with': return left.startsWith(right);
-        case 'ends_with':   return left.endsWith(right);
-        case 'matches': {
-          try {
-            if (left.length > 10_000) return false; // ReDoS protection
-            return new RegExp(right).test(left);
-          } catch { return false; }
-        }
-      }
-      return false;
-    };
-
-    let expression = config.expression;
-    if (!expression && config.variable) {
-      const variable = config.variable || '';
-      const operator = config.operator || '==';
-      const isUnary  = operator === 'is_empty' || operator === 'is_not_empty';
-      const value    = config.value ?? '';
-      expression = isUnary ? `${variable} ${operator}` : `${variable} ${operator} ${value}`;
-    }
-
-    const result = evalCondition(resolveVars(expression || 'true', vars), vars);
-    return { result, value: result };
+    const path = require('node:path');
+    const fs = require('node:fs');
+    const packaged = path.join(__dirname, '../shared/workflow-condition.js');
+    return require(fs.existsSync(packaged) ? packaged : '../../shared/workflow-condition').runConditionStep(config, vars);
   },
 };
