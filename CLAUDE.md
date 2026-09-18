@@ -32,28 +32,37 @@ npm run test:e2e         # Playwright smoke test against the real Electron app
 
 **Important:** Always run `npm run build:renderer` after modifying anything under `src/renderer/`, `src/project-types/`, or `renderer.js`.
 
-### Installing needs a native toolchain, and that is not our choice
+### Installing without a native toolchain
 
-`npm install` **and** `npm ci` both fail on a machine without Python and a C++
-compiler, and they fail before `postinstall` ever runs, so the warning below
-cannot soften it. On Windows that means Python 3 plus the MSVC build tools.
+A clone installs anywhere. What a missing toolchain costs you is three
+features, not the install:
 
-The cause is `better-sqlite3`. It declares `"gypfile": false` and ships eight
-NAPI prebuilds in its own tarball, including `win32-x64`, so it should need no
-compiler at all - and it genuinely does not: its prebuild loads and runs under
-Electron 43 unchanged, which is why `postinstall` no longer rebuilds it. But
-npm 11 still runs `node-gyp rebuild` for any dependency carrying a `binding.gyp`
-without an explicit `install` script, and that build is what stops dead.
+| Missing | Effect |
+|---------|--------|
+| `node-pty` | No terminals |
+| `keytar` | No GitHub token, Groq key or account switching |
+| `better-sqlite3` | No SQLite connections; the other four drivers are pure JS |
 
-CI never sees this because the GitHub runners ship a toolchain. Do not read a
-green CI as evidence that a fresh clone installs.
+`postinstall` prints exactly that and exits 0, so `npm install` succeeds and
+everything that does not touch a native module works. `npm run postinstall` on
+a machine that does have a compiler is the whole fix.
 
-The three ways out, in order of preference: install the toolchain; or
-`npm install --ignore-scripts` when you only need the renderer, the tests or
-the docs (terminals, credential storage and the packaged build will not work);
-or pin `better-sqlite3` back to `^11`, which downloads a prebuilt binary
-through `prebuild-install` and installs anywhere, at the cost of needing an
-Electron-ABI rebuild it does not need today.
+**`better-sqlite3` is an `optionalDependency` on purpose, and it is the one
+piece of this that is not our doing.** It declares `"gypfile": false` and ships
+eight NAPI prebuilds in its own tarball, including `win32-x64`, and that
+prebuild loads and answers queries under Electron 43 with no rebuild at all -
+which is why `postinstall` does not rebuild it. But npm 11 runs `node-gyp
+rebuild` for any dependency carrying a `binding.gyp` without an explicit
+`install` script, and it does that during dependency installation, before
+`postinstall` exists to soften anything. As a regular dependency that aborted
+`npm install` **and** `npm ci` outright. As an optional one, npm drops the
+package and carries on, so the cost is a missing SQLite driver instead of a
+clone nobody can build. Neither the prebuild nor the failure is inspectable
+from CI: the GitHub runners ship a toolchain, so a green CI says nothing about
+whether a fresh clone installs.
+
+`scripts/runtime-smoke.cjs` is what would catch the package genuinely going
+missing on CI, since it opens a real database.
 
 ## Architecture Overview
 
@@ -588,7 +597,7 @@ that difference from `AccountManager`.
 | `@xterm/xterm` + addons | ^6.0.0 | Terminal emulator (WebGL, fit) |
 | `node-pty` | ^1.1.0 | PTY process management |
 | `keytar` | ^7.9.0 | OS credential storage |
-| `better-sqlite3` | ^13.0.3 | SQLite driver |
+| `better-sqlite3` | ^13.0.3 | SQLite driver (optional: npm builds it needlessly, see above) |
 | `mysql2` / `pg` / `mongodb` / `ioredis` | - | DB drivers |
 | `marked` | ^17.0.3 | Markdown |
 | `mermaid` | ^11.13.0 | Diagrams in chat markdown |

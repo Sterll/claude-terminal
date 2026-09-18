@@ -466,7 +466,18 @@ class DatabaseService {
   }
 
   _createSqliteClient(config) {
-    const Database = require('better-sqlite3');
+    // better-sqlite3 is an optional dependency, so this require can legitimately
+    // fail on a machine that installed without a native toolchain: npm runs a
+    // node-gyp build for it even though its bundled NAPI prebuild is all we
+    // need, and drops the package when that build fails. Say so, rather than
+    // letting a raw MODULE_NOT_FOUND surface in the connection dialog.
+    let Database;
+    try {
+      Database = require('better-sqlite3');
+    } catch (error) {
+      if (error.code !== 'MODULE_NOT_FOUND') throw error;
+      throw new Error('The SQLite driver is not installed. Run `npm run postinstall` on a machine with a native toolchain, or reinstall dependencies there. The other database drivers are unaffected.');
+    }
     const dbPath = config.filePath;
     if (!dbPath || !fs.existsSync(dbPath)) {
       throw new Error(`SQLite file not found: ${dbPath}`);

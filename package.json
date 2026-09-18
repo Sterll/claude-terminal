@@ -135,7 +135,6 @@
     "@xterm/addon-webgl": "^0.19.0",
     "@xterm/xterm": "^6.0.0",
     "archiver": "^7.0.0",
-    "better-sqlite3": "^13.0.3",
     "chokidar": "^5.0.0",
     "dompurify": "^3.3.1",
     "electron-updater": "^6.1.7",
@@ -156,5 +155,8 @@
     "three": "^0.183.2",
     "ws": "^8.19.0",
     "yauzl": "^3.4.0"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^13.0.3"
   }
 }
