@@ -64,7 +64,10 @@
     "routeCountPlural": "{count} rute",
     "filterPlaceholder": "Filter...",
     "noHeaders": "Tidak ada header",
-    "updateBtn": "Perbarui"
+    "updateBtn": "Perbarui",
+    "saveToDisk": "Simpan ke disk",
+    "savedToDisk": "Respons disimpan",
+    "previewTruncated": "Pratinjau dibatasi 64 KiB; berkas berisi respons lengkap."
   },
   "newProject": {
     "types": {

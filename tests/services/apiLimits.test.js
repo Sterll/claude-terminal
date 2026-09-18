@@ -26,3 +26,26 @@ test('explicit cancellation closes the request', async () => {
   const pending = api.sendRequest({ url: origin + '/slow', signal: controller.signal });
   controller.abort(); expect(await pending).toMatchObject({ status: 0, error: 'Request cancelled' });
 });
+
+test('streams a large response to disk with a bounded preview and cleans cancelled staging files', async () => {
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-http-disk-'));
+  const file = path.join(dir, 'response.bin');
+  server.removeAllListeners('request');
+  const bytes = Buffer.alloc(8 * 1024 * 1024, 0x61);
+  server.on('request', (_req, res) => { res.writeHead(418, { 'Content-Length': bytes.length }); res.end(bytes); });
+  try {
+    const result = await api.sendRequest({ url: origin, saveToPath: file });
+    expect(result).toMatchObject({ status: 418, size: bytes.length, savedPath: file, previewTruncated: true });
+    expect(Buffer.byteLength(result.body)).toBeLessThanOrEqual(64 * 1024);
+    expect(fs.readFileSync(file).equals(bytes)).toBe(true);
+    fs.writeFileSync(file, 'previous');
+    const controller = new AbortController();
+    const cancelled = await api.sendRequest({ url: origin, saveToPath: file, signal: controller.signal, onProgress: () => controller.abort() });
+    expect(cancelled.cancelled).toBe(true);
+    expect(fs.readFileSync(file, 'utf8')).toBe('previous');
+    expect(fs.readdirSync(dir)).toEqual(['response.bin']);
+    expect((await api.sendRequest({ url: origin, saveToPath: path.join(dir, 'missing', 'response') })).error).toBeTruthy();
+    expect(fs.readdirSync(dir)).toEqual(['response.bin']);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

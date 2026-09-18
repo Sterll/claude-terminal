@@ -2634,51 +2634,37 @@ async function exportResults(format, data, sourceName) {
     return;
   }
 
-  const dateStr = new Date().toISOString().slice(0, 10);
-  const defaultName = `${sourceName || 'query-results'}-${dateStr}.${format}`;
-  const { fsp } = require('../../utils/fs-async');
-
-  if (format === 'csv') {
-    const header = data.columns.join(',');
-    const rows = data.rows.map(row =>
-      data.columns.map(col => {
-        const val = row[col];
-        if (val === null || val === undefined) return '';
-        const str = String(val);
-        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-          return '"' + str.replace(/"/g, '""') + '"';
-        }
-        return str;
-      }).join(',')
-    );
-    const csvContent = [header, ...rows].join('\n');
-
-    const filePath = await ctx.api.dialog.saveFileDialog({
-      defaultPath: defaultName,
-      title: t('database.exportTitle'),
-      filters: [{ name: 'CSV', extensions: ['csv'] }]
-    });
-    if (filePath) {
-      await fsp.writeFile(filePath, '\uFEFF' + csvContent, 'utf8');
-      ctx.showToast({ type: 'success', title: t('database.exportSuccess') });
-    }
-  } else {
-    const jsonData = data.rows.map(row => {
-      const obj = {};
-      for (const col of data.columns) obj[col] = row[col];
-      return obj;
-    });
-
-    const filePath = await ctx.api.dialog.saveFileDialog({
-      defaultPath: defaultName,
-      title: t('database.exportTitle'),
-      filters: [{ name: 'JSON', extensions: ['json'] }]
-    });
-    if (filePath) {
-      await fsp.writeFile(filePath, JSON.stringify(jsonData, null, 2), 'utf8');
-      ctx.showToast({ type: 'success', title: t('database.exportSuccess') });
-    }
-  }
+  const defaultName = `${sourceName || 'query-results'}-${new Date().toISOString().slice(0, 10)}.${format}`;
+  const filePath = await ctx.api.dialog.saveFileDialog({ defaultPath: defaultName, title: t('database.exportTitle'),
+    filters: [{ name: format.toUpperCase(), extensions: [format] }] });
+  if (!filePath) return;
+  let operationId, running = false, disposed = false;
+  const modal = createModal({ id: 'database-export-' + crypto.randomUUID(), title: t('database.exportTitle'),
+    content: '<p class="db-export-progress" role="status"></p>',
+    buttons: [{ label: t('common.cancel'), action: 'operation' }, { label: t('common.close'), action: 'close' }],
+    onClose: () => { disposed = true; if (running) ctx.api.operations.cancel(operationId); unsubscribe?.(); }
+  });
+  const status = modal.querySelector('.db-export-progress');
+  const button = modal.querySelector('[data-action="operation"]');
+  const unsubscribe = ctx.api.operations.onProgress(progress => {
+    if (progress.operationId === operationId) status.textContent = `${progress.completed} / ${progress.total}`;
+  });
+  const run = async () => {
+    if (running) { await ctx.api.operations.cancel(operationId); return; }
+    running = true; operationId = crypto.randomUUID(); button.textContent = t('common.cancel');
+    status.textContent = t('common.loading');
+    try {
+      const result = await ctx.api.database.exportTable({ operationId, filePath, format, columns: data.columns, rows: data.rows });
+      if (disposed) return;
+      if (result.success) {
+        running = false; ctx.showToast({ type: 'success', title: t('database.exportSuccess') }); modal._onClose(); closeModal(modal);
+      } else status.textContent = result.cancelled ? t('database.exportCancelled') : result.error;
+    } catch (error) { if (!disposed) status.textContent = error.message; }
+    finally { running = false; button.textContent = t('database.exportRetry'); }
+  };
+  button.onclick = run;
+  modal.querySelector('[data-action="close"]').onclick = () => { modal._onClose(); closeModal(modal); };
+  showModal(modal); run();
 }
 
 function buildResultsTable(result) {

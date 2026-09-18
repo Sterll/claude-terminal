@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 185 test files)
+npm test                 # Run Jest tests (jsdom, 194 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -39,10 +39,10 @@ Electron Main Process (Node.js)
 ├── main.js                          # Bootstrap, lifecycle, single-instance lock, global shortcuts
 ├── src/main/preload.js              # IPC bridge (window.electron_api)
 ├── src/main/preload-quickpicker.js  # Preload for Quick Picker window
-├── src/main/ipc/                    # 36 IPC files, 327 handlers total
+├── src/main/ipc/                    # 36 IPC files, 329 handlers total
 ├── src/main/services/               # 36 services
 ├── src/main/windows/                # 5 window managers
-├── src/main/utils/                  # 16 utilities
+├── src/main/utils/                  # 22 utilities
 └── src/main/workflow-nodes/         # 31 workflow node types (*.node.js)
 
 Electron Renderer Process (Browser)
@@ -51,21 +51,21 @@ Electron Renderer Process (Browser)
 ├── src/renderer/core/               # DI container, BaseService/Component/Panel, ApiProvider
 ├── src/renderer/state/              # 15 observable state modules
 ├── src/renderer/services/           # 29 services + modular markdown renderer + mention sources
-├── src/renderer/ui/components/      # 18 UI components
+├── src/renderer/ui/components/      # 19 UI components
 ├── src/renderer/ui/panels/          # 25 UI panels
 ├── src/renderer/features/           # Keyboard shortcuts, quick picker, drag-drop
 ├── src/renderer/events/             # Claude event bus (hook + scraping providers)
 ├── src/renderer/workflow-fields/    # 13 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN locales (3699 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN locales (3718 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting
 
 Project Types (Plugin System)
 └── src/project-types/               # general, api, fivem, minecraft, python, webapp, discord
 
 Shared code
-└── src/shared/                      # 17 modules shared between main, renderer and the MCP server
+└── src/shared/                      # 18 modules shared between main, renderer and the MCP server
 
 Styles
 └── styles/                          # 30 modular CSS files (~57,000 lines total)
@@ -124,7 +124,7 @@ Remote UI (PWA for mobile)
 | `cloud-shared.js` | - | Helpers shared by the three cloud IPC files |
 | `index.js` | - | Orchestrator - registers all handlers |
 
-**Total: 327 IPC handlers across 36 files.**
+**Total: 329 IPC handlers across 36 files.**
 
 ### Services (`src/main/services/`)
 
@@ -189,6 +189,12 @@ Remote UI (PWA for mobile)
 | `fileLock.js` | Cross-process advisory lock, used by the workflow store and by concurrent settings writers |
 | `rendererSecurity.js` | The privilege boundary for the sandboxed windows. Wraps `ipcMain.handle`/`on` once so every handler answers only the registered main frame at its expected document URL, denies navigation and `window.open`, and gates renderer filesystem access behind an allowlist whose `canonical()` resolves existing ancestors so a new child under a symlink cannot escape. Keeps the credential and startup denials (`.ssh`, `.aws`, `.gnupg`, `.credentials.json`, shell rc files, autostart) above any grant |
 | `syncBundles.js` | Builds and validates the bounded bundles `SyncEngine` exchanges: resource files, both agent formats and deletion markers |
+| `rendererFiles.js` | Main-process half of the sandboxed renderer's `fs`/`path` bridge. Authorizes every path through `rendererSecurity.permitted()` before touching disk, and refuses a `readFile` whose flag would truncate. Its `PATH_METHODS` list is mirrored in `preload.js` because a sandboxed preload cannot import a shared constant; `tests/security/rendererBridgeSurface.test.js` keeps the two and the renderer's real usage in agreement |
+| `cancellableOperation.js` | Registry behind the cancel/retry affordances: long local operations (database export, clone, scaffolding, large HTTP downloads) register here so the renderer can cancel one by id and retry it from its retained inputs |
+| `runCommand.js` | Spawns an external command as a cancellable operation, streaming progress |
+| `exportTable.js` | Database export as a cancellable, resumable operation |
+| `projectCreation.js` | Git init and web scaffolding for a new project, preserving an existing destination rather than overwriting it |
+| `secretBackups.js` | Finds the legacy plaintext secret backups earlier versions left behind and replaces them with verified encrypted copies. Recovery needs the original machine's keychain and writes to a separate, explicitly chosen file |
 | `git.js` | 20+ git operations via `execGit()`, status parsing, safe.directory, 15s timeout, worktree support |
 | `commitMessageGenerator.js` | AI commit via GitHub Models API (gpt-4o-mini), heuristic fallback |
 | `prDescriptionGenerator.js` | AI-generated PR descriptions |
@@ -285,7 +291,7 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 
 ### UI Components (`src/renderer/ui/components/`)
 
-`ProjectList`, `ProjectBar`, `TerminalManager`, `ChatView`, `FileExplorer`, `FileViewer`, `Modal`, `CustomizePicker`, `QuickActions`, `ContextMenu`, `Tab`, `Toast`, `ClaudeMdSuggestionModal`, `AccountMenu`, `AccountSwitchModal`, `TranscriptPruner`, `WhatsNew`, `usageChip`.
+`ProjectList`, `ProjectBar`, `TerminalManager`, `ChatView`, `FileExplorer`, `FileViewer`, `Modal`, `CustomizePicker`, `QuickActions`, `ContextMenu`, `Tab`, `Toast`, `ClaudeMdSuggestionModal`, `AccountMenu`, `AccountSwitchModal`, `TranscriptPruner`, `WhatsNew`, `ControlTowerIncidents`, `usageChip`.
 
 > `ChatView.js` is 8,641 lines, `renderer.js` 7,654 and `TerminalManager.js` 4,539 - still the three largest files in the repo, ~20,800 lines between them, and still past the point where they should be split. Splitting is underway and has its own conventions, below. Prefer adding new chat behaviour as a sibling module over growing `ChatView.js` further.
 
@@ -362,7 +368,7 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 ### Internationalization (`src/renderer/i18n/locales/`)
 
 - **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`)
-- **Keys:** 3699 per locale, all five in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
+- **Keys:** 3718 per locale, all five in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
 - **Loading:** only `en.json` is bundled eagerly, as the guaranteed-loaded fallback for `t()`; the others are fetched by `initI18n()`
 - **Detection:** auto-detect from `navigator.language`, `DEFAULT_LANGUAGE` is `fr`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`, `data-i18n="..."` for static HTML
@@ -625,7 +631,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 185 unit test files (jsdom environment)
+npm test                    # Run all 194 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -634,7 +640,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 185 test files
+- **Framework:** Jest with jsdom, 194 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**

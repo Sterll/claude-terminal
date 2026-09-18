@@ -411,23 +411,20 @@ async function getWorkflowRuns(owner, repo, perPage = 5, page = 1) {
  * @returns {Object|null} - { owner, repo } or null
  */
 function parseGitHubRemote(remoteUrl) {
-  if (!remoteUrl) return null;
-
-  const escaped = config.webHostname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-  // HTTPS: https://github.com/owner/repo.git (or custom GHE hostname)
-  const httpsMatch = remoteUrl.match(new RegExp(escaped + '\\/([^\\/]+)\\/([^\\/\\.]+)'));
-  if (httpsMatch) {
-    return { owner: httpsMatch[1], repo: httpsMatch[2] };
+  if (typeof remoteUrl !== 'string') return null;
+  let repository;
+  if (/^https?:\/\//i.test(remoteUrl)) {
+    try {
+      const parsed = new URL(remoteUrl);
+      if (parsed.host.toLowerCase() !== config.webHostname.toLowerCase()) return null;
+      repository = parsed.pathname.match(/^\/([^/]+)\/([^/]+?)\/?$/);
+    } catch { return null; }
+  } else {
+    const match = remoteUrl.match(/^git@([^:]+):([^/]+)\/([^/]+?)\/?$/);
+    if (!match || match[1].toLowerCase() !== config.webHostname.toLowerCase()) return null;
+    repository = [match[0], match[2], match[3]];
   }
-
-  // SSH: git@github.com:owner/repo.git (or custom GHE hostname)
-  const sshMatch = remoteUrl.match(new RegExp(escaped + ':([^\\/]+)\\/([^\\/\\.]+)'));
-  if (sshMatch) {
-    return { owner: sshMatch[1], repo: sshMatch[2] };
-  }
-
-  return null;
+  return repository ? { owner: repository[1], repo: repository[2].replace(/\.git$/, '') } : null;
 }
 
 /**

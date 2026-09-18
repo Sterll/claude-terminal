@@ -17,7 +17,16 @@ async function updateClaudeConfig(mutate) {
     await mutate(config);
     if (original !== undefined) {
       if (await fs.promises.readFile(file, 'utf8') !== original) throw new Error('Claude configuration changed during update; retry');
-      await fs.promises.writeFile(file + '.backup', original, { mode: 0o600 });
+      const backups = require('./secretBackups');
+      // Preserve the older backup before rotating it, and avoid recreating a
+      // plaintext copy of database secrets while provisioning the new MCP.
+      await backups.secureFile(file + '.backup', 'claude');
+      const safe = backups.sanitize(JSON.parse(original), 'claude');
+      const changed = JSON.stringify(safe) !== JSON.stringify(JSON.parse(original));
+      const backup = changed ? JSON.stringify(safe, null, 2) : original;
+      if (changed) await backups.archive(file, original);
+      await fs.promises.writeFile(file + '.backup', backup, { mode: 0o600 });
+      await fs.promises.chmod(file + '.backup', 0o600);
     }
     const temporary = file + '.tmp.' + crypto.randomBytes(8).toString('hex');
     try {

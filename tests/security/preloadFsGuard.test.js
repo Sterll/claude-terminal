@@ -14,7 +14,8 @@
 
 const realPath = require('path');
 
-const mockHome = process.platform === 'win32' ? 'C:\\Users\\tester' : '/home/tester';
+const realFs = require('fs');
+const mockHome = realFs.mkdtempSync(realPath.join(require('os').tmpdir(), 'ct-preload-guard-'));
 
 jest.mock('os', () => ({
   ...jest.requireActual('os'),
@@ -22,6 +23,8 @@ jest.mock('os', () => ({
 }));
 
 let mockExposed;
+const mockIpc = new (require('events').EventEmitter)();
+mockIpc.handle = jest.fn();
 
 jest.mock('electron', () => ({
   contextBridge: {
@@ -30,15 +33,22 @@ jest.mock('electron', () => ({
       mockExposed[key] = value;
     },
   },
-  ipcRenderer: { sendSync: () => true, invoke: jest.fn(), send: jest.fn(), on: jest.fn(), removeListener: jest.fn() },
+  ipcRenderer: {
+    invoke: jest.fn(), send: jest.fn(), on: jest.fn(), removeListener: jest.fn(),
+    sendSync: (channel, ...args) => { const event = {}; mockIpc.emit(channel, event, ...args); return event.returnValue; },
+  },
 }));
 
 let fsBridge;
 
 beforeAll(() => {
+  const security = require('../../src/main/utils/rendererSecurity');
+  security.grant(mockHome);
+  require('../../src/main/utils/rendererFiles').install(mockIpc, security.permitted);
   require('../../src/main/preload');
   fsBridge = mockExposed.electron_nodeModules.fs;
 });
+afterAll(() => realFs.rmSync(mockHome, { recursive: true, force: true }));
 
 const home = (...seg) => realPath.join(mockHome, ...seg);
 
@@ -109,8 +119,8 @@ describe('ordinary project paths', () => {
     expect(() => fsBridge.writeFileSync(settings, '{}')).not.toThrow(/Access denied/);
   });
 
-  test('the Claude config the renderer legitimately edits is still writable', () => {
-    expect(() => fsBridge.writeFileSync(home('.claude.json'), '{}')).not.toThrow(/Access denied/);
+  test('global Claude config uses its dedicated writer while settings remain editable', () => {
+    expect(() => fsBridge.writeFileSync(home('.claude.json'), '{}')).toThrow(/Access denied/);
     expect(() => fsBridge.writeFileSync(home('.claude', 'settings.json'), '{}')).not.toThrow(/Access denied/);
   });
 });

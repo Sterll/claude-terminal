@@ -73,11 +73,15 @@ jobs:
 
       - name: Electron runtime smoke (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run -a npm run test:runtime
+        run: |
+          xvfb-run -a npm run test:runtime
+          xvfb-run -a npm run test:upgrade
 
       - name: Electron runtime smoke (macOS and Windows)
         if: runner.os != 'Linux'
-        run: npm run test:runtime
+        run: |
+          npm run test:runtime
+          npm run test:upgrade
 
       - name: Cloud regressions
         if: runner.os == 'Linux'

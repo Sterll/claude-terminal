@@ -60,6 +60,12 @@ function registerWorkflowHandlers(mainWindow) {
   // Inject main window so service can emit events
   workflowService.setMainWindow(mainWindow);
 
+  ipcMain.handle('workflow-trigger-status', () => workflowService.getTriggerStatuses());
+  ipcMain.handle('workflow-retry-trigger', (_event, { id } = {}) => {
+    try { return { success: true, statuses: workflowService.retryTrigger(id) }; }
+    catch (error) { return { success: false, error: error.message }; }
+  });
+
   // ── CRUD ────────────────────────────────────────────────────────────────────
 
   ipcMain.handle('workflow-list', async () => {
