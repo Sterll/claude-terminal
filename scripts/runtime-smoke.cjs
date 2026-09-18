@@ -138,6 +138,8 @@ app.whenReady().then(async () => {
   }
   console.log('PASS real preload path grants, read-only app files and sandboxed secondary preloads');
 
+  await require('./chat-scroll-smoke.cjs')(temporary);
+
   // Stub only unrelated chat/catalog work; HTTP, WS, token and socket lifecycles are real.
   const Module = require('node:module'); const originalLoad = Module._load;
   Module._load = function(request, parent, isMain) {

@@ -81,16 +81,18 @@ it('serializes an external synchronous MCP writer behind an asynchronous desktop
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-lock-process-'));
   const file = path.join(dir, 'shared.lock'), marker = path.join(dir, 'written');
   let child;
+  let stderr = '';
   try {
     let completion;
     await withCrossProcessLock(file, async () => {
       child = spawn(process.execPath, ['-e', `const fs = require('fs'); const { withCrossProcessLockSync } = require(${JSON.stringify(path.resolve(__dirname, '../../src/shared/file-lock.js'))}); process.stdout.write('ready'); withCrossProcessLockSync(${JSON.stringify(file)}, () => fs.writeFileSync(${JSON.stringify(marker)}, 'child'), { timeoutMs: 2000 });`], { stdio: ['ignore', 'pipe', 'pipe'] });
-      completion = once(child, 'exit');
+      child.stderr.on('data', chunk => { stderr += chunk; });
+      completion = once(child, 'close');
       await once(child.stdout, 'data');
       await new Promise(resolve => setTimeout(resolve, 50));
       expect(fs.existsSync(marker)).toBe(false);
     });
-    expect((await completion)[0]).toBe(0);
+    expect({ code: (await completion)[0], stderr }).toEqual({ code: 0, stderr: '' });
     expect(fs.readFileSync(marker, 'utf8')).toBe('child');
     expect(fs.existsSync(file)).toBe(false);
   } finally { child?.kill(); fs.rmSync(dir, { recursive: true, force: true }); }
