@@ -23,8 +23,15 @@ for (const method of ['exists', 'readFile', 'writeFile', 'readdir', 'stat', 'mkd
 }
 // Cache repeated pure path calculations; use the host's native path semantics
 // for drive letters, UNC names and separators on every supported platform.
+//
+// This list must cover every path method the renderer actually calls, and it
+// is duplicated in `src/main/utils/rendererFiles.js` because a sandboxed
+// preload can only require electron, events, timers and url — it cannot pull a
+// shared constant. `tests/security/rendererBridgeSurface.test.js` is what keeps
+// the two halves and the renderer's real usage in agreement; extend it rather
+// than trusting this comment.
 const pathApi = { sep: bootstrap.sep }, pathCache = new Map();
-for (const method of ['join', 'dirname', 'basename', 'relative', 'resolve']) {
+for (const method of ['join', 'dirname', 'basename', 'relative', 'resolve', 'extname', 'normalize', 'isAbsolute']) {
   pathApi[method] = (...args) => {
     const key = JSON.stringify([method, args]);
     if (pathCache.has(key)) return pathCache.get(key);

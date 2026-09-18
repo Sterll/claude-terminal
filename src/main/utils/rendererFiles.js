@@ -5,6 +5,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+/** Mirrored in `src/main/preload.js`; see the note there. */
+const PATH_METHODS = ['join', 'dirname', 'basename', 'relative', 'resolve', 'extname', 'normalize', 'isAbsolute'];
 const operations = {
   exists: [false], readFile: [false], readdir: [false], stat: [false], access: [false],
   writeFile: [true], mkdir: [true], rm: [true], unlink: [true],
@@ -36,7 +38,11 @@ function install(ipcMain, permitted) {
   });
   ipcMain.on('renderer-path', (event, method, args) => {
     try {
-      if (!['join', 'dirname', 'basename', 'relative', 'resolve'].includes(method) || !Array.isArray(args)) throw new Error('Unsupported path operation');
+      // Pure string operations, no filesystem access, so no path grant is
+      // required — but the list still has to match the one the preload
+      // exposes, or a renderer call lands on `undefined` and throws. Kept in
+      // agreement by tests/security/rendererBridgeSurface.test.js.
+      if (!PATH_METHODS.includes(method) || !Array.isArray(args)) throw new Error('Unsupported path operation');
       event.returnValue = { ok: true, value: path[method](...args) };
     } catch (error) { event.returnValue = failure(error); }
   });
@@ -54,4 +60,4 @@ function install(ipcMain, permitted) {
     } catch (error) { return failure(error); }
   });
 }
-module.exports = { install };
+module.exports = { install, PATH_METHODS };
