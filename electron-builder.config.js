@@ -124,12 +124,8 @@ module.exports = {
     ],
     icon: "assets/icon.png",
     category: "Development",
-    synopsis: "Terminal for Claude Code projects",
-    desktop: {
-      Name: "Claude Terminal",
-      Comment: "Terminal for Claude Code projects",
-      Terminal: "false"
-    }
+    // electron-builder supplies Name/Comment/Terminal in the desktop entry.
+    synopsis: "Terminal for Claude Code projects"
   },
   publish: {
     provider: "github",

@@ -30,7 +30,7 @@ jest.mock('electron', () => ({
       mockExposed[key] = value;
     },
   },
-  ipcRenderer: { invoke: jest.fn(), send: jest.fn(), on: jest.fn(), removeListener: jest.fn() },
+  ipcRenderer: { sendSync: () => true, invoke: jest.fn(), send: jest.fn(), on: jest.fn(), removeListener: jest.fn() },
 }));
 
 let fsBridge;

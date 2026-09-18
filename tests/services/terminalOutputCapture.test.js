@@ -146,3 +146,18 @@ describe('clear', () => {
     expect(() => capture.clear('never-existed')).not.toThrow();
   });
 });
+
+describe('byte bounds and split escapes', () => {
+  test.each(['é', '😀'])('caps %s output at the byte limit with valid UTF-8', character => {
+    capture.record('big', character.repeat(capture.MAX_FILE_BYTES)); capture.flush();
+    const data = fs.readFileSync(capture.logFileFor('big'));
+    expect(data.length).toBeLessThanOrEqual(capture.MAX_FILE_BYTES);
+    expect(data.toString('utf8')).not.toContain('\ufffd');
+  });
+  test('removes an ANSI escape split across records and flushes', () => {
+    capture.record('noise', '\x1b['); capture.flush();
+    capture.record('noise', '31mred\x1b[0'); capture.flush();
+    capture.record('noise', 'm end'); capture.flush();
+    expect(readLog('noise')).toBe('red end');
+  });
+});

@@ -7,6 +7,7 @@ const { ipcMain, dialog, shell, app, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
+const { grant } = require('../utils/rendererSecurity');
 const updaterService = require('../services/UpdaterService');
 
 let mainWindow = null;
@@ -188,6 +189,7 @@ function registerDialogHandlers() {
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory']
     });
+    if (!result.canceled && result.filePaths[0]) grant(result.filePaths[0], { directory: fs.statSync(result.filePaths[0]).isDirectory() });
     return result.filePaths[0] || null;
   });
 
@@ -199,6 +201,7 @@ function registerDialogHandlers() {
       filters: filters || [{ name: 'All Files', extensions: ['*'] }]
     });
     if (result.canceled) return null;
+    grant(result.filePath, { directory: false });
     return result.filePath;
   });
 
@@ -211,6 +214,7 @@ function registerDialogHandlers() {
         { name: 'Tous les fichiers', extensions: ['*'] }
       ]
     });
+    if (!result.canceled && result.filePaths[0]) grant(result.filePaths[0], { directory: fs.statSync(result.filePaths[0]).isDirectory() });
     return result.filePaths[0] || null;
   });
 

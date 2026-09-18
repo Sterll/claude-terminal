@@ -384,12 +384,12 @@ class DatabaseService {
 
       // Migrate legacy connection URIs before updating the MCP definition.
       await this.loadConnections();
-      const env = { CT_DATA_DIR: dataDir, NODE_PATH: this._getNodeModulesPath() };
+      const env = { CT_DATA_DIR: dataDir, NODE_PATH: this._getNodeModulesPath(), ELECTRON_RUN_AS_NODE: '1' };
       await updateClaudeConfig(config => {
       if (!config.mcpServers) config.mcpServers = {};
       config.mcpServers['claude-terminal'] = {
         type: 'stdio',
-        command: 'node',
+        command: process.execPath,
         args: [this._getMcpServerPath()],
         env
       };

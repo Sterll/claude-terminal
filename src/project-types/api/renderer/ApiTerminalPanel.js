@@ -681,6 +681,10 @@ function bindTesterEvents(panel, projectIndex, deps) {
 }
 
 async function sendRequest(panel, projectIndex, deps) {
+  if (panel.dataset.requestId) {
+    await apiElectron.api.cancelRequest(panel.dataset.requestId);
+    return;
+  }
   const { t } = deps;
   const method = panel.querySelector('.api-tester-method').value;
   const url = panel.querySelector('.api-tester-url').value.trim();
@@ -698,13 +702,14 @@ async function sendRequest(panel, projectIndex, deps) {
 
   const sendBtn = panel.querySelector('.api-tester-send-btn');
   const responseDiv = panel.querySelector('.api-tester-response');
-  sendBtn.disabled = true;
+  const requestId = crypto.randomUUID();
+  panel.dataset.requestId = requestId;
   sendBtn.classList.add('sending');
-  sendBtn.innerHTML = `<div class="api-loading-dots"><span></span><span></span><span></span></div><span>${t('api.sending')}</span>`;
+  sendBtn.innerHTML = `<div class="api-loading-dots"><span></span><span></span><span></span></div><span>${t('common.cancel')}</span>`;
   responseDiv.innerHTML = '<div class="api-tester-response-placeholder"><div class="api-loading-dots" style="opacity:0.6"><span></span><span></span><span></span></div></div>';
 
   try {
-    const result = await apiElectron.api.testRequest({ url, method, headers, body });
+    const result = await apiElectron.api.testRequest({ url, method, headers, body, requestId });
     addApiHistoryEntry(projectIndex, {
       request: { method, url, headers, body },
       response: result,
@@ -718,6 +723,7 @@ async function sendRequest(panel, projectIndex, deps) {
     </div>`;
   }
 
+  delete panel.dataset.requestId;
   sendBtn.disabled = false;
   sendBtn.classList.remove('sending');
   sendBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg><span>${t('api.send')}</span>`;

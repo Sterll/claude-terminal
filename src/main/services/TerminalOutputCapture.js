@@ -40,6 +40,7 @@ const MAX_BUFFER_CHARS = 512 * 1024;    // hard cap so a runaway PTY cannot grow
 
 // projectId → pending text not yet written
 const _buffers = new Map();
+const _controlTails = new Map();
 let _timer = null;
 
 /**
@@ -90,15 +91,15 @@ function writeChunk(projectId, text) {
   let existing = '';
   try { existing = fs.readFileSync(file, 'utf8'); } catch { /* first write */ }
 
-  let merged = existing + text;
-  if (Buffer.byteLength(merged, 'utf8') > MAX_FILE_BYTES) {
-    // Trim from the front, then drop the partial first line so the log never
-    // starts mid-sentence.
-    merged = merged.slice(-MAX_FILE_BYTES);
-    const nl = merged.indexOf('\n');
-    if (nl > -1) merged = merged.slice(nl + 1);
+  let merged = Buffer.from(existing + text, 'utf8');
+  if (merged.length > MAX_FILE_BYTES) {
+    let start = merged.length - MAX_FILE_BYTES;
+    while (start < merged.length && (merged[start] & 0xc0) === 0x80) start++;
+    merged = merged.subarray(start);
+    const nl = merged.indexOf(10);
+    if (nl >= 0 && nl < merged.length - 1) merged = merged.subarray(nl + 1);
   }
-  fs.writeFileSync(file, merged, 'utf8');
+  fs.writeFileSync(file, merged);
 }
 
 /** Write every pending buffer to disk. Safe to call at any time. */
@@ -132,7 +133,14 @@ function flush() {
 function record(projectId, data) {
   if (!projectId || !data) return;
 
-  const cleaned = cleanOutput(data);
+  let raw = (_controlTails.get(projectId) || '') + data;
+  _controlTails.delete(projectId);
+  const incomplete = raw.match(/\x1b(?:\[[0-?]*[ -/]*|\][^\x07\x1b]*\x1b?|)$/);
+  if (incomplete) {
+    if (incomplete[0].length <= 4096) _controlTails.set(projectId, incomplete[0]);
+    raw = raw.slice(0, incomplete.index);
+  }
+  const cleaned = cleanOutput(raw);
   if (!cleaned) return;
 
   const current = _buffers.get(projectId) || '';
@@ -155,6 +163,7 @@ function shutdown() {
 /** Remove a project's captured log. */
 function clear(projectId) {
   _buffers.delete(projectId);
+  _controlTails.delete(projectId);
   try { fs.unlinkSync(logFileFor(projectId)); } catch { /* nothing to remove */ }
 }
 
