@@ -365,11 +365,12 @@ class ProjectList extends BaseComponent {
       children.forEach(childId => {
         const childFolder = getFolder(childId);
         if (childFolder) {
-          const subHtml = this._renderFolderHtml(childFolder, depth + 1, searchQuery);
-          if (subHtml) {
-            childrenHtml += subHtml;
-            renderedIds.add(childId);
-          }
+          renderedIds.add(childId);
+          // `parentId` is the truth, `children` only the display order. A
+          // stale entry here would draw the subtree a second time, under a
+          // folder it no longer belongs to.
+          if (childFolder.parentId !== folder.id) return;
+          childrenHtml += this._renderFolderHtml(childFolder, depth + 1, searchQuery);
         } else {
           const childProject = getProject(childId);
           if (childProject && childProject.folderId === folder.id) {
@@ -379,6 +380,15 @@ class ProjectList extends BaseComponent {
             else { childrenHtml += this._renderProjectHtml(childProject, depth + 1); renderedIds.add(childId); }
           }
         }
+      });
+
+      // Render any subfolder not in the children array (legacy data, or a
+      // parent whose children array was written by another process). Without
+      // this the folder and everything under it is invisible while the badge
+      // still counts its projects.
+      childFolders.forEach(childFolder => {
+        if (renderedIds.has(childFolder.id)) return;
+        childrenHtml += this._renderFolderHtml(childFolder, depth + 1, searchQuery);
       });
 
       // Render any projects not in children array (legacy data)

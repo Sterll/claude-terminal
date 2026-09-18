@@ -813,6 +813,25 @@ describe('loadProjects', () => {
     expect(state.rootOrder).toContain('p1');
   });
 
+  test('puts a subfolder back in its parent children array', async () => {
+    window.electron_nodeModules.fs.promises.access.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.mkdir.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.readFile.mockResolvedValue(
+      JSON.stringify({
+        projects: [],
+        folders: [
+          { id: 'f1', name: 'Parent', parentId: null, children: [] },
+          { id: 'f2', name: 'Child', parentId: 'f1', children: [] },
+        ],
+        rootOrder: ['f1'],
+      })
+    );
+    await loadProjects();
+    const state = projectsState.get();
+    expect(state.folders.find(f => f.id === 'f1').children).toEqual(['f2']);
+    expect(state.rootOrder).toEqual(['f1']);
+  });
+
   test('leaves a healthy tree alone', async () => {
     window.electron_nodeModules.fs.promises.access.mockResolvedValue(undefined);
     window.electron_nodeModules.fs.promises.mkdir.mockResolvedValue(undefined);

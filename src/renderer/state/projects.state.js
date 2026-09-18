@@ -275,6 +275,22 @@ function repairBrokenParents(folders, projects, rootOrder) {
     if (project.folderId && !byId.has(project.folderId)) reroot(project, 'folderId');
   });
 
+  // `children` is the display order; `parentId`/`folderId` is the truth. A
+  // subfolder missing from its parent's children array is drawn nowhere while
+  // still being counted in that parent's badge, so put it back. Runs after the
+  // re-rooting above, on the parents items actually ended up under.
+  const adopt = (parentId, childId) => {
+    const parent = byId.get(parentId);
+    if (!parent) return;
+    parent.children = parent.children || [];
+    if (parent.children.includes(childId)) return;
+    parent.children.push(childId);
+    repaired = true;
+  };
+
+  folders.forEach(folder => { if (folder.parentId) adopt(folder.parentId, folder.id); });
+  projects.forEach(project => { if (project.folderId) adopt(project.folderId, project.id); });
+
   return repaired;
 }
 
