@@ -11,7 +11,7 @@ Claude Terminal is a cross-platform Electron desktop application (**v1.3.3**) fo
 ## Build & Development Commands
 
 ```bash
-npm install              # Install dependencies (Node >=22.13, runs electron-rebuild for node-pty, keytar, better-sqlite3)
+npm install              # Install dependencies (Node >=22.13, runs electron-rebuild for node-pty and keytar)
 npm start                # Build renderer + run app
 npm run start:dev        # Run with DevTools enabled
 npm run start:inspect    # Run with remote debugging port 9222
@@ -31,6 +31,29 @@ npm run test:e2e         # Playwright smoke test against the real Electron app
 ```
 
 **Important:** Always run `npm run build:renderer` after modifying anything under `src/renderer/`, `src/project-types/`, or `renderer.js`.
+
+### Installing needs a native toolchain, and that is not our choice
+
+`npm install` **and** `npm ci` both fail on a machine without Python and a C++
+compiler, and they fail before `postinstall` ever runs, so the warning below
+cannot soften it. On Windows that means Python 3 plus the MSVC build tools.
+
+The cause is `better-sqlite3`. It declares `"gypfile": false` and ships eight
+NAPI prebuilds in its own tarball, including `win32-x64`, so it should need no
+compiler at all - and it genuinely does not: its prebuild loads and runs under
+Electron 43 unchanged, which is why `postinstall` no longer rebuilds it. But
+npm 11 still runs `node-gyp rebuild` for any dependency carrying a `binding.gyp`
+without an explicit `install` script, and that build is what stops dead.
+
+CI never sees this because the GitHub runners ship a toolchain. Do not read a
+green CI as evidence that a fresh clone installs.
+
+The three ways out, in order of preference: install the toolchain; or
+`npm install --ignore-scripts` when you only need the renderer, the tests or
+the docs (terminals, credential storage and the packaged build will not work);
+or pin `better-sqlite3` back to `^11`, which downloads a prebuilt binary
+through `prebuild-install` and installs anywhere, at the cost of needing an
+Electron-ABI rebuild it does not need today.
 
 ## Architecture Overview
 
@@ -736,6 +759,11 @@ Kept out of `npm test`: it needs a display (`xvfb-run` on Linux CI) and a built
 renderer bundle. Running it locally also needs the native modules built against
 Electron's ABI (`npm run postinstall`), which on Windows means a Python and MSVC
 toolchain for `node-pty`.
+
+It does pass without those, because it opens every tab but never spawns a
+terminal or reads a credential. That is worth knowing before reading a green
+run as "the natives are fine": it covers first render of all 20 panels, not
+`node-pty` or `keytar`. `npm run test:runtime` is the one that covers those.
 
 ## CI/CD
 
