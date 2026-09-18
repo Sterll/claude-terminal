@@ -11,7 +11,7 @@ Claude Terminal is a cross-platform Electron desktop application (**v1.3.3**) fo
 ## Build & Development Commands
 
 ```bash
-npm install              # Install dependencies (Node >=24.15, runs electron-rebuild for node-pty, keytar, better-sqlite3)
+npm install              # Install dependencies (Node >=22.13, runs electron-rebuild for node-pty, keytar, better-sqlite3)
 npm start                # Build renderer + run app
 npm run start:dev        # Run with DevTools enabled
 npm run start:inspect    # Run with remote debugging port 9222

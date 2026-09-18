@@ -38,7 +38,11 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
-        node-version: [24]
+        # 22 is the floor `engines.node` declares, so it has to be exercised or
+        # the floor is a guess. It comes from eslint 10 (`^22.13.0`); electron
+        # 43, @electron/rebuild 4 and better-sqlite3 13 all sit at >= 22.12.
+        # Nothing in the tree needs 24, which is why the floor is not 24.
+        node-version: [22, 24]
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
