@@ -383,6 +383,29 @@ onLanguageChange(() => {
   updateStaticTranslations();
 });
 
+/**
+ * What the project sidebar and the project bar actually draw, as one string.
+ *
+ * Used to tell "the list changed" apart from "the selection moved": the latter
+ * fires on every tab switch and must not rebuild the list. Only the fields both
+ * views render are included, so a change nobody can see costs no repaint.
+ *
+ * @param {{projects: Array, folders: Array, rootOrder: Array}} state
+ * @returns {string}
+ */
+function _projectsSignature(state) {
+  const projects = (state.projects || []).map(p => [
+    p.id, p.name, p.path, p.type, p.folderId, p.color, p.icon,
+    p.pathMissing ? 1 : 0,
+    (p.tags || []).join(','),
+    (p.quickActions || []).filter(a => a.pinned).map(a => a.id).join(','),
+  ].join(''));
+  const folders = (state.folders || []).map(f => [
+    f.id, f.name, f.parentId, f.color, f.collapsed ? 1 : 0, (f.children || []).join(','),
+  ].join(''));
+  return [projects.join(''), folders.join(''), (state.rootOrder || []).join(',')].join('');
+}
+
 // ========== KEYBOARD SHORTCUTS (extracted to ShortcutsManager module) ==========
 // ========== INITIALIZATION ==========
 const { initClaudeEvents, switchProvider, getDashboardStats, setNotificationFn } = require('./src/renderer/events');
@@ -572,6 +595,23 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
   projectsState.subscribe((state) => {
     registry.ensureLoadedMany(state.projects.map(p => p.type))
       .then(loaded => { if (loaded.length) ProjectList.render(); });
+  });
+
+  // Repaint when the list itself changed rather than when a new *type* arrived.
+  // Every mutation made from the UI calls ProjectList.render() on its own, but
+  // the ones that come from outside this renderer have nobody to do that for
+  // them — the MCP project tools, a cloud sync pull, and the three-way merge
+  // that adopts another process's writes all reach state through loadProjects()
+  // alone, so the sidebar stayed on the previous list until the next restart.
+  // Both renders are rAF-debounced, so the duplicate on a local edit collapses.
+  let _lastProjectsSignature = _projectsSignature(projectsState.get());
+  projectsState.subscribe((state) => {
+    const signature = _projectsSignature(state);
+    if (signature === _lastProjectsSignature) return;
+    _lastProjectsSignature = signature;
+    ProjectList.render();
+    ProjectBar.render();
+    if (document.body.dataset.activeTab === 'dashboard') renderDashboardForScope();
   });
 
   // Third-party project types, if the user has opted in. Deliberately not

@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 198 test files)
+npm test                 # Run Jest tests (jsdom, 199 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -663,7 +663,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 198 unit test files (jsdom environment)
+npm test                    # Run all 199 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -672,13 +672,13 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 198 test files
+- **Framework:** Jest with jsdom, 199 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
   - `core/` - BaseComponent, BasePanel, ApiProvider, ServiceContainer
   - `events/` - hook session routing, permission-notification suppression by permission mode
-  - `features/` - shortcuts, control tower grid, files dock, setup wizard, tab focus, ui_navigate, and the account binding + project attribution every `terminal.create` call has to send
+  - `features/` - shortcuts, control tower grid, files dock, setup wizard, tab focus, ui_navigate, the account binding + project attribution every `terminal.create` call has to send, and the trigger wire that makes an MCP `project_create`/`update`/`delete` reach a running window
   - `i18n/` - i18n, coherence across the 5 locales, unused/missing key usage
   - `integration/` - state persistence
   - `ipc/` - accounts usage, claude, hooks, project, usage, workflow save

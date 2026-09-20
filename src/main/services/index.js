@@ -243,6 +243,24 @@ function _startMcpTriggerPolling(mainWindow) {
       }
     } },
 
+    // Projects (project_create / project_update / project_delete / project_open).
+    // The MCP tool writes projects.json itself and the renderer polls that file,
+    // so `changed` is only a latency shortcut — it is the renderer that reloads.
+    // `open` is the one action with no other way in.
+    { dir: path.join(dataDir, 'projects', 'triggers'), handler: (data) => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (data.action === 'open' && data.projectId) {
+        console.log(`[Services] MCP project open: ${data.projectId}`);
+        mainWindow.webContents.send('mcp-project:open', data);
+      } else if (data.action === 'changed') {
+        console.log(`[Services] MCP project ${data.mutation || 'changed'}: ${data.projectName || data.projectId || '?'}`);
+        // The id->index cache below was built from the list that just changed.
+        _projectsCache = null;
+        _projectsCacheTime = 0;
+        mainWindow.webContents.send('mcp-project:changed', data);
+      }
+    } },
+
     // FiveM
     { dir: path.join(dataDir, 'fivem', 'triggers'), handler: (data) => {
       if (!data.projectId) return;

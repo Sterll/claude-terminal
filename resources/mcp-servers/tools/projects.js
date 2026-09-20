@@ -57,6 +57,32 @@ function notifyQuickActionChanged(projectId, mutation, actionName) {
   }), 'utf8');
 }
 
+/**
+ * Tell a running Claude Terminal that the project list changed.
+ *
+ * projects.json is the source of truth and the renderer polls it every few
+ * seconds, so this is purely about latency: without the trigger a project
+ * created here only appears at the next sweep, and the app looks stuck.
+ * Never fatal — the poll is still the safety net, and the data is already
+ * saved by the time we get here.
+ */
+function notifyProjectsChanged(mutation, project) {
+  try {
+    const triggerDir = path.join(getDataDir(), 'projects', 'triggers');
+    if (!fs.existsSync(triggerDir)) fs.mkdirSync(triggerDir, { recursive: true });
+    const triggerFile = path.join(triggerDir, `changed_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.json`);
+    fs.writeFileSync(triggerFile, JSON.stringify({
+      action: 'changed',
+      mutation,
+      projectId: project && project.id ? project.id : null,
+      projectName: project && project.name ? project.name : null,
+      timestamp: new Date().toISOString(),
+    }), 'utf8');
+  } catch (e) {
+    log('Could not write projects trigger:', e.message);
+  }
+}
+
 /** Every name a project answers to. The id comes first: it is never fuzzy-matched. */
 function projectNames(p) {
   return [p.id, p.name, path.basename(p.path || '')];
@@ -727,6 +753,7 @@ async function handle(name, args) {
       data.projects.push(project);
       data.rootOrder.push(project.id);
       saveProjects(data);
+      notifyProjectsChanged('create', project);
 
       return ok(`Project created:\n  Name: ${project.name}\n  Path: ${project.path}\n  Type: ${project.type}\n  ID: ${project.id}`);
     }
@@ -753,6 +780,7 @@ async function handle(name, args) {
       }
 
       saveProjects(data);
+      notifyProjectsChanged('delete', p);
 
       return ok(`Project removed from Claude Terminal:\n  Name: ${projectName}\n  Path: ${projectPath}\n\nNote: No files were deleted on disk.`);
     }
@@ -795,6 +823,7 @@ async function handle(name, args) {
       if (!updates.length) return fail('No updates provided. Specify name, color, icon, type, or editor.');
 
       saveProjects(data);
+      notifyProjectsChanged('update', p);
 
       const projectName = p.name || path.basename(p.path || '?');
       return ok(`Project "${projectName}" updated:\n  ${updates.join('\n  ')}`);

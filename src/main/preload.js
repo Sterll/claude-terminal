@@ -405,6 +405,8 @@ contextBridge.exposeInMainWorld('electron_api', {
     stats: (projectPath) => ipcRenderer.invoke('project-stats', projectPath),
     onQuickActionRun: createListener('quickaction:run'),
     onQuickActionChanged: createListener('quickaction:changed'),
+    onProjectsChanged: createListener('mcp-project:changed'),
+    onProjectOpen: createListener('mcp-project:open'),
   },
 
   // ==================== CLAUDE ====================

@@ -134,6 +134,37 @@ function _registerMcpProjectListeners(api) {
     });
   }
 
+  // project_create / project_update / project_delete write projects.json from
+  // the MCP server process. The renderer's own poll on that file would catch it
+  // within a few seconds; this is the same reload, without the wait.
+  if (api?.project?.onProjectsChanged) {
+    api.project.onProjectsChanged(async () => {
+      const { loadProjects } = require('./state/projects.state');
+      await loadProjects();
+    });
+  }
+
+  // project_open. The preferred editor is per project and only the renderer
+  // holds that mapping, which is why main forwards rather than spawning.
+  if (api?.project?.onProjectOpen) {
+    api.project.onProjectOpen(({ projectId } = {}) => {
+      if (!projectId) return;
+      try {
+        const { getProject, getProjectEditor } = require('./state/projects.state');
+        const { getSetting, getEditorCommand } = require('./state/settings.state');
+        const project = getProject(projectId);
+        if (!project) {
+          console.warn(`[MCP] project:open for unknown project "${projectId}"`);
+          return;
+        }
+        const editor = getProjectEditor(projectId) || getSetting('editor') || 'code';
+        api.dialog.openInEditor({ editor: getEditorCommand(editor), path: project.path });
+      } catch (e) {
+        console.error('[MCP] project:open failed:', e && e.message);
+      }
+    });
+  }
+
   // The main process has always forwarded the MCP `quickaction_run` tool to the
   // 'quickaction:run' channel, and preload has always exposed the listener —
   // but nothing subscribed, so the tool sent its event into the void and the
