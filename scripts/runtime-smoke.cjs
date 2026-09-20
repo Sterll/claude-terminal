@@ -6,7 +6,32 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const { pathToFileURL } = require('node:url');
+const { format } = require('node:util');
 const { app, BrowserWindow } = require('electron');
+
+// macOS is the one platform where Node's stdio pipes are asynchronous, so under
+// CI every line still queued when this process dies is lost - including the
+// error `finish()` prints immediately before `app.exit()`, and everything a
+// native abort takes down with it. That is not a detail: the only failure this
+// script has ever had arrived as a bare `libc++abi: terminating due to uncaught
+// exception of type Napi::Error`, written straight to the fd by the C++
+// runtime, with not one of our own lines to say where it happened. Write every
+// diagnostic to the descriptor ourselves so nothing depends on the loop turning
+// again.
+function writeSync(fd, args) {
+  const buffer = Buffer.from(format(...args) + '\n');
+  for (let offset = 0, attempts = 0; offset < buffer.length && attempts < 10000; attempts++) {
+    try {
+      offset += fs.writeSync(fd, buffer, offset);
+    } catch (error) {
+      // EAGAIN is a full non-blocking pipe: the runner drains it in a moment.
+      if (error.code !== 'EAGAIN') return;
+    }
+  }
+}
+console.log = (...args) => writeSync(1, args);
+console.error = (...args) => writeSync(2, args);
+
 const temporary = process.argv[2];
 if (!temporary) throw new Error('Run npm run test:runtime so the parent can clean up the profile after Electron exits');
 const originalHome = os.homedir;
@@ -27,25 +52,45 @@ async function until(predicate, message) {
 const deadline = setTimeout(() => { console.error('Runtime smoke timed out'); app.exit(1); }, 60000);
 let window, scheduler, remote;
 
+// Only the `whenReady()` chain below reports its own failures. Anything thrown
+// from a listener, a timer or a native callback reaches Electron's default
+// handler instead, which prints and exits - one more queued write for macOS to
+// drop. Report it here, while stdout is still ours.
+process.on('uncaughtException', error => { console.error('Uncaught exception:', error); finish(1); });
+process.on('unhandledRejection', error => { console.error('Unhandled rejection:', error); finish(1); });
+
 app.whenReady().then(async () => {
   console.log('Runtime:', JSON.stringify(process.versions));
   const db = new (require('better-sqlite3'))(':memory:');
   assert.equal(db.prepare('select 42 as value').get().value, 42); db.close();
   assert.equal(typeof require('keytar').getPassword, 'function');
   assert.match(require('marked').marked('**ok**'), /strong/);
+  console.log('PASS native SQLite in the main process, keytar load and marked');
   // Exercise a console shell in the PTY; Electron's Windows executable is a GUI binary.
   const windows = process.platform === 'win32';
   const pty = require('node-pty').spawn(windows ? process.env.ComSpec || 'cmd.exe' : '/bin/sh',
     windows ? '/d /c echo PTY_SMOKE_OK' : ['-c', 'printf PTY_SMOKE_OK'], {
     cwd: temporary, env: process.env,
   });
+  // node-pty rethrows any socket error that is not EAGAIN or EIO out of its own
+  // handler unless the terminal carries an 'error' listener of its own, and a
+  // read error on the master fd of a shell that has just exited is routine.
+  // Uncaught, it lands while node-pty's exit callback is still queued on an
+  // N-API ThreadSafeFunction, and that dispatch then fails with a C++
+  // Napi::Error nothing catches - the libc++abi abort, with no JS stack.
+  pty.on('error', error => console.error('PTY socket error:', error && error.message));
   let output = '';
   pty.onData(chunk => { output += chunk; });
-  await new Promise((resolve, reject) => pty.onExit(({ exitCode }) => exitCode ? reject(new Error(`PTY exited ${exitCode}`)) : resolve()));
+  // Settle on the next tick, not inside node-pty's native frame: anything this
+  // test throws while that frame is on the stack aborts the process instead of
+  // failing an assertion.
+  const exit = await new Promise(resolve => pty.onExit(event => setImmediate(() => resolve(event))));
+  assert.equal(exit.exitCode, 0, `PTY exited ${exit.exitCode} (signal ${exit.signal})`);
   assert.match(output, /PTY_SMOKE_OK/);
+  console.log('PASS PTY shell round trip');
   const childQuery = require('node:child_process').execFileSync(process.execPath, ['-e', `const db = new (require(${JSON.stringify(require.resolve('better-sqlite3'))}))(':memory:'); console.log(db.prepare('select 42 as value').get().value); db.close();`], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, encoding: 'utf8' });
   assert.equal(childQuery.trim(), '42');
-  console.log('PASS native SQLite in main and MCP runtime, keytar load, PTY and marked');
+  console.log('PASS native SQLite in the MCP runtime');
 
   const Scheduler = require('../src/main/services/WorkflowScheduler');
   scheduler = new Scheduler();
@@ -177,7 +222,12 @@ app.whenReady().then(async () => {
   } finally { await remote.stop(); remote = null; Module._load = originalLoad; http.createServer = createServer; }
 }).then(() => finish(0), error => { console.error(error); finish(1); });
 
+// The first verdict wins: a failure reported by the handlers above can land
+// while this is already tearing the fixtures down, and exiting twice loses it.
+let finishing = false;
 async function finish(code) {
+  if (finishing) return;
+  finishing = true;
   clearTimeout(deadline);
   try {
     scheduler?.destroy(); if (remote) await remote.stop(); window?.destroy();

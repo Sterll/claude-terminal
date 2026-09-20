@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 197 test files)
+npm test                 # Run Jest tests (jsdom, 198 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -663,7 +663,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 197 unit test files (jsdom environment)
+npm test                    # Run all 198 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -672,7 +672,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 197 test files
+- **Framework:** Jest with jsdom, 198 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
@@ -684,7 +684,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
   - `ipc/` - accounts usage, claude, hooks, project, usage, workflow save
   - `remote-ui/` - hierarchy
   - `security/` - security tests, including the renderer fs bridge denylist
-  - `services/` - ChatService, AccountManager, ArtifactService, DatabaseService, DashboardService, DiffRenderer, HooksService, KnowledgeService, MarkdownRenderer, ModelCatalogService, RemoteServer, RemoteControlService, UsageService, VoiceService, WorkflowRunner, the workflow engine suite, the lazy `xtermLoader`, the lazy project-type registry, the `~/.claude.json` merge in `McpService.saveMcps`, the plugin-manifest guard in `PluginService.installPlugin`, the silent-install arguments in `UpdaterService.quitAndInstall`, the mermaid failure containment in `postProcess` (`suppressErrorRendering` plus the temp-element cleanup, neither of which shows until a diagram fails), the corruption guards shared by `MarketplaceService`, `WorkspaceService` and `KnowledgeService`, and the em dash ban in `BuiltinSystemPrompts` (present on every path, and obeyed by the prompt text itself)
+  - `services/` - ChatService, AccountManager, ArtifactService, DatabaseService, DashboardService, DiffRenderer, HooksService, KnowledgeService, MarkdownRenderer, ModelCatalogService, RemoteServer, RemoteControlService, UsageService, VoiceService, WorkflowRunner, the workflow engine suite, the lazy `xtermLoader`, the lazy project-type registry, the `~/.claude.json` merge in `McpService.saveMcps`, the plugin-manifest guard in `PluginService.installPlugin`, the silent-install arguments in `UpdaterService.quitAndInstall`, the mermaid failure containment in `postProcess` (`suppressErrorRendering` plus the temp-element cleanup, neither of which shows until a diagram fails), the corruption guards shared by `MarketplaceService`, `WorkspaceService` and `KnowledgeService`, the PTY `'error'` listener `TerminalService.create` registers so node-pty cannot rethrow a socket error into the main process, and the em dash ban in `BuiltinSystemPrompts` (present on every path, and obeyed by the prompt text itself)
   - `shared/` - context usage, cron, model options, permission modes, simple-task
   - `smoke/` - every module parses and loads
   - `state/` - State plus each state module, including the latched save block `timeTracking.state.js` applies to an unreadable `timetracking.json`

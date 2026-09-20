@@ -128,6 +128,19 @@ class TerminalService {
       return { success: false, error: error.message };
     }
 
+    // node-pty rethrows any socket error that is not EAGAIN or EIO out of its
+    // own handler unless the terminal carries an 'error' listener of its own -
+    // it counts them and gives up on the rethrow at two, its own included. A
+    // read error on the master fd of a shell that has just exited is routine,
+    // and uncaught in main it takes the whole app down. Worse on macOS, where
+    // it can land while node-pty's exit callback is still queued on an N-API
+    // ThreadSafeFunction: that dispatch then fails with a C++ Napi::Error
+    // nothing catches, and the app aborts through libc++abi with no JS stack
+    // at all. One listener is the whole fix; it also gives us the error.
+    ptyProcess.on('error', error => {
+      console.warn(`[TerminalService] PTY ${id} socket error:`, error?.message || error);
+    });
+
     // Tag the PTY with project metadata so onExit can reference it.
     // `command` records what was actually launched (shell or Claude CLI), used
     // by terminal_exit_code workflow triggers for commandPattern filtering.
