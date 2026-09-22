@@ -4036,13 +4036,25 @@ hr.chat-plan-separator {
 
 /* A model or effort picked while the turn was still running. The label already
    shows the new value because that is this conversation's setting from now on,
-   but the running turn is still on the old one, so the chip says "not yet". */
-.chat-view.selection-pending .chat-model-chip {
-  border-color: var(--accent-dim);
+   but the running turn is still on the old one, so the chip says "not yet".
+
+   Dashed, and on the accent rather than --accent-dim: at 15% alpha that border
+   was invisible against the chip's own background, and a solid accent would
+   read as "selected" instead of "not applied yet".
+
+   The doubled class is what carries it over the premium rule further down this
+   file. That one is .chat-view[data-model-tier] .chat-model-chip — the same
+   specificity, declared later, so it won every tie and the one tier whose
+   switch is most worth confirming showed no pending state at all. */
+.chat-view.selection-pending .chat-model-chip.chat-model-chip {
+  border-color: var(--accent);
+  border-style: dashed;
 }
 
-.chat-view.selection-pending .chat-model-label,
-.chat-view.selection-pending .chat-effort-label {
+/* Per label rather than per chip: the two share a chip, so a pending effort
+   pick used to italicise the model name beside it, which had not moved. */
+.chat-model-label.selection-pending,
+.chat-effort-label.selection-pending {
   font-style: italic;
   opacity: 0.85;
 }

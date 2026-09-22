@@ -262,6 +262,96 @@ describe('chat session-scoped model / effort / mode (characterization)', () => {
     });
   });
 
+  // ── What "held until the turn ends" has to mean ──
+  //
+  // Parking the pick is only half of it. The composer keeps queueing while the
+  // pick sits there, and the label keeps moving while the session does not, so
+  // the two of them have to stay in step with what the SDK is actually running.
+
+  describe('a pick parked mid-turn', () => {
+    const endTurn = async () => {
+      listeners.onDone({ sessionId, interrupted: false });
+      await flush();
+    };
+    const pickEffort = async (id) => {
+      openMenu('.chat-effort-btn');
+      rows('.chat-effort-option').find(r => r.dataset.effort === id).click();
+      await flush();
+    };
+
+    it('lets the message queued behind it go only once it has been pushed', async () => {
+      await pickEffort('low');
+      view.sendMessage('next');
+      await flush();
+
+      // `api.chat.send` reaches the CLI's queue immediately, so sending now is
+      // sending a message the next turn runs under the *old* effort — which is
+      // the one thing the parking exists to prevent.
+      expect(calls.filter(c => c.method === 'send')).toHaveLength(0);
+
+      await endTurn();
+
+      const order = calls
+        .filter(c => c.method === 'setEffort' || c.method === 'send')
+        .map(c => c.method);
+      expect(order).toEqual(['setEffort', 'send']);
+    });
+
+    it('still sends that message when the switch itself fails', async () => {
+      responses['chat.setEffort'] = { success: false, error: 'nope' };
+      await pickEffort('low');
+      view.sendMessage('next');
+      await flush();
+      await endTurn();
+
+      // Losing what the user typed is worse than running it on the effort the
+      // session never left.
+      expect(calls.filter(c => c.method === 'send')).toHaveLength(1);
+    });
+
+    it('is replaced, not stacked, when the user changes their mind again', async () => {
+      await pickEffort('low');
+      await pickEffort('high');
+      await endTurn();
+
+      const pushed = calls.filter(c => c.method === 'setEffort');
+      expect(pushed).toHaveLength(1);
+      expect(pushed[0].args[0]).toMatchObject({ effort: 'high' });
+    });
+
+    it('reverts to what the session runs, not to a pick that never reached it', async () => {
+      const original = wrapper.querySelector('.chat-effort-label').textContent;
+      responses['chat.setEffort'] = { success: false, error: 'nope' };
+
+      await pickEffort('low');
+      await pickEffort('high');
+      await endTurn();
+
+      // The first pick was overwritten before it was ever pushed, so the
+      // session never ran it and the footer must not fall back to it.
+      expect(wrapper.querySelector('.chat-effort-label').textContent).toBe(original);
+    });
+
+    it('marks only the chip it belongs to', async () => {
+      await pickEffort('low');
+
+      expect(wrapper.querySelector('.chat-effort-label').classList.contains('selection-pending')).toBe(true);
+      // The model beside it has not moved and must not read as provisional.
+      expect(wrapper.querySelector('.chat-model-label').classList.contains('selection-pending')).toBe(false);
+    });
+
+    it('leaves the model tooltip intact once the turn is over', async () => {
+      const before = wrapper.querySelector('.chat-model-btn').title;
+      await pickEffort('low');
+      await endTurn();
+
+      // syncModelTier owns this string (it carries the premium hint); the
+      // pending marker used to blank it for the life of the tab, because no
+      // turn-end path calls syncModelTier.
+      expect(wrapper.querySelector('.chat-model-btn').title).toBe(before);
+    });
+  });
+
   // ── Cross-tab ──
 
   describe('two conversations side by side', () => {

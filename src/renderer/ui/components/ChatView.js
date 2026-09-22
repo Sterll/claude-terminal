@@ -128,8 +128,21 @@ class ChatView extends BaseComponent {
   // A model or effort pick made while a turn is running. The footer label
   // moves at once (it is this conversation's setting, and the user just set
   // it), but the SDK only hears about it once the turn is done.
+  //
+  // Each is `{ run, baseline }`: `baseline` is where the *session* actually is,
+  // which is not the same as where the footer is once a pick has been parked.
+  // A second pick before the first has been pushed must still describe itself
+  // as coming from the model the SDK is running, or the transcript line names a
+  // switch that never happened and a failed push reverts to a model that was
+  // never applied.
   let pendingModelPush = null;
   let pendingEffortPush = null;
+  // Messages the composer queued *behind* a parked pick. They cannot go to the
+  // SDK yet: `api.chat.send` reaches the CLI's own queue immediately, so a
+  // message handed over before the switch is a message the next turn runs under
+  // the old model — which is the whole thing the deferral exists to prevent.
+  // Drained by flushPendingSelection(), after the pushes and in type order.
+  let pendingQueuedSends = [];
   let pendingResumeId = resumeSessionId || null;
   // The transcript this tab replayed, kept after `pendingResumeId` is cleared by
   // the first turn: an expanded tool card fetches its full output from that file,
@@ -946,6 +959,17 @@ class ChatView extends BaseComponent {
     // and the effort it will run under has to be possible too. What must
     // not happen is the switch landing halfway through the answer being
     // streamed, so the SDK call waits for the turn to finish.
+    //
+    // Where the session actually is, which a parked pick has already moved the
+    // footer away from. Changing your mind twice mid-turn must still describe
+    // one switch, from what is running to what was picked last.
+    const baseline = pendingModelPush ? pendingModelPush.baseline : {
+      id: previousId,
+      option: previousOption,
+      explicit: previousExplicit,
+      source: previousSource,
+    };
+
     const push = async () => {
       let res;
       try {
@@ -954,22 +978,21 @@ class ChatView extends BaseComponent {
         res = { success: false, error: err?.message || String(err) };
       }
       if (res && res.success) {
-        // A restart after an account switch replays lastStartOpts; keep it on
-        // the model actually in use.
-        if (lastStartOpts) lastStartOpts.model = selectedModel;
-        if (previousOption && previousOption.value !== option.value) {
-          appendSystemNotice(t('chat.modelSwitched', { previous: previousOption.displayName, model: option.displayName }), 'model');
+        if (baseline.option && baseline.option.value !== option.value) {
+          appendSystemNotice(t('chat.modelSwitched', { previous: baseline.option.displayName, model: option.displayName }), 'model');
         }
         return;
       }
 
-      // Switch failed: the session is still running the previous model.
-      // Revert the label so the footer stops lying.
-      if (previousOption) {
-        selectedModel = previousId;
-        modelIsExplicit = previousExplicit;
-        modelSource = previousSource;
-        modelLabel.textContent = previousOption.displayName;
+      // Switch failed: the session is still running the model it was on before
+      // this pick — and before any pick parked ahead of it, which never reached
+      // the SDK either. Revert the footer to that, not to the one in between.
+      if (baseline.option) {
+        selectedModel = baseline.id;
+        modelIsExplicit = baseline.explicit;
+        modelSource = baseline.source;
+        modelLabel.textContent = baseline.option.displayName;
+        if (lastStartOpts) lastStartOpts.model = baseline.id;
         syncEffortVisibility();
         syncModelTier();
       }
@@ -977,19 +1000,26 @@ class ChatView extends BaseComponent {
       Toast.showToast({
         message: t('chat.modelSwitchFailed', {
           model: option.displayName,
-          previous: previousOption ? previousOption.displayName : previousId,
+          previous: baseline.option ? baseline.option.displayName : baseline.id,
           error: (res && res.error) || '',
         }),
         type: 'error',
       });
     };
+
+    // An account-switch restart replays lastStartOpts against a *new* session,
+    // where "parked until the turn ends" means nothing: the new session should
+    // simply start on what the user chose. So this moves at pick time, and the
+    // failure path above is what puts it back.
+    if (lastStartOpts) lastStartOpts.model = selectedModel;
+
     if (isStreaming) {
-      pendingModelPush = push;
+      pendingModelPush = { run: push, baseline };
       syncPendingSelection();
       return;
     }
     await push();
-  
+
   }
 
   modelBtn.addEventListener('click', (e) => {
@@ -1115,6 +1145,14 @@ class ChatView extends BaseComponent {
     // and the effort it will run under has to be possible too. What must
     // not happen is the switch landing halfway through the answer being
     // streamed, so the SDK call waits for the turn to finish.
+    //
+    // Where the session actually is; see the same capture in selectModel for
+    // why a parked pick's baseline is inherited rather than recomputed.
+    const baseline = pendingEffortPush ? pendingEffortPush.baseline : {
+      id: previousId,
+      option: previousOption,
+    };
+
     const push = async () => {
       let res;
       try {
@@ -1123,37 +1161,43 @@ class ChatView extends BaseComponent {
         res = { success: false, error: err?.message || String(err) };
       }
       if (res && res.success) {
-        if (lastStartOpts) lastStartOpts.effort = effortId;
-        if (previousOption && previousId !== effortId) {
-          appendSystemNotice(t('chat.effortSwitched', { previous: previousOption.label, effort: option.label }), 'model');
+        if (baseline.option && baseline.id !== effortId) {
+          appendSystemNotice(t('chat.effortSwitched', { previous: baseline.option.label, effort: option.label }), 'model');
         }
         return;
       }
 
       // Switch failed: revert the label to the live effort level.
       console.warn('[ChatView] setEffort failed:', res && res.error);
-      if (previousOption) {
-        selectedEffort = previousId;
-        effortLabel.textContent = previousOption.label;
+      if (baseline.option) {
+        selectedEffort = baseline.id;
+        effortLabel.textContent = baseline.option.label;
+        if (lastStartOpts) lastStartOpts.effort = baseline.id;
         syncModelTier();
       }
       const Toast = require('./Toast');
       Toast.showToast({
         message: t('chat.effortSwitchFailed', {
           effort: option.label,
-          previous: previousOption ? previousOption.label : previousId,
+          previous: baseline.option ? baseline.option.label : baseline.id,
           error: (res && res.error) || '',
         }),
         type: 'error',
       });
     };
+
+    // Moved at pick time, not on push success: a restart builds a new session,
+    // which should start on what the user chose rather than replay what the
+    // parked push has not delivered yet.
+    if (lastStartOpts) lastStartOpts.effort = effortId;
+
     if (isStreaming) {
-      pendingEffortPush = push;
+      pendingEffortPush = { run: push, baseline };
       syncPendingSelection();
       return;
     }
     await push();
-  
+
   }
 
   effortBtn.addEventListener('click', (e) => {
@@ -1305,7 +1349,13 @@ class ChatView extends BaseComponent {
     chatView.dataset.modelFamily = family || 'other';
     chatView.dataset.modelTier = tier;
     chatView.dataset.effortCost = PREMIUM_EFFORT_LEVELS.includes(selectedEffort) ? selectedEffort : '';
-    modelBtn.title = tier === 'premium' ? t('chat.premiumModelHint', { model: label }) : label;
+    // This owns the model chip's tooltip, including while a pick is parked —
+    // syncPendingSelection() calls back here rather than writing it, so the
+    // premium hint is restored on flush instead of being blanked for the life
+    // of the tab (no turn-end path calls syncModelTier on its own).
+    modelBtn.title = pendingModelPush
+      ? t('chat.appliesNextTurn')
+      : (tier === 'premium' ? t('chat.premiumModelHint', { model: label }) : label);
     if (onModelChange) onModelChange({ family, tier, label });
     syncPremiumNotice(tier, label);
   }
@@ -3307,11 +3357,25 @@ class ChatView extends BaseComponent {
           sendText = forceInstr + sendText;
           _forceParallelTask = false;
         }
-        const result = await api.chat.send({ sessionId, text: sendText, images: imagesPayload, documents: documentsPayload, mentions: resolvedMentions, userMessageUuid: userMsgUuid });
-        if (destroyed) return;
-        if (!result.success) {
-          appendError(result.error || t('chat.errorOccurred'));
-          if (!isStreaming) setStreaming(false);
+        const dispatch = () => api.chat.send({ sessionId, text: sendText, images: imagesPayload, documents: documentsPayload, mentions: resolvedMentions, userMessageUuid: userMsgUuid });
+
+        // `api.chat.send` reaches the CLI's own queue right away, so handing a
+        // message over while a switch is still parked is handing it over to run
+        // under the model the user has just moved away from. Park it behind the
+        // switch instead; flushPendingSelection() drains both, in order.
+        if (pendingModelPush || pendingEffortPush) {
+          pendingQueuedSends.push(dispatch);
+          // With no turn running there is no turn end coming to drain this —
+          // which is also how a pick survives one of the early
+          // `turnEnded: false` stops above. Flush it now.
+          if (!isStreaming) flushPendingSelection();
+        } else {
+          const result = await dispatch();
+          if (destroyed) return;
+          if (!result.success) {
+            appendError(result.error || t('chat.errorOccurred'));
+            if (!isStreaming) setStreaming(false);
+          }
         }
       }
     } catch (err) {
@@ -6166,29 +6230,61 @@ class ChatView extends BaseComponent {
    * footer does not read as though the running turn already switched.
    */
   function syncPendingSelection() {
-    const pending = !!(pendingModelPush || pendingEffortPush);
-    chatView.classList.toggle('selection-pending', pending);
-    const hint = pending ? t('chat.appliesNextTurn') : '';
-    modelBtn.title = hint;
-    effortBtn.title = hint;
+    const modelPending = !!pendingModelPush;
+    const effortPending = !!pendingEffortPush;
+    // The chip is shared, so its border answers to either.
+    chatView.classList.toggle('selection-pending', modelPending || effortPending);
+    // The labels are not: a parked effort pick says nothing about the model
+    // name beside it, which has not moved.
+    modelLabel.classList.toggle('selection-pending', modelPending);
+    effortLabel.classList.toggle('selection-pending', effortPending);
+    // syncModelTier owns modelBtn.title and reads pendingModelPush itself.
+    syncModelTier();
+    effortBtn.title = effortPending ? t('chat.appliesNextTurn') : '';
   }
 
-  /** Hand the SDK what was picked mid-turn, now that the turn is over. */
+  /**
+   * Hand the SDK what was picked mid-turn, now that the turn is over, and only
+   * then release the messages the composer queued behind it.
+   */
   async function flushPendingSelection() {
     const model = pendingModelPush;
     const effort = pendingEffortPush;
+    const sends = pendingQueuedSends;
     pendingModelPush = null;
     pendingEffortPush = null;
+    pendingQueuedSends = [];
     syncPendingSelection();
     try {
-      if (model) await model();
-      if (effort) await effort();
+      if (model) await model.run();
+      if (effort) await effort.run();
     } catch (err) {
       console.warn('[ChatView] deferred model/effort switch failed:', err?.message || err);
     }
+    // In the order they were typed, and sent even if the switch above failed:
+    // losing what the user wrote is worse than running it on the model the
+    // session is still on, which is what a failed switch leaves in place.
+    for (const dispatch of sends) {
+      if (destroyed) return;
+      try {
+        const res = await dispatch();
+        if (destroyed) return;
+        if (res && !res.success) appendError(res.error || t('chat.errorOccurred'));
+      } catch (err) {
+        if (!destroyed) appendError(err?.message || String(err));
+      }
+    }
   }
 
-  function setStreaming(streaming) {
+  /**
+   * @param {boolean} streaming
+   * @param {{ turnEnded?: boolean }} [opts] - `turnEnded: false` for the sites
+   *   that lower the spinner while the SDK may still be mid-turn (a compact
+   *   boundary, a tool-less `message_stop` that the `result` has yet to
+   *   confirm). Those must not release a parked model/effort switch, which
+   *   would then land in the middle of the answer being streamed.
+   */
+  function setStreaming(streaming, { turnEnded = true } = {}) {
     isStreaming = streaming;
     stopBtn.style.display = streaming ? '' : 'none';
     // Only meaningful while something is actually in the foreground.
@@ -6201,7 +6297,7 @@ class ChatView extends BaseComponent {
     // happily queues the next message, and the permission-mode picker beside
     // them stayed live the whole time. They are enabled now; a pick made
     // mid-turn is held and pushed to the SDK when the turn ends.
-    if (!streaming) flushPendingSelection();
+    if (!streaming && turnEnded) flushPendingSelection();
 
     if (streaming) {
       elapsedTimer.start();
@@ -6539,7 +6635,10 @@ class ChatView extends BaseComponent {
         } else {
           refreshContextGaugeFromSession();
         }
-        setStreaming(false);
+        // The boundary lowers the spinner, but the SDK is not necessarily done:
+        // an auto-compact happens mid-turn. Not a turn end for the purpose of
+        // releasing a parked model/effort switch.
+        setStreaming(false, { turnEnded: false });
       } else if (message.subtype === 'task_started') {
         const taskId = message.task_id;
         if (taskId) {
@@ -6913,7 +7012,9 @@ class ChatView extends BaseComponent {
         toolCards.clear();
         if (!currentMsgHasToolUse) {
           // Turn is complete (no tool use) — reset streaming
-          setStreaming(false);
+          // The `result` message is what confirms the turn; until then a
+          // parked model/effort switch stays parked.
+          setStreaming(false, { turnEnded: false });
           // Don't complete subagent cards here — they have their own lifecycle
           // via parent_tool_use_id messages and will be completed when their
           // individual 'result' message arrives or on chat-done/chat-error
