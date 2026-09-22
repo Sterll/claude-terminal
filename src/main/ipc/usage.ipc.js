@@ -75,15 +75,19 @@ function registerUsageHandlers() {
     }
   });
 
-  // Start periodic fetching
+  // Start periodic fetching. The refresh watcher rides along: it is what makes
+  // the MCP `usage_refresh` tool do anything at all, and it has the same
+  // lifetime as the poller.
   ipcMain.handle('start-usage-monitor', (event, intervalMs) => {
     usageService.startPeriodicFetch(intervalMs || 60000);
+    usageService.startRefreshWatch();
     return { success: true };
   });
 
   // Stop periodic fetching
   ipcMain.handle('stop-usage-monitor', () => {
     usageService.stopPeriodicFetch();
+    usageService.stopRefreshWatch();
     return { success: true };
   });
 

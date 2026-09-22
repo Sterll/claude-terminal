@@ -5,6 +5,10 @@ const mockUsageService = {
   refreshUsage: jest.fn(),
   startPeriodicFetch: jest.fn(),
   stopPeriodicFetch: jest.fn(),
+  // The refresh watcher shares the poller's lifetime: it is what makes the MCP
+  // `usage_refresh` tool reach the app at all.
+  startRefreshWatch: jest.fn(),
+  stopRefreshWatch: jest.fn(),
   onUpdate: jest.fn(),
   onLimit: jest.fn()
 };
@@ -148,6 +152,7 @@ describe('start-usage-monitor', () => {
     const result = handlers['start-usage-monitor']({}, 30000);
 
     expect(mockUsageService.startPeriodicFetch).toHaveBeenCalledWith(30000);
+    expect(mockUsageService.startRefreshWatch).toHaveBeenCalled();
     expect(result).toEqual({ success: true });
   });
 
