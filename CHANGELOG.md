@@ -2,21 +2,33 @@
 
 All notable changes to Claude Terminal are documented in this file.
 
-## [1.3.3] - 2026-09-14
+## [1.3.3] - 2026-09-22
 
 ### Added
 - **Settings**: a terminal font size setting, applied live to every open terminal (#181)
 - **Settings**: a search field, so a setting can be found by name instead of by memory
 - **Command palette**: Ctrl+P now searches settings, knowledge entries, workspace docs, kanban cards and past sessions, not just projects and commands
-- **Project types**: a third-party project type can be added as a folder in `~/.claude-terminal/project-types/` — a manifest and its translations, opt-in twice, with no third-party code ever running
+- **Project types**: a third-party project type can be added as a folder in `~/.claude-terminal/project-types/`, a manifest and its translations, opt-in twice, with no third-party code ever running
 - **Tabs**: the close confirmation can remember your answer, reversible from Settings → Claude → Terminal
 - **Database**: the Add Connection picker is themed instead of drawn by the OS, with a colour per driver and keyboard navigation
 - **Notifications**: desktop notifications now match the in-app toasts
 - **Dashboard**: the first load draws the page greyed out instead of a spinner, so nothing jumps when the data lands
+- **Chat**: the composer shows how long the current turn has been running
+- **Control Tower**: failed workflow runs, unavailable triggers and sync conflicts now appear as alerts, and a trigger that failed to register is retried (#194)
+- **Long operations**: database exports, AI commit messages and PR descriptions, clones and project scaffolding can be cancelled and retried from what you already filled in, without overwriting a destination that already exists (#194)
+- **macOS and Linux**: background work a finished Claude command left running is now detected and stopped, with a toast naming what was stopped. Can be turned off in settings (#203)
+
+### Changed
+- The app now runs on Electron 43.7 and Node 24.15 (#190)
+- Database connection credentials move to the OS keychain instead of sitting in the config file (#188)
+- Installing without a C++ toolchain now works: the only thing missing is the SQLite driver, and the supported Node version starts at 22.13
 
 ### Performance
 - Opening a stored conversation reads it from its end: about three times faster on a large transcript, and tool output is no longer cut short
 - The five heaviest panels, the terminal emulator and each project type's code now load the first time they are used, taking roughly 1 MB out of every startup
+- Chat: reading back through a long conversation no longer slows the window down, because the transcript now keeps only what is around you mounted on both sides instead of everything above
+- Leaving the app in the background no longer freezes it for seconds at a time when a long conversation is open
+- Dragging a tab to reorder it is smooth again
 
 ### Fixed
 - The project overview no longer prints a token embedded in a git remote URL
@@ -28,6 +40,34 @@ All notable changes to Claude Terminal are documented in this file.
 - Chat: clicking an image in a tool card opens it instead of collapsing the card
 - The collapsed sidebar no longer paints its icons over the footer
 - A notification's close button stays at its right edge
+- Projects: a folder dropped inside itself no longer vanishes, subfolders left out of a parent's list are drawn again, and the list repaints when another window or process changes it
+- Terminals: an error from the terminal backend no longer takes the whole app down
+- Terminals: every terminal is attributed to its project and opens under the account that project is bound to
+- Terminals: the tab of a restarted quick action stays where it was
+- Chat: a tab's background tasks survive a restart, a reload and an account switch instead of disappearing (#204, #205, #206)
+- Chat: closing a tab while its session is still starting now cancels the startup (#197)
+- Chat: a restored conversation no longer jumps back to the bottom when the input takes focus (#196)
+- Chat: the assistant no longer writes the em dashes its own instructions forbid
+- Files: the copy button, the line-numbers toggle and mermaid diagrams now work in the Files pane instead of being visible but dead (#200, #201)
+- "Open in editor" works again, everywhere in the app, and says so when it cannot: it was reporting success before the editor had even failed to start. On macOS an editor whose command line shim was never installed is opened as an application instead (#209)
+- Files: "Reference in chat" no longer needs a chat tab to already be open, markdown is styled like it is in chat, a markdown file can be read rendered or as source, and the view you picked is remembered (#209)
+- Chat: the model and effort pickers can be used while a turn is running. The pick is held until the turn ends rather than refused, so it cannot land halfway through an answer
+- Dashboard: picking projects no longer waits for data to finish loading (#185)
+- The sidebar entries are left-aligned again (#199)
+- The MCP registry is reachable again on networks with a system-trusted certificate (#195, #196)
+- Accounts: the signed-in account no longer signs itself out, repeated reads of the same credential are merged, and automatic retries stop for a refused or unavailable credential until you refresh
+- Sync: resource files, both agent formats and deletions are now carried across, ZIP filenames are preserved and versions compared properly (#191, #192)
+- Cloud: an import is staged before it lands, an existing destination is preserved, and a failed upload is kept so it can be retried (#187, #188)
+- Notifications: no more notification for a permission the current mode has already answered
+- Usage: the units in the reset countdown are translated
+- Sessions: the sessions window shows its dates in your language
+- Data: an unreadable time tracking file, artifact index, plugin manifest, marketplace list or `~/.claude.json` is now left untouched instead of being replaced by an empty one
+- Updates: an update installs silently, so a cancelled installer can no longer leave you with no app at all
+- Workflows: run again after the runtime update, and a regex you wrote is evaluated somewhere it can be stopped (#189, #190)
+- The file bridge available to the interface is denied access to credentials and startup files, its filesystem access now goes through the main process, and the quick picker and notification windows run sandboxed (#191, #192, #193, #194)
+- Git commands refuse quoted arguments in their string form, and web project route detection runs without a shell
+- The plaintext secret backups older versions left behind are replaced with verified encrypted copies (#194)
+- The installer no longer ships the renderer sourcemaps
 
 ## [1.3.2] - 2026-09-09
 
