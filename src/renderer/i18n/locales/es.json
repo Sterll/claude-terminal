@@ -3975,6 +3975,7 @@
     "usageRefresh": "Actualizar el uso"
   },
   "usage": {
+    "staleRetry": "Datos de uso posiblemente desactualizados - la última actualización falló. Próximo intento a las {time}; haz clic para reintentar ahora. {error}",
     "stale": "Datos de uso posiblemente desactualizados - la última actualización falló. {error}"
   },
   "github": {

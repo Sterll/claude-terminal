@@ -7095,6 +7095,30 @@ function updateAllResets() {
  *
  * @param {boolean} [force]
  */
+/**
+ * Why the figures are not current, and what the user can do about it.
+ *
+ * A credential store that gave back no usable token parks the account on an
+ * escalating backoff rather than being retried every minute, which is right,
+ * but it used to leave the chip silently frozen. Naming the retry time makes
+ * the difference between "waiting" and "broken" visible, and the click that
+ * skips the wait is the chip itself.
+ *
+ * @param {{ error?: string, retryAt?: string|null }} info
+ * @returns {string}
+ */
+function _usageStaleTitle(info) {
+  const error = (info && info.error) || '';
+  const retryAt = info && info.retryAt ? new Date(info.retryAt) : null;
+  if (retryAt && !Number.isNaN(retryAt.getTime())) {
+    return t('usage.staleRetry', {
+      error,
+      time: retryAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
+    });
+  }
+  return t('usage.stale', { error });
+}
+
 async function refreshUsageDisplay(force = false) {
   if (!usageElements.container) return;
 
@@ -7115,9 +7139,7 @@ async function refreshUsageDisplay(force = false) {
         lastFetch: result.lastFetch || new Date().toISOString()
       });
       usageElements.container.classList.toggle('stale', !!result.stale);
-      usageElements.container.title = result.stale
-        ? t('usage.stale', { error: result.error || '' })
-        : '';
+      usageElements.container.title = result.stale ? _usageStaleTitle(result) : '';
     } else {
       usageElements.container.classList.remove('loading', 'stale');
       renderUsageBuckets(PLACEHOLDER_USAGE_BUCKETS);
@@ -7172,7 +7194,7 @@ if (usageElements.container) {
         // and confident: the stale class was only ever set on the click path.
         usageElements.container.classList.toggle('stale', !!data.stale);
         usageElements.container.title = data.stale
-          ? t('usage.stale', { error: data.error || '' })
+          ? _usageStaleTitle(data)
           : '';
       }
     } catch (e) {
