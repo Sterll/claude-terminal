@@ -842,7 +842,7 @@ Files prefixed with `_` are shared helpers, not tool modules — the loader igno
 | `marketplace.js` | Skill marketplace tools |
 | `plugins.js` | Plugin install / list / catalog |
 | `settings.js` | `settings_get`, `settings_set` |
-| `usage.js` | `usage_get`, `usage_refresh` — reads the `usage.json` `UsageService` mirrors after each fetch, and asks for a re-fetch through `usage/triggers/`, which the same service watches. Both halves were missing: nothing wrote the file and nothing read the directory, so one tool always answered "no data" and the other reported a refresh that never happened |
+| `usage.js` | `usage_get`, `usage_refresh` — reads the `usage.json` `UsageService` mirrors after each fetch, and asks for a re-fetch through `usage/triggers/`, which the same service sweeps on a short interval (`fs.watch` drops a file created just after the watch is armed, which is precisely this case). Both halves were missing: nothing wrote the file and nothing read the directory, so one tool always answered "no data" and the other reported a refresh that never happened |
 | `artifacts.js` | `artifact_list`, `artifact_get`, `artifact_search`, `artifact_versions`, `artifact_stats`, `artifact_delete` — reads the same `src/shared/artifact-store.js` the app uses, hence the poll-for-out-of-process-writes in `ArtifactService` |
 | `errorlog.js` | `errorlog_entries`, `errorlog_stats`, `errorlog_patterns`, `errorlog_export`, `errorlog_clear` |
 

@@ -518,18 +518,6 @@ function startPeriodicFetch(intervalMs = 600000) {
   // timer would multiply API calls to keep numbers nobody is looking at warm;
   // the others are refreshed on demand, when a tab or a panel asks for them.
   const tick = () => {
-    // Swept here as well as watched. `fs.watch` is the fast path, but it is
-    // the one piece of this that is not guaranteed: it is FSEvents on darwin,
-    // ReadDirectoryChangesW on win32, inotify on linux, and none of them
-    // promises delivery for a file created microseconds after the watch was
-    // armed, or on a network or container-mounted home. A request that the
-    // watcher misses would put us straight back at the bug this fixes — a
-    // usage_refresh that silently does nothing — so the poll tick collects
-    // anything left behind. One readdir a minute.
-    if (consumeRefreshRequests()) {
-      fetchUsage(getFocusedAccount()).catch(e => console.error('[Usage]', e.message));
-      return;
-    }
     if (isMainWindowVisible()) {
       fetchUsage(getFocusedAccount()).catch(e => console.error('[Usage]', e.message));
     }
@@ -753,6 +741,7 @@ function mirrorToDisk() {
 
 // ── Refresh requested from outside the app ───────────────────────────────────
 
+/** @type {NodeJS.Timeout|null} The refresh-request sweep. */
 let triggerWatcher = null;
 
 /**
@@ -798,30 +787,45 @@ function consumeRefreshRequests() {
   return found;
 }
 
-function startRefreshWatch() {
+/**
+ * Start collecting refresh requests dropped by the MCP `usage_refresh` tool.
+ *
+ * Polled, not `fs.watch`ed. The watcher was the obvious choice and it is the
+ * one that does not hold: `fs.watch` is FSEvents on darwin,
+ * ReadDirectoryChangesW on win32 and inotify on linux, none of them promises
+ * delivery for a file created moments after the watch is armed, and on darwin
+ * it demonstrably drops that case — the test for it failed about one run in
+ * three. A missed event puts us straight back at the bug this fixes, a
+ * `usage_refresh` that silently does nothing, and a request nobody collects
+ * is indistinguishable from one nobody honoured.
+ *
+ * A readdir of a directory that is almost always empty, every few seconds,
+ * costs nothing measurable and makes the tool's "call usage_get again in a few
+ * seconds" true by construction on every platform.
+ *
+ * @param {number} [intervalMs] - sweep period; the tests drive it faster
+ */
+function startRefreshWatch(intervalMs = 5000) {
   if (triggerWatcher) return;
   try {
-    const dir = triggerDir();
-    fs.mkdirSync(dir, { recursive: true });
-    // Anything already waiting from before this window opened.
-    if (consumeRefreshRequests()) {
-      fetchUsage(getFocusedAccount()).catch(e => console.error('[Usage]', e.message));
-    }
-    triggerWatcher = fs.watch(dir, (_event, filename) => {
-      if (filename && !filename.startsWith('refresh_')) return;
-      // A rename event can arrive with a null filename; the sweep decides.
-      if (!consumeRefreshRequests()) return;
-      fetchUsage(getFocusedAccount()).catch(e => console.error('[Usage]', e.message));
-    });
-    if (typeof triggerWatcher.unref === 'function') triggerWatcher.unref();
+    fs.mkdirSync(triggerDir(), { recursive: true });
   } catch (e) {
-    console.warn('[Usage] Could not watch refresh triggers:', e.message);
+    console.warn('[Usage] Could not create the refresh trigger directory:', e.message);
+    return;
   }
+  const sweep = () => {
+    if (!consumeRefreshRequests()) return;
+    fetchUsage(getFocusedAccount()).catch(e => console.error('[Usage]', e.message));
+  };
+  // Anything already waiting from before this window opened.
+  sweep();
+  triggerWatcher = setInterval(sweep, intervalMs);
+  if (typeof triggerWatcher.unref === 'function') triggerWatcher.unref();
 }
 
 function stopRefreshWatch() {
   if (!triggerWatcher) return;
-  try { triggerWatcher.close(); } catch (e) { /* already closed */ }
+  clearInterval(triggerWatcher);
   triggerWatcher = null;
 }
 

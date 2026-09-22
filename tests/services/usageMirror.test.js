@@ -127,10 +127,10 @@ describe('usage.json', () => {
 
 describe('the refresh trigger directory', () => {
   /**
-   * `fs.watch` is FSEvents on darwin and ReadDirectoryChangesW on win32, and
-   * neither promises how soon it delivers - a fixed sleep here passed locally
-   * and failed on a loaded runner. Poll for the outcome instead, so the test
-   * is bounded by the assertion rather than by a guess at the platform.
+   * The sweep is a plain interval, so this is bounded by the assertion rather
+   * than by a guess at how quickly a platform's file watcher delivers. That
+   * guess is what the first version of these tests got wrong: with `fs.watch`
+   * they passed locally and failed about one run in three on darwin.
    */
   async function waitFor(predicate, timeoutMs = 8000) {
     const deadline = Date.now() + timeoutMs;
@@ -141,6 +141,10 @@ describe('the refresh trigger directory', () => {
     return predicate();
   }
 
+  // Fast enough to keep the suite quick, slow enough that a sweep is a real
+  // interval tick rather than the same synchronous call under another name.
+  const SWEEP_MS = 20;
+
   const settle = () => new Promise(resolve => setTimeout(resolve, 250));
 
   test('a dropped request causes a fetch and is consumed', async () => {
@@ -148,7 +152,7 @@ describe('the refresh trigger directory', () => {
     await usage.fetchUsage();
     const callsBefore = httpsGet.mock.calls.length;
 
-    usage.startRefreshWatch();
+    usage.startRefreshWatch(SWEEP_MS);
     const dir = path.join(dataDir, 'usage', 'triggers');
     const file = path.join(dir, `refresh_${Date.now()}.json`);
     fs.writeFileSync(file, '{}');
@@ -169,7 +173,7 @@ describe('the refresh trigger directory', () => {
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, `refresh_${Date.now()}.json`), '{}');
 
-    usage.startRefreshWatch();
+    usage.startRefreshWatch(SWEEP_MS);
 
     await waitFor(() => httpsGet.mock.calls.length > callsBefore);
     expect(httpsGet.mock.calls.length).toBeGreaterThan(callsBefore);
@@ -181,7 +185,7 @@ describe('the refresh trigger directory', () => {
     await usage.fetchUsage();
     const callsBefore = httpsGet.mock.calls.length;
 
-    usage.startRefreshWatch();
+    usage.startRefreshWatch(SWEEP_MS);
     const dir = path.join(dataDir, 'usage', 'triggers');
     fs.writeFileSync(path.join(dir, 'notes.txt'), 'hello');
     await settle();
@@ -190,10 +194,26 @@ describe('the refresh trigger directory', () => {
     usage.stopRefreshWatch();
   });
 
-  test('starting twice keeps one watcher, and stopping is idempotent', () => {
+  test('starting twice keeps one sweep, and stopping is idempotent', () => {
     const usage = load();
-    usage.startRefreshWatch();
-    usage.startRefreshWatch();
+    usage.startRefreshWatch(SWEEP_MS);
+    usage.startRefreshWatch(SWEEP_MS);
     expect(() => { usage.stopRefreshWatch(); usage.stopRefreshWatch(); }).not.toThrow();
+  });
+
+  test('a stopped sweep collects nothing more', async () => {
+    const usage = load();
+    await usage.fetchUsage();
+    usage.startRefreshWatch(SWEEP_MS);
+    usage.stopRefreshWatch();
+    const callsBefore = httpsGet.mock.calls.length;
+
+    const dir = path.join(dataDir, 'usage', 'triggers');
+    const file = path.join(dir, `refresh_${Date.now()}.json`);
+    fs.writeFileSync(file, '{}');
+    await settle();
+
+    expect(httpsGet.mock.calls.length).toBe(callsBefore);
+    expect(fs.existsSync(file)).toBe(true);
   });
 });
