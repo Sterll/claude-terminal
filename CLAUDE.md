@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 199 test files)
+npm test                 # Run Jest tests (jsdom, 200 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -657,13 +657,14 @@ Worker); neither is bundled into the desktop app.
 - **Artifacts:** `src/shared/artifact-store.js` is shared verbatim with the MCP server process, which writes `index.json` directly. Since an out-of-process writer cannot reach a BrowserWindow, `ArtifactService` polls the file and broadcasts `artifacts-changed`
 - **Error log:** every `console.error`/`console.warn` in main is mirrored into `ErrorLogService`, but as `warning`. `critical` is reserved for `uncaughtException` and `unhandledRejection`, so the panel's critical count means "the app broke", not "something logged"
 - **Transcript virtualisation:** `TranscriptPruner` keeps a two-sided window over the mounted transcript, because interaction latency in the chat scales with the number of mounted elements rather than with what is visible (measured: ~1.4 s to reveal a 68k-node pane, ~1 s per keystroke; 149 ms / 29 ms at ~5k). Entries more than a buffer above the viewport go to an `above` store and those below to a `below` store, both remounting before the reader reaches them, and what streams in while they read history is absorbed rather than left to grow the tail. Three things this needs and the earlier one-sided version did not: geometry, which a hidden pane does not have (`clientHeight === 0` falls back to the original count-based, pinned-only rule rather than detaching everything); scroll compensation on prune, measured across the marker row since that is inserted above the viewport too; and remounting the *deficit* rather than a fixed chunk, since a fixed batch is inserted at the boundary, pushes the viewport further from it, and is handed straight back to the next prune. Both boundaries carry a marker row that doubles as the insertion anchor, which is what lets this compose with the disk-history pager instead of fighting it. `drainBelow()` exists for the scroll-to-bottom affordance: without it the jump lands on a marker rather than the newest turn
-- **Idle animation pausing:** all infinite CSS animations stop while the window is unfocused. On a large transcript a single composited spinner measured ~30% of a core, and every perpetual animation in the app is a "still working" indicator, so freezing them costs the user nothing
+- **Idle animation pausing:** all infinite CSS animations stop while the window is unfocused. On a large transcript a single composited spinner measured ~30% of a core, and every perpetual animation in the app is a "still working" indicator, so freezing them costs the user nothing. **`document.getAnimations()` must never be called on a live document**: it is superlinear in document size, measured in this app at 0 ms / 786 nodes, 534 ms / 21k, 13.4 s / 81k and 97 s / 200k. `IdleAnimationPauser` used to call it on every blur and on a 100 ms debounce after each animation start while blurred, which is where a renderer pegged at a full core for days came from, and why tabbing back into the app froze it for seconds. It now learns each element from its own `animationstart`, reads only that element's computed style, and pauses through the `.ct-anim-idle` class, so both tracking and pausing cost the number of live spinners rather than the number of nodes
+- **Drag-reorder handlers measure before they write:** `dragover` fires on every pointer move, and a `getBoundingClientRect()` that follows a style write in the same document cannot be answered from the cached layout. The four tab-reorder handlers (sidebar rail and its Customize modal in `renderer.js`, `ProjectBar`, `TerminalManager`) each used to write a marker class and then measure, forcing one full synchronous layout per event over a document holding the chat transcript and the file tree, which is what made moving a tab freeze the window for seconds. They now read first and skip every write while the drop position is unchanged, which is most events. `ProjectList` reaches the same place by throttling to 50 ms instead. When adding another reorder surface, follow the same shape
 - **Security:** `dompurify` for all user-rendered markdown; never inject untrusted HTML into chat/dashboard
 
 ## Testing
 
 ```bash
-npm test                    # Run all 199 unit test files (jsdom environment)
+npm test                    # Run all 200 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -672,7 +673,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 199 test files
+- **Framework:** Jest with jsdom, 200 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
@@ -688,7 +689,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
   - `shared/` - context usage, cron, model options, permission modes, simple-task
   - `smoke/` - every module parses and loads
   - `state/` - State plus each state module, including the latched save block `timeTracking.state.js` applies to an unreadable `timetracking.json`
-  - `ui/` - chat account switch, chat limit error, replayed tool output, task widget, tasks drawer, ClaudeRemotePanel, navigation mode, kanban live refresh, toast
+  - `ui/` - chat account switch, chat limit error, replayed tool output, task widget, tasks drawer, ClaudeRemotePanel, navigation mode, kanban live refresh, toast, the drag-reorder invariant that keeps a tab drag from forcing a layout per pointer move
   - `utils/` - attachments, color, commit messages, drop paths, file icons, file lock, format, frontmatter, git (including the argv shape of every command built from a path or a tag name), http cache, session search, shell, syntax highlight, tool registry
 
 ### Lint (`eslint.config.js`)
