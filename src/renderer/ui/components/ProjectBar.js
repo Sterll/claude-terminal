@@ -47,6 +47,10 @@ class ProjectBar extends BaseComponent {
     };
     this._renderScheduled = false;
     this._dragProjectId = null;
+    // Drop position currently marked in the DOM, so `dragover` can write nothing
+    // when the pointer has not crossed into another half of another tab.
+    this._dropAnchor = null;
+    this._dropSide = null;
     // Screens with an all-projects view (the dashboard) get an Overview tab in
     // front of the project tabs rather than a second selector of their own.
     this._overviewActive = false;
@@ -278,15 +282,33 @@ class ProjectBar extends BaseComponent {
       try { e.dataTransfer.setData('text/plain', this._dragProjectId); } catch (_) { /* noop */ }
     });
 
+    // Measure first, write only on a real change.
+    //
+    // This used to clear the marker off every tab and then measure one of them,
+    // on every `dragover`: dozens of times a second, each one a style write
+    // immediately followed by a getBoundingClientRect() that cannot be served
+    // from the cached layout. Each pair forces a synchronous layout of the
+    // entire document, chat transcript and file tree included, and they queue,
+    // so dragging a project tab for two seconds bought several seconds of
+    // frozen UI afterwards.
     this.on(this.el, 'dragover', (e) => {
       if (!this._dragProjectId) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
+
       const over = e.target.closest('.project-tab[data-project-id]');
-      this.el.querySelectorAll('.project-tab').forEach(el => el.classList.remove('drop-before', 'drop-after'));
-      if (!over || over.dataset.projectId === this._dragProjectId) return;
-      const rect = over.getBoundingClientRect();
-      over.classList.add(e.clientX < rect.left + rect.width / 2 ? 'drop-before' : 'drop-after');
+      let side = null;
+      if (over && over.dataset.projectId !== this._dragProjectId) {
+        const rect = over.getBoundingClientRect();
+        side = e.clientX < rect.left + rect.width / 2 ? 'drop-before' : 'drop-after';
+      }
+      const anchor = side ? over : null;
+      if (anchor === this._dropAnchor && side === this._dropSide) return;
+
+      if (this._dropAnchor) this._dropAnchor.classList.remove('drop-before', 'drop-after');
+      this._dropAnchor = anchor;
+      this._dropSide = side;
+      if (anchor) anchor.classList.add(side);
     });
 
     this.on(this.el, 'drop', (e) => {
@@ -310,6 +332,9 @@ class ProjectBar extends BaseComponent {
 
   _clearDragState() {
     this._dragProjectId = null;
+    this._dropAnchor = null;
+    this._dropSide = null;
+    // A full sweep is fine here: it runs once, at the end of the drag.
     this.el.querySelectorAll('.project-tab').forEach(el => {
       el.classList.remove('dragging', 'drop-before', 'drop-after');
     });

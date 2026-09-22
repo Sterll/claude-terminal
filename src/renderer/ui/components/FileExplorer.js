@@ -14,6 +14,7 @@ const Toast = require('./Toast');
 const { t } = require('../../i18n');
 const { copyText } = require('../../utils/clipboard');
 const { fileExists, copyDirRecursive, fsp } = require('../../utils/fs-async');
+const { openInEditor } = require('../../utils/editor');
 
 // Default ignore patterns
 const DEFAULT_IGNORE_PATTERNS = [
@@ -1158,7 +1159,7 @@ class FileExplorer extends BaseComponent {
     if (this._callbacks.onOpenFile) {
       this._callbacks.onOpenFile(filePath);
     } else {
-      this._api.dialog.openInEditor({ editor: 'code', path: filePath });
+      openInEditor(filePath);
     }
   }
 
@@ -1254,7 +1255,7 @@ class FileExplorer extends BaseComponent {
       items.push({
         label: t('fileExplorer.openInEditor') || 'Open in editor',
         icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>',
-        onClick: () => this._api.dialog.openInEditor({ editor: 'code', path: filePath })
+        onClick: () => openInEditor(filePath)
       });
 
       if (this._callbacks.onAddToChat) {
@@ -1580,8 +1581,7 @@ class FileExplorer extends BaseComponent {
       if (ext === 'md') {
         e.preventDefault();
         e.stopPropagation();
-        const { getSetting: getSettingLocal } = require('../../state/settings.state');
-        self._api.dialog.openInEditor({ editor: getSettingLocal('editor') || 'code', path: nodePath });
+        openInEditor(nodePath);
       }
     };
 

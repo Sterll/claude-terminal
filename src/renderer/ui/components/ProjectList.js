@@ -1119,7 +1119,7 @@ class ProjectList extends BaseComponent {
       if (!project) return;
       const editor = getProjectEditor(projectId) || getSetting('editor') || 'code';
       self.closeAllMoreActionsMenus();
-      self._api.dialog.openInEditor({ editor: getEditorCommand(editor), path: project.path });
+      require('../../utils/editor').openInEditor(project.path, { editor: getEditorCommand(editor) });
     } else if (btn.classList.contains('btn-delete-project')) {
       self.closeAllMoreActionsMenus();
       if (self._callbacks.onDeleteProject) self._callbacks.onDeleteProject(projectId);

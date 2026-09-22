@@ -216,6 +216,21 @@ select:focus-visible {
   transition: none !important;
 }
 
+/* One element's perpetual animation, frozen while the window is merely
+   unfocused. macOS only reports the document hidden once the window is
+   minimized or fully occluded, so the rule above never fires for a window
+   sitting visible behind another app, which is where most of the CPU went.
+
+   Applied by IdleAnimationPauser, element by element, and only to elements
+   whose animations are all infinite. That is the difference from the global
+   rule: an entry animation such as chat-msg-in starts at opacity 0, and
+   freezing one would render a streamed message invisible. */
+.ct-anim-idle,
+.ct-anim-idle::before,
+.ct-anim-idle::after {
+  animation-play-state: paused !important;
+}
+
 /* ── Shared keyframes ── */
 
 @keyframes spin {

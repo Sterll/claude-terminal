@@ -326,7 +326,7 @@ class SkillsAgentsPanel extends BasePanel {
           label: t('skillsAgents.openExternal') || 'Open in editor',
           action: 'external',
           onClick: () => {
-            this.api.dialog.openInEditor({ editor: this._getSetting('editor') || 'code', path: filePath });
+            require('../../utils/editor').openInEditor(filePath, { editor: this._getSetting('editor') });
           }
         },
         {

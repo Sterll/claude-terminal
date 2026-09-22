@@ -372,7 +372,34 @@
   font-size: var(--font-xs);
   font-style: italic;
 }
-.fv-markdown { padding: 16px 24px; max-width: 900px; }
+/* Markdown in the viewer borrows the chat's typography wholesale: every rule
+   for it is scoped to `.chat-msg-content`, and a second copy here would be a
+   second thing to keep in step. What it does not borrow is the chat's density,
+   which is tuned for a bubble in a conversation and reads as a wall of text
+   over a whole README.
+
+   The overrides carry both classes on purpose. chat.css is imported after this
+   file, so `.fv-markdown p` and `.chat-msg-content p` tie on specificity and
+   the chat wins; `.fv-markdown.chat-msg-content p` is the one that does not
+   depend on import order. */
+.fv-markdown { padding: 20px 28px 48px; max-width: 900px; line-height: 1.6; }
+.fv-markdown.chat-msg-content p { margin: 0 0 12px; }
+.fv-markdown.chat-msg-content p + p { margin-top: 0; }
+.fv-markdown.chat-msg-content h1,
+.fv-markdown.chat-msg-content h2,
+.fv-markdown.chat-msg-content h3,
+.fv-markdown.chat-msg-content h4,
+.fv-markdown.chat-msg-content h5,
+.fv-markdown.chat-msg-content h6 { margin: 24px 0 10px; }
+.fv-markdown.chat-msg-content > :first-child { margin-top: 0; }
+.fv-markdown.chat-msg-content h1 { font-size: var(--font-lg); padding-bottom: 8px; border-bottom: 1px solid var(--border-color); }
+.fv-markdown.chat-msg-content h2 { font-size: var(--font-md); padding-bottom: 6px; border-bottom: 1px solid var(--border-color); }
+.fv-markdown.chat-msg-content ul,
+.fv-markdown.chat-msg-content ol { margin: 0 0 12px; padding-left: 22px; }
+.fv-markdown.chat-msg-content li { margin-bottom: 4px; }
+.fv-markdown.chat-msg-content blockquote { margin: 12px 0; }
+.fv-markdown.chat-msg-content hr { margin: 20px 0; }
+.fv-markdown.chat-msg-content img { max-width: 100%; }
 .fv-media {
   display: flex;
   align-items: center;
