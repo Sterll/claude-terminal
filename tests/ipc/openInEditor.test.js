@@ -14,7 +14,6 @@
  * installed by definition.
  */
 
-const os = require('os');
 const fs = require('fs');
 const path = require('path');
 
@@ -59,31 +58,46 @@ function setPlatform(value) {
   Object.defineProperty(process, 'platform', { value, configurable: true });
 }
 
-let tmpBin;
+// A directory name, not a directory. The resolver is exercised through a
+// stubbed `statSync` rather than a real file: it decides on the POSIX exec
+// bit, and a file created on a Windows runner does not have one, so a real
+// fixture would make this suite pass or fail on the host's permission
+// semantics rather than on the code under test.
+const BIN_DIR = path.join('/ct-test-bin');
+
 let originalPath;
+let statSpy;
 
 beforeAll(() => {
-  tmpBin = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-editor-'));
   originalPath = process.env.PATH;
 });
 
 afterAll(() => {
   setPlatform(realPlatform);
   process.env.PATH = originalPath;
-  fs.rmSync(tmpBin, { recursive: true, force: true, maxRetries: 5 });
 });
 
 beforeEach(() => {
   mockSpawnState.calls.length = 0;
-  process.env.PATH = tmpBin;
+  process.env.PATH = BIN_DIR;
+  // Nothing on PATH unless a test says otherwise.
+  statSpy = jest.spyOn(fs, 'statSync').mockImplementation(() => {
+    throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+  });
 });
 
-/** Put an executable of that name on the PATH the resolver walks. */
+afterEach(() => {
+  statSpy.mockRestore();
+});
+
+/** Make `name` resolvable on the fake PATH, the way an installed shim would be. */
 function installShim(name) {
-  const p = path.join(tmpBin, name);
-  fs.writeFileSync(p, '#!/bin/sh\n');
-  fs.chmodSync(p, 0o755);
-  return p;
+  const full = path.join(BIN_DIR, name);
+  statSpy.mockImplementation((p) => {
+    if (p === full) return { isFile: () => true, mode: 0o755 };
+    throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+  });
+  return full;
 }
 
 describe('darwin', () => {
