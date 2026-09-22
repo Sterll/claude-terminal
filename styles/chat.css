@@ -4034,6 +4034,19 @@ hr.chat-plan-separator {
   flex-shrink: 0;
 }
 
+/* A model or effort picked while the turn was still running. The label already
+   shows the new value because that is this conversation's setting from now on,
+   but the running turn is still on the old one, so the chip says "not yet". */
+.chat-view.selection-pending .chat-model-chip {
+  border-color: var(--accent-dim);
+}
+
+.chat-view.selection-pending .chat-model-label,
+.chat-view.selection-pending .chat-effort-label {
+  font-style: italic;
+  opacity: 0.85;
+}
+
 .chat-model-btn.locked {
   cursor: default;
 }

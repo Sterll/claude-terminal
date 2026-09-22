@@ -1925,6 +1925,7 @@
     "effortPart": "{effort} effort",
     "modePart": "{mode} mode",
     "modelSwitched": "Model switched from {previous} to {model}",
+    "appliesNextTurn": "Applies to your next message",
     "effortSwitched": "Effort switched from {previous} to {effort}",
     "modeTitle": "Mode",
     "modeAuto": "Auto",
