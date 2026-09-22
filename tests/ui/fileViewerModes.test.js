@@ -128,6 +128,47 @@ describe('rendered / source toggle', () => {
     expect(modes()).toEqual(['content', 'source', 'diff']);
     expect(container.querySelector('.fv-mode.active').dataset.mode).toBe('diff');
   });
+
+  // A touched `.js` also has a mode called `content` — its half of
+  // Content | Diff — and that mode name is the only thing the setting write
+  // used to look at. Leaving Diff on a source file therefore reset a markdown
+  // preference that had nothing to do with the file being read.
+  test('leaving diff on a source file does not touch the markdown preference', async () => {
+    const { setSetting, getSetting } = require('../../src/renderer/state/settings.state');
+    setSetting('filesMarkdownMode', 'source');
+
+    readFileMock.mockResolvedValue('const a = 1;\n');
+    await open('/p/app.js', {
+      change: { additions: 1, deletions: 0, edits: 1, hunks: [] },
+      initialMode: 'diff',
+    });
+    container.querySelector('.fv-mode[data-mode="content"]').click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(getSetting('filesMarkdownMode')).toBe('source');
+  });
+
+  test('the next markdown file still opens in the reading that was saved', async () => {
+    const { setSetting } = require('../../src/renderer/state/settings.state');
+    setSetting('filesMarkdownMode', 'source');
+
+    readFileMock.mockResolvedValue('const a = 1;\n');
+    await open('/p/app.js', {
+      change: { additions: 1, deletions: 0, edits: 1, hunks: [] },
+      initialMode: 'diff',
+    });
+    container.querySelector('.fv-mode[data-mode="content"]').click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    readFileMock.mockResolvedValue(DOC);
+    await open('/p/README.md');
+
+    expect(container.querySelector('.fv-mode.active').dataset.mode).toBe('source');
+  });
 });
 
 describe('reload', () => {

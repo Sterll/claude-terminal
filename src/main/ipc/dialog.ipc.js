@@ -115,7 +115,7 @@ function _resolvePosixBinary(bin) {
 /**
  * Build the argv for spawning an editor WITHOUT a shell.
  * @param {string} editorBin
- * @returns {{ file: string, args: string[], viaOpen?: boolean }}
+ * @returns {{ file: string, args: string[], viaLauncher?: boolean }}
  */
 function _buildEditorCommand(editorBin) {
   if (process.platform === 'darwin') {
@@ -123,7 +123,7 @@ function _buildEditorCommand(editorBin) {
     const bundle = MAC_APP_BUNDLES[path.basename(editorBin).toLowerCase()];
     // `open` waits for LaunchServices rather than for the editor, so it exits
     // right away and its exit code tells us whether the bundle was found.
-    if (bundle) return { file: '/usr/bin/open', args: ['-a', bundle], viaOpen: true };
+    if (bundle) return { file: '/usr/bin/open', args: ['-a', bundle], viaLauncher: true };
     return { file: editorBin, args: [] };
   }
   if (process.platform !== 'win32') return { file: editorBin, args: [] };
@@ -136,7 +136,14 @@ function _buildEditorCommand(editorBin) {
     // PATH-based launchers (`code`, `cursor`, `zed`…) are .cmd wrappers. cmd.exe
     // is required, but both the launcher path and the target have already been
     // rejected if they contain any metacharacter, so nothing can be injected.
-    return { file: process.env.COMSPEC || 'cmd.exe', args: ['/d', '/s', '/c', resolved] };
+    // It is also a launcher that exits immediately: a stale `code.cmd` whose
+    // Code.exe is gone still spawns fine and fails through its exit code, so
+    // this one has to be waited on as well.
+    return {
+      file: process.env.COMSPEC || 'cmd.exe',
+      args: ['/d', '/s', '/c', resolved],
+      viaLauncher: true,
+    };
   }
   return { file: resolved, args: [] };
 }
@@ -149,7 +156,7 @@ function _buildEditorCommand(editorBin) {
  * into a button that does nothing: the renderer was told `success: true` and
  * the ENOENT went to a console nobody reads.
  *
- * @param {{ file: string, args: string[], viaOpen?: boolean }} cmd
+ * @param {{ file: string, args: string[], viaLauncher?: boolean }} cmd
  * @param {string} targetPath
  * @returns {Promise<Error|null>} the launch failure, or null
  */
@@ -180,17 +187,18 @@ function _spawnEditor(cmd, targetPath) {
     proc.once('error', done);
     proc.once('spawn', () => {
       // A direct editor launch keeps running, so `spawn` firing is the whole
-      // answer. `open` is a launcher that exits immediately and signals a
-      // missing bundle through its exit code, so that one is worth waiting for,
-      // bounded, because a wedged launcher must not hang the caller.
-      if (!cmd.viaOpen) {
+      // answer. A launcher (`open -a` on macOS, the `.cmd` shim through cmd.exe
+      // on Windows) exits immediately instead and reports the real failure in
+      // its exit code, so those are worth waiting for — bounded, because a
+      // wedged launcher must not hang the caller.
+      if (!cmd.viaLauncher) {
         done(null);
         return;
       }
       const timer = setTimeout(() => done(null), 3000);
       proc.once('close', (code) => {
         clearTimeout(timer);
-        done(code === 0 ? null : new Error(`open exited with code ${code}`));
+        done(code === 0 ? null : new Error(`${path.basename(cmd.file)} exited with code ${code}`));
       });
     });
   });

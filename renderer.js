@@ -3525,13 +3525,22 @@ FilesPanel.setCallbacks({
     };
 
     const terminals = terminalsState.get().terminals;
-    const activeId = terminalsState.get().activeTerminal;
-    if (activeId != null && attach(terminals.get(activeId))) return;
-
     const project = getCurrentProjectFromBar();
+    // The file belongs to the project the tree is showing, so a chat tab of a
+    // *different* project is never a valid target — including when it happens
+    // to be the active one, which is why the fast path shares this predicate
+    // rather than taking whatever has focus.
+    const belongsToProject = (data) => !project
+      || data?.project?.id === project.id
+      || data?.parentProjectId === project.id;
+
+    const activeId = terminalsState.get().activeTerminal;
+    const activeData = activeId != null ? terminals.get(activeId) : null;
+    if (belongsToProject(activeData) && attach(activeData)) return;
+
     for (const [id, data] of terminals) {
       if (data.mode !== 'chat' || !data.chatView?.addMentionChip) continue;
-      if (project && data.project?.id !== project.id && data.parentProjectId !== project.id) continue;
+      if (!belongsToProject(data)) continue;
       TerminalManager.setActiveTerminal(id);
       if (attach(data)) return;
     }

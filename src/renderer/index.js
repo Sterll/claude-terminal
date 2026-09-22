@@ -158,7 +158,10 @@ function _registerMcpProjectListeners(api) {
           return;
         }
         const editor = getProjectEditor(projectId) || getSetting('editor') || 'code';
-        api.dialog.openInEditor({ editor: getEditorCommand(editor), path: project.path });
+        // Through the helper like every other call site, so a missing editor
+        // toasts here too. An MCP-driven open is the case where the user is
+        // least likely to be looking at a console.
+        require('./utils/editor').openInEditor(project.path, { editor: getEditorCommand(editor) });
       } catch (e) {
         console.error('[MCP] project:open failed:', e && e.message);
       }

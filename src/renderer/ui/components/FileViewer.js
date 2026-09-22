@@ -214,7 +214,12 @@ function _wire(container, project) {
       _state.mode = btn.dataset.mode;
       // Remembered so reading a second markdown file does not put the reader
       // back in a view they just switched out of.
-      if (btn.dataset.mode === 'source' || btn.dataset.mode === 'content') {
+      //
+      // Only from a markdown file: a touched `.js` also has a `content` mode
+      // (its half of Content | Diff), and leaving Diff on one would otherwise
+      // reset a saved "Source" preference that has nothing to do with it.
+      if (isMarkdown(_state.filePath)
+        && (btn.dataset.mode === 'source' || btn.dataset.mode === 'content')) {
         setSetting('filesMarkdownMode', btn.dataset.mode === 'source' ? 'source' : 'rendered');
       }
       await _paint(container, project);
