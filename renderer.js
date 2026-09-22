@@ -3511,14 +3511,40 @@ FilesPanel.setCallbacks({
       document.querySelector('[data-tab="claude"]')?.click();
     }
   },
-  onAddToChat: (relativePath, fullPath) => {
-    const activeId = terminalsState.get().activeTerminal;
-    if (activeId == null) return;
-    const termData = terminalsState.get().terminals.get(activeId);
-    if (termData?.chatView?.addMentionChip) {
+  // "Reference in chat" used to require a chat tab to already be the active
+  // one. From the Files screen that is rarely true: the reader got there from
+  // the project bar, with a terminal tab or nothing at all in focus, so the
+  // menu entry did nothing at all and looked broken. Fall back to any chat tab
+  // of the project, and open one when there is none.
+  onAddToChat: async (relativePath, fullPath) => {
+    const attach = (termData) => {
+      if (!termData?.chatView?.addMentionChip) return false;
       termData.chatView.addMentionChip('file', { path: relativePath, fullPath });
       document.querySelector('[data-tab="claude"]')?.click();
+      return true;
+    };
+
+    const terminals = terminalsState.get().terminals;
+    const activeId = terminalsState.get().activeTerminal;
+    if (activeId != null && attach(terminals.get(activeId))) return;
+
+    const project = getCurrentProjectFromBar();
+    for (const [id, data] of terminals) {
+      if (data.mode !== 'chat' || !data.chatView?.addMentionChip) continue;
+      if (project && data.project?.id !== project.id && data.parentProjectId !== project.id) continue;
+      TerminalManager.setActiveTerminal(id);
+      if (attach(data)) return;
     }
+
+    if (!project) {
+      ToastComponent.showWarning(t('files.noProject'));
+      return;
+    }
+    const newId = await TerminalManager.createTerminal(project, { mode: 'chat', runClaude: true });
+    if (newId == null) return;
+    // createTerminal resolves once the view exists but its constructor wires
+    // the input asynchronously; one frame is enough and keeps this off a poll.
+    requestAnimationFrame(() => attach(terminalsState.get().terminals.get(newId)));
   },
   // Docked, the column has no viewer of its own, so a file opens as a tab —
   // which is also what it did back when the explorer was only a column.

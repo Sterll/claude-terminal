@@ -737,9 +737,7 @@ function wireClaudeMdReviewConsumer() {
             action: t('terminals.claudeMdOpen'),
             onAction: () => {
               // Open CLAUDE.md in the configured editor
-              const { getSetting } = require('../state/settings.state');
-              const editor = getSetting('editor') || 'code';
-              window.electron_api.dialog.openInEditor({ editor, path: claudeMdPath });
+              require('../utils/editor').openInEditor(claudeMdPath);
             }
           });
         } catch (err) {

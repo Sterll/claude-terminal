@@ -1423,8 +1423,7 @@ function bindChangesEvents(container) {
       handleViewDiff(fileItem.dataset.path, fileItem.dataset.staged === 'true');
     } else if (btn.classList.contains('open-editor-btn') && fileItem) {
       const fullPath = window.electron_nodeModules.path.join(selectedProject.path, fileItem.dataset.path);
-      const editor = getSetting('editor') || 'code';
-      api.dialog.openInEditor({ editor, path: fullPath });
+      require('../utils/editor').openInEditor(fullPath);
     } else if (btn.classList.contains('resolve-btn') && fileItem) {
       handleMarkResolved(fileItem.dataset.path);
     } else if (btn.classList.contains('resolve-ours-btn') && fileItem) {

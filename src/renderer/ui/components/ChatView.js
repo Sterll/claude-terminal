@@ -9,6 +9,7 @@ const { escapeHtml, highlight } = require('../../utils');
 const { BackgroundTaskReconciler } = require('../../services/BackgroundTaskReconciler');
 const { sanitizeColor } = require('../../utils/color');
 const { copyText } = require('../../utils/clipboard');
+const { openInEditor } = require('../../utils/editor');
 const {
   getToolIcon,
   getToolDisplayInfo,
@@ -4697,8 +4698,7 @@ class ChatView extends BaseComponent {
     const item = e.target.closest('.chat-change-item');
     if (!item || !item.dataset.path) return;
     if (e.target.closest('.chat-change-open')) {
-      const editor = getSetting('editor') || 'code';
-      api.dialog.openInEditor({ editor, path: item.dataset.path });
+      openInEditor(item.dataset.path);
       return;
     }
     if (e.target.closest('.chat-change-current')) {
@@ -4958,7 +4958,7 @@ class ChatView extends BaseComponent {
         break;
       }
       case 'edit':
-        api.dialog.openInEditor({ editor: getSetting('editor') || 'code', path: artifact.path });
+        openInEditor(artifact.path);
         break;
       case 'open-url':
         if (artifact.url) api.dialog.openExternal(artifact.url);
