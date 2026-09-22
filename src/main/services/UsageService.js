@@ -518,6 +518,18 @@ function startPeriodicFetch(intervalMs = 600000) {
   // timer would multiply API calls to keep numbers nobody is looking at warm;
   // the others are refreshed on demand, when a tab or a panel asks for them.
   const tick = () => {
+    // Swept here as well as watched. `fs.watch` is the fast path, but it is
+    // the one piece of this that is not guaranteed: it is FSEvents on darwin,
+    // ReadDirectoryChangesW on win32, inotify on linux, and none of them
+    // promises delivery for a file created microseconds after the watch was
+    // armed, or on a network or container-mounted home. A request that the
+    // watcher misses would put us straight back at the bug this fixes — a
+    // usage_refresh that silently does nothing — so the poll tick collects
+    // anything left behind. One readdir a minute.
+    if (consumeRefreshRequests()) {
+      fetchUsage(getFocusedAccount()).catch(e => console.error('[Usage]', e.message));
+      return;
+    }
     if (isMainWindowVisible()) {
       fetchUsage(getFocusedAccount()).catch(e => console.error('[Usage]', e.message));
     }
@@ -756,17 +768,49 @@ let triggerWatcher = null;
  * service works to avoid. A normal refresh still re-fetches from the API,
  * which is what the caller actually wants.
  */
+/** @returns {string} */
+function triggerDir() {
+  const { dataDir } = require('../utils/paths');
+  return path.join(dataDir, 'usage', 'triggers');
+}
+
+/**
+ * Delete every refresh request sitting in the directory and say whether there
+ * was one.
+ *
+ * Consumed before the fetch rather than after: a fetch that fails must not
+ * leave a request behind that fires again on the next directory event, and a
+ * request is a request to look now, not a queue.
+ *
+ * @returns {boolean}
+ */
+function consumeRefreshRequests() {
+  let found = false;
+  try {
+    const dir = triggerDir();
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.startsWith('refresh_')) continue;
+      try { fs.unlinkSync(path.join(dir, name)); found = true; } catch (e) { /* raced */ }
+    }
+  } catch (e) {
+    // No directory yet is the normal state until a tool writes the first one.
+  }
+  return found;
+}
+
 function startRefreshWatch() {
   if (triggerWatcher) return;
   try {
-    const { dataDir } = require('../utils/paths');
-    const dir = path.join(dataDir, 'usage', 'triggers');
+    const dir = triggerDir();
     fs.mkdirSync(dir, { recursive: true });
+    // Anything already waiting from before this window opened.
+    if (consumeRefreshRequests()) {
+      fetchUsage(getFocusedAccount()).catch(e => console.error('[Usage]', e.message));
+    }
     triggerWatcher = fs.watch(dir, (_event, filename) => {
-      if (!filename || !filename.startsWith('refresh_')) return;
-      // Consume it first: a failed fetch must not leave a request that fires
-      // again on the next directory event.
-      try { fs.unlinkSync(path.join(dir, filename)); } catch (e) { return; }
+      if (filename && !filename.startsWith('refresh_')) return;
+      // A rename event can arrive with a null filename; the sweep decides.
+      if (!consumeRefreshRequests()) return;
       fetchUsage(getFocusedAccount()).catch(e => console.error('[Usage]', e.message));
     });
     if (typeof triggerWatcher.unref === 'function') triggerWatcher.unref();

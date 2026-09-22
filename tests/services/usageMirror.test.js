@@ -126,7 +126,22 @@ describe('usage.json', () => {
 });
 
 describe('the refresh trigger directory', () => {
-  const settle = () => new Promise(resolve => setTimeout(resolve, 150));
+  /**
+   * `fs.watch` is FSEvents on darwin and ReadDirectoryChangesW on win32, and
+   * neither promises how soon it delivers - a fixed sleep here passed locally
+   * and failed on a loaded runner. Poll for the outcome instead, so the test
+   * is bounded by the assertion rather than by a guess at the platform.
+   */
+  async function waitFor(predicate, timeoutMs = 8000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (predicate()) return true;
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    return predicate();
+  }
+
+  const settle = () => new Promise(resolve => setTimeout(resolve, 250));
 
   test('a dropped request causes a fetch and is consumed', async () => {
     const usage = load();
@@ -137,11 +152,27 @@ describe('the refresh trigger directory', () => {
     const dir = path.join(dataDir, 'usage', 'triggers');
     const file = path.join(dir, `refresh_${Date.now()}.json`);
     fs.writeFileSync(file, '{}');
-    await settle();
 
+    await waitFor(() => httpsGet.mock.calls.length > callsBefore);
     expect(httpsGet.mock.calls.length).toBeGreaterThan(callsBefore);
     // Left behind, it would fire again on the next directory event.
     expect(fs.existsSync(file)).toBe(false);
+    usage.stopRefreshWatch();
+  });
+
+  test('a request written before the watch started is not missed', async () => {
+    const usage = load();
+    await usage.fetchUsage();
+    const callsBefore = httpsGet.mock.calls.length;
+
+    const dir = path.join(dataDir, 'usage', 'triggers');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, `refresh_${Date.now()}.json`), '{}');
+
+    usage.startRefreshWatch();
+
+    await waitFor(() => httpsGet.mock.calls.length > callsBefore);
+    expect(httpsGet.mock.calls.length).toBeGreaterThan(callsBefore);
     usage.stopRefreshWatch();
   });
 
