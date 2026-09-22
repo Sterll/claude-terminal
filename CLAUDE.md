@@ -781,9 +781,10 @@ run as "the natives are fine": it covers first render of all 20 panels, not
 
 **GitHub Actions (`.github/workflows/`):**
 
-- `ci.yml` - triggers on push to `main` and PRs. Three jobs:
+- `ci.yml` - triggers on push to `main` and PRs. Four jobs:
   - `lint` - Ubuntu only, `npm run check:docs` then `npm run lint`, installed with `--ignore-scripts` so no native rebuild is needed. Fast, fails first.
-  - `test` - matrix Node 18 + 20 on windows-latest, ubuntu-latest, macos-latest: `npm ci`, `build:renderer`, `test`.
+  - `test` - matrix Node 22 + 24 on windows-latest, ubuntu-latest, macos-latest: `npm ci`, `build:renderer`, `test`. 22 is the floor `engines.node` declares, so it is exercised rather than assumed.
+  - `coverage` - Ubuntu only, deliberately off the test matrix: instrumenting the two largest renderer files roughly triples the suite, and coverage is a property of the tests rather than of the platform. The thresholds in `package.json` are a ratchet set just below what was measured, never an aspiration.
   - `e2e` - Ubuntu only, under `xvfb-run`, and **blocking**. It shipped `continue-on-error` for one commit; in that window it failed twice while the run still reported `success`, so nobody saw it. A test that cannot fail the build reports nothing. Flakiness under Xvfb is worth seeing and fixing rather than muting.
 - `release.yml` - triggers on `v*` tags. Builds NSIS (Windows x64), DMG (macOS arm64 + x64), AppImage (Linux x64). Six jobs: `create-release` runs first and alone, then the three build jobs, `merge-mac-yml`, and `release-ready`.
   - **`create-release` exists because the build jobs cannot be trusted to create the release.** Each runs `electron-builder --publish always`, and electron-builder creates the release itself when it finds none for the tag. Four jobs starting in the same second all found none, and two created one: v1.3.3 produced **two drafts** with the assets split between them, so each updater manifest described half the build. Creating it once up front removes the race, and the release id is passed down so nothing downstream searches by tag again.
