@@ -9,7 +9,65 @@ permissions:
   contents: write
 
 jobs:
+  # The four build jobs each ran `electron-builder --publish always`, and
+  # electron-builder creates the release itself when it cannot find one for the
+  # tag. Four jobs starting in the same second all looked, all found nothing,
+  # and two of them created one: v1.3.3 produced two drafts with the assets
+  # split between them, and merge-mac-yml died because a `select(.tag_name ==
+  # $TAG)` that had always returned one object suddenly returned two.
+  #
+  # Creating the release once, before anything builds, is what removes the
+  # race: every build job then finds it and uploads into it. The id is passed
+  # down so nothing downstream has to search by tag again.
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.ensure.outputs.release_id }}
+      release_url: ${{ steps.ensure.outputs.release_url }}
+    steps:
+      - name: Ensure exactly one draft release for this tag
+        id: ensure
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/}"
+
+          # Drafts are only visible to an authenticated listing, which is why
+          # this cannot use `gh release view` or /releases/tags/<tag>.
+          # Not --paginate: with --jq, gh applies the filter per page and
+          # emits one array per page, so `jq length` would print one line
+          # per page. The tag was just pushed: its release is among the newest.
+          MATCHES=$(gh api "repos/${{ github.repository }}/releases?per_page=100" \
+            --jq "[.[] | select(.tag_name == \"$TAG\")]")
+          COUNT=$(echo "$MATCHES" | jq 'length')
+
+          if [ "$COUNT" -gt 1 ]; then
+            echo "::error::$COUNT releases already exist for $TAG. Assets would be split between them; delete the duplicates and re-run."
+            echo "$MATCHES" | jq -r '.[] | "  id=\(.id) draft=\(.draft) assets=\(.assets|length) \(.html_url)"'
+            exit 1
+          fi
+
+          if [ "$COUNT" -eq 1 ]; then
+            ID=$(echo "$MATCHES" | jq -r '.[0].id')
+            URL=$(echo "$MATCHES" | jq -r '.[0].html_url')
+            echo "Reusing existing release $ID for $TAG"
+          else
+            CREATED=$(gh api -X POST "repos/${{ github.repository }}/releases" \
+              -f tag_name="$TAG" \
+              -f name="${TAG#v}" \
+              -F draft=true \
+              -F prerelease=false)
+            ID=$(echo "$CREATED" | jq -r '.id')
+            URL=$(echo "$CREATED" | jq -r '.html_url')
+            echo "Created draft release $ID for $TAG"
+          fi
+
+          echo "release_id=$ID" >> "$GITHUB_OUTPUT"
+          echo "release_url=$URL" >> "$GITHUB_OUTPUT"
+
   build-windows:
+    needs: create-release
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
@@ -26,6 +84,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-macos:
+    needs: create-release
     strategy:
       # The two architectures are independent artifacts. Cancelling one because
       # the other tripped just loses a good build and skips merge-mac-yml, which
@@ -59,36 +118,30 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   merge-mac-yml:
-    needs: build-macos
+    needs: [create-release, build-macos]
     runs-on: ubuntu-latest
+    env:
+      RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
     steps:
       - name: Wait for release assets to settle
         run: sleep 10
 
-      - name: Download both latest-mac.yml from release
+      - name: Download the uploaded latest-mac.yml
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
+          set -euo pipefail
 
-          # Find release by tag (including drafts — electron-builder creates drafts)
-          for i in 1 2 3 4 5; do
-            RELEASE=$(gh api repos/${{ github.repository }}/releases --jq ".[] | select(.tag_name == \"$TAG\")" 2>/dev/null)
-            [ -n "$RELEASE" ] && break
-            echo "Release not found yet, waiting 15s... (attempt $i/5)"
-            sleep 15
-          done
-
-          if [ -z "$RELEASE" ]; then
-            echo "::error::Release for tag $TAG not found after retries"
-            exit 1
-          fi
+          # Addressed by id, not searched by tag: create-release guarantees
+          # there is exactly one, and asking for it by id cannot pick up a
+          # second one that appeared since.
+          gh api "repos/${{ github.repository }}/releases/$RELEASE_ID" > release.json
 
           # Get all DMG assets info from the release
-          echo "$RELEASE" | jq -r '.assets[] | select(.name | endswith(".dmg")) | "\(.name) \(.browser_download_url)"' > dmg_assets.txt
+          jq -r '.assets[] | select(.name | endswith(".dmg")) | "\(.name) \(.browser_download_url)"' release.json > dmg_assets.txt
 
           # Download the latest-mac.yml that was uploaded (by whichever build finished last)
-          ASSET_URL=$(echo "$RELEASE" | jq -r '.assets[] | select(.name == "latest-mac.yml") | .url')
+          ASSET_URL=$(jq -r '.assets[] | select(.name == "latest-mac.yml") | .url' release.json)
           if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
             echo "No latest-mac.yml found, skipping merge"
             exit 0
@@ -102,15 +155,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          RELEASE=$(gh api repos/${{ github.repository }}/releases --jq ".[] | select(.tag_name == \"$TAG\")")
+          set -euo pipefail
+
+          # The download step stands down when the release carries no
+          # latest-mac.yml; there is then nothing here to merge either.
+          if [ ! -f latest-mac.yml ]; then
+            echo "No latest-mac.yml to merge"
+            exit 0
+          fi
 
           # Extract version and releaseDate from existing yml
           VERSION=$(grep '^version:' latest-mac.yml | awk '{print $2}')
           RELEASE_DATE=$(grep '^releaseDate:' latest-mac.yml | cut -d' ' -f2-)
 
           # Get DMG assets as JSON array
-          echo "$RELEASE" | jq -c '[.assets[] | select(.name | endswith(".dmg"))]' > dmg_list.json
+          jq -c '[.assets[] | select(.name | endswith(".dmg"))]' release.json > dmg_list.json
           COUNT=$(jq 'length' dmg_list.json)
 
           # Start building merged yml
@@ -125,12 +184,12 @@ jobs:
 
             # Download DMG to compute sha512.
             # Must go through the authenticated API asset endpoint, NOT
-            # browser_download_url: electron-builder creates the release as a
-            # draft, and a draft's browser_download_url is not public. An
-            # unauthenticated curl there silently retrieves GitHub's 9-byte
-            # "Not Found" body instead of the DMG, so every architecture ends up
-            # sharing sha512(b"Not Found") and electron-updater rejects the
-            # download it just made. The job still exits 0, so nothing warns.
+            # browser_download_url: the release is a draft, and a draft's
+            # browser_download_url is not public. An unauthenticated curl there
+            # silently retrieves GitHub's 9-byte "Not Found" body instead of the
+            # DMG, so every architecture ends up sharing sha512(b"Not Found")
+            # and electron-updater rejects the download it just made. The job
+            # still exits 0, so nothing warns.
             gh api -H "Accept: application/octet-stream" "$ASSET_API_URL" > "$NAME"
 
             ACTUAL_SIZE=$(stat -c%s "$NAME")
@@ -174,17 +233,22 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          RELEASE_JSON=$(gh api repos/${{ github.repository }}/releases --jq ".[] | select(.tag_name == \"$TAG\")")
+          set -euo pipefail
 
-          # Delete the old latest-mac.yml asset
-          ASSET_ID=$(echo "$RELEASE_JSON" | jq '.assets[] | select(.name == "latest-mac.yml") | .id')
-          if [ -n "$ASSET_ID" ] && [ "$ASSET_ID" != "null" ]; then
-            gh api -X DELETE repos/${{ github.repository }}/releases/assets/$ASSET_ID
+          # The download step stands down when the release carries no
+          # latest-mac.yml; there is then nothing here to upload either.
+          if [ ! -f merged.yml ]; then
+            echo "No merged latest-mac.yml to upload"
+            exit 0
           fi
 
-          # Upload merged yml
-          RELEASE_ID=$(echo "$RELEASE_JSON" | jq '.id')
+          # Delete the old latest-mac.yml asset
+          ASSET_ID=$(gh api "repos/${{ github.repository }}/releases/$RELEASE_ID" \
+            --jq '.assets[] | select(.name == "latest-mac.yml") | .id')
+          if [ -n "$ASSET_ID" ] && [ "$ASSET_ID" != "null" ]; then
+            gh api -X DELETE "repos/${{ github.repository }}/releases/assets/$ASSET_ID"
+          fi
+
           gh api -X POST \
             -H "Content-Type: text/yaml" \
             "https://uploads.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets?name=latest-mac.yml" \
@@ -193,6 +257,7 @@ jobs:
           echo "Successfully uploaded merged latest-mac.yml"
 
   build-linux:
+    needs: create-release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
@@ -209,3 +274,69 @@ jobs:
         run: npx electron-builder --linux --publish always --config electron-builder.config.js
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # The release is left as a draft on purpose: the notes are written by hand.
+  # What this job is for is making sure the draft cannot be silently forgotten
+  # the way v1.3.3's was, and that what it holds is actually complete.
+  release-ready:
+    needs: [create-release, build-windows, build-macos, build-linux, merge-mac-yml]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the draft holds a full set of assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
+          RELEASE_URL: ${{ needs.create-release.outputs.release_url }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/}"
+
+          gh api "repos/${{ github.repository }}/releases/$RELEASE_ID" > release.json
+          jq -r '.assets[] | .name' release.json > names.txt
+          jq -r '.assets[] | "\(.name) (\(.size) bytes)"' release.json > assets.txt
+
+          MISSING=""
+          for expected in \
+            "Claude-Terminal-Setup-${TAG#v}.exe" \
+            "Claude-Terminal-${TAG#v}.dmg" \
+            "Claude-Terminal-${TAG#v}-arm64.dmg" \
+            "Claude-Terminal-${TAG#v}.AppImage" \
+            "latest.yml" \
+            "latest-mac.yml" \
+            "latest-linux.yml"
+          do
+            grep -Fxq "$expected" names.txt || MISSING="$MISSING $expected"
+          done
+
+          # A second release for the tag means assets were split and the
+          # updater manifests describe only half the build.
+          DUPES=$(gh api "repos/${{ github.repository }}/releases?per_page=100" \
+            --jq "[.[] | select(.tag_name == \"$TAG\")] | length")
+
+          {
+            echo "## Release $TAG"
+            echo
+            echo "Draft: $RELEASE_URL"
+            echo
+            echo '```'
+            cat assets.txt
+            echo '```'
+            echo
+            if [ -n "$MISSING" ]; then
+              echo "**Missing:**$MISSING"
+            else
+              echo "All expected assets present. Write the notes, then publish the draft."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$DUPES" != "1" ]; then
+            echo "::error::$DUPES releases exist for $TAG; the assets are split between them"
+            exit 1
+          fi
+
+          if [ -n "$MISSING" ]; then
+            echo "::error::the draft is missing:$MISSING"
+            exit 1
+          fi
+
+          echo "Draft ready at $RELEASE_URL"

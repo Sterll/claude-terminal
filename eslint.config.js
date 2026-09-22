@@ -24,7 +24,46 @@
 
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
+
 const js = require('@eslint/js');
+
+// ── Nested projects ──────────────────────────────────────────────────────────
+
+/**
+ * Root directories that are projects of their own: a clone carrying its own
+ * `.git`, or anything carrying its own flat config.
+ *
+ * ESLint 10 resolves a config from the linted file's directory rather than from
+ * the run's root, so walking into one of these loads *its* config against *its*
+ * node_modules. A nested eslint-scope 8 builds a scope manager this ESLint
+ * cannot use (`scopeManager.addGlobals is not a function`), and the whole run
+ * dies on a file that is not ours to lint in the first place.
+ *
+ * These are gitignored working clones, so a clean checkout has none of them:
+ * CI stays green while `npm run lint` is broken on the machine that has one.
+ * Detecting the shape rather than listing the names is what keeps the next
+ * clone from breaking it again.
+ */
+function nestedProjectIgnores() {
+  let entries;
+  try {
+    entries = fs.readdirSync(__dirname, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const ownsAConfig = dir =>
+    ['js', 'mjs', 'cjs', 'ts'].some(ext =>
+      fs.existsSync(path.join(__dirname, dir, `eslint.config.${ext}`))
+    );
+
+  return entries
+    .filter(e => e.isDirectory() && e.name !== 'node_modules' && !e.name.startsWith('.'))
+    .filter(e => fs.existsSync(path.join(__dirname, e.name, '.git')) || ownsAConfig(e.name))
+    .map(e => `${e.name}/**`);
+}
 
 // ── Globals ──────────────────────────────────────────────────────────────────
 
@@ -273,7 +312,8 @@ const MAIN_BOUNDARY = {
 module.exports = [
   {
     ignores: [
-      'node_modules/**',
+      ...nestedProjectIgnores(),
+      '**/node_modules/**',
       'dist/**',
       'build/**',
       'cloud/**',        // separate package, TypeScript, own toolchain
