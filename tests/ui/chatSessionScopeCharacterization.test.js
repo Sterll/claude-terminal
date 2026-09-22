@@ -194,27 +194,42 @@ describe('chat session-scoped model / effort / mode (characterization)', () => {
   // ── Effort ──
 
   describe('effort', () => {
-    /**
-     * Unlike the mode picker, the effort button is disabled while the turn
-     * streams (`effortBtn.disabled = streaming`), so the menu will not even
-     * open until the turn ends. Pinned as its own test below; every effort
-     * test here settles the turn first.
-     */
     const endTurn = async () => {
       listeners.onDone({ sessionId, interrupted: false });
       await flush();
     };
 
-    it('refuses to open its menu mid-turn, where the mode picker opens', () => {
-      // The asymmetry is deliberate on the mode side ("switching to accept
-      // edits while prompts pile up is the moment it is wanted most"), so this
-      // records the contrast rather than either half alone.
-      expect(wrapper.querySelector('.chat-effort-btn').disabled).toBe(true);
+    it('opens its menu mid-turn, like the mode picker beside it', async () => {
+      // This used to be the opposite assertion: `effortBtn.disabled = streaming`
+      // left the model and effort buttons dead for the whole turn, next to a
+      // composer that queues the next message and a mode picker that stays
+      // live. Three controls in one footer, two of which answered and one of
+      // which did not, with nothing saying why.
+      expect(wrapper.querySelector('.chat-effort-btn').disabled).toBe(false);
       openMenu('.chat-effort-btn');
-      expect(rows('.chat-effort-option')).toHaveLength(0);
+      expect(rows('.chat-effort-option').length).toBeGreaterThan(0);
 
       openMenu('.chat-mode-btn');
       expect(rows('.chat-mode-option').length).toBeGreaterThan(0);
+    });
+
+    it('holds a mid-turn pick back until the turn ends, then pushes it once', async () => {
+      openMenu('.chat-effort-btn');
+      rows('.chat-effort-option').find(r => r.dataset.effort === 'low').click();
+      await flush();
+
+      // The label is this conversation's setting and moves at once; the SDK
+      // must not hear about it while it is still answering.
+      expect(wrapper.querySelector('.chat-effort-label').textContent.toLowerCase()).toContain('low');
+      expect(calls.filter(c => c.method === 'setEffort')).toHaveLength(0);
+      expect(wrapper.querySelector('.chat-view.selection-pending')).not.toBeNull();
+
+      await endTurn();
+
+      const pushed = calls.filter(c => c.method === 'setEffort');
+      expect(pushed).toHaveLength(1);
+      expect(pushed[0].args[0]).toMatchObject({ effort: 'low' });
+      expect(wrapper.querySelector('.chat-view.selection-pending')).toBeNull();
     });
 
     it('changes the running session without writing the stored default', async () => {

@@ -848,11 +848,15 @@ class TerminalManager extends BaseComponent {
       if (self._draggedTab.classList.contains('pinned-tab') !== tab.classList.contains('pinned-tab')) return;
 
       const rect = tab.getBoundingClientRect();
-      const midX = rect.left + rect.width / 2;
-      const isLeft = e.clientX < midX;
-
+      const side = e.clientX < rect.left + rect.width / 2 ? 'drag-over-left' : 'drag-over-right';
+      // `dragover` fires on every pointer move. Rewriting the same class each
+      // time invalidates layout, and the next event's getBoundingClientRect()
+      // then has to force a full synchronous one, over a document that holds
+      // the chat transcript and the file tree. Skipping the write when the
+      // side has not changed keeps the measurement served from cache.
+      if (tab.classList.contains(side)) return;
       tab.classList.remove('drag-over-left', 'drag-over-right');
-      tab.classList.add(isLeft ? 'drag-over-left' : 'drag-over-right');
+      tab.classList.add(side);
     });
 
     tab.addEventListener('dragleave', () => {

@@ -30,6 +30,23 @@ const DANGEROUS_CHARS = /[;&|$`<>^\n\r\0"]/;
 // .cmd / .bat cannot be launched by CreateProcess directly — they need cmd.exe.
 const WINDOWS_SCRIPT_EXT = /\.(cmd|bat)$/i;
 
+// On macOS the GUI editors ship their CLI shim *disabled*: `code` only exists
+// on PATH once the user has run "Shell Command: Install 'code' in PATH" by
+// hand, and most never do. Spawning it then fails with an ENOENT that arrives
+// on the child's `error` event, after the function has already returned, so
+// every "Open in editor" button in the app looked dead with nothing logged
+// anywhere the user could see. The application bundle is installed by
+// definition, so fall back to launching that through `open -a`.
+const MAC_APP_BUNDLES = {
+  code: 'Visual Studio Code',
+  cursor: 'Cursor',
+  zed: 'Zed',
+  subl: 'Sublime Text',
+  atom: 'Atom',
+  webstorm: 'WebStorm',
+  idea: 'IntelliJ IDEA',
+};
+
 /**
  * Read the editor configured in settings, used when the caller omits `editor`.
  * @returns {string}
@@ -76,11 +93,39 @@ function _resolveWindowsLauncher(bin) {
 }
 
 /**
+ * Resolve an editor command to a concrete file on macOS/Linux, walking PATH
+ * the way a shell would, but without handing the string to a shell.
+ * @param {string} bin
+ * @returns {string|null} Absolute path to the executable, or null
+ */
+function _resolvePosixBinary(bin) {
+  const candidates = (path.isAbsolute(bin) || bin.includes('/'))
+    ? [path.resolve(bin)]
+    : (process.env.PATH || '').split(path.delimiter).filter(Boolean).map(dir => path.join(dir, bin));
+
+  for (const candidate of candidates) {
+    try {
+      const st = fs.statSync(candidate);
+      if (st.isFile() && (st.mode & 0o111)) return candidate;
+    } catch (e) { /* next candidate */ }
+  }
+  return null;
+}
+
+/**
  * Build the argv for spawning an editor WITHOUT a shell.
  * @param {string} editorBin
- * @returns {{ file: string, args: string[] }}
+ * @returns {{ file: string, args: string[], viaOpen?: boolean }}
  */
 function _buildEditorCommand(editorBin) {
+  if (process.platform === 'darwin') {
+    if (_resolvePosixBinary(editorBin)) return { file: editorBin, args: [] };
+    const bundle = MAC_APP_BUNDLES[path.basename(editorBin).toLowerCase()];
+    // `open` waits for LaunchServices rather than for the editor, so it exits
+    // right away and its exit code tells us whether the bundle was found.
+    if (bundle) return { file: '/usr/bin/open', args: ['-a', bundle], viaOpen: true };
+    return { file: editorBin, args: [] };
+  }
   if (process.platform !== 'win32') return { file: editorBin, args: [] };
 
   const resolved = _resolveWindowsLauncher(editorBin);
@@ -97,13 +142,68 @@ function _buildEditorCommand(editorBin) {
 }
 
 /**
+ * Spawn the editor and wait long enough to know whether it actually started.
+ *
+ * `spawn` reports a missing binary asynchronously, on the child's `error`
+ * event. Returning before that arrives is what turned "editor not installed"
+ * into a button that does nothing: the renderer was told `success: true` and
+ * the ENOENT went to a console nobody reads.
+ *
+ * @param {{ file: string, args: string[], viaOpen?: boolean }} cmd
+ * @param {string} targetPath
+ * @returns {Promise<Error|null>} the launch failure, or null
+ */
+function _spawnEditor(cmd, targetPath) {
+  return new Promise((resolve) => {
+    let proc;
+    try {
+      proc = spawn(cmd.file, [...cmd.args, targetPath], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+    } catch (error) {
+      resolve(error);
+      return;
+    }
+
+    let settled = false;
+    const done = (err) => {
+      if (settled) return;
+      settled = true;
+      // Detached and unreferenced: the editor outlives us, and a launcher that
+      // never exits must not hold the event loop open either.
+      try { proc.unref(); } catch (e) { /* already gone */ }
+      resolve(err || null);
+    };
+
+    proc.once('error', done);
+    proc.once('spawn', () => {
+      // A direct editor launch keeps running, so `spawn` firing is the whole
+      // answer. `open` is a launcher that exits immediately and signals a
+      // missing bundle through its exit code, so that one is worth waiting for,
+      // bounded, because a wedged launcher must not hang the caller.
+      if (!cmd.viaOpen) {
+        done(null);
+        return;
+      }
+      const timer = setTimeout(() => done(null), 3000);
+      proc.once('close', (code) => {
+        clearTimeout(timer);
+        done(code === 0 ? null : new Error(`open exited with code ${code}`));
+      });
+    });
+  });
+}
+
+/**
  * Open a project folder or a file in the user's external editor.
  * Accepts `path` or `filePath` (both are used by different renderer callers),
  * and falls back to the configured editor when `editor` is omitted.
  * @param {{ editor?: string, path?: string, filePath?: string }} params
- * @returns {{ success: boolean, error?: string }}
+ * @returns {Promise<{ success: boolean, error?: string, editor?: string }>}
  */
-function openInEditor(params) {
+async function openInEditor(params) {
   const targetPath = String((params && (params.path || params.filePath)) || '').trim();
   const editorBin = String((params && params.editor) || '').trim() || _getConfiguredEditor();
 
@@ -129,22 +229,12 @@ function openInEditor(params) {
     console.debug(`[Dialog IPC] Using custom editor: "${editorBin}"`);
   }
 
-  try {
-    const { file, args } = _buildEditorCommand(editorBin);
-    const proc = spawn(file, [...args, targetPath], {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true,
-    });
-    proc.on('error', (error) => {
-      console.error(`[Dialog IPC] Failed to open editor "${editorBin}":`, error.message);
-    });
-    proc.unref();
-    return { success: true };
-  } catch (error) {
-    console.error(`[Dialog IPC] Failed to spawn editor "${editorBin}":`, error.message);
-    return { success: false, error: error.message };
+  const failure = await _spawnEditor(_buildEditorCommand(editorBin), targetPath);
+  if (failure) {
+    console.error(`[Dialog IPC] Failed to open editor "${editorBin}":`, failure.message);
+    return { success: false, error: failure.message, editor: editorBin };
   }
+  return { success: true, editor: editorBin };
 }
 
 /**
@@ -226,8 +316,20 @@ function registerDialogHandlers() {
   // Open in external editor.
   // Registered as both `handle` (so failures surface to the caller) and `on`
   // (the preload bridge currently uses `send`, and other callers may too).
-  ipcMain.handle('open-in-editor', (event, params) => openInEditor(params));
-  ipcMain.on('open-in-editor', (event, params) => { openInEditor(params); });
+  ipcMain.handle('open-in-editor', async (event, params) => {
+    // Never reject: the preload bridge is `invoke`, and a rejection there
+    // becomes an unhandled promise rejection in every caller that ignores the
+    // result, which is most of them.
+    try {
+      return await openInEditor(params);
+    } catch (error) {
+      console.error('[Dialog IPC] open-in-editor failed:', error.message);
+      return { success: false, error: error.message };
+    }
+  });
+  ipcMain.on('open-in-editor', (event, params) => {
+    openInEditor(params).catch(err => console.error('[Dialog IPC] open-in-editor failed:', err.message));
+  });
 
   // Open external URL in browser (only https:// and http:// allowed)
   ipcMain.on('open-external', (event, url) => {

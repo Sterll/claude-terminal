@@ -9,6 +9,7 @@ const { escapeHtml, highlight } = require('../../utils');
 const { BackgroundTaskReconciler } = require('../../services/BackgroundTaskReconciler');
 const { sanitizeColor } = require('../../utils/color');
 const { copyText } = require('../../utils/clipboard');
+const { openInEditor } = require('../../utils/editor');
 const {
   getToolIcon,
   getToolDisplayInfo,
@@ -124,6 +125,11 @@ class ChatView extends BaseComponent {
     : null;
   let isStreaming = false;
   let isAborting = false;
+  // A model or effort pick made while a turn is running. The footer label
+  // moves at once (it is this conversation's setting, and the user just set
+  // it), but the SDK only hears about it once the turn is done.
+  let pendingModelPush = null;
+  let pendingEffortPush = null;
   let pendingResumeId = resumeSessionId || null;
   // The transcript this tab replayed, kept after `pendingResumeId` is cleared by
   // the first turn: an expanded tool card fetches its full output from that file,
@@ -934,41 +940,56 @@ class ChatView extends BaseComponent {
     // `chat-set-model` never rejects — it resolves { success:false, error },
     // so the result has to be read or a failed switch stays invisible.
     if (!sessionId) return;
-    let res;
-    try {
-      res = await api.chat.setModel({ sessionId, model: selectedModel });
-    } catch (err) {
-      res = { success: false, error: err?.message || String(err) };
-    }
-    if (res && res.success) {
-      // A restart after an account switch replays lastStartOpts; keep it on
-      // the model actually in use.
-      if (lastStartOpts) lastStartOpts.model = selectedModel;
-      if (previousOption && previousOption.value !== option.value) {
-        appendSystemNotice(t('chat.modelSwitched', { previous: previousOption.displayName, model: option.displayName }), 'model');
+
+    // The pickers stay live during a turn, because the composer does: the
+    // user can already queue the next message there, so choosing the model
+    // and the effort it will run under has to be possible too. What must
+    // not happen is the switch landing halfway through the answer being
+    // streamed, so the SDK call waits for the turn to finish.
+    const push = async () => {
+      let res;
+      try {
+        res = await api.chat.setModel({ sessionId, model: selectedModel });
+      } catch (err) {
+        res = { success: false, error: err?.message || String(err) };
       }
+      if (res && res.success) {
+        // A restart after an account switch replays lastStartOpts; keep it on
+        // the model actually in use.
+        if (lastStartOpts) lastStartOpts.model = selectedModel;
+        if (previousOption && previousOption.value !== option.value) {
+          appendSystemNotice(t('chat.modelSwitched', { previous: previousOption.displayName, model: option.displayName }), 'model');
+        }
+        return;
+      }
+
+      // Switch failed: the session is still running the previous model.
+      // Revert the label so the footer stops lying.
+      if (previousOption) {
+        selectedModel = previousId;
+        modelIsExplicit = previousExplicit;
+        modelSource = previousSource;
+        modelLabel.textContent = previousOption.displayName;
+        syncEffortVisibility();
+        syncModelTier();
+      }
+      const Toast = require('./Toast');
+      Toast.showToast({
+        message: t('chat.modelSwitchFailed', {
+          model: option.displayName,
+          previous: previousOption ? previousOption.displayName : previousId,
+          error: (res && res.error) || '',
+        }),
+        type: 'error',
+      });
+    };
+    if (isStreaming) {
+      pendingModelPush = push;
+      syncPendingSelection();
       return;
     }
-
-    // Switch failed: the session is still running the previous model.
-    // Revert the label so the footer stops lying.
-    if (previousOption) {
-      selectedModel = previousId;
-      modelIsExplicit = previousExplicit;
-      modelSource = previousSource;
-      modelLabel.textContent = previousOption.displayName;
-      syncEffortVisibility();
-      syncModelTier();
-    }
-    const Toast = require('./Toast');
-    Toast.showToast({
-      message: t('chat.modelSwitchFailed', {
-        model: option.displayName,
-        previous: previousOption ? previousOption.displayName : previousId,
-        error: (res && res.error) || '',
-      }),
-      type: 'error',
-    });
+    await push();
+  
   }
 
   modelBtn.addEventListener('click', (e) => {
@@ -1088,36 +1109,51 @@ class ChatView extends BaseComponent {
     // If session is active, change effort mid-session via SDK.
     // `chat-set-effort` resolves { success:false, error } instead of rejecting.
     if (!sessionId) return;
-    let res;
-    try {
-      res = await api.chat.setEffort({ sessionId, effort: effortId });
-    } catch (err) {
-      res = { success: false, error: err?.message || String(err) };
-    }
-    if (res && res.success) {
-      if (lastStartOpts) lastStartOpts.effort = effortId;
-      if (previousOption && previousId !== effortId) {
-        appendSystemNotice(t('chat.effortSwitched', { previous: previousOption.label, effort: option.label }), 'model');
+
+    // The pickers stay live during a turn, because the composer does: the
+    // user can already queue the next message there, so choosing the model
+    // and the effort it will run under has to be possible too. What must
+    // not happen is the switch landing halfway through the answer being
+    // streamed, so the SDK call waits for the turn to finish.
+    const push = async () => {
+      let res;
+      try {
+        res = await api.chat.setEffort({ sessionId, effort: effortId });
+      } catch (err) {
+        res = { success: false, error: err?.message || String(err) };
       }
+      if (res && res.success) {
+        if (lastStartOpts) lastStartOpts.effort = effortId;
+        if (previousOption && previousId !== effortId) {
+          appendSystemNotice(t('chat.effortSwitched', { previous: previousOption.label, effort: option.label }), 'model');
+        }
+        return;
+      }
+
+      // Switch failed: revert the label to the live effort level.
+      console.warn('[ChatView] setEffort failed:', res && res.error);
+      if (previousOption) {
+        selectedEffort = previousId;
+        effortLabel.textContent = previousOption.label;
+        syncModelTier();
+      }
+      const Toast = require('./Toast');
+      Toast.showToast({
+        message: t('chat.effortSwitchFailed', {
+          effort: option.label,
+          previous: previousOption ? previousOption.label : previousId,
+          error: (res && res.error) || '',
+        }),
+        type: 'error',
+      });
+    };
+    if (isStreaming) {
+      pendingEffortPush = push;
+      syncPendingSelection();
       return;
     }
-
-    // Switch failed: revert the label to the live effort level.
-    console.warn('[ChatView] setEffort failed:', res && res.error);
-    if (previousOption) {
-      selectedEffort = previousId;
-      effortLabel.textContent = previousOption.label;
-      syncModelTier();
-    }
-    const Toast = require('./Toast');
-    Toast.showToast({
-      message: t('chat.effortSwitchFailed', {
-        effort: option.label,
-        previous: previousOption ? previousOption.label : previousId,
-        error: (res && res.error) || '',
-      }),
-      type: 'error',
-    });
+    await push();
+  
   }
 
   effortBtn.addEventListener('click', (e) => {
@@ -4662,8 +4698,7 @@ class ChatView extends BaseComponent {
     const item = e.target.closest('.chat-change-item');
     if (!item || !item.dataset.path) return;
     if (e.target.closest('.chat-change-open')) {
-      const editor = getSetting('editor') || 'code';
-      api.dialog.openInEditor({ editor, path: item.dataset.path });
+      openInEditor(item.dataset.path);
       return;
     }
     if (e.target.closest('.chat-change-current')) {
@@ -4923,7 +4958,7 @@ class ChatView extends BaseComponent {
         break;
       }
       case 'edit':
-        api.dialog.openInEditor({ editor: getSetting('editor') || 'code', path: artifact.path });
+        openInEditor(artifact.path);
         break;
       case 'open-url':
         if (artifact.url) api.dialog.openExternal(artifact.url);
@@ -6126,6 +6161,33 @@ class ChatView extends BaseComponent {
 
   // ── State management ──
 
+  /**
+   * Mark the chip as holding a choice that has not reached the SDK yet, so the
+   * footer does not read as though the running turn already switched.
+   */
+  function syncPendingSelection() {
+    const pending = !!(pendingModelPush || pendingEffortPush);
+    chatView.classList.toggle('selection-pending', pending);
+    const hint = pending ? t('chat.appliesNextTurn') : '';
+    modelBtn.title = hint;
+    effortBtn.title = hint;
+  }
+
+  /** Hand the SDK what was picked mid-turn, now that the turn is over. */
+  async function flushPendingSelection() {
+    const model = pendingModelPush;
+    const effort = pendingEffortPush;
+    pendingModelPush = null;
+    pendingEffortPush = null;
+    syncPendingSelection();
+    try {
+      if (model) await model();
+      if (effort) await effort();
+    } catch (err) {
+      console.warn('[ChatView] deferred model/effort switch failed:', err?.message || err);
+    }
+  }
+
   function setStreaming(streaming) {
     isStreaming = streaming;
     stopBtn.style.display = streaming ? '' : 'none';
@@ -6134,15 +6196,12 @@ class ChatView extends BaseComponent {
     if (!streaming) bgBtn.disabled = false;
     chatView.classList.toggle('streaming', streaming);
 
-    // Fix #7: Disable model/effort dropdowns during streaming
-    modelBtn.disabled = streaming;
-    effortBtn.disabled = streaming;
-    modelBtn.classList.toggle('disabled', streaming);
-    effortBtn.classList.toggle('disabled', streaming);
-    if (streaming) {
-      closeModelDropdown();
-      effortDropdown.style.display = 'none';
-    }
+    // The model and effort pickers used to be disabled for the whole turn.
+    // That left the footer with two dead controls next to a composer that
+    // happily queues the next message, and the permission-mode picker beside
+    // them stayed live the whole time. They are enabled now; a pick made
+    // mid-turn is held and pushed to the SDK when the turn ends.
+    if (!streaming) flushPendingSelection();
 
     if (streaming) {
       elapsedTimer.start();
