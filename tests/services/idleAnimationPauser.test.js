@@ -200,4 +200,37 @@ describe('the tracked set stays bounded', () => {
 
     expect(() => window.dispatchEvent(new Event('blur'))).not.toThrow();
   });
+
+  // TranscriptPruner detaches and later re-appends *the same* nodes, so the
+  // order below is a normal session, not a corner case: tab away, the pruner
+  // takes the spinner's message out from under the pause, tab back. Dropping
+  // the element without unpausing it left the class on for good — focus only
+  // reaches what is still tracked, and this was dropped from that set.
+  test('a spinner paused, pruned, then remounted is not left frozen', () => {
+    const spinner = animatedEl('infinite');
+    startAnimation(spinner);
+
+    window.dispatchEvent(new Event('blur'));
+    expect(spinner.classList.contains(PAUSED)).toBe(true);
+
+    spinner.remove();                      // pruned while paused
+    window.dispatchEvent(new Event('focus'));
+    document.body.appendChild(spinner);    // remounted by the pruner
+
+    expect(spinner.classList.contains(PAUSED)).toBe(false);
+  });
+
+  test('a remounted spinner that re-announces itself is not left frozen', () => {
+    const spinner = animatedEl('infinite');
+    startAnimation(spinner);
+    window.dispatchEvent(new Event('blur'));
+    spinner.remove();
+    window.dispatchEvent(new Event('focus'));
+
+    // Remount and restart, which is what a re-rendered card does.
+    document.body.appendChild(spinner);
+    startAnimation(spinner);
+
+    expect(spinner.classList.contains(PAUSED)).toBe(false);
+  });
 });

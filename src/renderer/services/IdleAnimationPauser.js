@@ -107,6 +107,10 @@ function _onAnimationStart(e) {
   // A spinner that appears while the user is away must not run until they
   // come back; this is what the old debounced re-sweep was for.
   if (_blurred) _pause(el);
+  // And an element re-entering the document can carry the class from a pause
+  // it was detached through. Focus alone would not clear it: _apply() only
+  // reaches what is still tracked, and a detached element was dropped there.
+  else _resume(el);
 }
 
 function _onAnimationEnd(e) {
@@ -123,7 +127,13 @@ function _apply(fn) {
   for (const el of _tracked) {
     // A spinner whose message was pruned never fires animationend, so the set
     // would grow without bound on a long session without this.
+    //
+    // Unpause before forgetting it: TranscriptPruner detaches and later
+    // re-appends *the same* nodes, so blur (pause) -> prune -> focus (drop,
+    // with no resume) -> remount would put a permanently frozen spinner back on
+    // screen, with nothing left tracking it to ever thaw it.
     if (!el.isConnected) {
+      _resume(el);
       _tracked.delete(el);
       continue;
     }
