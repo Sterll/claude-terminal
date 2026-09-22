@@ -1925,6 +1925,7 @@
     "effortPart": "{effort} 工作量",
     "modePart": "{mode} 模式",
     "modelSwitched": "模型已从 {previous} 切换为 {model}",
+    "appliesNextTurn": "将应用于您的下一条消息",
     "effortSwitched": "工作量已从 {previous} 切换为 {effort}",
     "modeTitle": "模式",
     "modeAuto": "自动",
