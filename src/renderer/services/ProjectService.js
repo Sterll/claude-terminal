@@ -61,7 +61,7 @@ class ProjectService extends BaseService {
 
   openInEditor(projectId, editor = 'code') {
     const project = getProject(projectId);
-    if (project) this.api.dialog.openInEditor({ editor, path: project.path });
+    if (project) require('../utils/editor').openInEditor(project.path, { editor });
   }
 
   openInExplorer(projectId) {
