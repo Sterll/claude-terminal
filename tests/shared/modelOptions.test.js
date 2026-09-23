@@ -172,6 +172,32 @@ describe('normalizeModelRow', () => {
     expect(out.supportsAdaptiveThinking).toBe(true);
   });
 
+  test('names the model the row resolves to when the description disagrees', () => {
+    // Verbatim from CLI 0.3.280 run with ANTHROPIC_DEFAULT_OPUS_MODEL=claude-opus-4-8:
+    // the alias is remapped, the prose is not. Labelled from the prose, the
+    // menu offered "Opus 5.5" and every turn ran on 4.8.
+    const out = normalizeModelRow({
+      value: 'opus',
+      resolvedModel: 'claude-opus-4-8',
+      displayName: 'Opus',
+      description: 'Opus 5.5 · Best for everyday, complex tasks',
+    });
+    expect(out.displayName).toBe('Opus 4.8');
+    expect(out.description).toBe('Best for everyday, complex tasks');
+  });
+
+  test('keeps the promoted name when resolvedModel agrees with it', () => {
+    const rows = [
+      { value: 'opus[1m]', resolvedModel: 'claude-opus-5-5[1m]', displayName: 'Opus (1M context)', description: 'Opus 5.5 with 1M context · x' },
+      { value: 'haiku', resolvedModel: 'claude-haiku-4-5-20251001', displayName: 'Haiku', description: 'Haiku 4.5 · x' },
+      { value: 'sonnet', resolvedModel: 'claude-sonnet-5', displayName: 'Sonnet', description: 'Sonnet 5 · x' },
+      // An id this cannot parse leaves the prose in charge.
+      { value: 'opus', resolvedModel: 'us.anthropic.opus-v1:0', displayName: 'Opus', description: 'Opus 5.5 · x' },
+    ];
+    expect(rows.map(r => normalizeModelRow(r).displayName))
+      .toEqual(['Opus 5.5', 'Haiku 4.5', 'Sonnet 5', 'Opus 5.5']);
+  });
+
   test('handles a row with no description', () => {
     const out = normalizeModelRow({ value: 'x', displayName: 'Opus 4.8' });
     expect(out.displayName).toBe('Opus 4.8');

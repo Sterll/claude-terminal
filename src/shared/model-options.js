@@ -333,6 +333,24 @@ const PRICE_SEGMENT = /^\$|per\s+Mtok/i;
 // The CLI spells the large-context build into the prose too; the id already
 // carries it, so repeating it in the label is noise.
 const CONTEXT_NOTE = /\s*(?:with\s+1M\s+context|\(1M\s+context\))/i;
+// Family and version out of a wire id: 'claude-haiku-4-5-20251001' -> haiku 4.5.
+// The version is one or two short numeric segments, so a trailing date is not
+// read as part of it.
+const WIRE_VERSION = /(fable|opus|sonnet|haiku)-(\d{1,2})(?:-(\d{1,2}))?(?!\d)/;
+
+/**
+ * 'Opus 4.8' for 'claude-opus-4-8', or '' when the id does not spell a family
+ * and version this way (a provider-prefixed id, an older naming scheme).
+ *
+ * @param {string} id
+ * @returns {string}
+ */
+function wireModelName(id) {
+  const m = WIRE_VERSION.exec(baseModelId(id).toLowerCase());
+  if (!m) return '';
+  const family = m[1][0].toUpperCase() + m[1].slice(1);
+  return `${family} ${m[3] ? `${m[2]}.${m[3]}` : m[2]}`;
+}
 
 /**
  * Turn a CLI row into what the picker should actually show.
@@ -349,6 +367,14 @@ const CONTEXT_NOTE = /\s*(?:with\s+1M\s+context|\(1M\s+context\))/i;
  * the CLI's `default` row reads that way ("Use the default model (currently
  * …)"), and while the catalog now drops it before this runs, any future row
  * with prose in that slot must not lose it either.
+ *
+ * The description is prose, `resolvedModel` is what the CLI will actually
+ * request, and they can disagree. `ANTHROPIC_DEFAULT_OPUS_MODEL=claude-opus-4-8`
+ * remaps the `opus` alias, and CLI 0.3.280 then reports that row as resolving
+ * to `claude-opus-4-8` while its description still opens with "Opus 5.5". The
+ * menu said Opus 5.5, every turn ran on Opus 4.8, and the chip flipped to 4.8
+ * as soon as the stream named the model. When the two name different versions
+ * the label follows `resolvedModel`.
  *
  * @param {object} m Catalog row (SDK ModelInfo shape).
  * @returns {object} a copy with `displayName`/`description` rewritten
@@ -370,9 +396,14 @@ function normalizeModelRow(m) {
   const rest = (leadIsName ? segments.slice(1) : segments)
     .filter(s => !PRICE_SEGMENT.test(s));
 
+  const served = wireModelName(m.resolvedModel);
+  const name = leadIsName && served && served.toLowerCase() !== lead.toLowerCase()
+    ? served
+    : (leadIsName ? lead : String(m.displayName || ''));
+
   return {
     ...m,
-    displayName: leadIsName ? lead : String(m.displayName || ''),
+    displayName: name,
     description: rest.join(' · '),
   };
 }
