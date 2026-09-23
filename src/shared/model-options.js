@@ -26,6 +26,7 @@ const CLAUDE_MODEL_VALUES = [
   '',
   'claude-fable-5-1',
   'claude-fable-5',
+  'claude-opus-5-5',
   'claude-opus-5',
   'claude-opus-4-8',
   'claude-opus-4-7',
@@ -42,6 +43,7 @@ const MODEL_OPTIONS = [
   { value: '',                  label: 'Default (inherit)' },
   { value: 'claude-fable-5-1',  label: 'Fable 5.1' },
   { value: 'claude-fable-5',    label: 'Fable 5' },
+  { value: 'claude-opus-5-5',   label: 'Opus 5.5' },
   { value: 'claude-opus-5',     label: 'Opus 5' },
   { value: 'claude-opus-4-8',   label: 'Opus 4.8' },
   { value: 'claude-opus-4-7',   label: 'Opus 4.7' },
@@ -101,9 +103,17 @@ const LEGACY_MODELS = [
     supportsAdaptiveThinking: true,
   },
   {
+    value: 'claude-opus-5',
+    displayName: 'Opus 5',
+    description: 'Previous generation Opus',
+    supportsEffort: true,
+    supportedEffortLevels: ALL_EFFORTS,
+    supportsAdaptiveThinking: true,
+  },
+  {
     value: 'claude-opus-4-8',
     displayName: 'Opus 4.8',
-    description: 'Previous generation Opus',
+    description: 'Older Opus generation',
     supportsEffort: true,
     supportedEffortLevels: ALL_EFFORTS,
     supportsAdaptiveThinking: true,
@@ -146,8 +156,8 @@ const LEGACY_MODELS = [
  */
 const FALLBACK_PRIMARY = [
   {
-    value: 'claude-opus-5',
-    displayName: 'Opus 5',
+    value: 'claude-opus-5-5',
+    displayName: 'Opus 5.5',
     description: 'Complex agentic coding and enterprise work',
     supportsEffort: true,
     supportedEffortLevels: ALL_EFFORTS,
