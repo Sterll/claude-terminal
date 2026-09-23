@@ -2,6 +2,34 @@
 
 All notable changes to Claude Terminal are documented in this file.
 
+## [1.3.4] - 2026-09-23
+
+### Added
+- **Chat**: Opus 5.5 is in the model picker, and the picker now updates itself when the CLI learns about a new model instead of keeping the name the previous one gave
+- **Chat**: the model and reasoning-effort pickers can be used while a turn is running, like the permission-mode picker beside them. The choice applies to the next turn, and the chip says so until it does
+- **Settings**: GPU terminal rendering can be turned off, for graphics drivers that leave ghost characters behind or draw the caret a column away from the text
+- **Files**: markdown can be read rendered or as source, a file the session touched adds a diff view, and a reload button re-reads from disk
+
+### Changed
+- Opus 5 moves to the "More models" section of the picker, following the CLI, and stays selectable everywhere it was before
+
+### Performance
+- Chat: a long conversation left open for days no longer grows the app's memory the way it did. The part of the transcript well above what you are reading is now held as markup rather than as live elements, which measured 33x smaller per message and around 1 GB on a window open for four days
+
+### Fixed
+- Chat: an "Enhanced" prompt scrolled far enough back keeps its badge working, so the original prompt stays reachable
+- Chat: a filtered table read back later comes back with its search box and its hidden rows agreeing
+- Chat: a spinner no longer stays frozen after the conversation scrolls past it and back
+- Chat: changing the model twice during one turn now reports the switch the session actually made, and a failed switch returns to the model it is really running
+- Chat: a message queued behind a model change is sent after the change reaches Claude, not beside it
+- Usage: the titlebar chip recovers on its own after a credential store refuses once, instead of going quiet for the rest of the session, and its tooltip says when it will try again
+- Usage: repeated failures now stop the retries rather than reopening the credential store every hour, which on macOS meant a password prompt behind the window
+- The `usage_get` and `usage_refresh` tools work at all, report the account they describe, mark figures that are no longer current, and no longer clamp usage past 100% down to 100%
+- Files: "Open in editor" reports when the editor did not start, anywhere in the app, and finds a macOS editor whose command-line shortcut was never installed
+- Files: "Reference in chat" attaches to a conversation of the project you are browsing, and opens one when there is none
+- Files: rendered markdown uses the app's typography instead of the browser's defaults
+- Notifications: the toast window is sized to the card it draws, so nothing is clipped
+
 ## [1.3.3] - 2026-09-22
 
 ### Added

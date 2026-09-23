@@ -12,7 +12,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/downloads/Sterll/claude-terminal/total?color=d97706&label=descargas" alt="Descargas" />
-  <img src="https://img.shields.io/badge/version-1.3.3-orange" alt="Versión" />
+  <img src="https://img.shields.io/badge/version-1.3.4-orange" alt="Versión" />
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-blue" alt="Plataformas" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="Licencia" />
   <img src="https://img.shields.io/badge/electron-43-purple" alt="Electron" />
