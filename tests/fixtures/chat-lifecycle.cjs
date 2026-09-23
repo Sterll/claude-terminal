@@ -20,11 +20,11 @@ function load(sdkPromise, accountEnv = async () => null, listAccounts = async ()
   const module = { exports: {} };
   const mocks = {
     electron: { app: {} },
-    './ModelCatalogService': { setFetcher() {} },
+    './ModelCatalogService': { setFetcher() {}, setCliVersion() {} },
     './AccountManager': { accountEnv, listAccounts },
     './ChromeBridgeService': { getSessionConfig: () => null },
     './RemoteControlService': { onSessionClosed() {} },
-    '../utils/sdkCli': { getSdkCliPath: () => '/unused/fake-cli' },
+    '../utils/sdkCli': { getSdkCliPath: () => '/unused/fake-cli', getSdkCliVersion: () => null },
     '../../shared/cli-failure-text': { isCliFailureText: () => false },
     '../../shared/api-error': { isApiErrorMessage: () => false },
     '../../shared/permission-modes': { isPermissionMode: () => true },

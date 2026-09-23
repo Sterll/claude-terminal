@@ -11,6 +11,7 @@ const {
   recommendedModelId,
   dropDefaultAlias,
   resolveModelSelection,
+  uncataloguedModelLabel,
   dedupeLegacy,
   hasOneMContext,
   normalizeModelRow,
@@ -280,7 +281,7 @@ describe('dedupeLegacy', () => {
     // The state every install is in between an app release and the SDK bump
     // that follows it: Opus 5 sits in the legacy tier because Opus 5.5 replaced
     // it, while the bundled CLI still lists Opus 5 as primary. It must appear
-    // once, in the tier the CLI puts it in — not in both menus at once.
+    // once, in the tier the CLI puts it in, not in both menus at once.
     const result = dedupeLegacy(MENU_MODELS, LEGACY_MODELS);
     expect(result.find(m => m.value === 'claude-opus-5')).toBeUndefined();
     expect(result).toHaveLength(LEGACY_MODELS.length - 1);
@@ -416,5 +417,22 @@ describe('modelFamily / modelTier', () => {
     expect(modelFamily('gpt-5')).toBe('');
     expect(modelTier('')).toBe('standard');
     expect(modelTier(null)).toBe('standard');
+  });
+});
+
+describe('uncataloguedModelLabel', () => {
+  test('keeps the whole version of an id no row covers', () => {
+    // The footer's old fallback, split('-').slice(1, 3), read 'claude-opus-5-5'
+    // as 'opus-5': the previous model's name for the one actually running.
+    expect(uncataloguedModelLabel('claude-opus-5-5')).toBe('opus-5-5');
+    expect(uncataloguedModelLabel('claude-opus-5-5[1m]')).toBe('opus-5-5[1m]');
+  });
+
+  test('is what resolveModelSelection shows for an id it cannot place', () => {
+    expect(resolveModelSelection([], 'claude-opus-5-5', true).label).toBe(uncataloguedModelLabel('claude-opus-5-5'));
+  });
+
+  test('tolerates a missing id', () => {
+    expect(uncataloguedModelLabel(undefined)).toBe('');
   });
 });

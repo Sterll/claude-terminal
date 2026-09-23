@@ -263,6 +263,20 @@ function dropDefaultAlias(models) {
 }
 
 /**
+ * Label for an id no catalog row covers.
+ *
+ * Deliberately literal. A prettified guess loses part of the version: the chat
+ * footer used to take `split('-').slice(1, 3)`, which turned 'claude-opus-5-5'
+ * into 'opus-5' and named the previous model for the one actually running.
+ *
+ * @param {string} id
+ * @returns {string}
+ */
+function uncataloguedModelLabel(id) {
+  return String(id || '').replace(/^claude-/, '');
+}
+
+/**
  * Decide what the picker should show, and whether that decision is worth
  * storing.
  *
@@ -311,7 +325,7 @@ function resolveModelSelection(models, preferred, explicit) {
 
   // An id the catalog doesn't cover — an older setting, or a CLI that moved on.
   // Show it rather than silently swapping the user's model.
-  return { value: preferred, label: preferred.replace(/^claude-/, ''), persist: false };
+  return { value: preferred, label: uncataloguedModelLabel(preferred), persist: false };
 }
 
 // A description segment that is purely pricing, e.g. "$5/$25 per Mtok".
@@ -490,6 +504,7 @@ module.exports = {
   recommendedModelId,
   dropDefaultAlias,
   resolveModelSelection,
+  uncataloguedModelLabel,
   dedupeLegacy,
   hasOneMContext,
   orderPrimary,

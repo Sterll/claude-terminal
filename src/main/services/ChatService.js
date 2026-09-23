@@ -12,7 +12,7 @@ const ModelCatalogService = require('./ModelCatalogService');
 const AccountManager = require('./AccountManager');
 const chromeBridgeService = require('./ChromeBridgeService');
 const remoteControlService = require('./RemoteControlService');
-const { getSdkCliPath } = require('../utils/sdkCli');
+const { getSdkCliPath, getSdkCliVersion } = require('../utils/sdkCli');
 const { isCliFailureText } = require('../../shared/cli-failure-text');
 const { isApiErrorMessage } = require('../../shared/api-error');
 const { isPermissionMode } = require('../../shared/permission-modes');
@@ -3213,6 +3213,9 @@ const chatService = new ChatService();
 // ChatService owns SDK loading, CLI path resolution and runtime detection, so
 // it supplies the spawn rather than the catalog service duplicating any of it.
 ModelCatalogService.setFetcher(() => chatService.fetchModelCatalog());
+// The same binary also decides which catalog is current: its model list is
+// compiled in, so a cache written by another version describes another CLI.
+ModelCatalogService.setCliVersion(getSdkCliVersion());
 
 module.exports = chatService;
 module.exports.normalizeBackgroundTasks = normalizeBackgroundTasks;

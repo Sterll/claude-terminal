@@ -453,6 +453,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     setEffort: (params) => ipcRenderer.invoke('chat-set-effort', params),
     setPermissionMode: (params) => ipcRenderer.invoke('chat-set-permission-mode', params),
     modelCatalog: (params) => ipcRenderer.invoke('chat-model-catalog', params || {}),
+    onModelCatalogChanged: createListener('chat-model-catalog-changed'),
     onMessage: createListener('chat-message'),
     onError: createListener('chat-error'),
     onAccountLimit: createListener('chat-account-limit'),

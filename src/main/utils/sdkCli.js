@@ -40,4 +40,25 @@ function getSdkCliPath() {
   return fs.existsSync(binPath) ? binPath : null;
 }
 
-module.exports = { getSdkCliPath };
+/**
+ * Version of that binary, read from the platform package that ships it.
+ *
+ * The CLI's model list is compiled into the binary, so this is what a cached
+ * model catalog has to be keyed on: an app update that swaps the binary makes
+ * every catalog the previous one wrote describe a CLI that is no longer here.
+ * The package.json sits next to the binary, in app.asar.unpacked too.
+ *
+ * @returns {string|null} null when the binary or its manifest cannot be read
+ */
+function getSdkCliVersion() {
+  const binPath = getSdkCliPath();
+  if (!binPath) return null;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(path.dirname(binPath), 'package.json'), 'utf8'));
+    return typeof pkg.version === 'string' && pkg.version ? pkg.version : null;
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { getSdkCliPath, getSdkCliVersion };
