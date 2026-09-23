@@ -595,7 +595,7 @@ that difference from `AccountManager`.
 | Package | Version | Purpose |
 |---------|---------|---------|
 | `electron` | ^43.7.0 | Desktop framework (Chromium ~140) |
-| `@anthropic-ai/claude-agent-sdk` | ^0.3.260 | Claude Code streaming chat |
+| `@anthropic-ai/claude-agent-sdk` | ^0.3.280 | Claude Code streaming chat |
 | `@xterm/xterm` + addons | ^6.0.0 | Terminal emulator (WebGL, fit) |
 | `node-pty` | ^1.1.0 | PTY process management |
 | `keytar` | ^7.9.0 | OS credential storage |
