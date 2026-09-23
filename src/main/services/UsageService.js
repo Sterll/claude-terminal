@@ -56,6 +56,9 @@ function entryFor(accountId) {
       // become one per poll tick.
       tokenRead: null,
       fetchStartedAt: 0,
+      // How long the next refused or unreadable store read waits before being
+      // tried again. Zero means the next failure starts the ladder over.
+      tokenBackoff: 0,
       // Bumped whenever the account's credentials are invalidated, so a store
       // read still in flight from before the switch is discarded rather than
       // writing the outgoing account's token back into the cache.
@@ -84,9 +87,24 @@ const OAUTH_BETA_HEADER = 'oauth-2025-04-20';
 // A token is therefore held until it actually expires, and an absent or
 // unreadable one is cached too, so a refusal is not retried a minute later.
 const TOKEN_CACHE_MAX = 6 * 60 * 60 * 1000;   // cap for a long-lived token
-// A refusal or missing login needs an explicit refresh/login, not another
-// system password dialog when a timer fires or the user returns to the app.
-const TOKEN_CACHE_BACKOFF = Infinity;
+// A refusal or a missing login must not be retried on the next tick: on darwin
+// that is a system password dialog a minute later, raised behind the window.
+//
+// It used to be `Infinity`, which overshot. `now + Infinity` is `Infinity`, so
+// a single unreadable store, one expired token caught between two CLI
+// rotations, or one 401 during an org blip latched the account at "no token"
+// for the rest of the process. Every later tick short-circuited to the cached
+// null, and the only way back was restarting the app or happening to click the
+// chip, which is the one caller that passes `force`. From the outside that is
+// a usage chip that simply stops updating and never explains itself.
+//
+// Bounded and escalating instead: the first refusal waits five minutes and
+// each one after that doubles, up to an hour. At the cap that is two dozen
+// store reads a day rather than the ~1400 a per-tick retry would cost, which
+// is the dialog storm the backoff exists to prevent, and the account recovers
+// on its own once the CLI writes a token that works.
+const TOKEN_BACKOFF_MIN = 5 * 60 * 1000;
+const TOKEN_BACKOFF_MAX = 60 * 60 * 1000;
 const TOKEN_EXPIRY_MARGIN = 60 * 1000;        // re-read shortly before expiry
 
 // How long a caller waits for the credential store before giving up on this
@@ -146,6 +164,21 @@ function readCredentialsFor(accountId) {
  *   password prompt, which is the whole reason the cache above is that long.
  * @returns {Promise<string|null>}
  */
+/**
+ * Park an account after a store read that produced no usable token, and say
+ * when it will be tried again.
+ *
+ * @param {Object} entry
+ * @param {number} now
+ */
+function backOffToken(entry, now) {
+  entry.tokenCache = null;
+  entry.tokenBackoff = entry.tokenBackoff
+    ? Math.min(entry.tokenBackoff * 2, TOKEN_BACKOFF_MAX)
+    : TOKEN_BACKOFF_MIN;
+  entry.tokenCacheUntil = now + entry.tokenBackoff;
+}
+
 async function readOAuthToken(accountId, force = false) {
   const entry = entryFor(accountId);
   const now = Date.now();
@@ -157,7 +190,12 @@ async function readOAuthToken(accountId, force = false) {
   // point of `force` is to re-examine the store, and a refusal that outlived
   // its cause (the CLI re-authenticated, the org re-enabled the account) was
   // otherwise unrecoverable short of restarting the app.
-  if (force) entry.rejectedToken = null;
+  // Asking explicitly also restarts the ladder: the gesture means "look now",
+  // and a user who clicks twice should not be told to wait an hour.
+  if (force) {
+    entry.rejectedToken = null;
+    entry.tokenBackoff = 0;
+  }
 
   return awaitWithTimeout(startTokenRead(entry), TOKEN_READ_TIMEOUT, () => {
     entry.lastError = 'Credential store did not answer in time (a Keychain prompt may be waiting)';
@@ -202,8 +240,7 @@ function startTokenRead(entry) {
     if (token !== null && token === entry.rejectedToken) {
       // The store still holds the token the API just refused. Reading it again
       // buys nothing until the CLI writes a new one.
-      entry.tokenCache = null;
-      entry.tokenCacheUntil = now + TOKEN_CACHE_BACKOFF;
+      backOffToken(entry, now);
       return null;
     }
 
@@ -212,13 +249,19 @@ function startTokenRead(entry) {
     // During the last minute the CLI may not have rotated the token yet.
     // Caching to expiresAt - margin would already be in the past and re-open
     // the Keychain on every tab switch. Keep that token until its real expiry.
+    if (!token) {
+      backOffToken(entry, now);
+      return null;
+    }
+
+    // A store that answered with a usable token clears the ladder, so the next
+    // failure starts at five minutes rather than wherever the last one ended.
+    entry.tokenBackoff = 0;
     const expiry = Number(expiresAt);
     const refreshAt = Number.isFinite(expiry) && expiry > now
       ? (expiry > now + TOKEN_EXPIRY_MARGIN ? expiry - TOKEN_EXPIRY_MARGIN : expiry)
       : Infinity;
-    entry.tokenCacheUntil = token
-      ? Math.min(refreshAt, now + TOKEN_CACHE_MAX)
-      : now + TOKEN_CACHE_BACKOFF;
+    entry.tokenCacheUntil = Math.min(refreshAt, now + TOKEN_CACHE_MAX);
     return entry.tokenCache;
   })();
 
@@ -263,6 +306,7 @@ function invalidateCredentials(accountId) {
   const reset = (entry) => {
     entry.tokenCache = null;
     entry.tokenCacheUntil = 0;
+    entry.tokenBackoff = 0;
     entry.rejectedToken = null;
     entry.readGeneration += 1;
     entry.tokenRead = null;
@@ -547,7 +591,13 @@ function getUsageData(accountId) {
     lastFetch: entry.lastFetch ? entry.lastFetch.toISOString() : null,
     isFetching: entry.isFetching,
     stale: isEntryStale(entry),
-    error: entry.lastError
+    error: entry.lastError,
+    // When the store gave back no usable token we are parked until this
+    // moment. Surfaced so "the chip stopped moving" can be read as "waiting
+    // until 14:05, click to try now" rather than as an app that has broken.
+    retryAt: (!entry.tokenCache && entry.tokenBackoff > 0 && entry.tokenCacheUntil > Date.now())
+      ? new Date(entry.tokenCacheUntil).toISOString()
+      : null
   };
 }
 

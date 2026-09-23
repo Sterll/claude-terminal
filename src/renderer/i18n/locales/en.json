@@ -3976,6 +3976,7 @@
     "usageRefresh": "Refresh usage"
   },
   "usage": {
+    "staleRetry": "Usage data may be out of date - the last refresh failed. Next attempt at {time}; click to try now. {error}",
     "stale": "Usage data may be out of date - the last refresh failed. {error}"
   },
   "github": {

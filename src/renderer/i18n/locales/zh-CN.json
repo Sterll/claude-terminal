@@ -3976,6 +3976,7 @@
     "usageRefresh": "刷新用量"
   },
   "usage": {
+    "staleRetry": "使用情况数据可能已过时 - 上次刷新失败。下次尝试时间 {time}；点击可立即重试。 {error}",
     "stale": "使用情况数据可能已过时 - 上次刷新失败。 {error}"
   },
   "github": {

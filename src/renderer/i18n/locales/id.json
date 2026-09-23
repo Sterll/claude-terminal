@@ -3976,6 +3976,7 @@
     "usageRefresh": "Segarkan penggunaan"
   },
   "usage": {
+    "staleRetry": "Data penggunaan mungkin sudah tidak terbaru - pemuatan terakhir gagal. Percobaan berikutnya pukul {time}; klik untuk mencoba sekarang. {error}",
     "stale": "Data penggunaan mungkin sudah tidak terbaru - pemuatan terakhir gagal. {error}"
   },
   "github": {

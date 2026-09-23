@@ -204,23 +204,131 @@ describe('OAuth token cache', () => {
     expect(readCredentials).toHaveBeenCalledTimes(1);
   });
 
-  test('an unreadable store stays quiet after returning hours later, until explicit refresh', async () => {
+  test('an explicit refresh skips the wait and picks up a store that works again', async () => {
     const usage = load();
     const start = Date.now();
     const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
     try {
       readCredentials.mockResolvedValue(null);
       await usage.fetchUsage();
-      clock.mockReturnValue(start + 12 * HOUR);
+      // Still inside the first backoff window: a poll must not reopen the store.
+      clock.mockReturnValue(start + 60 * 1000);
       usage.onWindowShow();
       await new Promise(resolve => setTimeout(resolve, 0));
       await usage.refreshUsage();
       expect(readCredentials).toHaveBeenCalledTimes(1);
+
       readCredentials.mockResolvedValue(validCreds('signed-in-again'));
       await usage.refreshUsage(null, true);
       expect(readCredentials).toHaveBeenCalledTimes(2);
       expect(httpsGet.mock.calls.at(-1)[0].headers.Authorization).toBe('Bearer signed-in-again');
     } finally { clock.mockRestore(); }
+  });
+
+  /**
+   * The backoff after a store that gave back no usable token used to be
+   * `Infinity`. `now + Infinity` is `Infinity`, so one unreadable store, one
+   * token caught expired between two CLI rotations, or one 401 during an org
+   * blip parked the account at "no token" for the rest of the process: every
+   * later tick short-circuited to the cached null, and the only ways back were
+   * restarting the app or happening to click the chip, which is the sole
+   * caller that passes `force`. What the user saw was a usage chip that
+   * stopped updating and never said why.
+   *
+   * These pin the two halves of the replacement: it still refuses to reopen
+   * the store on the next tick, and it does recover on its own.
+   */
+  describe('recovery after a store that gave back no token', () => {
+    const MINUTE = 60 * 1000;
+
+    test('retries on its own once the backoff elapses', async () => {
+      const usage = load();
+      const start = Date.now();
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+      try {
+        readCredentials.mockResolvedValue(null);
+        await usage.fetchUsage();
+        expect(readCredentials).toHaveBeenCalledTimes(1);
+
+        // Four minutes in: still parked.
+        clock.mockReturnValue(start + 4 * MINUTE);
+        await usage.fetchUsage();
+        expect(readCredentials).toHaveBeenCalledTimes(1);
+
+        // Past five: the store is consulted again, with no click needed.
+        clock.mockReturnValue(start + 6 * MINUTE);
+        readCredentials.mockResolvedValue(validCreds('back-again'));
+        await usage.fetchUsage();
+
+        expect(readCredentials).toHaveBeenCalledTimes(2);
+        expect(httpsGet.mock.calls.at(-1)[0].headers.Authorization).toBe('Bearer back-again');
+      } finally { clock.mockRestore(); }
+    });
+
+    test('doubles the wait each time and caps it, so it cannot become a poll', async () => {
+      const usage = load();
+      const start = Date.now();
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+      try {
+        readCredentials.mockResolvedValue(null);
+        let at = start;
+        // 5, 10, 20, 40, then capped at 60 minutes.
+        for (const wait of [5, 10, 20, 40, 60, 60]) {
+          await usage.fetchUsage();
+          at += wait * MINUTE + 1000;
+          clock.mockReturnValue(at);
+        }
+        await usage.fetchUsage();
+
+        // Seven reads over more than three hours, not one per tick.
+        expect(readCredentials).toHaveBeenCalledTimes(7);
+      } finally { clock.mockRestore(); }
+    });
+
+    test('a store that works again starts the ladder over', async () => {
+      const usage = load();
+      const start = Date.now();
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+      try {
+        readCredentials.mockResolvedValue(null);
+        await usage.fetchUsage();
+        clock.mockReturnValue(start + 6 * MINUTE);
+        await usage.fetchUsage();
+        clock.mockReturnValue(start + 20 * MINUTE);
+        readCredentials.mockResolvedValue(validCreds('ok'));
+        await usage.fetchUsage();
+
+        // Failing again now waits five minutes, not the twenty it had climbed to.
+        readCredentials.mockResolvedValue(null);
+        clock.mockReturnValue(start + 30 * MINUTE);
+        await usage.refreshUsage(null, true);
+        const callsBefore = readCredentials.mock.calls.length;
+        clock.mockReturnValue(start + 36 * MINUTE);
+        await usage.fetchUsage();
+
+        expect(readCredentials.mock.calls.length).toBe(callsBefore + 1);
+      } finally { clock.mockRestore(); }
+    });
+
+    test('says when it will try again, so the chip can stop looking broken', async () => {
+      const usage = load();
+      const start = Date.now();
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+      try {
+        readCredentials.mockResolvedValue(null);
+        await usage.fetchUsage();
+
+        const retryAt = usage.getUsageData().retryAt;
+        expect(retryAt).not.toBeNull();
+        expect(new Date(retryAt).getTime()).toBe(start + 5 * MINUTE);
+
+        clock.mockReturnValue(start + 6 * MINUTE);
+        readCredentials.mockResolvedValue(validCreds());
+        await usage.fetchUsage();
+
+        expect(usage.getUsageData().retryAt).toBeNull();
+      } finally { clock.mockRestore(); }
+    });
   });
 
   test('re-reads once when the API refuses the token, then stops', async () => {

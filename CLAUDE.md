@@ -90,7 +90,7 @@ Electron Renderer Process (Browser)
 ├── src/renderer/workflow-fields/    # 13 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN locales (3723 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN locales (3724 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch
 
 Project Types (Plugin System)
@@ -174,7 +174,7 @@ Remote UI (PWA for mobile)
 | `TerminalService.js` | node-pty management, adaptive output batching (4/16/32 ms), Claude CLI launch with `--resume` |
 | `ChatService.js` | Claude Agent SDK bridge: streaming input mode, `maxTurns: 100`, permission forwarding, persistent haiku naming session, fork/rewind |
 | `GitHubAuthService.js` | GitHub OAuth Device Flow + API, keytar storage, GitHub Enterprise support (Client ID: `Ov23liYfl42qwDVVk99l`) |
-| `UsageService.js` | Claude usage via OAuth API (`api.anthropic.com/api/oauth/usage`) with PTY fallback, 5 min staleness |
+| `UsageService.js` | Claude usage via OAuth API (`api.anthropic.com/api/oauth/usage`) with PTY fallback, 5 min staleness. A credential store that gives back no usable token parks the account on an **escalating, bounded** backoff (5 min doubling to 1 h), not on `Infinity`: that never recovered, so one unreadable store or one token caught between two CLI rotations froze the chip for the life of the process. `getUsageData().retryAt` carries the next attempt so the tooltip can say "waiting" rather than leaving the user with a chip that stopped |
 | `McpService.js` | MCP server child process spawning with env vars, force-kill via taskkill |
 | `MarketplaceService.js` | Skill marketplace (`skills.sh/api/search`), git clone install, caching (5-30 min TTL) |
 | `McpRegistryService.js` | MCP server registry browsing (`registry.modelcontextprotocol.io/v0.1`), pagination, caching |
@@ -400,7 +400,7 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 ### Internationalization (`src/renderer/i18n/locales/`)
 
 - **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`)
-- **Keys:** 3723 per locale, all five in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
+- **Keys:** 3724 per locale, all five in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
 - **Loading:** only `en.json` is bundled eagerly, as the guaranteed-loaded fallback for `t()`; the others are fetched by `initI18n()`
 - **Detection:** auto-detect from `navigator.language`, `DEFAULT_LANGUAGE` is `fr`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`, `data-i18n="..."` for static HTML

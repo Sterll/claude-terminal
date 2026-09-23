@@ -3976,6 +3976,7 @@
     "usageRefresh": "Actualiser la consommation"
   },
   "usage": {
+    "staleRetry": "Données d'usage peut-être obsolètes - la dernière actualisation a échoué. Prochaine tentative à {time} ; cliquez pour réessayer maintenant. {error}",
     "stale": "Données d'usage peut-être obsolètes - la dernière actualisation a échoué. {error}"
   },
   "github": {
