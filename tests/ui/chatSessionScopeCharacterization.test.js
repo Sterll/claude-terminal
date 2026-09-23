@@ -352,6 +352,80 @@ describe('chat session-scoped model / effort / mode (characterization)', () => {
     });
   });
 
+  // ── A catalog arriving after the tab opened ──
+  //
+  // Main pushes the model catalog once the CLI answers, so a tab that opened
+  // against the offline fallback stops naming the previous CLI's model. That
+  // repaint may not turn into a change of the conversation: the push never
+  // talks to the SDK, so anything it moves in the footer is a footer that now
+  // disagrees with the session — and it would arrive without going through the
+  // parking a mid-turn pick goes through.
+
+  describe('a catalog pushed after the tab opened', () => {
+    /** The shape `chat-model-catalog-changed` delivers. */
+    const push = (primary, recommended) => {
+      listeners.onModelCatalogChanged({
+        success: true, primary, legacy: [], recommended, source: 'cli',
+      });
+    };
+
+    const ROW = (value, displayName, levels) => ({
+      value,
+      displayName,
+      supportsEffort: true,
+      supportedEffortLevels: levels,
+    });
+
+    it('does not re-derive the model of a session that is already running', async () => {
+      const before = wrapper.querySelector('.chat-model-label').textContent;
+
+      // Deliberately not Opus 5.5: the offline fallback tier already leads
+      // with it, so a push naming it would leave the label where it was and
+      // the assertion would hold with or without the guard.
+      push([ROW('claude-sonnet-5', 'Sonnet 5', ['low', 'medium', 'high', 'max'])], 'claude-sonnet-5');
+      await flush();
+
+      // The SDK was handed a model at start and nothing here told it otherwise.
+      expect(wrapper.querySelector('.chat-model-label').textContent).toBe(before);
+      expect(calls.filter(c => c.method === 'setModel')).toHaveLength(0);
+    });
+
+    it('does not rewrite the effort of a session that is already running', async () => {
+      openMenu('.chat-effort-btn');
+      rows('.chat-effort-option').find(r => r.dataset.effort === 'low').click();
+      await flush();
+      listeners.onDone({ sessionId, interrupted: false });
+      await flush();
+
+      const before = wrapper.querySelector('.chat-effort-label').textContent;
+      const callsBefore = calls.filter(c => c.method === 'setEffort').length;
+
+      // A ladder that no longer offers the level this conversation is on.
+      push([ROW('claude-opus-5-5', 'Opus 5.5', ['high', 'max'])], 'claude-opus-5-5');
+      await flush();
+
+      expect(wrapper.querySelector('.chat-effort-label').textContent).toBe(before);
+      expect(calls.filter(c => c.method === 'setEffort')).toHaveLength(callsBefore);
+    });
+
+    it('still corrects a tab that has not started a session yet', async () => {
+      // The case the push exists for: this one opened before the CLI answered,
+      // so its chip is whatever the offline fallback resolved to.
+      const freshWrapper = document.createElement('div');
+      document.body.appendChild(freshWrapper);
+      const { createChatView } = require('../../src/renderer/ui/components/ChatView');
+      const fresh = createChatView(freshWrapper, { id: 'p1', name: 'Test', path: '/tmp/test' });
+      await flush();
+
+      push([ROW('claude-sonnet-5', 'Sonnet 5', ['low', 'medium', 'high', 'max'])], 'claude-sonnet-5');
+      await flush();
+
+      expect(freshWrapper.querySelector('.chat-model-label').textContent).toContain('Sonnet 5');
+
+      try { fresh.destroy(); } catch (_) { /* teardown is best effort */ }
+    });
+  });
+
   // ── Cross-tab ──
 
   describe('two conversations side by side', () => {

@@ -845,9 +845,24 @@ class ChatView extends BaseComponent {
   // The menu is rebuilt on every open, the chip is not: a catalog main pushes
   // after the first load (a CLI upgrade surfacing on the first session start)
   // has to repaint it here, or it keeps the label the previous CLI gave.
+  //
+  // Re-deriving the selection is only allowed while nothing is running on it.
+  // A live session was handed a concrete model at start and this handler never
+  // talks to the SDK, so moving the chip or the effort here would leave the
+  // footer naming something the running turn is not using — and would walk
+  // straight past the parking a mid-turn pick goes through. The tab this push
+  // exists for is the one that has *not* started yet: it resolved against the
+  // fallback tier because the CLI had not answered when it opened, and it is
+  // still free to correct itself.
   unsubscribers.push(ModelCatalog.subscribe(() => {
-    applyResolvedModel();
-    syncEffortVisibility();
+    if (sessionId) {
+      // Repaint only. A newer catalog may describe the same model's effort
+      // ladder differently, but which level is selected is the conversation's.
+      syncEffortVisibility({ adjust: false });
+    } else {
+      applyResolvedModel();
+      syncEffortVisibility();
+    }
     // The stream's model, once known, names the chip; relabel it too.
     if (model) updateStatusInfo();
     if (modelDropdown.style.display !== 'none') buildModelDropdown();
@@ -1091,11 +1106,17 @@ class ChatView extends BaseComponent {
   /**
    * Hide the whole control on a model without effort support — Claude Desktop
    * drops the menu entirely for Haiku rather than showing a dead one.
+   *
+   * @param {{ adjust?: boolean }} [opts] - `adjust: false` shows or hides the
+   *   control without touching which level is selected. Moving the selection is
+   *   a change to the conversation, not a repaint, and there is one caller —
+   *   the catalog push — that runs while a turn may be in flight.
    */
-  function syncEffortVisibility() {
+  function syncEffortVisibility({ adjust = true } = {}) {
     const efforts = availableEfforts();
     const supported = efforts.length > 0;
     effortBtn.parentElement.style.display = supported ? '' : 'none';
+    if (!adjust) return;
     if (supported && !efforts.some(e => e.id === selectedEffort)) {
       // The stored level isn't on this model's ladder — fall back to its
       // default rather than sending a level the CLI will reject.
