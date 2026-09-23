@@ -123,7 +123,7 @@
     "terminalOpensHere": "Terminal will open here",
     "claudeAwaits": "Claude awaits your response",
     "notifDone": "Task complete",
-    "notifToolsDone": "Task complete — {count} tools used",
+    "notifToolsDone": "Task complete: {count} tools used",
     "claudeMdAnalyze": "Review CLAUDE.md?",
     "claudeMdAnalyzeDesc": "Session used {count} tools. Review CLAUDE.md for potential updates?",
     "claudeMdOpen": "Open CLAUDE.md",
