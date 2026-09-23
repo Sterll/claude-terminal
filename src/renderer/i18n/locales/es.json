@@ -3977,6 +3977,7 @@
   },
   "usage": {
     "staleRetry": "Datos de uso posiblemente desactualizados - la última actualización falló. Próximo intento a las {time}; haz clic para reintentar ahora. {error}",
+    "staleGaveUp": "Datos de uso posiblemente desactualizados - los reintentos automáticos se detuvieron tras varios fallos. Haz clic para reintentar ahora. {error}",
     "stale": "Datos de uso posiblemente desactualizados - la última actualización falló. {error}"
   },
   "github": {

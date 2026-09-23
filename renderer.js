@@ -7158,6 +7158,33 @@ function updateAllResets() {
 }
 
 /**
+ * Why the figures are not current, and what the user can do about it.
+ *
+ * A credential store that gave back no usable token parks the account on an
+ * escalating backoff rather than being retried every minute, which is right,
+ * but it used to leave the chip silently frozen. Naming the retry time makes
+ * the difference between "waiting" and "broken" visible, and the click that
+ * skips the wait is the chip itself.
+ *
+ * @param {{ error?: string, retryAt?: string|null, gaveUp?: boolean }} info
+ * @returns {string}
+ */
+function _usageStaleTitle(info) {
+  const error = (info && info.error) || '';
+  // Given up is not the same as waiting: there is no next attempt to name, and
+  // the chip would otherwise read as "still trying" while nothing is.
+  if (info && info.gaveUp) return t('usage.staleGaveUp', { error });
+  const retryAt = info && info.retryAt ? new Date(info.retryAt) : null;
+  if (retryAt && !Number.isNaN(retryAt.getTime())) {
+    return t('usage.staleRetry', {
+      error,
+      time: retryAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
+    });
+  }
+  return t('usage.stale', { error });
+}
+
+/**
  * Fetch and update usage.
  *
  * `force` re-reads the account's credential store instead of trusting the
@@ -7169,30 +7196,6 @@ function updateAllResets() {
  *
  * @param {boolean} [force]
  */
-/**
- * Why the figures are not current, and what the user can do about it.
- *
- * A credential store that gave back no usable token parks the account on an
- * escalating backoff rather than being retried every minute, which is right,
- * but it used to leave the chip silently frozen. Naming the retry time makes
- * the difference between "waiting" and "broken" visible, and the click that
- * skips the wait is the chip itself.
- *
- * @param {{ error?: string, retryAt?: string|null }} info
- * @returns {string}
- */
-function _usageStaleTitle(info) {
-  const error = (info && info.error) || '';
-  const retryAt = info && info.retryAt ? new Date(info.retryAt) : null;
-  if (retryAt && !Number.isNaN(retryAt.getTime())) {
-    return t('usage.staleRetry', {
-      error,
-      time: retryAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
-    });
-  }
-  return t('usage.stale', { error });
-}
-
 async function refreshUsageDisplay(force = false) {
   if (!usageElements.container) return;
 

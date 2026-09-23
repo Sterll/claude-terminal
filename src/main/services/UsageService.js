@@ -61,6 +61,8 @@ function entryFor(accountId) {
       // How long the next refused or unreadable store read waits before being
       // tried again. Zero means the next failure starts the ladder over.
       tokenBackoff: 0,
+      tokenFailures: 0,
+      tokenGaveUp: false,
       // Bumped whenever the account's credentials are invalidated, so a store
       // read still in flight from before the switch is discarded rather than
       // writing the outgoing account's token back into the cache.
@@ -107,6 +109,21 @@ const TOKEN_CACHE_MAX = 6 * 60 * 60 * 1000;   // cap for a long-lived token
 // on its own once the CLI writes a token that works.
 const TOKEN_BACKOFF_MIN = 5 * 60 * 1000;
 const TOKEN_BACKOFF_MAX = 60 * 60 * 1000;
+/**
+ * Consecutive failed store reads after which automatic retrying stops for good.
+ *
+ * The ladder alone caps the *interval*, not the total. A store that is refused
+ * permanently — Keychain access denied and never granted — would be reopened
+ * once an hour for as long as the app is open, and on darwin each of those is
+ * a password dialog raised behind the window: ~24 a day, which is the timer
+ * -driven prompt the old `Infinity` was there to prevent.
+ *
+ * Eight failures is 5+10+20+40+60+60+60 minutes of trying, about four and a
+ * half hours. Past that the cause is not transient and only the user can
+ * resolve it, so the chip stops asking and waits for the explicit refresh —
+ * which still clears everything, so this is a pause, not a dead end.
+ */
+const TOKEN_BACKOFF_GIVE_UP = 8;
 const TOKEN_EXPIRY_MARGIN = 60 * 1000;        // re-read shortly before expiry
 
 // How long a caller waits for the credential store before giving up on this
@@ -150,6 +167,28 @@ function readCredentialsFor(accountId) {
 }
 
 /**
+ * Park an account after a store read that produced no usable token, and say
+ * when it will be tried again.
+ *
+ * @param {Object} entry
+ * @param {number} now
+ */
+function backOffToken(entry, now) {
+  entry.tokenCache = null;
+  entry.tokenFailures = (entry.tokenFailures || 0) + 1;
+  entry.tokenBackoff = entry.tokenBackoff
+    ? Math.min(entry.tokenBackoff * 2, TOKEN_BACKOFF_MAX)
+    : TOKEN_BACKOFF_MIN;
+  if (entry.tokenFailures >= TOKEN_BACKOFF_GIVE_UP) {
+    // Stop reopening the store on a timer. Only `force` clears this.
+    entry.tokenGaveUp = true;
+    entry.tokenCacheUntil = Infinity;
+    return;
+  }
+  entry.tokenCacheUntil = now + entry.tokenBackoff;
+}
+
+/**
  * Read the OAuth access token for an account.
  *
  * A bound account is read from its own credential directory — the same one its
@@ -166,21 +205,6 @@ function readCredentialsFor(accountId) {
  *   password prompt, which is the whole reason the cache above is that long.
  * @returns {Promise<string|null>}
  */
-/**
- * Park an account after a store read that produced no usable token, and say
- * when it will be tried again.
- *
- * @param {Object} entry
- * @param {number} now
- */
-function backOffToken(entry, now) {
-  entry.tokenCache = null;
-  entry.tokenBackoff = entry.tokenBackoff
-    ? Math.min(entry.tokenBackoff * 2, TOKEN_BACKOFF_MAX)
-    : TOKEN_BACKOFF_MIN;
-  entry.tokenCacheUntil = now + entry.tokenBackoff;
-}
-
 async function readOAuthToken(accountId, force = false) {
   const entry = entryFor(accountId);
   const now = Date.now();
@@ -197,6 +221,8 @@ async function readOAuthToken(accountId, force = false) {
   if (force) {
     entry.rejectedToken = null;
     entry.tokenBackoff = 0;
+    entry.tokenFailures = 0;
+    entry.tokenGaveUp = false;
   }
 
   return awaitWithTimeout(startTokenRead(entry), TOKEN_READ_TIMEOUT, () => {
@@ -259,6 +285,8 @@ function startTokenRead(entry) {
     // A store that answered with a usable token clears the ladder, so the next
     // failure starts at five minutes rather than wherever the last one ended.
     entry.tokenBackoff = 0;
+    entry.tokenFailures = 0;
+    entry.tokenGaveUp = false;
     const expiry = Number(expiresAt);
     const refreshAt = Number.isFinite(expiry) && expiry > now
       ? (expiry > now + TOKEN_EXPIRY_MARGIN ? expiry - TOKEN_EXPIRY_MARGIN : expiry)
@@ -309,6 +337,8 @@ function invalidateCredentials(accountId) {
     entry.tokenCache = null;
     entry.tokenCacheUntil = 0;
     entry.tokenBackoff = 0;
+    entry.tokenFailures = 0;
+    entry.tokenGaveUp = false;
     entry.rejectedToken = null;
     entry.readGeneration += 1;
     entry.tokenRead = null;
@@ -487,7 +517,7 @@ async function fetchUsage(accountId, force = false) {
         entry.lastError = null;
         entry.isStale = false;
         console.log('[Usage] Fetched via API');
-        mirrorToDisk();
+        mirrorToDisk(entry);
         if (_onUpdateCallback) _onUpdateCallback(data, entry.accountId);
         _maybeNotifyLimit(entry, data);
         return data;
@@ -518,7 +548,7 @@ async function fetchUsage(accountId, force = false) {
     entry.isStale = true;
     // Mirrored on the way out too: a consumer reading the file needs to see
     // that these figures stopped being confirmed, not just the last good ones.
-    mirrorToDisk();
+    mirrorToDisk(entry);
     if (entry.usageData) {
       console.warn('[Usage] API unavailable, serving STALE cached data:', entry.lastError);
       return entry.usageData;
@@ -589,6 +619,22 @@ function stopPeriodicFetch() {
  * the API last confirmed, which may be arbitrarily old.
  * @returns {Object}
  */
+/**
+ * When the token backoff has this account parked, the moment it is next
+ * allowed to reopen the credential store. Null when nothing is waiting.
+ *
+ * Shared by getUsageData and getFetchState rather than inlined in one of them:
+ * the chip reads the first on its 30s poll and the second on an explicit
+ * refresh, and only one of the two used to carry this — so the tooltip that
+ * names the next attempt never appeared on the path the user actually takes
+ * when they notice the chip has stopped.
+ */
+function retryAtFor(entry) {
+  if (entry.tokenGaveUp) return null;
+  const parked = !entry.tokenCache && entry.tokenBackoff > 0 && entry.tokenCacheUntil > Date.now();
+  return parked ? new Date(entry.tokenCacheUntil).toISOString() : null;
+}
+
 function getUsageData(accountId) {
   const entry = entryFor(accountId);
   return {
@@ -601,9 +647,8 @@ function getUsageData(accountId) {
     // When the store gave back no usable token we are parked until this
     // moment. Surfaced so "the chip stopped moving" can be read as "waiting
     // until 14:05, click to try now" rather than as an app that has broken.
-    retryAt: (!entry.tokenCache && entry.tokenBackoff > 0 && entry.tokenCacheUntil > Date.now())
-      ? new Date(entry.tokenCacheUntil).toISOString()
-      : null
+    retryAt: retryAtFor(entry),
+    gaveUp: !!entry.tokenGaveUp
   };
 }
 
@@ -627,14 +672,16 @@ function isEntryStale(entry) {
 
 /**
  * Staleness of the most recent fetch attempt.
- * @returns {{ stale: boolean, error: string|null, lastFetch: string|null }}
+ * @returns {{ stale: boolean, error: string|null, lastFetch: string|null, retryAt: string|null }}
  */
 function getFetchState(accountId) {
   const entry = entryFor(accountId);
   return {
     stale: isEntryStale(entry),
     error: entry.lastError,
-    lastFetch: entry.lastFetch ? entry.lastFetch.toISOString() : null
+    lastFetch: entry.lastFetch ? entry.lastFetch.toISOString() : null,
+    retryAt: retryAtFor(entry),
+    gaveUp: !!entry.tokenGaveUp
   };
 }
 
@@ -768,9 +815,14 @@ function mirrorFile() {
  * Never throws. A read-only data directory is not a reason to fail a fetch
  * that otherwise worked.
  */
-function mirrorToDisk() {
+function mirrorToDisk(entry) {
   try {
-    const entry = entryFor(getFocusedAccount());
+    // Only the focused account is published, and `fetchUsage` runs for any
+    // account, so a fetch for another one must leave the file alone. It used
+    // to re-read the focused entry instead, which on a fetch for a background
+    // account republished an entry nobody had fetched — rendered by the MCP
+    // tool as a confident "No limits reported for this account."
+    if (!entry || entry.accountId !== entryFor(getFocusedAccount()).accountId) return;
     const payload = {
       accountId: entry.accountId,
       timestamp: entry.usageData?.timestamp || null,

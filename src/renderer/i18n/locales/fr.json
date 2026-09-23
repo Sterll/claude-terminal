@@ -3977,6 +3977,7 @@
   },
   "usage": {
     "staleRetry": "Données d'usage peut-être obsolètes - la dernière actualisation a échoué. Prochaine tentative à {time} ; cliquez pour réessayer maintenant. {error}",
+    "staleGaveUp": "Données d'usage peut-être obsolètes - les tentatives automatiques se sont arrêtées après plusieurs échecs. Cliquez pour réessayer maintenant. {error}",
     "stale": "Données d'usage peut-être obsolètes - la dernière actualisation a échoué. {error}"
   },
   "github": {

@@ -3977,6 +3977,7 @@
   },
   "usage": {
     "staleRetry": "Data penggunaan mungkin sudah tidak terbaru - pemuatan terakhir gagal. Percobaan berikutnya pukul {time}; klik untuk mencoba sekarang. {error}",
+    "staleGaveUp": "Data penggunaan mungkin sudah tidak terbaru - percobaan otomatis dihentikan setelah berkali-kali gagal. Klik untuk mencoba sekarang. {error}",
     "stale": "Data penggunaan mungkin sudah tidak terbaru - pemuatan terakhir gagal. {error}"
   },
   "github": {
