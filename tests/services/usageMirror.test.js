@@ -112,6 +112,22 @@ describe('usage.json', () => {
     expect(written.error).toEqual(expect.any(String));
   });
 
+  // Only the focused account is published, but `fetchUsage` runs for any of
+  // them. It used to re-read the focused entry on every call regardless, so a
+  // fetch for a background account republished an entry nobody had fetched —
+  // which the MCP tool renders as a confident "No limits reported for this
+  // account." over whatever was there before.
+  test('a fetch for another account leaves the file alone', async () => {
+    const usage = load();
+    await usage.fetchUsage();
+    const before = readMirror();
+    expect(before.buckets).toHaveLength(1);
+
+    await usage.fetchUsage('some-other-account');
+
+    expect(readMirror()).toEqual(before);
+  });
+
   test('a read-only data directory does not fail the fetch', async () => {
     const usage = load();
     const spy = jest.spyOn(fs, 'writeFileSync').mockImplementation(() => {

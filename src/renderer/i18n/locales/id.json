@@ -123,7 +123,7 @@
     "terminalOpensHere": "Terminal akan terbuka di sini",
     "claudeAwaits": "Claude menunggu jawaban Anda",
     "notifDone": "Tugas selesai",
-    "notifToolsDone": "Tugas selesai — {count} tool digunakan",
+    "notifToolsDone": "Tugas selesai: {count} tool digunakan",
     "claudeMdAnalyze": "Tinjau CLAUDE.md?",
     "claudeMdAnalyzeDesc": "Sesi ini menggunakan {count} tool. Tinjau CLAUDE.md untuk kemungkinan pembaruan?",
     "claudeMdOpen": "Buka CLAUDE.md",
@@ -3977,6 +3977,7 @@
   },
   "usage": {
     "staleRetry": "Data penggunaan mungkin sudah tidak terbaru - pemuatan terakhir gagal. Percobaan berikutnya pukul {time}; klik untuk mencoba sekarang. {error}",
+    "staleGaveUp": "Data penggunaan mungkin sudah tidak terbaru - percobaan otomatis dihentikan setelah berkali-kali gagal. Klik untuk mencoba sekarang. {error}",
     "stale": "Data penggunaan mungkin sudah tidak terbaru - pemuatan terakhir gagal. {error}"
   },
   "github": {

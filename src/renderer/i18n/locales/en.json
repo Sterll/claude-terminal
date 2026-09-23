@@ -123,7 +123,7 @@
     "terminalOpensHere": "Terminal will open here",
     "claudeAwaits": "Claude awaits your response",
     "notifDone": "Task complete",
-    "notifToolsDone": "Task complete — {count} tools used",
+    "notifToolsDone": "Task complete: {count} tools used",
     "claudeMdAnalyze": "Review CLAUDE.md?",
     "claudeMdAnalyzeDesc": "Session used {count} tools. Review CLAUDE.md for potential updates?",
     "claudeMdOpen": "Open CLAUDE.md",
@@ -3977,6 +3977,7 @@
   },
   "usage": {
     "staleRetry": "Usage data may be out of date - the last refresh failed. Next attempt at {time}; click to try now. {error}",
+    "staleGaveUp": "Usage data may be out of date - automatic retries have stopped after repeated failures. Click to try now. {error}",
     "stale": "Usage data may be out of date - the last refresh failed. {error}"
   },
   "github": {

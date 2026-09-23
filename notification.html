@@ -38,7 +38,12 @@
       display: flex;
       align-items: flex-start;
       gap: 12px;
-      height: calc(100vh - 4px);
+      /* The window is sized to the card, not the card to the window: the script
+         measures the laid-out content and asks main to resize (see fitToContent).
+         min-height is what covers the frame before that lands, and a resize that
+         never does — the card fills the window rather than floating in it. */
+      height: auto;
+      min-height: calc(100vh - 4px);
       padding: 12px 12px 12px 16px;
       background: var(--bg);
       border: 1px solid var(--border);
@@ -305,6 +310,22 @@
       notifEl.appendChild(progressEl);
       autoDismissTimer = setTimeout(function() { dismiss(); }, autoDismiss);
     }
+
+    // The window is created at an estimated height - main cannot know how many
+    // lines the body wraps to, nor how many rows the buttons take - so the last
+    // thing this script does is measure the real card and ask for that height.
+    // Without it, a two-line body pushed the action row past the window edge.
+    function fitToContent() {
+      if (!(window.notifAPI && notifAPI.send)) return;
+      var el = document.getElementById('notification');
+      // min-height ties the card to the current window height, so measuring with
+      // it on reports back whatever the window already is and never shrinks.
+      el.style.minHeight = '0';
+      var needed = Math.ceil(el.getBoundingClientRect().height) + 4; // body padding
+      el.style.minHeight = '';
+      notifAPI.send('notification-resize', { notifId: notifId, height: needed });
+    }
+    requestAnimationFrame(fitToContent);
 
     // Dismiss
     var dismissed = false;

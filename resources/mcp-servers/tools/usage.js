@@ -78,10 +78,17 @@ function formatTimestamp(ts) {
   }
 }
 
-/** `[####------]  42%` */
+/**
+ * `[####------]  42%`
+ *
+ * The bar is clamped, the number is not — the same split updateUsageBar makes
+ * in the titlebar chip, and for the same reason: past 100% the figure is the
+ * interesting part, and printing 137% as 100% hides exactly the case worth
+ * seeing.
+ */
 function bar(percent) {
-  const pct = Math.max(0, Math.min(100, Math.round(percent)));
-  const filled = Math.round(pct / 10);
+  const pct = Math.round(percent);
+  const filled = Math.max(0, Math.min(10, Math.round(pct / 10)));
   return `[${'#'.repeat(filled)}${'-'.repeat(10 - filled)}] ${String(pct).padStart(3)}%`;
 }
 
@@ -94,6 +101,24 @@ function bucketLabel(bucket) {
   if (bucket.type === 'session') return 'Session';
   if (bucket.type === 'weekly') return 'Weekly';
   return bucket.id || 'Limit';
+}
+
+/**
+ * How old the figures may be before they are called stale.
+ *
+ * Mirrors DATA_STALE_AFTER in UsageService. `raw.stale` alone is not enough:
+ * it is a snapshot taken when the file was written, and the poller stops with
+ * the window minimised, so hours-old numbers would otherwise be served with no
+ * marker at all — the very case the app's own staleness window exists to catch.
+ */
+const DATA_STALE_AFTER = 10 * 60 * 1000;
+
+function isStale(raw) {
+  if (raw.stale) return true;
+  if (!raw.lastFetch) return true;
+  const t = new Date(raw.lastFetch).getTime();
+  if (isNaN(t)) return true;
+  return Date.now() - t > DATA_STALE_AFTER;
 }
 
 // -- Tool handler -------------------------------------------------------------
@@ -111,6 +136,9 @@ async function handle(name, args) {
 
       const buckets = Array.isArray(raw.buckets) ? raw.buckets : [];
       let output = '# Claude usage\n';
+      // Named, because only the focused account is mirrored: a session bound to
+      // a different account would otherwise read this as its own quota.
+      output += `Account: ${raw.accountId || '(machine-wide login)'}\n`;
       output += `${'-'.repeat(46)}\n`;
 
       if (buckets.length === 0) {
@@ -127,8 +155,8 @@ async function handle(name, args) {
       }
 
       output += `\nLast fetch: ${formatTimestamp(raw.lastFetch)}\n`;
-      if (raw.stale) {
-        output += `STALE - the last refresh did not confirm these figures${raw.error ? `: ${raw.error}` : '.'}\n`;
+      if (isStale(raw)) {
+        output += `STALE - these figures are not confirmed current${raw.error ? `: ${raw.error}` : '.'}\n`;
       }
 
       return ok(output);
@@ -145,7 +173,11 @@ async function handle(name, args) {
         timestamp: new Date().toISOString(),
       }), 'utf8');
 
-      return ok('Refresh requested. Claude Terminal watches this directory and re-fetches, then rewrites usage.json; call usage_get again in a few seconds. Note this does not re-read the credential store, so it will not recover an account signed out from outside the app.');
+      // Careful what this promises: the MCP server is registered globally in
+      // ~/.claude.json, so it runs whether or not Claude Terminal is open, and
+      // with the app closed nothing consumes the request. Claiming otherwise
+      // would be the same false assurance this tool was fixed for.
+      return ok('Refresh requested. If Claude Terminal is running it consumes this request and rewrites usage.json within a few seconds — call usage_get again and compare its "Last fetch". If the app is closed the request simply waits, and usage_get keeps serving the last mirrored figures marked STALE. Note the refresh does not re-read the credential store, so it will not recover an account signed out from outside the app.');
     }
 
     return fail(`Unknown usage tool: ${name}`);

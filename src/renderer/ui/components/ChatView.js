@@ -2966,8 +2966,56 @@ class ChatView extends BaseComponent {
 
   // ── Delegated click handlers ──
 
+  // `error` does not bubble, but it does reach a capturing listener, which is
+  // what lets this stand in for the per-image `onerror` injectInlineImages used
+  // to set. That was a property, so it did not survive the pruner rebuilding an
+  // entry from `outerHTML`, and a path that turned out not to be an image came
+  // back as a broken-image placeholder instead of being removed.
+  messagesEl.addEventListener('error', (e) => {
+    const img = e.target;
+    if (img && img.tagName === 'IMG' && img.classList.contains('chat-inline-img')) {
+      img.closest('.chat-inline-img-wrap')?.remove();
+    }
+  }, true);
+
   messagesEl.addEventListener('click', (e) => {
     // Note: copy, collapse, line-toggle, sort, preview buttons are handled by MarkdownRenderer.attachInteractivity()
+
+    // Rewind and fork are delegated rather than bound per message, so a prose
+    // turn owns no listener of its own and the pruner may hold it as markup
+    // once it is far off screen. Everything they need is on the dataset, which
+    // is what survives being rebuilt from `outerHTML`.
+    const rewindBtn = e.target.closest('.chat-msg-rewind-btn');
+    if (rewindBtn) {
+      e.stopPropagation();
+      const uuid = rewindBtn.closest('[data-user-message-uuid]')?.dataset.userMessageUuid;
+      if (uuid) handleRewindFiles(uuid, rewindBtn);
+      return;
+    }
+
+    const forkBtn = e.target.closest('.chat-msg-fork-btn');
+    if (forkBtn) {
+      e.stopPropagation();
+      const host = forkBtn.closest('[data-message-uuid]');
+      const uuid = host?.dataset.messageUuid;
+      // `dropsTurn` names the turn the fork discards and arms the CLI guard;
+      // absent means fork off the tail, which must stay `undefined` rather
+      // than become an empty string.
+      if (uuid) forkFromMessage(uuid, host.dataset.forkDropsTurn || undefined);
+      return;
+    }
+
+    // Same reason, and it sits on the same entries: a user message carrying an
+    // "Enhanced" badge is marked serializable like every other prose turn, so a
+    // listener bound to the badge itself would be dropped on the first rebuild
+    // and the original prompt would become unreachable for good.
+    const enhancedBadge = e.target.closest('.chat-msg-enhanced-badge');
+    if (enhancedBadge) {
+      e.stopPropagation();
+      const original = enhancedBadge.closest('.chat-msg')?.querySelector('.chat-msg-original');
+      if (original) original.style.display = original.style.display === 'none' ? '' : 'none';
+      return;
+    }
 
     // Stop button on background task cards (SDK 0.2.45+ stopTask)
     const stopTaskBtn = e.target.closest('.chat-bgtask-stop-btn');
@@ -3986,6 +4034,7 @@ class ChatView extends BaseComponent {
     if (welcome) welcome.remove();
     const el = document.createElement('div');
     el.className = 'chat-msg chat-msg-user';
+    el.dataset.serializable = '1';
     if (queued) el.classList.add('queued');
     if (uuid) el.dataset.userMessageUuid = uuid;
     let html = '';
@@ -4015,25 +4064,15 @@ class ChatView extends BaseComponent {
       html += `<div class="chat-msg-content">${renderMarkdown(text)}</div>`;
     }
     el.innerHTML = html;
-    // Toggle original prompt visibility on badge click
-    const badge = el.querySelector('.chat-msg-enhanced-badge');
-    const originalBlock = el.querySelector('.chat-msg-original');
-    if (badge && originalBlock) {
-      badge.style.cursor = 'pointer';
-      badge.addEventListener('click', () => {
-        originalBlock.style.display = originalBlock.style.display === 'none' ? '' : 'none';
-      });
-    }
+    // The badge's click is delegated on messagesEl, not bound here: this entry
+    // is marked serializable, so a listener on the badge would not survive the
+    // pruner rebuilding it from `outerHTML`.
     // Add rewind button for live sessions (undo file changes from this point)
     if (uuid && sessionId && !queued) {
       const rewindBtn = document.createElement('button');
       rewindBtn.className = 'chat-msg-rewind-btn';
       rewindBtn.title = t('chat.rewindFiles') || 'Rewind files to here';
       rewindBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
-      rewindBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        handleRewindFiles(uuid, rewindBtn);
-      });
       el.appendChild(rewindBtn);
     }
     messagesEl.appendChild(el);
@@ -4261,8 +4300,9 @@ class ChatView extends BaseComponent {
       const fileUrl = 'file:///' + p.replace(/\\/g, '/').replace(/^\/\//, '/');
       const imgWrap = document.createElement('div');
       imgWrap.className = 'chat-inline-img-wrap';
+      // No `onerror` here: the capturing 'error' listener on messagesEl owns
+      // it, because a property does not survive the pruner's rebuild.
       imgWrap.innerHTML = `<img src="${fileUrl}" class="chat-inline-img" alt="${escapeHtml(p)}" loading="lazy">`;
-      imgWrap.querySelector('img').onerror = () => imgWrap.remove();
       wrap.appendChild(imgWrap);
     });
     container.appendChild(wrap);
@@ -4287,6 +4327,10 @@ class ChatView extends BaseComponent {
       harvestArtifacts(currentStreamEl);
     }
     if (currentStreamText) conversationHistory.push({ role: 'assistant', content: currentStreamText });
+    // Marked here rather than at `startStreamBlock`: while it streams the block
+    // is held in `currentStreamEl` and written to on every delta, and flattening
+    // something still being written to would drop the rest of the answer.
+    if (currentStreamEl) currentStreamEl.closest('.chat-msg')?.setAttribute('data-serializable', '1');
     currentStreamEl = null;
     currentStreamText = '';
     _streamCache = null;
@@ -6584,6 +6628,11 @@ class ChatView extends BaseComponent {
     messagesEl,
     isPinnedToBottom: () => !userHasScrolled,
     translate: t,
+    // An allowlist, not a denylist: an entry is held as markup only where this
+    // file has vouched that nothing in it depends on a listener bound to that
+    // element or on a reference kept here. A card type added later is not
+    // serialized until someone says so, which is the safe direction to fail.
+    canSerialize: (el) => el.dataset?.serializable === '1',
   });
   transcriptPruner.observe();
 
@@ -7327,10 +7376,6 @@ class ChatView extends BaseComponent {
           forkBtn.className = 'chat-msg-fork-btn';
           forkBtn.title = t('chat.forkSession') || 'Fork from here';
           forkBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/><path d="M6 9a9 9 0 0 0 9 9"/></svg>';
-          forkBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            forkFromMessage(msg.uuid);
-          });
           target.appendChild(forkBtn);
         }
       }
@@ -7353,6 +7398,7 @@ class ChatView extends BaseComponent {
         if (!lastText || !lastText.startsWith(blockText.slice(0, 50))) {
           const el = document.createElement('div');
           el.className = 'chat-msg chat-msg-assistant';
+          el.dataset.serializable = '1';
           el.innerHTML = `<div class="chat-msg-content">${renderMarkdown(block.text)}</div>`;
           injectInlineImages(el.querySelector('.chat-msg-content'));
           MarkdownRenderer.postProcess(el.querySelector('.chat-msg-content'));
@@ -8515,6 +8561,7 @@ class ChatView extends BaseComponent {
           // Same box the live turn showed: an API failure is not a reply
           const el = document.createElement('div');
           el.className = 'chat-msg chat-msg-error history';
+          el.dataset.serializable = '1';
           el.innerHTML = `<div class="chat-error-content">${escapeHtml(errorTextForCode(msg.errorCode, msg.text || ''))}</div>`;
           fragment.appendChild(el);
 
@@ -8532,6 +8579,7 @@ class ChatView extends BaseComponent {
         } else if (msg.role === 'user') {
           const el = document.createElement('div');
           el.className = 'chat-msg chat-msg-user history';
+          el.dataset.serializable = '1';
           let userHtml = '';
           if (msg.images && msg.images.length > 0) {
             userHtml += `<div class="chat-msg-images">${msg.images.map(img => {
@@ -8548,6 +8596,7 @@ class ChatView extends BaseComponent {
         } else if (msg.role === 'assistant' && msg.type === 'text') {
           const el = document.createElement('div');
           el.className = 'chat-msg chat-msg-assistant history';
+          el.dataset.serializable = '1';
           el.innerHTML = `<div class="chat-msg-content">${renderMarkdown(msg.text)}</div>`;
           injectInlineImages(el);
           // Add fork button if message has a UUID (from session JSONL)
@@ -8560,10 +8609,7 @@ class ChatView extends BaseComponent {
             forkBtn.className = 'chat-msg-fork-btn';
             forkBtn.title = t('chat.forkSession') || 'Fork from here';
             forkBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/><path d="M6 9a9 9 0 0 0 9 9"/></svg>';
-            forkBtn.addEventListener('click', (e) => {
-              e.stopPropagation();
-              forkFromMessage(msg.uuid, dropsTurn);
-            });
+            if (dropsTurn) el.dataset.forkDropsTurn = dropsTurn;
             el.appendChild(forkBtn);
           }
           fragment.appendChild(el);

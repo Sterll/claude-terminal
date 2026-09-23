@@ -329,6 +329,79 @@ describe('OAuth token cache', () => {
         expect(usage.getUsageData().retryAt).toBeNull();
       } finally { clock.mockRestore(); }
     });
+
+    // The chip reads getUsageData on its 30 s poll and getFetchState on an
+    // explicit refresh. Only the first carried this, so the tooltip naming the
+    // next attempt never showed on the path a user takes when they notice the
+    // chip has stopped — which is the path this was added for.
+    test('the refresh path is told the same thing the poll is', async () => {
+      const usage = load();
+      const start = Date.now();
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+      try {
+        readCredentials.mockResolvedValue(null);
+        await usage.fetchUsage();
+
+        expect(usage.getFetchState().retryAt).toBe(usage.getUsageData().retryAt);
+        expect(usage.getFetchState().retryAt).not.toBeNull();
+      } finally { clock.mockRestore(); }
+    });
+
+    // Capping the interval bounds how often, not how long. A store that is
+    // refused permanently would be reopened once an hour for as long as the
+    // app is up, and on darwin each of those is a password dialog raised
+    // behind the window — the timer-driven prompt the original `Infinity` was
+    // there to prevent, just slower.
+    test('stops reopening the store for good once the cause is clearly not transient', async () => {
+      const usage = load();
+      const start = Date.now();
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+      try {
+        readCredentials.mockResolvedValue(null);
+        let at = start;
+        // Eight failures: 5, 10, 20, 40, 60, 60, 60, 60.
+        for (const wait of [5, 10, 20, 40, 60, 60, 60, 60]) {
+          await usage.fetchUsage();
+          at += wait * MINUTE + 1000;
+          clock.mockReturnValue(at);
+        }
+        const readsWhileTrying = readCredentials.mock.calls.length;
+        expect(readsWhileTrying).toBe(8);
+
+        // A day of polling later, the store has not been touched again.
+        clock.mockReturnValue(at + 24 * 60 * MINUTE);
+        await usage.fetchUsage();
+        clock.mockReturnValue(at + 48 * 60 * MINUTE);
+        await usage.fetchUsage();
+
+        expect(readCredentials.mock.calls.length).toBe(readsWhileTrying);
+        expect(usage.getUsageData().gaveUp).toBe(true);
+        // Nothing is scheduled, so there is no time to name.
+        expect(usage.getUsageData().retryAt).toBeNull();
+      } finally { clock.mockRestore(); }
+    });
+
+    test('an explicit refresh lifts the give-up, so it is a pause not a dead end', async () => {
+      const usage = load();
+      const start = Date.now();
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+      try {
+        readCredentials.mockResolvedValue(null);
+        let at = start;
+        for (const wait of [5, 10, 20, 40, 60, 60, 60, 60]) {
+          await usage.fetchUsage();
+          at += wait * MINUTE + 1000;
+          clock.mockReturnValue(at);
+        }
+        expect(usage.getUsageData().gaveUp).toBe(true);
+
+        readCredentials.mockResolvedValue(validCreds('after-login'));
+        await usage.refreshUsage(null, true);
+
+        expect(usage.getUsageData().gaveUp).toBe(false);
+        expect(httpsGet.mock.calls.at(-1)[0].headers.Authorization).toBe('Bearer after-login');
+      } finally { clock.mockRestore(); }
+    });
   });
 
   test('re-reads once when the API refuses the token, then stops', async () => {

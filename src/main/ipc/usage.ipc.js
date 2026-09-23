@@ -56,6 +56,10 @@ function registerUsageHandlers() {
           stale: true,
           data: data || null,
           lastFetch: fetchState.lastFetch,
+          // Carried through so the chip can name the next attempt on this path
+          // too, not only on the 30s poll.
+          retryAt: fetchState.retryAt || null,
+          gaveUp: !!fetchState.gaveUp,
           error: fetchState.error || 'Usage API unreachable'
         };
       }
@@ -65,6 +69,8 @@ function registerUsageHandlers() {
           success: false,
           stale: true,
           data: null,
+          retryAt: (fetchState && fetchState.retryAt) || null,
+          gaveUp: !!(fetchState && fetchState.gaveUp),
           error: (fetchState && fetchState.error) || 'No usage data available'
         };
       }

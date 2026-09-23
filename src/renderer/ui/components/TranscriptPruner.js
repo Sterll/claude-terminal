@@ -18,9 +18,14 @@
  * The window now has two sides and no longer depends on where the user is
  * parked. Given the viewport, entries more than `bufferScreens` above it go to
  * the `above` store and entries that far below go to `below`; both remount
- * before the reader reaches them. Neither store is a cache — the nodes keep
- * their listeners and dataset and remount byte-for-byte, so memory is
- * unchanged by design and only the rendering cost is shed.
+ * before the reader reaches them. Neither store is a cache — a stored node
+ * keeps its listeners and dataset and remounts byte-for-byte, so the rendering
+ * cost is shed and nothing else changes.
+ *
+ * That last part stops being true past `serializeAfter` on the `above` side,
+ * which is the whole subject of the paragraph on flattening below: those
+ * entries are held as markup, not as nodes, and a listener bound to one does
+ * not come back. Read that paragraph before marking anything serializable.
  *
  * Geometry is what makes a two-sided window safe, and it is not always
  * available: a hidden pane (`display:none`, a background tab, a collapsed
@@ -37,6 +42,23 @@
  * `chat-pruned-bottom` and is absorbed into `below` on the next tick. That is
  * document order at every step, which is what lets this compose with the
  * disk-history pager rather than fight it.
+ *
+ * The far side of `above` is not kept as nodes at all. A detached entry is
+ * still a full Blink tree with its listeners: measured in this document, 10k
+ * entries detached-but-kept cost 34 118 bytes each of renderer RSS, against
+ * 1 017 bytes for the same entry held as its own `outerHTML`. Past
+ * `serializeAfter` detached entries, anything the caller marks inert through
+ * `canSerialize` is replaced by that string and rebuilt on remount, which is
+ * where the 33x goes.
+ *
+ * Only `above`, and only with the caller's say-so. `below` is where the stream
+ * appends while the reader is scrolled up, so an entry there may still be
+ * written to; `above` is strictly older than the viewport and the stream never
+ * reaches back into it. And `canSerialize` defaults to refusing, so a card type
+ * nobody has vouched for is never silently flattened: rebuilding drops any
+ * listener attached to that element, which is fine for a prose turn whose
+ * interactions are delegated from the transcript root and wrong for a card that
+ * wired its own.
  *
  * There are deliberately no spacer elements. Detaching simply removes the
  * height, and the top remount compensates `scrollTop` by the height it just
@@ -60,9 +82,13 @@ function createTranscriptPruner({
   remountPx = 600,
   bufferScreens = 2,
   minMounted = 20,
+  serializeAfter = 150,
+  canSerialize = () => false,
 }) {
-  const above = []; // detached older entries, oldest first
-  const below = []; // detached newer entries, oldest first
+  // Older entries, oldest first. Each is either the detached element or, past
+  // `serializeAfter`, a `{ html }` record it is rebuilt from.
+  const above = [];
+  const below = []; // detached newer entries, oldest first, always elements
   let suspended = false;
   let scheduled = false;
   let destroyed = false;
@@ -74,6 +100,83 @@ function createTranscriptPruner({
   bottomMarker.className = 'chat-history-top chat-pruned-bottom';
 
   const observer = new MutationObserver(onMutation);
+
+  function _isFlattened(rec) {
+    return rec !== null && typeof rec === 'object' && typeof rec.html === 'string';
+  }
+
+  /**
+   * The live node for a stored record, rebuilt from its markup when that is
+   * what we kept. Parsed inside a `<template>`, which is inert: its content
+   * belongs to a separate document, so nothing in it loads or runs until the
+   * node is adopted.
+   *
+   * @returns {Element|null} null when the markup yielded no element, which
+   *   would mean a record was stored for something that was never one.
+   */
+  function _materialize(rec) {
+    if (!_isFlattened(rec)) return rec;
+    const tpl = document.createElement('template');
+    tpl.innerHTML = rec.html;
+    return tpl.content.firstElementChild;
+  }
+
+  /**
+   * Replace the far end of `above` with its own markup.
+   *
+   * The newest `serializeAfter` detached entries stay as nodes: they are the
+   * ones a scroll is about to ask for, and remounting those byte-for-byte is
+   * what keeps the boundary cheap. Everything older is memory nobody is about
+   * to look at.
+   */
+  function _flattenFarAbove() {
+    // No guard on `serializeAfter` itself: it is a count of entries to keep as
+    // nodes, so 0 means flatten everything detached and a number larger than
+    // the store leaves the loop empty. `canSerialize` is the off switch, and it
+    // refuses by default.
+    const limit = above.length - serializeAfter;
+    for (let i = 0; i < limit; i++) {
+      const rec = above[i];
+      if (_isFlattened(rec)) continue;
+      if (!canSerialize(rec)) continue;
+      _reflectFormState(rec);
+      above[i] = { html: rec.outerHTML };
+    }
+  }
+
+  /**
+   * Write live form values back to the attributes `outerHTML` can see.
+   *
+   * `outerHTML` serialises attributes, so state a browser keeps only as a DOM
+   * *property* is dropped while state written as an inline style or attribute
+   * survives — and the two halves of one feature can land on opposite sides of
+   * that line. The markdown renderer's table filter is exactly that: the search
+   * box holds its text in `input.value` (a property) and hides non-matching
+   * rows with `style.display` (an attribute), so a rebuilt table came back with
+   * an empty box and its rows still hidden, and stayed that way until the
+   * reader typed in it again.
+   */
+  function _reflectFormState(el) {
+    let inputs;
+    try {
+      inputs = el.querySelectorAll('input, textarea');
+    } catch (_) {
+      return;
+    }
+    for (const field of inputs) {
+      try {
+        if (field.tagName === 'TEXTAREA') {
+          // A textarea has no `value` attribute; its serialised form is its
+          // own text content.
+          field.textContent = field.value;
+        } else if (field.type === 'checkbox' || field.type === 'radio') {
+          field.toggleAttribute('checked', field.checked);
+        } else {
+          field.setAttribute('value', field.value);
+        }
+      } catch (_) { /* nothing here is worth losing the entry over */ }
+    }
+  }
 
   function _isSkippable(el) {
     return SKIP_CLASSES.some((c) => el.classList?.contains(c));
@@ -177,6 +280,7 @@ function createTranscriptPruner({
     _absorbTail();
     if (_hasGeometry()) _pruneByGeometry();
     else _pruneByCount();
+    _flattenFarAbove();
   }
 
   /**
@@ -272,7 +376,10 @@ function createTranscriptPruner({
     const beforeHeight = messagesEl.scrollHeight;
     const beforeTop = messagesEl.scrollTop;
     const frag = document.createDocumentFragment();
-    for (const el of batch) frag.appendChild(el);
+    for (const rec of batch) {
+      const el = _materialize(rec);
+      if (el) frag.appendChild(el);
+    }
     _updateMarker(); // marker must exist (or vanish) before we anchor on it
     if (marker.isConnected) marker.after(frag);
     else messagesEl.prepend(frag);
@@ -325,7 +432,10 @@ function createTranscriptPruner({
     while (above.length > 0) {
       const batch = above.splice(-chunk);
       const frag = document.createDocumentFragment();
-      for (const el of batch) frag.appendChild(el);
+      for (const rec of batch) {
+        const el = _materialize(rec);
+        if (el) frag.appendChild(el);
+      }
       if (marker.isConnected) marker.after(frag);
       else messagesEl.prepend(frag);
     }
@@ -361,6 +471,7 @@ function createTranscriptPruner({
     /** Test seams. */
     prune, remountChunk, remountChunkBelow,
     get prunedCount() { return above.length; },
+    get flattenedCount() { return above.filter(_isFlattened).length; },
     get prunedBelowCount() { return below.length; },
     get markerEl() { return marker; },
     get bottomMarkerEl() { return bottomMarker; },

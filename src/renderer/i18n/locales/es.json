@@ -123,7 +123,7 @@
     "terminalOpensHere": "La terminal se abrirá aquí",
     "claudeAwaits": "Claude espera tu respuesta",
     "notifDone": "Tarea completada",
-    "notifToolsDone": "Tarea completada — {count} herramientas usadas",
+    "notifToolsDone": "Tarea completada: {count} herramientas usadas",
     "notifQuestion": "Claude te hace una pregunta",
     "notifPlan": "Claude propone un plan",
     "notifPermission": "Claude necesita tu permiso",
@@ -3977,6 +3977,7 @@
   },
   "usage": {
     "staleRetry": "Datos de uso posiblemente desactualizados - la última actualización falló. Próximo intento a las {time}; haz clic para reintentar ahora. {error}",
+    "staleGaveUp": "Datos de uso posiblemente desactualizados - los reintentos automáticos se detuvieron tras varios fallos. Haz clic para reintentar ahora. {error}",
     "stale": "Datos de uso posiblemente desactualizados - la última actualización falló. {error}"
   },
   "github": {

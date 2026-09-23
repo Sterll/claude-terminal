@@ -123,7 +123,7 @@
     "terminalOpensHere": "终端将在此处打开",
     "claudeAwaits": "Claude 正在等待你的回复",
     "notifDone": "任务已完成",
-    "notifToolsDone": "任务已完成 — 使用了 {count} 个工具",
+    "notifToolsDone": "任务已完成：使用了 {count} 个工具",
     "claudeMdAnalyze": "检查 CLAUDE.md？",
     "claudeMdAnalyzeDesc": "本次会话使用了 {count} 个工具。是否检查 CLAUDE.md 中可更新的内容？",
     "claudeMdOpen": "打开 CLAUDE.md",
@@ -3977,6 +3977,7 @@
   },
   "usage": {
     "staleRetry": "使用情况数据可能已过时 - 上次刷新失败。下次尝试时间 {time}；点击可立即重试。 {error}",
+    "staleGaveUp": "使用情况数据可能已过时 - 多次失败后已停止自动重试。点击可立即重试。 {error}",
     "stale": "使用情况数据可能已过时 - 上次刷新失败。 {error}"
   },
   "github": {

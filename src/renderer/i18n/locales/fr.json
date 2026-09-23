@@ -123,7 +123,7 @@
     "terminalOpensHere": "Le terminal s'ouvrira ici",
     "claudeAwaits": "Claude attend votre réponse",
     "notifDone": "Tâche terminée",
-    "notifToolsDone": "Tâche terminée — {count} outils utilisés",
+    "notifToolsDone": "Tâche terminée : {count} outils utilisés",
     "claudeMdAnalyze": "Revoir CLAUDE.md ?",
     "claudeMdAnalyzeDesc": "Session avec {count} outils. Revoir CLAUDE.md pour des mises à jour ?",
     "claudeMdOpen": "Ouvrir CLAUDE.md",
@@ -3977,6 +3977,7 @@
   },
   "usage": {
     "staleRetry": "Données d'usage peut-être obsolètes - la dernière actualisation a échoué. Prochaine tentative à {time} ; cliquez pour réessayer maintenant. {error}",
+    "staleGaveUp": "Données d'usage peut-être obsolètes - les tentatives automatiques se sont arrêtées après plusieurs échecs. Cliquez pour réessayer maintenant. {error}",
     "stale": "Données d'usage peut-être obsolètes - la dernière actualisation a échoué. {error}"
   },
   "github": {
