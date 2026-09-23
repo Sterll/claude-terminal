@@ -16,9 +16,17 @@ const GAP = 8;
 const MARGIN = 16;
 const MAX_NOTIFICATIONS = 5;
 
+// Bounds for the height notification.html measures for itself. The floor is a
+// title with no body and no buttons; the ceiling stops a malformed payload from
+// opening a window the size of the screen.
+const MIN_HEIGHT = 64;
+const MAX_HEIGHT = 260;
+
 /**
- * Calculate notification window height based on button count.
- * More buttons = taller window (they wrap to a second row).
+ * Initial notification window height, from the button count alone.
+ * This is only an estimate: how many lines the body wraps to is not knowable
+ * here, so the window is resized to what notification.html measures once it has
+ * laid the card out ('notification-resize' below).
  */
 function calcHeight(buttons) {
   if (!buttons || buttons.length <= 2) return BASE_HEIGHT;
@@ -182,6 +190,19 @@ function registerNotificationHandlers() {
   // Dismiss handler — called by notification.html after exit animation completes
   ipcMain.on('notification-dismiss', (event, { notifId }) => {
     dismissNotification(notifId);
+  });
+
+  // The card measures itself once laid out and reports the height it actually
+  // needs. repositionAll() applies it, so a notification that grew also pushes
+  // the ones stacked above it rather than overlapping them.
+  ipcMain.on('notification-resize', (event, { notifId, height }) => {
+    const notif = activeNotifications.get(notifId);
+    if (!notif || notif.window.isDestroyed()) return;
+    if (!Number.isFinite(height)) return;
+    const clamped = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, Math.round(height)));
+    if (clamped === notif.height) return;
+    notif.height = clamped;
+    repositionAll();
   });
 }
 
