@@ -28,6 +28,17 @@
  * A failed fetch never downgrades a cache we already have: stale-but-real
  * beats the static fallback, which exists only for a first launch with no
  * reachable CLI.
+ *
+ * The cache is keyed on the CLI's version as well as its age. The model list
+ * is compiled into the binary the SDK ships, so after an app update swaps that
+ * binary, a catalog written minutes before the update is young but describes a
+ * CLI that is gone. Opus 5.5 shipped that way, and the picker kept saying
+ * "Opus 5" for the model it was actually running. A version mismatch counts as
+ * an empty cache, so the first launch after an update asks the new CLI.
+ *
+ * Whenever a refresh changes what the catalog says, `onChange` listeners hear
+ * about it. The renderer loads its copy once per window, so without that push
+ * a catalog corrected by the first session start would never reach the chip.
  */
 
 'use strict';
@@ -58,6 +69,8 @@ class ModelCatalogService {
     this._inflight = null;
     this._fetcher = null;
     this._restored = false;
+    this._cliVersion = null;
+    this._listeners = new Set();
   }
 
   /**
@@ -72,6 +85,29 @@ class ModelCatalogService {
   }
 
   /**
+   * Version of the CLI binary every catalog is read from. Injected for the same
+   * reason as the fetcher: resolving the binary needs Electron. Unknown (null)
+   * keeps the old age-only rule rather than refetching on every launch.
+   *
+   * @param {string|null} version
+   */
+  setCliVersion(version) {
+    this._cliVersion = typeof version === 'string' && version ? version : null;
+  }
+
+  /**
+   * Hear about every refresh that changes the catalog's contents.
+   *
+   * @param {(catalog: object) => void} fn receives the same shape as getCatalog()
+   * @returns {() => void} unsubscribe
+   */
+  onChange(fn) {
+    if (typeof fn !== 'function') return () => {};
+    this._listeners.add(fn);
+    return () => this._listeners.delete(fn);
+  }
+
+  /**
    * Free refresh path — feed the catalog from a session that just started.
    * Ignores empty payloads so a degraded init can't blank a good cache.
    *
@@ -80,8 +116,10 @@ class ModelCatalogService {
   ingestInitResult(init) {
     const models = init && Array.isArray(init.models) ? init.models : null;
     if (!models || models.length === 0) return;
-    this._cache = { primary: models, fetchedAt: Date.now() };
-    this._persist();
+    // Compare against what is on disk, not against nothing: a session can start
+    // before any picker asked for the catalog.
+    if (!this._restored) this._restore();
+    this._store(models);
   }
 
   /**
@@ -108,8 +146,7 @@ class ModelCatalogService {
       const raw = await this._fetcher();
       const models = raw && Array.isArray(raw.models) ? raw.models : null;
       if (!models || models.length === 0) throw new Error('CLI returned no models');
-      this._cache = { primary: models, fetchedAt: Date.now() };
-      this._persist();
+      this._store(models);
       return this._shape(this._cache, 'cli');
     } catch (err) {
       console.warn('[ModelCatalog] fetch failed:', err?.message || err);
@@ -119,7 +156,40 @@ class ModelCatalogService {
   }
 
   _isFresh() {
-    return !!this._cache && (Date.now() - this._cache.fetchedAt) < TTL_MS;
+    return !!this._cache
+      && (Date.now() - this._cache.fetchedAt) < TTL_MS
+      && this._sameCli(this._cache);
+  }
+
+  /**
+   * Was this catalog read from the CLI we are running now? A cache written
+   * before this field existed carries no version, and counts as another CLI.
+   */
+  _sameCli(cache) {
+    return !this._cliVersion || cache.cliVersion === this._cliVersion;
+  }
+
+  /**
+   * Adopt a catalog the CLI just produced, and tell listeners when it differs
+   * from the one we held.
+   */
+  _store(models) {
+    const changed = !this._cache || JSON.stringify(this._cache.primary) !== JSON.stringify(models);
+    this._cache = { primary: models, fetchedAt: Date.now(), cliVersion: this._cliVersion };
+    this._persist();
+    if (changed) this._emit();
+  }
+
+  _emit() {
+    if (this._listeners.size === 0) return;
+    const catalog = this._shape(this._cache, 'cli');
+    for (const fn of this._listeners) {
+      try {
+        fn(catalog);
+      } catch (err) {
+        console.warn('[ModelCatalog] change listener failed:', err?.message || err);
+      }
+    }
   }
 
   /**
@@ -143,7 +213,7 @@ class ModelCatalogService {
       recommended,
       fetchedAt: usingFallback ? null : cache.fetchedAt,
       source: usingFallback ? 'fallback' : source,
-      stale: !usingFallback && (Date.now() - cache.fetchedAt) >= TTL_MS,
+      stale: !usingFallback && ((Date.now() - cache.fetchedAt) >= TTL_MS || !this._sameCli(cache)),
     };
   }
 
@@ -152,7 +222,11 @@ class ModelCatalogService {
     try {
       const raw = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
       if (Array.isArray(raw?.primary) && raw.primary.length > 0 && typeof raw.fetchedAt === 'number') {
-        this._cache = { primary: raw.primary, fetchedAt: raw.fetchedAt };
+        this._cache = {
+          primary: raw.primary,
+          fetchedAt: raw.fetchedAt,
+          cliVersion: typeof raw.cliVersion === 'string' ? raw.cliVersion : null,
+        };
       }
     } catch (_) {
       // Absent or corrupt cache is the normal first-launch path, not an error.
@@ -179,6 +253,8 @@ class ModelCatalogService {
     this._inflight = null;
     this._fetcher = null;
     this._restored = false;
+    this._cliVersion = null;
+    this._listeners = new Set();
   }
 }
 

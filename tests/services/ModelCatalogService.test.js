@@ -348,3 +348,169 @@ describe('shape', () => {
     expect(catalog.fetchedAt).toBeNull();
   });
 });
+
+// The two catalogs of the Opus 5.5 rollout: what the SDK's CLI said before the
+// upgrade, and what it says after. Same `opus[1m]` alias, another model behind it.
+const BEFORE_UPGRADE = [
+  { value: 'default', resolvedModel: 'claude-opus-5[1m]', displayName: 'Default (recommended)' },
+  { value: 'opus[1m]', resolvedModel: 'claude-opus-5[1m]', displayName: 'Opus (1M context)', description: 'Opus 5 with 1M context · Best for complex work' },
+  { value: 'sonnet', resolvedModel: 'claude-sonnet-5', displayName: 'Sonnet' },
+];
+const AFTER_UPGRADE = [
+  { value: 'default', resolvedModel: 'claude-opus-5-5[1m]', displayName: 'Default (recommended)' },
+  { value: 'opus[1m]', resolvedModel: 'claude-opus-5-5[1m]', displayName: 'Opus (1M context)', description: 'Opus 5.5 with 1M context · Best for everyday, complex tasks' },
+  { value: 'sonnet', resolvedModel: 'claude-sonnet-5', displayName: 'Sonnet' },
+];
+
+function seedCache(primary, extra = {}) {
+  mockVirtualFs.set(CACHE_FILE, JSON.stringify({ primary, fetchedAt: Date.now(), ...extra }));
+}
+
+describe('CLI version', () => {
+  test('refetches when the cached catalog came from another CLI version', async () => {
+    // The reported bug: an app update swapped the binary minutes after the old
+    // one wrote the cache, so age alone called it fresh and the chip kept
+    // naming Opus 5 while the new CLI ran Opus 5.5.
+    seedCache(BEFORE_UPGRADE, { cliVersion: '0.3.260' });
+    const svc = makeService();
+    svc.setCliVersion('0.3.280');
+    const fetcher = jest.fn(async () => ({ models: AFTER_UPGRADE }));
+    svc.setFetcher(fetcher);
+
+    const catalog = await svc.getCatalog();
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(catalog.source).toBe('cli');
+    expect(catalog.recommended).toBe('claude-opus-5-5[1m]');
+    expect(catalog.primary.find(m => m.value === 'opus[1m]').displayName).toBe('Opus 5.5');
+  });
+
+  test('treats a cache written before versions were recorded as another CLI', async () => {
+    // Every install that updates onto this fix has exactly that cache.
+    seedCache(BEFORE_UPGRADE);
+    const svc = makeService();
+    svc.setCliVersion('0.3.280');
+    const fetcher = jest.fn(async () => ({ models: AFTER_UPGRADE }));
+    svc.setFetcher(fetcher);
+
+    await svc.getCatalog();
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  test('serves a cache from the same CLI without spawning', async () => {
+    seedCache(AFTER_UPGRADE, { cliVersion: '0.3.280' });
+    const svc = makeService();
+    svc.setCliVersion('0.3.280');
+    const fetcher = jest.fn();
+    svc.setFetcher(fetcher);
+
+    const catalog = await svc.getCatalog();
+
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(catalog.source).toBe('cache');
+    expect(catalog.stale).toBe(false);
+  });
+
+  test('keeps the age-only rule when the running version is unknown', async () => {
+    // A binary whose manifest cannot be read must not cost a spawn per launch.
+    seedCache(AFTER_UPGRADE, { cliVersion: '0.3.260' });
+    const svc = makeService();
+    svc.setCliVersion(null);
+    const fetcher = jest.fn();
+    svc.setFetcher(fetcher);
+
+    const catalog = await svc.getCatalog();
+
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(catalog.source).toBe('cache');
+  });
+
+  test('a failed refetch still serves the old catalog, flagged stale', async () => {
+    seedCache(BEFORE_UPGRADE, { cliVersion: '0.3.260' });
+    const svc = makeService();
+    svc.setCliVersion('0.3.280');
+    svc.setFetcher(async () => { throw new Error('spawn failed'); });
+
+    const catalog = await svc.getCatalog();
+
+    expect(catalog.source).toBe('cache');
+    expect(catalog.stale).toBe(true);
+  });
+
+  test('records the running version with every write', () => {
+    const svc = makeService();
+    svc.setCliVersion('0.3.280');
+
+    svc.ingestInitResult({ models: AFTER_UPGRADE });
+
+    expect(JSON.parse(mockVirtualFs.get(CACHE_FILE)).cliVersion).toBe('0.3.280');
+  });
+});
+
+describe('onChange', () => {
+  test('tells listeners when a session start changes the catalog', () => {
+    seedCache(BEFORE_UPGRADE, { cliVersion: '0.3.260' });
+    const svc = makeService();
+    svc.setCliVersion('0.3.280');
+    const listener = jest.fn();
+    svc.onChange(listener);
+
+    svc.ingestInitResult({ models: AFTER_UPGRADE });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    const pushed = listener.mock.calls[0][0];
+    expect(pushed.source).toBe('cli');
+    expect(pushed.recommended).toBe('claude-opus-5-5[1m]');
+    expect(pushed.primary.find(m => m.value === 'opus[1m]').displayName).toBe('Opus 5.5');
+  });
+
+  test('stays quiet when a session start confirms what was cached', () => {
+    // Every session start ingests; only a real change is worth a repaint in
+    // every window.
+    seedCache(AFTER_UPGRADE, { cliVersion: '0.3.280' });
+    const svc = makeService();
+    svc.setCliVersion('0.3.280');
+    const listener = jest.fn();
+    svc.onChange(listener);
+
+    svc.ingestInitResult({ models: AFTER_UPGRADE });
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  test('a refetch that changes the catalog notifies too', async () => {
+    seedCache(BEFORE_UPGRADE, { cliVersion: '0.3.260' });
+    const svc = makeService();
+    svc.setCliVersion('0.3.280');
+    svc.setFetcher(async () => ({ models: AFTER_UPGRADE }));
+    const listener = jest.fn();
+    svc.onChange(listener);
+
+    await svc.getCatalog();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  test('a throwing listener neither breaks the others nor the ingest', () => {
+    const svc = makeService();
+    const broken = jest.fn(() => { throw new Error('boom'); });
+    const healthy = jest.fn();
+    svc.onChange(broken);
+    svc.onChange(healthy);
+
+    expect(() => svc.ingestInitResult({ models: AFTER_UPGRADE })).not.toThrow();
+    expect(healthy).toHaveBeenCalledTimes(1);
+  });
+
+  test('unsubscribing stops the calls', () => {
+    const svc = makeService();
+    const listener = jest.fn();
+    const off = svc.onChange(listener);
+    off();
+
+    svc.ingestInitResult({ models: AFTER_UPGRADE });
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+});

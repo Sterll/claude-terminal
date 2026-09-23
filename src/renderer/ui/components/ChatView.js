@@ -49,7 +49,7 @@ const { getSetting, setSetting, isNotificationsEnabled } = require('../../state/
 const { updateTerminal, getTerminal } = require('../../state/terminals.state');
 const { saveTerminalSessions } = require('../../services/TerminalSessionService');
 
-const { matchModel, resolveModelSelection, hasOneMContext, DEFAULT_ALIAS, modelFamily, modelTier, PREMIUM_EFFORT_LEVELS } = require('../../../shared/model-options');
+const { matchModel, resolveModelSelection, uncataloguedModelLabel, hasOneMContext, DEFAULT_ALIAS, modelFamily, modelTier, PREMIUM_EFFORT_LEVELS } = require('../../../shared/model-options');
 const { PERMISSION_MODES, permissionModeInfo, modeFromSetting, settingFromMode } = require('../../../shared/permission-modes');
 const { contextTokensFromMessage } = require('../../../shared/context-usage');
 const ModelCatalog = require('../../services/ModelCatalogClient');
@@ -841,6 +841,17 @@ class ChatView extends BaseComponent {
     applyResolvedModel();
     syncEffortVisibility();
   }
+
+  // The menu is rebuilt on every open, the chip is not: a catalog main pushes
+  // after the first load (a CLI upgrade surfacing on the first session start)
+  // has to repaint it here, or it keeps the label the previous CLI gave.
+  unsubscribers.push(ModelCatalog.subscribe(() => {
+    applyResolvedModel();
+    syncEffortVisibility();
+    // The stream's model, once known, names the chip; relabel it too.
+    if (model) updateStatusInfo();
+    if (modelDropdown.style.display !== 'none') buildModelDropdown();
+  }));
 
   /**
    * @param {object} m Catalog row (SDK ModelInfo shape).
@@ -6392,7 +6403,7 @@ class ChatView extends BaseComponent {
       // resolved alias — matchModel is what maps it back to a catalog row.
       const match = matchModel(allCatalogModels(), model);
       if (match) modelLabel.textContent = match.displayName;
-      else modelLabel.textContent = model.split('-').slice(1, 3).join('-');
+      else modelLabel.textContent = uncataloguedModelLabel(model);
     }
     setContextGauge(inputTokens, currentContextLimit());
   }

@@ -3,12 +3,24 @@
  * Bridges renderer chat UI with ChatService (Claude Agent SDK)
  */
 
-const { ipcMain } = require('electron');
+const { ipcMain, BrowserWindow } = require('electron');
 const chatService = require('../services/ChatService');
 const modelCatalog = require('../services/ModelCatalogService');
 const { sendFeaturePing } = require('../services/TelemetryService');
 
+function broadcast(channel, payload) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send(channel, payload);
+  }
+}
+
 function registerChatHandlers() {
+  // Each window loads the catalog once, so a refresh that changes it (the first
+  // session start after a CLI upgrade, typically) has to be pushed, or the chip
+  // keeps naming the model the previous CLI advertised. Same shape as the
+  // `chat-model-catalog` answer below, so the renderer applies both one way.
+  modelCatalog.onChange(catalog => broadcast('chat-model-catalog-changed', { success: true, ...catalog }));
+
   // Start a new chat session (streaming input mode)
   ipcMain.handle('chat-start', async (_event, params) => {
     try {

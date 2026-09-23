@@ -50,7 +50,7 @@ function getToolDisplayInfo(toolName, input) {
 // Fallback tier, used only until the desktop pushes `models:catalog`. Kept
 // short on purpose: a long stale list here would outlive the real one.
 const MODEL_OPTIONS = [
-  { value: 'claude-opus-5', displayName: 'Opus 5' },
+  { value: 'claude-opus-5-5', displayName: 'Opus 5.5' },
   { value: 'claude-fable-5-1', displayName: 'Fable 5.1' },
   { value: 'claude-sonnet-5', displayName: 'Sonnet 5' },
   { value: 'claude-haiku-4-5-20251001', displayName: 'Haiku 4.5' },

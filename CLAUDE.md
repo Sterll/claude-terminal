@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 206 test files)
+npm test                 # Run Jest tests (jsdom, 207 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -164,7 +164,7 @@ Remote UI (PWA for mobile)
 |---------|---------|
 | `AccountManager.js` | Multiple Claude OAuth accounts: snapshots the CLI's live credential store into `~/.claude-terminal/accounts/` and swaps the active credentials on demand. The live store is the macOS login Keychain on darwin, `~/.claude/.credentials.json` elsewhere. Login itself stays the CLI's job (`claude /login` once, then capture) |
 | `ArtifactService.js` | Main-process facade over `src/shared/artifact-store.js` (shared verbatim with the MCP server process). Adds the two things only main can do: broadcast `artifacts-changed` to every window, and poll for out-of-process writes from the MCP tools |
-| `ModelCatalogService.js` | Builds the chat picker's two-tier model catalog: `primary` from whatever the CLI advertises (`initializationResult().models`) minus its `default` alias, `legacy` from the hand-curated list minus anything primary already covers. Follows CLI upgrades on its own, which is the point - hard-coded lists went stale the day Fable 5.1 shipped |
+| `ModelCatalogService.js` | Builds the chat picker's two-tier model catalog: `primary` from whatever the CLI advertises (`initializationResult().models`) minus its `default` alias, `legacy` from the hand-curated list minus anything primary already covers. Follows CLI upgrades on its own, which is the point - hard-coded lists went stale the day Fable 5.1 shipped. The disk cache is keyed on the SDK binary's version as well as its age, because the model list is compiled into that binary: after an update a young cache still describes the previous CLI. A refresh that changes the catalog is pushed to every window (`onChange`) |
 | `VoiceService.js` | Speech-to-text. The renderer captures the mic and hands over raw PCM; anything needing a secret or the network happens here. Groq is the only backend for now (a local Whisper burns CPU exactly when the user is gaming and is worse in French). The API key lives in the OS credential store, never in settings.json, and is never sent to the renderer |
 | `ErrorLogService.js` | Centralized error collection, classification and pattern detection. Captures IPC/service errors, uncaught exceptions/rejections, and every `console.error`/`console.warn` from main. `console.error` maps to `warning`, not `critical`: main has ~208 console.error sites and most are caught-and-degraded paths, so `critical` stays reserved for uncaught failures |
 | `TerminalOutputCapture.js` | Writes a rolling tail of each project's terminal output to `~/.claude-terminal/terminals/output/<projectId>.log`. That path was already read by the MCP `terminal_read_output` tool and the `terminal` workflow node, but nothing wrote it - this is the missing writer. Buffered and flushed on a timer, capped and trimmed from the head |
@@ -309,7 +309,7 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 | `ProjectTimeline.js` | Merges the six per-project record sets the app keeps in separate screens (commits, sessions, tracked time, workflow runs, parallel runs, artifacts) into one chronological list. Collects nothing new: the work is normalising six record shapes and three spellings of a timestamp onto one `{ ts, kind, title, subtitle }`. Every source loads independently and may fail on its own — a project with no remote, no workflows and no artifacts is the normal case, not an error |
 | `DiffRenderer.js` | Renders a unified diff the way GitHub does: two gutters, hunk headers, syntax highlighting, word-level marks. Input is Claude Code's `structuredPatch`, which every file-editing tool call already carries in the transcript |
 | `ArtifactService.js` | Renderer side of the artifact library |
-| `ModelCatalogClient.js` | Renderer cache over `ModelCatalogService` |
+| `ModelCatalogClient.js` | Renderer cache over `ModelCatalogService`. Loaded once per window, then kept current by `chat-model-catalog-changed` pushes; `subscribe()` is how the chat footer learns to repaint |
 | `VoiceCaptureService.js` | Microphone capture, VAD and PCM hand-off to `VoiceService` in main |
 | `MentionSourceRegistry.js` | Pluggable registry feeding **both** the ChatView `@`-mention dropdown (`surface: 'mention'`) and the Ctrl+P quick picker (`surface: 'palette'`). Sources live in `mention-sources/` |
 | `BackgroundTaskReconciler.js` | Decides when a background-task card whose end was never announced should be settled anyway. The CLI describes tasks through two feeds: `task_started`/`task_notification` are edge bookends and the only source that knows *how* a task ended; `background_tasks_changed` carries the full live set and is authoritative about *whether* one still runs |
@@ -595,7 +595,7 @@ that difference from `AccountManager`.
 | Package | Version | Purpose |
 |---------|---------|---------|
 | `electron` | ^43.7.0 | Desktop framework (Chromium ~140) |
-| `@anthropic-ai/claude-agent-sdk` | ^0.3.260 | Claude Code streaming chat |
+| `@anthropic-ai/claude-agent-sdk` | ^0.3.280 | Claude Code streaming chat |
 | `@xterm/xterm` + addons | ^6.0.0 | Terminal emulator (WebGL, fit) |
 | `node-pty` | ^1.1.0 | PTY process management |
 | `keytar` | ^7.9.0 | OS credential storage |
@@ -669,7 +669,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 206 unit test files (jsdom environment)
+npm test                    # Run all 207 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -678,7 +678,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 206 test files
+- **Framework:** Jest with jsdom, 207 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**

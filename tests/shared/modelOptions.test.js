@@ -11,6 +11,7 @@ const {
   recommendedModelId,
   dropDefaultAlias,
   resolveModelSelection,
+  uncataloguedModelLabel,
   dedupeLegacy,
   hasOneMContext,
   normalizeModelRow,
@@ -18,6 +19,7 @@ const {
   modelFamily,
   modelTier,
   CLAUDE_MODEL_VALUES,
+  MODEL_OPTIONS,
   LEGACY_MODELS,
   FALLBACK_PRIMARY,
   DEFAULT_ALIAS,
@@ -271,7 +273,18 @@ describe('dedupeLegacy', () => {
   });
 
   test('keeps the whole legacy tier when nothing overlaps', () => {
-    expect(dedupeLegacy(MENU_MODELS, LEGACY_MODELS)).toHaveLength(LEGACY_MODELS.length);
+    const primary = [{ value: 'sonnet', resolvedModel: 'claude-sonnet-5' }];
+    expect(dedupeLegacy(primary, LEGACY_MODELS)).toHaveLength(LEGACY_MODELS.length);
+  });
+
+  test('hides a legacy row the CLI has not stopped advertising yet', () => {
+    // The state every install is in between an app release and the SDK bump
+    // that follows it: Opus 5 sits in the legacy tier because Opus 5.5 replaced
+    // it, while the bundled CLI still lists Opus 5 as primary. It must appear
+    // once, in the tier the CLI puts it in, not in both menus at once.
+    const result = dedupeLegacy(MENU_MODELS, LEGACY_MODELS);
+    expect(result.find(m => m.value === 'claude-opus-5')).toBeUndefined();
+    expect(result).toHaveLength(LEGACY_MODELS.length - 1);
   });
 
   test('tolerates missing arguments', () => {
@@ -355,10 +368,21 @@ describe('catalog contents', () => {
     expect(FALLBACK_PRIMARY.some(m => modelTier(m) === 'standard')).toBe(true);
   });
 
-  test('the workflow node accepts the current Fable id', () => {
-    // Regression guard: this list gates `claude` node validation, and Fable 5.1
-    // was rejected there while only Fable 5 was listed.
+  test('the workflow node accepts the current Fable and Opus ids', () => {
+    // Regression guard: this list gates `claude` node validation, and an id
+    // missing from it is not rejected — `claude.node.js` silently swaps it for
+    // null, so the automation runs on the inherited model without saying so.
+    // Fable 5.1 was rejected that way while only Fable 5 was listed.
     expect(CLAUDE_MODEL_VALUES).toContain('claude-fable-5-1');
+    expect(CLAUDE_MODEL_VALUES).toContain('claude-opus-5-5');
+  });
+
+  test('a model demoted to the legacy tier stays selectable everywhere else', () => {
+    // Moving Opus 5 into "More models" must not take it out of the workflow
+    // node's accepted values: existing automations still name it.
+    expect(LEGACY_MODELS.find(m => m.value === 'claude-opus-5')).toBeDefined();
+    expect(CLAUDE_MODEL_VALUES).toContain('claude-opus-5');
+    expect(MODEL_OPTIONS.find(o => o.value === 'claude-opus-5')).toBeDefined();
   });
 
   test('every catalog row carries what the picker renders', () => {
@@ -393,5 +417,22 @@ describe('modelFamily / modelTier', () => {
     expect(modelFamily('gpt-5')).toBe('');
     expect(modelTier('')).toBe('standard');
     expect(modelTier(null)).toBe('standard');
+  });
+});
+
+describe('uncataloguedModelLabel', () => {
+  test('keeps the whole version of an id no row covers', () => {
+    // The footer's old fallback, split('-').slice(1, 3), read 'claude-opus-5-5'
+    // as 'opus-5': the previous model's name for the one actually running.
+    expect(uncataloguedModelLabel('claude-opus-5-5')).toBe('opus-5-5');
+    expect(uncataloguedModelLabel('claude-opus-5-5[1m]')).toBe('opus-5-5[1m]');
+  });
+
+  test('is what resolveModelSelection shows for an id it cannot place', () => {
+    expect(resolveModelSelection([], 'claude-opus-5-5', true).label).toBe(uncataloguedModelLabel('claude-opus-5-5'));
+  });
+
+  test('tolerates a missing id', () => {
+    expect(uncataloguedModelLabel(undefined)).toBe('');
   });
 });
