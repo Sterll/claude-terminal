@@ -129,6 +129,59 @@ describe('flattening the far side of the pruned store', () => {
     expect(onClick).not.toHaveBeenCalled();
   });
 
+  // `outerHTML` serialises attributes, so live state a browser keeps only as a
+  // DOM property is dropped while state written as an inline style survives —
+  // and one feature can land on both sides of that line. The markdown table
+  // filter does: its box holds text in `input.value`, its hidden rows use
+  // `style.display`, so a rebuilt table came back with an empty box over rows
+  // that were still filtered, and stayed that way until the reader retyped.
+  test('a live input value is carried into the markup', () => {
+    for (let i = 0; i < 400; i++) addEntry(pane, i);
+    const host = pane.querySelector('[data-msg-id="m0"]');
+    const input = document.createElement('input');
+    input.className = 'chat-table-search';
+    host.appendChild(input);
+    input.value = 'needle';
+
+    const pruner = prunerOver(pane, { serializeAfter: 0, chunk: 500 });
+    pruner.prune();
+    pruner.mountAll();
+
+    expect(pane.querySelector('.chat-table-search').value).toBe('needle');
+  });
+
+  test('a checked box comes back checked', () => {
+    for (let i = 0; i < 400; i++) addEntry(pane, i);
+    const host = pane.querySelector('[data-msg-id="m0"]');
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    host.appendChild(box);
+    box.checked = true;
+
+    const pruner = prunerOver(pane, { serializeAfter: 0, chunk: 500 });
+    pruner.prune();
+    pruner.mountAll();
+
+    expect(pane.querySelector('input[type="checkbox"]').checked).toBe(true);
+  });
+
+  test('the filter box and the rows it hid come back agreeing', () => {
+    for (let i = 0; i < 400; i++) addEntry(pane, i);
+    const host = pane.querySelector('[data-msg-id="m0"]');
+    host.innerHTML = '<input class="chat-table-search"><table><tr class="hit"><td>a</td></tr>'
+      + '<tr class="miss"><td>b</td></tr></table>';
+    host.querySelector('.chat-table-search').value = 'a';
+    host.querySelector('.miss').style.display = 'none';
+
+    const pruner = prunerOver(pane, { serializeAfter: 0, chunk: 500 });
+    pruner.prune();
+    pruner.mountAll();
+
+    const back = pane.querySelector('[data-msg-id="m0"]');
+    expect(back.querySelector('.chat-table-search').value).toBe('a');
+    expect(back.querySelector('.miss').style.display).toBe('none');
+  });
+
   test('a delegated listener still fires on a rebuilt entry', () => {
     for (let i = 0; i < 400; i++) addEntry(pane, i);
     const onClick = jest.fn();

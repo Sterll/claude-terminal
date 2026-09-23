@@ -18,9 +18,14 @@
  * The window now has two sides and no longer depends on where the user is
  * parked. Given the viewport, entries more than `bufferScreens` above it go to
  * the `above` store and entries that far below go to `below`; both remount
- * before the reader reaches them. Neither store is a cache — the nodes keep
- * their listeners and dataset and remount byte-for-byte, so memory is
- * unchanged by design and only the rendering cost is shed.
+ * before the reader reaches them. Neither store is a cache — a stored node
+ * keeps its listeners and dataset and remounts byte-for-byte, so the rendering
+ * cost is shed and nothing else changes.
+ *
+ * That last part stops being true past `serializeAfter` on the `above` side,
+ * which is the whole subject of the paragraph on flattening below: those
+ * entries are held as markup, not as nodes, and a listener bound to one does
+ * not come back. Read that paragraph before marking anything serializable.
  *
  * Geometry is what makes a two-sided window safe, and it is not always
  * available: a hidden pane (`display:none`, a background tab, a collapsed
@@ -134,7 +139,42 @@ function createTranscriptPruner({
       const rec = above[i];
       if (_isFlattened(rec)) continue;
       if (!canSerialize(rec)) continue;
+      _reflectFormState(rec);
       above[i] = { html: rec.outerHTML };
+    }
+  }
+
+  /**
+   * Write live form values back to the attributes `outerHTML` can see.
+   *
+   * `outerHTML` serialises attributes, so state a browser keeps only as a DOM
+   * *property* is dropped while state written as an inline style or attribute
+   * survives — and the two halves of one feature can land on opposite sides of
+   * that line. The markdown renderer's table filter is exactly that: the search
+   * box holds its text in `input.value` (a property) and hides non-matching
+   * rows with `style.display` (an attribute), so a rebuilt table came back with
+   * an empty box and its rows still hidden, and stayed that way until the
+   * reader typed in it again.
+   */
+  function _reflectFormState(el) {
+    let inputs;
+    try {
+      inputs = el.querySelectorAll('input, textarea');
+    } catch (_) {
+      return;
+    }
+    for (const field of inputs) {
+      try {
+        if (field.tagName === 'TEXTAREA') {
+          // A textarea has no `value` attribute; its serialised form is its
+          // own text content.
+          field.textContent = field.value;
+        } else if (field.type === 'checkbox' || field.type === 'radio') {
+          field.toggleAttribute('checked', field.checked);
+        } else {
+          field.setAttribute('value', field.value);
+        }
+      } catch (_) { /* nothing here is worth losing the entry over */ }
     }
   }
 

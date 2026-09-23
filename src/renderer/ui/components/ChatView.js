@@ -2955,6 +2955,18 @@ class ChatView extends BaseComponent {
 
   // ── Delegated click handlers ──
 
+  // `error` does not bubble, but it does reach a capturing listener, which is
+  // what lets this stand in for the per-image `onerror` injectInlineImages used
+  // to set. That was a property, so it did not survive the pruner rebuilding an
+  // entry from `outerHTML`, and a path that turned out not to be an image came
+  // back as a broken-image placeholder instead of being removed.
+  messagesEl.addEventListener('error', (e) => {
+    const img = e.target;
+    if (img && img.tagName === 'IMG' && img.classList.contains('chat-inline-img')) {
+      img.closest('.chat-inline-img-wrap')?.remove();
+    }
+  }, true);
+
   messagesEl.addEventListener('click', (e) => {
     // Note: copy, collapse, line-toggle, sort, preview buttons are handled by MarkdownRenderer.attachInteractivity()
 
@@ -2979,6 +2991,18 @@ class ChatView extends BaseComponent {
       // absent means fork off the tail, which must stay `undefined` rather
       // than become an empty string.
       if (uuid) forkFromMessage(uuid, host.dataset.forkDropsTurn || undefined);
+      return;
+    }
+
+    // Same reason, and it sits on the same entries: a user message carrying an
+    // "Enhanced" badge is marked serializable like every other prose turn, so a
+    // listener bound to the badge itself would be dropped on the first rebuild
+    // and the original prompt would become unreachable for good.
+    const enhancedBadge = e.target.closest('.chat-msg-enhanced-badge');
+    if (enhancedBadge) {
+      e.stopPropagation();
+      const original = enhancedBadge.closest('.chat-msg')?.querySelector('.chat-msg-original');
+      if (original) original.style.display = original.style.display === 'none' ? '' : 'none';
       return;
     }
 
@@ -4029,15 +4053,9 @@ class ChatView extends BaseComponent {
       html += `<div class="chat-msg-content">${renderMarkdown(text)}</div>`;
     }
     el.innerHTML = html;
-    // Toggle original prompt visibility on badge click
-    const badge = el.querySelector('.chat-msg-enhanced-badge');
-    const originalBlock = el.querySelector('.chat-msg-original');
-    if (badge && originalBlock) {
-      badge.style.cursor = 'pointer';
-      badge.addEventListener('click', () => {
-        originalBlock.style.display = originalBlock.style.display === 'none' ? '' : 'none';
-      });
-    }
+    // The badge's click is delegated on messagesEl, not bound here: this entry
+    // is marked serializable, so a listener on the badge would not survive the
+    // pruner rebuilding it from `outerHTML`.
     // Add rewind button for live sessions (undo file changes from this point)
     if (uuid && sessionId && !queued) {
       const rewindBtn = document.createElement('button');
@@ -4271,8 +4289,9 @@ class ChatView extends BaseComponent {
       const fileUrl = 'file:///' + p.replace(/\\/g, '/').replace(/^\/\//, '/');
       const imgWrap = document.createElement('div');
       imgWrap.className = 'chat-inline-img-wrap';
+      // No `onerror` here: the capturing 'error' listener on messagesEl owns
+      // it, because a property does not survive the pruner's rebuild.
       imgWrap.innerHTML = `<img src="${fileUrl}" class="chat-inline-img" alt="${escapeHtml(p)}" loading="lazy">`;
-      imgWrap.querySelector('img').onerror = () => imgWrap.remove();
       wrap.appendChild(imgWrap);
     });
     container.appendChild(wrap);
