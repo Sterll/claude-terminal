@@ -1153,6 +1153,16 @@ class SettingsPanel extends BasePanel {
                   </div>
                   <input type="number" class="settings-input-sm" id="terminal-font-size-input" aria-labelledby="terminal-font-size-label" aria-describedby="terminal-font-size-desc" value="${settings.terminalFontSize || 14}" min="10" max="24" step="1" style="width: 70px; flex: 0 0 auto; text-align: center;">
                 </div>
+                <div class="settings-toggle-row">
+                  <div class="settings-toggle-label">
+                    <div>${t('settings.terminalWebglRenderer')}</div>
+                    <div class="settings-toggle-desc">${t('settings.terminalWebglRendererDesc')}</div>
+                  </div>
+                  <label class="settings-toggle">
+                    <input type="checkbox" id="terminal-webgl-toggle" ${settings.terminalWebglRenderer !== false ? 'checked' : ''}>
+                    <span class="settings-toggle-slider"></span>
+                  </label>
+                </div>
               </div>
             </div>
             <div class="settings-group" data-section="behavior">
@@ -2427,6 +2437,9 @@ class SettingsPanel extends BasePanel {
       // apply the second change to open terminals.
       const prevTerminalFontSize = self._ctx.settingsState.get().terminalFontSize;
 
+      const webglToggle = document.getElementById('terminal-webgl-toggle');
+      const newTerminalWebgl = webglToggle ? webglToggle.checked : true;
+
       let accentColor = settings.accentColor;
       const selectedSwatch = container.querySelector('.color-swatch.selected');
       const customSwatchSelected = container.querySelector('.color-swatch-custom.selected');
@@ -2531,6 +2544,7 @@ class SettingsPanel extends BasePanel {
         closeAction: closeActionDropdown?.dataset.value || 'ask',
         terminalTheme: newTerminalTheme,
         terminalFontSize: newTerminalFontSize,
+        terminalWebglRenderer: newTerminalWebgl,
         language: newLanguage,
         compactProjects: newCompactProjects,
         restoreTerminalSessions: newRestoreTerminalSessions,

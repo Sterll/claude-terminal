@@ -782,6 +782,8 @@
     "terminalThemeDesc": "Cambiar los colores de la terminal",
     "terminalFontSize": "Tamaño de fuente de la terminal",
     "terminalFontSizeDesc": "Ajustar el tamaño de fuente usado en las pestañas de terminal",
+    "terminalWebglRenderer": "Renderizado del terminal por GPU",
+    "terminalWebglRendererDesc": "Más rápido, y lo que usan los terminales por defecto. Desactívalo si los caracteres dejan rastros o el cursor queda una columna desplazado respecto al texto: algunos controladores gráficos fallan en eso. Se aplica a los terminales que abras después.",
     "theme": "Tema de terminal",
     "notifications": "Notificaciones",
     "closeAction": "Acción al cerrar",

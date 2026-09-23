@@ -19,6 +19,11 @@ const defaultSettings = {
   executionMode: 'safe', // 'safe' (default), 'auto' (SDK classifier), 'dangerous' (bypassPermissions)
   accentColor: '#d97706',
   terminalFontSize: 14, // Terminal font size in px (10-24)
+  // GPU-accelerated terminal rendering. On by default; off falls back to the
+  // DOM renderer, which is slower but immune to the driver-specific glyph
+  // atlas faults behind #207 (ghost characters, caret a column off). There is
+  // no way to detect those, so this stays a user decision.
+  terminalWebglRenderer: true,
   notificationsEnabled: true,
   closeAction: 'ask', // 'ask', 'minimize', 'quit'
   shortcuts: {}, // Custom keyboard shortcuts overrides

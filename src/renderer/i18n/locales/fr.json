@@ -880,6 +880,8 @@
     "terminalThemeDesc": "Changez les couleurs du terminal",
     "terminalFontSize": "Taille de police du terminal",
     "terminalFontSizeDesc": "Ajustez la taille de police utilisée dans les onglets du terminal",
+    "terminalWebglRenderer": "Rendu GPU du terminal",
+    "terminalWebglRendererDesc": "Plus rapide, et ce que les terminaux utilisent par défaut. À désactiver si des caractères laissent des traces ou si le curseur est décalé d’une colonne par rapport au texte — certains pilotes graphiques s’en sortent mal. S’applique aux terminaux ouverts ensuite.",
     "theme": "Thème du terminal",
     "notifications": "Notifications",
     "closeAction": "Action à la fermeture",

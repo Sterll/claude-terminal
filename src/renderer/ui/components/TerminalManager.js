@@ -12,7 +12,7 @@ const { isSidebarNavigation } = require('../navigationMode');
 // xterm is loaded on demand — see src/renderer/services/xtermLoader.js. Every
 // `new Terminal(...)` below is preceded by an `await loadXterm()`, which is why
 // each of those functions is async.
-const { loadXterm, attachWebglAddon } = require('../../services/xtermLoader');
+const { loadXterm, attachWebglAddon, clearGlyphAtlas } = require('../../services/xtermLoader');
 const {
   terminalsState,
   addTerminal,
@@ -1658,7 +1658,7 @@ class TerminalManager extends BaseComponent {
     document.getElementById('empty-terminals').style.display = 'none';
 
     terminal.open(wrapper);
-    attachWebglAddon(terminal);
+    attachWebglAddon(terminal, { enabled: getSetting('terminalWebglRenderer') !== false });
     registerOsc52Handler(terminal);
     setTimeout(() => {
       const fitContainer = wrapper.closest('.terminal-wrapper') || wrapper;
@@ -1993,7 +1993,7 @@ class TerminalManager extends BaseComponent {
 
     const consoleView = wrapper.querySelector(consoleViewSelector);
     terminal.open(consoleView);
-    attachWebglAddon(terminal);
+    attachWebglAddon(terminal, { enabled: getSetting('terminalWebglRenderer') !== false });
     // No OSC 52 here on purpose — see registerOsc52Handler: this console pipes
     // a project server's output, which must not reach the system clipboard.
     setTimeout(() => {
@@ -3042,7 +3042,7 @@ class TerminalManager extends BaseComponent {
     document.getElementById('empty-terminals').style.display = 'none';
 
     terminal.open(wrapper);
-    attachWebglAddon(terminal);
+    attachWebglAddon(terminal, { enabled: getSetting('terminalWebglRenderer') !== false });
     registerOsc52Handler(terminal);
     setTimeout(() => {
       const fitContainer = wrapper.closest('.terminal-wrapper') || wrapper;
@@ -3208,7 +3208,7 @@ class TerminalManager extends BaseComponent {
     document.getElementById('empty-terminals').style.display = 'none';
 
     terminal.open(wrapper);
-    attachWebglAddon(terminal);
+    attachWebglAddon(terminal, { enabled: getSetting('terminalWebglRenderer') !== false });
     registerOsc52Handler(terminal);
     setTimeout(() => {
       const fitContainer = wrapper.closest('.terminal-wrapper') || wrapper;
@@ -3772,6 +3772,9 @@ class TerminalManager extends BaseComponent {
       termData.terminal.options.fontSize = fontSize;
       // Defer fit+resize to next frame so xterm.js can recalculate glyph dimensions first
       requestAnimationFrame(() => {
+        // The atlas caches glyphs rasterised at the previous size; redrawing
+        // from it lays the new size out on the old advance widths.
+        clearGlyphAtlas(termData.terminal);
         if (termData.fitAddon) {
           try { termData.fitAddon.fit(); } catch (_) { /* container not measurable yet */ }
         }
@@ -4147,7 +4150,7 @@ class TerminalManager extends BaseComponent {
       const ptyId = (result && typeof result === 'object') ? result.id : result;
 
       terminal.open(wrapper);
-      attachWebglAddon(terminal);
+      attachWebglAddon(terminal, { enabled: getSetting('terminalWebglRenderer') !== false });
       registerOsc52Handler(terminal);
 
       updateTerminal(id, {

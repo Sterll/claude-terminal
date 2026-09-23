@@ -54,6 +54,11 @@ jest.mock('../../src/renderer/services/xtermLoader', () => ({
     FitAddon: require('@xterm/addon-fit').FitAddon,
   }),
   attachWebglAddon: () => {},
+  // Real terminals drop the glyph atlas here, because it holds glyphs cut for
+  // the old size and xterm would redraw the new one from that cache. Spied on
+  // below rather than stubbed away, since "the atlas is dropped before the
+  // refit" is part of what a font-size change has to do.
+  clearGlyphAtlas: jest.fn(),
 }));
 
 // The console registry pulls in the whole project-type tree; a single stub
@@ -136,6 +141,25 @@ describe('updateAllTerminalsFontSize', () => {
     expect(terminal.options.fontSize).toBe(18);
     expect(fitAddon.fit).toHaveBeenCalled();
     expect(window.electron_api.terminal.resize).toHaveBeenCalledWith({ id: 7, cols: 100, rows: 30 });
+  });
+
+  // The WebGL renderer caches rasterised glyphs, and the cache is cut for the
+  // grid in force when it was built. Redrawing the new size from the old atlas
+  // is where ghost characters and a caret a column off come from — the same
+  // class of fault as #207, except self-inflicted.
+  test('drops the glyph atlas before refitting, not after', async () => {
+    const { clearGlyphAtlas } = require('../../src/renderer/services/xtermLoader');
+    const { terminal, fitAddon } = addTab(7);
+    clearGlyphAtlas.mockClear();
+
+    tm.updateAllTerminalsFontSize(18);
+    await nextFrame();
+
+    expect(clearGlyphAtlas).toHaveBeenCalledWith(terminal);
+    // Order matters: an atlas dropped after the refit is rebuilt from the old
+    // measurements on the way past.
+    expect(clearGlyphAtlas.mock.invocationCallOrder[0])
+      .toBeLessThan(fitAddon.fit.mock.invocationCallOrder[0]);
   });
 
   test('resizes a tab that switched out of chat by its PTY id, not its tab key', async () => {

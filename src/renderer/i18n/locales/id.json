@@ -785,6 +785,8 @@
     "terminalThemeDesc": "Ubah warna terminal",
     "terminalFontSize": "Ukuran font terminal",
     "terminalFontSizeDesc": "Sesuaikan ukuran font yang digunakan di tab terminal",
+    "terminalWebglRenderer": "Render terminal lewat GPU",
+    "terminalWebglRendererDesc": "Lebih cepat, dan inilah yang dipakai terminal secara bawaan. Matikan jika karakter meninggalkan bayangan atau kursor meleset satu kolom dari teksnya — sebagian driver grafis keliru menanganinya. Berlaku untuk terminal yang dibuka setelahnya.",
     "theme": "Tema terminal",
     "notifications": "Notifikasi",
     "closeAction": "Aksi penutupan",

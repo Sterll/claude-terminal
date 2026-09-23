@@ -90,7 +90,7 @@ Electron Renderer Process (Browser)
 ├── src/renderer/workflow-fields/    # 13 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN locales (3725 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN locales (3727 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch
 
 Project Types (Plugin System)
@@ -400,7 +400,7 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 ### Internationalization (`src/renderer/i18n/locales/`)
 
 - **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`)
-- **Keys:** 3725 per locale, all five in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
+- **Keys:** 3727 per locale, all five in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
 - **Loading:** only `en.json` is bundled eagerly, as the guaranteed-loaded fallback for `t()`; the others are fetched by `initI18n()`
 - **Detection:** auto-detect from `navigator.language`, `DEFAULT_LANGUAGE` is `fr`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`, `data-i18n="..."` for static HTML
@@ -634,7 +634,7 @@ Worker); neither is bundled into the desktop app.
 - **Single instance:** `app.requestSingleInstanceLock()` prevents multiple instances
 - **Tray integration:** close button minimizes to tray, `app-quit` for real exit
 - **Frameless window:** custom titlebar in HTML/CSS with `-webkit-app-region: drag`
-- **Terminal:** xterm.js (WebGL) in renderer, node-pty (PowerShell default) in main, adaptive batching
+- **Terminal:** xterm.js (WebGL) in renderer, node-pty (PowerShell default) in main, adaptive batching. **The WebGL glyph atlas is cut for the metrics in force when it is built, and nothing re-cuts it on its own.** Anything that changes how a cell is measured leaves xterm redrawing on the old advance widths, which reads as ghost characters and a caret a column away from the text. Two things do change them: the font stack resolving after first paint (`Cascadia Code` first, then `Consolas`, then `monospace`), handled by a `document.fonts.ready` repaint in `attachWebglAddon`; and the font-size setting, which must call `clearGlyphAtlas()` **before** it refits, or the atlas is rebuilt from the old measurements on the way past. `terminalWebglRenderer` (on by default) turns the renderer off entirely and falls back to the DOM one. That setting exists because the same symptoms also come from graphics drivers we cannot probe for — issue #207 — and because `--disable-gpu` is not a workaround: Electron still answers `getContext('webgl2')` through SwiftShader, so the addon attaches anyway
 - **Chat:** Agent SDK streaming input mode, async iterator, multi-turn, fork/rewind via SDK checkpointing
 - **AI commits / PR descriptions:** GitHub Models API (`gpt-4o-mini`, free tier) with heuristic fallback
 - **Hooks:** 15 hook types into `~/.claude/settings.json`, HTTP event server for real-time events

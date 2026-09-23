@@ -785,6 +785,8 @@
     "terminalThemeDesc": "Change the terminal colors",
     "terminalFontSize": "Terminal font size",
     "terminalFontSizeDesc": "Adjust the font size used in terminal tabs",
+    "terminalWebglRenderer": "GPU terminal rendering",
+    "terminalWebglRendererDesc": "Faster, and what terminals use by default. Turn it off if characters leave ghosts behind or the caret sits a column away from the text — some graphics drivers get that wrong. Applies to terminals opened afterwards.",
     "theme": "Terminal theme",
     "notifications": "Notifications",
     "closeAction": "Close action",

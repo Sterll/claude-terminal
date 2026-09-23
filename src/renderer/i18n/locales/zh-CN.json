@@ -785,6 +785,8 @@
     "terminalThemeDesc": "更改终端颜色",
     "terminalFontSize": "终端字体大小",
     "terminalFontSizeDesc": "调整终端选项卡中使用的字体大小",
+    "terminalWebglRenderer": "GPU 终端渲染",
+    "terminalWebglRendererDesc": "更快，也是终端的默认方式。如果字符残留重影，或光标与文字相差一列，请关闭它 —— 部分显卡驱动会出错。对之后打开的终端生效。",
     "theme": "终端主题",
     "notifications": "通知",
     "closeAction": "关闭行为",
