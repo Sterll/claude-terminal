@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 202 test files)
+npm test                 # Run Jest tests (jsdom, 203 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -564,6 +564,8 @@ Also exposes `window.electron_nodeModules`: `path`, `fs` (sync + promises, guard
 │   ├── index.json                     # Artifact metadata (also written directly by the MCP tools)
 │   └── <id>/                          # Artifact versions
 ├── terminals/output/<projectId>.log   # Rolling terminal output tail (TerminalOutputCapture)
+├── usage.json                         # Focused account's usage, mirrored for the MCP tools
+├── usage/triggers/                    # Re-fetch requests dropped by the MCP usage_refresh tool
 ├── workflows/
 │   ├── definitions.json               # Workflow graphs (single-writer protocol, see _workflowStore.js)
 │   └── triggers/                      # Trigger configs
@@ -666,7 +668,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 202 unit test files (jsdom environment)
+npm test                    # Run all 203 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -675,7 +677,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 202 test files
+- **Framework:** Jest with jsdom, 203 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
@@ -844,7 +846,7 @@ Files prefixed with `_` are shared helpers, not tool modules — the loader igno
 | `marketplace.js` | Skill marketplace tools |
 | `plugins.js` | Plugin install / list / catalog |
 | `settings.js` | `settings_get`, `settings_set` |
-| `usage.js` | `usage_get`, `usage_refresh` |
+| `usage.js` | `usage_get`, `usage_refresh` — reads the `usage.json` `UsageService` mirrors after each fetch, and asks for a re-fetch through `usage/triggers/`, which the same service sweeps on a short interval (`fs.watch` drops a file created just after the watch is armed, which is precisely this case). Both halves were missing: nothing wrote the file and nothing read the directory, so one tool always answered "no data" and the other reported a refresh that never happened |
 | `artifacts.js` | `artifact_list`, `artifact_get`, `artifact_search`, `artifact_versions`, `artifact_stats`, `artifact_delete` — reads the same `src/shared/artifact-store.js` the app uses, hence the poll-for-out-of-process-writes in `ArtifactService` |
 | `errorlog.js` | `errorlog_entries`, `errorlog_stats`, `errorlog_patterns`, `errorlog_export`, `errorlog_clear` |
 

@@ -4,6 +4,8 @@
  */
 
 const https = require('https');
+const fs = require('fs');
+const path = require('path');
 const { readCredentials, tokenFromCredentials } = require('../utils/claudeCredentials');
 
 // Per-account state.
@@ -485,6 +487,7 @@ async function fetchUsage(accountId, force = false) {
         entry.lastError = null;
         entry.isStale = false;
         console.log('[Usage] Fetched via API');
+        mirrorToDisk();
         if (_onUpdateCallback) _onUpdateCallback(data, entry.accountId);
         _maybeNotifyLimit(entry, data);
         return data;
@@ -513,6 +516,9 @@ async function fetchUsage(accountId, force = false) {
     // PTY fallback removed — launching `claude --dangerously-skip-permissions` just
     // to read usage data is a security risk. Serve cached data, flagged as stale.
     entry.isStale = true;
+    // Mirrored on the way out too: a consumer reading the file needs to see
+    // that these figures stopped being confirmed, not just the last good ones.
+    mirrorToDisk();
     if (entry.usageData) {
       console.warn('[Usage] API unavailable, serving STALE cached data:', entry.lastError);
       return entry.usageData;
@@ -734,8 +740,149 @@ function _maybeNotifyLimit(entry, data) {
   } catch (e) { console.error('[Usage] onLimit cb threw:', e.message); }
 }
 
+// ── Mirror to disk, for the MCP tools ────────────────────────────────────────
+//
+// The figures live in the `entries` Map above, in the main process. The MCP
+// server is a separate process, so it cannot reach them: `usage_get` reads
+// `CT_DATA_DIR/usage.json`, and until now nothing wrote that file, which is
+// why the tool answered "No usage data available" on every install.
+//
+// This is derived data with one writer and read-only consumers, so it is
+// rewritten wholesale rather than through the read-modify-write protocol the
+// collection stores use. A truncated read is still possible without an atomic
+// write, hence temp + rename.
+
+/** @returns {string} */
+function mirrorFile() {
+  const { dataDir } = require('../utils/paths');
+  return path.join(dataDir, 'usage.json');
+}
+
+/**
+ * Write the focused account's figures where the MCP tools can read them.
+ *
+ * Only the focused account: it is the one the titlebar shows and the only one
+ * the poller keeps warm, so it is the only one whose numbers are current
+ * enough to answer with.
+ *
+ * Never throws. A read-only data directory is not a reason to fail a fetch
+ * that otherwise worked.
+ */
+function mirrorToDisk() {
+  try {
+    const entry = entryFor(getFocusedAccount());
+    const payload = {
+      accountId: entry.accountId,
+      timestamp: entry.usageData?.timestamp || null,
+      lastFetch: entry.lastFetch ? entry.lastFetch.toISOString() : null,
+      stale: isEntryStale(entry),
+      error: entry.lastError || null,
+      buckets: entry.usageData?.buckets || [],
+      extraUsage: entry.usageData?.extraUsage ?? null
+    };
+    const file = mirrorFile();
+    const tmp = `${file}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(payload, null, 2), 'utf8');
+    fs.renameSync(tmp, file);
+  } catch (e) {
+    console.warn('[Usage] Could not mirror usage.json:', e.message);
+  }
+}
+
+// ── Refresh requested from outside the app ───────────────────────────────────
+
+/** @type {NodeJS.Timeout|null} The refresh-request sweep. */
+let triggerWatcher = null;
+
+/**
+ * Watch the directory the MCP `usage_refresh` tool drops a request into.
+ *
+ * That tool has always written `CT_DATA_DIR/usage/triggers/refresh_<ts>.json`
+ * and reported "Data will be updated shortly". Nothing read the directory, so
+ * the sentence was false and the files accumulated.
+ *
+ * The refresh is deliberately NOT forced. `force` re-reads the credential
+ * store, which on darwin can raise a Keychain dialog; one raised behind the
+ * window by a tool call the user did not make is exactly the prompt this
+ * service works to avoid. A normal refresh still re-fetches from the API,
+ * which is what the caller actually wants.
+ */
+/** @returns {string} */
+function triggerDir() {
+  const { dataDir } = require('../utils/paths');
+  return path.join(dataDir, 'usage', 'triggers');
+}
+
+/**
+ * Delete every refresh request sitting in the directory and say whether there
+ * was one.
+ *
+ * Consumed before the fetch rather than after: a fetch that fails must not
+ * leave a request behind that fires again on the next directory event, and a
+ * request is a request to look now, not a queue.
+ *
+ * @returns {boolean}
+ */
+function consumeRefreshRequests() {
+  let found = false;
+  try {
+    const dir = triggerDir();
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.startsWith('refresh_')) continue;
+      try { fs.unlinkSync(path.join(dir, name)); found = true; } catch (e) { /* raced */ }
+    }
+  } catch (e) {
+    // No directory yet is the normal state until a tool writes the first one.
+  }
+  return found;
+}
+
+/**
+ * Start collecting refresh requests dropped by the MCP `usage_refresh` tool.
+ *
+ * Polled, not `fs.watch`ed. The watcher was the obvious choice and it is the
+ * one that does not hold: `fs.watch` is FSEvents on darwin,
+ * ReadDirectoryChangesW on win32 and inotify on linux, none of them promises
+ * delivery for a file created moments after the watch is armed, and on darwin
+ * it demonstrably drops that case — the test for it failed about one run in
+ * three. A missed event puts us straight back at the bug this fixes, a
+ * `usage_refresh` that silently does nothing, and a request nobody collects
+ * is indistinguishable from one nobody honoured.
+ *
+ * A readdir of a directory that is almost always empty, every few seconds,
+ * costs nothing measurable and makes the tool's "call usage_get again in a few
+ * seconds" true by construction on every platform.
+ *
+ * @param {number} [intervalMs] - sweep period; the tests drive it faster
+ */
+function startRefreshWatch(intervalMs = 5000) {
+  if (triggerWatcher) return;
+  try {
+    fs.mkdirSync(triggerDir(), { recursive: true });
+  } catch (e) {
+    console.warn('[Usage] Could not create the refresh trigger directory:', e.message);
+    return;
+  }
+  const sweep = () => {
+    if (!consumeRefreshRequests()) return;
+    fetchUsage(getFocusedAccount()).catch(e => console.error('[Usage]', e.message));
+  };
+  // Anything already waiting from before this window opened.
+  sweep();
+  triggerWatcher = setInterval(sweep, intervalMs);
+  if (typeof triggerWatcher.unref === 'function') triggerWatcher.unref();
+}
+
+function stopRefreshWatch() {
+  if (!triggerWatcher) return;
+  clearInterval(triggerWatcher);
+  triggerWatcher = null;
+}
+
 module.exports = {
   readBuckets,
+  startRefreshWatch,
+  stopRefreshWatch,
   startPeriodicFetch,
   stopPeriodicFetch,
   getUsageData,

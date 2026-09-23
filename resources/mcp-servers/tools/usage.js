@@ -3,8 +3,17 @@
 /**
  * Usage & Quota Tools Module for Claude Terminal MCP
  *
- * Provides Claude API usage and quota tools. Reads cached usage data from
- * CT_DATA_DIR/usage.json (polled by the Electron app from the Anthropic API).
+ * Provides Claude usage and quota tools. Reads cached usage data from
+ * CT_DATA_DIR/usage.json, which UsageService in the app mirrors after each
+ * fetch, and requests a re-fetch by dropping a file in
+ * CT_DATA_DIR/usage/triggers/, which the same service watches.
+ *
+ * Both halves of that contract were missing until recently: nothing wrote
+ * usage.json, so usage_get always answered "no data", and nothing read the
+ * trigger directory, so usage_refresh reported a refresh that never happened.
+ * The shape read below is the service's own: a list of limit buckets carrying
+ * a utilization percentage, not the token counts this file used to look for,
+ * which the usage API stopped reporting.
  */
 
 const fs = require('fs');
@@ -37,7 +46,7 @@ function loadUsageData() {
 const tools = [
   {
     name: 'usage_get',
-    description: 'Get current Claude API usage data: tokens consumed, daily limit, percentage used, and reset time.',
+    description: 'Get current Claude usage: one bar per limit the plan exposes (session, weekly, per-model), how full each is, and when it resets.',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -45,7 +54,7 @@ const tools = [
   },
   {
     name: 'usage_refresh',
-    description: 'Request a refresh of Claude API usage data. Claude Terminal will fetch the latest usage from the Anthropic API.',
+    description: 'Ask Claude Terminal to re-fetch usage from the Anthropic API. Returns immediately; call usage_get again a few seconds later.',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -54,16 +63,6 @@ const tools = [
 ];
 
 // -- Formatting helpers -------------------------------------------------------
-
-function formatNumber(n) {
-  if (typeof n !== 'number' || isNaN(n)) return '?';
-  return n.toLocaleString('en-US');
-}
-
-function formatPercentage(used, limit) {
-  if (typeof used !== 'number' || typeof limit !== 'number' || limit === 0) return '?';
-  return ((used / limit) * 100).toFixed(1) + '%';
-}
 
 function formatTimestamp(ts) {
   if (!ts) return '?';
@@ -79,6 +78,24 @@ function formatTimestamp(ts) {
   }
 }
 
+/** `[####------]  42%` */
+function bar(percent) {
+  const pct = Math.max(0, Math.min(100, Math.round(percent)));
+  const filled = Math.round(pct / 10);
+  return `[${'#'.repeat(filled)}${'-'.repeat(10 - filled)}] ${String(pct).padStart(3)}%`;
+}
+
+/**
+ * The plan-wide buckets carry a key rather than a name, because the app
+ * translates them. Here there is no locale to translate into.
+ */
+function bucketLabel(bucket) {
+  if (bucket.label) return bucket.label;
+  if (bucket.type === 'session') return 'Session';
+  if (bucket.type === 'weekly') return 'Weekly';
+  return bucket.id || 'Limit';
+}
+
 // -- Tool handler -------------------------------------------------------------
 
 async function handle(name, args) {
@@ -89,52 +106,29 @@ async function handle(name, args) {
     if (name === 'usage_get') {
       const raw = loadUsageData();
       if (!raw) {
-        return ok('No usage data available. Usage data is refreshed automatically by Claude Terminal.');
+        return ok('No usage data available yet. Claude Terminal writes this file after its first successful fetch; if it stays absent, the app is signed out or its usage poller is not running.');
       }
 
-      // Navigate flexible structure — data may be nested under .data or at root
-      const data = raw.data || raw;
-      const dailyUsage = data.dailyUsage || data.daily_usage || data;
+      const buckets = Array.isArray(raw.buckets) ? raw.buckets : [];
+      let output = '# Claude usage\n';
+      output += `${'-'.repeat(46)}\n`;
 
-      const tokensUsed = dailyUsage.tokensUsed ?? dailyUsage.tokens_used ?? dailyUsage.used;
-      const tokenLimit = dailyUsage.tokenLimit ?? dailyUsage.token_limit ?? dailyUsage.limit;
-      const resetTime = dailyUsage.resetTime ?? dailyUsage.reset_time ?? dailyUsage.resetsAt ?? dailyUsage.resets_at ?? data.resetTime ?? data.resetsAt;
-      const planType = data.planType ?? data.plan_type ?? data.plan ?? raw.planType ?? raw.plan;
-      const lastUpdated = raw.lastUpdated ?? raw.last_updated ?? raw.updatedAt ?? raw.timestamp;
-
-      let output = '# Claude API Usage\n';
-      output += `${'─'.repeat(40)}\n`;
-
-      if (planType) {
-        output += `Plan: ${planType}\n`;
+      if (buckets.length === 0) {
+        output += 'No limits reported for this account.\n';
+      }
+      for (const b of buckets) {
+        if (typeof b.utilization !== 'number') continue;
+        output += `${bucketLabel(b).padEnd(18)} ${bar(b.utilization)}`;
+        output += b.resetsAt ? `   resets ${formatTimestamp(b.resetsAt)}\n` : '\n';
       }
 
-      if (typeof tokensUsed === 'number' && typeof tokenLimit === 'number') {
-        output += `Tokens used: ${formatNumber(tokensUsed)} / ${formatNumber(tokenLimit)}\n`;
-        output += `Usage: ${formatPercentage(tokensUsed, tokenLimit)}\n`;
-      } else if (typeof tokensUsed === 'number') {
-        output += `Tokens used: ${formatNumber(tokensUsed)}\n`;
-      } else {
-        output += 'Tokens: no token data available\n';
+      if (raw.extraUsage) {
+        output += `\nExtra usage beyond the plan: ${JSON.stringify(raw.extraUsage)}\n`;
       }
 
-      if (resetTime) {
-        output += `Resets at: ${formatTimestamp(resetTime)}\n`;
-      }
-
-      if (lastUpdated) {
-        output += `Last updated: ${formatTimestamp(lastUpdated)}\n`;
-      }
-
-      // Show any additional quota fields present in the data
-      const bonusTokens = dailyUsage.bonusTokens ?? dailyUsage.bonus_tokens;
-      if (typeof bonusTokens === 'number' && bonusTokens > 0) {
-        output += `Bonus tokens: ${formatNumber(bonusTokens)}\n`;
-      }
-
-      const hasFastMode = data.hasFastMode ?? data.has_fast_mode ?? data.fastMode;
-      if (hasFastMode !== undefined) {
-        output += `Fast mode: ${hasFastMode ? 'available' : 'not available'}\n`;
+      output += `\nLast fetch: ${formatTimestamp(raw.lastFetch)}\n`;
+      if (raw.stale) {
+        output += `STALE - the last refresh did not confirm these figures${raw.error ? `: ${raw.error}` : '.'}\n`;
       }
 
       return ok(output);
@@ -151,7 +145,7 @@ async function handle(name, args) {
         timestamp: new Date().toISOString(),
       }), 'utf8');
 
-      return ok('Usage data refresh requested. Data will be updated shortly.');
+      return ok('Refresh requested. Claude Terminal watches this directory and re-fetches, then rewrites usage.json; call usage_get again in a few seconds. Note this does not re-read the credential store, so it will not recover an account signed out from outside the app.');
     }
 
     return fail(`Unknown usage tool: ${name}`);
