@@ -48,12 +48,28 @@ function fakeRedis(data, { db = 0, infoFails = false, scanBatches = null } = {})
         return [i + 1 >= scanBatches.length ? '0' : String(i + 1), scanBatches[i]];
       }),
       type: jest.fn(async (k) => (keys()[k] ? keys()[k].type : 'none')),
-      ttl: jest.fn(async () => -1),
-      pttl: jest.fn(async () => -1),
+      // An entry may carry `ttlMs`; without it the key never expires
+      ttl: jest.fn(async (k) => (!keys()[k] ? -2 : keys()[k].ttlMs ? Math.ceil(keys()[k].ttlMs / 1000) : -1)),
+      pttl: jest.fn(async (k) => (!keys()[k] ? -2 : keys()[k].ttlMs || -1)),
       get: jest.fn(async (k) => (keys()[k] ? keys()[k].value : null)),
       strlen: jest.fn(async (k) => String(keys()[k].value).length),
       hgetall: jest.fn(async (k) => keys()[k].value),
-      set: jest.fn(async (k, v) => { data[current] = { ...keys(), [k]: { type: 'string', value: v } }; return 'OK'; }),
+      exists: jest.fn(async (k) => (keys()[k] ? 1 : 0)),
+      set: jest.fn(async (k, v, mode, ms) => {
+        data[current] = { ...keys(), [k]: { type: 'string', value: v, ...(mode === 'PX' ? { ttlMs: ms } : {}) } };
+        return 'OK';
+      }),
+      unlink: jest.fn(async (k) => { if (!keys()[k]) return 0; delete data[current][k]; return 1; }),
+      del: jest.fn(async (k) => { if (!keys()[k]) return 0; delete data[current][k]; return 1; }),
+      expire: jest.fn(async (k, s) => { if (!keys()[k]) return 0; keys()[k].ttlMs = s * 1000; return 1; }),
+      persist: jest.fn(async (k) => { if (!keys()[k] || !keys()[k].ttlMs) return 0; delete keys()[k].ttlMs; return 1; }),
+      renamenx: jest.fn(async (k, n) => {
+        if (!keys()[k]) throw new Error('ERR no such key');
+        if (keys()[n]) return 0;
+        data[current][n] = keys()[k];
+        delete data[current][k];
+        return 1;
+      }),
     };
     return client;
   };
@@ -188,6 +204,71 @@ describe('DatabaseService.redis key detail', () => {
     databaseService.connections.set('pg', { config: { type: 'postgresql' }, client: {}, lastUsed: 0 });
     expect(await databaseService.redis('pg', { action: 'keys' })).toMatchObject({ success: false });
     expect(await databaseService.redis('nope', { action: 'keys' })).toEqual({ success: false, error: 'Not connected' });
+  });
+});
+
+describe('DatabaseService.redis key actions', () => {
+  const str = (value, extra = {}) => ({ type: 'string', value, ...extra });
+
+  test('delete removes the key through UNLINK', async () => {
+    const data = { 0: { a: str('1') } };
+    const client = fakeRedis(data);
+    openConnection('c', client);
+    expect(await databaseService.redis('c', { action: 'delete', key: 'a' })).toEqual({ success: true, deleted: true });
+    expect(data[0].a).toBeUndefined();
+    expect(client.duplicates[0].unlink).toHaveBeenCalledWith('a');
+  });
+
+  test('delete falls back to DEL on a server without UNLINK', async () => {
+    const data = { 0: { a: str('1') } };
+    const client = fakeRedis(data);
+    const realDuplicate = client.duplicate;
+    client.duplicate = jest.fn((opts) => {
+      const dup = realDuplicate(opts);
+      dup.unlink = jest.fn(async () => { throw new Error("ERR unknown command 'unlink'"); });
+      return dup;
+    });
+    openConnection('c', client);
+    expect(await databaseService.redis('c', { action: 'delete', key: 'a' })).toEqual({ success: true, deleted: true });
+    expect(data[0].a).toBeUndefined();
+  });
+
+  test('a positive expiry sets it, anything else removes it', async () => {
+    const data = { 0: { a: str('1') } };
+    openConnection('c', fakeRedis(data));
+    const set = await databaseService.redis('c', { action: 'expire', key: 'a', seconds: 90 });
+    expect(set.info).toMatchObject({ ttl: 90, pttl: 90000 });
+    const removed = await databaseService.redis('c', { action: 'expire', key: 'a', seconds: 0 });
+    expect(removed.info).toMatchObject({ ttl: null, pttl: null });
+    // Removing an expiry that is already absent is not an error
+    expect((await databaseService.redis('c', { action: 'expire', key: 'a' })).success).toBe(true);
+    expect(await databaseService.redis('c', { action: 'expire', key: 'nope', seconds: 5 }))
+      .toEqual({ success: false, error: 'Key "nope" does not exist' });
+  });
+
+  test('rename refuses to overwrite an existing key', async () => {
+    const data = { 0: { a: str('1'), b: str('2') } };
+    openConnection('c', fakeRedis(data));
+    expect(await databaseService.redis('c', { action: 'rename', key: 'a', newKey: 'b' }))
+      .toEqual({ success: false, error: 'Key "b" already exists' });
+    expect(data[0].b.value).toBe('2');
+    const moved = await databaseService.redis('c', { action: 'rename', key: 'a', newKey: 'c' });
+    expect(moved.info).toMatchObject({ key: 'c', value: '1' });
+  });
+
+  test('saving a string keeps its expiry', async () => {
+    const data = { 0: { a: str('old', { ttlMs: 45000 }) } };
+    openConnection('c', fakeRedis(data));
+    const result = await databaseService.redis('c', { action: 'setString', key: 'a', value: 'new' });
+    expect(result.info).toMatchObject({ value: 'new', pttl: 45000 });
+  });
+
+  test('saving refuses a key that is not a string', async () => {
+    openConnection('c', fakeRedis({ 0: { h: { type: 'hash', value: {} } } }));
+    expect(await databaseService.redis('c', { action: 'setString', key: 'h', value: 'x' }))
+      .toEqual({ success: false, error: 'Key "h" holds a hash, not a string' });
+    expect(await databaseService.redis('c', { action: 'setString', key: 'h' }))
+      .toEqual({ success: false, error: 'A string value is required' });
   });
 });
 

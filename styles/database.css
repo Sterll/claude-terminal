@@ -3043,6 +3043,101 @@
   gap: 4px;
 }
 .redis-detail-ttl svg { width: 12px; height: 12px; }
+.redis-detail-ttl span { font-variant-numeric: tabular-nums; }
+.redis-detail-ttl.expired { color: var(--warning); }
+
+/* Key actions */
+.redis-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.redis-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.redis-action:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+.redis-action.danger:hover:not(:disabled) { background: rgba(239, 68, 68, 0.12); color: var(--danger); }
+.redis-action:disabled { opacity: 0.35; cursor: default; }
+.redis-detail-gone {
+  font-size: var(--font-xs);
+  color: var(--warning);
+}
+.redis-detail.expired .redis-detail-value { opacity: 0.6; }
+.redis-tree-key.gone .redis-tree-key-name {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+/* String value editor */
+.redis-value-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+}
+.redis-value-editor {
+  flex: 1;
+  min-height: 160px;
+  resize: none;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: var(--font-xs);
+  line-height: 1.5;
+  tab-size: 2;
+}
+.redis-value-editor:focus { outline: none; border-color: var(--accent); }
+.redis-value-edit-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.redis-value-edit-hint {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+}
+.redis-value-edit-buttons { display: flex; gap: 8px; }
+
+/* TTL / rename prompt */
+.redis-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.redis-ttl-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.redis-ttl-preset {
+  padding: 3px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  cursor: pointer;
+}
+.redis-ttl-preset:hover { border-color: var(--accent); color: var(--text-primary); }
+.redis-prompt-hint {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+}
 
 /* Value area */
 .redis-detail-value {

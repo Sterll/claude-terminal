@@ -89,6 +89,14 @@ function getRedisBrowser() {
         const activeId = require('../../state').getActiveConnection();
         if (activeId) loadSchema(activeId, { force: true });
       },
+      // Keep the db's key-count badge honest after a delete, without repainting the panel
+      onKeyCountChange: (dbName, delta) => {
+        const counts = panelState.browserTableRowCounts;
+        if (counts[dbName] === undefined) return;
+        counts[dbName] = Math.max(0, counts[dbName] + delta);
+        const badge = document.querySelector(`.db-browser-table-item[data-table="${dbName}"] .db-browser-table-rows`);
+        if (badge) badge.textContent = formatRowCount(counts[dbName]);
+      },
     });
   }
   return redisBrowser;

@@ -243,6 +243,10 @@ class DatabaseService {
       switch (request.action) {
         case 'keys': return { success: true, ...(await this._redisListKeys(db, request)) };
         case 'info': return { success: true, info: await this._redisKeyInfo(db, this._redisKeyArg(request.key)) };
+        case 'delete': return { success: true, deleted: await this._redisDelete(db, this._redisKeyArg(request.key)) };
+        case 'expire': return { success: true, info: await this._redisExpire(db, this._redisKeyArg(request.key), request.seconds) };
+        case 'rename': return { success: true, info: await this._redisRename(db, this._redisKeyArg(request.key), this._redisKeyArg(request.newKey)) };
+        case 'setString': return { success: true, info: await this._redisSetString(db, this._redisKeyArg(request.key), request.value) };
         default: throw new Error(`Unknown Redis action: ${request.action}`);
       }
     } catch (error) {
@@ -308,6 +312,43 @@ class DatabaseService {
       }
     } catch { /* ignore */ }
     return { key, type, ttl: ttl < 0 ? null : ttl, pttl: pttl < 0 ? null : pttl, size, length, value };
+  }
+
+  /** UNLINK frees a large value off the main thread; DEL for servers older than 4.0. */
+  async _redisDelete(db, key) {
+    try {
+      return (await db.unlink(key)) > 0;
+    } catch (error) {
+      if (!/unknown command/i.test(error.message)) throw error;
+      return (await db.del(key)) > 0;
+    }
+  }
+
+  /** A positive number of seconds sets the expiry; anything else removes it. */
+  async _redisExpire(db, key, seconds) {
+    const ttl = parseInt(seconds, 10);
+    const applied = Number.isInteger(ttl) && ttl > 0 ? await db.expire(key, ttl) : await db.persist(key);
+    // PERSIST answers 0 for a key that already had no expiry, which is not a failure
+    if (!applied && (await db.exists(key)) === 0) throw new Error(`Key "${key}" does not exist`);
+    return this._redisKeyInfo(db, key);
+  }
+
+  /** RENAMENX, not RENAME: renaming onto an existing key would silently destroy it. */
+  async _redisRename(db, key, newKey) {
+    if (newKey === key) return this._redisKeyInfo(db, key);
+    if (!(await db.renamenx(key, newKey))) throw new Error(`Key "${newKey}" already exists`);
+    return this._redisKeyInfo(db, newKey);
+  }
+
+  /** Replace a string value, keeping the expiry it had: a plain SET would drop it. */
+  async _redisSetString(db, key, value) {
+    if (typeof value !== 'string') throw new Error('A string value is required');
+    const type = await db.type(key);
+    if (type !== 'string') throw new Error(type === 'none' ? `Key "${key}" does not exist` : `Key "${key}" holds a ${type}, not a string`);
+    const pttl = await db.pttl(key);
+    if (pttl > 0) await db.set(key, value, 'PX', pttl);
+    else await db.set(key, value);
+    return this._redisKeyInfo(db, key);
   }
 
   /**
