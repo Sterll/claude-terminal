@@ -22,7 +22,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test:e2e": "node tests/e2e/smoke.js",
-    "postinstall": "electron-rebuild -f -w node-pty,keytar || node scripts/rebuild-warning.cjs",
+    "postinstall": "electron-rebuild -f -w node-pty,keytar || node scripts/rebuild-warning.cjs && node scripts/linux-desktop-entry.cjs",
     "lab": "node scripts/workflow-lab/run-lab.js",
     "lab:audit": "node scripts/workflow-lab/audit-slots.js",
     "test:coverage": "jest --coverage",
