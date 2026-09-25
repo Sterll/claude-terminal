@@ -48,6 +48,15 @@ function formatTtl(seconds) {
   return `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h`;
 }
 
+/** 1536 -> "1.5 KB". Binary units, as Redis reports its own memory. */
+function formatBytes(bytes) {
+  if (bytes === null || bytes === undefined || Number.isNaN(bytes)) return '?';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = bytes, unit = 0;
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
+  return `${unit === 0 ? value : value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
+}
+
 /**
  * Whether a filter can be answered from the keys already loaded, or needs a
  * scan on the server. The loaded list is complete for `loadedPattern` unless
@@ -63,4 +72,4 @@ function canFilterLocally({ filter, loadedPattern, truncated }) {
   return f.includes(loaded);
 }
 
-module.exports = { buildRedisTree, leafName, formatTtl, canFilterLocally };
+module.exports = { buildRedisTree, leafName, formatTtl, formatBytes, canFilterLocally };

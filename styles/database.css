@@ -3149,6 +3149,61 @@
   color: var(--text-muted);
 }
 
+/* Server overview, shown in the detail pane until a key is picked */
+.redis-server {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+}
+.redis-server-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.redis-server-title {
+  font-size: var(--font-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.redis-server-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+.redis-server-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+}
+.redis-server-cell.warning { border-color: var(--warning); }
+.redis-server-label {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.redis-server-value {
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.redis-server-cell.warning .redis-server-value { color: var(--warning); }
+.redis-server-prompt {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+}
+.redis-server-error {
+  max-width: 360px;
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  text-align: center;
+}
+
 /* String value editor */
 .redis-value-edit {
   display: flex;

@@ -13,7 +13,7 @@
  * instead of overwriting the one that is.
  */
 
-const { buildRedisTree, leafName, formatTtl, canFilterLocally } = require('./redisTree');
+const { buildRedisTree, leafName, formatTtl, formatBytes, canFilterLocally } = require('./redisTree');
 
 const FILTER_DEBOUNCE_MS = 150;
 
@@ -103,11 +103,15 @@ function createRedisBrowser(deps) {
     gone: new Set(),     // keys seen expiring or deleted since the list was loaded
     editing: null,       // { text, json, compact } while a string value is being edited
     busy: false,         // a write is in flight; the action bar is disabled
+    server: null,        // INFO summary shown while no key is selected
+    serverError: null,
     loadingKeys: false,
     loadingInfo: false,
+    loadingServer: false,
   };
   let keysRequest = 0;
   let infoRequest = 0;
+  let serverRequest = 0;
   let filterTimer = null;
   let ttlTimer = null;
 
@@ -122,9 +126,31 @@ function createRedisBrowser(deps) {
       connectionId: getActiveId(), dbName, keys: null, types: new Map(), truncated: false, total: null, loadedPattern: '',
       filter: '', expanded: new Set(), selectedKey: null, info: null,
       missing: false, gone: new Set(), editing: null, busy: false,
-      loadingKeys: false, loadingInfo: false,
+      server: null, serverError: null,
+      loadingKeys: false, loadingInfo: false, loadingServer: false,
     });
+    loadServer();
     return loadKeys();
+  }
+
+  async function loadServer() {
+    const id = getActiveId();
+    if (!id || !state.dbName) return;
+    const token = ++serverRequest;
+    state.loadingServer = true;
+    if (!state.selectedKey) refreshDetail();
+    let result;
+    try {
+      result = await api.redis({ id, action: 'server', db: dbIndexOf(state.dbName) });
+    } catch (e) {
+      result = { success: false, error: e.message };
+    }
+    if (token !== serverRequest) return;
+    state.loadingServer = false;
+    // INFO can be denied by an ACL; the overview then says so, the browser still works
+    state.server = result.success ? result.server : null;
+    state.serverError = result.success ? null : result.error;
+    if (!state.selectedKey) refreshDetail();
   }
 
   async function loadKeys({ pattern = '' } = {}) {
@@ -505,10 +531,64 @@ function createRedisBrowser(deps) {
     if (state.selectedKey && state.missing && !state.info) {
       return `<div class="redis-detail-empty">${ICON_BOOK}<span>${t('database.redisKeyGone')}</span></div>`;
     }
-    if (!state.selectedKey || !state.info) {
+    if (!state.selectedKey) return serverHtml();
+    if (!state.info) {
       return `<div class="redis-detail-empty">${ICON_BOOK}<span>${t('database.redisSelectKey')}</span></div>`;
     }
     return keyDetailHtml(state.info);
+  }
+
+  /**
+   * What the server looks like, in the space the key detail uses once a key
+   * is picked. Levels flag what usually explains a misbehaving cache: memory
+   * near its limit, keys being evicted, fragmentation.
+   */
+  function serverHtml() {
+    const prompt = `<div class="redis-server-prompt">${t('database.redisSelectKey')}</div>`;
+    if (state.loadingServer && !state.server) {
+      return `<div class="redis-detail-loading"><div class="db-browser-spinner"></div>${t('database.redisLoadingServer')}</div>`;
+    }
+    const s = state.server;
+    if (!s) {
+      const reason = state.serverError ? `<div class="redis-server-error">${escapeHtml(t('database.redisServerUnavailable', { error: state.serverError }))}</div>` : '';
+      return `<div class="redis-detail-empty">${ICON_BOOK}<span>${t('database.redisSelectKey')}</span>${reason}</div>`;
+    }
+
+    const cells = [];
+    const cell = (label, value, level = '') => {
+      if (value === null || value === undefined || value === '') return;
+      cells.push(`<div class="redis-server-cell ${level}"><span class="redis-server-label">${escapeHtml(label)}</span><span class="redis-server-value">${escapeHtml(String(value))}</span></div>`);
+    };
+    const pct = (ratio) => `${(ratio * 100).toFixed(ratio >= 0.995 || ratio < 0.1 ? 0 : 1)}%`;
+
+    if (s.usedMemory !== null) {
+      const ratio = s.maxMemory ? s.usedMemory / s.maxMemory : null;
+      cell(t('database.redisMemory'), s.maxMemory
+        ? t('database.redisMemoryOf', { used: formatBytes(s.usedMemory), max: formatBytes(s.maxMemory), pct: pct(ratio) })
+        : t('database.redisMemoryNoLimit', { used: formatBytes(s.usedMemory) }), ratio !== null && ratio >= 0.9 ? 'warning' : '');
+    }
+    if (s.maxMemory) cell(t('database.redisEvictionPolicy'), s.maxMemoryPolicy);
+    if (s.peakMemory !== null) cell(t('database.redisPeakMemory'), formatBytes(s.peakMemory));
+    if (s.fragmentation !== null) cell(t('database.redisFragmentation'), s.fragmentation.toFixed(2), s.fragmentation >= 1.5 ? 'warning' : '');
+    if (s.clients !== null) cell(t('database.redisClients'), s.blockedClients ? t('database.redisClientsBlocked', { count: s.clients, blocked: s.blockedClients }) : s.clients.toLocaleString());
+    if (s.opsPerSec !== null) cell(t('database.redisOpsPerSec'), s.opsPerSec.toLocaleString());
+    if (s.hitRate !== null) cell(t('database.redisHitRate'), pct(s.hitRate));
+    if (s.evictedKeys !== null) cell(t('database.redisEvictedKeys'), s.evictedKeys.toLocaleString(), s.evictedKeys > 0 ? 'warning' : '');
+    if (s.expiredKeys !== null) cell(t('database.redisExpiredKeys'), s.expiredKeys.toLocaleString());
+    if (s.uptimeSeconds !== null) cell(t('database.redisUptime'), formatTtl(s.uptimeSeconds));
+    if (s.aofEnabled !== null) cell(t('database.redisPersistence'), s.aofEnabled ? 'RDB + AOF' : 'RDB');
+    if (s.role) cell(t('database.redisRole'), s.connectedReplicas ? t('database.redisRoleReplicas', { role: s.role, count: s.connectedReplicas }) : s.role);
+
+    const title = [s.version ? `Redis ${s.version}` : 'Redis', s.mode].filter(Boolean).join(' · ');
+    return `
+      <div class="redis-server">
+        <div class="redis-server-head">
+          <span class="redis-server-title">${escapeHtml(title)}</span>
+          ${state.loadingServer ? '<div class="db-browser-spinner"></div>' : ''}
+        </div>
+        <div class="redis-server-grid">${cells.join('')}</div>
+        ${prompt}
+      </div>`;
   }
 
   function actionButton(action, icon, label, { disabled = false, danger = false } = {}) {
@@ -692,6 +772,7 @@ function createRedisBrowser(deps) {
     if (refreshBtn) {
       refreshBtn.onclick = () => {
         if (deps.onRefresh) deps.onRefresh();
+        loadServer();
         loadKeys({ pattern: state.loadedPattern });
       };
     }
@@ -734,6 +815,7 @@ function createRedisBrowser(deps) {
     if (ttlTimer) { clearInterval(ttlTimer); ttlTimer = null; }
     keysRequest++;
     infoRequest++;
+    serverRequest++;
   }
 
   /** Forget the loaded db, e.g. after a reconnect: its keys may have changed meanwhile. */

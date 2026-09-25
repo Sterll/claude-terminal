@@ -284,6 +284,33 @@ describe('DatabaseService Redis connection options', () => {
   });
 });
 
+describe('DatabaseService Redis server summary', () => {
+  const INFO = [
+    '# Server', 'redis_version:7.2.4', 'redis_mode:standalone', 'uptime_in_seconds:90000', '',
+    '# Clients', 'connected_clients:3', 'blocked_clients:1', '',
+    '# Memory', 'used_memory:1048576', 'used_memory_peak:2097152', 'maxmemory:0', 'maxmemory_policy:noeviction', 'mem_fragmentation_ratio:1.23', '',
+    '# Persistence', 'aof_enabled:1', 'rdb_last_save_time:1700000000', '',
+    '# Stats', 'instantaneous_ops_per_sec:42', 'keyspace_hits:90', 'keyspace_misses:10', 'evicted_keys:0', 'expired_keys:7', '',
+    '# Replication', 'role:master', 'connected_slaves:2', '',
+    '# Keyspace', 'db1:keys=133,expires=133,avg_ttl=1', 'db0:keys=2,expires=0,avg_ttl=0', '',
+  ].join('\r\n');
+
+  test('turns INFO into the numbers the overview compares', () => {
+    expect(databaseService._redisServerSummary(INFO)).toEqual({
+      version: '7.2.4', mode: 'standalone', role: 'master', connectedReplicas: 2, uptimeSeconds: 90000,
+      clients: 3, blockedClients: 1, usedMemory: 1048576, peakMemory: 2097152,
+      maxMemory: null, maxMemoryPolicy: 'noeviction', fragmentation: 1.23, opsPerSec: 42, hitRate: 0.9,
+      evictedKeys: 0, expiredKeys: 7, rdbLastSave: 1700000000, aofEnabled: true,
+      keyspace: [{ db: 0, keys: 2, expires: 0 }, { db: 1, keys: 133, expires: 133 }],
+    });
+  });
+
+  test('leaves out what a managed service strips instead of inventing zeros', () => {
+    const summary = databaseService._redisServerSummary('# Server\r\nredis_version:6.2.0\r\n');
+    expect(summary).toMatchObject({ version: '6.2.0', usedMemory: null, hitRate: null, aofEnabled: null, keyspace: [] });
+  });
+});
+
 describe('DatabaseService.redis value types', () => {
   test('a hash is read by HSCAN in pages and says how much came back', async () => {
     const value = Object.fromEntries(Array.from({ length: 5 }, (_, i) => [`f${i}`, `v${i}`]));

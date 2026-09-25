@@ -250,6 +250,7 @@ class DatabaseService {
         case 'expire': return { success: true, info: await this._redisExpire(db, this._redisKeyArg(request.key), request.seconds) };
         case 'rename': return { success: true, info: await this._redisRename(db, this._redisKeyArg(request.key), this._redisKeyArg(request.newKey)) };
         case 'setString': return { success: true, info: await this._redisSetString(db, this._redisKeyArg(request.key), request.value) };
+        case 'server': return { success: true, server: this._redisServerSummary(await db.info()) };
         default: throw new Error(`Unknown Redis action: ${request.action}`);
       }
     } catch (error) {
@@ -374,6 +375,54 @@ class DatabaseService {
       for (const [error, type] of replies) types.push(error ? null : type);
     }
     return types;
+  }
+
+  /** INFO as { field: value }, sections flattened: field names do not repeat across sections. */
+  _parseRedisInfo(text) {
+    const fields = {};
+    for (const line of String(text).split(/\r?\n/)) {
+      if (!line || line.startsWith('#')) continue;
+      const at = line.indexOf(':');
+      if (at > 0) fields[line.slice(0, at)] = line.slice(at + 1);
+    }
+    return fields;
+  }
+
+  /**
+   * The handful of INFO fields that say whether a server is healthy, as
+   * numbers the renderer can compare: memory against its limit, hit rate,
+   * evictions. Missing fields stay null - managed services strip some.
+   */
+  _redisServerSummary(text) {
+    const f = this._parseRedisInfo(text);
+    const num = (name) => (f[name] !== undefined && f[name] !== '' && !Number.isNaN(Number(f[name])) ? Number(f[name]) : null);
+    const hits = num('keyspace_hits'), misses = num('keyspace_misses');
+    const keyspace = Object.keys(f).filter(k => /^db\d+$/.test(k)).map(k => {
+      const m = /keys=(\d+),expires=(\d+)/.exec(f[k]) || [];
+      return { db: parseInt(k.slice(2), 10), keys: Number(m[1] || 0), expires: Number(m[2] || 0) };
+    }).sort((a, b) => a.db - b.db);
+    return {
+      version: f.redis_version || f.valkey_version || null,
+      mode: f.redis_mode || null,
+      role: f.role || null,
+      connectedReplicas: num('connected_slaves'),
+      uptimeSeconds: num('uptime_in_seconds'),
+      clients: num('connected_clients'),
+      blockedClients: num('blocked_clients'),
+      usedMemory: num('used_memory'),
+      peakMemory: num('used_memory_peak'),
+      // 0 means no limit
+      maxMemory: num('maxmemory') || null,
+      maxMemoryPolicy: f.maxmemory_policy || null,
+      fragmentation: num('mem_fragmentation_ratio'),
+      opsPerSec: num('instantaneous_ops_per_sec'),
+      hitRate: hits !== null && misses !== null && hits + misses > 0 ? hits / (hits + misses) : null,
+      evictedKeys: num('evicted_keys'),
+      expiredKeys: num('expired_keys'),
+      rdbLastSave: num('rdb_last_save_time'),
+      aofEnabled: f.aof_enabled === undefined ? null : f.aof_enabled === '1',
+      keyspace,
+    };
   }
 
   /** UNLINK frees a large value off the main thread; DEL for servers older than 4.0. */

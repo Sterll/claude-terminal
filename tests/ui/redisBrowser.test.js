@@ -48,6 +48,14 @@ describe('redisTree', () => {
     expect(canFilterLocally({ filter: '', loadedPattern: '', truncated: true })).toBe(true);
   });
 
+  test('formats memory in binary units', () => {
+    const { formatBytes } = require('../../src/renderer/ui/panels/database/redisTree');
+    expect(formatBytes(512)).toBe('512 B');
+    expect(formatBytes(1536)).toBe('1.5 KB');
+    expect(formatBytes(950 * 1024 * 1024)).toBe('950 MB');
+    expect(formatBytes(null)).toBe('?');
+  });
+
   test('reads the db index out of the table name', () => {
     expect(dbIndexOf('db:12')).toBe(12);
     expect(dbIndexOf('nonsense')).toBe(0);
@@ -158,7 +166,11 @@ describe('createRedisBrowser', () => {
 
   test('an answer for a db that is no longer selected is dropped', async () => {
     let release;
-    api.redis.mockImplementationOnce(() => new Promise(r => { release = r; }));
+    const answer = api.redis.getMockImplementation();
+    // Hold back the key list of db:1 only
+    api.redis.mockImplementation((req) => (req.action === 'keys' && req.db === 1
+      ? new Promise(r => { release = r; })
+      : answer(req)));
     browser.select('db:1');
     browser.select('db:2');
     mount();
@@ -167,6 +179,36 @@ describe('createRedisBrowser', () => {
     await flush();
     expect(container.querySelector('[data-redis-key="stale"]')).toBeNull();
     expect(browser._state.keys).toEqual(['app:config', 'user:1', 'user:2']);
+  });
+
+  test('shows the server overview until a key is picked, flagging what needs attention', async () => {
+    api.redis.mockImplementation(async ({ action }) => (action === 'server'
+      ? { success: true, server: {
+        version: '7.2.4', mode: 'standalone', role: 'master', usedMemory: 950 * 1024 * 1024, maxMemory: 1024 * 1024 * 1024,
+        maxMemoryPolicy: 'allkeys-lru', evictedKeys: 12, hitRate: 0.8734, clients: 3, blockedClients: 0,
+        opsPerSec: 40, uptimeSeconds: 90000, aofEnabled: false, fragmentation: 1.1, peakMemory: null, expiredKeys: 5, keyspace: [],
+      } }
+      : { success: true, keys: [], truncated: false, total: 0 }));
+    browser.select('db:0');
+    mount();
+    await flush();
+    const detail = container.querySelector('#redis-detail-panel');
+    expect(detail.querySelector('.redis-server-title').textContent).toBe('Redis 7.2.4 · standalone');
+    const warned = [...detail.querySelectorAll('.redis-server-cell.warning .redis-server-label')].map(e => e.textContent);
+    expect(warned).toEqual(['database.redisMemory', 'database.redisEvictedKeys']);
+    expect(detail.textContent).toContain('87.3%');
+    expect(detail.textContent).toContain('allkeys-lru');
+  });
+
+  test('an INFO denied by an ACL leaves the browser usable and says why', async () => {
+    api.redis.mockImplementation(async ({ action }) => (action === 'server'
+      ? { success: false, error: 'NOPERM this user has no permissions to run the info command' }
+      : { success: true, keys: ['a'], truncated: false, total: 1 }));
+    browser.select('db:0');
+    mount();
+    await flush();
+    expect(container.querySelector('.redis-server-error').textContent).toContain('NOPERM');
+    expect(container.querySelector('[data-redis-key="a"]')).not.toBeNull();
   });
 
   test('marks each key with its type and asks for types when listing', async () => {
