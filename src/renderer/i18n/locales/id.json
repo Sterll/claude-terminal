@@ -2597,6 +2597,12 @@
     "redisExpired": "Kedaluwarsa",
     "redisKeyExpiredNotice": "Kunci ini sudah kedaluwarsa. Nilai terakhirnya tetap ditampilkan.",
     "redisKeyGone": "Kunci ini sudah tidak ada. Kunci kedaluwarsa atau dihapus.",
+    "redisSeparator": "Pemisah kunci untuk pohon",
+    "redisSeparatorNone": "tidak ada",
+    "redisItemsPartial": "Menampilkan {shown} item pertama dari {total}.",
+    "redisStreamPartial": "Menampilkan {shown} entri terbaru dari {total}.",
+    "redisEntryId": "ID entri",
+    "redisFields": "Bidang",
     "exportCancelled": "Ekspor dibatalkan. Coba lagi dari awal dengan data yang sama.",
     "exportRetry": "Ulangi ekspor"
   },

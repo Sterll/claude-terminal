@@ -2597,6 +2597,12 @@
     "redisExpired": "已过期",
     "redisKeyExpiredNotice": "此键已过期，仍显示其最后的值。",
     "redisKeyGone": "此键已不存在，它已过期或被删除。",
+    "redisSeparator": "树的键分隔符",
+    "redisSeparatorNone": "无",
+    "redisItemsPartial": "显示前 {shown} 项，共 {total} 项。",
+    "redisStreamPartial": "显示最新的 {shown} 条，共 {total} 条。",
+    "redisEntryId": "条目 ID",
+    "redisFields": "字段",
     "exportCancelled": "导出已取消。重试将使用相同数据从头开始。",
     "exportRetry": "重新导出"
   },

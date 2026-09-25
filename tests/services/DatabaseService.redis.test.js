@@ -55,6 +55,28 @@ function fakeRedis(data, { db = 0, infoFails = false, scanBatches = null } = {})
       strlen: jest.fn(async (k) => String(keys()[k].value).length),
       hgetall: jest.fn(async (k) => keys()[k].value),
       exists: jest.fn(async (k) => (keys()[k] ? 1 : 0)),
+      hlen: jest.fn(async (k) => Object.keys(keys()[k].value).length),
+      // HSCAN pages of two fields, to exercise the cursor walk
+      hscan: jest.fn(async (k, cursor) => {
+        const flat = Object.entries(keys()[k].value).flat();
+        const at = parseInt(cursor, 10);
+        const next = at + 4;
+        return [next >= flat.length ? '0' : String(next), flat.slice(at, next)];
+      }),
+      scard: jest.fn(async (k) => keys()[k].value.length),
+      sscan: jest.fn(async (k) => ['0', keys()[k].value]),
+      llen: jest.fn(async (k) => keys()[k].value.length),
+      lrange: jest.fn(async (k, start, stop) => keys()[k].value.slice(start, stop + 1)),
+      xlen: jest.fn(async (k) => keys()[k].value.length),
+      xrevrange: jest.fn(async (k, _end, _start, _count, n) => [...keys()[k].value].reverse().slice(0, n)),
+      call: jest.fn(async (command, k) => (command === 'JSON.GET' ? keys()[k].value : null)),
+      pipeline: jest.fn(() => {
+        const queued = [];
+        return {
+          type(k) { queued.push(k); return this; },
+          exec: async () => queued.map(k => [null, keys()[k] ? keys()[k].type : 'none']),
+        };
+      }),
       set: jest.fn(async (k, v, mode, ms) => {
         data[current] = { ...keys(), [k]: { type: 'string', value: v, ...(mode === 'PX' ? { ttlMs: ms } : {}) } };
         return 'OK';
@@ -204,6 +226,47 @@ describe('DatabaseService.redis key detail', () => {
     databaseService.connections.set('pg', { config: { type: 'postgresql' }, client: {}, lastUsed: 0 });
     expect(await databaseService.redis('pg', { action: 'keys' })).toMatchObject({ success: false });
     expect(await databaseService.redis('nope', { action: 'keys' })).toEqual({ success: false, error: 'Not connected' });
+  });
+});
+
+describe('DatabaseService.redis value types', () => {
+  test('a hash is read by HSCAN in pages and says how much came back', async () => {
+    const value = Object.fromEntries(Array.from({ length: 5 }, (_, i) => [`f${i}`, `v${i}`]));
+    const client = fakeRedis({ 0: { h: { type: 'hash', value } } });
+    openConnection('c', client);
+    const { info } = await databaseService.redis('c', { action: 'info', key: 'h' });
+    expect(JSON.parse(info.value)).toEqual(value);
+    expect(info).toMatchObject({ length: 5, shown: 5 });
+    expect(client.duplicates[0].hscan).toHaveBeenCalledTimes(3);
+  });
+
+  test('a set is deduplicated and sorted, a list reports its page', async () => {
+    openConnection('c', fakeRedis({ 0: {
+      s: { type: 'set', value: ['b', 'a', 'b'] },
+      l: { type: 'list', value: ['x', 'y'] },
+    } }));
+    expect((await databaseService.redis('c', { action: 'info', key: 's' })).info).toMatchObject({ value: '["a","b"]', shown: 2 });
+    expect((await databaseService.redis('c', { action: 'info', key: 'l' })).info).toMatchObject({ value: '["x","y"]', shown: 2, length: 2 });
+  });
+
+  test('a stream shows its newest entries first, fields as an object', async () => {
+    openConnection('c', fakeRedis({ 0: { st: { type: 'stream', value: [['1-0', ['a', '1']], ['2-0', ['b', '2', 'c', '3']]] } } }));
+    const { info } = await databaseService.redis('c', { action: 'info', key: 'st' });
+    expect(JSON.parse(info.value)).toEqual([{ id: '2-0', fields: { b: '2', c: '3' } }, { id: '1-0', fields: { a: '1' } }]);
+    expect(info).toMatchObject({ length: 2, shown: 2 });
+  });
+
+  test('a RedisJSON document is read with JSON.GET', async () => {
+    openConnection('c', fakeRedis({ 0: { j: { type: 'ReJSON-RL', value: '{"a":1}' } } }));
+    const { info } = await databaseService.redis('c', { action: 'info', key: 'j' });
+    expect(info).toMatchObject({ type: 'ReJSON-RL', value: '{"a":1}', size: 7 });
+  });
+
+  test('key listing can carry each key type, aligned with the sorted keys', async () => {
+    openConnection('c', fakeRedis({ 0: { b: { type: 'hash', value: {} }, a: { type: 'string', value: '' } } }));
+    const result = await databaseService.redis('c', { action: 'keys', withTypes: true });
+    expect(result).toMatchObject({ keys: ['a', 'b'], types: ['string', 'hash'] });
+    expect((await databaseService.redis('c', { action: 'keys' })).types).toBeUndefined();
   });
 });
 

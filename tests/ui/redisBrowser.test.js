@@ -88,7 +88,7 @@ describe('createRedisBrowser', () => {
     browser.select('db:1');
     mount();
     await flush();
-    expect(api.redis).toHaveBeenCalledWith({ id: 'conn', action: 'keys', db: 1, pattern: '' });
+    expect(api.redis).toHaveBeenCalledWith({ id: 'conn', action: 'keys', db: 1, pattern: '', withTypes: true });
     expect(container.querySelector('#redis-tree-count').textContent).toBe('3');
     expect(container.querySelectorAll('.redis-tree-folder')).toHaveLength(2);
   });
@@ -140,6 +140,57 @@ describe('createRedisBrowser', () => {
     await flush();
     expect(container.querySelector('[data-redis-key="stale"]')).toBeNull();
     expect(browser._state.keys).toEqual(['app:config', 'user:1', 'user:2']);
+  });
+
+  test('marks each key with its type and asks for types when listing', async () => {
+    api.redis.mockImplementation(async ({ action }) => (action === 'keys'
+      ? { success: true, keys: ['h', 's'], types: ['hash', 'ReJSON-RL'], truncated: false, total: 2 }
+      : { success: false, error: 'x' }));
+    browser.select('db:0');
+    mount();
+    await flush();
+    expect(api.redis).toHaveBeenCalledWith(expect.objectContaining({ withTypes: true }));
+    expect(container.querySelector('[data-redis-key="h"]').classList.contains('type-hash')).toBe(true);
+    expect(container.querySelector('[data-redis-key="s"]').classList.contains('type-rejson-rl')).toBe(true);
+  });
+
+  test('the separator regroups the tree and is handed back to be saved', async () => {
+    const saved = [];
+    browser = createRedisBrowser({
+      api,
+      getActiveId: () => 'conn',
+      t: k => k,
+      escapeHtml: s => String(s),
+      showToast: jest.fn(),
+      getSeparator: () => '.',
+      setSeparator: sep => saved.push(sep),
+    });
+    api.redis.mockImplementation(async () => ({ success: true, keys: ['a.b', 'a.c', 'x:y'], truncated: false, total: 3 }));
+    browser.select('db:0');
+    mount();
+    await flush();
+    expect(container.querySelector('#redis-tree-separator').value).toBe('.');
+    expect([...container.querySelectorAll('.redis-tree-folder-name')].map(e => e.textContent)).toEqual(['a']);
+
+    const select = container.querySelector('#redis-tree-separator');
+    select.value = ':';
+    select.dispatchEvent(new Event('change'));
+    expect([...container.querySelectorAll('.redis-tree-folder-name')].map(e => e.textContent)).toEqual(['x']);
+    expect(saved).toEqual([':']);
+  });
+
+  test('a partial collection says so above its items, and a stream renders its entries', async () => {
+    api.redis.mockImplementation(async ({ action }) => (action === 'keys'
+      ? { success: true, keys: ['st'], truncated: false, total: 1 }
+      : { success: true, info: { key: 'st', type: 'stream', ttl: null, pttl: null, length: 1200, shown: 100, value: JSON.stringify([{ id: '9-0', fields: { temp: '21' } }]) } }));
+    browser.select('db:0');
+    mount();
+    await flush();
+    container.querySelector('[data-redis-key="st"]').click();
+    await flush();
+    expect(container.querySelector('.redis-value-partial').textContent).toContain('database.redisStreamPartial');
+    expect(container.querySelector('.redis-stream-id').textContent).toBe('9-0');
+    expect(container.querySelector('.redis-type-badge').textContent).toBe('STREAM');
   });
 
   test('toggling a folder and picking a key fill the tree and the detail', async () => {

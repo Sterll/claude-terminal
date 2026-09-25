@@ -2597,6 +2597,12 @@
     "redisExpired": "Expired",
     "redisKeyExpiredNotice": "This key has expired. Its last value is kept on screen.",
     "redisKeyGone": "This key no longer exists. It expired or was deleted.",
+    "redisSeparator": "Key separator for the tree",
+    "redisSeparatorNone": "none",
+    "redisItemsPartial": "Showing the first {shown} of {total} items.",
+    "redisStreamPartial": "Showing the latest {shown} of {total} entries.",
+    "redisEntryId": "Entry ID",
+    "redisFields": "Fields",
     "exportCancelled": "Export cancelled. Retry to start again with the same data.",
     "exportRetry": "Retry export"
   },

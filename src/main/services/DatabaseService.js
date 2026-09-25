@@ -23,6 +23,9 @@ const DESTRUCTIVE_SQL_RE = /^\s*(DROP|DELETE\s+FROM|TRUNCATE|ALTER)\b/i;
 // Key names the Redis browser loads before it says the list is partial
 const REDIS_KEY_LIMIT = 10000;
 const REDIS_KEY_LIMIT_MAX = 100000;
+// Items of a hash, list, set or sorted set read for the detail pane
+const REDIS_ITEM_LIMIT = 500;
+const REDIS_STREAM_LIMIT = 100;
 
 const REDIS_ALLOWED_COMMANDS = new Set([
   'get', 'set', 'del', 'keys', 'type', 'info', 'scan', 'select', 'ping',
@@ -265,7 +268,7 @@ class DatabaseService {
    * a few million, so past `limit` the answer says it is partial and the
    * browser moves its filter to the server.
    */
-  async _redisListKeys(db, { pattern = '', limit = REDIS_KEY_LIMIT } = {}) {
+  async _redisListKeys(db, { pattern = '', limit = REDIS_KEY_LIMIT, withTypes = false } = {}) {
     const cap = Math.min(Math.max(parseInt(limit, 10) || REDIS_KEY_LIMIT, 1), REDIS_KEY_LIMIT_MAX);
     const match = pattern ? `*${this._redisCaselessGlob(pattern)}*` : '*';
     // SCAN may return a key twice when the keyspace is rehashed mid-walk
@@ -282,36 +285,95 @@ class DatabaseService {
       }
     } while (!truncated && cursor !== '0');
     const total = await db.dbsize().catch(() => null);
-    return { keys: [...keys].sort(), truncated, total };
+    const sorted = [...keys].sort();
+    const types = withTypes ? await this._redisTypes(db, sorted).catch(() => null) : null;
+    return { keys: sorted, truncated, total, ...(types ? { types } : {}) };
   }
 
+  /**
+   * One key, with at most REDIS_ITEM_LIMIT items of a collection. HGETALL and
+   * SMEMBERS used to read the whole value, which for a hash of a million
+   * fields is a multi-megabyte reply blocking the server and the IPC alike;
+   * collections are now read in pages and `shown` says how many came back.
+   */
   async _redisKeyInfo(db, key) {
     const type = await db.type(key);
     if (type === 'none') throw new Error(`Key "${key}" does not exist`);
     const ttl = await db.ttl(key);
     const pttl = await db.pttl(key);
-    let size = null, length = null, value = null;
+    let size = null, length = null, value = null, shown = null;
     try {
       if (type === 'string') {
         value = await db.get(key);
         size = await db.strlen(key);
       } else if (type === 'hash') {
         length = await db.hlen(key);
-        value = JSON.stringify(await db.hgetall(key));
+        const pairs = await this._redisScanItems(db, 'hscan', key, REDIS_ITEM_LIMIT * 2);
+        const fields = {};
+        for (let i = 0; i < pairs.length; i += 2) fields[pairs[i]] = pairs[i + 1];
+        value = JSON.stringify(fields);
+        shown = Object.keys(fields).length;
       } else if (type === 'list') {
         length = await db.llen(key);
-        value = JSON.stringify(await db.lrange(key, 0, 499));
+        const items = await db.lrange(key, 0, REDIS_ITEM_LIMIT - 1);
+        value = JSON.stringify(items);
+        shown = items.length;
       } else if (type === 'set') {
         length = await db.scard(key);
-        value = JSON.stringify(await db.smembers(key));
+        const members = [...new Set(await this._redisScanItems(db, 'sscan', key, REDIS_ITEM_LIMIT))].sort();
+        value = JSON.stringify(members);
+        shown = members.length;
       } else if (type === 'zset') {
         length = await db.zcard(key);
-        value = JSON.stringify(await db.zrange(key, 0, 499, 'WITHSCORES'));
+        const flat = await db.zrange(key, 0, REDIS_ITEM_LIMIT - 1, 'WITHSCORES');
+        value = JSON.stringify(flat);
+        shown = flat.length / 2;
+      } else if (type === 'stream') {
+        length = await db.xlen(key);
+        // Newest first: the end of a stream is what someone opening it is after
+        const entries = await db.xrevrange(key, '+', '-', 'COUNT', REDIS_STREAM_LIMIT);
+        value = JSON.stringify(entries.map(([id, flat]) => {
+          const fields = {};
+          for (let i = 0; i < flat.length; i += 2) fields[flat[i]] = flat[i + 1];
+          return { id, fields };
+        }));
+        shown = entries.length;
+      } else if (type === 'ReJSON-RL') {
+        // RedisJSON: the value is a document, read whole like a string
+        value = await db.call('JSON.GET', key);
+        size = value == null ? null : Buffer.byteLength(value);
       } else {
         value = `(${type})`;
       }
-    } catch { /* ignore */ }
-    return { key, type, ttl: ttl < 0 ? null : ttl, pttl: pttl < 0 ? null : pttl, size, length, value };
+    } catch { /* leave what was read; the type is still worth showing */ }
+    return { key, type, ttl: ttl < 0 ? null : ttl, pttl: pttl < 0 ? null : pttl, size, length, shown, value };
+  }
+
+  /** Walk HSCAN/SSCAN until `max` flat items came back; the cursor order is Redis's, not sorted. */
+  async _redisScanItems(db, command, key, max) {
+    const items = [];
+    let cursor = '0';
+    do {
+      const [next, batch] = await db[command](key, cursor, 'COUNT', 500);
+      cursor = next;
+      items.push(...batch);
+    } while (cursor !== '0' && items.length < max);
+    return items.slice(0, max);
+  }
+
+  /**
+   * TYPE of every listed key, pipelined in batches, for the tree's type marks.
+   * One round trip per thousand keys rather than per key.
+   */
+  async _redisTypes(db, keys) {
+    const types = [];
+    for (let i = 0; i < keys.length; i += 1000) {
+      const pipeline = db.pipeline();
+      for (const key of keys.slice(i, i + 1000)) pipeline.type(key);
+      const replies = await pipeline.exec();
+      for (const [error, type] of replies) types.push(error ? null : type);
+    }
+    return types;
   }
 
   /** UNLINK frees a large value off the main thread; DEL for servers older than 4.0. */

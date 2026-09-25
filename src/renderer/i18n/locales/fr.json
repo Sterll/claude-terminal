@@ -2597,6 +2597,12 @@
     "redisExpired": "Expirée",
     "redisKeyExpiredNotice": "Cette clé a expiré. Sa dernière valeur reste affichée.",
     "redisKeyGone": "Cette clé n'existe plus. Elle a expiré ou a été supprimée.",
+    "redisSeparator": "Séparateur de clés pour l'arborescence",
+    "redisSeparatorNone": "aucun",
+    "redisItemsPartial": "Affichage des {shown} premiers éléments sur {total}.",
+    "redisStreamPartial": "Affichage des {shown} dernières entrées sur {total}.",
+    "redisEntryId": "ID d'entrée",
+    "redisFields": "Champs",
     "exportCancelled": "Export annulé. Réessayer repart du début avec les mêmes données.",
     "exportRetry": "Relancer l’export"
   },

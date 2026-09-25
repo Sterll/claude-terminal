@@ -31,6 +31,20 @@ const ICON_DELETE = '<svg viewBox="0 0 24 24" fill="currentColor" width="13" hei
 /** Expiry presets offered next to the TTL field, in seconds. */
 const TTL_PRESETS = [60, 3600, 86400, 604800];
 
+/** Separators the tree can split key names on; '' shows a flat list. */
+const SEPARATORS = [':', '.', '/', '|', '-', '_', ''];
+
+/** Redis TYPE answers as a CSS-safe class, e.g. `ReJSON-RL` -> `rejson-rl`. */
+function typeClass(type) {
+  return String(type || 'unknown').toLowerCase().replace(/[^a-z0-9-]/g, '');
+}
+
+/** The badge text for a type: module types carry an encoding suffix nobody reads. */
+function typeLabel(type) {
+  if (type === 'ReJSON-RL') return 'JSON';
+  return String(type || '').toUpperCase();
+}
+
 /**
  * A string value as the editor should show it. JSON objects and arrays are
  * pretty-printed for editing; `compact` remembers whether the stored form was
@@ -76,6 +90,7 @@ function createRedisBrowser(deps) {
     connectionId: null,
     dbName: null,
     keys: null,          // string[] loaded for loadedPattern, or null before the first answer
+    types: new Map(),    // key -> TYPE, for the tree's type marks
     truncated: false,    // more keys match loadedPattern than were loaded
     total: null,         // DBSIZE of the db
     loadedPattern: '',
@@ -103,7 +118,8 @@ function createRedisBrowser(deps) {
     clearTimeout(filterTimer);
     infoRequest++; // an in-flight key detail belongs to the db being left
     Object.assign(state, {
-      connectionId: getActiveId(), dbName, keys: null, truncated: false, total: null, loadedPattern: '',
+      separator: deps.getSeparator ? deps.getSeparator() : ':',
+      connectionId: getActiveId(), dbName, keys: null, types: new Map(), truncated: false, total: null, loadedPattern: '',
       filter: '', expanded: new Set(), selectedKey: null, info: null,
       missing: false, gone: new Set(), editing: null, busy: false,
       loadingKeys: false, loadingInfo: false,
@@ -119,13 +135,15 @@ function createRedisBrowser(deps) {
     refreshTree();
     let result;
     try {
-      result = await api.redis({ id, action: 'keys', db: dbIndexOf(state.dbName), pattern });
+      result = await api.redis({ id, action: 'keys', db: dbIndexOf(state.dbName), pattern, withTypes: true });
     } catch (e) {
       result = { success: false, error: e.message };
     }
     if (token !== keysRequest) return; // a newer load owns the tree
     if (result.success) {
-      Object.assign(state, { keys: result.keys, truncated: !!result.truncated, total: result.total, loadedPattern: pattern, gone: new Set() });
+      const types = new Map();
+      if (Array.isArray(result.types)) result.keys.forEach((k, i) => { if (result.types[i]) types.set(k, result.types[i]); });
+      Object.assign(state, { keys: result.keys, types, truncated: !!result.truncated, total: result.total, loadedPattern: pattern, gone: new Set() });
     } else {
       Object.assign(state, { keys: [], truncated: false, loadedPattern: pattern });
       showToast({ type: 'error', title: t('database.browserQueryError'), message: result.error });
@@ -239,6 +257,7 @@ function createRedisBrowser(deps) {
     const result = await mutate({ action: 'delete', key });
     if (!result) return;
     state.keys = (state.keys || []).filter(k => k !== key);
+    state.types.delete(key);
     Object.assign(state, { selectedKey: null, info: null, editing: null });
     if (result.deleted && deps.onKeyCountChange) deps.onKeyCountChange(state.dbName, -1);
     showToast({ type: 'success', title: t('database.redisKeyDeleted') });
@@ -258,6 +277,9 @@ function createRedisBrowser(deps) {
     const result = await mutate({ action: 'rename', key, newKey });
     if (!result) return;
     state.keys = [...(state.keys || []).filter(k => k !== key), newKey].sort();
+    const type = state.types.get(key);
+    state.types.delete(key);
+    if (type) state.types.set(newKey, type);
     state.selectedKey = newKey;
     refreshTree();
     refreshDetail();
@@ -447,8 +469,9 @@ function createRedisBrowser(deps) {
         </div>`;
     }
     for (const key of [...node.keys].sort()) {
+      const type = state.types.get(key);
       html += `
-        <div class="redis-tree-key ${key === state.selectedKey ? 'active' : ''} ${state.gone.has(key) ? 'gone' : ''}" data-redis-key="${escapeHtml(key)}" title="${escapeHtml(key)}">
+        <div class="redis-tree-key ${key === state.selectedKey ? 'active' : ''} ${state.gone.has(key) ? 'gone' : ''} ${type ? `type-${typeClass(type)}` : ''}" data-redis-key="${escapeHtml(key)}" title="${escapeHtml(type ? `${key} (${typeLabel(type)})` : key)}">
           ${ICON_KEY}
           <span class="redis-tree-key-name">${escapeHtml(leafName(key, state.separator))}</span>
         </div>`;
@@ -558,8 +581,26 @@ function createRedisBrowser(deps) {
           <tbody>${pairs.map(p => `<tr><td class="redis-zset-score">${escapeHtml(String(p.score))}</td><td>${escapeHtml(String(p.member))}</td></tr>`).join('')}</tbody>
         </table></div>`;
       }
+      if (type === 'stream') {
+        const entries = typeof value === 'string' ? JSON.parse(value) : (value || []);
+        return `<div class="redis-value-table-wrapper"><table class="redis-value-table">
+          <thead><tr><th>${t('database.redisEntryId')}</th><th>${t('database.redisFields')}</th></tr></thead>
+          <tbody>${entries.map(e => `<tr><td class="redis-stream-id">${escapeHtml(e.id)}</td><td>${Object.entries(e.fields || {}).map(([f, v]) =>
+            `<div class="redis-stream-field"><span class="redis-field-name">${escapeHtml(f)}</span> ${escapeHtml(String(v))}</div>`).join('')}</td></tr>`).join('')}</tbody>
+        </table></div>`;
+      }
+      if (type === 'ReJSON-RL') {
+        return `<pre class="redis-value-pre json">${escapeHtml(JSON.stringify(JSON.parse(value), null, 2))}</pre>`;
+      }
     } catch { /* fall through to the raw value */ }
     return `<pre class="redis-value-pre">${escapeHtml(String(value || ''))}</pre>`;
+  }
+
+  /** "500 of 12 000": a collection is read in one page, and the rest must not look absent. */
+  function partialHtml(info) {
+    if (info.shown === null || info.shown === undefined || info.length === null || info.shown >= info.length) return '';
+    const key = info.type === 'stream' ? 'database.redisStreamPartial' : 'database.redisItemsPartial';
+    return `<div class="redis-value-partial">${escapeHtml(t(key, { shown: info.shown.toLocaleString(), total: info.length.toLocaleString() }))}</div>`;
   }
 
   function keyDetailHtml(info) {
@@ -570,7 +611,7 @@ function createRedisBrowser(deps) {
         <div class="redis-detail-header">
           <div class="redis-detail-key-row">
             <span class="redis-detail-key-name" title="${escapeHtml(key)}">${escapeHtml(key)}</span>
-            <span class="redis-type-badge ${escapeHtml(type)}">${escapeHtml(type.toUpperCase())}</span>
+            <span class="redis-type-badge ${typeClass(type)}">${escapeHtml(typeLabel(type))}</span>
             ${actionsHtml(info)}
           </div>
           <div class="redis-detail-meta">
@@ -580,7 +621,7 @@ function createRedisBrowser(deps) {
           </div>
           ${expired ? `<div class="redis-detail-gone">${t('database.redisKeyExpiredNotice')}</div>` : ''}
         </div>
-        <div class="redis-detail-value">${state.editing && !expired ? editorHtml() : valueHtml(info)}</div>
+        <div class="redis-detail-value">${state.editing && !expired ? editorHtml() : partialHtml(info) + valueHtml(info)}</div>
       </div>`;
   }
 
@@ -596,6 +637,9 @@ function createRedisBrowser(deps) {
               <input type="text" class="redis-tree-search-input" id="redis-tree-filter" placeholder="${t('database.redisFilterKeys')}" value="${escapeHtml(state.filter)}">
               <span class="redis-tree-count" id="redis-tree-count">${tree.keyCount}</span>
             </div>
+            <select class="redis-tree-separator" id="redis-tree-separator" title="${t('database.redisSeparator')}" aria-label="${t('database.redisSeparator')}">
+              ${SEPARATORS.map(sep => `<option value="${escapeHtml(sep)}" ${sep === state.separator ? 'selected' : ''}>${sep ? escapeHtml(sep) : t('database.redisSeparatorNone')}</option>`).join('')}
+            </select>
             <button class="db-browser-btn" id="redis-tree-refresh" title="${t('database.redisRefreshKeys')}">${ICON_REFRESH}</button>
           </div>
           <div id="redis-tree-notice-slot">${noticeHtml()}</div>
@@ -631,6 +675,16 @@ function createRedisBrowser(deps) {
         state.filter = filterInput.value;
         clearTimeout(filterTimer);
         filterTimer = setTimeout(applyFilter, FILTER_DEBOUNCE_MS);
+      };
+    }
+
+    const separatorSelect = container.querySelector('#redis-tree-separator');
+    if (separatorSelect) {
+      separatorSelect.onchange = () => {
+        state.separator = separatorSelect.value;
+        state.expanded = new Set(); // folder paths are spelled with the old separator
+        refreshTree();
+        if (deps.setSeparator) deps.setSeparator(state.separator);
       };
     }
 
@@ -697,4 +751,4 @@ function createRedisBrowser(deps) {
   };
 }
 
-module.exports = { createRedisBrowser, dbIndexOf, editableValue, remainingMs };
+module.exports = { createRedisBrowser, dbIndexOf, editableValue, remainingMs, typeClass, typeLabel };

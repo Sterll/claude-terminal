@@ -2594,6 +2594,12 @@
     "redisExpired": "Caducada",
     "redisKeyExpiredNotice": "Esta clave ha caducado. Su último valor se mantiene en pantalla.",
     "redisKeyGone": "Esta clave ya no existe. Caducó o se eliminó.",
+    "redisSeparator": "Separador de claves para el árbol",
+    "redisSeparatorNone": "ninguno",
+    "redisItemsPartial": "Se muestran los primeros {shown} de {total} elementos.",
+    "redisStreamPartial": "Se muestran las últimas {shown} de {total} entradas.",
+    "redisEntryId": "ID de entrada",
+    "redisFields": "Campos",
     "exportCancelled": "Exportación cancelada. Reintentar comienza desde el principio con los mismos datos.",
     "exportRetry": "Reintentar exportación"
   },

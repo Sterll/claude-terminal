@@ -89,6 +89,19 @@ function getRedisBrowser() {
         const activeId = require('../../state').getActiveConnection();
         if (activeId) loadSchema(activeId, { force: true });
       },
+      // The key separator is a property of how an app names its keys, so it is kept per connection
+      getSeparator: () => {
+        const s = require('../../state');
+        const conn = s.getDatabaseConnection(s.getActiveConnection());
+        return conn && typeof conn.keySeparator === 'string' ? conn.keySeparator : ':';
+      },
+      setSeparator: (separator) => {
+        const s = require('../../state');
+        const activeId = s.getActiveConnection();
+        if (!activeId) return;
+        s.updateDatabaseConnection(activeId, { keySeparator: separator });
+        saveConnections().catch(() => {});
+      },
       // Keep the db's key-count badge honest after a delete, without repainting the panel
       onKeyCountChange: (dbName, delta) => {
         const counts = panelState.browserTableRowCounts;
