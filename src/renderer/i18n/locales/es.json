@@ -2600,6 +2600,12 @@
     "redisStreamPartial": "Se muestran las últimas {shown} de {total} entradas.",
     "redisEntryId": "ID de entrada",
     "redisFields": "Campos",
+    "redisUrl": "URL de conexión",
+    "redisUrlHint": "Pega una URL redis:// o rediss:// para rellenar los campos de abajo.",
+    "redisUrlInvalid": "No es una URL redis:// o rediss://.",
+    "redisUrlApplied": "Campos rellenados a partir de la URL.",
+    "redisTls": "Usar TLS (rediss://)",
+    "redisTlsInsecure": "Aceptar un certificado autofirmado",
     "exportCancelled": "Exportación cancelada. Reintentar comienza desde el principio con los mismos datos.",
     "exportRetry": "Reintentar exportación"
   },

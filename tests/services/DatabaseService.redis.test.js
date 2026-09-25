@@ -10,6 +10,25 @@ jest.mock('keytar', () => ({
 const mockDataDir = require('path').join(require('os').tmpdir(), 'claude-terminal-redis-test-' + Date.now());
 jest.mock('../../src/main/utils/paths', () => ({ dataDir: mockDataDir }));
 
+// Record what a real connection would be opened with
+const mockRedisOptions = [];
+jest.mock('ioredis', () => jest.fn().mockImplementation((options) => {
+  mockRedisOptions.push(options);
+  const listeners = {};
+  return {
+    on: jest.fn((event, fn) => { listeners[event] = fn; }),
+    // host "unreachable" fails the way a TLS client against a plain port does
+    connect: jest.fn(async () => {
+      if (options.host !== 'unreachable') return;
+      listeners.error && listeners.error(new Error('connect ETIMEDOUT'));
+      throw new Error('Connection is closed.');
+    }),
+    ping: jest.fn(async () => 'PONG'),
+    disconnect: jest.fn(),
+    options,
+  };
+}));
+
 const databaseService = require('../../src/main/services/DatabaseService');
 
 /**
@@ -27,6 +46,7 @@ function fakeRedis(data, { db = 0, infoFails = false, scanBatches = null } = {})
       duplicates: [],
       connect: jest.fn(async () => {}),
       disconnect: jest.fn(),
+      on: jest.fn(),
       duplicate: jest.fn((opts) => {
         const dup = make(opts.db);
         client.duplicates.push(dup);
@@ -226,6 +246,41 @@ describe('DatabaseService.redis key detail', () => {
     databaseService.connections.set('pg', { config: { type: 'postgresql' }, client: {}, lastUsed: 0 });
     expect(await databaseService.redis('pg', { action: 'keys' })).toMatchObject({ success: false });
     expect(await databaseService.redis('nope', { action: 'keys' })).toEqual({ success: false, error: 'Not connected' });
+  });
+});
+
+describe('DatabaseService Redis connection options', () => {
+  test('passes the ACL user and turns TLS on, verifying certificates by default', async () => {
+    mockRedisOptions.length = 0;
+    await databaseService._createRedisClient({ host: 'eu1.upstash.io', port: 6380, username: 'app', password: 'pw', database: 2, tls: true });
+    expect(mockRedisOptions[0]).toMatchObject({
+      host: 'eu1.upstash.io', port: 6380, username: 'app', password: 'pw', db: 2,
+      tls: { servername: 'eu1.upstash.io', rejectUnauthorized: true },
+    });
+  });
+
+  test('a self-signed certificate is accepted only when asked, and TLS stays off by default', async () => {
+    mockRedisOptions.length = 0;
+    await databaseService._createRedisClient({ host: 'h', tls: true, tlsInsecure: true });
+    await databaseService._createRedisClient({ host: 'h' });
+    expect(mockRedisOptions[0].tls.rejectUnauthorized).toBe(false);
+    expect(mockRedisOptions[1]).toMatchObject({ tls: undefined, username: undefined });
+  });
+
+  test('a failed connect reports the socket error, with a TLS hint when TLS is the likely cause', async () => {
+    await expect(databaseService._createRedisClient({ host: 'unreachable', tls: true }))
+      .rejects.toThrow('connect ETIMEDOUT. The TLS handshake did not complete');
+    expect(databaseService._redisConnectError(new Error('read ECONNRESET'), {}))
+      .toBe('read ECONNRESET. If the server requires TLS (a rediss:// URL), turn TLS on.');
+    expect(databaseService._redisConnectError(new Error('WRONGPASS invalid username-password pair'), { tls: true }))
+      .toBe('WRONGPASS invalid username-password pair');
+  });
+
+  test('a detected rediss:// URL keeps its TLS and its user', () => {
+    expect(databaseService._parseDatabaseUrl('rediss://app:p%40ss@cache.example.com:6380/3')).toMatchObject({
+      type: 'redis', host: 'cache.example.com', port: 6380, username: 'app', password: 'p@ss', database: 3, tls: true,
+    });
+    expect(databaseService._parseDatabaseUrl('redis://localhost:6379').tls).toBeUndefined();
   });
 });
 

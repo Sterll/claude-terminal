@@ -2603,6 +2603,12 @@
     "redisStreamPartial": "Menampilkan {shown} entri terbaru dari {total}.",
     "redisEntryId": "ID entri",
     "redisFields": "Bidang",
+    "redisUrl": "URL koneksi",
+    "redisUrlHint": "Tempel URL redis:// atau rediss:// untuk mengisi kolom di bawah.",
+    "redisUrlInvalid": "Bukan URL redis:// atau rediss://.",
+    "redisUrlApplied": "Kolom diisi dari URL.",
+    "redisTls": "Gunakan TLS (rediss://)",
+    "redisTlsInsecure": "Terima sertifikat yang ditandatangani sendiri",
     "exportCancelled": "Ekspor dibatalkan. Coba lagi dari awal dengan data yang sama.",
     "exportRetry": "Ulangi ekspor"
   },

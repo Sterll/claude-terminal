@@ -2603,6 +2603,12 @@
     "redisStreamPartial": "Showing the latest {shown} of {total} entries.",
     "redisEntryId": "Entry ID",
     "redisFields": "Fields",
+    "redisUrl": "Connection URL",
+    "redisUrlHint": "Paste a redis:// or rediss:// URL to fill in the fields below.",
+    "redisUrlInvalid": "Not a redis:// or rediss:// URL.",
+    "redisUrlApplied": "Fields filled in from the URL.",
+    "redisTls": "Use TLS (rediss://)",
+    "redisTlsInsecure": "Accept a self-signed certificate",
     "exportCancelled": "Export cancelled. Retry to start again with the same data.",
     "exportRetry": "Retry export"
   },

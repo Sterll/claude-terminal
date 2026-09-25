@@ -10,6 +10,7 @@ const { highlight } = require('../../utils/syntaxHighlight');
 const { t } = require('../../i18n');
 const { showConfirm, createModal, showModal, closeModal } = require('../components/Modal');
 const { createRedisBrowser } = require('./database/redisBrowser');
+const { parseRedisUrl, buildRedisUrl } = require('./database/redisUrl');
 
 /**
  * Escape a SQL identifier (table/column name).
@@ -330,6 +331,7 @@ function buildConnectionCard(conn, status) {
       <div class="database-card-info">
         ${conn.type === 'sqlite' ? escapeHtml(conn.filePath || '') :
           conn.type === 'mongodb' ? escapeHtml(conn.connectionString ? conn.connectionString.replace(/\/\/[^@]+@/, '//***@') : `${conn.host}:${conn.port}`) :
+          conn.type === 'redis' ? escapeHtml(buildRedisUrl(conn)) :
           escapeHtml(`${conn.host || 'localhost'}:${conn.port || ''} / ${conn.database || ''}`)}
         ${projectName ? ` <span class="database-card-project">${escapeHtml(projectName)}</span>` : ''}
       </div>
@@ -2949,6 +2951,12 @@ function showConnectionForm(editId, prefill) {
   // Test button
   document.getElementById('db-form-test').onclick = async () => {
     const config = collectFormData();
+    // Editing leaves the password field empty: test with the one already stored,
+    // or every edited connection with a password failed its test
+    if (editId && !config.password && config.type !== 'sqlite') {
+      const cred = await ctx.api.database.getCredential({ id: editId }).catch(() => null);
+      if (cred && cred.success && cred.password) config.password = cred.password;
+    }
     const testBtn = document.getElementById('db-form-test');
     const resultEl = document.getElementById('db-form-test-result');
     testBtn.disabled = true;
@@ -3031,7 +3039,13 @@ function renderFormFields(data, type) {
         <input type="text" class="database-form-input" id="db-form-database" value="${escapeHtml(data.database || '')}" placeholder="mydb">
       </div>`;
   } else if (type === 'redis') {
+    const optional = `<span class="database-form-optional">(${t('database.optional') || 'optional'})</span>`;
     container.innerHTML = `
+      <div class="database-form-group">
+        <label class="database-form-label">${t('database.redisUrl')} ${optional}</label>
+        <input type="text" class="database-form-input database-form-mono" id="db-form-redis-url" value="" placeholder="rediss://user:password@host:6379/0" spellcheck="false">
+        <div class="database-form-hint" id="db-form-redis-url-hint">${t('database.redisUrlHint')}</div>
+      </div>
       <div class="database-form-row">
         <div class="database-form-group database-form-grow-2">
           <label class="database-form-label">${t('database.host')}</label>
@@ -3041,17 +3055,54 @@ function renderFormFields(data, type) {
           <label class="database-form-label">${t('database.port')}</label>
           <input type="number" class="database-form-input" id="db-form-port" value="${escapeHtml(String(data.port || '6379'))}" placeholder="6379">
         </div>
-      </div>
-      <div class="database-form-row">
-        <div class="database-form-group database-form-grow">
-          <label class="database-form-label">${t('database.password')} <span style="color:var(--text-muted)">(${t('database.optional') || 'optional'})</span></label>
-          <input type="password" class="database-form-input" id="db-form-password" value="" placeholder="********">
-        </div>
         <div class="database-form-group database-form-grow">
           <label class="database-form-label">${t('database.redisDbIndex')}</label>
           <input type="number" class="database-form-input" id="db-form-database" min="0" step="1" value="${escapeHtml(String(data.database || '0'))}" placeholder="0">
         </div>
+      </div>
+      <div class="database-form-row">
+        <div class="database-form-group database-form-grow">
+          <label class="database-form-label">${t('database.username')} ${optional}</label>
+          <input type="text" class="database-form-input" id="db-form-username" value="${escapeHtml(data.username || '')}" placeholder="default" autocomplete="off">
+        </div>
+        <div class="database-form-group database-form-grow">
+          <label class="database-form-label">${t('database.password')} ${optional}</label>
+          <input type="password" class="database-form-input" id="db-form-password" value="" placeholder="********">
+        </div>
+      </div>
+      <div class="database-form-checks">
+        <label class="database-form-check">
+          <input type="checkbox" id="db-form-tls" ${data.tls ? 'checked' : ''}>
+          <span>${t('database.redisTls')}</span>
+        </label>
+        <label class="database-form-check" id="db-form-tls-insecure-row" ${data.tls ? '' : 'hidden'}>
+          <input type="checkbox" id="db-form-tls-insecure" ${data.tlsInsecure ? 'checked' : ''}>
+          <span>${t('database.redisTlsInsecure')}</span>
+        </label>
       </div>`;
+
+    const tlsBox = document.getElementById('db-form-tls');
+    const insecureRow = document.getElementById('db-form-tls-insecure-row');
+    tlsBox.onchange = () => { insecureRow.hidden = !tlsBox.checked; };
+
+    // Pasting a provider's URL fills the fields; the fields stay what gets saved
+    const urlInput = document.getElementById('db-form-redis-url');
+    const urlHint = document.getElementById('db-form-redis-url-hint');
+    urlInput.oninput = () => {
+      const text = urlInput.value.trim();
+      if (!text) { urlHint.textContent = t('database.redisUrlHint'); urlHint.classList.remove('error'); return; }
+      const parsed = parseRedisUrl(text);
+      if (!parsed) { urlHint.textContent = t('database.redisUrlInvalid'); urlHint.classList.add('error'); return; }
+      urlHint.textContent = t('database.redisUrlApplied');
+      urlHint.classList.remove('error');
+      document.getElementById('db-form-host').value = parsed.host;
+      document.getElementById('db-form-port').value = parsed.port;
+      document.getElementById('db-form-database').value = parsed.database;
+      document.getElementById('db-form-username').value = parsed.username;
+      if (parsed.password) document.getElementById('db-form-password').value = parsed.password;
+      tlsBox.checked = parsed.tls;
+      insecureRow.hidden = !parsed.tls;
+    };
   } else {
     // MySQL / MariaDB / PostgreSQL
     const defaultPort = (type === 'mysql' || type === 'mariadb') ? '3306' : '5432';
@@ -3160,8 +3211,11 @@ function collectFormData() {
   } else if (type === 'redis') {
     config.host = document.getElementById('db-form-host')?.value.trim() || 'localhost';
     config.port = parseInt(document.getElementById('db-form-port')?.value) || 6379;
+    config.username = document.getElementById('db-form-username')?.value.trim() || '';
     config.password = document.getElementById('db-form-password')?.value || '';
     config.database = parseInt(document.getElementById('db-form-database')?.value) || 0;
+    config.tls = !!document.getElementById('db-form-tls')?.checked;
+    config.tlsInsecure = config.tls && !!document.getElementById('db-form-tls-insecure')?.checked;
   } else {
     // Check if URI mode is active
     const connStringInput = document.getElementById('db-form-connstring-input');

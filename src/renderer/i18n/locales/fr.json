@@ -2603,6 +2603,12 @@
     "redisStreamPartial": "Affichage des {shown} dernières entrées sur {total}.",
     "redisEntryId": "ID d'entrée",
     "redisFields": "Champs",
+    "redisUrl": "URL de connexion",
+    "redisUrlHint": "Collez une URL redis:// ou rediss:// pour remplir les champs ci-dessous.",
+    "redisUrlInvalid": "Ce n'est pas une URL redis:// ou rediss://.",
+    "redisUrlApplied": "Champs remplis depuis l'URL.",
+    "redisTls": "Utiliser TLS (rediss://)",
+    "redisTlsInsecure": "Accepter un certificat auto-signé",
     "exportCancelled": "Export annulé. Réessayer repart du début avec les mêmes données.",
     "exportRetry": "Relancer l’export"
   },

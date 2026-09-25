@@ -2603,6 +2603,12 @@
     "redisStreamPartial": "显示最新的 {shown} 条，共 {total} 条。",
     "redisEntryId": "条目 ID",
     "redisFields": "字段",
+    "redisUrl": "连接 URL",
+    "redisUrlHint": "粘贴 redis:// 或 rediss:// URL 以填写下方字段。",
+    "redisUrlInvalid": "不是 redis:// 或 rediss:// URL。",
+    "redisUrlApplied": "已根据 URL 填写字段。",
+    "redisTls": "使用 TLS (rediss://)",
+    "redisTlsInsecure": "接受自签名证书",
     "exportCancelled": "导出已取消。重试将使用相同数据从头开始。",
     "exportRetry": "重新导出"
   },

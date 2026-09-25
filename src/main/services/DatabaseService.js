@@ -734,16 +734,48 @@ class DatabaseService {
 
   async _createRedisClient(config) {
     const Redis = require('ioredis');
+    const host = config.host || 'localhost';
     const client = new Redis({
-      host: config.host || 'localhost',
+      host,
       port: config.port || 6379,
+      // Redis 6 ACL user; without it AUTH goes to the `default` user, as before
+      username: config.username || undefined,
       password: config.password || undefined,
       db: this._redisDbIndex(config),
+      // Managed Redis (Upstash, ElastiCache, Azure Cache) only answers over TLS.
+      // Certificates are verified unless the connection opts out for a self-signed one.
+      tls: config.tls ? { servername: host, rejectUnauthorized: !config.tlsInsecure } : undefined,
       connectTimeout: 10000,
       lazyConnect: true
     });
-    await client.connect();
+    // Without a listener ioredis prints every socket error as "Unhandled error
+    // event", and a failed connect() only says "Connection is closed."
+    let lastError = null;
+    client.on('error', (error) => { lastError = error; });
+    try {
+      await client.connect();
+    } catch (error) {
+      client.disconnect();
+      throw new Error(this._redisConnectError(lastError || error, config), { cause: error });
+    }
     return client;
+  }
+
+  /**
+   * The socket error behind a failed connect, with the likely cause when TLS
+   * is on one side only: a TLS client against a plain port waits out the
+   * handshake and times out, a plain client against a TLS port is reset.
+   */
+  _redisConnectError(error, config) {
+    const message = error && error.message ? error.message : String(error);
+    const handshake = /ETIMEDOUT|ECONNRESET|EPROTO|wrong version|socket disconnected|Connection is closed/i.test(message);
+    if (config.tls && handshake) {
+      return `${message}. The TLS handshake did not complete: check that this port serves TLS, or turn TLS off.`;
+    }
+    if (!config.tls && /ECONNRESET|Connection is closed/i.test(message)) {
+      return `${message}. If the server requires TLS (a rediss:// URL), turn TLS on.`;
+    }
+    return message;
   }
 
   /**
@@ -763,6 +795,8 @@ class DatabaseService {
     if (!pending) {
       pending = (async () => {
         const dup = client.duplicate({ db: dbIndex, lazyConnect: true });
+        // Errors reach the caller through the rejected command; this only keeps ioredis quiet
+        dup.on('error', () => {});
         await dup.connect();
         return dup;
       })();
@@ -1290,9 +1324,10 @@ class DatabaseService {
       if (!match) return null;
 
       let type = match[1];
+      const tls = type === 'rediss';
       if (type.startsWith('postgres')) type = 'postgresql';
       if (type.startsWith('mongodb')) type = 'mongodb';
-      if (type === 'rediss') type = 'redis';
+      if (tls) type = 'redis';
 
       const defaultPorts = { mysql: 3306, mariadb: 3306, postgresql: 5432, redis: 6379 };
 
@@ -1306,8 +1341,10 @@ class DatabaseService {
           name: `Redis - ${match[4]}`,
           host: match[4],
           port: match[5] ? parseInt(match[5]) : 6379,
-          password: match[3] || '',
-          database: match[6] ? parseInt(match[6]) : 0
+          ...(match[2] ? { username: decodeURIComponent(match[2]) } : {}),
+          password: match[3] ? decodeURIComponent(match[3]) : '',
+          database: match[6] ? parseInt(match[6]) : 0,
+          ...(tls ? { tls: true } : {})
         };
       }
 

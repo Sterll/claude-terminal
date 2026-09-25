@@ -1802,6 +1802,38 @@
   gap: 6px;
 }
 
+.database-form-optional {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.database-form-mono {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: var(--font-xs);
+}
+
+.database-form-hint {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+}
+.database-form-hint.error { color: var(--danger); }
+
+.database-form-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+}
+.database-form-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.database-form-check[hidden] { display: none; }
+.database-form-check input { accent-color: var(--accent); }
+
 .database-form-label .required {
   font-size: var(--font-2xs);
   color: var(--danger);

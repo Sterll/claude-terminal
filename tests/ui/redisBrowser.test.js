@@ -54,6 +54,33 @@ describe('redisTree', () => {
   });
 });
 
+describe('redisUrl', () => {
+  const { parseRedisUrl, buildRedisUrl } = require('../../src/renderer/ui/panels/database/redisUrl');
+
+  test('reads a provider URL, TLS included', () => {
+    expect(parseRedisUrl('rediss://default:s3cr%40t@eu1.upstash.io:6380/2')).toEqual({
+      host: 'eu1.upstash.io', port: 6380, username: 'default', password: 's3cr@t', database: 2, tls: true,
+    });
+  });
+
+  test('fills the defaults a short URL leaves out', () => {
+    expect(parseRedisUrl('redis://localhost')).toEqual({ host: 'localhost', port: 6379, username: '', password: '', database: 0, tls: false });
+    // Password with no user: the pre-ACL form
+    expect(parseRedisUrl('redis://:pw@cache:7000')).toMatchObject({ username: '', password: 'pw', port: 7000 });
+  });
+
+  test('refuses anything that is not a redis URL', () => {
+    expect(parseRedisUrl('postgres://x@y/z')).toBeNull();
+    expect(parseRedisUrl('localhost:6379')).toBeNull();
+    expect(parseRedisUrl('')).toBeNull();
+  });
+
+  test('builds the URL a connection card shows, without the password', () => {
+    expect(buildRedisUrl({ host: 'h', port: 6380, username: 'app', database: 1, tls: true, password: 'x' })).toBe('rediss://app@h:6380/1');
+    expect(buildRedisUrl({ host: 'localhost', port: 6379, database: 0 })).toBe('redis://localhost:6379/0');
+  });
+});
+
 describe('createRedisBrowser', () => {
   let api, browser, container;
 

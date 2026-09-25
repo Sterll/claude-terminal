@@ -211,14 +211,19 @@ async function createClient(config, password) {
 
   if (type === 'redis') {
     const Redis = require('ioredis');
+    const host = config.host || 'localhost';
     const client = new Redis({
-      host: config.host || 'localhost',
+      host,
       port: parseInt(config.port || '6379', 10),
+      username: config.username || undefined,
       password: password || undefined,
       db: parseInt(config.database || '0', 10),
+      tls: config.tls ? { servername: host, rejectUnauthorized: !config.tlsInsecure } : undefined,
       connectTimeout: 10000,
       lazyConnect: true,
     });
+    // Without a listener ioredis reports each socket error as "Unhandled error event"
+    client.on('error', (e) => log(`Redis error on ${config.name}: ${e.message}`));
     await client.connect();
     return client;
   }
@@ -333,6 +338,7 @@ function redisConfiguredDb(client) {
 async function withRedisDb(client, dbIndex, fn) {
   if (dbIndex === redisConfiguredDb(client)) return fn(client);
   const db = client.duplicate({ db: dbIndex, lazyConnect: true });
+  db.on('error', () => {}); // the failing command rejects; this only keeps ioredis quiet
   try {
     await db.connect();
     return await fn(db);
@@ -1039,7 +1045,8 @@ const tools = [
         host: { type: 'string', description: 'Hostname (default: localhost). Not needed for sqlite.' },
         port: { type: 'number', description: 'Port number. Defaults: mysql=3306, postgresql=5432, redis=6379. Not needed for sqlite.' },
         database: { type: 'string', description: 'Database name. For redis: DB index (default: 0). Not needed for sqlite.' },
-        username: { type: 'string', description: 'Username. Not needed for sqlite or redis.' },
+        username: { type: 'string', description: 'Username. For redis: the Redis 6+ ACL user, omit for the default user. Not needed for sqlite.' },
+        tls: { type: 'boolean', description: 'Redis only: connect over TLS, as a rediss:// URL does. Needed by most managed Redis services.' },
         filePath: { type: 'string', description: 'Path to SQLite file. Required for sqlite type.' },
         connectionString: { type: 'string', description: 'MongoDB connection URI. Required for mongodb type.' },
       },
@@ -1096,7 +1103,7 @@ async function handle(name, args) {
         const parts = [`${c.name} (${c.type})`];
         if (c.type === 'sqlite') parts.push(`— ${c.filePath}`);
         else if (c.type === 'mongodb') parts.push(`— ${c.connectionString ? c.connectionString.replace(/\/\/[^:]+:[^@]+@/, '//***:***@') : 'no URI'}`);
-        else if (c.type === 'redis') parts.push(`— ${c.host || 'localhost'}:${c.port || '6379'}/db${c.database || '0'}`);
+        else if (c.type === 'redis') parts.push(`— ${c.tls ? 'rediss' : 'redis'}://${c.username ? `${c.username}@` : ''}${c.host || 'localhost'}:${c.port || '6379'}/${c.database || '0'}`);
         else parts.push(`— ${c.host || 'localhost'}:${c.port || '?'}/${c.database || '?'}`);
         return parts.join(' ');
       });
@@ -1181,6 +1188,7 @@ async function handle(name, args) {
         else if (args.type === 'redis') newConfig.port = args.port || 6379;
         if (args.database) newConfig.database = args.database;
         if (args.username) newConfig.username = args.username;
+        if (args.type === 'redis' && args.tls) newConfig.tls = true;
       }
 
       configs.push(newConfig);
