@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 211 test files)
+npm test                 # Run Jest tests (jsdom, 212 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -63,6 +63,20 @@ whether a fresh clone installs.
 
 `scripts/runtime-smoke.cjs` is what would catch the package genuinely going
 missing on CI, since it opens a real database.
+
+### Running from a clone on Linux
+
+On Linux, `postinstall` also runs `scripts/linux-desktop-entry.cjs`, which adds the
+checkout to the application menu: `~/.local/share/applications/claude-terminal.desktop`
+plus the icon under `~/.local/share/icons/hicolor/512x512/apps/`. The entry runs
+`scripts/linux-launch.cjs` with the absolute `node` that ran the install, because a
+launcher started from the menu does not source the shell profile and so has no
+nvm/fnm/volta `npm` on its PATH. The launcher builds the renderer, adds `--no-sandbox`
+when npm's `chrome-sandbox` is not root-owned and setuid, and sets `CHROME_DESKTOP` so
+the window's app_id matches the entry and the dock shows the icon. It only replaces an
+entry it wrote or a hand-made `npm start` one; skipped in CI, as root, or with
+`CLAUDE_TERMINAL_NO_DESKTOP_ENTRY=1`. The AppImage has its own integration
+(`LinuxDesktopIntegration.js`) and is left alone.
 
 ## Architecture Overview
 
@@ -669,7 +683,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 211 unit test files (jsdom environment)
+npm test                    # Run all 212 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -678,7 +692,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 211 test files
+- **Framework:** Jest with jsdom, 212 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
