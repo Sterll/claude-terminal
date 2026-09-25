@@ -23,6 +23,7 @@ const DATE_LOCALES = {
   es: 'es-ES',
   id: 'id-ID',
   'zh-CN': 'zh-CN',
+  'pt-BR': 'pt-BR',
 };
 
 const SESSION_SVG_DEFS = `<svg style="display:none" xmlns="http://www.w3.org/2000/svg">

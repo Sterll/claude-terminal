@@ -28,7 +28,7 @@ const MANIFEST_FILENAME = 'project-type.json';
 const EXTERNAL_ID_PREFIX = 'ext-';
 
 /** Locales the app ships. An extension may translate into these and no others. */
-const SUPPORTED_LOCALES = ['en', 'fr', 'es', 'id', 'zh-CN'];
+const SUPPORTED_LOCALES = ['en', 'fr', 'es', 'id', 'zh-CN', 'pt-BR'];
 
 /** Categories the wizard groups by — mirrors `categories` in registry.js. */
 const CATEGORIES = ['general', 'bots', 'gamedev'];

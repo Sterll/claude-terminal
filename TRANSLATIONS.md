@@ -21,6 +21,7 @@ explains how to contribute new languages or improve existing ones.
 | 🇪🇸 | Spanish | `es` | ![i18n es](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_es.json) | ~800 / ~800 | ✅ Complete |
 | 🇮🇩 | Indonesian | `id` | ![i18n id](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_id.json) | ~800 / ~800 | ✅ Complete |
 | 🇨🇳 | Simplified Chinese | `zh-CN` | ![i18n zh-CN](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_zh-CN.json) | ~800 / ~800 | ✅ Complete |
+| 🇧🇷 | Brazilian Portuguese | `pt-BR` | ![i18n pt-BR](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_pt-BR.json) | ~800 / ~800 | ✅ Complete |
 
 ---
 
@@ -117,6 +118,7 @@ Translations are a community effort. Thank you to everyone who has contributed!
 | French (`fr`) | [@Sterll](https://github.com/Sterll) (original author) |
 | Indonesian (`id`) | [@rezadesky](https://github.com/rezadesky) |
 | Simplified Chinese (`zh-CN`) | [@tianxing226](https://github.com/tianxing226) |
+| Brazilian Portuguese (`pt-BR`) | [@policarpojonathan](https://github.com/policarpojonathan) |
 
 To have your name listed here, open a PR that adds or significantly improves a
 locale file. Mention your preferred display name or GitHub handle in the PR
