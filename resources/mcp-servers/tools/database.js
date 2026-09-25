@@ -274,25 +274,27 @@ async function executeRedisCommand(client, command) {
     const pageSize = parseInt(scanMatch[2]);
     const pattern = scanMatch[3] ? `*${scanMatch[3]}*` : '*';
 
-    await client.select(dbIndex);
-    const allKeys = await redisGetAllKeys(client, pattern);
-    const pageKeys = allKeys.slice(0, pageSize);
+    const { allKeys, rows } = await withRedisDb(client, dbIndex, async (db) => {
+      const allKeys = await redisGetAllKeys(db, pattern);
+      const pageKeys = allKeys.slice(0, pageSize);
 
-    const rows = [];
-    for (const key of pageKeys) {
-      const type = await client.type(key);
-      const ttl = await client.ttl(key);
-      let value = null;
-      try {
-        if (type === 'string') value = await client.get(key);
-        else if (type === 'hash') value = JSON.stringify(await client.hgetall(key));
-        else if (type === 'list') value = JSON.stringify(await client.lrange(key, 0, 9));
-        else if (type === 'set') value = JSON.stringify(await client.smembers(key));
-        else if (type === 'zset') value = JSON.stringify(await client.zrange(key, 0, 9, 'WITHSCORES'));
-        else value = `(${type})`;
-      } catch { /* ignore */ }
-      rows.push({ key, type, ttl: ttl < 0 ? null : ttl, value });
-    }
+      const rows = [];
+      for (const key of pageKeys) {
+        const type = await db.type(key);
+        const ttl = await db.ttl(key);
+        let value = null;
+        try {
+          if (type === 'string') value = await db.get(key);
+          else if (type === 'hash') value = JSON.stringify(await db.hgetall(key));
+          else if (type === 'list') value = JSON.stringify(await db.lrange(key, 0, 9));
+          else if (type === 'set') value = JSON.stringify(await db.smembers(key));
+          else if (type === 'zset') value = JSON.stringify(await db.zrange(key, 0, 9, 'WITHSCORES'));
+          else value = `(${type})`;
+        } catch { /* ignore */ }
+        rows.push({ key, type, ttl: ttl < 0 ? null : ttl, value });
+      }
+      return { allKeys, rows };
+    });
 
     const header = 'key | type | ttl | value';
     const separator = '─'.repeat(60);
@@ -316,6 +318,40 @@ async function executeRedisCommand(client, command) {
     return result.map((v, i) => `${i + 1}) ${v === null ? '(nil)' : String(v)}`).join('\n') || '(empty array)';
   }
   return String(result);
+}
+
+/** The DB index the cached client was opened on, i.e. the one the connection is configured for. */
+function redisConfiguredDb(client) {
+  return (client.options && Number.isInteger(client.options.db)) ? client.options.db : 0;
+}
+
+/**
+ * Run fn against one DB index without moving the cached client. A `SELECT n`
+ * on it stuck for the life of the process, so a later db_query silently ran
+ * against whichever db was last described rather than the configured one.
+ */
+async function withRedisDb(client, dbIndex, fn) {
+  if (dbIndex === redisConfiguredDb(client)) return fn(client);
+  const db = client.duplicate({ db: dbIndex, lazyConnect: true });
+  try {
+    await db.connect();
+    return await fn(db);
+  } finally {
+    db.disconnect();
+  }
+}
+
+/** INFO keyspace per db, plus the configured db even while it holds no keys. */
+async function redisKeyspace(client) {
+  const info = await client.info('keyspace');
+  const dbs = new Map();
+  for (const line of info.split(/\r?\n/)) {
+    const m = line.match(/^db(\d+):keys=(\d+),expires=(\d+)/);
+    if (m) dbs.set(parseInt(m[1], 10), { keys: parseInt(m[2], 10), expires: parseInt(m[3], 10) });
+  }
+  const configured = redisConfiguredDb(client);
+  if (!dbs.has(configured)) dbs.set(configured, { keys: 0, expires: 0 });
+  return [...dbs.entries()].sort((a, b) => a[0] - b[0]).map(([dbIndex, v]) => ({ dbIndex, ...v, isDefault: dbIndex === configured }));
 }
 
 async function redisGetAllKeys(client, pattern = '*', maxKeys = 10000) {
@@ -401,18 +437,10 @@ async function listTables(client, type, filter) {
   }
 
   if (type === 'redis') {
-    const info = await client.info('keyspace');
     const result = [];
-    for (const line of info.split('\r\n')) {
-      const m = line.match(/^db(\d+):keys=(\d+),expires=(\d+)/);
-      if (m) {
-        const name = `db:${m[1]}`;
-        if (match(name)) result.push(`${name}: ${m[2]} keys, ${m[3]} expiring`);
-      }
-    }
-    if (result.length === 0) {
-      // Show db:0 even if empty
-      if (match('db:0')) result.push('db:0: 0 keys');
+    for (const { dbIndex, keys, expires, isDefault } of await redisKeyspace(client)) {
+      const name = `db:${dbIndex}`;
+      if (match(name)) result.push(`${name}: ${keys} keys, ${expires} expiring${isDefault ? ' (configured)' : ''}`);
     }
     return result.join('\n') || (filter ? `No databases matching "${filter}"` : 'No databases found');
   }
@@ -484,18 +512,20 @@ async function describeTable(client, type, tableName) {
     const dbMatch = tableName.match(/^db:(\d+)$/);
     if (!dbMatch) return `Invalid Redis database name '${tableName}'. Use db:0, db:1, etc.`;
     const dbIndex = parseInt(dbMatch[1]);
-    await client.select(dbIndex);
-    const dbSize = await client.dbsize();
-    // Only fetch up to 20 sample keys for describe — no need for full scan
-    const keys = await redisGetAllKeys(client, '*', 20);
-    const sampleKeys = keys.slice(0, 20);
+    const { dbSize, sampleKeys, lines } = await withRedisDb(client, dbIndex, async (db) => {
+      const dbSize = await db.dbsize();
+      // Only fetch up to 20 sample keys for describe — no need for full scan
+      const keys = await redisGetAllKeys(db, '*', 20);
+      const sampleKeys = keys.slice(0, 20);
 
-    const lines = [];
-    for (const key of sampleKeys) {
-      const type = await client.type(key);
-      const ttl = await client.ttl(key);
-      lines.push(`${key} | ${type} | TTL: ${ttl < 0 ? 'none' : ttl + 's'}`);
-    }
+      const lines = [];
+      for (const key of sampleKeys) {
+        const type = await db.type(key);
+        const ttl = await db.ttl(key);
+        lines.push(`${key} | ${type} | TTL: ${ttl < 0 ? 'none' : ttl + 's'}`);
+      }
+      return { dbSize, sampleKeys, lines };
+    });
 
     let result = `Redis db:${dbIndex}\n${'─'.repeat(40)}\nTotal keys: ${dbSize}\nSchema: key (string) | type (string) | ttl (number) | value (any)`;
     if (lines.length > 0) {
@@ -529,24 +559,25 @@ async function exportQuery(client, type, sql, format) {
       const dbIndex = parseInt(scanMatch[1]);
       const pageSize = parseInt(scanMatch[2]);
       const pattern = scanMatch[3] ? `*${scanMatch[3]}*` : '*';
-      await client.select(dbIndex);
-      const allKeys = await redisGetAllKeys(client, pattern);
-      const pageKeys = allKeys.slice(0, pageSize);
-      rows = [];
-      for (const key of pageKeys) {
-        const keyType = await client.type(key);
-        const ttl = await client.ttl(key);
-        let value = null;
-        try {
-          if (keyType === 'string') value = await client.get(key);
-          else if (keyType === 'hash') value = JSON.stringify(await client.hgetall(key));
-          else if (keyType === 'list') value = JSON.stringify(await client.lrange(key, 0, -1));
-          else if (keyType === 'set') value = JSON.stringify(await client.smembers(key));
-          else if (keyType === 'zset') value = JSON.stringify(await client.zrange(key, 0, -1, 'WITHSCORES'));
-          else value = `(${keyType})`;
-        } catch { /* ignore */ }
-        rows.push({ key, type: keyType, ttl: ttl < 0 ? null : ttl, value });
-      }
+      rows = await withRedisDb(client, dbIndex, async (db) => {
+        const pageKeys = (await redisGetAllKeys(db, pattern)).slice(0, pageSize);
+        const out = [];
+        for (const key of pageKeys) {
+          const keyType = await db.type(key);
+          const ttl = await db.ttl(key);
+          let value = null;
+          try {
+            if (keyType === 'string') value = await db.get(key);
+            else if (keyType === 'hash') value = JSON.stringify(await db.hgetall(key));
+            else if (keyType === 'list') value = JSON.stringify(await db.lrange(key, 0, -1));
+            else if (keyType === 'set') value = JSON.stringify(await db.smembers(key));
+            else if (keyType === 'zset') value = JSON.stringify(await db.zrange(key, 0, -1, 'WITHSCORES'));
+            else value = `(${keyType})`;
+          } catch { /* ignore */ }
+          out.push({ key, type: keyType, ttl: ttl < 0 ? null : ttl, value });
+        }
+        return out;
+      });
     } else {
       return 'Redis export: use _REDIS_SCAN {dbIndex} {limit} {pattern?} to export keys';
     }
@@ -785,28 +816,21 @@ async function getFullSchema(client, type) {
   }
 
   if (type === 'redis') {
-    const info = await client.info('keyspace');
     const sections = [];
-    const dbInfos = [];
-    for (const line of info.split('\r\n')) {
-      const m = line.match(/^db(\d+):keys=(\d+),expires=(\d+)/);
-      if (m) dbInfos.push({ dbIndex: parseInt(m[1]), keys: parseInt(m[2]), expires: parseInt(m[3]) });
-    }
-    if (dbInfos.length === 0) dbInfos.push({ dbIndex: 0, keys: 0, expires: 0 });
-
-    for (const { dbIndex, keys, expires } of dbInfos) {
-      let s = `## db:${dbIndex}\n  Keys: ${keys}, Expiring: ${expires}`;
+    for (const { dbIndex, keys, expires, isDefault } of await redisKeyspace(client)) {
+      let s = `## db:${dbIndex}${isDefault ? ' (configured)' : ''}\n  Keys: ${keys}, Expiring: ${expires}`;
       s += '\n  Schema: key (string PK) | type (string) | ttl (number) | value (any)';
       if (keys > 0) {
-        await client.select(dbIndex);
         // Only fetch up to 10 sample keys for schema — no need for full scan
-        const sampleKeys = await redisGetAllKeys(client, '*', 10);
-        const sample = sampleKeys.slice(0, 10);
-        const typeCounts = {};
-        for (const key of sample) {
-          const t = await client.type(key);
-          typeCounts[t] = (typeCounts[t] || 0) + 1;
-        }
+        const typeCounts = await withRedisDb(client, dbIndex, async (db) => {
+          const sample = (await redisGetAllKeys(db, '*', 10)).slice(0, 10);
+          const counts = {};
+          for (const key of sample) {
+            const t = await db.type(key);
+            counts[t] = (counts[t] || 0) + 1;
+          }
+          return counts;
+        });
         s += `\n  Key types (sample): ${Object.entries(typeCounts).map(([t, c]) => `${t}(${c})`).join(', ')}`;
       }
       sections.push(s);
@@ -890,14 +914,9 @@ async function getStats(client, type) {
     let totalKeys = 0;
 
     // Parse keyspace info
-    const keyspaceInfo = await client.info('keyspace');
-    for (const line of keyspaceInfo.split('\r\n')) {
-      const m = line.match(/^db(\d+):keys=(\d+),expires=(\d+)/);
-      if (m) {
-        const keys = parseInt(m[2]);
-        totalKeys += keys;
-        lines.push(`db:${m[1]}: ${keys.toLocaleString()} keys (${m[3]} expiring)`);
-      }
+    for (const { dbIndex, keys, expires, isDefault } of await redisKeyspace(client)) {
+      totalKeys += keys;
+      lines.push(`db:${dbIndex}: ${keys.toLocaleString()} keys (${expires} expiring)${isDefault ? ' (configured)' : ''}`);
     }
 
     // Parse memory info
@@ -910,8 +929,7 @@ async function getStats(client, type) {
     const uptimeMatch = info.match(/uptime_in_seconds:(\d+)/);
     const uptime = uptimeMatch ? Math.floor(parseInt(uptimeMatch[1]) / 3600) + 'h' : '?';
 
-    const dbCount = lines.length || 1;
-    if (lines.length === 0) lines.push('db:0: 0 keys');
+    const dbCount = lines.length;
 
     return `Redis ${version} | Memory: ${memory} | Uptime: ${uptime}\nTotal keys: ${totalKeys.toLocaleString()}\nDatabases: ${dbCount}\n${'─'.repeat(40)}\n${lines.join('\n')}`;
   }
