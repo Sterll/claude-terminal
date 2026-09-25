@@ -2571,6 +2571,9 @@
     "redisConfiguredDb": "bawaan",
     "redisConfiguredDbHint": "Indeks basis data yang dikonfigurasi untuk koneksi ini",
     "redisKeyCount": "{count} kunci",
+    "redisNoMatch": "Tidak ada kunci yang cocok dengan filter ini",
+    "redisKeysTruncated": "Menampilkan {shown} dari {total} kunci. Filter mencari di seluruh basis data.",
+    "redisKeysTruncatedFiltered": "Menampilkan {shown} kunci pertama yang cocok. Persempit filter untuk melihat sisanya.",
     "exportCancelled": "Ekspor dibatalkan. Coba lagi dari awal dengan data yang sama.",
     "exportRetry": "Ulangi ekspor"
   },

@@ -17,7 +17,7 @@ const databaseService = require('../../src/main/services/DatabaseService');
  * (the original and its duplicates) sees the same data, each through its own
  * selected db, which is exactly the property the service now relies on.
  */
-function fakeRedis(data, { db = 0, infoFails = false } = {}) {
+function fakeRedis(data, { db = 0, infoFails = false, scanBatches = null } = {}) {
   const make = (index) => {
     let current = index;
     const keys = () => data[current] || {};
@@ -41,7 +41,12 @@ function fakeRedis(data, { db = 0, infoFails = false } = {}) {
         return ['# Keyspace', ...lines, ''].join('\r\n');
       }),
       dbsize: jest.fn(async () => Object.keys(keys()).length),
-      scan: jest.fn(async () => ['0', Object.keys(keys())]),
+      // One batch by default; `scanBatches` replays given batches, duplicates included
+      scan: jest.fn(async (cursor) => {
+        if (!scanBatches) return ['0', Object.keys(keys())];
+        const i = parseInt(cursor, 10);
+        return [i + 1 >= scanBatches.length ? '0' : String(i + 1), scanBatches[i]];
+      }),
       type: jest.fn(async (k) => (keys()[k] ? keys()[k].type : 'none')),
       ttl: jest.fn(async () => -1),
       pttl: jest.fn(async () => -1),
@@ -94,6 +99,13 @@ describe('DatabaseService Redis schema', () => {
   });
 });
 
+/** Register a fake client as an open connection, the way connect() would. */
+function openConnection(id, client, config = {}) {
+  databaseService.connections.set(id, { config: { type: 'redis', ...config }, client, status: 'connected', lastUsed: Date.now() });
+}
+
+afterEach(() => { databaseService.connections.clear(); });
+
 describe('DatabaseService Redis browsing', () => {
   test('browsing another db does not move the shared connection', async () => {
     const data = {
@@ -101,9 +113,10 @@ describe('DatabaseService Redis browsing', () => {
       2: { other: { type: 'string', value: 'elsewhere' } },
     };
     const client = fakeRedis(data, { db: 1 });
+    openConnection('c', client, { database: 1 });
 
-    const listed = await databaseService._executeRedis(client, '_REDIS_KEYS 2', 100);
-    expect(listed.rows).toEqual([{ key: 'other' }]);
+    const listed = await databaseService.redis('c', { action: 'keys', db: 2 });
+    expect(listed.keys).toEqual(['other']);
     expect(client.selects).toEqual([]);
 
     // A command typed afterwards still runs against the configured db
@@ -114,8 +127,9 @@ describe('DatabaseService Redis browsing', () => {
 
   test('reuses one client per browsed db and closes it with the connection', async () => {
     const client = fakeRedis({ 2: { k: { type: 'string', value: 'v' } } }, { db: 0 });
-    await databaseService._executeRedis(client, '_REDIS_KEYS 2', 100);
-    await databaseService._executeRedis(client, '_REDIS_KEY_INFO 2 k', 1);
+    openConnection('c', client);
+    await databaseService.redis('c', { action: 'keys', db: 2 });
+    await databaseService.redis('c', { action: 'info', db: 2, key: 'k' });
     expect(client.duplicate).toHaveBeenCalledTimes(1);
 
     const dup = client.duplicates[0];
@@ -123,6 +137,57 @@ describe('DatabaseService Redis browsing', () => {
     await new Promise(r => setImmediate(r));
     expect(dup.disconnect).toHaveBeenCalled();
     expect(client.disconnect).toHaveBeenCalled();
+  });
+});
+
+describe('DatabaseService.redis key listing', () => {
+  test('stops at the limit and says the list is partial', async () => {
+    const keys = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`k${String(i).padStart(2, '0')}`, { type: 'string', value: 'v' }]));
+    openConnection('c', fakeRedis({ 0: keys }));
+    const result = await databaseService.redis('c', { action: 'keys', limit: 10 });
+    expect(result).toMatchObject({ success: true, truncated: true, total: 30 });
+    expect(result.keys).toHaveLength(10);
+  });
+
+  test('a list that fits is complete, sorted, and free of the duplicates SCAN may return', async () => {
+    const data = { 0: { b: { type: 'string', value: '1' }, a: { type: 'string', value: '1' } } };
+    openConnection('c', fakeRedis(data, { scanBatches: [['b', 'a'], ['a']] }));
+    const result = await databaseService.redis('c', { action: 'keys' });
+    expect(result).toMatchObject({ success: true, keys: ['a', 'b'], truncated: false });
+  });
+
+  test('uses the configured db when the request names none', async () => {
+    const client = fakeRedis({ 3: { here: { type: 'string', value: '1' } } }, { db: 3 });
+    openConnection('c', client, { database: 3 });
+    expect((await databaseService.redis('c', { action: 'keys' })).keys).toEqual(['here']);
+    // Its own client even for the configured db: a SELECT typed in the query tab moves the main one
+    expect(client.duplicate).toHaveBeenCalledWith(expect.objectContaining({ db: 3 }));
+  });
+
+  test('the server-side filter ignores case and matches glob characters literally', () => {
+    expect(databaseService._redisCaselessGlob('Ab1')).toBe('[aA][bB]1');
+    expect(databaseService._redisCaselessGlob('x*[?')).toBe('[xX]\\*\\[\\?');
+  });
+});
+
+describe('DatabaseService.redis key detail', () => {
+  test('carries a key holding spaces and a newline intact', async () => {
+    const key = ' spaced key\nline ';
+    openConnection('c', fakeRedis({ 0: { [key]: { type: 'string', value: 'v' } } }));
+    const result = await databaseService.redis('c', { action: 'info', key });
+    expect(result).toMatchObject({ success: true, info: { key, type: 'string', value: 'v', ttl: null } });
+  });
+
+  test('reports a missing key as an error, not a crash', async () => {
+    openConnection('c', fakeRedis({ 0: {} }));
+    const result = await databaseService.redis('c', { action: 'info', key: 'gone' });
+    expect(result).toEqual({ success: false, error: 'Key "gone" does not exist' });
+  });
+
+  test('refuses to run against a connection that is not Redis', async () => {
+    databaseService.connections.set('pg', { config: { type: 'postgresql' }, client: {}, lastUsed: 0 });
+    expect(await databaseService.redis('pg', { action: 'keys' })).toMatchObject({ success: false });
+    expect(await databaseService.redis('nope', { action: 'keys' })).toEqual({ success: false, error: 'Not connected' });
   });
 });
 

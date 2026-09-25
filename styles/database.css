@@ -2871,6 +2871,14 @@
 .redis-tree-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 2px; }
 
 .redis-tree-loading,
+.redis-tree-notice {
+  padding: 6px 10px;
+  font-size: var(--font-2xs);
+  line-height: 1.4;
+  color: var(--warning);
+  background: rgba(var(--accent-rgb), 0.06);
+  border-bottom: 1px solid var(--border-color);
+}
 .redis-tree-empty {
   display: flex;
   align-items: center;

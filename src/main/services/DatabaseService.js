@@ -20,6 +20,10 @@ const QUERY_TIMEOUT = 30 * 1000; // 30 seconds
 
 const DESTRUCTIVE_SQL_RE = /^\s*(DROP|DELETE\s+FROM|TRUNCATE|ALTER)\b/i;
 
+// Key names the Redis browser loads before it says the list is partial
+const REDIS_KEY_LIMIT = 10000;
+const REDIS_KEY_LIMIT_MAX = 100000;
+
 const REDIS_ALLOWED_COMMANDS = new Set([
   'get', 'set', 'del', 'keys', 'type', 'info', 'scan', 'select', 'ping',
   'hget', 'hgetall', 'hset', 'hdel', 'hkeys', 'hvals', 'hlen', 'hexists',
@@ -214,6 +218,96 @@ class DatabaseService {
     } catch (error) {
       return { success: false, error: error.message, duration: Date.now() - start };
     }
+  }
+
+  /**
+   * Structured entry point for the Redis browser.
+   *
+   * Arguments travel as values rather than inside a command string, so a key
+   * holding spaces or a newline reaches Redis exactly as written - the old
+   * `_REDIS_KEY_INFO {db} {key}` line trimmed the first and could not carry
+   * the second at all.
+   *
+   * @param {string} id - Connection ID
+   * @param {{ action: string, db?: number, key?: string, pattern?: string, limit?: number }} request
+   */
+  async redis(id, request = {}) {
+    const conn = this.connections.get(id);
+    if (!conn) return { success: false, error: 'Not connected' };
+    if (conn.config.type !== 'redis') return { success: false, error: 'Not a Redis connection' };
+    this._touch(id);
+
+    const dbIndex = Number.isInteger(request.db) && request.db >= 0 ? request.db : this._redisDbIndex(conn.config);
+    try {
+      const db = await this._redisDbClient(conn.client, dbIndex);
+      switch (request.action) {
+        case 'keys': return { success: true, ...(await this._redisListKeys(db, request)) };
+        case 'info': return { success: true, info: await this._redisKeyInfo(db, this._redisKeyArg(request.key)) };
+        default: throw new Error(`Unknown Redis action: ${request.action}`);
+      }
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  _redisKeyArg(key) {
+    if (typeof key !== 'string' || key === '') throw new Error('A key is required');
+    return key;
+  }
+
+  /**
+   * Key names for the tree, capped. Walking the whole keyspace and shipping it
+   * to the renderer is fine at a few hundred keys and freezes both processes at
+   * a few million, so past `limit` the answer says it is partial and the
+   * browser moves its filter to the server.
+   */
+  async _redisListKeys(db, { pattern = '', limit = REDIS_KEY_LIMIT } = {}) {
+    const cap = Math.min(Math.max(parseInt(limit, 10) || REDIS_KEY_LIMIT, 1), REDIS_KEY_LIMIT_MAX);
+    const match = pattern ? `*${this._redisCaselessGlob(pattern)}*` : '*';
+    // SCAN may return a key twice when the keyspace is rehashed mid-walk
+    const keys = new Set();
+    let truncated = false;
+    let cursor = '0';
+    do {
+      const [next, batch] = await db.scan(cursor, 'MATCH', match, 'COUNT', 1000);
+      cursor = next;
+      for (const key of batch) {
+        if (keys.has(key)) continue;
+        if (keys.size >= cap) { truncated = true; break; }
+        keys.add(key);
+      }
+    } while (!truncated && cursor !== '0');
+    const total = await db.dbsize().catch(() => null);
+    return { keys: [...keys].sort(), truncated, total };
+  }
+
+  async _redisKeyInfo(db, key) {
+    const type = await db.type(key);
+    if (type === 'none') throw new Error(`Key "${key}" does not exist`);
+    const ttl = await db.ttl(key);
+    const pttl = await db.pttl(key);
+    let size = null, length = null, value = null;
+    try {
+      if (type === 'string') {
+        value = await db.get(key);
+        size = await db.strlen(key);
+      } else if (type === 'hash') {
+        length = await db.hlen(key);
+        value = JSON.stringify(await db.hgetall(key));
+      } else if (type === 'list') {
+        length = await db.llen(key);
+        value = JSON.stringify(await db.lrange(key, 0, 499));
+      } else if (type === 'set') {
+        length = await db.scard(key);
+        value = JSON.stringify(await db.smembers(key));
+      } else if (type === 'zset') {
+        length = await db.zcard(key);
+        value = JSON.stringify(await db.zrange(key, 0, 499, 'WITHSCORES'));
+      } else {
+        value = `(${type})`;
+      }
+    } catch { /* ignore */ }
+    return { key, type, ttl: ttl < 0 ? null : ttl, pttl: pttl < 0 ? null : pttl, size, length, value };
   }
 
   /**
@@ -962,54 +1056,6 @@ class DatabaseService {
       return { columns: ['key', 'type', 'ttl', 'value'], rows, rowCount: total };
     }
 
-    // Fast key listing: _REDIS_KEYS {dbIndex} {pattern?}
-    const keysMatch = trimmed.match(/^_REDIS_KEYS\s+(\d+)(?:\s+(.+))?$/);
-    if (keysMatch) {
-      const dbIndex = parseInt(keysMatch[1]);
-      const pattern = keysMatch[2] ? `*${this._redisGlobEscape(keysMatch[2])}*` : '*';
-      const db = await this._redisDbClient(client, dbIndex);
-      const allKeys = await this._redisGetAllKeys(db, pattern);
-      return { columns: ['key'], rows: allKeys.map(k => ({ key: k })), rowCount: allKeys.length };
-    }
-
-    // Single key detail: _REDIS_KEY_INFO {dbIndex} {key}
-    const keyInfoMatch = trimmed.match(/^_REDIS_KEY_INFO\s+(\d+)\s+(.+)$/);
-    if (keyInfoMatch) {
-      const dbIndex = parseInt(keyInfoMatch[1]);
-      const key = keyInfoMatch[2].trim();
-      const db = await this._redisDbClient(client, dbIndex);
-      const type = await db.type(key);
-      if (type === 'none') throw new Error(`Key "${key}" does not exist`);
-      const ttl = await db.ttl(key);
-      const pttl = await db.pttl(key);
-      let size = null, length = null, value = null;
-      try {
-        if (type === 'string') {
-          value = await db.get(key);
-          size = await db.strlen(key);
-        } else if (type === 'hash') {
-          length = await db.hlen(key);
-          value = JSON.stringify(await db.hgetall(key));
-        } else if (type === 'list') {
-          length = await db.llen(key);
-          value = JSON.stringify(await db.lrange(key, 0, 499));
-        } else if (type === 'set') {
-          length = await db.scard(key);
-          value = JSON.stringify(await db.smembers(key));
-        } else if (type === 'zset') {
-          length = await db.zcard(key);
-          value = JSON.stringify(await db.zrange(key, 0, 499, 'WITHSCORES'));
-        } else {
-          value = `(${type})`;
-        }
-      } catch { /* ignore */ }
-      return {
-        columns: ['key', 'type', 'ttl', 'pttl', 'size', 'length', 'value'],
-        rows: [{ key, type, ttl: ttl < 0 ? null : ttl, pttl: pttl < 0 ? null : pttl, size, length, value }],
-        rowCount: 1,
-      };
-    }
-
     // Native Redis command (e.g. "GET mykey", "SET foo bar", "KEYS *")
     const parts = this._tokenizeRedisCommand(trimmed);
     if (parts.length === 0) throw new Error('Empty Redis command');
@@ -1074,6 +1120,20 @@ class DatabaseService {
   /** A filter is a substring, not a glob: `user[1]` must not match `user1`. */
   _redisGlobEscape(text) {
     return String(text).replace(/[*?[\]\\]/g, '\\$&');
+  }
+
+  /**
+   * The browser's filter as a MATCH glob that ignores case, so a search the
+   * server answers finds what the same text finds in a list already loaded.
+   */
+  _redisCaselessGlob(text) {
+    let out = '';
+    for (const ch of String(text)) {
+      const lower = ch.toLowerCase(), upper = ch.toUpperCase();
+      if (lower !== upper) out += `[${lower}${upper}]`;
+      else out += /[*?[\]\\]/.test(ch) ? `\\${ch}` : ch;
+    }
+    return out;
   }
 
   async _redisGetAllKeys(client, pattern = '*') {

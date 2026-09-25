@@ -2571,6 +2571,9 @@
     "redisConfiguredDb": "default",
     "redisConfiguredDbHint": "The database index this connection is configured for",
     "redisKeyCount": "{count} keys",
+    "redisNoMatch": "No key matches this filter",
+    "redisKeysTruncated": "Showing {shown} of {total} keys. The filter searches the whole database.",
+    "redisKeysTruncatedFiltered": "Showing the first {shown} matching keys. Narrow the filter to see the rest.",
     "exportCancelled": "Export cancelled. Retry to start again with the same data.",
     "exportRetry": "Retry export"
   },

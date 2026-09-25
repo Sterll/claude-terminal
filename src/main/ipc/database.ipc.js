@@ -72,6 +72,14 @@ function registerDatabaseHandlers() {
     }
   });
 
+  ipcMain.handle('database-redis', async (event, { id, ...request }) => {
+    try {
+      return await databaseService.redis(id, request);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
   ipcMain.handle('database-detect', async (event, { projectPath }) => {
     try {
       return await databaseService.detectDatabases(projectPath);

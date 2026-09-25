@@ -2571,6 +2571,9 @@
     "redisConfiguredDb": "défaut",
     "redisConfiguredDbHint": "La base configurée pour cette connexion",
     "redisKeyCount": "{count} clés",
+    "redisNoMatch": "Aucune clé ne correspond à ce filtre",
+    "redisKeysTruncated": "{shown} clés affichées sur {total}. Le filtre cherche dans toute la base.",
+    "redisKeysTruncatedFiltered": "Seules les {shown} premières clés correspondantes sont affichées. Affinez le filtre pour voir la suite.",
     "exportCancelled": "Export annulé. Réessayer repart du début avec les mêmes données.",
     "exportRetry": "Relancer l’export"
   },

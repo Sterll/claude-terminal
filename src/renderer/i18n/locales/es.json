@@ -2568,6 +2568,9 @@
     "redisConfiguredDb": "predeterminada",
     "redisConfiguredDbHint": "La base de datos configurada para esta conexión",
     "redisKeyCount": "{count} claves",
+    "redisNoMatch": "Ninguna clave coincide con este filtro",
+    "redisKeysTruncated": "Se muestran {shown} de {total} claves. El filtro busca en toda la base de datos.",
+    "redisKeysTruncatedFiltered": "Se muestran las primeras {shown} claves coincidentes. Afina el filtro para ver el resto.",
     "exportCancelled": "Exportación cancelada. Reintentar comienza desde el principio con los mismos datos.",
     "exportRetry": "Reintentar exportación"
   },

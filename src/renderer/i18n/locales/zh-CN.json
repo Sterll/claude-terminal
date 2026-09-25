@@ -2571,6 +2571,9 @@
     "redisConfiguredDb": "默认",
     "redisConfiguredDbHint": "此连接配置的数据库索引",
     "redisKeyCount": "{count} 个键",
+    "redisNoMatch": "没有与此筛选条件匹配的键",
+    "redisKeysTruncated": "显示 {shown} / {total} 个键。筛选会搜索整个数据库。",
+    "redisKeysTruncatedFiltered": "显示前 {shown} 个匹配的键。缩小筛选范围以查看其余部分。",
     "exportCancelled": "导出已取消。重试将使用相同数据从头开始。",
     "exportRetry": "重新导出"
   },

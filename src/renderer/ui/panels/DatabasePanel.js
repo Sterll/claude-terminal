@@ -9,6 +9,7 @@ const { copyText } = require('../../utils/clipboard');
 const { highlight } = require('../../utils/syntaxHighlight');
 const { t } = require('../../i18n');
 const { showConfirm, createModal, showModal, closeModal } = require('../components/Modal');
+const { createRedisBrowser } = require('./database/redisBrowser');
 
 /**
  * Escape a SQL identifier (table/column name).
@@ -32,42 +33,6 @@ function escapeSqlValue(val) {
 }
 
 let ctx = null;
-
-// ==================== Redis Tree Builder ====================
-
-function buildRedisTree(keys, filter = '') {
-  const root = { children: new Map(), keys: [], keyCount: 0 };
-  const filtered = filter
-    ? keys.filter(k => k.toLowerCase().includes(filter.toLowerCase()))
-    : keys;
-
-  for (const key of filtered) {
-    const parts = key.split(':');
-    let node = root;
-    for (let i = 0; i < parts.length - 1; i++) {
-      if (!node.children.has(parts[i])) {
-        node.children.set(parts[i], { children: new Map(), keys: [], keyCount: 0 });
-      }
-      node = node.children.get(parts[i]);
-    }
-    node.keys.push(key);
-  }
-
-  (function count(n) {
-    let c = n.keys.length;
-    for (const child of n.children.values()) c += count(child);
-    return (n.keyCount = c);
-  })(root);
-
-  return root;
-}
-
-function formatTtl(seconds) {
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
-  return `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h`;
-}
 
 // ==================== Autocomplete Index ====================
 let autocompleteIndex = null; // { tables: string[], columnsByTable: {}, allColumns: string[], sqlKeywords: string[] }
@@ -102,18 +67,31 @@ let panelState = {
   browserSidebarWidth: 240,
   explainResult: null,         // { dbType, rawResult, sql }
   tabStates: {},               // { [tabId]: { queryRunning, explainResult, queryResultColumnWidths } }
-  // Redis tree view state
-  redisTreeKeys: null,              // string[] — all key names for current db
-  redisTreeFilter: '',              // search filter for tree
-  redisExpandedFolders: new Set(),  // expanded folder paths (e.g. "user", "user:123")
-  redisSelectedKey: null,           // full key name of selected leaf
-  redisKeyInfo: null,               // { key, type, ttl, pttl, size, length, value }
-  redisKeyInfoLoading: false,
-  redisTreeLoading: false,
 };
 
 function init(context) {
   ctx = context;
+}
+
+let redisBrowser = null;
+
+/** The Redis key browser, created on first use because it needs ctx. */
+function getRedisBrowser() {
+  if (!redisBrowser) {
+    redisBrowser = createRedisBrowser({
+      api: ctx.api.database,
+      getActiveId: () => require('../../state').getActiveConnection(),
+      t,
+      escapeHtml,
+      showToast: (toast) => ctx.showToast(toast),
+      // A db appears in INFO keyspace only while it holds keys, so the list goes stale too
+      onRefresh: () => {
+        const activeId = require('../../state').getActiveConnection();
+        if (activeId) loadSchema(activeId, { force: true });
+      },
+    });
+  }
+  return redisBrowser;
 }
 
 // ==================== Main Entry ====================
@@ -473,7 +451,7 @@ function renderSchema(container) {
       <div class="db-browser-resize-handle"></div>
       <div class="db-browser-main">
         ${isRedis
-          ? (selectedTable ? renderRedisBrowserPanel(selectedTable) : renderBrowserEmptyState(tableLabel))
+          ? (selectedTable ? renderRedisBrowser(selectedTable) : renderBrowserEmptyState(tableLabel))
           : (selectedTable && selectedMeta ? renderBrowserDataPanel(selectedTable, selectedMeta, isMongo, columnLabel) : renderBrowserEmptyState(tableLabel))}
       </div>
     </div>`;
@@ -481,174 +459,13 @@ function renderSchema(container) {
   bindBrowserEvents(container);
 }
 
-// ==================== Redis Tree Browser ====================
-
-function renderRedisBrowserPanel(dbName) {
-  const treeKeys = panelState.redisTreeKeys;
-  const loading = panelState.redisTreeLoading;
-  const filter = panelState.redisTreeFilter;
-  const selectedKey = panelState.redisSelectedKey;
-  const keyInfo = panelState.redisKeyInfo;
-  const keyInfoLoading = panelState.redisKeyInfoLoading;
-
-  let treeHtml = '';
-  if (loading) {
-    treeHtml = `<div class="redis-tree-loading"><div class="db-browser-spinner"></div>${t('database.redisLoadingKeys')}</div>`;
-  } else if (!treeKeys) {
-    treeHtml = `<div class="redis-tree-empty">${t('database.redisNoKeys')}</div>`;
-  } else if (treeKeys.length === 0) {
-    treeHtml = `<div class="redis-tree-empty">${t('database.redisNoKeys')}</div>`;
-  } else {
-    const tree = buildRedisTree(treeKeys, filter);
-    treeHtml = renderRedisTreeNodes(tree, '', panelState.redisExpandedFolders, selectedKey);
-  }
-
-  let detailHtml = '';
-  if (keyInfoLoading) {
-    detailHtml = `<div class="redis-detail-loading"><div class="db-browser-spinner"></div>${t('database.redisLoadingKey')}</div>`;
-  } else if (!selectedKey) {
-    detailHtml = `<div class="redis-detail-empty">
-      <svg viewBox="0 0 24 24" fill="currentColor" width="40" height="40" style="opacity:0.3"><path d="M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1z"/></svg>
-      <span>${t('database.redisSelectKey')}</span>
-    </div>`;
-  } else if (keyInfo) {
-    detailHtml = renderRedisKeyDetail(keyInfo);
-  }
-
-  const filteredCount = filter && treeKeys
-    ? treeKeys.filter(k => k.toLowerCase().includes(filter.toLowerCase())).length
-    : (treeKeys ? treeKeys.length : 0);
-
-  return `
-    <div class="redis-browser">
-      <div class="redis-tree-panel">
-        <div class="redis-tree-header">
-          <div class="redis-tree-search">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-            <input type="text" class="redis-tree-search-input" id="redis-tree-filter" placeholder="${t('database.redisFilterKeys')}" value="${escapeHtml(filter)}">
-            <span class="redis-tree-count">${filteredCount}</span>
-          </div>
-          <button class="db-browser-btn" id="redis-tree-refresh" title="${t('database.redisRefreshKeys')}">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
-          </button>
-        </div>
-        <div class="redis-tree-list" id="redis-tree-list">
-          ${treeHtml}
-        </div>
-      </div>
-      <div class="redis-detail-panel" id="redis-detail-panel">
-        ${detailHtml}
-      </div>
-    </div>`;
-}
-
-function renderRedisTreeNodes(node, pathPrefix, expandedFolders, selectedKey) {
-  let html = '';
-  const sortedChildren = [...node.children.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  const sortedKeys = [...node.keys].sort();
-
-  for (const [name, childNode] of sortedChildren) {
-    const folderPath = pathPrefix ? `${pathPrefix}:${name}` : name;
-    const isExpanded = expandedFolders.has(folderPath);
-    const childHtml = isExpanded ? renderRedisTreeNodes(childNode, folderPath, expandedFolders, selectedKey) : '';
-    html += `
-      <div class="redis-tree-folder ${isExpanded ? 'expanded' : ''}">
-        <div class="redis-tree-folder-header" data-folder-toggle="${escapeHtml(folderPath)}">
-          <svg class="redis-tree-chevron" viewBox="0 0 10 10" width="10" height="10">
-            <path d="${isExpanded ? 'M1 3l4 4 4-4' : 'M3 1l4 4-4 4'}" fill="none" stroke="currentColor" stroke-width="1.5"/>
-          </svg>
-          <svg class="redis-tree-folder-icon" viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
-            <path d="${isExpanded
-              ? 'M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z'
-              : 'M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z'}"/>
-          </svg>
-          <span class="redis-tree-folder-name">${escapeHtml(name)}</span>
-          <span class="redis-tree-folder-count">${childNode.keyCount}</span>
-        </div>
-        <div class="redis-tree-folder-children" ${isExpanded ? '' : 'style="display:none"'}>
-          ${childHtml}
-        </div>
-      </div>`;
-  }
-
-  for (const key of sortedKeys) {
-    const leafName = key.split(':').pop();
-    const isSelected = key === selectedKey;
-    html += `
-      <div class="redis-tree-key ${isSelected ? 'active' : ''}" data-redis-key="${escapeHtml(key)}">
-        <svg class="redis-tree-key-icon" viewBox="0 0 24 24" fill="currentColor" width="12" height="12">
-          <path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h3v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/>
-        </svg>
-        <span class="redis-tree-key-name">${escapeHtml(leafName)}</span>
-      </div>`;
-  }
-  return html;
-}
-
-function renderRedisKeyDetail(info) {
-  const { key, type, ttl, size, length, value } = info;
-  const ttlDisplay = ttl === null ? t('database.redisNoExpiry') : `${ttl}s (${formatTtl(ttl)})`;
-
-  let valueHtml = '';
-  try {
-    if (type === 'string') {
-      let formatted = value, isJson = false;
-      try { formatted = JSON.stringify(JSON.parse(value), null, 2); isJson = true; } catch {}
-      valueHtml = `<pre class="redis-value-pre ${isJson ? 'json' : ''}">${escapeHtml(formatted || '')}</pre>`;
-    } else if (type === 'hash') {
-      const entries = typeof value === 'string' ? JSON.parse(value) : (value || {});
-      const pairs = Object.entries(entries);
-      valueHtml = `<div class="redis-value-table-wrapper"><table class="redis-value-table">
-        <thead><tr><th>${t('database.redisField')}</th><th>${t('database.redisValue')}</th></tr></thead>
-        <tbody>${pairs.map(([f, v]) => `<tr><td class="redis-field-name">${escapeHtml(f)}</td><td>${escapeHtml(String(v))}</td></tr>`).join('')}</tbody>
-      </table></div>`;
-    } else if (type === 'list') {
-      const items = typeof value === 'string' ? JSON.parse(value) : (value || []);
-      valueHtml = `<div class="redis-value-table-wrapper"><table class="redis-value-table">
-        <thead><tr><th>#</th><th>${t('database.redisValue')}</th></tr></thead>
-        <tbody>${items.map((v, i) => `<tr><td class="redis-list-index">${i}</td><td>${escapeHtml(String(v))}</td></tr>`).join('')}</tbody>
-      </table></div>`;
-    } else if (type === 'set') {
-      const members = typeof value === 'string' ? JSON.parse(value) : (value || []);
-      valueHtml = `<div class="redis-value-table-wrapper"><table class="redis-value-table">
-        <thead><tr><th>${t('database.redisMember')}</th></tr></thead>
-        <tbody>${members.map(m => `<tr><td>${escapeHtml(String(m))}</td></tr>`).join('')}</tbody>
-      </table></div>`;
-    } else if (type === 'zset') {
-      const arr = typeof value === 'string' ? JSON.parse(value) : (value || []);
-      const pairs = [];
-      for (let i = 0; i < arr.length; i += 2) pairs.push({ member: arr[i], score: arr[i + 1] });
-      valueHtml = `<div class="redis-value-table-wrapper"><table class="redis-value-table">
-        <thead><tr><th>${t('database.redisScore')}</th><th>${t('database.redisMember')}</th></tr></thead>
-        <tbody>${pairs.map(p => `<tr><td class="redis-zset-score">${escapeHtml(String(p.score))}</td><td>${escapeHtml(String(p.member))}</td></tr>`).join('')}</tbody>
-      </table></div>`;
-    } else {
-      valueHtml = `<pre class="redis-value-pre">${escapeHtml(String(value || ''))}</pre>`;
-    }
-  } catch {
-    valueHtml = `<pre class="redis-value-pre">${escapeHtml(String(value || ''))}</pre>`;
-  }
-
-  return `
-    <div class="redis-detail">
-      <div class="redis-detail-header">
-        <div class="redis-detail-key-row">
-          <span class="redis-detail-key-name" title="${escapeHtml(key)}">${escapeHtml(key)}</span>
-          <span class="redis-type-badge ${type}">${type.toUpperCase()}</span>
-        </div>
-        <div class="redis-detail-meta">
-          <span class="redis-detail-ttl">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            ${escapeHtml(ttlDisplay)}
-          </span>
-          ${size !== null && size !== undefined ? `<span class="redis-detail-size">${t('database.redisBytes', { count: size })}</span>` : ''}
-          ${length !== null && length !== undefined ? `<span class="redis-detail-length">${t('database.redisItems', { count: length })}</span>` : ''}
-        </div>
-      </div>
-      <div class="redis-detail-value">
-        ${valueHtml}
-      </div>
-    </div>`;
+/** The key browser for a Redis db, opening it first if it is not the one loaded. */
+function renderRedisBrowser(dbName) {
+  const browser = getRedisBrowser();
+  const activeId = require('../../state').getActiveConnection();
+  // db:1 of one connection is not db:1 of another
+  if (browser.dbName !== dbName || browser.connectionId !== activeId) browser.select(dbName);
+  return browser.render();
 }
 
 function renderBrowserEmptyState(tableLabel) {
@@ -845,13 +662,8 @@ function bindBrowserEvents(container) {
         const state2 = require('../../state');
         const conn2 = state2.getDatabaseConnection(state2.getActiveConnection());
         if (conn2 && conn2.type === 'redis') {
-          panelState.redisTreeKeys = null;
-          panelState.redisSelectedKey = null;
-          panelState.redisKeyInfo = null;
-          panelState.redisTreeFilter = '';
-          panelState.redisExpandedFolders = new Set();
+          getRedisBrowser().select(tableName);
           renderContent();
-          loadRedisKeys(tableName);
         } else {
           renderContent();
           loadTableData(tableName);
@@ -1098,6 +910,7 @@ function bindBrowserEvents(container) {
 
   // Sidebar resize
   setupSidebarResize(container);
+  if (container.querySelector('.redis-browser')) getRedisBrowser().bind(container);
 
   // Cell expand buttons (browser data grid)
   container.querySelectorAll('.db-cell-expand-btn[data-expand-row]').forEach(btn => {
@@ -1510,121 +1323,6 @@ function setupColumnResize(container, stateKey, tableName) {
     };
   });
 
-  // Redis tree events
-  bindRedisBrowserEvents(container);
-}
-
-// ==================== Redis Tree Events & Loading ====================
-
-function bindRedisBrowserEvents(container) {
-  const filterInput = container.querySelector('#redis-tree-filter');
-  if (filterInput) {
-    filterInput.oninput = () => {
-      panelState.redisTreeFilter = filterInput.value;
-      renderContent();
-      setTimeout(() => {
-        const input = document.querySelector('#redis-tree-filter');
-        if (input) { input.focus(); input.selectionStart = input.selectionEnd = input.value.length; }
-      }, 0);
-    };
-  }
-
-  const refreshBtn = container.querySelector('#redis-tree-refresh');
-  if (refreshBtn) {
-    // The db list goes stale too: a db appears in INFO keyspace only while it holds keys
-    refreshBtn.onclick = () => {
-      const activeId = require('../../state').getActiveConnection();
-      if (activeId) loadSchema(activeId, { force: true });
-      loadRedisKeys(panelState.browserSelectedTable);
-    };
-  }
-
-  // Folder toggle (event delegation)
-  container.querySelectorAll('[data-folder-toggle]').forEach(el => {
-    el.onclick = () => {
-      const folder = el.dataset.folderToggle;
-      if (panelState.redisExpandedFolders.has(folder)) {
-        panelState.redisExpandedFolders.delete(folder);
-      } else {
-        panelState.redisExpandedFolders.add(folder);
-      }
-      renderContent();
-    };
-  });
-
-  // Key selection (event delegation)
-  container.querySelectorAll('.redis-tree-key').forEach(el => {
-    el.onclick = () => {
-      const key = el.dataset.redisKey;
-      if (key && key !== panelState.redisSelectedKey) {
-        panelState.redisSelectedKey = key;
-        panelState.redisKeyInfo = null;
-        renderContent();
-        loadRedisKeyInfo(panelState.browserSelectedTable, key);
-      }
-    };
-  });
-}
-
-async function loadRedisKeys(dbName) {
-  if (!dbName) return;
-  const state = require('../../state');
-  const activeId = state.getActiveConnection();
-  if (!activeId) return;
-
-  panelState.redisTreeLoading = true;
-  renderContent();
-
-  const dbIndex = dbName.startsWith('db:') ? parseInt(dbName.slice(3)) : 0;
-  try {
-    const result = await ctx.api.database.executeQuery({ id: activeId, sql: `_REDIS_KEYS ${dbIndex}`, limit: 100000 });
-    // Another db was picked while this one loaded: its answer belongs to nobody
-    if (panelState.browserSelectedTable !== dbName) return;
-    if (result.error) {
-      ctx.showToast({ type: 'error', title: t('database.browserQueryError'), message: result.error });
-      panelState.redisTreeKeys = [];
-    } else {
-      panelState.redisTreeKeys = (result.rows || []).map(r => r.key);
-    }
-  } catch (e) {
-    if (panelState.browserSelectedTable !== dbName) return;
-    panelState.redisTreeKeys = [];
-    ctx.showToast({ type: 'error', title: t('database.browserQueryError'), message: e.message });
-  }
-
-  panelState.redisTreeLoading = false;
-  renderContent();
-}
-
-async function loadRedisKeyInfo(dbName, key) {
-  const state = require('../../state');
-  const activeId = state.getActiveConnection();
-  if (!activeId) return;
-
-  panelState.redisKeyInfoLoading = true;
-  renderContent();
-
-  const dbIndex = dbName && dbName.startsWith('db:') ? parseInt(dbName.slice(3)) : 0;
-  try {
-    const result = await ctx.api.database.executeQuery({ id: activeId, sql: `_REDIS_KEY_INFO ${dbIndex} ${key}`, limit: 1 });
-    if (panelState.redisSelectedKey !== key || panelState.browserSelectedTable !== dbName) {
-      // A newer key request owns the spinner; with no key selected nobody does
-      if (!panelState.redisSelectedKey) panelState.redisKeyInfoLoading = false;
-      return;
-    }
-    if (result.error) {
-      ctx.showToast({ type: 'error', title: t('database.browserQueryError'), message: result.error });
-      panelState.redisKeyInfo = null;
-    } else if (result.rows && result.rows.length > 0) {
-      panelState.redisKeyInfo = result.rows[0];
-    }
-  } catch (e) {
-    panelState.redisKeyInfo = null;
-    ctx.showToast({ type: 'error', title: t('database.browserQueryError'), message: e.message });
-  }
-
-  panelState.redisKeyInfoLoading = false;
-  renderContent();
 }
 
 async function loadTableData(tableName) {
@@ -1751,12 +1449,7 @@ function selectDefaultRedisDb(tables) {
   if (tables.some(tb => tb.name === panelState.browserSelectedTable)) return;
   const target = tables.find(tb => tb.isDefault) || tables[0];
   panelState.browserSelectedTable = target.name;
-  panelState.redisTreeKeys = null;
-  panelState.redisSelectedKey = null;
-  panelState.redisKeyInfo = null;
-  panelState.redisTreeFilter = '';
-  panelState.redisExpandedFolders = new Set();
-  loadRedisKeys(target.name);
+  getRedisBrowser().select(target.name);
 }
 
 // ==================== Query Tab ====================
@@ -2926,6 +2619,7 @@ async function connectDatabase(id) {
 
   if (result.success) {
     ctx.showToast({ type: 'success', title: t('database.connectionSuccess') });
+    if (redisBrowser) redisBrowser.reset();
     loadSchema(id);
   } else {
     ctx.showToast({ type: 'error', title: t('database.connectionFailed', { error: result.error }) });
