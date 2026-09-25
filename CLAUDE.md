@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 210 test files)
+npm test                 # Run Jest tests (jsdom, 211 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -97,7 +97,7 @@ Project Types (Plugin System)
 └── src/project-types/               # general, api, fivem, minecraft, python, webapp, discord
 
 Shared code
-└── src/shared/                      # 18 modules shared between main, renderer and the MCP server
+└── src/shared/                      # 19 modules shared between main, renderer and the MCP server
 
 Styles
 └── styles/                          # 30 modular CSS files (~57,000 lines total)
@@ -669,7 +669,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 210 unit test files (jsdom environment)
+npm test                    # Run all 211 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -678,7 +678,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 210 test files
+- **Framework:** Jest with jsdom, 211 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
@@ -691,7 +691,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
   - `remote-ui/` - hierarchy
   - `security/` - security tests, including the renderer fs bridge denylist
   - `services/` - ChatService, AccountManager, ArtifactService, DatabaseService, DashboardService, DiffRenderer, HooksService, KnowledgeService, MarkdownRenderer, ModelCatalogService, RemoteServer, RemoteControlService, UsageService, VoiceService, WorkflowRunner, the workflow engine suite, the lazy `xtermLoader`, the lazy project-type registry, the `~/.claude.json` merge in `McpService.saveMcps`, the plugin-manifest guard in `PluginService.installPlugin`, the silent-install arguments in `UpdaterService.quitAndInstall`, the mermaid failure containment in `postProcess` (`suppressErrorRendering` plus the temp-element cleanup, neither of which shows until a diagram fails), the corruption guards shared by `MarketplaceService`, `WorkspaceService` and `KnowledgeService`, the PTY `'error'` listener `TerminalService.create` registers so node-pty cannot rethrow a socket error into the main process, and the em dash ban in `BuiltinSystemPrompts` (present on every path, and obeyed by the prompt text itself)
-  - `shared/` - context usage, cron, model options, permission modes, simple-task
+  - `shared/` - context usage, cron, model options, permission modes, redis command allowlist, simple-task
   - `smoke/` - every module parses and loads
   - `state/` - State plus each state module, including the latched save block `timeTracking.state.js` applies to an unreadable `timetracking.json`
   - `ui/` - chat account switch, chat limit error, replayed tool output, task widget, tasks drawer, ClaudeRemotePanel, navigation mode, kanban live refresh, toast, the drag-reorder invariant that keeps a tab drag from forcing a layout per pointer move, the Files viewer's rendered/source/diff modes and its reload button, and the flattened far side of the transcript store (what may be held as markup, that a rebuilt entry keeps its dataset and its delegated handlers, and that a listener bound to the element does not survive, which is the whole reason the rule is an allowlist)

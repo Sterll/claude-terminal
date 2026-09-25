@@ -19,16 +19,9 @@ const MAX_ROWS = 100;
 
 // -- Redis allowed commands ---------------------------------------------------
 
-const REDIS_ALLOWED_COMMANDS = new Set([
-  'get', 'set', 'del', 'keys', 'type', 'info', 'scan', 'select', 'ping',
-  'hget', 'hgetall', 'hset', 'hdel', 'hkeys', 'hvals', 'hlen', 'hexists',
-  'lrange', 'llen', 'lindex', 'lpush', 'rpush', 'lpop', 'rpop',
-  'smembers', 'scard', 'sismember', 'sadd', 'srem',
-  'zrange', 'zcard', 'zscore', 'zadd', 'zrem', 'zrangebyscore',
-  'exists', 'expire', 'ttl', 'pttl', 'persist', 'rename',
-  'dbsize', 'randomkey', 'mget', 'strlen', 'append', 'incr', 'decr',
-  'getrange', 'setex', 'setnx', 'mset'
-]);
+// The same list the app's query tab enforces (packaged next to mcp-servers/, or in the repo)
+const redisCommandsPath = path.join(__dirname, '..', 'shared', 'redis-commands.js');
+const { REDIS_COMMANDS, isRedisCommandAllowed, tokenizeRedisCommand } = require(fs.existsSync(redisCommandsPath) ? redisCommandsPath : '../../../src/shared/redis-commands');
 
 // -- SQL identifier escaping --------------------------------------------------
 
@@ -309,18 +302,26 @@ async function executeRedisCommand(client, command) {
   }
 
   // Native Redis command
-  const parts = trimmed.split(/\s+/);
+  const parts = tokenizeRedisCommand(trimmed);
+  if (parts.length === 0) throw new Error('Empty Redis command');
   const cmd = parts[0].toLowerCase();
   const args = parts.slice(1);
 
-  if (!REDIS_ALLOWED_COMMANDS.has(cmd)) {
-    throw new Error(`Redis command "${cmd.toUpperCase()}" is not allowed. Allowed: ${[...REDIS_ALLOWED_COMMANDS].join(', ')}`);
+  if (!isRedisCommandAllowed(cmd, args)) {
+    throw new Error(`Redis command "${parts.slice(0, 2).join(' ').toUpperCase()}" is not allowed. Allowed: ${REDIS_COMMANDS.map(c => c.name).join(', ')}`);
   }
 
-  const result = await client[cmd](...args);
+  // A method per core command (it also shapes HGETALL into an object); module commands go through call()
+  const result = typeof client[cmd] === 'function' && !cmd.includes('.')
+    ? await client[cmd](...args)
+    : await client.call(cmd, ...args);
+  const text = v => (v === null ? '(nil)' : Array.isArray(v) ? JSON.stringify(v) : String(v));
   if (result === null) return '(nil)';
   if (Array.isArray(result)) {
-    return result.map((v, i) => `${i + 1}) ${v === null ? '(nil)' : String(v)}`).join('\n') || '(empty array)';
+    return result.map((v, i) => `${i + 1}) ${text(v)}`).join('\n') || '(empty array)';
+  }
+  if (typeof result === 'object' && !Buffer.isBuffer(result)) {
+    return Object.entries(result).map(([field, value]) => `${field}: ${value}`).join('\n') || '(empty hash)';
   }
   return String(result);
 }

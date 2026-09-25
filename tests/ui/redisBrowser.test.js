@@ -62,6 +62,41 @@ describe('redisTree', () => {
   });
 });
 
+describe('redisCompletions', () => {
+  const { redisCompletions } = require('../../src/renderer/ui/panels/database/redisCompletion');
+  const keys = ['user:1', 'user:2', 'order:9', 'has space'];
+
+  test('completes a command at the start of a line, with its signature', () => {
+    const r = redisCompletions('hge', 3, keys);
+    expect(r.partialStart).toBe(0);
+    expect(r.suggestions.map(s => s.text)).toEqual(['HGET', 'HGETALL']);
+    expect(r.suggestions[0]).toMatchObject({ type: 'keyword', detail: 'key field' });
+  });
+
+  test('completes a key where the command takes one', () => {
+    const r = redisCompletions('GET us', 6, keys);
+    expect(r.partialStart).toBe(4);
+    expect(r.suggestions.map(s => s.text)).toEqual(['user:1', 'user:2']);
+  });
+
+  test('every position of a variadic key list takes a key', () => {
+    expect(redisCompletions('DEL user:1 ord', 14, keys).suggestions.map(s => s.text)).toEqual(['order:9']);
+  });
+
+  test('offers nothing where the argument is not a key', () => {
+    // SET key value: the value is free text
+    expect(redisCompletions('SET user:1 us', 13, keys)).toBeNull();
+    expect(redisCompletions('NOPE x', 6, keys)).toBeNull();
+    expect(redisCompletions('GET ', 4, keys)).toBeNull();
+  });
+
+  test('quotes a key that holds a space, and works on the current line only', () => {
+    expect(redisCompletions('GET ha', 6, keys).suggestions[0].text).toBe('"has space"');
+    const text = 'GET user:1\nEXI';
+    expect(redisCompletions(text, text.length, keys).suggestions.map(s => s.text)).toEqual(['EXISTS']);
+  });
+});
+
 describe('redisUrl', () => {
   const { parseRedisUrl, buildRedisUrl } = require('../../src/renderer/ui/panels/database/redisUrl');
 

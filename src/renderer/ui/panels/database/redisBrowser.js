@@ -829,6 +829,8 @@ function createRedisBrowser(deps) {
     select, render, bind, destroy, reset,
     get dbName() { return state.dbName; },
     get connectionId() { return state.connectionId; },
+    /** Key names already loaded, for the query editor's completion. */
+    get loadedKeys() { return state.keys || []; },
     _state: state,
   };
 }

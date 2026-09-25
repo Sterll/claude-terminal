@@ -89,7 +89,7 @@ function fakeRedis(data, { db = 0, infoFails = false, scanBatches = null } = {})
       lrange: jest.fn(async (k, start, stop) => keys()[k].value.slice(start, stop + 1)),
       xlen: jest.fn(async (k) => keys()[k].value.length),
       xrevrange: jest.fn(async (k, _end, _start, _count, n) => [...keys()[k].value].reverse().slice(0, n)),
-      call: jest.fn(async (command, k) => (command === 'JSON.GET' ? keys()[k].value : null)),
+      call: jest.fn(async (command, k) => (String(command).toUpperCase() === 'JSON.GET' ? keys()[k].value : null)),
       pipeline: jest.fn(() => {
         const queued = [];
         return {
@@ -438,6 +438,27 @@ describe('DatabaseService Redis commands', () => {
     const result = await databaseService._executeRedis(client, 'HGETALL h', 100);
     expect(result.columns).toEqual(['field', 'value']);
     expect(result.rows).toEqual([{ field: 'name', value: 'yanis' }, { field: 'role', value: 'dev' }]);
+  });
+
+  test('a module command goes through call(), a core one through its method', async () => {
+    const client = fakeRedis({ 0: { doc: { type: 'ReJSON-RL', value: '{"a":1}' }, k: { type: 'string', value: 'v' } } });
+    expect((await databaseService._executeRedis(client, 'JSON.GET doc', 100)).rows).toEqual([{ result: '{"a":1}' }]);
+    expect(client.call).toHaveBeenCalledWith('json.get', 'doc');
+    await databaseService._executeRedis(client, 'GET k', 100);
+    expect(client.get).toHaveBeenCalledWith('k');
+  });
+
+  test('refuses administrative commands and the writing members of a command family', async () => {
+    const client = fakeRedis({ 0: {} });
+    await expect(databaseService._executeRedis(client, 'FLUSHDB', 100)).rejects.toThrow('Redis command "FLUSHDB" is not allowed');
+    await expect(databaseService._executeRedis(client, 'MEMORY PURGE', 100)).rejects.toThrow('"MEMORY PURGE" is not allowed. Allowed: MEMORY USAGE, MEMORY STATS, MEMORY HELP');
+  });
+
+  test('nested replies are shown as JSON rather than flattened', async () => {
+    const client = fakeRedis({ 0: {} });
+    client.xrange = jest.fn(async () => [['1-0', ['temp', '21']]]);
+    const result = await databaseService._executeRedis(client, 'XRANGE s - +', 100);
+    expect(result.rows).toEqual([{ value: '["1-0",["temp","21"]]' }]);
   });
 
   test('a key filter is matched literally, not as a glob', () => {

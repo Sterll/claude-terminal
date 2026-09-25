@@ -27,16 +27,7 @@ const REDIS_KEY_LIMIT_MAX = 100000;
 const REDIS_ITEM_LIMIT = 500;
 const REDIS_STREAM_LIMIT = 100;
 
-const REDIS_ALLOWED_COMMANDS = new Set([
-  'get', 'set', 'del', 'keys', 'type', 'info', 'scan', 'select', 'ping',
-  'hget', 'hgetall', 'hset', 'hdel', 'hkeys', 'hvals', 'hlen', 'hexists',
-  'lrange', 'llen', 'lindex', 'lpush', 'rpush', 'lpop', 'rpop',
-  'smembers', 'scard', 'sismember', 'sadd', 'srem',
-  'zrange', 'zcard', 'zscore', 'zadd', 'zrem', 'zrangebyscore',
-  'exists', 'expire', 'ttl', 'pttl', 'persist', 'rename',
-  'dbsize', 'randomkey', 'mget', 'strlen', 'append', 'incr', 'decr',
-  'getrange', 'setex', 'setnx', 'mset'
-]);
+const { isRedisCommandAllowed, tokenizeRedisCommand, REDIS_SUBCOMMANDS } = require('../../shared/redis-commands');
 
 class DatabaseService {
   constructor() {
@@ -1248,11 +1239,18 @@ class DatabaseService {
     const cmd = parts[0].toLowerCase();
     const args = parts.slice(1);
 
-    if (!REDIS_ALLOWED_COMMANDS.has(cmd)) {
-      throw new Error(`Redis command "${cmd.toUpperCase()}" is not allowed. Only read/write data commands are permitted.`);
+    if (!isRedisCommandAllowed(cmd, args)) {
+      const subs = REDIS_SUBCOMMANDS[cmd];
+      throw new Error(subs
+        ? `Redis command "${cmd.toUpperCase()} ${String(args[0] || '').toUpperCase()}" is not allowed. Allowed: ${subs.map(s => `${cmd.toUpperCase()} ${s.toUpperCase()}`).join(', ')}.`
+        : `Redis command "${cmd.toUpperCase()}" is not allowed. Only read/write data commands are permitted.`);
     }
 
-    const result = await client[cmd](...args);
+    // ioredis has a method per core command, which also shapes replies (HGETALL
+    // as an object); a module command such as JSON.GET goes through call()
+    const result = typeof client[cmd] === 'function' && !cmd.includes('.')
+      ? await client[cmd](...args)
+      : await client.call(cmd, ...args);
     // HGETALL comes back from ioredis as an object, which String() turned into "[object Object]"
     if (result && typeof result === 'object' && !Array.isArray(result) && !Buffer.isBuffer(result)) {
       const entries = Object.entries(result);
@@ -1260,47 +1258,16 @@ class DatabaseService {
     }
     if (Array.isArray(result)) {
       const limited = result.slice(0, limit);
-      return { columns: ['value'], rows: limited.map(v => ({ value: v === null ? null : String(v) })), rowCount: result.length };
+      // XRANGE, SCAN and friends nest arrays, which String() flattened into "a,b,c"
+      const cell = v => (v === null ? null : Array.isArray(v) ? JSON.stringify(v) : String(v));
+      return { columns: ['value'], rows: limited.map(v => ({ value: cell(v) })), rowCount: result.length };
     }
     return { columns: ['result'], rows: [{ result: result === null ? null : String(result) }], rowCount: 1 };
   }
 
-  /**
-   * Split a command line the way redis-cli does, so `SET greeting "hello world"`
-   * stores one value rather than `"hello` with a stray `world"` argument.
-   * Double quotes take backslash escapes, single quotes are literal.
-   */
+  /** redis-cli style argument splitting; shared with the MCP server. */
   _tokenizeRedisCommand(line) {
-    const tokens = [];
-    let i = 0;
-    while (i < line.length) {
-      while (i < line.length && /\s/.test(line[i])) i++;
-      if (i >= line.length) break;
-      let token = '';
-      while (i < line.length && !/\s/.test(line[i])) {
-        const ch = line[i];
-        if (ch === '"' || ch === "'") {
-          const quote = ch;
-          i++;
-          while (i < line.length && line[i] !== quote) {
-            if (quote === '"' && line[i] === '\\' && i + 1 < line.length) {
-              const next = line[++i];
-              token += next === 'n' ? '\n' : next === 't' ? '\t' : next === 'r' ? '\r' : next;
-            } else {
-              token += line[i];
-            }
-            i++;
-          }
-          if (i >= line.length) throw new Error('Unbalanced quotes in Redis command');
-          i++;
-        } else {
-          token += ch;
-          i++;
-        }
-      }
-      tokens.push(token);
-    }
-    return tokens;
+    return tokenizeRedisCommand(line);
   }
 
   /** A filter is a substring, not a glob: `user[1]` must not match `user1`. */

@@ -11,6 +11,7 @@ const { t } = require('../../i18n');
 const { showConfirm, createModal, showModal, closeModal } = require('../components/Modal');
 const { createRedisBrowser } = require('./database/redisBrowser');
 const { parseRedisUrl, buildRedisUrl } = require('./database/redisUrl');
+const { redisCompletions } = require('./database/redisCompletion');
 
 /**
  * Escape a SQL identifier (table/column name).
@@ -1678,7 +1679,9 @@ function buildAutocompleteIndex() {
   if (!activeId) { autocompleteIndex = null; return; }
 
   const conn = state.getDatabaseConnection(activeId);
-  if (conn && (conn.type === 'mongodb' || conn.type === 'redis')) { autocompleteIndex = null; return; }
+  // Redis completes commands and key names instead of tables and columns
+  if (conn && conn.type === 'redis') { autocompleteIndex = { redis: true }; return; }
+  if (conn && conn.type === 'mongodb') { autocompleteIndex = null; return; }
 
   const schema = state.getDatabaseSchema(activeId);
   if (!schema || !schema.tables) { autocompleteIndex = null; return; }
@@ -1892,10 +1895,12 @@ function triggerAutocomplete(textarea) {
 
   const cursorPos = textarea.selectionStart;
   const text = textarea.value;
-  const context = getAutocompleteContext(text, cursorPos);
+  const context = autocompleteIndex.redis
+    ? redisCompletions(text, cursorPos, redisBrowser ? redisBrowser.loadedKeys : [])
+    : getAutocompleteContext(text, cursorPos);
   if (!context || context.partial.length === 0) { hideAutocomplete(); return; }
 
-  const suggestions = getSuggestions(context);
+  const suggestions = autocompleteIndex.redis ? context.suggestions : getSuggestions(context);
   if (suggestions.length === 0) { hideAutocomplete(); return; }
 
   // Don't show if only exact match
@@ -1984,8 +1989,8 @@ function renderQuery(container) {
   const isRunning = tabState.queryRunning || panelState.queryRunning;
   const templates = getQueryTemplates(isMongo, conn ? conn.type : 'mysql', isRedis);
 
-  // Build autocomplete index if needed
-  if (!isMongo && !isRedis) buildAutocompleteIndex();
+  // Build autocomplete index if needed (Redis completes commands and keys)
+  if (!isMongo) buildAutocompleteIndex();
 
   // Template chips
   const builtinChipsHtml = templates.map((tpl, i) => {
@@ -2550,7 +2555,10 @@ async function runQuery() {
       state.setQueryResult(tabId || activeId, result);
       _recordHistory(state, sql, conn, activeId, result, result.duration);
     } else {
-      const statements = splitSqlStatements(sql);
+      // Redis runs one command per line, as redis-cli does: a ";" belongs to values there
+      const statements = conn && conn.type === 'redis'
+        ? sql.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+        : splitSqlStatements(sql);
       if (statements.length === 0) {
         panelState.queryRunning = false;
         renderContent();
