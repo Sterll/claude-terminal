@@ -627,6 +627,16 @@
   color: var(--accent);
   opacity: 0.7;
 }
+.db-browser-table-default {
+  font-size: 9px;
+  color: var(--accent);
+  background: var(--accent-dim);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
 
 /* ===== MAIN PANEL ===== */
 .db-browser-main {

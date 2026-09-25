@@ -454,7 +454,8 @@ function renderSchema(container) {
         <div class="db-browser-table-list" id="db-browser-table-list">
           ${filteredTables.map(table => {
             const rc = panelState.browserTableRowCounts[table.name];
-            const rcBadge = rc !== undefined ? `<span class="db-browser-table-rows" title="${rc} rows">${formatRowCount(rc)}</span>` : '';
+            const rcBadge = rc !== undefined ? `<span class="db-browser-table-rows" title="${isRedis ? t('database.redisKeyCount', { count: rc }) : `${rc} rows`}">${formatRowCount(rc)}</span>` : '';
+            const defaultBadge = isRedis && table.isDefault ? `<span class="db-browser-table-default" title="${t('database.redisConfiguredDbHint')}">${t('database.redisConfiguredDb')}</span>` : '';
             const icon = isRedis
               ? '<svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13" class="db-browser-table-icon"><path d="M12 3C7.58 3 4 4.79 4 7v10c0 2.21 3.58 4 8 4s8-1.79 8-4V7c0-2.21-3.58-4-8-4zm6 14c0 .5-2.13 2-6 2s-6-1.5-6-2v-2.23c1.61.78 3.72 1.23 6 1.23s4.39-.45 6-1.23V17zm0-5c0 .5-2.13 2-6 2s-6-1.5-6-2V9.77C7.61 10.55 9.72 11 12 11s4.39-.45 6-1.23V12zm-6-3c-3.87 0-6-1.5-6-2s2.13-2 6-2 6 1.5 6 2-2.13 2-6 2z"/></svg>'
               : '<svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13" class="db-browser-table-icon"><path d="M3 3h18v18H3V3zm2 4v4h6V7H5zm8 0v4h6V7h-6zm-8 6v4h6v-4H5zm8 0v4h6v-4h-6z"/></svg>';
@@ -462,6 +463,7 @@ function renderSchema(container) {
             <div class="db-browser-table-item ${table.name === selectedTable ? 'active' : ''}" data-table="${escapeHtml(table.name)}">
               ${icon}
               <span class="db-browser-table-name">${escapeHtml(table.name)}</span>
+              ${defaultBadge}
               ${rcBadge}
               ${isRedis ? '' : `<span class="db-browser-table-cols">${table.columns.length}</span>`}
             </div>`;
@@ -1529,7 +1531,12 @@ function bindRedisBrowserEvents(container) {
 
   const refreshBtn = container.querySelector('#redis-tree-refresh');
   if (refreshBtn) {
-    refreshBtn.onclick = () => loadRedisKeys(panelState.browserSelectedTable);
+    // The db list goes stale too: a db appears in INFO keyspace only while it holds keys
+    refreshBtn.onclick = () => {
+      const activeId = require('../../state').getActiveConnection();
+      if (activeId) loadSchema(activeId, { force: true });
+      loadRedisKeys(panelState.browserSelectedTable);
+    };
   }
 
   // Folder toggle (event delegation)
@@ -1571,6 +1578,8 @@ async function loadRedisKeys(dbName) {
   const dbIndex = dbName.startsWith('db:') ? parseInt(dbName.slice(3)) : 0;
   try {
     const result = await ctx.api.database.executeQuery({ id: activeId, sql: `_REDIS_KEYS ${dbIndex}`, limit: 100000 });
+    // Another db was picked while this one loaded: its answer belongs to nobody
+    if (panelState.browserSelectedTable !== dbName) return;
     if (result.error) {
       ctx.showToast({ type: 'error', title: t('database.browserQueryError'), message: result.error });
       panelState.redisTreeKeys = [];
@@ -1578,6 +1587,7 @@ async function loadRedisKeys(dbName) {
       panelState.redisTreeKeys = (result.rows || []).map(r => r.key);
     }
   } catch (e) {
+    if (panelState.browserSelectedTable !== dbName) return;
     panelState.redisTreeKeys = [];
     ctx.showToast({ type: 'error', title: t('database.browserQueryError'), message: e.message });
   }
@@ -1597,6 +1607,11 @@ async function loadRedisKeyInfo(dbName, key) {
   const dbIndex = dbName && dbName.startsWith('db:') ? parseInt(dbName.slice(3)) : 0;
   try {
     const result = await ctx.api.database.executeQuery({ id: activeId, sql: `_REDIS_KEY_INFO ${dbIndex} ${key}`, limit: 1 });
+    if (panelState.redisSelectedKey !== key || panelState.browserSelectedTable !== dbName) {
+      // A newer key request owns the spinner; with no key selected nobody does
+      if (!panelState.redisSelectedKey) panelState.redisKeyInfoLoading = false;
+      return;
+    }
     if (result.error) {
       ctx.showToast({ type: 'error', title: t('database.browserQueryError'), message: result.error });
       panelState.redisKeyInfo = null;
@@ -1713,15 +1728,35 @@ async function loadTableData(tableName) {
   renderContent();
 }
 
-async function loadSchema(id) {
+async function loadSchema(id, { force = false } = {}) {
   const state = require('../../state');
-  const result = await ctx.api.database.getSchema({ id });
+  const result = await ctx.api.database.getSchema({ id, force });
   if (result.success) {
     state.setDatabaseSchema(id, { tables: result.tables });
     buildAutocompleteIndex();
+    const conn = state.getDatabaseConnection(id);
+    if (conn && conn.type === 'redis') selectDefaultRedisDb(result.tables);
     if (panelState.activeSubTab === 'schema') renderContent();
     loadTableRowCounts(id);
   }
+}
+
+/**
+ * Open the db the connection is configured for, instead of leaving the
+ * browser on nothing - or on a db:N carried over from another connection,
+ * since the selection is panel-wide and survives switching connections.
+ */
+function selectDefaultRedisDb(tables) {
+  if (!tables || tables.length === 0) return;
+  if (tables.some(tb => tb.name === panelState.browserSelectedTable)) return;
+  const target = tables.find(tb => tb.isDefault) || tables[0];
+  panelState.browserSelectedTable = target.name;
+  panelState.redisTreeKeys = null;
+  panelState.redisSelectedKey = null;
+  panelState.redisKeyInfo = null;
+  panelState.redisTreeFilter = '';
+  panelState.redisExpandedFolders = new Set();
+  loadRedisKeys(target.name);
 }
 
 // ==================== Query Tab ====================
@@ -1817,10 +1852,17 @@ async function loadTableRowCounts(connectionId) {
   const state = require('../../state');
   const conn = state.getDatabaseConnection(connectionId);
   if (!conn) return;
-  if (conn.type === 'redis' || conn.type === 'mongodb') return;
+  if (conn.type === 'mongodb') return;
 
   const schema = state.getDatabaseSchema(connectionId);
   if (!schema || !schema.tables) return;
+
+  // Redis reports its key counts with the db list, no query needed
+  if (conn.type === 'redis') {
+    panelState.browserTableRowCounts = Object.fromEntries(schema.tables.map(tb => [tb.name, tb.keyCount || 0]));
+    if (panelState.activeSubTab === 'schema') renderContent();
+    return;
+  }
 
   const counts = {};
   const dbType = conn.type;
@@ -3291,8 +3333,8 @@ function renderFormFields(data, type) {
           <input type="password" class="database-form-input" id="db-form-password" value="" placeholder="********">
         </div>
         <div class="database-form-group database-form-grow">
-          <label class="database-form-label">Database index</label>
-          <input type="number" class="database-form-input" id="db-form-database" min="0" max="15" value="${escapeHtml(String(data.database || '0'))}" placeholder="0">
+          <label class="database-form-label">${t('database.redisDbIndex')}</label>
+          <input type="number" class="database-form-input" id="db-form-database" min="0" step="1" value="${escapeHtml(String(data.database || '0'))}" placeholder="0">
         </div>
       </div>`;
   } else {

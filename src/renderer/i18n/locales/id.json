@@ -2567,6 +2567,10 @@
     "redisScore": "Skor",
     "redisBytes": "{count} bita",
     "redisItems": "{count} item",
+    "redisDbIndex": "Indeks basis data",
+    "redisConfiguredDb": "bawaan",
+    "redisConfiguredDbHint": "Indeks basis data yang dikonfigurasi untuk koneksi ini",
+    "redisKeyCount": "{count} kunci",
     "exportCancelled": "Ekspor dibatalkan. Coba lagi dari awal dengan data yang sama.",
     "exportRetry": "Ulangi ekspor"
   },

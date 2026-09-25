@@ -2564,6 +2564,10 @@
     "redisScore": "Puntuación",
     "redisBytes": "{count} bytes",
     "redisItems": "{count} elementos",
+    "redisDbIndex": "Índice de la base de datos",
+    "redisConfiguredDb": "predeterminada",
+    "redisConfiguredDbHint": "La base de datos configurada para esta conexión",
+    "redisKeyCount": "{count} claves",
     "exportCancelled": "Exportación cancelada. Reintentar comienza desde el principio con los mismos datos.",
     "exportRetry": "Reintentar exportación"
   },

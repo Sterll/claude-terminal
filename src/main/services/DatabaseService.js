@@ -529,18 +529,59 @@ class DatabaseService {
     return client;
   }
 
+  /** The DB index a Redis connection was configured for (stored as a number or a string). */
+  _redisDbIndex(config) {
+    const index = parseInt(config && config.database, 10);
+    return Number.isInteger(index) && index >= 0 ? index : 0;
+  }
+
   async _createRedisClient(config) {
     const Redis = require('ioredis');
     const client = new Redis({
       host: config.host || 'localhost',
       port: config.port || 6379,
       password: config.password || undefined,
-      db: config.database || 0,
+      db: this._redisDbIndex(config),
       connectTimeout: 10000,
       lazyConnect: true
     });
     await client.connect();
     return client;
+  }
+
+  /**
+   * A client bound to one DB index, for the browser's internal commands.
+   *
+   * These used to run `SELECT n` on the shared connection, which moved it for
+   * everything after: a GET typed in the query tab ran against whichever db was
+   * browsed last rather than the configured one, and two browser requests in
+   * flight at once (key list + key detail) could each land in the other's db.
+   * One duplicate per index, closed with the main client.
+   */
+  async _redisDbClient(client, dbIndex) {
+    if (!this._redisDbClients) this._redisDbClients = new WeakMap();
+    let byIndex = this._redisDbClients.get(client);
+    if (!byIndex) { byIndex = new Map(); this._redisDbClients.set(client, byIndex); }
+    let pending = byIndex.get(dbIndex);
+    if (!pending) {
+      pending = (async () => {
+        const dup = client.duplicate({ db: dbIndex, lazyConnect: true });
+        await dup.connect();
+        return dup;
+      })();
+      byIndex.set(dbIndex, pending);
+      pending.catch(() => byIndex.delete(dbIndex));
+    }
+    return pending;
+  }
+
+  _closeRedisDbClients(client) {
+    const byIndex = this._redisDbClients && this._redisDbClients.get(client);
+    if (!byIndex) return;
+    for (const pending of byIndex.values()) {
+      pending.then(dup => dup.disconnect(), () => {});
+    }
+    this._redisDbClients.delete(client);
   }
 
   // ==================== Private: Ping ====================
@@ -585,6 +626,7 @@ class DatabaseService {
         await client.close();
         break;
       case 'redis':
+        this._closeRedisDbClients(client);
         client.disconnect();
         break;
     }
@@ -599,7 +641,7 @@ class DatabaseService {
       case 'mariadb': return this._getMysqlSchema(client);
       case 'postgresql': return this._getPgSchema(client);
       case 'mongodb': return this._getMongoSchema(client, config);
-      case 'redis': return this._getRedisSchema(client);
+      case 'redis': return this._getRedisSchema(client, config);
       default: return [];
     }
   }
@@ -758,18 +800,30 @@ class DatabaseService {
     return result;
   }
 
-  async _getRedisSchema(client) {
-    const info = await client.info('keyspace');
-    const dbInfos = [];
-    for (const line of info.split('\r\n')) {
-      const m = line.match(/^db(\d+):keys=(\d+)/);
-      if (m) dbInfos.push({ dbIndex: parseInt(m[1]), keyCount: parseInt(m[2]) });
+  async _getRedisSchema(client, config) {
+    // INFO keyspace only lists databases that hold keys at this instant. The
+    // configured one is listed regardless: it used to be replaced by a made-up
+    // db:0 whenever it was empty, which for a cache whose keys all carry a TTL
+    // is any moment they happen to have expired - and the connection then
+    // looked pointed at the wrong database.
+    const configured = this._redisDbIndex(config);
+    const counts = new Map();
+    try {
+      const info = await client.info('keyspace');
+      for (const line of info.split(/\r?\n/)) {
+        const m = line.match(/^db(\d+):keys=(\d+)/);
+        if (m) counts.set(parseInt(m[1], 10), parseInt(m[2], 10));
+      }
+    } catch { /* INFO can be denied by an ACL; the configured db is still browsable */ }
+    if (!counts.has(configured)) {
+      counts.set(configured, await client.dbsize().catch(() => 0));
     }
-    if (dbInfos.length === 0) dbInfos.push({ dbIndex: 0, keyCount: 0 });
 
     // Each Redis database appears as a "table" with a fixed schema
-    return dbInfos.map(({ dbIndex, keyCount }) => ({
+    return [...counts.entries()].sort((a, b) => a[0] - b[0]).map(([dbIndex, keyCount]) => ({
       name: `db:${dbIndex}`,
+      keyCount,
+      isDefault: dbIndex === configured,
       columns: [
         { name: 'key',   type: 'string', primaryKey: true,  nullable: false },
         { name: 'type',  type: 'string', primaryKey: false, nullable: false },
@@ -883,23 +937,23 @@ class DatabaseService {
       const dbIndex = parseInt(scanMatch[1]);
       const pageSize = parseInt(scanMatch[2]);
       const offset = parseInt(scanMatch[3]);
-      const pattern = scanMatch[4] ? `*${scanMatch[4]}*` : '*';
+      const pattern = scanMatch[4] ? `*${this._redisGlobEscape(scanMatch[4])}*` : '*';
 
-      await client.select(dbIndex);
-      const allKeys = await this._redisGetAllKeys(client, pattern);
+      const db = await this._redisDbClient(client, dbIndex);
+      const allKeys = await this._redisGetAllKeys(db, pattern);
       const total = allKeys.length;
       const pageKeys = allKeys.slice(offset, offset + pageSize);
 
       const rows = await Promise.all(pageKeys.map(async key => {
-        const type = await client.type(key);
-        const ttl = await client.ttl(key);
+        const type = await db.type(key);
+        const ttl = await db.ttl(key);
         let value = null;
         try {
-          if (type === 'string') value = await client.get(key);
-          else if (type === 'hash') value = JSON.stringify(await client.hgetall(key));
-          else if (type === 'list') value = JSON.stringify(await client.lrange(key, 0, 9));
-          else if (type === 'set') value = JSON.stringify(await client.smembers(key));
-          else if (type === 'zset') value = JSON.stringify(await client.zrange(key, 0, 9, 'WITHSCORES'));
+          if (type === 'string') value = await db.get(key);
+          else if (type === 'hash') value = JSON.stringify(await db.hgetall(key));
+          else if (type === 'list') value = JSON.stringify(await db.lrange(key, 0, 9));
+          else if (type === 'set') value = JSON.stringify(await db.smembers(key));
+          else if (type === 'zset') value = JSON.stringify(await db.zrange(key, 0, 9, 'WITHSCORES'));
           else value = `(${type})`;
         } catch { /* ignore */ }
         return { key, type, ttl: ttl < 0 ? null : ttl, value };
@@ -912,9 +966,9 @@ class DatabaseService {
     const keysMatch = trimmed.match(/^_REDIS_KEYS\s+(\d+)(?:\s+(.+))?$/);
     if (keysMatch) {
       const dbIndex = parseInt(keysMatch[1]);
-      const pattern = keysMatch[2] ? `*${keysMatch[2]}*` : '*';
-      await client.select(dbIndex);
-      const allKeys = await this._redisGetAllKeys(client, pattern);
+      const pattern = keysMatch[2] ? `*${this._redisGlobEscape(keysMatch[2])}*` : '*';
+      const db = await this._redisDbClient(client, dbIndex);
+      const allKeys = await this._redisGetAllKeys(db, pattern);
       return { columns: ['key'], rows: allKeys.map(k => ({ key: k })), rowCount: allKeys.length };
     }
 
@@ -923,28 +977,28 @@ class DatabaseService {
     if (keyInfoMatch) {
       const dbIndex = parseInt(keyInfoMatch[1]);
       const key = keyInfoMatch[2].trim();
-      await client.select(dbIndex);
-      const type = await client.type(key);
+      const db = await this._redisDbClient(client, dbIndex);
+      const type = await db.type(key);
       if (type === 'none') throw new Error(`Key "${key}" does not exist`);
-      const ttl = await client.ttl(key);
-      const pttl = await client.pttl(key);
+      const ttl = await db.ttl(key);
+      const pttl = await db.pttl(key);
       let size = null, length = null, value = null;
       try {
         if (type === 'string') {
-          value = await client.get(key);
-          size = await client.strlen(key);
+          value = await db.get(key);
+          size = await db.strlen(key);
         } else if (type === 'hash') {
-          length = await client.hlen(key);
-          value = JSON.stringify(await client.hgetall(key));
+          length = await db.hlen(key);
+          value = JSON.stringify(await db.hgetall(key));
         } else if (type === 'list') {
-          length = await client.llen(key);
-          value = JSON.stringify(await client.lrange(key, 0, 499));
+          length = await db.llen(key);
+          value = JSON.stringify(await db.lrange(key, 0, 499));
         } else if (type === 'set') {
-          length = await client.scard(key);
-          value = JSON.stringify(await client.smembers(key));
+          length = await db.scard(key);
+          value = JSON.stringify(await db.smembers(key));
         } else if (type === 'zset') {
-          length = await client.zcard(key);
-          value = JSON.stringify(await client.zrange(key, 0, 499, 'WITHSCORES'));
+          length = await db.zcard(key);
+          value = JSON.stringify(await db.zrange(key, 0, 499, 'WITHSCORES'));
         } else {
           value = `(${type})`;
         }
@@ -957,7 +1011,8 @@ class DatabaseService {
     }
 
     // Native Redis command (e.g. "GET mykey", "SET foo bar", "KEYS *")
-    const parts = trimmed.split(/\s+/);
+    const parts = this._tokenizeRedisCommand(trimmed);
+    if (parts.length === 0) throw new Error('Empty Redis command');
     const cmd = parts[0].toLowerCase();
     const args = parts.slice(1);
 
@@ -966,11 +1021,59 @@ class DatabaseService {
     }
 
     const result = await client[cmd](...args);
+    // HGETALL comes back from ioredis as an object, which String() turned into "[object Object]"
+    if (result && typeof result === 'object' && !Array.isArray(result) && !Buffer.isBuffer(result)) {
+      const entries = Object.entries(result);
+      return { columns: ['field', 'value'], rows: entries.slice(0, limit).map(([field, value]) => ({ field, value: String(value) })), rowCount: entries.length };
+    }
     if (Array.isArray(result)) {
       const limited = result.slice(0, limit);
       return { columns: ['value'], rows: limited.map(v => ({ value: v === null ? null : String(v) })), rowCount: result.length };
     }
     return { columns: ['result'], rows: [{ result: result === null ? null : String(result) }], rowCount: 1 };
+  }
+
+  /**
+   * Split a command line the way redis-cli does, so `SET greeting "hello world"`
+   * stores one value rather than `"hello` with a stray `world"` argument.
+   * Double quotes take backslash escapes, single quotes are literal.
+   */
+  _tokenizeRedisCommand(line) {
+    const tokens = [];
+    let i = 0;
+    while (i < line.length) {
+      while (i < line.length && /\s/.test(line[i])) i++;
+      if (i >= line.length) break;
+      let token = '';
+      while (i < line.length && !/\s/.test(line[i])) {
+        const ch = line[i];
+        if (ch === '"' || ch === "'") {
+          const quote = ch;
+          i++;
+          while (i < line.length && line[i] !== quote) {
+            if (quote === '"' && line[i] === '\\' && i + 1 < line.length) {
+              const next = line[++i];
+              token += next === 'n' ? '\n' : next === 't' ? '\t' : next === 'r' ? '\r' : next;
+            } else {
+              token += line[i];
+            }
+            i++;
+          }
+          if (i >= line.length) throw new Error('Unbalanced quotes in Redis command');
+          i++;
+        } else {
+          token += ch;
+          i++;
+        }
+      }
+      tokens.push(token);
+    }
+    return tokens;
+  }
+
+  /** A filter is a substring, not a glob: `user[1]` must not match `user1`. */
+  _redisGlobEscape(text) {
+    return String(text).replace(/[*?[\]\\]/g, '\\$&');
   }
 
   async _redisGetAllKeys(client, pattern = '*') {

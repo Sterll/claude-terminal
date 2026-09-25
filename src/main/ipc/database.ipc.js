@@ -56,9 +56,9 @@ function registerDatabaseHandlers() {
     }
   });
 
-  ipcMain.handle('database-get-schema', async (event, { id }) => {
+  ipcMain.handle('database-get-schema', async (event, { id, force }) => {
     try {
-      return await databaseService.getSchema(id);
+      return await databaseService.getSchema(id, { force: !!force });
     } catch (err) {
       return { success: false, error: err.message };
     }

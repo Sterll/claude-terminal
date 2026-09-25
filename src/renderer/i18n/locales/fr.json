@@ -2567,6 +2567,10 @@
     "redisScore": "Score",
     "redisBytes": "{count} octets",
     "redisItems": "{count} éléments",
+    "redisDbIndex": "Index de la base",
+    "redisConfiguredDb": "défaut",
+    "redisConfiguredDbHint": "La base configurée pour cette connexion",
+    "redisKeyCount": "{count} clés",
     "exportCancelled": "Export annulé. Réessayer repart du début avec les mêmes données.",
     "exportRetry": "Relancer l’export"
   },
