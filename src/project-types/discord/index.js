@@ -654,7 +654,8 @@ module.exports = createType({
         fr: require('./i18n/fr.json'),
         es: require('./i18n/es.json'),
         id: require('./i18n/id.json'),
-        'zh-CN': require('./i18n/zh-CN.json')
+        'zh-CN': require('./i18n/zh-CN.json'),
+        'pt-BR': require('./i18n/pt-BR.json')
       };
     } catch (e) {
       return null;
