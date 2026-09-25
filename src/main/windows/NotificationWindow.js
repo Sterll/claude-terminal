@@ -3,7 +3,7 @@
  * Manages frameless BrowserWindow notifications with stacking
  */
 
-const { BrowserWindow, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, Notification } = require('electron');
 const path = require('path');
 const { getMainWindow } = require('./MainWindow');
 
@@ -36,7 +36,53 @@ function calcHeight(buttons) {
 /**
  * Show a notification window
  */
+/**
+ * True when the app runs as a native Wayland client. There a toplevel window
+ * cannot place itself (setBounds is ignored) and mutter activates every new
+ * window of a client that already has focus, `focusable: false` and
+ * showInactive() notwithstanding - so the custom toast would steal the keyboard
+ * from whatever the user is typing into, and focus cannot be taken back without
+ * an activation token. The desktop's own notification banner never takes focus.
+ */
+function isNativeWayland() {
+  if (process.platform !== 'linux') return false;
+  const ozone = app.commandLine.getSwitchValue('ozone-platform');
+  if (ozone === 'x11') return false;
+  if (ozone === 'wayland') return true;
+  return process.env.XDG_SESSION_TYPE === 'wayland' || !!process.env.WAYLAND_DISPLAY;
+}
+
+/**
+ * Wayland path: a system notification. Loses the inline buttons (Electron only
+ * supports notification actions on macOS), so a click does what 'show' does and
+ * anything else - answers, allow/deny - is done from the app.
+ */
+function showSystemNotification({ title, body, terminalId }) {
+  const notifId = ++notifIdCounter;
+  if (!Notification.isSupported()) return notifId;
+  const n = new Notification({ title: title || 'Claude Terminal', body: body || '', silent: false });
+  n.on('click', () => focusMainAndOpen(terminalId));
+  n.show();
+  return notifId;
+}
+
+function focusMainAndOpen(terminalId) {
+  const mainWindow = getMainWindow();
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.setAlwaysOnTop(true);
+  mainWindow.focus();
+  mainWindow.setAlwaysOnTop(false);
+  setTimeout(() => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('notification-clicked', { terminalId, answerText: null });
+    }
+  }, 300);
+}
+
 function showNotification({ title, body, terminalId, autoDismiss = 8000, labels, buttons, meta }) {
+  if (isNativeWayland()) return showSystemNotification({ title, body, terminalId });
   const notifId = ++notifIdCounter;
 
   // Normalize buttons: support legacy labels.show format and missing buttons
@@ -163,19 +209,7 @@ function registerNotificationHandlers() {
       }
     } else if (action === 'show') {
       // Bring main window to focus and switch to the right terminal
-      const mainWindow = getMainWindow();
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        if (mainWindow.isMinimized()) mainWindow.restore();
-        mainWindow.show();
-        mainWindow.setAlwaysOnTop(true);
-        mainWindow.focus();
-        mainWindow.setAlwaysOnTop(false);
-        setTimeout(() => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('notification-clicked', { terminalId, answerText: null });
-          }
-        }, 300);
-      }
+      focusMainAndOpen(terminalId);
     } else if (action === 'allow' || action === 'deny') {
       // Resolve a pending PermissionRequest hook (blocking wait in hook handler)
       try {
