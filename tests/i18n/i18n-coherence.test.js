@@ -180,6 +180,19 @@ describe('i18n coherence — main locales', () => {
   test.each(allLocales)('%s.json has a reasonable number of keys (>100)', (locale) => {
     expect(loaded[locale].keys.length).toBeGreaterThan(100);
   });
+
+  // t() interpolates `{name}` only. A `{{name}}` still gets its inner `{name}`
+  // replaced, so the value renders wrapped in a stray pair of braces: the
+  // session worktree tooltip showed `{my-branch}` in every locale this way.
+  // The two allowed keys spell the workflow variable syntax as literal text.
+  const LITERAL_DOUBLE_BRACES = new Set(['workflow.variable.placeholder', 'workflow.sql.tip']);
+
+  test.each(allLocales)('no double-brace placeholders in %s.json', (locale) => {
+    const { data, keys } = loaded[locale];
+    const offenders = keys.filter(k =>
+      !LITERAL_DOUBLE_BRACES.has(k) && /\{\{\w+\}\}/.test(String(getValueAtPath(data, k))));
+    expect(offenders).toEqual([]);
+  });
 });
 
 // ── Project-type i18n files ──
