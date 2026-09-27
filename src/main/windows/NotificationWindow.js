@@ -34,9 +34,6 @@ function calcHeight(buttons) {
 }
 
 /**
- * Show a notification window
- */
-/**
  * True when the app runs as a native Wayland client. There a toplevel window
  * cannot place itself (setBounds is ignored) and mutter activates every new
  * window of a client that already has focus, `focusable: false` and
@@ -56,12 +53,23 @@ function isNativeWayland() {
  * Wayland path: a system notification. Loses the inline buttons (Electron only
  * supports notification actions on macOS), so a click does what 'show' does and
  * anything else - answers, allow/deny - is done from the app.
+ *
+ * Each notification is held in `liveSystemNotifications` until it is clicked
+ * or closed. Nothing else references it once this returns, and a Notification
+ * that gets garbage-collected takes its 'click' listener with it: the banner
+ * stays on screen but clicking it does nothing.
  */
+const liveSystemNotifications = new Set();
+
 function showSystemNotification({ title, body, terminalId }) {
   const notifId = ++notifIdCounter;
   if (!Notification.isSupported()) return notifId;
   const n = new Notification({ title: title || 'Claude Terminal', body: body || '', silent: false });
-  n.on('click', () => focusMainAndOpen(terminalId));
+  const release = () => liveSystemNotifications.delete(n);
+  n.on('click', () => { release(); focusMainAndOpen(terminalId); });
+  n.on('close', release);
+  n.on('failed', release);
+  liveSystemNotifications.add(n);
   n.show();
   return notifId;
 }
@@ -81,6 +89,9 @@ function focusMainAndOpen(terminalId) {
   }, 300);
 }
 
+/**
+ * Show a notification window
+ */
 function showNotification({ title, body, terminalId, autoDismiss = 8000, labels, buttons, meta }) {
   if (isNativeWayland()) return showSystemNotification({ title, body, terminalId });
   const notifId = ++notifIdCounter;

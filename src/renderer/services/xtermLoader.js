@@ -209,23 +209,39 @@ function repaintWhenFontsSettle(terminal, webgl) {
 }
 
 /**
- * Re-cut every live atlas when the window comes back into view.
+ * Re-cut every live atlas when the window comes back into view, on Linux.
  *
- * While the window is hidden or behind another app, Chromium on Linux (and
- * some Windows drivers) may evict the GPU textures backing the atlas without
- * raising a context loss. xterm keeps sampling the stale texture on return,
- * which shows up as half-drawn or scrambled glyphs until the next full
- * redraw. Rebuilding on focus/visibility costs one rasterisation pass.
+ * While the window is hidden or behind another app, Chromium on Linux may
+ * evict the GPU textures backing the atlas without raising a context loss.
+ * xterm keeps sampling the stale texture on return, which shows up as
+ * half-drawn or scrambled glyphs until the next full redraw. Rebuilding costs
+ * one rasterisation pass per terminal, which is why it is not paid on every
+ * alt-tab elsewhere: nothing has shown this fault off Linux.
+ *
+ * `focus` and `visibilitychange` both fire on the same return, so the repaint
+ * is coalesced into one frame. That frame also lets the compositor restore the
+ * surface before anything is redrawn.
  */
 const _webglTerminals = new Map();
 let _returnListenersInstalled = false;
+let _repaintScheduled = false;
+
+function isLinux() {
+  return typeof window !== 'undefined'
+    && window.electron_nodeModules?.process?.platform === 'linux';
+}
+
+/** A closed terminal has nothing left to repaint. */
+function pruneDeadTerminals() {
+  for (const terminal of _webglTerminals.keys()) {
+    if (!terminal.element || !terminal.element.isConnected) _webglTerminals.delete(terminal);
+  }
+}
 
 function repaintAllAtlases() {
+  _repaintScheduled = false;
+  pruneDeadTerminals();
   for (const [terminal, webgl] of _webglTerminals) {
-    if (!terminal.element || !terminal.element.isConnected) {
-      _webglTerminals.delete(terminal);
-      continue;
-    }
     try {
       webgl.clearTextureAtlas();
       terminal.refresh(0, terminal.rows - 1);
@@ -233,16 +249,24 @@ function repaintAllAtlases() {
   }
 }
 
+function scheduleRepaint() {
+  if (_repaintScheduled) return;
+  _repaintScheduled = true;
+  requestAnimationFrame(repaintAllAtlases);
+}
+
 function trackForRepaintOnReturn(terminal, webgl) {
+  if (!isLinux()) return;
+  // Closing a tab does not tell us, so whatever closed since the last attach
+  // is dropped here: the map stays bounded by the tabs actually open.
+  pruneDeadTerminals();
   _webglTerminals.set(terminal, webgl);
   webgl.onContextLoss(() => _webglTerminals.delete(terminal));
-  if (_returnListenersInstalled || typeof window === 'undefined') return;
+  if (_returnListenersInstalled) return;
   _returnListenersInstalled = true;
-  // Next frame: let the compositor restore the surface before redrawing.
-  const schedule = () => requestAnimationFrame(repaintAllAtlases);
-  window.addEventListener('focus', schedule);
+  window.addEventListener('focus', scheduleRepaint);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') schedule();
+    if (document.visibilityState === 'visible') scheduleRepaint();
   });
 }
 
@@ -276,5 +300,6 @@ module.exports = {
   isXtermLoaded,
   loadWebgl,
   attachWebglAddon,
-  clearGlyphAtlas
+  clearGlyphAtlas,
+  trackForRepaintOnReturn
 };
