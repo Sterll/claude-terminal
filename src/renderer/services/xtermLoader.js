@@ -172,6 +172,7 @@ function attachWebglAddon(terminal, { enabled = true } = {}) {
       // Kept so the font-size setting can re-cut the atlas; see clearGlyphAtlas.
       terminal._ctWebglAddon = webgl;
       repaintWhenFontsSettle(terminal, webgl);
+      trackForRepaintOnReturn(terminal, webgl);
       return true;
     } catch (e) {
       console.warn('WebGL addon failed to load, using DOM renderer:', e.message);
@@ -205,6 +206,44 @@ function repaintWhenFontsSettle(terminal, webgl) {
       terminal.refresh(0, terminal.rows - 1);
     } catch (e) { /* disposed mid-flight */ }
   }).catch(() => { /* never worth failing a terminal over */ });
+}
+
+/**
+ * Re-cut every live atlas when the window comes back into view.
+ *
+ * While the window is hidden or behind another app, Chromium on Linux (and
+ * some Windows drivers) may evict the GPU textures backing the atlas without
+ * raising a context loss. xterm keeps sampling the stale texture on return,
+ * which shows up as half-drawn or scrambled glyphs until the next full
+ * redraw. Rebuilding on focus/visibility costs one rasterisation pass.
+ */
+const _webglTerminals = new Map();
+let _returnListenersInstalled = false;
+
+function repaintAllAtlases() {
+  for (const [terminal, webgl] of _webglTerminals) {
+    if (!terminal.element || !terminal.element.isConnected) {
+      _webglTerminals.delete(terminal);
+      continue;
+    }
+    try {
+      webgl.clearTextureAtlas();
+      terminal.refresh(0, terminal.rows - 1);
+    } catch (e) { _webglTerminals.delete(terminal); }
+  }
+}
+
+function trackForRepaintOnReturn(terminal, webgl) {
+  _webglTerminals.set(terminal, webgl);
+  webgl.onContextLoss(() => _webglTerminals.delete(terminal));
+  if (_returnListenersInstalled || typeof window === 'undefined') return;
+  _returnListenersInstalled = true;
+  // Next frame: let the compositor restore the surface before redrawing.
+  const schedule = () => requestAnimationFrame(repaintAllAtlases);
+  window.addEventListener('focus', schedule);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') schedule();
+  });
 }
 
 // There is deliberately no prefetch here. Warming the module on an idle
